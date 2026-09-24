@@ -1212,14 +1212,47 @@ export default function CalendarScreen() {
       return nearest ? { ...current, newer: nearest } : current;
     });
   }
-  // Checked when a drag or a fling comes to rest, not on every frame: a
-  // month of pages is not something to lay out in the middle of a fling.
-  function checkOverviewEdges(e: NativeSyntheticEvent<NativeScrollEvent>) {
+  // A MONTH HAS TO BE PULLED FOR, not merely scrolled to. Reaching the
+  // end used to add the next month by itself, which made the run feel
+  // endless and hid the fact that anything was being fetched at all. Now
+  // the list ends, and going further means pulling past that end and
+  // holding - "треба потягнути і міні затримка ніби витягнути важко".
+  // Android's own overscroll stretch is what the finger feels while it
+  // does; the wait is what tells you something is coming.
+  const [overviewPull, setOverviewPull] = useState<'older' | 'newer' | null>(null);
+  const pullHeldRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function holdPull(direction: 'older' | 'newer') {
+    if (pullHeldRef.current) return;
+    setOverviewPull(direction);
+    pullHeldRef.current = setTimeout(() => {
+      pullHeldRef.current = null;
+      setOverviewPull(null);
+      extendOverview(direction);
+    }, OVERVIEW_PULL_MS);
+  }
+  function releasePull() {
+    if (!pullHeldRef.current) return;
+    clearTimeout(pullHeldRef.current);
+    pullHeldRef.current = null;
+    setOverviewPull(null);
+  }
+  useEffect(() => () => releasePull(), []);
+  // Read on every frame of a DRAG, because what it is watching for is
+  // the finger holding past the end - not where the list came to rest.
+  function checkOverviewPull(e: NativeSyntheticEvent<NativeScrollEvent>) {
     if (!overviewWarm) return;
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-    const near = layoutMeasurement.height * 0.6;
-    if (contentSize.height - (contentOffset.y + layoutMeasurement.height) < near) extendOverview('older');
-    if (contentOffset.y < near) extendOverview('newer');
+    const past = contentOffset.y + layoutMeasurement.height - contentSize.height;
+    if (past > OVERVIEW_PULL_PX) {
+      holdPull('older');
+      return;
+    }
+    if (contentOffset.y < -OVERVIEW_PULL_PX) {
+      holdPull('newer');
+      return;
+    }
+    // Back inside the list: the pull was given up before it counted.
+    releasePull();
   }
   const noteRect = noteRectRef.current ?? { y: 120, width: windowWidth - 32, height: windowHeight * 0.7 };
   const miniW = noteRect.width * OVERVIEW_PAGE_SCALE;
@@ -1227,6 +1260,10 @@ export default function CalendarScreen() {
   // Where the shrunk page's top edge is: scaled about its own centre.
   const miniTop = (containerHRef.current || windowHeight) / 2 - miniH / 2;
   const OVERVIEW_LABEL_H = 30;
+  // How far past the end counts as pulling, and how long it has to be
+  // held there.
+  const OVERVIEW_PULL_PX = 64;
+  const OVERVIEW_PULL_MS = 420;
   const OVERVIEW_GAP = 18;
   // Every day is the same height, so where any of them stands is
   // arithmetic, not a measurement to wait for.
@@ -1876,6 +1913,9 @@ export default function CalendarScreen() {
               ]}
               showsVerticalScrollIndicator={false}
               onContentSizeChange={settleOverviewScroll}
+              // Every frame, not only at rest: the hold past the end is
+              // the gesture, and it happens while the finger is down.
+              scrollEventThrottle={16}
               // From here on the list is the user's: nothing places it
               // again except a newer month being added above.
               onScrollBeginDrag={() => {
@@ -1883,10 +1923,12 @@ export default function CalendarScreen() {
               }}
               contentOffset={overviewAnchorIndex >= 0 ? { x: 0, y: overviewAnchorIndex * overviewItemH } : undefined}
               onLayout={settleOverviewScroll}
-              onScroll={(e) => (overviewScrollYRef.current = e.nativeEvent.contentOffset.y)}
-              scrollEventThrottle={32}
-              onScrollEndDrag={checkOverviewEdges}
-              onMomentumScrollEnd={checkOverviewEdges}
+              onScroll={(e) => {
+                overviewScrollYRef.current = e.nativeEvent.contentOffset.y;
+                checkOverviewPull(e);
+              }}
+              onScrollEndDrag={releasePull}
+              onMomentumScrollEnd={releasePull}
             >
               {overviewDays.map((day, index) => {
                 const date = parseDateKey(day.key);

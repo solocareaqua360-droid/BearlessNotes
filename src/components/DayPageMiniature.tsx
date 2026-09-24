@@ -1,6 +1,8 @@
 import { memo } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { useTheme } from '../theme/ThemeProvider';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { makeStyles as makeEditorStyles } from './documentEditorStyles';
 import type { Block } from '../types';
 import BlockRow from './BlockRow';
 
@@ -18,6 +20,13 @@ import BlockRow from './BlockRow';
 // handler is a no-op, and the sheet takes no touches at all - the tap on
 // it belongs to the overview. And the overview only mounts one month of
 // these at a time.
+//
+// ONE FOR ONE with the page it stands for, not merely like it. The user
+// asked for the zoom to read as one picture being made bigger, and it
+// only can if the two are the same picture: anything this draws a few
+// points from where the editor draws it ghosts across the hand-over.
+// That is why the tail below is the editor's own «Додати блок» row in
+// the editor's own styles rather than an empty page bottom.
 //
 // A page never shows more than its own height, so rows past this are
 // never seen; drawing them would only cost.
@@ -39,6 +48,7 @@ function DayPageMiniature({
   radius: number;
 }) {
   const theme = useTheme();
+  const editorStyles = useStyles(makeEditorStyles);
   const width = pageWidth * scale;
   const height = pageHeight * scale;
   let runningNumber = 0;
@@ -71,6 +81,12 @@ function DayPageMiniature({
             content is measured with no height limit, which is the
             condition every row here was written against. */}
         <ScrollView scrollEnabled={false} style={styles.fill} contentContainerStyle={styles.content}>
+        {/* The blocks carry the block list's own side padding and the add
+            row below does NOT - in the editor they are siblings inside
+            the scroll, and only the list is indented. Folding that 12
+            into the whole page pushed the add row 12 points further in
+            than the page it stands for. */}
+        <View style={editorStyles.blockListContainer}>
         {shown.map((item, index) => {
           if (item.type === 'numbered') {
             runningNumber = index > 0 && shown[index - 1].type === 'numbered' ? runningNumber + 1 : 1;
@@ -115,6 +131,16 @@ function DayPageMiniature({
             />
           );
         })}
+        </View>
+        {/* The editor draws this under every note that is not picking
+            blocks, so a page that ends without it ends in the wrong
+            place. Inert, like everything else here. */}
+        <View style={editorStyles.addBlockRow}>
+          <View style={editorStyles.addBlock}>
+            <Ionicons name="add" size={18} color={theme.paper.ink} />
+            <Text style={editorStyles.addBlockLabel}>Додати блок</Text>
+          </View>
+        </View>
         </ScrollView>
       </View>
     </View>
@@ -139,8 +165,8 @@ const styles = StyleSheet.create({
   fill: {
     flex: 1,
   },
+  // `scrollAreaEmbedded`, which is all the editor's own scroll adds.
   content: {
-    paddingHorizontal: 12,
     paddingTop: 4,
   },
 });
