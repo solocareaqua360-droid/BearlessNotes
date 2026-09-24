@@ -1675,6 +1675,20 @@ export default function DocumentsScreen({
                     drawnMode === 'wide' ? undefined : item.wideCard ? listWidth : gridCardWidth
                   }
                   wide={drawnMode === 'wide' || !!item.wideCard}
+                  // THE TILE IS THE PAGE - see DocumentPageMiniature.
+                  // Only the tile so far, and only a real tile: a wide
+                  // card standing inside the tile grid is still its own
+                  // composition until this has been seen and kept.
+                  page={
+                    drawnMode === 'grid' && !item.wideCard
+                      ? {
+                          tagIds: item.tagIds ?? [],
+                          tags,
+                          coverImageUri: item.coverImageUri,
+                          coverDriveFileId: item.coverDriveFileId,
+                        }
+                      : undefined
+                  }
                   project={groups.find((g) => g.id === item.groupId) ?? null}
                   onProjectPress={() => setSingleGroupTargetId(item.id)}
                   {...(carried ? carrying.cardProps(item, () => selectFromHold(item)) : {})}

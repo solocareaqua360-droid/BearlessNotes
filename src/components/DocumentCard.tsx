@@ -4,11 +4,12 @@ import { useRecordColour, useTextScale } from '../theme/ThemeProvider';
 import { useDensity } from '../hooks/useDensity';
 import CardPreview from './CardPreview';
 import { Ionicons } from '@expo/vector-icons';
-import type { Block } from '../types';
+import type { Block, Tag } from '../types';
 import AttachmentImage from './AttachmentImage';
 import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/documentPreview';
 import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
 import ProjectBadge from './ProjectBadge';
+import DocumentPageMiniature from './DocumentPageMiniature';
 
 // Fine grain laid over every card. Two things keep it reading as paper
 // tooth and not as dirt: the specks are half lighter and half darker than
@@ -310,6 +311,16 @@ type Props = {
   // cards are flex items in a grid, and a wrapper takes that role for
   // itself (see ItemCards' cardRef, where the same lesson is written).
   cardRef?: (node: View | null) => void;
+  // THE TILE AS THE PAGE ITSELF - see DocumentPageMiniature for why.
+  // Given, a tile stops being its own composition (cover, title, extract)
+  // and becomes the top of the document's real page, scaled. Absent,
+  // every layout draws exactly what it always drew.
+  page?: {
+    tagIds: string[];
+    tags: Tag[];
+    coverImageUri?: string;
+    coverDriveFileId?: string;
+  };
   // Being carried right now - the card stays where it is and fades, the
   // ghost at the finger is the thing in hand.
   dimmed?: boolean;
@@ -359,6 +370,7 @@ export default function DocumentCard({
   gridWidth,
   flush,
   cardRef,
+  page,
   dimmed,
   project,
   onProjectPress,
@@ -518,6 +530,30 @@ export default function DocumentCard({
       >
         <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
         <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
+          {page ? (
+            <>
+              <DocumentPageMiniature
+                title={title}
+                blocks={blocks ?? []}
+                tagIds={page.tagIds}
+                tags={page.tags}
+                project={project ?? null}
+                coverImageUri={page.coverImageUri}
+                coverDriveFileId={page.coverDriveFileId}
+                width={gridWidth ?? GRID_CARD_HEIGHT}
+                height={gridHeight}
+              />
+              {/* What the CARD knows and the page does not - when it was
+                  last touched, and which project it belongs to. Over the
+                  picture rather than inside it, so the picture stays the
+                  page. */}
+              <View style={styles.pageChrome} pointerEvents="box-none">
+                <Text style={[styles.dateCompact, styles.pageChromeDate]}>{formatUpdatedAt(updatedAt)}</Text>
+                {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
+              </View>
+            </>
+          ) : (
+            <>
           {/* Bleeds flush to the card's own top/left/right edges - no
               padding, no border-radius of its own. The card's overflow:
               'hidden' + borderRadius clips its top corners to match; a
@@ -539,6 +575,8 @@ export default function DocumentCard({
               {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
             </View>
           </View>
+            </>
+          )}
         </Pressable>
         {isSelectMode && (
           // Purely decorative overlay - pointerEvents="none" so it doesn't
@@ -849,6 +887,25 @@ const styles = StyleSheet.create({
   },
   dateCompactPinned: {
     marginTop: 'auto',
+  },
+  // The card's own line along the bottom of the page picture, on a
+  // wash so a page that ends in text does not swallow it.
+  pageChrome: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingTop: 14,
+    paddingBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.86)',
+  },
+  pageChromeDate: {
+    color: '#6B7280',
   },
   gridSelectBox: {
     position: 'absolute',
