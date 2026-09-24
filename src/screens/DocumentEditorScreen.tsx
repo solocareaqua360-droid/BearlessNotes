@@ -4725,7 +4725,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           edge, in the same glass, at the same size, with its own blur -
           which is why it goes through the portal, like every other piece
           of glass here. */}
-      {!embedded && editorFocused && (
+      {/* ...and not while the references drawer is open over it. The
+          badge is portalled at window level, so it draws above that
+          drawer no matter where the drawer stands - a project chip
+          floating on a list of files, saying nothing about it. */}
+      {!embedded && editorFocused && !referencePanelOpen && (
         <GlassPortal>
           {/* The same line the documents screen's capsule hangs from, off
               the same constants - the two screens sit one behind the
