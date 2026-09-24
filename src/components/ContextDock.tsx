@@ -256,6 +256,19 @@ const HERE_SHRINK = 6;
 //   bead-to-capsule  0.037   edge to bead     0.076
 // The way out inside the card: a chevron and a hairline - said in points.
 const LEAVE_W = 36;
+// ONE SLAB, CUT INTO PIECES - the user's own drawing, and it answers the
+// thing their dock could not hold: it read as a wide plank resting on a
+// narrower one with two circles filling the gaps. The pieces below add
+// up to exactly the strip's width now, every corner is the same, and the
+// cuts between them are a hair wide - so the eye is given a rectangle
+// divided rather than four objects arranged.
+//
+// A circle is its own object; a rounded square beside another is a piece
+// of something. That is the whole of why the beads stopped being round.
+const DOCK_RADIUS = 14;
+// The cut between two pieces. Not zero: two frosts that touch overlap,
+// and an overlap is a smudge, not a cut.
+const DOCK_CUT = 3;
 const BEAD_F = 0.111;
 
 const GAP_F = 0.037;
@@ -558,7 +571,9 @@ export default function ContextDock() {
   const screenW = Math.min(windowW, 430);
   const BEAD = Math.round(screenW * BEAD_F);
   const CARD_BUTTON = CARD_H - CARD_PAD * 2;
-  const GAP = Math.round(screenW * GAP_F);
+  // The cut, not a gap: see DOCK_CUT. The room this frees goes to the
+  // card, which is what makes the three add up to the row.
+  const GAP = DOCK_CUT;
   const EDGE_INSET = dockEdgeInset(windowW);
   // The row's width is SAID, not left to flex: it was settling at
   // three-quarters of the screen and nobody could tell why. On a screen
@@ -589,8 +604,10 @@ export default function ContextDock() {
   // stayed one until the next render happened to redraw it (the first
   // swipe). Half of a number the view already has cannot be early.
   const dims = {
-    bead: { width: BEAD, height: BEAD, borderRadius: BEAD / 2 },
-    card: { height: CARD_H, borderRadius: CARD_H / 2 },
+    // A bead stands as tall as the card beside it: three pieces of one
+    // slab, not a tall one flanked by two short ones.
+    bead: { width: BEAD, height: CARD_H, borderRadius: DOCK_RADIUS },
+    card: { height: CARD_H, borderRadius: DOCK_RADIUS },
     button: { width: CARD_BUTTON, height: CARD_BUTTON, borderRadius: CARD_BUTTON / 2 },
     rowHeight: { height: CARD_BUTTON, borderRadius: CARD_BUTTON / 2 },
   };
@@ -1749,8 +1766,8 @@ export default function ContextDock() {
               дока" - blur and all, moving or not; see the path above. */}
           {/* The shadow on a box the capsule's own size - on the full-width
               wrap it would draw a band across the screen. */}
-          <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DESK_HINT_H / 2 }]}>
-            <DockFrost style={[styles.deskHint, styles.cardEdge]} radius={DESK_HINT_H / 2}>
+          <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_RADIUS }]}>
+            <DockFrost style={[styles.deskHint, styles.cardEdge]} radius={DOCK_RADIUS}>
               <View style={styles.deskHintRow}>
                 {deskHintDesks.map((desk) => (
                   <Pressable key={desk.key} hitSlop={10} onPress={desk.onPress} accessibilityLabel={desk.key}>
@@ -1791,10 +1808,10 @@ export default function ContextDock() {
             },
           ]}
         >
-          <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_PATH_H / 2 }]}>
+          <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_RADIUS }]}>
             <DockFrost
               style={[styles.pathShell, styles.cardEdge, { width: dayWidthNow }]}
-              radius={DOCK_PATH_H / 2}
+              radius={DOCK_RADIUS}
             >
               {/* The day you are on, alone in the circle - the user's
                   own call for what the calendar's one carries. */}
@@ -1877,10 +1894,10 @@ export default function ContextDock() {
               dock's own blurred cards make on every swipe; the ANR in
               android_live_blur_moving_surface was a bar riding the
               keyboard over typed text, which this is not. */}
-          <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_PATH_H / 2 }]}>
+          <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_RADIUS }]}>
             <DockFrost
               style={[styles.pathShell, styles.cardEdge, { width: pathWidthNow }]}
-              radius={DOCK_PATH_H / 2}
+              radius={DOCK_RADIUS}
             >
               {/* The database's own glyph, and nothing else, for as long
                   as this is a circle in the air. */}
@@ -1959,7 +1976,7 @@ export default function ContextDock() {
               the same control sat in a different spot on each - "док
               зміщений відносно того що є на екрані документів". */}
           {beads.left ? (
-            <Bead bead={beads.left} theme={theme} lift={lift} size={BEAD} />
+            <Bead bead={beads.left} theme={theme} lift={lift} size={BEAD} height={CARD_H} />
           ) : (
             <View style={[styles.beadSlot, dims.bead, { width: beadSlotW }]} />
           )}
@@ -1989,7 +2006,7 @@ export default function ContextDock() {
                  own still card with crossfading content instead of the
                  rise-and-arc treatment below. */
               <View style={[styles.cardLayer, dims.card, liftStyle(theme, theme.lift, 1)]} pointerEvents="auto">
-                <DockFrost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
+                <DockFrost style={[styles.front, styles.cardEdge, dims.card]} radius={DOCK_RADIUS}>
                   {renderTwoWaySwap()}
                 </DockFrost>
               </View>
@@ -2010,7 +2027,7 @@ export default function ContextDock() {
                   style={[styles.cardLayer, dims.card, liftStyle(theme, theme.lift, glowAt(i)), cardStyles[i]]}
                   pointerEvents={f === showing ? 'auto' : 'none'}
                 >
-                  <DockFrost style={[styles.front, styles.cardEdge, dims.card]} radius={CARD_H / 2}>
+                  <DockFrost style={[styles.front, styles.cardEdge, dims.card]} radius={DOCK_RADIUS}>
                     {renderCard(f, f === showing)}
                   </DockFrost>
                 </View>
@@ -2019,7 +2036,7 @@ export default function ContextDock() {
           </View>
           </GestureDetector>
           {beads.right ? (
-            <Bead bead={beads.right} theme={theme} lift={lift} size={BEAD} />
+            <Bead bead={beads.right} theme={theme} lift={lift} size={BEAD} height={CARD_H} />
           ) : (
             <View style={[styles.beadSlot, dims.bead, { width: beadSlotW }]} />
           )}
@@ -2160,6 +2177,7 @@ function Bead({
   theme,
   lift,
   size,
+  height,
 }: {
   bead: DockBead;
   theme: ReturnType<typeof useTheme>;
@@ -2167,14 +2185,15 @@ function Bead({
   // the row above already knows the answer.
   lift: ViewStyle;
   size: number;
+  height: number;
 }) {
   return (
     <Pressable
       onPress={bead.onPress}
       onLongPress={bead.onLongPress}
-      style={{ width: size, height: size, overflow: 'visible' }}
+      style={{ width: size, height, overflow: 'visible' }}
     >
-      <DockFrost style={[styles.bead, { width: size, height: size }, lift]} radius={size / 2}>
+      <DockFrost style={[styles.bead, { width: size, height, borderRadius: DOCK_RADIUS }, lift]} radius={DOCK_RADIUS}>
         <Ionicons
           name={bead.icon as keyof typeof Ionicons.glyphMap}
           size={21}
@@ -2207,7 +2226,11 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
+    // TOPS TOGETHER, not centres. The row is taller than a card by the
+    // slivers' own room, and a bead centred in it sat three points below
+    // the card beside it - which is exactly the misalignment a slab cut
+    // into pieces cannot have.
+    alignItems: 'flex-start',
   },
   // One per card in the ring - absolutely positioned, all of them
   // stacked on the same spot, and each pushed to its own place by its

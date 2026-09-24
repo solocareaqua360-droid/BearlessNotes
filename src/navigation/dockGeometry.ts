@@ -46,7 +46,10 @@ export function dockClearance(windowWidth: number, gap: number = 12): number {
 // The path that rises above the dock inside a folder (ContextDock's
 // `pathUp`): its height and the gap between it and the dock's front card.
 export const DOCK_PATH_H = 40;
-export const DOCK_PATH_GAP = 6;
+// The cut between the strip and the row below it - the same one that
+// separates the row's own pieces, so the whole block is ruled by one
+// number (ContextDock's DOCK_CUT).
+export const DOCK_PATH_GAP = 3;
 
 export function useDockClearance(gap?: number): number {
   const { width } = useWindowDimensions();
