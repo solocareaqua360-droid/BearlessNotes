@@ -39,9 +39,8 @@ const GRID_THUMB_HEIGHT = 96;
 // Fixed rather than a minimum: uniform card height is what keeps the grid
 // gap-free without needing a masonry/waterfall layout at all.
 const GRID_CARD_HEIGHT = 228;
-// A row's own window onto the page, and how far down that page it opens.
-// The band is the editor's own empty header - see DocumentPageMiniature.
-const ROW_PAGE_HEIGHT = 116;
+// How far down the page a card's window opens when it opens below the
+// editor's own empty header band - see DocumentPageMiniature.
 const PAGE_HEADER_BAND = 68;
 // Taller where a cursor is looking at it. The user picked this off
 // Craft's own grid: its cards are not richer than ours - they already
@@ -425,7 +424,10 @@ function PageBody({
   const [width, setWidth] = useState(0);
   return (
     <View
-      style={{ height, overflow: 'hidden' }}
+      // `width: '100%'` and not flex: the wide card's own container is a
+      // ROW, where a child that asks for nothing gets nothing - which is
+      // exactly what it drew: an empty card, chrome and all.
+      style={{ height, width: '100%', overflow: 'hidden' }}
       onLayout={(e) => {
         const w = e.nativeEvent.layout.width;
         setWidth((prev) => (prev === w ? prev : w));
@@ -735,28 +737,33 @@ export default function DocumentCard({
     >
       <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
       <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
+        {/* A ROW IS A LINE OF TEXT BESIDE A THUMBNAIL, and it stays one:
+            a strip of the page across the whole width was the title and
+            nothing else, at a size nobody asked for - "виглядає погано і
+            це не твоя вина, це вина форми". What the page gives a row is
+            its THUMBNAIL: the little sheet Craft puts at the start of
+            every line, which is the document itself rather than a
+            picture pulled out of it or a grey glyph standing in for one.
+            The title and the line under it are the row's own, as they
+            always were. */}
         {page ? (
-          /* A STRIP of the same picture, started below the empty band
-             the editor leaves above its title - a row is short, and at
-             this width that band alone would fill it. */
-          <View style={styles.rowPage}>
-            <PageBody
-              id={id}
+          <View style={[styles.rowSheet, dense && styles.rowSheetDense]}>
+            <DocumentPageMiniature
               title={title}
               blocks={blocks ?? []}
-              page={page}
-              project={project}
-              updatedAt={updatedAt}
-              onProjectPress={onProjectPress}
-              height={ROW_PAGE_HEIGHT}
+              tagIds={page.tagIds}
+              tags={page.tags}
+              project={null}
+              coverImageUri={page.coverImageUri}
+              coverDriveFileId={page.coverDriveFileId}
+              width={dense ? THUMB_SIZE_DENSE : THUMB_SIZE}
+              height={dense ? THUMB_SIZE_DENSE : THUMB_SIZE}
               offsetY={PAGE_HEADER_BAND}
-              paper={theme.paper.fill}
-              ink={theme.paper.inkMuted}
             />
           </View>
         ) : (
-          <>
-        {thumbNode}
+          thumbNode
+        )}
         <View style={styles.body}>
           {titleNode}
           {previewBody}
@@ -765,8 +772,6 @@ export default function DocumentCard({
             {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
           </View>
         </View>
-          </>
-        )}
         {isSelectMode && <View style={styles.selectBox}>{selectIcon}</View>}
       </Pressable>
     </View>
@@ -1059,14 +1064,19 @@ const styles = StyleSheet.create({
     paddingTop: 34,
     paddingBottom: 8,
   },
-  // The row gives its whole width to the picture; its own padding is
-  // what the page would otherwise be inset by twice.
-  rowPage: {
-    flex: 1,
-    marginHorizontal: -14,
-    marginVertical: -12,
-    borderRadius: 15,
+  // The little sheet at the start of a row: a real page, cut to a
+  // square, with an edge so it reads as paper rather than as a hole.
+  rowSheet: {
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: 8,
     overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(140,140,140,0.45)',
+  },
+  rowSheetDense: {
+    width: THUMB_SIZE_DENSE,
+    height: THUMB_SIZE_DENSE,
   },
   gridSelectBox: {
     position: 'absolute',
