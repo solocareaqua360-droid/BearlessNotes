@@ -9,6 +9,7 @@ import StockPhotoPicker from '../components/StockPhotoPicker';
 import {
   ActivityIndicator,
   Image,
+  Dimensions,
   PixelRatio,
   Pressable,
   ScrollView,
@@ -729,12 +730,36 @@ export default function SettingsScreen() {
             Нові версії приходять по повітрю: застосунок завантажує їх при запуску, а застосовує при наступному. Кнопка
             нижче робить обидва кроки одразу.
           </Text>
+          {/* WHAT THE DEVICE IS ACTUALLY GIVING US. Written out in full
+              because of DeX: the app is drawn at phone size and stretched
+              there, and the two illnesses that look identical on a monitor
+              - a real desktop-sized window we are laying out badly, and a
+              phone-sized window DeX is scaling up for us - are told apart
+              by exactly these numbers and by nothing else. The WINDOW is
+              what this app lays out against; the SCREEN is what the
+              display really has. Far apart, the window is not the screen. */}
           <View style={styles.trafficRow}>
-          <Ionicons name="phone-landscape-outline" size={15} color="#6B7280" />
-          <Text style={styles.trafficLabel}>
-            Екран: {Math.round(windowWidth)} × {Math.round(windowHeight)} dp (щільність {PixelRatio.get()})
-          </Text>
-        </View>
+            <Ionicons name="phone-landscape-outline" size={15} color="#6B7280" />
+            <Text style={styles.trafficLabel}>
+              Вікно: {Math.round(windowWidth)} × {Math.round(windowHeight)} dp ={' '}
+              {Math.round(windowWidth * PixelRatio.get())} × {Math.round(windowHeight * PixelRatio.get())} px
+            </Text>
+          </View>
+          <View style={styles.trafficRow}>
+            <Ionicons name="tv-outline" size={15} color="#6B7280" />
+            <Text style={styles.trafficLabel}>
+              Дисплей: {Math.round(Dimensions.get('screen').width)} ×{' '}
+              {Math.round(Dimensions.get('screen').height)} dp ={' '}
+              {Math.round(Dimensions.get('screen').width * PixelRatio.get())} ×{' '}
+              {Math.round(Dimensions.get('screen').height * PixelRatio.get())} px
+            </Text>
+          </View>
+          <View style={styles.trafficRow}>
+            <Ionicons name="resize-outline" size={15} color="#6B7280" />
+            <Text style={styles.trafficLabel}>
+              Щільність {PixelRatio.get()} · шрифт ×{PixelRatio.getFontScale()}
+            </Text>
+          </View>
         <Pressable style={styles.checkButton} onPress={handleCheckUpdate} disabled={updateBusy}>
             {updateBusy ? (
               <ActivityIndicator color={accent} />
