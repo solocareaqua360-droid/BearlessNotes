@@ -1682,21 +1682,18 @@ export default function DocumentsScreen({
                     drawnMode === 'wide' ? undefined : item.wideCard ? listWidth : gridCardWidth
                   }
                   wide={drawnMode === 'wide' || !!item.wideCard}
-                  // THE TILE IS THE PAGE - see DocumentPageMiniature.
-                  // Only the tile so far, and only a real tile: a wide
-                  // card standing inside the tile grid is still its own
-                  // composition until this has been seen and kept.
+                  // EVERY CARD IS THE PAGE now - see
+                  // DocumentPageMiniature. The three ways round are
+                  // three sizes of window onto the one picture: a tile
+                  // is the top of the page, a wide card a wider piece of
+                  // it, a row a strip started below the empty band.
                   pageHeight={drawnMode === 'grid' ? gridPageHeight : undefined}
-                  page={
-                    drawnMode === 'grid' && !item.wideCard
-                      ? {
-                          tagIds: item.tagIds ?? [],
-                          tags,
-                          coverImageUri: item.coverImageUri,
-                          coverDriveFileId: item.coverDriveFileId,
-                        }
-                      : undefined
-                  }
+                  page={{
+                    tagIds: item.tagIds ?? [],
+                    tags,
+                    coverImageUri: item.coverImageUri,
+                    coverDriveFileId: item.coverDriveFileId,
+                  }}
                   project={groups.find((g) => g.id === item.groupId) ?? null}
                   onProjectPress={() => setSingleGroupTargetId(item.id)}
                   {...(carried ? carrying.cardProps(item, () => selectFromHold(item)) : {})}

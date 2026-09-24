@@ -43,6 +43,7 @@ function DocumentPageMiniature({
   coverDriveFileId,
   width,
   height,
+  offsetY = 0,
 }: {
   title: string;
   blocks: Block[];
@@ -58,6 +59,12 @@ function DocumentPageMiniature({
   // page's content re-flowed into a card, which is a different picture.
   width: number;
   height: number;
+  // How far down the PAGE this window starts, in the page's own points.
+  // A row is a short strip and would otherwise be nothing but the empty
+  // band the editor leaves above the title; starting below it shows the
+  // same picture, further down. A morph out of such a card grows and
+  // slides to the page's own top, which is what it looks like anyway.
+  offsetY?: number;
 }) {
   const theme = useTheme();
   const editorStyles = useStyles(makeEditorStyles);
@@ -70,7 +77,7 @@ function DocumentPageMiniature({
       {/* Laid out at page size, pinned to the top left and scaled about
           that corner, so the card shows the TOP of the page and cuts off
           wherever its own height ends - the way a page of paper ends. */}
-      <View style={[styles.page, { width: pageWidth, transform: [{ scale }] }]}>
+      <View style={[styles.page, { width: pageWidth, top: -offsetY * scale, transform: [{ scale }] }]}>
         {/* THE EDITOR'S OWN ORDER, and its own styles at every step: the
             empty header band it leaves above the title, the cover, the
             name, the folders, the blocks, the row it ends with. */}

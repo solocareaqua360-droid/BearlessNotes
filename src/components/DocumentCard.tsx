@@ -39,6 +39,10 @@ const GRID_THUMB_HEIGHT = 96;
 // Fixed rather than a minimum: uniform card height is what keeps the grid
 // gap-free without needing a masonry/waterfall layout at all.
 const GRID_CARD_HEIGHT = 228;
+// A row's own window onto the page, and how far down that page it opens.
+// The band is the editor's own empty header - see DocumentPageMiniature.
+const ROW_PAGE_HEIGHT = 116;
+const PAGE_HEADER_BAND = 68;
 // Taller where a cursor is looking at it. The user picked this off
 // Craft's own grid: its cards are not richer than ours - they already
 // carry the same checklist and photo strip - they are TALLER, and the
@@ -389,6 +393,70 @@ function PageChromeFade({ id, color }: { id: string; color: string }) {
   );
 }
 
+// A CARD'S WHOLE BODY, when the card is the page: the picture, and the
+// card's own line over it. Measured rather than told its width - a row
+// is a flex child and a tile can be half of whatever is left, so only
+// the layout knows.
+function PageBody({
+  id,
+  title,
+  blocks,
+  page,
+  project,
+  updatedAt,
+  onProjectPress,
+  height,
+  offsetY,
+  paper,
+  ink,
+}: {
+  id: string;
+  title: string;
+  blocks: Block[];
+  page: { tagIds: string[]; tags: Tag[]; coverImageUri?: string; coverDriveFileId?: string };
+  project?: { name: string; color: string } | null;
+  updatedAt: number;
+  onProjectPress?: () => void;
+  height: number;
+  offsetY?: number;
+  paper: string;
+  ink: string;
+}) {
+  const [width, setWidth] = useState(0);
+  return (
+    <View
+      style={{ height, overflow: 'hidden' }}
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width;
+        setWidth((prev) => (prev === w ? prev : w));
+      }}
+    >
+      {width > 0 && (
+        <DocumentPageMiniature
+          title={title}
+          blocks={blocks}
+          tagIds={page.tagIds}
+          tags={page.tags}
+          project={project ?? null}
+          coverImageUri={page.coverImageUri}
+          coverDriveFileId={page.coverDriveFileId}
+          width={width}
+          height={height}
+          offsetY={offsetY}
+        />
+      )}
+      {/* What the CARD knows and the page does not - when it was last
+          touched, and which project it belongs to. Over the picture
+          rather than inside it, so the picture stays the page. */}
+      <View style={styles.pageChrome} pointerEvents="box-none">
+        <PageChromeFade id={id} color={paper} />
+        <Text style={[styles.dateCompact, { color: ink }]}>{formatUpdatedAt(updatedAt)}</Text>
+        {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
+      </View>
+    </View>
+  );
+}
+
 export default function DocumentCard({
   id,
   title,
@@ -540,6 +608,25 @@ export default function DocumentCard({
       >
         <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
         <Pressable style={styles.wideTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
+          {page ? (
+            /* The same picture, in a wider window: twice a tile's width
+               means the page is drawn nearly at its own size, so this is
+               the opening of the document to read rather than the shape
+               of it to recognise. */
+            <PageBody
+              id={id}
+              title={title}
+              blocks={blocks ?? []}
+              page={page}
+              project={project}
+              updatedAt={updatedAt}
+              onProjectPress={onProjectPress}
+              height={gridHeight}
+              paper={theme.paper.fill}
+              ink={theme.paper.inkMuted}
+            />
+          ) : (
+            <>
           {/* A tall picture standing on the left edge, floor to ceiling -
               the user's own preference once both were on screen: "от
               така вертикальне зображення". */}
@@ -552,6 +639,8 @@ export default function DocumentCard({
               {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
             </View>
           </View>
+            </>
+          )}
         </Pressable>
         {isSelectMode && (
           <View style={styles.gridSelectBox} pointerEvents="none">
@@ -582,30 +671,18 @@ export default function DocumentCard({
         <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
         <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
           {page ? (
-            <>
-              <DocumentPageMiniature
-                title={title}
-                blocks={blocks ?? []}
-                tagIds={page.tagIds}
-                tags={page.tags}
-                project={project ?? null}
-                coverImageUri={page.coverImageUri}
-                coverDriveFileId={page.coverDriveFileId}
-                width={gridWidth ?? GRID_CARD_HEIGHT}
-                height={gridHeight}
-              />
-              {/* What the CARD knows and the page does not - when it was
-                  last touched, and which project it belongs to. Over the
-                  picture rather than inside it, so the picture stays the
-                  page. */}
-              <View style={styles.pageChrome} pointerEvents="box-none">
-                <PageChromeFade id={id} color={theme.paper.fill} />
-                <Text style={[styles.dateCompact, { color: theme.paper.inkMuted }]}>
-                  {formatUpdatedAt(updatedAt)}
-                </Text>
-                {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
-              </View>
-            </>
+            <PageBody
+              id={id}
+              title={title}
+              blocks={blocks ?? []}
+              page={page}
+              project={project}
+              updatedAt={updatedAt}
+              onProjectPress={onProjectPress}
+              height={gridHeight}
+              paper={theme.paper.fill}
+              ink={theme.paper.inkMuted}
+            />
           ) : (
             <>
           {/* Bleeds flush to the card's own top/left/right edges - no
@@ -658,6 +735,27 @@ export default function DocumentCard({
     >
       <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
       <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
+        {page ? (
+          /* A STRIP of the same picture, started below the empty band
+             the editor leaves above its title - a row is short, and at
+             this width that band alone would fill it. */
+          <View style={styles.rowPage}>
+            <PageBody
+              id={id}
+              title={title}
+              blocks={blocks ?? []}
+              page={page}
+              project={project}
+              updatedAt={updatedAt}
+              onProjectPress={onProjectPress}
+              height={ROW_PAGE_HEIGHT}
+              offsetY={PAGE_HEADER_BAND}
+              paper={theme.paper.fill}
+              ink={theme.paper.inkMuted}
+            />
+          </View>
+        ) : (
+          <>
         {thumbNode}
         <View style={styles.body}>
           {titleNode}
@@ -667,6 +765,8 @@ export default function DocumentCard({
             {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
           </View>
         </View>
+          </>
+        )}
         {isSelectMode && <View style={styles.selectBox}>{selectIcon}</View>}
       </Pressable>
     </View>
@@ -958,6 +1058,15 @@ const styles = StyleSheet.create({
     // line with soft edges, not a fade.
     paddingTop: 34,
     paddingBottom: 8,
+  },
+  // The row gives its whole width to the picture; its own padding is
+  // what the page would otherwise be inset by twice.
+  rowPage: {
+    flex: 1,
+    marginHorizontal: -14,
+    marginVertical: -12,
+    borderRadius: 15,
+    overflow: 'hidden',
   },
   gridSelectBox: {
     position: 'absolute',
