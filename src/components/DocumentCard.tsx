@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import type { LayoutChangeEvent } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
 import { useRecordColour, useTextScale, useTheme } from '../theme/ThemeProvider';
@@ -349,6 +351,44 @@ type Props = {
 // why it isn't a random pick or a stored field), with the text/border/
 // delete-icon colors all derived to stay readable against whichever fill a
 // given document landed on.
+// THE PAGE'S OWN PAPER, fading up into nothing - not a white slab.
+// Hard-coded white, it was a bright band across a dark page in the black
+// theme, and a wall of them scrolling past read as a zebra. And whatever
+// the colour, an edge is what the eye catches: this has none, it simply
+// stops being there.
+//
+// MEASURED, never "100%". react-native-svg's own percentage width and
+// height on the root <Svg> are not reliable here - this file's own list
+// screen already says so, about a gradient that stayed sized to a folded
+// phone's width after it was unfolded - and drawn that way this one did
+// not paint at all: "плашка на картці ніби прозора".
+function PageChromeFade({ id, color }: { id: string; color: string }) {
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  const onLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setBox((prev) => (prev.w === width && prev.h === height ? prev : { w: width, h: height }));
+  };
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none" onLayout={onLayout}>
+      {box.w > 0 && box.h > 0 && (
+        <Svg width={box.w} height={box.h} pointerEvents="none">
+          <Defs>
+            {/* Unique per card: a gradient id is a name in the whole
+                document, and a wall of cards sharing one is a wall of
+                cards sharing whichever definition was drawn last. */}
+            <LinearGradient id={`chrome-${id}`} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={color} stopOpacity={0} />
+              <Stop offset="0.55" stopColor={color} stopOpacity={0.86} />
+              <Stop offset="1" stopColor={color} stopOpacity={1} />
+            </LinearGradient>
+          </Defs>
+          <Rect x={0} y={0} width={box.w} height={box.h} fill={`url(#chrome-${id})`} />
+        </Svg>
+      )}
+    </View>
+  );
+}
+
 export default function DocumentCard({
   id,
   title,
@@ -559,26 +599,7 @@ export default function DocumentCard({
                   picture rather than inside it, so the picture stays the
                   page. */}
               <View style={styles.pageChrome} pointerEvents="box-none">
-                {/* THE PAGE'S OWN PAPER, fading up into nothing - not a
-                    white slab. Hard-coded white, it was a bright band
-                    across a dark page in the black theme, and a wall of
-                    them scrolling past read as a zebra. And whatever the
-                    colour, an edge is what the eye catches: this has
-                    none, it simply stops being there. */}
-                <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none">
-                  <Defs>
-                    {/* Unique per card: a gradient id is a name in the
-                        whole document, and a wall of cards sharing one
-                        is a wall of cards sharing whichever definition
-                        happened to be drawn last. */}
-                    <LinearGradient id={`chrome-${id}`} x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={theme.paper.fill} stopOpacity={0} />
-                      <Stop offset="0.55" stopColor={theme.paper.fill} stopOpacity={0.82} />
-                      <Stop offset="1" stopColor={theme.paper.fill} stopOpacity={0.98} />
-                    </LinearGradient>
-                  </Defs>
-                  <Rect x="0" y="0" width="100%" height="100%" fill={`url(#chrome-${id})`} />
-                </Svg>
+                <PageChromeFade id={id} color={theme.paper.fill} />
                 <Text style={[styles.dateCompact, { color: theme.paper.inkMuted }]}>
                   {formatUpdatedAt(updatedAt)}
                 </Text>
