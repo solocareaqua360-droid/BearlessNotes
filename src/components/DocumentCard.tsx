@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { LayoutChangeEvent } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRecordColour, useTextScale, useTheme } from '../theme/ThemeProvider';
 import { useDensity } from '../hooks/useDensity';
 import CardPreview from './CardPreview';
@@ -513,6 +514,15 @@ export default function DocumentCard({
   // row of one and a row of two stop reading as one grid.
   const gridHeight = pageHeight ?? (pointer ? GRID_CARD_HEIGHT_POINTER : GRID_CARD_HEIGHT);
   const theme = useTheme();
+  // WHAT THE PAGE SPENDS ON THE SYSTEM BAR, a card does not have to.
+  // The editor's empty band above its title is 68, and most of that is
+  // under the status bar and the floating badge - which is why the gap
+  // reads as small on the page and as a void on a card: "я розумію що
+  // цей відступ реальний, але в відкритій нотатці він не відчувається
+  // таким великим". A card's window opens below that part, so what it
+  // shows is what the eye sees there.
+  const insets = useSafeAreaInsets();
+  const pageTopSkip = Math.round(insets.top);
   const expandedLines = pointer ? EXPANDED_TEXT_LINES_POINTER : EXPANDED_TEXT_LINES;
   const compactLines = pointer ? COMPACT_TEXT_LINES_POINTER : COMPACT_TEXT_LINES;
   // "Розмір тексту" - only the LIST row's own size, never the grid
@@ -638,6 +648,7 @@ export default function DocumentCard({
               updatedAt={updatedAt}
               onProjectPress={onProjectPress}
               height={gridHeight}
+              offsetY={pageTopSkip}
               paper={theme.paper.fill}
               ink={theme.paper.inkMuted}
             />
@@ -696,6 +707,7 @@ export default function DocumentCard({
               updatedAt={updatedAt}
               onProjectPress={onProjectPress}
               height={gridHeight}
+              offsetY={pageTopSkip}
               paper={theme.paper.fill}
               ink={theme.paper.inkMuted}
             />
