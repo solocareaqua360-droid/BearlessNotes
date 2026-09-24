@@ -36,6 +36,37 @@ const FADE = 0.2;
 // it reaches full paper at the box's own bottom and simply stays there
 // for the bleed.
 const BLEED = 2;
+// HOW THE FADE FALLS, and why it is not a straight line. Alpha is
+// composited in gamma space, so paper at half opacity over a dark
+// picture already reads as light grey rather than as half way: a linear
+// ramp looks like solid paper that gives up all at once near its inner
+// edge, which is exactly what it looked like - "білий папір рівномірний,
+// зменшується тільки біля самого свого краю". Raised to this power it
+// leaves early and trails off, which is what the eye reads as even.
+const FALL = 2.2;
+// Enough to draw a curve out of straight segments without anyone being
+// able to see the corners.
+const STEPS = 6;
+
+// The stops of one edge's fade. Offsets always ASCEND - a gradient whose
+// stops run backwards is not a gradient - so the bottom edge is the same
+// curve read the other way: solid at the very end, and arriving late
+// exactly as the top leaves early.
+function fadeStops(from: number, to: number, color: string, key: string, arriving: boolean) {
+  const out = [];
+  for (let i = 0; i <= STEPS; i++) {
+    const u = i / STEPS;
+    out.push(
+      <Stop
+        key={`${key}-${i}`}
+        offset={from + (to - from) * u}
+        stopColor={color}
+        stopOpacity={Math.pow(arriving ? u : 1 - u, FALL)}
+      />
+    );
+  }
+  return out;
+}
 
 export default function PageCover({
   uri,
@@ -91,10 +122,10 @@ export default function PageCover({
               y2={Math.ceil(box.h)}
               gradientUnits="userSpaceOnUse"
             >
-              <Stop offset="0" stopColor={theme.paper.fill} stopOpacity={1} />
-              <Stop offset={FADE} stopColor={theme.paper.fill} stopOpacity={0} />
-              <Stop offset={1 - FADE} stopColor={theme.paper.fill} stopOpacity={0} />
-              <Stop offset="1" stopColor={theme.paper.fill} stopOpacity={1} />
+              {[
+                ...fadeStops(0, FADE, theme.paper.fill, 'top', false),
+                ...fadeStops(1 - FADE, 1, theme.paper.fill, 'bottom', true),
+              ]}
             </LinearGradient>
           </Defs>
           <Rect
