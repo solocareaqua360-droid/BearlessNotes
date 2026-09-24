@@ -269,7 +269,8 @@ const DOCK_RADIUS = 14;
 // The cut between two pieces. Not zero: two frosts that touch overlap,
 // and an overlap is a smudge, not a cut.
 const DOCK_CUT = 3;
-const BEAD_F = 0.111;
+// How far the plate stands out past the pieces lying on it.
+const PLATE_PAD = 6;
 
 const GAP_F = 0.037;
 // INSET_F now lives in dockGeometry, so a panel that wants to be as wide
@@ -569,7 +570,9 @@ export default function ContextDock() {
   const split = useEase01(splitActive, 260);
   const CARD_H = dockCardHeight(windowW);
   const screenW = Math.min(windowW, 430);
-  const BEAD = Math.round(screenW * BEAD_F);
+  // SQUARE, not a standing rectangle: a piece of a slab beside another
+  // piece of the same slab, which is what the whole block is now.
+  const BEAD = CARD_H;
   const CARD_BUTTON = CARD_H - CARD_PAD * 2;
   // The cut, not a gap: see DOCK_CUT. The room this frees goes to the
   // card, which is what makes the three add up to the row.
@@ -1029,13 +1032,16 @@ export default function ContextDock() {
   // guessed from the number of segments: a folder's name decides its
   // width, and a measured number is the only one that can be right for
   // every name.
-  const [pathContentW, setPathContentW] = useState(0);
-  // Not eased here: `pathWide` is what moves, and it is the step above.
-  // A circle exactly as tall as the strip, which the capsule's own
-  // radius already makes round.
+  // A rounded square exactly as tall as the strip - the strip at its
+  // narrowest, in the same corner radius as everything else in the
+  // block, so the throw needs no radius of its own to animate. The
+  // user's own answer to the only cost the slab had.
   const LIFT_CIRCLE = DOCK_PATH_H;
-  const pathFullW = Math.min(rowWidthNow, Math.max(cardWidthNow, pathContentW + PATH_PAD * 2));
-  const pathWidthNow = LIFT_CIRCLE + (pathFullW - LIFT_CIRCLE) * pathSpread;
+  // The WHOLE row, always - the outer edges of the buttons, the same as
+  // the days. Sized to its crumbs it was a different width on every
+  // folder, and a block whose top piece changes width is a block that
+  // never settles.
+  const pathWidthNow = LIFT_CIRCLE + (rowWidthNow - LIFT_CIRCLE) * pathSpread;
   // The days open to the whole row too - the outer edges of the search
   // and today beads, which is what the row IS.
   const dayWidthNow = LIFT_CIRCLE + (rowWidthNow - LIFT_CIRCLE) * daySpread;
@@ -1053,6 +1059,19 @@ export default function ContextDock() {
   // Both strips stand in the same place; they are never up together.
   const liftedBottom = DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD + CARD_H + BEHIND_EDGE * 2 + DOCK_PATH_GAP;
   const liftedTravel = LIFT_TRAVEL;
+  // THE PLATE EVERYTHING LIES ON - the user's own reference, the
+  // composer in this very app: one surface, and the controls sitting on
+  // it as separate pieces rather than floating beside each other. It is
+  // what finally makes the block one object; the pieces are darker than
+  // it because they are its own material laid twice, which is exactly
+  // how a pill on a plate reads.
+  //
+  // It GROWS UPWARDS to take the strip in. Clamped at 1 so the throw
+  // above it is the square's alone: a plate that leapt with it would be
+  // the block changing size rather than something arriving on it.
+  const plateOpen = Math.min(1, Math.max(pathRise, dayRise));
+  const plateBottom = DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD + BEHIND_EDGE * 2 - PLATE_PAD;
+  const plateHeight = PLATE_PAD * 2 + CARD_H + plateOpen * (DOCK_PATH_GAP + DOCK_PATH_H);
   // HOW THE DOCK PARTS FROM THE SCREEN. In the black theme that is the
   // glow, and the glow is the whole reason this is here: the two pills
   // that still wore it were the editor's pre-dock chrome, the last two
@@ -1785,6 +1804,19 @@ export default function ContextDock() {
           </View>
         </View>
       )}
+      {/* Drawn before everything it carries. */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.plateWrap,
+          { bottom: plateBottom },
+        ]}
+      >
+        <DockFrost
+          style={[styles.plate, { width: rowWidthNow + PLATE_PAD * 2, height: plateHeight }]}
+          radius={DOCK_RADIUS + PLATE_PAD}
+        />
+      </View>
       {/* THE DAYS, risen the same way and into the same place. On the
           calendar this IS the dock's context - the week under the thumb -
           and it was a card of the ring until the user asked for it here:
@@ -1911,7 +1943,6 @@ export default function ContextDock() {
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.trailStrip}
-                onContentSizeChange={(w) => setPathContentW(w)}
                 style={{ opacity: liftContentAlpha(pathSpread) }}
               >
                 <View ref={targets?.('')} collapsable={false}>
@@ -2377,6 +2408,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  plateWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  plate: {
+    overflow: 'hidden',
   },
   pathWrap: {
     position: 'absolute',
