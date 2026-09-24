@@ -277,10 +277,16 @@ export default function BlockRow({
     const style = item.dividerStyle ?? 'solid';
     content =
       style === 'break' ? (
-        // A cut through the page: the app's own ground showing between
-        // two sheets. Pulled out past the row's padding so it reaches
-        // both edges rather than floating as a stripe inside them.
-        <View style={styles.dividerBreak} />
+        // A cut through the page: two rounded caps of the page's own
+        // paper, lifted the way every sheet in this app is, with the
+        // ground showing through the gap between them. Pulled out past
+        // the row's padding so it reaches both edges rather than
+        // floating as a stripe inside them.
+        <View style={styles.dividerBreak}>
+          <View style={styles.dividerBreakCapTop} />
+          <View style={styles.dividerBreakGap} />
+          <View style={styles.dividerBreakCapBottom} />
+        </View>
       ) : style === 'dotted' ? (
         // Drawn, not bordered: a single-sided dotted border is
         // unreliable on Android, a dashed SVG line is the same
