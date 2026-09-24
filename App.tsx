@@ -1,5 +1,5 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import {
   useFonts,
   Nunito_400Regular,
@@ -27,38 +27,7 @@ import CaptureWindow from './src/components/CaptureWindow';
 import { ThemeProvider, ThemedStatusBar, useTheme } from './src/theme/ThemeProvider';
 import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
-import { DeskScaleContext, useDeskScale } from './src/hooks/useDeskScale';
-
-// THE APP'S OWN DENSITY, where the platform's is wrong - see
-// useDeskScale. Scaled, the whole tree is laid out against a smaller
-// logical screen and blown up to fill the real one; at scale one it
-// renders its children and NOTHING else, so every screen that was fine
-// before is mounted exactly as it was.
-function DeskSurface({ children }: { children: ReactNode }) {
-  const scale = useDeskScale();
-  const { width, height } = useWindowDimensions();
-  const logical = useMemo(() => ({ width: width / scale, height: height / scale }), [width, height, scale]);
-  if (scale === 1) return <>{children}</>;
-  return (
-    <DeskScaleContext.Provider value={logical}>
-      <View style={{ flex: 1, overflow: 'hidden' }}>
-        <View
-          style={{
-            width: logical.width,
-            height: logical.height,
-            // From the corner, not the middle: scaled about its centre a
-            // view grows off all four edges, and half of the app would be
-            // outside the screen.
-            transformOrigin: 'top left',
-            transform: [{ scale }],
-          }}
-        >
-          {children}
-        </View>
-      </View>
-    </DeskScaleContext.Provider>
-  );
-}
+import MetricsBanner from './src/components/MetricsBanner';
 import ContextDock from './src/components/ContextDock';
 import { NavDockProvider } from './src/navigation/navDock';
 import AlarmRingOverlay from './src/components/AlarmRingOverlay';
@@ -149,7 +118,6 @@ export default function App() {
         // flash this is meant to avoid.
         <View style={{ flex: 1, backgroundColor: '#0F1839' }} />
       ) : (
-        <DeskSurface>
         <GestureHandlerRootView style={{ flex: 1 }}>
         {/* At the root, so the pieces mounted here - the question
             window below - can read the insets too. Every screen gets
@@ -214,11 +182,13 @@ export default function App() {
               what it reports is the error class that leaves NOTHING
               on the screen - see src/utils/fatalErrors.ts. */}
           <FatalErrorOverlay />
+          {/* TEMPORARY - see MetricsBanner. Above everything, because the
+              screen it is for cannot be read well enough to navigate. */}
+          <MetricsBanner />
           </ThemedNavigationContainer>
           </KeyboardProvider>
         </SafeAreaProvider>
         </GestureHandlerRootView>
-        </DeskSurface>
       )}
     </ShareIntentProvider>
     </ThemeProvider>
