@@ -77,6 +77,7 @@ import VideoPlayerModal from '../components/VideoPlayerModal';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import PageCover from '../components/PageCover';
+import { liftStyle } from '../theme/tokens';
 // How far the save/project badge stands in from the sheet's own top and
 // right edges - one number, because the two gaps are meant to look the
 // same.
@@ -4550,6 +4551,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         styles.container,
         embedded && styles.containerEmbedded,
         sheetPage && styles.pageSheet,
+        // THE LIFT A CARD HAS - the theme's own, so it is a drop shadow
+        // where the ground is light and a glow where it is dark. The
+        // sheet had none at all and lay flat on the backdrop, while the
+        // card it came from stands off it.
+        sheetPage && liftStyle(theme, theme.lift, 1),
         sheetPage && {
           marginTop: editorInsets.top,
           // Ends above the screen's own bottom edge, so the sheet shows
