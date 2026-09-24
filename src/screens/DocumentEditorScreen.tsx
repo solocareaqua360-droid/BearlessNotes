@@ -61,11 +61,15 @@ import {
   doc,
   getDoc,
   getDocFromCache,
+  getDocs,
   onSnapshot,
   query,
   updateDoc,
 } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
+
+// What «Створити в базі» is waiting on while its name is being typed.
+type NewRowTarget = { placeholderId: string; databaseId: string; fieldId: string; name: string };
 import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import { db } from '../firebase';
@@ -148,7 +152,7 @@ import AddExistingItemModal from '../components/AddExistingItemModal';
 import DocumentPickerModal from '../components/DocumentPickerModal';
 import RelatedDocuments from '../components/RelatedDocuments';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';
-import { blockFromDocument } from '../utils/copyToNote';
+import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { documentLinksIn } from '../utils/documentLinks';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
@@ -731,6 +735,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     file: { fileUri: string; fileName: string; mimeType?: string; driveFileId?: string };
   } | null>(null);
   const [existingItemPickerBlockId, setExistingItemPickerBlockId] = useState<string | null>(null);
+  // The two «Створити в базі» prompts - which block is waiting for what.
+  const [newRowTarget, setNewRowTarget] = useState<NewRowTarget | null>(null);
+  const [newNoteTarget, setNewNoteTarget] = useState<string | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   // Set on a document generated from a board (see boardToDocument.ts).
   // The board is where the connections and the comment cards stayed - the
@@ -3740,6 +3747,108 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the record by URL (blockFromLink) - either way this is a full replace
   // of the placeholder block, not an in-place field update like
   // insertImageIntoBlock/pickFileForBlock, since the id itself changes.
+  // «СТВОРИТИ В БАЗІ» - the panel's second database button, which until
+  // now only offered a link to a note that already existed, i.e. the
+  // same thing the button beside it does. What it says is that a record
+  // can be MADE from here, in whichever database it belongs to, and come
+  // straight back into the note as a block.
+  //
+  // What it offers is exactly what the panel's «Вставка» section does
+  // NOT: a note, and a row of a custom database. Pictures, files, links,
+  // scans, sketches, tables and code are all one press away there
+  // already, and a second road to the same place is worse than none.
+  //
+  // Boards are missing on purpose: there is no block that stands for a
+  // board, so one made here could only be made and then left.
+  async function createInDatabase(placeholderId: string) {
+    const where = await ask({
+      title: 'Створити запис',
+      actions: [
+        { id: 'document', label: 'Нова нотатка', icon: 'document-text-outline' },
+        { id: 'row', label: 'Запис бази даних', icon: 'albums-outline' },
+      ],
+    });
+    if (where === 'document') {
+      createDocumentInto(placeholderId);
+      return;
+    }
+    if (where !== 'row') return;
+    // The databases are read ONCE, when asked for - a listener kept open
+    // for a button that is pressed now and then is a listener kept open
+    // for nothing.
+    let bases: { id: string; name: string; fields: { id: string }[] }[] = [];
+    try {
+      const snapshot = await getDocs(ownedQuery('customDatabases'));
+      bases = snapshot.docs.map((d: { id: string; data: () => Record<string, unknown> }) => ({
+        id: d.id,
+        name: (d.data().name as string) ?? 'Без назви',
+        fields: ((d.data().fields as { id: string }[]) ?? []),
+      }));
+    } catch (e) {
+      notify('Не вдалося', (e as Error).message);
+      return;
+    }
+    if (bases.length === 0) {
+      notify('Немає баз', 'Спершу створіть базу даних');
+      return;
+    }
+    const pickedId = await ask({
+      title: 'У якій базі',
+      actions: bases.map((b) => ({ id: b.id, label: b.name, icon: 'albums-outline' })),
+    });
+    const base = bases.find((b) => b.id === pickedId);
+    if (!base) return;
+    setNewRowTarget({ placeholderId, databaseId: base.id, fieldId: base.fields[0]?.id ?? '', name: base.name });
+  }
+
+  // The row itself, once it has a name. Only the first field is filled -
+  // the same stub a relation picker makes when it offers «Створити «X»»,
+  // and for the same reason: what is wanted here is the record existing
+  // and being IN the note; the rest of it is filled where such things are
+  // filled, on the database's own screen.
+  async function createRowInDatabase(target: NewRowTarget, name: string) {
+    setNewRowTarget(null);
+    const title = name.trim();
+    if (!title || !target.fieldId) return;
+    const id = generateId();
+    const now = Date.now();
+    try {
+      await setDoc(doc(db, 'customDatabaseRows', id), {
+        databaseId: target.databaseId,
+        values: { [target.fieldId]: title },
+        tagIds: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+      return;
+    }
+    insertExistingItemIntoBlock(
+      target.placeholderId,
+      blockFromCustomRow({ id, databaseId: target.databaseId, title, createdAt: now })
+    );
+  }
+
+  // A note made from here carries nothing but its name; what it is for is
+  // being pointed AT from this one.
+  async function createDocumentInto(placeholderId: string) {
+    setNewNoteTarget(placeholderId);
+  }
+
+  async function createNoteAndLink(placeholderId: string, name: string) {
+    setNewNoteTarget(null);
+    const title = name.trim() || 'Без назви';
+    let id: string;
+    try {
+      id = await clipBlocksToNote(title, []);
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+      return;
+    }
+    insertExistingItemIntoBlock(placeholderId, blockFromDocument({ id, title }));
+  }
+
   function insertExistingItemIntoBlock(placeholderId: string, item: Block) {
     setExistingItemPickerBlockId(null);
     snapshotBeforeChange();
@@ -4638,7 +4747,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               onShowKeyboard={closePanel}
               onLowerAll={lowerAll}
               onPickFromDatabase={() => action('existing')()}
-              onCreateInDatabase={() => action('document')()}
+              onCreateInDatabase={onBlock((id) => createInDatabase(id))}
             />
           ) : (
           <EditorToolbar
@@ -5480,6 +5589,27 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           at `bottom: keyboardHeight` by hand - nothing lifts it for us. */}
       {!sheetPage && bottomChrome}
 
+      <RenamePrompt
+        visible={newNoteTarget !== null}
+        title="Нова нотатка"
+        initialValue=""
+        placeholder="Назва"
+        allowEmpty
+        onCancel={() => setNewNoteTarget(null)}
+        onSave={(name) => {
+          if (newNoteTarget) createNoteAndLink(newNoteTarget, name);
+        }}
+      />
+      <RenamePrompt
+        visible={newRowTarget !== null}
+        title={newRowTarget ? `Новий запис у «${newRowTarget.name}»` : 'Новий запис'}
+        initialValue=""
+        placeholder="Назва"
+        onCancel={() => setNewRowTarget(null)}
+        onSave={(name) => {
+          if (newRowTarget) createRowInDatabase(newRowTarget, name);
+        }}
+      />
       <RenamePrompt
         visible={linkPrompt !== null}
         title="Посилання"
