@@ -2743,19 +2743,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   //
   // Web has no keyboard events to drive any of it, so it keeps the bar
   // plainly visible whenever a block is focused, exactly as before.
-  // HOW FAR THE SHEET STANDS OFF THE SCREEN'S BOTTOM, and why it is not
-  // a fixed number. At rest it ends above that edge so its rounded
-  // corner can be seen. But the sheet CLIPS what it holds, and the bar
-  // above the keyboard and the panel that stands where the keyboard
-  // stood are both held by it and both have to reach the screen's own
-  // bottom - lifted, the bar floated a finger's width above the keyboard
-  // ("слеш меню піднялось вище"). So the sheet gives that margin back,
-  // exactly as fast as the keyboard takes it: by the time anything is
-  // standing down there, the page reaches it.
+  // How far the sheet stands off the screen's bottom edge, so its
+  // rounded corner can be seen down there as well as up top.
   const sheetBottomRest = editorInsets.bottom + PAGE_SHEET_INSET;
-  const sheetBottomStyle = useAnimatedStyle(() => ({
-    marginBottom: Math.max(0, sheetBottomRest - Math.max(keyboardSV.value, panelHeightSV.value)),
-  }));
   const pinnedToolbarStyle = useAnimatedStyle(() => {
     if (Platform.OS === 'web') return { bottom: Math.max(keyboardSV.value, panelHeightSV.value), opacity: 1, transform: [] };
     const floor = Math.max(keyboardSV.value, panelHeightSV.value);
@@ -4558,6 +4548,79 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // beside a list, and on a pointer the toolbar above the page is what
   // marks its top edge.
   const sheetPage = !embedded && !('pane' in props) && !pointerDensity;
+  // THE BAR ABOVE THE KEYBOARD AND THE PANEL THAT REPLACES IT belong to
+  // the SCREEN, not to the page. Held by the sheet they were clipped by
+  // it and anchored to a bottom that is no longer the screen's, so the
+  // bar floated a finger's width over the keyboard. Where there is no
+  // sheet - a pane, a pointer, the calendar's own embedded note - the
+  // page IS the screen and they stay inside it, exactly as before.
+  const bottomChrome = (
+    <>
+      {isToolbarVisible && (
+        <Animated.View
+          style={[
+            styles.pinnedToolbar,
+            // Centred on the note's own column, not on the window, while
+            // the drawer holds the other one.
+            referencesSplit && { paddingRight: referencePanelWidth },
+            pinnedToolbarStyle,
+          ]}
+          pointerEvents="box-none"
+          // In a browser, pressing the mouse on anything takes the focus
+          // off the field - so reaching for a toolbar button blurred the
+          // block, the block stopped being the focused one, and the
+          // toolbar vanished under the pointer before the click landed.
+          // Refusing the mouse-down's default keeps the caret where it
+          // is; the click itself still arrives. A phone has no mouse and
+          // the prop is not sent there.
+          {...(Platform.OS === 'web'
+            ? ({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object)
+            : {})}
+        >
+          {blockAccessory ?? (phonePanel ? (
+            <EditorPanelBar
+              canUndo={canUndo}
+              canRedo={canRedo}
+              onUndo={undo}
+              onRedo={redo}
+              openSection={panelSection}
+              onOpenSection={openPanel}
+              onShowKeyboard={closePanel}
+              onLowerAll={lowerAll}
+              onPickFromDatabase={() => action('existing')()}
+              onCreateInDatabase={() => action('document')()}
+            />
+          ) : (
+          <EditorToolbar
+            canvas={canvasMode}
+            focusedBlockId={toolbarBlockId}
+            activeSelection={activeSelection}
+            onBlockAction={handleBlockAction}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
+            onApplyMarker={applyMarkerToSelection}
+            onApplyColor={applyColorToSelection}
+          />
+          ))}
+        </Animated.View>
+      )}
+
+      {/* Where the keyboard was. Its own layer at the very bottom, not a
+          child of the bar above it - the bar rides the keyboard's live
+          height and this does not move at all. */}
+      {phonePanel && (panelSection !== null || panelClosing) && (
+        <View style={styles.insertPanelDock}>
+          <EditorInsertPanel
+            height={panelHeight || lastKeyboardHeightRef.current || 300}
+            groups={panelGroups}
+            jumpTo={panelJump}
+          />
+        </View>
+      )}
+    </>
+  );
   const page = (
     <Animated.View
       style={[
@@ -4571,9 +4634,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         sheetPage && liftStyle(theme, theme.lift, 1),
         sheetPage && {
           marginTop: editorInsets.top,
+          // Ends above the screen's own bottom edge, so the sheet shows
+          // the same rounded corner down there that it shows up top.
+          marginBottom: sheetBottomRest,
         },
-        // The bottom margin is ANIMATED - see sheetBottomStyle.
-        sheetPage && sheetBottomStyle,
         paperColor && { backgroundColor: paperColor.background },
       ]}
       onLayout={(e) => setEditorWidth(e.nativeEvent.layout.width)}
@@ -5410,69 +5474,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           as an inset rather than honouring
           android.softwareKeyboardLayoutMode), so the bar has to be placed
           at `bottom: keyboardHeight` by hand - nothing lifts it for us. */}
-      {isToolbarVisible && (
-        <Animated.View
-          style={[
-            styles.pinnedToolbar,
-            // Centred on the note's own column, not on the window, while
-            // the drawer holds the other one.
-            referencesSplit && { paddingRight: referencePanelWidth },
-            pinnedToolbarStyle,
-          ]}
-          pointerEvents="box-none"
-          // In a browser, pressing the mouse on anything takes the focus
-          // off the field - so reaching for a toolbar button blurred the
-          // block, the block stopped being the focused one, and the
-          // toolbar vanished under the pointer before the click landed.
-          // Refusing the mouse-down's default keeps the caret where it
-          // is; the click itself still arrives. A phone has no mouse and
-          // the prop is not sent there.
-          {...(Platform.OS === 'web'
-            ? ({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object)
-            : {})}
-        >
-          {blockAccessory ?? (phonePanel ? (
-            <EditorPanelBar
-              canUndo={canUndo}
-              canRedo={canRedo}
-              onUndo={undo}
-              onRedo={redo}
-              openSection={panelSection}
-              onOpenSection={openPanel}
-              onShowKeyboard={closePanel}
-              onLowerAll={lowerAll}
-              onPickFromDatabase={() => action('existing')()}
-              onCreateInDatabase={() => action('document')()}
-            />
-          ) : (
-          <EditorToolbar
-            canvas={canvasMode}
-            focusedBlockId={toolbarBlockId}
-            activeSelection={activeSelection}
-            onBlockAction={handleBlockAction}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            onUndo={undo}
-            onRedo={redo}
-            onApplyMarker={applyMarkerToSelection}
-            onApplyColor={applyColorToSelection}
-          />
-          ))}
-        </Animated.View>
-      )}
-
-      {/* Where the keyboard was. Its own layer at the very bottom, not a
-          child of the bar above it - the bar rides the keyboard's live
-          height and this does not move at all. */}
-      {phonePanel && (panelSection !== null || panelClosing) && (
-        <View style={styles.insertPanelDock}>
-          <EditorInsertPanel
-            height={panelHeight || lastKeyboardHeightRef.current || 300}
-            groups={panelGroups}
-            jumpTo={panelJump}
-          />
-        </View>
-      )}
+      {!sheetPage && bottomChrome}
 
       <RenamePrompt
         visible={linkPrompt !== null}
@@ -5654,6 +5656,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     <View style={styles.sheetRoot}>
       <ScreenBackdrop id="editorSheetBg" />
       {page}
+      {bottomChrome}
     </View>
   );
 }
