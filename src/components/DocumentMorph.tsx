@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { View as RNView } from 'react-native';
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import DocumentTagsBlock from './DocumentTagsBlock';
@@ -32,6 +34,15 @@ import { GlassPortal } from './GlassPortal';
 // the way back, play it in reverse. The push itself carries no animation
 // of its own - see the Editor route's `morph` param in AppNavigator -
 // because a stack slide under a growing page is two moves fighting.
+//
+// DRIVEN BY REANIMATED, not by React state, and that is not a
+// preference. The surface is portalled, and a portal's child setting
+// state re-renders the WHOLE portal host - the dock and its live blur
+// included - so a move written as sixty state changes a second was
+// sixty re-renders of the dock a second, and the end of it read as a
+// blink even once nothing new appeared there: "екран всеодно блимає
+// вкінці хоч нового нічого не з'являється". Now the host renders twice
+// per flight, at its two ends, and everything between is a worklet.
 //
 // EVERY FAILURE FALLS BACK TO A PLAIN NAVIGATE. A card that cannot be
 // measured, a window that is not there yet: the move is skipped and the
@@ -66,28 +77,20 @@ export type MorphDoc = {
   project: Group | null;
 };
 
-type Flight = {
-  doc: MorphDoc;
-  rect: MorphRect;
-  // 0 sits on the card, 1 fills the window.
-  open: number;
-  // Fading out at the very end of either direction.
-  alpha: number;
-};
-
-const easeOutCubic = (k: number) => 1 - Math.pow(1 - k, 3);
+type Flight = { doc: MorphDoc; rect: MorphRect };
 
 export function useDocumentMorph() {
   const { width: windowW, height: windowH } = useWindowDimensions();
+  // What is flying, and from where - set once at each end of a flight.
   const [flight, setFlight] = useState<Flight | null>(null);
-  const raf = useRef<number | null>(null);
+  // 0 sits on the card, 1 fills the window.
+  const open01 = useSharedValue(0);
+  const alpha = useSharedValue(1);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   // Every card on screen, so the way back knows where its own card is.
   const nodes = useRef(new Map<string, RNView>());
 
-  const stop = useCallback(() => {
-    if (raf.current !== null) cancelAnimationFrame(raf.current);
-    raf.current = null;
+  const clearTimers = useCallback(() => {
     timers.current.forEach(clearTimeout);
     timers.current = [];
   }, []);
@@ -108,37 +111,11 @@ export function useDocumentMorph() {
     return fn;
   }, []);
 
-  const drive = useCallback(
-    (from: number, to: number, ms: number, done: () => void) => {
-      const t0 = Date.now();
-      const step = () => {
-        const k = Math.min(1, (Date.now() - t0) / ms);
-        setFlight((live) => (live ? { ...live, open: from + (to - from) * easeOutCubic(k) } : live));
-        if (k < 1) {
-          raf.current = requestAnimationFrame(step);
-          return;
-        }
-        raf.current = null;
-        done();
-      };
-      raf.current = requestAnimationFrame(step);
-    },
-    []
-  );
-
-  const fadeOut = useCallback(() => {
-    const t0 = Date.now();
-    const step = () => {
-      const k = Math.min(1, (Date.now() - t0) / FADE_MS);
-      setFlight((live) => (live ? { ...live, alpha: 1 - k } : live));
-      if (k < 1) {
-        raf.current = requestAnimationFrame(step);
-        return;
-      }
-      raf.current = null;
-      setFlight(null);
-    };
-    raf.current = requestAnimationFrame(step);
+  const land = useCallback(() => {
+    alpha.value = withTiming(0, { duration: FADE_MS }, (finished) => {
+      if (finished) runOnJS(setFlight)(null);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // The card grows into the page, and `then` opens the real screen once
@@ -155,38 +132,52 @@ export function useDocumentMorph() {
           then();
           return;
         }
-        stop();
-        setFlight({ doc, rect: { x, y, width, height }, open: 0, alpha: 1 });
-        drive(0, 1, OUT_MS, () => {
-          then();
-          timers.current.push(setTimeout(fadeOut, HANDOVER_MS));
-        });
+        clearTimers();
+        open01.value = 0;
+        alpha.value = 1;
+        setFlight({ doc, rect: { x, y, width, height } });
+        open01.value = withTiming(
+          1,
+          { duration: OUT_MS, easing: Easing.out(Easing.cubic) },
+          (finished) => {
+            if (finished) runOnJS(then)();
+          }
+        );
+        // The real screen gets its first frame under a page that is
+        // still whole, and only then is the page taken away.
+        timers.current.push(setTimeout(land, OUT_MS + HANDOVER_MS));
       });
     },
-    [drive, fadeOut, stop, windowW, windowH]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [clearTimers, land, windowW, windowH]
   );
 
   // Coming back: the page is already full screen (the pop carried no
   // animation), so this starts where it ended and folds onto the card.
   // With no card to fold onto - the list has been scrolled, or the note
-  // was made somewhere else - it simply fades, which is the honest thing
-  // to do rather than flying to a place nothing is at.
+  // was made somewhere else - it simply does nothing, which is the
+  // honest thing rather than flying to a place nothing is at.
   const close = useCallback(
     (doc: MorphDoc) => {
       const node = nodes.current.get(doc.id);
       if (!node) return;
       node.measureInWindow((x, y, width, height) => {
         if (!width || !height) return;
-        stop();
-        setFlight({ doc, rect: { x, y, width, height }, open: 1, alpha: 1 });
-        drive(1, 0, BACK_MS, fadeOut);
+        clearTimers();
+        open01.value = 1;
+        alpha.value = 1;
+        setFlight({ doc, rect: { x, y, width, height } });
+        open01.value = withTiming(0, { duration: BACK_MS, easing: Easing.out(Easing.cubic) }, (finished) => {
+          if (finished) runOnJS(land)();
+        });
       });
     },
-    [drive, fadeOut, stop]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [clearTimers, land]
   );
 
   const overlay = flight ? (
-    <MorphSurface flight={flight} windowW={windowW} windowH={windowH} />
+    <MorphSurface flight={flight} windowW={windowW} windowH={windowH} open01={open01} alpha={alpha} />
   ) : null;
 
   return { registerCard, open, close, overlay, flying: flight !== null };
@@ -196,10 +187,14 @@ function MorphSurface({
   flight,
   windowW,
   windowH,
+  open01,
+  alpha,
 }: {
   flight: Flight;
   windowW: number;
   windowH: number;
+  open01: SharedValue<number>;
+  alpha: SharedValue<number>;
 }) {
   const theme = useTheme();
   // The editor's OWN title style, not a copy of its numbers: the page
@@ -207,49 +202,43 @@ function MorphSurface({
   // where the title jumps a size is the one thing the eye would catch.
   const editorStyles = useStyles(makeEditorStyles);
   const insets = useSafeAreaInsets();
-  const t = flight.open;
   const { rect } = flight;
-  const x = rect.x * (1 - t);
-  const y = rect.y * (1 - t);
-  const w = rect.width + (windowW - rect.width) * t;
-  const h = rect.height + (windowH - rect.height) * t;
-  const radius = CARD_RADIUS * (1 - t);
+  // Both styles read the same two shared values, so the surface and the
+  // page inside it can never be a frame apart.
+  const surfaceStyle = useAnimatedStyle(() => {
+    const t = open01.value;
+    return {
+      left: rect.x * (1 - t),
+      top: rect.y * (1 - t),
+      width: rect.width + (windowW - rect.width) * t,
+      height: rect.height + (windowH - rect.height) * t,
+      borderRadius: CARD_RADIUS * (1 - t),
+      opacity: alpha.value,
+    };
+  });
   // The page is laid out at the width it will really have and scaled to
   // whatever width the surface has right now - the same trick the
   // calendar's miniatures use, for the same reason: a page squeezed into
   // a card's width is not that page, it is a different layout.
-  const scale = Math.max(0.05, w / windowW);
+  const pageStyle = useAnimatedStyle(() => {
+    const t = open01.value;
+    const w = rect.width + (windowW - rect.width) * t;
+    const h = rect.height + (windowH - rect.height) * t;
+    return {
+      left: (w - windowW) / 2,
+      top: (h - windowH) / 2,
+      transform: [{ scale: Math.max(0.05, w / windowW) }],
+    };
+  });
   let numbered = 0;
   const shown = flight.doc.blocks.slice(0, MAX_ROWS);
   return (
     <GlassPortal priority={90}>
-      <View
+      <Animated.View
         pointerEvents="none"
-        style={[
-          styles.surface,
-          {
-            left: x,
-            top: y,
-            width: w,
-            height: h,
-            borderRadius: radius,
-            opacity: flight.alpha,
-            backgroundColor: theme.paper.fill,
-          },
-        ]}
+        style={[styles.surface, { backgroundColor: theme.paper.fill }, surfaceStyle]}
       >
-        <View
-          style={[
-            styles.page,
-            {
-              width: windowW,
-              height: windowH,
-              left: (w - windowW) / 2,
-              top: (h - windowH) / 2,
-              transform: [{ scale }],
-            },
-          ]}
-        >
+        <Animated.View style={[styles.page, { width: windowW, height: windowH }, pageStyle]}>
           {/* The page's own name, where the page puts it. */}
           <Text style={[editorStyles.titleInput, styles.title]} numberOfLines={2}>
             {flight.doc.title || 'Без назви'}
@@ -319,13 +308,13 @@ function MorphSurface({
               );
             })}
           </View>
-        </View>
+        </Animated.View>
         {/* Where the editor's own rail puts it, in the page's own
             coordinates - it scales with everything else. */}
         <View style={[styles.badge, { top: insets.top + CHROME_TOP, right: RAIL_RIGHT }]} pointerEvents="none">
           <ProjectBadge project={flight.doc.project} glass />
         </View>
-      </View>
+      </Animated.View>
     </GlassPortal>
   );
 }
