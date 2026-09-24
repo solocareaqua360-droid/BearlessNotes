@@ -282,9 +282,10 @@ export interface Block {
   // прокручувались за межі". A fraction cannot say that.
   tableColumnWidths?: number[];
   // 'divider' blocks only. Absent is the plain hairline every divider was
-  // before this. 'break' is not a line at all but a visual cut in the page
-  // - where one sheet ends and the next begins - and, like the rest, it
-  // is only how the note LOOKS: exports and cards ignore it.
+  // before this. 'break' is meant to be a cut in the page - where one sheet
+  // ends and the next begins - and is PARKED: nothing offers it any more,
+  // and one already saved draws as the plain line (see BlockRow) until the
+  // real thing is built. Like the rest, only how the note LOOKS.
   dividerStyle?: 'solid' | 'dotted' | 'bold' | 'break';
   // 'table' blocks only. Whether the first row / first column is a
   // HEADER: drawn strong, and never counted as data. Two switches rather

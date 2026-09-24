@@ -2061,13 +2061,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     {
       section: 'rules',
       title: 'Роздільні лінії',
-      // Three rules and the break in one menu, as the user asked - all of
-      // them only how the note looks.
+      // Three rules in one menu, as the user asked - all of them only how
+      // the note looks. The page break is PARKED, not forgotten: drawn
+      // inside the one fixed sheet it could only ever be a stripe painted
+      // over the paper, and a real one needs the paper itself to come in
+      // pieces - see the memory `project_page_break_parked`.
       items: [
         { key: 'dotted', label: 'Пунктирна', family: 'material-community', icon: 'dots-horizontal', onPress: onBlock((id) => insertDivider(id, 'dotted')) },
         { key: 'solid', label: 'Суцільна', family: 'material-community', icon: 'minus', onPress: onBlock((id) => insertDivider(id, 'solid')) },
         { key: 'bold', label: 'Жирна', family: 'material-community', icon: 'minus-thick', onPress: onBlock((id) => insertDivider(id, 'bold')) },
-        { key: 'break', label: 'Розрив сторінки', family: 'material-community', icon: 'format-page-break', onPress: onBlock((id) => insertDivider(id, 'break')) },
       ],
     },
     {

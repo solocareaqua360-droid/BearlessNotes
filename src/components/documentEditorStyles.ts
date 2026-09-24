@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { liftStyle, type Theme } from '../theme/tokens';
+import type { Theme } from '../theme/tokens';
 import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_MEDIUM, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -429,47 +429,6 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     marginVertical: 11,
     marginHorizontal: 4,
-  },
-  // Where one sheet ends and the next begins: the app's ground showing
-  // through a gap in the paper. Wider than the row on both sides, so it
-  // reaches the page's own edges instead of hanging inside the text
-  // column as a stripe - the user's own caution was that inside a
-  // full-screen sheet this could look out of place.
-  //
-  // A flat band of the ground colour first read as an accidental stripe,
-  // not a cut - nothing about it said "paper" on either side of it. This
-  // is two small caps of the PAGE'S OWN paper colour and radius, one
-  // rounded on its lower corners standing for the sheet ending above the
-  // gap and one rounded on its upper corners for the sheet starting
-  // below it, each lifted the way every sheet in this app is - so the
-  // gap between them reads as depth, not as a second background colour
-  // painted in.
-  dividerBreak: {
-    flex: 1,
-    marginVertical: 10,
-    marginHorizontal: -40,
-  },
-  // The sheet ending: rounded on its lower corners, the same radius the
-  // page itself carries at its own bottom edge, and lifted so the gap
-  // below it reads as a drop rather than a stripe of flat colour.
-  dividerBreakCapTop: {
-    height: 10,
-    backgroundColor: t.paper.fill,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    ...liftStyle(t, 'shadow', 0.5),
-  },
-  // The ground itself, showing through the cut.
-  dividerBreakGap: {
-    height: 14,
-    backgroundColor: t.ground,
-  },
-  // The next sheet starting, rounded on its upper corners to match.
-  dividerBreakCapBottom: {
-    height: 10,
-    backgroundColor: t.paper.fill,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
   },
   // --- one grid, drawn the same way whether it is being read or edited ---
   //
