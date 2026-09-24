@@ -4556,6 +4556,56 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // page IS the screen and they stay inside it, exactly as before.
   const bottomChrome = (
     <>
+      {!embedded && referencePanelOpen && (
+        <View
+          style={[styles.referencePanelDock, { right: referencePanelRight, width: referencePanelWidth }]}
+          pointerEvents="box-none"
+        >
+          {/* Its own boundary: a panel that browses every database in the
+              app has more ways to fail than the note it stands beside,
+              and none of them should be able to take the note down. */}
+          <CrashBoundary>
+            <ReferencePanel
+              visible
+              onClose={() => setReferencePanelOpen(false)}
+              // The hint has to match the gesture - see useReferenceDrag:
+              // a pointer drags at once, a finger holds first.
+              hint={
+                pointerDensity
+                  ? canvasMode
+                    ? 'Перетягни на полотно'
+                    : 'Перетягни в текст'
+                  : canvasMode
+                    ? 'Затисни й перетягни на полотно'
+                    : 'Затисни й перетягни в текст'
+              }
+              onDragMove={
+                canvasMode ? undefined : (_x, y) => blockListRef.current?.hoverExternal(y)
+              }
+              onDragFinished={canvasMode ? undefined : () => blockListRef.current?.endExternalHover()}
+              onDrop={(block, x, y, respond) => {
+                if (canvasMode) {
+                  canvasApiRef.current?.screenToSurface(x, y, (at) => {
+                    if (at) insertReferenceBlock(block, at);
+                    respond(!!at);
+                  }) ?? respond(false);
+                  return;
+                }
+                const list = blockListRef.current;
+                if (!list) {
+                  respond(false);
+                  return;
+                }
+                list.hoverExternal(y, (index) => {
+                  list.endExternalHover();
+                  if (index !== null) insertReferenceBlockAt(block, index);
+                  respond(index !== null);
+                });
+              }}
+            />
+          </CrashBoundary>
+        </View>
+      )}
       {isToolbarVisible && (
         <Animated.View
           style={[
@@ -4970,56 +5020,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           the finger to a point on its surface, the page asks its block
           list which gap the finger is in and shows the same drop-line a
           block being reordered gets. */}
-      {!embedded && referencePanelOpen && (
-        <View
-          style={[styles.referencePanelDock, { right: referencePanelRight, width: referencePanelWidth }]}
-          pointerEvents="box-none"
-        >
-          {/* Its own boundary: a panel that browses every database in the
-              app has more ways to fail than the note it stands beside,
-              and none of them should be able to take the note down. */}
-          <CrashBoundary>
-            <ReferencePanel
-              visible
-              onClose={() => setReferencePanelOpen(false)}
-              // The hint has to match the gesture - see useReferenceDrag:
-              // a pointer drags at once, a finger holds first.
-              hint={
-                pointerDensity
-                  ? canvasMode
-                    ? 'Перетягни на полотно'
-                    : 'Перетягни в текст'
-                  : canvasMode
-                    ? 'Затисни й перетягни на полотно'
-                    : 'Затисни й перетягни в текст'
-              }
-              onDragMove={
-                canvasMode ? undefined : (_x, y) => blockListRef.current?.hoverExternal(y)
-              }
-              onDragFinished={canvasMode ? undefined : () => blockListRef.current?.endExternalHover()}
-              onDrop={(block, x, y, respond) => {
-                if (canvasMode) {
-                  canvasApiRef.current?.screenToSurface(x, y, (at) => {
-                    if (at) insertReferenceBlock(block, at);
-                    respond(!!at);
-                  }) ?? respond(false);
-                  return;
-                }
-                const list = blockListRef.current;
-                if (!list) {
-                  respond(false);
-                  return;
-                }
-                list.hoverExternal(y, (index) => {
-                  list.endExternalHover();
-                  if (index !== null) insertReferenceBlockAt(block, index);
-                  respond(index !== null);
-                });
-              }}
-            />
-          </CrashBoundary>
-        </View>
-      )}
 
       {!(canvasMode && !embedded) && (
       <ScrollView

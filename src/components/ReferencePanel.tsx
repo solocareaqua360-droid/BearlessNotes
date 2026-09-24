@@ -3,9 +3,8 @@ import { GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import AddExistingItemModal from './AddExistingItemModal';
 import GlassDrop, { GlassIcon } from './GlassDrop';
-import { useStyles } from '../theme/ThemeProvider';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { useReferenceDrag } from '../hooks/useReferenceDrag';
 import type { Block } from '../types';
 
@@ -42,6 +41,7 @@ export default function ReferencePanel({
   hint: string;
   excludeIds?: Set<string>;
 }) {
+  const theme = useTheme();
   const styles = useStyles(makeStyles);
   const drag = useReferenceDrag({ onDrop, onMove: onDragMove, onFinished: onDragFinished });
 
@@ -68,10 +68,10 @@ export default function ReferencePanel({
     <>
       <View style={styles.panel}>
         <View style={styles.header}>
-          <Ionicons name="albums-outline" size={16} color={GLASS_TEXT_MUTED} />
+          <Ionicons name="albums-outline" size={16} color={theme.ink.muted} />
           <Text style={styles.headerLabel}>Референси</Text>
           <View style={{ flex: 1 }} />
-          <Ionicons name="close" size={20} color={GLASS_TEXT_MUTED} onPress={onClose} />
+          <Ionicons name="close" size={20} color={theme.ink.muted} onPress={onClose} />
         </View>
         <Text style={styles.hint}>{hint}</Text>
         <GestureDetector gesture={drag.gesture}>
@@ -110,18 +110,20 @@ const makeStyles = (t: Theme) =>
     // inner screen, a narrower glass drawer over part of the canvas on a
     // phone. Either way it is never the full screen: the canvas has to
     // stay reachable as the drop target.
-    // The same dark, OPAQUE ground the docked browser inside it stands
-    // on (see AddExistingItemModal's dockedRoot) - everything in here is
-    // written in white, and the note's own paper underneath is not.
+    // The THEME'S own ground, not a dark slab. Written as one it was a
+    // black panel standing on white paper in the light themes, which is
+    // the same mistake the editor's own "/" bar made and was fixed for:
+    // this is a surface of its own, not a pill floating on glass, so it
+    // wears what every other surface in the app wears.
     panel: {
       flex: 1,
-      backgroundColor: '#181513',
+      backgroundColor: t.ground,
       // The edge faces the note, and the note is to the LEFT of this
       // panel now that it docks against the window's right edge - see
       // referencePanelDock. It was on the other side, from when the
       // panel was.
       borderLeftWidth: 1,
-      borderLeftColor: GLASS_LINE,
+      borderLeftColor: t.edge.hairline,
     },
     header: {
       flexDirection: 'row',
@@ -133,11 +135,11 @@ const makeStyles = (t: Theme) =>
     headerLabel: {
       fontSize: 13,
       fontWeight: '700',
-      color: GLASS_TEXT,
+      color: t.ink.primary,
     },
     hint: {
       fontSize: 11,
-      color: GLASS_TEXT_FAINT,
+      color: t.ink.faint,
       paddingHorizontal: 14,
       paddingTop: 2,
       paddingBottom: 8,
@@ -163,6 +165,6 @@ const makeStyles = (t: Theme) =>
       fontSize: 13,
       fontWeight: '600',
       maxWidth: 180,
-      color: GLASS_TEXT,
+      color: t.ink.primary,
     },
   });

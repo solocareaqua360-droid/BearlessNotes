@@ -46,8 +46,10 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 // src/utils/fatalErrors.ts, and the standing rule in CLAUDE.md.
 const listenerFailed = (where: string) => (error: unknown) =>
   console.warn(`AddExistingItemModal: ${where} listener failed`, error);
-// GLASS_BODY_BLURRED without its transparency - see styles.dockedRoot.
-const GLASS_BODY_OPAQUE = '#181513';
+// Docked inside the references panel this browser is a surface of the
+// app, not a sheet floating on glass - so it takes the theme's ground
+// and the theme's ink. Written in white on a dark slab it was a black
+// hole in every light theme.
 const STICKER_YELLOW = '#FBE97A';
 // Newest first, done here rather than by the query. Every read in this
 // file goes through ownedQuery now, which narrows by owner - and an
@@ -199,7 +201,8 @@ export default function AddExistingItemModal({
   rowRef,
   allowedTabs,
 }: Props) {
-  const accent = useTheme().accent;
+  const theme = useTheme();
+  const accent = theme.accent;
   const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
   const tabAllowed = (t: Tab) => !allowedTabs || allowedTabs.includes(t);
@@ -416,12 +419,12 @@ export default function AddExistingItemModal({
           </ScrollView>
 
           <View style={styles.searchRow}>
-            <Ionicons name="search" size={14} color={GLASS_TEXT_FAINT} />
+            <Ionicons name="search" size={14} color={theme.ink.faint} />
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Пошук за назвою"
-              placeholderTextColor={GLASS_TEXT_FAINT}
+              placeholderTextColor={theme.ink.faint}
               style={styles.searchInput}
               // As a window, it opens TYPING: the list is hundreds of rows
               // and the field is the way into it - "клавіатура повинна
@@ -435,7 +438,7 @@ export default function AddExistingItemModal({
               top, so the way back cannot be a row up there. */}
           {tab === 'document' && openDocId && (
             <Pressable style={styles.docHeader} onPress={() => setOpenDocId(null)}>
-              <Ionicons name="chevron-back" size={16} color={GLASS_TEXT_MUTED} />
+              <Ionicons name="chevron-back" size={16} color={theme.ink.muted} />
               <Text style={styles.docHeaderTitle} numberOfLines={1}>
                 {openDocTitle}
               </Text>
@@ -585,7 +588,7 @@ export default function AddExistingItemModal({
                     <Text style={styles.rowText} numberOfLines={1}>
                       {d.title}
                     </Text>
-                    {rowRef && <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />}
+                    {rowRef && <Ionicons name="chevron-forward" size={16} color={theme.ink.faint} />}
                   </Pressable>
                 ))
               ))}
@@ -638,7 +641,7 @@ export default function AddExistingItemModal({
                     <Text style={styles.rowText} numberOfLines={1}>
                       {d.name || 'База'}
                     </Text>
-                    <Ionicons name="chevron-forward" size={16} color={GLASS_TEXT_FAINT} />
+                    <Ionicons name="chevron-forward" size={16} color={theme.ink.faint} />
                   </Pressable>
                 ))
               ))}
@@ -646,7 +649,7 @@ export default function AddExistingItemModal({
             {tab === 'customDb' && openDatabase && (
               <>
                 <Pressable style={styles.row} onPress={() => setOpenDatabaseId(null)}>
-                  <Ionicons name="chevron-back" size={16} color={GLASS_TEXT_MUTED} />
+                  <Ionicons name="chevron-back" size={16} color={theme.ink.muted} />
                   <Text style={[styles.rowText, styles.backRowText]} numberOfLines={1}>
                     {openDatabase.name || 'База'}
                   </Text>
@@ -736,7 +739,7 @@ export default function AddExistingItemModal({
           <View style={styles.titleRow}>
             <Text style={[styles.title, styles.titleInRow]}>Додати з бази даних</Text>
             <Pressable hitSlop={10} onPress={onClose} accessibilityLabel="Закрити">
-              <Ionicons name="close" size={22} color={GLASS_TEXT} />
+              <Ionicons name="close" size={22} color={theme.ink.primary} />
             </Pressable>
           </View>
           {body}
@@ -762,7 +765,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     paddingTop: 8,
     paddingHorizontal: 12,
-    backgroundColor: GLASS_BODY_OPAQUE,
+    backgroundColor: t.ground,
   },
   backdrop: {
     ...SHEET_BACKDROP,
@@ -778,7 +781,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -797,7 +800,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
     marginBottom: 10,
   },
   // Horizontally scrollable now that links split into three tabs of their
@@ -822,7 +825,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 10,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
   },
   tabActive: {
     backgroundColor: t.accent,
@@ -831,7 +834,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
   tabLabelActive: {
     color: '#fff',
@@ -840,7 +843,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -850,12 +853,12 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   emptyLabel: {
     fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     textAlign: 'center',
     paddingVertical: 16,
   },
@@ -863,7 +866,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT_FAINT,
+    color: t.ink.faint,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
     paddingTop: 10,
@@ -900,10 +903,10 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 8,
-    backgroundColor: GLASS_LINE,
+    backgroundColor: t.edge.hairline,
   },
   backRowText: {
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
   },
@@ -911,7 +914,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONT_REGULAR,
-    color: GLASS_TEXT,
+    color: t.ink.primary,
   },
   // One block of another document. Faint ground and a radius rather than
   // a separator: this is a thing you pick UP, and it has to look like one
@@ -934,6 +937,6 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
-    color: GLASS_TEXT_MUTED,
+    color: t.ink.muted,
   },
 });
