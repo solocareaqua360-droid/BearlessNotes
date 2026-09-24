@@ -77,6 +77,10 @@ import VideoPlayerModal from '../components/VideoPlayerModal';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import PageCover from '../components/PageCover';
+// How far the save/project badge stands in from the sheet's own top and
+// right edges - one number, because the two gaps are meant to look the
+// same.
+const SHEET_BADGE_INSET = 12;
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
@@ -112,7 +116,7 @@ import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
-import { makeStyles } from '../components/documentEditorStyles';
+import { PAGE_SHEET_INSET, makeStyles } from '../components/documentEditorStyles';
 import BlockList, { BlockListHandle } from '../components/BlockList';
 import {
   buildBlock,
@@ -4546,7 +4550,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         styles.container,
         embedded && styles.containerEmbedded,
         sheetPage && styles.pageSheet,
-        sheetPage && { marginTop: editorInsets.top },
+        sheetPage && {
+          marginTop: editorInsets.top,
+          // Ends above the screen's own bottom edge, so the sheet shows
+          // the same rounded corner down there that it shows up top -
+          // scrolled to the end, a page that ran off the screen looked
+          // torn rather than finished.
+          marginBottom: editorInsets.bottom + PAGE_SHEET_INSET,
+        },
         paperColor && { backgroundColor: paperColor.background },
       ]}
       onLayout={(e) => setEditorWidth(e.nativeEvent.layout.width)}
@@ -4608,6 +4619,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   (pointerDensity ? DESKTOP_TOOLBAR_HEIGHT : 0),
               },
               railSide,
+              // THE SAME GAP FROM BOTH EDGES it sits in. On a sheet its
+              // own two numbers were measured against different things -
+              // 4 below the sheet's top, and 14 from the WINDOW's right,
+              // which is two points PAST the sheet's - so it read as
+              // pushed into the corner rather than placed in it.
+              sheetPage && {
+                top: editorInsets.top + SHEET_BADGE_INSET,
+                right: PAGE_SHEET_INSET + SHEET_BADGE_INSET,
+              },
             ]}
             pointerEvents="box-none"
           >

@@ -46,8 +46,9 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
   },
   pageSheet: {
     marginHorizontal: PAGE_SHEET_INSET,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    // All four corners: the bottom is as much an edge of the sheet as
+    // the top, and it is seen whenever the page is read to its end.
+    borderRadius: 16,
     overflow: 'hidden',
   },
   // The reference panel's own dock - see ReferencePanel. `left` and
