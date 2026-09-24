@@ -85,7 +85,6 @@ import { BlurView } from 'expo-blur';
 import { GlassPortal } from '../components/GlassPortal';
 import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useDocumentMorph } from '../components/DocumentMorph';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import TagEditSheet from '../components/TagEditSheet';
@@ -281,24 +280,6 @@ export default function DocumentsScreen({
   });
   const [folderEdit, setFolderEdit] = useState<Tag | null>(null);
   const [docRename, setDocRename] = useState<DocumentItem | null>(null);
-  const morph = useDocumentMorph();
-  // Everything the flying page has to draw, in one place, so the way out
-  // and the way back can never disagree about what the page looks like.
-  function morphDoc(doc: DocumentItem) {
-    return {
-      id: doc.id,
-      title: doc.title ?? '',
-      blocks: doc.blocks ?? [],
-      tagIds: doc.tagIds ?? [],
-      tags,
-      project: groups.find((g) => g.id === doc.groupId) ?? null,
-      coverImageUri: doc.coverImageUri,
-      coverDriveFileId: doc.coverDriveFileId,
-    };
-  }
-  // Which document this list morphed into, so the way back knows whose
-  // card to fold onto.
-  const morphedRef = useRef<string | null>(null);
 
   // Carrying a note into a folder - the same hook every database screen
   // uses, now over the same explorer every database screen uses.
@@ -986,44 +967,13 @@ export default function DocumentsScreen({
 
   // The one place that decides what "open a document" means: a pane on a
   // wide screen, a pushed screen on a narrow one.
-  // THE CARD BECOMES THE PAGE - see DocumentMorph. Only where a card was
-  // actually pressed and there is a card to grow from: a note made from
-  // the "+" button has no card on screen yet, a two-pane window opens it
-  // beside the list rather than over it, and a title being focused on
-  // arrival wants the screen there now, not in a third of a second.
   function openDocument(id: string, autoFocusTitle?: boolean) {
     if (isTwoPane) {
       setOpenDoc({ id, autoFocusTitle });
       return;
     }
-    const go = (morph?: boolean) =>
-      navigation.navigate('Editor', {
-        documentId: id,
-        ...(autoFocusTitle ? { autoFocusTitle: true } : {}),
-        ...(morph ? { morph: true } : {}),
-      });
-    const doc = documents.find((d) => d.id === id);
-    if (autoFocusTitle || !doc) {
-      go();
-      return;
-    }
-    morphedRef.current = id;
-    morph.open(morphDoc(doc), () => go(true));
+    navigation.navigate('Editor', autoFocusTitle ? { documentId: id, autoFocusTitle: true } : { documentId: id });
   }
-  // ...and folds back into it. The pop carries no animation of its own
-  // (see the Editor route's `morph`), so this list is simply here again
-  // with the page still drawn over it, and the overlay takes it down
-  // onto the card it came from.
-  useEffect(() => {
-    if (!isFocused) return;
-    const id = morphedRef.current;
-    if (!id) return;
-    morphedRef.current = null;
-    const doc = documents.find((d) => d.id === id);
-    if (!doc) return;
-    morph.close(morphDoc(doc));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFocused]);
 
   // ⌘N from the Mac menu bar. Answered HERE rather than by the menu,
   // because a note made from this list joins the folder it is standing
@@ -1692,9 +1642,6 @@ export default function DocumentsScreen({
               // gesture opens the menu itself, on its own timing, rather
               // than racing it (see useExplorerCarry).
               const carried = !trashOpen && explorer.active;
-              // Worked out ONCE: it registers the card with the carry,
-              // and asking for it twice registers it twice.
-              const carryProps = carried ? carrying.cardProps(item, () => selectFromHold(item)) : null;
               const card = (
                 <DocumentCard
                   id={item.id}
@@ -1730,19 +1677,7 @@ export default function DocumentsScreen({
                   wide={drawnMode === 'wide' || !!item.wideCard}
                   project={groups.find((g) => g.id === item.groupId) ?? null}
                   onProjectPress={() => setSingleGroupTargetId(item.id)}
-                  {...(carryProps ?? {})}
-                  // The carry wants this node too where it is carrying,
-                  // so the two share it rather than one quietly winning.
-                  // Outside the explorer it is the morph's own callback,
-                  // which is kept per card and never churns.
-                  cardRef={
-                    carryProps
-                      ? (node: View | null) => {
-                          morph.registerCard(item.id)(node);
-                          carryProps.cardRef(node);
-                        }
-                      : morph.registerCard(item.id)
-                  }
+                  {...(carried ? carrying.cardProps(item, () => selectFromHold(item)) : {})}
                 />
               );
               // In the wide column the card brings the side margin
@@ -1758,7 +1693,6 @@ export default function DocumentsScreen({
             </GestureDetector>
         )}
 
-        {morph.overlay}
         {carrying.movedToast && <UndoToast message={carrying.toastMessage} onUndo={carrying.undoMove} />}
         {carrying.binnedToast && <UndoToast message={carrying.binToastMessage} onUndo={carrying.undoBin} />}
         {/* The floating note while one is being carried into a folder -

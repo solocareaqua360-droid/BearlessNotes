@@ -218,19 +218,6 @@ function staggerOut(t: number, index: number, count: number): number {
   if (end <= start) return t < start ? 1 : 0;
   return 1 - Math.max(0, Math.min(1, (t - start) / (end - start)));
 }
-// A CASCADE for a card ARRIVING, as opposed to two cards trading places
-// (staggerIn/staggerOut above, which split one `t` between a departure
-// and an arrival). Here the whole of `t` belongs to the arrival: the
-// buttons draw in left to right, each starting before the one before it
-// has finished, so the row reads as one sweep rather than a queue.
-function drawIn(t: number, index: number, count: number): number {
-  if (count <= 0) return 0;
-  const per = 1 / count;
-  const start = index * per * 0.6;
-  const end = start + per * 1.6;
-  if (end <= start) return t > start ? 1 : 0;
-  return Math.max(0, Math.min(1, (t - start) / (end - start)));
-}
 function staggerIn(t: number, index: number, count: number): number {
   if (count <= 0) return 0;
   const per = 0.5 / count;
@@ -886,10 +873,6 @@ export default function ContextDock() {
   // Away FASTER than back, and that asymmetry is the whole trick: the
   // dots have to be gone before the card has visibly left, while coming
   // back they may take their time behind a card already at rest.
-  // THE BUTTONS DRAW IN as their card arrives, one after another rather
-  // than the whole row at once - the same language the desks' icons and
-  // the path's crumbs already speak when they trade places.
-  const actionsDraw = useEase01(showing === 'actions', 420);
   const ringMoving = drag !== null;
   const deskHintDesks = desksCard?.kind === 'desks' ? desksCard.desks : null;
   const deskHintWanted = !!deskHintDesks && faces.includes('desks') && showing !== 'desks' && !ringMoving;
@@ -1577,15 +1560,7 @@ export default function ContextDock() {
           {f === 'actions' && !!actions?.length && (
             <View style={[styles.shell, styles.actionsShell, dims.card]}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionRow}>
-                <ActionGroups
-                  actions={actions}
-                  buttonWidth={ACT_W}
-                  buttonHeight={CARD_BUTTON}
-                  iconSize={ACT_ICON}
-                  theme={theme}
-                  onDone={() => setFace('context')}
-                  alphaAt={(i) => drawIn(actionsDraw, i, actions.length)}
-                />
+                <ActionGroups actions={actions} buttonWidth={ACT_W} buttonHeight={CARD_BUTTON} iconSize={ACT_ICON} theme={theme} onDone={() => setFace('context')} />
               </ScrollView>
             </View>
           )}
@@ -2148,7 +2123,6 @@ function ActionGroups({
   iconSize,
   theme,
   onDone,
-  alphaAt,
 }: {
   actions: DockAction[];
   buttonWidth: number;
@@ -2156,10 +2130,6 @@ function ActionGroups({
   iconSize: number;
   theme: ReturnType<typeof useTheme>;
   onDone: () => void;
-  // How far drawn in each button is, by its place in the WHOLE row -
-  // absent where the row simply stands there (the split's own zone,
-  // which never arrives).
-  alphaAt?: (index: number) => number;
 }) {
   const groups: DockAction[][] = [];
   for (let i = 0; i < actions.length; i += 4) groups.push(actions.slice(i, i + 4));
@@ -2168,27 +2138,17 @@ function ActionGroups({
       {groups.map((group, gi) => (
         <View key={group[0]?.key ?? gi} style={styles.actionGroup}>
           {gi > 0 && <View style={[styles.actionGroupDivider, { backgroundColor: theme.glass.inkMuted }]} />}
-          {group.map((action, bi) => {
-            const button = (
-              <ActionButton
-                key={action.key}
-                action={action}
-                width={buttonWidth}
-                height={buttonHeight}
-                iconSize={iconSize}
-                theme={theme}
-                onDone={onDone}
-              />
-            );
-            if (!alphaAt) return button;
-            // The wrapper carries nothing but the opacity, so the
-            // button's own width and height still decide the layout.
-            return (
-              <View key={action.key} style={{ opacity: alphaAt(gi * 4 + bi) }}>
-                {button}
-              </View>
-            );
-          })}
+          {group.map((action) => (
+            <ActionButton
+              key={action.key}
+              action={action}
+              width={buttonWidth}
+              height={buttonHeight}
+              iconSize={iconSize}
+              theme={theme}
+              onDone={onDone}
+            />
+          ))}
         </View>
       ))}
     </>

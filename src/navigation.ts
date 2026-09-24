@@ -36,18 +36,7 @@ export type RootStackParamList = {
   // offerBoard: this note was just made out of another one's blocks,
   // and the offer to put it on a board rides in with it - see the
   // clipping bar in DocumentEditorScreen.
-  // morph: this push is being drawn by the card-to-page overlay (see
-  // DocumentMorph), so the stack must not slide as well - two moves
-  // fighting over the same half second. Carried on the route rather than
-  // set on the screen, so only the pushes that are morphing lose their
-  // animation.
-  Editor: {
-    documentId: string;
-    autoFocusTitle?: boolean;
-    offerBoard?: boolean;
-    focusLinkTo?: string;
-    morph?: boolean;
-  };
+  Editor: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean; focusLinkTo?: string };
   // Same DocumentEditorScreen as `Editor`, registered a second time purely
   // for its App.tsx presentation style (slide-up modal, swipe-down to
   // dismiss) - used when opening a document FROM the board, so editing it
