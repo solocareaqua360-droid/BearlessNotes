@@ -734,6 +734,10 @@ export interface DocumentItem {
   // обкладинка ліворуч". Only the grid honours it; a list row is
   // already full width.
   wideCard?: boolean;
+  // This note's own paper colour is on - the page draws itself on the
+  // record's colour instead of plain paper. A property of the PAGE, so
+  // the cards that are that page made small honour it too.
+  paperColorEnabled?: boolean;
   // In the bin. A deleted note is not deleted: it is stamped with the
   // moment it went, every list leaves it out, and the bin shows it until
   // it is restored or thrown away for good (or thirty days pass). Its

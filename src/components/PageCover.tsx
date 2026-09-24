@@ -73,15 +73,21 @@ export default function PageCover({
   driveFileId,
   style,
   countsAsUse,
+  paper,
 }: {
   uri: string;
   driveFileId?: string;
+  // The colour of the page it lies on. A note can carry a paper colour
+  // of its own, and an edge that fades to white on coloured paper is a
+  // white haze rather than an edge going away.
+  paper?: string;
   // The page's own `coverImage` - the caller decides how tall a cover
   // is, here and in a miniature alike.
   style?: StyleProp<ViewStyle>;
   countsAsUse?: boolean;
 }) {
   const theme = useTheme();
+  const into = paper ?? theme.paper.fill;
   // Measured, never "100%": react-native-svg's percentage width and
   // height on the root <Svg> are not reliable here - this repo's own
   // list screen says so about a gradient that stayed sized to a folded
@@ -123,8 +129,8 @@ export default function PageCover({
               gradientUnits="userSpaceOnUse"
             >
               {[
-                ...fadeStops(0, FADE, theme.paper.fill, 'top', false),
-                ...fadeStops(1 - FADE, 1, theme.paper.fill, 'bottom', true),
+                ...fadeStops(0, FADE, into, 'top', false),
+                ...fadeStops(1 - FADE, 1, into, 'bottom', true),
               ]}
             </LinearGradient>
           </Defs>

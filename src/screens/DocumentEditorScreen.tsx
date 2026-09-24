@@ -5020,6 +5020,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 coverDrive?.fileId ?? blocks.find((b) => b.imageUri === coverImageUri)?.driveFileId
               }
               style={styles.coverImage}
+              paper={paperColor?.background}
               countsAsUse
             />
           </Pressable>

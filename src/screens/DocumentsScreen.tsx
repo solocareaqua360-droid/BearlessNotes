@@ -870,6 +870,9 @@ export default function DocumentsScreen({
           coverDriveFileId: docSnapshot.data().coverDriveFileId as string | undefined,
           coverGradient: docSnapshot.data().coverGradient as string | undefined,
           wideCard: docSnapshot.data().wideCard as boolean | undefined,
+          // A note's own paper colour is a property of the PAGE, so a
+          // card that is that page has to know about it too.
+          paperColorEnabled: docSnapshot.data().paperColorEnabled as boolean | undefined,
           deletedAt: docSnapshot.data().deletedAt as number | undefined,
         }))
         .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
@@ -1693,6 +1696,7 @@ export default function DocumentsScreen({
                     tags,
                     coverImageUri: item.coverImageUri,
                     coverDriveFileId: item.coverDriveFileId,
+                    paperColorEnabled: !!item.paperColorEnabled,
                   }}
                   project={groups.find((g) => g.id === item.groupId) ?? null}
                   onProjectPress={() => setSingleGroupTargetId(item.id)}

@@ -41,6 +41,7 @@ function DocumentPageMiniature({
   project,
   coverImageUri,
   coverDriveFileId,
+  paperColor = null,
   width,
   height,
   offsetY = 0,
@@ -54,6 +55,9 @@ function DocumentPageMiniature({
   project: { name: string; color: string } | null;
   coverImageUri?: string;
   coverDriveFileId?: string;
+  // The note's OWN paper, where it has one: the sheet, the ink of every
+  // block on it, and what its cover fades into are all that colour then.
+  paperColor?: { background: string; text: string; textMuted: string } | null;
   // The card's own box. The page is laid out at the width a page really
   // has and scaled into this, so what is drawn is the page - not the
   // page's content re-flowed into a card, which is a different picture.
@@ -78,7 +82,10 @@ function DocumentPageMiniature({
   let numbered = 0;
   const shown = blocks.slice(0, MAX_ROWS);
   return (
-    <View style={[styles.sheet, { width, height, backgroundColor: theme.paper.fill }]} pointerEvents="none">
+    <View
+      style={[styles.sheet, { width, height, backgroundColor: paperColor?.background ?? theme.paper.fill }]}
+      pointerEvents="none"
+    >
       {/* Laid out at page size, pinned to the top left and scaled about
           that corner, so the card shows the TOP of the page and cuts off
           wherever its own height ends - the way a page of paper ends. */}
@@ -88,9 +95,14 @@ function DocumentPageMiniature({
             name, the folders, the blocks, the row it ends with. */}
         <View style={styles.headerBand} />
         {!!coverImageUri && (
-          <PageCover uri={coverImageUri} driveFileId={coverDriveFileId} style={editorStyles.coverImage} />
+          <PageCover
+            uri={coverImageUri}
+            driveFileId={coverDriveFileId}
+            style={editorStyles.coverImage}
+            paper={paperColor?.background}
+          />
         )}
-        <Text style={editorStyles.titleInput} numberOfLines={2}>
+        <Text style={[editorStyles.titleInput, paperColor && { color: paperColor.text }]} numberOfLines={2}>
           {title || 'Без назви'}
         </Text>
         <DocumentTagsBlock
@@ -149,15 +161,17 @@ function DocumentPageMiniature({
                   onOpenCustomRow={noop}
                   onOpenCustomView={noop}
                   inputRef={noop}
-                  paperColor={null}
+                  paperColor={paperColor}
                 />
               );
             })}
           </View>
           <View style={editorStyles.addBlockRow}>
             <View style={editorStyles.addBlock}>
-              <Ionicons name="add" size={18} color={theme.paper.ink} />
-              <Text style={editorStyles.addBlockLabel}>Додати блок</Text>
+              <Ionicons name="add" size={18} color={paperColor?.text ?? theme.paper.ink} />
+              <Text style={[editorStyles.addBlockLabel, paperColor && { color: paperColor.text }]}>
+                Додати блок
+              </Text>
             </View>
           </View>
         </ScrollView>

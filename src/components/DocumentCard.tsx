@@ -332,6 +332,7 @@ type Props = {
     tags: Tag[];
     coverImageUri?: string;
     coverDriveFileId?: string;
+    paperColorEnabled?: boolean;
   };
   // What every tile in this grid stands at - see gridHeight.
   pageHeight?: number;
@@ -413,18 +414,29 @@ function PageBody({
   height,
   offsetY,
   paper,
+  paperColor,
   ink,
 }: {
   id: string;
   title: string;
   blocks: Block[];
-  page: { tagIds: string[]; tags: Tag[]; coverImageUri?: string; coverDriveFileId?: string };
+  page: {
+    tagIds: string[];
+    tags: Tag[];
+    coverImageUri?: string;
+    coverDriveFileId?: string;
+    paperColorEnabled?: boolean;
+  };
   project?: { name: string; color: string } | null;
   updatedAt: number;
   onProjectPress?: () => void;
   height: number;
   offsetY?: number;
+  // What the page is drawn ON, and the ink for the card's own line over
+  // it. A note can set a paper colour for itself, and then both of these
+  // are that colour's, not the theme's.
   paper: string;
+  paperColor: { background: string; text: string; textMuted: string } | null;
   ink: string;
 }) {
   const [width, setWidth] = useState(0);
@@ -448,6 +460,7 @@ function PageBody({
           project={project ?? null}
           coverImageUri={page.coverImageUri}
           coverDriveFileId={page.coverDriveFileId}
+          paperColor={paperColor}
           width={width}
           height={height}
           offsetY={offsetY}
@@ -518,6 +531,13 @@ export default function DocumentCard({
   // (see DocumentEditorScreen's `sheetPage`). A card can open its window
   // at the page's own top again.
   const pageTopSkip = 0;
+  // A note that carries a paper colour of its own draws its page on it -
+  // and so does every card that IS that page. `recordColour` is the same
+  // palette the editor asks, keyed the same way, so the two cannot
+  // disagree.
+  const pagePaper = page?.paperColorEnabled ? recordColour(id) : null;
+  const pageFill = pagePaper?.background ?? theme.paper.fill;
+  const pageInk = pagePaper?.textMuted ?? theme.paper.inkMuted;
   const expandedLines = pointer ? EXPANDED_TEXT_LINES_POINTER : EXPANDED_TEXT_LINES;
   const compactLines = pointer ? COMPACT_TEXT_LINES_POINTER : COMPACT_TEXT_LINES;
   // "Розмір тексту" - only the LIST row's own size, never the grid
@@ -644,8 +664,9 @@ export default function DocumentCard({
               onProjectPress={onProjectPress}
               height={gridHeight}
               offsetY={pageTopSkip}
-              paper={theme.paper.fill}
-              ink={theme.paper.inkMuted}
+              paper={pageFill}
+              paperColor={pagePaper}
+              ink={pageInk}
             />
           ) : (
             <>
@@ -703,8 +724,9 @@ export default function DocumentCard({
               onProjectPress={onProjectPress}
               height={gridHeight}
               offsetY={pageTopSkip}
-              paper={theme.paper.fill}
-              ink={theme.paper.inkMuted}
+              paper={pageFill}
+              paperColor={pagePaper}
+              ink={pageInk}
             />
           ) : (
             <>
