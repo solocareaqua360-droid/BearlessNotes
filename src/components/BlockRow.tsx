@@ -765,6 +765,23 @@ export default function BlockRow({
           {textField}
         </View>
       );
+    } else if (type === 'toggle') {
+      // The chevron is the whole control: pressing it folds the page
+      // under this line. It is drawn even where the row is inert (a
+      // card's miniature), because a section that is folded on the page
+      // has to look folded on the card - see visibleBlocks.
+      content = (
+        <View style={styles.prefixedRow}>
+          <Pressable hitSlop={8} onPress={() => onUpdateBlock(item.id, { collapsed: !item.collapsed })}>
+            <Ionicons
+              name={item.collapsed ? 'chevron-forward' : 'chevron-down'}
+              size={18}
+              color={rowPaperColor?.textMuted ?? theme.paper.inkMuted}
+            />
+          </Pressable>
+          {textField}
+        </View>
+      );
     } else if (type === 'checkbox') {
       const reminderLabel = formatReminderBadge(item);
       content = (

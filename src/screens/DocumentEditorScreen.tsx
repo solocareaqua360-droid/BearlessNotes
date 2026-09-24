@@ -101,6 +101,7 @@ import TextRecognizer, {
 import TextSelection from '../components/TextSelection';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { clipBlocksToNote, clippedBlock } from '../utils/copyToNote';
+import { mergeVisibleOrder, visibleBlocks } from '../utils/toggleBlocks';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
@@ -822,6 +823,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     () => (hasReferenceBlocks ? blocks.map((b) => applyLiveRecord(b, liveRecords)) : blocks),
     [blocks, liveRecords, hasReferenceBlocks]
   );
+  // What a folded section hides - see visibleBlocks. The PAGE draws this;
+  // `blocks` stays whole, so nothing is lost by folding and the merge
+  // below can always put a reorder back over the real thing.
+  const shownBlocks = useMemo(() => visibleBlocks(liveBlocks), [liveBlocks]);
   // A link whose title couldn't be fetched automatically (a raw-coordinates
   // Maps link, or any page with no fetchable title) pauses the conversion
   // here instead of silently landing in the `links` mirror unnamed - an
@@ -2001,6 +2006,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         { key: 'bulleted', label: 'З крапками', family: 'material-community', icon: 'format-list-bulleted', onPress: action('bulleted') },
         { key: 'numbered', label: 'Нумерований', family: 'material-community', icon: 'format-list-numbered', onPress: action('numbered') },
         { key: 'checkbox', label: 'З чекбоксами', family: 'ionicons', icon: 'checkbox-outline', onPress: action('checkbox') },
+        // A section that folds the page under it - see the 'toggle'
+        // block type. It sits with the lists because that is what it is
+        // used as: a heading with everything below it tucked in.
+        { key: 'toggle', label: 'Розкривний', family: 'ionicons', icon: 'chevron-down-circle-outline', onPress: action('toggle') },
       ],
     },
     {
@@ -4542,9 +4551,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     clearCopiedObject();
   }
 
+  // `next` is the order of what was ON SCREEN. Folded blocks were never
+  // there to be dragged, so they are put back under the toggle they
+  // belong to, wherever that toggle has landed - a folded section moves
+  // as one thing, which is the only reading of it that is not a trap.
   function handleReorderBlocks(next: Block[]) {
     snapshotBeforeChange();
-    setBlocks(next);
+    setBlocks((prev) => mergeVisibleOrder(prev, next));
   }
 
   async function shareImageBlock(block: Block) {
@@ -5290,7 +5303,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // nowhere else on purpose: `blocks` is what gets saved, and a
           // live value must never be written back into the document as
           // though someone had typed it.
-          blocks={liveBlocks}
+          blocks={shownBlocks}
           onReorder={handleReorderBlocks}
           onHoldWithoutDrag={selectFromHold}
           selectedIds={selectedIds}

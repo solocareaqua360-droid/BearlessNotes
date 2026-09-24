@@ -5,6 +5,7 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Block, Tag } from '../types';
 import PageCover from './PageCover';
 import BlockRow from './BlockRow';
+import { visibleBlocks } from '../utils/toggleBlocks';
 import DocumentTagsBlock from './DocumentTagsBlock';
 import { PAGE_HEADER_TOP, PAGE_SHEET_INSET, makeStyles as makeEditorStyles } from './documentEditorStyles';
 
@@ -80,7 +81,9 @@ function DocumentPageMiniature({
   const pageWidth = windowWidth - PAGE_SHEET_INSET * 2;
   const scale = width / pageWidth;
   let numbered = 0;
-  const shown = blocks.slice(0, MAX_ROWS);
+  // A folded section is folded here too - see visibleBlocks. A card that
+  // showed what its page hides would stop being the same picture.
+  const shown = visibleBlocks(blocks).slice(0, MAX_ROWS);
   return (
     <View
       style={[styles.sheet, { width, height, backgroundColor: paperColor?.background ?? theme.paper.fill }]}

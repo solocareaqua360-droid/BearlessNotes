@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Block } from '../types';
 import { stripFormatting } from '../utils/documentPreview';
 import AttachmentImage from './AttachmentImage';
+import { visibleBlocks } from '../utils/toggleBlocks';
 import { useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 
@@ -42,7 +43,8 @@ export default function CardPreview({
   mutedColor: string;
 }) {
   const styles = useStyles(makeStyles);
-  const shown = blocks.slice(0, MAX_BLOCKS);
+  // Folded on the page, folded here - see visibleBlocks.
+  const shown = visibleBlocks(blocks).slice(0, MAX_BLOCKS);
   let numbered = 0;
 
   return (
@@ -82,6 +84,19 @@ export default function CardPreview({
                   numberOfLines={1}
                   style={[styles.text, styles.rowText, { color: mutedColor }, block.checked && styles.done]}
                 >
+                  {text}
+                </Text>
+              </View>
+            );
+          case 'toggle':
+            return (
+              <View key={block.id} style={styles.row}>
+                <Ionicons
+                  name={block.collapsed ? 'chevron-forward' : 'chevron-down'}
+                  size={10}
+                  color={mutedColor}
+                />
+                <Text numberOfLines={1} style={[styles.text, styles.rowText, { color }]}>
                   {text}
                 </Text>
               </View>

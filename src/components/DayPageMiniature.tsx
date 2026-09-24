@@ -5,6 +5,7 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import { makeStyles as makeEditorStyles } from './documentEditorStyles';
 import type { Block } from '../types';
 import BlockRow from './BlockRow';
+import { visibleBlocks } from '../utils/toggleBlocks';
 
 // A day's page, shrunk - what the calendar's overview on a phone is made
 // of.
@@ -52,7 +53,9 @@ function DayPageMiniature({
   const width = pageWidth * scale;
   const height = pageHeight * scale;
   let runningNumber = 0;
-  const shown = blocks.slice(0, MAX_ROWS);
+  // A folded section is folded here too - see visibleBlocks. A card that
+  // showed what its page hides would stop being the same picture.
+  const shown = visibleBlocks(blocks).slice(0, MAX_ROWS);
   return (
     <View
       style={[styles.sheet, { width, height, borderRadius: radius, backgroundColor: theme.paper.fill }]}

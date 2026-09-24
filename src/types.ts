@@ -24,6 +24,15 @@ export type BlockType =
   // rather than from a snapshot - editing the row in its own database
   // updates every document that mentions it, which is the two-way link
   // PROJECT_BRIEF.md asks for.
+  // A line with a chevron that FOLDS THE PAGE UNDER IT: collapsed, every
+  // block after it is hidden until the next toggle, or the end of the
+  // note. A section, in other words, rather than Notion's own toggle,
+  // which owns a list of children - and deliberately so. Every list in
+  // this app is flat (the drag, the selection, the canvas, the card
+  // miniatures, the per-block sync all read one array), and a block that
+  // owns other blocks would have to be taught to each of them. A rule
+  // about what FOLLOWS costs one boolean and nothing else.
+  | 'toggle'
   | 'dbRow'
   // A saved view of a user-created database (CustomDatabaseView), embedded
   // as a live-filtered, live-sorted slice of its rows - same two-way link
@@ -158,6 +167,8 @@ export interface Block {
   // 'file' blocks only - an optional rename that overrides fileName for
   // display (see FilesScreen) without touching the actual attached file.
   fileTitle?: string;
+  // 'toggle' blocks only: folded, so what follows it is not drawn.
+  collapsed?: boolean;
   // 'dbRow' blocks only. The block's own `id` IS the referenced row's id
   // (same convention file/image blocks follow with their record), so this
   // only has to carry which database that row lives in. dbRowTitle is a

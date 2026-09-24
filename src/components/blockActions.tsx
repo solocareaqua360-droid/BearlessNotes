@@ -4,6 +4,7 @@ export type BlockAction =
   | 'heading'
   | 'code'
   | 'bulleted'
+  | 'toggle'
   | 'numbered'
   | 'checkbox'
   | 'divider'
@@ -39,6 +40,8 @@ export const BLOCK_ACTIONS: BlockActionEntry[] = [
   { key: 'bulleted', family: 'material-community', icon: 'format-list-bulleted', label: 'Список' },
   { key: 'numbered', family: 'material-community', icon: 'format-list-numbered', label: 'Нумерований список' },
   { key: 'checkbox', family: 'ionicons', icon: 'checkbox-outline', label: 'Чекбокс' },
+  // A line that folds the page under it - see the 'toggle' block type.
+  { key: 'toggle', family: 'ionicons', icon: 'chevron-down-circle-outline', label: 'Розкривний розділ' },
   { key: 'divider', family: 'ionicons', icon: 'remove-outline', label: 'Лінія' },
   { key: 'image', family: 'ionicons', icon: 'image-outline', label: 'Зображення' },
   { key: 'camera', family: 'ionicons', icon: 'camera-outline', label: 'Камера' },
