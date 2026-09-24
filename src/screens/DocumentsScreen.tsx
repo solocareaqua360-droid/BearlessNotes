@@ -282,6 +282,18 @@ export default function DocumentsScreen({
   const [folderEdit, setFolderEdit] = useState<Tag | null>(null);
   const [docRename, setDocRename] = useState<DocumentItem | null>(null);
   const morph = useDocumentMorph();
+  // Everything the flying page has to draw, in one place, so the way out
+  // and the way back can never disagree about what the page looks like.
+  function morphDoc(doc: DocumentItem) {
+    return {
+      id: doc.id,
+      title: doc.title ?? '',
+      blocks: doc.blocks ?? [],
+      tagIds: doc.tagIds ?? [],
+      tags,
+      project: groups.find((g) => g.id === doc.groupId) ?? null,
+    };
+  }
   // Which document this list morphed into, so the way back knows whose
   // card to fold onto.
   const morphedRef = useRef<string | null>(null);
@@ -994,7 +1006,7 @@ export default function DocumentsScreen({
       return;
     }
     morphedRef.current = id;
-    morph.open({ id, title: doc.title ?? '', blocks: doc.blocks ?? [] }, () => go(true));
+    morph.open(morphDoc(doc), () => go(true));
   }
   // ...and folds back into it. The pop carries no animation of its own
   // (see the Editor route's `morph`), so this list is simply here again
@@ -1007,7 +1019,7 @@ export default function DocumentsScreen({
     morphedRef.current = null;
     const doc = documents.find((d) => d.id === id);
     if (!doc) return;
-    morph.close({ id, title: doc.title ?? '', blocks: doc.blocks ?? [] });
+    morph.close(morphDoc(doc));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused]);
 

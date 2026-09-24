@@ -1,7 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { View as RNView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import DocumentTagsBlock from './DocumentTagsBlock';
+import ProjectBadge from './ProjectBadge';
+import type { Group, Tag } from '../types';
+import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 import { makeStyles as makeEditorStyles } from './documentEditorStyles';
 import type { Block } from '../types';
 import BlockRow from './BlockRow';
@@ -47,7 +52,19 @@ const MAX_ROWS = 40;
 const noop = () => {};
 
 export type MorphRect = { x: number; y: number; width: number; height: number };
-export type MorphDoc = { id: string; title: string; blocks: Block[] };
+// Everything the page SHOWS, not everything it is: what the flight has
+// to draw so that the screen it hands over to has nothing left to add.
+// Both of these were missing at first and both announced themselves the
+// same way - "бац блимає та з'являється в самому кінці", at the one
+// moment when nothing should move at all.
+export type MorphDoc = {
+  id: string;
+  title: string;
+  blocks: Block[];
+  tagIds: string[];
+  tags: Tag[];
+  project: Group | null;
+};
 
 type Flight = {
   doc: MorphDoc;
@@ -189,6 +206,7 @@ function MorphSurface({
   // this becomes draws the title with exactly these, and a hand-over
   // where the title jumps a size is the one thing the eye would catch.
   const editorStyles = useStyles(makeEditorStyles);
+  const insets = useSafeAreaInsets();
   const t = flight.open;
   const { rect } = flight;
   const x = rect.x * (1 - t);
@@ -236,6 +254,19 @@ function MorphSurface({
           <Text style={[editorStyles.titleInput, styles.title]} numberOfLines={2}>
             {flight.doc.title || 'Без назви'}
           </Text>
+          {/* The real one, not a picture of it: a row drawn by hand from
+              the same tags would be a second thing to keep in step with
+              this one, and it is the mismatch that would show. Inert -
+              every handler here is a no-op, and the surface takes no
+              touches at all. */}
+          <DocumentTagsBlock
+            tagIds={flight.doc.tagIds}
+            tags={flight.doc.tags}
+            onAttach={noop}
+            onDetach={noop}
+            onCreateAndAttach={noop}
+            onRenameTag={noop}
+          />
           {/* The rows live in a scroll view that never scrolls, because
               that is the shape they were written against - laid straight
               into a box of fixed height they lose every row that fills
@@ -289,6 +320,11 @@ function MorphSurface({
             })}
           </View>
         </View>
+        {/* Where the editor's own rail puts it, in the page's own
+            coordinates - it scales with everything else. */}
+        <View style={[styles.badge, { top: insets.top + CHROME_TOP, right: RAIL_RIGHT }]} pointerEvents="none">
+          <ProjectBadge project={flight.doc.project} glass />
+        </View>
       </View>
     </GlassPortal>
   );
@@ -310,5 +346,9 @@ const styles = StyleSheet.create({
   },
   rows: {
     paddingHorizontal: 12,
+  },
+  badge: {
+    position: 'absolute',
+    alignItems: 'center',
   },
 });
