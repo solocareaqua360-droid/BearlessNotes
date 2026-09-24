@@ -292,6 +292,8 @@ export default function DocumentsScreen({
       tagIds: doc.tagIds ?? [],
       tags,
       project: groups.find((g) => g.id === doc.groupId) ?? null,
+      coverImageUri: doc.coverImageUri,
+      coverDriveFileId: doc.coverDriveFileId,
     };
   }
   // Which document this list morphed into, so the way back knows whose

@@ -5,6 +5,7 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming
 import type { SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import AttachmentImage from './AttachmentImage';
 import DocumentTagsBlock from './DocumentTagsBlock';
 import ProjectBadge from './ProjectBadge';
 import type { Group, Tag } from '../types';
@@ -55,8 +56,15 @@ const BACK_MS = 280;
 // How long the page stands at full screen before it is handed to the
 // real editor - room for that screen's first frame, during which what is
 // on top is the same page it is about to draw.
-const HANDOVER_MS = 150;
-const FADE_MS = 120;
+const HANDOVER_MS = 220;
+// Long enough to be a settle rather than a cut. The page here and the
+// page the editor draws are two renders of the same thing, never the
+// same pixels, and at 120ms the difference between them read as a blink
+// - "може одна картинка іншою підміняється?", which is exactly what it
+// is. What is left is to make the two as alike as they can be (see the
+// page below, which is built out of the editor's own styles in the
+// editor's own order) and to dissolve rather than swap.
+const FADE_MS = 220;
 const CARD_RADIUS = 16;
 // Past this nothing can be seen on even the tallest page.
 const MAX_ROWS = 40;
@@ -75,6 +83,8 @@ export type MorphDoc = {
   tagIds: string[];
   tags: Tag[];
   project: Group | null;
+  coverImageUri?: string;
+  coverDriveFileId?: string;
 };
 
 type Flight = { doc: MorphDoc; rect: MorphRect };
@@ -239,8 +249,20 @@ function MorphSurface({
         style={[styles.surface, { backgroundColor: theme.paper.fill }, surfaceStyle]}
       >
         <Animated.View style={[styles.page, { width: windowW, height: windowH }, pageStyle]}>
-          {/* The page's own name, where the page puts it. */}
-          <Text style={[editorStyles.titleInput, styles.title]} numberOfLines={2}>
+          {/* THE EDITOR'S OWN ORDER, and its own styles at every step:
+              an empty header band, the cover, the name, the folders, the
+              blocks. Anything laid out even a few points from where that
+              screen lays it out ghosts across the hand-over, which is
+              the whole of what there is left to get wrong here. */}
+          <View style={styles.headerBand} />
+          {!!flight.doc.coverImageUri && (
+            <AttachmentImage
+              uri={flight.doc.coverImageUri}
+              driveFileId={flight.doc.coverDriveFileId}
+              style={editorStyles.coverImage}
+            />
+          )}
+          <Text style={editorStyles.titleInput} numberOfLines={2}>
             {flight.doc.title || 'Без назви'}
           </Text>
           {/* The real one, not a picture of it: a row drawn by hand from
@@ -262,7 +284,7 @@ function MorphSurface({
               its line. See DayPageMiniature, which learned this the hard
               way. Deliberately its own copy rather than that component
               reshaped: this one's height is not its width's business. */}
-          <View style={styles.rows}>
+          <View style={editorStyles.blockListContainer}>
             {shown.map((item, index) => {
               if (item.type === 'numbered') {
                 numbered = index > 0 && shown[index - 1].type === 'numbered' ? numbered + 1 : 1;
@@ -328,13 +350,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     overflow: 'hidden',
   },
-  title: {
-    // Clear of the status bar and the note's own floating capsule, which
-    // is roughly where the editor's title sits on arrival.
-    paddingTop: 72,
-  },
-  rows: {
-    paddingHorizontal: 12,
+  // The editor's own `header` with both its buttons gone to the dock:
+  // 56 above, 12 below, nothing in between.
+  headerBand: {
+    height: 68,
   },
   badge: {
     position: 'absolute',
