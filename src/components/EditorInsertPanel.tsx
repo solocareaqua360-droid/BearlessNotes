@@ -71,14 +71,43 @@ export default function EditorInsertPanel({
   const scrollRef = useRef<ScrollView>(null);
   const offsets = useRef(new Map<PanelSection, number>());
   const lastJump = useRef(0);
+  // A jump asked for before the sections have said where they are.
+  const pending = useRef<PanelSection | null>(null);
+  const jumpFrame = useRef<number | null>(null);
 
   // Each section reports where it starts, and the jump is a plain scroll
-  // to that offset - one list, not five panels.
+  // to that offset - one list, not five panels. Scheduled a frame out,
+  // and every new report replaces the one before, so the last and
+  // smallest offset is the one that is used.
+  const scrollToSection = (section: PanelSection, animated: boolean) => {
+    const y = offsets.current.get(section);
+    if (y === undefined) return false;
+    if (jumpFrame.current !== null) cancelAnimationFrame(jumpFrame.current);
+    jumpFrame.current = requestAnimationFrame(() => {
+      jumpFrame.current = null;
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated });
+    });
+    return true;
+  };
+
+  // THE FIRST PRESS IS THE ONE THAT MATTERS. A section button on the bar
+  // both opens the panel and names the section, and on that first press
+  // the panel is only now mounting: no section has laid out yet, so there
+  // was no offset to go to, the jump was spent, and it took a second
+  // press - "навіщо мені натискати два рази". A jump that finds nothing
+  // is kept and carried out by the layouts as they arrive, without
+  // animation: the panel should open already there, not scroll there
+  // in front of the user.
   if (jumpTo && jumpTo.at !== lastJump.current) {
     lastJump.current = jumpTo.at;
-    const y = offsets.current.get(jumpTo.section);
-    if (y !== undefined) {
-      requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true }));
+    pending.current = scrollToSection(jumpTo.section, true) ? null : jumpTo.section;
+    // Only for the panel's own first layout, which comes within a frame
+    // or two; after that a stray re-layout is not a request to move.
+    if (pending.current) {
+      const waiting = pending.current;
+      setTimeout(() => {
+        if (pending.current === waiting) pending.current = null;
+      }, 600);
     }
   }
 
@@ -89,6 +118,11 @@ export default function EditorInsertPanel({
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="always"
+        // The user's own scroll ends a jump still waiting on layouts - a
+        // late layout must never drag the list back out from under them.
+        onScrollBeginDrag={() => {
+          pending.current = null;
+        }}
       >
         {groups.map((group) => (
           <View
@@ -101,6 +135,7 @@ export default function EditorInsertPanel({
               const y = e.nativeEvent.layout.y;
               const known = offsets.current.get(group.section);
               if (known === undefined || y < known) offsets.current.set(group.section, y);
+              if (pending.current) scrollToSection(pending.current, false);
             }}
           >
             <Text style={styles.sectionTitle}>{group.title}</Text>

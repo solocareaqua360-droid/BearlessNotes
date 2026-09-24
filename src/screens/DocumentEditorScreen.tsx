@@ -3133,6 +3133,33 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       openSlashMenu(id);
     }
 
+    // A toggle is a one-line heading for what follows it, so a single
+    // Enter starts that content: a plain line right under it. A folded
+    // toggle is opened on the way - the new line lands among the blocks
+    // it hides, and typing into something out of sight is no use to
+    // anyone.
+    if (currentType === 'toggle') {
+      const newlineIndex = text.indexOf('\n');
+      if (newlineIndex !== -1) {
+        const before = text.slice(0, newlineIndex);
+        const after = text.slice(newlineIndex + 1);
+        const created: Block = { ...newBlock(), text: after };
+        focusIdRef.current = created.id;
+        bumpTextVersion(id);
+        setBlocks((prev) => {
+          const index = prev.findIndex((b) => b.id === id);
+          if (index === -1) return prev;
+          const next = [...prev];
+          next[index] = { ...next[index], text: before, collapsed: false };
+          next.splice(index + 1, 0, created);
+          return next;
+        });
+        return;
+      }
+      setBlocks((prev) => prev.map((block) => (block.id === id ? { ...block, text } : block)));
+      return;
+    }
+
     // List items (bulleted/numbered/checkbox) continue the list on a
     // single Enter instead of needing a second one - typing a whole
     // sentence per item would be tedious otherwise. Pressing Enter on an
@@ -4216,6 +4243,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       case 'bulleted':
       case 'numbered':
       case 'checkbox':
+      case 'toggle':
       case 'divider':
         convertBlockType(blockId, action);
         return;
