@@ -4,7 +4,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { openCapture } from './CaptureWindow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Rect } from 'react-native-svg';
 import { GlassPortal } from './GlassPortal';
 import DockFrost from './DockFrost';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
@@ -247,6 +247,11 @@ const HERE_FILL = 'rgba(255,255,255,0.16)';
 // a few points, its rim clears the card's own edge with room to spare,
 // whichever card this happens to be.
 const HERE_SHRINK = 6;
+// WHAT «YOU ARE HERE» IS SHAPED LIKE, now that nothing in this block is
+// round: the desk you are on, the day you are on, the folder you are in.
+// A disc among rounded squares is the one thing left saying the block is
+// made of two families.
+const HERE_RADIUS = 11;
 // Sizes as FRACTIONS OF THE SCREEN'S WIDTH, read off the reference and
 // our own dock side by side at the same pixel scale. Not points: every
 // guess at this phone's density was wrong, and a dock sized in points
@@ -502,10 +507,15 @@ function useLiftClock(up: boolean, ms: number): number {
 
 // `rise` is 1 at the resting line and goes past it on the throw; `spread`
 // is 0 as a circle and 1 as the whole strip.
-function shapeIn(p: number) {
+function shapeIn(p: number, thrown: boolean) {
   const top = RISE_MS / LIFT_IN_MS;
   const land = (RISE_MS + FALL_MS) / LIFT_IN_MS;
-  const peak = 1 + LIFT_OVERSHOOT;
+  // A THROW ONLY WHERE THERE WAS NOTHING. Handed straight from one strip
+  // to another - a folder's path to the calendar's days - the place was
+  // never empty, so nothing has arrived: it is the same strip changing
+  // what it says. It gathers, goes under, and comes back out, and a leap
+  // in the middle of that would be an event where there is none.
+  const peak = thrown ? 1 + LIFT_OVERSHOOT : 1;
   const rise =
     p <= top
       ? easeOutCubic(p / top) * peak
@@ -536,7 +546,13 @@ function shapeOut(p: number) {
 // gate on each other's live value, which is a circle - and a circle that
 // settles is a strip that never comes back up.
 function useStripLift(wanted: LiftKind) {
-  const [shown, setShown] = useState<LiftKind>(wanted);
+  // `handedOver` remembers that the place was taken straight from another
+  // strip rather than found empty - see shapeIn.
+  const [lift, setLift] = useState<{ kind: LiftKind; handedOver: boolean }>({
+    kind: wanted,
+    handedOver: false,
+  });
+  const shown = lift.kind;
   const up = shown !== null && shown === wanted;
   const p = useLiftClock(up, up ? LIFT_IN_MS : LIFT_OUT_MS);
   useEffect(() => {
@@ -544,9 +560,9 @@ function useStripLift(wanted: LiftKind) {
     // not the same as gone, and unmounting on the telling took strips off
     // the screen at the start of their own descent.
     if (shown === wanted || p > 0.001) return;
-    setShown(wanted);
+    setLift({ kind: wanted, handedOver: shown !== null });
   }, [shown, wanted, p]);
-  const shape = up ? shapeIn(p) : shapeOut(p);
+  const shape = up ? shapeIn(p, !lift.handedOver) : shapeOut(p);
   return { kind: shown, live: p, rise: shape.rise, spread: shape.spread };
 }
 const DESK_HINT_H = 16;
@@ -1478,14 +1494,21 @@ export default function ContextDock() {
                   {desks.desks.map((desk) => (
                     <Pressable key={desk.key} onPress={desk.onPress} onLongPress={openCapture} delayLongPress={400}>
                       {desk.active ? (
-                        <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
+                        <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: HERE_RADIUS }]}>
                           <Svg width={DESK} height={DESK} style={StyleSheet.absoluteFill} pointerEvents="none">
-                            <Circle cx={DESK / 2} cy={DESK / 2} r={DESK / 2 - HERE_SHRINK} fill={HERE_FILL} />
+                            <Rect
+                              x={HERE_SHRINK}
+                              y={HERE_SHRINK}
+                              width={DESK - HERE_SHRINK * 2}
+                              height={DESK - HERE_SHRINK * 2}
+                              rx={HERE_RADIUS}
+                              fill={HERE_FILL}
+                            />
                           </Svg>
                           <Ionicons name={desk.icon as keyof typeof Ionicons.glyphMap} size={22} color={theme.glass.ink} />
                         </View>
                       ) : (
-                        <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
+                        <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: HERE_RADIUS }]}>
                           <Ionicons name={desk.icon as keyof typeof Ionicons.glyphMap} size={22} color={theme.glass.ink} />
                         </View>
                       )}
@@ -1571,7 +1594,7 @@ export default function ContextDock() {
                       <View key={target} style={styles.trailPair}>
                         <Ionicons name="chevron-forward" size={13} color={theme.glass.inkMuted} />
                         {isLast ? (
-                          <View style={[styles.trailCurrent, { borderRadius: CARD_BUTTON / 2 }, styles.here]}>
+                          <View style={[styles.trailCurrent, styles.here]}>
                             <Text style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]} numberOfLines={1}>
                               {segment}
                             </Text>
@@ -1677,14 +1700,21 @@ export default function ContextDock() {
               {desks!.desks.map((desk, i) => (
                 <Pressable key={desk.key} onPress={desk.onPress} onLongPress={openCapture} delayLongPress={400} style={{ opacity: deskAlpha(i) }}>
                   {desk.active ? (
-                    <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
+                    <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: HERE_RADIUS }]}>
                       <Svg width={DESK} height={DESK} style={StyleSheet.absoluteFill} pointerEvents="none">
-                        <Circle cx={DESK / 2} cy={DESK / 2} r={DESK / 2 - HERE_SHRINK} fill={HERE_FILL} />
+                        <Rect
+                          x={HERE_SHRINK}
+                          y={HERE_SHRINK}
+                          width={DESK - HERE_SHRINK * 2}
+                          height={DESK - HERE_SHRINK * 2}
+                          rx={HERE_RADIUS}
+                          fill={HERE_FILL}
+                        />
                       </Svg>
                       <Ionicons name={desk.icon as keyof typeof Ionicons.glyphMap} size={22} color={theme.glass.ink} />
                     </View>
                   ) : (
-                    <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: DESK / 2 }]}>
+                    <View style={[styles.actionButton, { width: DESK, height: DESK, borderRadius: HERE_RADIUS }]}>
                       <Ionicons name={desk.icon as keyof typeof Ionicons.glyphMap} size={22} color={theme.glass.ink} />
                     </View>
                   )}
@@ -1707,7 +1737,7 @@ export default function ContextDock() {
                     <View key={target} style={[styles.trailPair, { opacity: crumbAlpha(index + 1) }]}>
                       <Ionicons name="chevron-forward" size={13} color={theme.glass.inkMuted} />
                       {isLast ? (
-                        <View style={[styles.trailCurrent, { borderRadius: CARD_BUTTON / 2 }, styles.here]}>
+                        <View style={[styles.trailCurrent, styles.here]}>
                           <Text style={[styles.trailLabel, styles.trailLabelCurrent, { color: theme.glass.ink }]} numberOfLines={1}>
                             {segment}
                           </Text>
@@ -2492,7 +2522,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    borderRadius: 999,
+    borderRadius: HERE_RADIUS,
   },
   dayWeekday: {
     fontSize: 11,
@@ -2569,7 +2599,7 @@ const styles = StyleSheet.create({
   trailCurrent: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: HERE_RADIUS,
   },
   trailLabel: {
     fontSize: 14,
