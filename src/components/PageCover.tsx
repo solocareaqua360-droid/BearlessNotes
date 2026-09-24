@@ -27,6 +27,14 @@ const FADE = 0.2;
 // laid-out height is not always a whole number, and an <Svg> sized to a
 // fractional one paints a row short of it. The fade is drawn a couple of
 // points larger than the box, and the box clips the difference.
+//
+// The gradient is measured against the BOX, though, not against that
+// larger rectangle - which is what went wrong on the first try. Stretched
+// over the bleed, its last stop landed below the visible edge, so the
+// bottom row came out at ninety-odd per cent and the picture showed
+// through it as exactly the line this was meant to remove. In user space
+// it reaches full paper at the box's own bottom and simply stays there
+// for the bleed.
 const BLEED = 2;
 
 export default function PageCover({
@@ -75,7 +83,14 @@ export default function PageCover({
           pointerEvents="none"
         >
           <Defs>
-            <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <LinearGradient
+              id={gradientId}
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={Math.ceil(box.h)}
+              gradientUnits="userSpaceOnUse"
+            >
               <Stop offset="0" stopColor={theme.paper.fill} stopOpacity={1} />
               <Stop offset={FADE} stopColor={theme.paper.fill} stopOpacity={0} />
               <Stop offset={1 - FADE} stopColor={theme.paper.fill} stopOpacity={0} />
