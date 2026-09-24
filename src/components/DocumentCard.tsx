@@ -1,6 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
-import { useRecordColour, useTextScale } from '../theme/ThemeProvider';
+import { useRecordColour, useTextScale, useTheme } from '../theme/ThemeProvider';
 import { useDensity } from '../hooks/useDensity';
 import CardPreview from './CardPreview';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/docum
 import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
 import ProjectBadge from './ProjectBadge';
 import DocumentPageMiniature from './DocumentPageMiniature';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 // Fine grain laid over every card. Two things keep it reading as paper
 // tooth and not as dirt: the specks are half lighter and half darker than
@@ -321,6 +322,8 @@ type Props = {
     coverImageUri?: string;
     coverDriveFileId?: string;
   };
+  // What every tile in this grid stands at - see gridHeight.
+  pageHeight?: number;
   // Being carried right now - the card stays where it is and fades, the
   // ghost at the finger is the thing in hand.
   dimmed?: boolean;
@@ -371,6 +374,7 @@ export default function DocumentCard({
   flush,
   cardRef,
   page,
+  pageHeight,
   dimmed,
   project,
   onProjectPress,
@@ -385,7 +389,14 @@ export default function DocumentCard({
   const pointer = useDensity() === 'pointer';
   const dense = pointer && !isGrid;
   // The tile's own height, and with it how much of the note shows.
-  const gridHeight = pointer ? GRID_CARD_HEIGHT_POINTER : GRID_CARD_HEIGHT;
+  // A TILE IS A SHEET, so its shape is a sheet's - taller than it is
+  // wide, by the proportion below, worked out from the tile's own width
+  // rather than fixed. `pageHeight` is passed in for the one card that
+  // cannot work it out for itself: a WIDE card is twice the width and
+  // must still stand exactly as tall as an ordinary tile beside it, or a
+  // row of one and a row of two stop reading as one grid.
+  const gridHeight = pageHeight ?? (pointer ? GRID_CARD_HEIGHT_POINTER : GRID_CARD_HEIGHT);
+  const theme = useTheme();
   const expandedLines = pointer ? EXPANDED_TEXT_LINES_POINTER : EXPANDED_TEXT_LINES;
   const compactLines = pointer ? COMPACT_TEXT_LINES_POINTER : COMPACT_TEXT_LINES;
   // "Розмір тексту" - only the LIST row's own size, never the grid
@@ -548,7 +559,29 @@ export default function DocumentCard({
                   picture rather than inside it, so the picture stays the
                   page. */}
               <View style={styles.pageChrome} pointerEvents="box-none">
-                <Text style={[styles.dateCompact, styles.pageChromeDate]}>{formatUpdatedAt(updatedAt)}</Text>
+                {/* THE PAGE'S OWN PAPER, fading up into nothing - not a
+                    white slab. Hard-coded white, it was a bright band
+                    across a dark page in the black theme, and a wall of
+                    them scrolling past read as a zebra. And whatever the
+                    colour, an edge is what the eye catches: this has
+                    none, it simply stops being there. */}
+                <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none">
+                  <Defs>
+                    {/* Unique per card: a gradient id is a name in the
+                        whole document, and a wall of cards sharing one
+                        is a wall of cards sharing whichever definition
+                        happened to be drawn last. */}
+                    <LinearGradient id={`chrome-${id}`} x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0" stopColor={theme.paper.fill} stopOpacity={0} />
+                      <Stop offset="0.55" stopColor={theme.paper.fill} stopOpacity={0.82} />
+                      <Stop offset="1" stopColor={theme.paper.fill} stopOpacity={0.98} />
+                    </LinearGradient>
+                  </Defs>
+                  <Rect x="0" y="0" width="100%" height="100%" fill={`url(#chrome-${id})`} />
+                </Svg>
+                <Text style={[styles.dateCompact, { color: theme.paper.inkMuted }]}>
+                  {formatUpdatedAt(updatedAt)}
+                </Text>
                 {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
               </View>
             </>
@@ -900,12 +933,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 6,
     paddingHorizontal: 10,
-    paddingTop: 14,
+    // Room for the fade to happen in - a gradient in eight points is a
+    // line with soft edges, not a fade.
+    paddingTop: 34,
     paddingBottom: 8,
-    backgroundColor: 'rgba(255,255,255,0.86)',
-  },
-  pageChromeDate: {
-    color: '#6B7280',
   },
   gridSelectBox: {
     position: 'absolute',

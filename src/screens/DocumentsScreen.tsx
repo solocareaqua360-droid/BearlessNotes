@@ -455,6 +455,13 @@ export default function DocumentsScreen({
   // rail.
   const listWidth = (paneRect.width || layoutWidth) - 40;
   const gridCardWidth = Math.floor((listWidth - 12 * (gridColumns - 1)) / gridColumns);
+  // A TILE IS A SHEET, so it stands taller than it is wide - the user's
+  // own "більше прямокутними", once a tile became the page itself. The
+  // proportion, not a height: with two columns on a phone and more on a
+  // wide window, one number would be a different shape on each. Every
+  // tile in the grid takes this, wide cards included, or a row of one
+  // and a row of two stop reading as one grid.
+  const gridPageHeight = Math.round(gridCardWidth * 1.6);
   // FlatList lays a grid out in fixed cells and has no notion of one
   // item spanning several. So the DATA is arranged instead: a wide card
   // is given a row of its own, and the rest of that row is filled with
@@ -1679,6 +1686,7 @@ export default function DocumentsScreen({
                   // Only the tile so far, and only a real tile: a wide
                   // card standing inside the tile grid is still its own
                   // composition until this has been seen and kept.
+                  pageHeight={drawnMode === 'grid' ? gridPageHeight : undefined}
                   page={
                     drawnMode === 'grid' && !item.wideCard
                       ? {
