@@ -8,7 +8,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { useLogicalWindow } from '../hooks/useDeskScale';
 import { BlurTargetBridge, useBlurTarget } from './GlassTarget';
 
 // Draws a sheet at the top of the app instead of where it is declared.
@@ -53,7 +54,11 @@ export function GlassPortalHost({ children }: { children: ReactNode }) {
   // - not this file's Yoga chain's opinion of it - so giving `host` an
   // explicit height from it can no longer disagree with what the actual
   // screen underneath is doing.
-  const { height: windowHeight } = useWindowDimensions();
+  // The LOGICAL window, not the device's own - see useDeskScale. On a
+  // screen where the app picks its own density this host lives inside a
+  // smaller box than the monitor, and the device's height would put the
+  // dock half a screen below the bottom edge.
+  const { height: windowHeight } = useLogicalWindow();
   const [nodes, setNodes] = useState<Map<string, { node: ReactNode; priority: number }>>(new Map());
   const mount = useCallback<Mount>((id, node, priority) => {
     setNodes((prev) => {
