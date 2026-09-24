@@ -14,13 +14,16 @@ import { PixelRatio, useWindowDimensions } from 'react-native';
 //
 // The answer is to pick our own density: lay the app out against a
 // smaller logical screen and scale the whole tree up to fill the real
-// one. Two on a density-1 display puts a point back at two pixels, which
-// is what every other screen this app runs on gives it.
+// one.
 //
 // Only where the numbers say so. On a phone, a tablet, a Fold or a
 // browser the scale is one and the app is mounted exactly as it always
 // was - see App.tsx, which renders no wrapper at all in that case.
-const TARGET_DENSITY = 2;
+// Two was the phone's own density and it overshot: a monitor is looked
+// at from an arm's length rather than a hand's, and what a desk wants is
+// MORE on it, not bigger. The user's own read - "його треба було
+// зменшити, а не збільшити".
+const TARGET_DENSITY = 1.5;
 // Below this a screen is a device held in the hand, whatever it reports.
 const DESK_MIN_WIDTH = 900;
 
@@ -29,9 +32,10 @@ export function useDeskScale(): number {
   const density = PixelRatio.get();
   if (density >= 1.5) return 1;
   if (Math.max(width, height) < DESK_MIN_WIDTH) return 1;
-  // Whole numbers only: a fractional scale puts every edge in the app
-  // between two pixels, which is the blur people blame on the platform.
-  return Math.max(1, Math.min(3, Math.round(TARGET_DENSITY / density)));
+  // Halves, not any number: a scale of 1.5 leaves an odd size straddling
+  // a pixel, which is mild, while an arbitrary fraction puts EVERY edge
+  // between two - and that is the blur people blame on the platform.
+  return Math.max(1, Math.min(3, Math.round((TARGET_DENSITY / density) * 2) / 2));
 }
 
 // The size the app is laid out against once that scale is applied - the
