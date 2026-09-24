@@ -42,6 +42,12 @@ const GRID_CARD_HEIGHT = 228;
 // How far down the page a card's window opens when it opens below the
 // editor's own empty header band - see DocumentPageMiniature.
 const PAGE_HEADER_BAND = 68;
+// The little sheet at the start of a row: a page's own shape, standing
+// as tall as the row - which it can, now that a row's height is fixed.
+const ROW_SHEET_W = 62;
+const ROW_SHEET_H = 84;
+const ROW_SHEET_W_DENSE = 46;
+const ROW_SHEET_H_DENSE = 62;
 // Taller where a cursor is looking at it. The user picked this off
 // Craft's own grid: its cards are not richer than ours - they already
 // carry the same checklist and photo strip - they are TALLER, and the
@@ -535,7 +541,15 @@ export default function DocumentCard({
       highlightStyle={styles.highlight}
     />
   ) : (
-    <Text style={[isGrid ? styles.titleCompact : styles.title, { color: text }, scaledTitle]} numberOfLines={2}>
+    <Text
+      style={[isGrid ? styles.titleCompact : styles.title, { color: text }, scaledTitle]}
+      // ONE LINE in a row that carries a sheet, and an ellipsis where it
+      // would have wrapped. A second line made every card a different
+      // height, and equal heights are what let the sheet be a rectangle
+      // of the row's own shape rather than a square floating in it - the
+      // user's own reasoning for the trade.
+      numberOfLines={page && !isGrid && !wide ? 1 : 2}
+    >
       {title || 'Без назви'}
     </Text>
   );
@@ -733,7 +747,16 @@ export default function DocumentCard({
     <View
       ref={cardRef}
       collapsable={false}
-      style={[styles.row, dense && styles.rowDense, flush && styles.rowFlush, { backgroundColor: background }, dimmed && styles.dimmed]}
+      style={[
+        styles.row,
+        dense && styles.rowDense,
+        flush && styles.rowFlush,
+        // A height of its own, now that the title cannot wrap: every row
+        // the same, which is the whole point of the one line above.
+        page && (dense ? styles.rowPagedDense : styles.rowPaged),
+        { backgroundColor: background },
+        dimmed && styles.dimmed,
+      ]}
     >
       <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
       <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
@@ -756,8 +779,8 @@ export default function DocumentCard({
               project={null}
               coverImageUri={page.coverImageUri}
               coverDriveFileId={page.coverDriveFileId}
-              width={dense ? THUMB_SIZE_DENSE : THUMB_SIZE}
-              height={dense ? THUMB_SIZE_DENSE : THUMB_SIZE}
+              width={dense ? ROW_SHEET_W_DENSE : ROW_SHEET_W}
+              height={dense ? ROW_SHEET_H_DENSE : ROW_SHEET_H}
               offsetY={PAGE_HEADER_BAND}
             />
           </View>
@@ -1067,16 +1090,26 @@ const styles = StyleSheet.create({
   // The little sheet at the start of a row: a real page, cut to a
   // square, with an edge so it reads as paper rather than as a hole.
   rowSheet: {
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
+    width: ROW_SHEET_W,
+    height: ROW_SHEET_H,
     borderRadius: 8,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(140,140,140,0.45)',
   },
   rowSheetDense: {
-    width: THUMB_SIZE_DENSE,
-    height: THUMB_SIZE_DENSE,
+    width: ROW_SHEET_W_DENSE,
+    height: ROW_SHEET_H_DENSE,
+  },
+  // Exactly the sheet plus the row's own padding, so the sheet decides
+  // the row's height rather than the text does.
+  rowPaged: {
+    height: ROW_SHEET_H + 24,
+    alignItems: 'center',
+  },
+  rowPagedDense: {
+    height: ROW_SHEET_H_DENSE + 16,
+    alignItems: 'center',
   },
   gridSelectBox: {
     position: 'absolute',
