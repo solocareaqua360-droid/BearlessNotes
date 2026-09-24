@@ -25,10 +25,30 @@ import { STICKER_INK } from '../utils/documentBlocks';
 // This reserves a wide, blank strip the full height of the block instead.
 const TEXT_SWIPE_MARGIN = 24;
 
+// How far a page's sheet stands in from the screen's edges. Named and
+// exported because a card that IS that page, made small, has to lay its
+// own picture out at the sheet's width and not the window's - see
+// DocumentPageMiniature.
+export const PAGE_SHEET_INSET = 16;
+// What the page leaves above its title. It used to be 56 and had to be:
+// the page ran to the top of the screen and the status bar sat on it.
+// A sheet starts below the status bar, so this is just air now.
+export const PAGE_HEADER_TOP = 12;
+
 export const makeStyles = (t: Theme) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: t.paper.fill,
+  },
+  // The ground a sheet lies on - see DocumentEditorScreen's `sheetPage`.
+  sheetRoot: {
+    flex: 1,
+  },
+  pageSheet: {
+    marginHorizontal: PAGE_SHEET_INSET,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: 'hidden',
   },
   // The reference panel's own dock - see ReferencePanel. `left` and
   // `width` are always set inline (DocumentEditorScreen computes both
@@ -69,7 +89,7 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 56,
+    paddingTop: PAGE_HEADER_TOP,
     paddingBottom: 12,
   },
   headerLeft: {

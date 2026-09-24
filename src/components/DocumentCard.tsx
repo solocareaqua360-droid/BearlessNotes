@@ -2,7 +2,6 @@ import { useState } from 'react';
 import type { LayoutChangeEvent } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRecordColour, useTextScale, useTheme } from '../theme/ThemeProvider';
 import { useDensity } from '../hooks/useDensity';
 import CardPreview from './CardPreview';
@@ -40,9 +39,9 @@ const GRID_THUMB_HEIGHT = 96;
 // Fixed rather than a minimum: uniform card height is what keeps the grid
 // gap-free without needing a masonry/waterfall layout at all.
 const GRID_CARD_HEIGHT = 228;
-// How far down the page a card's window opens when it opens below the
-// editor's own empty header band - see DocumentPageMiniature.
-const PAGE_HEADER_BAND = 68;
+// How far down the page a ROW's window opens: past the page's own empty
+// band, which at a row's height would be most of what it showed.
+const PAGE_HEADER_BAND = 24;
 // The little sheet at the start of a row: a page's own shape, standing
 // as tall as the row - which it can, now that a row's height is fixed.
 const ROW_SHEET_W = 62;
@@ -514,15 +513,11 @@ export default function DocumentCard({
   // row of one and a row of two stop reading as one grid.
   const gridHeight = pageHeight ?? (pointer ? GRID_CARD_HEIGHT_POINTER : GRID_CARD_HEIGHT);
   const theme = useTheme();
-  // WHAT THE PAGE SPENDS ON THE SYSTEM BAR, a card does not have to.
-  // The editor's empty band above its title is 68, and most of that is
-  // under the status bar and the floating badge - which is why the gap
-  // reads as small on the page and as a void on a card: "я розумію що
-  // цей відступ реальний, але в відкритій нотатці він не відчувається
-  // таким великим". A card's window opens below that part, so what it
-  // shows is what the eye sees there.
-  const insets = useSafeAreaInsets();
-  const pageTopSkip = Math.round(insets.top);
+  // The band above a page's title is just air now - a page is a sheet
+  // that starts below the status bar, so it no longer has one to clear
+  // (see DocumentEditorScreen's `sheetPage`). A card can open its window
+  // at the page's own top again.
+  const pageTopSkip = 0;
   const expandedLines = pointer ? EXPANDED_TEXT_LINES_POINTER : EXPANDED_TEXT_LINES;
   const compactLines = pointer ? COMPACT_TEXT_LINES_POINTER : COMPACT_TEXT_LINES;
   // "Розмір тексту" - only the LIST row's own size, never the grid

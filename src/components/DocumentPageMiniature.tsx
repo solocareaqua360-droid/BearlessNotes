@@ -6,7 +6,7 @@ import type { Block, Tag } from '../types';
 import PageCover from './PageCover';
 import BlockRow from './BlockRow';
 import DocumentTagsBlock from './DocumentTagsBlock';
-import { makeStyles as makeEditorStyles } from './documentEditorStyles';
+import { PAGE_HEADER_TOP, PAGE_SHEET_INSET, makeStyles as makeEditorStyles } from './documentEditorStyles';
 
 // A DOCUMENT'S OWN PAGE, made small - the card as a picture of the thing
 // rather than a design about it.
@@ -68,7 +68,12 @@ function DocumentPageMiniature({
 }) {
   const theme = useTheme();
   const editorStyles = useStyles(makeEditorStyles);
-  const { width: pageWidth } = useWindowDimensions();
+  // The SHEET'S width, not the window's: a page is a sheet standing in
+  // from both edges now (see DocumentEditorScreen's `sheetPage`), and a
+  // picture of it laid out at the window's width would be a picture of
+  // something else.
+  const { width: windowWidth } = useWindowDimensions();
+  const pageWidth = windowWidth - PAGE_SHEET_INSET * 2;
   const scale = width / pageWidth;
   let numbered = 0;
   const shown = blocks.slice(0, MAX_ROWS);
@@ -182,9 +187,9 @@ const styles = StyleSheet.create({
     // equivalent: nothing but the small top the scroll itself adds.
     paddingTop: 4,
   },
-  // The editor's own `header` with both its buttons gone to the dock:
-  // 56 above, 12 below, nothing in between.
+  // The editor's own `header` with both its buttons gone to the dock,
+  // and nothing in between.
   headerBand: {
-    height: 68,
+    height: PAGE_HEADER_TOP + 12,
   },
 });

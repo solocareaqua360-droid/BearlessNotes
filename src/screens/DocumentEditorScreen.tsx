@@ -77,6 +77,7 @@ import VideoPlayerModal from '../components/VideoPlayerModal';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import PageCover from '../components/PageCover';
+import ScreenBackdrop from '../components/ScreenBackdrop';
 import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { BLOCK_ACTIONS, BlockAction } from '../components/blockActions';
@@ -4528,11 +4529,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     );
   }
 
-  return (
+  // A DOCUMENT OPENS AS A SHEET, the way a day does on the calendar: the
+  // app's own ground around it, not paper to the edges of the screen.
+  // The user's experiment, and it pays for itself twice over - the empty
+  // band the page used to leave above its title was there to clear the
+  // status bar, and a sheet that starts below the status bar does not
+  // need it, so the void a card showed in its place goes with it.
+  //
+  // Phone only, and not in a pane: a pane is already a sheet standing
+  // beside a list, and on a pointer the toolbar above the page is what
+  // marks its top edge.
+  const sheetPage = !embedded && !('pane' in props) && !pointerDensity;
+  const page = (
     <View
       style={[
         styles.container,
         embedded && styles.containerEmbedded,
+        sheetPage && styles.pageSheet,
+        sheetPage && { marginTop: editorInsets.top },
         paperColor && { backgroundColor: paperColor.background },
       ]}
       onLayout={(e) => setEditorWidth(e.nativeEvent.layout.width)}
@@ -5596,6 +5610,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         onPicked={pickCoverImageFromStock}
       />
       {flattenNode}
+    </View>
+  );
+  if (!sheetPage) return page;
+  return (
+    <View style={styles.sheetRoot}>
+      <ScreenBackdrop id="editorSheetBg" />
+      {page}
     </View>
   );
 }
