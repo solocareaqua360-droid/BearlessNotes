@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-n
 import { Ionicons } from '@expo/vector-icons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Block, Tag } from '../types';
-import AttachmentImage from './AttachmentImage';
+import PageCover from './PageCover';
 import BlockRow from './BlockRow';
 import DocumentTagsBlock from './DocumentTagsBlock';
 import { makeStyles as makeEditorStyles } from './documentEditorStyles';
@@ -83,7 +83,7 @@ function DocumentPageMiniature({
             name, the folders, the blocks, the row it ends with. */}
         <View style={styles.headerBand} />
         {!!coverImageUri && (
-          <AttachmentImage uri={coverImageUri} driveFileId={coverDriveFileId} style={editorStyles.coverImage} />
+          <PageCover uri={coverImageUri} driveFileId={coverDriveFileId} style={editorStyles.coverImage} />
         )}
         <Text style={editorStyles.titleInput} numberOfLines={2}>
           {title || 'Без назви'}

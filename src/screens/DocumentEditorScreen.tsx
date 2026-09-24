@@ -76,6 +76,7 @@ import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
+import PageCover from '../components/PageCover';
 import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { BLOCK_ACTIONS, BlockAction } from '../components/blockActions';
@@ -4979,7 +4980,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 stays behind it for every cover set before covers had one
                 - those still borrow from a block whose picture is the
                 same file, which is all they ever had. */}
-            <AttachmentImage
+            <PageCover
               uri={coverImageUri}
               driveFileId={
                 coverDrive?.fileId ?? blocks.find((b) => b.imageUri === coverImageUri)?.driveFileId
