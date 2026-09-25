@@ -1,8 +1,9 @@
-import { ReactNode } from 'react';
+import { ReactNode, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import GlassLayer from '../GlassLayer';
-import { useStyles } from '../../theme/ThemeProvider';
+import { useStyles, useTheme } from '../../theme/ThemeProvider';
+import EdgeFade from '../EdgeFade';
 import type { Theme } from '../../theme/tokens';
 import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
 import { SHEET_FRAME, SHEET_WINDOW } from '../../constants/glass';
@@ -42,6 +43,7 @@ export default function Sheet({
   header,
   scroll,
   maxHeight,
+  fadeEdges,
   children,
 }: {
   visible: boolean;
@@ -62,13 +64,43 @@ export default function Sheet({
   // screen - points, or a percentage of the frame (which fills the
   // layer, so "70%" means 70% of the screen).
   maxHeight?: ViewStyle['maxHeight'];
+  // With `scroll`: what scrolls past the top or the bottom dissolves into
+  // the sheet instead of being cut off at a hard edge (see EdgeFade) -
+  // and only at an edge that really has more beyond it.
+  fadeEdges?: boolean;
   children: ReactNode;
 }) {
   const styles = useStyles(makeStyles);
+  const theme = useTheme();
   const keyboardHeight = useKeyboardHeight();
-  const body = scroll ? (
+  const scrollY = useRef(0);
+  const viewportH = useRef(0);
+  const contentH = useRef(0);
+  const [edges, setEdges] = useState({ top: false, bottom: false });
+  function updateEdges() {
+    if (!fadeEdges) return;
+    const top = scrollY.current > 2;
+    const bottom = scrollY.current + viewportH.current < contentH.current - 2;
+    setEdges((prev) => (prev.top === top && prev.bottom === bottom ? prev : { top, bottom }));
+  }
+  const scrollView = scroll ? (
     <ScrollView
       style={maxHeight !== undefined ? { maxHeight } : undefined}
+      scrollEventThrottle={16}
+      onScroll={(e) => {
+        scrollY.current = e.nativeEvent.contentOffset.y;
+        viewportH.current = e.nativeEvent.layoutMeasurement.height;
+        contentH.current = e.nativeEvent.contentSize.height;
+        updateEdges();
+      }}
+      onLayout={(e) => {
+        viewportH.current = e.nativeEvent.layout.height;
+        updateEdges();
+      }}
+      onContentSizeChange={(_w, h) => {
+        contentH.current = h;
+        updateEdges();
+      }}
       // RN's own ScrollView carries flexGrow: 1 in its base style, which
       // makes a short list eat the whole sheet - said out loud here so a
       // sheet is only ever as tall as what is in it.
@@ -78,8 +110,17 @@ export default function Sheet({
     >
       {children}
     </ScrollView>
-  ) : (
+  ) : null;
+  const body = !scrollView ? (
     children
+  ) : fadeEdges ? (
+    <View>
+      {scrollView}
+      {edges.top && <EdgeFade edge="top" color={theme.raised} />}
+      {edges.bottom && <EdgeFade edge="bottom" color={theme.raised} />}
+    </View>
+  ) : (
+    scrollView
   );
 
   return (

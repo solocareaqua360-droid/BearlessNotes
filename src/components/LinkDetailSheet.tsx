@@ -202,7 +202,7 @@ export default function LinkDetailSheet({
 
   return (
     <>
-      <Sheet visible={link !== null} onClose={close} header={header} scroll maxHeight="78%">
+      <Sheet visible={link !== null} onClose={close} header={header} scroll fadeEdges maxHeight="78%">
         {shown && (
           <View style={styles.body}>
             {!!(shown.createdAt ?? shown.updatedAt) && (
@@ -256,7 +256,58 @@ export default function LinkDetailSheet({
                 <Text style={styles.url} numberOfLines={2}>
                   {shown.url}
                 </Text>
-                <Button icon={primary.icon} label={primary.label} onPress={onOpen} kind="primary" styles={styles} theme={theme} />
+                {shown.category === 'other' ? (
+                  // One button in two halves - the page, and reading it -
+                  // with what reading offers said under it, the user's
+                  // own arrangement; reading used to be a panel of its own.
+                  <>
+                    <View style={styles.splitButton}>
+                      <Pressable
+                        style={({ pressed }) => [styles.splitHalf, pressed && styles.pressed]}
+                        onPress={onOpen}
+                      >
+                        <Ionicons name="open-outline" size={20} color={theme.onAccent} />
+                        <Text style={styles.splitLabel}>Відкрити</Text>
+                      </Pressable>
+                      <View style={styles.splitDivider} />
+                      <Pressable
+                        style={({ pressed }) => [styles.splitHalf, pressed && styles.pressed]}
+                        onPress={shown.articleSavedAt ? onRead : saveArticle}
+                        disabled={savingArticle}
+                      >
+                        {savingArticle ? (
+                          <ActivityIndicator size="small" color={theme.onAccent} />
+                        ) : (
+                          <Ionicons
+                            name={shown.articleSavedAt ? 'book-outline' : 'download-outline'}
+                            size={20}
+                            color={theme.onAccent}
+                          />
+                        )}
+                        <Text style={styles.splitLabel}>
+                          {savingArticle ? 'Зберігаю…' : shown.articleSavedAt ? 'Читати' : 'Зберегти'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                    <Text style={styles.panelNote}>
+                      {shown.articleSavedAt
+                        ? `Статтю збережено ${formatUpdatedAt(shown.articleSavedAt)} - читається без інтернету`
+                        : '«Зберегти» збереже текст статті, щоб читати й виділяти фрагменти без інтернету'}
+                    </Text>
+                    {editing && !!shown.articleSavedAt && (
+                      <Button
+                        icon="trash-outline"
+                        label="Прибрати збережену статтю"
+                        onPress={onDeleteArticle}
+                        kind="danger"
+                        styles={styles}
+                        theme={theme}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <Button icon={primary.icon} label={primary.label} onPress={onOpen} kind="primary" styles={styles} theme={theme} />
+                )}
               </Panel>
             )}
 
@@ -310,43 +361,6 @@ export default function LinkDetailSheet({
                   <Text style={styles.commentText}>{comment.trim()}</Text>
                 )}
                 {flash?.kind === 'comment' && <SavedNote text={flash.text} styles={styles} theme={theme} />}
-              </Panel>
-            )}
-
-            {/* Reading - an ordinary page only: a video or a map point
-                has no article to keep. */}
-            {shown.category === 'other' && (
-              <Panel icon="book-outline" title="Стаття" styles={styles} theme={theme}>
-                {shown.articleSavedAt ? (
-                  <>
-                    <Text style={styles.panelNote}>
-                      Збережено {formatUpdatedAt(shown.articleSavedAt)} - читається без інтернету
-                    </Text>
-                    <Button icon="book-outline" label="Читати" onPress={onRead} styles={styles} theme={theme} />
-                    {editing && (
-                      <Button
-                        icon="trash-outline"
-                        label="Прибрати збережену статтю"
-                        onPress={onDeleteArticle}
-                        kind="danger"
-                        styles={styles}
-                        theme={theme}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.panelNote}>Збереже текст статті, щоб читати й виділяти фрагменти без інтернету</Text>
-                    <Button
-                      icon="download-outline"
-                      label={savingArticle ? 'Зберігаю статтю…' : 'Зберегти для читання'}
-                      onPress={saveArticle}
-                      busy={savingArticle}
-                      styles={styles}
-                      theme={theme}
-                    />
-                  </>
-                )}
               </Panel>
             )}
 
@@ -466,7 +480,6 @@ function Button({
   onPress,
   kind = 'secondary',
   compact,
-  busy,
   styles,
   theme,
 }: {
@@ -475,7 +488,6 @@ function Button({
   onPress: () => void;
   kind?: 'primary' | 'secondary' | 'danger';
   compact?: boolean;
-  busy?: boolean;
   styles: Styles;
   theme: Theme;
 }) {
@@ -483,7 +495,6 @@ function Button({
   return (
     <Pressable
       onPress={onPress}
-      disabled={busy}
       style={({ pressed }) => [
         styles.button,
         kind === 'primary' && styles.buttonPrimary,
@@ -492,7 +503,7 @@ function Button({
         pressed && styles.pressed,
       ]}
     >
-      {busy ? <ActivityIndicator size="small" color={ink} /> : <Ionicons name={icon} size={20} color={ink} />}
+      <Ionicons name={icon} size={20} color={ink} />
       <Text style={[styles.buttonLabel, { color: ink }]}>{label}</Text>
     </Pressable>
   );
@@ -643,11 +654,42 @@ const makeStyles = (t: Theme) =>
       width: '100%',
       height: '100%',
     },
+    // Every picture on the card gets an edge of its own: on some themes a
+    // light image ran straight into the panel with no telling where one
+    // ended - the user's first note on the blocks.
     banner: {
       width: '100%',
       height: 170,
       borderRadius: 14,
+      borderWidth: 1,
+      borderColor: t.edge.strong,
       backgroundColor: t.raised,
+    },
+    splitButton: {
+      flexDirection: 'row',
+      minHeight: 50,
+      borderRadius: 16,
+      overflow: 'hidden',
+      backgroundColor: t.accent,
+    },
+    splitHalf: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 10,
+    },
+    splitDivider: {
+      width: 1,
+      marginVertical: 10,
+      backgroundColor: t.onAccent,
+      opacity: 0.35,
+    },
+    splitLabel: {
+      fontSize: 15,
+      fontFamily: FONT_SEMIBOLD,
+      color: t.onAccent,
     },
     url: {
       fontSize: 13,
@@ -657,6 +699,8 @@ const makeStyles = (t: Theme) =>
     mapPreview: {
       height: 160,
       borderRadius: 14,
+      borderWidth: 1,
+      borderColor: t.edge.strong,
       overflow: 'hidden',
       backgroundColor: t.raised,
     },
@@ -699,6 +743,8 @@ const makeStyles = (t: Theme) =>
       flexGrow: 0,
       aspectRatio: 1,
       borderRadius: 14,
+      borderWidth: 1,
+      borderColor: t.edge.strong,
       overflow: 'hidden',
       backgroundColor: t.raised,
     },
@@ -732,12 +778,14 @@ const makeStyles = (t: Theme) =>
       fontFamily: FONT_REGULAR,
       color: t.ink.primary,
     },
+    // A plain framed card like the rest - no quote bar down its left side,
+    // which the user dislikes here as much as in the editor.
     fragment: {
       gap: 10,
       padding: 12,
       borderRadius: 14,
-      borderLeftWidth: 4,
-      borderLeftColor: t.accent,
+      borderWidth: 1,
+      borderColor: t.edge.hairline,
       backgroundColor: t.raised,
     },
     fragmentText: {
