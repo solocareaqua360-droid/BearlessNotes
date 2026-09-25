@@ -159,6 +159,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     attachTag,
     detachTag,
     createAndAttachTag,
+    createAndAttachTagToMany,
     renameTag,
     isSelectMode,
     selectedIds,
@@ -637,7 +638,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
 
   async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
     setBulkTagPickerVisible(false);
-    await Promise.all(selectedPhotos.map((p) => createAndAttachTag(path, icon, color, 'photo', p.id, 'photos')));
+    await createAndAttachTagToMany(path, icon, color, 'photo', selectedPhotos.map((p) => p.id), 'photos');
     clearSelection();
   }
 

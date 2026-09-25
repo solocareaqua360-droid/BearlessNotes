@@ -4,6 +4,7 @@ import {
   arrayUnion,
   collection,
   deleteDoc,
+  getDocs,
   setDoc,
   deleteField,
   doc,
@@ -164,6 +165,46 @@ export function useTags() {
     return tagRef.id;
   }
 
+  // The bulk twin: every screen's own "new tag from a multi-select"
+  // used to just map createAndAttachTag over the selected ids, which
+  // means "one call per item" - and this function creates a document
+  // every single time it runs. Six identical items selected made six
+  // identical-looking tags, each `usedIn` exactly one of them, because
+  // nothing was ever shared between the calls. This is the shared
+  // creation happening ONCE, with every id folded into that one tag's
+  // `usedIn` before it is ever written - there is no smaller unit than
+  // "the whole selection" for a brand new tag to be created against.
+  //
+  // One batch, so no per-item cap beyond Firestore's own 500 writes to a
+  // batch (1 create + N updates here) - well past anything a hand-made
+  // selection reaches.
+  async function createAndAttachTagToMany(
+    path: string,
+    icon: string,
+    color: string,
+    kind: TaggableKind,
+    itemIds: string[],
+    itemsCollection: string
+  ) {
+    const tagRef = doc(tagsCollection);
+    const batch = writeBatch(db);
+    const usedIn: Record<string, true> = {};
+    for (const itemId of itemIds) usedIn[usedInKey(kind, itemId)] = true;
+    batch.set(tagRef, {
+      path: path.trim(),
+      icon,
+      color,
+      types: [kind],
+      usedIn,
+      ownerId: auth.currentUser?.uid ?? null,
+    });
+    for (const itemId of itemIds) {
+      batch.update(doc(db, itemsCollection, itemId), { tagIds: arrayUnion(tagRef.id) });
+    }
+    await batch.commit();
+    return tagRef.id;
+  }
+
   // A folder made on purpose in «Провідник»: a tag with nothing in it
   // yet, kept alive by `keep` (see the Tag doc comment in types.ts) so
   // the empty-tag rule below leaves it alone. Given a folder's own icon
@@ -237,6 +278,7 @@ export function useTags() {
     findExactPath,
     attachTag,
     createAndAttachTag,
+    createAndAttachTagToMany,
     createFolderTag,
     detachTag,
     renameTag,
@@ -258,4 +300,72 @@ export async function detachTagFromDeletedItem(tag: Tag, kind: TaggableKind, ite
     batch.update(doc(db, 'tags', tag.id), { [`usedIn.${usedInKey(kind, itemId)}`]: deleteField() });
     await batch.commit();
   }
+}
+
+// A ONE-TIME repair, run from Settings: before createAndAttachTagToMany
+// existed, a new tag made from a multi-select created one tag PER
+// SELECTED ITEM (see the memory `bulk_tag_duplication_fixed`) - every one
+// named alike, each carrying exactly the one item it was made for. This
+// finds every such set of same-name, same-kind tags still sitting in the
+// user's own data and folds each set back into the single tag it should
+// always have been.
+//
+// Not batched: two array-transform writes to the SAME item doc
+// (un-tagging every duplicate, then tagging the survivor) can land in one
+// write batch, but only by reading the field first to merge them by hand -
+// more risk than a one-time, low-frequency repair is worth. Plain
+// sequential updates instead; slower, and correct without a read.
+export async function mergeDuplicateTags(): Promise<{ groups: number; tagsRemoved: number }> {
+  const snapshot = await getDocs(ownedQuery('tags'));
+  const all = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Tag, 'id'>) }));
+  const groups = new Map<string, Tag[]>();
+  for (const tag of all) {
+    const key = `${tag.path}\u0000${[...tag.types].sort().join(',')}`;
+    const list = groups.get(key);
+    if (list) list.push(tag);
+    else groups.set(key, [tag]);
+  }
+
+  let groupsFixed = 0;
+  let tagsRemoved = 0;
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    groupsFixed++;
+    // Whichever member happens first - every one of them looks and
+    // behaves identically, so which specific id survives makes no
+    // difference to the app or the user.
+    const [keep, ...dupes] = list;
+    const mergedUsedIn: Record<string, true> = { ...keep.usedIn };
+    const mergedTypes = new Set(keep.types);
+    // A dupe kept on purpose (an empty folder made in «Провідник») still
+    // deserves that - the merge must not quietly turn it deletable.
+    let mergedKeep = !!keep.keep;
+
+    for (const dupe of dupes) {
+      mergedKeep = mergedKeep || !!dupe.keep;
+      for (const key of Object.keys(dupe.usedIn)) {
+        mergedUsedIn[key] = true;
+        mergedTypes.add(parseUsedInKey(key).kind);
+        const { kind, itemId } = parseUsedInKey(key);
+        const collectionName = itemsCollectionForKind(kind);
+        // A kind this repair has no map for (see itemsCollectionForKind)
+        // is left exactly as it was on that one item - still tagged with
+        // the dupe, which stays reachable through it, rather than risking
+        // a write against a collection this cannot name.
+        if (!collectionName) continue;
+        await updateDoc(doc(db, collectionName, itemId), { tagIds: arrayRemove(dupe.id) });
+        await updateDoc(doc(db, collectionName, itemId), { tagIds: arrayUnion(keep.id) });
+      }
+      await deleteDoc(doc(db, 'tags', dupe.id));
+      tagsRemoved++;
+    }
+
+    await updateDoc(doc(db, 'tags', keep.id), {
+      usedIn: mergedUsedIn,
+      types: Array.from(mergedTypes),
+      ...(mergedKeep ? { keep: true } : {}),
+    });
+  }
+
+  return { groups: groupsFixed, tagsRemoved };
 }

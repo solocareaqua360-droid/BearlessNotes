@@ -209,6 +209,7 @@ export default function DocumentsScreen({
     attachTag,
     detachTag,
     createAndAttachTag,
+    createAndAttachTagToMany,
     renameTag,
     isSelectMode,
     selectedIds,
@@ -1099,10 +1100,13 @@ export default function DocumentsScreen({
 
   async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
     setBulkTagPickerVisible(false);
-    await Promise.all(
-      selectedDocuments.map((d) =>
-        createAndAttachTag(path, icon, color, 'document', d.id, ITEMS_COLLECTION_BY_KIND.document)
-      )
+    await createAndAttachTagToMany(
+      path,
+      icon,
+      color,
+      'document',
+      selectedDocuments.map((d) => d.id),
+      ITEMS_COLLECTION_BY_KIND.document
     );
     clearSelection();
   }

@@ -123,6 +123,7 @@ export default function BoardsListScreen({
     attachTag,
     detachTag,
     createAndAttachTag,
+    createAndAttachTagToMany,
     renameTag,
     isSelectMode,
     selectedIds,
@@ -141,7 +142,7 @@ export default function BoardsListScreen({
 
   async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
     setBulkTagPickerVisible(false);
-    await Promise.all(selectedBoards.map((b) => createAndAttachTag(path, icon, color, 'board', b.id, 'boards')));
+    await createAndAttachTagToMany(path, icon, color, 'board', selectedBoards.map((b) => b.id), 'boards');
     clearSelection();
   }
 

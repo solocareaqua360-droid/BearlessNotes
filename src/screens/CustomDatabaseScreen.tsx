@@ -440,7 +440,7 @@ export default function CustomDatabaseScreen({
   }, []);
 
   const { filterPending, requestDeleteMany, undo, toast } = usePendingDelete<CustomDatabaseRow>();
-  const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
+  const { tags, attachTag, detachTag, createAndAttachTag, createAndAttachTagToMany, renameTag } = useTags();
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
     useMultiSelect();
 
@@ -1632,8 +1632,13 @@ export default function CustomDatabaseScreen({
 
   async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
     setBulkTagPickerVisible(false);
-    await Promise.all(
-      selectedRows.map((r) => createAndAttachTag(path, icon, color, customRowKind, r.id, 'customDatabaseRows'))
+    await createAndAttachTagToMany(
+      path,
+      icon,
+      color,
+      customRowKind,
+      selectedRows.map((r) => r.id),
+      'customDatabaseRows'
     );
     clearSelection();
   }

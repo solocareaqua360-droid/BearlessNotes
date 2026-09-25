@@ -27,6 +27,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 // native and ships over the air like any other change.
 import * as Updates from 'expo-updates';
 import { doc, onSnapshot } from '../firestore';
+import { mergeDuplicateTags } from '../hooks/useTags';
 import { auth, db, signInWithGoogleAccount } from '../firebase';
 import {
   adoptSignedInAccountForDrive,
@@ -113,6 +114,8 @@ export default function SettingsScreen() {
   // a cold start and only applies it on the NEXT one, silently. This card
   // shows which bundle is running and forces the whole cycle on demand.
   const [updateBusy, setUpdateBusy] = useState(false);
+  const [mergeTagsBusy, setMergeTagsBusy] = useState(false);
+  const [mergeTagsResult, setMergeTagsResult] = useState<{ groups: number; tagsRemoved: number } | null>(null);
   // The actual layout size of this window, in the units every breakpoint in
   // this app is written in. Spec sheets quote pixels, and a phone's own
   // "screen zoom" setting changes the density those pixels divide by - so
@@ -352,6 +355,18 @@ export default function SettingsScreen() {
       notify('Не вдалося перевірити', e instanceof Error ? e.message : String(e));
     } finally {
       setUpdateBusy(false);
+    }
+  }
+
+  async function handleMergeDuplicateTags() {
+    setMergeTagsBusy(true);
+    try {
+      const result = await mergeDuplicateTags();
+      setMergeTagsResult(result);
+    } catch (e) {
+      notify('Не вдалося об\'єднати', e instanceof Error ? e.message : String(e));
+    } finally {
+      setMergeTagsBusy(false);
     }
   }
 
@@ -765,6 +780,29 @@ export default function SettingsScreen() {
               <ActivityIndicator color={accent} />
             ) : (
               <Text style={styles.checkLabel}>Перевірити оновлення</Text>
+            )}
+          </Pressable>
+        </View>
+        )}
+
+        {section === 'about' && (
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="pricetags-outline" size={22} color={accent} />
+            <Text style={styles.cardTitle}>Об'єднати теги з однаковою назвою</Text>
+          </View>
+          <Text style={styles.cardBody}>
+            {mergeTagsResult
+              ? mergeTagsResult.groups === 0
+                ? 'Двійників не знайдено - усе вже гаразд'
+                : `Об'єднано ${mergeTagsResult.groups} ${mergeTagsResult.groups === 1 ? 'назву' : 'назви'}, прибрано ${mergeTagsResult.tagsRemoved} зайвих тегів`
+              : 'Разова перевірка й виправлення - для тегів, які раніше створились по одному на кожен виділений елемент замість одного спільного.'}
+          </Text>
+          <Pressable style={styles.checkButton} onPress={handleMergeDuplicateTags} disabled={mergeTagsBusy}>
+            {mergeTagsBusy ? (
+              <ActivityIndicator color={accent} />
+            ) : (
+              <Text style={styles.checkLabel}>Перевірити й об'єднати</Text>
             )}
           </Pressable>
         </View>

@@ -210,6 +210,7 @@ export default function LinksScreen({
     attachTag,
     detachTag,
     createAndAttachTag,
+    createAndAttachTagToMany,
     renameTag,
     isSelectMode,
     selectedIds,
@@ -512,7 +513,7 @@ export default function LinksScreen({
 
   async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
     setBulkTagPickerVisible(false);
-    await Promise.all(selectedLinks.map((l) => createAndAttachTag(path, icon, color, tagKind, l.id, 'links')));
+    await createAndAttachTagToMany(path, icon, color, tagKind, selectedLinks.map((l) => l.id), 'links');
     clearSelection();
   }
 

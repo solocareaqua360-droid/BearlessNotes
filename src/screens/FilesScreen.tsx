@@ -171,6 +171,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     attachTag,
     detachTag,
     createAndAttachTag,
+    createAndAttachTagToMany,
     renameTag,
     isSelectMode,
     selectedIds,
@@ -536,7 +537,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
 
   async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
     setBulkTagPickerVisible(false);
-    await Promise.all(selectedFiles.map((f) => createAndAttachTag(path, icon, color, 'file', f.id, 'files')));
+    await createAndAttachTagToMany(path, icon, color, 'file', selectedFiles.map((f) => f.id), 'files');
     clearSelection();
   }
 
