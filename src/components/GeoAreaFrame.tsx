@@ -1,8 +1,10 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 
 export type ScreenFrame = { x0: number; y0: number; x1: number; y1: number };
+
+type Corner = 'tl' | 'tr' | 'bl' | 'br';
 
 const MIN_SIZE = 60;
 const HANDLE_SIZE = 30;
@@ -26,59 +28,76 @@ export default function GeoAreaFrame({
   onChange: (frame: ScreenFrame) => void;
 }) {
   const theme = useTheme();
-  // Grant only fires once per touch, so what it captures has to survive
-  // however many times this component re-renders (and recreates the
-  // responders below) while that same touch is still moving - a plain
-  // closure variable would not, a ref does.
+  // A PanResponder keeps its own per-gesture state (where the touch
+  // started) inside the object PanResponder.create() returns. Building a
+  // FRESH one on every render - as this used to, since `frame` changes on
+  // every drag event - swapped that object out mid-gesture and lost
+  // exactly that state, which read as the frame jittering in place
+  // instead of following the finger. The five responders below are now
+  // created once (useMemo, empty deps) and read the latest frame/bounds
+  // through refs instead of through their own closure.
+  const frameRef = useRef(frame);
+  frameRef.current = frame;
+  const boundsRef = useRef(bounds);
+  boundsRef.current = bounds;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const startRef = useRef<ScreenFrame | null>(null);
 
   function clamp(next: ScreenFrame): ScreenFrame {
+    const b = boundsRef.current;
     const x0 = Math.max(0, Math.min(next.x0, next.x1 - MIN_SIZE));
     const y0 = Math.max(0, Math.min(next.y0, next.y1 - MIN_SIZE));
-    const x1 = Math.min(bounds.width, Math.max(next.x1, next.x0 + MIN_SIZE));
-    const y1 = Math.min(bounds.height, Math.max(next.y1, next.y0 + MIN_SIZE));
+    const x1 = Math.min(b.width, Math.max(next.x1, next.x0 + MIN_SIZE));
+    const y1 = Math.min(b.height, Math.max(next.y1, next.y0 + MIN_SIZE));
     return { x0, y0, x1, y1 };
   }
 
-  function makeCornerResponder(corner: 'tl' | 'tr' | 'bl' | 'br') {
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        startRef.current = frame;
-      },
-      onPanResponderMove: (_e, gesture) => {
-        const start = startRef.current;
-        if (!start) return;
-        const next = { ...start };
-        if (corner === 'tl' || corner === 'bl') next.x0 = start.x0 + gesture.dx;
-        if (corner === 'tr' || corner === 'br') next.x1 = start.x1 + gesture.dx;
-        if (corner === 'tl' || corner === 'tr') next.y0 = start.y0 + gesture.dy;
-        if (corner === 'bl' || corner === 'br') next.y1 = start.y1 + gesture.dy;
-        onChange(clamp(next));
-      },
-    });
-  }
+  const cornerResponders = useMemo(() => {
+    const make = (corner: Corner) =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          startRef.current = frameRef.current;
+        },
+        onPanResponderMove: (_e, gesture) => {
+          const start = startRef.current;
+          if (!start) return;
+          const next = { ...start };
+          if (corner === 'tl' || corner === 'bl') next.x0 = start.x0 + gesture.dx;
+          if (corner === 'tr' || corner === 'br') next.x1 = start.x1 + gesture.dx;
+          if (corner === 'tl' || corner === 'tr') next.y0 = start.y0 + gesture.dy;
+          if (corner === 'bl' || corner === 'br') next.y1 = start.y1 + gesture.dy;
+          onChangeRef.current(clamp(next));
+        },
+      });
+    return { tl: make('tl'), tr: make('tr'), bl: make('bl'), br: make('br') };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const moveResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => {
-      startRef.current = frame;
-    },
-    onPanResponderMove: (_e, gesture) => {
-      const start = startRef.current;
-      if (!start) return;
-      const w = start.x1 - start.x0;
-      const h = start.y1 - start.y0;
-      const x0 = Math.max(0, Math.min(start.x0 + gesture.dx, bounds.width - w));
-      const y0 = Math.max(0, Math.min(start.y0 + gesture.dy, bounds.height - h));
-      onChange({ x0, y0, x1: x0 + w, y1: y0 + h });
-    },
-  });
+  const moveResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          startRef.current = frameRef.current;
+        },
+        onPanResponderMove: (_e, gesture) => {
+          const start = startRef.current;
+          if (!start) return;
+          const b = boundsRef.current;
+          const w = start.x1 - start.x0;
+          const h = start.y1 - start.y0;
+          const x0 = Math.max(0, Math.min(start.x0 + gesture.dx, b.width - w));
+          const y0 = Math.max(0, Math.min(start.y0 + gesture.dy, b.height - h));
+          onChangeRef.current({ x0, y0, x1: x0 + w, y1: y0 + h });
+        },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
-  const tl = makeCornerResponder('tl');
-  const tr = makeCornerResponder('tr');
-  const bl = makeCornerResponder('bl');
-  const br = makeCornerResponder('br');
+  const { tl, tr, bl, br } = cornerResponders;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
