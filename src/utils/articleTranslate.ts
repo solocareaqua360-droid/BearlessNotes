@@ -1,7 +1,7 @@
 import { deleteDoc, doc, onSnapshot } from '../firestore';
 import { db } from '../firebase';
 import { setDoc } from './owned';
-import { askGemini, GeminiError } from './gemini';
+import { askGemini, GEMINI_MODEL, GeminiError } from './gemini';
 import { getGeminiKey } from './geminiKey';
 import type { ArticleBlock, SavedArticle } from './articleReader';
 
@@ -37,7 +37,8 @@ export type SavedTranslation =
 // that a long article is a handful of calls rather than dozens.
 const CHUNK_CHARS = 5000;
 const CHUNK_ITEMS = 60;
-const RETRIES = 3;
+const PASSES = 3;
+const PASS_PAUSE_MS = 15000;
 
 function chunkIndices(texts: string[]): number[][] {
   const chunks: number[][] = [];
@@ -75,15 +76,20 @@ function parseArray(raw: string): string[] | null {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// How long to wait before trying again, or null when trying again cannot
-// help. 429 is the free tier's per-minute limit; 5xx - above all 503,
-// "this model is currently experiencing high demand" - is Google's side
-// having a moment, which the first real translation ran straight into.
-function retryDelay(e: unknown, attempt: number): number | null {
-  if (!(e instanceof GeminiError) || e.status === undefined) return null;
-  if (e.status === 429) return 20000 * (attempt + 1);
-  if (e.status >= 500) return [5000, 15000, 30000][attempt] ?? 30000;
-  return null;
+// Tried in this order, a chunk moving on to the next model whenever one
+// says no. Waiting on ONE model was not enough on the phone: the free
+// tier's requests are the first dropped when a model is busy, and 503
+// "this model is currently experiencing high demand" came back again
+// and again on the same one. Free-tier limits are also counted per
+// model, so the next model is usually free to answer a 429 as well.
+// flash-lite is the one Google describes as built for translation.
+const TRANSLATE_MODELS = [GEMINI_MODEL, 'gemini-3.5-flash-lite', 'gemini-3.7-flash'];
+
+// Worth trying the next model for: overloaded (5xx), out of free quota
+// (429), or a model Google has since renamed or retired (404).
+function worthAnotherModel(e: unknown): boolean {
+  if (!(e instanceof GeminiError) || e.status === undefined) return false;
+  return e.status === 429 || e.status === 404 || e.status >= 500;
 }
 
 async function translateBatch(texts: string[], apiKey: string): Promise<string[]> {
@@ -93,20 +99,22 @@ async function translateBatch(texts: string[], apiKey: string): Promise<string[]
     'Translate faithfully, without adding or leaving out anything and without commentary. ' +
     'Keep names, numbers, links and punctuation as they are. An empty string stays empty; a string already in Ukrainian comes back unchanged.\n\n' +
     JSON.stringify(texts);
-  for (let attempt = 0; attempt <= RETRIES; attempt++) {
-    try {
-      const parsed = parseArray(await askGemini(prompt, apiKey, { json: true }));
-      if (parsed && parsed.length === texts.length) return parsed;
-    } catch (e) {
-      const delay = retryDelay(e, attempt);
-      if (delay !== null && attempt < RETRIES) {
-        await wait(delay);
-        continue;
+  let lastError: unknown = new Error('Gemini повернув переклад не в тому вигляді - спробуйте ще раз.');
+  for (let pass = 0; pass < PASSES; pass++) {
+    // Every model has said no by the end of a pass - give Google a moment
+    // before the next round.
+    if (pass > 0) await wait(PASS_PAUSE_MS);
+    for (const model of TRANSLATE_MODELS) {
+      try {
+        const parsed = parseArray(await askGemini(prompt, apiKey, { json: true, model }));
+        if (parsed && parsed.length === texts.length) return parsed;
+      } catch (e) {
+        if (!worthAnotherModel(e)) throw e;
+        lastError = e;
       }
-      throw e;
     }
   }
-  throw new Error('Gemini повернув переклад не в тому вигляді - спробуйте ще раз.');
+  throw lastError;
 }
 
 export async function translateArticle(

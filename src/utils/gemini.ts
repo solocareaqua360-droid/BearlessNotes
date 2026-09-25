@@ -14,8 +14,9 @@
 // ("Please update your code to use models/gemini-3.6-flash") - trust
 // that live message over anything written here, since a model's
 // lifespan runs well past this file's own knowledge of it.
-const GEMINI_MODEL = 'gemini-3.6-flash';
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+export const GEMINI_MODEL = 'gemini-3.6-flash';
+const endpointFor = (model: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
 export class GeminiError extends Error {
   // The HTTP status, where there was one - 429 is the free tier's
@@ -29,11 +30,16 @@ export class GeminiError extends Error {
 
 // `json`: ask for the answer as JSON only (the API's own response MIME
 // type), for callers that parse it - a translation matched back to its
-// paragraphs, say.
-export async function askGemini(prompt: string, apiKey: string, options: { json?: boolean } = {}): Promise<string> {
+// paragraphs, say. `model`: another Gemini model than the app's default,
+// for a caller that falls back when one is overloaded.
+export async function askGemini(
+  prompt: string,
+  apiKey: string,
+  options: { json?: boolean; model?: string } = {}
+): Promise<string> {
   let response: Response;
   try {
-    response = await fetch(`${ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+    response = await fetch(`${endpointFor(options.model ?? GEMINI_MODEL)}?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
