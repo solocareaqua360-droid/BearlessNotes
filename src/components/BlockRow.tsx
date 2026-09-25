@@ -55,6 +55,8 @@ type BlockRowProps = {
   // would sit beneath the buttons. Dragging still works - the whole row
   // is the drag target, the handle was only ever a sign that it is.
   hideHandle?: boolean;
+  // Under a toggle's section - see BlockList's own `indented` computation.
+  indented?: boolean;
   isSelected: boolean;
   isSelectMode: boolean;
   // Only the one block being written in is a live TextInput - every other
@@ -110,6 +112,7 @@ type BlockRowProps = {
 export default function BlockRow({
   item,
   hideHandle,
+  indented,
   isSelected,
   isSelectMode,
   isActive,
@@ -813,6 +816,7 @@ export default function BlockRow({
     <View
       style={[
         styles.blockRow,
+        indented && styles.blockRowIndented,
         isSelected && styles.blockRowSelected,
         showBoundary && styles.blockRowBoundary,
         // A sticker keeps its yellow background even once placed here -

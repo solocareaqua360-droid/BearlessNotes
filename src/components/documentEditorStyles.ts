@@ -264,6 +264,17 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     borderColor: 'transparent',
     backgroundColor: t.paper.fill,
   },
+  // Under a toggle's section - see BlockList's own `indented` and
+  // isUnderToggle. The user's own complaint: with nothing marking it,
+  // the only way to tell what a toggle held was to collapse it and see
+  // what vanished. A left rule reads as "part of the line above" the way
+  // a plain margin alone would not.
+  blockRowIndented: {
+    marginLeft: 22,
+    paddingLeft: 10,
+    borderLeftWidth: 2,
+    borderLeftColor: t.accent,
+  },
   blockRowSelected: {
     backgroundColor: t.paper.selected,
   },

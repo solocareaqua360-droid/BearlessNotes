@@ -81,6 +81,7 @@ function DocumentPageMiniature({
   const pageWidth = windowWidth - PAGE_SHEET_INSET * 2;
   const scale = width / pageWidth;
   let numbered = 0;
+  let indented = false;
   // A folded section is folded here too - see visibleBlocks. A card that
   // showed what its page hides would stop being the same picture.
   const shown = visibleBlocks(blocks).slice(0, MAX_ROWS);
@@ -130,11 +131,18 @@ function DocumentPageMiniature({
               } else {
                 numbered = 0;
               }
+              // Same run as BlockList's own - the miniature draws the
+              // same indent the editor does, or a card would show a
+              // flatter page than the one it stands for.
+              if (item.exitsToggle) indented = false;
+              const rowIndented = indented;
+              if (item.type === 'toggle') indented = true;
               return (
                 <BlockRow
                   key={item.id}
                   item={item}
                   hideHandle
+                  indented={rowIndented}
                   isSelected={false}
                   isSelectMode={false}
                   isActive={false}

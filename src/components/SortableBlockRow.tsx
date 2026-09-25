@@ -27,6 +27,9 @@ import type { DocumentIndex } from '../hooks/useDocumentIndex';
 type SortableBlockRowProps = {
   item: Block;
   hideHandle?: boolean;
+  // Under a toggle's section - see BlockList's own indented computation
+  // and BlockRow, which is the one place this actually draws anything.
+  indented?: boolean;
   isSelected: boolean;
   isSelectMode: boolean;
   isActive: boolean;
@@ -95,6 +98,7 @@ export default function SortableBlockRow({
   listNumber,
   textVersion,
   hideHandle,
+  indented,
   onLayout,
   onDragStart,
   onDragUpdate,
@@ -178,6 +182,7 @@ export default function SortableBlockRow({
           <BlockRow
             item={item}
             hideHandle={hideHandle}
+            indented={indented}
             isSelected={isSelected}
             isSelectMode={isSelectMode}
             isActive={isActive}

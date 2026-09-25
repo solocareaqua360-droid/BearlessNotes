@@ -353,6 +353,11 @@ function BlockList({
   // Numbering restarts after any non-numbered block breaks the run, like a
   // real numbered list rather than a permanently incrementing counter.
   let runningNumber = 0;
+  // The same run isUnderToggle answers one position at a time, done once
+  // for the whole list instead of once per row - "важко орієнтуватись
+  // який блок вкладений": nothing drew this before, so the only way to
+  // tell was to collapse the toggle and see what vanished.
+  let indented = false;
 
   return (
     <View ref={containerRef} collapsable={false} style={styles.blockListContainer}>
@@ -362,11 +367,21 @@ function BlockList({
         } else {
           runningNumber = 0;
         }
+        // A toggle's own row is never indented - it is the section's
+        // header, not its content - so this reads the state left over
+        // from BEFORE it and only then turns indenting on for what
+        // follows. An `exitsToggle` row is the reverse: the line that
+        // steps back out is itself back at the top level, so it turns
+        // indenting off before it is drawn, not after.
+        if (item.exitsToggle) indented = false;
+        const rowIndented = indented;
+        if (item.type === 'toggle') indented = true;
         return (
         <SortableBlockRow
           key={item.id}
           item={item}
           hideHandle={hideHandle}
+          indented={rowIndented}
           isSelected={selectedIds.has(item.id)}
           isSelectMode={isSelectMode}
           isActive={focusedBlockId === item.id}
