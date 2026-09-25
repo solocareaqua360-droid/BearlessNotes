@@ -5,7 +5,9 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Block, Tag } from '../types';
 import PageCover from './PageCover';
 import BlockRow from './BlockRow';
+import { SearchMarked } from './FormattedText';
 import { visibleBlocks } from '../utils/toggleBlocks';
+import { blockMatchesQuery } from '../utils/documentPreview';
 import DocumentTagsBlock from './DocumentTagsBlock';
 import { PAGE_HEADER_TOP, PAGE_SHEET_INSET, makeStyles as makeEditorStyles } from './documentEditorStyles';
 
@@ -33,6 +35,11 @@ import { PAGE_HEADER_TOP, PAGE_SHEET_INSET, makeStyles as makeEditorStyles } fro
 // Past this nothing can be seen on even the tallest card.
 const MAX_ROWS = 24;
 const noop = () => {};
+// While searching: a first match at this block or later is too far down
+// the page to be seen on a card, so the card shows the title, a "…", and
+// the page from LEAD_BLOCKS before the match instead of from the top.
+const SLIDE_FROM = 3;
+const LEAD_BLOCKS = 2;
 
 function DocumentPageMiniature({
   title,
@@ -46,7 +53,12 @@ function DocumentPageMiniature({
   width,
   height,
   offsetY = 0,
+  highlight,
 }: {
+  // A search query, while the list is being searched: every match on the
+  // page is marked in yellow where it really stands, and a match below
+  // the top slides the window down to it (see SLIDE_FROM).
+  highlight?: string;
   title: string;
   blocks: Block[];
   tagIds: string[];
@@ -84,7 +96,20 @@ function DocumentPageMiniature({
   let indented = false;
   // A folded section is folded here too - see visibleBlocks. A card that
   // showed what its page hides would stop being the same picture.
-  const shown = visibleBlocks(blocks).slice(0, MAX_ROWS);
+  const all = visibleBlocks(blocks);
+  const query = highlight?.trim().toLowerCase() ?? '';
+  const firstMatch = query ? all.findIndex((b) => blockMatchesQuery(b, query)) : -1;
+  const from = firstMatch >= SLIDE_FROM ? firstMatch - LEAD_BLOCKS : 0;
+  // The skipped blocks still carry their list numbering and toggle indent
+  // into the first ones shown.
+  for (let i = 0; i < from; i++) {
+    const item = all[i];
+    numbered = item.type === 'numbered' ? (all[i - 1]?.type === 'numbered' ? numbered + 1 : 1) : 0;
+    if (item.exitsToggle) indented = false;
+    if (item.type === 'toggle') indented = true;
+  }
+  const sliding = from > 0;
+  const shown = all.slice(from, from + MAX_ROWS);
   return (
     <View
       style={[styles.sheet, { width, height, backgroundColor: paperColor?.background ?? theme.paper.fill }]}
@@ -98,7 +123,7 @@ function DocumentPageMiniature({
             empty header band it leaves above the title, the cover, the
             name, the folders, the blocks, the row it ends with. */}
         <View style={styles.headerBand} />
-        {!!coverImageUri && (
+        {!!coverImageUri && !sliding && (
           <PageCover
             uri={coverImageUri}
             driveFileId={coverDriveFileId}
@@ -107,8 +132,11 @@ function DocumentPageMiniature({
           />
         )}
         <Text style={[editorStyles.titleInput, paperColor && { color: paperColor.text }]} numberOfLines={2}>
-          {title || 'Без назви'}
+          <SearchMarked text={title || 'Без назви'} search={highlight} />
         </Text>
+        {sliding ? (
+          <Text style={[styles.skipped, { color: paperColor?.textMuted ?? theme.paper.inkMuted }]}>…</Text>
+        ) : (
         <DocumentTagsBlock
           tagIds={tagIds}
           tags={tags}
@@ -117,6 +145,7 @@ function DocumentPageMiniature({
           onCreateAndAttach={noop}
           onRenameTag={noop}
         />
+        )}
         {/* The rows go in a scroll view that never scrolls, because that
             is the shape they were written against: laid straight into a
             box of fixed height they lose every row that fills its line -
@@ -127,7 +156,7 @@ function DocumentPageMiniature({
           <View style={editorStyles.blockListContainer}>
             {shown.map((item, index) => {
               if (item.type === 'numbered') {
-                numbered = index > 0 && shown[index - 1].type === 'numbered' ? numbered + 1 : 1;
+                numbered = all[from + index - 1]?.type === 'numbered' ? numbered + 1 : 1;
               } else {
                 numbered = 0;
               }
@@ -142,6 +171,7 @@ function DocumentPageMiniature({
                   key={item.id}
                   item={item}
                   hideHandle
+                  searchHighlight={highlight}
                   indented={rowIndented}
                   isSelected={false}
                   isSelectMode={false}
@@ -216,5 +246,13 @@ const styles = StyleSheet.create({
   // and nothing in between.
   headerBand: {
     height: PAGE_HEADER_TOP + 12,
+  },
+  // Where a search result's page skips down to its match - in the page's
+  // own points, so it scales with the rest of the picture.
+  skipped: {
+    fontSize: 40,
+    lineHeight: 44,
+    paddingHorizontal: 20,
+    marginTop: -8,
   },
 });

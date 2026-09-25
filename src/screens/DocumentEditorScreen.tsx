@@ -102,6 +102,7 @@ import TextSelection from '../components/TextSelection';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { clipBlocksToNote, clippedBlock } from '../utils/copyToNote';
 import { isUnderToggle, mergeVisibleOrder, visibleBlocks } from '../utils/toggleBlocks';
+import { blockMatchesQuery } from '../utils/documentPreview';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
@@ -267,6 +268,8 @@ type Props =
       documentId: string;
       navigation: NativeStackNavigationProp<RootStackParamList>;
       autoFocusTitle?: boolean;
+      // Opened from a search result: land on the first match and mark it.
+      searchQuery?: string;
       onClose: () => void;
       // The pane taking the whole window, list and all. Offered only in
       // pane mode: on a phone every document is already full-screen, so
@@ -436,6 +439,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the block is found here, because only this screen has the blocks.
   const focusLinkTo =
     'embedded' in props || 'pane' in props ? undefined : props.route.params.focusLinkTo;
+  // Opened from a search result: the query that found it. The page lands
+  // on the first block that matches and marks every match in yellow for a
+  // few seconds - long enough to see where it is, gone before it is noise.
+  const searchQuery = (
+    'embedded' in props ? undefined : 'pane' in props ? props.searchQuery : props.route.params.searchQuery
+  )?.trim();
+  const [searchFlash, setSearchFlash] = useState<string | undefined>(searchQuery || undefined);
   // This note was just cut out of another one, and the offer to put it on
   // a board came in with it - see clipSelectedToNote. Shown once: state,
   // not the param itself, so dismissing it actually dismisses it.
@@ -638,6 +648,38 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // The blocks are the event: once they are in, the block can be found.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, focusLinkTo, blocks.length]);
+
+  // The same landing for a search result - the same retried measure as
+  // focusLinkTo above - onto the first block the search itself would
+  // count as a match (see blockMatchesQuery). The yellow goes after a few
+  // seconds; a match only in the title needs no scroll at all.
+  useEffect(() => {
+    setSearchFlash(searchQuery || undefined);
+  }, [searchQuery, documentId]);
+  useEffect(() => {
+    if (!isLoaded || !searchFlash) return;
+    const needle = searchFlash.toLowerCase();
+    const target = blocks.find((b) => blockMatchesQuery(b, needle));
+    let tries = 0;
+    let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = () => {
+      if (!target) return;
+      const y = blockListRef.current?.offsetOf(target.id);
+      if (y === null || y === undefined) {
+        if (++tries < 6) scrollTimer = setTimeout(attempt, 250);
+        return;
+      }
+      scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+    };
+    scrollTimer = setTimeout(attempt, 250);
+    const fadeTimer = setTimeout(() => setSearchFlash(undefined), 5000);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(fadeTimer);
+    };
+    // Once per landing: the blocks arriving is the event, not every edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, searchFlash, documentId]);
   // 'error' is not just 'saved' with a message: the ring has to stop
   // turning, and saying "saved" about a write that was refused is the
   // lie that would be told in its place. Whoever is listening (a pane's
@@ -5347,6 +5389,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
         <BlockList
           ref={blockListRef}
+          searchHighlight={searchFlash}
           // The daily note's sheet runs under the rail, so its rows draw
           // no handle column - see BlockRow's hideHandle.
           hideHandle={embedded}

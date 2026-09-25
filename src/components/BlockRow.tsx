@@ -68,6 +68,10 @@ type BlockRowProps = {
   isActive: boolean;
   showBoundary: boolean;
   listNumber?: number;
+  // A search query to mark in yellow while this block is not being
+  // edited - the search results' page miniatures, and a note opened
+  // from a search result.
+  searchHighlight?: string;
   textVersion: number;
   // cursorIndex: DISPLAY-text position to place the cursor at (from a tap on
   // the locked text); omitted = end of the text.
@@ -118,6 +122,7 @@ export default function BlockRow({
   isActive,
   showBoundary,
   listNumber,
+  searchHighlight,
   textVersion,
   onActivate,
   onBlur,
@@ -730,6 +735,7 @@ export default function BlockRow({
             <FormattedText
               segments={parseFormattedText(item.text)}
               defaultColor={item.isSticker ? STICKER_INK : (rowPaperColor?.text ?? theme.paper.ink)}
+              search={searchHighlight}
             />
           ) : (
             <Text style={[styles.blockPlaceholder, rowPaperColor && { color: rowPaperColor.textMuted }]}>…</Text>

@@ -193,9 +193,15 @@ export function documentMatchesQuery(title: string, blocks: Block[] | undefined,
   const needle = query.trim().toLowerCase();
   if (!needle) return false;
   if (title.toLowerCase().includes(needle)) return true;
-  return (blocks ?? []).some(
-    (b) =>
-      stripFormatting(b.text ?? '').toLowerCase().includes(needle) ||
-      (blockOwnTitle(b) ?? '').toLowerCase().includes(needle)
+  return (blocks ?? []).some((b) => blockMatchesQuery(b, needle));
+}
+
+// One block against an already lower-cased, trimmed query - the same test
+// the search itself uses, so a page miniature slides to the very block the
+// search found and a note opened from a result scrolls to it.
+export function blockMatchesQuery(b: Block, needle: string): boolean {
+  return (
+    stripFormatting(b.text ?? '').toLowerCase().includes(needle) ||
+    (blockOwnTitle(b) ?? '').toLowerCase().includes(needle)
   );
 }

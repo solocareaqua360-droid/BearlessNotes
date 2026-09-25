@@ -292,6 +292,10 @@ type Props = {
   // SearchScreen. DocumentsScreen's own list never sets these.
   titleMatch?: TextMatch | null;
   bodyMatch?: TextMatch | null;
+  // The search query itself, for a card that draws its page: every match
+  // is marked on the page, and the page slides down to the first one -
+  // see DocumentPageMiniature.
+  search?: string;
   onPress: () => void;
   // Held down: the card's own menu (move, rename, bin) - see the documents
   // screen. Optional, because the other screens that draw this card have
@@ -416,7 +420,9 @@ function PageBody({
   paper,
   paperColor,
   ink,
+  search,
 }: {
+  search?: string;
   id: string;
   title: string;
   blocks: Block[];
@@ -464,6 +470,7 @@ function PageBody({
           width={width}
           height={height}
           offsetY={offsetY}
+          highlight={search}
         />
       )}
       {/* What the CARD knows and the page does not - when it was last
@@ -493,6 +500,7 @@ export default function DocumentCard({
   checklistItems = [],
   titleMatch,
   bodyMatch,
+  search,
   onPress,
   onLongPress,
   isSelectMode,
@@ -667,6 +675,7 @@ export default function DocumentCard({
               paper={pageFill}
               paperColor={pagePaper}
               ink={pageInk}
+              search={search}
             />
           ) : (
             <>
@@ -727,6 +736,7 @@ export default function DocumentCard({
               paper={pageFill}
               paperColor={pagePaper}
               ink={pageInk}
+              search={search}
             />
           ) : (
             <>

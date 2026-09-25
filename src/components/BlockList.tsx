@@ -14,6 +14,7 @@ import type { DocumentIndex } from '../hooks/useDocumentIndex';
 type BlockListProps = {
   // Passed straight through to every row - see BlockRow's own hideHandle.
   hideHandle?: boolean;
+  searchHighlight?: string;
   blocks: Block[];
   onReorder: (blocks: Block[]) => void;
   // A hold that never went anywhere. The drag gesture already waits out
@@ -131,6 +132,7 @@ function BlockList({
   softInputDisabled,
   paperColor,
   hideHandle,
+  searchHighlight,
 }: BlockListProps, ref: ForwardedRef<BlockListHandle>) {
   const styles = useStyles(makeStyles);
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -381,6 +383,7 @@ function BlockList({
           key={item.id}
           item={item}
           hideHandle={hideHandle}
+          searchHighlight={searchHighlight}
           indented={rowIndented}
           isSelected={selectedIds.has(item.id)}
           isSelectMode={isSelectMode}

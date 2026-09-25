@@ -179,7 +179,7 @@ export default function DocumentsScreen({
   const paneEditorRef = useRef<DocumentEditorHandle | null>(null);
   // Which document the right-hand pane holds. Only ever read in two-pane
   // mode; on a phone a document is a pushed screen, as before.
-  const [openDoc, setOpenDoc] = useState<{ id: string; autoFocusTitle?: boolean; offerBoard?: boolean } | null>(
+  const [openDoc, setOpenDoc] = useState<{ id: string; autoFocusTitle?: boolean; offerBoard?: boolean; searchQuery?: string } | null>(
     null
   );
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
@@ -978,12 +978,18 @@ export default function DocumentsScreen({
 
   // The one place that decides what "open a document" means: a pane on a
   // wide screen, a pushed screen on a narrow one.
-  function openDocument(id: string, autoFocusTitle?: boolean) {
+  // `searchQuery`: opened from a search result - the note lands on the
+  // first match and marks it (see DocumentEditorScreen).
+  function openDocument(id: string, autoFocusTitle?: boolean, searchQuery?: string) {
     if (isTwoPane) {
-      setOpenDoc({ id, autoFocusTitle });
+      setOpenDoc({ id, autoFocusTitle, searchQuery });
       return;
     }
-    navigation.navigate('Editor', autoFocusTitle ? { documentId: id, autoFocusTitle: true } : { documentId: id });
+    navigation.navigate('Editor', {
+      documentId: id,
+      ...(autoFocusTitle ? { autoFocusTitle: true } : {}),
+      ...(searchQuery ? { searchQuery } : {}),
+    });
   }
 
   // ⌘N from the Mac menu bar. Answered HERE rather than by the menu,
@@ -1408,7 +1414,8 @@ export default function DocumentsScreen({
                     checklistItems={checklistItems}
                     titleMatch={titleMatch}
                     bodyMatch={bodyMatch}
-                    onPress={() => openDocument(item.id)}
+                    search={searching ? needle : undefined}
+                    onPress={() => openDocument(item.id, false, searching ? needle : undefined)}
                     layout={drawnMode === 'list' ? 'list' : 'grid'}
                     gridWidth={gridCardWidth}
                     project={groups.find((g) => g.id === item.groupId) ?? null}
@@ -1800,6 +1807,7 @@ export default function DocumentsScreen({
                 autoFocusTitle={openDoc.autoFocusTitle}
                 navigation={navigation}
                 offerBoard={openDoc.offerBoard}
+                searchQuery={openDoc.searchQuery}
                 // A clipping made in this pane stays in it - the list on
                 // the other half is what it was made next to.
                 onOpenInPane={(documentId, options) =>
