@@ -80,16 +80,43 @@ async function resolveMapsShortLink(url: string): Promise<string | null> {
 // behind the map and its tiles: Nominatim, its own public search
 // endpoint. One request per point, on demand - the same light-use trade
 // already accepted for the tile server, never bulk geocoding.
+// Match precision too coarse to trust for a single point - a street, a
+// whole town, an administrative area. Confirmed on a real failing
+// address: asked for "Глісерна вулиця, 14, Запоріжжя", Nominatim had no
+// point for house 14 specifically and quietly answered with one
+// somewhere along the whole street instead (`addresstype: "road"`, no
+// `house_number` in the address it echoed back) - correct as far as it
+// went, off by close to a kilometre as an actual pin. Silently wrong is
+// worse than admittedly unknown, so a match at this level is refused
+// the same way no match at all already is, rather than accepted as if
+// it were as precise as a dropped pin's own coordinates.
+const IMPRECISE_ADDRESS_TYPES = new Set([
+  'road',
+  'highway',
+  'neighbourhood',
+  'suburb',
+  'city',
+  'town',
+  'village',
+  'municipality',
+  'county',
+  'state',
+  'country',
+  'administrative',
+  'postcode',
+]);
+
 async function geocodePlaceName(name: string): Promise<{ lat: number; lng: number } | null> {
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name)}&format=json&limit=1`,
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name)}&format=json&limit=1&addressdetails=1`,
       { headers: { 'User-Agent': 'BearlessNotes (mindEva notes app)' } }
     );
     if (!res.ok) return null;
-    const results = (await res.json()) as { lat?: string; lon?: string }[];
+    const results = (await res.json()) as { lat?: string; lon?: string; addresstype?: string }[];
     const first = results[0];
     if (!first?.lat || !first.lon) return null;
+    if (first.addresstype && IMPRECISE_ADDRESS_TYPES.has(first.addresstype)) return null;
     const lat = Number(first.lat);
     const lng = Number(first.lon);
     return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
