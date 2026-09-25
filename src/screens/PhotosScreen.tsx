@@ -786,8 +786,11 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       onBack={() => navigation.goBack()}
       leaveIcon="image-outline"
       searchPlaceholder="Пошук фото за назвою"
-      menuRows={(close) =>
-        recordPhotoCount > 0 || showRecordPhotos ? (
+      // Only when there is something to show or hide - a "Ще" that opens
+      // an empty menu is worse than no "Ще".
+      menuRows={
+        recordPhotoCount > 0 || showRecordPhotos
+          ? (close) => (
           <Pressable
             style={menuStyles.menuRow}
             onPress={() => {
@@ -800,7 +803,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               {showRecordPhotos ? 'Сховати вкладення записів' : `Показати вкладення записів (${recordPhotoCount})`}
             </Text>
           </Pressable>
-        ) : null
+            )
+          : undefined
       }
       onAdd={() => askWhereFrom()}
       // The same two rows Files and Links already have. Photos had only
