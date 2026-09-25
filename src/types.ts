@@ -169,6 +169,13 @@ export interface Block {
   fileTitle?: string;
   // 'toggle' blocks only: folded, so what follows it is not drawn.
   collapsed?: boolean;
+  // Any block: marks where a toggle's section ends by hand rather than
+  // by running to the next toggle or the end of the note - Backspace on
+  // an empty line sets this instead of deleting the line, the one way
+  // out of a section with no menu of its own (see isUnderToggle in
+  // utils/toggleBlocks.ts). Sticks to the block it was set on, not to a
+  // position - if the block moves, the boundary moves with it.
+  exitsToggle?: boolean;
   // 'dbRow' blocks only. The block's own `id` IS the referenced row's id
   // (same convention file/image blocks follow with their record), so this
   // only has to carry which database that row lives in. dbRowTitle is a

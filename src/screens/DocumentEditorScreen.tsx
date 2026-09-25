@@ -101,7 +101,7 @@ import TextRecognizer, {
 import TextSelection from '../components/TextSelection';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { clipBlocksToNote, clippedBlock } from '../utils/copyToNote';
-import { mergeVisibleOrder, visibleBlocks } from '../utils/toggleBlocks';
+import { isUnderToggle, mergeVisibleOrder, visibleBlocks } from '../utils/toggleBlocks';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
@@ -3421,6 +3421,20 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function handleBackspaceOnEmpty(id: string) {
     const index = blocks.findIndex((block) => block.id === id);
     if (index <= 0) return;
+    // The one way out of a toggle's section, with no menu of its own -
+    // the user's own model: Backspace on an empty line steps back out a
+    // level instead of deleting it, the way Enter on it (elsewhere)
+    // steps a level in. Marked, not deleted or moved: the line and
+    // everything after it stop being the toggle's, right where they are.
+    // A block already outside falls through to the ordinary delete below
+    // - the same Backspace that opened the way out now behaves like any
+    // other empty line's does.
+    const block = blocks[index];
+    if (block.type !== 'toggle' && !block.exitsToggle && isUnderToggle(blocks, index)) {
+      snapshotBeforeChange();
+      setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, exitsToggle: true } : b)));
+      return;
+    }
     snapshotBeforeChange();
     setBlocks((prev) => {
       const prevIndex = prev.findIndex((block) => block.id === id);
