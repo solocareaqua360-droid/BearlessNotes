@@ -14,12 +14,24 @@ import type { ArticleBlock, SavedArticle } from './articleReader';
 // Gemini rather than Google Translate (Chrome's engine) by the user's
 // choice: the key is already in the app, and its free tier needs no card.
 
-export type SavedTranslation = {
-  lang: 'uk';
-  title?: string;
-  blocks: ArticleBlock[];
-  translatedAt: number;
-};
+// Either the finished translation (complete: true - title and blocks), or
+// one cut short part-way (complete: false - every chunk done so far in
+// `texts`), which the next press carries on from rather than starting
+// over. The first real run lost three translated chunks of four to one
+// "model is experiencing high demand" answer; nothing done is lost now.
+export type SavedTranslation =
+  | { complete: true; lang: 'uk'; title?: string; blocks: ArticleBlock[]; translatedAt: number }
+  | {
+      complete: false;
+      lang: 'uk';
+      texts: string[];
+      chunksDone: number;
+      chunkCount: number;
+      // Which saving of the article this was begun on - a re-saved
+      // article is a new text, and a half-translation of the old one
+      // must not be resumed onto it.
+      sourceSavedAt: number;
+    };
 
 // A chunk small enough to come back whole in one answer, large enough
 // that a long article is a handful of calls rather than dozens.
@@ -63,6 +75,17 @@ function parseArray(raw: string): string[] | null {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// How long to wait before trying again, or null when trying again cannot
+// help. 429 is the free tier's per-minute limit; 5xx - above all 503,
+// "this model is currently experiencing high demand" - is Google's side
+// having a moment, which the first real translation ran straight into.
+function retryDelay(e: unknown, attempt: number): number | null {
+  if (!(e instanceof GeminiError) || e.status === undefined) return null;
+  if (e.status === 429) return 20000 * (attempt + 1);
+  if (e.status >= 500) return [5000, 15000, 30000][attempt] ?? 30000;
+  return null;
+}
+
 async function translateBatch(texts: string[], apiKey: string): Promise<string[]> {
   const prompt =
     'Translate each string in the JSON array below into Ukrainian. ' +
@@ -75,10 +98,9 @@ async function translateBatch(texts: string[], apiKey: string): Promise<string[]
       const parsed = parseArray(await askGemini(prompt, apiKey, { json: true }));
       if (parsed && parsed.length === texts.length) return parsed;
     } catch (e) {
-      // The free tier's per-minute limit: wait it out rather than fail
-      // halfway through a long article.
-      if (e instanceof GeminiError && e.status === 429 && attempt < RETRIES) {
-        await wait(20000 * (attempt + 1));
+      const delay = retryDelay(e, attempt);
+      if (delay !== null && attempt < RETRIES) {
+        await wait(delay);
         continue;
       }
       throw e;
@@ -90,14 +112,24 @@ async function translateBatch(texts: string[], apiKey: string): Promise<string[]
 export async function translateArticle(
   linkId: string,
   article: SavedArticle,
+  existing: SavedTranslation | null,
   onProgress: (done: number, total: number) => void
 ): Promise<void> {
   const apiKey = await getGeminiKey();
   if (!apiKey) throw new Error('Додайте ключ Gemini: Налаштування → «Gemini у чаті».');
   const texts = [article.title ?? '', ...article.blocks.map((b) => b.text)];
   const chunks = chunkIndices(texts);
-  const translated: string[] = new Array(texts.length).fill('');
-  for (let c = 0; c < chunks.length; c++) {
+  // Carry on from a run cut short on this same saving of the article -
+  // the chunking is deterministic, so the same chunks come out again.
+  const resume =
+    existing &&
+    existing.complete === false &&
+    existing.sourceSavedAt === article.savedAt &&
+    existing.chunkCount === chunks.length &&
+    existing.texts.length === texts.length;
+  const translated: string[] = resume ? [...existing.texts] : new Array(texts.length).fill('');
+  const ref = doc(db, 'linkArticleTranslations', linkId);
+  for (let c = resume ? existing.chunksDone : 0; c < chunks.length; c++) {
     onProgress(c, chunks.length);
     const indices = chunks[c];
     const result = await translateBatch(
@@ -107,16 +139,29 @@ export async function translateArticle(
     indices.forEach((textIndex, k) => {
       translated[textIndex] = result[k];
     });
+    // Kept after every chunk, so a failure further on loses nothing.
+    if (c < chunks.length - 1) {
+      await setDoc(ref, {
+        linkId,
+        lang: 'uk',
+        complete: false,
+        texts: translated,
+        chunksDone: c + 1,
+        chunkCount: chunks.length,
+        sourceSavedAt: article.savedAt,
+      });
+    }
   }
   onProgress(chunks.length, chunks.length);
   const data: Record<string, unknown> = {
     linkId,
     lang: 'uk',
+    complete: true,
     blocks: article.blocks.map((b, i) => ({ kind: b.kind, text: translated[i + 1] || b.text })),
     translatedAt: Date.now(),
   };
   if (translated[0]) data.title = translated[0];
-  await setDoc(doc(db, 'linkArticleTranslations', linkId), data);
+  await setDoc(ref, data);
 }
 
 export function watchTranslation(linkId: string, onChange: (translation: SavedTranslation | null) => void): () => void {
@@ -124,7 +169,10 @@ export function watchTranslation(linkId: string, onChange: (translation: SavedTr
     doc(db, 'linkArticleTranslations', linkId),
     (snapshot) => {
       const data = snapshot.data();
-      onChange(data ? (data as SavedTranslation) : null);
+      if (!data) return onChange(null);
+      // Written before `complete` existed, a translation was only ever
+      // saved finished.
+      onChange((data.complete === false ? data : { ...data, complete: true }) as SavedTranslation);
     },
     () => onChange(null)
   );

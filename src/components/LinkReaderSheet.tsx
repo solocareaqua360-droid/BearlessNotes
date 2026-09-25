@@ -9,6 +9,7 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import { watchArticle, type SavedArticle } from '../utils/articleReader';
 import { translateArticle, watchTranslation, type SavedTranslation } from '../utils/articleTranslate';
+import { GeminiError } from '../utils/gemini';
 import { buildReaderHtml } from '../utils/readerHtml';
 import { notify } from './surfaces/Ask';
 
@@ -56,10 +57,20 @@ export default function LinkReaderSheet({
     if (!link || !article || translating) return;
     setTranslating({ done: 0, total: 1 });
     try {
-      await translateArticle(link.id, article, (done, total) => setTranslating({ done, total }));
+      await translateArticle(link.id, article, translation, (done, total) => setTranslating({ done, total }));
       setShowTranslation(true);
     } catch (e) {
-      notify('Не вдалося перекласти', e instanceof Error ? e.message : String(e));
+      // Google's own "high demand" answer, still there after the retries:
+      // say it in the reader's language, and that nothing done was lost.
+      const overloaded = e instanceof GeminiError && (e.status ?? 0) >= 500;
+      notify(
+        'Не вдалося перекласти',
+        overloaded
+          ? 'Gemini зараз перевантажений. Уже перекладене збережено - натисніть «Продовжити переклад» трохи згодом.'
+          : e instanceof Error
+            ? e.message
+            : String(e)
+      );
     } finally {
       setTranslating(null);
     }
@@ -69,7 +80,7 @@ export default function LinkReaderSheet({
   // blocks (same kinds, same order - the translation keeps the shape).
   const displayed: SavedArticle | null | undefined = useMemo(
     () =>
-      article && translation && showTranslation
+      article && translation?.complete && showTranslation
         ? { ...article, title: translation.title ?? article.title, blocks: translation.blocks }
         : article,
     [article, translation, showTranslation]
@@ -131,7 +142,7 @@ export default function LinkReaderSheet({
                     Перекладаю{translating.total > 1 ? ` · ${translating.done + 1} з ${translating.total}` : '…'}
                   </Text>
                 </View>
-              ) : translation ? (
+              ) : translation?.complete ? (
                 <View style={styles.segment}>
                   {(
                     [
@@ -153,7 +164,11 @@ export default function LinkReaderSheet({
               ) : (
                 <Pressable style={({ pressed }) => [styles.translateButton, pressed && styles.pressed]} onPress={translate}>
                   <Ionicons name="language-outline" size={16} color={theme.accent} />
-                  <Text style={styles.translateButtonText}>Перекласти українською</Text>
+                  <Text style={styles.translateButtonText}>
+                    {translation && !translation.complete
+                      ? `Продовжити переклад · ${translation.chunksDone} з ${translation.chunkCount}`
+                      : 'Перекласти українською'}
+                  </Text>
                 </Pressable>
               )}
             </View>
