@@ -37,6 +37,8 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import GeoPointEntrySheet from '../components/GeoPointEntrySheet';
 import GeoMapView, { type GeoMapPoint } from '../components/GeoMapView';
+import GeoPointDetailSheet from '../components/GeoPointDetailSheet';
+import AddExistingItemModal from '../components/AddExistingItemModal';
 import { mapsUrlForLatLng } from '../utils/geoCoordinates';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
@@ -99,6 +101,12 @@ type LinkItem = {
   // resolved (no network at the time).
   geoLat?: number;
   geoLng?: number;
+  // Geo category only - the same two fields a Task carries for the same
+  // reason (see TasksScreen's own Task type): a short note and whatever
+  // photos were attached, both belonging to the point itself rather than
+  // to any one document that happens to reference it.
+  comment?: string;
+  attachments?: Block[];
   // Set while the link sits in the bin (see useBin) - hidden from every
   // list, tags/group/references untouched, purged for good after 30 days.
   deletedAt?: number;
@@ -185,6 +193,8 @@ export default function LinksScreen({
   const [geoPointSheetVisible, setGeoPointSheetVisible] = useState(false);
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
+  const [geoDetailId, setGeoDetailId] = useState<string | null>(null);
+  const [geoAttachPickerVisible, setGeoAttachPickerVisible] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
   const [addLinkTitlePrompt, setAddLinkTitlePrompt] = useState<{ url: string; preview: LinkPreview } | null>(null);
   const [justAddedLink, setJustAddedLink] = useState<JustAddedLink | null>(null);
@@ -270,6 +280,8 @@ export default function LinksScreen({
             deletedAt: data.deletedAt,
             geoLat: data.geoLat,
             geoLng: data.geoLng,
+            comment: data.comment,
+            attachments: data.attachments,
           };
         });
       setLinks(all.filter((l) => !l.deletedAt));
@@ -432,6 +444,35 @@ export default function LinksScreen({
     setGeoPointSheetVisible(false);
     const url = mapsUrlForLatLng(point);
     await saveNewLink(url, { siteName: 'Геоточка', geoLat: point.lat, geoLng: point.lng }, title);
+  }
+
+  // Geo card tapped: opens the point's own record instead of launching
+  // straight out to Google Maps the way every other link's tap still
+  // does - "Перейти в Google Maps" inside the sheet is now the one
+  // button that leaves the app, not the tap itself.
+  function openLinkCard(item: LinkItem) {
+    if (categoryOf(item) === 'geo') {
+      setGeoDetailId(item.id);
+      return;
+    }
+    openLinkUrl(item.url, item.id);
+  }
+
+  function saveGeoComment(link: LinkItem, comment: string) {
+    const trimmed = comment.trim();
+    if (trimmed === (link.comment ?? '')) return;
+    updateDoc(doc(db, 'links', link.id), { comment: trimmed || deleteField() });
+  }
+
+  function addGeoAttachment(link: LinkItem, block: Block) {
+    setGeoAttachPickerVisible(false);
+    const next = [...(link.attachments ?? []), block];
+    updateDoc(doc(db, 'links', link.id), { attachments: next });
+  }
+
+  function removeGeoAttachment(link: LinkItem, attachmentId: string) {
+    const next = (link.attachments ?? []).filter((a) => a.id !== attachmentId);
+    updateDoc(doc(db, 'links', link.id), { attachments: next });
   }
 
   // The "+" button on the Геоточки category alone asks which of the two
@@ -631,7 +672,7 @@ export default function LinksScreen({
         key={item.id}
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
-        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url, item.id))}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkCard(item))}
         onLongPress={carried ? undefined : () => setCardMenuLinkId(item.id)}
         onMenu={() => setCardMenuLinkId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
@@ -664,7 +705,7 @@ export default function LinksScreen({
         columns={columns}
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
-        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkUrl(item.url, item.id))}
+        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkCard(item))}
         onLongPress={carried ? undefined : () => setCardMenuLinkId(item.id)}
         onMenu={() => setCardMenuLinkId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
@@ -931,6 +972,30 @@ export default function LinksScreen({
             onSave={({ title, point }) => saveGeoPointByHand(title, point)}
           />
 
+          <GeoPointDetailSheet
+            link={geoDetailId ? (links.find((l) => l.id === geoDetailId) ?? null) : null}
+            onClose={() => setGeoDetailId(null)}
+            onSaveComment={(comment) => {
+              const link = links.find((l) => l.id === geoDetailId);
+              if (link) saveGeoComment(link, comment);
+            }}
+            onAddPhoto={() => setGeoAttachPickerVisible(true)}
+            onRemovePhoto={(attachmentId) => {
+              const link = links.find((l) => l.id === geoDetailId);
+              if (link) removeGeoAttachment(link, attachmentId);
+            }}
+          />
+
+          <AddExistingItemModal
+            visible={geoAttachPickerVisible}
+            allowedTabs={['photo']}
+            onClose={() => setGeoAttachPickerVisible(false)}
+            onPick={(block) => {
+              const link = links.find((l) => l.id === geoDetailId);
+              if (link) addGeoAttachment(link, block);
+            }}
+          />
+
           <RenamePrompt
             visible={addLinkTitlePrompt !== null}
             title="Назва посилання"
@@ -1063,10 +1128,7 @@ export default function LinksScreen({
             {!needle && <Text style={styles.emptyHint}>{info.emptyHint}</Text>}
           </View>
         ) : mapVisible && category === 'geo' ? (
-          <GeoMapView points={geoMapPoints} onPressPoint={(id) => {
-            const link = linksHere.find((l) => l.id === id);
-            if (link) openLinkUrl(link.url, link.id);
-          }} />
+          <GeoMapView points={geoMapPoints} onPressPoint={(id) => setGeoDetailId(id)} />
         ) : viewMode === 'grid' ? (
           <GestureDetector gesture={carrying.listGesture}>
           <ScrollView

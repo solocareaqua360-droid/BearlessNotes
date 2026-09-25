@@ -291,6 +291,8 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
         <View style={styles.dateRow}>
           <Text style={[styles.gridCaption, styles.dateRowText, { color: textMuted }]} numberOfLines={1}>
             {link.siteName ?? hostnameOf(link.url)}
+            {!!(link.createdAt ?? link.updatedAt) &&
+              ` · ${formatUpdatedAt((link.createdAt ?? link.updatedAt) as number)}`}
           </Text>
           {rest.onProjectPress && <ProjectBadge project={rest.project} onPress={rest.onProjectPress} glass />}
         </View>
