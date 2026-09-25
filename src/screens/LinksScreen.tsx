@@ -36,6 +36,7 @@ import { LINK_CATEGORY_INFO as CATEGORY_INFO, LinkCategory, categoryFromSiteName
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import GeoPointEntrySheet from '../components/GeoPointEntrySheet';
+import GeoMapView, { type GeoMapPoint } from '../components/GeoMapView';
 import { mapsUrlForLatLng } from '../utils/geoCoordinates';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
@@ -182,6 +183,8 @@ export default function LinksScreen({
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const [addLinkUrlPromptVisible, setAddLinkUrlPromptVisible] = useState(false);
   const [geoPointSheetVisible, setGeoPointSheetVisible] = useState(false);
+  // «Геоточки» only - see the rail's own shape.onToggle above.
+  const [mapVisible, setMapVisible] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
   const [addLinkTitlePrompt, setAddLinkTitlePrompt] = useState<{ url: string; preview: LinkPreview } | null>(null);
   const [justAddedLink, setJustAddedLink] = useState<JustAddedLink | null>(null);
@@ -296,6 +299,13 @@ export default function LinksScreen({
     detachTag: list.detachTag,
   });
   const linksHere = explorer.visibleItems;
+  // The map draws exactly this list, filtered to what it can actually
+  // place - search, tags, group and folder all already narrowed
+  // `linksHere` down before this ever runs, so the map needs no filtering
+  // machinery of its own; see the plan's "одночасний пошук і показ".
+  const geoMapPoints: GeoMapPoint[] = linksHere
+    .filter((l): l is LinkItem & { geoLat: number; geoLng: number } => l.geoLat != null && l.geoLng != null)
+    .map((l) => ({ id: l.id, title: l.title || hostnameOf(l.url), lat: l.geoLat, lng: l.geoLng }));
 
   // Carrying a card into a folder - see useExplorerCarry, which is all of
   // it: the gesture, the undo toast, and keeping a carried card alive
@@ -757,10 +767,26 @@ export default function LinksScreen({
       searchPlaceholder="Пошук за назвою"
       onAdd={handleAddPress}
       // The shape of the list is a button on the rail now - it was two
-      // rows here saying the same thing, on three screens.
+      // rows here saying the same thing, on three screens. On «Геоточки»
+      // alone it cycles a third stop - the map - rather than earning a
+      // second button next to it: list/grid already share this one, and
+      // a point either has a place on a map or it does not, the same
+      // binary a representation switch already is everywhere else.
       shape={{
-        icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
-        onToggle: () => changeViewMode(viewMode === 'list' ? 'grid' : 'list'),
+        icon: mapVisible ? 'map-outline' : viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
+        onToggle: () => {
+          if (category !== 'geo') {
+            changeViewMode(viewMode === 'list' ? 'grid' : 'list');
+            return;
+          }
+          if (mapVisible) {
+            setMapVisible(false);
+          } else if (viewMode === 'list') {
+            changeViewMode('grid');
+          } else {
+            setMapVisible(true);
+          }
+        },
       }}
       explorer={{
         mode: list.listMode,
@@ -1036,6 +1062,11 @@ export default function LinksScreen({
             <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає збережених посилань'}</Text>
             {!needle && <Text style={styles.emptyHint}>{info.emptyHint}</Text>}
           </View>
+        ) : mapVisible && category === 'geo' ? (
+          <GeoMapView points={geoMapPoints} onPressPoint={(id) => {
+            const link = linksHere.find((l) => l.id === id);
+            if (link) openLinkUrl(link.url, link.id);
+          }} />
         ) : viewMode === 'grid' ? (
           <GestureDetector gesture={carrying.listGesture}>
           <ScrollView

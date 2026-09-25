@@ -73,6 +73,7 @@
         }
       ],
       "./plugins/withAlarmRingActivity.js",
+      "@maplibre/maplibre-react-native",
       [
         "react-native-android-widget",
         {
