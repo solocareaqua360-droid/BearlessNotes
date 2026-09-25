@@ -52,6 +52,10 @@ type Props = {
   // asked for its own inbox to read as a top-level bucket rather than a
   // catch-all parked at the end.
   unassignedFirst?: boolean;
+  // Puts "Всі" at the very end instead of the start - Tasks again, where
+  // the unsorted inbox is what matters first and the everything-list is
+  // the last thing looked at.
+  allLast?: boolean;
 };
 
 // Horizontal row of pills (see the videobookmark reference the user showed:
@@ -68,8 +72,20 @@ export default function ProjectTabsRow({
   endPadding,
   startPadding,
   unassignedFirst,
+  allLast,
 }: Props) {
   const styles = useStyles(makeStyles);
+  const allTab = (
+    <Tab
+      key="__all__"
+      label="Всі"
+      color={MUTED}
+      active={selected === null}
+      onPress={() => onSelect(null)}
+      dark={dark}
+      blurTarget={blurTarget}
+    />
+  );
   const unassignedTab = (
     <Tab
       key="__unassigned__"
@@ -98,14 +114,7 @@ export default function ProjectTabsRow({
         startPadding !== undefined && { paddingLeft: startPadding },
       ]}
     >
-      <Tab
-        label="Всі"
-        color={MUTED}
-        active={selected === null}
-        onPress={() => onSelect(null)}
-        dark={dark}
-        blurTarget={blurTarget}
-      />
+      {!allLast && allTab}
       {unassignedFirst && unassignedTab}
       {items.map((p) => (
         <Tab
@@ -129,6 +138,7 @@ export default function ProjectTabsRow({
           blurTarget={blurTarget}
         />
       )}
+      {allLast && allTab}
     </ScrollView>
   );
 }

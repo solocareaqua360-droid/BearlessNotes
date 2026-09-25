@@ -264,7 +264,9 @@ export default function TasksScreen() {
   // "+" - no bead on the right.
   useDockLeave('arrow-back-outline', () => navigation.goBack());
   const { sortPref, selectSortField } = useSortPref('tasksPrefs');
-  const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  // Opens on the inbox, the first tab: the user wants what is still
+  // unsorted before the everything-list, which now sits last.
+  const [projectFilter, setProjectFilter] = useState<string | null>(UNASSIGNED_ID);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   // Which tasks currently show their own expanded row - subtasks, the
   // comment field and attachments, none of which ever appear anywhere
@@ -1620,6 +1622,7 @@ export default function TasksScreen() {
             // Not assigned to a project = in the inbox; the user's own rule.
             unassignedLabel="Вхідні"
             unassignedFirst
+            allLast
           />
         )}
 
