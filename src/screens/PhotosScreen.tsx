@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { withAlpha } from '../utils/color';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -21,7 +21,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Sharing from 'expo-sharing';
 import * as ImagePicker from 'expo-image-picker';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { compressPickedImage, writePhotoRecord } from '../utils/photoLibrary';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import StockPhotoPicker from '../components/StockPhotoPicker';
 import {
@@ -52,6 +52,7 @@ import CopyToNoteModal from '../components/CopyToNoteModal';
 import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { useRecordPhotoIds } from '../hooks/useRecordPhotoIds';
 import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
@@ -64,7 +65,7 @@ import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { appendBlocksToToday, blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import SaveDestinationSheet from '../components/SaveDestinationSheet';
-import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
+import { deleteFileFromDrive } from '../utils/googleDrive';
 import DownloadToast from '../components/DownloadToast';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -140,11 +141,27 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   // delete that can be taken back - all of it is the same on every
   // database, and lives in one place now (useDatabaseList). What is left
   // in this file is only what photos themselves do.
+  // "Technical" pictures - attached to a record (a link's card, a custom
+  // database's photo field) and used in no note - are hidden by default,
+  // the user's own rule: useful where they are attached, noise in the
+  // gallery. One row in the "..." menu shows them again.
+  const recordPhotoIds = useRecordPhotoIds();
+  const [showRecordPhotos, setShowRecordPhotos] = useState(false);
+  const recordPhotoCount = useMemo(
+    () => photos.filter((p) => recordPhotoIds.has(p.id) && p.documentIds.length === 0).length,
+    [photos, recordPhotoIds]
+  );
+  const galleryPhotos = useMemo(
+    () =>
+      showRecordPhotos ? photos : photos.filter((p) => !(recordPhotoIds.has(p.id) && p.documentIds.length === 0)),
+    [photos, recordPhotoIds, showRecordPhotos]
+  );
+
   const list = useDatabaseList<PhotoItem>({
     prefsKey: 'photosPrefs',
     groupKind: 'photo',
     tagKind: 'photo',
-    items: photos,
+    items: galleryPhotos,
     tagIdsOf: (p) => p.tagIds,
     groupIdOf: (p) => p.groupId,
     titleOf: (p) => p.title || 'Без назви',
@@ -315,25 +332,6 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     clearSelection();
   }
 
-  // Same resize-then-compress DocumentEditorScreen's own image blocks go
-  // through before ever being saved anywhere.
-  async function compressPickedImage(uri: string, width: number, height: number): Promise<string> {
-    const MAX_DIMENSION = 1600;
-    try {
-      const longest = Math.max(width, height);
-      let context = ImageManipulator.manipulate(uri);
-      if (longest > MAX_DIMENSION) {
-        const scale = MAX_DIMENSION / longest;
-        context = context.resize({ width: Math.round(width * scale), height: Math.round(height * scale) });
-      }
-      const rendered = await context.renderAsync();
-      const saved = await rendered.saveAsync({ compress: 0.7, format: SaveFormat.JPEG });
-      return saved.uri;
-    } catch {
-      return uri;
-    }
-  }
-
   // The "+" button - a photo straight into the database, no document
   // involved (usedInDocuments starts empty). A camera shot still lands in
   // the fixed, non-deletable "Фото" group, same rule DocumentEditorScreen's
@@ -418,23 +416,11 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     height: number,
     source?: 'gallery' | 'camera'
   ): Promise<JustAddedPhoto> {
-    const now = Date.now();
-    const id = generateId();
-    const data: Record<string, unknown> = {
-      imageUri,
-      imageFit: 'contain',
-      updatedAt: now,
-      createdAt: now,
-      usedInDocuments: {},
-    };
-    if (source === 'camera') data.groupId = CAMERA_PHOTOS_GROUP_ID;
-    await setDoc(doc(db, 'photos', id), data, { merge: true });
-    // Made inside a folder, it belongs to that folder - see useExplorer.
-    await explorer.assignToCurrentFolder(id);
-    backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
-      if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+    const added = await writePhotoRecord(imageUri, {
+      groupId: source === 'camera' ? CAMERA_PHOTOS_GROUP_ID : undefined,
     });
-    const added = { id, imageUri, createdAt: now };
+    // Made inside a folder, it belongs to that folder - see useExplorer.
+    await explorer.assignToCurrentFolder(added.id);
     if (!source) setJustAddedPhoto(added);
     return added;
   }
@@ -800,6 +786,22 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       onBack={() => navigation.goBack()}
       leaveIcon="image-outline"
       searchPlaceholder="Пошук фото за назвою"
+      menuRows={(close) =>
+        recordPhotoCount > 0 || showRecordPhotos ? (
+          <Pressable
+            style={menuStyles.menuRow}
+            onPress={() => {
+              close();
+              setShowRecordPhotos((v) => !v);
+            }}
+          >
+            <Ionicons name={showRecordPhotos ? 'eye-off-outline' : 'eye-outline'} size={17} color={theme.ink.primary} />
+            <Text style={menuStyles.menuRowLabel}>
+              {showRecordPhotos ? 'Сховати вкладення записів' : `Показати вкладення записів (${recordPhotoCount})`}
+            </Text>
+          </Pressable>
+        ) : null
+      }
       onAdd={() => askWhereFrom()}
       // The same two rows Files and Links already have. Photos had only
       // the grid, which shows the picture and nothing else - so a photo's
