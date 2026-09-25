@@ -30,6 +30,11 @@
           "androidIntentFilters": ["text/*"]
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a5702ee7-33d8-47bf-bcc0-bb5c59951f1b"
+      }
+    }
   }
 }
