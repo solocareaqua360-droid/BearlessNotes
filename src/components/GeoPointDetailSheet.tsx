@@ -8,10 +8,11 @@ import type { Block } from '../types';
 import GlassLayer from './GlassLayer';
 import AttachmentImage from './AttachmentImage';
 import GeoThumbnail from './GeoThumbnail';
+import GeoPointMapPicker from './GeoPointMapPicker';
 import { FONT_BOLD, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import { formatUpdatedAt } from '../utils/documentPreview';
-import { formatDecimalLatLng, formatMgrs } from '../utils/geoCoordinates';
+import { formatDecimalLatLng, formatMgrs, type LatLng } from '../utils/geoCoordinates';
 
 // A geoточка's own record, opened by a tap that used to just launch
 // Google Maps straight away - that is now one button inside here
@@ -30,6 +31,10 @@ export type GeoDetailLink = {
   attachments?: Block[];
   geoLat?: number;
   geoLng?: number;
+  // Whether the point has been through "Неточність" at least once - the
+  // button's own label is what tells the two states apart (see
+  // renderCorrectButton), so this needs no name of its own beyond that.
+  geoCorrected?: boolean;
 };
 
 export default function GeoPointDetailSheet({
@@ -38,12 +43,14 @@ export default function GeoPointDetailSheet({
   onSaveComment,
   onAddPhoto,
   onRemovePhoto,
+  onCorrectPosition,
 }: {
   link: GeoDetailLink | null;
   onClose: () => void;
   onSaveComment: (comment: string) => void;
   onAddPhoto: () => void;
   onRemovePhoto: (attachmentId: string) => void;
+  onCorrectPosition: (point: LatLng) => void;
 }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -62,6 +69,8 @@ export default function GeoPointDetailSheet({
   useEffect(() => {
     setComment(link?.comment ?? '');
   }, [link?.id, link?.comment]);
+
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
@@ -95,6 +104,17 @@ export default function GeoPointDetailSheet({
                 </Pressable>
               </View>
 
+              {/* The card grew a map preview, two big copyable rows and a
+                  correction button on top of what fit before - rather
+                  than shrink any of that back down, the card scrolls.
+                  bounces=false: a sheet that visibly rubber-bands past
+                  its own last row reads as broken, not as "more below". */}
+              <ScrollView
+                style={styles.body}
+                contentContainerStyle={styles.bodyContent}
+                bounces={false}
+                showsVerticalScrollIndicator={false}
+              >
               {!!(shown.createdAt ?? shown.updatedAt) && (
                 <Text style={styles.date}>
                   Створено {formatUpdatedAt((shown.createdAt ?? shown.updatedAt) as number)}
@@ -120,6 +140,19 @@ export default function GeoPointDetailSheet({
                       theme={theme}
                     />
                   </View>
+                  <Pressable
+                    style={({ pressed }) => [styles.correctButton, pressed && styles.pressed]}
+                    onPress={() => setPickerVisible(true)}
+                  >
+                    <Ionicons
+                      name={shown.geoCorrected ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+                      size={16}
+                      color={shown.geoCorrected ? theme.ink.muted : theme.accent}
+                    />
+                    <Text style={[styles.correctButtonText, { color: shown.geoCorrected ? theme.ink.muted : theme.accent }]}>
+                      {shown.geoCorrected ? 'Відкоректовано' : 'Неточність'}
+                    </Text>
+                  </Pressable>
                 </>
               )}
 
@@ -163,10 +196,20 @@ export default function GeoPointDetailSheet({
                 <Ionicons name="navigate-outline" size={17} color={theme.onAccent} />
                 <Text style={styles.mapsButtonText}>Перейти в Google Maps</Text>
               </Pressable>
+              </ScrollView>
             </>
           )}
         </View>
       </View>
+      <GeoPointMapPicker
+        visible={pickerVisible}
+        initialPoint={shown && shown.geoLat != null && shown.geoLng != null ? { lat: shown.geoLat, lng: shown.geoLng } : null}
+        onCancel={() => setPickerVisible(false)}
+        onSave={(point) => {
+          setPickerVisible(false);
+          onCorrectPosition(point);
+        }}
+      />
     </GlassLayer>
   );
 }
@@ -202,7 +245,7 @@ function CoordRow({
       <Text style={styles.coordsValue}>{value ?? '—'}</Text>
       <Ionicons
         name={copied ? 'checkmark' : 'copy-outline'}
-        size={14}
+        size={18}
         color={copied ? theme.accent : theme.ink.faint}
       />
     </Pressable>
@@ -213,6 +256,11 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   frame: SHEET_FRAME,
   card: {
     ...SHEET_WINDOW,
+    // A map preview, two big copyable coordinate rows and a correction
+    // button on top of everything the card already held - it no longer
+    // reliably fits the screen, so past this it scrolls (see `body`)
+    // instead of running off the bottom.
+    maxHeight: '88%',
     backgroundColor: t.raised,
     borderWidth: 1,
     borderColor: t.edge.hairline,
@@ -224,6 +272,17 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  // flexShrink, not flex:1 - the card is only as tall as it needs to be
+  // until it hits the card's own maxHeight, and only then does this
+  // scroll (see ColorSchemeSheet's own identical body/bodyContent pair).
+  body: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  bodyContent: {
+    gap: 12,
+    paddingBottom: 4,
   },
   title: {
     flex: 1,
@@ -248,24 +307,44 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     height: '100%',
   },
   coordsBlock: {
-    gap: 4,
+    gap: 8,
   },
+  // A big, deliberate button, not a thin line of text with a small icon
+  // at the end of it - the user's own report: reaching the copy icon
+  // took real aim. The whole row is now the target, not just the icon.
   coordsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    minHeight: 52,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: t.field.fill,
   },
   coordsLabel: {
-    width: 44,
-    fontSize: 11,
+    width: 48,
+    fontSize: 12,
     fontFamily: FONT_SEMIBOLD,
     color: t.ink.faint,
   },
   coordsValue: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: FONT_MONO,
-    color: t.ink.muted,
+    color: t.ink.primary,
+  },
+  correctButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 40,
+    borderRadius: 12,
+  },
+  correctButtonText: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
   },
   carousel: {
     flexGrow: 0,

@@ -106,7 +106,7 @@ const IMPRECISE_ADDRESS_TYPES = new Set([
   'postcode',
 ]);
 
-async function geocodePlaceName(name: string): Promise<{ lat: number; lng: number } | null> {
+async function geocodePlaceNameRaw(name: string): Promise<{ lat: number; lng: number; addresstype?: string } | null> {
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name)}&format=json&limit=1&addressdetails=1`,
@@ -116,13 +116,19 @@ async function geocodePlaceName(name: string): Promise<{ lat: number; lng: numbe
     const results = (await res.json()) as { lat?: string; lon?: string; addresstype?: string }[];
     const first = results[0];
     if (!first?.lat || !first.lon) return null;
-    if (first.addresstype && IMPRECISE_ADDRESS_TYPES.has(first.addresstype)) return null;
     const lat = Number(first.lat);
     const lng = Number(first.lon);
-    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng, addresstype: first.addresstype } : null;
   } catch {
     return null;
   }
+}
+
+async function geocodePlaceName(name: string): Promise<{ lat: number; lng: number } | null> {
+  const found = await geocodePlaceNameRaw(name);
+  if (!found) return null;
+  if (found.addresstype && IMPRECISE_ADDRESS_TYPES.has(found.addresstype)) return null;
+  return { lat: found.lat, lng: found.lng };
 }
 
 // Coordinates for a Maps URL of any shape this app recognises - reading
@@ -134,17 +140,35 @@ async function geocodePlaceName(name: string): Promise<{ lat: number; lng: numbe
 export async function extractMapsCoordinates(url: string): Promise<{ lat: number; lng: number } | null> {
   const direct = extractMapsCoordinatesFromText(url);
   if (direct) return direct;
-  let resolvedUrl = url;
-  if (isMapsShortLink(url)) {
-    const resolved = await resolveMapsShortLink(url);
-    if (resolved) {
-      resolvedUrl = resolved;
-      const fromResolved = extractMapsCoordinatesFromText(resolved);
-      if (fromResolved) return fromResolved;
-    }
-  }
+  const resolvedUrl = await resolveIfShortLink(url);
+  const fromResolved = resolvedUrl !== url ? extractMapsCoordinatesFromText(resolvedUrl) : null;
+  if (fromResolved) return fromResolved;
   const name = extractMapsPlaceName(resolvedUrl);
   return name ? geocodePlaceName(name) : null;
+}
+
+async function resolveIfShortLink(url: string): Promise<string> {
+  if (!isMapsShortLink(url)) return url;
+  const resolved = await resolveMapsShortLink(url);
+  return resolved ?? url;
+}
+
+// The same lookup extractMapsCoordinates falls back to, WITHOUT the
+// precision filter - a rough centre to open a map on, never a point to
+// save outright. Built for GeoPointEntrySheet's "Мапа" mode: the user's
+// own idea, once a link only geocodes to street/town level and gets
+// refused as too imprecise to trust - show the street rather than
+// nothing, and let a tap say exactly where on it.
+export async function approximateMapsCenter(url: string): Promise<{ lat: number; lng: number } | null> {
+  const direct = extractMapsCoordinatesFromText(url);
+  if (direct) return direct;
+  const resolvedUrl = await resolveIfShortLink(url);
+  const fromResolved = resolvedUrl !== url ? extractMapsCoordinatesFromText(resolvedUrl) : null;
+  if (fromResolved) return fromResolved;
+  const name = extractMapsPlaceName(resolvedUrl);
+  if (!name) return null;
+  const found = await geocodePlaceNameRaw(name);
+  return found ? { lat: found.lat, lng: found.lng } : null;
 }
 
 export function hostnameOf(url: string): string {

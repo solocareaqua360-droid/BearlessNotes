@@ -39,7 +39,7 @@ import GeoPointEntrySheet from '../components/GeoPointEntrySheet';
 import GeoMapView, { type GeoMapPoint } from '../components/GeoMapView';
 import GeoPointDetailSheet from '../components/GeoPointDetailSheet';
 import AddExistingItemModal from '../components/AddExistingItemModal';
-import { mapsUrlForLatLng } from '../utils/geoCoordinates';
+import { mapsUrlForLatLng, type LatLng } from '../utils/geoCoordinates';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
 import { LinkGridCell, LinkRow } from '../components/ItemCards';
@@ -107,6 +107,10 @@ type LinkItem = {
   // to any one document that happens to reference it.
   comment?: string;
   attachments?: Block[];
+  // Whether "Неточність" has ever been used on this point - see
+  // GeoPointDetailSheet's own correction button, which reads this back
+  // to say "Відкоректовано" instead once it has.
+  geoCorrected?: boolean;
   // Set while the link sits in the bin (see useBin) - hidden from every
   // list, tags/group/references untouched, purged for good after 30 days.
   deletedAt?: number;
@@ -282,6 +286,7 @@ export default function LinksScreen({
             geoLng: data.geoLng,
             comment: data.comment,
             attachments: data.attachments,
+            geoCorrected: data.geoCorrected,
           };
         });
       setLinks(all.filter((l) => !l.deletedAt));
@@ -473,6 +478,21 @@ export default function LinksScreen({
   function removeGeoAttachment(link: LinkItem, attachmentId: string) {
     const next = (link.attachments ?? []).filter((a) => a.id !== attachmentId);
     updateDoc(doc(db, 'links', link.id), { attachments: next });
+  }
+
+  // "Неточність" - the user's own tap on the map replaces whatever the
+  // automatic extraction/geocoding produced. The url is rebuilt from the
+  // new point too, not just geoLat/geoLng: it started life pointing at
+  // wherever the OLD coordinates were, and "Перейти в Google Maps"
+  // reading that stale place after a correction would be exactly the
+  // kind of quiet wrongness this whole feature exists to avoid.
+  function correctGeoPosition(link: LinkItem, point: LatLng) {
+    updateDoc(doc(db, 'links', link.id), {
+      geoLat: point.lat,
+      geoLng: point.lng,
+      geoCorrected: true,
+      url: mapsUrlForLatLng(point),
+    });
   }
 
   // The "+" button on the Геоточки category alone asks which of the two
@@ -983,6 +1003,10 @@ export default function LinksScreen({
             onRemovePhoto={(attachmentId) => {
               const link = links.find((l) => l.id === geoDetailId);
               if (link) removeGeoAttachment(link, attachmentId);
+            }}
+            onCorrectPosition={(point) => {
+              const link = links.find((l) => l.id === geoDetailId);
+              if (link) correctGeoPosition(link, point);
             }}
           />
 

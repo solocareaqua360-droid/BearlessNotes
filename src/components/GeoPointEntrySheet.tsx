@@ -3,9 +3,10 @@ import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, Vi
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
+import GeoPointMapPicker from './GeoPointMapPicker';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
-import { extractMapsCoordinates, isMapsUrl } from '../utils/linkPreview';
+import { approximateMapsCenter, extractMapsCoordinates, isMapsUrl } from '../utils/linkPreview';
 import {
   formatDecimalLatLng,
   formatMgrs,
@@ -16,6 +17,11 @@ import {
   parseMgrs,
 } from '../utils/geoCoordinates';
 
+// The fourth way in is not a field to type into - "Мапа" opens
+// GeoPointMapPicker (shared with the detail sheet's own "Неточність")
+// instead of switching this row over to an inline map the way the other
+// three switch to a text field. Never itself the active `mode` a mirror
+// is checked against, only a button.
 type Mode = 'url' | 'decimal' | 'mgrs';
 
 // A geoточка entered by hand, in whichever of the three languages a point
@@ -54,6 +60,13 @@ export default function GeoPointEntrySheet({
   // link (see extractMapsCoordinates) - never on every keystroke, only
   // once typing settles.
   const [resolvingUrl, setResolvingUrl] = useState(false);
+  // Where "Мапа" opens when there is no point of the user's own yet - a
+  // link that only geocoded to street/town level (refused as too
+  // imprecise to save outright, see linkPreview's own IMPRECISE_ADDRESS_
+  // TYPES) still says roughly where to look. The user's own idea: show
+  // at least the street, let a tap say exactly where on it.
+  const [approxCenter, setApproxCenter] = useState<LatLng | null>(null);
+  const [mapPickerVisible, setMapPickerVisible] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -64,12 +77,13 @@ export default function GeoPointEntrySheet({
     setDecimalText('');
     setMgrsText('');
     setResolvingUrl(false);
+    setApproxCenter(null);
   }, [visible]);
 
   // Every field but the one just typed into is a MIRROR of `point` - set
   // once here, rather than at each of the three call sites, so the mirror
   // can never fall one edit behind the field that produced it.
-  function applyPoint(next: LatLng | null, from: Mode) {
+  function applyPoint(next: LatLng | null, from: Mode | 'map') {
     setPoint(next);
     if (from !== 'decimal') setDecimalText(next ? formatDecimalLatLng(next) : '');
     if (from !== 'mgrs') setMgrsText(next ? (formatMgrs(next) ?? '') : '');
@@ -102,7 +116,15 @@ export default function GeoPointEntrySheet({
     setResolvingUrl(true);
     try {
       const coords = await extractMapsCoordinates(url);
-      if (coords) applyPoint({ lat: coords.lat, lng: coords.lng }, 'url');
+      if (coords) {
+        applyPoint({ lat: coords.lat, lng: coords.lng }, 'url');
+        return;
+      }
+      // Too imprecise to accept outright (street/town level only) - a
+      // rough centre for "Мапа" is still worth having, so the user is
+      // not left tapping around blind.
+      const approx = await approximateMapsCenter(url);
+      if (approx) setApproxCenter(approx);
     } finally {
       setResolvingUrl(false);
     }
@@ -150,6 +172,13 @@ export default function GeoPointEntrySheet({
                 <Text style={[styles.modeLabel, mode === m && styles.modeLabelActive]}>{label}</Text>
               </Pressable>
             ))}
+            {/* Not a fourth field to switch into, like the three above -
+                a tap opens GeoPointMapPicker over this sheet, and its own
+                result comes back through applyPoint the same way typing
+                in any of the other three would. */}
+            <Pressable style={styles.modeTab} onPress={() => setMapPickerVisible(true)}>
+              <Text style={styles.modeLabel}>Мапа</Text>
+            </Pressable>
           </View>
 
           {mode === 'url' ? (
@@ -232,6 +261,17 @@ export default function GeoPointEntrySheet({
           </View>
         </View>
       </View>
+      <GeoPointMapPicker
+        visible={mapPickerVisible}
+        initialPoint={point}
+        initialCenter={approxCenter}
+        onCancel={() => setMapPickerVisible(false)}
+        onSave={(picked) => {
+          setMapPickerVisible(false);
+          applyPoint(picked, 'map');
+          setMode('decimal');
+        }}
+      />
     </GlassLayer>
   );
 }
