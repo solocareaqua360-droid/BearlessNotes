@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
+import GeoHouseNumbers from './GeoHouseNumbers';
 import { MAP_STYLE_URL } from '../utils/geoMapStyle';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
@@ -66,6 +67,7 @@ export default function GeoPointMapPicker({
               }}
             >
               <Camera initialViewState={{ center: [center.lng, center.lat], zoom: initialPoint ? 16 : 14 }} />
+              <GeoHouseNumbers />
               {point && (
                 <Marker lngLat={[point.lng, point.lat]}>
                   <View style={[styles.pin, { backgroundColor: theme.accent }]}>

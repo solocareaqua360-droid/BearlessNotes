@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { MAP_STYLE_URL } from '../utils/geoMapStyle';
 import GeoOfflineRegionsSheet from './GeoOfflineRegionsSheet';
+import GeoHouseNumbers from './GeoHouseNumbers';
 import { notify } from './surfaces/Ask';
 
 // Kyiv, zoomed out to the country - a reasonable place to open with no
@@ -115,6 +116,7 @@ export default function GeoMapView({
     <View style={styles.fill}>
       <Map style={styles.fill} mapStyle={MAP_STYLE_URL} onRegionDidChange={handleRegionChange}>
         <Camera ref={cameraRef} initialViewState={{ center: initialCenter, zoom: initialZoom }} />
+        <GeoHouseNumbers />
         {locationEnabled && <UserLocation accuracy />}
         {clusters.map((feature) => {
           const [lng, lat] = feature.geometry.coordinates;

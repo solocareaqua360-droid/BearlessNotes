@@ -12,6 +12,7 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
 import GeoAreaFrame, { type ScreenFrame } from './GeoAreaFrame';
+import GeoHouseNumbers from './GeoHouseNumbers';
 import { MAP_STYLE_URL } from '../utils/geoMapStyle';
 import { searchPlace } from '../utils/geoPlaceSearch';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -122,6 +123,7 @@ export default function GeoAreaPicker({
                 ref={cameraRef}
                 initialViewState={initialBounds ? { bounds: initialBounds } : { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM }}
               />
+              <GeoHouseNumbers />
             </Map>
             {frame && mapSize && <GeoAreaFrame frame={frame} bounds={mapSize} onChange={setFrame} />}
           </View>
