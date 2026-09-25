@@ -1,4 +1,5 @@
 import { OfflineManager, type OfflinePackDownloadState } from '@maplibre/maplibre-react-native';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { OSM_RASTER_STYLE } from './geoMapStyle';
 
 // Named, separately-managed offline regions - not the library's own
@@ -68,13 +69,27 @@ export function estimateRegionSize(
   return { tileCount, bytes: tileCount * AVG_TILE_BYTES };
 }
 
-// Since OfflineManager's own mapStyle option is a URL/StyleSpecification
-// pair like the live map already uses, `.toJSON()`-serialising the same
-// OSM_RASTER_STYLE the map and every thumbnail already draw from would
-// be enough - but its `sources`/`tileSize` shape doesn't need any
-// change to pass straight through, so JSON.stringify keys never drift
-// out of step with whatever mapStyle actually is.
-const MAP_STYLE_JSON = JSON.stringify(OSM_RASTER_STYLE);
+// Unlike the live <Map mapStyle={...}> prop (which happily takes a
+// StyleSpecification object directly), the offline engine's own
+// `mapStyle` option is used as a genuine fetchable styleURL - confirmed
+// against MapLibre's Android/C++ source and every real published example
+// of OfflineTilePyramidRegionDefinition, which is always a real URL,
+// never inline JSON. Passing the stringified style straight through (as
+// this used to) left the offline engine with nothing it could actually
+// load as a style document, so it could never work out which tiles a
+// region even needed - every download sat at 0% forever, independent of
+// size, since nothing was ever being fetched at all. Writing the same
+// style to one small file the device can read as a real `file://` URL
+// gives it something it can resolve.
+let styleFileUri: Promise<string> | null = null;
+
+function offlineStyleUrl(): Promise<string> {
+  if (!styleFileUri) {
+    const uri = `${LegacyFileSystem.cacheDirectory}osm-raster-style.json`;
+    styleFileUri = LegacyFileSystem.writeAsStringAsync(uri, JSON.stringify(OSM_RASTER_STYLE)).then(() => uri);
+  }
+  return styleFileUri;
+}
 
 // Downloads the given bounds at one detail level, reporting progress as
 // 0-1. Resolves once complete (state === "complete"); rejects on the
@@ -119,14 +134,17 @@ export function downloadRegion(
       fn();
     }
 
-    OfflineManager.createPack(
-      { mapStyle: MAP_STYLE_JSON, bounds, minZoom, maxZoom, metadata: { name } },
-      (_pack, status) => {
-        onProgress(status.percentage / 100);
-        if (status.state === ('complete' as OfflinePackDownloadState)) settle(resolve);
-      },
-      (_pack, error) => settle(() => reject(new Error(error.message)))
-    )
+    offlineStyleUrl()
+      .then((mapStyle) =>
+        OfflineManager.createPack(
+          { mapStyle, bounds, minZoom, maxZoom, metadata: { name } },
+          (_pack, status) => {
+            onProgress(status.percentage / 100);
+            if (status.state === ('complete' as OfflinePackDownloadState)) settle(resolve);
+          },
+          (_pack, error) => settle(() => reject(new Error(error.message)))
+        )
+      )
       .then((pack) => {
         createdPackId = pack.id;
         pollTimer = setInterval(() => {
