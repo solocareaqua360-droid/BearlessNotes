@@ -269,11 +269,22 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
   // the only way to tell what a toggle held was to collapse it and see
   // what vanished. A left rule reads as "part of the line above" the way
   // a plain margin alone would not.
+  //
+  // Rows sit directly against one another with no gap, but each is its
+  // OWN rounded card - so the left border rounds off at the top and
+  // bottom of every row along with the rest of it, and adjacent rows
+  // read as a row of separate brackets rather than the one continuous
+  // line down the whole section the user asked for. Squaring off just
+  // this corner pair is what lets consecutive rows' borders touch and
+  // read as a single line, from the toggle's own row straight down to
+  // wherever the section ends.
   blockRowIndented: {
     marginLeft: 22,
     paddingLeft: 10,
     borderLeftWidth: 2,
     borderLeftColor: t.accent,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
   },
   blockRowSelected: {
     backgroundColor: t.paper.selected,
