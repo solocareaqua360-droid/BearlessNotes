@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -13,18 +13,26 @@ import { FONT_BOLD, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/font
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import { formatUpdatedAt } from '../utils/documentPreview';
 import { formatDecimalLatLng, formatMgrs, type LatLng } from '../utils/geoCoordinates';
+import { hostnameOf } from '../utils/linkPreview';
+import type { LinkCategory } from '../utils/linkCategory';
+import type { LinkFragment } from '../utils/articleReader';
+import { notify } from './surfaces/Ask';
 
-// A geoточка's own record, opened by a tap that used to just launch
-// Google Maps straight away - that is now one button inside here
-// ("Перейти в Google Maps"), not what the tap itself does. The same
-// two fields a Task carries for the same reason (see TasksScreen's own
-// Task.comment/attachments): a short note and whatever photos were
-// attached, both belonging to the point rather than to any one document
-// that references it.
-export type GeoDetailLink = {
+// A link's own record - every link's, since 2026-09-25; it began as the
+// geo point's alone. A tap on a link opens this; the site itself is one
+// button inside (and a small icon on the list card, for a link that is
+// just a link). A short note and photos belong to the link rather than to
+// any one document that references it, the same two fields a Task
+// carries. An ordinary page can also be saved for reading offline, and
+// pieces marked while reading ("фрагменти") gather here before going on
+// into a note.
+export type DetailLink = {
   id: string;
   url: string;
   title?: string;
+  imageUrl?: string;
+  siteName?: string;
+  category: LinkCategory;
   createdAt?: number;
   updatedAt?: number;
   comment?: string;
@@ -32,29 +40,50 @@ export type GeoDetailLink = {
   geoLat?: number;
   geoLng?: number;
   // Whether the point has been through "Неточність" at least once - the
-  // button's own label is what tells the two states apart (see
-  // renderCorrectButton), so this needs no name of its own beyond that.
+  // button's own label is what tells the two states apart.
   geoCorrected?: boolean;
+  articleSavedAt?: number;
+  fragments?: LinkFragment[];
 };
 
-export default function GeoPointDetailSheet({
+const PRIMARY: Record<LinkCategory, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  geo: { label: 'Перейти в Google Maps', icon: 'navigate-outline' },
+  video: { label: 'Відтворити', icon: 'play-outline' },
+  other: { label: 'Відкрити сторінку', icon: 'open-outline' },
+};
+
+export default function LinkDetailSheet({
   link,
   onClose,
+  onOpen,
   onSaveComment,
   onAddPhoto,
   onRemovePhoto,
   onCorrectPosition,
+  onSaveArticle,
+  onRead,
+  onDeleteArticle,
+  onRemoveFragment,
+  onFragmentsToNote,
 }: {
-  link: GeoDetailLink | null;
+  link: DetailLink | null;
   onClose: () => void;
+  // The category's own way in: the page, the player, or Google Maps.
+  onOpen: () => void;
   onSaveComment: (comment: string) => void;
   onAddPhoto: () => void;
   onRemovePhoto: (attachmentId: string) => void;
   onCorrectPosition: (point: LatLng) => void;
+  onSaveArticle: () => Promise<void>;
+  onRead: () => void;
+  onDeleteArticle: () => void;
+  onRemoveFragment: (fragment: LinkFragment) => void;
+  onFragmentsToNote: (fragments: LinkFragment[]) => void;
 }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [comment, setComment] = useState(link?.comment ?? '');
+  const [savingArticle, setSavingArticle] = useState(false);
   // The closing tap sends `link` to null in the same render that sends
   // GlassLayer's `visible` to false - content would otherwise blank out
   // a beat before the card has even started fading, which reads as a
@@ -88,6 +117,19 @@ export default function GeoPointDetailSheet({
   const photos = (shown?.attachments ?? []).filter(
     (a) => (a.type ?? 'paragraph') === 'image' && (a.imageUri || a.driveFileId)
   );
+  const fragments = [...(shown?.fragments ?? [])].sort((a, b) => a.createdAt - b.createdAt);
+  const primary = PRIMARY[shown?.category ?? 'other'];
+
+  async function saveArticle() {
+    setSavingArticle(true);
+    try {
+      await onSaveArticle();
+    } catch (e) {
+      notify('Не вдалося зберегти статтю', e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingArticle(false);
+    }
+  }
 
   return (
     <GlassLayer visible={link !== null} onClose={onClose} intensity={60}>
@@ -97,7 +139,7 @@ export default function GeoPointDetailSheet({
             <>
               <View style={styles.header}>
                 <Text style={styles.title} numberOfLines={2}>
-                  {shown.title || 'Геоточка'}
+                  {shown.title || (shown.category === 'geo' ? 'Геоточка' : hostnameOf(shown.url))}
                 </Text>
                 <Pressable hitSlop={8} onPress={onClose}>
                   <Ionicons name="close" size={22} color={theme.ink.muted} />
@@ -117,8 +159,13 @@ export default function GeoPointDetailSheet({
               >
               {!!(shown.createdAt ?? shown.updatedAt) && (
                 <Text style={styles.date}>
+                  {shown.category !== 'geo' && `${shown.siteName || hostnameOf(shown.url)} · `}
                   Створено {formatUpdatedAt((shown.createdAt ?? shown.updatedAt) as number)}
                 </Text>
+              )}
+
+              {shown.category !== 'geo' && !!shown.imageUrl && (
+                <Image source={{ uri: shown.imageUrl }} style={styles.banner} resizeMode="cover" />
               )}
 
               {shown.geoLat != null && shown.geoLng != null && (
@@ -183,18 +230,74 @@ export default function GeoPointDetailSheet({
                 value={comment}
                 onChangeText={setComment}
                 onBlur={() => onSaveComment(comment)}
-                placeholder="Запис"
+                placeholder="Коментар"
                 placeholderTextColor={theme.ink.faint}
                 style={styles.commentInput}
                 multiline
               />
 
-              <Pressable
-                style={({ pressed }) => [styles.mapsButton, pressed && styles.pressed]}
-                onPress={() => Linking.openURL(shown.url).catch(() => {})}
-              >
-                <Ionicons name="navigate-outline" size={17} color={theme.onAccent} />
-                <Text style={styles.mapsButtonText}>Перейти в Google Maps</Text>
+              {/* Reading - an ordinary page only: a video or a map point
+                  has no article to keep. */}
+              {shown.category === 'other' &&
+                (shown.articleSavedAt ? (
+                  <View style={styles.articleRow}>
+                    <Pressable style={({ pressed }) => [styles.readButton, pressed && styles.pressed]} onPress={onRead}>
+                      <Ionicons name="book-outline" size={17} color={theme.accent} />
+                      <Text style={styles.readButtonText}>Читати</Text>
+                      <Text style={styles.articleSaved}>збережено {formatUpdatedAt(shown.articleSavedAt)}</Text>
+                    </Pressable>
+                    <Pressable hitSlop={8} onPress={onDeleteArticle} style={styles.articleDelete}>
+                      <Ionicons name="trash-outline" size={17} color={theme.ink.faint} />
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable
+                    style={({ pressed }) => [styles.readButton, pressed && styles.pressed]}
+                    onPress={saveArticle}
+                    disabled={savingArticle}
+                  >
+                    {savingArticle ? (
+                      <ActivityIndicator size="small" color={theme.accent} />
+                    ) : (
+                      <Ionicons name="download-outline" size={17} color={theme.accent} />
+                    )}
+                    <Text style={styles.readButtonText}>
+                      {savingArticle ? 'Зберігаю статтю…' : 'Зберегти для читання'}
+                    </Text>
+                  </Pressable>
+                ))}
+
+              {fragments.length > 0 && (
+                <View style={styles.fragments}>
+                  <View style={styles.fragmentsHeader}>
+                    <Text style={styles.fragmentsTitle}>Фрагменти · {fragments.length}</Text>
+                    {fragments.length > 1 && (
+                      <Pressable hitSlop={6} onPress={() => onFragmentsToNote(fragments)}>
+                        <Text style={styles.fragmentsAll}>Усі в нотатку</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                  {fragments.map((fragment) => (
+                    <View key={fragment.id} style={styles.fragment}>
+                      <Text style={styles.fragmentText} numberOfLines={6}>
+                        {fragment.text}
+                      </Text>
+                      <View style={styles.fragmentActions}>
+                        <Pressable hitSlop={8} onPress={() => onFragmentsToNote([fragment])}>
+                          <Ionicons name="document-text-outline" size={18} color={theme.accent} />
+                        </Pressable>
+                        <Pressable hitSlop={8} onPress={() => onRemoveFragment(fragment)}>
+                          <Ionicons name="close" size={18} color={theme.ink.faint} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <Pressable style={({ pressed }) => [styles.mapsButton, pressed && styles.pressed]} onPress={onOpen}>
+                <Ionicons name={primary.icon} size={17} color={theme.onAccent} />
+                <Text style={styles.mapsButtonText}>{primary.label}</Text>
               </Pressable>
               </ScrollView>
             </>
@@ -413,5 +516,84 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   pressed: {
     opacity: 0.7,
+  },
+  banner: {
+    width: '100%',
+    height: 150,
+    borderRadius: 14,
+    backgroundColor: t.field.fill,
+  },
+  articleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  readButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: t.field.fill,
+  },
+  readButtonText: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.primary,
+  },
+  articleSaved: {
+    flex: 1,
+    textAlign: 'right',
+    fontSize: 12,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.faint,
+  },
+  articleDelete: {
+    width: 40,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fragments: {
+    gap: 8,
+  },
+  fragmentsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  fragmentsTitle: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.muted,
+  },
+  fragmentsAll: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.accent,
+  },
+  fragment: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 10,
+    paddingLeft: 12,
+    paddingRight: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: t.accent,
+    borderRadius: 10,
+    backgroundColor: t.field.fill,
+  },
+  fragmentText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.primary,
+  },
+  fragmentActions: {
+    gap: 12,
+    alignItems: 'center',
   },
 });

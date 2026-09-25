@@ -59,6 +59,9 @@ type Common = {
   dimmed?: boolean;
   onPress: () => void;
   onLongPress?: () => void;
+  // Links only: straight to the site (or the player, or Google Maps),
+  // skipping the card a tap now opens - for a link that is just a link.
+  onOpen?: () => void;
   onMenu?: () => void;
   onTagPress?: () => void;
   isSelectMode?: boolean;
@@ -147,6 +150,7 @@ function Trailing({
   isSelected,
   onToggleSelect,
   onMenu,
+  onOpen,
   text,
   textMuted,
 }: {
@@ -154,6 +158,7 @@ function Trailing({
   isSelected?: boolean;
   onToggleSelect?: () => void;
   onMenu?: () => void;
+  onOpen?: () => void;
   text: string;
   textMuted: string;
 }) {
@@ -168,11 +173,20 @@ function Trailing({
       </Pressable>
     );
   }
-  if (!onMenu) return null;
+  if (!onMenu && !onOpen) return null;
   return (
-    <Pressable hitSlop={8} onPress={onMenu} style={styles.rowActionButton}>
-      <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
-    </Pressable>
+    <View style={styles.trailingStack}>
+      {onMenu && (
+        <Pressable hitSlop={8} onPress={onMenu} style={styles.rowActionButton}>
+          <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
+        </Pressable>
+      )}
+      {onOpen && (
+        <Pressable hitSlop={8} onPress={onOpen} style={styles.rowActionButton}>
+          <Ionicons name="open-outline" size={17} color={textMuted} />
+        </Pressable>
+      )}
+    </View>
   );
 }
 
@@ -654,6 +668,10 @@ const styles = StyleSheet.create({
   },
   rowActionButton: {
     padding: 6,
+  },
+  // The menu and, on a link, the "open straight away" icon under it.
+  trailingStack: {
+    alignItems: 'center',
   },
   // A playing row stops being one line and becomes a column: the line
   // it always was, and the player under it.

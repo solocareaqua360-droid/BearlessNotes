@@ -21,6 +21,7 @@ import { GestureDetector } from 'react-native-gesture-handler';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import {
+  arrayUnion,
   collection,
   deleteDoc,
   deleteField,
@@ -39,7 +40,10 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import GeoPointEntrySheet from '../components/GeoPointEntrySheet';
 import GeoMapView, { type GeoMapPoint } from '../components/GeoMapView';
-import GeoPointDetailSheet from '../components/GeoPointDetailSheet';
+import LinkDetailSheet from '../components/LinkDetailSheet';
+import LinkReaderSheet from '../components/LinkReaderSheet';
+import { addFragment, deleteArticleForLink, removeFragment, saveArticleForLink, type LinkFragment } from '../utils/articleReader';
+import { pickPhotosFromDevice } from '../utils/photoLibrary';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import { mapsUrlForLatLng, type LatLng } from '../utils/geoCoordinates';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
@@ -56,10 +60,10 @@ import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
-import { ask, confirm } from '../components/surfaces/Ask';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags';
-import { appendBlocksToToday, blockFromLink, copyObjectsToNote } from '../utils/copyToNote';
+import { appendBlocksToToday, blockFromLink, blockFromPhoto, clipBlocksToNote, copyObjectsToNote } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { linkDocId } from '../utils/linkId';
@@ -110,9 +114,15 @@ type LinkItem = {
   comment?: string;
   attachments?: Block[];
   // Whether "Неточність" has ever been used on this point - see
-  // GeoPointDetailSheet's own correction button, which reads this back
+  // LinkDetailSheet's own correction button, which reads this back
   // to say "Відкоректовано" instead once it has.
   geoCorrected?: boolean;
+  // When the page was last saved for reading - the article itself lives in
+  // `linkArticles/<id>` (see articleReader).
+  articleSavedAt?: number;
+  // Pieces marked while reading, gathered on the card before going on to
+  // a note.
+  fragments?: LinkFragment[];
   // Set while the link sits in the bin (see useBin) - hidden from every
   // list, tags/group/references untouched, purged for good after 30 days.
   deletedAt?: number;
@@ -205,8 +215,14 @@ export default function LinksScreen({
   const [geoPointSheetVisible, setGeoPointSheetVisible] = useState(false);
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
-  const [geoDetailId, setGeoDetailId] = useState<string | null>(null);
-  const [geoAttachPickerVisible, setGeoAttachPickerVisible] = useState(false);
+  const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
+  const [attachPickerVisible, setAttachPickerVisible] = useState(false);
+  const [readerLinkId, setReaderLinkId] = useState<string | null>(null);
+  // Fragments on their way from a link's card into a note - one, or all.
+  const [fragmentsToSend, setFragmentsToSend] = useState<{ link: LinkItem; fragments: LinkFragment[] } | null>(null);
+  const [namingFragmentsNote, setNamingFragmentsNote] = useState(false);
+  const detailLink = detailLinkId ? (links.find((l) => l.id === detailLinkId) ?? null) : null;
+  const readerLink = readerLinkId ? (links.find((l) => l.id === readerLinkId) ?? null) : null;
   const [isAddingLink, setIsAddingLink] = useState(false);
   const [addLinkTitlePrompt, setAddLinkTitlePrompt] = useState<{ url: string; preview: LinkPreview } | null>(null);
   const [justAddedLink, setJustAddedLink] = useState<JustAddedLink | null>(null);
@@ -295,6 +311,8 @@ export default function LinksScreen({
             comment: data.comment,
             attachments: data.attachments,
             geoCorrected: data.geoCorrected,
+            articleSavedAt: data.articleSavedAt,
+            fragments: data.fragments,
           };
         });
       setLinks(all.filter((l) => !l.deletedAt));
@@ -459,13 +477,19 @@ export default function LinksScreen({
     await saveNewLink(url, { siteName: 'Геоточка', geoLat: point.lat, geoLng: point.lng }, title);
   }
 
-  // Geo card tapped: opens the point's own record instead of launching
-  // straight out to Google Maps the way every other link's tap still
-  // does - "Перейти в Google Maps" inside the sheet is now the one
-  // button that leaves the app, not the tap itself.
+  // A tap opens the link's own card - every link, since the card grew a
+  // comment, photos, reading and fragments (2026-09-25; it was the geo
+  // point's alone before). Leaving the app is a button inside it, or the
+  // small "open" icon on the list card for a link that is just a link.
   function openLinkCard(item: LinkItem) {
+    setDetailLinkId(item.id);
+  }
+
+  // What a tap used to do: the page, the video in its own card, or
+  // Google Maps for a point.
+  function openLinkDirect(item: LinkItem) {
     if (categoryOf(item) === 'geo') {
-      setGeoDetailId(item.id);
+      Linking.openURL(item.url).catch(() => {});
       return;
     }
     openLinkUrl(item.url, item.id);
@@ -478,9 +502,65 @@ export default function LinksScreen({
   }
 
   function addGeoAttachment(link: LinkItem, block: Block) {
-    setGeoAttachPickerVisible(false);
-    const next = [...(link.attachments ?? []), block];
-    updateDoc(doc(db, 'links', link.id), { attachments: next });
+    setAttachPickerVisible(false);
+    updateDoc(doc(db, 'links', link.id), { attachments: arrayUnion(block) });
+  }
+
+  // Photos for a link's card: one already in «Зображення», or straight
+  // from the phone - a new Photos record either way (so it is backed up
+  // to Drive like any photo), which the gallery then hides as an
+  // attachment of a record unless a note uses it too.
+  async function askPhotoSource(link: LinkItem) {
+    const answer = await ask({
+      title: 'Додати фото',
+      actions: [
+        { id: 'library', label: 'Із «Зображень»', icon: 'images-outline' },
+        { id: 'gallery', label: 'Галерея телефону', icon: 'phone-portrait-outline' },
+        { id: 'camera', label: 'Камера', icon: 'camera-outline' },
+      ],
+    });
+    if (answer === 'library') {
+      setAttachPickerVisible(true);
+      return;
+    }
+    if (answer !== 'gallery' && answer !== 'camera') return;
+    const added = await pickPhotosFromDevice(answer);
+    if (added.length === 0) return;
+    await updateDoc(doc(db, 'links', link.id), { attachments: arrayUnion(...added.map((p) => blockFromPhoto(p))) });
+  }
+
+  // Each fragment as its own paragraph, in italics and «лапках», then the
+  // link it came from as a card - so the note says where the words are
+  // from. A "*" inside the text would close the italics early, so it
+  // travels as a lookalike instead.
+  function fragmentBlocks(link: LinkItem, fragments: LinkFragment[]): Block[] {
+    const quoted: Block[] = fragments.map((f) => ({
+      id: generateId(),
+      type: 'paragraph',
+      text: `*«${f.text.replace(/\*/g, '∗')}»*`,
+    }));
+    return [...quoted, blockFromLink(link)];
+  }
+
+  async function sendFragmentsInto(where: 'today' | 'new' | { id: string; title: string }, newTitle?: string) {
+    const pending = fragmentsToSend;
+    if (!pending) return;
+    const blocks = fragmentBlocks(pending.link, pending.fragments);
+    const mirror = [{ collectionName: 'links', id: pending.link.id }];
+    try {
+      let documentId: string;
+      if (where === 'today') documentId = await appendBlocksToToday(blocks, mirror);
+      else if (where === 'new') {
+        documentId = await clipBlocksToNote(newTitle?.trim() || pending.link.title || 'Фрагменти', blocks);
+        await updateDoc(doc(db, 'links', pending.link.id), { [`usedInDocuments.${documentId}`]: true });
+      } else documentId = await copyObjectsToNote(where.id, blocks, mirror);
+      setFragmentsToSend(null);
+      setNamingFragmentsNote(false);
+      setDetailLinkId(null);
+      navigation.navigate('Editor', { documentId });
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+    }
   }
 
   function removeGeoAttachment(link: LinkItem, attachmentId: string) {
@@ -600,6 +680,7 @@ export default function LinksScreen({
   // of any note that still references it.
   async function purgeLink(link: LinkItem) {
     deleteDoc(doc(db, 'links', link.id));
+    if (link.articleSavedAt) deleteDoc(doc(db, 'linkArticles', link.id)).catch(() => {});
     await Promise.all(
       link.tagIds.map((tagId) => {
         const tag = tags.find((t) => t.id === tagId);
@@ -701,6 +782,7 @@ export default function LinksScreen({
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkCard(item))}
+        onOpen={() => openLinkDirect(item)}
         onLongPress={carried ? undefined : () => setCardMenuLinkId(item.id)}
         onMenu={() => setCardMenuLinkId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
@@ -734,6 +816,7 @@ export default function LinksScreen({
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkCard(item))}
+        onOpen={() => openLinkDirect(item)}
         onLongPress={carried ? undefined : () => setCardMenuLinkId(item.id)}
         onMenu={() => setCardMenuLinkId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
@@ -1000,30 +1083,89 @@ export default function LinksScreen({
             onSave={({ title, point }) => saveGeoPointByHand(title, point)}
           />
 
-          <GeoPointDetailSheet
-            link={geoDetailId ? (links.find((l) => l.id === geoDetailId) ?? null) : null}
-            onClose={() => setGeoDetailId(null)}
-            onSaveComment={(comment) => {
-              const link = links.find((l) => l.id === geoDetailId);
-              if (link) saveGeoComment(link, comment);
+          <LinkDetailSheet
+            link={detailLink ? { ...detailLink, category: categoryOf(detailLink) } : null}
+            onClose={() => setDetailLinkId(null)}
+            onOpen={() => {
+              if (!detailLink) return;
+              // A video plays in its own list card, which the sheet
+              // would sit on top of.
+              if (categoryOf(detailLink) === 'video') setDetailLinkId(null);
+              openLinkDirect(detailLink);
             }}
-            onAddPhoto={() => setGeoAttachPickerVisible(true)}
+            onSaveComment={(comment) => {
+              if (detailLink) saveGeoComment(detailLink, comment);
+            }}
+            onAddPhoto={() => {
+              if (detailLink) askPhotoSource(detailLink).catch((e) => notify('Фото не додалось', (e as Error).message));
+            }}
             onRemovePhoto={(attachmentId) => {
-              const link = links.find((l) => l.id === geoDetailId);
-              if (link) removeGeoAttachment(link, attachmentId);
+              if (detailLink) removeGeoAttachment(detailLink, attachmentId);
             }}
             onCorrectPosition={(point) => {
-              const link = links.find((l) => l.id === geoDetailId);
-              if (link) correctGeoPosition(link, point);
+              if (detailLink) correctGeoPosition(detailLink, point);
+            }}
+            onSaveArticle={async () => {
+              if (detailLink) await saveArticleForLink(detailLink.id, detailLink.url);
+            }}
+            onRead={() => {
+              if (detailLink) setReaderLinkId(detailLink.id);
+            }}
+            onDeleteArticle={async () => {
+              if (!detailLink) return;
+              const yes = await confirm({
+                title: 'Прибрати збережену статтю?',
+                message: 'Посилання й фрагменти лишаться. Статтю можна зберегти знову.',
+                confirmLabel: 'Прибрати',
+              });
+              if (yes) deleteArticleForLink(detailLink.id).catch(() => {});
+            }}
+            onRemoveFragment={(fragment) => {
+              if (detailLink) removeFragment(detailLink.id, fragment).catch(() => {});
+            }}
+            onFragmentsToNote={(fragments) => {
+              if (detailLink) setFragmentsToSend({ link: detailLink, fragments });
             }}
           />
 
+          <LinkReaderSheet
+            link={readerLink}
+            onClose={() => setReaderLinkId(null)}
+            onAddFragment={(text) => addFragment(readerLinkId as string, text)}
+          />
+
+          <SaveDestinationSheet
+            visible={!!fragmentsToSend && !namingFragmentsNote}
+            notesOnly
+            title={
+              fragmentsToSend && fragmentsToSend.fragments.length > 1
+                ? `${fragmentsToSend.fragments.length} фрагментів у…`
+                : 'Фрагмент у…'
+            }
+            onPickToday={() => sendFragmentsInto('today')}
+            onPickNew={() => setNamingFragmentsNote(true)}
+            onPickExisting={(documentId, documentTitle) => sendFragmentsInto({ id: documentId, title: documentTitle })}
+            onClose={() => setFragmentsToSend(null)}
+          />
+
+          <RenamePrompt
+            visible={namingFragmentsNote}
+            title="Нова нотатка"
+            initialValue={fragmentsToSend?.link.title ?? ''}
+            placeholder="Назва нотатки"
+            onCancel={() => {
+              setNamingFragmentsNote(false);
+              setFragmentsToSend(null);
+            }}
+            onSave={(title) => sendFragmentsInto('new', title)}
+          />
+
           <AddExistingItemModal
-            visible={geoAttachPickerVisible}
+            visible={attachPickerVisible}
             allowedTabs={['photo']}
-            onClose={() => setGeoAttachPickerVisible(false)}
+            onClose={() => setAttachPickerVisible(false)}
             onPick={(block) => {
-              const link = links.find((l) => l.id === geoDetailId);
+              const link = links.find((l) => l.id === detailLinkId);
               if (link) addGeoAttachment(link, block);
             }}
           />
@@ -1160,7 +1302,7 @@ export default function LinksScreen({
             {!needle && <Text style={styles.emptyHint}>{info.emptyHint}</Text>}
           </View>
         ) : mapVisible && category === 'geo' ? (
-          <GeoMapView points={geoMapPoints} onPressPoint={(id) => setGeoDetailId(id)} />
+          <GeoMapView points={geoMapPoints} onPressPoint={(id) => setDetailLinkId(id)} />
         ) : viewMode === 'grid' ? (
           <GestureDetector gesture={carrying.listGesture}>
           <ScrollView
