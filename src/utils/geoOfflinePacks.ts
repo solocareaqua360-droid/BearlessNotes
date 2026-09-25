@@ -79,23 +79,87 @@ const MAP_STYLE_JSON = JSON.stringify(OSM_RASTER_STYLE);
 // Downloads the given bounds at one detail level, reporting progress as
 // 0-1. Resolves once complete (state === "complete"); rejects on the
 // library's own error event.
+//
+// The push channel alone is not enough to trust: the Android side of
+// @maplibre/maplibre-react-native drops its own very first status event
+// outright (`val prev = prevStatus ?: return false` in
+// MLRNOfflineModule.kt's shouldSendUpdate - confirmed by reading that
+// file directly, not guessed). A region small enough to finish inside
+// that one dropped tick - anything from a few dozen tiles, i.e. a
+// small hand-drawn area - then never reports anything again, complete
+// included, even though the tiles are already on disk: the sheet sat
+// at 0% forever. A poll of the pack's own status alongside the push
+// listener is the backstop - the same `state`/`percentage` shape
+// either way, just fetched on demand instead of waited for.
+const POLL_INTERVAL_MS = 1500;
+
+// Distinguishes a deliberate cancel from a real failure, so the sheet
+// can skip the "не вдалося завантажити" toast for it.
+export class DownloadCancelled extends Error {}
+
 export function downloadRegion(
   name: string,
   bounds: [number, number, number, number],
   detail: OfflineDetail,
   onProgress: (fraction: number) => void
-): Promise<void> {
+): { promise: Promise<void>; cancel: () => void } {
   const { minZoom, maxZoom } = DETAIL_ZOOM[detail];
-  return new Promise((resolve, reject) => {
+  let settled = false;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let createdPackId: string | null = null;
+  let rejectFn: ((e: Error) => void) | null = null;
+
+  const promise = new Promise<void>((resolve, reject) => {
+    rejectFn = reject;
+
+    function settle(fn: () => void) {
+      if (settled) return;
+      settled = true;
+      if (pollTimer) clearInterval(pollTimer);
+      fn();
+    }
+
     OfflineManager.createPack(
       { mapStyle: MAP_STYLE_JSON, bounds, minZoom, maxZoom, metadata: { name } },
       (_pack, status) => {
         onProgress(status.percentage / 100);
-        if (status.state === ('complete' as OfflinePackDownloadState)) resolve();
+        if (status.state === ('complete' as OfflinePackDownloadState)) settle(resolve);
       },
-      (_pack, error) => reject(new Error(error.message))
-    ).catch(reject);
+      (_pack, error) => settle(() => reject(new Error(error.message)))
+    )
+      .then((pack) => {
+        createdPackId = pack.id;
+        pollTimer = setInterval(() => {
+          if (settled) return;
+          pack
+            .status()
+            .then((status) => {
+              onProgress(status.percentage / 100);
+              if (status.state === ('complete' as OfflinePackDownloadState)) settle(resolve);
+            })
+            .catch(() => {
+              // A transient read failure isn't a download failure - the
+              // push listener or the next poll tick still has a chance.
+            });
+        }, POLL_INTERVAL_MS);
+      })
+      .catch((e) => settle(() => reject(e)));
   });
+
+  // The only way out used to be force-closing the app - there was no
+  // cancel button at all. Deletes whatever partial pack exists so it
+  // doesn't linger as an orphaned zero-byte region in the list.
+  function cancel() {
+    if (settled) return;
+    settled = true;
+    if (pollTimer) clearInterval(pollTimer);
+    if (createdPackId) {
+      OfflineManager.deletePack(createdPackId).catch(() => {});
+    }
+    rejectFn?.(new DownloadCancelled());
+  }
+
+  return { promise, cancel };
 }
 
 export async function listRegions(): Promise<OfflineRegion[]> {

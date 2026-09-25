@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -10,6 +10,7 @@ import { confirm, notify } from './surfaces/Ask';
 import GeoAreaPicker from './GeoAreaPicker';
 import {
   deleteRegion,
+  DownloadCancelled,
   downloadRegion,
   estimateRegionSize,
   formatBytes,
@@ -46,6 +47,7 @@ export default function GeoOfflineRegionsSheet({
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [customBounds, setCustomBounds] = useState<[number, number, number, number] | null>(null);
   const [areaPickerVisible, setAreaPickerVisible] = useState(false);
+  const cancelDownloadRef = useRef<(() => void) | null>(null);
 
   // A hand-drawn area (GeoAreaPicker) stands in for "what's on screen"
   // once the user picks one - everything downstream (the estimate, the
@@ -85,15 +87,20 @@ export default function GeoOfflineRegionsSheet({
   async function handleDownload() {
     if (!effectiveBounds || !name.trim()) return;
     setDownloadProgress(0);
+    const { promise, cancel } = downloadRegion(name.trim(), effectiveBounds, detail, setDownloadProgress);
+    cancelDownloadRef.current = cancel;
     try {
-      await downloadRegion(name.trim(), effectiveBounds, detail, setDownloadProgress);
+      await promise;
       setAdding(false);
       setName('');
       setCustomBounds(null);
       await refreshRegions();
     } catch (e) {
-      notify('Не вдалося завантажити', e instanceof Error ? e.message : String(e));
+      if (!(e instanceof DownloadCancelled)) {
+        notify('Не вдалося завантажити', e instanceof Error ? e.message : String(e));
+      }
     } finally {
+      cancelDownloadRef.current = null;
       setDownloadProgress(null);
     }
   }
@@ -125,6 +132,9 @@ export default function GeoOfflineRegionsSheet({
               <View style={styles.progressBlock}>
                 <ActivityIndicator color={theme.accent} />
                 <Text style={styles.progressText}>Завантаження… {Math.round(downloadProgress * 100)}%</Text>
+                <Pressable hitSlop={6} onPress={() => cancelDownloadRef.current?.()}>
+                  <Text style={styles.areaLink}>Скасувати завантаження</Text>
+                </Pressable>
               </View>
             ) : (
               <>
