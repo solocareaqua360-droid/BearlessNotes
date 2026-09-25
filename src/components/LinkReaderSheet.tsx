@@ -8,7 +8,9 @@ import ArticleBody, { type ArticleBodyHandle } from './ArticleBody';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import { watchArticle, type SavedArticle } from '../utils/articleReader';
+import { translateArticle, watchTranslation, type SavedTranslation } from '../utils/articleTranslate';
 import { buildReaderHtml } from '../utils/readerHtml';
+import { notify } from './surfaces/Ask';
 
 // A saved article, read. Select any piece of it - a word, a sentence,
 // several paragraphs - and "Додати фрагмент" puts that piece on the
@@ -28,15 +30,50 @@ export default function LinkReaderSheet({
   const styles = useStyles(makeStyles);
   const bodyRef = useRef<ArticleBodyHandle>(null);
   const [article, setArticle] = useState<SavedArticle | null | undefined>(undefined);
+  const [translation, setTranslation] = useState<SavedTranslation | null>(null);
+  // Which of the two is on the page - the translation, once there is one,
+  // is what the button was pressed for.
+  const [showTranslation, setShowTranslation] = useState(true);
+  const [translating, setTranslating] = useState<{ done: number; total: number } | null>(null);
   const [selection, setSelection] = useState('');
   const [added, setAdded] = useState(false);
 
   useEffect(() => {
     if (!link) return;
     setArticle(undefined);
+    setTranslation(null);
+    setShowTranslation(true);
     setSelection('');
-    return watchArticle(link.id, setArticle);
+    const stopArticle = watchArticle(link.id, setArticle);
+    const stopTranslation = watchTranslation(link.id, setTranslation);
+    return () => {
+      stopArticle();
+      stopTranslation();
+    };
   }, [link?.id]);
+
+  async function translate() {
+    if (!link || !article || translating) return;
+    setTranslating({ done: 0, total: 1 });
+    try {
+      await translateArticle(link.id, article, (done, total) => setTranslating({ done, total }));
+      setShowTranslation(true);
+    } catch (e) {
+      notify('Не вдалося перекласти', e instanceof Error ? e.message : String(e));
+    } finally {
+      setTranslating(null);
+    }
+  }
+
+  // The page drawn: the original, or its translation laid over the same
+  // blocks (same kinds, same order - the translation keeps the shape).
+  const displayed: SavedArticle | null | undefined = useMemo(
+    () =>
+      article && translation && showTranslation
+        ? { ...article, title: translation.title ?? article.title, blocks: translation.blocks }
+        : article,
+    [article, translation, showTranslation]
+  );
 
   useEffect(() => {
     if (!added) return;
@@ -46,15 +83,15 @@ export default function LinkReaderSheet({
 
   const html = useMemo(
     () =>
-      article
-        ? buildReaderHtml(article, {
+      displayed
+        ? buildReaderHtml(displayed, {
             background: theme.paper.fill,
             ink: theme.paper.ink,
             muted: theme.paper.inkMuted,
             accent: theme.accent,
           })
         : '',
-    [article, theme]
+    [displayed, theme]
   );
 
   const handleSelection = useCallback((text: string) => setSelection(text), []);
@@ -74,7 +111,7 @@ export default function LinkReaderSheet({
         <View style={styles.card}>
           <View style={styles.header}>
             <Text style={styles.title} numberOfLines={1}>
-              {article?.title || link?.title || 'Стаття'}
+              {displayed?.title || link?.title || 'Стаття'}
             </Text>
             {!!link && (
               <Pressable hitSlop={8} onPress={() => Linking.openURL(link.url).catch(() => {})}>
@@ -85,6 +122,42 @@ export default function LinkReaderSheet({
               <Ionicons name="close" size={22} color={theme.ink.muted} />
             </Pressable>
           </View>
+          {!!article && (
+            <View style={styles.translateRow}>
+              {translating ? (
+                <View style={styles.translatingBox}>
+                  <ActivityIndicator size="small" color={theme.accent} />
+                  <Text style={styles.translatingText}>
+                    Перекладаю{translating.total > 1 ? ` · ${translating.done + 1} з ${translating.total}` : '…'}
+                  </Text>
+                </View>
+              ) : translation ? (
+                <View style={styles.segment}>
+                  {(
+                    [
+                      [false, 'Оригінал'],
+                      [true, 'Переклад'],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <Pressable
+                      key={label}
+                      style={[styles.segmentTab, showTranslation === value && styles.segmentTabActive]}
+                      onPress={() => setShowTranslation(value)}
+                    >
+                      <Text style={[styles.segmentLabel, showTranslation === value && styles.segmentLabelActive]}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <Pressable style={({ pressed }) => [styles.translateButton, pressed && styles.pressed]} onPress={translate}>
+                  <Ionicons name="language-outline" size={16} color={theme.accent} />
+                  <Text style={styles.translateButtonText}>Перекласти українською</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
           <View style={styles.body}>
             {article === undefined ? (
               <ActivityIndicator color={theme.ink.muted} style={styles.centered} />
@@ -138,6 +211,56 @@ const makeStyles = (t: Theme) =>
     },
     body: {
       flex: 1,
+    },
+    translateRow: {
+      paddingHorizontal: 20,
+    },
+    translateButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: 6,
+      paddingVertical: 6,
+    },
+    translateButtonText: {
+      fontSize: 13,
+      fontFamily: FONT_SEMIBOLD,
+      color: t.accent,
+    },
+    translatingBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 6,
+    },
+    translatingText: {
+      fontSize: 13,
+      fontFamily: FONT_REGULAR,
+      color: t.paper.inkMuted,
+    },
+    segment: {
+      flexDirection: 'row',
+      alignSelf: 'flex-start',
+      backgroundColor: t.field.fill,
+      borderRadius: 12,
+      padding: 3,
+      gap: 3,
+    },
+    segmentTab: {
+      paddingVertical: 5,
+      paddingHorizontal: 14,
+      borderRadius: 9,
+    },
+    segmentTabActive: {
+      backgroundColor: t.accent,
+    },
+    segmentLabel: {
+      fontSize: 13,
+      fontFamily: FONT_SEMIBOLD,
+      color: t.ink.muted,
+    },
+    segmentLabelActive: {
+      color: t.onAccent,
     },
     centered: {
       marginTop: 40,

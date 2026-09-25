@@ -129,6 +129,9 @@ export async function saveArticleForLink(linkId: string, url: string): Promise<v
 
 export async function deleteArticleForLink(linkId: string): Promise<void> {
   await deleteDoc(doc(db, 'linkArticles', linkId));
+  // Its translation goes with it (see articleTranslate) - a translation of
+  // an article that is no longer kept is nothing to read.
+  await deleteDoc(doc(db, 'linkArticleTranslations', linkId)).catch(() => {});
   await updateDoc(doc(db, 'links', linkId), { articleSavedAt: deleteField() }).catch(() => {});
 }
 

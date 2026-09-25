@@ -680,7 +680,10 @@ export default function LinksScreen({
   // of any note that still references it.
   async function purgeLink(link: LinkItem) {
     deleteDoc(doc(db, 'links', link.id));
-    if (link.articleSavedAt) deleteDoc(doc(db, 'linkArticles', link.id)).catch(() => {});
+    if (link.articleSavedAt) {
+      deleteDoc(doc(db, 'linkArticles', link.id)).catch(() => {});
+      deleteDoc(doc(db, 'linkArticleTranslations', link.id)).catch(() => {});
+    }
     await Promise.all(
       link.tagIds.map((tagId) => {
         const tag = tags.find((t) => t.id === tagId);

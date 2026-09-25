@@ -17,15 +17,29 @@
 const GEMINI_MODEL = 'gemini-3.6-flash';
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-export class GeminiError extends Error {}
+export class GeminiError extends Error {
+  // The HTTP status, where there was one - 429 is the free tier's
+  // per-minute limit, which a long job waits out instead of failing on.
+  status?: number;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.status = status;
+  }
+}
 
-export async function askGemini(prompt: string, apiKey: string): Promise<string> {
+// `json`: ask for the answer as JSON only (the API's own response MIME
+// type), for callers that parse it - a translation matched back to its
+// paragraphs, say.
+export async function askGemini(prompt: string, apiKey: string, options: { json?: boolean } = {}): Promise<string> {
   let response: Response;
   try {
     response = await fetch(`${ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        ...(options.json ? { generationConfig: { responseMimeType: 'application/json' } } : {}),
+      }),
     });
   } catch {
     throw new GeminiError('Немає звʼязку з Gemini - перевір інтернет');
@@ -36,7 +50,7 @@ export async function askGemini(prompt: string, apiKey: string): Promise<string>
     // it says outright when the key is wrong or the model name has
     // moved on, which a bare "400" would not.
     const message = (data?.error?.message as string | undefined) ?? `Gemini відповів ${response.status}`;
-    throw new GeminiError(message);
+    throw new GeminiError(message, response.status);
   }
   const parts = data?.candidates?.[0]?.content?.parts as { text?: string }[] | undefined;
   const text = parts?.map((p) => p.text ?? '').join('').trim();
