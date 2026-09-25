@@ -7,6 +7,7 @@ import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import { confirm, notify } from './surfaces/Ask';
+import GeoAreaPicker from './GeoAreaPicker';
 import {
   deleteRegion,
   downloadRegion,
@@ -43,12 +44,20 @@ export default function GeoOfflineRegionsSheet({
   const [name, setName] = useState('');
   const [detail, setDetail] = useState<OfflineDetail>('standard');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [customBounds, setCustomBounds] = useState<[number, number, number, number] | null>(null);
+  const [areaPickerVisible, setAreaPickerVisible] = useState(false);
+
+  // A hand-drawn area (GeoAreaPicker) stands in for "what's on screen"
+  // once the user picks one - everything downstream (the estimate, the
+  // actual download) reads this instead of `currentBounds` directly.
+  const effectiveBounds = customBounds ?? currentBounds;
 
   // Pure math, no network - recomputed the instant the user switches
-  // detail level, so the number on screen is never stale.
+  // detail level or the chosen area, so the number on screen is never
+  // stale.
   const estimate = useMemo(
-    () => (currentBounds ? estimateRegionSize(currentBounds, detail) : null),
-    [currentBounds, detail]
+    () => (effectiveBounds ? estimateRegionSize(effectiveBounds, detail) : null),
+    [effectiveBounds, detail]
   );
 
   useEffect(() => {
@@ -56,6 +65,7 @@ export default function GeoOfflineRegionsSheet({
     setAdding(false);
     setName('');
     setDetail('standard');
+    setCustomBounds(null);
     refreshRegions();
   }, [visible]);
 
@@ -73,12 +83,13 @@ export default function GeoOfflineRegionsSheet({
   }
 
   async function handleDownload() {
-    if (!currentBounds || !name.trim()) return;
+    if (!effectiveBounds || !name.trim()) return;
     setDownloadProgress(0);
     try {
-      await downloadRegion(name.trim(), currentBounds, detail, setDownloadProgress);
+      await downloadRegion(name.trim(), effectiveBounds, detail, setDownloadProgress);
       setAdding(false);
       setName('');
+      setCustomBounds(null);
       await refreshRegions();
     } catch (e) {
       notify('Не вдалося завантажити', e instanceof Error ? e.message : String(e));
@@ -142,8 +153,19 @@ export default function GeoOfflineRegionsSheet({
                   ))}
                 </View>
                 <Text style={styles.hint}>
-                  Завантажить те, що зараз видно на мапі{estimate ? ` — орієнтовно ${formatBytes(estimate.bytes)}` : ''}.
+                  {customBounds ? 'Завантажить вибрану ділянку' : 'Завантажить те, що зараз видно на мапі'}
+                  {estimate ? ` — орієнтовно ${formatBytes(estimate.bytes)}` : ''}.
                 </Text>
+                <View style={styles.areaLinks}>
+                  <Pressable hitSlop={6} onPress={() => setAreaPickerVisible(true)}>
+                    <Text style={styles.areaLink}>Вибрати ділянку на мапі</Text>
+                  </Pressable>
+                  {customBounds && (
+                    <Pressable hitSlop={6} onPress={() => setCustomBounds(null)}>
+                      <Text style={styles.areaLink}>Скинути до поточного вигляду</Text>
+                    </Pressable>
+                  )}
+                </View>
                 <View style={styles.buttons}>
                   <Pressable style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]} onPress={() => setAdding(false)}>
                     <Text style={styles.cancelLabel}>Скасувати</Text>
@@ -195,6 +217,15 @@ export default function GeoOfflineRegionsSheet({
           )}
         </View>
       </View>
+      <GeoAreaPicker
+        visible={areaPickerVisible}
+        initialBounds={currentBounds}
+        onCancel={() => setAreaPickerVisible(false)}
+        onConfirm={(bounds) => {
+          setCustomBounds(bounds);
+          setAreaPickerVisible(false);
+        }}
+      />
     </GlassLayer>
   );
 }
@@ -309,6 +340,16 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: t.ink.faint,
     marginTop: -4,
+  },
+  areaLinks: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  areaLink: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.accent,
   },
   progressBlock: {
     alignItems: 'center',

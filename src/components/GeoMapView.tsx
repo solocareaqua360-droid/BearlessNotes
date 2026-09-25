@@ -1,11 +1,20 @@
 import { useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Camera, Map, Marker, type CameraRef, type ViewStateChangeEvent } from '@maplibre/maplibre-react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Camera,
+  LocationManager,
+  Map,
+  Marker,
+  UserLocation,
+  type CameraRef,
+  type ViewStateChangeEvent,
+} from '@maplibre/maplibre-react-native';
 import Supercluster, { type PointFeature } from 'supercluster';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { OSM_RASTER_STYLE } from '../utils/geoMapStyle';
 import GeoOfflineRegionsSheet from './GeoOfflineRegionsSheet';
+import { notify } from './surfaces/Ask';
 
 // Kyiv, zoomed out to the country - a reasonable place to open with no
 // points of the user's own yet, rather than the middle of the ocean
@@ -76,11 +85,37 @@ export default function GeoMapView({
   }
 
   const [offlineSheetVisible, setOfflineSheetVisible] = useState(false);
+  const [locationEnabled, setLocationEnabled] = useState(false);
+  const [locating, setLocating] = useState(false);
+
+  // Permission is asked here, on the first tap of this button, not on
+  // opening the map or anywhere else in the app - the user's own
+  // condition ("тільки в використанні самої мапи"). Granted once, the
+  // live puck (<UserLocation>) keeps updating on its own; this call
+  // additionally centres the camera there once, as a one-time jump
+  // rather than a permanent follow that would fight free panning.
+  async function handleLocateMe() {
+    if (locating) return;
+    setLocating(true);
+    try {
+      const granted = locationEnabled || (await LocationManager.requestPermissions());
+      if (!granted) {
+        notify('Немає доступу до місцеположення', 'Дозвольте доступ у налаштуваннях телефону, щоб бачити себе на мапі.');
+        return;
+      }
+      setLocationEnabled(true);
+      const position = await LocationManager.getCurrentPosition();
+      if (position) flyTo([position.coords.longitude, position.coords.latitude], 15);
+    } finally {
+      setLocating(false);
+    }
+  }
 
   return (
     <View style={styles.fill}>
       <Map style={styles.fill} mapStyle={OSM_RASTER_STYLE} onRegionDidChange={handleRegionChange}>
         <Camera ref={cameraRef} initialViewState={{ center: initialCenter, zoom: initialZoom }} />
+        {locationEnabled && <UserLocation accuracy />}
         {clusters.map((feature) => {
           const [lng, lat] = feature.geometry.coordinates;
           if ('cluster' in feature.properties) {
@@ -128,6 +163,16 @@ export default function GeoMapView({
         onPress={() => setOfflineSheetVisible(true)}
       >
         <Ionicons name="cloud-download-outline" size={20} color={theme.ink.primary} />
+      </Pressable>
+      <Pressable
+        style={[styles.offlineButton, styles.locateButton, { backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}
+        onPress={handleLocateMe}
+      >
+        {locating ? (
+          <ActivityIndicator size="small" color={theme.ink.primary} />
+        ) : (
+          <Ionicons name={locationEnabled ? 'locate' : 'locate-outline'} size={20} color={theme.ink.primary} />
+        )}
       </Pressable>
       <GeoOfflineRegionsSheet
         visible={offlineSheetVisible}
@@ -205,5 +250,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  locateButton: {
+    top: 140,
   },
 });
