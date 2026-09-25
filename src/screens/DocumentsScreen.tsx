@@ -1417,7 +1417,20 @@ export default function DocumentsScreen({
                     search={searching ? needle : undefined}
                     onPress={() => openDocument(item.id, false, searching ? needle : undefined)}
                     layout={drawnMode === 'list' ? 'list' : 'grid'}
-                    gridWidth={gridCardWidth}
+                    // A result is the same card as in the list itself -
+                    // the page, not a cover: a row keeps its title and
+                    // the highlighted line beside the page's own
+                    // thumbnail, a tile marks the matches on the page.
+                    gridWidth={drawnMode === 'wide' ? undefined : gridCardWidth}
+                    wide={drawnMode === 'wide'}
+                    pageHeight={drawnMode === 'grid' ? gridPageHeight : undefined}
+                    page={{
+                      tagIds: item.tagIds ?? [],
+                      tags,
+                      coverImageUri: item.coverImageUri,
+                      coverDriveFileId: item.coverDriveFileId,
+                      paperColorEnabled: !!item.paperColorEnabled,
+                    }}
                     project={groups.find((g) => g.id === item.groupId) ?? null}
                     onProjectPress={() => setSingleGroupTargetId(item.id)}
                   />

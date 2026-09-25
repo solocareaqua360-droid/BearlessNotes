@@ -821,6 +821,7 @@ export default function DocumentCard({
               width={dense ? ROW_SHEET_W_DENSE : ROW_SHEET_W}
               height={dense ? ROW_SHEET_H_DENSE : ROW_SHEET_H}
               offsetY={PAGE_HEADER_BAND}
+              highlight={search}
             />
           </View>
         ) : (
