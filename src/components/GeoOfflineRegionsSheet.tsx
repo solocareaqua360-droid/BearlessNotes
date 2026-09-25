@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -10,6 +10,7 @@ import { confirm, notify } from './surfaces/Ask';
 import {
   deleteRegion,
   downloadRegion,
+  estimateRegionSize,
   formatBytes,
   listRegions,
   type OfflineDetail,
@@ -42,6 +43,13 @@ export default function GeoOfflineRegionsSheet({
   const [name, setName] = useState('');
   const [detail, setDetail] = useState<OfflineDetail>('standard');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+
+  // Pure math, no network - recomputed the instant the user switches
+  // detail level, so the number on screen is never stale.
+  const estimate = useMemo(
+    () => (currentBounds ? estimateRegionSize(currentBounds, detail) : null),
+    [currentBounds, detail]
+  );
 
   useEffect(() => {
     if (!visible) return;
@@ -133,7 +141,9 @@ export default function GeoOfflineRegionsSheet({
                     </Pressable>
                   ))}
                 </View>
-                <Text style={styles.hint}>Завантажить те, що зараз видно на мапі.</Text>
+                <Text style={styles.hint}>
+                  Завантажить те, що зараз видно на мапі{estimate ? ` — орієнтовно ${formatBytes(estimate.bytes)}` : ''}.
+                </Text>
                 <View style={styles.buttons}>
                   <Pressable style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]} onPress={() => setAdding(false)}>
                     <Text style={styles.cancelLabel}>Скасувати</Text>

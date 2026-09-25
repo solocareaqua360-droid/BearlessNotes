@@ -27,6 +27,47 @@ const DETAIL_ZOOM: Record<OfflineDetail, { minZoom: number; maxZoom: number }> =
   high: { minZoom: 11, maxZoom: 18 },
 };
 
+export function zoomRangeFor(detail: OfflineDetail): { minZoom: number; maxZoom: number } {
+  return DETAIL_ZOOM[detail];
+}
+
+// Tile coordinates at a zoom level, the standard Slippy Map / Web
+// Mercator formulas every raster tile server (this one included) uses -
+// pure arithmetic, no request, so the size can be shown BEFORE the user
+// commits to a download, not just after it finishes.
+function tileX(lng: number, zoom: number): number {
+  return Math.floor(((lng + 180) / 360) * 2 ** zoom);
+}
+function tileY(lat: number, zoom: number): number {
+  const rad = (lat * Math.PI) / 180;
+  return Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * 2 ** zoom);
+}
+
+// A raster PNG tile from this server, averaged - real ones range from a
+// few KB (open water, empty countryside) to well over 30 (a dense city
+// centre), so this is a rough middle rather than a measurement. Good
+// enough to say "roughly this much", not to promise an exact figure -
+// the sheet's own label says "орієнтовно" for exactly that reason.
+const AVG_TILE_BYTES = 20 * 1024;
+
+export function estimateRegionSize(
+  bounds: [number, number, number, number],
+  detail: OfflineDetail
+): { tileCount: number; bytes: number } {
+  const [west, south, east, north] = bounds;
+  const { minZoom, maxZoom } = DETAIL_ZOOM[detail];
+  let tileCount = 0;
+  for (let z = minZoom; z <= maxZoom; z++) {
+    // North is the smaller tile-Y (tile rows count down from the top).
+    const minX = tileX(west, z);
+    const maxX = tileX(east, z);
+    const minY = tileY(north, z);
+    const maxY = tileY(south, z);
+    tileCount += Math.max(0, maxX - minX + 1) * Math.max(0, maxY - minY + 1);
+  }
+  return { tileCount, bytes: tileCount * AVG_TILE_BYTES };
+}
+
 // Since OfflineManager's own mapStyle option is a URL/StyleSpecification
 // pair like the live map already uses, `.toJSON()`-serialising the same
 // OSM_RASTER_STYLE the map and every thumbnail already draw from would
