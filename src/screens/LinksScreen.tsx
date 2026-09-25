@@ -91,6 +91,11 @@ type LinkItem = {
   groupId?: string;
   updatedAt: number;
   createdAt?: number;
+  // Geo category only - see extractMapsCoordinates. Absent on an older
+  // point saved before this existed, or one whose short link never got
+  // resolved (no network at the time).
+  geoLat?: number;
+  geoLng?: number;
   // Set while the link sits in the bin (see useBin) - hidden from every
   // list, tags/group/references untouched, purged for good after 30 days.
   deletedAt?: number;
@@ -250,6 +255,8 @@ export default function LinksScreen({
             updatedAt: data.updatedAt ?? 0,
             createdAt: data.createdAt,
             deletedAt: data.deletedAt,
+            geoLat: data.geoLat,
+            geoLng: data.geoLng,
           };
         });
       setLinks(all.filter((l) => !l.deletedAt));
@@ -376,6 +383,10 @@ export default function LinksScreen({
     if (title) data.title = title;
     if (preview.imageUrl) data.imageUrl = preview.imageUrl;
     if (preview.siteName) data.siteName = preview.siteName;
+    if (preview.geoLat != null && preview.geoLng != null) {
+      data.geoLat = preview.geoLat;
+      data.geoLng = preview.geoLng;
+    }
     await setDoc(doc(db, 'links', id), data, { merge: true });
     // Made inside a folder, it belongs to that folder - see useExplorer.
     await explorer.assignToCurrentFolder(id);

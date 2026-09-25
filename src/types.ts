@@ -257,6 +257,11 @@ export interface Block {
   linkTitle?: string;
   linkImageUrl?: string;
   linkSiteName?: string;
+  // 'link' blocks only, when linkSiteName is 'Геоточка' - the point the
+  // Maps URL itself already names (see extractMapsCoordinates), or one
+  // entered by hand. What the map view's own pins are drawn from.
+  linkGeoLat?: number;
+  linkGeoLng?: number;
   // 'sketch' blocks only. Elements are kept as vector data (not a
   // flattened image) specifically so the drawing can be reopened and
   // continued, the way Google Keep's drawings work. sketchWidth/

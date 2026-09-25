@@ -3418,6 +3418,10 @@ export default function BoardScreen() {
     if (title) data.title = title;
     if (preview.imageUrl) data.imageUrl = preview.imageUrl;
     if (preview.siteName) data.siteName = preview.siteName;
+    if (preview.geoLat != null && preview.geoLng != null) {
+      data.geoLat = preview.geoLat;
+      data.geoLng = preview.geoLng;
+    }
     await setDoc(doc(db, 'links', id), data, { merge: true });
     setCards((prev) => [
       ...prev,

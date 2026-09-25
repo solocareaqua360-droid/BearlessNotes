@@ -2,7 +2,7 @@
 // to a link block) so LinksScreen's own "+" button - creating a link record
 // with no document at all - can fetch the exact same preview without
 // duplicating this HTML/oEmbed parsing wholesale.
-export type LinkPreview = { title?: string; imageUrl?: string; siteName?: string };
+export type LinkPreview = { title?: string; imageUrl?: string; siteName?: string; geoLat?: number; geoLng?: number };
 
 export function isMapsUrl(url: string): boolean {
   return /google\.[^/]+\/maps|goo\.gl\/maps|maps\.app\.goo\.gl/i.test(url);
@@ -26,6 +26,58 @@ function extractMapsPlaceName(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+// Coordinates already sitting in the URL's own text - free, no network,
+// unlike the place NAME above never needing one either. Checked in order
+// of how precise each shape actually is: `!3d<lat>!4d<lng>` is what
+// Google embeds for the pinned point itself (present whenever the URL
+// carries a `data=` segment, which a plain "Share" almost always does);
+// `@lat,lng,zoom` is the map's own centre at share time - for a single
+// point share that IS the point, but a link someone panned before
+// copying could be off; `q=`/`query=` is the plain older shape.
+function extractMapsCoordinatesFromText(url: string): { lat: number; lng: number } | null {
+  const precise = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (precise) return { lat: Number(precise[1]), lng: Number(precise[2]) };
+  const centre = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (centre) return { lat: Number(centre[1]), lng: Number(centre[2]) };
+  try {
+    const params = new URL(url).searchParams;
+    const raw = params.get('q') ?? params.get('query');
+    const match = raw?.match(/^(-?\d+\.\d+),(-?\d+\.\d+)$/);
+    if (match) return { lat: Number(match[1]), lng: Number(match[2]) };
+  } catch {
+    // Not a URL Firestore/RN's URL can parse - no query string to read.
+  }
+  return null;
+}
+
+function isMapsShortLink(url: string): boolean {
+  return /goo\.gl\/maps|maps\.app\.goo\.gl/i.test(url);
+}
+
+// A short "Share" link carries no coordinates of its own - only the long
+// address it redirects to does. One plain fetch, following redirects the
+// way `fetch` already does by default, reads that long address back from
+// `res.url` - the same request a browser tab lands on, no API and no key.
+async function resolveMapsShortLink(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    return res.url || null;
+  } catch {
+    return null;
+  }
+}
+
+// Coordinates for a Maps URL of any shape this app recognises - reading
+// them straight out of the text where they are already there, and
+// resolving a short link's one redirect only when they are not.
+export async function extractMapsCoordinates(url: string): Promise<{ lat: number; lng: number } | null> {
+  const direct = extractMapsCoordinatesFromText(url);
+  if (direct) return direct;
+  if (!isMapsShortLink(url)) return null;
+  const resolved = await resolveMapsShortLink(url);
+  return resolved ? extractMapsCoordinatesFromText(resolved) : null;
 }
 
 export function hostnameOf(url: string): string {
@@ -93,7 +145,12 @@ async function fetchOpenGraphPreview(url: string): Promise<LinkPreview | null> {
 export async function fetchLinkPreview(url: string): Promise<LinkPreview> {
   if (isMapsUrl(url)) {
     const placeName = extractMapsPlaceName(url);
-    return placeName ? { title: placeName, siteName: 'Геоточка' } : { siteName: 'Геоточка' };
+    const coords = await extractMapsCoordinates(url);
+    return {
+      ...(placeName ? { title: placeName } : {}),
+      siteName: 'Геоточка',
+      ...(coords ? { geoLat: coords.lat, geoLng: coords.lng } : {}),
+    };
   }
   if (isYouTubeUrl(url)) {
     const oembed = await fetchOEmbed(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);

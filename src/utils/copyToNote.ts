@@ -112,11 +112,22 @@ export function blockFromSticker(sticker: {
 // Unlike file/photo, a link's mirror record is keyed by the URL itself
 // (linkDocId), not by any one block's id - a fresh id is fine here, the
 // mirror update below is what ties it back to the same record.
-export function blockFromLink(link: { url: string; title?: string; imageUrl?: string; siteName?: string }): Block {
+export function blockFromLink(link: {
+  url: string;
+  title?: string;
+  imageUrl?: string;
+  siteName?: string;
+  geoLat?: number;
+  geoLng?: number;
+}): Block {
   const block: Block = { id: generateId(), text: link.url, type: 'link', linkUrl: link.url };
   if (link.title) block.linkTitle = link.title;
   if (link.imageUrl) block.linkImageUrl = link.imageUrl;
   if (link.siteName) block.linkSiteName = link.siteName;
+  if (link.geoLat != null && link.geoLng != null) {
+    block.linkGeoLat = link.geoLat;
+    block.linkGeoLng = link.geoLng;
+  }
   return block;
 }
 

@@ -1169,6 +1169,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (b.linkTitle) linkDocData.title = b.linkTitle;
       if (b.linkImageUrl) linkDocData.imageUrl = b.linkImageUrl;
       if (b.linkSiteName) linkDocData.siteName = b.linkSiteName;
+      if (b.linkGeoLat != null && b.linkGeoLng != null) {
+        linkDocData.geoLat = b.linkGeoLat;
+        linkDocData.geoLng = b.linkGeoLng;
+      }
       // {merge:true} below never erases a field once set, so this only
       // needs to be included once - re-sending the same value every sync is
       // harmless.
@@ -3302,6 +3306,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         const linkBlock: Block = { ...buildBlock(id, 'link', url), linkUrl: url, linkTitle: title };
         if (preview.imageUrl) linkBlock.linkImageUrl = preview.imageUrl;
         if (preview.siteName) linkBlock.linkSiteName = preview.siteName;
+        if (preview.geoLat != null && preview.geoLng != null) {
+          linkBlock.linkGeoLat = preview.geoLat;
+          linkBlock.linkGeoLng = preview.geoLng;
+        }
         return linkBlock;
       });
     });
