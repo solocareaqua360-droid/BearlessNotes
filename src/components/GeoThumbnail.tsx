@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Image, ImageStyle, StyleProp } from 'react-native';
 import { StaticMapImageManager } from '@maplibre/maplibre-react-native';
-import { OSM_RASTER_STYLE } from '../utils/geoMapStyle';
+import { MAP_STYLE_URL } from '../utils/geoMapStyle';
 
 // A geo point's own little picture, wherever any other link already
 // shows one - see ItemCards' LinkRow/LinkGridCell. Generated from the
@@ -47,7 +47,7 @@ export default function GeoThumbnail({
       StaticMapImageManager.createImage({
         center: [lng, lat],
         zoom: 15,
-        mapStyle: OSM_RASTER_STYLE,
+        mapStyle: MAP_STYLE_URL,
         width,
         height,
         output: 'file',

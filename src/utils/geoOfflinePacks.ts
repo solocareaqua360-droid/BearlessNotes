@@ -1,6 +1,5 @@
 import { OfflineManager, type OfflinePackDownloadState } from '@maplibre/maplibre-react-native';
-import * as LegacyFileSystem from 'expo-file-system/legacy';
-import { OSM_RASTER_STYLE } from './geoMapStyle';
+import { MAP_STYLE_URL } from './geoMapStyle';
 
 // Named, separately-managed offline regions - not the library's own
 // background "ambient cache" (a plain rolling cache of whatever tiles
@@ -16,16 +15,15 @@ export type OfflineRegion = {
 
 export type OfflineDetail = 'standard' | 'high';
 
-// Zoom range each detail level downloads. Not scientifically tuned -
-// standard reaches a normal street view, high goes closer, both stop
-// well short of the building-level zoom a live connection would still
-// load on demand. `minZoom` matters much less for size than `maxZoom`
-// does - every level up roughly quadruples the tile count for the same
-// area - so this is the one number worth revisiting once a real
-// download's actual size has been seen.
+// Zoom range each detail level downloads. The style's vector tiles stop
+// at z14 and the map overzooms them for any closer view, so z14 is
+// already everything: house numbers, shops, every street name. Standard
+// stops one level short (z13 - streets and buildings, fewer names and
+// places) at roughly a quarter of the tiles. Anything above 14 would
+// download nothing more; the engine clamps to the tileset's own maxzoom.
 const DETAIL_ZOOM: Record<OfflineDetail, { minZoom: number; maxZoom: number }> = {
-  standard: { minZoom: 11, maxZoom: 16 },
-  high: { minZoom: 11, maxZoom: 18 },
+  standard: { minZoom: 11, maxZoom: 13 },
+  high: { minZoom: 11, maxZoom: 14 },
 };
 
 export function zoomRangeFor(detail: OfflineDetail): { minZoom: number; maxZoom: number } {
@@ -44,12 +42,17 @@ function tileY(lat: number, zoom: number): number {
   return Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * 2 ** zoom);
 }
 
-// A raster PNG tile from this server, averaged - real ones range from a
-// few KB (open water, empty countryside) to well over 30 (a dense city
-// centre), so this is a rough middle rather than a measurement. Good
-// enough to say "roughly this much", not to promise an exact figure -
-// the sheet's own label says "орієнтовно" for exactly that reason.
-const AVG_TILE_BYTES = 20 * 1024;
+// Measured 2026-09-25 over central Zaporizhzhia: vector tiles averaged
+// 28-49 KB per level (10 KB at the quiet edges, 75 KB at the densest).
+// A city-biased middle - the sheet says "орієнтовно" for this reason.
+const AVG_TILE_BYTES = 35 * 1024;
+
+// Every region also pulls the label fonts - the style's three Noto Sans
+// faces, non-CJK ranges only (the Android definition leaves
+// includeIdeographs off): measured at ~3.3 MB per face. Stored once and
+// shared by every region after the first, but each region's own size
+// still counts them, so they belong in the estimate too.
+export const FONT_BYTES = 10 * 1024 * 1024;
 
 export function estimateRegionSize(
   bounds: [number, number, number, number],
@@ -66,29 +69,7 @@ export function estimateRegionSize(
     const maxY = tileY(south, z);
     tileCount += Math.max(0, maxX - minX + 1) * Math.max(0, maxY - minY + 1);
   }
-  return { tileCount, bytes: tileCount * AVG_TILE_BYTES };
-}
-
-// Unlike the live <Map mapStyle={...}> prop (which happily takes a
-// StyleSpecification object directly), the offline engine's own
-// `mapStyle` option is used as a genuine fetchable styleURL - confirmed
-// against MapLibre's Android/C++ source and every real published example
-// of OfflineTilePyramidRegionDefinition, which is always a real URL,
-// never inline JSON. Passing the stringified style straight through (as
-// this used to) left the offline engine with nothing it could actually
-// load as a style document, so it could never work out which tiles a
-// region even needed - every download sat at 0% forever, independent of
-// size, since nothing was ever being fetched at all. Writing the same
-// style to one small file the device can read as a real `file://` URL
-// gives it something it can resolve.
-let styleFileUri: Promise<string> | null = null;
-
-function offlineStyleUrl(): Promise<string> {
-  if (!styleFileUri) {
-    const uri = `${LegacyFileSystem.cacheDirectory}osm-raster-style.json`;
-    styleFileUri = LegacyFileSystem.writeAsStringAsync(uri, JSON.stringify(OSM_RASTER_STYLE)).then(() => uri);
-  }
-  return styleFileUri;
+  return { tileCount, bytes: tileCount * AVG_TILE_BYTES + FONT_BYTES };
 }
 
 // Downloads the given bounds at one detail level, reporting progress as
@@ -134,17 +115,18 @@ export function downloadRegion(
       fn();
     }
 
-    offlineStyleUrl()
-      .then((mapStyle) =>
-        OfflineManager.createPack(
-          { mapStyle, bounds, minZoom, maxZoom, metadata: { name } },
-          (_pack, status) => {
-            onProgress(status.percentage / 100);
-            if (status.state === ('complete' as OfflinePackDownloadState)) settle(resolve);
-          },
-          (_pack, error) => settle(() => reject(new Error(error.message)))
-        )
-      )
+    // Must be a real https URL: MapLibre's offline engine fetches the
+    // style through its network file source only (offline_download.cpp),
+    // so inline style JSON and file:// both stall at 0% with an error
+    // emitted before JS is even subscribed to hear it.
+    OfflineManager.createPack(
+      { mapStyle: MAP_STYLE_URL, bounds, minZoom, maxZoom, metadata: { name } },
+      (_pack, status) => {
+        onProgress(status.percentage / 100);
+        if (status.state === ('complete' as OfflinePackDownloadState)) settle(resolve);
+      },
+      (_pack, error) => settle(() => reject(new Error(error.message)))
+    )
       .then((pack) => {
         createdPackId = pack.id;
         pollTimer = setInterval(() => {

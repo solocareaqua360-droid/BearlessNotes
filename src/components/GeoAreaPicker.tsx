@@ -12,7 +12,7 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
 import GeoAreaFrame, { type ScreenFrame } from './GeoAreaFrame';
-import { OSM_RASTER_STYLE } from '../utils/geoMapStyle';
+import { MAP_STYLE_URL } from '../utils/geoMapStyle';
 import { searchPlace } from '../utils/geoPlaceSearch';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
@@ -117,7 +117,7 @@ export default function GeoAreaPicker({
           </View>
           <Text style={styles.hint}>Перетягніть рамку чи її кути, або спершу знайдіть місце</Text>
           <View style={styles.mapWrap} onLayout={handleMapLayout}>
-            <Map ref={mapRef} style={styles.fill} mapStyle={OSM_RASTER_STYLE}>
+            <Map ref={mapRef} style={styles.fill} mapStyle={MAP_STYLE_URL}>
               <Camera
                 ref={cameraRef}
                 initialViewState={initialBounds ? { bounds: initialBounds } : { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM }}

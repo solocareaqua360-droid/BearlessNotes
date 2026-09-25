@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
-import { OSM_RASTER_STYLE } from '../utils/geoMapStyle';
+import { MAP_STYLE_URL } from '../utils/geoMapStyle';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import type { LatLng } from '../utils/geoCoordinates';
@@ -59,7 +59,7 @@ export default function GeoPointMapPicker({
           <View style={styles.mapWrap}>
             <Map
               style={styles.fill}
-              mapStyle={OSM_RASTER_STYLE}
+              mapStyle={MAP_STYLE_URL}
               onPress={(e: { nativeEvent: PressEvent }) => {
                 const [lng, lat] = e.nativeEvent.lngLat;
                 setPoint({ lat, lng });

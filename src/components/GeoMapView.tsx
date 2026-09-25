@@ -12,7 +12,7 @@ import {
 import Supercluster, { type PointFeature } from 'supercluster';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeProvider';
-import { OSM_RASTER_STYLE } from '../utils/geoMapStyle';
+import { MAP_STYLE_URL } from '../utils/geoMapStyle';
 import GeoOfflineRegionsSheet from './GeoOfflineRegionsSheet';
 import { notify } from './surfaces/Ask';
 
@@ -113,7 +113,7 @@ export default function GeoMapView({
 
   return (
     <View style={styles.fill}>
-      <Map style={styles.fill} mapStyle={OSM_RASTER_STYLE} onRegionDidChange={handleRegionChange}>
+      <Map style={styles.fill} mapStyle={MAP_STYLE_URL} onRegionDidChange={handleRegionChange}>
         <Camera ref={cameraRef} initialViewState={{ center: initialCenter, zoom: initialZoom }} />
         {locationEnabled && <UserLocation accuracy />}
         {clusters.map((feature) => {

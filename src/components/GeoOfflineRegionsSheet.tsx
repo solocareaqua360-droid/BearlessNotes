@@ -13,6 +13,7 @@ import {
   DownloadCancelled,
   downloadRegion,
   estimateRegionSize,
+  FONT_BYTES,
   formatBytes,
   listRegions,
   type OfflineDetail,
@@ -164,7 +165,10 @@ export default function GeoOfflineRegionsSheet({
                 </View>
                 <Text style={styles.hint}>
                   {customBounds ? 'Завантажить вибрану ділянку' : 'Завантажить те, що зараз видно на мапі'}
-                  {estimate ? ` — орієнтовно ${formatBytes(estimate.bytes)}` : ''}.
+                  {estimate
+                    ? ` — орієнтовно ${formatBytes(estimate.bytes)}, з них ~${formatBytes(FONT_BYTES)} шрифтів, спільних для всіх районів`
+                    : ''}
+                  .
                 </Text>
                 <View style={styles.areaLinks}>
                   <Pressable hitSlop={6} onPress={() => setAreaPickerVisible(true)}>
