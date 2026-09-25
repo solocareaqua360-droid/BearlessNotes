@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Camera, Map, Marker, type CameraRef, type ViewStateChangeEvent } from '@maplibre/maplibre-react-native';
 import Supercluster, { type PointFeature } from 'supercluster';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeProvider';
 import { OSM_RASTER_STYLE } from '../utils/geoMapStyle';
+import GeoOfflineRegionsSheet from './GeoOfflineRegionsSheet';
 
 // Kyiv, zoomed out to the country - a reasonable place to open with no
 // points of the user's own yet, rather than the middle of the ocean
@@ -74,6 +75,8 @@ export default function GeoMapView({
     cameraRef.current?.flyTo({ center, zoom, duration: 400 });
   }
 
+  const [offlineSheetVisible, setOfflineSheetVisible] = useState(false);
+
   return (
     <View style={styles.fill}>
       <Map style={styles.fill} mapStyle={OSM_RASTER_STYLE} onRegionDidChange={handleRegionChange}>
@@ -120,6 +123,17 @@ export default function GeoMapView({
           </Text>
         </View>
       )}
+      <Pressable
+        style={[styles.offlineButton, { backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}
+        onPress={() => setOfflineSheetVisible(true)}
+      >
+        <Ionicons name="cloud-download-outline" size={20} color={theme.ink.primary} />
+      </Pressable>
+      <GeoOfflineRegionsSheet
+        visible={offlineSheetVisible}
+        currentBounds={view.bounds}
+        onClose={() => setOfflineSheetVisible(false)}
+      />
     </View>
   );
 }
@@ -177,5 +191,19 @@ const styles = StyleSheet.create({
   emptyHintText: {
     fontSize: 13,
     textAlign: 'center',
+  },
+  // Below where the "no points" hint's own box ends (it spans the full
+  // width at top:24) - the two would otherwise sit on top of each other
+  // when both show at once.
+  offlineButton: {
+    position: 'absolute',
+    left: 16,
+    top: 90,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
