@@ -29,12 +29,14 @@ import {
   writeBatch,
 } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
-import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
+import { backfillGeoCoordinatesIfMissing, refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import { db } from '../firebase';
 import { Block, TaggableKind } from '../types';
 import { LINK_CATEGORY_INFO as CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
+import GeoPointEntrySheet from '../components/GeoPointEntrySheet';
+import { mapsUrlForLatLng } from '../utils/geoCoordinates';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
 import { LinkGridCell, LinkRow } from '../components/ItemCards';
@@ -179,6 +181,7 @@ export default function LinksScreen({
   const [fullscreenVideoUrl, setFullscreenVideoUrl] = useState<string | null>(null);
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const [addLinkUrlPromptVisible, setAddLinkUrlPromptVisible] = useState(false);
+  const [geoPointSheetVisible, setGeoPointSheetVisible] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
   const [addLinkTitlePrompt, setAddLinkTitlePrompt] = useState<{ url: string; preview: LinkPreview } | null>(null);
   const [justAddedLink, setJustAddedLink] = useState<JustAddedLink | null>(null);
@@ -242,6 +245,13 @@ export default function LinksScreen({
             // back; this same listener then delivers the live one. See
             // linkPreviewRefresh.
             refreshLinkPreviewIfExpired({ id: docSnapshot.id, url: data.url, imageUrl: data.imageUrl });
+            backfillGeoCoordinatesIfMissing({
+              id: docSnapshot.id,
+              url: data.url,
+              siteName: data.siteName,
+              geoLat: data.geoLat,
+              geoLng: data.geoLng,
+            });
           }
           return {
             id: docSnapshot.id,
@@ -399,6 +409,39 @@ export default function LinksScreen({
     // identical justAddedFile for why "Перемістити" only ADDS a block
     // elsewhere rather than moving anything.
     setJustAddedLink({ id, url, title, imageUrl: preview.imageUrl, siteName: preview.siteName, createdAt: now });
+  }
+
+  // The manual side of the same door - a point entered by hand (any of
+  // the three ways GeoPointEntrySheet offers) lands through the exact
+  // same saveNewLink a pasted URL does. Built here rather than given a
+  // path of its own: a Maps URL is always constructible from a plain
+  // lat/lng (mapsUrlForLatLng), so this point is, from here on, simply
+  // ANOTHER geo link - every list, filter, tag and group already knows
+  // what to do with one.
+  async function saveGeoPointByHand(title: string, point: { lat: number; lng: number }) {
+    setGeoPointSheetVisible(false);
+    const url = mapsUrlForLatLng(point);
+    await saveNewLink(url, { siteName: 'Геоточка', geoLat: point.lat, geoLng: point.lng }, title);
+  }
+
+  // The "+" button on the Геоточки category alone asks which of the two
+  // doors in first - paste a link, or type the point straight in - since
+  // "Нове посилання" as a prompt makes no sense for someone who has
+  // coordinates, not a URL, in hand.
+  async function handleAddPress() {
+    if (category !== 'geo') {
+      setAddLinkUrlPromptVisible(true);
+      return;
+    }
+    const choice = await ask({
+      title: 'Нова геоточка',
+      actions: [
+        { id: 'url', label: 'Вставити посилання' },
+        { id: 'coords', label: 'Ввести координати' },
+      ],
+    });
+    if (choice === 'url') setAddLinkUrlPromptVisible(true);
+    else if (choice === 'coords') setGeoPointSheetVisible(true);
   }
 
   function linkToBlock(item: JustAddedLink) {
@@ -712,7 +755,7 @@ export default function LinksScreen({
       onBack={() => navigation.goBack()}
       leaveIcon="link-outline"
       searchPlaceholder="Пошук за назвою"
-      onAdd={() => setAddLinkUrlPromptVisible(true)}
+      onAdd={handleAddPress}
       // The shape of the list is a button on the rail now - it was two
       // rows here saying the same thing, on three screens.
       shape={{
@@ -854,6 +897,12 @@ export default function LinksScreen({
             initialValue=""
             onCancel={() => setAddLinkUrlPromptVisible(false)}
             onSave={submitNewLinkUrl}
+          />
+
+          <GeoPointEntrySheet
+            visible={geoPointSheetVisible}
+            onCancel={() => setGeoPointSheetVisible(false)}
+            onSave={({ title, point }) => saveGeoPointByHand(title, point)}
           />
 
           <RenamePrompt

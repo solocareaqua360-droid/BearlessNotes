@@ -1,6 +1,6 @@
 import { doc, updateDoc } from '../firestore';
 import { db } from '../firebase';
-import { fetchLinkPreview } from './linkPreview';
+import { extractMapsCoordinates, fetchLinkPreview } from './linkPreview';
 
 // A link's picture, kept alive.
 //
@@ -65,5 +65,41 @@ export async function refreshLinkPreviewIfExpired(link: {
     lastFailure.set(link.id, Date.now());
   } finally {
     inFlight.delete(link.id);
+  }
+}
+
+// The same lazy backfill, for a geo point saved before extractMapsCoordinates
+// existed - or whose short link had no network to resolve against at the
+// time. Its own in-flight/backoff pair, keyed apart from the picture
+// refresh above so the two never block each other for the same link.
+const geoInFlight = new Set<string>();
+const geoLastFailure = new Map<string, number>();
+
+export async function backfillGeoCoordinatesIfMissing(link: {
+  id: string;
+  url: string | undefined;
+  siteName: string | undefined;
+  geoLat: number | undefined;
+  geoLng: number | undefined;
+}): Promise<void> {
+  if (!link.url || link.siteName !== 'Геоточка') return;
+  if (link.geoLat != null && link.geoLng != null) return;
+  if (geoInFlight.has(link.id)) return;
+  const failedAt = geoLastFailure.get(link.id);
+  if (failedAt && Date.now() - failedAt < RETRY_AFTER_MS) return;
+
+  geoInFlight.add(link.id);
+  try {
+    const coords = await extractMapsCoordinates(link.url);
+    if (!coords) {
+      geoLastFailure.set(link.id, Date.now());
+      return;
+    }
+    await updateDoc(doc(db, 'links', link.id), { geoLat: coords.lat, geoLng: coords.lng });
+    geoLastFailure.delete(link.id);
+  } catch {
+    geoLastFailure.set(link.id, Date.now());
+  } finally {
+    geoInFlight.delete(link.id);
   }
 }
