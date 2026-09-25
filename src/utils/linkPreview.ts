@@ -69,15 +69,55 @@ async function resolveMapsShortLink(url: string): Promise<string | null> {
   }
 }
 
+// A place Google itself RECOGNISES - an address, a business - shares
+// with no coordinates in the URL at all, unlike a plain dropped pin: the
+// `data=` segment carries an opaque place id
+// (`!4m2!3m1!1s0x40dc...:0xc846...`), and turning that id back into a
+// lat/lng needs a real Google lookup, the paid call this project has
+// refused since extractMapsPlaceName's own first comment. What the URL
+// DOES still carry is the place's readable name, and that can be
+// geocoded for free through the same OpenStreetMap family already
+// behind the map and its tiles: Nominatim, its own public search
+// endpoint. One request per point, on demand - the same light-use trade
+// already accepted for the tile server, never bulk geocoding.
+async function geocodePlaceName(name: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name)}&format=json&limit=1`,
+      { headers: { 'User-Agent': 'BearlessNotes (mindEva notes app)' } }
+    );
+    if (!res.ok) return null;
+    const results = (await res.json()) as { lat?: string; lon?: string }[];
+    const first = results[0];
+    if (!first?.lat || !first.lon) return null;
+    const lat = Number(first.lat);
+    const lng = Number(first.lon);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  } catch {
+    return null;
+  }
+}
+
 // Coordinates for a Maps URL of any shape this app recognises - reading
-// them straight out of the text where they are already there, and
-// resolving a short link's one redirect only when they are not.
+// them straight out of the text where they are already there where a
+// dropped pin put them, resolving a short link's one redirect where
+// they are only reachable that way, and geocoding the place's own name
+// as the last resort for a recognised address/business, whose URL never
+// carries coordinates at all.
 export async function extractMapsCoordinates(url: string): Promise<{ lat: number; lng: number } | null> {
   const direct = extractMapsCoordinatesFromText(url);
   if (direct) return direct;
-  if (!isMapsShortLink(url)) return null;
-  const resolved = await resolveMapsShortLink(url);
-  return resolved ? extractMapsCoordinatesFromText(resolved) : null;
+  let resolvedUrl = url;
+  if (isMapsShortLink(url)) {
+    const resolved = await resolveMapsShortLink(url);
+    if (resolved) {
+      resolvedUrl = resolved;
+      const fromResolved = extractMapsCoordinatesFromText(resolved);
+      if (fromResolved) return fromResolved;
+    }
+  }
+  const name = extractMapsPlaceName(resolvedUrl);
+  return name ? geocodePlaceName(name) : null;
 }
 
 export function hostnameOf(url: string): string {
