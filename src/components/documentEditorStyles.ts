@@ -278,10 +278,17 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
   // this corner pair is what lets consecutive rows' borders touch and
   // read as a single line, from the toggle's own row straight down to
   // wherever the section ends.
+  //
+  // 16 rather than the row's own 8 of padding: the toggle's chevron
+  // (BlockRow's 'toggle' case, `size={18}`) sits flush against that
+  // padding with nothing of its own around it, so its centre falls at
+  // 8 + 9 - the line's own left edge, not its middle, needs to land
+  // there for the two to actually line up. paddingLeft keeps the text
+  // at the same total indent the marginLeft used to carry alone.
   blockRowIndented: {
-    marginLeft: 22,
-    paddingLeft: 10,
-    borderLeftWidth: 2,
+    marginLeft: 16,
+    paddingLeft: 16,
+    borderLeftWidth: 1,
     borderLeftColor: t.accent,
     borderTopLeftRadius: 0,
     borderBottomLeftRadius: 0,
