@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FileRow, LinkRow, PhotoRow } from '../components/ItemCards';
 import { Ionicons } from '@expo/vector-icons';
@@ -101,7 +101,6 @@ export default function ChatScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
   const showContext = useDockShowContext();
-  const listRef = useRef<FlatList<Row>>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -165,6 +164,15 @@ export default function ChatScreen() {
     return out;
   }, [visibleMessages]);
 
+  // The list is INVERTED, as every messenger's is, so it opens on the
+  // newest message by construction. It used to scroll to its end right
+  // after the first render instead - but a FlatList has measured only its
+  // first ~10 rows by then, and photos and link cards grow after that, so
+  // "the end" it scrolled to was near the top: the chat opened on its
+  // oldest messages. Reversed data keeps the day headings above their
+  // messages once the list flips.
+  const listRows = useMemo(() => [...rows].reverse(), [rows]);
+
   useDockLeave('chatbubbles-outline', () => navigation.goBack());
   useDockBeads(
     isFocused
@@ -222,13 +230,6 @@ export default function ChatScreen() {
             },
           ]
   );
-
-  // Straight to the newest, every time - a chat is read from its end.
-  useEffect(() => {
-    if (rows.length === 0) return;
-    const id = setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 0);
-    return () => clearTimeout(id);
-  }, [rows.length]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -443,10 +444,12 @@ export default function ChatScreen() {
           </View>
         ) : (
           <FlatList
-            ref={listRef}
-            data={rows}
+            inverted
+            data={listRows}
             keyExtractor={(row) => row.key}
-            contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }]}
+            // Inverted, so top and bottom swap: paddingTop is the visual
+            // bottom (clear of the dock), paddingBottom the visual top.
+            contentContainerStyle={[styles.list, { paddingTop: dockClear + insets.bottom, paddingBottom: 8 }]}
             onScrollToIndexFailed={() => {}}
             renderItem={({ item }) => {
               if (item.kind === 'day') {
@@ -653,7 +656,6 @@ const makeStyles = (t: Theme) =>
     },
     list: {
       paddingHorizontal: 20,
-      paddingTop: 8,
       gap: 8,
     },
     searchRow: {
