@@ -22,6 +22,7 @@ import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import RenamePrompt from './RenamePrompt';
 import SaveDestinationSheet from './SaveDestinationSheet';
 import { notify } from './surfaces/Ask';
+import { categoryFromSiteName, LINK_CATEGORY_INFO } from '../utils/linkCategory';
 
 // Identical to LinksScreen.tsx's/AddExistingItemModal.tsx's own copy of
 // this same small classifier - see those for why it isn't shared.
@@ -84,6 +85,12 @@ export default function ShareIntentHandler() {
   const [renameQueue, setRenameQueue] = useState<PendingImport[]>([]);
   const addedCountRef = useRef({ photos: 0, files: 0 });
   const [pendingShare, setPendingShare] = useState<PendingShare | null>(null);
+  // "Зберегти окремо" for a link with no title to fall back on - see
+  // finalizeShareStandalone.
+  const [standaloneLinkTitlePrompt, setStandaloneLinkTitlePrompt] = useState<{
+    url: string;
+    preview: LinkPreview;
+  } | null>(null);
 
   useEffect(() => {
     if (!hasShareIntent || processingRef.current) return;
@@ -340,7 +347,27 @@ export default function ShareIntentHandler() {
     const share = pendingShare;
     if (!share) return;
     setPendingShare(null);
+    // No name to save it under yet - ask, the same way the Посилання
+    // screen's own "+" does for a link with nothing to read a title out
+    // of (most often a Maps share with no /place/ segment in it, so
+    // extractMapsPlaceName found nothing). Every OTHER destination lands
+    // the user right on the note/board that now holds the link, where a
+    // missing title is right there to fix - this one doesn't, so it is
+    // the one place a blank title actually goes missing.
+    if (share.kind === 'link' && !share.preview.title) {
+      setStandaloneLinkTitlePrompt({ url: share.url, preview: share.preview });
+      return;
+    }
     saveShareStandalone(share).catch(reportShareFailure);
+  }
+
+  function confirmStandaloneLinkTitle(title: string) {
+    const prompt = standaloneLinkTitlePrompt;
+    setStandaloneLinkTitlePrompt(null);
+    if (!prompt || !title.trim()) return;
+    saveShareStandalone({ kind: 'link', url: prompt.url, preview: { ...prompt.preview, title: title.trim() } }).catch(
+      reportShareFailure
+    );
   }
 
   async function saveShareStandalone(share: PendingShare) {
@@ -356,8 +383,13 @@ export default function ShareIntentHandler() {
       if (share.preview.title) linkDocData.title = share.preview.title;
       if (share.preview.imageUrl) linkDocData.imageUrl = share.preview.imageUrl;
       if (share.preview.siteName) linkDocData.siteName = share.preview.siteName;
+      if (share.preview.geoLat != null && share.preview.geoLng != null) {
+        linkDocData.geoLat = share.preview.geoLat;
+        linkDocData.geoLng = share.preview.geoLng;
+      }
       await setDoc(doc(db, 'links', linkId), linkDocData, { merge: true });
-      notify('Додано в mindEva', 'Посилання збережено в базі "Посилання".');
+      const categoryTitle = LINK_CATEGORY_INFO[categoryFromSiteName(share.preview.siteName)].title;
+      notify('Додано в mindEva', `Збережено в Посиланнях - ${categoryTitle}.`);
       return;
     }
     // Same cap DocumentsScreen's own sticker FAB enforces - falls back to
@@ -391,6 +423,13 @@ export default function ShareIntentHandler() {
         initialValue={current?.originalName ?? ''}
         onCancel={() => handleRenameDecision(current?.originalName ?? '')}
         onSave={(title) => handleRenameDecision(title)}
+      />
+      <RenamePrompt
+        visible={standaloneLinkTitlePrompt !== null}
+        title="Назва посилання"
+        initialValue=""
+        onCancel={() => setStandaloneLinkTitlePrompt(null)}
+        onSave={confirmStandaloneLinkTitle}
       />
       <SaveDestinationSheet
         visible={pendingShare !== null}
