@@ -16,7 +16,7 @@
     "android": {
       "package": "com.bearlessnotes.app",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#2B1770"
       }
     },
