@@ -7,6 +7,7 @@ import type { Theme } from '../theme/tokens';
 import type { Block } from '../types';
 import GlassLayer from './GlassLayer';
 import AttachmentImage from './AttachmentImage';
+import ZoomableImageViewer from './ZoomableImageViewer';
 import GeoThumbnail from './GeoThumbnail';
 import GeoPointMapPicker from './GeoPointMapPicker';
 import { FONT_BOLD, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -100,13 +101,19 @@ export default function LinkDetailSheet({
     lastSavedComment.current = null;
   }, [link?.id, link?.comment]);
 
-  // Everything on the card saves the moment it happens, which read as
-  // unfinished: a photo with only a delete cross on it, a comment with a
-  // cursor still blinking and nothing to press. So the comment gets a
-  // "Зберегти" while it is being written, and both say briefly that they
-  // were saved.
-  const commentRef = useRef<TextInput>(null);
-  const [commentFocused, setCommentFocused] = useState(false);
+  // Looked at, or edited - the user's own rule, after a card that was
+  // always both read as unfinished: delete crosses on every photo, a
+  // cursor blinking in the comment. Looking shows the photos (a tap opens
+  // them full screen) and the comment as plain text; "Редагувати" brings
+  // the crosses, the "+", the comment field and the other changes, and
+  // "Готово" saves and puts them away. It sits in the header, where the
+  // keyboard cannot cover it - which is what hid the first "Зберегти".
+  const [editing, setEditing] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  useEffect(() => {
+    setEditing(false);
+    setViewerIndex(null);
+  }, [link?.id]);
   const lastSavedComment = useRef<string | null>(null);
   const commentDirty = comment.trim() !== (lastSavedComment.current ?? link?.comment ?? '');
   const [flash, setFlash] = useState<{ kind: 'photo' | 'comment'; text: string } | null>(null);
@@ -123,10 +130,22 @@ export default function LinkDetailSheet({
     setFlash({ kind: 'comment', text: 'Коментар збережено' });
   }
 
-  // Closing mid-sentence used to rely on the field's blur, which an
-  // unmounting card does not reliably fire - the words could be lost.
-  function close() {
+  function finishEditing() {
     saveComment();
+    Keyboard.dismiss();
+    setEditing(false);
+  }
+
+  // Closing mid-edit saves too - a card closed by its cross or by the
+  // back button must not lose what was typed. With a photo open full
+  // screen, back closes the photo first.
+  function close() {
+    if (viewerIndex !== null) {
+      setViewerIndex(null);
+      return;
+    }
+    saveComment();
+    setEditing(false);
     onClose();
   }
 
@@ -183,6 +202,20 @@ export default function LinkDetailSheet({
                 <Text style={styles.title} numberOfLines={2}>
                   {shown.title || (shown.category === 'geo' ? 'Геоточка' : hostnameOf(shown.url))}
                 </Text>
+                <Pressable
+                  hitSlop={6}
+                  onPress={editing ? finishEditing : () => setEditing(true)}
+                  style={({ pressed }) => [editing ? styles.doneButton : styles.editButton, pressed && styles.pressed]}
+                >
+                  <Ionicons
+                    name={editing ? 'checkmark' : 'create-outline'}
+                    size={16}
+                    color={editing ? theme.onAccent : theme.ink.primary}
+                  />
+                  <Text style={editing ? styles.doneButtonText : styles.editButtonText}>
+                    {editing ? 'Готово' : 'Редагувати'}
+                  </Text>
+                </Pressable>
                 <Pressable hitSlop={8} onPress={close}>
                   <Ionicons name="close" size={22} color={theme.ink.muted} />
                 </Pressable>
@@ -229,6 +262,7 @@ export default function LinkDetailSheet({
                       theme={theme}
                     />
                   </View>
+                  {editing && (
                   <Pressable
                     style={({ pressed }) => [styles.correctButton, pressed && styles.pressed]}
                     onPress={() => setPickerVisible(true)}
@@ -242,59 +276,52 @@ export default function LinkDetailSheet({
                       {shown.geoCorrected ? 'Відкоректовано' : 'Неточність'}
                     </Text>
                   </Pressable>
+                  )}
                 </>
               )}
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel}>
-                {photos.map((photo) => (
-                  <View key={photo.id} style={styles.photoWrap}>
-                    <AttachmentImage
-                      uri={photo.imageUri ?? ''}
-                      driveFileId={photo.driveFileId}
-                      style={styles.photo}
-                      resizeMode="cover"
-                    />
+              {(editing || photos.length > 0) && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel}>
+                  {photos.map((photo, index) => (
                     <Pressable
-                      style={styles.photoRemove}
-                      hitSlop={8}
-                      onPress={() => onRemovePhoto(photo.id)}
+                      key={photo.id}
+                      style={styles.photoWrap}
+                      disabled={editing}
+                      onPress={() => setViewerIndex(index)}
                     >
-                      <Ionicons name="close" size={13} color="#fff" />
+                      <AttachmentImage
+                        uri={photo.imageUri ?? ''}
+                        driveFileId={photo.driveFileId}
+                        style={styles.photo}
+                        resizeMode="cover"
+                      />
+                      {editing && (
+                        <Pressable style={styles.photoRemove} hitSlop={8} onPress={() => onRemovePhoto(photo.id)}>
+                          <Ionicons name="close" size={13} color="#fff" />
+                        </Pressable>
+                      )}
                     </Pressable>
-                  </View>
-                ))}
-                <Pressable style={styles.photoAdd} onPress={onAddPhoto}>
-                  <Ionicons name="add" size={22} color={theme.accent} />
-                </Pressable>
-              </ScrollView>
+                  ))}
+                  {editing && (
+                    <Pressable style={styles.photoAdd} onPress={onAddPhoto}>
+                      <Ionicons name="add" size={22} color={theme.accent} />
+                    </Pressable>
+                  )}
+                </ScrollView>
+              )}
               {flash?.kind === 'photo' && <SavedNote text={flash.text} styles={styles} theme={theme} />}
 
-              <TextInput
-                ref={commentRef}
-                value={comment}
-                onChangeText={setComment}
-                onFocus={() => setCommentFocused(true)}
-                onBlur={() => {
-                  setCommentFocused(false);
-                  saveComment();
-                }}
-                placeholder="Коментар"
-                placeholderTextColor={theme.ink.faint}
-                style={styles.commentInput}
-                multiline
-              />
-              {(commentFocused || commentDirty) && (
-                <Pressable
-                  style={({ pressed }) => [styles.saveComment, pressed && styles.pressed]}
-                  onPress={() => {
-                    saveComment();
-                    commentRef.current?.blur();
-                    Keyboard.dismiss();
-                  }}
-                >
-                  <Ionicons name="checkmark" size={17} color={theme.onAccent} />
-                  <Text style={styles.saveCommentText}>Зберегти</Text>
-                </Pressable>
+              {editing ? (
+                <TextInput
+                  value={comment}
+                  onChangeText={setComment}
+                  placeholder="Коментар"
+                  placeholderTextColor={theme.ink.faint}
+                  style={styles.commentInput}
+                  multiline
+                />
+              ) : (
+                !!comment.trim() && <Text style={styles.commentText}>{comment.trim()}</Text>
               )}
               {flash?.kind === 'comment' && <SavedNote text={flash.text} styles={styles} theme={theme} />}
 
@@ -308,9 +335,11 @@ export default function LinkDetailSheet({
                       <Text style={styles.readButtonText}>Читати</Text>
                       <Text style={styles.articleSaved}>збережено {formatUpdatedAt(shown.articleSavedAt)}</Text>
                     </Pressable>
+                    {editing && (
                     <Pressable hitSlop={8} onPress={onDeleteArticle} style={styles.articleDelete}>
                       <Ionicons name="trash-outline" size={17} color={theme.ink.faint} />
                     </Pressable>
+                    )}
                   </View>
                 ) : (
                   <Pressable
@@ -348,9 +377,11 @@ export default function LinkDetailSheet({
                         <Pressable hitSlop={8} onPress={() => onFragmentsToNote([fragment])}>
                           <Ionicons name="document-text-outline" size={18} color={theme.accent} />
                         </Pressable>
+                        {editing && (
                         <Pressable hitSlop={8} onPress={() => onRemoveFragment(fragment)}>
                           <Ionicons name="close" size={18} color={theme.ink.faint} />
                         </Pressable>
+                        )}
                       </View>
                     </View>
                   ))}
@@ -375,6 +406,20 @@ export default function LinkDetailSheet({
           onCorrectPosition(point);
         }}
       />
+      {viewerIndex !== null && photos[viewerIndex] && (
+        <View style={styles.viewerLayer}>
+          <ZoomableImageViewer
+            uri={photos[viewerIndex].imageUri ?? ''}
+            driveFileId={photos[viewerIndex].driveFileId}
+            sketchElements={photos[viewerIndex].sketchElements}
+            sketchWidth={photos[viewerIndex].sketchWidth}
+            sketchHeight={photos[viewerIndex].sketchHeight}
+            onClose={() => setViewerIndex(null)}
+            onPrev={viewerIndex > 0 ? () => setViewerIndex(viewerIndex - 1) : undefined}
+            onNext={viewerIndex < photos.length - 1 ? () => setViewerIndex(viewerIndex + 1) : undefined}
+          />
+        </View>
+      )}
     </GlassLayer>
   );
 }
@@ -589,21 +634,47 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   pressed: {
     opacity: 0.7,
   },
-  saveComment: {
+  editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-end',
-    gap: 6,
-    minHeight: 40,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: t.accent,
-    marginTop: -4,
+    gap: 5,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: t.field.fill,
   },
-  saveCommentText: {
-    fontSize: 14,
+  editButtonText: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.primary,
+  },
+  doneButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: t.accent,
+  },
+  doneButtonText: {
+    fontSize: 13,
     fontFamily: FONT_SEMIBOLD,
     color: t.onAccent,
+  },
+  commentText: {
+    fontSize: 15,
+    lineHeight: 21,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.primary,
+  },
+  viewerLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 10,
   },
   savedNote: {
     flexDirection: 'row',
