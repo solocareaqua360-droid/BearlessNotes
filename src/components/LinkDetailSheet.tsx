@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -97,7 +97,38 @@ export default function LinkDetailSheet({
 
   useEffect(() => {
     setComment(link?.comment ?? '');
+    lastSavedComment.current = null;
   }, [link?.id, link?.comment]);
+
+  // Everything on the card saves the moment it happens, which read as
+  // unfinished: a photo with only a delete cross on it, a comment with a
+  // cursor still blinking and nothing to press. So the comment gets a
+  // "Зберегти" while it is being written, and both say briefly that they
+  // were saved.
+  const commentRef = useRef<TextInput>(null);
+  const [commentFocused, setCommentFocused] = useState(false);
+  const lastSavedComment = useRef<string | null>(null);
+  const commentDirty = comment.trim() !== (lastSavedComment.current ?? link?.comment ?? '');
+  const [flash, setFlash] = useState<{ kind: 'photo' | 'comment'; text: string } | null>(null);
+  useEffect(() => {
+    if (!flash) return;
+    const timer = setTimeout(() => setFlash(null), 1800);
+    return () => clearTimeout(timer);
+  }, [flash]);
+
+  function saveComment() {
+    if (!commentDirty) return;
+    lastSavedComment.current = comment.trim();
+    onSaveComment(comment);
+    setFlash({ kind: 'comment', text: 'Коментар збережено' });
+  }
+
+  // Closing mid-sentence used to rely on the field's blur, which an
+  // unmounting card does not reliably fire - the words could be lost.
+  function close() {
+    saveComment();
+    onClose();
+  }
 
   const [pickerVisible, setPickerVisible] = useState(false);
 
@@ -120,6 +151,17 @@ export default function LinkDetailSheet({
   const fragments = [...(shown?.fragments ?? [])].sort((a, b) => a.createdAt - b.createdAt);
   const primary = PRIMARY[shown?.category ?? 'other'];
 
+  // A photo that has just landed on this same card, not one of the
+  // photos the card opened with.
+  const photoCount = useRef<{ id?: string; count: number }>({ count: 0 });
+  useEffect(() => {
+    const previous = photoCount.current;
+    if (previous.id === shown?.id && photos.length > previous.count) {
+      setFlash({ kind: 'photo', text: 'Фото додано до картки' });
+    }
+    photoCount.current = { id: shown?.id, count: photos.length };
+  }, [shown?.id, photos.length]);
+
   async function saveArticle() {
     setSavingArticle(true);
     try {
@@ -132,7 +174,7 @@ export default function LinkDetailSheet({
   }
 
   return (
-    <GlassLayer visible={link !== null} onClose={onClose} intensity={60}>
+    <GlassLayer visible={link !== null} onClose={close} intensity={60}>
       <View style={styles.frame} pointerEvents="box-none">
         <View style={[styles.card, { marginBottom: keyboardHeight }]}>
           {shown && (
@@ -141,7 +183,7 @@ export default function LinkDetailSheet({
                 <Text style={styles.title} numberOfLines={2}>
                   {shown.title || (shown.category === 'geo' ? 'Геоточка' : hostnameOf(shown.url))}
                 </Text>
-                <Pressable hitSlop={8} onPress={onClose}>
+                <Pressable hitSlop={8} onPress={close}>
                   <Ionicons name="close" size={22} color={theme.ink.muted} />
                 </Pressable>
               </View>
@@ -225,16 +267,36 @@ export default function LinkDetailSheet({
                   <Ionicons name="add" size={22} color={theme.accent} />
                 </Pressable>
               </ScrollView>
+              {flash?.kind === 'photo' && <SavedNote text={flash.text} styles={styles} theme={theme} />}
 
               <TextInput
+                ref={commentRef}
                 value={comment}
                 onChangeText={setComment}
-                onBlur={() => onSaveComment(comment)}
+                onFocus={() => setCommentFocused(true)}
+                onBlur={() => {
+                  setCommentFocused(false);
+                  saveComment();
+                }}
                 placeholder="Коментар"
                 placeholderTextColor={theme.ink.faint}
                 style={styles.commentInput}
                 multiline
               />
+              {(commentFocused || commentDirty) && (
+                <Pressable
+                  style={({ pressed }) => [styles.saveComment, pressed && styles.pressed]}
+                  onPress={() => {
+                    saveComment();
+                    commentRef.current?.blur();
+                    Keyboard.dismiss();
+                  }}
+                >
+                  <Ionicons name="checkmark" size={17} color={theme.onAccent} />
+                  <Text style={styles.saveCommentText}>Зберегти</Text>
+                </Pressable>
+              )}
+              {flash?.kind === 'comment' && <SavedNote text={flash.text} styles={styles} theme={theme} />}
 
               {/* Reading - an ordinary page only: a video or a map point
                   has no article to keep. */}
@@ -314,6 +376,16 @@ export default function LinkDetailSheet({
         }}
       />
     </GlassLayer>
+  );
+}
+
+// "Saved" said once, quietly, right under what was saved.
+function SavedNote({ text, styles, theme }: { text: string; styles: ReturnType<typeof makeStyles>; theme: Theme }) {
+  return (
+    <View style={styles.savedNote}>
+      <Ionicons name="checkmark-circle" size={15} color={theme.accent} />
+      <Text style={styles.savedNoteText}>{text}</Text>
+    </View>
   );
 }
 
@@ -516,6 +588,33 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   pressed: {
     opacity: 0.7,
+  },
+  saveComment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    gap: 6,
+    minHeight: 40,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: t.accent,
+    marginTop: -4,
+  },
+  saveCommentText: {
+    fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.onAccent,
+  },
+  savedNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: -4,
+  },
+  savedNoteText: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.muted,
   },
   banner: {
     width: '100%',
