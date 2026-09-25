@@ -1,12 +1,13 @@
 {
   "expo": {
-    "name": "BearlessNotes",
+    "name": "viBo",
     "slug": "bearlessnotes",
     "scheme": "bearlessnotes",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#F2F2F5",
+    "icon": "./assets/icon.png",
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
@@ -15,7 +16,8 @@
     "android": {
       "package": "com.bearlessnotes.app",
       "adaptiveIcon": {
-        "backgroundColor": "#F2F2F5"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#2B1770"
       }
     },
     "web": {
