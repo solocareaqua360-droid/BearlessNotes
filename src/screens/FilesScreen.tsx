@@ -34,7 +34,7 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
-import { FileGridCell, FileRow } from '../components/ItemCards';
+import { FileGridCell, FileRow, gridBasis, gridFillerCount } from '../components/ItemCards';
 import GroupSections from '../components/GroupSections';
 import TagPicker from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
@@ -61,6 +61,8 @@ import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../component
 import FilePreviewWorker from '../components/FilePreviewWorker';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT , railClear } from '../constants/rail';
+import { useDockClearance } from '../navigation/dockGeometry';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
@@ -105,6 +107,11 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   const accentGlass = withAlpha(accent, 0.55);
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // Neither grid nor list here left room for the dock at the bottom of
+  // their own scroll content - the same gap Boards/Chat/Databases
+  // already closed with this same pair.
+  const dockClear = useDockClearance();
+  const insets = useSafeAreaInsets();
   // Not two panes INSIDE a pane. Drawn in another screen's pane this
   // screen is already half a window, and a quick look beside the list
   // there would split that half again - which is exactly what it did:
@@ -1036,7 +1043,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             contentContainerStyle={[
               styles.gridPage,
               railClear(inPane ? 'left' : 'right', 20),
-              { paddingTop: listTopPad },
+              { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
               ]}
           >
 {explorerOrTrashHead()}
@@ -1046,6 +1053,18 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
                   ? renderFileTrashGridCell(item, listWidth >= 640 ? 3 : 2)
                   : renderFileGridCell(item, listWidth >= 640 ? 3 : 2)
               )}
+              {/* A lone card alone in the last row absorbs the whole
+                  row's leftover width by itself instead of staying the
+                  size its siblings are - see LinksScreen's identical
+                  fix for the full reasoning. */}
+              {Array.from({
+                length: gridFillerCount(
+                  (trashOpen ? trashedFiles : listedFiles).length,
+                  listWidth >= 640 ? 3 : 2
+                ),
+              }).map((_, i) => (
+                <View key={`filler-${i}`} style={{ flexBasis: gridBasis(listWidth >= 640 ? 3 : 2), flexGrow: 1 }} />
+              ))}
             </View>
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />}
           </ScrollView>
@@ -1058,7 +1077,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             contentContainerStyle={[
               styles.list,
               railClear(inPane ? 'left' : 'right', 20),
-              { paddingTop: listTopPad },
+              { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
               ]}
           >
 {explorerOrTrashHead()}

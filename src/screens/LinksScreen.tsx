@@ -3,6 +3,8 @@ import { withAlpha } from '../utils/color';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { railClear } from '../constants/rail';
+import { useDockClearance } from '../navigation/dockGeometry';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Image,
@@ -42,7 +44,7 @@ import AddExistingItemModal from '../components/AddExistingItemModal';
 import { mapsUrlForLatLng, type LatLng } from '../utils/geoCoordinates';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
-import { LinkGridCell, LinkRow } from '../components/ItemCards';
+import { gridBasis, gridFillerCount, LinkGridCell, LinkRow } from '../components/ItemCards';
 import GroupSections from '../components/GroupSections';
 import TagPicker from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
@@ -162,6 +164,12 @@ export default function LinksScreen({
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const category = categoryProp ?? route?.params.category ?? 'other';
+  // Neither grid nor list here left room for the dock at the bottom of
+  // their own scroll content - "прокрутки застрягає на останніх картках
+  // за доком", the same gap Boards/Chat/Databases already closed with
+  // this same pair.
+  const dockClear = useDockClearance();
+  const insets = useSafeAreaInsets();
   const info = CATEGORY_INFO[category];
   // Geo/video/other share this one screen's code, but each is its own
   // "database" from the user's side - the preferences (view mode, sort,
@@ -1161,7 +1169,7 @@ export default function LinksScreen({
             contentContainerStyle={[
               styles.gridPage,
               railClear(inPane ? 'left' : 'right', 20),
-              { paddingTop: listTopPad },
+              { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
               ]}
           >
             {explorerOrTrashHead()}
@@ -1171,6 +1179,18 @@ export default function LinksScreen({
                   ? renderLinkTrashGridCell(item, listWidth >= 640 ? 3 : 2)
                   : renderLinkGridCell(item, listWidth >= 640 ? 3 : 2)
               )}
+              {/* A lone card alone in the last row shares flexGrow with
+                  nothing, so IT absorbs the whole row's leftover width by
+                  itself instead of staying the size its siblings are -
+                  "остання картка чомусь завжди велика". These fill the
+                  row invisibly, the same flexBasis/flexGrow a real card
+                  carries, so a lone trailing card always has something
+                  to split the row with. */}
+              {Array.from({
+                length: gridFillerCount((trashOpen ? trashedLinks : linksHere).length, listWidth >= 640 ? 3 : 2),
+              }).map((_, i) => (
+                <View key={`filler-${i}`} style={{ flexBasis: gridBasis(listWidth >= 640 ? 3 : 2), flexGrow: 1 }} />
+              ))}
             </View>
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />}
           </ScrollView>
@@ -1183,7 +1203,7 @@ export default function LinksScreen({
             contentContainerStyle={[
               styles.list,
               railClear(inPane ? 'left' : 'right', 20),
-              { paddingTop: listTopPad },
+              { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
               ]}
           >
             {explorerOrTrashHead()}

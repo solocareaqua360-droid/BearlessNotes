@@ -32,6 +32,18 @@ export function gridBasis(columns: number) {
   return columns >= 3 ? ('30%' as const) : ('46%' as const);
 }
 
+// How many invisible filler cards a grid needs after its real ones - a
+// card alone in the last row has nothing to share flexGrow with, so it
+// alone absorbs that row's whole leftover width instead of staying the
+// size its siblings are ("остання картка чомусь завжди велика"). A
+// filler with the same flexBasis/flexGrow as a real card gives a lone
+// trailing card something to split the row with, invisibly.
+export function gridFillerCount(itemCount: number, columns: number): number {
+  if (itemCount === 0) return 0;
+  const remainder = itemCount % columns;
+  return remainder === 0 ? 0 : columns - remainder;
+}
+
 type Common = {
   tags: Tag[];
   // The card's own node, handed to whatever needs to measure it - the
