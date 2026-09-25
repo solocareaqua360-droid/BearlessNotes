@@ -1,5 +1,5 @@
 import { ReactNode, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import GlassLayer from '../GlassLayer';
 import { useStyles, useTheme } from '../../theme/ThemeProvider';
@@ -83,9 +83,20 @@ export default function Sheet({
     const bottom = scrollY.current + viewportH.current < contentH.current - 2;
     setEdges((prev) => (prev.top === top && prev.bottom === bottom ? prev : { top, bottom }));
   }
+  // With fadeEdges the ScrollView sits inside a wrapper that carries the
+  // fades, and a PERCENTAGE maxHeight then resolves against that wrapper -
+  // which is as tall as the whole content - so the list stopped at 78% of
+  // its own length and left the rest of the wrapper as a blank "chin"
+  // (the user's word). Resolved to points against the screen here, it no
+  // longer depends on whatever the ScrollView happens to sit in.
+  const { height: windowHeight } = useWindowDimensions();
+  const scrollMaxHeight =
+    fadeEdges && typeof maxHeight === 'string' && maxHeight.endsWith('%')
+      ? (parseFloat(maxHeight) / 100) * (windowHeight - keyboardHeight)
+      : maxHeight;
   const scrollView = scroll ? (
     <ScrollView
-      style={maxHeight !== undefined ? { maxHeight } : undefined}
+      style={scrollMaxHeight !== undefined ? { maxHeight: scrollMaxHeight } : undefined}
       scrollEventThrottle={16}
       onScroll={(e) => {
         scrollY.current = e.nativeEvent.contentOffset.y;
