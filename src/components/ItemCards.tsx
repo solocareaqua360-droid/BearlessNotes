@@ -5,6 +5,7 @@ import { Tag } from '../types';
 import TagChips from './TagChips';
 import ProjectBadge from './ProjectBadge';
 import InlineVideoPlayer from './InlineVideoPlayer';
+import GeoThumbnail from './GeoThumbnail';
 import { formatAddedOn, formatUpdatedAt } from '../utils/documentPreview';
 import { useFilePreview } from '../hooks/useFilePreview';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
@@ -88,6 +89,10 @@ export type LinkCardItem = {
   tagIds: string[];
   createdAt?: number;
   updatedAt?: number;
+  // Геоточка only - a card with neither this nor imageUrl falls back to
+  // the plain category icon, same as it always did.
+  geoLat?: number;
+  geoLng?: number;
 };
 
 export type FileCardItem = {
@@ -176,6 +181,18 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
         ) : (
           <View style={[styles.rowThumbWide, styles.thumbIconWindow, { backgroundColor: `${info.color}1A` }]}>
             <Ionicons name={info.icon} size={22} color={info.color} />
+            {/* A geo point's own snapshot, drawn over the icon while it
+                generates and staying there once it has - the icon is
+                just what shows for the moment it takes. */}
+            {link.geoLat != null && link.geoLng != null && (
+              <GeoThumbnail
+                lat={link.geoLat}
+                lng={link.geoLng}
+                width={104}
+                height={59}
+                style={StyleSheet.absoluteFill}
+              />
+            )}
           </View>
         )}
         <View style={styles.rowBody}>
@@ -257,6 +274,15 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
         ) : (
           <View style={[styles.gridThumb, styles.gridThumbIcon, { backgroundColor: `${info.color}1A` }]}>
             <Ionicons name={info.icon} size={26} color={info.color} />
+            {link.geoLat != null && link.geoLng != null && (
+              <GeoThumbnail
+                lat={link.geoLat}
+                lng={link.geoLng}
+                width={300}
+                height={169}
+                style={StyleSheet.absoluteFill}
+              />
+            )}
           </View>
         )}
         <Text style={[styles.gridTitle, { color: text }]} numberOfLines={2}>
@@ -571,6 +597,10 @@ const styles = StyleSheet.create({
   thumbIconWindow: {
     alignItems: 'center',
     justifyContent: 'center',
+    // A geo point's own snapshot (GeoThumbnail) is laid absolutely over
+    // this icon once it is ready - without this, it would square off
+    // past the rounded corners rowThumbWide/gridThumbIcon already have.
+    overflow: 'hidden',
   },
   thumbIcon: {
     width: 40,
@@ -709,6 +739,7 @@ const styles = StyleSheet.create({
   gridThumbIcon: {
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   gridTitle: {
     fontSize: 13,
