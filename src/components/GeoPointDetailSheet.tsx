@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import type { Block } from '../types';
 import GlassLayer from './GlassLayer';
 import AttachmentImage from './AttachmentImage';
-import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import GeoThumbnail from './GeoThumbnail';
+import { FONT_BOLD, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import { formatUpdatedAt } from '../utils/documentPreview';
+import { formatDecimalLatLng, formatMgrs } from '../utils/geoCoordinates';
 
 // A geoточка's own record, opened by a tap that used to just launch
 // Google Maps straight away - that is now one button inside here
@@ -25,6 +28,8 @@ export type GeoDetailLink = {
   updatedAt?: number;
   comment?: string;
   attachments?: Block[];
+  geoLat?: number;
+  geoLng?: number;
 };
 
 export default function GeoPointDetailSheet({
@@ -96,6 +101,28 @@ export default function GeoPointDetailSheet({
                 </Text>
               )}
 
+              {shown.geoLat != null && shown.geoLng != null && (
+                <>
+                  <View style={styles.mapPreview}>
+                    <GeoThumbnail lat={shown.geoLat} lng={shown.geoLng} width={400} height={140} style={styles.mapPreviewImage} />
+                  </View>
+                  <View style={styles.coordsBlock}>
+                    <CoordRow
+                      label="X, Y"
+                      value={formatDecimalLatLng({ lat: shown.geoLat, lng: shown.geoLng })}
+                      styles={styles}
+                      theme={theme}
+                    />
+                    <CoordRow
+                      label="MGRS"
+                      value={formatMgrs({ lat: shown.geoLat, lng: shown.geoLng })}
+                      styles={styles}
+                      theme={theme}
+                    />
+                  </View>
+                </>
+              )}
+
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel}>
                 {photos.map((photo) => (
                   <View key={photo.id} style={styles.photoWrap}>
@@ -144,6 +171,44 @@ export default function GeoPointDetailSheet({
   );
 }
 
+// One coordinate, in one of its two written-down languages - tap copies
+// it, a small checkmark stands in for the copy icon for a moment as the
+// only confirmation, since Android's own "Скопійовано" system toast
+// already says the rest (Android 13+).
+function CoordRow({
+  label,
+  value,
+  styles,
+  theme,
+}: {
+  label: string;
+  value: string | null;
+  styles: ReturnType<typeof makeStyles>;
+  theme: Theme;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Pressable
+      style={styles.coordsRow}
+      disabled={!value}
+      onPress={async () => {
+        if (!value) return;
+        await Clipboard.setStringAsync(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      }}
+    >
+      <Text style={styles.coordsLabel}>{label}</Text>
+      <Text style={styles.coordsValue}>{value ?? '—'}</Text>
+      <Ionicons
+        name={copied ? 'checkmark' : 'copy-outline'}
+        size={14}
+        color={copied ? theme.accent : theme.ink.faint}
+      />
+    </Pressable>
+  );
+}
+
 const makeStyles = (t: Theme) => StyleSheet.create({
   frame: SHEET_FRAME,
   card: {
@@ -171,6 +236,36 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
     marginTop: -8,
+  },
+  mapPreview: {
+    height: 140,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: t.field.fill,
+  },
+  mapPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  coordsBlock: {
+    gap: 4,
+  },
+  coordsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  coordsLabel: {
+    width: 44,
+    fontSize: 11,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.faint,
+  },
+  coordsValue: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: FONT_MONO,
+    color: t.ink.muted,
   },
   carousel: {
     flexGrow: 0,
