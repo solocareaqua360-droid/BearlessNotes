@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "viBo",
+    "slug": "bearlessnotes",
+    "scheme": "bearlessnotes",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#F2F2F5",
+    "icon": "./assets/icon.png",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bearlessnotes.app"
+    },
+    "android": {
+      "package": "com.bearlessnotes.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2B1770"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": ["text/*"]
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a5702ee7-33d8-47bf-bcc0-bb5c59951f1b"
+      }
+    }
+  }
+}
