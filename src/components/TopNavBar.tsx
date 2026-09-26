@@ -9,6 +9,7 @@ import { useLift, useTheme } from '../theme/ThemeProvider';
 import { CHROME_TOP } from '../constants/rail';
 import { DOCK_PIECE_RADIUS, dockCardHeight } from '../navigation/dockGeometry';
 import Menu from './surfaces/Menu';
+import SaveRing from './SaveRing';
 import { DockContext, useNavDockOwnContext, useNavDockTargets, useNavTopBack, useNavTopExtras, useTopNavClaim } from '../navigation/navDock';
 import { FONT_MEDIUM, FONT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
@@ -94,10 +95,15 @@ export default function TopNavBar({
   desks,
   title,
   onLongPress,
+  saving,
 }: {
   desks?: TopDesk[];
   title?: TopTitle;
   onLongPress?: () => void;
+  // The save indicator, drawn on the extras cluster's own outline - see
+  // the note's own call: "індикатор збереження навколо цієї здвоєної
+  // кнопки". Screens that never pass it simply never animate.
+  saving?: boolean;
 }) {
   // While this bar is drawn, the path is drawn in it (not over the dock).
   useTopNavClaim();
@@ -111,11 +117,19 @@ export default function TopNavBar({
   const frame = topBarFrame(windowWidth);
   const barTop = insets.top + CHROME_TOP;
   const corners = cornersFor(windowWidth);
-  const plateWidth =
-    frame.width -
-    (SIDE_W + GAP) -
-    (extras?.menu ? MENU_W + GAP : 0) -
-    (extras?.select ? SIDE_W + GAP : 0);
+  // The middle: a plate of desks or a pushed database's title - or, on a
+  // note, nothing at all ("по центру вгорі — порожньо"), just the room
+  // between the two ends.
+  const hasMiddle = !!title || !!desks?.length;
+  // The extras cluster's own width - each button it actually has, plus
+  // the cuts between them - so the plate takes exactly what is left.
+  const clusterCount = (extras?.menu ? 1 : 0) + (extras?.select ? 1 : 0) + (extras?.pane ? 1 : 0);
+  const clusterWidth =
+    (extras?.menu ? MENU_W : 0) +
+    (extras?.select ? SIDE_W : 0) +
+    (extras?.pane ? SIDE_W : 0) +
+    Math.max(0, clusterCount - 1) * GAP;
+  const plateWidth = frame.width - (SIDE_W + GAP) - (clusterCount > 0 ? clusterWidth + GAP : 0);
   const innerWidth = plateWidth - PLATE_PAD * 2;
   // The open desk takes whatever the plate has left once the closed desks
   // and the cuts between them have theirs - so the widths always add up,
@@ -165,7 +179,7 @@ export default function TopNavBar({
         >
           <DockFrost style={[styles.piece, lift]} radius={corners.plate}>
             <Ionicons
-              name="arrow-back"
+              name={(back?.icon ?? 'arrow-back') as keyof typeof Ionicons.glyphMap}
               size={21}
               color={theme.glass.ink}
               style={(!back || back.dimmed) && { opacity: 0.3 }}
@@ -173,62 +187,83 @@ export default function TopNavBar({
           </DockFrost>
         </Pressable>
 
-        {/* The plate, and on it whichever of the two rows is in front. */}
-        <View style={[styles.plate, lift, { width: plateWidth, borderRadius: corners.plate }]}>
-          <DockFrost style={StyleSheet.absoluteFill} radius={corners.plate} />
-          <View style={[styles.viewport, { borderRadius: corners.piece }]}>
-            <Animated.View
-              style={[styles.layer, desksStyle]}
-              pointerEvents={path ? 'none' : 'box-none'}
-            >
-              {title && (
-                <DockFrost style={styles.piece} radius={corners.piece}>
-                  <Ionicons name={title.icon as keyof typeof Ionicons.glyphMap} size={20} color={theme.glass.ink} />
-                  <Text numberOfLines={1} style={[styles.label, styles.titleLabel, { color: theme.glass.ink }]}>
-                    {title.label}
-                  </Text>
-                </DockFrost>
-              )}
-              {desks?.map((desk) => (
-                <DeskPill
-                  key={desk.key}
-                  radius={corners.piece}
-                  showName={nameFits(desk.label)}
-                  desk={desk}
-                  openWidth={openWidth}
-                  onLongPress={onLongPress}
-                  ink={theme.glass.ink}
-                  inkMuted={theme.glass.inkMuted}
-                />
-              ))}
-            </Animated.View>
-            {shownPath && (
-              <Animated.View style={[styles.layer, pathStyle]} pointerEvents={path ? 'box-none' : 'none'}>
-                <PathRow path={shownPath} radius={corners.piece} ink={theme.glass.ink} inkMuted={theme.glass.inkMuted} />
-              </Animated.View>
-            )}
-          </View>
+        {/* The plate, and on it whichever of the two rows is in front -
+            or, with neither a title nor desks to show, no plate at all:
+            just the room it would have taken, between the two ends. */}
+        <View style={[styles.plate, hasMiddle && lift, { width: plateWidth, borderRadius: hasMiddle ? corners.plate : 0 }]}>
+          {hasMiddle && (
+            <>
+              <DockFrost style={StyleSheet.absoluteFill} radius={corners.plate} />
+              <View style={[styles.viewport, { borderRadius: corners.piece }]}>
+                <Animated.View
+                  style={[styles.layer, desksStyle]}
+                  pointerEvents={path ? 'none' : 'box-none'}
+                >
+                  {title && (
+                    <DockFrost style={styles.piece} radius={corners.piece}>
+                      <Ionicons name={title.icon as keyof typeof Ionicons.glyphMap} size={20} color={theme.glass.ink} />
+                      <Text numberOfLines={1} style={[styles.label, styles.titleLabel, { color: theme.glass.ink }]}>
+                        {title.label}
+                      </Text>
+                    </DockFrost>
+                  )}
+                  {desks?.map((desk) => (
+                    <DeskPill
+                      key={desk.key}
+                      radius={corners.piece}
+                      showName={nameFits(desk.label)}
+                      desk={desk}
+                      openWidth={openWidth}
+                      onLongPress={onLongPress}
+                      ink={theme.glass.ink}
+                      inkMuted={theme.glass.inkMuted}
+                    />
+                  ))}
+                </Animated.View>
+                {shownPath && (
+                  <Animated.View style={[styles.layer, pathStyle]} pointerEvents={path ? 'box-none' : 'none'}>
+                    <PathRow path={shownPath} radius={corners.piece} ink={theme.glass.ink} inkMuted={theme.glass.inkMuted} />
+                  </Animated.View>
+                )}
+              </View>
+            </>
+          )}
         </View>
 
-        {extras?.menu && (
-          <SideButton
-            width={MENU_W}
-            icon="ellipsis-horizontal"
-            label="Ще"
-            active={menuOpen}
-            radius={corners.plate}
-            onPress={() => setMenuOpen((v) => !v)}
-          />
-        )}
-        {extras?.select && (
-          <SideButton
-            width={SIDE_W}
-            icon="checkmark-circle-outline"
-            label="Виділити"
-            active={extras.select.active}
-            radius={corners.plate}
-            onPress={extras.select.onPress}
-          />
+        {clusterCount > 0 && (
+          <View style={styles.cluster}>
+            {extras?.menu && (
+              <SideButton
+                width={MENU_W}
+                icon="ellipsis-horizontal"
+                label="Ще"
+                active={menuOpen}
+                radius={corners.plate}
+                onPress={() => setMenuOpen((v) => !v)}
+              />
+            )}
+            {extras?.select && (
+              <SideButton
+                width={SIDE_W}
+                icon="checkmark-circle-outline"
+                label="Виділити"
+                active={extras.select.active}
+                radius={corners.plate}
+                onPress={extras.select.onPress}
+              />
+            )}
+            {extras?.pane && (
+              <SideButton
+                width={SIDE_W}
+                icon={extras.pane.icon as keyof typeof Ionicons.glyphMap}
+                label="Розгорнути"
+                active={false}
+                radius={corners.plate}
+                onPress={extras.pane.onPress}
+              />
+            )}
+            <SaveRing saving={!!saving} color={theme.glass.ink} />
+          </View>
         )}
       </View>
     </GlassPortal>
@@ -399,6 +434,13 @@ const styles = StyleSheet.create({
   },
   plate: {
     height: TOP_NAV_H,
+  },
+  // The "⋯" / choosing / pane buttons, grouped so the save ring can trace
+  // one outline around all of them rather than one each.
+  cluster: {
+    height: TOP_NAV_H,
+    flexDirection: 'row',
+    gap: GAP,
   },
   // The plate's inside, clipped: the rows roll through its edges.
   viewport: {

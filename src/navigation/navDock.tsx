@@ -95,15 +95,20 @@ export type DockTargets = (path: string) => (node: View | null) => void;
 export type DockLeave = { icon: string; onLeave: () => void };
 // The way back on the four desks' own screens, drawn at the TOP-LEFT of
 // the navigation bar (TopNavBar) rather than in the dock - the user's
-// Notion-style plan. `dimmed`: in its place, nowhere to go.
-export type TopBack = { onPress: () => void; dimmed: boolean };
+// Notion-style plan. `dimmed`: in its place, nowhere to go. `icon`
+// overrides the plain arrow - the note swaps it for a checkmark while a
+// canvas card is being edited, the same swap the old bead used to make.
+export type TopBack = { onPress: () => void; dimmed: boolean; icon?: string };
 // The right end of the bar at the top, on the screens that write rather
 // than sort (the documents list, the calendar, a note): "⋯" opening the
 // screen's own list of what else it does, and choosing, at the very edge
-// - "виділяю я достатньо часто".
+// - "виділяю я достатньо часто". `pane`: the note's own third button
+// there, on a Fold with the note beside the list - "постав поруч із ...
+// і множинним вибором" - expand/collapse toggled by its own icon.
 export type TopExtras = {
   menu: MenuEntry[] | null;
   select: { active: boolean; onPress: () => void } | null;
+  pane?: { icon: string; onPress: () => void } | null;
 };
 
 // What this screen can DO - the other half of the dock's stack.
@@ -629,15 +634,17 @@ export function useTopNavClaim() {
 export function useTopExtras(
   menu: MenuEntry[] | null,
   select: { active: boolean; onPress: () => void } | null,
-  enabled = true
+  enabled = true,
+  pane?: { icon: string; onPress: () => void } | null
 ) {
   const publish = useContext(NavDockContext)?.publishTopExtras;
   const focused = useIsFocused();
-  const ref = useRef({ menu, select });
-  ref.current = { menu, select };
+  const ref = useRef({ menu, select, pane });
+  ref.current = { menu, select, pane };
   const signature = JSON.stringify([
     menu?.map((e) => (e.kind === 'section' ? ['s', e.label] : e.kind === 'rule' ? ['r'] : [e.label, e.icon, !!e.checked, e.tone])),
     select ? select.active : null,
+    pane ? pane.icon : null,
   ]);
   useEffect(() => {
     if (!publish || !focused || !enabled) return;
@@ -657,6 +664,7 @@ export function useTopExtras(
           )
         : null,
       select: live.select ? { active: live.select.active, onPress: () => ref.current.select?.onPress() } : null,
+      pane: live.pane ? { icon: live.pane.icon, onPress: () => ref.current.pane?.onPress() } : null,
     });
     return () => publish(null);
   }, [publish, focused, enabled, signature]);

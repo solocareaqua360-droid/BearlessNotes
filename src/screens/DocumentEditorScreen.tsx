@@ -123,7 +123,7 @@ import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
-import { PAGE_SHEET_INSET, makeStyles } from '../components/documentEditorStyles';
+import { PAGE_HEADER_TOP, PAGE_SHEET_INSET, makeStyles } from '../components/documentEditorStyles';
 import BlockList, { BlockListHandle } from '../components/BlockList';
 import {
   buildBlock,
@@ -160,15 +160,16 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import {
   useDockActions,
-  useDockBeads,
   useDockOpensOnActions,
   useDockShowContext,
-  useDockWide,
   useNavDockFlip,
   useNavDockFace,
+  useTopBack,
+  useTopExtras,
 } from '../navigation/navDock';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
+import TopNavBar, { TOP_NAV_SPACE } from '../components/TopNavBar';
 import { useEditorAccessory } from '../components/editorAccessory';
 import EditorInsertPanel, { PanelGroup, PanelSection } from '../components/EditorInsertPanel';
 import EditorPanelBar from '../components/EditorPanelBar';
@@ -2528,79 +2529,61 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const menuClearance = useDockClearance();
   const showContext = useDockShowContext();
   const [, setDockFace] = useNavDockFace();
-  // The way out, in the dock's own leave bead - the top-right capsule's
-  // first button. One step at a time, exactly as that button did it: put
-  // the text down, then shut the drawer, and leave the note only once
-  // there is nothing left open. Back walking straight out of the note
-  // while the reference drawer stood open is what left it with no way to
-  // close at all.
-  // The way out of the note, as its OWN ROUND BUTTON at the left of the
-  // row - the user's ask, and it replaces the chevron that used to ride
-  // inside the card. A bead is the dock's slot for what never changes,
-  // which is exactly what leaving is: it means the same thing whether
-  // you are on the page, on the canvas or picking blocks, so it has no
-  // business moving with the cards that do change.
-  //
-  // It also ends the chevron's own trouble, unexplained to the last:
-  // its first press while selecting ended the selection instead of
-  // leaving. A separate round button beside the card cannot be confused
-  // with ✕ inside it, by the hand or by anything else.
-  //
-  // One step at a time, exactly as the corner capsule's arrow does it:
-  // put the text down, then shut the drawer, and leave the note only
-  // once there is nothing left open. Back walking straight out while
-  // the reference drawer stood open is what left it with no way to
-  // close at all.
-  // Gated on the panel as well as on `embedded`. The dock's capsule
-  // takes itself away when the keyboard is up, but these two beads are
-  // published separately and stayed - so the back arrow floated over
-  // the panel's own tiles. Nothing is lost by hiding it: the panel's
-  // own chevron closes it, and back is one tap further where it always
-  // was.
-  // BOTH BEADS STAND DOWN WHILE BLOCKS ARE PICKED, and the card takes
-  // their room (useDockWide, below) - the user's own call looking at a
-  // selection of nine actions squeezed into the middle while a back
-  // arrow and a pencil sat idle on either side: "прибрати дві кнопки по
-  // боках і зробити док ширшим". Selecting is a state the screen is
-  // already IN; there is nothing on either side to do about it.
-  useDockBeads(
-    !embedded && !isSelectMode && panelSection === null && !panelClosing
-      ? {
-          icon: canvasEditing ? 'checkmark-outline' : 'arrow-back-outline',
-          onPress: () => {
-            if (requestBack()) return;
-            if (closePane) closePane();
-            else navigation.goBack();
-          },
-        }
-      : null,
-    // Only where there are two panes to collapse into one - the corner
-    // capsule's own expand/contract button moved here rather than
-    // disappearing, since it has no dock equivalent otherwise.
-    !embedded && !isSelectMode && onToggleFullscreen && panelSection === null && !panelClosing
-      ? {
-          icon: paneFullscreen ? 'contract-outline' : 'expand-outline',
-          onPress: onToggleFullscreen,
-        }
-      : // Otherwise the right bead does what it does everywhere - makes
-        // something - and on a page what there is to make is text: the
-        // pencil starts writing (see startWriting). Not on the canvas,
-        // and not while selecting either.
-        !embedded && !isSelectMode && !canvasMode && panelSection === null && !panelClosing
-        ? { icon: 'pencil-outline', onPress: startWriting }
-        : null
+  // THE NOTE'S OWN TOP BAR (TopNavBar, rendered further down): back in
+  // the corner, "⋯" and choosing (and, on a Fold pane, expand/collapse)
+  // at the other - the user's redesign, replacing the old leave-bead and
+  // the "…" menu that used to hang off the dock's own action card. One
+  // step at a time, exactly as the corner arrow always did it: put the
+  // text down, then shut the drawer, and leave the note only once there
+  // is nothing left open.
+  useTopBack(
+    embedded
+      ? null
+      : () => {
+          if (requestBack()) return;
+          if (closePane) closePane();
+          else navigation.goBack();
+        },
+    !embedded
   );
-  useDockWide(!embedded && isSelectMode);
+  useTopExtras(
+    embedded
+      ? null
+      : canvasMode
+        ? [
+            // The canvas has no block list to pick from and no paper to
+            // colour - only the two that still make sense there.
+            { label: 'Експорт', icon: 'share-outline', onPress: askExport },
+            { label: 'Видалити', icon: 'trash-outline', tone: 'danger', onPress: confirmDeleteDocument },
+          ]
+        : [
+            { label: 'Вигляд', icon: 'color-palette-outline', onPress: () => setExportMenuOpen(true) },
+            { label: 'Проект', icon: 'folder-outline', checked: !!groupId, onPress: () => setGroupPickerVisible(true) },
+            { label: 'Експорт', icon: 'share-outline', onPress: askExport },
+            { kind: 'rule' },
+            { label: 'Видалити', icon: 'trash-outline', tone: 'danger', onPress: confirmDeleteDocument },
+          ],
+    embedded || canvasMode
+      ? null
+      : {
+          active: isSelectMode,
+          onPress: () => {
+            toggleSelectMode();
+            setDockFace('actions');
+          },
+        },
+    !embedded,
+    // The Fold pane's own expand/collapse, third in the corner cluster -
+    // "постав поруч із ... і множинним вибором".
+    !embedded && onToggleFullscreen
+      ? { icon: paneFullscreen ? 'contract-outline' : 'expand-outline', onPress: onToggleFullscreen }
+      : null
+  );
   // ...and to OPEN on them. A note has no context of its own, and the
   // dock's standing rule for that case is to open on the desks - right
   // for a list at its root, wrong here, where the actions are the whole
   // reason this note stopped drawing a dock of its own.
   useDockOpensOnActions(!embedded);
-  // WIDER WHILE SELECTING now (reversing an earlier round's call): both
-  // beads stand down above, so the stretch (useDockWide, in ContextDock)
-  // has real room to take rather than squeezing nine actions into the
-  // space between two idle buttons - "прибрати дві кнопки по боках і
-  // зробити док ширшим".
   const showActions = () => setDockFace('actions');
   // The dock shows only when nothing is standing in the bottom of the
   // screen. The panel is such a thing - it stands where the keyboard
@@ -2688,10 +2671,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           },
         ]
       : [
-          // One button, two states - the app's own idea, already proven
-          // by the back arrow that becomes a checkmark. The label says
-          // where the press takes you, exactly as the "…" menu's row
-          // used to.
+          // THE TRIPLE-BUTTON DOCK: "полотно референс олівець потрійною
+          // кнопкою доком" - always exactly three, no scrolling, every-
+          // thing else moved up to the bar's "⋯" (see useTopExtras
+          // above). One button, two states for the first - the app's own
+          // idea, already proven by the back arrow that becomes a
+          // checkmark.
           {
             key: 'mode',
             icon: canvasMode ? 'document-text-outline' : 'shapes-outline',
@@ -2710,85 +2695,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             active: referencePanelOpen,
             onPress: () => setReferencePanelOpen((v) => !v),
           },
-          // The board's own "Скинути дошку?", mirrored here - free
-          // dragging on the canvas needs a way back to the default
-          // layout without undoing every card one at a time. Nothing to
-          // reset on a page, where the order IS the document.
-          ...(canvasMode
-            ? [
-                {
-                  key: 'reset',
-                  icon: 'refresh-outline',
-                  label: 'Скинути',
-                  onPress: confirmResetCanvas,
-                },
-              ]
-            : []),
-          // Everything below came out of the "…" menu at the user's own
-          // request, in the order they are reached for: picking blocks
-          // most, throwing the note away least. Past the four a card
-          // shows, and deliberately so - "док не розширювати і тоді
-          // видалення буде видно тільки після прокручування доку". The
-          // one button you must not hit by accident is the one you have
-          // to travel to.
-          //
-          // NONE of them on the canvas: "в режимі полотна нам потрібен
-          // сторінка та референси". The canvas is a different surface
-          // with a different job - there is no block list to pick from,
-          // no paper to colour, and the two buttons that do still make
-          // sense there (export, delete) are not worth the other three
-          // being present and inert. A control that cannot act is one
-          // you read and dismiss every time, which is the same rule
-          // «Референси» already follows in the other direction.
-          ...(canvasMode
-            ? []
-            : [
-          {
-            key: 'select',
-            icon: 'checkmark-circle-outline',
-            label: 'Вибір',
-            onPress: () => {
-              setExportMenuOpen(false);
-              toggleSelectMode();
-              showActions();
-            },
-          },
-          // «Вигляд» is a cover, a row of gradients and a paper colour -
-          // a panel, not a button, so what moves into the dock is the
-          // WAY IN to it. The panel itself stays what it is.
-          {
-            key: 'look',
-            icon: 'color-palette-outline',
-            label: 'Вигляд',
-            active: exportMenuOpen,
-            onPress: () => setExportMenuOpen((v) => !v),
-          },
-          {
-            key: 'group',
-            icon: 'folder-outline',
-            label: 'Проект',
-            active: !!groupId,
-            onPress: () => {
-              setExportMenuOpen(false);
-              setGroupPickerVisible(true);
-            },
-          },
-          {
-            key: 'export',
-            icon: 'share-outline',
-            label: 'Експорт',
-            onPress: () => {
-              setExportMenuOpen(false);
-              askExport();
-            },
-          },
-          {
-            key: 'trash',
-            icon: 'trash-outline',
-            label: 'Видалити',
-            onPress: confirmDeleteDocument,
-          },
-              ]),
+          // The third slot: the board's own "Скинути дошку?" on the
+          // canvas (free dragging needs a way back to the default layout
+          // without undoing every card one at a time; nothing to reset
+          // on a page, where the order IS the document) - otherwise the
+          // pencil, which makes what there is to make here: text (see
+          // startWriting). Not shown while picking blocks (see the
+          // 'isSelectMode' branch above).
+          canvasMode
+            ? { key: 'reset', icon: 'refresh-outline', label: 'Скинути', onPress: confirmResetCanvas }
+            : { key: 'write', icon: 'pencil-outline', label: 'Писати', onPress: startWriting },
         ]
   );
   // The pinned toolbar rides on the live height, so it comes up (and goes
@@ -4967,6 +4883,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             paddingTop: railTop + BADGE_ROW_HEIGHT,
             paddingBottom: 0,
           },
+          // The plain phone case now has the bar at the top (TopNavBar)
+          // floating over this same spot, same as the badge it replaced -
+          // the title starts clear of it.
+          !pointerDensity && railTop === undefined && { paddingTop: PAGE_HEADER_TOP + TOP_NAV_SPACE },
         ]}
       >
         {/* Empty - both its buttons stand on the rail. It stays for the
@@ -4979,11 +4899,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           edge, in the same glass, at the same size, with its own blur -
           which is why it goes through the portal, like every other piece
           of glass here. */}
+      {/* THE TOP BAR (touch only) - back in the corner, "⋯" (Вигляд,
+          Проект, Експорт, Видалити) and choosing at the other, the save
+          ring round that cluster. Replaces the rail's own project badge
+          below, which stays for the desktop layout, unbroken. */}
+      {!embedded && editorFocused && !pointerDensity && (
+        <TopNavBar saving={saveStatus === 'saving'} />
+      )}
+
       {/* ...and not while the references drawer is open over it. The
           badge is portalled at window level, so it draws above that
           drawer no matter where the drawer stands - a project chip
-          floating on a list of files, saying nothing about it. */}
-      {!embedded && editorFocused && !referencePanelOpen && (
+          floating on a list of files, saying nothing about it.
+          POINTER ONLY now - touch has the bar above instead, project and
+          save ring included in its own corner cluster. */}
+      {!embedded && editorFocused && !referencePanelOpen && pointerDensity && (
         <GlassPortal>
           {/* The same line the documents screen's capsule hangs from, off
               the same constants - the two screens sit one behind the

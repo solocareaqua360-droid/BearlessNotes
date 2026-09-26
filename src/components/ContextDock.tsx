@@ -1834,7 +1834,12 @@ export default function ContextDock() {
   // choosing) and no empty place where "+" stood - the user's own call.
   if (compactMiddle && !!actions?.length) {
     const frame = topBarFrame(windowW);
-    const buttonW = Math.floor(frame.width / 5);
+    // Five slots' worth of width whenever there are that many or more (so
+    // a longer list still scrolls at a size the hand already knows), but
+    // a SHORT, fixed set - the note's own triple-button dock is exactly
+    // this - fills the strip evenly instead of sitting small and
+    // left-aligned with the rest of the width unused.
+    const buttonW = Math.floor(frame.width / Math.min(5, actions.length));
     return (
       <GlassPortal>
         <View
