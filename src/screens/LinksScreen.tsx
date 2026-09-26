@@ -919,6 +919,7 @@ export default function LinksScreen({
       accentGlass={accentGlass}
       onBack={() => navigation.goBack()}
       leaveIcon="link-outline"
+      navTitle={inPane ? undefined : { icon: info.icon, label: info.title }}
       searchPlaceholder="Пошук за назвою"
       onAdd={handleAddPress}
       // The shape of the list is a button on the rail now - it was two

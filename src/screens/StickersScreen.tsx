@@ -252,6 +252,7 @@ export default function StickersScreen({
       accentGlass="rgba(251,233,122,0.55)"
       onBack={() => navigation.goBack()}
       leaveIcon="sparkles-outline"
+      navTitle={inPane ? undefined : { icon: 'reader-outline', label: 'Стікери' }}
       // In another screen's pane the rail stands on the window's OUTER
       // edge, which is the left one - against the divider it would be in
       // the way of both halves.

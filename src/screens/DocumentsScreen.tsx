@@ -54,7 +54,7 @@ import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScre
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import SearchField from '../components/SearchField';
-import { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
@@ -534,7 +534,10 @@ export default function DocumentsScreen({
   // On the desk's own screen the desks bar stands at the top (TopNavBar),
   // and everything here starts below it.
   const topNavOn = useTopNavOn();
-  const onDesk = !standalone && !inPane && topNavOn;
+  // The desk's own list (the tabs draw the desks bar), or a copy pushed
+  // from «Більше» (which draws its own, titled) - either way the bar is up
+  // and the way back is in it.
+  const onDesk = !inPane && topNavOn;
   const chromeTop = insets.top + CHROME_TOP + (onDesk ? TOP_NAV_SPACE : 0);
   const chromeBottom = chromeTop + chromeHeight + 8;
   // The island is drawn through the portal, over the whole window, so it
@@ -1279,6 +1282,9 @@ export default function DocumentsScreen({
             the portal for the same reason as the island: a blur cannot
             live inside the view it blurs. */}
         {/* Search, in the top-left corner for now - see SearchCorner. */}
+        {isFocused && onDesk && standalone && !(isTwoPane && !!openDoc && paneFullscreen) && (
+          <TopNavBar title={{ icon: 'document-text-outline', label: 'Документи' }} />
+        )}
         <SearchCorner
           visible={!onDesk && isFocused && !isSelectMode && !(isTwoPane && !!openDoc && paneFullscreen)}
           open={searchOpen}

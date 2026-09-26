@@ -58,7 +58,9 @@ import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useTopBack } from '../navigation/navDock';
+import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import SearchField from '../components/SearchField';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import RenamePrompt from '../components/RenamePrompt';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -192,8 +194,27 @@ export default function TasksScreen() {
           setIsSearching(false);
         }
       : () => navigation.goBack();
+  // On a phone the bar at the top holds the way back (TopNavBar, drawn in
+  // the render with this screen's own name), and search is the left bead.
+  const bar = useTopNavOn();
+  useTopBack(back, bar);
   useDockBeads(
-    isFocused ? { icon: 'arrow-back', onPress: back } : null,
+    isFocused
+      ? bar
+        ? {
+            icon: isSelectMode || isSearching ? 'close-outline' : 'search-outline',
+            active: isSearching,
+            onPress: () => {
+              if (isSelectMode) {
+                toggleSelectMode();
+                return;
+              }
+              if (isSearching) setSearchQuery('');
+              setIsSearching((prev) => !prev);
+            },
+          }
+        : { icon: 'arrow-back', onPress: back }
+      : null,
     isFocused && !isSelectMode
       ? { icon: 'checkbox-outline', badge: 'add-circle-outline', onPress: () => setCreating(true) }
       : null
@@ -1584,7 +1605,8 @@ export default function TasksScreen() {
       <ContentColumn>
         {/* The band the status bar and the rail's top capsule stand in.
             It was the header row's own top padding until the header went. */}
-        <View style={{ height: insets.top + CHROME_TOP + 8 }} />
+        <View style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
+        {isFocused && bar && <TopNavBar title={{ icon: 'checkbox-outline', label: 'Справи' }} />}
         {/* No header row any more. Its title said the name of the screen
             you had just tapped to reach, and its three buttons were a
             light capsule of this screen's own invention - the one screen
@@ -1601,7 +1623,7 @@ export default function TasksScreen() {
         )}
 
         <SearchCorner
-          visible={isFocused && !isSelectMode}
+          visible={!bar && isFocused && !isSelectMode}
           open={isSearching}
           query={searchQuery}
           onChangeQuery={setSearchQuery}
@@ -1614,7 +1636,22 @@ export default function TasksScreen() {
         />
         {/* The open field is the corner's, over the screen; this keeps
             its room so the tabs and the list start below it. */}
-        {isSearching && <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
+        {isSearching &&
+          (bar ? (
+            <SearchField
+              autoFocus
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Пошук справ"
+              onClose={() => {
+                setSearchQuery('');
+                setIsSearching(false);
+              }}
+              style={{ marginHorizontal: 20, marginBottom: 8 }}
+            />
+          ) : (
+            <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />
+          ))}
 
         {!kanbanMode && groups.length > 0 && (
           <ProjectTabsRow

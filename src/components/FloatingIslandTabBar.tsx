@@ -4,7 +4,7 @@ import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
-import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden, useTopNavUpPublisher } from '../navigation/navDock';
+import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
 
 // Outline glyphs at 24, the same set and the same size as everything else
 // on this screen - what made these read as thinner and smaller before was
@@ -139,11 +139,6 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   );
 
   const barUp = tabsFocused && !onBoard && topNavOn;
-  const publishTopNavUp = useTopNavUpPublisher();
-  useEffect(() => {
-    publishTopNavUp?.(barUp);
-    return () => publishTopNavUp?.(false);
-  }, [publishTopNavUp, barUp]);
   if (!barUp) return null;
   return (
     <TopNavBar

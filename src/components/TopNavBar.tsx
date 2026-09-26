@@ -8,7 +8,7 @@ import { GlassPortal } from './GlassPortal';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { CHROME_TOP } from '../constants/rail';
 import { DOCK_PIECE_RADIUS, dockCardHeight, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
-import { DockContext, useNavDockOwnContext, useNavDockTargets, useNavTopBack } from '../navigation/navDock';
+import { DockContext, useNavDockOwnContext, useNavDockTargets, useNavTopBack, useTopNavClaim } from '../navigation/navDock';
 import { FONT_MEDIUM, FONT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
 
@@ -67,7 +67,22 @@ export type TopDesk = {
 
 type PathContext = Extract<DockContext, { kind: 'path' }>;
 
-export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; onLongPress?: () => void }) {
+// A screen pushed over the desks (a database opened from «Більше») says
+// where it is instead of listing the desks: its own icon and name, one
+// piece on the same plate.
+export type TopTitle = { icon: string; label: string };
+
+export default function TopNavBar({
+  desks,
+  title,
+  onLongPress,
+}: {
+  desks?: TopDesk[];
+  title?: TopTitle;
+  onLongPress?: () => void;
+}) {
+  // While this bar is drawn, the path is drawn in it (not over the dock).
+  useTopNavClaim();
   const theme = useTheme();
   const lift = useLift();
   const insets = useSafeAreaInsets();
@@ -80,7 +95,8 @@ export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; on
   // The open desk takes whatever the plate has left once the closed desks
   // and the cuts between them have theirs - so the widths always add up,
   // and one desk grows by exactly what the other gives up.
-  const openWidth = innerWidth - CUT * (desks.length - 1) - PILL_W * (desks.length - 1);
+  const deskCount = desks?.length ?? 0;
+  const openWidth = innerWidth - CUT * (deskCount - 1) - PILL_W * (deskCount - 1);
 
   // The path, kept drawn from the last one while the plate rolls back to
   // the desks, so it does not empty in the middle of its way out.
@@ -136,7 +152,15 @@ export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; on
               style={[styles.layer, desksStyle]}
               pointerEvents={path ? 'none' : 'box-none'}
             >
-              {desks.map((desk) => (
+              {title && (
+                <DockFrost style={styles.piece} radius={corners.piece}>
+                  <Ionicons name={title.icon as keyof typeof Ionicons.glyphMap} size={20} color={theme.glass.ink} />
+                  <Text numberOfLines={1} style={[styles.label, styles.titleLabel, { color: theme.glass.ink }]}>
+                    {title.label}
+                  </Text>
+                </DockFrost>
+              )}
+              {desks?.map((desk) => (
                 <DeskPill
                   key={desk.key}
                   radius={corners.piece}
@@ -343,5 +367,9 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 15,
     fontFamily: FONT_MEDIUM,
+  },
+  titleLabel: {
+    marginLeft: 8,
+    flexShrink: 1,
   },
 });

@@ -129,7 +129,9 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useTopBack } from '../navigation/navDock';
+import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import SearchField from '../components/SearchField';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CHROME_TOP } from '../constants/rail';
@@ -774,8 +776,31 @@ export default function CustomDatabaseScreen({
           setIsSearching(false);
         }
       : () => navigation.goBack();
+  // On a phone the bar at the top holds the way back (TopNavBar, drawn in
+  // the render with this database's own name), and search is the left
+  // bead. Not inside another screen's pane.
+  const bar = useTopNavOn() && !inPane;
+  useTopBack(back, bar);
   useDockBeads(
-    isFocused ? { icon: 'arrow-back', onPress: back } : null,
+    isFocused
+      ? bar
+        ? {
+            icon: isSelectMode || isSearching ? 'close-outline' : 'search-outline',
+            active: isSearching,
+            onPress: () => {
+              if (isSelectMode) {
+                toggleSelectMode();
+                return;
+              }
+              // Closing the search clears it too.
+              setIsSearching((prev) => {
+                if (prev) setSearchQuery('');
+                return !prev;
+              });
+            },
+          }
+        : { icon: 'arrow-back', onPress: back }
+      : null,
     isFocused && !isSelectMode
       ? { icon: 'albums-outline', badge: 'add-circle-outline', onPress: openNewRow }
       : null
@@ -2514,9 +2539,12 @@ export default function CustomDatabaseScreen({
           the tile the user came from said the name, and the row cost the
           records a screenful. What is left of the header is the line the
           tabs start on - the same one as every other database. */}
-      <View style={{ height: insets.top + CHROME_TOP + 8 }} />
+      <View style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
+      {isFocused && bar && (
+        <TopNavBar title={{ icon: database?.icon ?? 'grid-outline', label: database?.name || 'База' }} />
+      )}
       <SearchCorner
-        visible={isFocused && !isSelectMode}
+        visible={!bar && isFocused && !isSelectMode}
         open={isSearching}
         query={searchQuery}
         onChangeQuery={setSearchQuery}
@@ -2529,7 +2557,22 @@ export default function CustomDatabaseScreen({
       />
       {/* The open field is the corner's, over the screen; this keeps its
           room so the rows start below it. */}
-      {isSearching && <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
+      {isSearching &&
+        (bar ? (
+          <SearchField
+            autoFocus
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Пошук у базі"
+            onClose={() => {
+              setSearchQuery('');
+              setIsSearching(false);
+            }}
+            style={{ marginHorizontal: 20, marginBottom: 8 }}
+          />
+        ) : (
+          <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />
+        ))}
 
       {/* Which vigляд is on screen - "Поточні зміни" (the working area,
           always first, per its own comment on activeViewId) plus every

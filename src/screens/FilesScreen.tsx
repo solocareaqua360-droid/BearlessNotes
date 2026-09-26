@@ -720,6 +720,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       accentGlass={accentGlass}
       onBack={() => navigation.goBack()}
       leaveIcon="document-outline"
+      navTitle={inPane ? undefined : { icon: 'document-outline', label: 'Файли' }}
       searchPlaceholder="Пошук файлів"
       onAdd={addFileDirectly}
       // The shape of the list is a button on the rail now - it was two

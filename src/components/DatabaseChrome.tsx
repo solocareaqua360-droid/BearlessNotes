@@ -16,7 +16,7 @@ import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import SearchCorner, { searchCornerHeight } from './SearchCorner';
 import SearchField, { searchFieldSides } from './SearchField';
-import { TOP_NAV_SPACE, useTopNavOn } from './TopNavBar';
+import TopNavBar, { TOP_NAV_SPACE, TopTitle, useTopNavOn } from './TopNavBar';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
@@ -153,6 +153,11 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // corner, the content starts below it, and search is back on the
   // dock's left bead.
   topNav?: boolean;
+  // A database PUSHED over the desks (from «Більше»): the same bar at the
+  // top, saying which database this is where the desks would be - and
+  // the same arrangement under it (the way back up there, search on the
+  // dock's left bead). Not inside another screen's pane.
+  navTitle?: TopTitle;
 };
 
 export default function DatabaseChrome<T extends { id: string }>({
@@ -175,6 +180,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   overlay,
   pane,
   topNav: topNavWanted,
+  navTitle,
 }: DatabaseChromeProps<T>) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -236,7 +242,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   // The chrome floats over the cards, so its height decides where the
   // first one rests.
   const [chromeHeight, setChromeHeight] = useState(0);
-  const topNav = !!topNavWanted && topNavOn;
+  const topNav = (!!topNavWanted || !!navTitle) && topNavOn;
   const chromeTop = insets.top + CHROME_TOP + (topNav ? TOP_NAV_SPACE : 0);
   const chromeBottom = chromeTop + chromeHeight + 8;
   // Searching takes the screen - but only while it is actually being
@@ -493,6 +499,9 @@ export default function DatabaseChrome<T extends { id: string }>({
           </View>
         )}
 
+        {/* A pushed database draws its own bar (the desks' one belongs to
+            the tabs). */}
+        {isFocused && topNav && navTitle && <TopNavBar title={navTitle} />}
         <SearchCorner
           visible={!topNav && isFocused && !list.isSelectMode}
           open={list.isSearching}

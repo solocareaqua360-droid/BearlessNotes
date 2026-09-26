@@ -513,6 +513,7 @@ export default function BoardsListScreen({
       // The tab's own list is one of the four desks' screens: the desks
       // bar and the way back stand at the top (see DatabaseChrome).
       topNav={!standalone && !inPane}
+      navTitle={standalone && !inPane ? { icon: 'easel-outline', label: 'Дошки' } : undefined}
       leaveIcon="easel-outline"
       // In another screen's pane the rail stands on the window's OUTER
       // edge, which is the left one - against the divider it would be in

@@ -785,6 +785,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       accentGlass={accentGlass}
       onBack={() => navigation.goBack()}
       leaveIcon="image-outline"
+      navTitle={inPane ? undefined : { icon: 'image-outline', label: 'Зображення' }}
       searchPlaceholder="Пошук фото за назвою"
       // Only when there is something to show or hide - a "Ще" that opens
       // an empty menu is worse than no "Ще".

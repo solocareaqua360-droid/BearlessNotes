@@ -177,7 +177,9 @@ type Value = {
   // Whether the desks bar is drawn at the top (TopNavBar). While it is,
   // the path and the days rise under IT rather than above the dock.
   topNavUp: boolean;
-  publishTopNavUp: (up: boolean) => void;
+  // A claim, not a flag: two bars can overlap for a beat while one screen
+  // is pushed over another, and the last to let go of a flag would win.
+  claimTopNav: () => () => void;
   publish: (context: DockContext | null) => void;
   // Stepped out of, without being given up: the context is still there,
   // one press brings it back. Lives here rather than in the dock because
@@ -338,7 +340,12 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
     (next: DockTargets | null) => setTargetBox((prev) => (prev.fn === next ? prev : { fn: next })),
     []
   );
-  const [topNavUp, publishTopNavUp] = useState(false);
+  const [topNavClaims, setTopNavClaims] = useState(0);
+  const topNavUp = topNavClaims > 0;
+  const claimTopNav = useCallback(() => {
+    setTopNavClaims((n) => n + 1);
+    return () => setTopNavClaims((n) => n - 1);
+  }, []);
   const [topBack, setTopBack] = useState<TopBack | null>(null);
   const publishTopBack = useCallback((next: TopBack | null) => {
     setTopBack((prev) => (prev === next || (prev && next && prev.onPress === next.onPress && prev.dimmed === next.dimmed) ? prev : next));
@@ -451,7 +458,7 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       topBack,
       publishTopBack,
       topNavUp,
-      publishTopNavUp,
+      claimTopNav,
       targets,
       publishTargets,
       hidden,
@@ -482,7 +489,7 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       topBack,
       publishTopBack,
       topNavUp,
-      publishTopNavUp,
+      claimTopNav,
       targets,
       publishTargets,
       hidden,
@@ -593,8 +600,10 @@ export function useNavTopNavUp(): boolean {
   return useContext(NavDockContext)?.topNavUp ?? false;
 }
 
-export function useTopNavUpPublisher() {
-  return useContext(NavDockContext)?.publishTopNavUp;
+// Held by a TopNavBar for as long as it is drawn.
+export function useTopNavClaim() {
+  const claim = useContext(NavDockContext)?.claimTopNav;
+  useEffect(() => (claim ? claim() : undefined), [claim]);
 }
 
 export function useNavTopBack(): TopBack | null {
