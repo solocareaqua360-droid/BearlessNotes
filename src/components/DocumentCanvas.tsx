@@ -180,7 +180,7 @@ export function layOutBlocks(
 function approximateHeight(block: Block): number {
   const type = block.type ?? 'paragraph';
   if (type === 'image' || type === 'sketch') return 180;
-  if (type === 'file' || type === 'link' || type === 'dbRow' || type === 'dbView') return 96;
+  if (type === 'file' || type === 'link' || type === 'dbRow' || type === 'dbView' || type === 'flashcard') return 96;
   // Text: a card shows ALL of it, so this only has to be close - it is
   // replaced by the measured height on the next frame. Roughly 28
   // characters to a line at this width, 19pt a line, plus the padding.

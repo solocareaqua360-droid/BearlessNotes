@@ -146,6 +146,8 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
       navigation.navigate('Links', { category });
     } else if (item.kind === 'board') {
       navigation.navigate('BoardCopy', { boardId: item.id });
+    } else if (item.kind === 'flashcard') {
+      navigation.navigate('Flashcards');
     } else if (item.kind === 'task') {
       const documentId = item.data.documentId as string | undefined;
       if (documentId) navigation.navigate('Editor', { documentId });

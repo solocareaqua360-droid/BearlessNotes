@@ -15,6 +15,7 @@ const SOURCES: { kind: string; collectionName: string }[] = [
   { kind: 'link', collectionName: 'links' },
   { kind: 'board', collectionName: 'boards' },
   { kind: 'task', collectionName: 'tasks' },
+  { kind: 'flashcard', collectionName: 'flashcards' },
   { kind: 'customRow', collectionName: 'customDatabaseRows' },
 ];
 
@@ -46,6 +47,7 @@ const ICON_BY_KIND: Record<string, keyof typeof Ionicons.glyphMap> = {
   'link-other': 'link-outline',
   board: 'apps-outline',
   task: 'checkbox-outline',
+  flashcard: 'albums-outline',
 };
 
 // Every group and everything filed under it, gathered once and shared by
@@ -122,6 +124,8 @@ export function useGroupItems() {
               title = (data.title as string) || 'Без назви';
             } else if (source.kind === 'task') {
               title = (data.text as string) || 'Без назви';
+            } else if (source.kind === 'flashcard') {
+              title = (data.term as string) || 'Без терміна';
             } else {
               databaseId = data.databaseId as string;
               kind = `customRow:${databaseId}`;

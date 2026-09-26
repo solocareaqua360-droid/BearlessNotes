@@ -28,6 +28,12 @@ import FlashcardReader from '../components/FlashcardReader';
 import FlashcardEditor from '../components/FlashcardEditor';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
+import CopyToNoteModal from '../components/CopyToNoteModal';
+import SaveDestinationSheet from '../components/SaveDestinationSheet';
+import { blockFromFlashcard, copyObjectsToNote } from '../utils/copyToNote';
+import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
+import { ImportableItem } from '../utils/importGroupToBoard';
+import { notify } from '../components/surfaces/Ask';
 import { detachTagFromDeletedItem } from '../hooks/useTags';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import UndoToast from '../components/UndoToast';
@@ -62,6 +68,8 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
   const [viewer, setViewer] = useState<{ card: Flashcard; index: number } | null>(null);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
+  const [bulkNoteVisible, setBulkNoteVisible] = useState(false);
+  const [bulkBoardVisible, setBulkBoardVisible] = useState(false);
   const [hideKnown, setHideKnown] = useState(false);
   // The card opened for reading, and the stack it was opened from - the
   // list as it stood at that tap, by id, so marking a card learned (and
@@ -170,6 +178,43 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       );
     });
     list.clear();
+  }
+
+  // The selection into a note - one card block each, in the list's order.
+  async function bulkToNote(documentId: string | null) {
+    setBulkNoteVisible(false);
+    const chosen = shown.filter((c) => list.selectedIds.has(c.id));
+    if (chosen.length === 0) return;
+    const newId = await copyObjectsToNote(documentId, chosen.map(blockFromFlashcard), []);
+    list.clear();
+    if (!documentId) navigation.navigate('Editor', { documentId: newId });
+  }
+
+  // ...or onto a board, as a column of cards («Картки»), in the same order.
+  async function bulkToBoard(boardId: string | null) {
+    setBulkBoardVisible(false);
+    const chosen = shown.filter((c) => list.selectedIds.has(c.id));
+    if (chosen.length === 0) return;
+    const items: ImportableItem[] = chosen.map((c) => ({
+      id: c.id,
+      kind: 'flashcard',
+      title: c.term,
+      data: { term: c.term, explanation: c.explanation, images: c.images },
+    }));
+    try {
+      let target = boardId;
+      let rest = items;
+      if (!target) {
+        target = await createBoardAndAddItem(activeGroup?.name ?? 'Картки', items[0]);
+        rest = items.slice(1);
+      }
+      // One at a time: each lands under the one before it in the column.
+      for (const item of rest) await addItemToBoard(target, item);
+      list.clear();
+      navigation.navigate('BoardCopy', { boardId: target });
+    } catch (e) {
+      notify('Не вдалося додати на дошку', (e as Error).message);
+    }
   }
 
   async function bulkAttachTag(tag: Parameters<typeof list.attachTag>[0]) {
@@ -337,6 +382,8 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         onGroup: () => setBulkGroupPickerVisible(true),
+        onBoard: () => setBulkBoardVisible(true),
+        onCopy: () => setBulkNoteVisible(true),
         onDelete: deleteSelected,
       }}
       overlay={
@@ -369,6 +416,20 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
             onEdit={(card) => setEditor({ card })}
             onOpenImage={(card, index) => setViewer({ card, index })}
             onClose={() => setReading(null)}
+          />
+          <CopyToNoteModal
+            visible={bulkNoteVisible}
+            onPickExisting={(documentId) => bulkToNote(documentId)}
+            onPickNew={() => bulkToNote(null)}
+            onClose={() => setBulkNoteVisible(false)}
+          />
+          <SaveDestinationSheet
+            visible={bulkBoardVisible}
+            boardsOnly
+            title="На яку дошку?"
+            onPickNewBoard={() => bulkToBoard(null)}
+            onPickExistingBoard={(boardId) => bulkToBoard(boardId)}
+            onClose={() => setBulkBoardVisible(false)}
           />
           <GroupPickerSheet
             visible={bulkGroupPickerVisible}

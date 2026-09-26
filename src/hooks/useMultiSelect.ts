@@ -33,10 +33,18 @@ export function useMultiSelect() {
     setSelectedIds(new Set([id]));
   }
 
+  // Everything on screen at once - which is whatever the project or the
+  // smartfolder in front has left there, so "the whole folder" is one
+  // tap after opening it.
+  function selectMany(ids: string[]) {
+    hapticSelectItem();
+    setSelectedIds(new Set(ids));
+  }
+
   function clear() {
     setSelectedIds(new Set());
     setIsSelectMode(false);
   }
 
-  return { isSelectMode, selectedIds, toggleSelectMode, toggle, enterWith, clear };
+  return { isSelectMode, selectedIds, toggleSelectMode, toggle, enterWith, selectMany, clear };
 }

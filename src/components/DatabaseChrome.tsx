@@ -118,6 +118,8 @@ export type DatabaseChromeProps<T extends { id: string }> = {
     onTag?: () => void;
     onGroup: () => void;
     onCopy?: () => void;
+    // The selection onto a board (flashcards so far).
+    onBoard?: () => void;
     onCopyObject?: () => void;
     onDelete: () => void;
   };
@@ -368,12 +370,34 @@ export default function DatabaseChrome<T extends { id: string }>({
                 list.toggleSelectMode();
               },
             },
+            // All of what is on screen, or none of it again - "the whole
+            // folder" is the folder opened, then this.
+            ...(bulk && list.displayed.length > 0
+              ? [
+                  list.displayed.every((item) => list.selectedIds.has(item.id))
+                    ? {
+                        key: 'none',
+                        icon: 'remove-circle-outline' as const,
+                        label: 'Зняти всі',
+                        onPress: () => list.selectMany([]),
+                      }
+                    : {
+                        key: 'all',
+                        icon: 'checkmark-done-outline' as const,
+                        label: 'Вибрати всі',
+                        onPress: () => list.selectMany(list.displayed.map((item) => item.id)),
+                      },
+                ]
+              : []),
             ...(bulk && list.selectedIds.size > 0
               ? [
                   ...(bulk.onTag
                     ? [{ key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: bulk.onTag }]
                     : []),
                   { key: 'group', icon: 'folder-outline' as const, label: 'Проект', onPress: bulk.onGroup },
+                  ...(bulk.onBoard
+                    ? [{ key: 'board', icon: 'easel-outline' as const, label: 'На дошку', onPress: bulk.onBoard }]
+                    : []),
                   ...(bulk.onCopy
                     ? [{ key: 'copy', icon: 'document-text-outline' as const, label: 'У нотатку', onPress: bulk.onCopy }]
                     : []),

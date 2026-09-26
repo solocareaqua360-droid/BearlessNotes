@@ -3,7 +3,8 @@ import { addDoc } from './owned';
 import { db } from '../firebase';
 import { keyedAll, readBoardPart } from './boardStorage';
 import { BoardCard, BoardColumn, Group } from '../types';
-import { blockFromCustomRow, blockFromFile, blockFromLink, blockFromPhoto } from './copyToNote';
+import { blockFromCustomRow, blockFromFile, blockFromFlashcard, blockFromLink, blockFromPhoto } from './copyToNote';
+import { FlashcardImage } from '../types';
 import {
   APPROX_CARD_HEIGHT,
   COLUMN_CARD_GAP,
@@ -90,6 +91,17 @@ export function cardFor(item: ImportableItem): BoardCard | null {
         databaseId: item.databaseId,
         title: item.title,
         createdAt: item.data.createdAt as number | undefined,
+      }),
+      ...base,
+    };
+  }
+  if (item.kind === 'flashcard') {
+    return {
+      ...blockFromFlashcard({
+        id: item.id,
+        term: (item.data.term as string) ?? item.title,
+        explanation: (item.data.explanation as string) ?? '',
+        images: (item.data.images as FlashcardImage[] | undefined) ?? [],
       }),
       ...base,
     };

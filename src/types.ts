@@ -33,6 +33,12 @@ export type BlockType =
   // owns other blocks would have to be taught to each of them. A rule
   // about what FOLLOWS costs one boolean and nothing else.
   | 'toggle'
+  // A flashcard from «Картки» (see Flashcard), as a card in a note or on a
+  // board: the term, its first picture, and the explanation folding open
+  // under it. Keyed by the card's own id and drawn live from it; the
+  // term is also kept as the block's `text`, so search, exports and every
+  // text-only preview read it without knowing this type exists.
+  | 'flashcard'
   | 'dbRow'
   // A saved view of a user-created database (CustomDatabaseView), embedded
   // as a live-filtered, live-sorted slice of its rows - same two-way link
@@ -129,6 +135,14 @@ export interface Block {
   // the line it made last time and moves it rather than adding a second.
   canvasDivider?: boolean;
   checked?: boolean; // 'checkbox' blocks only
+  // 'flashcard' blocks/cards only - a snapshot of the card at insert
+  // time, shown until (or instead of, offline) the live one arrives.
+  flashcardTerm?: string;
+  flashcardExplanation?: string;
+  flashcardImages?: FlashcardImage[];
+  // On a board only: the explanation is folded open. Kept, like a
+  // document card's documentExpanded, so the board reopens as it was.
+  flashcardOpen?: boolean;
   imageUri?: string; // 'image' blocks only
   // 'image' blocks only - set once at creation, never touched again.
   // 'camera' is what routes a genuinely new photo into the fixed "Фото"

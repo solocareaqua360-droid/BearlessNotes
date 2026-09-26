@@ -100,6 +100,7 @@ import TextRecognizer, {
 } from '../components/TextRecognizer';
 import TextSelection from '../components/TextSelection';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
+import { createFlashcardsFromNote } from '../utils/flashcardsFromNote';
 import { clipBlocksToNote, clippedBlock } from '../utils/copyToNote';
 import { isUnderToggle, mergeVisibleOrder, visibleBlocks } from '../utils/toggleBlocks';
 import { blockMatchesQuery } from '../utils/documentPreview';
@@ -2565,6 +2566,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             { label: 'Вигляд', icon: 'color-palette-outline', onPress: () => setExportMenuOpen(true) },
             { label: 'Проект', icon: 'folder-outline', checked: !!groupId, onPress: () => setGroupPickerVisible(true) },
             { label: 'Експорт', icon: 'share-outline', onPress: askExport },
+            { label: 'Створити картки', icon: 'albums-outline', onPress: () => makeFlashcards(blocks) },
             { kind: 'rule' },
             { label: 'Видалити', icon: 'trash-outline', tone: 'danger', onPress: confirmDeleteDocument },
           ],
@@ -2667,6 +2669,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             icon: 'document-text-outline',
             label: 'В нотатку',
             onPress: clipSelectedToNote,
+          },
+          // Only the chosen blocks become cards - "якщо щось виділено, то
+          // з виділеного"; the "⋯" row does the whole note.
+          {
+            key: 'cards',
+            icon: 'albums-outline',
+            label: 'Картки',
+            onPress: () => {
+              const chosen = blocks.filter((b) => selectedIds.has(b.id));
+              toggleSelectMode();
+              makeFlashcards(chosen);
+            },
           },
           {
             key: 'delete',
@@ -3102,7 +3116,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       return;
     }
 
-    if (!['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider'].includes(currentType)) {
+    if (!['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
       const inserted = insertedPiece(current?.text ?? '', text);
       if (inserted && /[\n\t]/.test(inserted.piece)) {
         const parsed = parsePastedText(inserted.piece);
@@ -3114,7 +3128,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
     // A slash typed into an EMPTY block, and only then - a "/" in the
     // middle of a sentence is a slash.
-    if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider'].includes(currentType)) {
+    if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
       openSlashMenu(id);
     }
 
@@ -4340,6 +4354,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       return;
     }
     await openFileExternally(file);
+  }
+
+  // Cards out of this note (or the blocks chosen in it) - see
+  // flashcardsFromNote for the rule: a bold line between cards, a thin
+  // one between a term and its explanation.
+  async function makeFlashcards(source: Block[]) {
+    try {
+      const result = await createFlashcardsFromNote(source, title);
+      if (result === 'open') navigation.navigate('Flashcards');
+    } catch (e) {
+      notify('Картки не створились', (e as Error).message);
+    }
   }
 
   async function copySelectedBlocks() {
@@ -5921,6 +5947,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   // - same collision risk.
                   (b.type ?? 'paragraph') === 'dbRow' ||
                   (b.type ?? 'paragraph') === 'dbView' ||
+                  (b.type ?? 'paragraph') === 'flashcard' ||
                   // A sticker block reuses its own record's id (any
                   // content type - paragraph/image/sketch), same
                   // collision risk as file/image above.

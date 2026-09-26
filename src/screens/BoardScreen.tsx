@@ -95,6 +95,7 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useDensity } from '../hooks/useDensity';
 import { contentEqual } from '../utils/contentEqual';
 import { keyedAll, keyedDiff, readBoardPart } from '../utils/boardStorage';
+import FlashcardBlockCard from '../components/FlashcardBlockCard';
 import GroupImportSheet from '../components/GroupImportSheet';
 import { useGroupItems } from '../hooks/useGroupItems';
 import { importGroupToBoard } from '../utils/importGroupToBoard';
@@ -1753,6 +1754,12 @@ function DraggableCard({
               tags={[]}
               onOpen={() => {}}
             />
+          </View>
+        ) : type === 'flashcard' ? (
+          // A flashcard, live from «Картки»; a tap folds its explanation
+          // open and shut (see handleCardTap), kept on the card.
+          <View pointerEvents="none">
+            <FlashcardBlockCard block={card as Block} variant="board" open={!!card.flashcardOpen} />
           </View>
         ) : null}
 
@@ -3927,6 +3934,8 @@ export default function BoardScreen() {
       if (card.boardId) navigation.push('Board', { boardId: card.boardId });
     } else if (type === 'document') {
       toggleDocumentExpanded(card);
+    } else if (type === 'flashcard') {
+      setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, flashcardOpen: !c.flashcardOpen } : c)));
     } else if (type === 'link' && card.linkUrl) {
       // A YouTube/TikTok card plays right here; any other link opens
       // externally, same split DocumentEditorScreen's own link blocks use.
@@ -4859,6 +4868,7 @@ export default function BoardScreen() {
       color: _color,
       columnId: _columnId,
       documentExpanded: _expanded,
+      flashcardOpen: _open,
       ...block
     } = card;
     // Neither a document nor a board can be a block inside a note, so

@@ -7,7 +7,7 @@ import {
 } from '../firestore';
 import { addDoc, setDoc } from './owned';
 import { db } from '../firebase';
-import { Block, Recurrence, SketchElement } from '../types';
+import { Block, Flashcard, Recurrence, SketchElement } from '../types';
 import { dateKey } from './dateLocale';
 import { scheduleReminder, ReminderKind } from './reminders';
 
@@ -129,6 +129,21 @@ export function blockFromLink(link: {
     block.linkGeoLng = link.geoLng;
   }
   return block;
+}
+
+// A flashcard as a block (or a board card): keyed by the card's own id, so
+// one card put twice in the same place is one, and drawn live from it
+// (FlashcardBlockCard) - the snapshot here only stands in until then.
+export function blockFromFlashcard(card: Pick<Flashcard, 'id' | 'term' | 'explanation' | 'images'>): Block {
+  return {
+    id: card.id,
+    text: card.term ?? '',
+    type: 'flashcard',
+    flashcardTerm: card.term ?? '',
+    flashcardExplanation: card.explanation ?? '',
+    flashcardImages: card.images ?? [],
+    createdAt: Date.now(),
+  };
 }
 
 // Appends `blocks` to `targetDocumentId` (or starts a fresh document when

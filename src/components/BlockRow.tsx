@@ -1,3 +1,4 @@
+import FlashcardBlockCard from './FlashcardBlockCard';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -612,6 +613,14 @@ export default function BlockRow({
           tags={allTags}
           onOpen={onOpenCustomRow}
         />
+      </View>
+    );
+  } else if (type === 'flashcard') {
+    // A flashcard from «Картки», live - its explanation folds open right
+    // here in the note. Inert in select mode so a tap selects the block.
+    content = (
+      <View style={styles.dbRowBlock} pointerEvents={isSelectMode ? 'none' : 'auto'}>
+        <FlashcardBlockCard block={item} variant="note" />
       </View>
     );
   } else if (type === 'docRef') {
