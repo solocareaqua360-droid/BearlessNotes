@@ -1,6 +1,7 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
+import { liftStyle } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +17,8 @@ import Menu from './surfaces/Menu';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import SearchField, { searchFieldSides } from './SearchField';
-import GlassDrop, { GlassIcon } from './GlassDrop';
+import { GlassIcon } from './GlassDrop';
+import DockFrost from './DockFrost';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
@@ -228,8 +230,12 @@ export default function DatabaseChrome<T extends { id: string }>({
   // Search, plus "..." where the screen still has rows for it, plus the
   // way out where there is one - one, two or three buttons.
   // The way out went to the dock, so the top capsule is one button
-  // shorter than it used to be.
-  useDockLeave(leaveIcon ?? 'albums-outline', onBack ?? (() => {}), !!onBack);
+  // shorter than it used to be. On a `topBar` screen the way out is the
+  // dock's LEFT BEAD instead (see the `useDockBeads` call below) - the
+  // user's own placement, a piece of its own beside the desk pill rather
+  // than a chevron riding inside it - so this in-card chevron stands
+  // down there to avoid drawing the same button twice.
+  useDockLeave(leaveIcon ?? 'albums-outline', onBack ?? (() => {}), !!onBack && !topBar);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -262,21 +268,29 @@ export default function DatabaseChrome<T extends { id: string }>({
   // The rail reserved 90 points of width whether it held four capsules
   // or one; that is what leaving it buys, not the count of buttons.
   useDockBeads(
-    isFocused && !topBar
-      ? {
-          icon: list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline',
-          active: list.isSearching,
-          onPress: () => {
-            // While selecting, this is the way OUT of selecting - the one
-            // screen state you most need to be able to leave.
-            if (list.isSelectMode) {
-              list.toggleSelectMode();
-              return;
-            }
-            list.setIsSearching((prev) => !prev);
-          },
-        }
-      : null,
+    isFocused && topBar
+      ? // A `topBar` screen moved search up top, so the dock's left bead
+        // is free - and the user's own placement for the way back is
+        // exactly there: a piece of its own beside the desk pill, not a
+        // button inside it. A blank slot when there is nowhere back to
+        // go (the tab root) - not a hole with nothing to fill it, one
+        // that simply has no job here yet.
+        (onBack ? { icon: 'arrow-back', onPress: onBack } : null)
+      : isFocused
+        ? {
+            icon: list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline',
+            active: list.isSearching,
+            onPress: () => {
+              // While selecting, this is the way OUT of selecting - the one
+              // screen state you most need to be able to leave.
+              if (list.isSelectMode) {
+                list.toggleSelectMode();
+                return;
+              }
+              list.setIsSearching((prev) => !prev);
+            },
+          }
+        : null,
     isFocused && !list.isSelectMode && !searchingAlone && onAdd
       ? {
           icon: addIcon ?? 'add-outline',
@@ -439,39 +453,42 @@ export default function DatabaseChrome<T extends { id: string }>({
                   pointerEvents="box-none"
                   onLayout={(e) => setBarHeight(e.nativeEvent.layout.height)}
                 >
-                  {/* ONE panel, the dock's own shape turned upside down:
-                      as wide as the dock's plate, on the same axis, the
-                      same corner - only shorter. The user's words: "по
-                      ширині як док... форма теж квадратна просто вужча".
-                      No title: it did nothing ("навіщо велика кнопка
-                      дошки"). Its left corner is the way back, on a
-                      screen pushed over another. */}
-                  <GlassDrop style={[styles.barPanel, { width: barWidth }]} radius={DOCK_PLATE_RADIUS}>
-                    {onBack && <BarButton icon="arrow-back" onPress={onBack} />}
-                    <View style={styles.barSpacer} />
-                    {/* What this screen does - the same icons the dock
-                        carried, so nothing has to be learnt twice.
-                        Selecting acts from the dock, so they step aside
-                        while it lasts. */}
-                    {!list.isSelectMode && (
-                      <>
-                        <BarButton
-                          icon={list.isSearching ? 'close-outline' : 'search-outline'}
-                          active={list.isSearching}
-                          onPress={() => list.setIsSearching((prev) => !prev)}
-                        />
-                        {shape && <BarButton icon={shape.icon} onPress={shape.onToggle} />}
-                        <BarButton icon="filter-outline" active={sortMenuOpen} onPress={() => setSortMenuOpen((v) => !v)} />
-                        {!hideDrawer && (
-                          <BarButton icon="pricetag-outline" active={!!list.tagFilter} onPress={() => drawerRef.current?.open()} />
-                        )}
-                        {bulk && <BarButton icon="checkmark-circle-outline" onPress={() => list.toggleSelectMode()} />}
-                        {menuRows && (
-                          <BarButton icon="ellipsis-horizontal" active={menuOpen} onPress={() => setMenuOpen((v) => !v)} />
-                        )}
-                      </>
-                    )}
-                  </GlassDrop>
+                  {/* ONE piece, the dock's own material and shape - not
+                      GlassDrop, which paints a specular highlight the
+                      dock never has: "верхній док з бліками цього не
+                      треба, повтори повністю стиль нижнього, він
+                      просто вужчий". As wide as the dock's plate, on the
+                      same axis, the same corner, only shorter. No title
+                      ("навіщо велика кнопка дошки") and no back button -
+                      that moved to the dock's own left bead, the user's
+                      placement for it (see the `useDockBeads` call
+                      above). */}
+                  <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_PLATE_RADIUS, width: barWidth }]}>
+                    <DockFrost style={[styles.barPanel, styles.barPanelEdge]} radius={DOCK_PLATE_RADIUS}>
+                      {/* What this screen does - the same icons the dock
+                          carried, so nothing has to be learnt twice.
+                          Selecting acts from the dock, so they step aside
+                          while it lasts. */}
+                      {!list.isSelectMode && (
+                        <>
+                          <BarButton
+                            icon={list.isSearching ? 'close-outline' : 'search-outline'}
+                            active={list.isSearching}
+                            onPress={() => list.setIsSearching((prev) => !prev)}
+                          />
+                          {shape && <BarButton icon={shape.icon} onPress={shape.onToggle} />}
+                          <BarButton icon="filter-outline" active={sortMenuOpen} onPress={() => setSortMenuOpen((v) => !v)} />
+                          {!hideDrawer && (
+                            <BarButton icon="pricetag-outline" active={!!list.tagFilter} onPress={() => drawerRef.current?.open()} />
+                          )}
+                          {bulk && <BarButton icon="checkmark-circle-outline" onPress={() => list.toggleSelectMode()} />}
+                          {menuRows && (
+                            <BarButton icon="ellipsis-horizontal" active={menuOpen} onPress={() => setMenuOpen((v) => !v)} />
+                          )}
+                        </>
+                      )}
+                    </DockFrost>
+                  </View>
                 </View>
               )}
               {!searchingAlone && list.groups.length > 0 && !list.groupsRowHidden && (
@@ -767,11 +784,17 @@ const makeStyles = (t: Theme) =>
   barPanel: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     height: 52,
-    paddingHorizontal: 4,
+    paddingHorizontal: 8,
+    gap: 2,
   },
-  barSpacer: {
-    flex: 1,
+  // The same hairline the dock's own card carries (cardEdge in
+  // ContextDock.tsx) - not redefined there, just matched, since a
+  // second copy is exactly what drifts.
+  barPanelEdge: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.16)',
   },
   filterRow: {
     flexDirection: 'row',

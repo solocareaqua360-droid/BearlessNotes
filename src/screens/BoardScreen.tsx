@@ -123,7 +123,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useDockActions, useDockBeads, useDockLeave } from '../navigation/navDock';
+import { useDockActions, useDockBeads } from '../navigation/navDock';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { listenError } from '../utils/listenError';
 
@@ -5200,20 +5200,19 @@ export default function BoardScreen() {
     setTimeout(refreshDocumentPreviews, 1000);
   }
   const leaveBoard = () => (isTwoPane && paneDocId !== null ? closePane() : navigation.goBack());
-  useDockLeave('easel-outline', leaveBoard);
   // A note filling the window hides the board these two act on, so they
   // stand down for as long as it does - the pane's own controls take the
   // dock's actions card instead (see paneControls below).
   const paneDocOpen = isTwoPane && paneDocId !== null;
   const boardShowing = boardFocused && !(paneDocOpen && paneFullscreen);
+  // The way out as the dock's LEFT BEAD, a piece of its own beside the
+  // desk pill - the user's placement, the same one the databases now
+  // use. «Шари» moved the other way, up into the board's own top bar,
+  // to make room for it (see boardBarRow above); no more in-card
+  // chevron here (that was `useDockLeave`, now dropped) - one back
+  // button, not two.
   useDockBeads(
-    boardShowing
-      ? {
-          icon: 'layers-outline',
-          active: layersDrawerVisible,
-          onPress: () => setLayersDrawerVisible((v) => !v),
-        }
-      : null,
+    boardShowing ? { icon: 'arrow-back', onPress: leaveBoard } : null,
     boardShowing && selectedCardIds.size === 0
       ? { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
       : null
@@ -5738,9 +5737,17 @@ export default function BoardScreen() {
             down (see titleTap). */}
         <View style={[styles.boardBar, { top: topInset + CHROME_TOP }]} pointerEvents="box-none">
           <View style={styles.boardBarRow} pointerEvents="box-none">
-            <Pressable style={({ pressed }) => [styles.boardBarCapsule, pressed && styles.boardBarPressed]} onPress={leaveBoard}>
-              <View style={styles.boardBarButton}>
-                <Ionicons name="arrow-back" size={22} color="#fff" />
+            {/* The way back moved to the bottom dock's own left bead - the
+                user's placement for it, the same one the databases now
+                use (see the `useDockBeads` call below). This first
+                capsule is «Шари» instead, moved up from the bead that
+                back now occupies. */}
+            <Pressable
+              style={({ pressed }) => [styles.boardBarCapsule, pressed && styles.boardBarPressed]}
+              onPress={() => setLayersDrawerVisible((v) => !v)}
+            >
+              <View style={[styles.boardBarButton, layersDrawerVisible && styles.boardBarButtonActive]}>
+                <Ionicons name="layers-outline" size={22} color="#fff" />
               </View>
             </Pressable>
             {selectedCardIds.size === 0 && selectedShapeIds.size === 0 && (
