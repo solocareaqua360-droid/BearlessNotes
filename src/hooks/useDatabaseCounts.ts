@@ -64,6 +64,7 @@ export function useDatabaseContents(): DatabaseContents {
   const photos = useCollection('photos');
   const files = useCollection('files');
   const stickers = useCollection('stickers');
+  const flashcards = useCollection('flashcards');
   const boards = useCollection('boards');
   const tags = useCollection('tags');
   const groups = useCollection('groups');
@@ -89,6 +90,7 @@ export function useDatabaseContents(): DatabaseContents {
     photos: photos.length,
     files: files.length,
     stickers: stickers.filter((s) => !s.trashed).length,
+    flashcards: flashcards.length,
     board: boards.length,
     tags: tags.length,
     groups: groups.length,
@@ -111,12 +113,13 @@ export function useDatabaseContents(): DatabaseContents {
       (s) => s.text as string | undefined
     ),
     board: newest(boards, (b) => b.title as string | undefined),
+    flashcards: newest(flashcards, (c) => c.term as string | undefined),
     chat: newest(chat, (m) => m.text as string | undefined),
   };
 
   // A group crosses databases, so its count does too.
   const inGroup = (id: string) =>
-    [...notes, ...tasks, ...links, ...photos, ...files, ...boards, ...customRows].filter((r) => r.groupId === id)
+    [...notes, ...tasks, ...links, ...photos, ...files, ...boards, ...flashcards, ...customRows].filter((r) => r.groupId === id)
       .length;
   const pinnableGroups: PinnableItem[] = groups.map((g) => ({
     id: g.id,

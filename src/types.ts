@@ -366,6 +366,29 @@ export interface TaskList {
 // looser, temporary gathering - "what I'm living with right now" - on the
 // order of a hundred items of mixed types, archived once that period is
 // over rather than deleted, its contents by then filed away with tags.
+// A flashcard («Картка») - one thing to learn: the term itself, an
+// explanation kept folded until it is wanted, and any number of pictures
+// shown large, one after another. Its own collection, `flashcards`, not a
+// document: it is flipped through, not written in.
+export interface FlashcardImage {
+  uri: string;
+  driveFileId?: string;
+  driveBytes?: number;
+}
+
+export interface Flashcard {
+  id: string;
+  term: string;
+  explanation: string;
+  images: FlashcardImage[];
+  groupId?: string;
+  // Learning mode only (a group's own switch, see Group.flashcardLearning):
+  // the card has been learned, and can be left out of the stack.
+  known?: boolean;
+  createdAt?: number;
+  updatedAt: number;
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -388,6 +411,10 @@ export interface Group {
   // its items' groupId, so archiving is reversible and nothing is lost -
   // it stays visible under "Архівні" on the Groups screen.
   archived?: boolean;
+  // Flashcards only: this group is being LEARNED - its cards carry
+  // «Знаю» / «Ще вчу», and the learned ones can be left out. Off for every
+  // other group; the user's own rule, "як опція для певної групи карток".
+  flashcardLearning?: boolean;
 }
 
 // A database-object kind a tag can be attached to. Used both as the second

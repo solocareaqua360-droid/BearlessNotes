@@ -18,7 +18,7 @@ export type Tile = {
   // "Скоро" placeholder.
   linkCategory?: 'video' | 'geo' | 'other';
   // Set for tiles with their own dedicated (paramless) screen.
-  route?: 'Photos' | 'Files' | 'Tags' | 'Groups' | 'Diary' | 'Stickers' | 'Tasks' | 'Chat';
+  route?: 'Photos' | 'Files' | 'Tags' | 'Groups' | 'Diary' | 'Stickers' | 'Tasks' | 'Chat' | 'Flashcards';
   // The documents tile - documents are a TAB, not a root-stack screen, so
   // it goes through `navigation.navigate('Tabs', { screen: 'Документи' })`.
   opensDocumentsTab?: boolean;
@@ -65,6 +65,8 @@ export const GRID_TILES: Tile[] = [
   { key: 'groups', label: 'Проекти', icon: 'albums-outline', route: 'Groups' },
   { key: 'diary', label: 'Щоденник', icon: 'book-outline', route: 'Diary' },
   { key: 'chat', label: 'Чат', icon: 'chatbubbles-outline', route: 'Chat' },
+  // Last, so the colour cycle above does not repaint any tile before it.
+  { key: 'flashcards', label: 'Картки', icon: 'albums-outline', route: 'Flashcards' },
 ];
 
 export const tileColorsDoc = doc(db, 'settings', 'databaseTileColors');

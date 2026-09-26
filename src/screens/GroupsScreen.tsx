@@ -293,6 +293,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
                   'link-other',
                   'board',
                   'task',
+                  'flashcard',
                   ...customDatabases.map((d) => `customRow:${d.id}`),
                 ].map((kind) => {
                   const on = kindsEditorGroup ? kindsOf(kindsEditorGroup).includes(kind) : false;

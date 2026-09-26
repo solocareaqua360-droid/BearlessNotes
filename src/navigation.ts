@@ -71,6 +71,7 @@ export type RootStackParamList = {
   // openStickerId: opened straight from the sticker widget (see App.tsx's
   // deep-link handling) - undefined for reaching the screen normally.
   Stickers: { openStickerId?: string } | undefined;
+  Flashcards: undefined;
   // A user-created database (DatabasesScreen's dynamic tiles, one per
   // Firestore doc in `customDatabases`) - unlike Photos/Files/Stickers,
   // there's no fixed number of these, so one shared screen keyed by id

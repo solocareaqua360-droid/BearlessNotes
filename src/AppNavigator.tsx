@@ -10,6 +10,7 @@ import LinksScreen from './screens/LinksScreen';
 import PhotosScreen from './screens/PhotosScreen';
 import FilesScreen from './screens/FilesScreen';
 import StickersScreen from './screens/StickersScreen';
+import FlashcardsScreen from './screens/FlashcardsScreen';
 import CustomDatabaseScreen from './screens/CustomDatabaseScreen';
 import TagManageScreen from './screens/TagManageScreen';
 import GroupsScreen from './screens/GroupsScreen';
@@ -56,6 +57,7 @@ export default function RootNavigator() {
       <Stack.Screen name="Photos" component={PhotosScreen} />
       <Stack.Screen name="Files" component={FilesScreen} />
       <Stack.Screen name="Stickers" component={StickersScreen} />
+      <Stack.Screen name="Flashcards" component={FlashcardsScreen} />
       <Stack.Screen name="CustomDatabase" component={CustomDatabaseScreen} />
       <Stack.Screen name="Tags" component={TagManageScreen} />
       <Stack.Screen name="Groups" component={GroupsScreen} />

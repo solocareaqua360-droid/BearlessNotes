@@ -12,6 +12,7 @@ export const OWNED_COLLECTIONS = [
   'customDatabases',
   'documents',
   'files',
+  'flashcards',
   'groups',
   'hiddenTags',
   'links',

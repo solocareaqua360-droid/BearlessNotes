@@ -65,6 +65,7 @@ import LinksScreen from './LinksScreen';
 import PhotosScreen from './PhotosScreen';
 import FilesScreen from './FilesScreen';
 import StickersScreen from './StickersScreen';
+import FlashcardsScreen from './FlashcardsScreen';
 import TagManageScreen from './TagManageScreen';
 import GroupsScreen from './GroupsScreen';
 import DiaryScreen from './DiaryScreen';
@@ -163,7 +164,7 @@ type PaneTarget =
   // The three registries - the diary, the groups and the tags - open in
   // the pane like every other database now. They are not lists of records
   // and carry no chrome of their own; see PlainScreenShell.
-  | { kind: 'route'; route: 'Photos' | 'Files' | 'Stickers' | 'Tasks' | 'Tags' | 'Groups' | 'Diary' };
+  | { kind: 'route'; route: 'Photos' | 'Files' | 'Stickers' | 'Flashcards' | 'Tasks' | 'Tags' | 'Groups' | 'Diary' };
 
 function paneTargetFor(tile: Tile): PaneTarget | null {
   if (tile.linkCategory) return { kind: 'links', category: tile.linkCategory };
@@ -177,6 +178,7 @@ function paneTargetFor(tile: Tile): PaneTarget | null {
     tile.route === 'Photos' ||
     tile.route === 'Files' ||
     tile.route === 'Stickers' ||
+    tile.route === 'Flashcards' ||
     tile.route === 'Tasks' ||
     tile.route === 'Tags' ||
     tile.route === 'Groups' ||
@@ -1204,6 +1206,8 @@ export default function DatabasesScreen() {
                       <FilesScreen inPane />
                     ) : openInPane.route === 'Stickers' ? (
                       <StickersScreen inPane />
+                    ) : openInPane.route === 'Flashcards' ? (
+                      <FlashcardsScreen inPane />
                     ) : openInPane.route === 'Tags' ? (
                       <TagManageScreen inPane />
                     ) : openInPane.route === 'Groups' ? (
