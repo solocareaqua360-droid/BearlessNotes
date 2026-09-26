@@ -1,7 +1,6 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTheme, useStyles } from '../theme/ThemeProvider';
+import { useLift, useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { liftStyle } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,7 +21,15 @@ import DockFrost from './DockFrost';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
-import { DOCK_PLATE_RADIUS, dockPlateWidth, useDockClearance } from '../navigation/dockGeometry';
+import {
+  DOCK_CUT,
+  DOCK_PIECE_RADIUS,
+  DOCK_PLATE_PAD,
+  DOCK_PLATE_RADIUS,
+  dockPieceWidths,
+  dockPlateWidth,
+  useDockClearance,
+} from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
 import { usePublishRailTree } from '../navigation/navRail';
@@ -252,10 +259,11 @@ export default function DatabaseChrome<T extends { id: string }>({
   const searchingAlone = list.isSearching && keyboardUp;
   const showContext = useDockShowContext();
   const dockClear = useDockClearance();
-  // The top panel is the dock's plate, so it takes the dock's width
-  // (never wider than the list it sits over) and its menus open under
-  // its own right end.
-  const barWidth = Math.min(dockPlateWidth(windowWidth), windowWidth - 24);
+  // The top panel is the dock's plate, cut into the dock's own pieces,
+  // so it takes the dock's widths; its menus open under its right end.
+  const barWidth = dockPlateWidth(windowWidth);
+  const pieces = dockPieceWidths(windowWidth);
+  const pieceLift = useLift();
   const menuAnchor = topBar
     ? ({ position: 'absolute', right: Math.max(8, (windowWidth - barWidth) / 2), top: chromeTop + barHeight + 6 } as const)
     : ({ position: 'absolute', right: 16, bottom: dockClear + insets.bottom } as const);
@@ -453,40 +461,60 @@ export default function DatabaseChrome<T extends { id: string }>({
                   pointerEvents="box-none"
                   onLayout={(e) => setBarHeight(e.nativeEvent.layout.height)}
                 >
-                  {/* ONE piece, the dock's own material and shape - not
-                      GlassDrop, which paints a specular highlight the
-                      dock never has: "верхній док з бліками цього не
-                      треба, повтори повністю стиль нижнього, він
-                      просто вужчий". As wide as the dock's plate, on the
-                      same axis, the same corner, only shorter. No title
-                      ("навіщо велика кнопка дошки") and no back button -
-                      that moved to the dock's own left bead, the user's
-                      placement for it (see the `useDockBeads` call
-                      above). */}
-                  <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_PLATE_RADIUS, width: barWidth }]}>
-                    <DockFrost style={[styles.barPanel, styles.barPanelEdge]} radius={DOCK_PLATE_RADIUS}>
-                      {/* What this screen does - the same icons the dock
-                          carried, so nothing has to be learnt twice.
-                          Selecting acts from the dock, so they step aside
-                          while it lasts. */}
-                      {!list.isSelectMode && (
-                        <>
-                          <BarButton
-                            icon={list.isSearching ? 'close-outline' : 'search-outline'}
-                            active={list.isSearching}
-                            onPress={() => list.setIsSearching((prev) => !prev)}
-                          />
-                          {shape && <BarButton icon={shape.icon} onPress={shape.onToggle} />}
-                          <BarButton icon="filter-outline" active={sortMenuOpen} onPress={() => setSortMenuOpen((v) => !v)} />
-                          {!hideDrawer && (
-                            <BarButton icon="pricetag-outline" active={!!list.tagFilter} onPress={() => drawerRef.current?.open()} />
-                          )}
-                          {bulk && <BarButton icon="checkmark-circle-outline" onPress={() => list.toggleSelectMode()} />}
-                          {menuRows && (
-                            <BarButton icon="ellipsis-horizontal" active={menuOpen} onPress={() => setMenuOpen((v) => !v)} />
-                          )}
-                        </>
+                  {/* The dock's own material (DockFrost, no GlassDrop gloss:
+                      "верхній док з бліками цього не треба") and its own
+                      width and axis. No title and no back button - back
+                      is the dock's left bead (see useDockBeads above). */}
+                  {/* Cut into the dock's own pieces - a bead, a card of
+                      four, a bead - each exactly as wide as the one below
+                      it, only shorter: "кнопок стільки ж як і в нижньому
+                      доці... такі ж по ширині, просто вужчі по висоті".
+                      A missing function keeps its place, as in the dock.
+                      Selecting acts from the dock, so the buttons step
+                      aside while it lasts; the pieces stay. */}
+                  <View style={[styles.barPlate, { width: barWidth }]}>
+                    {/* The plate BEHIND the pieces, a sibling of them as in
+                        the dock - never a blur with blurs inside it. */}
+                    <DockFrost style={styles.barPlateFill} radius={DOCK_PLATE_RADIUS} />
+                    {/* The drawer, at the left - the side it opens from,
+                        so its arrow points the way it slides. */}
+                    <DockFrost style={[styles.barPiece, styles.barPanelEdge, pieceLift, { width: pieces.bead }]} radius={DOCK_PIECE_RADIUS}>
+                      {!list.isSelectMode && !hideDrawer && (
+                        <PanelButton icon="chevron-forward" width={pieces.bead} active={!!list.tagFilter} onPress={() => drawerRef.current?.open()} />
                       )}
+                    </DockFrost>
+                    <DockFrost style={[styles.barPiece, styles.barPanelEdge, pieceLift, { width: pieces.card }]} radius={DOCK_PIECE_RADIUS}>
+                      {!list.isSelectMode &&
+                        [
+                          {
+                            key: 'search',
+                            icon: (list.isSearching ? 'close-outline' : 'search-outline') as keyof typeof Ionicons.glyphMap,
+                            active: list.isSearching,
+                            onPress: () => list.setIsSearching((prev) => !prev),
+                          },
+                          shape ? { key: 'shape', icon: shape.icon as keyof typeof Ionicons.glyphMap, onPress: shape.onToggle } : null,
+                          { key: 'sort', icon: 'filter-outline' as const, active: sortMenuOpen, onPress: () => setSortMenuOpen((v) => !v) },
+                          // Where the drawer's button was: a new folder, in
+                          // the folder this list is standing in.
+                          explorer?.active ? { key: 'folder', icon: 'folder-open-outline' as const, onPress: explorer.onNewFolder } : null,
+                          ...(bulk && menuRows
+                            ? [{ key: 'menu', icon: 'ellipsis-horizontal' as const, active: menuOpen, onPress: () => setMenuOpen((v) => !v) }]
+                            : []),
+                        ].map((b, i) =>
+                          b ? (
+                            <PanelButton key={b.key} icon={b.icon} active={'active' in b ? b.active : false} onPress={b.onPress} flex />
+                          ) : (
+                            <View key={`empty-${i}`} style={styles.barSlot} />
+                          )
+                        )}
+                    </DockFrost>
+                    <DockFrost style={[styles.barPiece, styles.barPanelEdge, pieceLift, { width: pieces.bead }]} radius={DOCK_PIECE_RADIUS}>
+                      {!list.isSelectMode &&
+                        (bulk ? (
+                          <PanelButton icon="checkmark-circle-outline" width={pieces.bead} onPress={() => list.toggleSelectMode()} />
+                        ) : menuRows ? (
+                          <PanelButton icon="ellipsis-horizontal" width={pieces.bead} active={menuOpen} onPress={() => setMenuOpen((v) => !v)} />
+                        ) : null)}
                     </DockFrost>
                   </View>
                 </View>
@@ -658,31 +686,46 @@ export default function DatabaseChrome<T extends { id: string }>({
   );
 }
 
-// One button of the top bar: 44 points to hit, the glass's own ink, and
-// the accent only while it is on - the rule every glass control follows.
-function BarButton({
+// How tall the top bar's pieces are - the dock's own pieces are a square
+// the card's height; these keep the width and give up height: "просто
+// вужчі по висоті".
+const BAR_PIECE_H = 44;
+
+// One button of the top bar, filling its slot - a bead's whole width, or
+// a quarter of the card - the glass's own ink, and the accent only while
+// it is on, the rule every glass control follows.
+function PanelButton({
   icon,
   active,
   onPress,
+  width,
+  flex,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   active?: boolean;
   onPress: () => void;
+  width?: number;
+  flex?: boolean;
 }) {
   const theme = useTheme();
   return (
-    <Pressable onPress={onPress} hitSlop={4} style={({ pressed }) => [barButtonStyles.button, pressed && barButtonStyles.pressed]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [panelButtonStyles.button, flex ? panelButtonStyles.flex : { width }, pressed && panelButtonStyles.pressed]}
+    >
       {active ? <Ionicons name={icon} size={22} color={theme.accent} /> : <GlassIcon name={icon} size={22} />}
     </Pressable>
   );
 }
 
-const barButtonStyles = StyleSheet.create({
+const panelButtonStyles = StyleSheet.create({
   button: {
-    width: 44,
-    height: 44,
+    height: BAR_PIECE_H,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  flex: {
+    flex: 1,
   },
   pressed: {
     opacity: 0.6,
@@ -781,17 +824,30 @@ const makeStyles = (t: Theme) =>
     alignItems: 'center',
     paddingBottom: 10,
   },
-  barPanel: {
+  // The plate the pieces lie on, as the dock's own: its padding is the
+  // dock's, its pieces are cut apart by the dock's own cut.
+  barPlate: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    height: 52,
-    paddingHorizontal: 8,
-    gap: 2,
+    padding: DOCK_PLATE_PAD,
+    gap: DOCK_CUT,
   },
-  // The same hairline the dock's own card carries (cardEdge in
-  // ContextDock.tsx) - not redefined there, just matched, since a
-  // second copy is exactly what drifts.
+  barPlateFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
+  barPiece: {
+    height: BAR_PIECE_H,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  barSlot: {
+    flex: 1,
+  },
   barPanelEdge: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.16)',
