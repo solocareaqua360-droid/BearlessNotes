@@ -2652,6 +2652,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // пронумерований список"). The long names are cut to one word
           // each - a quarter of a card is no place for "Нумерований
           // список".
+          // Every block at once, or none again - the same pair a
+          // database's selection has.
+          blocks.length > 0 && blocks.every((b) => selectedIds.has(b.id))
+            ? {
+                key: 'none',
+                icon: 'remove-circle-outline',
+                label: 'Зняти всі',
+                onPress: () => setSelectedIds(new Set()),
+              }
+            : {
+                key: 'all',
+                icon: 'checkmark-done-outline',
+                label: 'Вибрати всі',
+                onPress: () => setSelectedIds(new Set(blocks.map((b) => b.id))),
+              },
           ...SELECT_FORMAT_ACTIONS.map((entry) => ({
             key: `type:${entry.key}`,
             icon: entry.family === 'material-community' ? `mc:${entry.icon}` : entry.icon,
