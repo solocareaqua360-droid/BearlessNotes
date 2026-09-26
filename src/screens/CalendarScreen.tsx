@@ -271,8 +271,13 @@ export default function CalendarScreen() {
   const [dayFeed, setDayFeed] = useState<
     { key: string; title: string; blocks: Block[]; coverImageUri?: string; coverGradient?: string; coverDriveFileId?: string; updatedAt: number }[]
   >([]);
+  // Read AHEAD, while the calendar is on screen on a phone - not only
+  // once the overview opens. Read on opening, the days above yours
+  // arrived mid-zoom and turned from short cards into pages under the
+  // finger, pushing the list about while it was still landing.
+  const calendarFocusedForFeed = useIsFocused();
   useEffect(() => {
-    if (!feedMode && !overviewOpen) return;
+    if (!feedMode && !overviewOpen && !(phoneOverview && calendarFocusedForFeed)) return;
     // No range on calendarDate. Firestore needs a composite index for an
     // equality and a range on two different fields, and ownedQuery's
     // ownerId is that equality - so `where('calendarDate', ...)` is
@@ -307,7 +312,7 @@ export default function CalendarScreen() {
         setDayFeedLoaded(true);
       }
     );
-  }, [feedMode, overviewOpen]);
+  }, [feedMode, overviewOpen, phoneOverview, calendarFocusedForFeed]);
   // 0 = the page, 1 = the overview. The page shrinks toward a card as the
   // feed comes in over it, slightly larger than it will settle - one
   // zoom, drawn by two layers.
@@ -1279,8 +1284,14 @@ export default function CalendarScreen() {
   // a measurement to wait for: where any day stands is the sum of the
   // ones above it.
   const OVERVIEW_SHORT_H = 64;
-  const overviewHeightOf = (item: { day: unknown }) =>
-    (item.day ? OVERVIEW_LABEL_H + miniH : OVERVIEW_SHORT_H) + OVERVIEW_GAP;
+  // A PAGE for every filled day - and for the day you zoomed out FROM,
+  // filled or not: the zoom is that very page shrinking into its place in
+  // the list, and a short card there left it nowhere to land (it shrank,
+  // blinked, and gave way to a card - the user's report). Every other
+  // empty day is a short card.
+  const overviewIsPage = (item: { key: string; day: unknown }) => !!item.day || item.key === overviewAnchor;
+  const overviewHeightOf = (item: { key: string; day: unknown }) =>
+    (overviewIsPage(item) ? OVERVIEW_LABEL_H + miniH : OVERVIEW_SHORT_H) + OVERVIEW_GAP;
   const overviewOffsets: number[] = [];
   {
     let y = 0;
@@ -1961,13 +1972,13 @@ export default function CalendarScreen() {
                     ]}
                   >
                     {overviewDrawn(index) &&
-                      (item.day ? (
+                      (overviewIsPage(item) ? (
                         <Pressable onPress={open}>
                           <Text style={[styles.overviewDate, { height: OVERVIEW_LABEL_H }]} numberOfLines={1}>
                             {label}
                           </Text>
                           <DayPageMiniature
-                            blocks={item.day.blocks}
+                            blocks={item.day?.blocks ?? []}
                             pageWidth={noteRect.width}
                             pageHeight={noteRect.height}
                             scale={OVERVIEW_PAGE_SCALE}
