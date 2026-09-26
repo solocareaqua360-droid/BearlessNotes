@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import {
   BackHandler,
@@ -1171,21 +1171,33 @@ export default function CalendarScreen() {
     closeOverview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey]);
-  // Where the overview opens: the day you were on, or the nearest filled
-  // one before it - the list is newest first, so the days after it are
-  // above and the ones before it below.
-  const overviewAnchor = dayFeed.find((d) => d.key <= selectedKey)?.key ?? dayFeed[dayFeed.length - 1]?.key ?? null;
+  // EVERY DAY, not only the filled ones - the user's call: a filled day
+  // is its page made small, an empty one a short card (the diary search's
+  // kind), and either opens the day. So the overview opens on the day you
+  // were on, whatever it holds. Newest first: the days after it are above,
+  // the ones before it below; nothing later than today (or the day you
+  // are on, if that is later still).
+  const overviewAnchor: string | null = selectedKey;
+  const overviewLastKey = selectedKey > todayKey ? selectedKey : todayKey;
   useEffect(() => {
     if (!overviewOpen || overviewMonths || !overviewAnchor) return;
     const month = overviewAnchor.slice(0, 7);
     setOverviewMonths({ older: month, newer: month });
   }, [overviewOpen, overviewMonths, overviewAnchor]);
-  const overviewDays = overviewMonths
-    ? dayFeed.filter((d) => {
-        const month = d.key.slice(0, 7);
-        return month >= overviewMonths.older && month <= overviewMonths.newer;
-      })
-    : [];
+  const overviewDays = useMemo(() => {
+    if (!overviewMonths) return [];
+    const byKey = new Map(dayFeed.map((d) => [d.key, d]));
+    const [ny, nm] = overviewMonths.newer.split('-').map(Number);
+    const [oy, om] = overviewMonths.older.split('-').map(Number);
+    const stop = new Date(oy, om - 1, 1);
+    const days: { key: string; day: (typeof dayFeed)[number] | null }[] = [];
+    // From the newer month's last day (day 0 of the month after it) down.
+    for (let d = new Date(ny, nm, 0); d >= stop; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1)) {
+      const key = dateKey(d);
+      if (key <= overviewLastKey) days.push({ key, day: byKey.get(key) ?? null });
+    }
+    return days;
+  }, [overviewMonths, dayFeed, overviewLastKey]);
   const overviewAnchorIndex = overviewDays.findIndex((d) => d.key === overviewAnchor);
   // Every day of the loaded months takes its place in the list from the
   // start; before the zoom has landed, only the day and two either side
@@ -1195,22 +1207,19 @@ export default function CalendarScreen() {
   const overviewDrawn = (index: number) => overviewWarm || Math.abs(index - overviewAnchorIndex) <= 2;
   const overviewScrollYRef = useRef(0);
   const overviewFirstKeyRef = useRef<string | null>(null);
+  // Every month has days now, so the next one is simply the next one -
+  // older without end, newer no further than the last day there is.
+  function shiftMonth(month: string, by: number) {
+    const [y, m] = month.split('-').map(Number);
+    const d = new Date(y, m - 1 + by, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
   function extendOverview(direction: 'older' | 'newer') {
     setOverviewMonths((current) => {
       if (!current) return current;
-      if (direction === 'older') {
-        // Newest first, so the first day before the oldest month drawn
-        // is the nearest older one that has anything.
-        const next = dayFeed.find((d) => d.key.slice(0, 7) < current.older);
-        return next ? { ...current, older: next.key.slice(0, 7) } : current;
-      }
-      let nearest: string | null = null;
-      for (const d of dayFeed) {
-        const month = d.key.slice(0, 7);
-        if (month > current.newer) nearest = month;
-        else break;
-      }
-      return nearest ? { ...current, newer: nearest } : current;
+      if (direction === 'older') return { ...current, older: shiftMonth(current.older, -1) };
+      const next = shiftMonth(current.newer, 1);
+      return next <= overviewLastKey.slice(0, 7) ? { ...current, newer: next } : current;
     });
   }
   // A MONTH HAS TO BE PULLED FOR, not merely scrolled to. Reaching the
@@ -1266,9 +1275,20 @@ export default function CalendarScreen() {
   const OVERVIEW_PULL_PX = 64;
   const OVERVIEW_PULL_MS = 420;
   const OVERVIEW_GAP = 18;
-  // Every day is the same height, so where any of them stands is
-  // arithmetic, not a measurement to wait for.
-  const overviewItemH = OVERVIEW_LABEL_H + miniH + OVERVIEW_GAP;
+  // Two heights now - a page, or a short card - and still arithmetic, not
+  // a measurement to wait for: where any day stands is the sum of the
+  // ones above it.
+  const OVERVIEW_SHORT_H = 64;
+  const overviewHeightOf = (item: { day: unknown }) =>
+    (item.day ? OVERVIEW_LABEL_H + miniH : OVERVIEW_SHORT_H) + OVERVIEW_GAP;
+  const overviewOffsets: number[] = [];
+  {
+    let y = 0;
+    for (const item of overviewDays) {
+      overviewOffsets.push(y);
+      y += overviewHeightOf(item);
+    }
+  }
   // Placed once the list's content really is that long - a scrollTo made
   // before that (from a row's own onLayout, as it was) is clamped to the
   // content that exists so far, which is the top of the list: the newest
@@ -1283,7 +1303,7 @@ export default function CalendarScreen() {
     if (!overviewScrolledRef.current) {
       if (overviewAnchorIndex < 0) return;
       overviewFirstKeyRef.current = first;
-      const y = overviewAnchorIndex * overviewItemH;
+      const y = overviewOffsets[overviewAnchorIndex] ?? 0;
       overviewScrollRef.current?.scrollTo({ y, animated: false });
       requestAnimationFrame(() => {
         if (!overviewScrolledRef.current) overviewScrollRef.current?.scrollTo({ y, animated: false });
@@ -1295,7 +1315,7 @@ export default function CalendarScreen() {
     if (!previousFirst || previousFirst === first) return;
     const added = overviewDays.findIndex((d) => d.key === previousFirst);
     if (added > 0) {
-      overviewScrollRef.current?.scrollTo({ y: overviewScrollYRef.current + added * overviewItemH, animated: false });
+      overviewScrollRef.current?.scrollTo({ y: overviewScrollYRef.current + (overviewOffsets[added] ?? 0), animated: false });
     }
   }
 
@@ -1894,13 +1914,7 @@ export default function CalendarScreen() {
               over them faded in over the PAGE as well, and the page, the
               ground and the miniature all half-transparent at once is
               what read as a blink at the hand-over. */}
-          {dayFeedLoaded && dayFeed.length === 0 ? (
-            <Animated.Text
-              style={[styles.feedEmpty, styles.overviewEmpty, { paddingTop: calendarInsets.top + 24 + navSpace }, overviewLateStyle]}
-            >
-              Ще немає жодного заповненого дня
-            </Animated.Text>
-          ) : (
+          {(
             <ScrollView
               ref={overviewScrollRef}
               contentContainerStyle={[
@@ -1922,7 +1936,7 @@ export default function CalendarScreen() {
               onScrollBeginDrag={() => {
                 overviewScrolledRef.current = true;
               }}
-              contentOffset={overviewAnchorIndex >= 0 ? { x: 0, y: overviewAnchorIndex * overviewItemH } : undefined}
+              contentOffset={overviewAnchorIndex >= 0 ? { x: 0, y: overviewOffsets[overviewAnchorIndex] ?? 0 } : undefined}
               onLayout={settleOverviewScroll}
               onScroll={(e) => {
                 overviewScrollYRef.current = e.nativeEvent.contentOffset.y;
@@ -1931,35 +1945,41 @@ export default function CalendarScreen() {
               onScrollEndDrag={releasePull}
               onMomentumScrollEnd={releasePull}
             >
-              {overviewDays.map((day, index) => {
-                const date = parseDateKey(day.key);
+              {overviewDays.map((item, index) => {
+                const date = parseDateKey(item.key);
+                const open = () => {
+                  if (item.key === selectedKey) closeOverview();
+                  else selectDay(date);
+                };
+                const label = `${WEEKDAY_SHORT[mondayIndex(date)]}, ${formatBigDate(date)}`;
                 return (
                   <Animated.View
-                    key={day.key}
+                    key={item.key}
                     style={[
-                      { height: OVERVIEW_LABEL_H + miniH, marginBottom: OVERVIEW_GAP },
-                      day.key === overviewAnchor ? overviewLateStyle : overviewEarlyStyle,
+                      { height: overviewHeightOf(item) - OVERVIEW_GAP, marginBottom: OVERVIEW_GAP },
+                      item.key === overviewAnchor ? overviewLateStyle : overviewEarlyStyle,
                     ]}
                   >
-                    {overviewDrawn(index) && (
-                      <Pressable
-                        onPress={() => {
-                          if (day.key === selectedKey) closeOverview();
-                          else selectDay(date);
-                        }}
-                      >
-                        <Text style={[styles.overviewDate, { height: OVERVIEW_LABEL_H }]} numberOfLines={1}>
-                          {WEEKDAY_SHORT[mondayIndex(date)]}, {formatBigDate(date)}
-                        </Text>
-                        <DayPageMiniature
-                          blocks={day.blocks}
-                          pageWidth={noteRect.width}
-                          pageHeight={noteRect.height}
-                          scale={OVERVIEW_PAGE_SCALE}
-                          radius={16 * OVERVIEW_PAGE_SCALE}
-                        />
-                      </Pressable>
-                    )}
+                    {overviewDrawn(index) &&
+                      (item.day ? (
+                        <Pressable onPress={open}>
+                          <Text style={[styles.overviewDate, { height: OVERVIEW_LABEL_H }]} numberOfLines={1}>
+                            {label}
+                          </Text>
+                          <DayPageMiniature
+                            blocks={item.day.blocks}
+                            pageWidth={noteRect.width}
+                            pageHeight={noteRect.height}
+                            scale={OVERVIEW_PAGE_SCALE}
+                            radius={16 * OVERVIEW_PAGE_SCALE}
+                          />
+                        </Pressable>
+                      ) : (
+                        // An empty day: a short card, the diary search's
+                        // kind - the date and nothing yet. Opens the day
+                        // like a page does.
+                        <ShortDayCard id={`day_${item.key}`} label={label} height={OVERVIEW_SHORT_H} onPress={open} />
+                      ))}
                   </Animated.View>
                 );
               })}
@@ -1970,6 +1990,47 @@ export default function CalendarScreen() {
     </View>
   );
 }
+
+// An empty day in the overview: a short card in the colour the day's
+// sheet would have, like the diary search's cards, saying only the date.
+function ShortDayCard({ id, label, height, onPress }: { id: string; label: string; height: number; onPress: () => void }) {
+  const recordColour = useRecordColour();
+  const { background, text, textMuted } = recordColour(id);
+  return (
+    <Pressable onPress={onPress} style={[shortCardStyles.card, { height, backgroundColor: background }]}>
+      <Text style={[shortCardStyles.date, { color: text }]} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={[shortCardStyles.empty, { color: textMuted }]} numberOfLines={1}>
+        Порожній день
+      </Text>
+    </Pressable>
+  );
+}
+
+const shortCardStyles = StyleSheet.create({
+  card: {
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    gap: 2,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(176,176,176,0.5)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  date: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+  },
+  empty: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+  },
+});
 
 // The circle is a View and the number a plain Text inside it, and the border
 // is always there (transparent when it shouldn't show) - a Text that itself
