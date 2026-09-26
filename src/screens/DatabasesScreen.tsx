@@ -73,9 +73,9 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
-import { useDockBeads } from '../navigation/navDock';
+import { useDockBeads, useTopBack } from '../navigation/navDock';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
-import SearchCorner from '../components/SearchCorner';
+import { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useBlurTarget } from '../components/GlassTarget';
 import { CHROME_TOP } from '../constants/rail';
@@ -197,12 +197,13 @@ export default function DatabasesScreen() {
   const databasesInsets = useSafeAreaInsets();
   const dockClear = useDockClearance();
   // "Більше" - a tab's own root: its way back steps to the desk before
-  // it (the left bead is the way back on every screen now), settings on
-  // the right. Search across everything went to the top-left corner
-  // (SearchCorner, in the render).
+  // it and stands at the top-left of the desks bar (TopNavBar); search
+  // across everything is on the left bead again, settings on the right.
   const toPreviousDesk = useGoToPreviousDesk('Більше');
+  useTopBack(toPreviousDesk);
+  const navSpace = useTopNavOn() ? TOP_NAV_SPACE : 0;
   useDockBeads(
-    databasesFocused && toPreviousDesk ? { icon: 'arrow-back', onPress: toPreviousDesk } : null,
+    databasesFocused ? { icon: 'search-outline', onPress: () => navigation.navigate('Search') } : null,
     // A gear now, not "...": "туди навіть іконку можна повісити з
     // шестеренкою, щоб було зрозуміло, що це налаштування" - now that
     // Settings is a real menu of sections (see SettingsScreen), the
@@ -866,7 +867,7 @@ export default function DatabasesScreen() {
           <ScrollView
             contentContainerStyle={[
               styles.content,
-              { paddingTop: databasesInsets.top + CHROME_TOP + 8 },
+              { paddingTop: databasesInsets.top + CHROME_TOP + 8 + navSpace },
             ]}
           >
             {/* The board. Tiles are placed, not flowed - see packTiles for
@@ -1120,9 +1121,6 @@ export default function DatabasesScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Search across everything, in the top-left corner for now - see
-          SearchCorner. It opens the search screen, as the bead did. */}
-      <SearchCorner visible={databasesFocused} onOpen={() => navigation.navigate('Search')} />
       {/* Same fixed gradient as Documents/Calendar. 1px bled past every edge
           (see the -1/+2 below) - windowWidth/Height can round to a hair
           less than the actual screen, leaving a sliver of the default

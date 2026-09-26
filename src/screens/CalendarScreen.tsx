@@ -54,7 +54,7 @@ import { extractPreview } from '../utils/documentPreview';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher } from '../navigation/navDock';
+import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher, useTopBack } from '../navigation/navDock';
 import {
   MONTH_FULL,
   WEEKDAY_SHORT,
@@ -78,7 +78,7 @@ import { useDockClearance } from '../navigation/dockGeometry';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 import { listenError } from '../utils/listenError';
-import SearchCorner from '../components/SearchCorner';
+import { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
 
 // calendarPlate carries its own marginHorizontal:16 on each side, so the
@@ -459,8 +459,12 @@ export default function CalendarScreen() {
   const calendarBlurTarget = useBlurTarget();
   const calendarFocused = useIsFocused();
   const calendarInsets = useSafeAreaInsets();
-  const capsuleTop = calendarInsets.top + CHROME_TOP + CAPSULE_DROP;
-  const headerPadTop = Math.max(calendarInsets.top + 8, capsuleTop - headerContentHeight - HEADER_GAP);
+  // The desks bar stands at the top on a phone (TopNavBar): everything
+  // here starts below it.
+  const topNavOn = useTopNavOn();
+  const navSpace = topNavOn ? TOP_NAV_SPACE : 0;
+  const capsuleTop = calendarInsets.top + CHROME_TOP + CAPSULE_DROP + navSpace;
+  const headerPadTop = Math.max(calendarInsets.top + 8 + navSpace, capsuleTop - headerContentHeight - HEADER_GAP);
   // Mirrors the embedded note editor's own internal state (see
   // DocumentEditorScreen's onSelectModeChange/onSaveStatusChange) so this
   // screen's own header capsule can show the right icon/checkmark for
@@ -776,16 +780,14 @@ export default function CalendarScreen() {
   // they have nothing to do with - the user's call. Published AND drawn
   // would be the same control twice, which is the one thing the dock's
   // whole publish/subscribe shape exists to avoid.
-  // On a phone the left bead is the way back now - to the desk before
-  // this one ("кнопка назад є одним із головних якорів") - and search
-  // went to the top-left corner (SearchCorner, below), still opening the
-  // diary. On a pointer the column head keeps search as it was.
+  // The way back - to the desk before this one - stands at the top-left
+  // of the desks bar (TopNavBar); search, opening the diary, is on the
+  // left bead again.
   const toPreviousDesk = useGoToPreviousDesk('Календар');
+  useTopBack(toPreviousDesk);
   const searchBead = calendarFocused
     ? { icon: 'search-outline', onPress: () => navigation.navigate('Diary') }
     : null;
-  const backBead =
-    calendarFocused && toPreviousDesk ? { icon: 'arrow-back', onPress: toPreviousDesk } : null;
   const todayBead = calendarFocused
       ? {
           icon: 'today-outline',
@@ -813,7 +815,7 @@ export default function CalendarScreen() {
   // верхньою кнопкою під ним з'явиться ще одна кнопка(заголовок)
   // розгортання карток історії".
   const calendarActions = null;
-  useDockBeads(pointerDensity ? null : backBead, pointerDensity ? null : todayBead);
+  useDockBeads(pointerDensity ? null : searchBead, pointerDensity ? null : todayBead);
   useDockActions(pointerDensity ? null : calendarActions);
   // The same list, for the column head. A bead and an action differ only
   // in where the dock puts them, and this row has no such two places.
@@ -1441,9 +1443,6 @@ export default function CalendarScreen() {
         containerHRef.current = e.nativeEvent.layout.height;
         updatePageShift();
       }}>
-      {/* Search, in the top-left corner for now: it opens the diary, as
-          the bead it replaced did. Phone only - see backBead. */}
-      <SearchCorner visible={!pointerDensity && calendarFocused} onOpen={() => navigation.navigate('Diary')} />
       {/* The theme's own ground - drawn by hand here before, so it stood
           on the colour theme's brown gradient whatever the setting said.
           The daily-note editor below (`noteArea`) stays white on its own
@@ -1907,7 +1906,7 @@ export default function CalendarScreen() {
               what read as a blink at the hand-over. */}
           {dayFeedLoaded && dayFeed.length === 0 ? (
             <Animated.Text
-              style={[styles.feedEmpty, styles.overviewEmpty, { paddingTop: calendarInsets.top + 24 }, overviewLateStyle]}
+              style={[styles.feedEmpty, styles.overviewEmpty, { paddingTop: calendarInsets.top + 24 + navSpace }, overviewLateStyle]}
             >
               Ще немає жодного заповненого дня
             </Animated.Text>
@@ -1919,7 +1918,7 @@ export default function CalendarScreen() {
                 {
                   // The first page, unscrolled, stands where the page
                   // shrinks to; the last can still be scrolled up there.
-                  paddingTop: Math.max(calendarInsets.top, miniTop - OVERVIEW_LABEL_H),
+                  paddingTop: Math.max(calendarInsets.top + navSpace, miniTop - OVERVIEW_LABEL_H),
                   paddingBottom: Math.max(overviewClear, (containerHRef.current || windowHeight) - miniTop - miniH - OVERVIEW_GAP),
                 },
               ]}

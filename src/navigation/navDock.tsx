@@ -92,6 +92,10 @@ export type DockTargets = (path: string) => (node: View | null) => void;
 // standing in a database's root there is nothing to show, and leaving
 // the database is exactly the thing you want under your thumb.
 export type DockLeave = { icon: string; onLeave: () => void };
+// The way back on the four desks' own screens, drawn at the TOP-LEFT of
+// the navigation bar (TopNavBar) rather than in the dock - the user's
+// Notion-style plan. `dimmed`: in its place, nowhere to go.
+export type TopBack = { onPress: () => void; dimmed: boolean };
 
 // What this screen can DO - the other half of the dock's stack.
 //
@@ -168,6 +172,8 @@ type Value = {
   publishBeads: (id: string, beads: { left: DockBead | null; right: DockBead | null } | null) => void;
   leave: DockLeave | null;
   publishLeave: (leave: DockLeave | null) => void;
+  topBack: TopBack | null;
+  publishTopBack: (back: TopBack | null) => void;
   publish: (context: DockContext | null) => void;
   // Stepped out of, without being given up: the context is still there,
   // one press brings it back. Lives here rather than in the dock because
@@ -328,6 +334,10 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
     (next: DockTargets | null) => setTargetBox((prev) => (prev.fn === next ? prev : { fn: next })),
     []
   );
+  const [topBack, setTopBack] = useState<TopBack | null>(null);
+  const publishTopBack = useCallback((next: TopBack | null) => {
+    setTopBack((prev) => (prev === next || (prev && next && prev.onPress === next.onPress && prev.dimmed === next.dimmed) ? prev : next));
+  }, []);
   const [leaveBox, setLeaveBox] = useState<{ value: DockLeave | null }>({ value: null });
   const leave = leaveBox.value;
   const publishLeave = useCallback((next: DockLeave | null) => {
@@ -433,6 +443,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishBeads,
       leave,
       publishLeave,
+      topBack,
+      publishTopBack,
       targets,
       publishTargets,
       hidden,
@@ -460,6 +472,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishBeads,
       leave,
       publishLeave,
+      topBack,
+      publishTopBack,
       targets,
       publishTargets,
       hidden,
@@ -547,6 +561,27 @@ export function useDockLeave(icon: string, onLeave: () => void, enabled = true) 
     publish({ icon, onLeave: stable });
     return () => publish(null);
   }, [publish, focused, enabled, icon, stable]);
+}
+
+// What one of the four desks publishes as its way back, for TopNavBar.
+// Same stable-wrapper rule as everything else here: the handler can
+// change every render, the published one does not.
+export function useTopBack(onPress: (() => void) | null, enabled = true) {
+  const publish = useContext(NavDockContext)?.publishTopBack;
+  const focused = useIsFocused();
+  const ref = useRef(onPress);
+  ref.current = onPress;
+  const stable = useCallback(() => ref.current?.(), []);
+  const dimmed = !onPress;
+  useEffect(() => {
+    if (!publish || !focused || !enabled) return;
+    publish({ onPress: stable, dimmed });
+    return () => publish(null);
+  }, [publish, focused, enabled, stable, dimmed]);
+}
+
+export function useNavTopBack(): TopBack | null {
+  return useContext(NavDockContext)?.topBack ?? null;
 }
 
 export function useNavDockLeave(): DockLeave | null {

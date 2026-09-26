@@ -53,6 +53,8 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
+import SearchField from '../components/SearchField';
+import { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
@@ -63,7 +65,7 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import DocumentCard from '../components/DocumentCard';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
-import { useDockActions, useDockBeads, useDockShowContext, useNavDockFace } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useTopBack } from '../navigation/navDock';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
@@ -529,7 +531,11 @@ export default function DocumentsScreen({
       ? Math.floor((listWidth - 10) / 2)
       : undefined;
   const insets = useSafeAreaInsets();
-  const chromeTop = insets.top + CHROME_TOP;
+  // On the desk's own screen the desks bar stands at the top (TopNavBar),
+  // and everything here starts below it.
+  const topNavOn = useTopNavOn();
+  const onDesk = !standalone && !inPane && topNavOn;
+  const chromeTop = insets.top + CHROME_TOP + (onDesk ? TOP_NAV_SPACE : 0);
   const chromeBottom = chromeTop + chromeHeight + 8;
   // The island is drawn through the portal, over the whole window, so it
   // has to withdraw when this screen isn't the one on show.
@@ -585,9 +591,21 @@ export default function DocumentsScreen({
   // that never change, standing beside the stack and not moving with it.
   // The user's own arrangement, and Samsung's own reasoning - a pile of
   // cards is for what changes.
+  useTopBack(back, onDesk);
   useDockBeads(
     isFocused && !(isTwoPane && !!openDoc && paneFullscreen)
-      ? { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
+      ? onDesk
+        ? // On the desk's own screen the way back is at the top-left of
+          // the desks bar (TopNavBar), and search is back on this bead.
+          {
+            icon: searchOpen ? 'close-outline' : 'search-outline',
+            active: searchOpen,
+            onPress: () => {
+              setSearchOpen((v) => !v);
+              setSearchText('');
+            },
+          }
+        : { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
       : null,
     isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen)
       ? {
@@ -1262,7 +1280,7 @@ export default function DocumentsScreen({
             live inside the view it blurs. */}
         {/* Search, in the top-left corner for now - see SearchCorner. */}
         <SearchCorner
-          visible={isFocused && !isSelectMode && !(isTwoPane && !!openDoc && paneFullscreen)}
+          visible={!onDesk && isFocused && !isSelectMode && !(isTwoPane && !!openDoc && paneFullscreen)}
           open={searchOpen}
           query={searchText}
           onChangeQuery={setSearchText}
@@ -1283,9 +1301,23 @@ export default function DocumentsScreen({
           {searchOpen && (
             // Fades down into place: the pull that opens it is a slow
             // movement, and the field arriving instantly read as a jolt.
-            // The field is the corner's (SearchCorner, below); this only
-            // keeps its room so the tabs and the list start under it.
-            <View style={{ height: searchCornerHeight(windowWidth) + 8 }} />
+            onDesk ? (
+              <SearchField
+                autoFocus
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="Пошук документів"
+                onClose={() => {
+                  setSearchText('');
+                  setSearchOpen(false);
+                }}
+                style={styles.searchRow}
+              />
+            ) : (
+              // The field is the corner's (SearchCorner, below); this only
+              // keeps its room so the tabs and the list start under it.
+              <View style={{ height: searchCornerHeight(windowWidth) + 8 }} />
+            )
           )}
           {!searchingAlone && groups.length > 0 && !groupsRowHidden && (
             // No TabsTunnel here any more: it drew a capsule blending
@@ -2172,6 +2204,11 @@ const makeStyles = (t: Theme) =>
   // "картка все-таки повинна стати вужчою під рівень папок".
   wideRow: {
     paddingHorizontal: 20,
+  },
+  searchRow: {
+    marginLeft: 20,
+    marginRight: 20,
+    marginBottom: 8,
   },
   // Still a row even though the capsule has left it: TabsTunnel's inner
   // `flex: 1` only means "the rest of the width" inside a row.

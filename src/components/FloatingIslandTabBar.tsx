@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
-import { useIsFocused } from '@react-navigation/native';
+import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
+import TopNavBar, { useTopNavOn } from './TopNavBar';
+import { openCapture } from './CaptureWindow';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
 
 // Outline glyphs at 24, the same set and the same size as everything else
@@ -114,8 +116,15 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
     [state.routes, state.index, liveIndex, navigation, setDockHidden]
   );
 
+  // THE DESKS MOVED TO THE TOP on the four desks' own screens (see
+  // TopNavBar) - the dock keeps them only on an open board, which is
+  // inside the boards tab but is not one of those screens.
+  const topNavOn = useTopNavOn();
+  const onBoard =
+    state.routes[state.index]?.name === 'Дошки' &&
+    getFocusedRouteNameFromRoute(state.routes[state.index]) === 'Board';
   useDockBase(
-    tabsFocused
+    tabsFocused && (onBoard || !topNavOn)
       ? {
           kind: 'desks',
           icon: ICON_BY_ROUTE[state.routes[state.index]?.name] ?? 'ellipse-outline',
@@ -129,5 +138,17 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
       : null
   );
 
-  return null;
+  if (!tabsFocused || onBoard || !topNavOn) return null;
+  return (
+    <TopNavBar
+      desks={state.routes.map((route, index) => ({
+        key: route.key,
+        label: route.name,
+        icon: ICON_BY_ROUTE[route.name] ?? 'ellipse-outline',
+        active: liveIndex === index,
+        onPress: desks[index].onPress,
+      }))}
+      onLongPress={openCapture}
+    />
+  );
 }

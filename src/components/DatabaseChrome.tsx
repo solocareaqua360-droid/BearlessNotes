@@ -15,10 +15,12 @@ import Menu from './surfaces/Menu';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import SearchCorner, { searchCornerHeight } from './SearchCorner';
+import SearchField, { searchFieldSides } from './SearchField';
+import { TOP_NAV_SPACE, useTopNavOn } from './TopNavBar';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
-import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useTopBack } from '../navigation/navDock';
 import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
@@ -146,6 +148,11 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // Ignored on a phone; the caller shows the same thing as an overlay
   // there.
   pane?: ReactNode;
+  // One of the four desks' own screens (the boards list at its tab): the
+  // desks bar stands at the top (TopNavBar) with the way back in its
+  // corner, the content starts below it, and search is back on the
+  // dock's left bead.
+  topNav?: boolean;
 };
 
 export default function DatabaseChrome<T extends { id: string }>({
@@ -167,6 +174,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   children,
   overlay,
   pane,
+  topNav: topNavWanted,
 }: DatabaseChromeProps<T>) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -186,6 +194,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   const [columnWidth, setColumnWidth] = useState(0);
   const blurTarget = useBlurTarget();
   const isFocused = useIsFocused();
+  const topNavOn = useTopNavOn();
 
   // The same tree the documents list publishes, from every other
   // database that has one. Not from a pane: two publishers would fight
@@ -227,7 +236,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   // The chrome floats over the cards, so its height decides where the
   // first one rests.
   const [chromeHeight, setChromeHeight] = useState(0);
-  const chromeTop = insets.top + CHROME_TOP;
+  const topNav = !!topNavWanted && topNavOn;
+  const chromeTop = insets.top + CHROME_TOP + (topNav ? TOP_NAV_SPACE : 0);
   const chromeBottom = chromeTop + chromeHeight + 8;
   // Searching takes the screen - but only while it is actually being
   // typed. With the keyboard down the field is a field like any other,
@@ -262,8 +272,24 @@ export default function DatabaseChrome<T extends { id: string }>({
           list.setIsSearching(false);
         }
       : folderUp ?? onBack ?? null;
+  useTopBack(back, !!topNav);
   useDockBeads(
-    isFocused ? { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back } : null,
+    isFocused
+      ? topNav
+        ? {
+            icon: list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline',
+            active: list.isSearching,
+            onPress: () => {
+              // While selecting, this is the way OUT of selecting.
+              if (list.isSelectMode) {
+                list.toggleSelectMode();
+                return;
+              }
+              list.setIsSearching((prev) => !prev);
+            },
+          }
+        : { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
+      : null,
     isFocused && !list.isSelectMode && !searchingAlone && onAdd
       ? {
           icon: addIcon ?? 'add-outline',
@@ -468,7 +494,7 @@ export default function DatabaseChrome<T extends { id: string }>({
         )}
 
         <SearchCorner
-          visible={isFocused && !list.isSelectMode}
+          visible={!topNav && isFocused && !list.isSelectMode}
           open={list.isSearching}
           query={list.searchQuery}
           onChangeQuery={list.setSearchQuery}
@@ -482,9 +508,22 @@ export default function DatabaseChrome<T extends { id: string }>({
         {/* The field itself is the corner's (SearchCorner, drawn over
             the screen); this only keeps its room, so the list starts
             below it rather than under it. */}
-        {list.isSearching && (
-          <View style={{ height: searchCornerHeight(windowWidth) + 8, marginTop: chromeBottom }} />
-        )}
+        {list.isSearching &&
+          (topNav ? (
+            <SearchField
+              autoFocus
+              value={list.searchQuery}
+              onChangeText={list.setSearchQuery}
+              placeholder={searchPlaceholder}
+              onClose={() => {
+                list.setSearchQuery('');
+                list.setIsSearching(false);
+              }}
+              style={[{ marginBottom: 8, marginTop: chromeBottom }, searchFieldSides(railSide)]}
+            />
+          ) : (
+            <View style={{ height: searchCornerHeight(windowWidth) + 8, marginTop: chromeBottom }} />
+          ))}
 
         {/* Only what floats above the cards pushes them down; once a chip
             row or the search field has already taken that space, the
