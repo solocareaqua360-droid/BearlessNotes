@@ -7,7 +7,7 @@ import DockFrost from './DockFrost';
 import { GlassPortal } from './GlassPortal';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { CHROME_TOP } from '../constants/rail';
-import { DOCK_PIECE_RADIUS, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
+import { DOCK_PIECE_RADIUS, dockCardHeight, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
 import { DockContext, useNavDockOwnContext, useNavDockTargets, useNavTopBack } from '../navigation/navDock';
 import { FONT_MEDIUM, FONT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
@@ -39,6 +39,17 @@ const PIECE_H = TOP_NAV_H - PLATE_PAD * 2;
 const PILL_W = 44;
 const GAP = 6;
 
+// THE SAME CORNERS AS THE DOCK - in shape, not in points. The same 14
+// on a piece half as tall is a curve that takes twice the share of it,
+// and read as rounder: "радіуси у цій смужці більші, ніж у нижнього
+// дока". So the pieces' corner is the dock's scaled by how much shorter
+// they are than its pieces, and the plate's stays concentric with them
+// (piece + padding), exactly as the dock's plate is with its own.
+function cornersFor(windowWidth: number) {
+  const piece = Math.round((DOCK_PIECE_RADIUS * PIECE_H) / dockCardHeight(windowWidth));
+  return { piece, plate: piece + PLATE_PAD };
+}
+
 // Whether the bar is drawn at all: on a touch screen. With a pointer the
 // desktop layout keeps the desks where it has them - this is a phone
 // experiment, and the desktop is not to be broken by it.
@@ -63,6 +74,7 @@ export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; on
   const { width: windowWidth } = useWindowDimensions();
   const back = useNavTopBack();
   const rowWidth = dockRowWidth(windowWidth);
+  const corners = cornersFor(windowWidth);
   const plateWidth = rowWidth - TOP_NAV_H - GAP;
   const innerWidth = plateWidth - PLATE_PAD * 2;
   // The open desk takes whatever the plate has left once the closed desks
@@ -106,7 +118,7 @@ export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; on
           accessibilityLabel="Назад"
           style={{ width: TOP_NAV_H, height: TOP_NAV_H }}
         >
-          <DockFrost style={[styles.piece, lift]} radius={DOCK_PIECE_RADIUS}>
+          <DockFrost style={[styles.piece, lift]} radius={corners.plate}>
             <Ionicons
               name="arrow-back"
               size={21}
@@ -117,9 +129,9 @@ export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; on
         </Pressable>
 
         {/* The plate, and on it whichever of the two rows is in front. */}
-        <View style={[styles.plate, lift, { width: plateWidth }]}>
-          <DockFrost style={StyleSheet.absoluteFill} radius={DOCK_PIECE_RADIUS + PLATE_PAD} />
-          <View style={styles.viewport}>
+        <View style={[styles.plate, lift, { width: plateWidth, borderRadius: corners.plate }]}>
+          <DockFrost style={StyleSheet.absoluteFill} radius={corners.plate} />
+          <View style={[styles.viewport, { borderRadius: corners.piece }]}>
             <Animated.View
               style={[styles.layer, desksStyle]}
               pointerEvents={path ? 'none' : 'box-none'}
@@ -127,6 +139,7 @@ export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; on
               {desks.map((desk) => (
                 <DeskPill
                   key={desk.key}
+                  radius={corners.piece}
                   desk={desk}
                   openWidth={openWidth}
                   onLongPress={onLongPress}
@@ -137,7 +150,7 @@ export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; on
             </Animated.View>
             {shownPath && (
               <Animated.View style={[styles.layer, pathStyle]} pointerEvents={path ? 'box-none' : 'none'}>
-                <PathRow path={shownPath} ink={theme.glass.ink} inkMuted={theme.glass.inkMuted} />
+                <PathRow path={shownPath} radius={corners.piece} ink={theme.glass.ink} inkMuted={theme.glass.inkMuted} />
               </Animated.View>
             )}
           </View>
@@ -151,12 +164,14 @@ export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; on
 // the one closing gives up exactly what the one opening takes, and the
 // name opens with the room it is given rather than all at once.
 function DeskPill({
+  radius,
   desk,
   openWidth,
   onLongPress,
   ink,
   inkMuted,
 }: {
+  radius: number;
   desk: TopDesk;
   openWidth: number;
   onLongPress?: () => void;
@@ -191,7 +206,7 @@ function DeskPill({
         accessibilityLabel={desk.label}
         style={styles.fill}
       >
-        <DockFrost style={[styles.piece, styles.clip]} radius={DOCK_PIECE_RADIUS}>
+        <DockFrost style={[styles.piece, styles.clip]} radius={radius}>
           <Ionicons
             name={(desk.active ? desk.icon.replace(/-outline$/, '') : desk.icon) as keyof typeof Ionicons.glyphMap}
             size={20}
@@ -212,19 +227,19 @@ function DeskPill({
 // root), then the folders down to the one you are in. Every crumb but the
 // last is a way up; a card being carried can be stepped into them too
 // (the targets the dock's own path registered).
-function PathRow({ path, ink, inkMuted }: { path: PathContext; ink: string; inkMuted: string }) {
+function PathRow({ path, radius, ink, inkMuted }: { path: PathContext; radius: number; ink: string; inkMuted: string }) {
   const targets = useNavDockTargets();
   const scroll = useRef<ScrollView>(null);
   return (
     <>
       <View ref={targets?.('')} collapsable={false}>
         <Pressable onPress={() => path.onGo('')} accessibilityLabel="Корінь" style={{ width: PILL_W, height: PIECE_H }}>
-          <DockFrost style={styles.piece} radius={DOCK_PIECE_RADIUS}>
+          <DockFrost style={styles.piece} radius={radius}>
             <Ionicons name={path.icon as keyof typeof Ionicons.glyphMap} size={20} color={ink} />
           </DockFrost>
         </Pressable>
       </View>
-      <DockFrost style={[styles.piece, styles.crumbsPiece]} radius={DOCK_PIECE_RADIUS}>
+      <DockFrost style={[styles.piece, styles.crumbsPiece]} radius={radius}>
         <ScrollView
           ref={scroll}
           horizontal
@@ -270,14 +285,12 @@ const styles = StyleSheet.create({
   },
   plate: {
     height: TOP_NAV_H,
-    borderRadius: DOCK_PIECE_RADIUS + PLATE_PAD,
   },
   // The plate's inside, clipped: the rows roll through its edges.
   viewport: {
     flex: 1,
     margin: PLATE_PAD,
     overflow: 'hidden',
-    borderRadius: DOCK_PIECE_RADIUS,
   },
   layer: {
     position: 'absolute',
