@@ -74,6 +74,8 @@ import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import { useDockBeads } from '../navigation/navDock';
+import { useGoToPreviousDesk } from '../navigation/deskOrder';
+import SearchCorner from '../components/SearchCorner';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useBlurTarget } from '../components/GlassTarget';
 import { CHROME_TOP } from '../constants/rail';
@@ -194,11 +196,13 @@ export default function DatabasesScreen() {
   const databasesFocused = useIsFocused();
   const databasesInsets = useSafeAreaInsets();
   const dockClear = useDockClearance();
-  // "Більше" - a tab's own root, so no way OUT (nothing to leave to);
-  // search on the left, the way every database's dock has it, settings
-  // where the old capsule kept it, on the right.
+  // "Більше" - a tab's own root: its way back steps to the desk before
+  // it (the left bead is the way back on every screen now), settings on
+  // the right. Search across everything went to the top-left corner
+  // (SearchCorner, in the render).
+  const toPreviousDesk = useGoToPreviousDesk('Більше');
   useDockBeads(
-    databasesFocused ? { icon: 'search-outline', onPress: () => navigation.navigate('Search') } : null,
+    databasesFocused && toPreviousDesk ? { icon: 'arrow-back', onPress: toPreviousDesk } : null,
     // A gear now, not "...": "туди навіть іконку можна повісити з
     // шестеренкою, щоб було зрозуміло, що це налаштування" - now that
     // Settings is a real menu of sections (see SettingsScreen), the
@@ -1116,6 +1120,9 @@ export default function DatabasesScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Search across everything, in the top-left corner for now - see
+          SearchCorner. It opens the search screen, as the bead did. */}
+      <SearchCorner visible={databasesFocused} onOpen={() => navigation.navigate('Search')} />
       {/* Same fixed gradient as Documents/Calendar. 1px bled past every edge
           (see the -1/+2 below) - windowWidth/Height can round to a hair
           less than the actual screen, leaving a sliver of the default

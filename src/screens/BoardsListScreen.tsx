@@ -27,6 +27,7 @@ import { BoardCard, BoardColumn, BoardItem } from '../types';
 import { readBoardPart } from '../utils/boardStorage';
 import BoardMiniMap from '../components/BoardMiniMap';
 import DatabaseChrome from '../components/DatabaseChrome';
+import { useGoToPreviousDesk } from '../navigation/deskOrder';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import ProjectBadge from '../components/ProjectBadge';
 import TagPicker from '../components/TagPicker';
@@ -167,6 +168,9 @@ export default function BoardsListScreen({
   // path, so boards get the explorer for free now that they carry tags -
   // see useExplorer, which is this machinery lifted out of the documents
   // screen so the two cannot drift apart.
+  // The tab's own root has no stack to pop; its way back steps to the
+  // desk before it (see deskOrder). Not from inside another screen's pane.
+  const toPreviousDesk = useGoToPreviousDesk('Дошки');
   const explorer = useExplorer<BoardItem>({
     kind: 'board',
     collection: 'boards',
@@ -502,11 +506,10 @@ export default function BoardsListScreen({
       list={list}
       accent={accent}
       accentGlass={accentGlass}
-      // A tab's own root has nowhere to go back to and the island at its
-      // foot; a COPY pushed over the tile board has a way back and no
-      // island, like every other pushed screen.
+      // A COPY pushed over the tile board goes back to it; the tab's own
+      // root steps to the desk before it; inside a pane, nowhere.
       hasIsland={!standalone}
-      onBack={standalone ? () => navigation.goBack() : undefined}
+      onBack={standalone ? () => navigation.goBack() : inPane ? undefined : toPreviousDesk ?? undefined}
       leaveIcon="easel-outline"
       // In another screen's pane the rail stands on the window's OUTER
       // edge, which is the left one - against the divider it would be in

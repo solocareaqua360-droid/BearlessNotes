@@ -129,7 +129,8 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
+import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
@@ -227,9 +228,8 @@ export default function CustomDatabaseScreen({
   const dockClear = useDockClearance();
   const showContext = useDockShowContext();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  // The way out of this database lives in the dock now, under the thumb,
-  // the same as every other database (see DatabaseChrome).
-  useDockLeave('grid-outline', () => navigation.goBack());
+  // The way out of this database is the dock's left bead now (see the
+  // useDockBeads call below), the same as every other database.
   const route = useRoute();
   const params = (route.params ?? {}) as {
     databaseId?: string;
@@ -761,22 +761,21 @@ export default function CustomDatabaseScreen({
   // its parameters, choosing, and the rare housekeeping. The saved views
   // are a fourth tab of the parameters window rather than a fifth
   // button: a view IS a saved set of those parameters.
-  useDockBeads(
-    isFocused && !isSelectMode
-      ? {
-          icon: isSearching ? 'close-outline' : 'search-outline',
-          active: isSearching,
-          onPress: () => {
-            // Closing the search clears it too - leaving a filter
-            // applied behind a hidden input is how a database looks
-            // half-empty for no visible reason.
-            setIsSearching((prev) => {
-              if (prev) setSearchQuery('');
-              return !prev;
-            });
-          },
+  // THE WAY BACK on the left ("кнопка назад є одним із головних
+  // якорів"), one step at a time: out of selecting, out of searching
+  // (which clears it too - a filter left behind a hidden input is how a
+  // database looks half-empty for no visible reason), then out of the
+  // database. Search went to the corner (SearchCorner).
+  const back = isSelectMode
+    ? () => toggleSelectMode()
+    : isSearching
+      ? () => {
+          setSearchQuery('');
+          setIsSearching(false);
         }
-      : null,
+      : () => navigation.goBack();
+  useDockBeads(
+    isFocused ? { icon: 'arrow-back', onPress: back } : null,
     isFocused && !isSelectMode
       ? { icon: 'albums-outline', badge: 'add-circle-outline', onPress: openNewRow }
       : null
@@ -2516,6 +2515,21 @@ export default function CustomDatabaseScreen({
           records a screenful. What is left of the header is the line the
           tabs start on - the same one as every other database. */}
       <View style={{ height: insets.top + CHROME_TOP + 8 }} />
+      <SearchCorner
+        visible={isFocused && !isSelectMode}
+        open={isSearching}
+        query={searchQuery}
+        onChangeQuery={setSearchQuery}
+        placeholder="Пошук у базі"
+        onOpen={() => setIsSearching(true)}
+        onClose={() => {
+          setSearchQuery('');
+          setIsSearching(false);
+        }}
+      />
+      {/* The open field is the corner's, over the screen; this keeps its
+          room so the rows start below it. */}
+      {isSearching && <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
 
       {/* Which vigляд is on screen - "Поточні зміни" (the working area,
           always first, per its own comment on activeViewId) plus every
@@ -2882,19 +2896,6 @@ export default function CustomDatabaseScreen({
         </View>
       </GlassLayer>
 
-      {isSearching && (
-        <View style={styles.searchRow}>
-          <Ionicons name="search" size={14} color="#9CA3AF" />
-          <TextInput
-            autoFocus
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Пошук у базі"
-            placeholderTextColor={GLASS_TEXT_FAINT}
-            style={styles.searchInput}
-          />
-        </View>
-      )}
 
       {viewMode === 'schedule' && activeView?.scheduleConfig ? (
         // Its own branch, ahead of the loading/empty gates below: a

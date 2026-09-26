@@ -75,6 +75,18 @@ export function dockRowWidth(windowWidth: number): number {
   return Math.min(windowWidth, PHONE_W) - dockEdgeInset(windowWidth) * 2;
 }
 
+// The corner every piece of the dock is cut with (ContextDock's own
+// DOCK_RADIUS reads it from here).
+export const DOCK_PIECE_RADIUS = 14;
+
+// Where the dock's row starts from the window's left edge - the row is
+// centred, so on a phone this is the edge inset and on anything wider
+// the room either side. What lines something up with the dock's LEFT
+// edge reads this rather than working it out again.
+export function dockRowLeft(windowWidth: number): number {
+  return (windowWidth - dockRowWidth(windowWidth)) / 2;
+}
+
 export function useDockRowWidth(): number {
   const { width } = useWindowDimensions();
   return dockRowWidth(width);

@@ -58,8 +58,8 @@ import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
-import SearchField from '../components/SearchField';
+import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
+import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import RenamePrompt from '../components/RenamePrompt';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { confirm, notify } from '../components/surfaces/Ask';
@@ -179,20 +179,21 @@ export default function TasksScreen() {
   const [creating, setCreating] = useState(false);
   const [creatingBusy, setCreatingBusy] = useState(false);
   const isFocused = useIsFocused();
-  // Search on the left and making a task on the right, the way every
-  // database has them. Neither existed on this screen: tasks are
-  // one-liners scattered over every note, and finding one meant scrolling.
-  useDockBeads(
-    isFocused && !isSelectMode
-      ? {
-          icon: isSearching ? 'close-outline' : 'search-outline',
-          active: isSearching,
-          onPress: () => {
-            if (isSearching) setSearchQuery('');
-            setIsSearching((prev) => !prev);
-          },
+  // The way back on the left and making a task on the right. Back is the
+  // dock's left bead on every screen now ("кнопка назад є одним із
+  // головних якорів"), one step at a time: out of selecting, out of
+  // searching, then out of the screen. Search went to the corner
+  // (SearchCorner).
+  const back = isSelectMode
+    ? () => toggleSelectMode()
+    : isSearching
+      ? () => {
+          setSearchQuery('');
+          setIsSearching(false);
         }
-      : null,
+      : () => navigation.goBack();
+  useDockBeads(
+    isFocused ? { icon: 'arrow-back', onPress: back } : null,
     isFocused && !isSelectMode
       ? { icon: 'checkbox-outline', badge: 'add-circle-outline', onPress: () => setCreating(true) }
       : null
@@ -262,7 +263,6 @@ export default function TasksScreen() {
   // can be done TO on the stack's second card. This screen is PUSHED
   // over the tabs, and tasks are made inside a document, so there is no
   // "+" - no bead on the right.
-  useDockLeave('arrow-back-outline', () => navigation.goBack());
   const { sortPref, selectSortField } = useSortPref('tasksPrefs');
   // Opens on the inbox, the first tab: the user wants what is still
   // unsorted before the everything-list, which now sits last.
@@ -1600,19 +1600,21 @@ export default function TasksScreen() {
           </>
         )}
 
-        {isSearching && (
-          <SearchField
-            autoFocus
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Пошук справ"
-            onClose={() => {
-              setSearchQuery('');
-              setIsSearching(false);
-            }}
-            style={styles.searchRow}
-          />
-        )}
+        <SearchCorner
+          visible={isFocused && !isSelectMode}
+          open={isSearching}
+          query={searchQuery}
+          onChangeQuery={setSearchQuery}
+          placeholder="Пошук справ"
+          onOpen={() => setIsSearching(true)}
+          onClose={() => {
+            setSearchQuery('');
+            setIsSearching(false);
+          }}
+        />
+        {/* The open field is the corner's, over the screen; this keeps
+            its room so the tabs and the list start below it. */}
+        {isSearching && <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
 
         {!kanbanMode && groups.length > 0 && (
           <ProjectTabsRow
@@ -1934,10 +1936,6 @@ const makeStyles = (t: Theme) =>
   StyleSheet.create({
   container: {
     flex: 1,
-  },
-  searchRow: {
-    marginHorizontal: 20,
-    marginBottom: 8,
   },
   menuBackdrop: {
     position: 'absolute',

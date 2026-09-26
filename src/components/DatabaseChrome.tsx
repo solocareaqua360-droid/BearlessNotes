@@ -4,18 +4,17 @@ import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { useDockLeave } from '../navigation/navDock';
 import { useIsFocused } from '@react-navigation/native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import Animated, { FadeInDown, SharedValue } from 'react-native-reanimated';
+import { SharedValue } from 'react-native-reanimated';
 import { DatabaseList } from '../hooks/useDatabaseList';
 import { GlassPortal } from './GlassPortal';
 import Menu from './surfaces/Menu';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
-import SearchField, { searchFieldSides } from './SearchField';
+import SearchCorner, { searchCornerHeight } from './SearchCorner';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
@@ -220,9 +219,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   // files and links only ever arrive from inside a document.
   // Search, plus "..." where the screen still has rows for it, plus the
   // way out where there is one - one, two or three buttons.
-  // The way out went to the dock, so the top capsule is one button
-  // shorter than it used to be.
-  useDockLeave(leaveIcon ?? 'albums-outline', onBack ?? (() => {}), !!onBack);
+  // The way out is the dock's LEFT BEAD now (below), not a chevron
+  // inside its card - see `back`.
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -246,22 +244,26 @@ export default function DatabaseChrome<T extends { id: string }>({
   //
   // The rail reserved 90 points of width whether it held four capsules
   // or one; that is what leaving it buys, not the count of buttons.
-  useDockBeads(
-    isFocused
-      ? {
-          icon: list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline',
-          active: list.isSearching,
-          onPress: () => {
-            // While selecting, this is the way OUT of selecting - the one
-            // screen state you most need to be able to leave.
-            if (list.isSelectMode) {
-              list.toggleSelectMode();
-              return;
-            }
-            list.setIsSearching((prev) => !prev);
-          },
+  // THE WAY BACK, the dock's left bead on every screen this chrome
+  // dresses - "кнопка назад є одним із головних якорів". One step at a
+  // time: out of selecting, out of searching, up one folder, then out of
+  // the screen (whatever the screen says that is - a pushed copy goes
+  // back, the boards' own desk steps to the desk before it). Where there
+  // is nowhere left to go it stays in its place, dimmed.
+  const folderUp =
+    explorer?.active && explorer.path !== ''
+      ? () => explorer.onGo(explorer.path.split('/').slice(0, -1).join('/'))
+      : null;
+  const back: (() => void) | null = list.isSelectMode
+    ? () => list.toggleSelectMode()
+    : list.isSearching
+      ? () => {
+          list.setSearchQuery('');
+          list.setIsSearching(false);
         }
-      : null,
+      : folderUp ?? onBack ?? null;
+  useDockBeads(
+    isFocused ? { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back } : null,
     isFocused && !list.isSelectMode && !searchingAlone && onAdd
       ? {
           icon: addIcon ?? 'add-outline',
@@ -416,7 +418,7 @@ export default function DatabaseChrome<T extends { id: string }>({
               pointerEvents="box-none"
               onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
             >
-              {!searchingAlone && list.groups.length > 0 && !list.groupsRowHidden && (
+              {!list.isSearching && list.groups.length > 0 && !list.groupsRowHidden && (
                 <ProjectTabsRow
                   items={list.groups}
                   selected={list.groupFilter}
@@ -432,7 +434,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           </GlassPortal>
         )}
 
-        {list.tagFilter && !searchingAlone && (
+        {list.tagFilter && !list.isSearching && (
           <View style={[styles.filterRow, { marginTop: chromeBottom }]}>
             {list.tagFilter.type === 'untagged' ? (
               <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
@@ -465,27 +467,23 @@ export default function DatabaseChrome<T extends { id: string }>({
           </View>
         )}
 
+        <SearchCorner
+          visible={isFocused && !list.isSelectMode}
+          open={list.isSearching}
+          query={list.searchQuery}
+          onChangeQuery={list.setSearchQuery}
+          placeholder={searchPlaceholder}
+          onOpen={() => list.setIsSearching(true)}
+          onClose={() => {
+            list.setSearchQuery('');
+            list.setIsSearching(false);
+          }}
+        />
+        {/* The field itself is the corner's (SearchCorner, drawn over
+            the screen); this only keeps its room, so the list starts
+            below it rather than under it. */}
         {list.isSearching && (
-          // Fades down into place rather than appearing between two
-          // frames - the pull that opens it is a slow movement, and the
-          // field arriving instantly at the end of it read as a jolt.
-          <Animated.View entering={FadeInDown.duration(220)}>
-            <SearchField
-              autoFocus
-              value={list.searchQuery}
-              onChangeText={list.setSearchQuery}
-              placeholder={searchPlaceholder}
-              onClose={() => {
-                list.setSearchQuery('');
-                list.setIsSearching(false);
-              }}
-              style={[
-                styles.searchRow,
-                searchFieldSides(railSide),
-                !list.tagFilter && { marginTop: chromeBottom },
-              ]}
-            />
-          </Animated.View>
+          <View style={{ height: searchCornerHeight(windowWidth) + 8, marginTop: chromeBottom }} />
         )}
 
         {/* Only what floats above the cards pushes them down; once a chip
@@ -694,10 +692,7 @@ const makeStyles = (t: Theme) =>
     fontSize: 13,
     fontFamily: FONT_SEMIBOLD,
   },
-  // Only where it sits - the pill itself is SearchField's.
-  searchRow: {
-    marginBottom: 8,
-  },
+
   // Same floating "+" every screen uses, not a header icon.
   fabRight: {
     right: 20,

@@ -140,6 +140,9 @@ export type DockBead = {
   onLongPress?: () => void;
   active?: boolean;
   badge?: string;
+  // Standing in its place but with nowhere to go - the way back on the
+  // first desk's own root. The anchor stays put; it only goes quiet.
+  dimmed?: boolean;
 };
 
 type Value = {
@@ -230,7 +233,7 @@ function actionSignature(list: DockAction[] | null): string {
 }
 
 function beadSignature(beads: { left: DockBead | null; right: DockBead | null }): string {
-  const one = (b: DockBead | null) => (b ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}` : '-');
+  const one = (b: DockBead | null) => (b ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}:${b.dimmed ? 1 : 0}` : '-');
   return `${one(beads.left)}/${one(beads.right)}`;
 }
 

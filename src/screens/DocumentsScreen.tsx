@@ -20,7 +20,6 @@ import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 're
 import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from '../components/AttachmentImage';
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -53,7 +52,7 @@ import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } f
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
-import SearchField from '../components/SearchField';
+import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
@@ -64,7 +63,7 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import DocumentCard from '../components/DocumentCard';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
-import { useDockActions, useDockBeads, useDockLeave, useDockShowContext, useNavDockFace } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useNavDockFace } from '../navigation/navDock';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
@@ -557,7 +556,28 @@ export default function DocumentsScreen({
   // Pushed over the databases screen, this list is a database like any
   // other, and leaving it belongs under the thumb with the rest - see
   // ContextDock. The tab's own copy has nowhere to go back to.
-  useDockLeave('document-text-outline', () => navigation.goBack(), !!standalone);
+  // The bin view - declared up here because the way back (below) steps
+  // out of it.
+  const [trashOpen, setTrashOpen] = useState(false);
+  // THE WAY BACK is the dock's left bead now, on this list as on every
+  // other ("кнопка назад є одним із головних якорів"), one step at a
+  // time: out of selecting, out of searching, out of the bin, up one
+  // folder, and out of the list itself when it was pushed. This is the
+  // first desk, so its own root has nowhere to go: the bead stays, dimmed.
+  const back: (() => void) | null = isSelectMode
+    ? () => toggleSelectMode()
+    : searchOpen
+      ? () => {
+          setSearchText('');
+          setSearchOpen(false);
+        }
+      : trashOpen
+        ? () => setTrashOpen(false)
+        : explorer.active && explorer.path !== ''
+          ? explorerUp
+          : standalone
+            ? () => navigation.goBack()
+            : null;
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const showContext = useDockShowContext();
   const [, setDockFace] = useNavDockFace();
@@ -567,14 +587,7 @@ export default function DocumentsScreen({
   // cards is for what changes.
   useDockBeads(
     isFocused && !(isTwoPane && !!openDoc && paneFullscreen)
-      ? {
-          icon: searchOpen ? 'close-outline' : 'search-outline',
-          active: searchOpen,
-          onPress: () => {
-            setSearchOpen((v) => !v);
-            setSearchText('');
-          },
-        }
+      ? { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
       : null,
     isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen)
       ? {
@@ -827,7 +840,6 @@ export default function DocumentsScreen({
   // list; it keeps its tags, mirrors and arrows so that coming back is
   // coming back whole. Emptied by hand, or by time: thirty days.
   const [trashed, setTrashed] = useState<DocumentItem[]>([]);
-  const [trashOpen, setTrashOpen] = useState(false);
 
   // What the desktop rail draws beside this list - the folders it can
   // move between, and the bin. Published rather than passed, because the
@@ -1248,6 +1260,19 @@ export default function DocumentsScreen({
             also what finally gives the pills something to blur. Through
             the portal for the same reason as the island: a blur cannot
             live inside the view it blurs. */}
+        {/* Search, in the top-left corner for now - see SearchCorner. */}
+        <SearchCorner
+          visible={isFocused && !isSelectMode && !(isTwoPane && !!openDoc && paneFullscreen)}
+          open={searchOpen}
+          query={searchText}
+          onChangeQuery={setSearchText}
+          placeholder="Пошук документів"
+          onOpen={() => setSearchOpen(true)}
+          onClose={() => {
+            setSearchText('');
+            setSearchOpen(false);
+          }}
+        />
         {isFocused && !(isTwoPane && !!openDoc && paneFullscreen) && (
         <GlassPortal>
         <View
@@ -1258,23 +1283,9 @@ export default function DocumentsScreen({
           {searchOpen && (
             // Fades down into place: the pull that opens it is a slow
             // movement, and the field arriving instantly read as a jolt.
-            <Animated.View entering={FadeInDown.duration(220)} style={styles.searchWrap}>
-              {/* Closes the search outright rather than only emptying it:
-                  with the keyboard up this is the one control on the
-                  screen, and emptying a field the user is done with only
-                  leaves them somewhere they have to leave again. */}
-              <SearchField
-                autoFocus
-                value={searchText}
-                onChangeText={setSearchText}
-                placeholder="Пошук документів"
-                onClose={() => {
-                  setSearchText('');
-                  setSearchOpen(false);
-                }}
-                style={styles.searchRow}
-              />
-            </Animated.View>
+            // The field is the corner's (SearchCorner, below); this only
+            // keeps its room so the tabs and the list start under it.
+            <View style={{ height: searchCornerHeight(windowWidth) + 8 }} />
           )}
           {!searchingAlone && groups.length > 0 && !groupsRowHidden && (
             // No TabsTunnel here any more: it drew a capsule blending
@@ -2161,23 +2172,6 @@ const makeStyles = (t: Theme) =>
   // "картка все-таки повинна стати вужчою під рівень папок".
   wideRow: {
     paddingHorizontal: 20,
-  },
-  // The field, in the same glass as the pills under it. Stops short of the
-  // rail, like they do.
-  // Only where it sits - the pill itself is SearchField's.
-  // The field is drawn through the portal, in window coordinates, so the
-  // pane's cap does not reach it - it is said again here, on the wrapper.
-  // Not on the field itself: SearchField puts `style` on the capsule, so a
-  // maxWidth there would resize the pill rather than the room around it.
-  searchWrap: {
-    width: '100%',
-    maxWidth: MAX_CONTENT_WIDTH,
-    alignSelf: 'center',
-  },
-  searchRow: {
-    marginLeft: 20,
-    marginRight: 20,
-    marginBottom: 8,
   },
   // Still a row even though the capsule has left it: TabsTunnel's inner
   // `flex: 1` only means "the rest of the width" inside a row.
