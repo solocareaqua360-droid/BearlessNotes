@@ -2658,6 +2658,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             label: SELECT_FORMAT_LABELS[entry.key] ?? entry.label,
             onPress: () => convertSelectedBlocks(entry.key as BlockType),
           })),
+          // The two lines cards are cut by (see flashcardsFromNote): a
+          // thin one between a term and its explanation, a bold one
+          // between two cards. The chosen blocks BECOME the line.
+          {
+            key: 'divider-thin',
+            icon: 'remove-outline',
+            label: 'Тонка лінія',
+            onPress: () => convertSelectedToDivider('solid'),
+          },
+          {
+            key: 'divider-bold',
+            icon: 'mc:minus-thick',
+            label: 'Жирна лінія',
+            onPress: () => convertSelectedToDivider('bold'),
+          },
           {
             key: 'copy',
             icon: 'copy-outline',
@@ -4526,6 +4541,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         const nextType = currentType === type ? 'paragraph' : type;
         return buildBlock(b.id, nextType, b.text);
       })
+    );
+  }
+
+  function convertSelectedToDivider(style: 'solid' | 'bold') {
+    if (selectedIds.size === 0) return;
+    snapshotBeforeChange();
+    setBlocks((prev) =>
+      prev.map((b) => (selectedIds.has(b.id) ? { ...buildBlock(b.id, 'divider', ''), dividerStyle: style } : b))
     );
   }
 
