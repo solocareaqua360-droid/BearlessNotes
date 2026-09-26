@@ -230,22 +230,10 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
         {list.isSelectMode && (
           <Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={text} />
         )}
-        <View style={styles.rowBody}>
-          <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
-            {card.term || 'Без терміна'}
-          </Text>
-          {!!card.explanation && (
-            <Text style={[styles.rowCaption, { color: textMuted }]} numberOfLines={1}>
-              {card.explanation}
-            </Text>
-          )}
-          {isLearning(card) && card.known && (
-            <View style={styles.knownRow}>
-              <Ionicons name="checkmark-done-outline" size={13} color={textMuted} />
-              <Text style={[styles.rowCaption, { color: textMuted }]}>Вивчено</Text>
-            </View>
-          )}
-        </View>
+        {/* Laid out like a link's card: the picture's window on the
+            left, the words beside it. The term WHOLE, however long -
+            "весь текст терміну повинен бути видним" - at a smaller size
+            rather than cut; the explanation stays for the opened card. */}
         {first && (
           <View style={styles.rowThumb}>
             <AttachmentImage uri={first.uri} driveFileId={first.driveFileId} style={styles.rowThumbImage} />
@@ -256,6 +244,15 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
             )}
           </View>
         )}
+        <View style={styles.rowBody}>
+          <Text style={[styles.rowTitle, { color: text }]}>{card.term || 'Без терміна'}</Text>
+          {isLearning(card) && card.known && (
+            <View style={styles.knownRow}>
+              <Ionicons name="checkmark-done-outline" size={13} color={textMuted} />
+              <Text style={[styles.rowCaption, { color: textMuted }]}>Вивчено</Text>
+            </View>
+          )}
+        </View>
       </Pressable>
     );
   }
@@ -406,10 +403,10 @@ const makeStyles = (t: Theme) =>
     },
     row: {
       flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
+      alignItems: 'flex-start',
+      gap: 12,
       borderRadius: 14,
-      padding: 12,
+      padding: 10,
       borderWidth: 1,
       borderColor: 'rgba(176,176,176,0.5)',
       shadowColor: '#000',
@@ -420,10 +417,12 @@ const makeStyles = (t: Theme) =>
     },
     rowBody: {
       flex: 1,
-      gap: 3,
+      minWidth: 0,
+      gap: 4,
     },
     rowTitle: {
-      fontSize: 16,
+      fontSize: 14,
+      lineHeight: 19,
       fontFamily: FONT_SEMIBOLD,
     },
     rowCaption: {
@@ -435,15 +434,17 @@ const makeStyles = (t: Theme) =>
       alignItems: 'center',
       gap: 4,
     },
+    // A link card's own window: 104 across, a video's proportion.
     rowThumb: {
-      width: 56,
-      height: 56,
-      borderRadius: 10,
+      width: 104,
+      aspectRatio: 16 / 9,
+      borderRadius: 8,
       overflow: 'hidden',
+      backgroundColor: '#E5E7EB',
     },
     rowThumbImage: {
-      width: 56,
-      height: 56,
+      width: '100%',
+      height: '100%',
     },
     rowThumbCount: {
       position: 'absolute',

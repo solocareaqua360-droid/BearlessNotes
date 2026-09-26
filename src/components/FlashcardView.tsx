@@ -222,14 +222,14 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   term: {
-    fontSize: 24,
-    lineHeight: 31,
+    fontSize: 19,
+    lineHeight: 26,
     fontFamily: FONT_BOLD,
   },
   termAlone: {
     textAlign: 'center',
-    fontSize: 28,
-    lineHeight: 36,
+    fontSize: 22,
+    lineHeight: 30,
   },
   panel: {
     borderWidth: 1,
