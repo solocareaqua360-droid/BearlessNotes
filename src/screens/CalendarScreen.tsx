@@ -54,7 +54,7 @@ import { extractPreview } from '../utils/documentPreview';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher, useTopBack } from '../navigation/navDock';
+import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher, useTopBack, useTopExtras } from '../navigation/navDock';
 import {
   MONTH_FULL,
   WEEKDAY_SHORT,
@@ -822,54 +822,40 @@ export default function CalendarScreen() {
   // answer to where those cards belong: "при розгортанні календаря
   // верхньою кнопкою під ним з'явиться ще одна кнопка(заголовок)
   // розгортання карток історії".
-  // THE DOCK'S MIDDLE IS THE CALENDAR'S OWN AGAIN (2026-09-26): the desks
-  // went up to the bar at the top and left a hole, and what this screen
-  // does goes in it - «Сьогодні» moved in from the right bead, the month,
-  // the day's history, and choosing blocks. The right bead does what it
-  // does everywhere, makes something - here, text: the pencil starts
-  // writing in the day's note. While the note's blocks are being chosen,
-  // the note's own actions hold the middle instead.
+  // WHAT THE CALENDAR DOES went up to the bar's "⋯" (the month, the
+  // day's history) with choosing blocks at its very edge - the user's own
+  // arrangement: the dock's middle held things done rarely, between the
+  // two done all the time. The dock keeps just those two: search, and
+  // the pencil, which makes what can be made here - text in the day's
+  // note. While the note's blocks are being chosen, the note's own
+  // actions fill the dock's middle.
   const pencilBead = calendarFocused && !notePanelOpen
     ? { icon: 'pencil-outline', onPress: () => noteEditorRef.current?.startWriting() }
     : null;
-  const calendarActions =
-    calendarFocused && !noteSelectMode && !notePanelOpen
-      ? [
-          {
-            key: 'today',
-            icon: 'today-outline',
-            label: 'Сьогодні',
-            active: selectedKeyForDock !== todayKey,
-            onPress: jumpToToday,
-          },
-          {
-            key: 'month',
-            icon: 'calendar-outline',
-            label: 'Місяць',
-            active: isMonthExpanded,
-            onPress: () => setIsMonthExpanded((v) => !v),
-          },
-          {
-            key: 'history',
-            icon: 'time-outline',
-            label: 'Історія',
-            active: historyExpanded,
-            onPress: () => {
-              // The history lives under the opened month.
-              if (!isMonthExpanded) setIsMonthExpanded(true);
-              setHistoryExpanded((v) => !v);
-            },
-          },
-          {
-            key: 'select',
-            icon: 'checkmark-circle-outline',
-            label: 'Вибір',
-            onPress: () => noteEditorRef.current?.toggleSelectMode(),
-          },
-        ]
-      : null;
+  useTopExtras(
+    [
+      {
+        label: 'Місяць',
+        icon: 'calendar-outline',
+        checked: isMonthExpanded,
+        onPress: () => setIsMonthExpanded((v) => !v),
+      },
+      {
+        label: 'Історія дня',
+        icon: 'time-outline',
+        checked: historyExpanded,
+        onPress: () => {
+          // The history lives under the opened month.
+          if (!isMonthExpanded) setIsMonthExpanded(true);
+          setHistoryExpanded((v) => !v);
+        },
+      },
+    ],
+    { active: noteSelectMode, onPress: () => noteEditorRef.current?.toggleSelectMode() },
+    !pointerDensity
+  );
   useDockBeads(pointerDensity || notePanelOpen ? null : searchBead, pointerDensity ? null : pencilBead);
-  useDockActions(pointerDensity ? null : calendarActions);
+  useDockActions(null);
   // The same list, for the column head. A bead and an action differ only
   // in where the dock puts them, and this row has no such two places.
   const columnControls: { key: string; icon: string; active?: boolean; onPress: () => void }[] =

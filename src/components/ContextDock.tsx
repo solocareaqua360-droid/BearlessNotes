@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Rect } from 'react-native-svg';
 import { GlassPortal } from './GlassPortal';
 import DockFrost from './DockFrost';
+import { topBarFrame } from './TopNavBar';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { liftStyle } from '../theme/tokens';
@@ -414,6 +415,9 @@ function useEaseTo(target: number, ms: number): number {
 // The wrap's own vertical slack - see `wrap`. Named because the path
 // above the dock has to know where the front card's top edge is.
 const DOCK_WRAP_PAD = 6;
+// The two beads standing alone (see "JUST THE TWO") - a thumb's main
+// button, not the whole dock's height: 56, the size Android gives its own.
+const TWO_BEAD = 56;
 // The path strip's own side padding - named because its width is worked
 // out from its content plus exactly this.
 const PATH_PAD = 4;
@@ -1798,7 +1802,33 @@ export default function ContextDock() {
   const ACT_W = Math.floor((cardWidth - CARD_PAD * 2 - (showLeave ? LEAVE_W : 0)) / 4);
   const ACT_ICON = 19;
 
-
+  // JUST THE TWO: on a screen that writes rather than sorts (the documents
+  // list, the calendar, a note), what it does went up to the bar's "⋯",
+  // and the dock is the two things done most - search and making - on
+  // the bar's own two edges, the search under the way back and the
+  // making under choosing. No plate and nothing between them: the middle
+  // is the page's. Anything that does fill the middle - a selection's
+  // actions, a board's desks - brings the whole dock back.
+  if (topNavUp && !ringOwn && !desksCard && !actions?.length) {
+    const frame = topBarFrame(windowW);
+    const slot = (bead: typeof beads.left) =>
+      bead ? (
+        <Bead bead={bead} theme={theme} lift={lift} size={TWO_BEAD} height={TWO_BEAD} />
+      ) : (
+        <View style={{ width: TWO_BEAD }} />
+      );
+    return (
+      <GlassPortal>
+        <View
+          pointerEvents="box-none"
+          style={[styles.twoBeads, { bottom: DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD, left: frame.left, width: frame.width }]}
+        >
+          {slot(beads.left)}
+          {slot(beads.right)}
+        </View>
+      </GlassPortal>
+    );
+  }
 
   return (
     <GlassPortal>
@@ -2281,6 +2311,11 @@ function Bead({
 }
 
 const styles = StyleSheet.create({
+  twoBeads: {
+    position: 'absolute',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   wrap: {
     position: 'absolute',
     left: 0,

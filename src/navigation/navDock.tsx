@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { View } from 'react-native';
+import type { MenuEntry } from '../components/surfaces/Menu';
 import { useIsFocused } from '@react-navigation/native';
 
 // What the dock is showing instead of the desks.
@@ -96,6 +97,14 @@ export type DockLeave = { icon: string; onLeave: () => void };
 // the navigation bar (TopNavBar) rather than in the dock - the user's
 // Notion-style plan. `dimmed`: in its place, nowhere to go.
 export type TopBack = { onPress: () => void; dimmed: boolean };
+// The right end of the bar at the top, on the screens that write rather
+// than sort (the documents list, the calendar, a note): "⋯" opening the
+// screen's own list of what else it does, and choosing, at the very edge
+// - "виділяю я достатньо часто".
+export type TopExtras = {
+  menu: MenuEntry[] | null;
+  select: { active: boolean; onPress: () => void } | null;
+};
 
 // What this screen can DO - the other half of the dock's stack.
 //
@@ -174,6 +183,8 @@ type Value = {
   publishLeave: (leave: DockLeave | null) => void;
   topBack: TopBack | null;
   publishTopBack: (back: TopBack | null) => void;
+  topExtras: TopExtras | null;
+  publishTopExtras: (extras: TopExtras | null) => void;
   // Whether the desks bar is drawn at the top (TopNavBar). While it is,
   // the path and the days rise under IT rather than above the dock.
   topNavUp: boolean;
@@ -346,6 +357,7 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
     setTopNavClaims((n) => n + 1);
     return () => setTopNavClaims((n) => n - 1);
   }, []);
+  const [topExtras, publishTopExtras] = useState<TopExtras | null>(null);
   const [topBack, setTopBack] = useState<TopBack | null>(null);
   const publishTopBack = useCallback((next: TopBack | null) => {
     setTopBack((prev) => (prev === next || (prev && next && prev.onPress === next.onPress && prev.dimmed === next.dimmed) ? prev : next));
@@ -457,6 +469,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishLeave,
       topBack,
       publishTopBack,
+      topExtras,
+      publishTopExtras,
       topNavUp,
       claimTopNav,
       targets,
@@ -488,6 +502,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishLeave,
       topBack,
       publishTopBack,
+      topExtras,
+      publishTopExtras,
       topNavUp,
       claimTopNav,
       targets,
@@ -604,6 +620,50 @@ export function useNavTopNavUp(): boolean {
 export function useTopNavClaim() {
   const claim = useContext(NavDockContext)?.claimTopNav;
   useEffect(() => (claim ? claim() : undefined), [claim]);
+}
+
+// What a writing screen puts at the bar's right end - see TopExtras. The
+// handlers are stable wrappers reading the latest ones through a ref, and
+// the whole is republished only when what it SHOWS changes (labels,
+// ticks, the choosing state) - the same rule as the dock's actions.
+export function useTopExtras(
+  menu: MenuEntry[] | null,
+  select: { active: boolean; onPress: () => void } | null,
+  enabled = true
+) {
+  const publish = useContext(NavDockContext)?.publishTopExtras;
+  const focused = useIsFocused();
+  const ref = useRef({ menu, select });
+  ref.current = { menu, select };
+  const signature = JSON.stringify([
+    menu?.map((e) => (e.kind === 'section' ? ['s', e.label] : e.kind === 'rule' ? ['r'] : [e.label, e.icon, !!e.checked, e.tone])),
+    select ? select.active : null,
+  ]);
+  useEffect(() => {
+    if (!publish || !focused || !enabled) return;
+    const live = ref.current;
+    publish({
+      menu: live.menu
+        ? live.menu.map((e, i) =>
+            e.kind === 'section' || e.kind === 'rule'
+              ? e
+              : {
+                  ...e,
+                  onPress: () => {
+                    const current = ref.current.menu?.[i];
+                    if (current && current.kind !== 'section' && current.kind !== 'rule') current.onPress();
+                  },
+                }
+          )
+        : null,
+      select: live.select ? { active: live.select.active, onPress: () => ref.current.select?.onPress() } : null,
+    });
+    return () => publish(null);
+  }, [publish, focused, enabled, signature]);
+}
+
+export function useNavTopExtras(): TopExtras | null {
+  return useContext(NavDockContext)?.topExtras ?? null;
 }
 
 export function useNavTopBack(): TopBack | null {

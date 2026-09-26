@@ -65,7 +65,7 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import DocumentCard from '../components/DocumentCard';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
-import { useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useTopBack } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useTopBack, useTopExtras } from '../navigation/navDock';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
@@ -671,7 +671,7 @@ export default function DocumentsScreen({
   useDockActions(
     paneFullscreenDoc
       ? null
-      : isFocused && !searchingAlone
+      : isFocused && !searchingAlone && (isSelectMode || !onDesk)
       ? isSelectMode
         ? [
             {
@@ -774,6 +774,39 @@ export default function DocumentsScreen({
             ...paneControls,
           ]
       : null
+  );
+  // ON A PHONE ALL OF THAT IS IN THE BAR'S "⋯" instead (the dock's normal
+  // card above stands down there - see `dockCard`), and choosing stands
+  // at the bar's very edge: the user's own arrangement, "функції перед
+  // очима, але вони мені не так потрібні". The dock is left with the two
+  // things done all the time, search and a new note. A selection still
+  // brings its actions into the dock, under the thumb.
+  useTopExtras(
+    [
+      { kind: 'section', label: 'Вигляд' },
+      { label: 'Список', icon: 'reorder-four-outline', checked: viewMode === 'list', onPress: () => changeViewMode('list') },
+      { label: 'Сітка', icon: 'grid-outline', checked: viewMode === 'grid', onPress: () => changeViewMode('grid') },
+      { label: 'Широкі картки', icon: 'tablet-landscape-outline', checked: viewMode === 'wide', onPress: () => changeViewMode('wide') },
+      { kind: 'section', label: 'Порядок' },
+      ...FIELD_ORDER.map((field) => ({
+        // The one in force says which way it runs; choosing it again
+        // turns it round.
+        label: sortPref.field === field ? `${FIELD_LABELS[field]} ${sortPref.dir === 'asc' ? '↑' : '↓'}` : FIELD_LABELS[field],
+        icon: FIELD_ICONS[field],
+        checked: sortPref.field === field,
+        onPress: () => selectSortField(field),
+      })),
+      { kind: 'rule' },
+      { label: 'Смартпапки', icon: 'pricetag-outline', checked: !!activeFilter, onPress: () => drawerRef.current?.open() },
+      ...(paneDocOpen && !paneFullscreen
+        ? [
+            { label: 'Нотатку на весь екран', icon: 'expand-outline' as const, onPress: () => setPaneFullscreen(true) },
+            { label: 'Закрити нотатку', icon: 'close-outline' as const, onPress: paneControls[1].onPress },
+          ]
+        : []),
+    ],
+    { active: isSelectMode, onPress: () => toggleSelectMode() },
+    onDesk && isFocused && !paneFullscreenDoc
   );
   // The folder back/forward arrows are gone from the rail - the dock
   // carries the path now, and every level of it is one press away. The

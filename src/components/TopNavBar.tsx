@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,8 +7,9 @@ import DockFrost from './DockFrost';
 import { GlassPortal } from './GlassPortal';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { CHROME_TOP } from '../constants/rail';
-import { DOCK_PIECE_RADIUS, dockCardHeight, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
-import { DockContext, useNavDockOwnContext, useNavDockTargets, useNavTopBack, useTopNavClaim } from '../navigation/navDock';
+import { DOCK_PIECE_RADIUS, dockCardHeight } from '../navigation/dockGeometry';
+import Menu from './surfaces/Menu';
+import { DockContext, useNavDockOwnContext, useNavDockTargets, useNavTopBack, useNavTopExtras, useTopNavClaim } from '../navigation/navDock';
 import { FONT_MEDIUM, FONT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
 
@@ -35,9 +36,24 @@ export const TOP_NAV_SPACE = TOP_NAV_H + 10;
 const PLATE_PAD = 6;
 const CUT = 3;
 const PIECE_H = TOP_NAV_H - PLATE_PAD * 2;
-// A closed desk: a little wider than tall, big enough to hit.
-const PILL_W = 44;
+// A closed desk: a square, as tall as the pieces are.
+const PILL_W = PIECE_H;
 const GAP = 6;
+// The buttons standing apart at either end - the way back, and at the
+// right end "⋯" and choosing where a screen has them.
+const SIDE_W = 40;
+
+// WHERE THE BAR STANDS: along the edges the content itself keeps - the
+// cards and folder rows, twenty in from either side ("вирівняти по краях
+// наших блоків нотаток і папок") - not the dock's narrower row, and no
+// wider than a column on a big screen. The dock's two beads below stand
+// on the same two edges.
+export const TOP_BAR_SIDE = 20;
+const TOP_BAR_MAX = 560;
+export function topBarFrame(windowWidth: number): { left: number; width: number } {
+  const width = Math.min(windowWidth - TOP_BAR_SIDE * 2, TOP_BAR_MAX);
+  return { left: (windowWidth - width) / 2, width };
+}
 
 // THE SAME CORNERS AS THE DOCK - in shape, not in points. The same 14
 // on a piece half as tall is a curve that takes twice the share of it,
@@ -88,15 +104,22 @@ export default function TopNavBar({
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const back = useNavTopBack();
-  const rowWidth = dockRowWidth(windowWidth);
+  const extras = useNavTopExtras();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const frame = topBarFrame(windowWidth);
+  const barTop = insets.top + CHROME_TOP;
   const corners = cornersFor(windowWidth);
-  const plateWidth = rowWidth - TOP_NAV_H - GAP;
+  const sides = 1 + (extras?.menu ? 1 : 0) + (extras?.select ? 1 : 0);
+  const plateWidth = frame.width - sides * (SIDE_W + GAP);
   const innerWidth = plateWidth - PLATE_PAD * 2;
   // The open desk takes whatever the plate has left once the closed desks
   // and the cuts between them have theirs - so the widths always add up,
   // and one desk grows by exactly what the other gives up.
   const deskCount = desks?.length ?? 0;
   const openWidth = innerWidth - CUT * (deskCount - 1) - PILL_W * (deskCount - 1);
+  // The name only where it fits whole: on a narrow screen the open desk
+  // is its highlighted icon alone rather than a name cut in half.
+  const nameFits = (label: string) => openWidth - 20 - 8 - 16 >= label.length * 8.4;
 
   // The path, kept drawn from the last one while the plate rolls back to
   // the desks, so it does not empty in the middle of its way out.
@@ -123,16 +146,17 @@ export default function TopNavBar({
   }));
 
   return (
+    <>
     <GlassPortal priority={1}>
       <View
         pointerEvents="box-none"
-        style={[styles.row, { top: insets.top + CHROME_TOP, left: dockRowLeft(windowWidth), width: rowWidth }]}
+        style={[styles.row, { top: barTop, left: frame.left, width: frame.width }]}
       >
         <Pressable
           disabled={!back || back.dimmed}
           onPress={() => back?.onPress()}
           accessibilityLabel="Назад"
-          style={{ width: TOP_NAV_H, height: TOP_NAV_H }}
+          style={{ width: SIDE_W, height: TOP_NAV_H }}
         >
           <DockFrost style={[styles.piece, lift]} radius={corners.plate}>
             <Ionicons
@@ -164,6 +188,7 @@ export default function TopNavBar({
                 <DeskPill
                   key={desk.key}
                   radius={corners.piece}
+                  showName={nameFits(desk.label)}
                   desk={desk}
                   openWidth={openWidth}
                   onLongPress={onLongPress}
@@ -179,8 +204,62 @@ export default function TopNavBar({
             )}
           </View>
         </View>
+
+        {extras?.menu && (
+          <SideButton
+            icon="ellipsis-horizontal"
+            label="Ще"
+            active={menuOpen}
+            radius={corners.plate}
+            onPress={() => setMenuOpen((v) => !v)}
+          />
+        )}
+        {extras?.select && (
+          <SideButton
+            icon="checkmark-circle-outline"
+            label="Виділити"
+            active={extras.select.active}
+            radius={corners.plate}
+            onPress={extras.select.onPress}
+          />
+        )}
       </View>
     </GlassPortal>
+    {/* The screen's own list, hanging from the bar's right end - its own
+        portal, not one inside the bar's. */}
+    <Menu
+      visible={menuOpen && !!extras?.menu}
+      onClose={() => setMenuOpen(false)}
+      entries={extras?.menu ?? []}
+      style={{ position: 'absolute', right: windowWidth - frame.left - frame.width, top: barTop + TOP_NAV_H + 6 }}
+    />
+    </>
+  );
+}
+
+// One of the buttons standing apart at the bar's ends: the dock's
+// material, the plate's corner, the accent only while it is on.
+function SideButton({
+  icon,
+  label,
+  active,
+  radius,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  active: boolean;
+  radius: number;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const lift = useLift();
+  return (
+    <Pressable onPress={onPress} accessibilityLabel={label} style={{ width: SIDE_W, height: TOP_NAV_H }}>
+      <DockFrost style={[styles.piece, lift]} radius={radius}>
+        <Ionicons name={icon} size={21} color={active ? theme.accent : theme.glass.ink} />
+      </DockFrost>
+    </Pressable>
   );
 }
 
@@ -189,6 +268,7 @@ export default function TopNavBar({
 // name opens with the room it is given rather than all at once.
 function DeskPill({
   radius,
+  showName,
   desk,
   openWidth,
   onLongPress,
@@ -196,6 +276,7 @@ function DeskPill({
   inkMuted,
 }: {
   radius: number;
+  showName: boolean;
   desk: TopDesk;
   openWidth: number;
   onLongPress?: () => void;
@@ -210,7 +291,7 @@ function DeskPill({
   const pillStyle = useAnimatedStyle(() => ({ width: width.value }));
   // How open, 0..1 - the label's room and how visible it is.
   const labelStyle = useAnimatedStyle(() => {
-    const open = interpolate(width.value, [PILL_W, openWidth], [0, 1], Extrapolation.CLAMP);
+    const open = showName ? interpolate(width.value, [PILL_W, openWidth], [0, 1], Extrapolation.CLAMP) : 0;
     return {
       // The room left beside the icon once fully open (icon, the gap,
       // a little air each side), handed out as the desk opens.
