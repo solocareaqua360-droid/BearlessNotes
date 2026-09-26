@@ -16,7 +16,7 @@ import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import SearchCorner, { searchCornerHeight } from './SearchCorner';
 import SearchField, { searchFieldSides } from './SearchField';
-import TopNavBar, { TOP_NAV_SPACE, TopTitle, useTopNavOn } from './TopNavBar';
+import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, TopTitle, topBarFrame, useTopNavOn } from './TopNavBar';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
@@ -316,7 +316,11 @@ export default function DatabaseChrome<T extends { id: string }>({
   // можна засунути в крапки"). The dock keeps search and "+"; a selection
   // still brings its actions down under the thumb. A database pushed from
   // «Більше» keeps the card below: sorting and filtering are its work.
-  const deskMenu = !!topNavWanted && topNav;
+  // Every screen with a bar takes this arrangement now - the desks' own
+  // boards list and every database pushed from «Більше» alike: "справи,
+  // документи, геоточки, посилання, зображення, файли, дошки, ютуб мають
+  // однакову структуру з документами... все переноситься в три крапки".
+  const deskMenu = topNav;
   // Choosing stands at the bar's edge on EVERY screen with a bar, pushed
   // databases included - "у нас є прекрасне місце вгорі... нащо переносити
   // її в док". Only the "⋯" list is the desks' own.
@@ -342,6 +346,10 @@ export default function DatabaseChrome<T extends { id: string }>({
       ...(explorer?.active
         ? [{ label: 'Нова папка', icon: 'folder-open-outline' as const, onPress: explorer.onNewFolder }]
         : []),
+      // A screen's own extra rows (the photos' record attachments, the
+      // stickers' bin) are drawn by the screen, not listed, so they open
+      // as a second list under the bar rather than being lost.
+      ...(menuRows ? [{ label: 'Ще…', icon: 'ellipsis-horizontal-outline' as const, onPress: () => setMenuOpen(true) }] : []),
     ],
     bulk ? { active: list.isSelectMode, onPress: () => list.toggleSelectMode() } : null,
     topNav && isFocused
@@ -447,8 +455,17 @@ export default function DatabaseChrome<T extends { id: string }>({
           visible={menuOpen && !!menuRows}
           onClose={() => setMenuOpen(false)}
           entries={[]}
-          // Above the dock, where the button that opens it now lives.
-          style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
+          // Under the bar's right end where "⋯" opened it; above the dock
+          // where the dock's own button did.
+          style={
+            deskMenu
+              ? {
+                  position: 'absolute',
+                  right: windowWidth - topBarFrame(windowWidth).left - topBarFrame(windowWidth).width,
+                  top: insets.top + CHROME_TOP + TOP_NAV_H + 6,
+                }
+              : { position: 'absolute', right: 16, bottom: dockClear + insets.bottom }
+          }
         >
           {menuRows?.(() => setMenuOpen(false))}
         </Menu>

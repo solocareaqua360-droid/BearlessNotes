@@ -40,7 +40,7 @@ import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import { groupAppliesTo } from '../utils/groups';
 import ReminderSheet from '../components/ReminderSheet';
-import SortMenuRows from '../components/SortMenuRows';
+import SortMenuRows, { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useCardCarry } from '../hooks/useCardCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
@@ -220,7 +220,10 @@ export default function TasksScreen() {
       : null
   );
   useDockActions(
-    isFocused
+    // On a phone with the bar, what the list does is in the bar's "⋯"
+    // (useTopExtras, below) - the documents' own arrangement - and the dock
+    // keeps search and "+" alone; a selection still brings its actions.
+    isFocused && (isSelectMode || !bar)
       ? isSelectMode
         ? [
             {
@@ -281,18 +284,6 @@ export default function TasksScreen() {
           ]
       : null
   );
-  // Choosing at the bar's edge, as on every screen with a bar.
-  useTopExtras(
-    null,
-    {
-      active: isSelectMode,
-      onPress: () => {
-        setKanbanMode(false);
-        toggleSelectMode();
-      },
-    },
-    bar && isFocused
-  );
   const insets = useSafeAreaInsets();
   const dockClear = useDockClearance();
   const showContext = useDockShowContext();
@@ -302,6 +293,34 @@ export default function TasksScreen() {
   // over the tabs, and tasks are made inside a document, so there is no
   // "+" - no bead on the right.
   const { sortPref, selectSortField } = useSortPref('tasksPrefs');
+  // THE BAR'S "⋯" AND CHOOSING - "справи... мають однакову структуру з
+  // документами... все переноситься в три крапки": the list/kanban switch
+  // and the order go up there, choosing stands at the bar's edge.
+  useTopExtras(
+    [
+      {
+        label: kanbanMode ? 'Список' : 'Канбан',
+        icon: kanbanMode ? 'reorder-four-outline' : 'albums-outline',
+        onPress: () => setKanbanMode((v) => !v),
+      },
+      { kind: 'section', label: 'Порядок' },
+      ...FIELD_ORDER.map((field) => ({
+        label:
+          sortPref.field === field ? `${FIELD_LABELS[field]} ${sortPref.dir === 'asc' ? '↑' : '↓'}` : FIELD_LABELS[field],
+        icon: FIELD_ICONS[field],
+        checked: sortPref.field === field,
+        onPress: () => selectSortField(field),
+      })),
+    ],
+    {
+      active: isSelectMode,
+      onPress: () => {
+        setKanbanMode(false);
+        toggleSelectMode();
+      },
+    },
+    bar && isFocused
+  );
   // Opens on the inbox, the first tab: the user wants what is still
   // unsorted before the everything-list, which now sits last.
   const [projectFilter, setProjectFilter] = useState<string | null>(UNASSIGNED_ID);
