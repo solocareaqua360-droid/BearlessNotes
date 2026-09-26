@@ -4718,6 +4718,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // beside a list, and on a pointer the toolbar above the page is what
   // marks its top edge.
   const sheetPage = !embedded && !('pane' in props) && !pointerDensity;
+  // THE SHEET SCROLLS, NOT THE TEXT IN IT - the user's call: "повинно
+  // прокручуватися полотно". The rounded paper used to be a still frame
+  // with the text moving inside it; now the frame is the scroll's own
+  // content - its top edge goes up under the bar with the title, its
+  // bottom corners come up at the end of the note, the app's ground
+  // around it the whole way. Not on the canvas, which is a surface of its
+  // own and keeps the still frame.
+  const scrollSheet = sheetPage && !canvasMode;
   // THE BAR ABOVE THE KEYBOARD AND THE PANEL THAT REPLACES IT belong to
   // the SCREEN, not to the page. Held by the sheet they were clipped by
   // it and anchored to a bottom that is no longer the screen's, so the
@@ -4846,23 +4854,32 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       style={[
         styles.container,
         embedded && styles.containerEmbedded,
-        sheetPage && styles.pageSheet,
+        // The still frame - on the canvas only now; see scrollSheet for
+        // where the page's own frame went.
+        sheetPage && !scrollSheet && styles.pageSheet,
         // THE LIFT A CARD HAS - the theme's own, so it is a drop shadow
         // where the ground is light and a glow where it is dark. The
         // sheet had none at all and lay flat on the backdrop, while the
         // card it came from stands off it.
-        sheetPage && liftStyle(theme, theme.lift, 1),
-        sheetPage && {
+        sheetPage && !scrollSheet && liftStyle(theme, theme.lift, 1),
+        sheetPage && !scrollSheet && {
           marginTop: editorInsets.top,
           // Ends above the screen's own bottom edge, so the sheet shows
           // the same rounded corner down there that it shows up top.
           marginBottom: sheetBottomRest,
         },
-        paperColor && { backgroundColor: paperColor.background },
+        paperColor && !scrollSheet && { backgroundColor: paperColor.background },
+        // The whole screen, clear: the ground shows round the paper that
+        // scrolls inside it.
+        scrollSheet && { backgroundColor: 'transparent' },
       ]}
-      onLayout={(e) => setEditorWidth(e.nativeEvent.layout.width)}
+      // The paper's own width, which is what the blocks are laid out in -
+      // the screen's less the sheet's margins where the paper scrolls.
+      onLayout={(e) => setEditorWidth(e.nativeEvent.layout.width - (scrollSheet ? PAGE_SHEET_INSET * 2 : 0))}
     >
-      {!embedded && (
+      {/* The room above the title - inside the scrolling paper instead
+          (its own top padding) where the paper scrolls. */}
+      {!embedded && !scrollSheet && (
       <View
         style={[
           styles.header,
@@ -5245,6 +5262,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         style={[styles.scrollArea, referencesSplit && { paddingRight: referencePanelWidth }]}
         contentContainerStyle={[
           embedded && styles.scrollAreaEmbedded,
+          // THE PAPER ITSELF, as the scroll's content: the sheet's margins,
+          // corners, lift and colour, and the room under the bar at its
+          // top (what the header row gave the still sheet). At least the
+          // window tall, so a short note is still a whole sheet.
+          scrollSheet && [
+            styles.pageSheet,
+            liftStyle(theme, theme.lift, 1),
+            {
+              flexGrow: 1,
+              marginTop: editorInsets.top,
+              marginBottom: sheetBottomRest,
+              paddingTop: PAGE_HEADER_TOP + TOP_NAV_SPACE + 12,
+              backgroundColor: paperColor?.background ?? theme.paper.fill,
+            },
+          ],
           onPullPastEnd && scrollViewportH > 0 && { minHeight: scrollViewportH + PULL_ZONE },
           // Used to stop short of the rail the way a mail's text does
           // under its capsule - narrowing every block on the page, at
