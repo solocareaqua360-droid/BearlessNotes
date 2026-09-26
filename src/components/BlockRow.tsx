@@ -823,17 +823,27 @@ export default function BlockRow({
       style={[
         styles.blockRow,
         indented && styles.blockRowIndented,
-        isSelected && styles.blockRowSelected,
+        // The theme's own light-blue highlight, UNLESS the row is on a
+        // custom paper colour: that highlight is opaque and fixed, and a
+        // paper dark enough to want white text ('#FFFFFF' from
+        // colorForDocument) went white-on-near-white under it - the
+        // user's own catch, from a screenshot. A translucent wash instead,
+        // darkening or lightening the SAME colour depending on which way
+        // that colour's own text already reads, so whichever text was
+        // chosen for it stays legible: never perfect for every hue, but
+        // never backwards either.
+        isSelected && (rowPaperColor ? { backgroundColor: rowPaperColor.text === '#FFFFFF' ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)' } : styles.blockRowSelected),
         showBoundary && styles.blockRowBoundary,
         // A sticker keeps its yellow background even once placed here -
         // agreed explicitly: it should stay visibly "a sticker", not blend
         // in as an ordinary paragraph/image/sketch block.
         item.isSticker && styles.blockRowSticker,
         // Blends the row into the colored page instead of keeping its own
-        // white card look - skipped while selected, whose own light-blue
-        // highlight is a stronger, more important affordance than the
-        // paper color. showBoundary only draws a border (see
-        // blockRowBoundary), so it stays visible over the transparent fill.
+        // white card look - skipped while selected, whose own highlight is
+        // a stronger, more important affordance than the paper color (see
+        // above for what that highlight actually is on a custom paper).
+        // showBoundary only draws a border (see blockRowBoundary), so it
+        // stays visible over the transparent fill.
         rowPaperColor && !isSelected && { backgroundColor: 'transparent' },
       ]}
     >

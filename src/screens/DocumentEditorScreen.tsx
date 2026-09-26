@@ -163,6 +163,7 @@ import {
   useDockBeads,
   useDockOpensOnActions,
   useDockShowContext,
+  useDockWide,
   useNavDockFlip,
   useNavDockFace,
 } from '../navigation/navDock';
@@ -2556,8 +2557,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the panel's own tiles. Nothing is lost by hiding it: the panel's
   // own chevron closes it, and back is one tap further where it always
   // was.
+  // BOTH BEADS STAND DOWN WHILE BLOCKS ARE PICKED, and the card takes
+  // their room (useDockWide, below) - the user's own call looking at a
+  // selection of nine actions squeezed into the middle while a back
+  // arrow and a pencil sat idle on either side: "прибрати дві кнопки по
+  // боках і зробити док ширшим". Selecting is a state the screen is
+  // already IN; there is nothing on either side to do about it.
   useDockBeads(
-    !embedded && panelSection === null && !panelClosing
+    !embedded && !isSelectMode && panelSection === null && !panelClosing
       ? {
           icon: canvasEditing ? 'checkmark-outline' : 'arrow-back-outline',
           onPress: () => {
@@ -2570,35 +2577,30 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // Only where there are two panes to collapse into one - the corner
     // capsule's own expand/contract button moved here rather than
     // disappearing, since it has no dock equivalent otherwise.
-    !embedded && onToggleFullscreen && panelSection === null && !panelClosing
+    !embedded && !isSelectMode && onToggleFullscreen && panelSection === null && !panelClosing
       ? {
           icon: paneFullscreen ? 'contract-outline' : 'expand-outline',
           onPress: onToggleFullscreen,
         }
       : // Otherwise the right bead does what it does everywhere - makes
         // something - and on a page what there is to make is text: the
-        // pencil starts writing (see startWriting). Not on the canvas.
-        !embedded && !canvasMode && panelSection === null && !panelClosing
+        // pencil starts writing (see startWriting). Not on the canvas,
+        // and not while selecting either.
+        !embedded && !isSelectMode && !canvasMode && panelSection === null && !panelClosing
         ? { icon: 'pencil-outline', onPress: startWriting }
         : null
   );
+  useDockWide(!embedded && isSelectMode);
   // ...and to OPEN on them. A note has no context of its own, and the
   // dock's standing rule for that case is to open on the desks - right
   // for a list at its root, wrong here, where the actions are the whole
   // reason this note stopped drawing a dock of its own.
   useDockOpensOnActions(!embedded);
-  // NOT wider while selecting, though the dock can be (useDockWide, and
-  // it was declared here for one round). The user's own call once they
-  // saw it: the row keeps its width and the last buttons are reached by
-  // scrolling - "док не розширювати і тоді видалення буде видно тільки
-  // після прокручування доку". A dock that changes width between modes
-  // is also a dock that stands in two places, which is the thing this
-  // whole design has been holding still.
-  //
-  // The mechanism stays in ContextDock: it is declared, not inferred, so
-  // nothing happens unless a screen asks. The note no longer asks - and
-  // could not anyway, now that it publishes a bead (the stretch only
-  // runs where both bead slots are genuinely empty).
+  // WIDER WHILE SELECTING now (reversing an earlier round's call): both
+  // beads stand down above, so the stretch (useDockWide, in ContextDock)
+  // has real room to take rather than squeezing nine actions into the
+  // space between two idle buttons - "прибрати дві кнопки по боках і
+  // зробити док ширшим".
   const showActions = () => setDockFace('actions');
   // The dock shows only when nothing is standing in the bottom of the
   // screen. The panel is such a thing - it stands where the keyboard
