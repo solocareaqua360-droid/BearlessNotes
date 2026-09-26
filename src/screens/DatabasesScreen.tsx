@@ -220,7 +220,7 @@ export default function DatabasesScreen() {
   const { colorFor, customDatabases } = useDatabaseTiles();
   // What is inside each database, for the tiles to show - see
   // useDatabaseContents.
-  const { counts, latest, photoThumbs, pinnableGroups, pinnableTags } = useDatabaseContents();
+  const { counts, pinnableGroups, pinnableTags } = useDatabaseContents();
   const [colorMenuKey, setColorMenuKey] = useState<string | null>(null);
   const [tileSizes, setTileSizes] = useState<Record<string, string>>({});
   const [tileLayouts, setTileLayouts] = useState<Partial<Record<TileView, TileViewData>>>({});
@@ -934,8 +934,6 @@ export default function DatabasesScreen() {
                     size={size}
                     background={tileBackgrounds[item.key]}
                     count={item.kind === 'pin' ? item.pin.count : counts[item.key]}
-                    latest={latest[item.key]}
-                    thumbs={item.key === 'photos' ? photoThumbs : undefined}
                     onOpen={() => {
                       // On a wide screen a database opens BESIDE the board,
                       // in the left pane, rather than replacing it.
@@ -1455,8 +1453,6 @@ function BoardTile({
   color,
   background,
   count,
-  latest,
-  thumbs,
   size,
   cellSize,
   editing,
@@ -1477,11 +1473,8 @@ function BoardTile({
   height: number;
   color: string;
   background?: string;
-  // How many records this database holds, the newest one's own name, and
-  // - for images - the newest few themselves.
+  // How many records this database holds.
   count?: number;
-  latest?: string;
-  thumbs?: string[];
   size: TileSize;
   cellSize: number;
   editing: boolean;
@@ -1525,8 +1518,6 @@ function BoardTile({
   const isAction = item.kind === 'action';
   // A one-cell tile has room for the icon and nothing else.
   const tiny = size.w === 1 && size.h === 1;
-  const showThumbs = !!thumbs?.length && size.w >= 2 && size.h >= 2;
-  const showLatest = !!latest && !isAction && size.w >= 2 && (size.h >= 2 || size.w >= 3);
   const showCount = count !== undefined && !isAction;
 
   // The tile is PAINTED in its colour now, rather than being glass with a
@@ -1625,40 +1616,29 @@ function BoardTile({
         onLongPress={onHold}
         delayLongPress={400}
       >
-        {/* The newest few images instead of an icon, once there is room
-            for them to be seen rather than guessed at. */}
-        {showThumbs ? (
-          <View style={styles.thumbRow}>
-            {thumbs!.slice(0, size.w >= 3 ? 4 : 2).map((uri) => (
-              <Image key={uri} source={{ uri }} style={styles.thumb} resizeMode="cover" resizeMethod="resize" />
-            ))}
-          </View>
-        ) : (
-          <Ionicons name={icon} size={tiny ? 24 : 22} color={isAction ? 'rgba(255,255,255,0.6)' : ink} />
-        )}
+        {/* Name, icon and count - nothing else: "залиш лише назву, іконку
+            і кількість". The icon stands at the tile's own centre whatever
+            its size, the name along the foot. */}
+        <View style={styles.tileIconWrap} pointerEvents="none">
+          <Ionicons name={icon} size={tiny ? 24 : 26} color={isAction ? 'rgba(255,255,255,0.6)' : ink} />
+        </View>
         {!tiny && (
           <Text
-            style={[styles.tileLabel, { color: isAction ? 'rgba(255,255,255,0.6)' : ink }]}
-            numberOfLines={2}
+            style={[styles.tileLabel, size.h === 1 && styles.tileLabelShort, { color: isAction ? 'rgba(255,255,255,0.6)' : ink }]}
+            // One row tall, the name gets one line: two would reach up
+            // into the centred icon.
+            numberOfLines={size.h === 1 ? 1 : 2}
             // Android breaks a long word mid-syllable by default -
             // "Докум/енти", which reads as a fault rather than as a fit.
             // 'simple' only ever breaks between words.
             textBreakStrategy="simple"
             ellipsizeMode="tail"
             // 'simple' still splits ONE word wider than the tile; a word
-            // that cannot fit shrinks instead ("Документи" on a single
-            // cell).
+            // that cannot fit shrinks instead.
             adjustsFontSizeToFit
             minimumFontScale={0.72}
           >
             {label}
-          </Text>
-        )}
-        {/* The newest record's own name - only where the tile is tall
-            enough that it is a line of its own rather than a crush. */}
-        {showLatest && (
-          <Text style={[styles.tileLatest, { color: inkMuted }]} numberOfLines={size.h > 1 ? 2 : 1}>
-            {latest}
           </Text>
         )}
       </Pressable>
@@ -1740,8 +1720,17 @@ const makeStyles = (t: Theme) =>
   tileTap: {
     flex: 1,
     padding: 12,
-    gap: 8,
     justifyContent: 'flex-end',
+  },
+  // The whole tile, so the icon's centre is the tile's centre.
+  tileIconWrap: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Bottom-right, where a window is resized from.
   grip: {
@@ -1853,26 +1842,16 @@ const makeStyles = (t: Theme) =>
     fontFamily: FONT_MEDIUM,
     opacity: 0.75,
   },
-  tileLatest: {
-    fontSize: 11,
-    fontFamily: FONT_REGULAR,
-    color: 'rgba(255,255,255,0.55)',
-  },
-  thumbRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  thumb: {
-    width: 34,
-    height: 34,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
   tileLabel: {
     fontSize: 15,
     fontWeight: '500',
     fontFamily: FONT_MEDIUM,
+    textAlign: 'center',
+  },
+  // One row tall: the name sits lower, clear of the centred icon.
+  tileLabelShort: {
+    fontSize: 14,
+    marginBottom: -4,
   },
   newTile: {
     borderStyle: 'dashed',
