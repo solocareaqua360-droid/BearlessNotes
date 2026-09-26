@@ -992,11 +992,36 @@ export default function DocumentsScreen({
   // A group pinned to the tile board opens this screen already filtered to
   // it (see DatabasesScreen's pinned tiles). Applied once per arrival, and
   // then left alone - it is a starting point, not a lock.
-  const route = useRoute<RouteProp<{ Документи: { groupId?: string } }, 'Документи'>>();
+  const route = useRoute<RouteProp<{ Документи: { groupId?: string; folder?: string } }, 'Документи'>>();
   const arrivedWithGroup = route.params?.groupId;
   useEffect(() => {
     if (arrivedWithGroup) setGroupFilter(arrivedWithGroup);
   }, [arrivedWithGroup, setGroupFilter]);
+  // A note's own folder, tapped in the note's top bar: the list opens in
+  // the explorer, standing in that folder. Two steps when the explorer is
+  // not on yet - switching the mode walks the explorer back to its root
+  // (the listMode effect above), so the folder is set once the mode has
+  // landed. The param is cleared, so the same folder can be asked for
+  // again.
+  const arrivedWithFolder = route.params?.folder;
+  const pendingFolderRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!arrivedWithFolder) return;
+    setTrashOpen(false);
+    if (listMode === 'explorer') explorer.setPath(arrivedWithFolder);
+    else {
+      pendingFolderRef.current = arrivedWithFolder;
+      setListMode('explorer');
+    }
+    (navigation as unknown as { setParams: (p: object) => void }).setParams({ folder: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivedWithFolder]);
+  useEffect(() => {
+    if (listMode !== 'explorer' || !pendingFolderRef.current) return;
+    explorer.setPath(pendingFolderRef.current);
+    pendingFolderRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listMode]);
   // Pulled down from the top of the list, the search comes out - see
   // usePullToSearch.
   const pull = usePullToSearch(() => {

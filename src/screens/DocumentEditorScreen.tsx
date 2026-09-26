@@ -4904,7 +4904,35 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           ring round that cluster. Replaces the rail's own project badge
           below, which stays for the desktop layout, unbroken. */}
       {!embedded && editorFocused && !pointerDensity && (
-        <TopNavBar saving={saveStatus === 'saving'} />
+        <TopNavBar
+          saving={saveStatus === 'saving'}
+          // WHERE THE NOTE LIVES, in the room between back and "⋯" - the
+          // user's pick of the options: its folder, then its own name.
+          // The folder is its first folder-tag (a folder IS a tag here,
+          // see useExplorer); each level of it is a way back to it.
+          trail={{
+            icon: 'document-text-outline',
+            crumbs: [
+              ...(() => {
+                const folder = tags.find((t) => tagIds.includes(t.id));
+                if (!folder) return [];
+                const parts = folder.path.split('/');
+                return parts.map((label, i) => {
+                  const path = parts.slice(0, i + 1).join('/');
+                  return {
+                    label,
+                    onPress: () =>
+                      (navigation as unknown as { navigate: (name: string, params: object) => void }).navigate('Tabs', {
+                        screen: 'Документи',
+                        params: { folder: path },
+                      }),
+                  };
+                });
+              })(),
+              { label: title || 'Без назви' },
+            ],
+          }}
+        />
       )}
 
       {/* ...and not while the references drawer is open over it. The

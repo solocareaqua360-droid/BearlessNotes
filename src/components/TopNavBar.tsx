@@ -92,15 +92,21 @@ type PathContext = Extract<DockContext, { kind: 'path' }>;
 // where it is instead of listing the desks: its own icon and name, one
 // piece on the same plate.
 export type TopTitle = { icon: string; label: string };
+// A note says where it lives instead: its folder, then its own name -
+// "папка › назва", each folder a way to that folder, the name itself the
+// place you are.
+export type TopTrail = { icon: string; crumbs: { label: string; onPress?: () => void }[] };
 
 export default function TopNavBar({
   desks,
   title,
+  trail,
   onLongPress,
   saving,
 }: {
   desks?: TopDesk[];
   title?: TopTitle;
+  trail?: TopTrail;
   onLongPress?: () => void;
   // The save indicator, drawn on the extras cluster's own outline - see
   // the note's own call: "індикатор збереження навколо цієї здвоєної
@@ -122,7 +128,7 @@ export default function TopNavBar({
   // The middle: a plate of desks or a pushed database's title - or, on a
   // note, nothing at all ("по центру вгорі — порожньо"), just the room
   // between the two ends.
-  const hasMiddle = !!title || !!desks?.length;
+  const hasMiddle = !!title || !!desks?.length || !!trail;
   // The extras cluster's own width - each button it actually has, on ONE
   // plate with no gaps between them - so the middle takes what is left.
   const clusterCount = (extras?.menu ? 1 : 0) + (extras?.select ? 1 : 0) + (extras?.pane ? 1 : 0);
@@ -198,6 +204,7 @@ export default function TopNavBar({
                   style={[styles.layer, desksStyle]}
                   pointerEvents={path ? 'none' : 'box-none'}
                 >
+                  {trail && <TrailRow trail={trail} radius={corners.piece} ink={theme.glass.ink} inkMuted={theme.glass.inkMuted} />}
                   {title && (
                     <DockFrost style={styles.piece} radius={corners.piece}>
                       <Ionicons name={title.icon as keyof typeof Ionicons.glyphMap} size={20} color={theme.glass.ink} />
@@ -337,6 +344,52 @@ function DeskPill({
         </DockFrost>
       </Pressable>
     </Animated.View>
+  );
+}
+
+// Where a note lives: its database's glyph, then the folders down to it,
+// then its own name - the same look as the folder path below, and the
+// same rule: every crumb but the last is a way there.
+function TrailRow({ trail, radius, ink, inkMuted }: { trail: TopTrail; radius: number; ink: string; inkMuted: string }) {
+  const scroll = useRef<ScrollView>(null);
+  return (
+    <>
+      <View style={{ width: PILL_W, height: PIECE_H }}>
+        <DockFrost style={styles.piece} radius={radius}>
+          <Ionicons name={trail.icon as keyof typeof Ionicons.glyphMap} size={20} color={ink} />
+        </DockFrost>
+      </View>
+      <DockFrost style={[styles.piece, styles.crumbsPiece]} radius={radius}>
+        <ScrollView
+          ref={scroll}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.crumbs}
+          // The note's own name is the one that matters: always in view.
+          onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}
+        >
+          {trail.crumbs.map((crumb, i) => {
+            const current = i === trail.crumbs.length - 1;
+            return (
+              <View key={`${i}:${crumb.label}`} style={styles.crumbRow}>
+                {i > 0 && <Ionicons name="chevron-forward" size={13} color={inkMuted} />}
+                {current || !crumb.onPress ? (
+                  <Text numberOfLines={1} style={[styles.crumb, current && styles.crumbCurrent, { color: current ? ink : inkMuted }]}>
+                    {crumb.label}
+                  </Text>
+                ) : (
+                  <Pressable hitSlop={6} onPress={crumb.onPress}>
+                    <Text numberOfLines={1} style={[styles.crumb, { color: inkMuted }]}>
+                      {crumb.label}
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
+      </DockFrost>
+    </>
   );
 }
 

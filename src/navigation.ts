@@ -17,7 +17,9 @@ export type RootStackParamList = {
     // groupId: a group pinned to the board opens the documents already
     // filtered to it, and everything else in that group follows under the
     // rule there (see GroupSections).
-    | { screen: 'Документи'; params?: { groupId?: string } }
+    // folder: a note's own folder, tapped in its top bar - the documents
+    // open in the explorer, standing in that folder.
+    | { screen: 'Документи'; params?: { groupId?: string; folder?: string } }
     | { screen: 'Календар'; params: { jumpToDate: string } }
     | { screen: 'Дошки' }
     // Jumps straight into one board rather than wherever BoardsStack last
