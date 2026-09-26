@@ -459,8 +459,11 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       }
     >
       {(listTopPad, listProps) => (
-        <View style={styles.area}>
-          {isLoading ? (
+        // The list is the detector's DIRECT child - DatabaseChrome's pull
+        // gesture declares it with Gesture.Native(), which binds to the
+        // view it is handed; a wrapper View in between took that role and
+        // the list stopped scrolling at all.
+        isLoading ? (
             <View style={styles.emptyState}>
               <ActivityIndicator color={theme.ink.muted} />
             </View>
@@ -493,8 +496,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
             >
               {shown.map(renderRow)}
             </ScrollView>
-          )}
-        </View>
+          )
       )}
     </DatabaseChrome>
   );
@@ -502,9 +504,6 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
-    area: {
-      flex: 1,
-    },
     // alignItems stretch (the default): both cards take the taller one's
     // height.
     pair: {
