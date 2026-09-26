@@ -122,7 +122,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useDockActions, useDockBeads, useDockLeave, useTopBack, useTopExtras } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockLeave, useDockWide, useTopBack, useTopExtras } from '../navigation/navDock';
 import TopNavBar, { useTopNavOn } from '../components/TopNavBar';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { listenError } from '../utils/listenError';
@@ -5216,7 +5216,6 @@ export default function BoardScreen() {
   useTopBack(leaveOrClosePane, bar);
   useTopExtras(
     [
-      { label: 'Шари', icon: 'layers-outline', checked: layersDrawerVisible, onPress: () => setLayersDrawerVisible((v) => !v) },
       { label: 'Ізоляція', icon: 'scan-outline', checked: isolateArmed || isolatedIds !== null, onPress: toggleIsolation },
     ],
     null,
@@ -5227,15 +5226,22 @@ export default function BoardScreen() {
       { key: 'redo', icon: 'arrow-redo-outline', label: 'Повторити', dimmed: !canRedo, onPress: redo },
     ]
   );
+  // «Шари» is the board's search - "аналог пошуку" - so it takes the
+  // left bead search holds everywhere else, "+" the right, and the tools
+  // stand between them (the dock's tools-screen strip, opted into with
+  // `dockWide`). A selection lets both go: the dock is then only what
+  // can be done to it.
+  const selecting = selectedCardIds.size > 0 || selectedShapeIds.size > 0;
+  useDockWide(bar && !selecting);
   useDockBeads(
-    boardShowing && !bar
+    boardShowing && (!bar || !selecting)
       ? {
           icon: 'layers-outline',
           active: layersDrawerVisible,
           onPress: () => setLayersDrawerVisible((v) => !v),
         }
       : null,
-    boardShowing && !bar && selectedCardIds.size === 0
+    boardShowing && (bar ? !selecting : selectedCardIds.size === 0)
       ? { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
       : null
   );
@@ -5375,7 +5381,6 @@ export default function BoardScreen() {
               active: canvasTool === 'connect',
               onPress: () => setCanvasTool('connect'),
             },
-            { key: 'add', icon: 'add-outline', label: 'Додати', onPress: () => setAddSheetVisible(true) },
           ]
         : [
             // Three separate buttons now, not one cycled through - "чому

@@ -1850,7 +1850,11 @@ export default function ContextDock() {
     // were three buttons lost in a plank). A LONG one (choosing blocks:
     // nine) keeps the whole strip and scrolls, five to a view.
     const short = actions.length <= 5;
-    const buttonW = short ? STRIP_BUTTON_W : Math.floor(frame.width / 5);
+    // Never wider than the bar above it, even when short: five at full
+    // width is wider than a phone's bar.
+    const buttonW = short
+      ? Math.min(STRIP_BUTTON_W, Math.floor(frame.width / actions.length))
+      : Math.floor(frame.width / 5);
     const stripW = short ? buttonW * actions.length : frame.width;
     return (
       <GlassPortal>
@@ -1891,6 +1895,68 @@ export default function ContextDock() {
               </ScrollView>
             </DockFrost>
           </View>
+        </View>
+      </GlassPortal>
+    );
+  }
+  // A TOOLS SCREEN (the board): its two beads where every other screen
+  // keeps search and "+" - «Шари» is the board's search, "як пошук" - and
+  // its tools as a strip between them. Opted into by the screen through
+  // `dockWide`; a database's ordinary dock (beads + a card of what it
+  // does) is not this and keeps the whole dock below.
+  if (compactMiddle && !!actions?.length && dockWide && (!!beads.left || !!beads.right)) {
+    const frame = topBarFrame(windowW);
+    const gap = 6;
+    const minButton = 52;
+    const needed = TWO_BEAD * 2 + gap * 2 + minButton * actions.length;
+    // Half a bead in, like the two beads alone - only where the strip
+    // still fits between them; on a phone they keep the bar's edges.
+    const inset = frame.width - TWO_BEAD >= needed ? TWO_BEAD / 2 : 0;
+    const rowW = frame.width - inset * 2;
+    const room = rowW - TWO_BEAD * 2 - gap * 2;
+    const buttonW = Math.min(STRIP_BUTTON_W, Math.floor(room / actions.length));
+    const stripW = buttonW * actions.length;
+    const slot = (bead: typeof beads.left) =>
+      bead ? (
+        <Bead bead={bead} theme={theme} lift={lift} size={TWO_BEAD} height={TWO_BEAD} />
+      ) : (
+        <View style={{ width: TWO_BEAD }} />
+      );
+    return (
+      <GlassPortal>
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.twoBeads,
+            {
+              bottom: DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD,
+              left: frame.left + inset,
+              width: rowW,
+              alignItems: 'center',
+            },
+          ]}
+        >
+          {slot(beads.left)}
+          <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_RADIUS }]}>
+            <DockFrost style={[styles.front, styles.cardEdge, { width: stripW, height: TWO_BEAD }]} radius={DOCK_RADIUS}>
+              <View style={[styles.stripActions, { flexDirection: 'row' }]}>
+                {actions.map((action, i) => (
+                  <View key={action.key} style={styles.stripSlot}>
+                    {i > 0 && <View style={[styles.stripDivider, { backgroundColor: theme.glass.inkMuted }]} />}
+                    <ActionButton
+                      action={action}
+                      width={buttonW}
+                      height={TWO_BEAD - 4}
+                      iconSize={ACT_ICON}
+                      theme={theme}
+                      onDone={() => {}}
+                    />
+                  </View>
+                ))}
+              </View>
+            </DockFrost>
+          </View>
+          {slot(beads.right)}
         </View>
       </GlassPortal>
     );
