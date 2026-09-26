@@ -819,8 +819,53 @@ export default function CalendarScreen() {
   // answer to where those cards belong: "при розгортанні календаря
   // верхньою кнопкою під ним з'явиться ще одна кнопка(заголовок)
   // розгортання карток історії".
-  const calendarActions = null;
-  useDockBeads(pointerDensity ? null : searchBead, pointerDensity ? null : todayBead);
+  // THE DOCK'S MIDDLE IS THE CALENDAR'S OWN AGAIN (2026-09-26): the desks
+  // went up to the bar at the top and left a hole, and what this screen
+  // does goes in it - «Сьогодні» moved in from the right bead, the month,
+  // the day's history, and choosing blocks. The right bead does what it
+  // does everywhere, makes something - here, text: the pencil starts
+  // writing in the day's note. While the note's blocks are being chosen,
+  // the note's own actions hold the middle instead.
+  const pencilBead = calendarFocused
+    ? { icon: 'pencil-outline', onPress: () => noteEditorRef.current?.startWriting() }
+    : null;
+  const calendarActions =
+    calendarFocused && !noteSelectMode
+      ? [
+          {
+            key: 'today',
+            icon: 'today-outline',
+            label: 'Сьогодні',
+            active: selectedKeyForDock !== todayKey,
+            onPress: jumpToToday,
+          },
+          {
+            key: 'month',
+            icon: 'calendar-outline',
+            label: 'Місяць',
+            active: isMonthExpanded,
+            onPress: () => setIsMonthExpanded((v) => !v),
+          },
+          {
+            key: 'history',
+            icon: 'time-outline',
+            label: 'Історія',
+            active: historyExpanded,
+            onPress: () => {
+              // The history lives under the opened month.
+              if (!isMonthExpanded) setIsMonthExpanded(true);
+              setHistoryExpanded((v) => !v);
+            },
+          },
+          {
+            key: 'select',
+            icon: 'checkmark-circle-outline',
+            label: 'Вибір',
+            onPress: () => noteEditorRef.current?.toggleSelectMode(),
+          },
+        ]
+      : null;
+  useDockBeads(pointerDensity ? null : searchBead, pointerDensity ? null : pencilBead);
   useDockActions(pointerDensity ? null : calendarActions);
   // The same list, for the column head. A bead and an action differ only
   // in where the dock puts them, and this row has no such two places.

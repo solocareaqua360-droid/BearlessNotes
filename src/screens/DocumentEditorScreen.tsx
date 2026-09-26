@@ -310,6 +310,10 @@ type Props =
 
 export type DocumentEditorHandle = {
   toggleSelectMode: () => void;
+  // The pencil's job (the dock's right bead, where other screens have
+  // "+"): start writing - on the last line if it is still empty, on a new
+  // one after everything otherwise; on an empty page, its first line.
+  startWriting: () => void;
   // Everything the corner arrow used to do BEFORE closing the note:
   // finish a canvas card, shut the reference drawer. Answers false when
   // the note has nothing of its own left to close, which is the pane
@@ -2564,7 +2568,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           icon: paneFullscreen ? 'contract-outline' : 'expand-outline',
           onPress: onToggleFullscreen,
         }
-      : null
+      : // Otherwise the right bead does what it does everywhere - makes
+        // something - and on a page what there is to make is text: the
+        // pencil starts writing (see startWriting). Not on the canvas.
+        !embedded && !canvasMode && panelSection === null && !panelClosing
+        ? { icon: 'pencil-outline', onPress: startWriting }
+        : null
   );
   // ...and to OPEN on them. A note has no context of its own, and the
   // dock's standing rule for that case is to open on the desks - right
@@ -4564,7 +4573,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     );
   }
 
-  useImperativeHandle(ref, () => ({ toggleSelectMode, requestBack }));
+  // START WRITING - the right bead's pencil on a note and on the calendar's
+  // day: "права кнопка завжди відповідає за створення; якщо ми не можемо
+  // щось створити, то повинні почати створювати текст". The last line if
+  // it is an empty plain line already (no second empty line under it),
+  // otherwise a new one after everything; either way the keyboard opens
+  // on it.
+  function startWriting() {
+    const last = blocks[blocks.length - 1];
+    if (last && (last.type ?? 'paragraph') === 'paragraph' && plainTextOf(last.text).trim() === '') {
+      handleActivateBlock(last.id);
+      return;
+    }
+    addBlockAtEnd();
+  }
+
+  useImperativeHandle(ref, () => ({ toggleSelectMode, requestBack, startWriting }));
 
   useEffect(() => {
     onSelectModeChange?.(isSelectMode);
