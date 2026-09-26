@@ -27,7 +27,7 @@ import { TAB_SCREENS } from '../navigation/tabScreens';
 import { BoardCard, BoardColumn, BoardItem } from '../types';
 import { readBoardPart } from '../utils/boardStorage';
 import BoardMiniMap from '../components/BoardMiniMap';
-import DatabaseChrome from '../components/DatabaseChrome';
+import DatabaseChrome, { SHELF_HEIGHT } from '../components/DatabaseChrome';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import ProjectBadge from '../components/ProjectBadge';
 import TagPicker from '../components/TagPicker';
@@ -535,9 +535,9 @@ export default function BoardsListScreen({
       // the way of both halves.
       railSide={inPane ? 'left' : 'right'}
       searchPlaceholder="Пошук дощок"
-      // The first screen with its functions at the top and only going
-      // places in the dock - see DatabaseChrome's topBar.
-      topBar={{ title: 'Дошки' }}
+      // Search and "..." on a shelf over the dock, the rest inside "..."
+      // - see DatabaseChrome's shelf.
+      shelf
       onAdd={createBoard}
       addIcon="easel-outline"
       explorer={{
@@ -674,7 +674,7 @@ export default function BoardsListScreen({
               viewMode === 'cards' ? styles.tileGrid : styles.list,
               railClear(inPane ? 'left' : 'right', viewMode === 'cards' ? 10 : 20),
               viewMode !== 'cards' && isTwoPane && styles.listWide,
-              { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
+              { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom + SHELF_HEIGHT },
               ]}
           >
             {/* Where you are and what folders are here - only in
