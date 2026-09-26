@@ -30,6 +30,8 @@ import AttachmentImage from '../components/AttachmentImage';
 import FlashcardView from '../components/FlashcardView';
 import FlashcardEditor from '../components/FlashcardEditor';
 import GroupPickerSheet from '../components/GroupPickerSheet';
+import TagPicker from '../components/TagPicker';
+import { detachTagFromDeletedItem } from '../hooks/useTags';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import UndoToast from '../components/UndoToast';
 import { confirm } from '../components/surfaces/Ask';
@@ -39,9 +41,11 @@ import { listenError } from '../utils/listenError';
 // «Картки» - things to learn, one card each: a term, an explanation that
 // stays folded until it is wanted, and pictures shown large. Two ways to
 // look at them, one button apart (the bar's "⋯" → «Змінити вигляд»): a
-// LIST, to find and fix a card, and the STACK, one card to a screen,
-// flipped upward like pages - "гортати картки". A tap on a card in the
-// list opens the stack at that card.
+// LIST, to find and fix a card, and the STACK, one card to a screen. In
+// the stack a sideways swipe over the words is the next / previous card,
+// and the same swipe over the pictures is the next picture - the user's
+// own split. A tap on a card in the list opens the stack at that card.
+// Decks are projects; smartfolders narrow the stack too.
 //
 // A project («Проект», the app's one grouping) is a deck. A deck can be
 // put into LEARNING mode - its cards then carry «Знаю» / «Ще вчу», and
@@ -62,6 +66,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
   const [editor, setEditor] = useState<{ card: Flashcard | null } | null>(null);
   const [viewer, setViewer] = useState<{ card: Flashcard; index: number } | null>(null);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
+  const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [hideKnown, setHideKnown] = useState(false);
   // The card the stack opens at - by id, so it is found again whatever
   // search or deck the list was showing when it was tapped.
@@ -80,6 +85,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
               term: data.term ?? '',
               explanation: data.explanation ?? '',
               images: data.images ?? [],
+              tagIds: data.tagIds ?? [],
               updatedAt: data.updatedAt ?? 0,
             };
           })
@@ -94,7 +100,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
     groupKind: 'flashcard',
     tagKind: 'flashcard',
     items: cards,
-    tagIdsOf: () => [],
+    tagIdsOf: (c) => c.tagIds ?? [],
     groupIdOf: (c) => c.groupId,
     titleOf: (c) => c.term || 'Без терміна',
     createdAtOf: (c) => c.createdAt,
@@ -163,7 +169,26 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       const batch = writeBatch(db);
       doomed.forEach((c) => batch.delete(doc(db, 'flashcards', c.id)));
       batch.commit();
+      // A deleted card lets go of its smartfolders, or they would count it.
+      doomed.forEach((c) =>
+        (c.tagIds ?? []).forEach((tagId) => {
+          const tag = list.tags.find((t) => t.id === tagId);
+          if (tag) detachTagFromDeletedItem(tag, 'flashcard', c.id);
+        })
+      );
     });
+    list.clear();
+  }
+
+  async function bulkAttachTag(tag: Parameters<typeof list.attachTag>[0]) {
+    setBulkTagPickerVisible(false);
+    await Promise.all(list.selected.map((c) => list.attachTag(tag, 'flashcard', c.id, 'flashcards')));
+    list.clear();
+  }
+
+  async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
+    setBulkTagPickerVisible(false);
+    await list.createAndAttachTagToMany(path, icon, color, 'flashcard', list.selected.map((c) => c.id), 'flashcards');
     list.clear();
   }
 
@@ -259,26 +284,28 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
 
   function renderStack(listTopPad: number, listProps: Record<string, unknown>) {
     const pageH = Math.max(0, area.height - listTopPad - dockClear - insets.bottom);
-    const cardW = Math.max(0, area.width - 40);
+    const pageW = area.width;
+    const cardW = Math.max(0, pageW - 40);
     if (pageH <= 0 || cardW <= 0) return null;
     const start = Math.max(0, shown.findIndex((c) => c.id === startId));
     return (
       <FlatList
         {...listProps}
-        // A new deck, a new stack - opened at its top.
-        key={`stack:${list.groupFilter ?? 'all'}`}
+        // A new deck or folder, a new stack - opened at its first card.
+        key={`stack:${list.groupFilter ?? 'all'}:${JSON.stringify(list.tagFilter)}`}
         data={shown}
         keyExtractor={(c) => c.id}
+        horizontal
         style={{ marginTop: listTopPad, height: pageH, flexGrow: 0 }}
         pagingEnabled
-        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
         initialScrollIndex={shown.length > 0 ? Math.min(start, shown.length - 1) : undefined}
-        getItemLayout={(_, index) => ({ length: pageH, offset: pageH * index, index })}
+        getItemLayout={(_, index) => ({ length: pageW, offset: pageW * index, index })}
         windowSize={3}
         initialNumToRender={2}
         maxToRenderPerBatch={2}
         renderItem={({ item }) => (
-          <View style={[styles.page, { height: pageH }]}>
+          <View style={[styles.page, { width: pageW, height: pageH }]}>
             <FlashcardView
               card={item}
               width={cardW}
@@ -305,7 +332,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       navTitle={inPane ? undefined : { icon: 'albums-outline', label: 'Картки' }}
       railSide={inPane ? 'left' : 'right'}
       searchPlaceholder="Пошук по картках"
-      hideDrawer
+      drawerSwipe={!stack}
       onAdd={() => setEditor({ card: null })}
       menuRows={menuRows}
       shape={{
@@ -313,6 +340,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
         onToggle: () => list.changeViewMode(list.viewMode === 'grid' ? 'list' : 'grid'),
       }}
       bulk={{
+        onTag: () => setBulkTagPickerVisible(true),
         onGroup: () => setBulkGroupPickerVisible(true),
         onDelete: deleteSelected,
       }}
@@ -324,7 +352,19 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
             card={editor?.card ?? null}
             groups={list.groups}
             defaultGroupId={list.selectedGroupId}
+            tagApi={list}
             onClose={() => setEditor(null)}
+          />
+          <TagPicker
+            visible={bulkTagPickerVisible}
+            kind="flashcard"
+            tags={list.tags}
+            selectedTagIds={[]}
+            onAttach={bulkAttachTag}
+            onDetach={() => {}}
+            onCreateAndAttach={bulkCreateAndAttachTag}
+            onRenameTag={list.renameTag}
+            onClose={() => setBulkTagPickerVisible(false)}
           />
           <GroupPickerSheet
             visible={bulkGroupPickerVisible}

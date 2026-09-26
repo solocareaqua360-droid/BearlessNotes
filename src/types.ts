@@ -382,6 +382,8 @@ export interface Flashcard {
   explanation: string;
   images: FlashcardImage[];
   groupId?: string;
+  // Smartfolders («смартпапки») - the same tags every database files by.
+  tagIds?: string[];
   // Learning mode only (a group's own switch, see Group.flashcardLearning):
   // the card has been learned, and can be left out of the stack.
   known?: boolean;

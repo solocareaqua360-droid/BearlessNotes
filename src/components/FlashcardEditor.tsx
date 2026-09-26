@@ -6,7 +6,9 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { collection, deleteDoc, deleteField, doc, getDoc, updateDoc } from '../firestore';
 import { addDoc, setDoc } from '../utils/owned';
 import { db } from '../firebase';
-import { Flashcard, FlashcardImage, Group } from '../types';
+import { Flashcard, FlashcardImage, Group, Tag } from '../types';
+import { detachTagFromDeletedItem, useTags } from '../hooks/useTags';
+import TagPicker from './TagPicker';
 import { groupKindFields } from '../utils/groups';
 import { backupFileToDrive } from '../utils/googleDrive';
 import AttachmentImage from './AttachmentImage';
@@ -69,6 +71,7 @@ export default function FlashcardEditor({
   card,
   groups,
   defaultGroupId,
+  tagApi,
   onClose,
 }: {
   visible: boolean;
@@ -77,6 +80,8 @@ export default function FlashcardEditor({
   groups: Group[];
   // A new card lands in the project being looked at.
   defaultGroupId?: string | null;
+  // The screen's own tag machinery (useDatabaseList spreads useTags).
+  tagApi: Pick<ReturnType<typeof useTags>, 'tags' | 'attachTag' | 'detachTag' | 'createAndAttachTag' | 'renameTag'>;
   onClose: () => void;
 }) {
   const theme = useTheme();
@@ -86,6 +91,11 @@ export default function FlashcardEditor({
   const [images, setImages] = useState<FlashcardImage[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [newGroupName, setNewGroupName] = useState<string | null>(null);
+  // Smartfolders are chosen here and written on save: a new card has no
+  // document yet for a tag to be attached to.
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [newTags, setNewTags] = useState<{ path: string; icon: string; color: string }[]>([]);
+  const [tagPickerVisible, setTagPickerVisible] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -94,6 +104,9 @@ export default function FlashcardEditor({
     setImages(card?.images ?? []);
     setGroupId(card ? card.groupId ?? null : defaultGroupId ?? null);
     setNewGroupName(null);
+    setTagIds(card?.tagIds ?? []);
+    setNewTags([]);
+    setTagPickerVisible(false);
   }, [visible, card, defaultGroupId]);
 
   async function addPhoto() {
@@ -154,12 +167,28 @@ export default function FlashcardEditor({
         term: cleanTerm,
         explanation: explanation.trim(),
         images,
+        tagIds: [],
         ...(groupId ? { groupId } : {}),
         createdAt: now,
         updatedAt: now,
       });
     }
     onClose();
+    // The smartfolders, now that there is a card to file.
+    const before = card?.tagIds ?? [];
+    for (const tagId of tagIds) {
+      if (before.includes(tagId)) continue;
+      const tag = tagApi.tags.find((t) => t.id === tagId);
+      if (tag) await tagApi.attachTag(tag, 'flashcard', id, 'flashcards');
+    }
+    for (const tagId of before) {
+      if (tagIds.includes(tagId)) continue;
+      const tag = tagApi.tags.find((t) => t.id === tagId);
+      if (tag) await tagApi.detachTag(tag, 'flashcard', id, 'flashcards');
+    }
+    for (const created of newTags) {
+      await tagApi.createAndAttachTag(created.path, created.icon, created.color, 'flashcard', id, 'flashcards');
+    }
     backUpImages(id, images);
   }
 
@@ -169,9 +198,14 @@ export default function FlashcardEditor({
     if (!yes) return;
     onClose();
     deleteDoc(doc(db, 'flashcards', card.id));
+    (card.tagIds ?? []).forEach((tagId) => {
+      const tag = tagApi.tags.find((t) => t.id === tagId);
+      if (tag) detachTagFromDeletedItem(tag, 'flashcard', card.id);
+    });
   }
 
   return (
+    <>
     <Sheet visible={visible} onClose={onClose} title={card ? 'Картка' : 'Нова картка'} scroll maxHeight="85%">
       <Text style={styles.label}>Термін</Text>
       <TextInput
@@ -238,6 +272,35 @@ export default function FlashcardEditor({
         )}
       </View>
 
+      <Text style={styles.label}>Смартпапки</Text>
+      <View style={styles.chips}>
+        {tagIds.map((tagId) => {
+          const tag = tagApi.tags.find((t) => t.id === tagId);
+          if (!tag) return null;
+          return (
+            <Chip
+              key={tagId}
+              label={tag.path}
+              color={tag.color}
+              active
+              trailing="close"
+              onPress={() => setTagIds((prev) => prev.filter((x) => x !== tagId))}
+            />
+          );
+        })}
+        {newTags.map((created, i) => (
+          <Chip
+            key={`new:${i}`}
+            label={created.path}
+            color={created.color}
+            active
+            trailing="close"
+            onPress={() => setNewTags((prev) => prev.filter((_, j) => j !== i))}
+          />
+        ))}
+        <Chip label="Додати" icon="add" onPress={() => setTagPickerVisible(true)} />
+      </View>
+
       <View style={styles.actions}>
         {card && (
           <Pressable style={[styles.button, styles.dangerButton]} onPress={remove}>
@@ -251,6 +314,22 @@ export default function FlashcardEditor({
         </Pressable>
       </View>
     </Sheet>
+    {/* After the sheet, so it opens over it. */}
+    <TagPicker
+      visible={visible && tagPickerVisible}
+      kind="flashcard"
+      tags={tagApi.tags}
+      selectedTagIds={tagIds}
+      onAttach={(tag: Tag) => setTagIds((prev) => (prev.includes(tag.id) ? prev : [...prev, tag.id]))}
+      onDetach={(tag: Tag) => setTagIds((prev) => prev.filter((x) => x !== tag.id))}
+      onCreateAndAttach={(path, icon, color) => {
+        setNewTags((prev) => [...prev, { path, icon, color }]);
+        setTagPickerVisible(false);
+      }}
+      onRenameTag={tagApi.renameTag}
+      onClose={() => setTagPickerVisible(false)}
+    />
+    </>
   );
 
   function Chip({
@@ -258,12 +337,14 @@ export default function FlashcardEditor({
     color,
     icon,
     active,
+    trailing,
     onPress,
   }: {
     label: string;
     color?: string;
     icon?: keyof typeof Ionicons.glyphMap;
     active?: boolean;
+    trailing?: keyof typeof Ionicons.glyphMap;
     onPress: () => void;
   }) {
     return (
@@ -274,6 +355,7 @@ export default function FlashcardEditor({
           <View style={[styles.chipDot, { backgroundColor: color ?? theme.ink.faint }]} />
         )}
         <Text style={styles.chipLabel}>{label}</Text>
+        {trailing && <Ionicons name={trailing} size={13} color={theme.ink.muted} />}
       </Pressable>
     );
   }

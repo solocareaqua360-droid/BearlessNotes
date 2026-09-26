@@ -111,6 +111,10 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // drawer, and a folder button that opens an empty panel is worse than
   // none (stickers).
   hideDrawer?: boolean;
+  // False where a sideways swipe already means something on the list
+  // itself (the flashcards' stack: next / previous card), so it cannot
+  // also open the drawer.
+  drawerSwipe?: boolean;
   // Selecting exists to act on what was selected, so the "Вибрати" row
   // appears only where there are bulk actions to reach.
   bulk?: {
@@ -176,6 +180,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   shape,
   explorer,
   hideDrawer,
+  drawerSwipe: drawerSwipeOn = true,
   bulk,
   children,
   overlay,
@@ -432,7 +437,10 @@ export default function DatabaseChrome<T extends { id: string }>({
     pullHaptic();
     list.setIsSearching(true);
   });
-  const listGesture = useMemo(() => Gesture.Simultaneous(pull.gesture, drawerSwipe), [pull.gesture, drawerSwipe]);
+  const listGesture = useMemo(
+    () => (drawerSwipeOn ? Gesture.Simultaneous(pull.gesture, drawerSwipe) : pull.gesture),
+    [pull.gesture, drawerSwipe, drawerSwipeOn]
+  );
   // The search takes the screen; what hangs off the rail goes with it.
   useEffect(() => {
     if (list.isSearching || list.isSelectMode) {
