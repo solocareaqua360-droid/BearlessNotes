@@ -23,6 +23,7 @@ import {
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
+import { TAB_SCREENS } from '../navigation/tabScreens';
 import { BoardCard, BoardColumn, BoardItem } from '../types';
 import { readBoardPart } from '../utils/boardStorage';
 import BoardMiniMap from '../components/BoardMiniMap';
@@ -497,6 +498,27 @@ export default function BoardsListScreen({
     return tile;
   }
 
+  // The way back, for either shape this screen comes in - the user's own
+  // rule: a folder first steps up one level (the explorer's own history,
+  // which in the ordinary drill-down case IS the parent), and only once
+  // there is no folder left to leave does it leave the screen itself. A
+  // COPY leaves to whoever pushed it; the tab's own root has no stack to
+  // pop, so it steps to the desk BEFORE this one in the ring instead -
+  // "на попередній робочий стіл, у випадку дошок це календар".
+  const deskIndex = TAB_SCREENS.findIndex((s) => s.name === 'Дошки');
+  const previousDesk = deskIndex > 0 ? TAB_SCREENS[deskIndex - 1].name : undefined;
+  function goBack() {
+    if (explorer.historyState.canBack) {
+      explorer.back();
+      return;
+    }
+    if (standalone) {
+      navigation.goBack();
+      return;
+    }
+    if (previousDesk) (navigation.getParent() as any)?.navigate(previousDesk);
+  }
+
   return (
     <DatabaseChrome<BoardItem>
       list={list}
@@ -506,7 +528,7 @@ export default function BoardsListScreen({
       // foot; a COPY pushed over the tile board has a way back and no
       // island, like every other pushed screen.
       hasIsland={!standalone}
-      onBack={standalone ? () => navigation.goBack() : undefined}
+      onBack={goBack}
       leaveIcon="easel-outline"
       // In another screen's pane the rail stands on the window's OUTER
       // edge, which is the left one - against the divider it would be in
