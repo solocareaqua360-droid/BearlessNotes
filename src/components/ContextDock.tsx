@@ -720,6 +720,11 @@ export default function ContextDock() {
   // on the left, creating on the right. The user's own arrangement, and
   // Samsung's own reasoning - a pile of cards is for what changes.
   const beads = useNavDockBeads();
+  // Declared, not inferred - see useDockWide's own comment. A screen that
+  // publishes neither bead while asking for this reads as "give the
+  // middle the room those slots would have held", whether or not it also
+  // has a bar at the top (see `compactMiddle`, further down).
+  const dockWide = useNavDockWide();
   // Lives in the provider now - a screen has to be able to ask for the
   // path back when an action finishes somewhere else.
   const [face, setFace] = useNavDockFace();
@@ -1010,7 +1015,7 @@ export default function ContextDock() {
   // with nowhere else to put more buttons. On the split the actions row
   // already gets real room from the widened front layer, so doing both
   // at once would be the same case handled twice.
-  const wideWanted = useNavDockWide() && !beads.left && !beads.right && !splitActive;
+  const wideWanted = dockWide && !beads.left && !beads.right && !splitActive;
   const [stretch, setStretch] = useState(wideWanted ? 1 : 0);
   const stretchRaf = useRef<number | null>(null);
   const stretchRef = useRef(stretch);
@@ -1812,12 +1817,22 @@ export default function ContextDock() {
   // making under choosing. No plate and nothing between them: the middle
   // is the page's. Anything that does fill the middle - a selection's
   // actions, a board's desks - brings the whole dock back.
-  const writingScreen = topNavUp && !ringOwn && !desksCard;
+  //
+  // A screen with no bar of its own yet (the note, still on the plain
+  // dock the rest of the time) reaches the same treatment by publishing
+  // `dockWide` with both beads let go - the same signal, one call
+  // earlier: "воно ж не так важливо, поки ми не збудували її бар".
+  // Sized and aligned exactly like the bar-driven screens (topBarFrame,
+  // TWO_BEAD) rather than the plain dock's own taller, narrower geometry
+  // - the mismatch the user caught: "відступи у дока не симетричні" was
+  // this same strip still drawn through the OLD stretch below, whose
+  // insets answer to a different, phone-width-only formula.
+  const compactMiddle = !ringOwn && !desksCard && (topNavUp || (dockWide && !beads.left && !beads.right && !splitActive));
   // ...and while something is being chosen there, ONLY what can be done
   // to it: one strip between the same two edges, as tall as those two
   // beads, no search beside it (there is nothing to search for while
   // choosing) and no empty place where "+" stood - the user's own call.
-  if (writingScreen && !!topExtras && !!actions?.length) {
+  if (compactMiddle && !!actions?.length) {
     const frame = topBarFrame(windowW);
     const buttonW = Math.floor(frame.width / 5);
     return (
@@ -1847,7 +1862,7 @@ export default function ContextDock() {
       </GlassPortal>
     );
   }
-  if (writingScreen && !actions?.length) {
+  if (compactMiddle && !actions?.length) {
     const frame = topBarFrame(windowW);
     const slot = (bead: typeof beads.left) =>
       bead ? (
