@@ -476,6 +476,9 @@ export default function CalendarScreen() {
   // whichever day's note is currently mounted - noteEditorRef is how the
   // header's select button reaches back down to actually toggle it.
   const [noteSelectMode, setNoteSelectMode] = useState(false);
+  // The day's note has its keyboard-panel open: the dock steps away, the
+  // way it does over a note's panel anywhere else.
+  const [notePanelOpen, setNotePanelOpen] = useState(false);
   const [noteSaveStatus, setNoteSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const noteEditorRef = useRef<DocumentEditorHandle>(null);
   // The calendar folds away entirely while the keyboard is up: on a phone
@@ -826,11 +829,11 @@ export default function CalendarScreen() {
   // does everywhere, makes something - here, text: the pencil starts
   // writing in the day's note. While the note's blocks are being chosen,
   // the note's own actions hold the middle instead.
-  const pencilBead = calendarFocused
+  const pencilBead = calendarFocused && !notePanelOpen
     ? { icon: 'pencil-outline', onPress: () => noteEditorRef.current?.startWriting() }
     : null;
   const calendarActions =
-    calendarFocused && !noteSelectMode
+    calendarFocused && !noteSelectMode && !notePanelOpen
       ? [
           {
             key: 'today',
@@ -865,7 +868,7 @@ export default function CalendarScreen() {
           },
         ]
       : null;
-  useDockBeads(pointerDensity ? null : searchBead, pointerDensity ? null : pencilBead);
+  useDockBeads(pointerDensity || notePanelOpen ? null : searchBead, pointerDensity ? null : pencilBead);
   useDockActions(pointerDensity ? null : calendarActions);
   // The same list, for the column head. A bead and an action differ only
   // in where the dock puts them, and this row has no such two places.
@@ -1201,6 +1204,7 @@ export default function CalendarScreen() {
           navigation={navigation}
           extraFields={{ calendarDate: key }}
           onSelectModeChange={primary ? setNoteSelectMode : undefined}
+          onPanelChange={primary ? setNotePanelOpen : undefined}
           onSaveStatusChange={primary ? setNoteSaveStatus : undefined}
           onPullPastEnd={zooms ? openOverview : undefined}
         />

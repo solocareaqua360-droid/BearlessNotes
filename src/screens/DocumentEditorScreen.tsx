@@ -257,6 +257,12 @@ type Props =
       // every filled day. Given, the page always scrolls a little past
       // its end, however short the note - see PULL_ZONE.
       onPullPastEnd?: () => void;
+      // The panel that takes the keyboard's place (lists, text, insert)
+      // is open or on its way shut. The calendar publishes the dock for
+      // its day's note, so it has to be told to put the dock away while
+      // this panel stands where the dock would - the note does exactly
+      // that for itself when it owns the dock.
+      onPanelChange?: (open: boolean) => void;
     }
   // Pane mode (DocumentsScreen's two-pane layout on a wide screen): the
   // WHOLE editor, header and title and cover included - unlike embedded
@@ -426,6 +432,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const extraFields = 'embedded' in props ? (props.extraFields ?? {}) : {};
   const onSelectModeChange = 'embedded' in props ? props.onSelectModeChange : undefined;
   const onPullPastEnd = 'embedded' in props ? props.onPullPastEnd : undefined;
+  const onPanelChange = 'embedded' in props ? props.onPanelChange : undefined;
   const [scrollViewportH, setScrollViewportH] = useState(0);
   const onSaveStatusChange =
     'embedded' in props ? props.onSaveStatusChange : 'pane' in props ? props.onSaveStatusChange : undefined;
@@ -4593,6 +4600,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   useEffect(() => {
     onSelectModeChange?.(isSelectMode);
   }, [isSelectMode]);
+
+  useEffect(() => {
+    onPanelChange?.(panelSection !== null || panelClosing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelSection, panelClosing]);
 
   useEffect(() => {
     onSaveStatusChange?.(saveStatus);
