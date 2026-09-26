@@ -20,7 +20,7 @@ import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
-import { useDockClearance } from '../navigation/dockGeometry';
+import { DOCK_PLATE_RADIUS, dockPlateWidth, useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
 import { usePublishRailTree } from '../navigation/navRail';
@@ -246,8 +246,12 @@ export default function DatabaseChrome<T extends { id: string }>({
   const searchingAlone = list.isSearching && keyboardUp;
   const showContext = useDockShowContext();
   const dockClear = useDockClearance();
+  // The top panel is the dock's plate, so it takes the dock's width
+  // (never wider than the list it sits over) and its menus open under
+  // its own right end.
+  const barWidth = Math.min(dockPlateWidth(windowWidth), windowWidth - 24);
   const menuAnchor = topBar
-    ? ({ position: 'absolute', right: 16, top: chromeTop + barHeight + 6 } as const)
+    ? ({ position: 'absolute', right: Math.max(8, (windowWidth - barWidth) / 2), top: chromeTop + barHeight + 6 } as const)
     : ({ position: 'absolute', right: 16, bottom: dockClear + insets.bottom } as const);
   // Everything this screen offers now goes to the DOCK, not the rail -
   // the same move the documents screen made, and it lands on files,
@@ -431,42 +435,43 @@ export default function DatabaseChrome<T extends { id: string }>({
             >
               {topBar && (
                 <View
-                  style={[styles.topBar, splitting && { paddingLeft: listPaneX + 16 }]}
+                  style={[styles.topBar, splitting && { paddingLeft: listPaneX }]}
                   pointerEvents="box-none"
                   onLayout={(e) => setBarHeight(e.nativeEvent.layout.height)}
                 >
-                  {/* Where you are - and, on a screen pushed over another,
-                      the way back, which the dock alone never made obvious. */}
-                  <GlassDrop style={styles.barCapsule}>
+                  {/* ONE panel, the dock's own shape turned upside down:
+                      as wide as the dock's plate, on the same axis, the
+                      same corner - only shorter. The user's words: "по
+                      ширині як док... форма теж квадратна просто вужча".
+                      No title: it did nothing ("навіщо велика кнопка
+                      дошки"). Its left corner is the way back, on a
+                      screen pushed over another. */}
+                  <GlassDrop style={[styles.barPanel, { width: barWidth }]} radius={DOCK_PLATE_RADIUS}>
                     {onBack && <BarButton icon="arrow-back" onPress={onBack} />}
-                    <Text
-                      style={[styles.barTitle, { color: theme.glass.ink }, !onBack && styles.barTitleAlone]}
-                      numberOfLines={1}
-                    >
-                      {topBar.title}
-                    </Text>
+                    <View style={styles.barSpacer} />
+                    {/* What this screen does - the same icons the dock
+                        carried, so nothing has to be learnt twice.
+                        Selecting acts from the dock, so they step aside
+                        while it lasts. */}
+                    {!list.isSelectMode && (
+                      <>
+                        <BarButton
+                          icon={list.isSearching ? 'close-outline' : 'search-outline'}
+                          active={list.isSearching}
+                          onPress={() => list.setIsSearching((prev) => !prev)}
+                        />
+                        {shape && <BarButton icon={shape.icon} onPress={shape.onToggle} />}
+                        <BarButton icon="filter-outline" active={sortMenuOpen} onPress={() => setSortMenuOpen((v) => !v)} />
+                        {!hideDrawer && (
+                          <BarButton icon="pricetag-outline" active={!!list.tagFilter} onPress={() => drawerRef.current?.open()} />
+                        )}
+                        {bulk && <BarButton icon="checkmark-circle-outline" onPress={() => list.toggleSelectMode()} />}
+                        {menuRows && (
+                          <BarButton icon="ellipsis-horizontal" active={menuOpen} onPress={() => setMenuOpen((v) => !v)} />
+                        )}
+                      </>
+                    )}
                   </GlassDrop>
-                  {/* What this screen does - the same icons the dock carried,
-                      so nothing has to be learnt twice. Selecting acts from
-                      the dock, so they step aside while it lasts. */}
-                  {!list.isSelectMode && (
-                    <GlassDrop style={styles.barCapsule}>
-                      <BarButton
-                        icon={list.isSearching ? 'close-outline' : 'search-outline'}
-                        active={list.isSearching}
-                        onPress={() => list.setIsSearching((prev) => !prev)}
-                      />
-                      {shape && <BarButton icon={shape.icon} onPress={shape.onToggle} />}
-                      <BarButton icon="filter-outline" active={sortMenuOpen} onPress={() => setSortMenuOpen((v) => !v)} />
-                      {!hideDrawer && (
-                        <BarButton icon="pricetag-outline" active={!!list.tagFilter} onPress={() => drawerRef.current?.open()} />
-                      )}
-                      {bulk && <BarButton icon="checkmark-circle-outline" onPress={() => list.toggleSelectMode()} />}
-                      {menuRows && (
-                        <BarButton icon="ellipsis-horizontal" active={menuOpen} onPress={() => setMenuOpen((v) => !v)} />
-                      )}
-                    </GlassDrop>
-                  )}
                 </View>
               )}
               {!searchingAlone && list.groups.length > 0 && !list.groupsRowHidden && (
@@ -756,28 +761,17 @@ const makeStyles = (t: Theme) =>
     zIndex: 6,
   },
   topBar: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    paddingHorizontal: 16,
     paddingBottom: 10,
   },
-  barCapsule: {
+  barPanel: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 48,
+    height: 52,
     paddingHorizontal: 4,
-    flexShrink: 1,
   },
-  barTitle: {
-    fontSize: 17,
-    fontFamily: FONT_SEMIBOLD,
-    paddingRight: 14,
-    flexShrink: 1,
-  },
-  barTitleAlone: {
-    paddingLeft: 14,
+  barSpacer: {
+    flex: 1,
   },
   filterRow: {
     flexDirection: 'row',

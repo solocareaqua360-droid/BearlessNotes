@@ -13,7 +13,7 @@ import { liftStyle } from '../theme/tokens';
 import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DOCK_BOTTOM, DOCK_PATH_GAP, DOCK_PATH_H, dockCardHeight, dockEdgeInset, dockRowWidth } from '../navigation/dockGeometry';
+import { DOCK_BOTTOM, DOCK_PATH_GAP, DOCK_PATH_H, DOCK_PIECE_RADIUS, DOCK_PLATE_PAD, dockCardHeight, dockEdgeInset, dockRowWidth } from '../navigation/dockGeometry';
 import { navigationRef } from '../navigationRef';
 import {
   DockAction,
@@ -270,12 +270,12 @@ const LEAVE_W = 36;
 //
 // A circle is its own object; a rounded square beside another is a piece
 // of something. That is the whole of why the beads stopped being round.
-const DOCK_RADIUS = 14;
+const DOCK_RADIUS = DOCK_PIECE_RADIUS;
 // The cut between two pieces. Not zero: two frosts that touch overlap,
 // and an overlap is a smudge, not a cut.
 const DOCK_CUT = 3;
 // How far the plate stands out past the pieces lying on it.
-const PLATE_PAD = 6;
+const PLATE_PAD = DOCK_PLATE_PAD;
 
 const GAP_F = 0.037;
 // INSET_F now lives in dockGeometry, so a panel that wants to be as wide

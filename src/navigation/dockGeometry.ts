@@ -75,6 +75,17 @@ export function dockRowWidth(windowWidth: number): number {
   return Math.min(windowWidth, PHONE_W) - dockEdgeInset(windowWidth) * 2;
 }
 
+// The plate the dock's pieces lie on: how far it stands out past the row,
+// and its corner. ContextDock draws it from these; the top bar that
+// matches the dock (DatabaseChrome's `topBar`) reads them too.
+export const DOCK_PIECE_RADIUS = 14;
+export const DOCK_PLATE_PAD = 6;
+export const DOCK_PLATE_RADIUS = DOCK_PIECE_RADIUS + DOCK_PLATE_PAD;
+
+export function dockPlateWidth(windowWidth: number): number {
+  return dockRowWidth(windowWidth) + DOCK_PLATE_PAD * 2;
+}
+
 export function useDockRowWidth(): number {
   const { width } = useWindowDimensions();
   return dockRowWidth(width);
