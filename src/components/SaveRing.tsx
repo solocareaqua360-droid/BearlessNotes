@@ -22,7 +22,19 @@ const ARC = 0.22;
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
-export default function SaveRing({ saving, color = '#fff' }: { saving: boolean; color?: string }) {
+export default function SaveRing({
+  saving,
+  color = '#fff',
+  radius: cornerRadius,
+}: {
+  saving: boolean;
+  color?: string;
+  // The outline's own corner. Absent, it is a stadium (half the short
+  // side) - right for a pill, wrong for the bar's plates, which are
+  // rounded rectangles: the ring glowed an oval round a square-cornered
+  // button, "по овалу, а не по квадрату". Given, it follows that corner.
+  radius?: number;
+}) {
   const [size, setSize] = useState({ w: 0, h: 0 });
   // Where the arc is, 0..1 round the contour.
   const travel = useSharedValue(0);
@@ -34,10 +46,15 @@ export default function SaveRing({ saving, color = '#fff' }: { saving: boolean; 
   // top-left corner, and taking the width both times drew an ellipse far
   // wider than the button it was meant to trace.
   const short = Math.min(size.w, size.h);
-  const long = Math.max(size.w, size.h);
-  const radius = short / 2 - STROKE / 2;
-  // Two straight sides and two half-circle ends.
-  const perimeter = Math.max(1, 2 * (long - short) + 2 * Math.PI * radius);
+  const w = Math.max(0, size.w - STROKE);
+  const h = Math.max(0, size.h - STROKE);
+  const radius = Math.max(
+    0,
+    Math.min(cornerRadius !== undefined ? cornerRadius - STROKE / 2 : short / 2 - STROKE / 2, Math.min(w, h) / 2)
+  );
+  // Four straight runs and four quarter circles - a stadium is the case
+  // where two of the runs are zero.
+  const perimeter = Math.max(1, 2 * (w - 2 * radius) + 2 * (h - 2 * radius) + 2 * Math.PI * radius);
 
   useEffect(() => {
     if (saving) {

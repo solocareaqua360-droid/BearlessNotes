@@ -419,6 +419,9 @@ const DOCK_WRAP_PAD = 6;
 // The two beads standing alone (see "JUST THE TWO") - a thumb's main
 // button, not the whole dock's height: 56, the size Android gives its own.
 const TWO_BEAD = 56;
+// One button of a SHORT strip (see the strip in ContextDock's body): room
+// for its icon and a one-word label, and no more.
+const STRIP_BUTTON_W = 84;
 // The path strip's own side padding - named because its width is worked
 // out from its content plus exactly this.
 const PATH_PAD = 4;
@@ -1832,33 +1835,58 @@ export default function ContextDock() {
   // to it: one strip between the same two edges, as tall as those two
   // beads, no search beside it (there is nothing to search for while
   // choosing) and no empty place where "+" stood - the user's own call.
-  if (compactMiddle && !!actions?.length) {
+  //
+  // Only where the beads really stand down - a writing screen that moved
+  // them to the bar (`topExtras`), or one that let both go. A database
+  // pushed from «Більше» has a bar too but keeps its search and "+"
+  // beads, so its dock stays the whole dock rather than a strip that
+  // drops them.
+  if (compactMiddle && !!actions?.length && (!!topExtras || (!beads.left && !beads.right))) {
     const frame = topBarFrame(windowW);
-    // Five slots' worth of width whenever there are that many or more (so
-    // a longer list still scrolls at a size the hand already knows), but
-    // a SHORT, fixed set - the note's own triple-button dock is exactly
-    // this - fills the strip evenly instead of sitting small and
-    // left-aligned with the rest of the width unused.
-    const buttonW = Math.floor(frame.width / Math.min(5, actions.length));
+    // A SHORT set - the note's own three, a board selection's four - is
+    // as wide as its buttons and no wider, centred, with a hairline
+    // between them so it reads as so many buttons ("скільки для них
+    // місця треба, стільки хай буде"; spread over the whole strip they
+    // were three buttons lost in a plank). A LONG one (choosing blocks:
+    // nine) keeps the whole strip and scrolls, five to a view.
+    const short = actions.length <= 5;
+    const buttonW = short ? STRIP_BUTTON_W : Math.floor(frame.width / 5);
+    const stripW = short ? buttonW * actions.length : frame.width;
     return (
       <GlassPortal>
         <View
           pointerEvents="box-none"
-          style={[styles.twoBeads, { bottom: DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD, left: frame.left, width: frame.width }]}
+          style={[
+            styles.twoBeads,
+            {
+              bottom: DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD,
+              left: frame.left + (frame.width - stripW) / 2,
+              width: stripW,
+            },
+          ]}
         >
           <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_RADIUS }]}>
-            <DockFrost style={[styles.front, styles.cardEdge, { width: frame.width, height: TWO_BEAD }]} radius={DOCK_RADIUS}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripActions}>
-                {actions.map((action) => (
-                  <ActionButton
-                    key={action.key}
-                    action={action}
-                    width={buttonW}
-                    height={TWO_BEAD - 4}
-                    iconSize={ACT_ICON}
-                    theme={theme}
-                    onDone={() => {}}
-                  />
+            <DockFrost style={[styles.front, styles.cardEdge, { width: stripW, height: TWO_BEAD }]} radius={DOCK_RADIUS}>
+              <ScrollView
+                horizontal
+                scrollEnabled={!short}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.stripActions}
+              >
+                {actions.map((action, i) => (
+                  <View key={action.key} style={styles.stripSlot}>
+                    {short && i > 0 && (
+                      <View style={[styles.stripDivider, { backgroundColor: theme.glass.inkMuted }]} />
+                    )}
+                    <ActionButton
+                      action={action}
+                      width={buttonW}
+                      height={TWO_BEAD - 4}
+                      iconSize={ACT_ICON}
+                      theme={theme}
+                      onDone={() => {}}
+                    />
+                  </View>
                 ))}
               </ScrollView>
             </DockFrost>
@@ -2376,7 +2404,20 @@ const styles = StyleSheet.create({
   },
   stripActions: {
     alignItems: 'center',
-    paddingHorizontal: 2,
+  },
+  stripSlot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  // The hairline between two buttons of a short strip - absolutely
+  // placed so it takes no width from either of them.
+  stripDivider: {
+    position: 'absolute',
+    left: 0,
+    top: '25%',
+    height: '50%',
+    width: StyleSheet.hairlineWidth,
+    opacity: 0.45,
   },
   wrap: {
     position: 'absolute',

@@ -31,7 +31,9 @@ import { useDensity } from '../hooks/useDensity';
 export const TOP_NAV_H = 46;
 // What a desk's own screen adds above its content so nothing starts
 // under the bar - the bar and the breath under it.
-export const TOP_NAV_SPACE = TOP_NAV_H + 10;
+// Twenty, not ten: at ten the bar sat so close over the first card that
+// the two read as one row of the same list - "все по одній лінії".
+export const TOP_NAV_SPACE = TOP_NAV_H + 20;
 // The plate's own padding and the cut between its pieces - the bottom
 // dock's numbers (ContextDock's PLATE_PAD and DOCK_CUT).
 const PLATE_PAD = 6;
@@ -121,14 +123,11 @@ export default function TopNavBar({
   // note, nothing at all ("по центру вгорі — порожньо"), just the room
   // between the two ends.
   const hasMiddle = !!title || !!desks?.length;
-  // The extras cluster's own width - each button it actually has, plus
-  // the cuts between them - so the plate takes exactly what is left.
+  // The extras cluster's own width - each button it actually has, on ONE
+  // plate with no gaps between them - so the middle takes what is left.
   const clusterCount = (extras?.menu ? 1 : 0) + (extras?.select ? 1 : 0) + (extras?.pane ? 1 : 0);
   const clusterWidth =
-    (extras?.menu ? MENU_W : 0) +
-    (extras?.select ? SIDE_W : 0) +
-    (extras?.pane ? SIDE_W : 0) +
-    Math.max(0, clusterCount - 1) * GAP;
+    (extras?.menu ? MENU_W : 0) + (extras?.select ? SIDE_W : 0) + (extras?.pane ? SIDE_W : 0);
   const plateWidth = frame.width - (SIDE_W + GAP) - (clusterCount > 0 ? clusterWidth + GAP : 0);
   const innerWidth = plateWidth - PLATE_PAD * 2;
   // The open desk takes whatever the plate has left once the closed desks
@@ -230,39 +229,36 @@ export default function TopNavBar({
           )}
         </View>
 
+        {/* "⋯", choosing and (on a Fold pane) expand/collapse as ONE
+            piece - "дві кнопки об'єднати": one plate, a hairline between
+            the buttons on it, so they read as one control at rest and
+            not only while the save ring is tracing round them. */}
         {clusterCount > 0 && (
-          <View style={styles.cluster}>
-            {extras?.menu && (
-              <SideButton
-                width={MENU_W}
-                icon="ellipsis-horizontal"
-                label="Ще"
-                active={menuOpen}
-                radius={corners.plate}
-                onPress={() => setMenuOpen((v) => !v)}
-              />
-            )}
-            {extras?.select && (
-              <SideButton
-                width={SIDE_W}
-                icon="checkmark-circle-outline"
-                label="Виділити"
-                active={extras.select.active}
-                radius={corners.plate}
-                onPress={extras.select.onPress}
-              />
-            )}
-            {extras?.pane && (
-              <SideButton
-                width={SIDE_W}
-                icon={extras.pane.icon as keyof typeof Ionicons.glyphMap}
-                label="Розгорнути"
-                active={false}
-                radius={corners.plate}
-                onPress={extras.pane.onPress}
-              />
-            )}
-            <SaveRing saving={!!saving} color={theme.glass.ink} />
+          <View style={[styles.cluster, lift, { width: clusterWidth, borderRadius: corners.plate }]}>
+            <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} />
+            {[
+              extras?.menu
+                ? { key: 'menu', width: MENU_W, icon: 'ellipsis-horizontal', label: 'Ще', active: menuOpen, onPress: () => setMenuOpen((v) => !v) }
+                : null,
+              extras?.select
+                ? { key: 'select', width: SIDE_W, icon: 'checkmark-circle-outline', label: 'Виділити', active: extras.select.active, onPress: extras.select.onPress }
+                : null,
+              extras?.pane
+                ? { key: 'pane', width: SIDE_W, icon: extras.pane.icon, label: 'Розгорнути', active: false, onPress: extras.pane.onPress }
+                : null,
+            ]
+              .filter((b): b is NonNullable<typeof b> => !!b)
+              .map((b, i) => (
+                <Pressable key={b.key} onPress={b.onPress} accessibilityLabel={b.label} style={[styles.clusterButton, { width: b.width }]}>
+                  {i > 0 && <View style={[styles.clusterDivider, { backgroundColor: theme.glass.inkMuted }]} />}
+                  <Ionicons
+                    name={b.icon as keyof typeof Ionicons.glyphMap}
+                    size={21}
+                    color={b.active ? theme.accent : theme.glass.ink}
+                  />
+                </Pressable>
+              ))}
+            <SaveRing saving={!!saving} color={theme.glass.ink} radius={corners.plate} />
           </View>
         )}
       </View>
@@ -276,34 +272,6 @@ export default function TopNavBar({
       style={{ position: 'absolute', right: windowWidth - frame.left - frame.width, top: barTop + TOP_NAV_H + 6 }}
     />
     </>
-  );
-}
-
-// One of the buttons standing apart at the bar's ends: the dock's
-// material, the plate's corner, the accent only while it is on.
-function SideButton({
-  width,
-  icon,
-  label,
-  active,
-  radius,
-  onPress,
-}: {
-  width: number;
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  active: boolean;
-  radius: number;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  const lift = useLift();
-  return (
-    <Pressable onPress={onPress} accessibilityLabel={label} style={{ width, height: TOP_NAV_H }}>
-      <DockFrost style={[styles.piece, lift]} radius={radius}>
-        <Ionicons name={icon} size={21} color={active ? theme.accent : theme.glass.ink} />
-      </DockFrost>
-    </Pressable>
   );
 }
 
@@ -435,12 +403,30 @@ const styles = StyleSheet.create({
   plate: {
     height: TOP_NAV_H,
   },
-  // The "⋯" / choosing / pane buttons, grouped so the save ring can trace
-  // one outline around all of them rather than one each.
+  // The "⋯" / choosing / pane buttons on one plate, so the save ring
+  // traces one outline around all of them rather than one each.
   cluster: {
     height: TOP_NAV_H,
     flexDirection: 'row',
-    gap: GAP,
+  },
+  clusterEdge: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  clusterButton: {
+    height: TOP_NAV_H,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The hairline between two buttons on the plate - absolutely placed so
+  // it takes no width from either.
+  clusterDivider: {
+    position: 'absolute',
+    left: 0,
+    top: '25%',
+    height: '50%',
+    width: StyleSheet.hairlineWidth,
+    opacity: 0.45,
   },
   // The plate's inside, clipped: the rows roll through its edges.
   viewport: {
