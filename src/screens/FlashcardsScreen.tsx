@@ -40,6 +40,7 @@ import UndoToast from '../components/UndoToast';
 import { confirm } from '../components/surfaces/Ask';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { listenError } from '../utils/listenError';
+import { formatUpdatedAt } from '../utils/documentPreview';
 
 // «Картки» - things to learn, one card each: a term, an explanation that
 // stays folded until it is wanted, and pictures. THE LINK CARD IS THE
@@ -308,12 +309,19 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
         )}
         <View style={styles.rowBody}>
           <Text style={[styles.rowTitle, { color: text }]}>{card.term || 'Без терміна'}</Text>
-          {isLearning(card) && card.known && (
-            <View style={styles.knownRow}>
-              <Ionicons name="checkmark-done-outline" size={13} color={textMuted} />
-              <Text style={[styles.rowCaption, { color: textMuted }]}>Вивчено</Text>
-            </View>
-          )}
+          <View style={styles.knownRow}>
+            {!!(card.createdAt ?? card.updatedAt) && (
+              <Text style={[styles.rowCaption, { color: textMuted }]}>
+                {formatUpdatedAt((card.createdAt ?? card.updatedAt) as number)}
+              </Text>
+            )}
+            {isLearning(card) && card.known && (
+              <>
+                <Ionicons name="checkmark-done-outline" size={13} color={textMuted} />
+                <Text style={[styles.rowCaption, { color: textMuted }]}>Вивчено</Text>
+              </>
+            )}
+          </View>
         </View>
       </Pressable>
     );
@@ -346,12 +354,19 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
           </View>
         )}
         <Text style={[styles.cellTitle, { color: text }]}>{card.term || 'Без терміна'}</Text>
-        {isLearning(card) && card.known && (
-          <View style={styles.knownRow}>
-            <Ionicons name="checkmark-done-outline" size={12} color={textMuted} />
-            <Text style={[styles.cellCaption, { color: textMuted }]}>Вивчено</Text>
-          </View>
-        )}
+        <View style={styles.knownRow}>
+          {!!(card.createdAt ?? card.updatedAt) && (
+            <Text style={[styles.cellCaption, { color: textMuted }]}>
+              {formatUpdatedAt((card.createdAt ?? card.updatedAt) as number)}
+            </Text>
+          )}
+          {isLearning(card) && card.known && (
+            <>
+              <Ionicons name="checkmark-done-outline" size={12} color={textMuted} />
+              <Text style={[styles.cellCaption, { color: textMuted }]}>Вивчено</Text>
+            </>
+          )}
+        </View>
         {list.isSelectMode && (
           <View style={styles.cellCheck}>
             <Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={text} />

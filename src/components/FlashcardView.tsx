@@ -108,7 +108,7 @@ export default function FlashcardView({
 
   const headerRow = header && (
     <View style={styles.header}>
-      <Text style={[styles.position, { color: textMuted }]} numberOfLines={1}>
+      <Text style={[styles.position, { color: textMuted }]} numberOfLines={2}>
         {header.position ?? ''}
       </Text>
       {onEdit && (

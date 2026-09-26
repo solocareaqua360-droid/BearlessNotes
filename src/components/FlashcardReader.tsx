@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GlassLayer from './GlassLayer';
 import FlashcardView from './FlashcardView';
 import { Flashcard } from '../types';
+import { formatUpdatedAt } from '../utils/documentPreview';
 
 // A card OPENED FOR READING - the link card's own move: a tap on the
 // small card in the list turns it over into a window of its own, with
@@ -56,7 +57,12 @@ export default function FlashcardReader({
                   card={item}
                   width={cardW}
                   height={cardH}
-                  header={{ position: `${index + 1} з ${cards.length}`, onClose }}
+                  header={{
+                    position: `${index + 1} з ${cards.length}${
+                      item.createdAt ?? item.updatedAt ? ` · ${formatUpdatedAt((item.createdAt ?? item.updatedAt) as number)}` : ''
+                    }`,
+                    onClose,
+                  }}
                   learning={isLearning(item) ? { onSetKnown: (known) => onSetKnown(item, known) } : null}
                   onEdit={() => onEdit(item)}
                   onOpenImage={(i) => onOpenImage(item, i)}
