@@ -513,6 +513,9 @@ export default function BoardsListScreen({
       // the way of both halves.
       railSide={inPane ? 'left' : 'right'}
       searchPlaceholder="Пошук дощок"
+      // The first screen with its functions at the top and only going
+      // places in the dock - see DatabaseChrome's topBar.
+      topBar={{ title: 'Дошки' }}
       onAdd={createBoard}
       addIcon="easel-outline"
       explorer={{

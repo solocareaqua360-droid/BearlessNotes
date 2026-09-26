@@ -147,6 +147,12 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // Ignored on a phone; the caller shows the same thing as an overlay
   // there.
   pane?: ReactNode;
+  // The screen's own functions in a bar at the TOP rather than in the
+  // dock - the user's plan: the dock is for going places (the desks, the
+  // folder path), the top is for what this screen does. Opt-in, one
+  // screen at a time (boards first); every other database keeps its dock
+  // until asked. Selecting still acts from the dock, under the thumb.
+  topBar?: { title: string };
 };
 
 export default function DatabaseChrome<T extends { id: string }>({
@@ -168,6 +174,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   children,
   overlay,
   pane,
+  topBar,
 }: DatabaseChromeProps<T>) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -231,6 +238,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   const [chromeHeight, setChromeHeight] = useState(0);
   const chromeTop = insets.top + CHROME_TOP;
   const chromeBottom = chromeTop + chromeHeight + 8;
+  const [barHeight, setBarHeight] = useState(0);
   // Searching takes the screen - but only while it is actually being
   // typed. With the keyboard down the field is a field like any other,
   // and the buttons around it come back.
@@ -238,6 +246,9 @@ export default function DatabaseChrome<T extends { id: string }>({
   const searchingAlone = list.isSearching && keyboardUp;
   const showContext = useDockShowContext();
   const dockClear = useDockClearance();
+  const menuAnchor = topBar
+    ? ({ position: 'absolute', right: 16, top: chromeTop + barHeight + 6 } as const)
+    : ({ position: 'absolute', right: 16, bottom: dockClear + insets.bottom } as const);
   // Everything this screen offers now goes to the DOCK, not the rail -
   // the same move the documents screen made, and it lands on files,
   // photos, links and the boards list at once because they all came
@@ -247,7 +258,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   // The rail reserved 90 points of width whether it held four capsules
   // or one; that is what leaving it buys, not the count of buttons.
   useDockBeads(
-    isFocused
+    isFocused && !topBar
       ? {
           icon: list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline',
           active: list.isSearching,
@@ -303,7 +314,9 @@ export default function DatabaseChrome<T extends { id: string }>({
                 ]
               : []),
           ]
-        : [
+        : topBar
+          ? null
+          : [
             ...(shape
               ? [{ key: 'shape', icon: shape.icon as string, label: 'Вигляд', onPress: shape.onToggle, closesStack: true }]
               : []),
@@ -376,8 +389,8 @@ export default function DatabaseChrome<T extends { id: string }>({
           visible={menuOpen && !!menuRows}
           onClose={() => setMenuOpen(false)}
           entries={[]}
-          // Above the dock, where the button that opens it now lives.
-          style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
+          // Hanging from whichever holds its button: the top bar, or the dock.
+          style={menuAnchor}
         >
           {menuRows?.(() => setMenuOpen(false))}
         </Menu>
@@ -403,8 +416,8 @@ export default function DatabaseChrome<T extends { id: string }>({
               },
             })),
           ]}
-          // Above the dock, where the button that opens it now lives.
-          style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
+          // Hanging from whichever holds its button: the top bar, or the dock.
+          style={menuAnchor}
         />
 
         {/* The tabs float over the cards rather than standing above them,
@@ -416,6 +429,46 @@ export default function DatabaseChrome<T extends { id: string }>({
               pointerEvents="box-none"
               onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
             >
+              {topBar && (
+                <View
+                  style={[styles.topBar, splitting && { paddingLeft: listPaneX + 16 }]}
+                  pointerEvents="box-none"
+                  onLayout={(e) => setBarHeight(e.nativeEvent.layout.height)}
+                >
+                  {/* Where you are - and, on a screen pushed over another,
+                      the way back, which the dock alone never made obvious. */}
+                  <GlassDrop style={styles.barCapsule}>
+                    {onBack && <BarButton icon="arrow-back" onPress={onBack} />}
+                    <Text
+                      style={[styles.barTitle, { color: theme.glass.ink }, !onBack && styles.barTitleAlone]}
+                      numberOfLines={1}
+                    >
+                      {topBar.title}
+                    </Text>
+                  </GlassDrop>
+                  {/* What this screen does - the same icons the dock carried,
+                      so nothing has to be learnt twice. Selecting acts from
+                      the dock, so they step aside while it lasts. */}
+                  {!list.isSelectMode && (
+                    <GlassDrop style={styles.barCapsule}>
+                      <BarButton
+                        icon={list.isSearching ? 'close-outline' : 'search-outline'}
+                        active={list.isSearching}
+                        onPress={() => list.setIsSearching((prev) => !prev)}
+                      />
+                      {shape && <BarButton icon={shape.icon} onPress={shape.onToggle} />}
+                      <BarButton icon="filter-outline" active={sortMenuOpen} onPress={() => setSortMenuOpen((v) => !v)} />
+                      {!hideDrawer && (
+                        <BarButton icon="pricetag-outline" active={!!list.tagFilter} onPress={() => drawerRef.current?.open()} />
+                      )}
+                      {bulk && <BarButton icon="checkmark-circle-outline" onPress={() => list.toggleSelectMode()} />}
+                      {menuRows && (
+                        <BarButton icon="ellipsis-horizontal" active={menuOpen} onPress={() => setMenuOpen((v) => !v)} />
+                      )}
+                    </GlassDrop>
+                  )}
+                </View>
+              )}
               {!searchingAlone && list.groups.length > 0 && !list.groupsRowHidden && (
                 <ProjectTabsRow
                   items={list.groups}
@@ -583,6 +636,37 @@ export default function DatabaseChrome<T extends { id: string }>({
   );
 }
 
+// One button of the top bar: 44 points to hit, the glass's own ink, and
+// the accent only while it is on - the rule every glass control follows.
+function BarButton({
+  icon,
+  active,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable onPress={onPress} hitSlop={4} style={({ pressed }) => [barButtonStyles.button, pressed && barButtonStyles.pressed]}>
+      {active ? <Ionicons name={icon} size={22} color={theme.accent} /> : <GlassIcon name={icon} size={22} />}
+    </Pressable>
+  );
+}
+
+const barButtonStyles = StyleSheet.create({
+  button: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+});
+
 // The rows a database adds to the "..." menu are drawn in the menu's own
 // styles, so a screen's extra rows can never sit a little differently
 // from the ones the chrome puts there itself.
@@ -670,6 +754,30 @@ const makeStyles = (t: Theme) =>
     left: 0,
     right: 0,
     zIndex: 6,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  barCapsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 48,
+    paddingHorizontal: 4,
+    flexShrink: 1,
+  },
+  barTitle: {
+    fontSize: 17,
+    fontFamily: FONT_SEMIBOLD,
+    paddingRight: 14,
+    flexShrink: 1,
+  },
+  barTitleAlone: {
+    paddingLeft: 14,
   },
   filterRow: {
     flexDirection: 'row',
