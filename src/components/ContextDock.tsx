@@ -27,6 +27,7 @@ import {
   useNavDockFlipRequest,
   useNavDockTabsDrifting,
   useNavTopNavUp,
+  useNavTopExtras,
   useNavDockHidden,
   useNavDockLeave,
   useNavDockOwnContext,
@@ -830,6 +831,8 @@ export default function ContextDock() {
   // Nothing rises over the dock while the desks bar is up at the top: the
   // path is drawn INSIDE that bar there (TopNavBar), in the desks' place.
   const topNavUp = useNavTopNavUp();
+  // A writing screen's bar (its '⋯' and choosing) - see JUST THE TWO.
+  const topExtras = useNavTopExtras();
   const liftWanted: LiftKind =
     tabsDrifting || topNavUp ? null : (own?.kind === 'path' || own?.kind === 'strip' ? own.kind : null);
   const stripLift = useStripLift(liftWanted);
@@ -1809,7 +1812,42 @@ export default function ContextDock() {
   // making under choosing. No plate and nothing between them: the middle
   // is the page's. Anything that does fill the middle - a selection's
   // actions, a board's desks - brings the whole dock back.
-  if (topNavUp && !ringOwn && !desksCard && !actions?.length) {
+  const writingScreen = topNavUp && !ringOwn && !desksCard;
+  // ...and while something is being chosen there, ONLY what can be done
+  // to it: one strip between the same two edges, as tall as those two
+  // beads, no search beside it (there is nothing to search for while
+  // choosing) and no empty place where "+" stood - the user's own call.
+  if (writingScreen && !!topExtras && !!actions?.length) {
+    const frame = topBarFrame(windowW);
+    const buttonW = Math.floor(frame.width / 5);
+    return (
+      <GlassPortal>
+        <View
+          pointerEvents="box-none"
+          style={[styles.twoBeads, { bottom: DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD, left: frame.left, width: frame.width }]}
+        >
+          <View style={[liftStyle(theme, theme.lift, 1), { borderRadius: DOCK_RADIUS }]}>
+            <DockFrost style={[styles.front, styles.cardEdge, { width: frame.width, height: TWO_BEAD }]} radius={DOCK_RADIUS}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripActions}>
+                {actions.map((action) => (
+                  <ActionButton
+                    key={action.key}
+                    action={action}
+                    width={buttonW}
+                    height={TWO_BEAD - 4}
+                    iconSize={ACT_ICON}
+                    theme={theme}
+                    onDone={() => {}}
+                  />
+                ))}
+              </ScrollView>
+            </DockFrost>
+          </View>
+        </View>
+      </GlassPortal>
+    );
+  }
+  if (writingScreen && !actions?.length) {
     const frame = topBarFrame(windowW);
     const slot = (bead: typeof beads.left) =>
       bead ? (
@@ -2315,6 +2353,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  stripActions: {
+    alignItems: 'center',
+    paddingHorizontal: 2,
   },
   wrap: {
     position: 'absolute',

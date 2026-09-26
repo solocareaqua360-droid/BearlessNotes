@@ -39,9 +39,11 @@ const PIECE_H = TOP_NAV_H - PLATE_PAD * 2;
 // A closed desk: a square, as tall as the pieces are.
 const PILL_W = PIECE_H;
 const GAP = 6;
-// The buttons standing apart at either end - the way back, and at the
-// right end "⋯" and choosing where a screen has them.
-const SIDE_W = 40;
+// The buttons standing apart at either end: the way back and choosing a
+// touch wider (50 - the user's own measure, "трішки ширшими"; the open
+// desk still has room for «Документи» whole), "⋯" narrower between them.
+const SIDE_W = 50;
+const MENU_W = 40;
 
 // WHERE THE BAR STANDS: along the edges the content itself keeps - the
 // cards and folder rows, twenty in from either side ("вирівняти по краях
@@ -109,8 +111,11 @@ export default function TopNavBar({
   const frame = topBarFrame(windowWidth);
   const barTop = insets.top + CHROME_TOP;
   const corners = cornersFor(windowWidth);
-  const sides = 1 + (extras?.menu ? 1 : 0) + (extras?.select ? 1 : 0);
-  const plateWidth = frame.width - sides * (SIDE_W + GAP);
+  const plateWidth =
+    frame.width -
+    (SIDE_W + GAP) -
+    (extras?.menu ? MENU_W + GAP : 0) -
+    (extras?.select ? SIDE_W + GAP : 0);
   const innerWidth = plateWidth - PLATE_PAD * 2;
   // The open desk takes whatever the plate has left once the closed desks
   // and the cuts between them have theirs - so the widths always add up,
@@ -207,6 +212,7 @@ export default function TopNavBar({
 
         {extras?.menu && (
           <SideButton
+            width={MENU_W}
             icon="ellipsis-horizontal"
             label="Ще"
             active={menuOpen}
@@ -216,6 +222,7 @@ export default function TopNavBar({
         )}
         {extras?.select && (
           <SideButton
+            width={SIDE_W}
             icon="checkmark-circle-outline"
             label="Виділити"
             active={extras.select.active}
@@ -240,12 +247,14 @@ export default function TopNavBar({
 // One of the buttons standing apart at the bar's ends: the dock's
 // material, the plate's corner, the accent only while it is on.
 function SideButton({
+  width,
   icon,
   label,
   active,
   radius,
   onPress,
 }: {
+  width: number;
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   active: boolean;
@@ -255,7 +264,7 @@ function SideButton({
   const theme = useTheme();
   const lift = useLift();
   return (
-    <Pressable onPress={onPress} accessibilityLabel={label} style={{ width: SIDE_W, height: TOP_NAV_H }}>
+    <Pressable onPress={onPress} accessibilityLabel={label} style={{ width, height: TOP_NAV_H }}>
       <DockFrost style={[styles.piece, lift]} radius={radius}>
         <Ionicons name={icon} size={21} color={active ? theme.accent : theme.glass.ink} />
       </DockFrost>
