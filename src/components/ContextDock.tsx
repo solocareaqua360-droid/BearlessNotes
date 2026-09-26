@@ -1907,7 +1907,16 @@ export default function ContextDock() {
       <GlassPortal>
         <View
           pointerEvents="box-none"
-          style={[styles.twoBeads, { bottom: DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD, left: frame.left, width: frame.width }]}
+          // Half a bead in from the bar's edges on either side - the
+          // user's own move, "до центру на половину їх ширини".
+          style={[
+            styles.twoBeads,
+            {
+              bottom: DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD,
+              left: frame.left + TWO_BEAD / 2,
+              width: frame.width - TWO_BEAD,
+            },
+          ]}
         >
           {slot(beads.left)}
           {slot(beads.right)}
