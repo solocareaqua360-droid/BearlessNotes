@@ -852,19 +852,9 @@ export default function CalendarScreen() {
   // `monthOpen` covers both (it is two-pane OR expanded), so the strip
   // narrows away behind the dock as the month unfolds and comes back out
   // as it folds - the user's own words for what should happen.
-  useEffect(() => {
-    if (!publishToDock || !calendarFocused) return;
-    // ...nor while the overview is up. The swipe up leaves this one day
-    // for all of them, so a strip of this week has nothing left to be
-    // about: it gathers back into its circle and drops behind the dock
-    // as the page shrinks.
-    if (monthOpen || overviewOpen) {
-      publishToDock(null);
-      return;
-    }
-    publishToDock({ kind: 'strip', icon: 'calendar-outline', items: stripItems, selected: selectedKeyForDock, onPick: pickDay });
-    return () => publishToDock(null);
-  }, [publishToDock, calendarFocused, monthOpen, overviewOpen, stripItems, selectedKeyForDock, pickDay]);
+  // THE STRIP OF DAYS IS GONE - "календарну рейку прибираємо взагалі"
+  // (2026-09-26). The calendar publishes no context of its own now; the
+  // day is picked in the month, or with «Сьогодні».
 
   function jumpToToday() {
     selectDay(new Date());

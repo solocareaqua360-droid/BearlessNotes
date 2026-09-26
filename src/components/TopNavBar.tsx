@@ -1,35 +1,42 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost from './DockFrost';
 import { GlassPortal } from './GlassPortal';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { CHROME_TOP } from '../constants/rail';
-import { DOCK_PATH_H, DOCK_PIECE_RADIUS, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
-import { useNavTopBack } from '../navigation/navDock';
-import { FONT_MEDIUM } from '../utils/fonts';
+import { DOCK_PIECE_RADIUS, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
+import { DockContext, useNavDockOwnContext, useNavDockTargets, useNavTopBack } from '../navigation/navDock';
+import { FONT_MEDIUM, FONT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
 
 // THE DESKS, AT THE TOP - the user's plan after looking at Notion: the
-// way back in the top-left corner, then one piece per desk, and the desk
-// you are on opens out to carry its name. Only on the four desks' own
-// screens for now ("поки на головних екранах, щоб все не зламати");
-// everywhere else the dock keeps them.
+// way back in the top-left corner, then the desks, the one you are on
+// opened out to carry its name. Only on the four desks' own screens for
+// now ("поки на головних екранах, щоб все не зламати"); everywhere else
+// the dock keeps them.
+//
+// The desks lie on ONE PLATE, pieces of one slab the way the bottom
+// dock's are ("4 наші прямокутники іще об'єднуються одним доком"), and
+// inside a folder that plate rolls over to the folder path in their
+// place - the same swap of one card for another the dock makes - so a
+// folder shows where you are in it and no desks at all.
 //
 // Lined up with the dock under it: the same left and right edges, the
-// same material and corner.
+// same material and corners.
 export const TOP_NAV_H = 46;
-// Where the path or the days rest, measured from the bar's own top: right
-// under it (ContextDock draws them there while the bar is up).
-export const TOP_STRIP_OFFSET = TOP_NAV_H + 6;
 // What a desk's own screen adds above its content so nothing starts
-// under the bar - the bar, the room the path or the days rest in, and
-// the breath under them. The room is kept whether or not a strip is
-// showing, so nothing below jumps when one comes ("зарезервувати місце").
-export const TOP_NAV_SPACE = TOP_STRIP_OFFSET + DOCK_PATH_H + 10;
-const PILL_W = 52;
+// under the bar - the bar and the breath under it.
+export const TOP_NAV_SPACE = TOP_NAV_H + 10;
+// The plate's own padding and the cut between its pieces - the bottom
+// dock's numbers (ContextDock's PLATE_PAD and DOCK_CUT).
+const PLATE_PAD = 6;
+const CUT = 3;
+const PIECE_H = TOP_NAV_H - PLATE_PAD * 2;
+// A closed desk: a little wider than tall, big enough to hit.
+const PILL_W = 44;
 const GAP = 6;
 
 // Whether the bar is drawn at all: on a touch screen. With a pointer the
@@ -47,26 +54,51 @@ export type TopDesk = {
   onPress: () => void;
 };
 
+type PathContext = Extract<DockContext, { kind: 'path' }>;
+
 export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; onLongPress?: () => void }) {
   const theme = useTheme();
   const lift = useLift();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const back = useNavTopBack();
-  const piece = [styles.piece, lift];
   const rowWidth = dockRowWidth(windowWidth);
-  // The open desk takes whatever the row has left once the back button
-  // and the closed desks have theirs - so the widths always add up to
-  // the row, and one desk grows by exactly what the other gives up.
-  const openWidth = rowWidth - TOP_NAV_H - GAP * desks.length - PILL_W * (desks.length - 1);
+  const plateWidth = rowWidth - TOP_NAV_H - GAP;
+  const innerWidth = plateWidth - PLATE_PAD * 2;
+  // The open desk takes whatever the plate has left once the closed desks
+  // and the cuts between them have theirs - so the widths always add up,
+  // and one desk grows by exactly what the other gives up.
+  const openWidth = innerWidth - CUT * (desks.length - 1) - PILL_W * (desks.length - 1);
+
+  // The path, kept drawn from the last one while the plate rolls back to
+  // the desks, so it does not empty in the middle of its way out.
+  const own = useNavDockOwnContext();
+  const path = own?.kind === 'path' ? own : null;
+  const lastPath = useRef<PathContext | null>(null);
+  if (path) lastPath.current = path;
+  const shownPath = path ?? lastPath.current;
+
+  // 0 = the desks, 1 = the path: one number rolls both, one out as the
+  // other comes in.
+  const roll = useSharedValue(path ? 1 : 0);
+  useEffect(() => {
+    roll.value = withTiming(path ? 1 : 0, { duration: 280, easing: Easing.inOut(Easing.cubic) });
+  }, [path, roll]);
+  const travel = TOP_NAV_H;
+  const desksStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -roll.value * travel }],
+    opacity: interpolate(roll.value, [0, 0.7], [1, 0], Extrapolation.CLAMP),
+  }));
+  const pathStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - roll.value) * travel }],
+    opacity: interpolate(roll.value, [0.3, 1], [0, 1], Extrapolation.CLAMP),
+  }));
 
   return (
-    // Above the dock's own layer: the path and the days come out from
-    // BEHIND this bar.
     <GlassPortal priority={1}>
       <View
         pointerEvents="box-none"
-        style={[styles.row, { top: insets.top + CHROME_TOP, left: dockRowLeft(windowWidth), width: dockRowWidth(windowWidth) }]}
+        style={[styles.row, { top: insets.top + CHROME_TOP, left: dockRowLeft(windowWidth), width: rowWidth }]}
       >
         <Pressable
           disabled={!back || back.dimmed}
@@ -74,7 +106,7 @@ export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; on
           accessibilityLabel="Назад"
           style={{ width: TOP_NAV_H, height: TOP_NAV_H }}
         >
-          <DockFrost style={piece} radius={DOCK_PIECE_RADIUS}>
+          <DockFrost style={[styles.piece, lift]} radius={DOCK_PIECE_RADIUS}>
             <Ionicons
               name="arrow-back"
               size={21}
@@ -83,44 +115,51 @@ export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; on
             />
           </DockFrost>
         </Pressable>
-        {desks.map((desk) => (
-          <DeskPill
-            key={desk.key}
-            desk={desk}
-            openWidth={openWidth}
-            onLongPress={onLongPress}
-            pieceStyle={piece}
-            ink={theme.glass.ink}
-            inkMuted={theme.glass.inkMuted}
-          />
-        ))}
+
+        {/* The plate, and on it whichever of the two rows is in front. */}
+        <View style={[styles.plate, lift, { width: plateWidth }]}>
+          <DockFrost style={StyleSheet.absoluteFill} radius={DOCK_PIECE_RADIUS + PLATE_PAD} />
+          <View style={styles.viewport}>
+            <Animated.View
+              style={[styles.layer, desksStyle]}
+              pointerEvents={path ? 'none' : 'box-none'}
+            >
+              {desks.map((desk) => (
+                <DeskPill
+                  key={desk.key}
+                  desk={desk}
+                  openWidth={openWidth}
+                  onLongPress={onLongPress}
+                  ink={theme.glass.ink}
+                  inkMuted={theme.glass.inkMuted}
+                />
+              ))}
+            </Animated.View>
+            {shownPath && (
+              <Animated.View style={[styles.layer, pathStyle]} pointerEvents={path ? 'box-none' : 'none'}>
+                <PathRow path={shownPath} ink={theme.glass.ink} inkMuted={theme.glass.inkMuted} />
+              </Animated.View>
+            )}
+          </View>
+        </View>
       </View>
     </GlassPortal>
   );
 }
 
-// ONE desk, sized by one number that eases between closed and open.
-//
-// It used to be a layout animation on a flex switch, and that is what
-// read as "виїжджає звідкись": each desk was moved from its old frame to
-// its new one on its own, content already at its final size, so nothing
-// said that one desk was growing BECAUSE its neighbour was shrinking.
-// Now every desk's width is said outright and eased on the same clock -
-// the one closing gives up exactly what the one opening takes, the row
-// never changes length, and the others simply ride along. The name
-// opens with the room it is given rather than appearing all at once.
+// ONE desk, sized by one number that eases between closed and open - so
+// the one closing gives up exactly what the one opening takes, and the
+// name opens with the room it is given rather than all at once.
 function DeskPill({
   desk,
   openWidth,
   onLongPress,
-  pieceStyle,
   ink,
   inkMuted,
 }: {
   desk: TopDesk;
   openWidth: number;
   onLongPress?: () => void;
-  pieceStyle: object[];
   ink: string;
   inkMuted: string;
 }) {
@@ -152,10 +191,10 @@ function DeskPill({
         accessibilityLabel={desk.label}
         style={styles.fill}
       >
-        <DockFrost style={[pieceStyle, styles.clip]} radius={DOCK_PIECE_RADIUS}>
+        <DockFrost style={[styles.piece, styles.clip]} radius={DOCK_PIECE_RADIUS}>
           <Ionicons
             name={(desk.active ? desk.icon.replace(/-outline$/, '') : desk.icon) as keyof typeof Ionicons.glyphMap}
-            size={21}
+            size={20}
             color={desk.active ? ink : inkMuted}
           />
           <Animated.View style={[styles.labelBox, labelStyle]}>
@@ -169,12 +208,85 @@ function DeskPill({
   );
 }
 
+// The folder path in the desks' place: the database's own icon first (the
+// root), then the folders down to the one you are in. Every crumb but the
+// last is a way up; a card being carried can be stepped into them too
+// (the targets the dock's own path registered).
+function PathRow({ path, ink, inkMuted }: { path: PathContext; ink: string; inkMuted: string }) {
+  const targets = useNavDockTargets();
+  const scroll = useRef<ScrollView>(null);
+  return (
+    <>
+      <View ref={targets?.('')} collapsable={false}>
+        <Pressable onPress={() => path.onGo('')} accessibilityLabel="Корінь" style={{ width: PILL_W, height: PIECE_H }}>
+          <DockFrost style={styles.piece} radius={DOCK_PIECE_RADIUS}>
+            <Ionicons name={path.icon as keyof typeof Ionicons.glyphMap} size={20} color={ink} />
+          </DockFrost>
+        </Pressable>
+      </View>
+      <DockFrost style={[styles.piece, styles.crumbsPiece]} radius={DOCK_PIECE_RADIUS}>
+        <ScrollView
+          ref={scroll}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.crumbs}
+          // The deepest folder is the one that matters: always in view.
+          onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}
+        >
+          {path.crumbs.map((segment, i) => {
+            const target = path.crumbs.slice(0, i + 1).join('/');
+            const current = i === path.crumbs.length - 1;
+            return (
+              <View key={target} style={styles.crumbRow}>
+                {i > 0 && <Ionicons name="chevron-forward" size={13} color={inkMuted} />}
+                {current ? (
+                  <Text numberOfLines={1} style={[styles.crumb, styles.crumbCurrent, { color: ink }]}>
+                    {segment}
+                  </Text>
+                ) : (
+                  <View ref={targets?.(target)} collapsable={false}>
+                    <Pressable hitSlop={6} onPress={() => path.onGo(target)}>
+                      <Text numberOfLines={1} style={[styles.crumb, { color: inkMuted }]}>
+                        {segment}
+                      </Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
+      </DockFrost>
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   row: {
     position: 'absolute',
     height: TOP_NAV_H,
     flexDirection: 'row',
     gap: GAP,
+  },
+  plate: {
+    height: TOP_NAV_H,
+    borderRadius: DOCK_PIECE_RADIUS + PLATE_PAD,
+  },
+  // The plate's inside, clipped: the rows roll through its edges.
+  viewport: {
+    flex: 1,
+    margin: PLATE_PAD,
+    overflow: 'hidden',
+    borderRadius: DOCK_PIECE_RADIUS,
+  },
+  layer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: PIECE_H,
+    flexDirection: 'row',
+    gap: CUT,
   },
   clip: {
     overflow: 'hidden',
@@ -193,6 +305,27 @@ const styles = StyleSheet.create({
     // The hairline every piece of the dock carries.
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.16)',
+  },
+  crumbsPiece: {
+    justifyContent: 'flex-start',
+  },
+  crumbs: {
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  crumbRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  crumb: {
+    fontSize: 14,
+    fontFamily: FONT_MEDIUM,
+    maxWidth: 160,
+  },
+  crumbCurrent: {
+    fontFamily: FONT_SEMIBOLD,
   },
   label: {
     fontSize: 15,
