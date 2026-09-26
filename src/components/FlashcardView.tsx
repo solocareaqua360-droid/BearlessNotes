@@ -24,6 +24,7 @@ export default function FlashcardView({
   learning,
   onEdit,
   onOpenImage,
+  header,
 }: {
   card: Flashcard;
   width: number;
@@ -32,6 +33,10 @@ export default function FlashcardView({
   learning?: { onSetKnown: (known: boolean) => void } | null;
   onEdit?: () => void;
   onOpenImage?: (index: number) => void;
+  // The card opened for reading (FlashcardReader): a row across its top
+  // with where you are in the stack, «Редагувати» and the way out - the
+  // link card's own header.
+  header?: { position?: string; onClose: () => void };
 }) {
   const recordColour = useRecordColour();
   const { background, text, textMuted } = recordColour(card.id);
@@ -39,9 +44,9 @@ export default function FlashcardView({
   const [imageIndex, setImageIndex] = useState(0);
   const innerW = Math.max(0, width - PAD * 2);
   const images = card.images ?? [];
-  // As tall as it is wide in a 4:3, but never more than half a page, so
-  // the term and the folded explanation are always in sight with it.
-  const imageH = Math.round(Math.min(innerW * 0.75, height ? height * 0.52 : innerW * 0.75));
+  // A 16:9 window, never more than two fifths of the card, so the term
+  // and the folded explanation are always in sight under it.
+  const imageH = Math.round(Math.min(innerW * (9 / 16), height ? height * 0.4 : innerW * (9 / 16)));
   const edge = text === '#FFFFFF' ? 'rgba(255,255,255,0.28)' : 'rgba(17,24,39,0.16)';
   const hasExplanation = !!card.explanation?.trim();
 
@@ -101,7 +106,24 @@ export default function FlashcardView({
     </>
   );
 
-  const footer = (learning || onEdit) && (
+  const headerRow = header && (
+    <View style={styles.header}>
+      <Text style={[styles.position, { color: textMuted }]} numberOfLines={1}>
+        {header.position ?? ''}
+      </Text>
+      {onEdit && (
+        <Pressable onPress={onEdit} style={[styles.headerButton, { borderColor: edge }]}>
+          <Ionicons name="create-outline" size={18} color={text} />
+          <Text style={[styles.buttonLabel, { color: text }]}>Редагувати</Text>
+        </Pressable>
+      )}
+      <Pressable onPress={header.onClose} style={[styles.closeButton, { borderColor: edge }]}>
+        <Ionicons name="close" size={22} color={text} />
+      </Pressable>
+    </View>
+  );
+
+  const footer = (learning || (onEdit && !header)) && (
     <View style={styles.footer}>
       {learning && (
         <>
@@ -123,12 +145,13 @@ export default function FlashcardView({
           />
         </>
       )}
-      {onEdit && <FooterButton icon="create-outline" label="Редагувати" ink={text} edge={edge} onPress={onEdit} />}
+      {onEdit && !header && <FooterButton icon="create-outline" label="Редагувати" ink={text} edge={edge} onPress={onEdit} />}
     </View>
   );
 
   return (
     <View style={[styles.card, { width, backgroundColor: background }, height ? { height } : null]}>
+      {headerRow}
       {height ? (
         <ScrollView
           nestedScrollEnabled
@@ -142,7 +165,7 @@ export default function FlashcardView({
         <View style={styles.content}>{body}</View>
       )}
       {footer}
-      {learning && card.known && (
+      {learning && card.known && !header && (
         <View style={styles.knownBadge} pointerEvents="none">
           <Ionicons name="checkmark-circle" size={20} color={textMuted} />
         </View>
@@ -253,6 +276,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 23,
     fontFamily: FONT_REGULAR,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: PAD,
+    paddingTop: PAD,
+  },
+  position: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+  },
+  headerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  closeButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   footer: {
     flexDirection: 'row',

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Modal,
   Pressable,
   ScrollView,
@@ -13,7 +12,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { deleteField, doc, onSnapshot, updateDoc, writeBatch } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
@@ -25,9 +23,8 @@ import { withAlpha } from '../utils/color';
 import { railClear } from '../constants/rail';
 import DatabaseChrome, { menuStyles } from '../components/DatabaseChrome';
 import { useDatabaseList } from '../hooks/useDatabaseList';
-import { useDockClearance } from '../navigation/dockGeometry';
 import AttachmentImage from '../components/AttachmentImage';
-import FlashcardView from '../components/FlashcardView';
+import FlashcardReader from '../components/FlashcardReader';
 import FlashcardEditor from '../components/FlashcardEditor';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
@@ -39,13 +36,13 @@ import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { listenError } from '../utils/listenError';
 
 // «Картки» - things to learn, one card each: a term, an explanation that
-// stays folded until it is wanted, and pictures shown large. Two ways to
-// look at them, one button apart (the bar's "⋯" → «Змінити вигляд»): a
-// LIST, to find and fix a card, and the STACK, one card to a screen. In
-// the stack a sideways swipe over the words is the next / previous card,
-// and the same swipe over the pictures is the next picture - the user's
-// own split. A tap on a card in the list opens the stack at that card.
-// Decks are projects; smartfolders narrow the stack too.
+// stays folded until it is wanted, and pictures. THE LINK CARD IS THE
+// REFERENCE, the user's own words, repeated until it was heard: small
+// cards in the list (rows, or two columns - «Змінити вигляд»), each with
+// its whole term, and a tap turns the card over into a window for
+// reading (FlashcardReader) with «Редагувати» at its top. There the stack
+// is flipped through sideways. Decks are projects; smartfolders narrow
+// the list and so the stack opened from it.
 //
 // A project («Проект», the app's one grouping) is a deck. A deck can be
 // put into LEARNING mode - its cards then carry «Знаю» / «Ще вчу», and
@@ -56,8 +53,6 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
   const styles = useStyles(makeStyles);
   const recordColour = useRecordColour();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const insets = useSafeAreaInsets();
-  const dockClear = useDockClearance();
   const accent = theme.sections.custom;
   const accentGlass = withAlpha(accent, 0.55);
 
@@ -68,10 +63,10 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [hideKnown, setHideKnown] = useState(false);
-  // The card the stack opens at - by id, so it is found again whatever
-  // search or deck the list was showing when it was tapped.
-  const [startId, setStartId] = useState<string | null>(null);
-  const [area, setArea] = useState({ width: 0, height: 0 });
+  // The card opened for reading, and the stack it was opened from - the
+  // list as it stood at that tap, by id, so marking a card learned (and
+  // so hiding it) does not pull the stack out from under the reader.
+  const [reading, setReading] = useState<{ ids: string[]; index: number } | null>(null);
 
   useEffect(
     () =>
@@ -117,16 +112,13 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
   const isLearning = (card: Flashcard) => !!card.groupId && learningGroupIds.has(card.groupId);
   const activeGroup = list.groups.find((g) => g.id === list.selectedGroupId) ?? null;
   const shown = hideKnown ? list.displayed.filter((c) => !(isLearning(c) && c.known)) : list.displayed;
-  // Choosing and searching are done in the list; the stack is for looking.
-  const stack = list.viewMode === 'grid' && !list.isSelectMode && !list.isSearching;
+  const readerCards = reading
+    ? reading.ids.map((id) => cards.find((c) => c.id === id)).filter((c): c is Flashcard => !!c)
+    : null;
 
-  function openStackAt(card: Flashcard) {
-    setStartId(card.id);
-    if (list.isSearching) {
-      list.setSearchQuery('');
-      list.setIsSearching(false);
-    }
-    if (list.viewMode !== 'grid') list.changeViewMode('grid');
+  function openReader(card: Flashcard) {
+    const ids = shown.map((c) => c.id);
+    setReading({ ids, index: Math.max(0, ids.indexOf(card.id)) });
   }
 
   function setKnown(card: Flashcard, known: boolean) {
@@ -249,7 +241,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       <Pressable
         key={card.id}
         style={[styles.row, { backgroundColor: background }, selected && { borderColor: theme.accent, borderWidth: 2 }]}
-        onPress={() => (list.isSelectMode ? list.toggle(card.id) : openStackAt(card))}
+        onPress={() => (list.isSelectMode ? list.toggle(card.id) : openReader(card))}
         onLongPress={() => list.enterWith(card.id)}
       >
         {list.isSelectMode && (
@@ -282,41 +274,45 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
     );
   }
 
-  function renderStack(listTopPad: number, listProps: Record<string, unknown>) {
-    const pageH = Math.max(0, area.height - listTopPad - dockClear - insets.bottom);
-    const pageW = area.width;
-    const cardW = Math.max(0, pageW - 40);
-    if (pageH <= 0 || cardW <= 0) return null;
-    const start = Math.max(0, shown.findIndex((c) => c.id === startId));
+  // Two to a line - the link grid's card: the picture's 16:9 window on
+  // top, the whole term under it. Rows of PAIRS, each pair as tall as its
+  // taller card - the user's call: "міряємо розмір картки по найбільшій",
+  // the shorter one simply keeps some empty room. A cascade (each column
+  // at its own pace) is a later step, named but not taken.
+  function renderCell(card: Flashcard) {
+    const { background, text, textMuted } = recordColour(card.id);
+    const selected = list.selectedIds.has(card.id);
+    const first = card.images[0];
     return (
-      <FlatList
-        {...listProps}
-        // A new deck or folder, a new stack - opened at its first card.
-        key={`stack:${list.groupFilter ?? 'all'}:${JSON.stringify(list.tagFilter)}`}
-        data={shown}
-        keyExtractor={(c) => c.id}
-        horizontal
-        style={{ marginTop: listTopPad, height: pageH, flexGrow: 0 }}
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        initialScrollIndex={shown.length > 0 ? Math.min(start, shown.length - 1) : undefined}
-        getItemLayout={(_, index) => ({ length: pageW, offset: pageW * index, index })}
-        windowSize={3}
-        initialNumToRender={2}
-        maxToRenderPerBatch={2}
-        renderItem={({ item }) => (
-          <View style={[styles.page, { width: pageW, height: pageH }]}>
-            <FlashcardView
-              card={item}
-              width={cardW}
-              height={pageH - 16}
-              learning={isLearning(item) ? { onSetKnown: (known) => setKnown(item, known) } : null}
-              onEdit={() => setEditor({ card: item })}
-              onOpenImage={(index) => setViewer({ card: item, index })}
-            />
+      <Pressable
+        key={card.id}
+        style={[styles.cell, { backgroundColor: background }, selected && { borderColor: theme.accent, borderWidth: 2 }]}
+        onPress={() => (list.isSelectMode ? list.toggle(card.id) : openReader(card))}
+        onLongPress={() => list.enterWith(card.id)}
+      >
+        {first && (
+          <View style={styles.cellThumb}>
+            <AttachmentImage uri={first.uri} driveFileId={first.driveFileId} style={styles.rowThumbImage} />
+            {card.images.length > 1 && (
+              <View style={styles.rowThumbCount}>
+                <Text style={styles.rowThumbCountText}>{card.images.length}</Text>
+              </View>
+            )}
           </View>
         )}
-      />
+        <Text style={[styles.cellTitle, { color: text }]}>{card.term || 'Без терміна'}</Text>
+        {isLearning(card) && card.known && (
+          <View style={styles.knownRow}>
+            <Ionicons name="checkmark-done-outline" size={12} color={textMuted} />
+            <Text style={[styles.cellCaption, { color: textMuted }]}>Вивчено</Text>
+          </View>
+        )}
+        {list.isSelectMode && (
+          <View style={styles.cellCheck}>
+            <Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={text} />
+          </View>
+        )}
+      </Pressable>
     );
   }
 
@@ -332,11 +328,10 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       navTitle={inPane ? undefined : { icon: 'albums-outline', label: 'Картки' }}
       railSide={inPane ? 'left' : 'right'}
       searchPlaceholder="Пошук по картках"
-      drawerSwipe={!stack}
       onAdd={() => setEditor({ card: null })}
       menuRows={menuRows}
       shape={{
-        icon: list.viewMode === 'grid' ? 'albums-outline' : 'reorder-four-outline',
+        icon: list.viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
         onToggle: () => list.changeViewMode(list.viewMode === 'grid' ? 'list' : 'grid'),
       }}
       bulk={{
@@ -366,6 +361,15 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
             onRenameTag={list.renameTag}
             onClose={() => setBulkTagPickerVisible(false)}
           />
+          <FlashcardReader
+            cards={readerCards}
+            startIndex={reading?.index ?? 0}
+            isLearning={isLearning}
+            onSetKnown={setKnown}
+            onEdit={(card) => setEditor({ card })}
+            onOpenImage={(card, index) => setViewer({ card, index })}
+            onClose={() => setReading(null)}
+          />
           <GroupPickerSheet
             visible={bulkGroupPickerVisible}
             kind="flashcard"
@@ -394,10 +398,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       }
     >
       {(listTopPad, listProps) => (
-        <View
-          style={styles.area}
-          onLayout={(e) => setArea({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
-        >
+        <View style={styles.area}>
           {isLoading ? (
             <View style={styles.emptyState}>
               <ActivityIndicator color={theme.ink.muted} />
@@ -412,8 +413,18 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
                 <Text style={styles.emptyHint}>Термін, пояснення під ним і фото - щоб вивчити й повторювати</Text>
               )}
             </View>
-          ) : stack ? (
-            renderStack(listTopPad, listProps)
+          ) : list.viewMode === 'grid' ? (
+            <ScrollView
+              {...listProps}
+              contentContainerStyle={[styles.list, railClear(inPane ? 'left' : 'right', 20), { paddingTop: listTopPad }]}
+            >
+              {Array.from({ length: Math.ceil(shown.length / 2) }, (_, row) => (
+                <View key={shown[row * 2].id} style={styles.pair}>
+                  {renderCell(shown[row * 2])}
+                  {shown[row * 2 + 1] ? renderCell(shown[row * 2 + 1]) : <View style={styles.pairFiller} />}
+                </View>
+              ))}
+            </ScrollView>
           ) : (
             <ScrollView
               {...listProps}
@@ -433,9 +444,49 @@ const makeStyles = (t: Theme) =>
     area: {
       flex: 1,
     },
-    page: {
-      paddingHorizontal: 20,
-      paddingVertical: 8,
+    // alignItems stretch (the default): both cards take the taller one's
+    // height.
+    pair: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    pairFiller: {
+      flex: 1,
+    },
+    cell: {
+      flex: 1,
+      minWidth: 0,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: 'rgba(176,176,176,0.5)',
+      padding: 10,
+      gap: 6,
+      shadowColor: '#000',
+      shadowOpacity: 0.18,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 4,
+    },
+    cellThumb: {
+      width: '100%',
+      aspectRatio: 16 / 9,
+      borderRadius: 10,
+      overflow: 'hidden',
+      backgroundColor: '#E5E7EB',
+    },
+    cellTitle: {
+      fontSize: 13,
+      lineHeight: 18,
+      fontFamily: FONT_SEMIBOLD,
+    },
+    cellCaption: {
+      fontSize: 11,
+      fontFamily: FONT_REGULAR,
+    },
+    cellCheck: {
+      position: 'absolute',
+      top: 6,
+      right: 6,
     },
     list: {
       paddingBottom: 120,
