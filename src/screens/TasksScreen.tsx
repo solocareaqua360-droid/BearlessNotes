@@ -58,7 +58,7 @@ import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useDockActions, useDockBeads, useDockShowContext, useTopBack } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras } from '../navigation/navDock';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import SearchField from '../components/SearchField';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
@@ -264,17 +264,34 @@ export default function TasksScreen() {
               onPress: () => setKanbanMode((v) => !v),
             },
             { key: 'sort', icon: 'filter-outline', label: 'Порядок', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
-            {
-              key: 'select',
-              icon: 'checkmark-circle-outline',
-              label: 'Вибір',
-              onPress: () => {
-                setKanbanMode(false);
-                toggleSelectMode();
-              },
-            },
+            // At the bar's edge instead, where there is a bar.
+            ...(bar
+              ? []
+              : [
+                  {
+                    key: 'select',
+                    icon: 'checkmark-circle-outline',
+                    label: 'Вибір',
+                    onPress: () => {
+                      setKanbanMode(false);
+                      toggleSelectMode();
+                    },
+                  },
+                ]),
           ]
       : null
+  );
+  // Choosing at the bar's edge, as on every screen with a bar.
+  useTopExtras(
+    null,
+    {
+      active: isSelectMode,
+      onPress: () => {
+        setKanbanMode(false);
+        toggleSelectMode();
+      },
+    },
+    bar && isFocused
   );
   const insets = useSafeAreaInsets();
   const dockClear = useDockClearance();

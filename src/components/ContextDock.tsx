@@ -1836,12 +1836,12 @@ export default function ContextDock() {
   // beads, no search beside it (there is nothing to search for while
   // choosing) and no empty place where "+" stood - the user's own call.
   //
-  // Only where the beads really stand down - a writing screen that moved
-  // them to the bar (`topExtras`), or one that let both go. A database
-  // pushed from «Більше» has a bar too but keeps its search and "+"
-  // beads, so its dock stays the whole dock rather than a strip that
-  // drops them.
-  if (compactMiddle && !!actions?.length && (!!topExtras || (!beads.left && !beads.right))) {
+  // Only where the beads really stand down: while something is being
+  // chosen through the bar's own «Виділити» (every screen with a bar has
+  // it now), or on a screen that let both beads go (the note's three).
+  // A database's ordinary dock - search, what it does, "+" - stays the
+  // whole dock.
+  if (compactMiddle && !!actions?.length && (!!topExtras?.select?.active || (!beads.left && !beads.right))) {
     const frame = topBarFrame(windowW);
     // A SHORT set - the note's own three, a board selection's four - is
     // as wide as its buttons and no wider, centred, with a hairline

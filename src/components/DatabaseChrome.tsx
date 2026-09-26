@@ -317,8 +317,13 @@ export default function DatabaseChrome<T extends { id: string }>({
   // still brings its actions down under the thumb. A database pushed from
   // «Більше» keeps the card below: sorting and filtering are its work.
   const deskMenu = !!topNavWanted && topNav;
+  // Choosing stands at the bar's edge on EVERY screen with a bar, pushed
+  // databases included - "у нас є прекрасне місце вгорі... нащо переносити
+  // її в док". Only the "⋯" list is the desks' own.
   useTopExtras(
-    [
+    !deskMenu
+      ? null
+      : [
       ...(shape ? [{ label: 'Змінити вигляд', icon: shape.icon, onPress: shape.onToggle }] : []),
       { kind: 'section' as const, label: 'Порядок' },
       ...FIELD_ORDER.map((field) => ({
@@ -339,7 +344,7 @@ export default function DatabaseChrome<T extends { id: string }>({
         : []),
     ],
     bulk ? { active: list.isSelectMode, onPress: () => list.toggleSelectMode() } : null,
-    deskMenu && isFocused
+    topNav && isFocused
   );
   useDockActions(
     isFocused && !searchingAlone && (list.isSelectMode || !deskMenu)
@@ -394,7 +399,8 @@ export default function DatabaseChrome<T extends { id: string }>({
               onPress: () => drawerRef.current?.open(),
               closesStack: true,
             },
-            ...(bulk ? [{ key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => list.toggleSelectMode() }] : []),
+            // At the bar's edge instead, wherever there is a bar.
+            ...(bulk && !topNav ? [{ key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => list.toggleSelectMode() }] : []),
             ...(menuRows
               ? [
                   {

@@ -1550,7 +1550,10 @@ export default function CalendarScreen() {
         </View>
         {/* Opposite the day's own name, which is what it acts on - the
             user's own placement. It was a dock action, and the dock here
-            is for the blocks themselves now. */}
+            is for the blocks themselves now. Not where the bar at the top
+            is up: its own «Виділити» does this, and two were one too many
+            - the user's own call. */}
+        {!topNavOn && (
         <Pressable
           style={[styles.headerSelect, noteSelectMode && styles.headerSelectOn]}
           hitSlop={8}
@@ -1566,6 +1569,7 @@ export default function CalendarScreen() {
             color={theme.ink.muted}
           />
         </Pressable>
+        )}
       </Animated.View>
       )}
 

@@ -129,7 +129,7 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useDockActions, useDockBeads, useDockShowContext, useTopBack } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras } from '../navigation/navDock';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import SearchField from '../components/SearchField';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
@@ -852,7 +852,8 @@ export default function CustomDatabaseScreen({
               active: openParam === 'params' || activeParamCount > 0,
               onPress: () => openParamList('params'),
             },
-            { key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => toggleSelectMode() },
+            // At the bar's edge instead, where there is a bar.
+            ...(bar ? [] : [{ key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => toggleSelectMode() }]),
             // The rare, per-database housekeeping (rename, fields, hide/
             // show properties, saved views, import, delete) - "Параметри"
             // freed up from the button that used to be "Вигляд", gear
@@ -861,6 +862,8 @@ export default function CustomDatabaseScreen({
           ]
       : null
   );
+  // Choosing at the bar's edge, as on every screen with a bar.
+  useTopExtras(null, { active: isSelectMode, onPress: () => toggleSelectMode() }, bar && isFocused);
 
   if (!database) {
     return (
