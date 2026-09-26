@@ -116,14 +116,13 @@ import {
   SHEET_BACKDROP,
   SHEET_WINDOW,
 } from '../constants/glass';
-import { CHROME_TOP } from '../constants/rail';
 import { GlassPortal } from '../components/GlassPortal';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useDockActions, useDockBeads } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockLeave } from '../navigation/navDock';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { listenError } from '../utils/listenError';
 
@@ -2131,7 +2130,6 @@ export default function BoardScreen() {
   // than that fixed number to keep either from sitting partly behind it.
   // Same fix as BulkActionBar's own bottom offset.
   const bottomInset = useSafeAreaInsets().bottom;
-  const topInset = useSafeAreaInsets().top;
   const dockClear = useDockClearance();
   const boardBlurTarget = useBlurTarget();
 
@@ -5199,20 +5197,22 @@ export default function BoardScreen() {
     refreshDocumentPreviews();
     setTimeout(refreshDocumentPreviews, 1000);
   }
-  const leaveBoard = () => (isTwoPane && paneDocId !== null ? closePane() : navigation.goBack());
+  useDockLeave('easel-outline', () =>
+    isTwoPane && paneDocId !== null ? closePane() : navigation.goBack()
+  );
   // A note filling the window hides the board these two act on, so they
   // stand down for as long as it does - the pane's own controls take the
   // dock's actions card instead (see paneControls below).
   const paneDocOpen = isTwoPane && paneDocId !== null;
   const boardShowing = boardFocused && !(paneDocOpen && paneFullscreen);
-  // The way out as the dock's LEFT BEAD, a piece of its own beside the
-  // desk pill - the user's placement, the same one the databases now
-  // use. «Шари» moved the other way, up into the board's own top bar,
-  // to make room for it (see boardBarRow above); no more in-card
-  // chevron here (that was `useDockLeave`, now dropped) - one back
-  // button, not two.
   useDockBeads(
-    boardShowing ? { icon: 'arrow-back', onPress: leaveBoard } : null,
+    boardShowing
+      ? {
+          icon: 'layers-outline',
+          active: layersDrawerVisible,
+          onPress: () => setLayersDrawerVisible((v) => !v),
+        }
+      : null,
     boardShowing && selectedCardIds.size === 0
       ? { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
       : null
@@ -5323,12 +5323,59 @@ export default function BoardScreen() {
             },
             { key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: deleteSelection },
           ]
-        : // The tools and undo/redo moved to the bar at the top - the
-          // user's plan: the dock goes places, the top is what this screen
-          // does. Only the side document's own two controls stay here.
-          paneControls.length > 0
-          ? paneControls
-          : null
+        : [
+            // Three separate buttons now, not one cycled through - "чому
+            // їх всі не розмістити на доці? а не проклацувати одну
+            // кнопку - це ж нелогічно". The card was already sized for
+            // four (ACT_W divides by 4 regardless of count), so the old
+            // single button just left three slots sitting empty beside
+            // it - every mode was ALREADY drawing the width, none of
+            // them were drawing the button.
+            {
+              key: 'move',
+              icon: 'mc:cursor-move',
+              label: 'Рух',
+              active: canvasTool === 'move',
+              onPress: () => setCanvasTool('move'),
+            },
+            {
+              key: 'hand',
+              icon: 'mc:hand-back-right-outline',
+              label: 'Рука',
+              active: canvasTool === 'hand',
+              onPress: () => setCanvasTool('hand'),
+            },
+            {
+              key: 'select',
+              icon: 'mc:selection-drag',
+              label: 'Вибір',
+              active: canvasTool === 'select',
+              onPress: () => setCanvasTool('select'),
+            },
+            {
+              key: 'connect',
+              icon: 'mc:vector-line',
+              label: 'Звʼязок',
+              active: canvasTool === 'connect',
+              onPress: () => setCanvasTool('connect'),
+            },
+            // Not a canvasTool, deliberately - it's a lens, not a way of
+            // touching the canvas, so it stays lit through 'move' once a
+            // chain is picked (see isolatedIds's own comment).
+            {
+              key: 'isolate',
+              icon: 'mc:image-filter-center-focus',
+              label: 'Ізоляція',
+              active: isolateArmed || isolatedIds !== null,
+              onPress: toggleIsolation,
+            },
+            // Also not tools - one-shot actions, shown only once there is
+            // something to do (see undo/redo's own comment on why they
+            // stay in sync for free with every mutation on the board).
+            ...(canUndo ? [{ key: 'undo', icon: 'arrow-undo-outline', label: 'Скасувати', onPress: undo }] : []),
+            ...(canRedo ? [{ key: 'redo', icon: 'arrow-redo-outline', label: 'Повторити', onPress: redo }] : []),
+            ...paneControls,
+          ]
       : null
   );
 
@@ -5725,71 +5772,10 @@ export default function BoardScreen() {
           </View>
         </GestureDetector>
 
-        {/* THE BOARD'S FUNCTIONS, AT THE TOP - the user's plan: the dock
-            is for going places, the top is for what this screen does. The
-            way back, the tools, and undo/redo, which now always stand in
-            their places (dimmed when there is nothing to undo) rather than
-            appearing and vanishing - that coming and going is what made the
-            dock hard to learn. The tools step aside while something is
-            selected: then the selection's own actions hold the dock.
-            The same blur-less glass the title always had: this screen is
-            inside the blur target, and a live blur of itself takes the app
-            down (see titleTap). */}
-        <View style={[styles.boardBar, { top: topInset + CHROME_TOP }]} pointerEvents="box-none">
-          <View style={styles.boardBarRow} pointerEvents="box-none">
-            {/* The way back moved to the bottom dock's own left bead - the
-                user's placement for it, the same one the databases now
-                use (see the `useDockBeads` call below). This first
-                capsule is «Шари» instead, moved up from the bead that
-                back now occupies. */}
-            <Pressable
-              style={({ pressed }) => [styles.boardBarCapsule, pressed && styles.boardBarPressed]}
-              onPress={() => setLayersDrawerVisible((v) => !v)}
-            >
-              <View style={[styles.boardBarButton, layersDrawerVisible && styles.boardBarButtonActive]}>
-                <Ionicons name="layers-outline" size={22} color="#fff" />
-              </View>
-            </Pressable>
-            {selectedCardIds.size === 0 && selectedShapeIds.size === 0 && (
-              <View style={styles.boardBarCapsule}>
-                {(
-                  [
-                    ['move', 'cursor-move'],
-                    ['hand', 'hand-back-right-outline'],
-                    ['select', 'selection-drag'],
-                    ['connect', 'vector-line'],
-                  ] as const
-                ).map(([tool, icon]) => (
-                  <Pressable
-                    key={tool}
-                    hitSlop={2}
-                    onPress={() => setCanvasTool(tool)}
-                    style={[styles.boardBarButton, canvasTool === tool && styles.boardBarButtonActive]}
-                  >
-                    <MaterialCommunityIcons name={icon} size={22} color="#fff" />
-                  </Pressable>
-                ))}
-                <Pressable
-                  hitSlop={2}
-                  onPress={toggleIsolation}
-                  style={[styles.boardBarButton, (isolateArmed || isolatedIds !== null) && styles.boardBarButtonActive]}
-                >
-                  <MaterialCommunityIcons name="image-filter-center-focus" size={22} color="#fff" />
-                </Pressable>
-              </View>
-            )}
-            <View style={styles.boardBarCapsule}>
-              <Pressable hitSlop={2} disabled={!canUndo} onPress={undo} style={styles.boardBarButton}>
-                <Ionicons name="arrow-undo-outline" size={22} color="#fff" style={!canUndo && styles.boardBarDisabled} />
-              </Pressable>
-              <Pressable hitSlop={2} disabled={!canRedo} onPress={redo} style={styles.boardBarButton}>
-                <Ionicons name="arrow-redo-outline" size={22} color="#fff" style={!canRedo && styles.boardBarDisabled} />
-              </Pressable>
-            </View>
-          </View>
-          {/* The name, under the functions for now - not across the whole
-              field; where it finally lives is the user's call to make once
-              they have lived with this. A tap still renames. */}
+        {/* Only the board's name stays up here - it needs the width. The
+            way back and the tool button stand on the dock with everything
+            else. */}
+        <View style={styles.headerRow} pointerEvents="box-none">
           <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {title || 'Без назви'}
@@ -6824,48 +6810,18 @@ const makeStyles = (theme: Theme) =>
       lineHeight: 15,
       color: theme.canvas.inkMuted,
     },
-    boardBar: {
+    headerRow: {
       position: 'absolute',
-      left: 16,
-      right: 16,
-      gap: 8,
-    },
-    // Wraps rather than running off a narrow screen (the Fold's cover).
-    boardBarRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      alignItems: 'center',
-      gap: 8,
-    },
-    boardBarCapsule: {
+      top: 56,
+      left: 20,
+      right: 20,
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 2,
-      overflow: 'hidden',
-      backgroundColor: GLASS_ISLAND,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.4)',
-      borderRadius: 999,
-    },
-    boardBarButton: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    boardBarButtonActive: {
-      backgroundColor: 'rgba(255,255,255,0.24)',
-    },
-    boardBarDisabled: {
-      opacity: 0.35,
-    },
-    boardBarPressed: {
-      opacity: 0.7,
+      justifyContent: 'space-between',
+      gap: 12,
     },
     titleTap: {
-      alignSelf: 'flex-start',
-      maxWidth: '100%',
+      flex: 1,
       // The app's own glass. No BlurView behind it, deliberately: this
       // screen is INSIDE the blur target, and a blur asked to blur a
       // picture it is itself part of recurses and takes the app down - it

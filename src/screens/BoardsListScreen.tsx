@@ -23,11 +23,10 @@ import {
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
-import { TAB_SCREENS } from '../navigation/tabScreens';
 import { BoardCard, BoardColumn, BoardItem } from '../types';
 import { readBoardPart } from '../utils/boardStorage';
 import BoardMiniMap from '../components/BoardMiniMap';
-import DatabaseChrome, { SHELF_HEIGHT } from '../components/DatabaseChrome';
+import DatabaseChrome from '../components/DatabaseChrome';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import ProjectBadge from '../components/ProjectBadge';
 import TagPicker from '../components/TagPicker';
@@ -498,27 +497,6 @@ export default function BoardsListScreen({
     return tile;
   }
 
-  // The way back, for either shape this screen comes in - the user's own
-  // rule: a folder first steps up one level (the explorer's own history,
-  // which in the ordinary drill-down case IS the parent), and only once
-  // there is no folder left to leave does it leave the screen itself. A
-  // COPY leaves to whoever pushed it; the tab's own root has no stack to
-  // pop, so it steps to the desk BEFORE this one in the ring instead -
-  // "на попередній робочий стіл, у випадку дошок це календар".
-  const deskIndex = TAB_SCREENS.findIndex((s) => s.name === 'Дошки');
-  const previousDesk = deskIndex > 0 ? TAB_SCREENS[deskIndex - 1].name : undefined;
-  function goBack() {
-    if (explorer.historyState.canBack) {
-      explorer.back();
-      return;
-    }
-    if (standalone) {
-      navigation.goBack();
-      return;
-    }
-    if (previousDesk) (navigation.getParent() as any)?.navigate(previousDesk);
-  }
-
   return (
     <DatabaseChrome<BoardItem>
       list={list}
@@ -528,16 +506,13 @@ export default function BoardsListScreen({
       // foot; a COPY pushed over the tile board has a way back and no
       // island, like every other pushed screen.
       hasIsland={!standalone}
-      onBack={goBack}
+      onBack={standalone ? () => navigation.goBack() : undefined}
       leaveIcon="easel-outline"
       // In another screen's pane the rail stands on the window's OUTER
       // edge, which is the left one - against the divider it would be in
       // the way of both halves.
       railSide={inPane ? 'left' : 'right'}
       searchPlaceholder="Пошук дощок"
-      // Search and "..." on a shelf over the dock, the rest inside "..."
-      // - see DatabaseChrome's shelf.
-      shelf
       onAdd={createBoard}
       addIcon="easel-outline"
       explorer={{
@@ -674,7 +649,7 @@ export default function BoardsListScreen({
               viewMode === 'cards' ? styles.tileGrid : styles.list,
               railClear(inPane ? 'left' : 'right', viewMode === 'cards' ? 10 : 20),
               viewMode !== 'cards' && isTwoPane && styles.listWide,
-              { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom + SHELF_HEIGHT },
+              { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
               ]}
           >
             {/* Where you are and what folders are here - only in

@@ -75,29 +75,6 @@ export function dockRowWidth(windowWidth: number): number {
   return Math.min(windowWidth, PHONE_W) - dockEdgeInset(windowWidth) * 2;
 }
 
-// The plate the dock's pieces lie on: how far it stands out past the row,
-// and its corner. ContextDock draws it from these; the top bar that
-// matches the dock (DatabaseChrome's `topBar`) reads them too.
-export const DOCK_PIECE_RADIUS = 14;
-export const DOCK_PLATE_PAD = 6;
-export const DOCK_PLATE_RADIUS = DOCK_PIECE_RADIUS + DOCK_PLATE_PAD;
-
-export function dockPlateWidth(windowWidth: number): number {
-  return dockRowWidth(windowWidth) + DOCK_PLATE_PAD * 2;
-}
-
-// The cut between two pieces of the slab (ContextDock's own, moved here).
-export const DOCK_CUT = 3;
-
-// The widths of the dock's three pieces - bead, card, bead - so the top
-// panel can be cut into exactly the same ones, only shorter. A bead is as
-// wide as the dock's card is tall (a square piece), and the card takes
-// what is left of the row.
-export function dockPieceWidths(windowWidth: number): { bead: number; card: number } {
-  const bead = dockCardHeight(windowWidth);
-  return { bead, card: dockRowWidth(windowWidth) - bead * 2 - DOCK_CUT * 2 };
-}
-
 export function useDockRowWidth(): number {
   const { width } = useWindowDimensions();
   return dockRowWidth(width);

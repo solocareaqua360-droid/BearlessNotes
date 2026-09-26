@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLift, useTheme, useStyles } from '../theme/ThemeProvider';
+import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
@@ -12,24 +12,15 @@ import { BlurView } from 'expo-blur';
 import Animated, { FadeInDown, SharedValue } from 'react-native-reanimated';
 import { DatabaseList } from '../hooks/useDatabaseList';
 import { GlassPortal } from './GlassPortal';
-import Menu, { MenuEntry } from './surfaces/Menu';
+import Menu from './surfaces/Menu';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import SearchField, { searchFieldSides } from './SearchField';
-import { GlassIcon } from './GlassDrop';
-import DockFrost from './DockFrost';
+import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import { useDockActions, useDockBeads, useDockShowContext } from '../navigation/navDock';
-import {
-  DOCK_CUT,
-  DOCK_PIECE_RADIUS,
-  DOCK_PLATE_PAD,
-  DOCK_PLATE_RADIUS,
-  dockPieceWidths,
-  dockPlateWidth,
-  useDockClearance,
-} from '../navigation/dockGeometry';
+import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
 import { usePublishRailTree } from '../navigation/navRail';
@@ -156,13 +147,6 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // Ignored on a phone; the caller shows the same thing as an overlay
   // there.
   pane?: ReactNode;
-  // A shelf of the dock's own pieces standing ON the dock: search in its
-  // left bead (over the way back), "..." in its right one, and everything
-  // else this screen does inside that menu. It was a bar at the top first;
-  // the user brought it down: "верхню панель спускаємо вниз, ховаємо все
-  // окрім пошуку в кнопку (три крапки) з правого краю". Opt-in, boards
-  // first; selecting still acts from the dock, under the thumb.
-  shelf?: boolean;
 };
 
 export default function DatabaseChrome<T extends { id: string }>({
@@ -184,7 +168,6 @@ export default function DatabaseChrome<T extends { id: string }>({
   children,
   overlay,
   pane,
-  shelf,
 }: DatabaseChromeProps<T>) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -238,12 +221,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   // Search, plus "..." where the screen still has rows for it, plus the
   // way out where there is one - one, two or three buttons.
   // The way out went to the dock, so the top capsule is one button
-  // shorter than it used to be. On a `shelf` screen the way out is the
-  // dock's LEFT BEAD instead (see the `useDockBeads` call below) - the
-  // user's own placement, a piece of its own beside the desk pill rather
-  // than a chevron riding inside it - so this in-card chevron stands
-  // down there to avoid drawing the same button twice.
-  useDockLeave(leaveIcon ?? 'albums-outline', onBack ?? (() => {}), !!onBack && !shelf);
+  // shorter than it used to be.
+  useDockLeave(leaveIcon ?? 'albums-outline', onBack ?? (() => {}), !!onBack);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -259,26 +238,6 @@ export default function DatabaseChrome<T extends { id: string }>({
   const searchingAlone = list.isSearching && keyboardUp;
   const showContext = useDockShowContext();
   const dockClear = useDockClearance();
-  // The top panel is the dock's plate, cut into the dock's own pieces,
-  // so it takes the dock's widths; its menus open under its right end.
-  const barWidth = dockPlateWidth(windowWidth);
-  const pieces = dockPieceWidths(windowWidth);
-  const pieceLift = useLift();
-  const menuAnchor = shelf
-    ? ({ position: 'absolute', right: Math.max(8, (windowWidth - barWidth) / 2), bottom: dockClear + insets.bottom + SHELF_HEIGHT } as const)
-    : ({ position: 'absolute', right: 16, bottom: dockClear + insets.bottom } as const);
-  const closeMenu = () => setMenuOpen(false);
-  const shelfEntries: MenuEntry[] = [
-    ...(shape ? [{ label: 'Вигляд', icon: shape.icon, onPress: () => { closeMenu(); shape.onToggle(); } }] : []),
-    { label: 'Порядок', icon: 'filter-outline', onPress: () => { closeMenu(); setSortMenuOpen(true); } },
-    ...(!hideDrawer
-      ? [{ label: 'Смартпапки', icon: 'chevron-forward' as const, checked: !!list.tagFilter, onPress: () => { closeMenu(); drawerRef.current?.open(); } }]
-      : []),
-    ...(explorer?.active
-      ? [{ label: 'Нова папка', icon: 'folder-open-outline' as const, onPress: () => { closeMenu(); explorer.onNewFolder(); } }]
-      : []),
-    ...(bulk ? [{ label: 'Вибрати', icon: 'checkmark-circle-outline' as const, onPress: () => { closeMenu(); list.toggleSelectMode(); } }] : []),
-  ];
   // Everything this screen offers now goes to the DOCK, not the rail -
   // the same move the documents screen made, and it lands on files,
   // photos, links and the boards list at once because they all came
@@ -288,29 +247,21 @@ export default function DatabaseChrome<T extends { id: string }>({
   // The rail reserved 90 points of width whether it held four capsules
   // or one; that is what leaving it buys, not the count of buttons.
   useDockBeads(
-    isFocused && shelf
-      ? // A `shelf` screen moved search onto the shelf, so the dock's left bead
-        // is free - and the user's own placement for the way back is
-        // exactly there: a piece of its own beside the desk pill, not a
-        // button inside it. A blank slot when there is nowhere back to
-        // go (the tab root) - not a hole with nothing to fill it, one
-        // that simply has no job here yet.
-        (onBack ? { icon: 'arrow-back', onPress: onBack } : null)
-      : isFocused
-        ? {
-            icon: list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline',
-            active: list.isSearching,
-            onPress: () => {
-              // While selecting, this is the way OUT of selecting - the one
-              // screen state you most need to be able to leave.
-              if (list.isSelectMode) {
-                list.toggleSelectMode();
-                return;
-              }
-              list.setIsSearching((prev) => !prev);
-            },
-          }
-        : null,
+    isFocused
+      ? {
+          icon: list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline',
+          active: list.isSearching,
+          onPress: () => {
+            // While selecting, this is the way OUT of selecting - the one
+            // screen state you most need to be able to leave.
+            if (list.isSelectMode) {
+              list.toggleSelectMode();
+              return;
+            }
+            list.setIsSearching((prev) => !prev);
+          },
+        }
+      : null,
     isFocused && !list.isSelectMode && !searchingAlone && onAdd
       ? {
           icon: addIcon ?? 'add-outline',
@@ -352,9 +303,7 @@ export default function DatabaseChrome<T extends { id: string }>({
                 ]
               : []),
           ]
-        : shelf
-          ? null
-          : [
+        : [
             ...(shape
               ? [{ key: 'shape', icon: shape.icon as string, label: 'Вигляд', onPress: shape.onToggle, closesStack: true }]
               : []),
@@ -424,12 +373,11 @@ export default function DatabaseChrome<T extends { id: string }>({
   const column = (
     <>
         <Menu
-          visible={menuOpen && (!!menuRows || !!shelf)}
+          visible={menuOpen && !!menuRows}
           onClose={() => setMenuOpen(false)}
-          // On a shelf screen "..." is where everything but search went.
-          entries={shelf ? shelfEntries : []}
-          // Hanging from whichever holds its button: the top bar, or the dock.
-          style={menuAnchor}
+          entries={[]}
+          // Above the dock, where the button that opens it now lives.
+          style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
         >
           {menuRows?.(() => setMenuOpen(false))}
         </Menu>
@@ -455,8 +403,8 @@ export default function DatabaseChrome<T extends { id: string }>({
               },
             })),
           ]}
-          // Hanging from whichever holds its button: the top bar, or the dock.
-          style={menuAnchor}
+          // Above the dock, where the button that opens it now lives.
+          style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
         />
 
         {/* The tabs float over the cards rather than standing above them,
@@ -480,43 +428,6 @@ export default function DatabaseChrome<T extends { id: string }>({
                   endPadding={20}
                 />
               )}
-            </View>
-          </GlassPortal>
-        )}
-
-        {/* THE SHELF - the dock's own pieces, one row up: a bead, a card,
-            a bead, each as wide as the one under it and only shorter.
-            Search stands over the way back; "..." at the right end holds
-            everything else. The card between them is empty for now - the
-            user's next call. Put away while the keyboard is up for a
-            search, like the dock. */}
-        {isFocused && shelf && !searchingAlone && (
-          <GlassPortal>
-            <View
-              pointerEvents="box-none"
-              style={[styles.shelfWrap, { bottom: dockClear + insets.bottom }, splitting && { paddingLeft: listPaneX }]}
-            >
-              <View style={[styles.barPlate, { width: barWidth }]}>
-                {/* The plate BEHIND the pieces, a sibling of them as in the
-                    dock - never a blur with blurs inside it. */}
-                <DockFrost style={styles.barPlateFill} radius={DOCK_PLATE_RADIUS} />
-                <DockFrost style={[styles.barPiece, styles.barPanelEdge, pieceLift, { width: pieces.bead }]} radius={DOCK_PIECE_RADIUS}>
-                  {!list.isSelectMode && (
-                    <PanelButton
-                      icon={list.isSearching ? 'close-outline' : 'search-outline'}
-                      width={pieces.bead}
-                      active={list.isSearching}
-                      onPress={() => list.setIsSearching((prev) => !prev)}
-                    />
-                  )}
-                </DockFrost>
-                <DockFrost style={[styles.barPiece, styles.barPanelEdge, pieceLift, { width: pieces.card }]} radius={DOCK_PIECE_RADIUS} />
-                <DockFrost style={[styles.barPiece, styles.barPanelEdge, pieceLift, { width: pieces.bead }]} radius={DOCK_PIECE_RADIUS}>
-                  {!list.isSelectMode && (
-                    <PanelButton icon="ellipsis-horizontal" width={pieces.bead} active={menuOpen} onPress={() => setMenuOpen((v) => !v)} />
-                  )}
-                </DockFrost>
-              </View>
             </View>
           </GlassPortal>
         )}
@@ -672,56 +583,6 @@ export default function DatabaseChrome<T extends { id: string }>({
   );
 }
 
-// How tall the top bar's pieces are - the dock's own pieces are a square
-// the card's height; these keep the width and give up height: "просто
-// вужчі по висоті".
-const BAR_PIECE_H = 44;
-// The shelf, plate and all, plus the breath above it - what a list adds
-// to its own bottom padding to stand clear of it, and where the "..."
-// menu hangs from.
-export const SHELF_HEIGHT = BAR_PIECE_H + DOCK_PLATE_PAD * 2 + 8;
-
-// One button of the top bar, filling its slot - a bead's whole width, or
-// a quarter of the card - the glass's own ink, and the accent only while
-// it is on, the rule every glass control follows.
-function PanelButton({
-  icon,
-  active,
-  onPress,
-  width,
-  flex,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  active?: boolean;
-  onPress: () => void;
-  width?: number;
-  flex?: boolean;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [panelButtonStyles.button, flex ? panelButtonStyles.flex : { width }, pressed && panelButtonStyles.pressed]}
-    >
-      {active ? <Ionicons name={icon} size={22} color={theme.accent} /> : <GlassIcon name={icon} size={22} />}
-    </Pressable>
-  );
-}
-
-const panelButtonStyles = StyleSheet.create({
-  button: {
-    height: BAR_PIECE_H,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  flex: {
-    flex: 1,
-  },
-  pressed: {
-    opacity: 0.6,
-  },
-});
-
 // The rows a database adds to the "..." menu are drawn in the menu's own
 // styles, so a screen's extra rows can never sit a little differently
 // from the ones the chrome puts there itself.
@@ -809,40 +670,6 @@ const makeStyles = (t: Theme) =>
     left: 0,
     right: 0,
     zIndex: 6,
-  },
-  shelfWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  // The plate the pieces lie on, as the dock's own: its padding is the
-  // dock's, its pieces are cut apart by the dock's own cut.
-  barPlate: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: DOCK_PLATE_PAD,
-    gap: DOCK_CUT,
-  },
-  barPlateFill: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-  },
-  barPiece: {
-    height: BAR_PIECE_H,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  barSlot: {
-    flex: 1,
-  },
-  barPanelEdge: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.16)',
   },
   filterRow: {
     flexDirection: 'row',
