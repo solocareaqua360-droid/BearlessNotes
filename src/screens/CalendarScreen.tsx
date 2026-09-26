@@ -1127,6 +1127,10 @@ export default function CalendarScreen() {
   // ref.
   function renderDayNote(key: string, primary: boolean) {
     const zooms = primary && phoneOverview;
+    // On a phone the day's paper scrolls with its text - "те ж саме з
+    // аркушем календаря". Not on a pointer (its own sheet head sits on
+    // the paper) nor in two panes.
+    const scrollPaper = !pointerDensity && !isTwoPane;
     const note = (
       <Animated.View
         onLayout={
@@ -1147,6 +1151,10 @@ export default function CalendarScreen() {
           // ground, over the page rather than on it. The frame carries
           // the same paper, and the date is on the sheet.
           pointerDensity && styles.notePaper,
+          // The paper scrolls inside this frame now (see scrollPaper
+          // below), so the frame lets go of its own corners - they belong
+          // to the paper and move with it.
+          scrollPaper && styles.noteAreaOpen,
           zooms && noteZoomStyle,
         ]}
       >
@@ -1193,6 +1201,7 @@ export default function CalendarScreen() {
           onPanelChange={primary ? setNotePanelOpen : undefined}
           onSaveStatusChange={primary ? setNoteSaveStatus : undefined}
           onPullPastEnd={zooms ? openOverview : undefined}
+          scrollPaper={scrollPaper}
         />
       </Animated.View>
     );
@@ -2750,6 +2759,10 @@ const makeStyles = (t: Theme) =>
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
     color: 'rgba(255,255,255,0.85)',
+  },
+  noteAreaOpen: {
+    borderRadius: 0,
+    overflow: 'visible',
   },
   noteArea: {
     flex: 1,

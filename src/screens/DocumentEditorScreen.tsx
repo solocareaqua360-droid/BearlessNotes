@@ -265,6 +265,10 @@ type Props =
       // this panel stands where the dock would - the note does exactly
       // that for itself when it owns the dock.
       onPanelChange?: (open: boolean) => void;
+      // The day's paper scrolls with its text instead of standing still
+      // round it - the same move the note's own sheet made (see
+      // scrollSheet), asked for on the calendar too.
+      scrollPaper?: boolean;
     }
   // Pane mode (DocumentsScreen's two-pane layout on a wide screen): the
   // WHOLE editor, header and title and cover included - unlike embedded
@@ -435,6 +439,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const onSelectModeChange = 'embedded' in props ? props.onSelectModeChange : undefined;
   const onPullPastEnd = 'embedded' in props ? props.onPullPastEnd : undefined;
   const onPanelChange = 'embedded' in props ? props.onPanelChange : undefined;
+  const scrollPaperProp = 'embedded' in props ? !!props.scrollPaper : false;
   const [scrollViewportH, setScrollViewportH] = useState(0);
   const onSaveStatusChange =
     'embedded' in props ? props.onSaveStatusChange : 'pane' in props ? props.onSaveStatusChange : undefined;
@@ -4726,6 +4731,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // around it the whole way. Not on the canvas, which is a surface of its
   // own and keeps the still frame.
   const scrollSheet = sheetPage && !canvasMode;
+  // The calendar's day note, the same way: the paper is the scroll's
+  // content. The frame round it (the calendar's noteArea) lets go of its
+  // own corners for it.
+  const embeddedPaperScrolls = embedded && scrollPaperProp && !canvasMode;
   // THE BAR ABOVE THE KEYBOARD AND THE PANEL THAT REPLACES IT belong to
   // the SCREEN, not to the page. Held by the sheet they were clipped by
   // it and anchored to a bottom that is no longer the screen's, so the
@@ -4853,7 +4862,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     <Animated.View
       style={[
         styles.container,
-        embedded && styles.containerEmbedded,
+        embedded && !embeddedPaperScrolls && styles.containerEmbedded,
         // The still frame - on the canvas only now; see scrollSheet for
         // where the page's own frame went.
         sheetPage && !scrollSheet && styles.pageSheet,
@@ -4868,10 +4877,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // the same rounded corner down there that it shows up top.
           marginBottom: sheetBottomRest,
         },
-        paperColor && !scrollSheet && { backgroundColor: paperColor.background },
+        paperColor && !scrollSheet && !embeddedPaperScrolls && { backgroundColor: paperColor.background },
         // The whole screen, clear: the ground shows round the paper that
         // scrolls inside it.
-        scrollSheet && { backgroundColor: 'transparent' },
+        (scrollSheet || embeddedPaperScrolls) && { backgroundColor: 'transparent' },
       ]}
       // The paper's own width, which is what the blocks are laid out in -
       // the screen's less the sheet's margins where the paper scrolls.
@@ -5266,6 +5275,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // corners, lift and colour, and the room under the bar at its
           // top (what the header row gave the still sheet). At least the
           // window tall, so a short note is still a whole sheet.
+          // The day's paper - corners, colour, at least the frame tall. The
+          // pull zone at its end ("Усі дні") stays on it, so the pull to
+          // the overview is measured exactly as before.
+          embeddedPaperScrolls && {
+            flexGrow: 1,
+            borderRadius: 16,
+            overflow: 'hidden',
+            backgroundColor: paperColor?.background ?? theme.paper.fill,
+          },
           scrollSheet && [
             styles.pageSheet,
             liftStyle(theme, theme.lift, 1),
