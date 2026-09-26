@@ -73,7 +73,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
-import { useDockActions, useDockBeads, useTopBack } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useTopBack, useTopExtras } from '../navigation/navDock';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
 import { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { useDockClearance } from '../navigation/dockGeometry';
@@ -315,20 +315,28 @@ export default function DatabasesScreen() {
     }, listenError('DatabasesScreen:DatabasesScreen'));
   }, []);
   const [creatingDatabase, setCreatingDatabase] = useState(false);
-  // THE DOCK'S MIDDLE: what this screen does, now that the desks went up
-  // to the bar at the top and left a hole there - arranging the board,
-  // a new database, importing a table, and the settings.
-  useDockActions(
+  // WHAT THIS SCREEN DOES is in the bar's "⋯" (the same arrangement as
+  // the documents list and the boards): arranging the board, importing a
+  // table, pinning, and the settings. A new database is the dock's "+",
+  // so it is not said twice. The dock keeps just search and "+".
+  useTopExtras(
+    [
+      { label: 'Упорядкувати', icon: 'move-outline', checked: editing, onPress: () => setEditing((v) => !v) },
+      { label: 'Імпорт таблиці', icon: 'download-outline', onPress: () => setImporting(true) },
+      { label: 'Закріпити', icon: 'bookmark-outline', onPress: () => setPinSheetVisible(true) },
+      { kind: 'rule' },
+      { label: 'Налаштування', icon: 'settings-outline', onPress: () => navigation.navigate('Settings') },
+    ],
+    null,
     databasesFocused
+  );
+  // With a pointer there is no bar at the top to hang that list from, so
+  // the dock's middle keeps these as it had them.
+  const pointerLayout = !useTopNavOn();
+  useDockActions(
+    databasesFocused && pointerLayout
       ? [
-          {
-            key: 'arrange',
-            icon: 'move-outline',
-            label: 'Упорядкувати',
-            active: editing,
-            onPress: () => setEditing((v) => !v),
-          },
-          { key: 'new', icon: 'add-circle-outline', label: 'Нова база', onPress: () => setCreatingDatabase(true) },
+          { key: 'arrange', icon: 'move-outline', label: 'Упорядкувати', active: editing, onPress: () => setEditing((v) => !v) },
           { key: 'import', icon: 'download-outline', label: 'Імпорт', onPress: () => setImporting(true) },
           { key: 'settings', icon: 'settings-outline', label: 'Налаштування', onPress: () => navigation.navigate('Settings') },
         ]

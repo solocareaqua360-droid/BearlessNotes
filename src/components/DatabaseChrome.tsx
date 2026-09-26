@@ -20,7 +20,7 @@ import TopNavBar, { TOP_NAV_SPACE, TopTitle, useTopNavOn } from './TopNavBar';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
-import { useDockActions, useDockBeads, useDockShowContext, useTopBack } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras } from '../navigation/navDock';
 import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
@@ -310,8 +310,39 @@ export default function DatabaseChrome<T extends { id: string }>({
         }
       : null
   );
+  // ON A DESK'S OWN SCREEN (the boards list at its tab) all of this goes
+  // up to the bar's "⋯" instead, with choosing at its very edge - the same
+  // arrangement as the documents list ("по аналогії з документами, все
+  // можна засунути в крапки"). The dock keeps search and "+"; a selection
+  // still brings its actions down under the thumb. A database pushed from
+  // «Більше» keeps the card below: sorting and filtering are its work.
+  const deskMenu = !!topNavWanted && topNav;
+  useTopExtras(
+    [
+      ...(shape ? [{ label: 'Змінити вигляд', icon: shape.icon, onPress: shape.onToggle }] : []),
+      { kind: 'section' as const, label: 'Порядок' },
+      ...FIELD_ORDER.map((field) => ({
+        label:
+          list.sortPref.field === field
+            ? `${FIELD_LABELS[field]} ${list.sortPref.dir === 'asc' ? '↑' : '↓'}`
+            : FIELD_LABELS[field],
+        icon: FIELD_ICONS[field],
+        checked: list.sortPref.field === field,
+        onPress: () => list.selectSortField(field),
+      })),
+      { kind: 'rule' as const },
+      ...(!hideDrawer
+        ? [{ label: 'Смартпапки', icon: 'pricetag-outline' as const, checked: !!list.tagFilter, onPress: () => drawerRef.current?.open() }]
+        : []),
+      ...(explorer?.active
+        ? [{ label: 'Нова папка', icon: 'folder-open-outline' as const, onPress: explorer.onNewFolder }]
+        : []),
+    ],
+    bulk ? { active: list.isSelectMode, onPress: () => list.toggleSelectMode() } : null,
+    deskMenu && isFocused
+  );
   useDockActions(
-    isFocused && !searchingAlone
+    isFocused && !searchingAlone && (list.isSelectMode || !deskMenu)
       ? list.isSelectMode
         ? [
             {
