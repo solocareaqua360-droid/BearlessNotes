@@ -98,6 +98,8 @@ export type DockLeave = { icon: string; onLeave: () => void };
 // Notion-style plan. `dimmed`: in its place, nowhere to go. `icon`
 // overrides the plain arrow - the note swaps it for a checkmark while a
 // canvas card is being edited, the same swap the old bead used to make.
+// See claimTopNav.
+const TOP_NAV_RELEASE_MS = 300;
 export type TopBack = { onPress: () => void; dimmed: boolean; icon?: string };
 // The right end of the bar at the top, on the screens that write rather
 // than sort (the documents list, the calendar, a note): "⋯" opening the
@@ -358,9 +360,18 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   );
   const [topNavClaims, setTopNavClaims] = useState(0);
   const topNavUp = topNavClaims > 0;
+  // Let go a beat LATE. Opening a note from the documents list, the
+  // list's bar goes before the note's arrives - one frame, maybe two, of
+  // no bar at all, and in them the dock drew itself the OLD way (beads
+  // and a card) before the new one: "перед відкриттям нотатки спливає
+  // старий док". Held a moment longer, one bar hands over to the next
+  // with no gap; leaving for a screen with no bar is a quarter-second
+  // later than it would be, which nothing on screen waits for.
   const claimTopNav = useCallback(() => {
     setTopNavClaims((n) => n + 1);
-    return () => setTopNavClaims((n) => n - 1);
+    return () => {
+      setTimeout(() => setTopNavClaims((n) => n - 1), TOP_NAV_RELEASE_MS);
+    };
   }, []);
   const [topExtras, publishTopExtras] = useState<TopExtras | null>(null);
   const [topBack, setTopBack] = useState<TopBack | null>(null);
