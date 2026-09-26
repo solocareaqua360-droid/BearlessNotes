@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Rect } from 'react-native-svg';
 import { GlassPortal } from './GlassPortal';
 import DockFrost from './DockFrost';
+import { TOP_STRIP_OFFSET } from './TopNavBar';
+import { CHROME_TOP } from '../constants/rail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { liftStyle } from '../theme/tokens';
@@ -25,6 +27,7 @@ import {
   useNavDockFace,
   useNavDockFlipRequest,
   useNavDockTabsDrifting,
+  useNavTopNavUp,
   useNavDockHidden,
   useNavDockLeave,
   useNavDockOwnContext,
@@ -545,7 +548,7 @@ function shapeOut(p: number) {
 // the way down before the second is thrown. Two machines could only ever
 // gate on each other's live value, which is a circle - and a circle that
 // settles is a strip that never comes back up.
-function useStripLift(wanted: LiftKind) {
+function useStripLift(wanted: LiftKind, noThrow = false) {
   // `handedOver` remembers that the place was taken straight from another
   // strip rather than found empty - see shapeIn.
   const [lift, setLift] = useState<{ kind: LiftKind; handedOver: boolean }>({
@@ -562,7 +565,9 @@ function useStripLift(wanted: LiftKind) {
     if (shown === wanted || p > 0.001) return;
     setLift({ kind: wanted, handedOver: shown !== null });
   }, [shown, wanted, p]);
-  const shape = up ? shapeIn(p, !lift.handedOver) : shapeOut(p);
+  // No throw under the desks bar at the top: there the strip simply slides
+  // out as a square and opens - "ефект той самий за винятком стрибка".
+  const shape = up ? shapeIn(p, !lift.handedOver && !noThrow) : shapeOut(p);
   return { kind: shown, live: p, rise: shape.rise, spread: shape.spread };
 }
 const DESK_HINT_H = 16;
@@ -823,7 +828,10 @@ export default function ContextDock() {
   // useStripLift, which is what makes the two take turns rather than
   // cross, in EITHER direction.
   const liftWanted: LiftKind = tabsDrifting ? null : (own?.kind === 'path' || own?.kind === 'strip' ? own.kind : null);
-  const stripLift = useStripLift(liftWanted);
+  // With the desks bar at the top (TopNavBar), the path and the days rise
+  // under IT instead - see `liftedAtTop` where they are drawn.
+  const topNavUp = useNavTopNavUp();
+  const stripLift = useStripLift(liftWanted, topNavUp);
   const pathUpWanted = liftWanted === 'path';
   const pathLive = stripLift.kind === 'path' ? stripLift.live : 0;
   const pathRise = stripLift.kind === 'path' ? stripLift.rise : 0;
@@ -1075,6 +1083,16 @@ export default function ContextDock() {
   // Both strips stand in the same place; they are never up together.
   const liftedBottom = DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD + CARD_H + BEHIND_EDGE * 2 + DOCK_PATH_GAP;
   const liftedTravel = LIFT_TRAVEL;
+  // Where a risen strip stands: above the dock, or - while the desks bar
+  // is up - right under that bar, coming out from behind it downward
+  // (hidden behind it at 0, resting under it at 1). The room it rests in
+  // is kept on those screens whether or not a strip is there
+  // (TOP_NAV_SPACE), so nothing below it moves when it comes.
+  const topStripTop = insets.top + CHROME_TOP + TOP_STRIP_OFFSET;
+  const liftedAt = (rise: number) =>
+    topNavUp
+      ? { top: topStripTop, transform: [{ translateY: -(1 - rise) * TOP_STRIP_OFFSET }] }
+      : { bottom: liftedBottom, transform: [{ translateY: (1 - rise) * liftedTravel }] };
   // THE PLATE EVERYTHING LIES ON - the user's own reference, the
   // composer in this very app: one surface, and the controls sitting on
   // it as separate pieces rather than floating beside each other. It is
@@ -1085,7 +1103,7 @@ export default function ContextDock() {
   // It GROWS UPWARDS to take the strip in. Clamped at 1 so the throw
   // above it is the square's alone: a plate that leapt with it would be
   // the block changing size rather than something arriving on it.
-  const plateOpen = Math.min(1, Math.max(pathRise, dayRise));
+  const plateOpen = topNavUp ? 0 : Math.min(1, Math.max(pathRise, dayRise));
   const plateBottom = DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD + BEHIND_EDGE * 2 - PLATE_PAD;
   const plateHeight = PLATE_PAD * 2 + CARD_H + plateOpen * (DOCK_PATH_GAP + DOCK_PATH_H);
   // HOW THE DOCK PARTS FROM THE SCREEN. In the black theme that is the
@@ -1865,8 +1883,7 @@ export default function ContextDock() {
           style={[
             styles.pathWrap,
             {
-              bottom: liftedBottom,
-              transform: [{ translateY: (1 - dayRise) * liftedTravel }],
+              ...liftedAt(dayRise),
             },
           ]}
         >
@@ -1944,8 +1961,7 @@ export default function ContextDock() {
           style={[
             styles.pathWrap,
             {
-              bottom: liftedBottom,
-              transform: [{ translateY: (1 - pathRise) * liftedTravel }],
+              ...liftedAt(pathRise),
             },
           ]}
         >

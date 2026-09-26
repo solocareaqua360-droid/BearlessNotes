@@ -7,7 +7,7 @@ import DockFrost from './DockFrost';
 import { GlassPortal } from './GlassPortal';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { CHROME_TOP } from '../constants/rail';
-import { DOCK_PIECE_RADIUS, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
+import { DOCK_PATH_H, DOCK_PIECE_RADIUS, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
 import { useNavTopBack } from '../navigation/navDock';
 import { FONT_MEDIUM } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
@@ -21,9 +21,14 @@ import { useDensity } from '../hooks/useDensity';
 // Lined up with the dock under it: the same left and right edges, the
 // same material and corner.
 export const TOP_NAV_H = 46;
+// Where the path or the days rest, measured from the bar's own top: right
+// under it (ContextDock draws them there while the bar is up).
+export const TOP_STRIP_OFFSET = TOP_NAV_H + 6;
 // What a desk's own screen adds above its content so nothing starts
-// under the bar - the bar and the breath under it.
-export const TOP_NAV_SPACE = TOP_NAV_H + 10;
+// under the bar - the bar, the room the path or the days rest in, and
+// the breath under them. The room is kept whether or not a strip is
+// showing, so nothing below jumps when one comes ("зарезервувати місце").
+export const TOP_NAV_SPACE = TOP_STRIP_OFFSET + DOCK_PATH_H + 10;
 const PILL_W = 52;
 const GAP = 6;
 
@@ -56,7 +61,9 @@ export default function TopNavBar({ desks, onLongPress }: { desks: TopDesk[]; on
   const openWidth = rowWidth - TOP_NAV_H - GAP * desks.length - PILL_W * (desks.length - 1);
 
   return (
-    <GlassPortal>
+    // Above the dock's own layer: the path and the days come out from
+    // BEHIND this bar.
+    <GlassPortal priority={1}>
       <View
         pointerEvents="box-none"
         style={[styles.row, { top: insets.top + CHROME_TOP, left: dockRowLeft(windowWidth), width: dockRowWidth(windowWidth) }]}

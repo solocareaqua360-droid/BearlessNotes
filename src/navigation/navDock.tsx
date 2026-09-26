@@ -174,6 +174,10 @@ type Value = {
   publishLeave: (leave: DockLeave | null) => void;
   topBack: TopBack | null;
   publishTopBack: (back: TopBack | null) => void;
+  // Whether the desks bar is drawn at the top (TopNavBar). While it is,
+  // the path and the days rise under IT rather than above the dock.
+  topNavUp: boolean;
+  publishTopNavUp: (up: boolean) => void;
   publish: (context: DockContext | null) => void;
   // Stepped out of, without being given up: the context is still there,
   // one press brings it back. Lives here rather than in the dock because
@@ -334,6 +338,7 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
     (next: DockTargets | null) => setTargetBox((prev) => (prev.fn === next ? prev : { fn: next })),
     []
   );
+  const [topNavUp, publishTopNavUp] = useState(false);
   const [topBack, setTopBack] = useState<TopBack | null>(null);
   const publishTopBack = useCallback((next: TopBack | null) => {
     setTopBack((prev) => (prev === next || (prev && next && prev.onPress === next.onPress && prev.dimmed === next.dimmed) ? prev : next));
@@ -445,6 +450,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishLeave,
       topBack,
       publishTopBack,
+      topNavUp,
+      publishTopNavUp,
       targets,
       publishTargets,
       hidden,
@@ -474,6 +481,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishLeave,
       topBack,
       publishTopBack,
+      topNavUp,
+      publishTopNavUp,
       targets,
       publishTargets,
       hidden,
@@ -578,6 +587,14 @@ export function useTopBack(onPress: (() => void) | null, enabled = true) {
     publish({ onPress: stable, dimmed });
     return () => publish(null);
   }, [publish, focused, enabled, stable, dimmed]);
+}
+
+export function useNavTopNavUp(): boolean {
+  return useContext(NavDockContext)?.topNavUp ?? false;
+}
+
+export function useTopNavUpPublisher() {
+  return useContext(NavDockContext)?.publishTopNavUp;
 }
 
 export function useNavTopBack(): TopBack | null {
