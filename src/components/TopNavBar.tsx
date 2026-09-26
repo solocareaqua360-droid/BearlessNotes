@@ -91,7 +91,9 @@ type PathContext = Extract<DockContext, { kind: 'path' }>;
 // A screen pushed over the desks (a database opened from «Більше») says
 // where it is instead of listing the desks: its own icon and name, one
 // piece on the same plate.
-export type TopTitle = { icon: string; label: string };
+// `onPress` makes the title itself a control - the board's name, tapped
+// to rename it, the way its old chip at the top was.
+export type TopTitle = { icon: string; label: string; onPress?: () => void };
 // A note says where it lives instead: its folder, then its own name -
 // "папка › назва", each folder a way to that folder, the name itself the
 // place you are.
@@ -131,9 +133,10 @@ export default function TopNavBar({
   const hasMiddle = !!title || !!desks?.length || !!trail;
   // The extras cluster's own width - each button it actually has, on ONE
   // plate with no gaps between them - so the middle takes what is left.
-  const clusterCount = (extras?.menu ? 1 : 0) + (extras?.select ? 1 : 0) + (extras?.pane ? 1 : 0);
+  const toolCount = extras?.tools?.length ?? 0;
+  const clusterCount = toolCount + (extras?.menu ? 1 : 0) + (extras?.select ? 1 : 0) + (extras?.pane ? 1 : 0);
   const clusterWidth =
-    (extras?.menu ? MENU_W : 0) + (extras?.select ? SIDE_W : 0) + (extras?.pane ? SIDE_W : 0);
+    toolCount * MENU_W + (extras?.menu ? MENU_W : 0) + (extras?.select ? SIDE_W : 0) + (extras?.pane ? SIDE_W : 0);
   const plateWidth = frame.width - (SIDE_W + GAP) - (clusterCount > 0 ? clusterWidth + GAP : 0);
   const innerWidth = plateWidth - PLATE_PAD * 2;
   // The open desk takes whatever the plate has left once the closed desks
@@ -206,12 +209,19 @@ export default function TopNavBar({
                 >
                   {trail && <TrailRow trail={trail} radius={corners.piece} ink={theme.glass.ink} inkMuted={theme.glass.inkMuted} />}
                   {title && (
-                    <DockFrost style={styles.piece} radius={corners.piece}>
-                      <Ionicons name={title.icon as keyof typeof Ionicons.glyphMap} size={20} color={theme.glass.ink} />
-                      <Text numberOfLines={1} style={[styles.label, styles.titleLabel, { color: theme.glass.ink }]}>
-                        {title.label}
-                      </Text>
-                    </DockFrost>
+                    <Pressable
+                      disabled={!title.onPress}
+                      onPress={title.onPress}
+                      accessibilityLabel={title.label}
+                      style={styles.titlePress}
+                    >
+                      <DockFrost style={styles.piece} radius={corners.piece}>
+                        <Ionicons name={title.icon as keyof typeof Ionicons.glyphMap} size={20} color={theme.glass.ink} />
+                        <Text numberOfLines={1} style={[styles.label, styles.titleLabel, { color: theme.glass.ink }]}>
+                          {title.label}
+                        </Text>
+                      </DockFrost>
+                    </Pressable>
                   )}
                   {desks?.map((desk) => (
                     <DeskPill
@@ -244,6 +254,15 @@ export default function TopNavBar({
           <View style={[styles.cluster, lift, { width: clusterWidth, borderRadius: corners.plate }]}>
             <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} />
             {[
+              ...(extras?.tools ?? []).map((t) => ({
+                key: `tool:${t.key}`,
+                width: MENU_W,
+                icon: t.icon,
+                label: t.label,
+                active: false,
+                dimmed: !!t.dimmed,
+                onPress: t.onPress,
+              })),
               extras?.menu
                 ? { key: 'menu', width: MENU_W, icon: 'ellipsis-horizontal', label: 'Ще', active: menuOpen, onPress: () => setMenuOpen((v) => !v) }
                 : null,
@@ -256,12 +275,19 @@ export default function TopNavBar({
             ]
               .filter((b): b is NonNullable<typeof b> => !!b)
               .map((b, i) => (
-                <Pressable key={b.key} onPress={b.onPress} accessibilityLabel={b.label} style={[styles.clusterButton, { width: b.width }]}>
+                <Pressable
+                  key={b.key}
+                  disabled={'dimmed' in b && b.dimmed}
+                  onPress={b.onPress}
+                  accessibilityLabel={b.label}
+                  style={[styles.clusterButton, { width: b.width }]}
+                >
                   {i > 0 && <View style={[styles.clusterDivider, { backgroundColor: theme.glass.inkMuted }]} />}
                   <Ionicons
                     name={b.icon as keyof typeof Ionicons.glyphMap}
                     size={21}
                     color={b.active ? theme.accent : theme.glass.ink}
+                    style={'dimmed' in b && b.dimmed ? { opacity: 0.3 } : null}
                   />
                 </Pressable>
               ))}
@@ -542,5 +568,8 @@ const styles = StyleSheet.create({
   titleLabel: {
     marginLeft: 8,
     flexShrink: 1,
+  },
+  titlePress: {
+    flex: 1,
   },
 });

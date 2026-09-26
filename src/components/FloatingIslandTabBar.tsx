@@ -117,14 +117,15 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   );
 
   // THE DESKS MOVED TO THE TOP on the four desks' own screens (see
-  // TopNavBar) - the dock keeps them only on an open board, which is
-  // inside the boards tab but is not one of those screens.
+  // TopNavBar). An open board is inside the boards tab but is not one of
+  // those screens: it has its own bar (its name, not the desks), and the
+  // dock under it no longer carries the desks' dots either.
   const topNavOn = useTopNavOn();
   const onBoard =
     state.routes[state.index]?.name === 'Дошки' &&
     getFocusedRouteNameFromRoute(state.routes[state.index]) === 'Board';
   useDockBase(
-    tabsFocused && (onBoard || !topNavOn)
+    tabsFocused && !topNavOn
       ? {
           kind: 'desks',
           icon: ICON_BY_ROUTE[state.routes[state.index]?.name] ?? 'ellipse-outline',

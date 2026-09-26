@@ -111,7 +111,13 @@ export type TopExtras = {
   menu: MenuEntry[] | null;
   select: { active: boolean; onPress: () => void } | null;
   pane?: { icon: string; onPress: () => void } | null;
+  // One-shot buttons kept in sight ahead of "⋯" on the same plate - the
+  // board's undo/redo, used too often to hide in a menu. Dimmed while
+  // there is nothing for them to do, so the plate never changes width.
+  tools?: TopTool[] | null;
 };
+
+export type TopTool = { key: string; icon: string; label: string; dimmed?: boolean; onPress: () => void };
 
 // What this screen can DO - the other half of the dock's stack.
 //
@@ -646,16 +652,18 @@ export function useTopExtras(
   menu: MenuEntry[] | null,
   select: { active: boolean; onPress: () => void } | null,
   enabled = true,
-  pane?: { icon: string; onPress: () => void } | null
+  pane?: { icon: string; onPress: () => void } | null,
+  tools?: TopTool[] | null
 ) {
   const publish = useContext(NavDockContext)?.publishTopExtras;
   const focused = useIsFocused();
-  const ref = useRef({ menu, select, pane });
-  ref.current = { menu, select, pane };
+  const ref = useRef({ menu, select, pane, tools });
+  ref.current = { menu, select, pane, tools };
   const signature = JSON.stringify([
     menu?.map((e) => (e.kind === 'section' ? ['s', e.label] : e.kind === 'rule' ? ['r'] : [e.label, e.icon, !!e.checked, e.tone])),
     select ? select.active : null,
     pane ? pane.icon : null,
+    tools?.map((t) => [t.key, t.icon, !!t.dimmed]) ?? null,
   ]);
   useEffect(() => {
     if (!publish || !focused || !enabled) return;
@@ -676,6 +684,12 @@ export function useTopExtras(
         : null,
       select: live.select ? { active: live.select.active, onPress: () => ref.current.select?.onPress() } : null,
       pane: live.pane ? { icon: live.pane.icon, onPress: () => ref.current.pane?.onPress() } : null,
+      tools: live.tools
+        ? live.tools.map((t) => ({
+            ...t,
+            onPress: () => ref.current.tools?.find((x) => x.key === t.key)?.onPress(),
+          }))
+        : null,
     });
     return () => publish(null);
   }, [publish, focused, enabled, signature]);

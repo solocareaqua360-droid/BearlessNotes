@@ -122,7 +122,8 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useDockActions, useDockBeads, useDockLeave } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockLeave, useTopBack, useTopExtras } from '../navigation/navDock';
+import TopNavBar, { useTopNavOn } from '../components/TopNavBar';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { listenError } from '../utils/listenError';
 
@@ -5197,23 +5198,44 @@ export default function BoardScreen() {
     refreshDocumentPreviews();
     setTimeout(refreshDocumentPreviews, 1000);
   }
-  useDockLeave('easel-outline', () =>
-    isTwoPane && paneDocId !== null ? closePane() : navigation.goBack()
-  );
   // A note filling the window hides the board these two act on, so they
   // stand down for as long as it does - the pane's own controls take the
   // dock's actions card instead (see paneControls below).
   const paneDocOpen = isTwoPane && paneDocId !== null;
   const boardShowing = boardFocused && !(paneDocOpen && paneFullscreen);
+  // THE BOARD UNDER THE SAME SCHEME AS EVERY OTHER SCREEN (touch only):
+  // the top bar says where you are - back, the board's name (tap to
+  // rename), and undo/redo + "⋯" on one plate; the dock below is what you
+  // do - the four tools and "+" last, since the right end always creates.
+  // A note filling the window keeps the old arrangement: the board is
+  // hidden then and the note's own controls hold the dock.
+  const topNavOn = useTopNavOn();
+  const bar = topNavOn && !(paneDocOpen && paneFullscreen);
+  const leaveOrClosePane = () => (isTwoPane && paneDocId !== null ? closePane() : navigation.goBack());
+  useDockLeave('easel-outline', leaveOrClosePane, !bar);
+  useTopBack(leaveOrClosePane, bar);
+  useTopExtras(
+    [
+      { label: 'Шари', icon: 'layers-outline', checked: layersDrawerVisible, onPress: () => setLayersDrawerVisible((v) => !v) },
+      { label: 'Ізоляція', icon: 'scan-outline', checked: isolateArmed || isolatedIds !== null, onPress: toggleIsolation },
+    ],
+    null,
+    bar,
+    paneDocOpen && !paneFullscreen ? { icon: 'expand-outline', onPress: () => setPaneFullscreen(true) } : null,
+    [
+      { key: 'undo', icon: 'arrow-undo-outline', label: 'Скасувати', dimmed: !canUndo, onPress: undo },
+      { key: 'redo', icon: 'arrow-redo-outline', label: 'Повторити', dimmed: !canRedo, onPress: redo },
+    ]
+  );
   useDockBeads(
-    boardShowing
+    boardShowing && !bar
       ? {
           icon: 'layers-outline',
           active: layersDrawerVisible,
           onPress: () => setLayersDrawerVisible((v) => !v),
         }
       : null,
-    boardShowing && selectedCardIds.size === 0
+    boardShowing && !bar && selectedCardIds.size === 0
       ? { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
       : null
   );
@@ -5322,6 +5344,38 @@ export default function BoardScreen() {
               onPress: openMovePicker,
             },
             { key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: deleteSelection },
+          ]
+        : bar
+        ? [
+            {
+              key: 'move',
+              icon: 'mc:cursor-move',
+              label: 'Рух',
+              active: canvasTool === 'move',
+              onPress: () => setCanvasTool('move'),
+            },
+            {
+              key: 'hand',
+              icon: 'mc:hand-back-right-outline',
+              label: 'Рука',
+              active: canvasTool === 'hand',
+              onPress: () => setCanvasTool('hand'),
+            },
+            {
+              key: 'select',
+              icon: 'mc:selection-drag',
+              label: 'Вибір',
+              active: canvasTool === 'select',
+              onPress: () => setCanvasTool('select'),
+            },
+            {
+              key: 'connect',
+              icon: 'mc:vector-line',
+              label: 'Звʼязок',
+              active: canvasTool === 'connect',
+              onPress: () => setCanvasTool('connect'),
+            },
+            { key: 'add', icon: 'add-outline', label: 'Додати', onPress: () => setAddSheetVisible(true) },
           ]
         : [
             // Three separate buttons now, not one cycled through - "чому
@@ -5775,13 +5829,21 @@ export default function BoardScreen() {
         {/* Only the board's name stays up here - it needs the width. The
             way back and the tool button stand on the dock with everything
             else. */}
-        <View style={styles.headerRow} pointerEvents="box-none">
-          <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
-            <Text style={styles.headerTitle} numberOfLines={1}>
-              {title || 'Без назви'}
-            </Text>
-          </Pressable>
-        </View>
+        {bar ? (
+          boardFocused && (
+            <TopNavBar
+              title={{ icon: 'easel-outline', label: title || 'Без назви', onPress: () => setRenamingTitle(true) }}
+            />
+          )
+        ) : (
+          <View style={styles.headerRow} pointerEvents="box-none">
+            <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
+              <Text style={styles.headerTitle} numberOfLines={1}>
+                {title || 'Без назви'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* FURNITURE'S OWN BAR. Separate from the cards' one and never
             shown with it, because the two act on two different lists -
