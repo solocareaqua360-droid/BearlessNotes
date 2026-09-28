@@ -37,6 +37,7 @@ import {
   packTiles,
   parseTileSize,
   snapTileSize,
+  TILE_COLUMNS,
   folderCapacity,
   grownFolderSize,
   parseFolderSize,
@@ -768,7 +769,11 @@ export default function DatabasesScreen() {
   // A tile's size is stored in cells, so a cell that stays the same size
   // is a tile that stays the same size, and the packing below simply
   // finds it a new place among more of them.
-  const columns = tileColumnsFor(boardWidth, gap);
+  // On a phone, four - never a fifth: the fifth column a wide phone came
+  // to looked "лишній", and the databases' layer was agreed at four
+  // across. A tile that stood in the fifth finds the nearest free cell
+  // (placeTiles clamps it). Wider screens still gain columns.
+  const columns = tileView === 'phone' ? TILE_COLUMNS : tileColumnsFor(boardWidth, gap);
   const cellSize = boardWidth > 0 ? (boardWidth - gap * (columns - 1)) / columns : 0;
   const cellStep = cellSize + gap;
   const spanSize = (cells: number) => cells * cellSize + (cells - 1) * gap;
