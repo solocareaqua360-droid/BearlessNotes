@@ -149,6 +149,13 @@ const tilePinsDoc = doc(db, 'settings', 'databaseTilePins');
 // tile's, under its key `folder:<id>`.
 const tileFoldersDoc = doc(db, 'settings', 'databaseTileFolders');
 const FOLDER_PREFIX = 'folder:';
+// A folder's measures, iOS's own proportions: its outline stands a little
+// inside its cells (so folders side by side stand clearly apart), and its
+// tiles are set in from that outline by a margin of their own, with a
+// gap between them.
+const FOLDER_INSET = 3;
+const FOLDER_PAD = 10;
+const FOLDER_GAP = 8;
 type TileFolder = { members: string[] };
 
 type BoardItem =
@@ -1248,7 +1255,7 @@ export default function DatabasesScreen() {
     x: number,
     y: number,
     size: TileSize,
-    at?: { left: number; top: number },
+    at?: { left: number; top: number; width?: number; height?: number },
     inFolder?: string
   ) => (
     <BoardTile
@@ -1257,8 +1264,8 @@ export default function DatabasesScreen() {
       left={at?.left ?? x * cellStep}
       top={at?.top ?? rowTop(y)}
       fixedSize={!!inFolder}
-      width={spanSize(size.w)}
-      height={spanSize(size.h)}
+      width={at?.width ?? spanSize(size.w)}
+      height={at?.height ?? spanSize(size.h)}
       color={
         item.kind === 'custom'
           ? item.database.color ?? recordColour(item.database.id).background
@@ -1421,16 +1428,24 @@ export default function DatabasesScreen() {
                     <FolderFrame
                       key={item.key}
                       rect={folderRect(item.key, x, y, size)}
-                      pad={Math.min(6, gap * 0.45)}
+                      // Drawn a little INSIDE its cells, not out into the
+                      // gaps: two folders side by side then stand clearly
+                      // apart - "відстань між папками більшу", as iOS does.
+                      pad={-FOLDER_INSET}
                       highlighted={mergeTarget === item.key}
                     />
                   ))}
               {cellSize > 0 &&
                 placed.flatMap(({ item, x, y, size }) => {
                   if (item.kind !== 'folder') return [renderTile(item, x, y, size)];
-                  // Its tiles, one cell each, in reading order across its own
-                  // width - moving with it while it is carried.
+                  // Its tiles, one per cell, in reading order across its own
+                  // width - moving with it while it is carried. Set in from
+                  // the folder's edge by a margin of their own, iOS's way,
+                  // and so a touch smaller than a tile on the board.
                   const origin = folderRect(item.key, x, y, size);
+                  const inner = FOLDER_INSET + FOLDER_PAD;
+                  const iconW = (origin.width - inner * 2 - (size.w - 1) * FOLDER_GAP) / size.w;
+                  const iconH = (origin.height - inner * 2 - (size.h - 1) * FOLDER_GAP) / size.h;
                   return item.members.map((member, index) => {
                     const col = index % size.w;
                     const row = Math.floor(index / size.w);
@@ -1439,7 +1454,12 @@ export default function DatabasesScreen() {
                       x + col,
                       y + row,
                       { w: 1, h: 1 },
-                      { left: origin.left + col * cellStep, top: origin.top + row * cellStep },
+                      {
+                        left: origin.left + inner + col * (iconW + FOLDER_GAP),
+                        top: origin.top + inner + row * (iconH + FOLDER_GAP),
+                        width: iconW,
+                        height: iconH,
+                      },
                       item.id
                     );
                   });
@@ -2287,7 +2307,7 @@ function FolderFrame({
           top: rect.top - pad,
           width: rect.width + pad * 2,
           height: rect.height + pad * 2,
-          borderRadius: 16 + pad,
+          borderRadius: 22,
         },
         highlighted && styles.folderFrameHighlighted,
       ]}
