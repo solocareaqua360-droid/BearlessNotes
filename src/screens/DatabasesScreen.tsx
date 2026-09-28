@@ -163,9 +163,13 @@ const FOLDER_PREFIX = 'folder:';
 // so far that two folders side by side would touch. (Laying a folder's
 // icons out on their own spacing, iOS's way, put a two-row folder a few
 // points lower than a one-row one beside it - "несиметричність".)
+//
+// ONE margin, the same on every side of every folder: two margins (wider
+// on a long side) left a 2x1 folder's edge off the line of a 2x2's beside
+// it. With one, every folder's edges lie on the same lines, as the icons
+// do.
 const TILE_INSET = 12;
-const FOLDER_MARGIN_WIDE = 11;
-const FOLDER_MARGIN_THIN = 7;
+const FOLDER_MARGIN = 8;
 type TileFolder = { members: string[] };
 
 type BoardItem =
@@ -1041,15 +1045,12 @@ export default function DatabasesScreen() {
     const base = { left: x * cellStep, top: rowTop(y), width: spanSize(size.w), height: spanSize(size.h) };
     return drag?.key === key ? { ...base, left: drag.x, top: drag.y } : base;
   }
-  // The outline a folder is drawn with: its icons (on their cells) and a
-  // margin round them - wider along a side of two cells or more, thinner
-  // along a side of one - see FOLDER_MARGIN_WIDE.
+  // The outline a folder is drawn with: its icons (on their cells) and one
+  // margin round them - see FOLDER_MARGIN.
   function folderFrameOf(r: { left: number; top: number; width: number; height: number }, size: TileSize) {
-    const mx = size.w >= 2 ? FOLDER_MARGIN_WIDE : FOLDER_MARGIN_THIN;
-    const my = size.h >= 2 ? FOLDER_MARGIN_WIDE : FOLDER_MARGIN_THIN;
-    const ix = TILE_INSET - mx;
-    const iy = TILE_INSET - my;
-    return { left: r.left + ix, top: r.top + iy, width: r.width - ix * 2, height: r.height - iy * 2 };
+    void size;
+    const inset = TILE_INSET - FOLDER_MARGIN;
+    return { left: r.left + inset, top: r.top + inset, width: r.width - inset * 2, height: r.height - inset * 2 };
   }
   const mergeRect = (() => {
     if (!mergeTarget) return null;
