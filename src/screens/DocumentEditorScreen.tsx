@@ -2278,11 +2278,36 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       activeInputOffsetSV.value = scrollOffsetRef.current;
     });
   }
+  // TEMPORARY TRACE (2026-09-28): "панель слеш знову тримтить" while the
+  // keyboard rises. The bar has one position source (keyboardSV, written
+  // per frame below), so the question is whether those numbers shake or
+  // something else does. Every frame's height, the scroll offset and how
+  // many times this screen rendered meanwhile, drawn over the screen for
+  // a few seconds afterwards - one screenshot answers it. Remove after.
+  const traceFramesRef = useRef<string[]>([]);
+  const traceRendersRef = useRef(0);
+  const traceRenderStartRef = useRef(0);
+  const [traceText, setTraceText] = useState('');
+  traceRendersRef.current += 1;
+  const traceStart = (height: number, progress: number) => {
+    traceFramesRef.current = [`S${Math.round(height)}p${progress}`];
+    traceRenderStartRef.current = traceRendersRef.current;
+  };
+  const tracePush = (height: number, offset: number, bar: number) => {
+    traceFramesRef.current.push(`${Math.round(height)}/${Math.round(offset)}/${Math.round(bar)}`);
+  };
+  const traceEnd = (height: number) => {
+    traceFramesRef.current.push(`E${Math.round(height)}`);
+    const renders = traceRendersRef.current - traceRenderStartRef.current;
+    setTraceText(`r${renders} ` + traceFramesRef.current.join(' '));
+    setTimeout(() => setTraceText(''), 8000);
+  };
   useEditorKeyboard(
     {
       onStart: (e) => {
         'worklet';
         if (appActiveSV.value === 0) return; // see onMove
+        if (!embedded) runOnJS(traceStart)(e.height, e.progress);
         syncShift.value = 0;
         // Opening: the full height is the target from this frame on.
         // Closing: let go at once, so the spacer follows the keyboard
@@ -2314,6 +2339,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // really did go away meanwhile, the resync on return says so.
         if (appActiveSV.value === 0) return;
         keyboardSV.value = e.height;
+        if (!embedded) runOnJS(tracePush)(e.height, scrollOffsetSV.value, Math.max(e.height, panelHeightSV.value));
         if (syncShift.value > 0) {
           // The keyboard PUSHES the line; the page does not run ahead of it.
           //
@@ -2340,6 +2366,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         'worklet';
         if (appActiveSV.value === 0) return; // see onMove
         keyboardSV.value = e.height;
+        if (!embedded) runOnJS(traceEnd)(e.height);
         if (syncShift.value > 0) {
           scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value, false);
           syncShift.value = 0;
@@ -4814,6 +4841,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // page IS the screen and they stay inside it, exactly as before.
   const bottomChrome = (
     <>
+      {!!traceText && (
+        <View pointerEvents="none" style={{ position: 'absolute', top: 110, left: 12, right: 12, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.78)', borderRadius: 10, padding: 8 }}>
+          <Text style={{ color: '#7CFC00', fontSize: 10, lineHeight: 13 }}>{traceText}</Text>
+        </View>
+      )}
       {!embedded && referencePanelOpen && (
         <View
           style={[styles.referencePanelDock, { right: referencePanelRight, width: referencePanelWidth }]}
@@ -4824,6 +4856,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               and none of them should be able to take the note down. */}
           <CrashBoundary>
             <ReferencePanel
+              soft={softPage ? soft : null}
               visible
               onClose={() => setReferencePanelOpen(false)}
               // The hint has to match the gesture - see useReferenceDrag:
@@ -5269,6 +5302,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <View style={[{ flex: 1 }, referencesSplit && { marginRight: referencePanelWidth }]}>
         <DocumentCanvas
           ref={canvasApiRef}
+          soft={softPage ? soft : null}
           onEditingChange={(id) => {
             setCanvasEditingId(id);
             // A card let go of takes its selection with it, or the

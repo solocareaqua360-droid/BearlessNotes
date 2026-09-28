@@ -1,6 +1,6 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { createContext, forwardRef, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   Keyboard,
@@ -32,7 +32,9 @@ import { setSelection } from '../utils/setSelection';
 import Svg, { Path } from 'react-native-svg';
 import { Block, CanvasLink } from '../types';
 import { orderByCanvasLinks, sequenceLinkIds } from '../utils/canvasOrder';
-import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import type { SoftTokens } from '../theme/soft';
+import SoftIcon from './SoftIcon';
 
 // The canvas's colours come from `theme.canvas` now, not from here.
 //
@@ -213,6 +215,7 @@ function DocumentCanvasInner({
   links,
   onToggleLink,
   onAdd,
+  soft = null,
 }: {
   blocks: Block[];
   // Called once, when a card is let go - not on every frame of the drag.
@@ -244,9 +247,12 @@ function DocumentCanvasInner({
   // coordinates, so whatever gets added lands where the eye already is
   // rather than at the bottom of a column somewhere off-screen.
   onAdd: (at: { x: number; y: number }) => void;
+  // The soft style (theme/soft), when the note wears it - handed to every
+  // piece of the canvas through SoftCanvasContext rather than prop by prop.
+  soft?: SoftTokens | null;
 }, ref: React.Ref<DocumentCanvasHandle>) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = softenCanvas(useStyles(makeStyles), soft);
   const { width } = useWindowDimensions();
   // The trackpad, on a laptop: two fingers move the canvas, a pinch zooms
   // it around the pointer, shift+scroll goes sideways. The board's own
@@ -694,6 +700,7 @@ function DocumentCanvasInner({
   }));
 
   return (
+    <SoftCanvasContext.Provider value={soft}>
     <View
       style={styles.viewport}
       onLayout={(e) => {
@@ -740,7 +747,7 @@ function DocumentCanvasInner({
                 surface is shared; for now the arrow is right whenever
                 nothing is moving. */}
             {Object.entries(links).map(([id, link]) => {
-              const colour = sequenceIds.has(id) ? LINK_COLOR : LINK_COLOR_AUX;
+              const colour = sequenceIds.has(id) ? (soft ? soft.ink2 : LINK_COLOR) : soft ? soft.ink3 : LINK_COLOR_AUX;
               const fromIndex = blocks.findIndex((b) => b.id === link.from);
               const toIndex = blocks.findIndex((b) => b.id === link.to);
               // Either end deleted on the page: the arrow simply is not
@@ -896,7 +903,11 @@ function DocumentCanvasInner({
           onAdd({ x: centre.x - CARD_WIDTH / 2, y: centre.y - 40 });
         }}
       >
-        <Ionicons name="add" size={28} color={theme.canvas.fabInk} />
+        {soft ? (
+          <SoftIcon name="plus" size={26} color={soft.ink} />
+        ) : (
+          <Ionicons name="add" size={28} color={theme.canvas.fabInk} />
+        )}
       </Pressable>
       {blocks.length === 0 && (
         <View style={styles.emptyState} pointerEvents="none">
@@ -905,6 +916,7 @@ function DocumentCanvasInner({
         </View>
       )}
     </View>
+    </SoftCanvasContext.Provider>
   );
 }
 
@@ -925,7 +937,7 @@ type LiveEnd = {
 // the curve comes back the moment the card is dropped.
 function LiveLine({ from, to, colour }: { from: LiveEnd; to: LiveEnd; colour: string }) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useCanvasStyles();
   const style = useAnimatedStyle(() => {
     const fromX = from.x.value + (from.offsetX?.value ?? 0);
     const fromY = from.y.value + (from.offsetY?.value ?? 0);
@@ -969,7 +981,7 @@ function DraftLine({
   visible: SharedValue<boolean>;
 }) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useCanvasStyles();
   const style = useAnimatedStyle(() => {
     const dx = endX.value - startX.value;
     const dy = endY.value - startY.value;
@@ -1067,7 +1079,7 @@ function CanvasCard({
   onOpen: (id: string) => void;
 }) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useCanvasStyles();
   const posX = position.x;
   const posY = position.y;
   // The card follows its placement whenever it is not under the finger:
@@ -1340,7 +1352,7 @@ function CardBody({
   onTextLayout?: (e: { nativeEvent: { lines: CaretLine[] } }) => void;
 }) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useCanvasStyles();
   const type = block.type ?? 'paragraph';
 
   if (type === 'image' || type === 'sketch') {
@@ -1407,7 +1419,7 @@ function CardBody({
 
 function CardRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useCanvasStyles();
   return (
     <View style={styles.cardRow}>
       <Ionicons name={icon} size={18} color={theme.canvas.inkMuted} />
@@ -1416,6 +1428,75 @@ function CardRow({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label:
       </Text>
     </View>
   );
+}
+
+// THE SOFT CANVAS (theme/soft): the soft ground, cards that lift by a
+// soft shadow instead of an outline, the chosen card ringed in the accent
+// (a ring drawn as a shadow, so choosing does not shift its text), the
+// arrows and their handles in quiet ink instead of violet, and the "+" a
+// soft surface rather than a dark disc. Only what changes, key by key.
+const SoftCanvasContext = createContext<SoftTokens | null>(null);
+
+function useCanvasStyles() {
+  return softenCanvas(useStyles(makeStyles), useContext(SoftCanvasContext));
+}
+
+function softCanvasOverrides(S: SoftTokens) {
+  const ring = (colour: string) => `0px 0px 0px 2px ${colour}, ${S.shadow}`;
+  return StyleSheet.create({
+    viewport: { backgroundColor: S.bg },
+    marquee: { borderColor: S.accent, backgroundColor: S.dark ? 'rgba(232,154,98,0.12)' : 'rgba(217,121,63,0.10)', borderRadius: 10 },
+    card: {
+      backgroundColor: S.card,
+      borderWidth: 0,
+      borderRadius: 20,
+      padding: 14,
+      boxShadow: S.shadow,
+      elevation: 0,
+      shadowOpacity: 0,
+    },
+    cardSelected: { borderWidth: 0, boxShadow: ring(S.accent) },
+    cardEditing: { borderWidth: 0, boxShadow: ring(S.accent) },
+    cardLinkSource: { borderWidth: 0, boxShadow: ring(S.ink2) },
+    cardInput: { fontFamily: SOFT_REGULAR, fontSize: 15, lineHeight: 22, color: S.ink },
+    cardText: { fontFamily: SOFT_REGULAR, fontSize: 15, lineHeight: 22, color: S.ink },
+    cardTextDone: { color: S.ink3 },
+    cardHeading: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', fontSize: 18, letterSpacing: -0.2, color: S.ink },
+    cardDivider: { backgroundColor: S.line },
+    cardImage: { borderRadius: 14, backgroundColor: S.fill },
+    // A tab in the card's own corner, following its rounder curve.
+    ordinal: { top: 0, left: 0, height: 24, paddingLeft: 9, paddingRight: 8, backgroundColor: S.fillSolid, borderRadius: 0, borderTopLeftRadius: 20, borderBottomRightRadius: 12 },
+    ordinalLabel: { fontFamily: SOFT_SEMIBOLD, color: S.ink2 },
+    linkCross: { backgroundColor: S.ink },
+    liveLine: { backgroundColor: S.ink2 },
+    handleDot: { borderColor: S.ink3, backgroundColor: S.card, opacity: 1 },
+    addButton: {
+      width: 54,
+      height: 54,
+      borderRadius: 27,
+      backgroundColor: S.chrome,
+      boxShadow: S.popShadow,
+      elevation: 0,
+      shadowOpacity: 0,
+    },
+    emptyLabel: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+  });
+}
+
+type CanvasStyles = ReturnType<typeof makeStyles>;
+const softCanvasCache = new WeakMap<object, Map<SoftTokens, CanvasStyles>>();
+function softenCanvas(base: CanvasStyles, S: SoftTokens | null | undefined): CanvasStyles {
+  if (!S) return base;
+  let byTokens = softCanvasCache.get(base);
+  if (!byTokens) softCanvasCache.set(base, (byTokens = new Map()));
+  const hit = byTokens.get(S);
+  if (hit) return hit;
+  const over = softCanvasOverrides(S) as Record<string, object>;
+  const merged = { ...base } as Record<string, unknown>;
+  for (const key of Object.keys(over)) merged[key] = [merged[key], over[key]];
+  const result = merged as CanvasStyles;
+  byTokens.set(S, result);
+  return result;
 }
 
 const makeStyles = (theme: Theme) =>

@@ -21,8 +21,8 @@ import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { useStyles, useTextScale, useTheme } from '../theme/ThemeProvider';
 import { makeStyles, PAGE_H1, PAGE_H2, PAGE_H3, PAGE_TEXT } from './documentEditorStyles';
-import { SoftTaskCheck } from './SoftIcon';
-import { softCursor } from '../theme/soft';
+import { SoftCheck, SoftTaskCheck } from './SoftIcon';
+import { softCursor, softTokens } from '../theme/soft';
 import type { colorForDocument } from '../utils/documentColor';
 import { caretIndexFromDom } from '../utils/caretAtPoint';
 import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
@@ -890,11 +890,20 @@ export default function BlockRow({
           onPress={() => onToggleSelected(item.id)}
           style={[styles.dragHandle, !isSelectMode && styles.dragHandleFloating]}
         >
-          <Ionicons
-            name={isSelectMode ? (isSelected ? 'checkmark-circle' : 'ellipse-outline') : 'reorder-two-outline'}
-            size={isSelectMode ? 26 : 20}
-            color={isSelected ? theme.accent : theme.paper.inkFaint}
-          />
+          {isSelectMode ? (
+            // The soft style's choosing mark (SoftCheck) - the same
+            // rounded square the cards and the bar's «Виділити» wear, not
+            // Material's ring: "тут теж кола при виділенні блоків".
+            <SoftCheck
+              checked={isSelected}
+              size={24}
+              accent={softTokens(theme.scheme).accent}
+              outline={theme.paper.inkFaint}
+              tickColor="#FFFFFF"
+            />
+          ) : (
+            <Ionicons name="reorder-two-outline" size={20} color={theme.paper.inkFaint} />
+          )}
         </Pressable>
       )}
     </View>

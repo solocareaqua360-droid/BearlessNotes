@@ -36,7 +36,9 @@ import {
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import ReferenceBlockPreview from './ReferenceBlockPreview';
-import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import type { SoftTokens } from '../theme/soft';
+import SoftIcon from './SoftIcon';
 
 // Every listener gets one of these. A read the rules refuse does not come
 // back as an empty snapshot - it THROWS, and it throws asynchronously,
@@ -182,6 +184,8 @@ type Props = {
   // otherwise offer links and stickers too, which is a harmless superset
   // but not what was actually asked for.
   allowedTabs?: Tab[];
+  // The soft style (theme/soft) - docked beside a note that wears it.
+  soft?: SoftTokens | null;
 };
 
 // The reverse direction of CopyToNoteModal (Files/Photos/Links → a note) -
@@ -200,10 +204,16 @@ export default function AddExistingItemModal({
   docked,
   rowRef,
   allowedTabs,
+  soft,
 }: Props) {
   const theme = useTheme();
-  const accent = theme.accent;
-  const styles = useStyles(makeStyles);
+  const baseStyles = useStyles(makeStyles);
+  // Soft: the same browser in the soft material - the quiet ground, pill
+  // tabs, a capsule search, icons in ink rather than the accent. Laid
+  // over the base styles key by key, so every place that reads
+  // styles.x picks it up without a second copy of the markup.
+  const styles = soft ? soften(baseStyles, soft) : baseStyles;
+  const accent = soft ? soft.ink2 : theme.accent;
   const keyboardHeight = useKeyboardHeight();
   const tabAllowed = (t: Tab) => !allowedTabs || allowedTabs.includes(t);
   const [tab, setTab] = useState<Tab>(allowedTabs?.[0] ?? 'file');
@@ -419,12 +429,16 @@ export default function AddExistingItemModal({
           </ScrollView>
 
           <View style={styles.searchRow}>
-            <Ionicons name="search" size={14} color={theme.ink.faint} />
+            {soft ? (
+              <SoftIcon name="search" size={18} color={soft.ink3} />
+            ) : (
+              <Ionicons name="search" size={14} color={theme.ink.faint} />
+            )}
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Пошук за назвою"
-              placeholderTextColor={theme.ink.faint}
+              placeholderTextColor={soft ? soft.ink3 : theme.ink.faint}
               style={styles.searchInput}
               // As a window, it opens TYPING: the list is hundreds of rows
               // and the field is the way into it - "клавіатура повинна
@@ -748,6 +762,43 @@ export default function AddExistingItemModal({
     </GlassLayer>
   );
 
+}
+
+// The soft overlay (see `soft` above): only what changes, per key.
+function softOverrides(S: SoftTokens) {
+  return StyleSheet.create({
+    dockedRoot: { backgroundColor: 'transparent', paddingHorizontal: 14 },
+    tabRowContent: { gap: 6 },
+    tab: { height: 34, paddingVertical: 0, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 17, backgroundColor: S.fillSolid },
+    tabActive: { backgroundColor: S.ink },
+    tabLabel: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', fontSize: 13.5, color: S.ink2 },
+    tabLabelActive: { color: S.bg },
+    searchRow: { height: 42, paddingVertical: 0, borderRadius: 21, paddingHorizontal: 14, backgroundColor: S.card, boxShadow: S.shadow, marginBottom: 8 },
+    searchInput: { fontFamily: SOFT_REGULAR, fontSize: 15, color: S.ink },
+    emptyLabel: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+    // Sentence case, as the soft menus have it - no shouting capitals.
+    sectionLabel: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0, fontSize: 12.5, color: S.ink3 },
+    docIcon: { borderRadius: 12, backgroundColor: S.fill },
+    thumb: { borderRadius: 12, backgroundColor: S.fill },
+    backRowText: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', color: S.ink2 },
+    rowText: { fontFamily: SOFT_REGULAR, color: S.ink },
+    blockCard: { borderRadius: 16, backgroundColor: S.card, boxShadow: S.shadow },
+    docHeaderTitle: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink2 },
+  });
+}
+
+const softCache = new WeakMap<object, Map<SoftTokens, ReturnType<typeof makeStyles>>>();
+function soften(base: ReturnType<typeof makeStyles>, S: SoftTokens): ReturnType<typeof makeStyles> {
+  let byTokens = softCache.get(base);
+  if (!byTokens) softCache.set(base, (byTokens = new Map()));
+  const hit = byTokens.get(S);
+  if (hit) return hit;
+  const over = softOverrides(S) as Record<string, object>;
+  const merged = { ...base } as Record<string, unknown>;
+  for (const key of Object.keys(over)) merged[key] = [merged[key], over[key]];
+  const result = merged as ReturnType<typeof makeStyles>;
+  byTokens.set(S, result);
+  return result;
 }
 
 const makeStyles = (t: Theme) => StyleSheet.create({

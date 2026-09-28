@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import AddExistingItemModal from './AddExistingItemModal';
@@ -7,6 +7,9 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { useReferenceDrag } from '../hooks/useReferenceDrag';
 import type { Block } from '../types';
+import type { SoftTokens } from '../theme/soft';
+import SoftIcon from './SoftIcon';
+import { SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 
 // «Референси» - the user's own idea: browse everything this app already
 // knows how to list (files, photos, links, custom databases, and another
@@ -28,6 +31,7 @@ export default function ReferencePanel({
   onDragFinished,
   hint,
   excludeIds,
+  soft,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -40,6 +44,10 @@ export default function ReferencePanel({
   onDragFinished?: () => void;
   hint: string;
   excludeIds?: Set<string>;
+  // The soft style (theme/soft), when the note beside it wears it: the
+  // quiet ground, Inter, the soft icons, and a card in hand instead of
+  // a glass drop.
+  soft?: SoftTokens | null;
 }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -66,19 +74,37 @@ export default function ReferencePanel({
 
   return (
     <>
-      <View style={styles.panel}>
-        <View style={styles.header}>
-          <Ionicons name="albums-outline" size={16} color={theme.ink.muted} />
-          <Text style={styles.headerLabel}>Референси</Text>
+      <View style={[styles.panel, soft && [styles.softPanel, { backgroundColor: soft.bg, boxShadow: soft.popShadow }]]}>
+        <View style={[styles.header, soft && styles.softHeader]}>
+          {soft ? (
+            <Text style={[styles.softTitle, { color: soft.ink }]}>Референси</Text>
+          ) : (
+            <>
+              <Ionicons name="albums-outline" size={16} color={theme.ink.muted} />
+              <Text style={styles.headerLabel}>Референси</Text>
+            </>
+          )}
           <View style={{ flex: 1 }} />
-          <Ionicons name="close" size={20} color={theme.ink.muted} onPress={onClose} />
+          {soft ? (
+            <Pressable
+              onPress={onClose}
+              hitSlop={8}
+              accessibilityLabel="Закрити"
+              style={[styles.softClose, { backgroundColor: soft.fill }]}
+            >
+              <SoftIcon name="close" size={18} color={soft.ink2} />
+            </Pressable>
+          ) : (
+            <Ionicons name="close" size={20} color={theme.ink.muted} onPress={onClose} />
+          )}
         </View>
-        <Text style={styles.hint}>{hint}</Text>
+        <Text style={[styles.hint, soft && [styles.softHint, { color: soft.ink3 }]]}>{hint}</Text>
         <GestureDetector gesture={drag.gesture}>
           <View style={{ flex: 1 }}>
             <AddExistingItemModal
               visible
               docked
+              soft={soft}
               excludeIds={excludeIds}
               includeCustomDatabases
               includeDocuments
@@ -92,12 +118,23 @@ export default function ReferencePanel({
 
       {ghost && (
         <View style={[styles.ghostWrap, { left: ghost.x, top: ghost.y }]} pointerEvents="none">
-          <GlassDrop radius={16} lift="shadow" style={styles.ghost}>
-            <GlassIcon name="albums-outline" size={16} />
-            <Text style={styles.ghostLabel} numberOfLines={1}>
-              {ghost.label}
-            </Text>
-          </GlassDrop>
+          {soft ? (
+            // What is in hand is a card lifted off the ground - the soft
+            // surface and its floating shadow, not a glass drop.
+            <View style={[styles.ghost, styles.softGhost, { backgroundColor: soft.card, boxShadow: soft.popShadow }]}>
+              <SoftIcon name="doc" size={17} color={soft.ink2} />
+              <Text style={[styles.ghostLabel, { color: soft.ink, fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal' }]} numberOfLines={1}>
+                {ghost.label}
+              </Text>
+            </View>
+          ) : (
+            <GlassDrop radius={16} lift="shadow" style={styles.ghost}>
+              <GlassIcon name="albums-outline" size={16} />
+              <Text style={styles.ghostLabel} numberOfLines={1}>
+                {ghost.label}
+              </Text>
+            </GlassDrop>
+          )}
         </View>
       )}
     </>
@@ -143,6 +180,42 @@ const makeStyles = (t: Theme) =>
       paddingHorizontal: 14,
       paddingTop: 2,
       paddingBottom: 8,
+    },
+    // A sheet drawn in from the right edge: rounded where it faces the
+    // note, lifted off it by the soft floating shadow instead of a rule.
+    softPanel: {
+      borderLeftWidth: 0,
+      borderTopLeftRadius: 26,
+      borderBottomLeftRadius: 26,
+    },
+    softHeader: {
+      paddingHorizontal: 18,
+      paddingTop: 16,
+    },
+    softTitle: {
+      fontFamily: SOFT_SEMIBOLD,
+      fontWeight: 'normal',
+      fontSize: 20,
+      letterSpacing: -0.3,
+    },
+    softClose: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    softHint: {
+      fontFamily: SOFT_REGULAR,
+      fontSize: 12.5,
+      paddingHorizontal: 18,
+      paddingTop: 4,
+      paddingBottom: 12,
+    },
+    softGhost: {
+      borderRadius: 18,
+      elevation: 0,
+      shadowOpacity: 0,
     },
     ghostWrap: {
       position: 'absolute',
