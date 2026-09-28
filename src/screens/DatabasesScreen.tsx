@@ -1055,15 +1055,22 @@ export default function DatabasesScreen() {
     // being moved, as before. The board it is measured against is the one
     // without it, so what it is over does not slide away from under it.
     if (item.kind === 'builtin' || item.kind === 'custom') {
-      const size = sizeFor(item.key);
-      const cx = nextX + spanSize(size.w) / 2;
-      const cy = nextY + spanSize(size.h) / 2;
+      // Measured from the middle of the carried tile's FIRST cell - the one
+      // that claims a cell as it moves (cellUnder). Its middle as a whole
+      // reached a small tile only after that corner had already pushed it
+      // away.
+      const cx = nextX + cellSize / 2;
+      const cy = nextY + cellSize / 2;
       const rest = boardWith(null, null, item.key).placed;
       const target = rest.find((p) => {
         if (p.item.key === item.key) return false;
         if (p.item.kind !== 'builtin' && p.item.kind !== 'custom' && p.item.kind !== 'folder') return false;
         const r = tileRect(p);
-        const inset = 0.25;
+        // A one-cell tile counts WHOLE: its middle is barely half a cell,
+        // and on the way to it the carried tile used to reach its cell
+        // first and push it off - "з маленькими плитками ... завжди
+        // намагається втекти". Resting anywhere on it holds it still.
+        const inset = p.size.w * p.size.h === 1 ? 0 : 0.25;
         return (
           cx > r.left + r.width * inset &&
           cx < r.left + r.width * (1 - inset) &&
