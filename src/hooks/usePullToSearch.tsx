@@ -28,12 +28,15 @@ import { hapticButtonDown } from '../utils/haptics';
 // search opens.
 const PULL_TO_OPEN = 280;
 
-// The list's own travel for a pull of `t`: follows closely at first,
-// then harder and harder to drag - a rubber band, never a stop.
+// The list's own travel for a pull of `t`: close behind the finger, with
+// only a light give towards the end - a rubber band, never a stop. It was
+// 0.6 and /400 (about 100 of travel at the trigger), and the user found
+// the length right but the pull too heavy ("зусилля ... повинно бути
+// легше"); now about 180.
 function rubberBand(t: number): number {
   'worklet';
   if (t <= 0) return 0;
-  return (t * 0.6) / (1 + t / 400);
+  return (t * 0.85) / (1 + t / 900);
 }
 
 export function usePullToSearch(onPull: () => void) {
