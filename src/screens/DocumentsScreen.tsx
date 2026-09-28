@@ -80,7 +80,7 @@ import {
   findTitleMatch,
   EXPANDED_PREVIEW_LENGTH,
 } from '../utils/documentPreview';
-import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM } from '../utils/fonts';
+import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import StickerComposer from '../components/StickerComposer';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
@@ -527,6 +527,10 @@ export default function DocumentsScreen({
   // folders above still did. Craft's own structure, and the reason its
   // page reads as one field of cards rather than a header and a grid.
   const foldersInGrid = pointerDensity && drawnMode === 'grid';
+  // The soft folder tiles stand in the cards' own columns: the grid's
+  // where there is a grid, otherwise two (three on the inner screen).
+  const softFolderColumns = drawnMode === 'grid' ? gridColumns : listWidth > 560 ? 3 : 2;
+  const softFolderWidth = Math.floor((listWidth - 12 * (softFolderColumns - 1)) / softFolderColumns);
   const folderColumns = foldersInGrid ? gridColumns : wideList ? 2 : 1;
   const folderRowWidth = foldersInGrid
     ? gridCardWidth
@@ -1413,6 +1417,7 @@ export default function DocumentsScreen({
                 pinnedTab={{ id: STICKERS_GROUP, label: 'Стікери' }}
                 dark
                 blurTarget={blurTarget}
+                soft={soft}
                 startPadding={paneRect.x + 20}
                 endPadding={20}
               />
@@ -1652,15 +1657,18 @@ export default function DocumentsScreen({
                   <Text style={styles.trashHint}>Затисни нотатку, щоб відновити або видалити назавжди. Через 30 днів кошик очищається сам.</Text>
                 </View>
               ) : explorerMode && soft && (explorer.folders.length > 0 || (explorer.active && explorer.path !== '')) ? (
-                // THE SOFT FOLDERS: small pills in a line instead of tall
-                // rows - three rows took about a third of the outer
-                // screen's height. Every pill is still a drop target
-                // (registerFolder), the bin too, exactly as the rows are.
+                // THE SOFT FOLDERS: compact tiles in the cards' own columns.
+                // Pills were tried first and read as filters among equals -
+                // "для багаторівневих цей інтерфейс не стикується"; a tile
+                // with a chevron reads as a place you go INTO. Pills stay
+                // for the projects row, which really is one flat level.
+                // Every tile is still a drop target (registerFolder), the
+                // bin too, exactly as the rows are.
                 <View style={[styles.explorerHead, styles.softFolders]}>
                   {explorer.folders.map((folder) => (
                     <View key={folder.fullPath} ref={carrying.carry.registerFolder(folder.fullPath)} collapsable={false}>
                       <Pressable
-                        style={[styles.softFolder, { backgroundColor: soft.fill }]}
+                        style={[styles.softFolder, { width: softFolderWidth, backgroundColor: soft.card, boxShadow: soft.shadow }]}
                         onPress={() => {
                           explorer.setPath(folder.fullPath);
                           if (searching) {
@@ -1670,28 +1678,53 @@ export default function DocumentsScreen({
                         }}
                         onLongPress={() => openFolderMenu(folder)}
                       >
-                        {folder.tag?.icon ? (
-                          <Ionicons
-                            name={folder.tag.icon as keyof typeof Ionicons.glyphMap}
-                            size={15}
-                            color={folder.tag.color ?? soft.ink2}
-                          />
-                        ) : (
-                          <SoftIcon name="folder" size={17} color={folder.tag?.color ?? soft.ink2} strokeWidth={1.9} />
-                        )}
-                        <Text style={[styles.softFolderName, { color: soft.ink }]} numberOfLines={1}>
-                          {folder.name}
-                        </Text>
-                        <Text style={[styles.softFolderCount, { color: soft.ink3 }]}>{folder.docs + folder.subfolders}</Text>
+                        <View style={[styles.softFolderIcon, { backgroundColor: soft.fill }]}>
+                          {folder.tag?.icon ? (
+                            <Ionicons
+                              name={folder.tag.icon as keyof typeof Ionicons.glyphMap}
+                              size={17}
+                              color={folder.tag.color ?? soft.ink2}
+                            />
+                          ) : (
+                            <SoftIcon name="folder" size={19} color={folder.tag?.color ?? soft.ink2} strokeWidth={1.9} />
+                          )}
+                        </View>
+                        <View style={styles.softFolderBody}>
+                          <Text style={[styles.softFolderName, { color: soft.ink }]} numberOfLines={1}>
+                            {folder.name}
+                          </Text>
+                          <View style={styles.softFolderMeta}>
+                            <SoftIcon name="doc" size={12} color={soft.ink3} strokeWidth={2.2} />
+                            <Text style={[styles.softFolderCount, { color: soft.ink3 }]}>{folder.docs}</Text>
+                            {folder.subfolders > 0 && (
+                              <>
+                                <SoftIcon name="folder" size={12} color={soft.ink3} strokeWidth={2.2} />
+                                <Text style={[styles.softFolderCount, { color: soft.ink3 }]}>{folder.subfolders}</Text>
+                              </>
+                            )}
+                          </View>
+                        </View>
+                        <SoftIcon name="forward" size={16} color={soft.ink3} />
                       </Pressable>
                     </View>
                   ))}
                   {explorer.active && explorer.path === '' && (trashed.length > 0 || !!carrying.carry.ghost) && (
                     <View ref={carrying.carry.registerFolder(CARRY_BIN_PATH)} collapsable={false}>
-                      <Pressable style={[styles.softFolder, { backgroundColor: soft.fill }]} onPress={() => setTrashOpen(true)}>
-                        <SoftIcon name="trash" size={17} color={soft.ink2} strokeWidth={1.9} />
-                        <Text style={[styles.softFolderName, { color: soft.ink2 }]}>Кошик</Text>
-                        <Text style={[styles.softFolderCount, { color: soft.ink3 }]}>{trashed.length}</Text>
+                      <Pressable
+                        style={[styles.softFolder, { width: softFolderWidth, backgroundColor: soft.card, boxShadow: soft.shadow }]}
+                        onPress={() => setTrashOpen(true)}
+                      >
+                        <View style={[styles.softFolderIcon, { backgroundColor: soft.fill }]}>
+                          <SoftIcon name="trash" size={19} color={soft.ink2} strokeWidth={1.9} />
+                        </View>
+                        <View style={styles.softFolderBody}>
+                          <Text style={[styles.softFolderName, { color: soft.ink2 }]}>Кошик</Text>
+                          <View style={styles.softFolderMeta}>
+                            <SoftIcon name="doc" size={12} color={soft.ink3} strokeWidth={2.2} />
+                            <Text style={[styles.softFolderCount, { color: soft.ink3 }]}>{trashed.length}</Text>
+                          </View>
+                        </View>
+                        <SoftIcon name="forward" size={16} color={soft.ink3} />
                       </Pressable>
                     </View>
                   )}
@@ -2480,27 +2513,45 @@ const makeStyles = (t: Theme) =>
   softFolders: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 12,
     marginBottom: 14,
   },
   softFolder: {
-    height: 40,
+    height: 64,
     borderRadius: 20,
     paddingLeft: 12,
-    paddingRight: 14,
+    paddingRight: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    maxWidth: 240,
+    gap: 10,
+  },
+  softFolderIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  softFolderBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
   },
   softFolderName: {
-    fontSize: 14.5,
-    fontFamily: SOFT_MEDIUM,
-    flexShrink: 1,
+    fontSize: 15,
+    fontFamily: SOFT_SEMIBOLD,
+    letterSpacing: -0.2,
+  },
+  softFolderMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   softFolderCount: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontFamily: SOFT_MEDIUM,
     fontVariant: ['tabular-nums'],
+    marginRight: 6,
   },
   explorerCrumb: {
     flexDirection: 'row',

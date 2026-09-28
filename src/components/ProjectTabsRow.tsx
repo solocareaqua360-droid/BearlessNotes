@@ -4,7 +4,8 @@ import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useFrostPaused } from './frostPause';
-import { FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_SEMIBOLD, SOFT_MEDIUM } from '../utils/fonts';
+import type { SoftTokens } from '../theme/soft';
 
 // Sentinel for "no group/project assigned" - an id string, since a real
 // document's id (a Firestore auto-id) can never collide with it. `null`
@@ -57,6 +58,10 @@ type Props = {
   // the unsorted inbox is what matters first and the everything-list is
   // the last thing looked at.
   allLast?: boolean;
+  // The soft style (theme/soft): plain capsules, the chosen one filled
+  // with the ink - the one place pills stay, because projects really are
+  // one flat level to choose among (folders, which nest, became tiles).
+  soft?: SoftTokens | null;
 };
 
 // Horizontal row of pills (see the videobookmark reference the user showed:
@@ -74,6 +79,7 @@ export default function ProjectTabsRow({
   startPadding,
   unassignedFirst,
   allLast,
+  soft,
 }: Props) {
   const styles = useStyles(makeStyles);
   const allTab = (
@@ -85,6 +91,7 @@ export default function ProjectTabsRow({
       onPress={() => onSelect(null)}
       dark={dark}
       blurTarget={blurTarget}
+      soft={soft}
     />
   );
   const unassignedTab = (
@@ -96,6 +103,7 @@ export default function ProjectTabsRow({
       onPress={() => onSelect(UNASSIGNED_ID)}
       dark={dark}
       blurTarget={blurTarget}
+      soft={soft}
     />
   );
   return (
@@ -126,6 +134,7 @@ export default function ProjectTabsRow({
           onPress={() => onSelect(p.id)}
           dark={dark}
           blurTarget={blurTarget}
+          soft={soft}
         />
       ))}
       {!unassignedFirst && unassignedTab}
@@ -137,6 +146,7 @@ export default function ProjectTabsRow({
           onPress={() => onSelect(pinnedTab.id)}
           dark={dark}
           blurTarget={blurTarget}
+          soft={soft}
         />
       )}
       {allLast && allTab}
@@ -151,6 +161,7 @@ function Tab({
   onPress,
   dark,
   blurTarget,
+  soft,
 }: {
   label: string;
   color: string;
@@ -158,11 +169,27 @@ function Tab({
   onPress: () => void;
   dark?: boolean;
   blurTarget?: RefObject<View | null> | null;
+  soft?: SoftTokens | null;
 }) {
   const styles = useStyles(makeStyles);
   // Every inactive pill is a live blur of its own - a row of them is a
   // dozen; they stand down with the rest of the glass (see frostPause).
   const frostPaused = useFrostPaused();
+  if (soft) {
+    // Over the scrolling list, so the SOLID tint (fillSolid) - a see-
+    // through one let the cards show through it.
+    return (
+      <Pressable
+        style={[styles.softTab, { backgroundColor: active ? soft.ink : soft.fillSolid }]}
+        onPress={onPress}
+      >
+        {color !== MUTED && <View style={[styles.dot, { backgroundColor: color }]} />}
+        <Text style={[styles.softTabLabel, { color: active ? soft.bg : soft.ink2 }]} numberOfLines={1}>
+          {label}
+        </Text>
+      </Pressable>
+    );
+  }
   // On the dark gradient, an active tab inverts to a solid white pill with
   // dark text (matching CalendarScreen's own "Сьогодні" button) rather than
   // just swapping to a barely-brighter glass tint - the light-glass screens
@@ -212,6 +239,18 @@ const makeStyles = (t: Theme) =>
     // pill and clipping their text. flexGrow: 0 alone only stops it from
     // stretching taller, not from being squeezed shorter.
     flexShrink: 0,
+  },
+  softTab: {
+    height: 38,
+    borderRadius: 19,
+    paddingHorizontal: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  softTabLabel: {
+    fontSize: 14,
+    fontFamily: SOFT_MEDIUM,
   },
   row: {
     flexDirection: 'row',

@@ -1,6 +1,7 @@
 import { ReactNode, useLayoutEffect, useMemo, useEffect, useRef, useState } from 'react';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
+import { useKeyboardRide } from '../hooks/useKeyboardRide';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { openCapture } from './CaptureWindow';
@@ -14,7 +15,7 @@ import { useLift, useTheme } from '../theme/ThemeProvider';
 import { liftStyle } from '../theme/tokens';
 import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
-import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR } from '../utils/fonts';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR } from '../utils/fonts';
 import { DOCK_BOTTOM, DOCK_PATH_GAP, DOCK_PATH_H, DOCK_PIECE_RADIUS, dockCardHeight, dockEdgeInset, dockRowWidth } from '../navigation/dockGeometry';
 import { navigationRef } from '../navigationRef';
 import {
@@ -38,9 +39,11 @@ import {
   useNavDockTabsInFlux,
   useNavDockTargets,
   useNavChromeStyle,
+  useNavTopSearch,
+  TopSearch,
 } from '../navigation/navDock';
 import SoftIcon, { SoftIconName } from './SoftIcon';
-import { useSoft } from '../theme/soft';
+import { SoftTokens, useSoft } from '../theme/soft';
 
 // The dock, when it is holding a CONTEXT rather than the four desks.
 //
@@ -431,7 +434,47 @@ const SOFT_DOCK_GLYPHS: Record<string, SoftIconName> = {
   'close-outline': 'close',
   'document-text-outline': 'compose',
   'add-outline': 'plus',
+  'trash-outline': 'trash',
+  'folder-outline': 'folder',
+  'arrow-forward-outline': 'forward',
 };
+
+// The soft dock's own search field - the one place search lives on a soft
+// screen. Keeps what is typed itself and hands every change to the screen,
+// the way the bar's plate did.
+function SoftSearchField({ search, soft, height }: { search: TopSearch; soft: SoftTokens; height: number }) {
+  const [text, setText] = useState(search.initialQuery);
+  return (
+    <View style={[styles.softField, { height, borderRadius: height / 2, backgroundColor: soft.chrome, boxShadow: soft.shadow }]}>
+      <SoftIcon name="search" size={20} color={soft.ink2} />
+      <TextInput
+        autoFocus
+        value={text}
+        onChangeText={(next) => {
+          setText(next);
+          search.onChangeQuery(next);
+        }}
+        placeholder={search.placeholder}
+        placeholderTextColor={soft.ink3}
+        returnKeyType="search"
+        selectionColor={soft.accent}
+        cursorColor={soft.accent}
+        style={[styles.softFieldInput, { color: soft.ink }]}
+      />
+      <Pressable
+        hitSlop={8}
+        onPress={() => {
+          Keyboard.dismiss();
+          search.onClose();
+        }}
+        accessibilityLabel="Закрити пошук"
+        style={styles.softFieldClose}
+      >
+        <SoftIcon name="close" size={19} color={soft.ink2} />
+      </Pressable>
+    </View>
+  );
+}
 // One button of a SHORT strip (see the strip in ContextDock's body): room
 // for its icon and a one-word label, and no more.
 const STRIP_BUTTON_W = 84;
@@ -669,6 +712,18 @@ export default function ContextDock() {
   const stableBottomRef = useRef(insets.bottom);
   if (insets.bottom > stableBottomRef.current) stableBottomRef.current = insets.bottom;
   const bottomInset = stableBottomRef.current;
+  // THE SOFT DOCK'S SEARCH lives in the dock itself - "перескоки від поля
+  // внизу до поля вгорі викликають відчуття неузгодженості" - and rides up
+  // with the keyboard, frame by frame. A plain surface, no live blur, so
+  // moving it every frame costs nothing (see DockFrost's own rule).
+  const dockSearch = useNavTopSearch();
+  const keyboard = useKeyboardRide();
+  const softRest = DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD;
+  const softRide = useAnimatedStyle(() => ({
+    // keyboard.height is negative while the keyboard is up: sit 10 above
+    // its top edge, never below where the dock rests.
+    transform: [{ translateY: Math.min(0, keyboard.height.value - 10 + softRest) }],
+  }));
   // Three cards, and they are three because of the one thing a
   // navigation dock must never do: the desks used to vanish the moment
   // you stepped into a folder or opened the calendar - "навігація між
@@ -1873,6 +1928,43 @@ export default function ContextDock() {
       ? Math.min(STRIP_BUTTON_W, Math.floor(frame.width / actions.length))
       : Math.floor(frame.width / 5);
     const stripW = short ? buttonW * actions.length : frame.width;
+    if (chromeStyle === 'soft') {
+      // The same strip in the soft material: one capsule, the quiet
+      // surface, no glass rim, no hairlines between the buttons.
+      return (
+        <DockPortal>
+          <View
+            pointerEvents="box-none"
+            style={[styles.twoBeads, { bottom: softRest, left: frame.left + (frame.width - stripW) / 2, width: stripW }]}
+          >
+            <View
+              style={{ width: stripW, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, backgroundColor: soft.chrome, boxShadow: soft.shadow, overflow: 'hidden' }}
+            >
+              <ScrollView
+                horizontal
+                scrollEnabled={!short}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.stripActions}
+              >
+                {actions.map((action) => (
+                  <View key={action.key} style={styles.stripSlot}>
+                    <ActionButton
+                      action={action}
+                      width={buttonW}
+                      height={TWO_BEAD - 4}
+                      iconSize={ACT_ICON}
+                      theme={theme}
+                      onDone={() => {}}
+                      soft={soft}
+                    />
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </DockPortal>
+      );
+    }
     return (
       <DockPortal>
         <View
@@ -1992,14 +2084,17 @@ export default function ContextDock() {
     const rightIcon = right ? SOFT_DOCK_GLYPHS[right.icon] : undefined;
     return (
       <DockPortal>
-        <View
+        <Animated.View
           pointerEvents="box-none"
           style={[
             styles.twoBeads,
-            { bottom: DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD, left: frame.left, width: frame.width, gap: 10 },
+            { bottom: softRest, left: frame.left, width: frame.width, gap: 10 },
+            softRide,
           ]}
         >
-          {left ? (
+          {dockSearch ? (
+            <SoftSearchField key={dockSearch.placeholder} search={dockSearch} soft={soft} height={TWO_BEAD} />
+          ) : left ? (
             <Pressable
               onPress={left.onPress}
               onLongPress={left.onLongPress}
@@ -2034,7 +2129,7 @@ export default function ContextDock() {
               )}
             </Pressable>
           )}
-        </View>
+        </Animated.View>
       </DockPortal>
     );
   }
@@ -2398,6 +2493,7 @@ export function ActionButton({
   iconSize,
   theme,
   onDone,
+  soft,
 }: {
   action: DockAction;
   width: number;
@@ -2405,7 +2501,12 @@ export function ActionButton({
   iconSize: number;
   theme: ReturnType<typeof useTheme>;
   onDone: () => void;
+  // The soft material (theme/soft): ink instead of the glass's white, the
+  // style's own icon where it has one, Inter for the word.
+  soft?: SoftTokens | null;
 }) {
+  const ink = soft ? (action.active ? soft.accent : soft.ink) : action.active ? theme.accent : theme.glass.ink;
+  const ownIcon = soft ? SOFT_DOCK_GLYPHS[action.icon] : undefined;
   return (
     <Pressable
       onPress={() => {
@@ -2423,14 +2524,16 @@ export function ActionButton({
           the whole card tall, so the word gets one line and no more - a
           label that wrapped would push the icon off centre and make one
           button taller than its neighbours. */}
-      {action.icon.startsWith('mc:') ? (
+      {ownIcon ? (
+        <SoftIcon name={ownIcon} size={iconSize + 1} color={ink} />
+      ) : action.icon.startsWith('mc:') ? (
         <MaterialCommunityIcons
           name={action.icon.slice(3) as keyof typeof MaterialCommunityIcons.glyphMap}
           size={iconSize}
-          color={action.active ? theme.accent : theme.glass.ink}
+          color={ink}
         />
       ) : (
-        <Ionicons name={action.icon as keyof typeof Ionicons.glyphMap} size={iconSize} color={action.active ? theme.accent : theme.glass.ink} />
+        <Ionicons name={action.icon as keyof typeof Ionicons.glyphMap} size={iconSize} color={ink} />
       )}
       {!!action.label && (
         <Text
@@ -2440,7 +2543,7 @@ export function ActionButton({
           // which would hide the very thing the label was added for.
           adjustsFontSizeToFit
           minimumFontScale={0.75}
-          style={[styles.actionLabel, { color: action.active ? theme.accent : theme.glass.ink }]}
+          style={[styles.actionLabel, { color: ink }, soft && { fontFamily: SOFT_MEDIUM }]}
         >
           {action.label}
         </Text>
@@ -2590,6 +2693,20 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: SOFT_REGULAR,
+  },
+  softFieldInput: {
+    flex: 1,
+    height: '100%',
+    paddingVertical: 0,
+    fontSize: 15.5,
+    fontFamily: SOFT_REGULAR,
+  },
+  softFieldClose: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -6,
   },
   softButton: {
     alignItems: 'center',

@@ -22,6 +22,9 @@ export type SoftTokens = {
   ink2: string;
   ink3: string;
   fill: string;
+  // The same tint, already laid on the ground - for a piece that floats
+  // over scrolling cards, where a see-through tint would let them show.
+  fillSolid: string;
   line: string;
   accent: string;
   // A CSS box-shadow string (React Native's boxShadow), not elevation:
@@ -42,6 +45,7 @@ const LIGHT: SoftTokens = {
   ink2: '#6E6D68',
   ink3: '#A9A79F',
   fill: 'rgba(30,30,28,0.05)',
+  fillSolid: '#EBEAE7',
   line: 'rgba(30,30,28,0.08)',
   accent: '#D9793F',
   shadow: '0px 1px 2px rgba(30,30,28,0.05), 0px 10px 24px -12px rgba(30,30,28,0.18)',
@@ -57,6 +61,7 @@ const DARK: SoftTokens = {
   ink2: '#9C9B96',
   ink3: '#5F5E5A',
   fill: 'rgba(255,255,255,0.07)',
+  fillSolid: '#121212',
   line: 'rgba(255,255,255,0.08)',
   accent: '#E89A62',
   shadow: '0px 0px 0px 1px rgba(255,255,255,0.05)',

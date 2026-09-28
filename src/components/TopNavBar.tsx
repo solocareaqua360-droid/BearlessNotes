@@ -147,7 +147,6 @@ export default function TopNavBar({
   const back = inline ? backOverride ?? null : publishedBack;
   const extras = inline ? extrasOverride ?? null : publishedExtras;
   const publishedSearch = useNavTopSearch();
-  const liveSearch = inline ? searchOverride ?? null : publishedSearch;
   const [menuOpen, setMenuOpen] = useState(false);
   // THE SOFT CHROME - the look the screen in front asked for (see
   // useChromeStyle; only the Documents desk asks, for now). One capsule
@@ -156,6 +155,11 @@ export default function TopNavBar({
   // keeps its look.
   const chromeStyle = useNavChromeStyle();
   const soft = !inline && chromeStyle === 'soft';
+  // The soft chrome keeps the top for WHERE you are and the dock for what
+  // you DO: its search is the dock's own field (ContextDock), so the plate
+  // does not open out here as well - the jump from the field below to one
+  // above read as two things that disagree.
+  const liveSearch = inline ? searchOverride ?? null : soft ? null : publishedSearch;
   const S = useSoft();
   const gap = soft ? 0 : GAP;
   const ink = soft ? S.ink : theme.glass.ink;

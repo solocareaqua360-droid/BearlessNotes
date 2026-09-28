@@ -24,7 +24,8 @@ export type SoftIconName =
   | 'folder'
   | 'trash'
   | 'doc'
-  | 'close';
+  | 'close'
+  | 'forward';
 
 export default function SoftIcon({
   name,
@@ -84,6 +85,7 @@ export default function SoftIcon({
         <Path d="M7.5 3.5h5.8l5.2 5.2v9.3a2.5 2.5 0 0 1-2.5 2.5h-8.5A2.5 2.5 0 0 1 5 18V6a2.5 2.5 0 0 1 2.5-2.5z" {...line} />
       )}
       {name === 'close' && <Path d="M6.5 6.5l11 11M17.5 6.5l-11 11" {...line} />}
+      {name === 'forward' && <Path d="M9.4 5.4L16 12l-6.6 6.6" {...line} />}
     </Svg>
   );
 }
