@@ -74,6 +74,7 @@ import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import { CalendarDrawerContext } from '../navigation/sideDrawers';
+import { usePauseFrost } from '../components/frostPause';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
@@ -471,6 +472,9 @@ export default function CalendarScreen() {
   const [headerContentHeight, setHeaderContentHeight] = useState(0);
   const calendarBlurTarget = useBlurTarget();
   const calendarFocused = useIsFocused() && !drawerShut;
+  // The bar's and the dock's glass stop blurring live while the pages
+  // are shown - see frostPause for why that is what made them lag.
+  usePauseFrost(overviewOpen && calendarFocused);
   const calendarInsets = useSafeAreaInsets();
   // The desks bar stands at the top on a phone (TopNavBar): everything
   // here starts below it.

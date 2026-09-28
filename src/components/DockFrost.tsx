@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
+import { useFrostPaused } from './frostPause';
 import { useTheme } from '../theme/ThemeProvider';
 
 // THE DOCK'S MATERIAL, and now the only copy of it.
@@ -36,7 +37,7 @@ const FLAT_TINT = 0.97;
 export default function DockFrost({
   style,
   radius,
-  blur = true,
+  blur: blurWanted = true,
   children,
 }: {
   style?: StyleProp<ViewStyle>;
@@ -66,6 +67,9 @@ export default function DockFrost({
 }) {
   const theme = useTheme();
   const blurTarget = useBlurTarget();
+  // Paused while something heavy scrolls underneath - see frostPause.
+  const frostPaused = useFrostPaused();
+  const blur = blurWanted && !frostPaused;
   // `surface` is an opaque dark fill in black/white (a real tint the blur
   // can lean on) but a near-transparent WHITE highlight in colour
   // (rgba(255,255,255,0.07), meant to lighten that theme's own dark
