@@ -398,7 +398,10 @@ export default function BoardsListScreen({
             a note gets, by the board's id. The map used to sit on a flat
             grey square, where its cards read as grey dots on grey. */}
         <View style={styles.rowIcon}>
-          <CoverGradientView gradient={defaultCoverFor(item.id)} style={StyleSheet.absoluteFill} />
+          {/* Muted, not full strength - so it reads as the map's mat
+              rather than the loud wash the boxes used to sit on
+              ("вирізає всі елементи і підставляє їх на якийсь фон"). */}
+          <CoverGradientView gradient={defaultCoverFor(item.id)} style={[StyleSheet.absoluteFill, styles.coverMuted]} />
           {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
             <BoardMiniMap cards={item.cards} columns={item.columns} width={48} height={48} />
           ) : (
@@ -461,7 +464,7 @@ export default function BoardsListScreen({
         onLongPress={carried || isSelectMode ? undefined : () => askBoardActions(item)}
       >
         <View style={[styles.tileMap, { height: mapHeight }]}>
-          <CoverGradientView gradient={defaultCoverFor(item.id)} style={StyleSheet.absoluteFill} />
+          <CoverGradientView gradient={defaultCoverFor(item.id)} style={[StyleSheet.absoluteFill, styles.coverMuted]} />
           {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
             <BoardMiniMap cards={item.cards} columns={item.columns} width={tileWidth} height={mapHeight} showText />
           ) : (
@@ -756,6 +759,9 @@ const makeStyles = (t: Theme) =>
   tileMap: {
     width: '100%',
     overflow: 'hidden',
+  },
+  coverMuted: {
+    opacity: 0.55,
   },
   tileEmpty: {
     flex: 1,

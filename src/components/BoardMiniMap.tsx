@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import AttachmentImage from './AttachmentImage';
 import { BoardCard, BoardColumn } from '../types';
 import { APPROX_CARD_HEIGHT, COLUMN_MIN_HEIGHT, COLUMN_WIDTH } from '../utils/boardLayout';
@@ -72,6 +72,27 @@ export default function BoardMiniMap({
               driveFileId={card.driveFileId}
               style={[styles.card, frame]}
             />
+          );
+        }
+        // A document or link card already carries its own cached picture
+        // (the same one its full card shows on the board itself) - read
+        // by name here too instead of falling back to a pale box, so the
+        // map reads as the board's real content ("виглядає не зовсім
+        // правдоподібно... він ніби вирізає всі елементи і підставляє їх
+        // на якийсь фон").
+        if (type === 'document' && card.documentPreviewImageUri) {
+          return (
+            <AttachmentImage
+              key={card.id}
+              uri={card.documentPreviewImageUri}
+              driveFileId={card.documentPreviewDriveFileId}
+              style={[styles.card, frame]}
+            />
+          );
+        }
+        if (type === 'link' && card.linkImageUrl) {
+          return (
+            <Image key={card.id} source={{ uri: card.linkImageUrl }} style={[styles.card, frame]} resizeMode="cover" />
           );
         }
         const isSticky = type === 'paragraph' && !!card.color;
