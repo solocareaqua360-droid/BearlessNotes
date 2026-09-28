@@ -475,7 +475,9 @@ export default function CalendarScreen() {
   const calendarFocused = useIsFocused() && !drawerShut;
   // The bar's and the dock's glass stop blurring live while the pages
   // are shown - see frostPause for why that is what made them lag.
-  usePauseFrost(overviewOpen && calendarFocused);
+  // Not in the calendar's own layer: its pages are outside the picture
+  // the glass blurs (see CalendarDrawer), so there is nothing to spare it.
+  usePauseFrost(overviewOpen && calendarFocused && !calendarDrawer);
   const calendarInsets = useSafeAreaInsets();
   // The desks bar stands at the top on a phone (TopNavBar): everything
   // here starts below it.

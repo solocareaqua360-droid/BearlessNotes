@@ -10,7 +10,6 @@ import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
 import { DockLayerContext } from '../navigation/navDock';
 import { LayoutFrameContext } from '../hooks/useResponsiveLayout';
-import { useFrostPaused } from './frostPause';
 
 // The whole window: the calendar is not a drawer any more but a SCREEN
 // laid over the desk - iOS's own widgets page, which is the model the
@@ -57,8 +56,15 @@ export default function CalendarDrawer() {
   // mounted behind a shut layer would go on redrawing the desk for
   // nothing. And it steps down to a plain dim while something heavy
   // scrolls over it (the overview's pages - see frostPause).
-  const frostPaused = useFrostPaused();
-  const blurShown = (calendarOpen || calendarDragging) && !frostPaused;
+  // Whether the desks are the screen in front. The layer is drawn above
+  // EVERY screen (the glass portal), so anything the calendar opens - the
+  // diary, a note - would open underneath it: while another screen is in
+  // front the layer steps aside, whole, and comes back as it was.
+  const tabsFocused = useIsFocused();
+  // Not paused under the overview's pages any more: those pages are drawn
+  // in the portal now, outside the picture the blur takes, so scrolling
+  // them no longer makes the blur redraw them.
+  const blurShown = (calendarOpen || calendarDragging) && tabsFocused;
 
   // Opened or shut from anywhere but a swipe (back, the bar's arrow): the
   // layer finishes the way there on its own. A swipe has already put it
@@ -70,7 +76,6 @@ export default function CalendarDrawer() {
 
   // Only while the desks are in front: a note opened from the calendar is
   // pushed over them, and its "back" is its own.
-  const tabsFocused = useIsFocused();
   useEffect(() => {
     if (!calendarOpen || !tabsFocused) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -81,7 +86,8 @@ export default function CalendarDrawer() {
   }, [calendarOpen, closeCalendar, tabsFocused]);
 
   const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: (progress.value - 1) * width }] }), [width]);
-  const groundStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
+  // An animated opacity outranks a plain one, so stepping aside is said here.
+  const groundStyle = useAnimatedStyle(() => ({ opacity: tabsFocused ? progress.value : 0 }), [tabsFocused]);
   const frame = useMemo(() => ({ width, height: windowHeight }), [width, windowHeight]);
   const drawer = useMemo(() => ({ open: calendarOpen, close: closeCalendar }), [calendarOpen, closeCalendar]);
   // Shut by a swipe to the LEFT, following the finger the same way it
@@ -109,7 +115,10 @@ export default function CalendarDrawer() {
         that carries it when the blur is stepped down. Under the calendar,
         above the screens. */}
     <GlassPortal priority={-2}>
-      <Animated.View style={[StyleSheet.absoluteFill, styles.dim, groundStyle]} pointerEvents="none">
+      <Animated.View
+        style={[StyleSheet.absoluteFill, styles.dim, groundStyle]}
+        pointerEvents="none"
+      >
         {blurShown && blurTarget && (
           <BlurView
             intensity={70}
@@ -128,7 +137,10 @@ export default function CalendarDrawer() {
     <NavigationContext.Provider value={navigation}>
     <NavigationRouteContext.Provider value={route}>
     <SideDrawersContext.Provider value={sideDrawers}>
-    <View style={StyleSheet.absoluteFill} pointerEvents={calendarOpen ? 'box-none' : 'none'}>
+    <View
+      style={[StyleSheet.absoluteFill, !tabsFocused && styles.aside]}
+      pointerEvents={calendarOpen && tabsFocused ? 'box-none' : 'none'}
+    >
       <GestureDetector gesture={closeSwipe}>
         <Animated.View style={[styles.panel, { width }, panelStyle]} pointerEvents={calendarOpen ? 'auto' : 'none'}>
           <LayoutFrameContext.Provider value={frame}>
@@ -152,6 +164,11 @@ export default function CalendarDrawer() {
 const styles = StyleSheet.create({
   dim: {
     backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  // Out of sight while another screen is in front, but still mounted -
+  // the day, the month and the note are kept.
+  aside: {
+    opacity: 0,
   },
   panel: {
     position: 'absolute',
