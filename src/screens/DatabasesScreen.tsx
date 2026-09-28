@@ -101,10 +101,12 @@ const PIN_TILE_KEY = '__pin__';
 const groupKey = (id: string) => `group:${id}`;
 const tagKey = (id: string) => `tag:${id}`;
 const IMPORT_TILE_KEY = '__import__';
-const TILE_GAP = 10;
+// Small, on purpose: the room between tiles is mostly TILE_INSET's now -
+// see there, and the iOS proportions it is worked out from.
+const TILE_GAP = 6;
 // The gap the tiles hold while they are being arranged - they draw apart
 // to make room for the grips, and close back up when the board is done.
-const TILE_GAP_EDITING = 16;
+const TILE_GAP_EDITING = 12;
 // The two colours this screen's own sheets speak in: the app's accent for
 // "this one is on", and the danger red for the one row that destroys
 // something.
@@ -153,13 +155,18 @@ const FOLDER_PREFIX = 'folder:';
 // inside its cells (so folders side by side stand clearly apart), and its
 // tiles are set in from that outline by a margin of their own, with a
 // gap between them.
-const FOLDER_INSET = 2;
-// Every tile - on the board or in a folder - stands this far inside its
-// cell, centred on it, so the ones in folders and the ones outside are ONE
-// size ("іконки в папках і не в папках однакового розміру") and a
-// folder's outline, between the cell's edge and its tiles, has the same
-// margin inside it on every side.
-const TILE_INSET = 9;
+// iOS'S PROPORTIONS, measured off the user's own screenshot of the app
+// library: inside a folder the margin to its edge EQUALS the gap between
+// its icons (about a fifth of an icon), two folders stand about twice that
+// apart, and an icon is the same size inside a folder as out of it.
+//
+// Every tile stands TILE_INSET inside its cell, centred on it. A folder's
+// outline is then drawn narrower than its cells - by what makes its
+// margin and its gaps one number, TILE_INSET (see folderFrameOf) - and its
+// icons are laid out in it at that spacing, so they do not sit on the
+// board's own cells. What is left between two folders is the rest: about
+// twice that.
+const TILE_INSET = 12;
 type TileFolder = { members: string[] };
 
 type BoardItem =
@@ -1035,12 +1042,25 @@ export default function DatabasesScreen() {
     const base = { left: x * cellStep, top: rowTop(y), width: spanSize(size.w), height: spanSize(size.h) };
     return drag?.key === key ? { ...base, left: drag.x, top: drag.y } : base;
   }
+  // The outline a folder is drawn with: narrower than its cells by what
+  // makes the margin inside it and the gaps between its icons one number -
+  // TILE_INSET - with icons the size of a tile on the board. (A folder one
+  // row tall has TILE_INSET above and below its icons by the cells alone;
+  // across, the cells would leave more, so the outline gives that back.)
+  function folderFrameOf(r: { left: number; top: number; width: number; height: number }, size: TileSize) {
+    const ix = ((size.w - 1) * (gap + TILE_INSET)) / 2;
+    const iy = ((size.h - 1) * (gap + TILE_INSET)) / 2;
+    return { left: r.left + ix, top: r.top + iy, width: r.width - ix * 2, height: r.height - iy * 2 };
+  }
   const mergeRect = (() => {
     if (!mergeTarget) return null;
     const p = placedOf(mergeTarget);
     if (!p) return null;
-    const r = p.item.kind === 'folder' ? folderRect(p.item.key, p.x, p.y, p.size) : tileRect(p);
-    const pad = Math.min(6, gap * 0.45) + 2;
+    const r =
+      p.item.kind === 'folder'
+        ? folderFrameOf(folderRect(p.item.key, p.x, p.y, p.size), p.size)
+        : { ...tileRect(p), left: tileRect(p).left + TILE_INSET, top: tileRect(p).top + TILE_INSET, width: tileRect(p).width - TILE_INSET * 2, height: tileRect(p).height - TILE_INSET * 2 };
+    const pad = 4;
     return { left: r.left - pad, top: r.top - pad, width: r.width + pad * 2, height: r.height + pad * 2 };
   })();
 
@@ -1431,23 +1451,18 @@ export default function DatabasesScreen() {
                   .map(({ item, x, y, size }) => (
                     <FolderFrame
                       key={item.key}
-                      rect={folderRect(item.key, x, y, size)}
-                      // Drawn a little INSIDE its cells, not out into the
-                      // gaps: two folders side by side then stand clearly
-                      // apart - "відстань між папками більшу", as iOS does.
-                      pad={-FOLDER_INSET}
+                      rect={folderFrameOf(folderRect(item.key, x, y, size), size)}
+                      pad={0}
                       highlighted={mergeTarget === item.key}
                     />
                   ))}
               {cellSize > 0 &&
                 placed.flatMap(({ item, x, y, size }) => {
                   if (item.kind !== 'folder') return [renderTile(item, x, y, size)];
-                  // Its tiles, one per cell, in reading order across its own
-                  // width - moving with it while it is carried. Set in from
-                  // the folder's edge by a margin of their own, iOS's way,
-                  // and so a touch smaller than a tile on the board.
-                  // Each on its own cell, set in as every tile is.
-                  const origin = folderRect(item.key, x, y, size);
+                  // Its tiles in reading order across its own width, moving
+                  // with it while it is carried - the size of a tile on the
+                  // board, spaced by the folder's one margin (see TILE_INSET).
+                  const frame = folderFrameOf(folderRect(item.key, x, y, size), size);
                   const icon = cellSize - TILE_INSET * 2;
                   return item.members.map((member, index) => {
                     const col = index % size.w;
@@ -1458,8 +1473,8 @@ export default function DatabasesScreen() {
                       y + row,
                       { w: 1, h: 1 },
                       {
-                        left: origin.left + col * cellStep + TILE_INSET,
-                        top: origin.top + row * cellStep + TILE_INSET,
+                        left: frame.left + TILE_INSET + col * (icon + TILE_INSET),
+                        top: frame.top + TILE_INSET + row * (icon + TILE_INSET),
                         width: icon,
                         height: icon,
                       },
@@ -1480,7 +1495,7 @@ export default function DatabasesScreen() {
                   .map(({ item, x, y, size }) => (
                     <FolderHandles
                       key={`handles:${item.key}`}
-                      rect={folderRect(item.key, x, y, size)}
+                      rect={folderFrameOf(folderRect(item.key, x, y, size), size)}
                       size={size}
                       cellStep={cellStep}
                       count={item.kind === 'folder' ? item.members.length : 0}
@@ -2242,7 +2257,7 @@ function BoardTile({
         {/* Name, icon and count - nothing else: "залиш лише назву, іконку
             і кількість". The icon stands at the tile's own centre whatever
             its size, the name along the foot. */}
-        <View style={[styles.tileIconWrap, tiny && { paddingBottom: 14 }]} pointerEvents="none">
+        <View style={styles.tileIconWrap} pointerEvents="none">
           <Ionicons name={icon} size={tiny ? 24 : 26} color={isAction ? 'rgba(255,255,255,0.6)' : ink} />
         </View>
         {/* The name on every tile now, the one-cell ones and the ones in
@@ -2313,7 +2328,7 @@ function FolderFrame({
           top: rect.top - pad,
           width: rect.width + pad * 2,
           height: rect.height + pad * 2,
-          borderRadius: 22,
+          borderRadius: 26,
         },
         highlighted && styles.folderFrameHighlighted,
       ]}
@@ -2395,11 +2410,12 @@ const makeStyles = (t: Theme) =>
     shadowOffset: { width: 0, height: 8 },
     elevation: 14,
   },
+  // The app library's own: lighter glass, softer corners.
   folderFrame: {
     position: 'absolute',
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   folderFrameHighlighted: {
     backgroundColor: 'rgba(255,255,255,0.18)',
@@ -2449,9 +2465,9 @@ const makeStyles = (t: Theme) =>
     flex: 1,
   },
   content: {
-    // Full width: the tiles pass UNDER the rail, and the glass over them
-    // is the point of it.
-    paddingHorizontal: 20,
+    // Wider than the other desks' margins, as the app library's are - the
+    // user's call: "тут це нормально виглядає".
+    paddingHorizontal: 28,
     // Clears FloatingIslandTabBar (bottom: 24, ~64 tall) so the last tile
     // can be scrolled out from under it - same 120 DocumentsScreen's own
     // list already uses.
