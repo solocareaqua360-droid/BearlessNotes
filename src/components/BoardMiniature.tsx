@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import BoardMiniMap from './BoardMiniMap';
-import { BoardCard, BoardColumn } from '../types';
+import { BoardCard, BoardColumn, BoardConnection, BoardShape } from '../types';
 
 // THE ONE-TIME SCREENSHOT (step 2 of "повноцінне прев'ю на дошках" -
 // BoardMiniMap already covers the cheap, live, always-fresh side of that;
@@ -27,6 +27,8 @@ export const BOARD_PREVIEW_H = 460;
 type CaptureRequest = {
   cards: BoardCard[];
   columns: BoardColumn[];
+  connections: BoardConnection[];
+  shapes: BoardShape[];
   resolve: (uri: string | null) => void;
 };
 
@@ -41,10 +43,18 @@ export function useBoardPreviewCapture() {
   // changes): a caller that puts this in a useCallback's own deps must
   // not see it as "changed" on every render, or every effect built on
   // top of it would re-fire on every render too.
-  const capture = useCallback((cards: BoardCard[], columns: BoardColumn[]): Promise<string | null> => {
-    if (cards.length === 0 && columns.length === 0) return Promise.resolve(null);
-    return new Promise((resolve) => setRequest({ cards, columns, resolve }));
-  }, []);
+  const capture = useCallback(
+    (
+      cards: BoardCard[],
+      columns: BoardColumn[],
+      connections: BoardConnection[],
+      shapes: BoardShape[]
+    ): Promise<string | null> => {
+      if (cards.length === 0 && columns.length === 0 && shapes.length === 0) return Promise.resolve(null);
+      return new Promise((resolve) => setRequest({ cards, columns, connections, shapes, resolve }));
+    },
+    []
+  );
 
   const node = request ? (
     <View style={{ position: 'absolute', top: -100000, left: -100000 }} pointerEvents="none">
@@ -64,10 +74,14 @@ export function useBoardPreviewCapture() {
 function CaptureStage({
   cards,
   columns,
+  connections,
+  shapes,
   onDone,
 }: {
   cards: BoardCard[];
   columns: BoardColumn[];
+  connections: BoardConnection[];
+  shapes: BoardShape[];
   onDone: (uri: string | null) => void;
 }) {
   const stageRef = useRef<View>(null);
@@ -91,7 +105,16 @@ function CaptureStage({
         }, 180);
       }}
     >
-      <BoardMiniMap cards={cards} columns={columns} width={BOARD_PREVIEW_W} height={BOARD_PREVIEW_H} showText detailed />
+      <BoardMiniMap
+        cards={cards}
+        columns={columns}
+        connections={connections}
+        shapes={shapes}
+        width={BOARD_PREVIEW_W}
+        height={BOARD_PREVIEW_H}
+        showText
+        detailed
+      />
     </View>
   );
 }

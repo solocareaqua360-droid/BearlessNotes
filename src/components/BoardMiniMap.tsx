@@ -1,8 +1,11 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Line } from 'react-native-svg';
 import AttachmentImage from './AttachmentImage';
-import { BoardCard, BoardColumn } from '../types';
+import ShapeBody from './BoardShapeBody';
+import { BoardCard, BoardColumn, BoardConnection, BoardShape } from '../types';
 import { APPROX_CARD_HEIGHT, COLUMN_MIN_HEIGHT, COLUMN_WIDTH, fileIconFor } from '../utils/boardLayout';
+import { withAlpha } from '../utils/color';
 import { FONT_REGULAR } from '../utils/fonts';
 
 // A board in miniature, built from its own cards rather than captured from
@@ -22,6 +25,8 @@ import { FONT_REGULAR } from '../utils/fonts';
 export default function BoardMiniMap({
   cards,
   columns,
+  connections,
+  shapes,
   width,
   height,
   showText,
@@ -29,15 +34,22 @@ export default function BoardMiniMap({
 }: {
   cards: BoardCard[];
   columns?: BoardColumn[];
+  // Reserved for `detailed` (see below) - the arrows/lines between
+  // cards ("лінії... можна рендерити").
+  connections?: BoardConnection[];
+  // Reserved for `detailed` too - the board's own furniture (rectangle,
+  // circle, triangle, diamond, loose text; there is no 'star' kind -
+  // see BoardShapeKind in types.ts).
+  shapes?: BoardShape[];
   width: number;
   height: number;
   // Text cards draw a couple of lines standing in for their words - only
   // worth it on a tile big enough for them to be lines rather than specks.
   showText?: boolean;
   // Reserved for the one-time capture (BoardMiniature): a sticky's own
-  // text, a file's icon, a board-reference's title - readable in a
-  // screenshot that is drawn once, too much text-measuring work to redo
-  // on every list render of every board.
+  // text, a file's icon, a board-reference's title, the connection lines
+  // and the shapes - readable in a screenshot that is drawn once, too
+  // much extra drawing to redo on every list render of every board.
   detailed?: boolean;
 }) {
   const lanes = (columns ?? []).map((column) => ({
@@ -49,7 +61,13 @@ export default function BoardMiniMap({
     height: Math.max(COLUMN_MIN_HEIGHT, 44 + cards.filter((c) => c.columnId === column.id).length * 100),
   }));
   const boxes = cards.map((card) => ({ x: card.x, y: card.y, width: card.width, height: APPROX_CARD_HEIGHT }));
-  const all = [...lanes, ...boxes];
+  const shapeBoxes = (detailed ? shapes ?? [] : []).map((shape) => ({
+    x: shape.x,
+    y: shape.y,
+    width: shape.width,
+    height: shape.height,
+  }));
+  const all = [...lanes, ...boxes, ...shapeBoxes];
   if (all.length === 0) return <View style={{ width, height }} />;
 
   const minX = Math.min(...all.map((b) => b.x));
@@ -68,11 +86,61 @@ export default function BoardMiniMap({
     height: Math.max(2, b.height * scale),
   });
 
+  // A connection's two ends are wherever ITS cards ended up - found by
+  // id rather than carrying their own coordinates, so a line always
+  // points at the actual card frame above, never a stale copy of it.
+  const cardIndexById = new Map(cards.map((card, index) => [card.id, index]));
+  const centerOf = (index: number) => {
+    const frame = place(boxes[index]);
+    return { x: frame.left + frame.width / 2, y: frame.top + frame.height / 2 };
+  };
+
   return (
     <View style={[styles.canvas, { width, height }]}>
       {lanes.map((lane, index) => (
         <View key={`lane-${index}`} style={[styles.lane, place(lane)]} />
       ))}
+      {detailed &&
+        (shapes ?? []).map((shape, index) => {
+          const frame = place(shapeBoxes[index]);
+          const stroke = shape.color ?? '#6B7280';
+          return (
+            <View key={shape.id} style={[styles.shape, frame]}>
+              <ShapeBody
+                shape={shape}
+                width={frame.width}
+                height={frame.height}
+                stroke={stroke}
+                fill={shape.filled ? withAlpha(stroke, 0.15) : 'none'}
+                ink={stroke}
+              />
+            </View>
+          );
+        })}
+      {/* Behind the cards, the same order the real board draws them in -
+          a line points AT a card, not over it. */}
+      {detailed && (connections?.length ?? 0) > 0 && (
+        <Svg width={width} height={height} style={StyleSheet.absoluteFill} pointerEvents="none">
+          {(connections ?? []).map((connection) => {
+            const fromIndex = cardIndexById.get(connection.fromCardId);
+            const toIndex = cardIndexById.get(connection.toCardId);
+            if (fromIndex === undefined || toIndex === undefined) return null;
+            const from = centerOf(fromIndex);
+            const to = centerOf(toIndex);
+            return (
+              <Line
+                key={connection.id}
+                x1={from.x}
+                y1={from.y}
+                x2={to.x}
+                y2={to.y}
+                stroke="rgba(107,114,128,0.5)"
+                strokeWidth={1}
+              />
+            );
+          })}
+        </Svg>
+      )}
       {cards.map((card, index) => {
         const frame = place(boxes[index]);
         const type = card.type ?? 'paragraph';
@@ -152,6 +220,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     borderRadius: 2,
     overflow: 'hidden',
+  },
+  shape: {
+    position: 'absolute',
   },
   plainCard: {
     backgroundColor: 'rgba(255,255,255,0.92)',

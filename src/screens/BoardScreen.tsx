@@ -28,7 +28,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Ellipse, Path, Polygon, Rect } from 'react-native-svg';
+import Svg, { Path, Polygon } from 'react-native-svg';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -93,6 +93,7 @@ import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { useBoardPreviewCapture } from '../components/BoardMiniature';
+import ShapeBody, { SHAPE_STROKE, SHAPE_TEXT_SIZE_DEFAULT, SHAPE_LABEL_SIZE_DEFAULT } from '../components/BoardShapeBody';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useDensity } from '../hooks/useDensity';
 import { contentEqual } from '../utils/contentEqual';
@@ -166,8 +167,8 @@ const ISOLATE_FIT_FRACTION = 0.82;
 // and the board read as a handful of lamps again. At 0.72 a coloured
 // card is still clearly more present than a plain one - which is the
 // point of colouring it - without being the brightest thing there.
-// The board's furniture - see BoardShape in types.ts.
-const SHAPE_STROKE = 2;
+// The board's furniture - see BoardShape in types.ts. SHAPE_STROKE
+// itself now lives with ShapeBody in ../components/BoardShapeBody.
 const SHAPE_MIN = 48;
 // A loose label is as tall as its own words, which nothing measures. The
 // same kind of stand-in APPROX_CARD_HEIGHT is, and used for the same two
@@ -201,8 +202,6 @@ const STICKY_TEXT_SIZE_DEFAULT = 14;
 const STICKY_WIDTH_STEP = 40;
 const STICKY_WIDTH_MIN = 120;
 const STICKY_WIDTH_MAX = 480;
-const SHAPE_TEXT_SIZE_DEFAULT = 16;
-const SHAPE_LABEL_SIZE_DEFAULT = 14;
 function stepTextSize(current: number, dir: 1 | -1): number {
   const at = SHAPE_TEXT_SIZES.findIndex((v) => v >= current);
   const i = at < 0 ? SHAPE_TEXT_SIZES.length - 1 : at;
@@ -1777,99 +1776,10 @@ function DraggableCard({
 // A piece of the board's FURNITURE, drawn. See BoardShape in types.ts
 // for why this is not a card: it is decoration, it never becomes a
 // block, and keeping it out of `cards` is what makes that true by
-// construction instead of by everyone remembering.
-function ShapeBody({
-  shape,
-  width,
-  height,
-  stroke,
-  fill,
-  ink,
-}: {
-  shape: BoardShape;
-  width: number;
-  height: number;
-  stroke: string;
-  // 'none', or the same colour as the outline at a fraction of it - see
-  // shapeFillFor. Kept as one prop rather than recomputed per element so
-  // every element in one shape agrees.
-  fill: string;
-  ink: string;
-}) {
-  const styles = useStyles(makeStyles);
-  const w = Math.max(1, width);
-  const h = Math.max(1, height);
-  // Half the stroke sits outside the path, so every shape is drawn
-  // inset by that much or its outline is clipped by its own box.
-  const i = SHAPE_STROKE / 2;
-  const fontSize = shape.fontSize ?? (shape.kind === 'text' ? SHAPE_TEXT_SIZE_DEFAULT : SHAPE_LABEL_SIZE_DEFAULT);
-  return (
-    <>
-      {shape.kind !== 'text' && (
-        <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
-          {(shape.kind === 'rect' || shape.kind === 'square') && (
-            <Rect
-              x={i}
-              y={i}
-              width={w - SHAPE_STROKE}
-              height={h - SHAPE_STROKE}
-              rx={10}
-              fill={fill}
-              stroke={stroke}
-              strokeWidth={SHAPE_STROKE}
-            />
-          )}
-          {(shape.kind === 'ellipse' || shape.kind === 'circle') && (
-            <Ellipse
-              cx={w / 2}
-              cy={h / 2}
-              rx={w / 2 - i}
-              ry={h / 2 - i}
-              fill={fill}
-              stroke={stroke}
-              strokeWidth={SHAPE_STROKE}
-            />
-          )}
-          {shape.kind === 'triangle' && (
-            <Polygon
-              points={`${w / 2},${i} ${w - i},${h - i} ${i},${h - i}`}
-              fill={fill}
-              stroke={stroke}
-              strokeWidth={SHAPE_STROKE}
-              strokeLinejoin="round"
-            />
-          )}
-          {shape.kind === 'diamond' && (
-            <Polygon
-              points={`${w / 2},${i} ${w - i},${h / 2} ${w / 2},${h - i} ${i},${h / 2}`}
-              fill={fill}
-              stroke={stroke}
-              strokeWidth={SHAPE_STROKE}
-              strokeLinejoin="round"
-            />
-          )}
-        </Svg>
-      )}
-      {/* The words sit in the middle of whatever was drawn - and for
-          'text' they ARE the whole thing. Padded well in from the edge:
-          a triangle and a diamond have very little room at their points,
-          and text that runs into the outline reads as a mistake. */}
-      <View style={[styles.shapeTextWrap, shape.kind === 'text' && styles.shapeTextWrapBare]}>
-        <Text
-          style={[
-            styles.shapeText,
-            { color: shape.kind === 'text' ? shape.color ?? ink : ink, fontSize },
-            shape.kind === 'text' && styles.shapeTextLoose,
-          ]}
-        >
-          {shape.text || (shape.kind === 'text' ? 'Текст' : '')}
-        </Text>
-      </View>
-    </>
-  );
-}
-
-// One shape's own drag, built exactly like a card's - see DraggableCard
+// construction instead of by everyone remembering. The shape's own
+// look (`ShapeBody`) now lives in `../components/BoardShapeBody`,
+// shared with the boards-list preview capture; one shape's own drag,
+// built exactly like a card's, is what stays here - see DraggableCard
 // for why the position lives in shared values and nowhere else.
 function DraggableShape({
   shape,
@@ -2679,6 +2589,17 @@ export default function BoardScreen() {
   useEffect(() => {
     columnsRef.current = columns;
   }, [columns]);
+  // Same, for the arrows and the furniture the capture now also draws
+  // ("лінії і зірочку можна рендерити" - there is no star shape, see
+  // BoardShapeKind, but the lines and every other shape are real now).
+  const connectionsRef = useRef<BoardConnection[]>(connections);
+  useEffect(() => {
+    connectionsRef.current = connections;
+  }, [connections]);
+  const shapesRef = useRef<BoardShape[]>(shapes);
+  useEffect(() => {
+    shapesRef.current = shapes;
+  }, [shapes]);
 
   // A document card's preview (title, text, first image) is snapshotted
   // when the card is made, so editing the document leaves the card showing
@@ -2727,7 +2648,12 @@ export default function BoardScreen() {
   // whatever it already has, at the cost of an upload for nothing.
   const boardPreviewCapture = useBoardPreviewCapture();
   const capturePreview = useCallback(async () => {
-    const uri = await boardPreviewCapture.capture(cardsRef.current, columnsRef.current);
+    const uri = await boardPreviewCapture.capture(
+      cardsRef.current,
+      columnsRef.current,
+      connectionsRef.current,
+      shapesRef.current
+    );
     if (!uri) return;
     // Quietly, the same order every other attachment's backup uses - a
     // failed upload leaves the board with no cached picture rather than
@@ -6807,36 +6733,8 @@ const makeStyles = (theme: Theme) =>
       borderWidth: 1,
       borderColor: SELECTION_COLOR,
     },
-    // Well in from the edge: a triangle and a diamond have very little
-    // room at their points, and words running into the outline read as a
-    // mistake rather than as a label.
-    shapeTextWrap: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      top: 0,
-      bottom: 0,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 18,
-      paddingVertical: 14,
-    },
-    // Loose text has no outline to stay clear of.
-    shapeTextWrapBare: {
-      position: 'relative',
-      paddingHorizontal: 4,
-      paddingVertical: 4,
-    },
-    shapeText: {
-      // Size comes from the shape itself now (see SHAPE_TEXT_SIZES) - a
-      // static default here would win the moment the array below puts
-      // it after the inline style.
-      fontFamily: FONT_SEMIBOLD,
-      textAlign: 'center',
-    },
-    shapeTextLoose: {
-      textAlign: 'left',
-    },
+    // shapeTextWrap/shapeTextWrapBare/shapeText/shapeTextLoose moved with
+    // ShapeBody into ../components/BoardShapeBody.
     textSizeGroup: {
       flexDirection: 'row',
       alignItems: 'center',
