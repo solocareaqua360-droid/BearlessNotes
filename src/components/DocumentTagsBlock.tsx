@@ -1,0 +1,210 @@
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Tag } from '../types';
+import TagPicker from './TagPicker';
+import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
+
+
+type Props = {
+  tagIds: string[];
+  tags: Tag[];
+  onAttach: (tag: Tag) => void;
+  onDetach: (tag: Tag) => void;
+  onCreateAndAttach: (path: string, icon: string, color: string) => void;
+  onRenameTag: (tag: Tag, newPath: string) => void;
+};
+
+// A permanent, always-visible tag block under the document title - not a
+// modal/dropdown like TagPicker (used for Links/Photos/Files rows). Typing
+// 2+ letters shows matches inline, right under this same block; picking one
+// attaches it immediately. Creating a brand-new tag still needs an
+// icon+color, which doesn't fit inline, so that one step opens TagPicker's
+// own create form directly (see DocumentTagBlock.dc.html).
+export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, onCreateAndAttach, onRenameTag }: Props) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
+  const [query, setQuery] = useState('');
+  const [createModal, setCreateModal] = useState<{ path: string } | null>(null);
+
+  const appliedTags = tags.filter((tag) => tagIds.includes(tag.id));
+  const needle = query.trim().toLowerCase();
+  const suggestions =
+    needle.length === 0
+      ? []
+      : tags.filter((tag) => !tagIds.includes(tag.id) && tag.path.toLowerCase().includes(needle));
+  const hasExactMatch = tags.some((tag) => tag.path.toLowerCase() === needle);
+  const canCreate = needle.length >= 2 && !hasExactMatch;
+
+  function pickSuggestion(tag: Tag) {
+    onAttach(tag);
+    setQuery('');
+  }
+
+  function startCreate() {
+    setCreateModal({ path: query.trim() });
+    setQuery('');
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.row}>
+        {appliedTags.map((tag) => (
+          <Pressable
+            key={tag.id}
+            style={[styles.chip, { borderColor: tag.color }]}
+            onPress={() => onDetach(tag)}
+          >
+            <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={12} color={tag.color} />
+            <Text style={[styles.chipLabel, { color: tag.color }]} numberOfLines={1}>
+              {tag.path}
+            </Text>
+          </Pressable>
+        ))}
+        <View style={styles.inputWrap}>
+          <Ionicons name="add" size={13} color={theme.paper.inkFaint} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="папка"
+            placeholderTextColor={theme.paper.inkFaint}
+            style={styles.input}
+          />
+        </View>
+      </View>
+
+      {needle.length > 0 && (
+        <View style={styles.dropdown}>
+          <ScrollView style={styles.dropdownScroll} keyboardShouldPersistTaps="handled">
+            {suggestions.map((tag) => (
+              <Pressable key={tag.id} style={styles.suggestionRow} onPress={() => pickSuggestion(tag)}>
+                <View style={[styles.suggestionIcon, { backgroundColor: `${tag.color}1A` }]}>
+                  <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={13} color={tag.color} />
+                </View>
+                <Text style={styles.suggestionLabel}>{tag.path}</Text>
+              </Pressable>
+            ))}
+            {canCreate && (
+              <Pressable style={styles.createRow} onPress={startCreate}>
+                <Ionicons name="add" size={14} color={theme.accent} />
+                <Text style={styles.createLabel}>створити папку "{query.trim()}"</Text>
+              </Pressable>
+            )}
+          </ScrollView>
+        </View>
+      )}
+
+      <TagPicker
+        visible={createModal !== null}
+        kind="document"
+        tags={tags}
+        selectedTagIds={tagIds}
+        initialMode="create"
+        initialPath={createModal?.path ?? ''}
+        onAttach={onAttach}
+        onDetach={onDetach}
+        onCreateAndAttach={onCreateAndAttach}
+        onRenameTag={onRenameTag}
+        onClose={() => setCreateModal(null)}
+      />
+    </View>
+  );
+}
+
+const makeStyles = (t: Theme) => StyleSheet.create({
+  // No boxed "zone" around the tags anymore - the "+ папка" input itself
+  // is the only cue that this is where you attach one. Tags are drawn as
+  // «смартпапки» in the drawer (see project_smart_folders); this inline
+  // input speaks the same word.
+  container: {
+    marginHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  row: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  // Transparent capsule, border + text in the tag's own color - borderColor
+  // set per-chip inline (tag.color). Deliberately no fill (not even white)
+  // so it sits correctly on a document's own "paper color" as well as the
+  // plain white default, rather than a fixed color that only worked on one
+  // of the two.
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  chipLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    fontFamily: FONT_MEDIUM,
+  },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 70,
+    gap: 5,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  input: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: t.paper.ink,
+    padding: 0,
+  },
+  dropdown: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: t.paper.edge,
+    paddingTop: 6,
+  },
+  dropdownScroll: {
+    maxHeight: 180,
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+  },
+  suggestionIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestionLabel: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: t.paper.ink,
+  },
+  createRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+  },
+  createLabel: {
+    fontSize: 13,
+    color: t.accent,
+    fontWeight: '600',
+    fontFamily: FONT_SEMIBOLD,
+  },
+});

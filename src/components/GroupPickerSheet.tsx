@@ -1,0 +1,216 @@
+import { useStyles, useTheme } from '../theme/ThemeProvider';
+import type { Theme } from '../theme/tokens';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  updateDoc,
+} from '../firestore';
+import { addDoc } from '../utils/owned';
+import { db } from '../firebase';
+import { Group } from '../types';
+import { groupKindFields } from '../utils/groups';
+import Sheet from './surfaces/Sheet';
+import { FONT_REGULAR } from '../utils/fonts';
+import { confirm } from './surfaces/Ask';
+
+const GROUP_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
+const groupsCollection = collection(db, 'groups');
+
+// A fixed, non-deletable project (like "Всі"/"Без проекту", but a real
+// group document rather than a pseudo-entry) - every image captured with
+// the in-app camera lands here automatically, per PhotosScreen's own
+// ensureCameraPhotosGroup. Deleting it would silently strand every camera
+// photo's groupId pointing at nothing, so it's exempted from the delete
+// button below the same way the two pseudo-entries never had one.
+export const CAMERA_PHOTOS_GROUP_ID = 'camera-photos';
+
+// A database identifier a project can belong to - see Group.kinds.
+export type GroupKind = string;
+
+type Props = {
+  visible: boolean;
+  kind: GroupKind;
+  groups: Group[];
+  onPick: (groupId: string | null) => void;
+  onClose: () => void;
+  // Tasks calls its own unassigned bucket "Вхідні" (inbox), matching the
+  // wording its own ProjectTabsRow already uses - everyone else keeps the
+  // default.
+  unassignedLabel?: string;
+};
+
+// Project assignment for Files/Photos/Links/Documents/Boards/custom
+// databases - the underlying type/collection are still `Group`/`groups`
+// in code (renaming either would mean losing every project any database
+// already has), but every screen shows the word "Проект" for it. Scoped
+// PER DATABASE TYPE - a project made while in Photos must not show up in
+// Files or Links, so every one carries a `kind` and every screen only
+// ever queries/creates its own.
+export default function GroupPickerSheet({
+  visible,
+  kind,
+  groups,
+  onPick,
+  onClose,
+  unassignedLabel = 'Без проекту',
+}: Props) {
+  const theme = useTheme();
+  const accent = theme.accent;
+  const styles = useStyles(makeStyles);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editingGroupName, setEditingGroupName] = useState('');
+  // The keyboard is «Аркуш»'s own business now - it pads the frame, so
+  // the window stays centred in what is left instead of this file
+  // tracking the IME's height for itself.
+
+  async function addGroup() {
+    const name = newGroupName.trim();
+    if (!name) return;
+    const color = GROUP_COLORS[groups.length % GROUP_COLORS.length];
+    await addDoc(groupsCollection, { name, color, ...groupKindFields([kind]) });
+    setNewGroupName('');
+  }
+
+  function startEditGroup(group: Group) {
+    setEditingGroupId(group.id);
+    setEditingGroupName(group.name);
+  }
+
+  async function saveEditGroup() {
+    const name = editingGroupName.trim();
+    if (editingGroupId && name) {
+      await updateDoc(doc(db, 'groups', editingGroupId), { name });
+    }
+    setEditingGroupId(null);
+  }
+
+  function confirmDeleteGroup(group: Group) {
+    confirm({
+      title: 'Видалити проект?',
+      message: `Об'єкти з проектом "${group.name}" стануть без проекту.`,
+      confirmLabel: 'Видалити',
+    }).then((yes) => {
+      if (!yes) return;
+      deleteDoc(doc(db, 'groups', group.id));
+    });
+  }
+
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Оберіть проект" scroll maxHeight="70%">
+
+          <Pressable style={styles.row} onPress={() => onPick(null)}>
+            <View style={[styles.dot, { backgroundColor: theme.ink.faint }]} />
+            <Text style={styles.rowText}>{unassignedLabel}</Text>
+          </Pressable>
+
+          {groups.map((g) =>
+            editingGroupId === g.id ? (
+              <View key={g.id} style={styles.row}>
+                <View style={[styles.dot, { backgroundColor: g.color }]} />
+                <TextInput
+                  style={styles.renameInput}
+                  value={editingGroupName}
+                  onChangeText={setEditingGroupName}
+                  autoFocus
+                  onSubmitEditing={saveEditGroup}
+                  onBlur={saveEditGroup}
+                  returnKeyType="done"
+                />
+              </View>
+            ) : (
+              <View key={g.id} style={styles.row}>
+                <Pressable style={styles.rowTap} onPress={() => onPick(g.id)}>
+                  <View style={[styles.dot, { backgroundColor: g.color }]} />
+                  <Text style={styles.rowText}>{g.name}</Text>
+                </Pressable>
+                <Pressable hitSlop={8} onPress={() => startEditGroup(g)}>
+                  <Ionicons name="pencil-outline" size={16} color={theme.ink.faint} />
+                </Pressable>
+                {g.id !== CAMERA_PHOTOS_GROUP_ID && (
+                  <Pressable hitSlop={8} onPress={() => confirmDeleteGroup(g)}>
+                    <Ionicons name="close" size={16} color={theme.ink.faint} />
+                  </Pressable>
+                )}
+              </View>
+            )
+          )}
+
+          <View style={styles.divider} />
+
+          <View style={styles.addRow}>
+            <TextInput
+              style={styles.addInput}
+              value={newGroupName}
+              onChangeText={setNewGroupName}
+              placeholder="Новий проект"
+              placeholderTextColor={theme.ink.faint}
+              onSubmitEditing={addGroup}
+              returnKeyType="done"
+            />
+            <Pressable hitSlop={8} onPress={addGroup}>
+              <Ionicons name="add-circle" size={26} color={accent} />
+            </Pressable>
+          </View>
+    </Sheet>
+  );
+}
+
+const makeStyles = (t: Theme) => StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+  },
+  rowTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  rowText: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.primary,
+  },
+  renameInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.primary,
+    paddingVertical: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: t.accent,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: t.edge.hairline,
+    marginVertical: 8,
+  },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  addInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.primary,
+    backgroundColor: t.field.fill,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+});

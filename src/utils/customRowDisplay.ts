@@ -1,0 +1,262 @@
+import { CustomDatabase, CustomDatabaseRow, DateRangeValue, FieldDef } from '../types';
+import { LinkCategory } from './linkCategory';
+
+// The one place that knows a 'date' field's value can be a plain dateKey
+// OR a DateRangeValue - see that type's own comment. Returns null for
+// anything else (empty, or a value that isn't actually a date at all).
+export function dateRangeOf(value: unknown): DateRangeValue | null {
+  if (typeof value === 'string' && value) return { start: value };
+  if (value && typeof value === 'object' && 'start' in value && typeof (value as DateRangeValue).start === 'string') {
+    return value as DateRangeValue;
+  }
+  return null;
+}
+
+function formatDateKey(key: string): string {
+  return key.split('-').reverse().join('.');
+}
+
+// "12.03" for one day, "12.03–15.03" for a date range, plus a time part
+// when either time is set - "12.03 08:00–18:00" for a same-day trip with
+// a departure and return time, "12.03 08:00–15.03 18:00" once the dates
+// differ too, and just "12.03 08:00" when start and end time are the same
+// (nothing meaningful to show as a span).
+export function formatDateRange(range: DateRangeValue): string {
+  const sameDay = !range.end || range.end === range.start;
+  const dayPart = sameDay ? formatDateKey(range.start) : `${formatDateKey(range.start)}–${formatDateKey(range.end!)}`;
+  if (!range.startTime && !range.endTime) return dayPart;
+  if (sameDay) {
+    if (range.startTime && range.endTime && range.startTime !== range.endTime) {
+      return `${dayPart} ${range.startTime}–${range.endTime}`;
+    }
+    return `${dayPart} ${range.startTime ?? range.endTime}`;
+  }
+  const startLabel = formatDateKey(range.start) + (range.startTime ? ` ${range.startTime}` : '');
+  const endLabel = formatDateKey(range.end!) + (range.endTime ? ` ${range.endTime}` : '');
+  return `${startLabel}–${endLabel}`;
+}
+
+// Everything a custom-database row needs in order to be rendered anywhere
+// outside its own screen: the Photos a 'relation' field can point at, plus
+// the field defs and rows of whichever OTHER databases its relation fields
+// reference. CustomDatabaseScreen already holds all three as live state;
+// useCustomRowData subscribes to the same three for a single row embedded
+// in a document. Missing entries are never an error - they just resolve to
+// a neutral label, which is what an offline/not-yet-loaded target looks
+// like too.
+export type RowDisplayContext = {
+  photos: { id: string; imageUri: string; title?: string; driveFileId?: string }[];
+  // The built-in Files database, for a relation pointing at it. No image
+  // to show, so a resolved file is a label only.
+  files: { id: string; title?: string; fileName?: string }[];
+  // The three link databases in their one collection - the category is
+  // computed from siteName by whoever fills this, same as everywhere else.
+  links: { id: string; url: string; title?: string; imageUrl?: string; category: LinkCategory }[];
+  relatedDatabases: Record<string, CustomDatabase>;
+  relatedRows: Record<string, CustomDatabaseRow[]>;
+};
+
+export type ResolvedRelation = { label: string; thumbUri?: string; driveFileId?: string };
+
+export const EMPTY_ROW_DISPLAY_CONTEXT: RowDisplayContext = {
+  photos: [],
+  files: [],
+  links: [],
+  relatedDatabases: {},
+  relatedRows: {},
+};
+
+// A database's cover field, if it has one - the single 'relation' field
+// marked isCover, whose target renders as a thumbnail instead of text.
+export function coverFieldOf(database: CustomDatabase | null | undefined): FieldDef | null {
+  const cover = database?.fields.find((f) => f.type === 'relation' && f.isCover);
+  // A hidden cover field hides its thumbnail too - "приховати" means
+  // everywhere, and a card with no cover simply falls back to text.
+  return cover && !cover.hidden ? cover : null;
+}
+
+// The fields a VIEW should draw, in order. The row form deliberately does
+// NOT use this: hiding a field must not make it impossible to give it a
+// value.
+export function visibleFieldsOf(database: CustomDatabase | null | undefined): FieldDef[] {
+  // A 'section' is a heading, not a value - it has nothing to show in a
+  // list, a card chip or a table column.
+  return (database?.fields ?? []).filter((f) => !f.hidden && f.type !== 'section');
+}
+
+// Which field types may be appended to the name - ones whose stored value
+// is already its display text. A select or relation stores an id, and this
+// function has no context to resolve it against.
+export function canJoinTitle(type: FieldDef['type']): boolean {
+  return type === 'text' || type === 'number' || type === 'date';
+}
+
+// The row's name: the title field, plus every field flagged inTitle, in
+// field order. Composed at display time rather than baked into a value, so
+// a hand-added row follows the same rule as an imported one and editing a
+// part (a plate, say) updates the name everywhere at once.
+export function rowTitleOf(database: CustomDatabase | null | undefined, row: CustomDatabaseRow | null | undefined): string {
+  const fields = database?.fields ?? [];
+  const titleFieldId = fields[0]?.id;
+  if (!row || !titleFieldId) return 'Без назви';
+  const parts = [String(row.values[titleFieldId] ?? '').trim()];
+  fields.slice(1).forEach((field) => {
+    if (!field.inTitle || !canJoinTitle(field.type)) return;
+    const raw = row.values[field.id];
+    if (raw === undefined || raw === null || raw === '') return;
+    // A date is stored as its dateKey or a DateRangeValue; everything else
+    // here is already the text it should read as.
+    const range = field.type === 'date' ? dateRangeOf(raw) : null;
+    parts.push(range ? formatDateRange(range) : String(raw).trim());
+  });
+  return parts.filter((p) => p !== '').join(' · ') || 'Без назви';
+}
+
+// A relation field holds one id or, once it's a gallery, an array of
+// them. The cover is whichever comes first: a card has room for exactly
+// one picture, and a field the user turned into a gallery after picking a
+// cover must not silently lose that cover.
+export function firstRelationId(value: string | number | string[] | DateRangeValue | undefined): string | undefined {
+  if (Array.isArray(value)) return value.find((v) => typeof v === 'string' && v !== '');
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+// What a relation field's stored target id (row.values[field.id]) should
+// show - a label, and a thumbnail when one is available. A 'customDb'
+// target is resolved one level further, into its OWN cover, so a
+// relation-to-a-relation still surfaces a real photo rather than just a
+// name; deliberately no deeper than that one extra hop.
+export function resolveRelationValue(
+  field: FieldDef,
+  targetId: string | undefined,
+  ctx: RowDisplayContext
+): ResolvedRelation | null {
+  if (!targetId) return null;
+  const target = field.relationTarget;
+  if (!target || target.kind === 'photos') {
+    const photo = ctx.photos.find((p) => p.id === targetId);
+    if (!photo) return { label: 'Фото' };
+    return { label: photo.title || 'Фото', thumbUri: photo.imageUri, driveFileId: photo.driveFileId };
+  }
+  if (target.kind === 'links') {
+    const link = ctx.links.find((l) => l.id === targetId);
+    if (!link) return { label: 'Посилання' };
+    // A link's preview picture is a real thumbnail - and an expiring one
+    // for TikTok, which the live-record overlay refreshes in place.
+    return { label: link.title || link.url, thumbUri: link.imageUrl };
+  }
+  if (target.kind === 'files') {
+    const file = ctx.files.find((f) => f.id === targetId);
+    if (!file) return { label: 'Файл' };
+    return { label: file.title || file.fileName || 'Файл' };
+  }
+  const targetDb = ctx.relatedDatabases[target.databaseId];
+  const targetRow = ctx.relatedRows[target.databaseId]?.find((r) => r.id === targetId);
+  if (!targetDb || !targetRow) return { label: 'Запис' };
+  const label = rowTitleOf(targetDb, targetRow);
+  const targetCoverField = coverFieldOf(targetDb);
+  if (targetCoverField?.relationTarget?.kind === 'photos') {
+    const coverTargetId = firstRelationId(targetRow.values[targetCoverField.id]);
+    if (coverTargetId) {
+      const photo = ctx.photos.find((p) => p.id === coverTargetId);
+      if (photo) return { label, thumbUri: photo.imageUri, driveFileId: photo.driveFileId };
+    }
+  }
+  return { label };
+}
+
+// The rows on the other end of a 'backlink' field: every row of the source
+// database whose own relation field currently points at `rowId`. Computed,
+// never stored - which is exactly why the two sides can't disagree, and
+// why turning a backlink off leaves nothing behind to clean up.
+export function resolveBacklinkRows(
+  field: FieldDef,
+  rowId: string,
+  ctx: RowDisplayContext
+): CustomDatabaseRow[] {
+  const source = field.backlinkSource;
+  if (!source || !rowId) return [];
+  return (ctx.relatedRows[source.databaseId] ?? []).filter((r) => r.values[source.fieldId] === rowId);
+}
+
+// One field's value as display text - '' for an empty one, which is what
+// callers filter on to decide whether it's worth showing at all.
+export function displayFieldValue(
+  field: FieldDef,
+  value: string | number | string[] | DateRangeValue | undefined,
+  ctx: RowDisplayContext
+): string {
+  if (value === undefined || value === null || value === '') return '';
+  if (field.type === 'date') {
+    const range = dateRangeOf(value);
+    return range ? formatDateRange(range) : '';
+  }
+  if ((field.type === 'select' || field.type === 'multiSelect') && field.options) {
+    const ids = Array.isArray(value) ? value : [value as string];
+    return ids
+      .map((id) => field.options?.find((o) => o.id === id)?.label)
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (field.type === 'relation') {
+    // A gallery's chip is its count - several names joined would swamp a
+    // card, and the pictures themselves are the point anyway.
+    if (field.multiple || Array.isArray(value)) {
+      const count = resolveRelationList(field, value, ctx).length;
+      return count > 0 ? String(count) : '';
+    }
+    if (typeof value === 'string') return resolveRelationValue(field, value, ctx)?.label ?? '';
+    return '';
+  }
+  return String(value);
+}
+
+// Every target of a relation field, whether it holds one id or an array -
+// one shape for both so callers don't branch on `multiple` themselves.
+export function resolveRelationList(
+  field: FieldDef,
+  value: string | number | string[] | DateRangeValue | undefined,
+  ctx: RowDisplayContext
+): ResolvedRelation[] {
+  const ids = Array.isArray(value) ? value : typeof value === 'string' && value ? [value] : [];
+  return ids.map((id) => resolveRelationValue(field, id, ctx)).filter((r): r is ResolvedRelation => r !== null);
+}
+
+export type RowDisplay = {
+  title: string;
+  // null when the database has a cover field but this row hasn't picked
+  // one; undefined when the database has no cover field at all - the card
+  // draws a placeholder for the first and nothing for the second.
+  cover: ResolvedRelation | null | undefined;
+  // Every filled field past the title, except the cover (which is already
+  // the thumbnail) - the card shows these as type-icon + value.
+  chips: { field: FieldDef; shown: string }[];
+};
+
+export function buildRowDisplay(
+  database: CustomDatabase | null | undefined,
+  row: CustomDatabaseRow | null | undefined,
+  ctx: RowDisplayContext
+): RowDisplay {
+  if (!database || !row) return { title: rowTitleOf(database, row), cover: undefined, chips: [] };
+  const cover = coverFieldOf(database);
+  const coverRaw = cover ? firstRelationId(row.values[cover.id]) : undefined;
+  return {
+    title: rowTitleOf(database, row),
+    cover: !cover ? undefined : coverRaw ? resolveRelationValue(cover, coverRaw, ctx) : null,
+    chips: database.fields
+      .slice(1)
+      .filter((f) => !f.hidden && f.type !== 'section' && f.id !== cover?.id)
+      .map((f) => ({
+        field: f,
+        // A backlink holds nothing in row.values - its "value" is however
+        // many rows currently point here, so a card shows that count
+        // rather than trying to list them all in a chip.
+        shown:
+          f.type === 'backlink'
+            ? String(resolveBacklinkRows(f, row.id, ctx).length || '')
+            : displayFieldValue(f, row.values[f.id], ctx),
+      }))
+      .filter((entry) => entry.shown !== ''),
+  };
+}

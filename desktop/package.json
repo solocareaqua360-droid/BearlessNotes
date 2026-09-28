@@ -1,0 +1,28 @@
+{
+  "name": "mindeva-desktop",
+  "productName": "mindEva",
+  "version": "1.0.0",
+  "private": true,
+  "description": "macOS shell for mindEva. Serves the Expo web export from localhost so the existing Google OAuth origins keep working.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "latest",
+    "electron-builder": "latest"
+  },
+  "build": {
+    "appId": "com.bearlessnotes.notes.desktop",
+    "productName": "mindEva",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["main.js", "app/**/*"],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [{ "target": "dir", "arch": ["arm64"] }],
+      "icon": "build/icon.icns",
+      "identity": null
+    }
+  }
+}

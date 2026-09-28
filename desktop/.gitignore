@@ -1,0 +1,13 @@
+# Electron's own dependencies. Deliberately NOT added to the repository's
+# root .gitignore: that file is one of the inputs expo-updates hashes into
+# the runtime version, so editing it would change the Android fingerprint
+# and cut the phone off from OTA updates. A nested .gitignore is not
+# hashed and does the same job.
+node_modules/
+
+# The web export, copied in by scripts/build-mac.sh. Same reasoning as
+# web-build/ at the root: generated, never committed.
+app/
+
+# electron-builder's output.
+release/

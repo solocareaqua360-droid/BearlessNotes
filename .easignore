@@ -1,0 +1,29 @@
+# EAS local builds run with EAS_NO_VCS=1 so that google-services.json (git-ignored,
+# it holds the Firebase Android config) still reaches the build. Everything else
+# mirrors .gitignore.
+.git/
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+*.pem
+.env
+.env*.local
+GoogleService-Info.plist
+*.tsbuildinfo
+/ios
+/android
+*.apk
