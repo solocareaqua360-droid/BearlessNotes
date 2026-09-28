@@ -99,7 +99,8 @@ function CaptureStage({
           try {
             const shot = await captureRef(stageRef, { format: 'jpg', quality: 0.75, result: 'tmpfile' });
             onDone(shot);
-          } catch {
+          } catch (e) {
+            console.warn('[board preview] captureRef failed', e);
             onDone(null);
           }
         }, 180);

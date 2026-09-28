@@ -2654,19 +2654,48 @@ export default function BoardScreen() {
       connectionsRef.current,
       shapesRef.current
     );
-    if (!uri) return;
-    // Quietly, the same order every other attachment's backup uses - a
-    // failed upload leaves the board with no cached picture rather than
-    // failing anything the user can see; the list falls back to
-    // BoardMiniMap meanwhile.
+    if (!uri) {
+      console.warn('[board preview] capture returned no uri', boardId);
+      return;
+    }
+    // Written down FIRST, on its own - a local uri is already enough for
+    // THIS device (AttachmentImage reads a local uri before ever asking
+    // Drive for it), and gating the write on the Drive upload meant a
+    // device with no active Drive connection got no picture at all, ever
+    // - not stale, not missing the new lines/shapes, just permanently
+    // absent, because backupFileToDrive returning null (not signed in,
+    // offline, the hourly Drive reconnect lapsed) made this whole
+    // function a no-op. The driveFileId - what a DIFFERENT device needs -
+    // is patched in afterward, quietly, if the upload succeeds.
+    updateDoc(doc(db, 'boards', boardId), { previewImageUri: uri });
     const uploaded = await backupFileToDrive(uri, `preview-${boardId}.jpg`, 'image/jpeg', 'Photos');
-    if (!uploaded) return;
-    updateDoc(doc(db, 'boards', boardId), {
-      previewImageUri: uri,
-      previewDriveFileId: uploaded.fileId,
-    });
+    if (!uploaded) {
+      console.warn('[board preview] Drive backup failed - this device still shows it, others will not yet', boardId);
+      return;
+    }
+    updateDoc(doc(db, 'boards', boardId), { previewDriveFileId: uploaded.fileId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, boardPreviewCapture.capture]);
+
+  // A SAFETY CAPTURE, taken while still ON the board - the leave-effect
+  // below fires on this screen BLURRING, which is the moment navigation
+  // has already started tearing it down, and the off-screen capture it
+  // kicks off (mount -> layout -> a short wait -> captureRef, a few
+  // hundred ms) can lose that race and never finish, silently, if the
+  // screen unmounts first. This debounced capture runs a few seconds
+  // after the last real edit SETTLES, while the screen is still
+  // definitely mounted and focused - the leave-effect then only has to
+  // catch whatever changed in that last short window before leaving.
+  const previewCaptureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!isLoaded || !canUndo) return;
+    if (previewCaptureTimeoutRef.current) clearTimeout(previewCaptureTimeoutRef.current);
+    previewCaptureTimeoutRef.current = setTimeout(capturePreview, 4000);
+    return () => {
+      if (previewCaptureTimeoutRef.current) clearTimeout(previewCaptureTimeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards, connections, columns, shapes, isLoaded, canUndo, capturePreview]);
 
   const refreshDocumentPreviews = useCallback(async () => {
     const documentIds = [
