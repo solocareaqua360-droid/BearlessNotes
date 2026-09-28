@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
-import Animated, { Easing, Extrapolation, interpolate, runOnJS, SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost, { FlatFrostContext } from './DockFrost';
 import { GlassPortal } from './GlassPortal';
@@ -230,13 +230,24 @@ export default function TopNavBar({
     transform: [{ translateX: -(frame.left + SIDE_W) * expand.value }],
     opacity: interpolate(expand.value, [0, 0.6], [1, 0], Extrapolation.CLAMP),
   }));
+  // The plate itself grows - the same plate, the same frame inside it -
+  // over the way back and out to the bar's far end; "⋯" is pushed along
+  // by it and then on past the edge.
   const clusterAway = useAnimatedStyle(() => ({
-    transform: [{ translateX: (rightMargin + clusterWidth) * expand.value }],
+    transform: [{ translateX: rightMargin * expand.value }],
     opacity: interpolate(expand.value, [0, 0.6], [1, 0], Extrapolation.CLAMP),
   }));
-  // A surface that moves takes no live blur (DockFrost's own rule): the
-  // two ends go flat for as long as they are being pushed about.
-  const endsBlur = !searchShown;
+  const plateGrow = useAnimatedStyle(() => ({
+    marginLeft: -(SIDE_W + GAP) * expand.value,
+    width: plateWidth + (frame.width - plateWidth) * expand.value,
+  }));
+  const rowsAway = useAnimatedStyle(() => ({
+    opacity: interpolate(expand.value, [0, 0.4], [1, 0], Extrapolation.CLAMP),
+  }));
+  const searchIn = useAnimatedStyle(() => ({
+    opacity: interpolate(expand.value, [0.3, 1], [0, 1], Extrapolation.CLAMP),
+  }));
+  const plateFrost = hasMiddle || searchShown;
 
   const Layer = inline ? InlineLayer : PortalLayer;
   return (
@@ -254,7 +265,7 @@ export default function TopNavBar({
           accessibilityLabel="Назад"
           style={{ width: SIDE_W, height: TOP_NAV_H }}
         >
-          <DockFrost style={[styles.piece, lift]} radius={corners.plate} blur={endsBlur}>
+          <DockFrost style={[styles.piece, lift]} radius={corners.plate}>
             <Ionicons
               name={(back?.icon ?? 'arrow-back') as keyof typeof Ionicons.glyphMap}
               size={21}
@@ -268,11 +279,12 @@ export default function TopNavBar({
         {/* The plate, and on it whichever of the two rows is in front -
             or, with neither a title nor desks to show, no plate at all:
             just the room it would have taken, between the two ends. */}
-        <View style={[styles.plate, hasMiddle && lift, { width: plateWidth, borderRadius: hasMiddle ? corners.plate : 0 }]}>
-          {hasMiddle && (
+        <Animated.View style={[styles.plate, plateFrost && lift, { borderRadius: plateFrost ? corners.plate : 0 }, plateGrow]}>
+          {plateFrost && (
             <>
               <DockFrost style={StyleSheet.absoluteFill} radius={corners.plate} />
               <View style={[styles.viewport, { borderRadius: corners.piece }]}>
+                <Animated.View style={[StyleSheet.absoluteFill, rowsAway]} pointerEvents={searchShown ? 'none' : 'box-none'}>
                 <Animated.View
                   style={[styles.layer, desksStyle]}
                   pointerEvents={path ? 'none' : 'box-none'}
@@ -311,10 +323,22 @@ export default function TopNavBar({
                     <PathRow path={shownPath} radius={corners.piece} ink={theme.glass.ink} inkMuted={theme.glass.inkMuted} />
                   </Animated.View>
                 )}
+                </Animated.View>
+                {searchShown && lastSearch.current && (
+                  <Animated.View style={[styles.layer, searchIn]} pointerEvents={searchOpen ? 'box-none' : 'none'}>
+                    <SearchRow
+                      key={lastSearch.current.placeholder}
+                      search={lastSearch.current}
+                      radius={corners.piece}
+                      ink={theme.glass.ink}
+                      inkMuted={theme.glass.inkMuted}
+                    />
+                  </Animated.View>
+                )}
               </View>
             </>
           )}
-        </View>
+        </Animated.View>
 
         {/* "⋯", choosing and (on a Fold pane) expand/collapse as ONE
             piece - "дві кнопки об'єднати": one plate, a hairline between
@@ -325,7 +349,7 @@ export default function TopNavBar({
             pointerEvents={searchShown ? 'none' : 'auto'}
             style={[styles.cluster, lift, { width: clusterWidth, borderRadius: corners.plate }, clusterAway]}
           >
-            <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} blur={endsBlur} />
+            <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} />
             {[
               ...(extras?.tools ?? []).map((t) => ({
                 key: `tool:${t.key}`,
@@ -367,21 +391,6 @@ export default function TopNavBar({
             <SaveRing saving={!!saving} color={theme.glass.ink} radius={corners.plate} />
           </Animated.View>
         )}
-
-        {searchShown && lastSearch.current && (
-          <SearchPlate
-            key={lastSearch.current.placeholder}
-            search={lastSearch.current}
-            open={searchOpen}
-            expand={expand}
-            fromLeft={SIDE_W + GAP}
-            fromWidth={plateWidth}
-            fullWidth={frame.width}
-            radius={corners.plate}
-            ink={theme.glass.ink}
-            inkMuted={theme.glass.inkMuted}
-          />
-        )}
       </Animated.View>
       </FlatFrostContext.Provider>
     </Layer>
@@ -411,43 +420,13 @@ function InlineLayer({ children }: { children: ReactNode }) {
   );
 }
 
-// The field the name plate opens into: it grows out of the plate's own
-// place to the bar's whole width. Flat material - it moves while it
-// opens, and a text field wants the denser fill anyway. It keeps what is
-// typed itself and hands every change to the screen.
-function SearchPlate({
-  search,
-  open,
-  expand,
-  fromLeft,
-  fromWidth,
-  fullWidth,
-  radius,
-  ink,
-  inkMuted,
-}: {
-  search: TopSearch;
-  open: boolean;
-  expand: SharedValue<number>;
-  fromLeft: number;
-  fromWidth: number;
-  fullWidth: number;
-  radius: number;
-  ink: string;
-  inkMuted: string;
-}) {
+// The field inside the plate: the same frame the name sits in, holding
+// the input instead. It keeps what is typed itself and hands every change
+// to the screen.
+function SearchRow({ search, radius, ink, inkMuted }: { search: TopSearch; radius: number; ink: string; inkMuted: string }) {
   const [text, setText] = useState(search.initialQuery);
-  const grow = useAnimatedStyle(() => ({
-    left: fromLeft * (1 - expand.value),
-    width: fromWidth + (fullWidth - fromWidth) * expand.value,
-    opacity: interpolate(expand.value, [0, 0.25], [0, 1], Extrapolation.CLAMP),
-  }));
   return (
-    <Animated.View
-      pointerEvents={open ? 'auto' : 'none'}
-      style={[styles.searchPlate, { borderRadius: radius }, grow]}
-    >
-      <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={radius} blur={false} />
+    <DockFrost style={[styles.piece, styles.searchPiece]} radius={radius}>
       <Ionicons name="search" size={19} color={inkMuted} />
       <TextInput
         autoFocus
@@ -464,7 +443,7 @@ function SearchPlate({
       <Pressable hitSlop={8} onPress={search.onClose} accessibilityLabel="Закрити пошук" style={styles.searchClose}>
         <Ionicons name="close" size={20} color={ink} />
       </Pressable>
-    </Animated.View>
+    </DockFrost>
   );
 }
 
@@ -737,27 +716,22 @@ const styles = StyleSheet.create({
   titlePress: {
     flex: 1,
   },
-  searchPlate: {
-    position: 'absolute',
-    top: 0,
-    height: TOP_NAV_H,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingLeft: 16,
-    paddingRight: 6,
-    gap: 10,
-    overflow: 'hidden',
+  searchPiece: {
+    justifyContent: 'flex-start',
+    paddingLeft: 12,
+    paddingRight: 2,
+    gap: 8,
   },
   searchInput: {
     flex: 1,
-    height: TOP_NAV_H,
+    height: PIECE_H,
     paddingVertical: 0,
     fontSize: 16,
     fontFamily: FONT_REGULAR,
   },
   searchClose: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -48,6 +48,7 @@ import { RootStackParamList } from '../navigation';
 import { detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
 import { useDatabaseList } from '../hooks/useDatabaseList';
 import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
+import Animated from 'react-native-reanimated';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
@@ -1478,7 +1479,7 @@ export default function DocumentsScreen({
             </View>
           ) : (
             <GestureDetector gesture={drawerSwipe}>
-            <View style={{ flex: 1 }}>
+            <Animated.View style={[{ flex: 1 }, pull.pullStyle]}>
             <GestureDetector gesture={pull.gesture}>
             <FlatList
               {...pull.listProps}
@@ -1545,7 +1546,7 @@ export default function DocumentsScreen({
               }}
             />
             </GestureDetector>
-            </View>
+            </Animated.View>
             </GestureDetector>
           )
         ) : showingStickers ? (
@@ -1596,7 +1597,7 @@ export default function DocumentsScreen({
           </View>
         ) : (
           <GestureDetector gesture={drawerSwipe}>
-            <View style={{ flex: 1 }}>
+            <Animated.View style={[{ flex: 1 }, pull.pullStyle]}>
             <GestureDetector gesture={pull.gesture}>
             <GestureDetector gesture={carrying.listGesture}>
           <FlatList
@@ -1843,7 +1844,7 @@ export default function DocumentsScreen({
           />
           </GestureDetector>
           </GestureDetector>
-            </View>
+            </Animated.View>
             </GestureDetector>
         )}
 

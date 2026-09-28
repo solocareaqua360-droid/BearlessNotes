@@ -8,7 +8,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import { SharedValue } from 'react-native-reanimated';
+import Animated, { SharedValue } from 'react-native-reanimated';
 import { DatabaseList } from '../hooks/useDatabaseList';
 import { GlassPortal } from './GlassPortal';
 import Menu from './surfaces/Menu';
@@ -647,14 +647,16 @@ export default function DatabaseChrome<T extends { id: string }>({
           // the drawer's pan fails before it activates unless the finger
           // went down in its band and moved clearly sideways, and the pull
           // fails as soon as the movement reads as horizontal.
-          <GestureDetector gesture={listGesture}>
-            {children(
-              list.tagFilter || (list.isSearching && !topNav) ? 0 : chromeBottom,
-              pull.listProps,
-              Math.max(0, columnWidth - 20),
-              pull.scrollY
-            )}
-          </GestureDetector>
+          <Animated.View style={[styles.pullBox, pull.pullStyle]}>
+            <GestureDetector gesture={listGesture}>
+              {children(
+                list.tagFilter || (list.isSearching && !topNav) ? 0 : chromeBottom,
+                pull.listProps,
+                Math.max(0, columnWidth - 20),
+                pull.scrollY
+              )}
+            </GestureDetector>
+          </Animated.View>
         )}
     </>
   );
@@ -760,6 +762,9 @@ export const menuStyles = StyleSheet.create({
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  pullBox: {
     flex: 1,
   },
   emptySearch: {

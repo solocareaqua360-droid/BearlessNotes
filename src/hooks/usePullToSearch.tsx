@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Keyboard, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
-import { runOnJS, useSharedValue } from 'react-native-reanimated';
+import { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { hapticButtonDown } from '../utils/haptics';
 
 // Pull the list down from its top and the search field comes out - but
@@ -20,9 +20,21 @@ import { hapticButtonDown } from '../utils/haptics';
 // (Gesture.Native) and run the pan SIMULTANEOUSLY with it. The list keeps
 // every touch and goes on scrolling and stretching exactly as before; the
 // pan only measures alongside it.
-// 220, not 140 - the user asked for a longer pull
-// ("розтягування при свайпі вниз повинно бути довшим").
-const PULL_TO_OPEN = 220;
+// A long pull, and one you can SEE being pulled: Android's own stretch
+// plays out in the first few centimetres, so the buzz used to come while
+// the finger still felt it had barely started ("вібро відгук відбувався
+// занадто швидко і нема відчуття що ти тягнув"). The list now follows
+// the finger itself, with resistance, all the way to the point where
+// search opens.
+const PULL_TO_OPEN = 280;
+
+// The list's own travel for a pull of `t`: follows closely at first,
+// then harder and harder to drag - a rubber band, never a stop.
+function rubberBand(t: number): number {
+  'worklet';
+  if (t <= 0) return 0;
+  return (t * 0.6) / (1 + t / 400);
+}
 
 export function usePullToSearch(onPull: () => void) {
   // Shared values, not refs: these are read inside gesture callbacks,
@@ -31,6 +43,7 @@ export function usePullToSearch(onPull: () => void) {
   const atTop = useSharedValue(true);
   const armed = useSharedValue(false);
   const fired = useSharedValue(false);
+  const pulled = useSharedValue(0);
 
   const gesture = useMemo(() => {
     const list = Gesture.Native();
@@ -50,7 +63,9 @@ export function usePullToSearch(onPull: () => void) {
         fired.value = false;
       })
       .onUpdate((e) => {
-        if (!armed.value || fired.value) return;
+        if (!armed.value) return;
+        pulled.value = rubberBand(e.translationY);
+        if (fired.value) return;
         // Down, far enough that the stretch has already played out, and
         // not a sideways swipe between tabs that sagged a little.
         if (e.translationY > PULL_TO_OPEN && Math.abs(e.translationX) < 80) {
@@ -60,9 +75,14 @@ export function usePullToSearch(onPull: () => void) {
       })
       .onFinalize(() => {
         armed.value = false;
+        pulled.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
       });
     return Gesture.Simultaneous(list, pull);
   }, [onPull]);
+
+  // Put on a view AROUND the list's gesture detector (not on the list
+  // itself - the detector has to sit directly on the list).
+  const pullStyle = useAnimatedStyle(() => ({ transform: [{ translateY: pulled.value }] }));
 
   // How far the list has been scrolled, on the UI thread - what the
   // backdrop drifts by, so the glass over it has something moving to
@@ -84,7 +104,7 @@ export function usePullToSearch(onPull: () => void) {
     },
   };
 
-  return { gesture, listProps, scrollY };
+  return { gesture, listProps, scrollY, pullStyle };
 }
 
 // Opening it is a gesture; closing it is everything else.
