@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { BackHandler, InteractionManager, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import CalendarScreen from '../screens/CalendarScreen';
 import { CalendarDrawerContext, useSideDrawers } from '../navigation/sideDrawers';
 import { DockLayerContext } from '../navigation/navDock';
@@ -28,17 +29,27 @@ export const SIDE_DRAWER_FRACTION = 5 / 6;
 // blur target, so it is painted solid.
 export default function CalendarDrawer() {
   const theme = useTheme();
-  const { calendarOpen, closeCalendar } = useSideDrawers();
+  const { calendarOpen, closeCalendar, calendarProgress } = useSideDrawers();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const width = Math.round(windowWidth * SIDE_DRAWER_FRACTION);
-  // Mounted the first time it is opened, and kept: the day, the month and
-  // the note stay where they were left, the way a desk does.
+  // Mounted AHEAD of the first swipe - once the app has settled - and
+  // kept: building the whole calendar at the moment of the first swipe
+  // is a stall under the finger. The day, the month and the note then
+  // stay where they were left, the way a desk does.
   const [mounted, setMounted] = useState(false);
-  const progress = useSharedValue(0);
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setMounted(true));
+    return () => task.cancel();
+  }, []);
+  const fallback = useSharedValue(0);
+  const progress = calendarProgress ?? fallback;
 
+  // Opened or shut from anywhere but a swipe (back, the dim, the bar's
+  // arrow): the drawer finishes the way there on its own. A swipe has
+  // already put it where it is going, so this only settles it.
   useEffect(() => {
     if (calendarOpen) setMounted(true);
-    progress.value = withTiming(calendarOpen ? 1 : 0, { duration: 260, easing: Easing.out(Easing.cubic) });
+    progress.value = withTiming(calendarOpen ? 1 : 0, { duration: 200, easing: Easing.out(Easing.cubic) });
   }, [calendarOpen, progress]);
 
   useEffect(() => {
@@ -53,6 +64,23 @@ export default function CalendarDrawer() {
   const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: (progress.value - 1) * width }] }), [width]);
   const dimStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
   const frame = useMemo(() => ({ width, height: windowHeight }), [width, windowHeight]);
+  // Shut by a swipe to the LEFT, following the finger the same way it
+  // opened. Only a clearly sideways drag: up and down is the calendar's.
+  const closeSwipe = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX(-14)
+        .failOffsetY([-12, 12])
+        .onUpdate((e) => {
+          progress.value = Math.min(1, Math.max(0, 1 + e.translationX / width));
+        })
+        .onEnd((e) => {
+          const shut = e.translationX < -width * 0.3 || e.velocityX < -500;
+          progress.value = withTiming(shut ? 0 : 1, { duration: 180, easing: Easing.out(Easing.cubic) });
+          if (shut) runOnJS(closeCalendar)();
+        }),
+    [progress, width, closeCalendar]
+  );
   const drawer = useMemo(() => ({ open: calendarOpen, close: closeCalendar }), [calendarOpen, closeCalendar]);
 
   if (!mounted) return null;
@@ -64,6 +92,7 @@ export default function CalendarDrawer() {
       >
         <Pressable style={StyleSheet.absoluteFill} onPress={closeCalendar} />
       </Animated.View>
+      <GestureDetector gesture={closeSwipe}>
       <Animated.View
         style={[styles.panel, { width, backgroundColor: theme.ground }, panelStyle]}
         pointerEvents={calendarOpen ? 'auto' : 'none'}
@@ -76,6 +105,7 @@ export default function CalendarDrawer() {
           </DockLayerContext.Provider>
         </LayoutFrameContext.Provider>
       </Animated.View>
+      </GestureDetector>
     </View>
   );
 }

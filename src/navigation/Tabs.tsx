@@ -2,9 +2,9 @@ import { useMemo } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS, useSharedValue } from 'react-native-reanimated';
+import { Easing, runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 import FloatingIslandTabBar from '../components/FloatingIslandTabBar';
-import CalendarDrawer from '../components/CalendarDrawer';
+import CalendarDrawer, { SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
 import { SideDrawersProvider, useSideDrawers } from './sideDrawers';
 import { TAB_SCREENS } from './tabScreens';
 
@@ -32,8 +32,9 @@ export default function Tabs() {
 }
 
 function TabsWithDrawers() {
-  const { openCalendar, calendarOpen, swipeBlocked } = useSideDrawers();
-  const { height } = useWindowDimensions();
+  const { openCalendar, calendarOpen, swipeBlocked, calendarProgress } = useSideDrawers();
+  const { width, height } = useWindowDimensions();
+  const drawerWidth = Math.round(width * SIDE_DRAWER_FRACTION);
   const bandTop = height * (0.5 - BAND / 2);
   const bandBottom = height * (0.5 + BAND / 2);
   const startX = useSharedValue(0);
@@ -74,10 +75,19 @@ function TabsWithDrawers() {
             else state.activate();
           }
         })
+        // The drawer follows the finger from the moment the swipe is
+        // recognised, measured from where it was recognised.
+        .onUpdate((e) => {
+          if (!calendarProgress) return;
+          calendarProgress.value = Math.min(1, Math.max(0, e.translationX / drawerWidth));
+        })
         .onEnd((e) => {
-          if (e.translationX > 60 || e.velocityX > 500) runOnJS(openCalendar)();
+          if (!calendarProgress) return;
+          const open = e.translationX > drawerWidth * 0.3 || e.velocityX > 500;
+          calendarProgress.value = withTiming(open ? 1 : 0, { duration: 180, easing: Easing.out(Easing.cubic) });
+          if (open) runOnJS(openCalendar)();
         }),
-    [blocked, bandTop, bandBottom, openCalendar, startX, startY, startAt]
+    [blocked, bandTop, bandBottom, openCalendar, startX, startY, startAt, calendarProgress, drawerWidth]
   );
 
   return (
