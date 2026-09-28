@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import BoardMiniMap from './BoardMiniMap';
@@ -20,10 +20,24 @@ import { BoardCard, BoardColumn, BoardConnection, BoardShape } from '../types';
 export const BOARD_PREVIEW_W = 640;
 export const BOARD_PREVIEW_H = 460;
 
-// The exact same off-screen-mount-then-capture shape `useFlattenPhoto`
-// already uses for the sketch-on-photo flatten - proven on this app,
-// no native module beyond what is already installed (`react-native-
-// view-shot`, wired in since the sketch feature).
+// MOUNTED ONCE AT THE APP ROOT (`BoardPreviewCaptureHost` in App.tsx),
+// the same "module-level listener, opened from anywhere" shape as
+// AskHost and CaptureWindow's own `openCapture`.
+//
+// The first version of this held its off-screen stage INSIDE BoardScreen
+// itself, captured on that screen's own leave-effect - which is the
+// worst possible place for it: `useFocusEffect`'s cleanup fires on this
+// screen BLURRING, which is already mid-teardown by the time navigation
+// finishes, so the mount -> layout -> wait -> captureRef chain
+// (a few hundred ms) could lose that race and simply never complete.
+// Confirmed on-device: what got saved was "картки... зафіксуватися не в
+// тому положенні, в якому я їх залишив" - not the leave-moment's real
+// state, but whatever the LAST capture that happened to survive caught,
+// which could be an earlier, half-finished arrangement.
+//
+// Living here instead - a component that never unmounts while the app
+// is open - the capture always runs to completion regardless of which
+// screen asked for it or what it does next.
 type CaptureRequest = {
   cards: BoardCard[];
   columns: BoardColumn[];
@@ -32,31 +46,39 @@ type CaptureRequest = {
   resolve: (uri: string | null) => void;
 };
 
-export function useBoardPreviewCapture() {
+let requestCapture: ((req: CaptureRequest) => void) | null = null;
+
+// Null when there is nothing worth a picture of (an empty board), the
+// host isn't mounted yet (should not happen - it lives at the app root),
+// or the capture itself failed - callers treat all three as "no preview
+// yet", not as an error; BoardMiniMap keeps drawing the live map
+// meanwhile.
+export function captureBoardPreview(
+  cards: BoardCard[],
+  columns: BoardColumn[],
+  connections: BoardConnection[],
+  shapes: BoardShape[]
+): Promise<string | null> {
+  if (cards.length === 0 && columns.length === 0 && shapes.length === 0) return Promise.resolve(null);
+  if (!requestCapture) {
+    console.warn('[board preview] capture host not mounted');
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => requestCapture!({ cards, columns, connections, shapes, resolve }));
+}
+
+export default function BoardPreviewCaptureHost() {
   const [request, setRequest] = useState<CaptureRequest | null>(null);
 
-  // Null when there is nothing worth a picture of (an empty board) or the
-  // capture itself failed - callers treat that as "no preview yet", not
-  // as an error; BoardMiniMap keeps drawing the live map meanwhile.
-  //
-  // Stable identity (useCallback, empty deps - `setRequest` itself never
-  // changes): a caller that puts this in a useCallback's own deps must
-  // not see it as "changed" on every render, or every effect built on
-  // top of it would re-fire on every render too.
-  const capture = useCallback(
-    (
-      cards: BoardCard[],
-      columns: BoardColumn[],
-      connections: BoardConnection[],
-      shapes: BoardShape[]
-    ): Promise<string | null> => {
-      if (cards.length === 0 && columns.length === 0 && shapes.length === 0) return Promise.resolve(null);
-      return new Promise((resolve) => setRequest({ cards, columns, connections, shapes, resolve }));
-    },
-    []
-  );
+  useEffect(() => {
+    requestCapture = (req) => setRequest(req);
+    return () => {
+      requestCapture = null;
+    };
+  }, []);
 
-  const node = request ? (
+  if (!request) return null;
+  return (
     <View style={{ position: 'absolute', top: -100000, left: -100000 }} pointerEvents="none">
       <CaptureStage
         {...request}
@@ -66,9 +88,7 @@ export function useBoardPreviewCapture() {
         }}
       />
     </View>
-  ) : null;
-
-  return { capture, node };
+  );
 }
 
 function CaptureStage({

@@ -24,6 +24,7 @@ import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import { AskHost } from './src/components/surfaces/Ask';
 import CaptureWindow from './src/components/CaptureWindow';
+import BoardPreviewCaptureHost from './src/components/BoardMiniature';
 import { ThemeProvider, ThemedStatusBar, useTheme } from './src/theme/ThemeProvider';
 import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
@@ -158,6 +159,14 @@ export default function App() {
             <AlarmRingOverlay />
             {/* Inside the target too: it raises the naming dialog. */}
             <ShareIntentHandler />
+            {/* The board-preview capture rig - mounted ONCE, here, so it
+                never unmounts while a board that asked for a capture is
+                being left (see BoardMiniature's own long comment on
+                why that used to lose the race). Nothing to blur - it
+                draws off-screen only - so it does not need the target
+                either, but living beside the other app-root hosts is
+                where the next person looking for it will check first. */}
+            <BoardPreviewCaptureHost />
             {/* A render that throws used to take the whole app down on the
                 phone - "вилітає" is the only report anyone can make, and
                 it is the same report for every possible cause. The

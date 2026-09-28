@@ -92,7 +92,7 @@ import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
-import { useBoardPreviewCapture } from '../components/BoardMiniature';
+import { captureBoardPreview } from '../components/BoardMiniature';
 import ShapeBody, { SHAPE_STROKE, SHAPE_TEXT_SIZE_DEFAULT, SHAPE_LABEL_SIZE_DEFAULT } from '../components/BoardShapeBody';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useDensity } from '../hooks/useDensity';
@@ -2642,13 +2642,17 @@ export default function BoardScreen() {
   }, []);
 
   // THE BOARD'S OWN PICTURE (step 2 of the boards-list preview work) -
-  // see BoardMiniature. Captured once, on the way out, only when this
+  // see BoardMiniature (the capture rig itself lives at the app root now,
+  // `captureBoardPreview`, mounted once so it survives THIS screen
+  // unmounting - the earlier version owned it locally and lost the race
+  // often enough to save an arrangement from a bit before the real one:
+  // "картки можуть зафіксуватися не в тому положенні, в якому я їх
+  // залишив при виході"). Captured once, on the way out, only when this
   // visit changed something real (the leave-effect below checks
   // `canUndoRef`) - a screenshot of an unedited board would just repeat
   // whatever it already has, at the cost of an upload for nothing.
-  const boardPreviewCapture = useBoardPreviewCapture();
   const capturePreview = useCallback(async () => {
-    const uri = await boardPreviewCapture.capture(
+    const uri = await captureBoardPreview(
       cardsRef.current,
       columnsRef.current,
       connectionsRef.current,
@@ -2666,7 +2670,12 @@ export default function BoardScreen() {
     // absent, because backupFileToDrive returning null (not signed in,
     // offline, the hourly Drive reconnect lapsed) made this whole
     // function a no-op. The driveFileId - what a DIFFERENT device needs -
-    // is patched in afterward, quietly, if the upload succeeds.
+    // is patched in afterward, quietly, if the upload succeeds. Until it
+    // does, the picture is real (this device made it, this device shows
+    // it) but LOCAL ONLY - it will not reach another device or survive a
+    // reinstall the way the board's actual data (cards/text/connections,
+    // always in Firestore) already does; check "Підключити Диск" if a
+    // preview never gains its driveFileId.
     updateDoc(doc(db, 'boards', boardId), { previewImageUri: uri });
     const uploaded = await backupFileToDrive(uri, `preview-${boardId}.jpg`, 'image/jpeg', 'Photos');
     if (!uploaded) {
@@ -2674,28 +2683,7 @@ export default function BoardScreen() {
       return;
     }
     updateDoc(doc(db, 'boards', boardId), { previewDriveFileId: uploaded.fileId });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, boardPreviewCapture.capture]);
-
-  // A SAFETY CAPTURE, taken while still ON the board - the leave-effect
-  // below fires on this screen BLURRING, which is the moment navigation
-  // has already started tearing it down, and the off-screen capture it
-  // kicks off (mount -> layout -> a short wait -> captureRef, a few
-  // hundred ms) can lose that race and never finish, silently, if the
-  // screen unmounts first. This debounced capture runs a few seconds
-  // after the last real edit SETTLES, while the screen is still
-  // definitely mounted and focused - the leave-effect then only has to
-  // catch whatever changed in that last short window before leaving.
-  const previewCaptureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!isLoaded || !canUndo) return;
-    if (previewCaptureTimeoutRef.current) clearTimeout(previewCaptureTimeoutRef.current);
-    previewCaptureTimeoutRef.current = setTimeout(capturePreview, 4000);
-    return () => {
-      if (previewCaptureTimeoutRef.current) clearTimeout(previewCaptureTimeoutRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cards, connections, columns, shapes, isLoaded, canUndo, capturePreview]);
+  }, [boardId]);
 
   const refreshDocumentPreviews = useCallback(async () => {
     const documentIds = [
@@ -6528,11 +6516,6 @@ export default function BoardScreen() {
           icon="layers-outline"
           onEnterFolder={() => {}}
         />
-        {/* The off-screen host `capturePreview` renders into for the one
-            picture taken when this board is left with real edits - see
-            useBoardPreviewCapture. */}
-        {boardPreviewCapture.node}
-
         {/* A plain overlay View sibling of the gesture-driven canvas, not a
             Modal and not a child of the canvas - same reasoning as
             SketchEditor's own text-entry overlay: a Modal here would fight a

@@ -22,6 +22,7 @@ import RootNavigator from './src/AppNavigator';
 import { navigationRef } from './src/navigationRef';
 import { AskHost } from './src/components/surfaces/Ask';
 import CaptureWindow from './src/components/CaptureWindow';
+import BoardPreviewCaptureHost from './src/components/BoardMiniature';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
@@ -491,6 +492,10 @@ export default function App() {
                 if (navigationRef.isReady()) navigationRef.navigate('Chat');
               }}
             />
+            {/* See App.tsx: mounted once, here, so a board's own
+                leave-time capture never races this side's navigation
+                either. */}
+            <BoardPreviewCaptureHost />
               {/* The whole app, not the board alone - the same tree the
                   phone mounts, from src/AppNavigator. What the browser
                   leaves out is chosen file by file (.web siblings), not
