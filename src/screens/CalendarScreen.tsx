@@ -1533,7 +1533,8 @@ export default function CalendarScreen() {
           regardless - it's the embedded DocumentEditorScreen's own opaque
           white background, painted over this, not a separate override
           here. */}
-      <ScreenBackdrop id="calendarBg" />
+      {/* Over the desk the blurred desk IS the ground - see CalendarDrawer. */}
+      {!calendarDrawer && <ScreenBackdrop id="calendarBg" />}
 
       {!pointerDensity && (
       <Animated.View style={[styles.headerRow, { paddingTop: headerPadTop }, phoneOverview && overviewFadeStyle]}>

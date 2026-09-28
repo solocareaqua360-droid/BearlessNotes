@@ -1,38 +1,43 @@
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, RefObject, useContext, useEffect, useMemo, useState } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useIsFocused } from '@react-navigation/native';
-import { BackHandler, InteractionManager, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { BackHandler, InteractionManager, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { BlurView } from 'expo-blur';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import CalendarScreen from '../screens/CalendarScreen';
 import { CalendarDrawerContext, useSideDrawers } from '../navigation/sideDrawers';
 import { DockLayerContext } from '../navigation/navDock';
 import { LayoutFrameContext } from '../hooks/useResponsiveLayout';
-import { useTheme } from '../theme/ThemeProvider';
+import { useFrostPaused } from './frostPause';
 
-// How much of the window the drawer takes: the old smartfolders drawer's
-// two thirds, widened by half of what was left beside it - "розширити ще
-// на половину її відстані до правого краю екрану".
-export const SIDE_DRAWER_FRACTION = 5 / 6;
+// The whole window: the calendar is not a drawer any more but a SCREEN
+// laid over the desk - iOS's own widgets page, which is the model the
+// user settled on ("як в iOS ... ліворуч шторка з віджетами").
+export const SIDE_DRAWER_FRACTION = 1;
 
-// THE CALENDAR, IN A DRAWER FROM THE LEFT - the whole calendar, not a
-// preview of it ("функціонал залишається повний"): the same screen, told
-// the width it really has (LayoutFrameContext) and that it lives in a
-// drawer (CalendarDrawerContext). It publishes to the bar and the dock on
-// a layer above the desks (DockLayerContext) for as long as it is open,
-// so its search, pencil and "⋯" take over and the desk's come straight
-// back when it closes.
+// What the calendar's layer blurs: the desks, and only the desks - their
+// own blur target (see Tabs), so the layer's blur never has to draw the
+// layer itself.
+export const DeskTargetContext = createContext<RefObject<View | null> | null>(null);
+
+// THE CALENDAR, THE LEFTMOST SCREEN, OVER THE DESK - "календар
+// повноцінний ... в крайньому лівому екрані і блюром поверх робочого
+// столу". The same CalendarScreen, told it lives here
+// (CalendarDrawerContext): it draws its own bar and dock inside the layer
+// and publishes nothing for the window's, which fade out as it comes in.
+//
+// Two parts that move differently, on purpose. The BLUR of the desk
+// stands still and only fades in: a live blur that moves every frame is
+// the freeze this app has already met (see DockFrost). The CALENDAR on it
+// slides with the finger.
 //
 // Drawn IN the tree, not through the glass portal: the calendar needs the
-// navigation around it (it opens notes, the diary), and a portal renders
-// outside that. Being in the tree also puts it under the bar and the dock,
-// which are portal-drawn - exactly where they should be. No live blur in
-// it for the same reason every board surface has none: it is inside the
-// blur target, so it is painted solid.
+// navigation around it, and a portal renders outside that.
 export default function CalendarDrawer() {
-  const theme = useTheme();
-  const { calendarOpen, closeCalendar, calendarProgress } = useSideDrawers();
+  const { calendarOpen, closeCalendar, calendarProgress, calendarDragging } = useSideDrawers();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const width = Math.round(windowWidth * SIDE_DRAWER_FRACTION);
+  const deskTarget = useContext(DeskTargetContext);
   // Mounted AHEAD of the first swipe - once the app has settled - and
   // kept: building the whole calendar at the moment of the first swipe
   // is a stall under the finger. The day, the month and the note then
@@ -44,10 +49,16 @@ export default function CalendarDrawer() {
   }, []);
   const fallback = useSharedValue(0);
   const progress = calendarProgress ?? fallback;
+  // The blur is only there while it can be seen - a live blur left
+  // mounted behind a shut layer would go on redrawing the desk for
+  // nothing. And it steps down to a plain dim while something heavy
+  // scrolls over it (the overview's pages - see frostPause).
+  const frostPaused = useFrostPaused();
+  const blurShown = (calendarOpen || calendarDragging) && !frostPaused;
 
-  // Opened or shut from anywhere but a swipe (back, the dim, the bar's
-  // arrow): the drawer finishes the way there on its own. A swipe has
-  // already put it where it is going, so this only settles it.
+  // Opened or shut from anywhere but a swipe (back, the bar's arrow): the
+  // layer finishes the way there on its own. A swipe has already put it
+  // where it is going, so this only settles it.
   useEffect(() => {
     if (calendarOpen) setMounted(true);
     progress.value = withTiming(calendarOpen ? 1 : 0, { duration: 200, easing: Easing.out(Easing.cubic) });
@@ -66,8 +77,9 @@ export default function CalendarDrawer() {
   }, [calendarOpen, closeCalendar, tabsFocused]);
 
   const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: (progress.value - 1) * width }] }), [width]);
-  const dimStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
+  const groundStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
   const frame = useMemo(() => ({ width, height: windowHeight }), [width, windowHeight]);
+  const drawer = useMemo(() => ({ open: calendarOpen, close: closeCalendar }), [calendarOpen, closeCalendar]);
   // Shut by a swipe to the LEFT, following the finger the same way it
   // opened. Only a clearly sideways drag: up and down is the calendar's.
   const closeSwipe = useMemo(
@@ -85,45 +97,47 @@ export default function CalendarDrawer() {
         }),
     [progress, width, closeCalendar]
   );
-  const drawer = useMemo(() => ({ open: calendarOpen, close: closeCalendar }), [calendarOpen, closeCalendar]);
 
   if (!mounted) return null;
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <Animated.View
-        style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim }, dimStyle]}
-        pointerEvents={calendarOpen ? 'auto' : 'none'}
-      >
-        <Pressable style={StyleSheet.absoluteFill} onPress={closeCalendar} />
+    <View style={StyleSheet.absoluteFill} pointerEvents={calendarOpen ? 'box-none' : 'none'}>
+      {/* The desk, out of focus: a still blur that fades in, over a dim
+          that carries it when the blur is stepped down. */}
+      <Animated.View style={[StyleSheet.absoluteFill, styles.dim, groundStyle]} pointerEvents="none">
+        {blurShown && deskTarget && (
+          <BlurView
+            intensity={70}
+            tint="dark"
+            blurMethod="dimezisBlurView"
+            blurTarget={deskTarget}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        )}
       </Animated.View>
       <GestureDetector gesture={closeSwipe}>
-      <Animated.View
-        style={[styles.panel, { width, backgroundColor: theme.ground }, panelStyle]}
-        pointerEvents={calendarOpen ? 'auto' : 'none'}
-      >
-        <LayoutFrameContext.Provider value={frame}>
-          <DockLayerContext.Provider value={1}>
-            <CalendarDrawerContext.Provider value={drawer}>
-              <CalendarScreen />
-            </CalendarDrawerContext.Provider>
-          </DockLayerContext.Provider>
-        </LayoutFrameContext.Provider>
-      </Animated.View>
+        <Animated.View style={[styles.panel, { width }, panelStyle]} pointerEvents={calendarOpen ? 'auto' : 'none'}>
+          <LayoutFrameContext.Provider value={frame}>
+            <DockLayerContext.Provider value={1}>
+              <CalendarDrawerContext.Provider value={drawer}>
+                <CalendarScreen />
+              </CalendarDrawerContext.Provider>
+            </DockLayerContext.Provider>
+          </LayoutFrameContext.Provider>
+        </Animated.View>
       </GestureDetector>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  dim: {
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
   panel: {
     position: 'absolute',
     left: 0,
     top: 0,
     bottom: 0,
-    overflow: 'hidden',
-    borderTopRightRadius: 24,
-    borderBottomRightRadius: 24,
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(255,255,255,0.18)',
   },
 });

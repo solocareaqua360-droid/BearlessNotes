@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Easing, runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 import FloatingIslandTabBar from '../components/FloatingIslandTabBar';
-import CalendarDrawer, { SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
+import CalendarDrawer, { DeskTargetContext, SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
+import { BlurTargetView } from 'expo-blur';
 import { SideDrawersProvider, useSideDrawers } from './sideDrawers';
 import { TAB_SCREENS } from './tabScreens';
 
@@ -32,7 +33,9 @@ export default function Tabs() {
 }
 
 function TabsWithDrawers() {
-  const { openCalendar, calendarOpen, swipeBlocked, calendarProgress } = useSideDrawers();
+  const { openCalendar, calendarOpen, swipeBlocked, calendarProgress, setCalendarDragging } = useSideDrawers();
+  // The desks' own blur target: what the calendar's layer blurs.
+  const deskTarget = useRef<View>(null);
   const { width, height } = useWindowDimensions();
   const drawerWidth = Math.round(width * SIDE_DRAWER_FRACTION);
   const bandTop = height * (0.5 - BAND / 2);
@@ -75,6 +78,9 @@ function TabsWithDrawers() {
             else state.activate();
           }
         })
+        .onStart(() => {
+          runOnJS(setCalendarDragging)(true);
+        })
         // The drawer follows the finger from the moment the swipe is
         // recognised, measured from where it was recognised.
         .onUpdate((e) => {
@@ -86,14 +92,18 @@ function TabsWithDrawers() {
           const open = e.translationX > drawerWidth * 0.3 || e.velocityX > 500;
           calendarProgress.value = withTiming(open ? 1 : 0, { duration: 180, easing: Easing.out(Easing.cubic) });
           if (open) runOnJS(openCalendar)();
+        })
+        .onFinalize(() => {
+          runOnJS(setCalendarDragging)(false);
         }),
-    [blocked, bandTop, bandBottom, openCalendar, startX, startY, startAt, calendarProgress, drawerWidth]
+    [blocked, bandTop, bandBottom, openCalendar, startX, startY, startAt, calendarProgress, drawerWidth, setCalendarDragging]
   );
 
   return (
+    <DeskTargetContext.Provider value={deskTarget}>
     <View style={styles.fill}>
       <GestureDetector gesture={swipe}>
-        <View style={styles.fill}>
+        <BlurTargetView ref={deskTarget} style={styles.fill}>
           <Tab.Navigator
             tabBar={(props) => <FloatingIslandTabBar {...props} />}
             screenOptions={{
@@ -113,10 +123,11 @@ function TabsWithDrawers() {
               <Tab.Screen key={name} name={name} component={component} />
             ))}
           </Tab.Navigator>
-        </View>
+        </BlurTargetView>
       </GestureDetector>
       <CalendarDrawer />
     </View>
+    </DeskTargetContext.Provider>
   );
 }
 

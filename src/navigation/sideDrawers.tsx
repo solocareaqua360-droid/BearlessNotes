@@ -15,6 +15,10 @@ type SideDrawers = {
   // "сповільнене".
   calendarProgress: SharedValue<number> | null;
   calendarOpen: boolean;
+  // A swipe is carrying the calendar in or out right now - its blur is
+  // needed before the drawer counts as open.
+  calendarDragging: boolean;
+  setCalendarDragging: (dragging: boolean) => void;
   openCalendar: () => void;
   closeCalendar: () => void;
   // How many screens are holding the swipe back right now.
@@ -25,6 +29,8 @@ type SideDrawers = {
 const NONE: SideDrawers = {
   calendarProgress: null,
   calendarOpen: false,
+  calendarDragging: false,
+  setCalendarDragging: () => {},
   openCalendar: () => {},
   closeCalendar: () => {},
   swipeBlocked: true,
@@ -35,6 +41,7 @@ const SideDrawersContext = createContext<SideDrawers | null>(null);
 
 export function SideDrawersProvider({ children }: { children: ReactNode }) {
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarDragging, setCalendarDragging] = useState(false);
   const [blocks, setBlocks] = useState(0);
   // The dock's own copy when there is a dock (there always is): the bar
   // and the dock fade by the same number the drawer slides by.
@@ -56,8 +63,17 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
     return () => setBlocks((n) => n - 1);
   }, []);
   const value = useMemo(
-    () => ({ calendarProgress, calendarOpen, openCalendar, closeCalendar, swipeBlocked: blocks > 0, blockSwipe }),
-    [calendarProgress, calendarOpen, openCalendar, closeCalendar, blocks, blockSwipe]
+    () => ({
+      calendarProgress,
+      calendarOpen,
+      calendarDragging,
+      setCalendarDragging,
+      openCalendar,
+      closeCalendar,
+      swipeBlocked: blocks > 0,
+      blockSwipe,
+    }),
+    [calendarProgress, calendarOpen, calendarDragging, openCalendar, closeCalendar, blocks, blockSwipe]
   );
   return <SideDrawersContext.Provider value={value}>{children}</SideDrawersContext.Provider>;
 }
