@@ -2082,7 +2082,9 @@ export default function CalendarScreen() {
           <InlineDock
             width={windowWidth}
             beads={{
-              left: notePanelOpen ? null : { icon: 'search-outline', onPress: () => navigation.navigate('Diary') },
+              // No search in the calendar's own layer - "прибираємо пошук
+              // саме зі шторки": the diary is where days are searched.
+              left: null,
               right: notePanelOpen ? null : { icon: 'pencil-outline', onPress: () => noteEditorRef.current?.startWriting() },
             }}
             actions={noteSelectMode ? publishedActions : null}
