@@ -153,9 +153,13 @@ const FOLDER_PREFIX = 'folder:';
 // inside its cells (so folders side by side stand clearly apart), and its
 // tiles are set in from that outline by a margin of their own, with a
 // gap between them.
-const FOLDER_INSET = 3;
-const FOLDER_PAD = 10;
-const FOLDER_GAP = 8;
+const FOLDER_INSET = 2;
+// Every tile - on the board or in a folder - stands this far inside its
+// cell, centred on it, so the ones in folders and the ones outside are ONE
+// size ("іконки в папках і не в папках однакового розміру") and a
+// folder's outline, between the cell's edge and its tiles, has the same
+// margin inside it on every side.
+const TILE_INSET = 9;
 type TileFolder = { members: string[] };
 
 type BoardItem =
@@ -1261,11 +1265,11 @@ export default function DatabasesScreen() {
     <BoardTile
       key={item.key}
       item={item}
-      left={at?.left ?? x * cellStep}
-      top={at?.top ?? rowTop(y)}
+      left={at?.left ?? x * cellStep + TILE_INSET}
+      top={at?.top ?? rowTop(y) + TILE_INSET}
       fixedSize={!!inFolder}
-      width={at?.width ?? spanSize(size.w)}
-      height={at?.height ?? spanSize(size.h)}
+      width={at?.width ?? spanSize(size.w) - TILE_INSET * 2}
+      height={at?.height ?? spanSize(size.h) - TILE_INSET * 2}
       color={
         item.kind === 'custom'
           ? item.database.color ?? recordColour(item.database.id).background
@@ -1328,7 +1332,7 @@ export default function DatabasesScreen() {
         setDraftSize(null);
         writeSize(item.key, next);
       }}
-      carried={drag?.key === item.key ? { x: drag.x, y: drag.y } : null}
+      carried={drag?.key === item.key ? { x: drag.x + TILE_INSET, y: drag.y + TILE_INSET } : null}
       deskDrag={(() => {
         // Only in the layer, and only a database that can
         // stand as a desk.
@@ -1442,10 +1446,9 @@ export default function DatabasesScreen() {
                   // width - moving with it while it is carried. Set in from
                   // the folder's edge by a margin of their own, iOS's way,
                   // and so a touch smaller than a tile on the board.
+                  // Each on its own cell, set in as every tile is.
                   const origin = folderRect(item.key, x, y, size);
-                  const inner = FOLDER_INSET + FOLDER_PAD;
-                  const iconW = (origin.width - inner * 2 - (size.w - 1) * FOLDER_GAP) / size.w;
-                  const iconH = (origin.height - inner * 2 - (size.h - 1) * FOLDER_GAP) / size.h;
+                  const icon = cellSize - TILE_INSET * 2;
                   return item.members.map((member, index) => {
                     const col = index % size.w;
                     const row = Math.floor(index / size.w);
@@ -1455,10 +1458,10 @@ export default function DatabasesScreen() {
                       y + row,
                       { w: 1, h: 1 },
                       {
-                        left: origin.left + inner + col * (iconW + FOLDER_GAP),
-                        top: origin.top + inner + row * (iconH + FOLDER_GAP),
-                        width: iconW,
-                        height: iconH,
+                        left: origin.left + col * cellStep + TILE_INSET,
+                        top: origin.top + row * cellStep + TILE_INSET,
+                        width: icon,
+                        height: icon,
                       },
                       item.id
                     );
@@ -2239,28 +2242,31 @@ function BoardTile({
         {/* Name, icon and count - nothing else: "залиш лише назву, іконку
             і кількість". The icon stands at the tile's own centre whatever
             its size, the name along the foot. */}
-        <View style={styles.tileIconWrap} pointerEvents="none">
+        <View style={[styles.tileIconWrap, tiny && { paddingBottom: 14 }]} pointerEvents="none">
           <Ionicons name={icon} size={tiny ? 24 : 26} color={isAction ? 'rgba(255,255,255,0.6)' : ink} />
         </View>
-        {!tiny && (
-          <Text
-            style={[styles.tileLabel, size.h === 1 && styles.tileLabelShort, { color: isAction ? 'rgba(255,255,255,0.6)' : ink }]}
-            // One row tall, the name gets one line: two would reach up
-            // into the centred icon.
-            numberOfLines={size.h === 1 ? 1 : 2}
-            // Android breaks a long word mid-syllable by default -
-            // "Докум/енти", which reads as a fault rather than as a fit.
-            // 'simple' only ever breaks between words.
-            textBreakStrategy="simple"
-            ellipsizeMode="tail"
-            // 'simple' still splits ONE word wider than the tile; a word
-            // that cannot fit shrinks instead.
-            adjustsFontSizeToFit
-            minimumFontScale={0.72}
-          >
-            {label}
-          </Text>
-        )}
+        {/* The name on every tile now, the one-cell ones and the ones in
+            folders included - "написи всередині іконок ... ті що ні можна
+            через ...": what does not fit ends in an ellipsis rather than
+            shrinking. */}
+        <Text
+          style={[
+            styles.tileLabel,
+            size.h === 1 && styles.tileLabelShort,
+            tiny && styles.tileLabelTiny,
+            { color: isAction ? 'rgba(255,255,255,0.6)' : ink },
+          ]}
+          // One row tall, the name gets one line: two would reach up into
+          // the centred icon.
+          numberOfLines={size.h === 1 ? 1 : 2}
+          // Android breaks a long word mid-syllable by default -
+          // "Докум/енти", which reads as a fault rather than as a fit.
+          // 'simple' only ever breaks between words.
+          textBreakStrategy="simple"
+          ellipsizeMode="tail"
+        >
+          {label}
+        </Text>
       </Pressable>
       </GestureDetector>
 
@@ -2625,6 +2631,12 @@ const makeStyles = (t: Theme) =>
   tileLabelShort: {
     fontSize: 14,
     marginBottom: -4,
+  },
+  // A one-cell tile: small enough to sit under the icon, not on it.
+  tileLabelTiny: {
+    fontSize: 11,
+    marginBottom: -8,
+    marginHorizontal: -6,
   },
   newTile: {
     borderStyle: 'dashed',
