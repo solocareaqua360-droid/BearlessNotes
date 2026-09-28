@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FileRow, LinkRow, PhotoRow } from '../components/ItemCards';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +16,7 @@ import { ChatAttachment } from '../utils/chatAttach';
 import { categoryFromSiteName } from '../utils/linkCategory';
 import * as Clipboard from 'expo-clipboard';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
-import { openCapture } from '../components/CaptureWindow';
+import { openCapture, openCaptureForEdit } from '../components/CaptureWindow';
 import { askGemini } from '../utils/gemini';
 import { getGeminiKey } from '../utils/geminiKey';
 import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
@@ -25,7 +25,7 @@ import { useDockClearance } from '../navigation/dockGeometry';
 import {
   ChatMessage,
   deleteChatMessage,
-  editChatMessage,
+  groupChatMessages,
   markChatMessageTask,
   markChatMessagesUsed,
   sendGeminiReply,
@@ -110,7 +110,6 @@ export default function ChatScreen() {
   // prompt both read this, so one path serves both.
   const [sending, setSending] = useState<string[] | null>(null);
   const [naming, setNaming] = useState(false);
-  const [editing, setEditing] = useState<ChatMessage | null>(null);
   // The id of the message currently awaiting a Gemini answer, so its own
   // bubble can show that instead of the whole screen locking up - Gemini
   // takes a few seconds and the rest of the chat stays usable while it
@@ -172,6 +171,7 @@ export default function ChatScreen() {
   // oldest messages. Reversed data keeps the day headings above their
   // messages once the list flips.
   const listRows = useMemo(() => [...rows].reverse(), [rows]);
+  const listRef = useRef<FlatList<Row>>(null);
 
   useDockLeave('chatbubbles-outline', () => navigation.goBack());
   useDockBeads(
@@ -201,6 +201,20 @@ export default function ChatScreen() {
                 onPress: () => setSending([...selected]),
                 closesStack: true,
               },
+              // Only once there is something TO group - "думки
+              // приходять поступово... хотілося, щоб вона лишилася
+              // однією ідеєю".
+              ...(selected.size >= 2
+                ? [
+                    {
+                      key: 'group',
+                      icon: 'git-merge-outline',
+                      label: 'Згрупувати',
+                      onPress: () => groupSelected(),
+                      closesStack: true,
+                    },
+                  ]
+                : []),
               {
                 key: 'delete',
                 icon: 'trash-outline',
@@ -325,7 +339,7 @@ export default function ChatScreen() {
       ],
     });
     if (choice === 'copy') await Clipboard.setStringAsync(message.text);
-    else if (choice === 'edit') setEditing(message);
+    else if (choice === 'edit') openCaptureForEdit(message);
     else if (choice === 'note') setSending([message.id]);
     else if (choice === 'task') makeTask(message);
     else if (choice === 'ask') await askGeminiFor(message);
@@ -380,6 +394,35 @@ export default function ChatScreen() {
     }
   }
 
+  // Jump to a message that already scrolled off - used once a group's
+  // new combined message lands, and from the "Об'єднано" chip on each
+  // of the originals it was made from.
+  function scrollToMessage(id: string) {
+    const index = listRows.findIndex((row) => row.kind === 'message' && row.message.id === id);
+    if (index >= 0) listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: true });
+  }
+
+  // Several messages, folded into one - "думки приходять поступово...
+  // хотілося, щоб вона лишилася однією ідеєю". Chronological order, same
+  // as they were said: texts one under another, every attachment kept.
+  // The originals stay right where they are (the user's own call, same
+  // as a note already does) - each just says where it went.
+  async function groupSelected() {
+    const ids = [...selected];
+    if (ids.length < 2) return;
+    const chosen = [...messages].filter((m) => ids.includes(m.id)).sort((a, b) => a.createdAt - b.createdAt);
+    const text = chosen.map((m) => m.text).filter(Boolean).join('\n\n');
+    const attachments = chosen.flatMap((m) => m.attachments ?? []);
+    setSelected(new Set());
+    setIsSelectMode(false);
+    try {
+      const newId = await groupChatMessages(ids, text, attachments);
+      scrollToMessage(newId);
+    } catch (e) {
+      notify('Не вдалося згрупувати', (e as Error).message);
+    }
+  }
+
   async function deleteChosen() {
     const ids = [...selected];
     if (ids.length === 0) return;
@@ -396,13 +439,6 @@ export default function ChatScreen() {
     } catch (e) {
       notify('Не вдалося', (e as Error).message);
     }
-  }
-
-  async function saveEdit(text: string) {
-    const message = editing;
-    setEditing(null);
-    if (!message || !text.trim()) return;
-    await editChatMessage(message.id, text).catch((e: Error) => notify('Не збереглося', e.message));
   }
 
   return (
@@ -444,6 +480,7 @@ export default function ChatScreen() {
           </View>
         ) : (
           <FlatList
+            ref={listRef}
             inverted
             data={listRows}
             keyExtractor={(row) => row.key}
@@ -561,6 +598,19 @@ export default function ChatScreen() {
                         </Text>
                       </Pressable>
                     ))}
+                    {/* This message went into a group - "хотілося, щоб
+                        вона лишилася однією ідеєю". It stays right here
+                        (same rule as usedIn above), this just says where
+                        the combined one is. */}
+                    {!!message.groupedInto && (
+                      <Pressable
+                        style={styles.usedChip}
+                        onPress={() => scrollToMessage(message.groupedInto!)}
+                      >
+                        <Ionicons name="git-merge-outline" size={11} color={theme.accent} />
+                        <Text style={[styles.usedLabel, { color: theme.accent }]}>Об'єднано</Text>
+                      </Pressable>
+                    )}
                   </View>
                   {isSelectMode && (
                     <View style={styles.tick}>
@@ -634,16 +684,6 @@ export default function ChatScreen() {
           setSending(null);
         }}
         onSave={gatherIntoNewNote}
-      />
-
-      <RenamePrompt
-        visible={!!editing}
-        multiline
-        title="Виправити"
-        initialValue={editing?.text ?? ''}
-        placeholder="Текст повідомлення"
-        onCancel={() => setEditing(null)}
-        onSave={saveEdit}
       />
     </View>
   );

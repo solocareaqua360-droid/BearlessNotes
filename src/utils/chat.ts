@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, onSnapshot, updateDoc } from '../firestore';
+import { collection, deleteDoc, deleteField, doc, onSnapshot, updateDoc } from '../firestore';
 import { addDoc, ownedQuery } from './owned';
 import { ChatAttachment } from './chatAttach';
 import { db } from '../firebase';
@@ -38,6 +38,10 @@ export type ChatMessage = {
   // selectable into a note, deletable, and it can be asked about in turn.
   from?: 'gemini';
   replyTo?: string;
+  // The id of the new message this one was folded into (see
+  // groupChatMessages) - same idea as usedIn: the original stays right
+  // where it is, never deleted, and says what it became.
+  groupedInto?: string;
 };
 
 const chatCollection = collection(db, 'chat');
@@ -93,6 +97,7 @@ export function watchChat(
           tasks: d.data().tasks as Record<string, string> | undefined,
           from: d.data().from as 'gemini' | undefined,
           replyTo: d.data().replyTo as string | undefined,
+          groupedInto: d.data().groupedInto as string | undefined,
           // `attachment`, singular, is what the first messages were
           // written with - read as a list of one rather than migrated,
           // since nothing is gained by rewriting what already works.
@@ -121,8 +126,36 @@ export async function markChatMessagesUsed(
   );
 }
 
-export async function editChatMessage(id: string, text: string) {
-  await updateDoc(doc(db, 'chat', id), { text: text.trim() });
+// Now edits attachments too, not only text ("при редагуванні повідомлення
+// в чаті в нього можна відредагувати не тільки текст, але й додати
+// вкладення" - and remove one, the same way the create flow already
+// lets you take one back off before sending). Whatever CaptureWindow's
+// own attachments state holds at save time is the whole truth - an
+// empty array clears the field rather than leaving a stale one behind.
+export async function editChatMessage(id: string, text: string, attachments: ChatAttachment[]) {
+  await updateDoc(doc(db, 'chat', id), {
+    text: text.trim(),
+    attachments: attachments.length ? attachments : deleteField(),
+  });
+}
+
+// Several messages, folded into one new message - "думки приходять
+// поступово... хотілося, щоб вона лишилася однією ідеєю". The originals
+// are never deleted (same rule as usedIn/tasks - a message only ever
+// leaves the chat through deleteChatMessage) - each is marked with
+// where it went, the way a message gathered into a note already is.
+export async function groupChatMessages(
+  ids: string[],
+  text: string,
+  attachments: ChatAttachment[]
+): Promise<string> {
+  const ref = await addDoc(chatCollection, {
+    text: text.trim(),
+    createdAt: Date.now(),
+    ...(attachments.length ? { attachments } : {}),
+  });
+  await Promise.all(ids.map((id) => updateDoc(doc(db, 'chat', id), { groupedInto: ref.id })));
+  return ref.id;
 }
 
 // The one thing here that really removes something. Nothing else in this

@@ -10,7 +10,7 @@ import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
 import { SHEET_WINDOW } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
-import { sendChatMessage } from '../utils/chat';
+import { ChatMessage, editChatMessage, sendChatMessage } from '../utils/chat';
 import { ChatAttachment, attachLinkToChat, pickFileForChat, pickMediaForChat } from '../utils/chatAttach';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'react-native';
@@ -33,6 +33,18 @@ export function openCapture() {
   listener?.(true);
 }
 
+// The SAME window, opened over an EXISTING message instead of a blank
+// one - "при редагуванні повідомлення в чаті в нього можна відредагувати
+// не тільки текст, але й додати вкладення". One editor for both jobs
+// rather than a second, poorer one (the plain text-only RenamePrompt
+// this replaced): every attach/remove button already here works exactly
+// the same way whether the message is new or not.
+let editListener: ((message: ChatMessage) => void) | null = null;
+
+export function openCaptureForEdit(message: ChatMessage) {
+  editListener?.(message);
+}
+
 export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -50,6 +62,12 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
   // chat IS the one in its database.
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attaching, setAttaching] = useState(false);
+  // Which message is being edited, or null while this is a fresh
+  // thought. Gates both the sending call (edit vs. a new message) and
+  // the auto-listening below - starting the mic over someone's existing
+  // words would just as soon erase the point of opening this to fix
+  // them.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
   // What the recogniser has heard so far in THIS run. Kept apart from
   // `text` so that a second run appends rather than replacing what the
@@ -64,10 +82,20 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
       committed.current = '';
       setAttachments([]);
       setTrouble(null);
+      setEditingId(null);
+      setVisible(true);
+    };
+    editListener = (message) => {
+      setText(message.text);
+      committed.current = message.text;
+      setAttachments(message.attachments ?? []);
+      setTrouble(null);
+      setEditingId(message.id);
       setVisible(true);
     };
     return () => {
       listener = null;
+      editListener = null;
     };
   }, []);
 
@@ -104,13 +132,15 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
   }, [text]);
 
   // Opened by the dock's long press: listening starts with the window, so
-  // there is nothing to press before speaking.
+  // there is nothing to press before speaking. Not while EDITING though -
+  // the mic taking over would talk straight over the words already there
+  // instead of leaving them to be fixed by hand or added to.
   useEffect(() => {
-    if (visible) startListening();
+    if (visible && !editingId) startListening();
     // startListening is deliberately not a dependency: this fires on the
     // OPENING, not on every change of the text it closes over.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+  }, [visible, editingId]);
 
   useSpeechRecognitionEvent('result', (event) => {
     const heard = event.results?.[0]?.transcript ?? '';
@@ -131,13 +161,16 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
     setListening(false);
     Keyboard.dismiss();
     setVisible(false);
+    setEditingId(null);
   }, []);
 
   async function send() {
     const toSend = text;
     const withThem = attachments;
+    const wasEditing = editingId;
     close();
-    await sendChatMessage(toSend, withThem);
+    if (wasEditing) await editChatMessage(wasEditing, toSend, withThem);
+    else await sendChatMessage(toSend, withThem);
   }
 
   async function attach(pick: () => Promise<ChatAttachment[]>) {
@@ -199,7 +232,9 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
           <View style={styles.handle} />
 
           <View style={styles.headRow}>
-            <Text style={styles.title}>{listening ? 'Слухаю…' : 'Думка'}</Text>
+            <Text style={styles.title}>
+              {listening ? 'Слухаю…' : editingId ? 'Редагування' : 'Думка'}
+            </Text>
             <Pressable hitSlop={10} onPress={onOpenChat}>
               <Ionicons name="time-outline" size={22} color={theme.ink.muted} />
             </Pressable>
@@ -320,7 +355,7 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
               onPress={send}
             >
               <Ionicons
-                name="arrow-up"
+                name={editingId ? 'checkmark' : 'arrow-up'}
                 size={22}
                 color={text.trim() || attachments.length > 0 ? theme.accent : theme.ink.faint}
               />
