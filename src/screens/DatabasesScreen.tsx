@@ -1274,7 +1274,8 @@ export default function DatabasesScreen() {
         else setImporting(true);
       }}
       onHold={() => {
-        hapticButtonDown();
+        // The tick was the lift, when the hold became long enough - not a
+        // second one on letting go.
         setEditing(true);
         // On a wide screen the settings have a pane waiting
         // for them, so the tile that was held goes straight
@@ -2106,13 +2107,22 @@ function BoardTile({
     .onFinalize(() => onCarryEnd());
 
   // The same hold, outside the arranging: see `deskDrag`.
+  // THE HOLD, felt: the moment it has been long enough the phone ticks
+  // and the tile lifts off the board - a touch larger, a shadow under it -
+  // the way a block does in a note. Let go, it settles back and the board
+  // goes into its arranging; carried on (in the databases' layer), it is
+  // on its way to the desks. Before, a long hold gave no sign of being
+  // long enough - "немає відчуття чи достатньо і плутаєшся".
+  const [lifted, setLifted] = useState(false);
   const toDesk = Gesture.Pan()
     .runOnJS(true)
     .activateAfterLongPress(400)
-    .enabled(!editing && !!deskDrag)
+    .enabled(!editing)
     .onStart(() => {
       deskDragging.current = false;
       swallowPress.current = true;
+      hapticButtonDown();
+      setLifted(true);
     })
     .onUpdate((e) => {
       if (!deskDrag) return;
@@ -2128,6 +2138,7 @@ function BoardTile({
     })
     .onFinalize(() => {
       deskDragging.current = false;
+      setLifted(false);
       setTimeout(() => {
         swallowPress.current = false;
       }, 300);
@@ -2145,6 +2156,7 @@ function BoardTile({
         isAction && styles.newTile,
         { left, top, width, height },
         carried && { left: carried.x, top: carried.y, zIndex: 20, opacity: 0.95, transform: [{ scale: 1.04 }] },
+        lifted && !carried && styles.tileLifted,
       ]}
     >
       {/* Behind everything, already the tile's own shape (see
@@ -2166,9 +2178,9 @@ function BoardTile({
           if (editing) onColor();
           else onOpen();
         }}
-        // With the desk drag on, the hold is the drag's to read (a hold let
-        // go is still the arranging - see toDesk).
-        onLongPress={deskDrag && !editing ? undefined : onHold}
+        // The hold is the gesture's to read now (see toDesk) - it lifts the
+        // tile, and a hold let go is the arranging.
+        onLongPress={undefined}
         delayLongPress={400}
       >
         {/* Name, icon and count - nothing else: "залиш лише назву, іконку
@@ -2314,6 +2326,16 @@ function FolderHandles({
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
+  // A tile held long enough: lifted off the board under the finger.
+  tileLifted: {
+    zIndex: 20,
+    transform: [{ scale: 1.06 }],
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 14,
+  },
   folderFrame: {
     position: 'absolute',
     backgroundColor: 'rgba(255,255,255,0.10)',
