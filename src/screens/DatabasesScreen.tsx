@@ -1059,16 +1059,18 @@ export default function DatabasesScreen() {
   // a tile with care still moves at ~0.3; resting is well under that.
   const SLOW = 0.12;
 
-  // The database or folder the carried tile is ON, on the board WITHOUT it
-  // (so what it is over does not slide away under it): where the middle of
-  // its FIRST cell - the one that claims a cell as it moves - has come to
-  // lie. A one-cell tile counts whole; a bigger one, its middle. "Any
-  // overlap at all" was tried and read every careful drag as resting on
-  // something - nothing moved aside any more.
+  // The database or folder the carried tile is ON: where the middle of its
+  // FIRST cell - the one that claims a cell as it moves - has come to lie,
+  // on the board AS IT IS ON SCREEN. (The board without the carried tile
+  // was used once, so what it rested on could not slide away - but there
+  // the tiles after it had flowed up into its place, and the one found
+  // was two tiles over from the one the finger was on.) A one-cell tile
+  // counts whole; a bigger one, its middle. "Any overlap at all" was tried
+  // and read every careful drag as resting on something.
   function overlapTarget(item: BoardItem, nextX: number, nextY: number) {
     const cx = nextX + cellSize / 2;
     const cy = nextY + cellSize / 2;
-    const hit = boardWith(null, null, item.key).placed.find((p) => {
+    const hit = placed.find((p) => {
       if (p.item.key === item.key) return false;
       if (p.item.kind !== 'builtin' && p.item.kind !== 'custom' && p.item.kind !== 'folder') return false;
       const r = tileRect(p);
@@ -1083,13 +1085,13 @@ export default function DatabasesScreen() {
     return hit?.item.key ?? null;
   }
 
-  // Resting over a tile: it goes back where it stood, and after a moment
-  // the ring says the carried one will go INTO it.
-  function beginDwell(item: BoardItem, key: string) {
+  // Resting over a tile: the board holds still - nothing is pushed while
+  // the finger rests, so the tile under it stays where it is seen - and
+  // after a moment the ring says the carried one will go INTO it.
+  function beginDwell(key: string) {
     if (hover.current?.key === key) return;
     clearHover();
     setMergeTarget(null);
-    setDraftPosition({ key: item.key, x: carryStartCell.current.x, y: carryStartCell.current.y });
     hover.current = {
       key,
       timer: setTimeout(() => {
@@ -1111,12 +1113,20 @@ export default function DatabasesScreen() {
     settle.current = null;
     const target = item.kind === 'builtin' || item.kind === 'custom' ? overlapTarget(item, nextX, nextY) : null;
     if (target && speed < SLOW) {
-      beginDwell(item, target);
+      beginDwell(target);
       return;
     }
     // Going fast: the tile under it moves out of the way, as before. If the
-    // finger stops right there, that is resting on it after all.
-    if (target) settle.current = setTimeout(() => beginDwell(item, target), 160);
+    // finger stops right there, that is resting on it after all - and the
+    // push that last move made is taken back, so the tile it was on comes
+    // back under it.
+    if (target) {
+      const before = draftPosition;
+      settle.current = setTimeout(() => {
+        if (before) setDraftPosition(before);
+        beginDwell(target);
+      }, 160);
+    }
     clearHover();
     setMergeTarget(null);
     const cell = cellUnder(item.key, nextX, nextY);
