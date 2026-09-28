@@ -365,3 +365,58 @@ export function layoutSections<T>(
   });
   return { placed, sections: laid, rows: start };
 }
+
+// FOLDERS on the databases' board - the user's own reference, iOS's app
+// library, with one change: a folder is a shape like a tile, and what is in
+// it are ordinary one-cell tiles, as many as its cells. It never opens; it
+// only holds databases together. Two cells at the least.
+export const FOLDER_SIZES: TileSize[] = [
+  { w: 2, h: 1 },
+  { w: 3, h: 1 },
+  { w: 4, h: 1 },
+  { w: 1, h: 2 },
+  { w: 1, h: 3 },
+  { w: 1, h: 4 },
+  { w: 2, h: 2 },
+  { w: 4, h: 2 },
+  { w: 2, h: 4 },
+];
+
+export function folderCapacity(size: TileSize): number {
+  return size.w * size.h;
+}
+
+export function parseFolderSize(stored: unknown): TileSize | null {
+  if (typeof stored !== 'string') return null;
+  const [w, h] = stored.split('x').map((n) => Number.parseInt(n, 10));
+  return FOLDER_SIZES.find((s) => s.w === w && s.h === h) ?? null;
+}
+
+// The folder shape nearest a freely dragged one that still holds what is
+// in it - a folder is never made too small for its own tiles.
+export function snapFolderSize(w: number, h: number, count: number): TileSize {
+  let best: TileSize | null = null;
+  let bestDistance = Infinity;
+  for (const size of FOLDER_SIZES) {
+    if (folderCapacity(size) < count) continue;
+    const distance = Math.abs(size.w - w) * 2 + Math.abs(size.h - h);
+    if (distance < bestDistance) {
+      best = size;
+      bestDistance = distance;
+    }
+  }
+  return best ?? FOLDER_SIZES[FOLDER_SIZES.length - 1];
+}
+
+// A folder that has to take one more: it grows by a cell along the way it
+// already runs - 2x1 to 3x1 to 4x1 to 4x2, 1x2 to 1x3 to 1x4 to 2x4 - and
+// stays as it is while it still has room. Any other shape is the user's to
+// choose by its corner.
+export function grownFolderSize(size: TileSize, count: number): TileSize {
+  if (folderCapacity(size) >= count) return size;
+  const lying = size.w >= size.h;
+  const path: TileSize[] = lying
+    ? [{ w: 2, h: 1 }, { w: 3, h: 1 }, { w: 4, h: 1 }, { w: 4, h: 2 }]
+    : [{ w: 1, h: 2 }, { w: 1, h: 3 }, { w: 1, h: 4 }, { w: 2, h: 4 }];
+  return path.find((s) => folderCapacity(s) >= count) ?? path[path.length - 1];
+}

@@ -37,6 +37,10 @@ import {
   packTiles,
   parseTileSize,
   snapTileSize,
+  folderCapacity,
+  grownFolderSize,
+  parseFolderSize,
+  snapFolderSize,
 } from '../utils/tileLayout';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LinearTransition } from 'react-native-reanimated';
@@ -138,13 +142,21 @@ type TileViewData = {
 };
 const tileBackgroundsDoc = doc(db, 'settings', 'databaseTileBackgrounds');
 const tilePinsDoc = doc(db, 'settings', 'databaseTilePins');
+// FOLDERS - which databases lie together in one (the same on every view);
+// where a folder stands and what shape it is are kept per view, like any
+// tile's, under its key `folder:<id>`.
+const tileFoldersDoc = doc(db, 'settings', 'databaseTileFolders');
+const FOLDER_PREFIX = 'folder:';
+type TileFolder = { members: string[] };
 
 type BoardItem =
   | { key: string; kind: 'builtin'; tile: Tile }
   | { key: string; kind: 'custom'; database: CustomDatabase }
   // A group or a smart folder the user has put on the board.
   | { key: string; kind: 'pin'; pin: PinnableItem; pinKind: 'group' | 'tag' }
-  | { key: string; kind: 'action' };
+  | { key: string; kind: 'action' }
+  // A folder: a shape on the board holding one-cell database tiles.
+  | { key: string; kind: 'folder'; id: string; members: BoardItem[] };
 
 // What a tile is before anyone resizes it: documents lead the board, the
 // tasks run across under them, every database is a square, and the two
@@ -297,6 +309,14 @@ export default function DatabasesScreen() {
   // chooses them.
   const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
   const [pinSheetVisible, setPinSheetVisible] = useState(false);
+  const [folders, setFolders] = useState<Record<string, TileFolder>>({});
+  // A tile being carried OUT of its folder: while it is in the hand it is a
+  // tile of the board, not of the folder.
+  const [extracting, setExtracting] = useState<string | null>(null);
+  // A tile or folder the carried tile has rested over long enough to be
+  // dropped INTO (a new folder, or one more in it) - iOS's own gesture.
+  const [mergeTarget, setMergeTarget] = useState<string | null>(null);
+  const hover = useRef<{ key: string; timer: ReturnType<typeof setTimeout> } | null>(null);
 
   // While the board is being arranged, the tabs stop swiping. A grip
   // dragged sideways IS a horizontal drag, and the pager that carries the
@@ -325,6 +345,16 @@ export default function DatabasesScreen() {
       setPinnedKeys(Array.isArray(stored) ? (stored as string[]) : []);
     }, listenError('DatabasesScreen:DatabasesScreen'));
   }, []);
+
+  useEffect(
+    () =>
+      onSnapshot(
+        tileFoldersDoc,
+        (snapshot) => setFolders((snapshot.data()?.folders as Record<string, TileFolder> | undefined) ?? {}),
+        () => setFolders({})
+      ),
+    []
+  );
 
   useEffect(() => {
     return onSnapshot(tileBackgroundsDoc, (snapshot) => {
@@ -536,13 +566,16 @@ export default function DatabasesScreen() {
     const sizes: Record<string, string> = {};
     const positions: Record<string, string> = {};
     groupSections(orderedItems).forEach((section) => {
-      const own = packedSizes(section.items.map((item) => item.key), columns);
+      const own = packedSizes(
+        section.items.filter((item) => item.kind !== 'folder').map((item) => item.key),
+        columns
+      );
       Object.entries(own).forEach(([key, value]) => {
         sizes[fieldKey(key)] = value;
       });
       const { placed: laid } = packTiles(
         section.items,
-        (item) => parseTileSize(own[item.key]) ?? sizeFor(item.key),
+        (item) => (item.kind === 'folder' ? sizeFor(item.key) : parseTileSize(own[item.key]) ?? sizeFor(item.key)),
         undefined,
         columns
       );
@@ -607,6 +640,13 @@ export default function DatabasesScreen() {
     // finger is asking for - that is what makes the other tiles move out
     // of the way under the hand rather than after it.
     if (draftSize?.key === key) return draftSize.size;
+    // Carried out of a folder it stays the one cell it was in there.
+    if (extracting === key) return { w: 1, h: 1 };
+    // A folder: its own shape, never too small for what is in it.
+    if (key.startsWith(FOLDER_PREFIX)) {
+      const count = folderMembersOf(key).length;
+      return grownFolderSize(parseFolderSize(viewData.sizes?.[fieldKey(key)]) ?? { w: 2, h: 1 }, count);
+    }
     // This view's own size; before it has one, the size from before the
     // views existed; before that, the default.
     return parseTileSize(viewData.sizes?.[fieldKey(key)]) ?? parseTileSize(tileSizes[key]) ?? defaultSizeFor(key);
@@ -670,7 +710,7 @@ export default function DatabasesScreen() {
     })
     .filter((item): item is BoardItem => !!item);
 
-  const boardItems: BoardItem[] = [
+  const looseItems: BoardItem[] = [
     ...WIDE_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile })),
     ...GRID_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile })),
     ...customDatabases.map((database) => ({ key: database.id, kind: 'custom' as const, database })),
@@ -679,6 +719,27 @@ export default function DatabasesScreen() {
     { key: IMPORT_TILE_KEY, kind: 'action' as const },
     { key: PIN_TILE_KEY, kind: 'action' as const },
   ];
+  // The folders, holding the databases that are really there (one deleted
+  // since simply drops out) - less the one being carried out right now.
+  const folderItems: BoardItem[] = Object.entries(folders)
+    .map(([id, folder]) => ({
+      key: `${FOLDER_PREFIX}${id}`,
+      kind: 'folder' as const,
+      id,
+      members: (folder.members ?? [])
+        .filter((key) => key !== extracting)
+        .map((key) => looseItems.find((item) => item.key === key))
+        .filter((item): item is BoardItem => !!item),
+    }))
+    .filter((folder) => folder.members.length > 0);
+  const inFolders = new Set(
+    folderItems.flatMap((folder) => (folder.kind === 'folder' ? folder.members.map((m) => m.key) : []))
+  );
+  const boardItems: BoardItem[] = [...looseItems.filter((item) => !inFolders.has(item.key)), ...folderItems];
+  function folderMembersOf(key: string): BoardItem[] {
+    const folder = folderItems.find((item) => item.key === key);
+    return folder && folder.kind === 'folder' ? folder.members : [];
+  }
   // The arranged order wins where there is one; anything it does not
   // mention (a database made since) keeps its natural place at the end.
   const activeOrder = order;
@@ -940,6 +1001,300 @@ export default function DatabasesScreen() {
     return proxy;
   }, [navigation]);
 
+  // ---- carrying, folders ----------------------------------------------
+  // The cell the carried tile claimed when it was picked up, and the
+  // folder it came out of (if it did) - read when it is let go.
+  const carryStartCell = useRef<TilePosition>({ x: 0, y: 0 });
+  const carryFrom = useRef<string | null>(null);
+  const carryKey = useRef<string | null>(null);
+
+  function tileRect(p: PlacedTile<BoardItem>) {
+    return { left: p.x * cellStep, top: rowTop(p.y), width: spanSize(p.size.w), height: spanSize(p.size.h) };
+  }
+  // A folder's place in pixels - under the finger while it is carried.
+  function folderRect(key: string, x: number, y: number, size: TileSize) {
+    const base = { left: x * cellStep, top: rowTop(y), width: spanSize(size.w), height: spanSize(size.h) };
+    return drag?.key === key ? { ...base, left: drag.x, top: drag.y } : base;
+  }
+  const mergeRect = (() => {
+    if (!mergeTarget) return null;
+    const p = placedOf(mergeTarget);
+    if (!p) return null;
+    const r = p.item.kind === 'folder' ? folderRect(p.item.key, p.x, p.y, p.size) : tileRect(p);
+    const pad = Math.min(6, gap * 0.45) + 2;
+    return { left: r.left - pad, top: r.top - pad, width: r.width + pad * 2, height: r.height + pad * 2 };
+  })();
+
+  function clearHover() {
+    if (hover.current) clearTimeout(hover.current.timer);
+    hover.current = null;
+  }
+
+  function startCarry(item: BoardItem, px: number, py: number, x: number, y: number, fromFolder?: string) {
+    hapticButtonDown();
+    clearHover();
+    setMergeTarget(null);
+    carryFrom.current = fromFolder ?? null;
+    carryKey.current = item.key;
+    if (fromFolder) setExtracting(item.key);
+    carryOrigin.current = { x: px, y: py };
+    carryStartCell.current = { x, y };
+    setDrag({ key: item.key, x: px, y: py });
+    setDraftPosition({ key: item.key, x, y });
+  }
+
+  function moveCarry(item: BoardItem, dx: number, dy: number) {
+    const nextX = carryOrigin.current.x + dx;
+    const nextY = carryOrigin.current.y + dy;
+    setDrag({ key: item.key, x: nextX, y: nextY });
+    // A database rested over the MIDDLE of another database or a folder is
+    // on its way into it (after a moment - see hover); anywhere else it is
+    // being moved, as before. The board it is measured against is the one
+    // without it, so what it is over does not slide away from under it.
+    if (item.kind === 'builtin' || item.kind === 'custom') {
+      const size = sizeFor(item.key);
+      const cx = nextX + spanSize(size.w) / 2;
+      const cy = nextY + spanSize(size.h) / 2;
+      const rest = boardWith(null, null, item.key).placed;
+      const target = rest.find((p) => {
+        if (p.item.key === item.key) return false;
+        if (p.item.kind !== 'builtin' && p.item.kind !== 'custom' && p.item.kind !== 'folder') return false;
+        const r = tileRect(p);
+        const inset = 0.25;
+        return (
+          cx > r.left + r.width * inset &&
+          cx < r.left + r.width * (1 - inset) &&
+          cy > r.top + r.height * inset &&
+          cy < r.top + r.height * (1 - inset)
+        );
+      });
+      if (target) {
+        if (hover.current?.key !== target.item.key) {
+          clearHover();
+          setMergeTarget(null);
+          const key = target.item.key;
+          hover.current = {
+            key,
+            timer: setTimeout(() => {
+              hapticButtonDown();
+              setMergeTarget(key);
+            }, 450),
+          };
+          // Whatever it had pushed aside to get here goes back.
+          setDraftPosition({ key: item.key, x: carryStartCell.current.x, y: carryStartCell.current.y });
+        }
+        return;
+      }
+    }
+    clearHover();
+    setMergeTarget(null);
+    const cell = cellUnder(item.key, nextX, nextY);
+    setDraftPosition({ key: item.key, x: cell.x, y: cell.y });
+  }
+
+  // A folder that has lost a tile: two or more left, it keeps them; one
+  // left, it is no folder any more - that tile takes its place.
+  function takeOutOfFolder(folderId: string, key: string) {
+    const folder = folders[folderId];
+    if (!folder) return;
+    const members = folder.members.filter((k) => k !== key);
+    if (members.length >= 2) {
+      setDoc(tileFoldersDoc, { folders: { [folderId]: { members } } }, { merge: true });
+      return;
+    }
+    setDoc(tileFoldersDoc, { folders: { [folderId]: deleteField() } }, { merge: true });
+    const folderKey = `${FOLDER_PREFIX}${folderId}`;
+    const p = placedOf(folderKey);
+    if (members.length === 1 && p) {
+      const section = sectionOf(folderKey);
+      setDoc(
+        tileLayoutsDoc,
+        {
+          [tileView]: {
+            positions: { [fieldKey(members[0])]: formatTilePosition(relOf(p)) },
+            sections: { [fieldKey(members[0])]: section || deleteField() },
+          },
+        },
+        { merge: true }
+      );
+    }
+  }
+
+  // Let go over a database or a folder it had rested on: into the folder,
+  // or a new one made of the two, standing where the one under it stood.
+  function dropInto(targetKey: string, key: string, fromFolder: string | null) {
+    if (targetKey.startsWith(FOLDER_PREFIX)) {
+      const id = targetKey.slice(FOLDER_PREFIX.length);
+      const members = [...(folders[id]?.members ?? []).filter((k) => k !== key), key];
+      setDoc(tileFoldersDoc, { folders: { [id]: { members } } }, { merge: true });
+      if (fromFolder && fromFolder !== id) takeOutOfFolder(fromFolder, key);
+      return;
+    }
+    const target = placedOf(targetKey);
+    if (!target) return;
+    const id = `f${Date.now().toString(36)}`;
+    const folderKey = `${FOLDER_PREFIX}${id}`;
+    setDoc(tileFoldersDoc, { folders: { [id]: { members: [targetKey, key] } } }, { merge: true });
+    const section = sectionOf(targetKey);
+    setDoc(
+      tileLayoutsDoc,
+      {
+        [tileView]: {
+          positions: { [fieldKey(folderKey)]: formatTilePosition(relOf(target)) },
+          sections: { [fieldKey(folderKey)]: section || deleteField() },
+          sizes: { [fieldKey(folderKey)]: '2x1' },
+        },
+      },
+      { merge: true }
+    );
+    if (fromFolder) takeOutOfFolder(fromFolder, key);
+  }
+
+  function endCarry() {
+    clearHover();
+    const key = carryKey.current;
+    const from = carryFrom.current;
+    const target = mergeTarget;
+    carryKey.current = null;
+    carryFrom.current = null;
+    const dropped = draftPosition ? placedOf(draftPosition.key) : undefined;
+    setDrag(null);
+    setDraftPosition(null);
+    setMergeTarget(null);
+    setExtracting(null);
+    if (key && target && target !== key) {
+      dropInto(target, key, from);
+      return;
+    }
+    if (dropped) setPosition(dropped, placed);
+    // Out of its folder and put down on the board: a one-cell tile, as it
+    // was in there, standing where it was dropped.
+    if (key && from) {
+      takeOutOfFolder(from, key);
+      setDoc(tileLayoutsDoc, { [tileView]: { sizes: { [fieldKey(key)]: '1x1' } } }, { merge: true });
+    }
+  }
+
+  // One tile, wherever it stands - on the board, or in a folder (`at` is
+  // then its pixel place and `inFolder` the folder it lies in). Folder
+  // tiles are drawn in the same flat list as the rest, under the same key,
+  // so a tile carried out of its folder stays the one component under the
+  // finger instead of being rebuilt.
+  const renderTile = (
+    item: BoardItem,
+    x: number,
+    y: number,
+    size: TileSize,
+    at?: { left: number; top: number },
+    inFolder?: string
+  ) => (
+    <BoardTile
+      key={item.key}
+      item={item}
+      left={at?.left ?? x * cellStep}
+      top={at?.top ?? rowTop(y)}
+      fixedSize={!!inFolder}
+      width={spanSize(size.w)}
+      height={spanSize(size.h)}
+      color={
+        item.kind === 'custom'
+          ? item.database.color ?? recordColour(item.database.id).background
+          : item.kind === 'pin'
+            ? item.pin.color
+            : colorFor(item.key)
+      }
+      editing={editing}
+      cellSize={cellSize}
+      size={size}
+      background={tileBackgrounds[item.key]}
+      count={item.kind === 'pin' ? item.pin.count : counts[item.key]}
+      onOpen={() => {
+        // On a wide screen a database opens BESIDE the board,
+        // in the left pane, rather than replacing it.
+        const pane =
+          item.kind === 'builtin'
+            ? paneTargetFor(item.tile)
+            : item.kind === 'custom'
+              ? ({ kind: 'custom', databaseId: item.database.id } as const)
+              : null;
+        if (isTwoPane && pane) {
+          setColorMenuKey(null);
+          setOpenInPane(pane);
+          return;
+        }
+        if (item.kind === 'builtin') openTile(item.tile);
+        else if (item.kind === 'custom')
+          navigation.navigate('CustomDatabase', { databaseId: item.database.id });
+        else if (item.kind === 'pin') {
+          // A group opens the documents with that group
+          // chosen - and everything else in it follows under
+          // the rule there (see GroupSections). A smart folder
+          // opens its own list, which is already cross-database.
+          if (item.pinKind === 'group') {
+            // The documents are a desk under this layer: the
+            // layer has to get out of the way to show them.
+            databasesLayer?.close();
+            navigation.navigate('Tabs', {
+              screen: 'Документи',
+              params: { groupId: item.pin.id },
+            });
+          } else navigation.navigate('TagItems', { tagId: item.pin.id });
+        } else if (item.key === NEW_TILE_KEY) setCreatingDatabase(true);
+        else if (item.key === PIN_TILE_KEY) setPinSheetVisible(true);
+        else setImporting(true);
+      }}
+      onHold={() => {
+        hapticButtonDown();
+        setEditing(true);
+        // On a wide screen the settings have a pane waiting
+        // for them, so the tile that was held goes straight
+        // into it - one gesture, not hold-then-tap.
+        if (isTwoPane) setColorMenuKey(item.key);
+      }}
+      onColor={() => setColorMenuKey(item.key)}
+      onResize={(next) => setDraftSize({ key: item.key, size: next })}
+      onResizeEnd={(next) => {
+        setDraftSize(null);
+        writeSize(item.key, next);
+      }}
+      carried={drag?.key === item.key ? { x: drag.x, y: drag.y } : null}
+      deskDrag={(() => {
+        // Only in the layer, and only a database that can
+        // stand as a desk.
+        if (!databasesLayer || !desksControl) return null;
+        const key =
+          item.kind === 'builtin'
+            ? deskKeyForTile(item.tile.key)
+            : item.kind === 'custom'
+              ? deskKeyForCustom(item.database.id)
+              : null;
+        if (!key || !canBeDesk(key)) return null;
+        const face = deskFace(key, customDatabases);
+        const tint =
+          item.kind === 'custom'
+            ? item.database.color ?? recordColour(item.database.id).background
+            : colorFor(item.key);
+        return {
+          onDragStart: (gx: number, gy: number) => {
+            hapticButtonDown();
+            setDeskGhost({ x: gx, y: gy, label: face.label, icon: face.icon, color: tint });
+            // The layer steps back: the desks are where it goes.
+            databasesLayer.close();
+          },
+          onDragMove: (gx: number, gy: number) =>
+            setDeskGhost((prev) => (prev ? { ...prev, x: gx, y: gy } : prev)),
+          onDrop: () => {
+            setDeskGhost(null);
+            makeDesk(key);
+          },
+        };
+      })()}
+      onCarryStart={() => startCarry(item, at?.left ?? x * cellStep, at?.top ?? rowTop(y), x, y, inFolder)}
+      onCarryMove={(dx, dy) => moveCarry(item, dx, dy)}
+      onCarryEnd={endCarry}
+    />
+  );
+
   const boardScroll = (
           <ScrollView
             contentContainerStyle={[
@@ -996,128 +1351,62 @@ export default function DatabasesScreen() {
                 ))}
 
               {cellSize > 0 &&
-                placed.map(({ item, x, y, size }) => (
-                  <BoardTile
-                    key={item.key}
-                    item={item}
-                    left={x * cellStep}
-                    top={rowTop(y)}
-                    width={spanSize(size.w)}
-                    height={spanSize(size.h)}
-                    color={
-                      item.kind === 'custom'
-                        ? item.database.color ?? recordColour(item.database.id).background
-                        : item.kind === 'pin'
-                          ? item.pin.color
-                          : colorFor(item.key)
-                    }
-                    editing={editing}
-                    cellSize={cellSize}
-                    size={size}
-                    background={tileBackgrounds[item.key]}
-                    count={item.kind === 'pin' ? item.pin.count : counts[item.key]}
-                    onOpen={() => {
-                      // On a wide screen a database opens BESIDE the board,
-                      // in the left pane, rather than replacing it.
-                      const pane =
-                        item.kind === 'builtin'
-                          ? paneTargetFor(item.tile)
-                          : item.kind === 'custom'
-                            ? ({ kind: 'custom', databaseId: item.database.id } as const)
-                            : null;
-                      if (isTwoPane && pane) {
-                        setColorMenuKey(null);
-                        setOpenInPane(pane);
-                        return;
-                      }
-                      if (item.kind === 'builtin') openTile(item.tile);
-                      else if (item.kind === 'custom')
-                        navigation.navigate('CustomDatabase', { databaseId: item.database.id });
-                      else if (item.kind === 'pin') {
-                        // A group opens the documents with that group
-                        // chosen - and everything else in it follows under
-                        // the rule there (see GroupSections). A smart folder
-                        // opens its own list, which is already cross-database.
-                        if (item.pinKind === 'group') {
-                          // The documents are a desk under this layer: the
-                          // layer has to get out of the way to show them.
-                          databasesLayer?.close();
-                          navigation.navigate('Tabs', {
-                            screen: 'Документи',
-                            params: { groupId: item.pin.id },
-                          });
-                        } else navigation.navigate('TagItems', { tagId: item.pin.id });
-                      } else if (item.key === NEW_TILE_KEY) setCreatingDatabase(true);
-                      else if (item.key === PIN_TILE_KEY) setPinSheetVisible(true);
-                      else setImporting(true);
-                    }}
-                    onHold={() => {
-                      hapticButtonDown();
-                      setEditing(true);
-                      // On a wide screen the settings have a pane waiting
-                      // for them, so the tile that was held goes straight
-                      // into it - one gesture, not hold-then-tap.
-                      if (isTwoPane) setColorMenuKey(item.key);
-                    }}
-                    onColor={() => setColorMenuKey(item.key)}
-                    onResize={(next) => setDraftSize({ key: item.key, size: next })}
-                    onResizeEnd={(next) => {
-                      setDraftSize(null);
-                      writeSize(item.key, next);
-                    }}
-                    carried={drag?.key === item.key ? { x: drag.x, y: drag.y } : null}
-                    deskDrag={(() => {
-                      // Only in the layer, and only a database that can
-                      // stand as a desk.
-                      if (!databasesLayer || !desksControl) return null;
-                      const key =
-                        item.kind === 'builtin'
-                          ? deskKeyForTile(item.tile.key)
-                          : item.kind === 'custom'
-                            ? deskKeyForCustom(item.database.id)
-                            : null;
-                      if (!key || !canBeDesk(key)) return null;
-                      const face = deskFace(key, customDatabases);
-                      const tint =
-                        item.kind === 'custom'
-                          ? item.database.color ?? recordColour(item.database.id).background
-                          : colorFor(item.key);
-                      return {
-                        onDragStart: (gx: number, gy: number) => {
-                          hapticButtonDown();
-                          setDeskGhost({ x: gx, y: gy, label: face.label, icon: face.icon, color: tint });
-                          // The layer steps back: the desks are where it goes.
-                          databasesLayer.close();
-                        },
-                        onDragMove: (gx: number, gy: number) =>
-                          setDeskGhost((prev) => (prev ? { ...prev, x: gx, y: gy } : prev)),
-                        onDrop: () => {
-                          setDeskGhost(null);
-                          makeDesk(key);
-                        },
-                      };
-                    })()}
-                    onCarryStart={() => {
-                      hapticButtonDown();
-                      carryOrigin.current = { x: x * cellStep, y: rowTop(y) };
-                      setDrag({ key: item.key, x: x * cellStep, y: rowTop(y) });
-                      setDraftPosition({ key: item.key, x, y });
-                    }}
-                    onCarryMove={(dx, dy) => {
-                      const nextX = carryOrigin.current.x + dx;
-                      const nextY = carryOrigin.current.y + dy;
-                      setDrag({ key: item.key, x: nextX, y: nextY });
-                      const cell = cellUnder(item.key, nextX, nextY);
-                      setDraftPosition({ key: item.key, x: cell.x, y: cell.y });
-                    }}
-                    onCarryEnd={() => {
-                      const dropped = draftPosition ? placedOf(draftPosition.key) : undefined;
-                      setDrag(null);
-                      setDraftPosition(null);
-                      if (dropped) setPosition(dropped, placed);
-                    }}
-                  />
-                ))}
+                placed
+                  .filter(({ item }) => item.kind === 'folder')
+                  .map(({ item, x, y, size }) => (
+                    <FolderFrame
+                      key={item.key}
+                      rect={folderRect(item.key, x, y, size)}
+                      pad={Math.min(6, gap * 0.45)}
+                      highlighted={mergeTarget === item.key}
+                    />
+                  ))}
+              {cellSize > 0 &&
+                placed.flatMap(({ item, x, y, size }) => {
+                  if (item.kind !== 'folder') return [renderTile(item, x, y, size)];
+                  // Its tiles, one cell each, in reading order across its own
+                  // width - moving with it while it is carried.
+                  const origin = folderRect(item.key, x, y, size);
+                  return item.members.map((member, index) => {
+                    const col = index % size.w;
+                    const row = Math.floor(index / size.w);
+                    return renderTile(
+                      member,
+                      x + col,
+                      y + row,
+                      { w: 1, h: 1 },
+                      { left: origin.left + col * cellStep, top: origin.top + row * cellStep },
+                      item.id
+                    );
+                  });
+                })}
+              {/* Where a carried tile would go INTO: a ring round it. */}
+              {mergeTarget && mergeRect && (
+                <View pointerEvents="none" style={[styles.mergeRing, mergeRect]} />
+              )}
+              {/* A folder's own handles while arranging - moving it whole,
+                  and its corner - over its tiles, so they can be reached. */}
+              {cellSize > 0 &&
+                editing &&
+                placed
+                  .filter(({ item }) => item.kind === 'folder')
+                  .map(({ item, x, y, size }) => (
+                    <FolderHandles
+                      key={`handles:${item.key}`}
+                      rect={folderRect(item.key, x, y, size)}
+                      size={size}
+                      cellStep={cellStep}
+                      count={item.kind === 'folder' ? item.members.length : 0}
+                      onMoveStart={() => startCarry(item, folderRect(item.key, x, y, size).left, folderRect(item.key, x, y, size).top, x, y)}
+                      onMove={(dx, dy) => moveCarry(item, dx, dy)}
+                      onMoveEnd={endCarry}
+                      onResize={(next) => setDraftSize({ key: item.key, size: next })}
+                      onResizeEnd={(next) => {
+                        setDraftSize(null);
+                        writeSize(item.key, next);
+                      }}
+                    />
+                  ))}
             </View>
           </ScrollView>
   );
@@ -1620,6 +1909,7 @@ function BoardTile({
   onCarryMove,
   onCarryEnd,
   deskDrag,
+  fixedSize,
 }: {
   item: BoardItem;
   left: number;
@@ -1654,6 +1944,8 @@ function BoardTile({
     onDragMove: (x: number, y: number) => void;
     onDrop: (x: number, y: number) => void;
   } | null;
+  // A tile in a folder is one cell, always - no corner to pull.
+  fixedSize?: boolean;
 }) {
   const styles = useStyles(makeStyles);
   // Whether this hold has turned into a drag - and, after it, that the
@@ -1855,7 +2147,7 @@ function BoardTile({
         <Text style={[styles.tileCount, { color: ink }]}>{count}</Text>
       )}
 
-      {editing && (
+      {editing && !fixedSize && (
         <GestureDetector gesture={grip}>
           {/* Sized to the tile: at one cell the standing grip covered a
               quarter of it. */}
@@ -1868,8 +2160,128 @@ function BoardTile({
   );
 }
 
+// A FOLDER'S OUTLINE: the shell its tiles stand in, a little wider than
+// they are ("контур папки трохи ширшим за іконки") - into the gaps round
+// them, never over the tiles beside it. No name: a name takes room.
+function FolderFrame({
+  rect,
+  pad,
+  highlighted,
+}: {
+  rect: { left: number; top: number; width: number; height: number };
+  pad: number;
+  highlighted: boolean;
+}) {
+  const styles = useStyles(makeStyles);
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.folderFrame,
+        {
+          left: rect.left - pad,
+          top: rect.top - pad,
+          width: rect.width + pad * 2,
+          height: rect.height + pad * 2,
+          borderRadius: 16 + pad,
+        },
+        highlighted && styles.folderFrameHighlighted,
+      ]}
+    />
+  );
+}
+
+// While arranging: a folder's two handles over its tiles - carrying it
+// whole (top-left) and its corner (bottom-right), which snaps to a folder
+// shape that still holds what is in it.
+function FolderHandles({
+  rect,
+  size,
+  cellStep,
+  count,
+  onMoveStart,
+  onMove,
+  onMoveEnd,
+  onResize,
+  onResizeEnd,
+}: {
+  rect: { left: number; top: number; width: number; height: number };
+  size: TileSize;
+  cellStep: number;
+  count: number;
+  onMoveStart: () => void;
+  onMove: (dx: number, dy: number) => void;
+  onMoveEnd: () => void;
+  onResize: (size: TileSize) => void;
+  onResizeEnd: (size: TileSize) => void;
+}) {
+  const styles = useStyles(makeStyles);
+  const base = useRef(size);
+  const sizeFromDrag = (dx: number, dy: number) =>
+    snapFolderSize(
+      Math.max(1, Math.round(base.current.w + dx / Math.max(1, cellStep))),
+      Math.max(1, Math.round(base.current.h + dy / Math.max(1, cellStep))),
+      count
+    );
+  const move = Gesture.Pan()
+    .runOnJS(true)
+    .minDistance(0)
+    .onStart(() => onMoveStart())
+    .onUpdate((e) => onMove(e.translationX, e.translationY))
+    .onFinalize(() => onMoveEnd());
+  const grip = Gesture.Pan()
+    .runOnJS(true)
+    .minDistance(0)
+    .onBegin(() => {
+      base.current = size;
+    })
+    .onUpdate((e) => onResize(sizeFromDrag(e.translationX, e.translationY)))
+    .onEnd((e) => onResizeEnd(sizeFromDrag(e.translationX, e.translationY)));
+  return (
+    <>
+      <GestureDetector gesture={move}>
+        <View style={[styles.folderHandle, { left: rect.left - 8, top: rect.top - 8 }]}>
+          <Ionicons name="move-outline" size={14} color="rgba(255,255,255,0.85)" />
+        </View>
+      </GestureDetector>
+      <GestureDetector gesture={grip}>
+        <View style={[styles.folderHandle, { left: rect.left + rect.width - 20, top: rect.top + rect.height - 20 }]}>
+          <Ionicons name="resize-outline" size={14} color="rgba(255,255,255,0.85)" />
+        </View>
+      </GestureDetector>
+    </>
+  );
+}
+
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
+  folderFrame: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  folderFrameHighlighted: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderColor: 'rgba(255,255,255,0.7)',
+  },
+  folderHandle: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 30,
+  },
+  // Round what a carried tile would be dropped INTO.
+  mergeRing: {
+    position: 'absolute',
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: t.accent,
+  },
   // A database tile in the hand, on its way to becoming a desk.
   deskGhost: {
     position: 'absolute',
