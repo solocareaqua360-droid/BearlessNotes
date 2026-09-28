@@ -95,6 +95,7 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useDensity } from '../hooks/useDensity';
 import { contentEqual } from '../utils/contentEqual';
 import { keyedAll, keyedDiff, readBoardPart } from '../utils/boardStorage';
+import { useBlockDrawerSwipe } from '../navigation/sideDrawers';
 import FlashcardBlockCard from '../components/FlashcardBlockCard';
 import GroupImportSheet from '../components/GroupImportSheet';
 import { useGroupItems } from '../hooks/useGroupItems';
@@ -5221,6 +5222,9 @@ export default function BoardScreen() {
   // hidden then and the note's own controls hold the dock.
   const topNavOn = useTopNavOn();
   const bar = topNavOn && !(paneDocOpen && paneFullscreen);
+  // The canvas takes every sideways drag for itself: the drawers' swipe
+  // stands down while a board is open.
+  useBlockDrawerSwipe(boardFocused);
   const leaveOrClosePane = () => (isTwoPane && paneDocId !== null ? closePane() : navigation.goBack());
   useDockLeave('easel-outline', leaveOrClosePane, !bar);
   useTopBack(leaveOrClosePane, bar);

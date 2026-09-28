@@ -189,15 +189,15 @@ type Value = {
   // One claim per publisher, under its own id - see the Claim comment
   // below. Passing null withdraws that publisher's claim and nobody
   // else's.
-  publishActions: (id: string, actions: DockAction[] | null) => void;
+  publishActions: (id: string, actions: DockAction[] | null, layer?: number) => void;
   beads: { left: DockBead | null; right: DockBead | null };
-  publishBeads: (id: string, beads: { left: DockBead | null; right: DockBead | null } | null) => void;
+  publishBeads: (id: string, beads: { left: DockBead | null; right: DockBead | null } | null, layer?: number) => void;
   leave: DockLeave | null;
   publishLeave: (leave: DockLeave | null) => void;
   topBack: TopBack | null;
-  publishTopBack: (back: TopBack | null) => void;
+  publishTopBack: (id: string, back: TopBack | null, layer?: number) => void;
   topExtras: TopExtras | null;
-  publishTopExtras: (extras: TopExtras | null) => void;
+  publishTopExtras: (id: string, extras: TopExtras | null, layer?: number) => void;
   // Whether the desks bar is drawn at the top (TopNavBar). While it is,
   // the path and the days rise under IT rather than above the dock.
   topNavUp: boolean;
@@ -303,25 +303,38 @@ function beadSignature(beads: { left: DockBead | null; right: DockBead | null })
 // disappearing without quietly deciding the other half of the question
 // (who owns the dock while a note is open in a pane). That is a design
 // decision, not a mechanism one, and it is taken separately.
-type Claim<T> = { id: string; value: T };
+type Claim<T> = { id: string; value: T; layer: number };
 
+// A LAYER outranks the order claims arrived in: a drawer over the desks
+// (the calendar's, see DockLayerContext) holds the bar and the dock for
+// as long as it is open, even if the desk under it happens to republish
+// in the meantime. Within one layer, the most recent claim wins.
 function topClaim<T>(claims: Claim<T>[]): T | null {
-  return claims.length > 0 ? claims[claims.length - 1].value : null;
+  let best: Claim<T> | null = null;
+  for (const claim of claims) {
+    if (!best || claim.layer >= best.layer) best = claim;
+  }
+  return best ? best.value : null;
 }
+
+// Which layer this subtree publishes on. 0 is the screens; a drawer that
+// lies over them provides a higher one.
+export const DockLayerContext = createContext(0);
 
 function withClaim<T>(
   claims: Claim<T>[],
   id: string,
   value: T | null,
-  same: (a: T, b: T) => boolean
+  same: (a: T, b: T) => boolean,
+  layer = 0
 ): Claim<T>[] {
   const at = claims.findIndex((claim) => claim.id === id);
   if (value === null) return at === -1 ? claims : claims.filter((claim) => claim.id !== id);
-  if (at !== -1 && same(claims[at].value, value)) return claims;
+  if (at !== -1 && claims[at].layer === layer && same(claims[at].value, value)) return claims;
   // Written last, so drawn: a claim that changes goes to the end of the
   // queue, which is the same "most recent wins" the dock has always had
   // between two screens that both have something to say.
-  return [...claims.filter((claim) => claim.id !== id), { id, value }];
+  return [...claims.filter((claim) => claim.id !== id), { id, value, layer }];
 }
 
 export function NavDockProvider({ children }: { children: ReactNode }) {
@@ -379,11 +392,21 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       setTimeout(() => setTopNavClaims((n) => n - 1), TOP_NAV_RELEASE_MS);
     };
   }, []);
-  const [topExtras, publishTopExtras] = useState<TopExtras | null>(null);
-  const [topBack, setTopBack] = useState<TopBack | null>(null);
-  const publishTopBack = useCallback((next: TopBack | null) => {
-    setTopBack((prev) => (prev === next || (prev && next && prev.onPress === next.onPress && prev.dimmed === next.dimmed) ? prev : next));
+  // Claims too, like the dock's own beads and actions - a drawer over the
+  // desks publishes its own bar without wiping the desk's, which comes
+  // back the moment the drawer closes.
+  const [topExtrasClaims, setTopExtrasClaims] = useState<Claim<TopExtras>[]>([]);
+  const publishTopExtras = useCallback((id: string, next: TopExtras | null, layer = 0) => {
+    setTopExtrasClaims((prev) => withClaim(prev, id, next, (a, b) => a === b, layer));
   }, []);
+  const topExtras = useMemo(() => topClaim(topExtrasClaims), [topExtrasClaims]);
+  const [topBackClaims, setTopBackClaims] = useState<Claim<TopBack>[]>([]);
+  const publishTopBack = useCallback((id: string, next: TopBack | null, layer = 0) => {
+    setTopBackClaims((prev) =>
+      withClaim(prev, id, next, (a, b) => a.onPress === b.onPress && a.dimmed === b.dimmed && a.icon === b.icon, layer)
+    );
+  }, []);
+  const topBack = useMemo(() => topClaim(topBackClaims), [topBackClaims]);
   const [leaveBox, setLeaveBox] = useState<{ value: DockLeave | null }>({ value: null });
   const leave = leaveBox.value;
   const publishLeave = useCallback((next: DockLeave | null) => {
@@ -399,13 +422,14 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
   // that the signature already accounts for (an icon that changes with
   // the view mode, an `active` that changes with select mode).
   const [actionClaims, setActionClaims] = useState<Claim<DockAction[]>[]>([]);
-  const publishActions = useCallback((id: string, next: DockAction[] | null) => {
+  const publishActions = useCallback((id: string, next: DockAction[] | null, layer = 0) => {
     setActionClaims((prev) =>
       withClaim(
         prev,
         id,
         next && next.length > 0 ? next : null,
-        (a, b) => actionSignature(a) === actionSignature(b)
+        (a, b) => actionSignature(a) === actionSignature(b),
+        layer
       )
     );
   }, []);
@@ -414,13 +438,14 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
     []
   );
   const publishBeads = useCallback(
-    (id: string, next: { left: DockBead | null; right: DockBead | null } | null) => {
+    (id: string, next: { left: DockBead | null; right: DockBead | null } | null, layer = 0) => {
       setBeadClaims((prev) =>
         withClaim(
           prev,
           id,
           next && (next.left || next.right) ? next : null,
-          (a, b) => beadSignature(a) === beadSignature(b)
+          (a, b) => beadSignature(a) === beadSignature(b),
+          layer
         )
       );
     },
@@ -620,18 +645,20 @@ export function useDockLeave(icon: string, onLeave: () => void, enabled = true) 
 // What one of the four desks publishes as its way back, for TopNavBar.
 // Same stable-wrapper rule as everything else here: the handler can
 // change every render, the published one does not.
-export function useTopBack(onPress: (() => void) | null, enabled = true) {
+export function useTopBack(onPress: (() => void) | null, enabled = true, icon?: string) {
   const publish = useContext(NavDockContext)?.publishTopBack;
+  const layer = useContext(DockLayerContext);
   const focused = useIsFocused();
+  const id = useId();
   const ref = useRef(onPress);
   ref.current = onPress;
   const stable = useCallback(() => ref.current?.(), []);
   const dimmed = !onPress;
   useEffect(() => {
     if (!publish || !focused || !enabled) return;
-    publish({ onPress: stable, dimmed });
-    return () => publish(null);
-  }, [publish, focused, enabled, stable, dimmed]);
+    publish(id, { onPress: stable, dimmed, icon }, layer);
+    return () => publish(id, null);
+  }, [publish, focused, enabled, stable, dimmed, icon, id, layer]);
 }
 
 export function useNavTopNavUp(): boolean {
@@ -656,7 +683,9 @@ export function useTopExtras(
   tools?: TopTool[] | null
 ) {
   const publish = useContext(NavDockContext)?.publishTopExtras;
+  const layer = useContext(DockLayerContext);
   const focused = useIsFocused();
+  const id = useId();
   const ref = useRef({ menu, select, pane, tools });
   ref.current = { menu, select, pane, tools };
   const signature = JSON.stringify([
@@ -668,7 +697,7 @@ export function useTopExtras(
   useEffect(() => {
     if (!publish || !focused || !enabled) return;
     const live = ref.current;
-    publish({
+    publish(id, {
       menu: live.menu
         ? live.menu.map((e, i) =>
             e.kind === 'section' || e.kind === 'rule'
@@ -690,9 +719,9 @@ export function useTopExtras(
             onPress: () => ref.current.tools?.find((x) => x.key === t.key)?.onPress(),
           }))
         : null,
-    });
-    return () => publish(null);
-  }, [publish, focused, enabled, signature]);
+    }, layer);
+    return () => publish(id, null);
+  }, [publish, focused, enabled, signature, id, layer]);
 }
 
 export function useNavTopExtras(): TopExtras | null {
@@ -719,6 +748,7 @@ export function useNavDockLeave(): DockLeave | null {
 export function useDockActions(actions: DockAction[] | null) {
   const publish = useContext(NavDockContext)?.publishActions;
   const focused = useIsFocused();
+  const layer = useContext(DockLayerContext);
   const id = useId();
   const ref = useRef(actions);
   ref.current = actions;
@@ -741,10 +771,11 @@ export function useDockActions(actions: DockAction[] | null) {
             }
             return { ...a, onPress: w.onPress, onLongPress: a.onLongPress ? w.onLongPress : undefined };
           })
-        : null
+        : null,
+      layer
     );
     return () => publish(id, null);
-  }, [publish, focused, signature, id]);
+  }, [publish, focused, signature, id, layer]);
 }
 
 export function useNavDockActions(): DockAction[] | null {
@@ -756,6 +787,7 @@ export function useNavDockActions(): DockAction[] | null {
 export function useDockBeads(left: DockBead | null, right: DockBead | null) {
   const publish = useContext(NavDockContext)?.publishBeads;
   const focused = useIsFocused();
+  const layer = useContext(DockLayerContext);
   const id = useId();
   const ref = useRef({ left, right });
   ref.current = { left, right };
@@ -770,9 +802,9 @@ export function useDockBeads(left: DockBead | null, right: DockBead | null) {
     publish(id, {
       left: l ? { ...l, onPress: wrap.current.left.onPress, onLongPress: l.onLongPress ? wrap.current.left.onLongPress : undefined } : null,
       right: r ? { ...r, onPress: wrap.current.right.onPress, onLongPress: r.onLongPress ? wrap.current.right.onLongPress : undefined } : null,
-    });
+    }, layer);
     return () => publish(id, null);
-  }, [publish, focused, signature, id]);
+  }, [publish, focused, signature, id, layer]);
 }
 
 export function useNavDockBeads() {

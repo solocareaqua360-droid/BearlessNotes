@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import {
@@ -52,7 +52,7 @@ import DocumentCard from '../components/DocumentCard';
 import DayPageMiniature from '../components/DayPageMiniature';
 import { extractPreview } from '../utils/documentPreview';
 import { usePublishRailPanel } from '../navigation/navRail';
-import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher, useTopBack, useTopExtras } from '../navigation/navDock';
 import {
@@ -73,6 +73,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
+import { CalendarDrawerContext } from '../navigation/sideDrawers';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
@@ -153,7 +154,14 @@ export default function CalendarScreen() {
   // See DocumentsScreen - react-native-svg's own "100%" doesn't reliably
   // re-measure on a runtime window resize (a Fold unfolding), so the
   // gradient's canvas is sized from this instead.
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  // The FRAME's size - the window's, unless the calendar is drawn inside
+  // something narrower (its drawer), which says so (useFrameDimensions).
+  const { width: windowWidth, height: windowHeight } = useFrameDimensions();
+  // In the left drawer over the desks (CalendarDrawer), rather than a
+  // desk of its own: it speaks to the bar and the dock only while that
+  // drawer is open, and its way back closes the drawer.
+  const calendarDrawer = useContext(CalendarDrawerContext);
+  const drawerShut = !!calendarDrawer && !calendarDrawer.open;
   // Two panes on a wide screen (a Fold's inner screen, a tablet, DeX): the
   // calendar on the left with the month already open, the day's note on
   // the right. Same 840dp threshold as the documents list, and the same
@@ -275,7 +283,7 @@ export default function CalendarScreen() {
   // once the overview opens. Read on opening, the days above yours
   // arrived mid-zoom and turned from short cards into pages under the
   // finger, pushing the list about while it was still landing.
-  const calendarFocusedForFeed = useIsFocused();
+  const calendarFocusedForFeed = useIsFocused() && !drawerShut;
   useEffect(() => {
     if (!feedMode && !overviewOpen && !(phoneOverview && calendarFocusedForFeed)) return;
     // No range on calendarDate. Firestore needs a composite index for an
@@ -462,7 +470,7 @@ export default function CalendarScreen() {
   // the padding, rather than from the row, which would chase itself.
   const [headerContentHeight, setHeaderContentHeight] = useState(0);
   const calendarBlurTarget = useBlurTarget();
-  const calendarFocused = useIsFocused();
+  const calendarFocused = useIsFocused() && !drawerShut;
   const calendarInsets = useSafeAreaInsets();
   // The desks bar stands at the top on a phone (TopNavBar): everything
   // here starts below it.
@@ -792,7 +800,7 @@ export default function CalendarScreen() {
   // of the desks bar (TopNavBar); search, opening the diary, is on the
   // left bead again.
   const toPreviousDesk = useGoToPreviousDesk('Календар');
-  useTopBack(toPreviousDesk);
+  useTopBack(calendarDrawer ? calendarDrawer.close : toPreviousDesk, !drawerShut);
   const searchBead = calendarFocused
     ? { icon: 'search-outline', onPress: () => navigation.navigate('Diary') }
     : null;
@@ -852,7 +860,7 @@ export default function CalendarScreen() {
       },
     ],
     { active: noteSelectMode, onPress: () => noteEditorRef.current?.toggleSelectMode() },
-    !pointerDensity
+    !pointerDensity && !drawerShut
   );
   useDockBeads(pointerDensity || notePanelOpen ? null : searchBead, pointerDensity ? null : pencilBead);
   useDockActions(null);
