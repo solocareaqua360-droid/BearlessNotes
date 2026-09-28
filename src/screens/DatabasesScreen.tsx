@@ -62,6 +62,7 @@ import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveL
 import { DatabasesLayerContext } from '../navigation/sideDrawers';
 import { DesksControlContext, MAX_DESKS, PERMANENT_DESK, canBeDesk, deskFace, deskKeyForCustom, deskKeyForTile } from '../navigation/desks';
 import InlineDock from '../components/InlineDock';
+import IconPickerSheet from '../components/IconPickerSheet';
 import type { MenuEntry } from '../components/surfaces/Menu';
 import TopNavBar from '../components/TopNavBar';
 import { NavigationContext } from '@react-navigation/native';
@@ -310,6 +311,8 @@ export default function DatabasesScreen() {
   const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
   const [pinSheetVisible, setPinSheetVisible] = useState(false);
   const [folders, setFolders] = useState<Record<string, TileFolder>>({});
+  // The database whose icon is being chosen.
+  const [iconPickerFor, setIconPickerFor] = useState<string | null>(null);
   // A tile being carried OUT of its folder: while it is in the hand it is a
   // tile of the board, not of the folder.
   const [extracting, setExtracting] = useState<string | null>(null);
@@ -1478,6 +1481,24 @@ export default function DatabasesScreen() {
               )}
               {/* Only a database the user made can be deleted, and only
                   from here - the built-in ones are the app itself. */}
+              {/* A database the user made chooses its own icon - they all
+                  stood under the same grid glyph. */}
+              {colorMenuKey && customDatabases.some((d) => d.id === colorMenuKey) && (
+                <Pressable
+                  style={styles.sheetRow}
+                  onPress={() => {
+                    setIconPickerFor(colorMenuKey);
+                    setColorMenuKey(null);
+                  }}
+                >
+                  <Ionicons
+                    name={(customDatabases.find((d) => d.id === colorMenuKey)?.icon as keyof typeof Ionicons.glyphMap) ?? 'grid-outline'}
+                    size={17}
+                    color={theme.ink.primary}
+                  />
+                  <Text style={styles.sheetRowLabel}>Іконка</Text>
+                </Pressable>
+              )}
               {colorMenuKey && customDatabases.some((d) => d.id === colorMenuKey) && (
                 <Pressable
                   style={styles.sheetRow}
@@ -1790,6 +1811,17 @@ export default function DatabasesScreen() {
           notify('Не вдалося стилізувати фон', message);
           setStyling(null);
         }}
+      />
+
+      <IconPickerSheet
+        visible={iconPickerFor !== null}
+        title="Іконка бази"
+        selected={customDatabases.find((d) => d.id === iconPickerFor)?.icon}
+        onPick={(icon) => {
+          if (iconPickerFor) setDoc(doc(db, 'customDatabases', iconPickerFor), { icon }, { merge: true });
+          setIconPickerFor(null);
+        }}
+        onClose={() => setIconPickerFor(null)}
       />
 
       {/* The tile on its way to the desks, under the finger. */}
