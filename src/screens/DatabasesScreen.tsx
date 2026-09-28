@@ -1288,6 +1288,10 @@ export default function DatabasesScreen() {
       left={at?.left ?? x * cellStep + TILE_INSET}
       top={at?.top ?? rowTop(y) + TILE_INSET}
       fixedSize={!!inFolder}
+      // In a folder being carried: it moves WITH the folder, frame by
+      // frame - its own easing into place trailed a beat behind the
+      // outline ("іконки відстають від папки при переміщенні").
+      following={!!inFolder && drag?.key === `${FOLDER_PREFIX}${inFolder}`}
       width={at?.width ?? spanSize(size.w) - TILE_INSET * 2}
       height={at?.height ?? spanSize(size.h) - TILE_INSET * 2}
       color={
@@ -2041,6 +2045,7 @@ function BoardTile({
   onCarryEnd,
   deskDrag,
   fixedSize,
+  following,
 }: {
   item: BoardItem;
   left: number;
@@ -2077,6 +2082,8 @@ function BoardTile({
   } | null;
   // A tile in a folder is one cell, always - no corner to pull.
   fixedSize?: boolean;
+  // Carried along inside something that is under the finger: no easing.
+  following?: boolean;
 }) {
   const styles = useStyles(makeStyles);
   // Whether this hold has turned into a drag - and, after it, that the
@@ -2220,7 +2227,7 @@ function BoardTile({
     <Animated.View
       // A carried tile is not animated into place - it is under a finger,
       // and a layout animation would chase it a beat behind.
-      layout={carried ? undefined : LinearTransition.duration(220)}
+      layout={carried || following ? undefined : LinearTransition.duration(220)}
       style={[
         styles.tile,
         painted && { backgroundColor: paint, borderColor: 'rgba(255,255,255,0.18)' },
