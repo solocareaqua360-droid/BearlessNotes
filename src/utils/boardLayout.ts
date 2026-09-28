@@ -60,3 +60,10 @@ export const CONTAINER_DEFAULT_HEIGHT = 260;
 export const CONTAINER_SPACING = 24;
 export const clampContainerWidth = (width: number) => Math.round(Math.max(CONTAINER_MIN_WIDTH, width));
 export const clampContainerHeight = (height: number) => Math.round(Math.max(CONTAINER_MIN_HEIGHT, height));
+
+// Shared with the board's own card and the boards list' miniature/preview
+// capture (BoardMiniMap/BoardMiniature) - one rule for "what does this
+// file's icon look like", not two copies to keep in step.
+export function fileIconFor(name: string): 'document-text-outline' | 'document-outline' {
+  return name.toLowerCase().endsWith('.pdf') ? 'document-text-outline' : 'document-outline';
+}

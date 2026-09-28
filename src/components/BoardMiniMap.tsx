@@ -1,14 +1,20 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from './AttachmentImage';
 import { BoardCard, BoardColumn } from '../types';
-import { APPROX_CARD_HEIGHT, COLUMN_MIN_HEIGHT, COLUMN_WIDTH } from '../utils/boardLayout';
+import { APPROX_CARD_HEIGHT, COLUMN_MIN_HEIGHT, COLUMN_WIDTH, fileIconFor } from '../utils/boardLayout';
 import { FONT_REGULAR } from '../utils/fonts';
 
 // A board in miniature, built from its own cards rather than captured from
-// the screen. A screenshot would need a native capture module, would be
-// taken at some particular moment and would be out of date from the next
-// edit onward; this is the cards themselves, scaled down, so it cannot be
-// stale.
+// the screen - this is the LIVE version, drawn fresh on every render of the
+// boards list, so it has to stay cheap: real content only where reading it
+// costs nothing (a card's own cached picture/colour), a pale block for
+// everything else. The list of boards would rather this than a screenshot
+// anyway - a real screenshot is only worth the capture cost once, when the
+// board is actually left with real edits, which is `BoardMiniature`'s job
+// (see `useBoardPreviewCapture`); this component is also what THAT renders
+// into, with `detailed` on, since drawing every card as itself is the whole
+// point of a capture.
 //
 // Real content where there is any: a photo card shows its photo, a sticky
 // keeps its colour, everything else is a pale block. Small, that reads as
@@ -19,6 +25,7 @@ export default function BoardMiniMap({
   width,
   height,
   showText,
+  detailed,
 }: {
   cards: BoardCard[];
   columns?: BoardColumn[];
@@ -27,6 +34,11 @@ export default function BoardMiniMap({
   // Text cards draw a couple of lines standing in for their words - only
   // worth it on a tile big enough for them to be lines rather than specks.
   showText?: boolean;
+  // Reserved for the one-time capture (BoardMiniature): a sticky's own
+  // text, a file's icon, a board-reference's title - readable in a
+  // screenshot that is drawn once, too much text-measuring work to redo
+  // on every list render of every board.
+  detailed?: boolean;
 }) {
   const lanes = (columns ?? []).map((column) => ({
     x: column.x,
@@ -96,14 +108,28 @@ export default function BoardMiniMap({
           );
         }
         const isSticky = type === 'paragraph' && !!card.color;
+        // A file or a board reference gets its own icon in a capture -
+        // cheap to draw once, not worth measuring text for on every live
+        // render of the boards list.
+        if (detailed && frame.width > 10 && frame.height > 10 && (type === 'file' || type === 'board')) {
+          return (
+            <View key={card.id} style={[styles.card, frame, styles.plainCard, styles.iconCard]}>
+              <Ionicons
+                name={type === 'file' ? fileIconFor(card.fileName ?? '') : 'easel-outline'}
+                size={Math.min(frame.width, frame.height) * 0.4}
+                color="#6B7280"
+              />
+            </View>
+          );
+        }
         return (
           <View
             key={card.id}
             style={[styles.card, frame, isSticky ? { backgroundColor: card.color } : styles.plainCard]}
           >
-            {showText && frame.height > 18 && (
+            {(showText || detailed) && frame.height > 18 && (
               <Text style={styles.cardText} numberOfLines={Math.max(1, Math.floor(frame.height / 9))}>
-                {card.text || card.documentTitle || card.linkTitle || card.fileTitle || ''}
+                {card.text || card.documentTitle || card.linkTitle || card.fileTitle || card.boardTitle || ''}
               </Text>
             )}
           </View>
@@ -129,6 +155,10 @@ const styles = StyleSheet.create({
   },
   plainCard: {
     backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  iconCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardText: {
     fontSize: 4,

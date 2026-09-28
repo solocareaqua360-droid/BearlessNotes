@@ -81,6 +81,7 @@ import {
   CONTAINER_SPACING,
   clampContainerWidth,
   clampContainerHeight,
+  fileIconFor,
 } from '../utils/boardLayout';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
@@ -91,6 +92,7 @@ import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { linkDocId } from '../utils/linkId';
 import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
+import { useBoardPreviewCapture } from '../components/BoardMiniature';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useDensity } from '../hooks/useDensity';
 import { contentEqual } from '../utils/contentEqual';
@@ -392,10 +394,6 @@ function newDocumentCard(
   if (preview.imageUri) card.documentPreviewImageUri = preview.imageUri;
   if (preview.driveFileId) card.documentPreviewDriveFileId = preview.driveFileId;
   return card;
-}
-
-function fileIconFor(name: string): 'document-text-outline' | 'document-outline' {
-  return name.toLowerCase().endsWith('.pdf') ? 'document-text-outline' : 'document-outline';
 }
 
 // A plain-text peek at a document's blocks, cached onto the card at
@@ -2611,6 +2609,12 @@ export default function BoardScreen() {
   const applyingHistoryRef = useRef(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  // Read by the leave-effect below, which must not re-subscribe every
+  // time an edit flips this - the same reason cardsRef exists.
+  const canUndoRef = useRef(canUndo);
+  useEffect(() => {
+    canUndoRef.current = canUndo;
+  }, [canUndo]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -2668,6 +2672,13 @@ export default function BoardScreen() {
   useEffect(() => {
     cardsRef.current = cards;
   }, [cards]);
+  // Same reason, for the board-picture capture - it wants the columns as
+  // they are the moment you leave, not whatever they were when the
+  // callback was created.
+  const columnsRef = useRef<BoardColumn[]>(columns);
+  useEffect(() => {
+    columnsRef.current = columns;
+  }, [columns]);
 
   // A document card's preview (title, text, first image) is snapshotted
   // when the card is made, so editing the document leaves the card showing
@@ -2708,6 +2719,28 @@ export default function BoardScreen() {
       return changed ? next : prev;
     });
   }, []);
+
+  // THE BOARD'S OWN PICTURE (step 2 of the boards-list preview work) -
+  // see BoardMiniature. Captured once, on the way out, only when this
+  // visit changed something real (the leave-effect below checks
+  // `canUndoRef`) - a screenshot of an unedited board would just repeat
+  // whatever it already has, at the cost of an upload for nothing.
+  const boardPreviewCapture = useBoardPreviewCapture();
+  const capturePreview = useCallback(async () => {
+    const uri = await boardPreviewCapture.capture(cardsRef.current, columnsRef.current);
+    if (!uri) return;
+    // Quietly, the same order every other attachment's backup uses - a
+    // failed upload leaves the board with no cached picture rather than
+    // failing anything the user can see; the list falls back to
+    // BoardMiniMap meanwhile.
+    const uploaded = await backupFileToDrive(uri, `preview-${boardId}.jpg`, 'image/jpeg', 'Photos');
+    if (!uploaded) return;
+    updateDoc(doc(db, 'boards', boardId), {
+      previewImageUri: uri,
+      previewDriveFileId: uploaded.fileId,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId, boardPreviewCapture.capture]);
 
   const refreshDocumentPreviews = useCallback(async () => {
     const documentIds = [
@@ -2826,8 +2859,17 @@ export default function BoardScreen() {
       // the read above would then see the previous version. A second pass
       // safely past that window catches it.
       const timeout = setTimeout(refreshDocumentPreviews, 1000);
-      return () => clearTimeout(timeout);
-    }, [isLoaded, refreshDocumentPreviews, refreshBoardCardTitles])
+      return () => {
+        clearTimeout(timeout);
+        // THE BOARD'S OWN PICTURE, once, on the way out - only when this
+        // visit actually changed something (`canUndo`, the same flag the
+        // undo stack already tracks: false right after load, true from
+        // the first real edit). A board merely opened and closed gets no
+        // capture, no upload - the boards list keeps drawing BoardMiniMap
+        // live for it, which already reflects whatever it already had.
+        if (canUndoRef.current) capturePreview();
+      };
+    }, [isLoaded, refreshDocumentPreviews, refreshBoardCardTitles, capturePreview])
   );
 
   // Positions and measured heights outlive the cards they belong to
@@ -6531,6 +6573,10 @@ export default function BoardScreen() {
           icon="layers-outline"
           onEnterFolder={() => {}}
         />
+        {/* The off-screen host `capturePreview` renders into for the one
+            picture taken when this board is left with real edits - see
+            useBoardPreviewCapture. */}
+        {boardPreviewCapture.node}
 
         {/* A plain overlay View sibling of the gesture-driven canvas, not a
             Modal and not a child of the canvas - same reasoning as

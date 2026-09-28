@@ -26,6 +26,7 @@ import { BoardsStackParamList, RootStackParamList } from '../navigation';
 import { BoardCard, BoardColumn, BoardItem } from '../types';
 import { readBoardPart } from '../utils/boardStorage';
 import BoardMiniMap from '../components/BoardMiniMap';
+import AttachmentImage from '../components/AttachmentImage';
 import DatabaseChrome from '../components/DatabaseChrome';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
 import GroupPickerSheet from '../components/GroupPickerSheet';
@@ -263,6 +264,8 @@ export default function BoardsListScreen({
               trashed: data.trashed === true,
               createdAt: data.createdAt ?? 0,
               updatedAt: data.updatedAt ?? 0,
+              previewImageUri: data.previewImageUri,
+              previewDriveFileId: data.previewDriveFileId,
             };
           })
           // A board in the bin is not in the list. The bin itself is the
@@ -398,14 +401,29 @@ export default function BoardsListScreen({
             a note gets, by the board's id. The map used to sit on a flat
             grey square, where its cards read as grey dots on grey. */}
         <View style={styles.rowIcon}>
-          {/* Muted, not full strength - so it reads as the map's mat
-              rather than the loud wash the boxes used to sit on
-              ("вирізає всі елементи і підставляє їх на якийсь фон"). */}
-          <CoverGradientView gradient={defaultCoverFor(item.id)} style={[StyleSheet.absoluteFill, styles.coverMuted]} />
-          {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
-            <BoardMiniMap cards={item.cards} columns={item.columns} width={48} height={48} />
+          {item.previewImageUri ? (
+            // The real, once-captured picture (step 2) - see
+            // BoardMiniature. Falls back to the live map below only
+            // while a board has never been left with an edit yet.
+            <AttachmentImage
+              uri={item.previewImageUri}
+              driveFileId={item.previewDriveFileId}
+              style={StyleSheet.absoluteFill}
+              countsAsUse={false}
+            />
           ) : (
-            <Ionicons name="apps-outline" size={20} color={text} />
+            <>
+              {/* Muted, not full strength - so it reads as the map's mat
+                  rather than the loud wash the boxes used to sit on
+                  ("вирізає всі елементи і підставляє їх на якийсь
+                  фон"). */}
+              <CoverGradientView gradient={defaultCoverFor(item.id)} style={[StyleSheet.absoluteFill, styles.coverMuted]} />
+              {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
+                <BoardMiniMap cards={item.cards} columns={item.columns} width={48} height={48} />
+              ) : (
+                <Ionicons name="apps-outline" size={20} color={text} />
+              )}
+            </>
           )}
         </View>
         <View style={styles.rowBody}>
@@ -464,13 +482,24 @@ export default function BoardsListScreen({
         onLongPress={carried || isSelectMode ? undefined : () => askBoardActions(item)}
       >
         <View style={[styles.tileMap, { height: mapHeight }]}>
-          <CoverGradientView gradient={defaultCoverFor(item.id)} style={[StyleSheet.absoluteFill, styles.coverMuted]} />
-          {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
-            <BoardMiniMap cards={item.cards} columns={item.columns} width={tileWidth} height={mapHeight} showText />
+          {item.previewImageUri ? (
+            <AttachmentImage
+              uri={item.previewImageUri}
+              driveFileId={item.previewDriveFileId}
+              style={StyleSheet.absoluteFill}
+              countsAsUse={false}
+            />
           ) : (
-            <View style={styles.tileEmpty}>
-              <Ionicons name="apps-outline" size={24} color={textMuted} />
-            </View>
+            <>
+              <CoverGradientView gradient={defaultCoverFor(item.id)} style={[StyleSheet.absoluteFill, styles.coverMuted]} />
+              {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
+                <BoardMiniMap cards={item.cards} columns={item.columns} width={tileWidth} height={mapHeight} showText />
+              ) : (
+                <View style={styles.tileEmpty}>
+                  <Ionicons name="apps-outline" size={24} color={textMuted} />
+                </View>
+              )}
+            </>
           )}
         </View>
         {isSelectMode && (

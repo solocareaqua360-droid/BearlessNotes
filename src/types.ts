@@ -749,6 +749,15 @@ export interface BoardItem {
   trashedAt?: number;
   createdAt: number;
   updatedAt: number;
+  // A real screenshot of the board itself, captured once when you leave
+  // it after an actual edit (see BoardMiniature/useBoardPreviewCapture) -
+  // what the boards LIST shows instead of BoardMiniMap's live-composed
+  // boxes, when it has one. Same uri+driveFileId shape as every other
+  // cached picture (documentPreviewImageUri and its sibling), so
+  // AttachmentImage reads it the same way and a fresh device restores it
+  // from Drive rather than showing nothing.
+  previewImageUri?: string;
+  previewDriveFileId?: string;
 }
 
 export interface DocumentItem {
