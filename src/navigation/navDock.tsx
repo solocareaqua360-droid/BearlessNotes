@@ -120,6 +120,19 @@ export type TopExtras = {
 
 export type TopTool = { key: string; icon: string; label: string; dimmed?: boolean; onPress: () => void };
 
+// SEARCH IN THE BAR ITSELF - the user's rule: the plate that carries the
+// desk's (or database's) name IS the search field; it opens out across
+// the whole bar, pushing back and "⋯" off the edges, instead of a second
+// field appearing under the bar. What is typed goes straight to the
+// screen (onChangeQuery); the bar keeps the text itself, so a keystroke
+// does not have to travel through this context.
+export type TopSearch = {
+  placeholder: string;
+  initialQuery: string;
+  onChangeQuery: (query: string) => void;
+  onClose: () => void;
+};
+
 // What this screen can DO - the other half of the dock's stack.
 //
 // Deliberately NOT part of the context. The user's own objection, and it
@@ -206,6 +219,8 @@ type Value = {
   publishTopBack: (id: string, back: TopBack | null, layer?: number) => void;
   topExtras: TopExtras | null;
   publishTopExtras: (id: string, extras: TopExtras | null, layer?: number) => void;
+  topSearch: TopSearch | null;
+  publishTopSearch: (id: string, search: TopSearch | null, layer?: number) => void;
   // Whether the desks bar is drawn at the top (TopNavBar). While it is,
   // the path and the days rise under IT rather than above the dock.
   topNavUp: boolean;
@@ -418,6 +433,11 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
     setTopExtrasClaims((prev) => withClaim(prev, id, next, (a, b) => a === b, layer));
   }, []);
   const topExtras = useMemo(() => topClaim(topExtrasClaims), [topExtrasClaims]);
+  const [topSearchClaims, setTopSearchClaims] = useState<Claim<TopSearch>[]>([]);
+  const publishTopSearch = useCallback((id: string, next: TopSearch | null, layer = 0) => {
+    setTopSearchClaims((prev) => withClaim(prev, id, next, (a, b) => a.placeholder === b.placeholder, layer));
+  }, []);
+  const topSearch = useMemo(() => topClaim(topSearchClaims), [topSearchClaims]);
   const [topBackClaims, setTopBackClaims] = useState<Claim<TopBack>[]>([]);
   const publishTopBack = useCallback((id: string, next: TopBack | null, layer = 0) => {
     setTopBackClaims((prev) =>
@@ -539,6 +559,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishTopBack,
       topExtras,
       publishTopExtras,
+      topSearch,
+      publishTopSearch,
       topNavUp,
       claimTopNav,
       targets,
@@ -575,6 +597,8 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishTopBack,
       topExtras,
       publishTopExtras,
+      topSearch,
+      publishTopSearch,
       topNavUp,
       claimTopNav,
       targets,
@@ -746,6 +770,40 @@ export function useTopExtras(
     }, layer);
     return () => publish(id, null);
   }, [publish, focused, enabled, signature, id, layer]);
+}
+
+// A screen searching through the bar: `search` while it is searching,
+// null otherwise. Stable wrappers, as everywhere here.
+export function useTopSearch(search: Omit<TopSearch, 'onChangeQuery' | 'onClose'> & {
+  onChangeQuery: (query: string) => void;
+  onClose: () => void;
+} | null, enabled = true) {
+  const publish = useContext(NavDockContext)?.publishTopSearch;
+  const layer = useContext(DockLayerContext);
+  const focused = useIsFocused();
+  const id = useId();
+  const ref = useRef(search);
+  ref.current = search;
+  const active = !!search;
+  const placeholder = search?.placeholder ?? '';
+  useEffect(() => {
+    if (!publish || !focused || !enabled || !active) return;
+    publish(
+      id,
+      {
+        placeholder,
+        initialQuery: ref.current?.initialQuery ?? '',
+        onChangeQuery: (q) => ref.current?.onChangeQuery(q),
+        onClose: () => ref.current?.onClose(),
+      },
+      layer
+    );
+    return () => publish(id, null);
+  }, [publish, focused, enabled, active, placeholder, id, layer]);
+}
+
+export function useNavTopSearch(): TopSearch | null {
+  return useContext(NavDockContext)?.topSearch ?? null;
 }
 
 export function useNavTopExtras(): TopExtras | null {

@@ -20,7 +20,9 @@ import { hapticButtonDown } from '../utils/haptics';
 // (Gesture.Native) and run the pan SIMULTANEOUSLY with it. The list keeps
 // every touch and goes on scrolling and stretching exactly as before; the
 // pan only measures alongside it.
-const PULL_TO_OPEN = 140;
+// 220, not 140 - the user asked for a longer pull
+// ("розтягування при свайпі вниз повинно бути довшим").
+const PULL_TO_OPEN = 220;
 
 export function usePullToSearch(onPull: () => void) {
   // Shared values, not refs: these are read inside gesture callbacks,

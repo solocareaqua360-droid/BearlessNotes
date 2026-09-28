@@ -53,7 +53,6 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
-import SearchField from '../components/SearchField';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
@@ -65,7 +64,7 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import DocumentCard from '../components/DocumentCard';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
-import { useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useTopBack, useTopExtras } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
@@ -596,6 +595,21 @@ export default function DocumentsScreen({
   // The user's own arrangement, and Samsung's own reasoning - a pile of
   // cards is for what changes.
   useTopBack(back, onDesk);
+  // On a desk the search is the bar's own name plate, opened out.
+  useTopSearch(
+    searchOpen
+      ? {
+          placeholder: 'Пошук документів',
+          initialQuery: searchText,
+          onChangeQuery: setSearchText,
+          onClose: () => {
+            setSearchText('');
+            setSearchOpen(false);
+          },
+        }
+      : null,
+    onDesk
+  );
   useDockBeads(
     isFocused && !(isTwoPane && !!openDoc && paneFullscreen)
       ? onDesk
@@ -1363,26 +1377,11 @@ export default function DocumentsScreen({
           pointerEvents="box-none"
           onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
         >
-          {searchOpen && (
-            // Fades down into place: the pull that opens it is a slow
-            // movement, and the field arriving instantly read as a jolt.
-            onDesk ? (
-              <SearchField
-                autoFocus
-                value={searchText}
-                onChangeText={setSearchText}
-                placeholder="Пошук документів"
-                onClose={() => {
-                  setSearchText('');
-                  setSearchOpen(false);
-                }}
-                style={styles.searchRow}
-              />
-            ) : (
-              // The field is the corner's (SearchCorner, below); this only
-              // keeps its room so the tabs and the list start under it.
-              <View style={{ height: searchCornerHeight(windowWidth) + 8 }} />
-            )
+          {searchOpen && !onDesk && (
+            // The field is the corner's (SearchCorner, below); this only
+            // keeps its room so the tabs and the list start under it. On
+            // a desk it is the bar's own plate and takes no room here.
+            <View style={{ height: searchCornerHeight(windowWidth) + 8 }} />
           )}
           {!searchingAlone && groups.length > 0 && !groupsRowHidden && (
             // No TabsTunnel here any more: it drew a capsule blending

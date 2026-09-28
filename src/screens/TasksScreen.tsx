@@ -59,9 +59,8 @@ import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
-import SearchField from '../components/SearchField';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import RenamePrompt from '../components/RenamePrompt';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -203,6 +202,21 @@ export default function TasksScreen() {
   // the render with this screen's own name), and search is the left bead.
   const bar = useTopNavOn();
   useTopBack(back, bar);
+  // Under the bar the search is its own name plate, opened out.
+  useTopSearch(
+    isSearching
+      ? {
+          placeholder: 'Пошук справ',
+          initialQuery: searchQuery,
+          onChangeQuery: setSearchQuery,
+          onClose: () => {
+            setSearchQuery('');
+            setIsSearching(false);
+          },
+        }
+      : null,
+    bar
+  );
   useDockBeads(
     isFocused
       ? bar
@@ -1677,22 +1691,7 @@ export default function TasksScreen() {
         />
         {/* The open field is the corner's, over the screen; this keeps
             its room so the tabs and the list start below it. */}
-        {isSearching &&
-          (bar ? (
-            <SearchField
-              autoFocus
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Пошук справ"
-              onClose={() => {
-                setSearchQuery('');
-                setIsSearching(false);
-              }}
-              style={{ marginHorizontal: 20, marginBottom: 8 }}
-            />
-          ) : (
-            <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />
-          ))}
+        {isSearching && !bar && <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
 
         {!kanbanMode && groups.length > 0 && (
           <ProjectTabsRow

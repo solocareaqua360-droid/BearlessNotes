@@ -44,7 +44,7 @@ import { nextRecurrenceDate } from '../utils/recurrence';
 import { ReminderKind } from '../utils/reminders';
 import { RootStackParamList } from '../navigation';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
-import { hasNoteContent } from '../utils/documentPreview';
+import { documentMatchesQuery, findBodyMatch, hasNoteContent } from '../utils/documentPreview';
 import { useDayHistory } from '../hooks/useDayHistory';
 import DayHistoryList from '../components/DayHistoryList';
 import { useDensity } from '../hooks/useDensity';
@@ -277,6 +277,10 @@ export default function CalendarScreen() {
   // the end of it. Only filled days; a tap on one opens it.
   const phoneOverview = !isTwoPane && !pointerDensity;
   const [overviewOpen, setOverviewOpen] = useState(false);
+  // Searching the days, in the calendar's own layer: null = not
+  // searching. The field is the bar's name plate, opened out; the days
+  // that match stand over the calendar until one is picked.
+  const [daySearch, setDaySearch] = useState<string | null>(null);
   const [dayFeedLoaded, setDayFeedLoaded] = useState(false);
   const [dayFeed, setDayFeed] = useState<
     { key: string; title: string; blocks: Block[]; coverImageUri?: string; coverGradient?: string; coverDriveFileId?: string; updatedAt: number }[]
@@ -287,7 +291,7 @@ export default function CalendarScreen() {
   // finger, pushing the list about while it was still landing.
   const calendarFocusedForFeed = useIsFocused() && !drawerShut;
   useEffect(() => {
-    if (!feedMode && !overviewOpen && !(phoneOverview && calendarFocusedForFeed)) return;
+    if (!feedMode && !overviewOpen && !(phoneOverview && calendarFocusedForFeed) && daySearch === null) return;
     // No range on calendarDate. Firestore needs a composite index for an
     // equality and a range on two different fields, and ownedQuery's
     // ownerId is that equality - so `where('calendarDate', ...)` is
@@ -322,7 +326,7 @@ export default function CalendarScreen() {
         setDayFeedLoaded(true);
       }
     );
-  }, [feedMode, overviewOpen, phoneOverview, calendarFocusedForFeed]);
+  }, [feedMode, overviewOpen, phoneOverview, calendarFocusedForFeed, daySearch === null]);
   // 0 = the page, 1 = the overview. The page shrinks toward a card as the
   // feed comes in over it, slightly larger than it will settle - one
   // zoom, drawn by two layers.
@@ -2075,6 +2079,48 @@ export default function CalendarScreen() {
         </View>
       )}
 
+      {/* The days that match, over the calendar while searching - newest
+          first, the diary's cards. A tap opens that day. */}
+      {calendarDrawer && daySearch !== null && (
+        <View style={[styles.daySearch, { paddingTop: calendarInsets.top + CHROME_TOP + TOP_NAV_SPACE }]}>
+          {daySearch.trim().length > 0 && (
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.daySearchContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {dayFeed
+                .filter((day) => documentMatchesQuery(day.title, day.blocks, daySearch.trim().toLowerCase()))
+                .map((day) => {
+                  const date = parseDateKey(day.key);
+                  const needle = daySearch.trim().toLowerCase();
+                  const preview = extractPreview(day.blocks, day.coverImageUri, undefined, day.coverDriveFileId);
+                  return (
+                    <DocumentCard
+                      key={day.key}
+                      id={`day_${day.key}`}
+                      title={`${WEEKDAY_SHORT[mondayIndex(date)]}, ${formatBigDate(date)}`}
+                      updatedAt={day.updatedAt}
+                      imageUri={preview.imageUri}
+                      coverGradient={day.coverGradient}
+                      imageDriveFileId={preview.imageDriveFileId}
+                      previewText={preview.previewText}
+                      bodyMatch={findBodyMatch(day.blocks, needle)}
+                      search={needle}
+                      layout="list"
+                      onPress={() => {
+                        setDaySearch(null);
+                        selectDay(date);
+                        closeOverview();
+                      }}
+                    />
+                  );
+                })}
+            </ScrollView>
+          )}
+        </View>
+      )}
+
       {/* In the drawer: the calendar's own bar and dock, inside it and
           moving with it - see CalendarDrawer. */}
       {calendarDrawer && (
@@ -2084,13 +2130,28 @@ export default function CalendarScreen() {
             title={{ icon: 'calendar-outline', label: 'Календар' }}
             backOverride={{ onPress: calendarDrawer.close, dimmed: false }}
             extrasOverride={{ menu: [...calendarMenu], select: calendarSelect }}
+            searchOverride={
+              daySearch !== null
+                ? {
+                    placeholder: 'Пошук у календарі',
+                    initialQuery: daySearch,
+                    onChangeQuery: setDaySearch,
+                    onClose: () => setDaySearch(null),
+                  }
+                : null
+            }
           />
           <InlineDock
             width={windowWidth}
             beads={{
-              // No search in the calendar's own layer - "прибираємо пошук
-              // саме зі шторки": the diary is where days are searched.
-              left: null,
+              // Search is back, now that it is the bar's own plate
+              // ("залишити те саме поле для пошуку і тоді можна буде
+              // вернути і кнопку пошуку").
+              left: {
+                icon: daySearch !== null ? 'close-outline' : 'search-outline',
+                active: daySearch !== null,
+                onPress: () => setDaySearch((prev) => (prev === null ? '' : null)),
+              },
               right: notePanelOpen ? null : { icon: 'pencil-outline', onPress: () => noteEditorRef.current?.startWriting() },
             }}
             actions={noteSelectMode ? publishedActions : null}
@@ -2649,6 +2710,19 @@ const makeStyles = (t: Theme) =>
     flex: 1,
     minHeight: 0,
     marginTop: 10,
+  },
+  daySearch: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: t.ground,
+  },
+  daySearchContent: {
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 160,
   },
   feedContent: {
     gap: 10,

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Animated, { Easing, Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import Animated, { Easing, Extrapolation, interpolate, runOnJS, SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost, { FlatFrostContext } from './DockFrost';
 import { GlassPortal } from './GlassPortal';
@@ -10,8 +10,8 @@ import { CHROME_TOP } from '../constants/rail';
 import { DOCK_PIECE_RADIUS, dockCardHeight } from '../navigation/dockGeometry';
 import Menu from './surfaces/Menu';
 import SaveRing from './SaveRing';
-import { DockContext, TopBack, TopExtras, useNavDockOwnContext, useNavDockTargets, useNavDrawerCover, useNavTopBack, useNavTopExtras, useTopNavClaim } from '../navigation/navDock';
-import { FONT_MEDIUM, FONT_SEMIBOLD } from '../utils/fonts';
+import { DockContext, TopBack, TopExtras, TopSearch, useNavDockOwnContext, useNavDockTargets, useNavDrawerCover, useNavTopBack, useNavTopExtras, useNavTopSearch, useTopNavClaim } from '../navigation/navDock';
+import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
 
 // THE DESKS, AT THE TOP - the user's plan after looking at Notion: the
@@ -110,6 +110,7 @@ export default function TopNavBar({
   inline,
   backOverride,
   extrasOverride,
+  searchOverride,
   fadeWithDrawer,
 }: {
   desks?: TopDesk[];
@@ -123,6 +124,7 @@ export default function TopNavBar({
   inline?: { width: number };
   backOverride?: TopBack | null;
   extrasOverride?: TopExtras | null;
+  searchOverride?: TopSearch | null;
   // The desks' own bar: fades out as a drawer comes in over the desks.
   fadeWithDrawer?: boolean;
   // The save indicator, drawn on the extras cluster's own outline - see
@@ -142,6 +144,8 @@ export default function TopNavBar({
   const publishedExtras = useNavTopExtras();
   const back = inline ? backOverride ?? null : publishedBack;
   const extras = inline ? extrasOverride ?? null : publishedExtras;
+  const publishedSearch = useNavTopSearch();
+  const liveSearch = inline ? searchOverride ?? null : publishedSearch;
   const [menuOpen, setMenuOpen] = useState(false);
   const frame = topBarFrame(inline ? inline.width : windowWidth);
   const cover = useNavDrawerCover();
@@ -201,6 +205,39 @@ export default function TopNavBar({
     opacity: interpolate(roll.value, [0.3, 1], [0, 1], Extrapolation.CLAMP),
   }));
 
+  // SEARCHING: the plate with the name opens out into the field across
+  // the whole bar, and the way back and "⋯" are pushed out past the
+  // screen's edges ("стрічка може розширювати витісняючи інші кнопки за
+  // краї екрану"). The last search is kept drawn while it folds back.
+  const lastSearch = useRef<TopSearch | null>(null);
+  if (liveSearch) lastSearch.current = liveSearch;
+  const searchOpen = !!liveSearch;
+  const [searchShown, setSearchShown] = useState(searchOpen);
+  const expand = useSharedValue(searchOpen ? 1 : 0);
+  useEffect(() => {
+    if (searchOpen) setSearchShown(true);
+    expand.value = withTiming(
+      searchOpen ? 1 : 0,
+      { duration: 240, easing: Easing.out(Easing.cubic) },
+      (finished) => {
+        if (finished && !searchOpen) runOnJS(setSearchShown)(false);
+      }
+    );
+  }, [searchOpen, expand]);
+  const barWidth = inline ? inline.width : windowWidth;
+  const rightMargin = barWidth - frame.left - frame.width;
+  const backAway = useAnimatedStyle(() => ({
+    transform: [{ translateX: -(frame.left + SIDE_W) * expand.value }],
+    opacity: interpolate(expand.value, [0, 0.6], [1, 0], Extrapolation.CLAMP),
+  }));
+  const clusterAway = useAnimatedStyle(() => ({
+    transform: [{ translateX: (rightMargin + clusterWidth) * expand.value }],
+    opacity: interpolate(expand.value, [0, 0.6], [1, 0], Extrapolation.CLAMP),
+  }));
+  // A surface that moves takes no live blur (DockFrost's own rule): the
+  // two ends go flat for as long as they are being pushed about.
+  const endsBlur = !searchShown;
+
   const Layer = inline ? InlineLayer : PortalLayer;
   return (
     <>
@@ -210,13 +247,14 @@ export default function TopNavBar({
         pointerEvents={fading && cover?.open ? 'none' : 'box-none'}
         style={[styles.row, { top: barTop, left: frame.left, width: frame.width }, fadeStyle]}
       >
+        <Animated.View style={backAway} pointerEvents={searchShown ? 'none' : 'auto'}>
         <Pressable
           disabled={!back || back.dimmed}
           onPress={() => back?.onPress()}
           accessibilityLabel="Назад"
           style={{ width: SIDE_W, height: TOP_NAV_H }}
         >
-          <DockFrost style={[styles.piece, lift]} radius={corners.plate}>
+          <DockFrost style={[styles.piece, lift]} radius={corners.plate} blur={endsBlur}>
             <Ionicons
               name={(back?.icon ?? 'arrow-back') as keyof typeof Ionicons.glyphMap}
               size={21}
@@ -225,6 +263,7 @@ export default function TopNavBar({
             />
           </DockFrost>
         </Pressable>
+        </Animated.View>
 
         {/* The plate, and on it whichever of the two rows is in front -
             or, with neither a title nor desks to show, no plate at all:
@@ -282,8 +321,11 @@ export default function TopNavBar({
             the buttons on it, so they read as one control at rest and
             not only while the save ring is tracing round them. */}
         {clusterCount > 0 && (
-          <View style={[styles.cluster, lift, { width: clusterWidth, borderRadius: corners.plate }]}>
-            <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} />
+          <Animated.View
+            pointerEvents={searchShown ? 'none' : 'auto'}
+            style={[styles.cluster, lift, { width: clusterWidth, borderRadius: corners.plate }, clusterAway]}
+          >
+            <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} blur={endsBlur} />
             {[
               ...(extras?.tools ?? []).map((t) => ({
                 key: `tool:${t.key}`,
@@ -323,7 +365,22 @@ export default function TopNavBar({
                 </Pressable>
               ))}
             <SaveRing saving={!!saving} color={theme.glass.ink} radius={corners.plate} />
-          </View>
+          </Animated.View>
+        )}
+
+        {searchShown && lastSearch.current && (
+          <SearchPlate
+            key={lastSearch.current.placeholder}
+            search={lastSearch.current}
+            open={searchOpen}
+            expand={expand}
+            fromLeft={SIDE_W + GAP}
+            fromWidth={plateWidth}
+            fullWidth={frame.width}
+            radius={corners.plate}
+            ink={theme.glass.ink}
+            inkMuted={theme.glass.inkMuted}
+          />
         )}
       </Animated.View>
       </FlatFrostContext.Provider>
@@ -351,6 +408,63 @@ function InlineLayer({ children }: { children: ReactNode }) {
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {children}
     </View>
+  );
+}
+
+// The field the name plate opens into: it grows out of the plate's own
+// place to the bar's whole width. Flat material - it moves while it
+// opens, and a text field wants the denser fill anyway. It keeps what is
+// typed itself and hands every change to the screen.
+function SearchPlate({
+  search,
+  open,
+  expand,
+  fromLeft,
+  fromWidth,
+  fullWidth,
+  radius,
+  ink,
+  inkMuted,
+}: {
+  search: TopSearch;
+  open: boolean;
+  expand: SharedValue<number>;
+  fromLeft: number;
+  fromWidth: number;
+  fullWidth: number;
+  radius: number;
+  ink: string;
+  inkMuted: string;
+}) {
+  const [text, setText] = useState(search.initialQuery);
+  const grow = useAnimatedStyle(() => ({
+    left: fromLeft * (1 - expand.value),
+    width: fromWidth + (fullWidth - fromWidth) * expand.value,
+    opacity: interpolate(expand.value, [0, 0.25], [0, 1], Extrapolation.CLAMP),
+  }));
+  return (
+    <Animated.View
+      pointerEvents={open ? 'auto' : 'none'}
+      style={[styles.searchPlate, { borderRadius: radius }, grow]}
+    >
+      <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={radius} blur={false} />
+      <Ionicons name="search" size={19} color={inkMuted} />
+      <TextInput
+        autoFocus
+        value={text}
+        onChangeText={(next) => {
+          setText(next);
+          search.onChangeQuery(next);
+        }}
+        placeholder={search.placeholder}
+        placeholderTextColor={inkMuted}
+        returnKeyType="search"
+        style={[styles.searchInput, { color: ink }]}
+      />
+      <Pressable hitSlop={8} onPress={search.onClose} accessibilityLabel="Закрити пошук" style={styles.searchClose}>
+        <Ionicons name="close" size={20} color={ink} />
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -622,6 +736,30 @@ const styles = StyleSheet.create({
   },
   titlePress: {
     flex: 1,
+  },
+  searchPlate: {
+    position: 'absolute',
+    top: 0,
+    height: TOP_NAV_H,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 16,
+    paddingRight: 6,
+    gap: 10,
+    overflow: 'hidden',
+  },
+  searchInput: {
+    flex: 1,
+    height: TOP_NAV_H,
+    paddingVertical: 0,
+    fontSize: 16,
+    fontFamily: FONT_REGULAR,
+  },
+  searchClose: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   deskClose: {
     marginLeft: 6,

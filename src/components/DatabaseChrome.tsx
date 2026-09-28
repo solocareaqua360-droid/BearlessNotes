@@ -15,12 +15,11 @@ import Menu from './surfaces/Menu';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import SearchCorner, { searchCornerHeight } from './SearchCorner';
-import SearchField, { searchFieldSides } from './SearchField';
 import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, TopTitle, topBarFrame, useTopNavOn } from './TopNavBar';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
-import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
 import { DeskContext } from '../navigation/desks';
@@ -286,6 +285,22 @@ export default function DatabaseChrome<T extends { id: string }>({
         }
       : folderUp ?? backTarget ?? null;
   useTopBack(back, !!topNav);
+  // Under a bar the search is the bar's own name plate, opened out - no
+  // second field under it.
+  useTopSearch(
+    list.isSearching
+      ? {
+          placeholder: searchPlaceholder,
+          initialQuery: list.searchQuery,
+          onChangeQuery: list.setSearchQuery,
+          onClose: () => {
+            list.setSearchQuery('');
+            list.setIsSearching(false);
+          },
+        }
+      : null,
+    !!topNav && isFocused
+  );
   useDockBeads(
     isFocused
       ? topNav
@@ -604,22 +619,9 @@ export default function DatabaseChrome<T extends { id: string }>({
         {/* The field itself is the corner's (SearchCorner, drawn over
             the screen); this only keeps its room, so the list starts
             below it rather than under it. */}
-        {list.isSearching &&
-          (topNav ? (
-            <SearchField
-              autoFocus
-              value={list.searchQuery}
-              onChangeText={list.setSearchQuery}
-              placeholder={searchPlaceholder}
-              onClose={() => {
-                list.setSearchQuery('');
-                list.setIsSearching(false);
-              }}
-              style={[{ marginBottom: 8, marginTop: chromeBottom }, searchFieldSides(railSide)]}
-            />
-          ) : (
-            <View style={{ height: searchCornerHeight(windowWidth) + 8, marginTop: chromeBottom }} />
-          ))}
+        {list.isSearching && !topNav && (
+          <View style={{ height: searchCornerHeight(windowWidth) + 8, marginTop: chromeBottom }} />
+        )}
 
         {/* Only what floats above the cards pushes them down; once a chip
             row or the search field has already taken that space, the
@@ -647,7 +649,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           // fails as soon as the movement reads as horizontal.
           <GestureDetector gesture={listGesture}>
             {children(
-              list.tagFilter || list.isSearching ? 0 : chromeBottom,
+              list.tagFilter || (list.isSearching && !topNav) ? 0 : chromeBottom,
               pull.listProps,
               Math.max(0, columnWidth - 20),
               pull.scrollY

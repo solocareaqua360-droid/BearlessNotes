@@ -130,9 +130,8 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras } from '../navigation/navDock';
+import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
-import SearchField from '../components/SearchField';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CHROME_TOP } from '../constants/rail';
@@ -786,6 +785,21 @@ export default function CustomDatabaseScreen({
   // bead. Not inside another screen's pane.
   const bar = useTopNavOn() && !inPane;
   useTopBack(back, bar);
+  // Under the bar the search is its own name plate, opened out.
+  useTopSearch(
+    isSearching
+      ? {
+          placeholder: 'Пошук у базі',
+          initialQuery: searchQuery,
+          onChangeQuery: setSearchQuery,
+          onClose: () => {
+            setSearchQuery('');
+            setIsSearching(false);
+          },
+        }
+      : null,
+    bar
+  );
   useDockBeads(
     isFocused
       ? bar
@@ -2565,22 +2579,7 @@ export default function CustomDatabaseScreen({
       />
       {/* The open field is the corner's, over the screen; this keeps its
           room so the rows start below it. */}
-      {isSearching &&
-        (bar ? (
-          <SearchField
-            autoFocus
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Пошук у базі"
-            onClose={() => {
-              setSearchQuery('');
-              setIsSearching(false);
-            }}
-            style={{ marginHorizontal: 20, marginBottom: 8 }}
-          />
-        ) : (
-          <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />
-        ))}
+      {isSearching && !bar && <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
 
       {/* Which vigляд is on screen - "Поточні зміни" (the working area,
           always first, per its own comment on activeViewId) plus every
