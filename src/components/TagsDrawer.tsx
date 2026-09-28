@@ -569,7 +569,18 @@ function TagsDrawerInner({
             pointerEvents="none"
           />
           <View style={[StyleSheet.absoluteFill, styles.panelTint]} pointerEvents="none" />
-          <Text style={styles.title}>Теги</Text>
+          {/* A real ✕, not just the dim behind the panel - the ONLY way
+              out used to be tapping outside it or (on Android) the
+              hardware back button, which this window never actually
+              wires up; someone who could see nothing but the panel
+              itself had no way out at all ("немає кнопки назад або
+              закрити ... тупикова гілка"). */}
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>Теги</Text>
+            <Pressable hitSlop={10} onPress={closeDrawer} accessibilityLabel="Закрити" style={styles.closeButton}>
+              <Ionicons name="close" size={22} color={theme.ink.primary} />
+            </Pressable>
+          </View>
 
           {mode && (
             <View style={styles.segmented}>
@@ -794,12 +805,21 @@ const makeStyles = (t: Theme) =>
   panelTint: {
     backgroundColor: t.surface,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   title: {
     fontSize: 22,
     fontWeight: '700',
     fontFamily: FONT_BOLD,
     color: t.ink.primary,
-    marginBottom: 12,
+  },
+  closeButton: {
+    padding: 4,
+    marginLeft: 8,
   },
   // A track with the chosen half lifted out of it - the same soft panel a
   // selected row gets, rather than two bordered capsules with only their
