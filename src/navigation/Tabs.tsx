@@ -1,12 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Easing, runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 import FloatingIslandTabBar from '../components/FloatingIslandTabBar';
-import CalendarDrawer, { DeskTargetContext, SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
-import { BlurTargetView } from 'expo-blur';
+import CalendarDrawer, { SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
 import { SideDrawersProvider, useSideDrawers } from './sideDrawers';
 import { TAB_SCREENS } from './tabScreens';
 
@@ -35,8 +34,6 @@ export default function Tabs() {
 
 function TabsWithDrawers() {
   const { openCalendar, calendarOpen, swipeBlocked, calendarProgress, setCalendarDragging } = useSideDrawers();
-  // The desks' own blur target: what the calendar's layer blurs.
-  const deskTarget = useRef<View>(null);
   const { width, height } = useWindowDimensions();
   const drawerWidth = Math.round(width * SIDE_DRAWER_FRACTION);
   const bandTop = height * (0.5 - BAND / 2);
@@ -107,10 +104,9 @@ function TabsWithDrawers() {
   );
 
   return (
-    <DeskTargetContext.Provider value={deskTarget}>
     <View style={styles.fill}>
       <GestureDetector gesture={swipe}>
-        <BlurTargetView ref={deskTarget} style={styles.fill}>
+        <View style={styles.fill}>
           <Tab.Navigator
             tabBar={(props) => <FloatingIslandTabBar {...props} />}
             screenOptions={{
@@ -139,11 +135,10 @@ function TabsWithDrawers() {
               />
             ))}
           </Tab.Navigator>
-        </BlurTargetView>
+        </View>
       </GestureDetector>
       <CalendarDrawer />
     </View>
-    </DeskTargetContext.Provider>
   );
 }
 

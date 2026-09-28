@@ -1,11 +1,13 @@
-import { createContext, RefObject, useContext, useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useIsFocused } from '@react-navigation/native';
+import { NavigationContext, NavigationRouteContext, useIsFocused } from '@react-navigation/native';
 import { BackHandler, InteractionManager, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import CalendarScreen from '../screens/CalendarScreen';
-import { CalendarDrawerContext, useSideDrawers } from '../navigation/sideDrawers';
+import { CalendarDrawerContext, SideDrawersContext, useSideDrawers } from '../navigation/sideDrawers';
+import { GlassPortal } from './GlassPortal';
+import { useBlurTarget } from './GlassTarget';
 import { DockLayerContext } from '../navigation/navDock';
 import { LayoutFrameContext } from '../hooks/useResponsiveLayout';
 import { useFrostPaused } from './frostPause';
@@ -14,11 +16,6 @@ import { useFrostPaused } from './frostPause';
 // laid over the desk - iOS's own widgets page, which is the model the
 // user settled on ("як в iOS ... ліворуч шторка з віджетами").
 export const SIDE_DRAWER_FRACTION = 1;
-
-// What the calendar's layer blurs: the desks, and only the desks - their
-// own blur target (see Tabs), so the layer's blur never has to draw the
-// layer itself.
-export const DeskTargetContext = createContext<RefObject<View | null> | null>(null);
 
 // THE CALENDAR, THE LEFTMOST SCREEN, OVER THE DESK - "календар
 // повноцінний ... в крайньому лівому екрані і блюром поверх робочого
@@ -31,13 +28,20 @@ export const DeskTargetContext = createContext<RefObject<View | null> | null>(nu
 // the freeze this app has already met (see DockFrost). The CALENDAR on it
 // slides with the finger.
 //
-// Drawn IN the tree, not through the glass portal: the calendar needs the
-// navigation around it, and a portal renders outside that.
+// Drawn THROUGH THE GLASS PORTAL, both parts, as every sheet is: a blur
+// only works from outside the picture it blurs (the screens), and the
+// calendar has to stand above that blur. The portal renders outside this
+// tree, so the navigation and the drawers' state it needs are handed to
+// it again - the screen's own navigation and route, as a screen's
+// children would have them.
 export default function CalendarDrawer() {
   const { calendarOpen, closeCalendar, calendarProgress, calendarDragging } = useSideDrawers();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const width = Math.round(windowWidth * SIDE_DRAWER_FRACTION);
-  const deskTarget = useContext(DeskTargetContext);
+  const blurTarget = useBlurTarget();
+  const navigation = useContext(NavigationContext);
+  const route = useContext(NavigationRouteContext);
+  const sideDrawers = useContext(SideDrawersContext);
   // Mounted AHEAD of the first swipe - once the app has settled - and
   // kept: building the whole calendar at the moment of the first swipe
   // is a stall under the finger. The day, the month and the note then
@@ -100,21 +104,31 @@ export default function CalendarDrawer() {
 
   if (!mounted) return null;
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents={calendarOpen ? 'box-none' : 'none'}>
-      {/* The desk, out of focus: a still blur that fades in, over a dim
-          that carries it when the blur is stepped down. */}
+    <>
+    {/* The desk, out of focus: a still blur that fades in, over a dim
+        that carries it when the blur is stepped down. Under the calendar,
+        above the screens. */}
+    <GlassPortal priority={-2}>
       <Animated.View style={[StyleSheet.absoluteFill, styles.dim, groundStyle]} pointerEvents="none">
-        {blurShown && deskTarget && (
+        {blurShown && blurTarget && (
           <BlurView
             intensity={70}
             tint="dark"
             blurMethod="dimezisBlurView"
-            blurTarget={deskTarget}
+            blurTarget={blurTarget}
             style={StyleSheet.absoluteFill}
             pointerEvents="none"
           />
         )}
       </Animated.View>
+    </GlassPortal>
+    {/* The calendar itself: over its blur, under the dock and the bars
+        (which have faded out) and under every sheet it opens. */}
+    <GlassPortal priority={-1}>
+    <NavigationContext.Provider value={navigation}>
+    <NavigationRouteContext.Provider value={route}>
+    <SideDrawersContext.Provider value={sideDrawers}>
+    <View style={StyleSheet.absoluteFill} pointerEvents={calendarOpen ? 'box-none' : 'none'}>
       <GestureDetector gesture={closeSwipe}>
         <Animated.View style={[styles.panel, { width }, panelStyle]} pointerEvents={calendarOpen ? 'auto' : 'none'}>
           <LayoutFrameContext.Provider value={frame}>
@@ -127,6 +141,11 @@ export default function CalendarDrawer() {
         </Animated.View>
       </GestureDetector>
     </View>
+    </SideDrawersContext.Provider>
+    </NavigationRouteContext.Provider>
+    </NavigationContext.Provider>
+    </GlassPortal>
+    </>
   );
 }
 

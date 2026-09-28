@@ -37,7 +37,9 @@ const NONE: SideDrawers = {
   blockSwipe: () => () => {},
 };
 
-const SideDrawersContext = createContext<SideDrawers | null>(null);
+// Exported so the calendar's layer - drawn through the glass portal,
+// outside this tree - can be handed it again.
+export const SideDrawersContext = createContext<SideDrawers | null>(null);
 
 export function SideDrawersProvider({ children }: { children: ReactNode }) {
   const [calendarOpen, setCalendarOpen] = useState(false);
