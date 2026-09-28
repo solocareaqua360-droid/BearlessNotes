@@ -485,12 +485,12 @@ function PageBody({
       {/* What the CARD knows and the page does not - when it was last
           touched, and which project it belongs to. Over the picture
           rather than inside it, so the picture stays the page. */}
-      <View style={styles.pageChrome} pointerEvents="box-none">
+      <View style={[styles.pageChrome, soft && styles.softDateRow]} pointerEvents="box-none">
         <PageChromeFade id={id} color={paper} />
         <Text style={[styles.dateCompact, { color: ink }, soft && styles.softText]}>{formatUpdatedAt(updatedAt)}</Text>
         {/* On the page's own paper, which is light in every theme - so
             the light soft tint, whichever theme is on. */}
-        {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft ? softTokens('light') : null} />}
+        {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft ? softTokens('light') : null} softSize={11} />}
       </View>
     </View>
   );
@@ -710,7 +710,7 @@ export default function DocumentCard({
           <View style={styles.wideContent}>
             {titleNode}
             {previewBody}
-            <View style={[styles.dateCompactPinned, styles.dateRow]}>
+            <View style={[styles.dateCompactPinned, styles.dateRow, soft && styles.softDateRow]}>
               <Text style={[styles.dateCompact, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
               {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft} />}
             </View>
@@ -788,7 +788,7 @@ export default function DocumentCard({
                 title/preview group at the top, the date always anchors
                 this content block's own bottom edge (which, with no
                 thumbnail above it, is the whole card's bottom edge). */}
-            <View style={[styles.dateCompactPinned, styles.dateRow]}>
+            <View style={[styles.dateCompactPinned, styles.dateRow, soft && styles.softDateRow]}>
               <Text style={[styles.dateCompact, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
               {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft} />}
             </View>
@@ -870,9 +870,9 @@ export default function DocumentCard({
         <View style={styles.body}>
           {titleNode}
           {previewBody}
-          <View style={styles.dateRow}>
+          <View style={[styles.dateRow, soft && styles.softDateRow]}>
             <Text style={[styles.date, { color: textMuted }, soft && styles.softText]}>{formatUpdatedAt(updatedAt)}</Text>
-            {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft} />}
+            {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft} softSize={13} />}
           </View>
         </View>
         {isSelectMode && <View style={styles.selectBox}>{selectIcon}</View>}
@@ -903,6 +903,12 @@ const styles = StyleSheet.create({
   },
   softText: {
     fontFamily: SOFT_REGULAR,
+  },
+  // The project follows the date on its line rather than standing at the
+  // far end of it - see ProjectBadge's soft note.
+  softDateRow: {
+    justifyContent: 'flex-start',
+    gap: 12,
   },
   // Over a tile's page picture, which is light paper in every theme: a
   // small paper-coloured seat so an empty outline still reads.

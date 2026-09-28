@@ -17,10 +17,15 @@ type Props = {
   // project's-own-color chip would clash on a colourful card fill
   // (Links), so those opt into the frosted-glass look instead.
   glass?: boolean;
-  // The soft style (theme/soft): a quiet tint with no outline - the
-  // outlined glass chip read as "не такий" beside the soft cards - and
-  // a small dot of the project's own colour instead of coloured text.
+  // The soft style (theme/soft): not a chip at all but a quiet word on
+  // the date's own line - a dot of the project's colour and its name, as
+  // tall as the date and no taller. The chip was the one thing on the
+  // card with a height of its own, and on a row whose text fills it that
+  // pinned it to the card's bottom edge: "капсула прибита донизу... а
+  // вище її не поставиш бо там вже зміст документа".
   soft?: SoftTokens | null;
+  // The line's own text size, so the word matches the date beside it.
+  softSize?: number;
 };
 
 const UNSET_COLOR = '#9CA3AF';
@@ -29,9 +34,9 @@ const UNSET_COLOR = '#9CA3AF';
 // hidden the way a tag chip is, since "which project" should read at a
 // glance even on a mixed "Всі" list. Same small-pill family as
 // TagChips, sat at the card's own date row, in its right corner.
-export default function ProjectBadge({ project, onPress, glass, soft }: Props) {
+export default function ProjectBadge({ project, onPress, glass, soft, softSize = 12 }: Props) {
   const chipStyle = soft
-    ? [styles.chip, styles.softChip, { backgroundColor: soft.fill }]
+    ? [styles.softChip]
     : [
         styles.chip,
         glass ? styles.chipGlass : { backgroundColor: project ? `${project.color}1A` : 'rgba(156,163,175,0.14)' },
@@ -39,7 +44,7 @@ export default function ProjectBadge({ project, onPress, glass, soft }: Props) {
   const label = soft ? (
     <>
       {project && <View style={[styles.softDot, { backgroundColor: project.color }]} />}
-      <Text style={[styles.softLabel, { color: project ? soft.ink2 : soft.ink3 }]} numberOfLines={1}>
+      <Text style={[styles.softLabel, { fontSize: softSize, color: project ? soft.ink2 : soft.ink3 }]} numberOfLines={1}>
         {project?.name ?? 'Без проекту'}
       </Text>
     </>
@@ -89,20 +94,18 @@ const styles = StyleSheet.create({
     color: GLASS_TEXT,
   },
   softChip: {
-    borderRadius: 999,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    maxWidth: 160,
+    flexShrink: 1,
   },
   softDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
   },
   softLabel: {
-    fontSize: 11.5,
     fontFamily: SOFT_MEDIUM,
     flexShrink: 1,
   },
