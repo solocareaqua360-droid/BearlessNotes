@@ -2600,6 +2600,12 @@ export default function BoardScreen() {
   useEffect(() => {
     shapesRef.current = shapes;
   }, [shapes]);
+  // A connection can end on a container too ("нодById... covers cards,
+  // shapes AND containers"), same reason as the shapes ref above.
+  const containersRef = useRef<BoardContainer[]>(containers);
+  useEffect(() => {
+    containersRef.current = containers;
+  }, [containers]);
 
   // A document card's preview (title, text, first image) is snapshotted
   // when the card is made, so editing the document leaves the card showing
@@ -2656,7 +2662,8 @@ export default function BoardScreen() {
       cardsRef.current,
       columnsRef.current,
       connectionsRef.current,
-      shapesRef.current
+      shapesRef.current,
+      containersRef.current
     );
     if (!uri) {
       console.warn('[board preview] capture returned no uri', boardId);

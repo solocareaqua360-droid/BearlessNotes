@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Line } from 'react-native-svg';
 import AttachmentImage from './AttachmentImage';
 import ShapeBody from './BoardShapeBody';
-import { BoardCard, BoardColumn, BoardConnection, BoardShape } from '../types';
+import { BoardCard, BoardColumn, BoardConnection, BoardContainer, BoardShape } from '../types';
 import { APPROX_CARD_HEIGHT, COLUMN_MIN_HEIGHT, COLUMN_WIDTH, fileIconFor } from '../utils/boardLayout';
 import { withAlpha } from '../utils/color';
 import { FONT_REGULAR } from '../utils/fonts';
@@ -27,6 +27,7 @@ export default function BoardMiniMap({
   columns,
   connections,
   shapes,
+  containers,
   width,
   height,
   showText,
@@ -35,12 +36,20 @@ export default function BoardMiniMap({
   cards: BoardCard[];
   columns?: BoardColumn[];
   // Reserved for `detailed` (see below) - the arrows/lines between
-  // cards ("лінії... можна рендерити").
+  // cards, shapes AND containers: a BoardConnection's fromCardId/
+  // toCardId "despite the name, either end can be any node kind" (see
+  // BoardScreen's own nodeById) - a line to a shape read as missing
+  // entirely until this looked shapes up too ("не промальовуються лінії
+  // до фігури").
   connections?: BoardConnection[];
   // Reserved for `detailed` too - the board's own furniture (rectangle,
   // circle, triangle, diamond, loose text; there is no 'star' kind -
   // see BoardShapeKind in types.ts).
   shapes?: BoardShape[];
+  // Not drawn (a container is a transparent frame, not worth a box of
+  // its own at this size) - only here so a connection ending on one
+  // still has somewhere real to point.
+  containers?: BoardContainer[];
   width: number;
   height: number;
   // Text cards draw a couple of lines standing in for their words - only
@@ -67,7 +76,16 @@ export default function BoardMiniMap({
     width: shape.width,
     height: shape.height,
   }));
-  const all = [...lanes, ...boxes, ...shapeBoxes];
+  // Not drawn, but a connection can end on one, so it needs a box too -
+  // both for the bounds below (an off-to-the-side container should not
+  // get cropped just because nothing draws it) and for aiming a line.
+  const containerBoxes = (detailed ? containers ?? [] : []).map((container) => ({
+    x: container.x,
+    y: container.y,
+    width: container.width,
+    height: container.height,
+  }));
+  const all = [...lanes, ...boxes, ...shapeBoxes, ...containerBoxes];
   if (all.length === 0) return <View style={{ width, height }} />;
 
   const minX = Math.min(...all.map((b) => b.x));
@@ -86,14 +104,26 @@ export default function BoardMiniMap({
     height: Math.max(2, b.height * scale),
   });
 
-  // A connection's two ends are wherever ITS cards ended up - found by
-  // id rather than carrying their own coordinates, so a line always
-  // points at the actual card frame above, never a stale copy of it.
-  const cardIndexById = new Map(cards.map((card, index) => [card.id, index]));
-  const centerOf = (index: number) => {
+  // A connection's two ends are wherever ITS node ended up - found by id
+  // rather than carrying their own coordinates, so a line always points
+  // at the actual frame above, never a stale copy of it. A connection's
+  // end can be a card, a shape or a container (see the props above), so
+  // this covers all three, the same as BoardScreen's own nodeById.
+  const centerById = new Map<string, { x: number; y: number }>();
+  cards.forEach((card, index) => {
     const frame = place(boxes[index]);
-    return { x: frame.left + frame.width / 2, y: frame.top + frame.height / 2 };
-  };
+    centerById.set(card.id, { x: frame.left + frame.width / 2, y: frame.top + frame.height / 2 });
+  });
+  if (detailed) {
+    (shapes ?? []).forEach((shape, index) => {
+      const frame = place(shapeBoxes[index]);
+      centerById.set(shape.id, { x: frame.left + frame.width / 2, y: frame.top + frame.height / 2 });
+    });
+    (containers ?? []).forEach((container, index) => {
+      const frame = place(containerBoxes[index]);
+      centerById.set(container.id, { x: frame.left + frame.width / 2, y: frame.top + frame.height / 2 });
+    });
+  }
 
   return (
     <View style={[styles.canvas, { width, height }]}>
@@ -122,11 +152,9 @@ export default function BoardMiniMap({
       {detailed && (connections?.length ?? 0) > 0 && (
         <Svg width={width} height={height} style={StyleSheet.absoluteFill} pointerEvents="none">
           {(connections ?? []).map((connection) => {
-            const fromIndex = cardIndexById.get(connection.fromCardId);
-            const toIndex = cardIndexById.get(connection.toCardId);
-            if (fromIndex === undefined || toIndex === undefined) return null;
-            const from = centerOf(fromIndex);
-            const to = centerOf(toIndex);
+            const from = centerById.get(connection.fromCardId);
+            const to = centerById.get(connection.toCardId);
+            if (!from || !to) return null;
             return (
               <Line
                 key={connection.id}

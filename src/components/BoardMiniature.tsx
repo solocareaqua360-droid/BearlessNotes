@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import BoardMiniMap from './BoardMiniMap';
-import { BoardCard, BoardColumn, BoardConnection, BoardShape } from '../types';
+import { BoardCard, BoardColumn, BoardConnection, BoardContainer, BoardShape } from '../types';
 
 // THE ONE-TIME SCREENSHOT (step 2 of "повноцінне прев'ю на дошках" -
 // BoardMiniMap already covers the cheap, live, always-fresh side of that;
@@ -43,6 +43,7 @@ type CaptureRequest = {
   columns: BoardColumn[];
   connections: BoardConnection[];
   shapes: BoardShape[];
+  containers: BoardContainer[];
   resolve: (uri: string | null) => void;
 };
 
@@ -57,14 +58,15 @@ export function captureBoardPreview(
   cards: BoardCard[],
   columns: BoardColumn[],
   connections: BoardConnection[],
-  shapes: BoardShape[]
+  shapes: BoardShape[],
+  containers: BoardContainer[]
 ): Promise<string | null> {
   if (cards.length === 0 && columns.length === 0 && shapes.length === 0) return Promise.resolve(null);
   if (!requestCapture) {
     console.warn('[board preview] capture host not mounted');
     return Promise.resolve(null);
   }
-  return new Promise((resolve) => requestCapture!({ cards, columns, connections, shapes, resolve }));
+  return new Promise((resolve) => requestCapture!({ cards, columns, connections, shapes, containers, resolve }));
 }
 
 export default function BoardPreviewCaptureHost() {
@@ -96,12 +98,14 @@ function CaptureStage({
   columns,
   connections,
   shapes,
+  containers,
   onDone,
 }: {
   cards: BoardCard[];
   columns: BoardColumn[];
   connections: BoardConnection[];
   shapes: BoardShape[];
+  containers: BoardContainer[];
   onDone: (uri: string | null) => void;
 }) {
   const stageRef = useRef<View>(null);
@@ -131,6 +135,7 @@ function CaptureStage({
         columns={columns}
         connections={connections}
         shapes={shapes}
+        containers={containers}
         width={BOARD_PREVIEW_W}
         height={BOARD_PREVIEW_H}
         showText
