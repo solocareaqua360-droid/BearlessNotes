@@ -1043,6 +1043,7 @@ export default function DatabasesScreen() {
     carryOrigin.current = { x: px, y: py };
     carryStartCell.current = { x, y };
     lastMove.current = null;
+    dragAt.current = { x: px, y: py };
     setDrag({ key: item.key, x: px, y: py });
     setDraftPosition({ key: item.key, x, y });
   }
@@ -1053,36 +1054,57 @@ export default function DatabasesScreen() {
   // folder (or it goes into the folder), and the tile underneath comes
   // back to its place. So what decides is how fast the finger is going
   // when the tiles overlap, and whether it stops there.
+  //
+  // What finally held up in the hand: MOVING never makes a folder - the
+  // board pushes aside as it always has, however slowly the finger goes.
+  // Only a STOP does: once the finger has stood still for a moment (a
+  // resting finger's tremor does not count as moving), whatever the
+  // carried tile lies over - even by an edge - is ringed, and letting go
+  // then makes the folder. Speed thresholds during the move and "the
+  // middle of the first cell" were both tried; the first stopped the
+  // board pushing at all, the second caught 2 stops in 10.
   const lastMove = useRef<{ x: number; y: number; t: number } | null>(null);
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // px per ms - slower than this is "stopping over it". A finger carrying
-  // a tile with care still moves at ~0.3; resting is well under that.
-  const SLOW = 0.12;
+  // px per ms: slower than this is a resting finger's tremor, not movement.
+  const STILL = 0.06;
+  // The board and the carried tile's place as they are NOW - read by the
+  // stop's timer, which fires after the render that set them.
+  const placedRef = useRef(placed);
+  placedRef.current = placed;
+  const dragAt = useRef<{ x: number; y: number } | null>(null);
 
-  // The database or folder the carried tile is ON: where the middle of its
-  // FIRST cell - the one that claims a cell as it moves - has come to lie,
-  // on the board AS IT IS ON SCREEN. (The board without the carried tile
-  // was used once, so what it rested on could not slide away - but there
-  // the tiles after it had flowed up into its place, and the one found
-  // was two tiles over from the one the finger was on.) A one-cell tile
-  // counts whole; a bigger one, its middle. "Any overlap at all" was tried
-  // and read every careful drag as resting on something.
-  function overlapTarget(item: BoardItem, nextX: number, nextY: number) {
-    const cx = nextX + cellSize / 2;
-    const cy = nextY + cellSize / 2;
-    const hit = placed.find((p) => {
-      if (p.item.key === item.key) return false;
-      if (p.item.kind !== 'builtin' && p.item.kind !== 'custom' && p.item.kind !== 'folder') return false;
-      const r = tileRect(p);
-      const inset = p.size.w * p.size.h === 1 ? 0 : 0.25;
-      return (
-        cx > r.left + r.width * inset &&
-        cx < r.left + r.width * (1 - inset) &&
-        cy > r.top + r.height * inset &&
-        cy < r.top + r.height * (1 - inset)
-      );
-    });
-    return hit?.item.key ?? null;
+  // The database or folder the carried tile lies over most, on the board
+  // AS IT IS ON SCREEN - an edge counts: a seventh of the smaller of the
+  // two is enough.
+  function overlapTarget(item: BoardItem, x: number, y: number) {
+    const size = sizeFor(item.key);
+    const carried = { left: x, top: y, width: spanSize(size.w), height: spanSize(size.h) };
+    let best: { key: string; area: number } | null = null;
+    for (const p of placedRef.current) {
+      if (p.item.key === item.key) continue;
+      if (p.item.kind !== 'builtin' && p.item.kind !== 'custom' && p.item.kind !== 'folder') continue;
+      const r = p.item.kind === 'folder' ? folderRect(p.item.key, p.x, p.y, p.size) : tileRect(p);
+      const w = Math.min(carried.left + carried.width, r.left + r.width) - Math.max(carried.left, r.left);
+      const h = Math.min(carried.top + carried.height, r.top + r.height) - Math.max(carried.top, r.top);
+      if (w <= 0 || h <= 0) continue;
+      const area = w * h;
+      if (area < 0.14 * Math.min(carried.width * carried.height, r.width * r.height)) continue;
+      if (!best || area > best.area) best = { key: p.item.key, area };
+    }
+    return best?.key ?? null;
+  }
+
+  // The finger has stopped: see what the carried tile lies over.
+  function armSettle(item: BoardItem) {
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(() => {
+      settle.current = null;
+      if (item.kind !== 'builtin' && item.kind !== 'custom') return;
+      const at = dragAt.current;
+      if (!at) return;
+      const target = overlapTarget(item, at.x, at.y);
+      if (target) beginDwell(target);
+    }, 220);
   }
 
   // Resting over a tile: the board holds still - nothing is pushed while
@@ -1105,32 +1127,24 @@ export default function DatabasesScreen() {
     const nextX = carryOrigin.current.x + dx;
     const nextY = carryOrigin.current.y + dy;
     setDrag({ key: item.key, x: nextX, y: nextY });
+    dragAt.current = { x: nextX, y: nextY };
     const now = Date.now();
     const last = lastMove.current;
     lastMove.current = { x: nextX, y: nextY, t: now };
-    const speed = last ? Math.hypot(nextX - last.x, nextY - last.y) / Math.max(1, now - last.t) : 0;
-    if (settle.current) clearTimeout(settle.current);
-    settle.current = null;
-    const target = item.kind === 'builtin' || item.kind === 'custom' ? overlapTarget(item, nextX, nextY) : null;
-    if (target && speed < SLOW) {
-      beginDwell(target);
+    const speed = last ? Math.hypot(nextX - last.x, nextY - last.y) / Math.max(1, now - last.t) : Infinity;
+    // A resting finger's tremor: nothing on the board moves for it, and the
+    // wait for a stop that it would otherwise keep restarting runs on.
+    if (speed < STILL) {
+      if (!settle.current && !hover.current) armSettle(item);
       return;
     }
-    // Going fast: the tile under it moves out of the way, as before. If the
-    // finger stops right there, that is resting on it after all - and the
-    // push that last move made is taken back, so the tile it was on comes
-    // back under it.
-    if (target) {
-      const before = draftPosition;
-      settle.current = setTimeout(() => {
-        if (before) setDraftPosition(before);
-        beginDwell(target);
-      }, 160);
-    }
+    // Moving: the board makes room, as it always has; a stop is waited for
+    // afresh.
     clearHover();
     setMergeTarget(null);
     const cell = cellUnder(item.key, nextX, nextY);
     setDraftPosition({ key: item.key, x: cell.x, y: cell.y });
+    armSettle(item);
   }
 
   // A folder that has lost a tile: two or more left, it keeps them; one
