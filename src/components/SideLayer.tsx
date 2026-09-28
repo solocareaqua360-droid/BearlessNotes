@@ -5,6 +5,7 @@ import { BackHandler, InteractionManager, StyleSheet, View, useWindowDimensions 
 import { BlurView } from 'expo-blur';
 import Animated, { Easing, runOnJS, SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SideDrawersContext } from '../navigation/sideDrawers';
+import { DesksControlContext } from '../navigation/desks';
 import { DockLayerContext } from '../navigation/navDock';
 import { LayoutFrameContext } from '../hooks/useResponsiveLayout';
 import { GlassPortal } from './GlassPortal';
@@ -48,6 +49,7 @@ export default function SideLayer({
   const navigation = useContext(NavigationContext);
   const route = useContext(NavigationRouteContext);
   const sideDrawers = useContext(SideDrawersContext);
+  const desksControl = useContext(DesksControlContext);
   // Mounted AHEAD of the first swipe - once the app has settled - and
   // kept: building the whole screen at the moment of the first swipe is a
   // stall under the finger, and what was open in it stays open.
@@ -167,6 +169,7 @@ export default function SideLayer({
         <NavigationContext.Provider value={navigation}>
           <NavigationRouteContext.Provider value={route}>
             <SideDrawersContext.Provider value={sideDrawers}>
+            <DesksControlContext.Provider value={desksControl}>
               <Animated.View
                 style={[StyleSheet.absoluteFill, presenceStyle]}
                 pointerEvents={open && tabsFocused ? 'box-none' : 'none'}
@@ -179,6 +182,7 @@ export default function SideLayer({
                   </Animated.View>
                 </GestureDetector>
               </Animated.View>
+            </DesksControlContext.Provider>
             </SideDrawersContext.Provider>
           </NavigationRouteContext.Provider>
         </NavigationContext.Provider>

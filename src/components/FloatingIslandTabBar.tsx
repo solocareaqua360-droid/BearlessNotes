@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
+import { DesksControlContext, PERMANENT_DESK, deskFace } from '../navigation/desks';
+import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
 
 // Outline glyphs at 24, the same set and the same size as everything else
@@ -92,11 +94,17 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   }, [publishTabsDrifting, tabsDrifting]);
   const liveIndex = liveIndexRef.current;
 
+  // The desks are the user's databases now (see navigation/desks) - their
+  // names and icons come from what they are, not from a fixed list.
+  const { customDatabases } = useDatabaseTiles();
+  const deskControl = useContext(DesksControlContext);
+  const faceOf = (name: string) =>
+    ICON_BY_ROUTE[name] && !deskControl ? { label: name, icon: ICON_BY_ROUTE[name] } : deskFace(name, customDatabases);
   const desks = useMemo(
     () =>
       state.routes.map((route, index) => ({
         key: route.key,
-        icon: (ICON_BY_ROUTE[route.name] ?? 'ellipse-outline') as string,
+        icon: faceOf(route.name).icon as string,
         // The live index, not the settled one - see above. Wrong for at
         // most the same one beat a tap never has, and never wrong for
         // longer than that: the effect above brings it back in line the
@@ -113,7 +121,8 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
           if (!event.defaultPrevented) navigation.navigate(route.name);
         },
       })),
-    [state.routes, state.index, liveIndex, navigation, setDockHidden]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.routes, state.index, liveIndex, navigation, setDockHidden, customDatabases, deskControl]
   );
 
   // THE DESKS MOVED TO THE TOP on the four desks' own screens (see
@@ -145,10 +154,21 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
     <TopNavBar
       desks={state.routes.map((route, index) => ({
         key: route.key,
-        label: route.name,
-        icon: ICON_BY_ROUTE[route.name] ?? 'ellipse-outline',
+        ...faceOf(route.name),
         active: liveIndex === index,
         onPress: desks[index].onPress,
+        // "хрестик на вкладці тільки тій яка зараз на весь екран" - the
+        // desk in front can be closed, never the documents. Its neighbour
+        // to the left takes its place first, so nothing vanishes from
+        // under the finger.
+        onClose:
+          deskControl && route.name !== PERMANENT_DESK && liveIndex === index
+            ? () => {
+                const previous = state.routes[index - 1]?.name;
+                if (previous) navigation.navigate(previous);
+                deskControl.setDesks(deskControl.desks.filter((key) => key !== route.name));
+              }
+            : undefined,
       }))}
       onLongPress={openCapture}
       // The calendar's drawer carries its own bar; this one steps back

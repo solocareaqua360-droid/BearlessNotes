@@ -5205,10 +5205,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 style={styles.exportMenuRow}
                 onPress={() => {
                   setExportMenuOpen(false);
-                  navigation.navigate('Tabs', {
-                    screen: 'Дошки',
-                    params: { screen: 'Board', params: { boardId: sourceBoardId, openDocumentId: documentId } },
-                  });
+                  // On its own, not through the boards' desk, which the
+                  // user may have closed (see navigation/desks).
+                  navigation.navigate('BoardCopy', { boardId: sourceBoardId, openDocumentId: documentId });
                 }}
               >
                 <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />

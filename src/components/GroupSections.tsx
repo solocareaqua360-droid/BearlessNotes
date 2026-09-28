@@ -229,10 +229,7 @@ export default function GroupSections({
                         style={styles.boardRow}
                         onPress={() =>
                           open(() =>
-                            navigation.navigate('Tabs', {
-                              screen: 'Дошки',
-                              params: { screen: 'Board', params: { boardId: row.id } },
-                            })
+                            navigation.navigate('BoardCopy', { boardId: row.id })
                           )
                         }
                       >

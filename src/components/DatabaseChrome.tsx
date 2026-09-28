@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -23,6 +23,7 @@ import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras } from '../navigation/navDock';
 import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
+import { DeskContext } from '../navigation/desks';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter } from './TagsDrawer';
 import { usePublishRailTree } from '../navigation/navRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
@@ -244,7 +245,11 @@ export default function DatabaseChrome<T extends { id: string }>({
   // The chrome floats over the cards, so its height decides where the
   // first one rests.
   const [chromeHeight, setChromeHeight] = useState(0);
-  const topNav = (!!topNavWanted || !!navTitle) && topNavOn;
+  // Drawn as one of the desks: the desks' bar is up (not this database's
+  // own), and its way back is the desk before it.
+  const desk = useContext(DeskContext);
+  const topNav = (!!topNavWanted || !!navTitle || !!desk) && topNavOn;
+  const backTarget = desk ? desk.back : onBack;
   const chromeTop = insets.top + CHROME_TOP + (topNav ? TOP_NAV_SPACE : 0);
   const chromeBottom = chromeTop + chromeHeight + 8;
   // Searching takes the screen - but only while it is actually being
@@ -279,7 +284,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           list.setSearchQuery('');
           list.setIsSearching(false);
         }
-      : folderUp ?? onBack ?? null;
+      : folderUp ?? backTarget ?? null;
   useTopBack(back, !!topNav);
   useDockBeads(
     isFocused
@@ -583,7 +588,7 @@ export default function DatabaseChrome<T extends { id: string }>({
 
         {/* A pushed database draws its own bar (the desks' one belongs to
             the tabs). */}
-        {isFocused && topNav && navTitle && <TopNavBar title={navTitle} />}
+        {isFocused && topNav && navTitle && !desk && <TopNavBar title={navTitle} />}
         <SearchCorner
           visible={!topNav && isFocused && !list.isSelectMode}
           open={list.isSearching}

@@ -84,6 +84,8 @@ export type TopDesk = {
   icon: keyof typeof Ionicons.glyphMap;
   active: boolean;
   onPress: () => void;
+  // The desk in front can be closed - a ✕ at its end (see navigation/desks).
+  onClose?: () => void;
 };
 
 type PathContext = Extract<DockContext, { kind: 'path' }>;
@@ -411,6 +413,11 @@ function DeskPill({
               {desk.label}
             </Text>
           </Animated.View>
+          {desk.active && desk.onClose && (
+            <Pressable hitSlop={8} onPress={desk.onClose} accessibilityLabel="Закрити стіл" style={styles.deskClose}>
+              <Ionicons name="close" size={16} color={inkMuted} />
+            </Pressable>
+          )}
         </DockFrost>
       </Pressable>
     </Animated.View>
@@ -615,5 +622,12 @@ const styles = StyleSheet.create({
   },
   titlePress: {
     flex: 1,
+  },
+  deskClose: {
+    marginLeft: 6,
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

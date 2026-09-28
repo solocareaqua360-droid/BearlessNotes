@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+import { requestCalendarDay } from '../navigation/calendarRequest';
 import { useRef, useState, useEffect } from 'react';
 import { useShareIntentContext, ShareIntentFile } from 'expo-share-intent';
 import {
@@ -281,7 +283,14 @@ export default function ShareIntentHandler() {
     appendBlocksToToday([blockForPendingShare(share)], [])
       .then(() => {
         if (navigationRef.isReady())
-          navigationRef.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: dateKey(new Date()) } });
+          // The phone's calendar is the layer beside the desks (see
+          // calendarRequest); the browser's is still a desk.
+          if (Platform.OS === 'web') {
+            navigationRef.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: dateKey(new Date()) } });
+          } else {
+            navigationRef.navigate('Tabs');
+            requestCalendarDay(dateKey(new Date()));
+          }
       })
       .catch(reportShareFailure);
   }

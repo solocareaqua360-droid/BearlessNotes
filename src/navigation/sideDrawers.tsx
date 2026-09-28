@@ -2,6 +2,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { SharedValue, useSharedValue } from 'react-native-reanimated';
 import { useIsFocused } from '@react-navigation/native';
 import { useDrawerCoverPublisher, useNavDrawerProgress } from './navDock';
+import { listenCalendarRequests } from './calendarRequest';
 
 // THE TWO SCREENS BESIDE THE DESKS - the user's iOS model (2026-09-28):
 // the calendar left of the first desk, the databases right of the last,
@@ -15,6 +16,9 @@ type SideDrawers = {
   // "сповільнене".
   calendarProgress: SharedValue<number> | null;
   calendarOpen: boolean;
+  // A day asked for from elsewhere (see calendarRequest) - counted, so the
+  // same day asked for twice is still a second request.
+  calendarJump: { key: string; n: number } | null;
   // A swipe is carrying the layer in or out right now - its blur is
   // needed before the layer counts as open.
   calendarDragging: boolean;
@@ -35,6 +39,7 @@ type SideDrawers = {
 const NONE: SideDrawers = {
   calendarProgress: null,
   calendarOpen: false,
+  calendarJump: null,
   calendarDragging: false,
   setCalendarDragging: () => {},
   openCalendar: () => {},
@@ -59,6 +64,16 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
   const [databasesOpen, setDatabasesOpen] = useState(false);
   const [databasesDragging, setDatabasesDragging] = useState(false);
   const [blocks, setBlocks] = useState(0);
+  const [calendarJump, setCalendarJump] = useState<{ key: string; n: number } | null>(null);
+  useEffect(
+    () =>
+      listenCalendarRequests((key) => {
+        setCalendarJump((prev) => ({ key, n: (prev?.n ?? 0) + 1 }));
+        setDatabasesOpen(false);
+        setCalendarOpen(true);
+      }),
+    []
+  );
   // The dock's own copies when there is a dock (there always is): the bar
   // and the dock fade by the same numbers the layers slide by.
   const fallbackLeft = useSharedValue(0);
@@ -95,6 +110,7 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
     () => ({
       calendarProgress,
       calendarOpen,
+      calendarJump,
       calendarDragging,
       setCalendarDragging,
       openCalendar,
@@ -111,6 +127,7 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
     [
       calendarProgress,
       calendarOpen,
+      calendarJump,
       calendarDragging,
       openCalendar,
       closeCalendar,
@@ -141,7 +158,11 @@ export function useBlockDrawerSwipe(active: boolean) {
 // Given to the calendar drawn INSIDE its layer, so it knows it is there:
 // it draws its own bar and dock, and its way back closes the layer rather
 // than stepping to another desk.
-export const CalendarDrawerContext = createContext<{ open: boolean; close: () => void } | null>(null);
+export const CalendarDrawerContext = createContext<{
+  open: boolean;
+  close: () => void;
+  jump: { key: string; n: number } | null;
+} | null>(null);
 
 // The same, for the databases («Більше») drawn inside theirs.
 export const DatabasesLayerContext = createContext<{ open: boolean; close: () => void } | null>(null);

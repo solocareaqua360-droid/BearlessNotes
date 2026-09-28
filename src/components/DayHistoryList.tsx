@@ -156,7 +156,7 @@ export default function DayHistoryList({
         if (item.documentId) navigation.navigate('Editor', { documentId: item.documentId });
         return;
       case 'board':
-        navigation.navigate('Tabs', { screen: 'Дошки', params: { screen: 'Board', params: { boardId: item.id } } });
+        navigation.navigate('BoardCopy', { boardId: item.id });
         return;
       case 'sticker':
         navigation.navigate('Stickers');

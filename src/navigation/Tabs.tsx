@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { ComponentType, useMemo, useState } from 'react';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
@@ -7,7 +7,8 @@ import { Easing, runOnJS, useSharedValue, withTiming } from 'react-native-reanim
 import FloatingIslandTabBar from '../components/FloatingIslandTabBar';
 import CalendarDrawer, { DatabasesLayer, SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
 import { SideDrawersProvider, useSideDrawers } from './sideDrawers';
-import { TAB_SCREENS } from './tabScreens';
+import { deskScreenFor } from './tabScreens';
+import { DeskContext, DesksControlContext, useDesks } from './desks';
 
 // Material top tabs, not bottom tabs: the navigator the desks were built
 // on when they were swiped between. Its "top" is nominal here; the tab
@@ -25,14 +26,36 @@ const Tab = createMaterialTopTabNavigator();
 const BAND = 0.3;
 
 export default function Tabs() {
+  const { desks, setDesks } = useDesks();
+  const control = useMemo(() => ({ desks, setDesks }), [desks, setDesks]);
   return (
-    <SideDrawersProvider>
-      <TabsWithDrawers />
-    </SideDrawersProvider>
+    <DesksControlContext.Provider value={control}>
+      <SideDrawersProvider>
+        <TabsWithDrawers desks={desks.filter((key) => !!deskScreenFor(key))} />
+      </SideDrawersProvider>
+    </DesksControlContext.Provider>
   );
 }
 
-function TabsWithDrawers() {
+// One desk: its database, told it is a desk and where its way back goes.
+function DeskHost({
+  component: Component,
+  props,
+  back,
+}: {
+  component: ComponentType<any>;
+  props?: Record<string, unknown>;
+  back: (() => void) | null;
+}) {
+  const value = useMemo(() => ({ back }), [back]);
+  return (
+    <DeskContext.Provider value={value}>
+      <Component {...props} />
+    </DeskContext.Provider>
+  );
+}
+
+function TabsWithDrawers({ desks }: { desks: string[] }) {
   const {
     openCalendar,
     calendarOpen,
@@ -58,10 +81,10 @@ function TabsWithDrawers() {
   // the end of them - iOS's own arrangement: a rightward swipe on the
   // first home page is the widgets page, a leftward one on the last is the
   // app library. Anywhere between, the same swipe is the next desk.
-  const [focusedTab, setFocusedTab] = useState(TAB_SCREENS[0].name);
+  const [focusedTab, setFocusedTab] = useState(desks[0]);
   const layerOpen = calendarOpen || databasesOpen;
-  const canCalendar = !swipeBlocked && !layerOpen && focusedTab === TAB_SCREENS[0].name;
-  const canDatabases = !swipeBlocked && !layerOpen && focusedTab === TAB_SCREENS[TAB_SCREENS.length - 1].name;
+  const canCalendar = !swipeBlocked && !layerOpen && focusedTab === desks[0];
+  const canDatabases = !swipeBlocked && !layerOpen && focusedTab === desks[desks.length - 1];
 
   // Manual, so it fails before it activates on anything that is not
   // clearly one of the two - up or down is a list scrolling, and a finger
@@ -158,20 +181,31 @@ function TabsWithDrawers() {
               animationEnabled: false,
             }}
           >
-            {TAB_SCREENS.map(({ name, component }) => (
-              <Tab.Screen
-                key={name}
-                name={name}
-                component={component}
-                listeners={{ focus: () => setFocusedTab(name) }}
-                options={
-                  // A board's canvas takes every sideways drag itself.
-                  name === 'Дошки'
-                    ? ({ route }) => ({ swipeEnabled: getFocusedRouteNameFromRoute(route) !== 'Board' })
-                    : undefined
-                }
-              />
-            ))}
+            {desks.map((name, index) => {
+              const screen = deskScreenFor(name)!;
+              const previous = index > 0 ? desks[index - 1] : null;
+              return (
+                <Tab.Screen
+                  key={name}
+                  name={name}
+                  listeners={{ focus: () => setFocusedTab(name) }}
+                  options={
+                    // A board's canvas takes every sideways drag itself.
+                    name === 'Дошки'
+                      ? ({ route }) => ({ swipeEnabled: getFocusedRouteNameFromRoute(route) !== 'Board' })
+                      : undefined
+                  }
+                >
+                  {({ navigation }) => (
+                    <DeskHost
+                      component={screen.component}
+                      props={screen.props}
+                      back={previous ? () => navigation.navigate(previous) : null}
+                    />
+                  )}
+                </Tab.Screen>
+              );
+            })}
           </Tab.Navigator>
         </View>
       </GestureDetector>

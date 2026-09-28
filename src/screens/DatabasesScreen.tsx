@@ -48,7 +48,7 @@ import StockPhotoPicker from '../components/StockPhotoPicker';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TAG_COLORS } from '../constants/tags';
-import { FONT_REGULAR, FONT_MEDIUM } from '../utils/fonts';
+import { FONT_REGULAR, FONT_MEDIUM, FONT_SEMIBOLD } from '../utils/fonts';
 import {contrastTextColor } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -56,6 +56,7 @@ import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { DatabasesLayerContext } from '../navigation/sideDrawers';
+import { DesksControlContext, MAX_DESKS, PERMANENT_DESK, canBeDesk, deskFace, deskKeyForCustom, deskKeyForTile } from '../navigation/desks';
 import InlineDock from '../components/InlineDock';
 import type { MenuEntry } from '../components/surfaces/Menu';
 import TopNavBar from '../components/TopNavBar';
@@ -204,6 +205,17 @@ export default function DatabasesScreen() {
   // is published for the window's, which fade out as it comes in.
   const databasesLayer = useContext(DatabasesLayerContext);
   const layerShut = !!databasesLayer && !databasesLayer.open;
+  const desksControl = useContext(DesksControlContext);
+  // The tile being carried out of the layer onto the desks, under the
+  // finger - drawn over everything, since the layer it came from is on its
+  // way out.
+  const [deskGhost, setDeskGhost] = useState<{
+    x: number;
+    y: number;
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    color: string;
+  } | null>(null);
   const databasesFocused = useIsFocused() && !layerShut;
   const databasesInsets = useSafeAreaInsets();
   const dockClear = useDockClearance();
@@ -352,6 +364,35 @@ export default function DatabasesScreen() {
       : null
   );
   const [importing, setImporting] = useState(false);
+
+  // A tile dropped on the desks: that database becomes a desk (or, if it
+  // already is one, simply the desk in front). Four is the most there can
+  // be - past that, one of the user's own is offered for the swap; the
+  // documents never are.
+  async function makeDesk(key: string) {
+    if (!desksControl) return;
+    const goTo = () =>
+      setTimeout(() => (navigation as unknown as { navigate: (n: string, p: object) => void }).navigate('Tabs', { screen: key }), 80);
+    if (desksControl.desks.includes(key)) {
+      goTo();
+      return;
+    }
+    if (desksControl.desks.length < MAX_DESKS) {
+      desksControl.setDesks([...desksControl.desks, key]);
+      goTo();
+      return;
+    }
+    const choice = await ask({
+      title: `Уже ${MAX_DESKS} столи`,
+      message: 'Замінити один із них?',
+      actions: desksControl.desks
+        .filter((k) => k !== PERMANENT_DESK)
+        .map((k) => ({ id: k, label: deskFace(k, customDatabases).label })),
+    });
+    if (!desksControl.desks.includes(choice)) return;
+    desksControl.setDesks(desksControl.desks.map((k) => (k === choice ? key : k)));
+    goTo();
+  }
 
   async function createDatabase(name: string) {
     setCreatingDatabase(false);
@@ -997,12 +1038,15 @@ export default function DatabasesScreen() {
                         // chosen - and everything else in it follows under
                         // the rule there (see GroupSections). A smart folder
                         // opens its own list, which is already cross-database.
-                        if (item.pinKind === 'group')
+                        if (item.pinKind === 'group') {
+                          // The documents are a desk under this layer: the
+                          // layer has to get out of the way to show them.
+                          databasesLayer?.close();
                           navigation.navigate('Tabs', {
                             screen: 'Документи',
                             params: { groupId: item.pin.id },
                           });
-                        else navigation.navigate('TagItems', { tagId: item.pin.id });
+                        } else navigation.navigate('TagItems', { tagId: item.pin.id });
                       } else if (item.key === NEW_TILE_KEY) setCreatingDatabase(true);
                       else if (item.key === PIN_TILE_KEY) setPinSheetVisible(true);
                       else setImporting(true);
@@ -1022,6 +1066,37 @@ export default function DatabasesScreen() {
                       writeSize(item.key, next);
                     }}
                     carried={drag?.key === item.key ? { x: drag.x, y: drag.y } : null}
+                    deskDrag={(() => {
+                      // Only in the layer, and only a database that can
+                      // stand as a desk.
+                      if (!databasesLayer || !desksControl) return null;
+                      const key =
+                        item.kind === 'builtin'
+                          ? deskKeyForTile(item.tile.key)
+                          : item.kind === 'custom'
+                            ? deskKeyForCustom(item.database.id)
+                            : null;
+                      if (!key || !canBeDesk(key)) return null;
+                      const face = deskFace(key, customDatabases);
+                      const tint =
+                        item.kind === 'custom'
+                          ? item.database.color ?? recordColour(item.database.id).background
+                          : colorFor(item.key);
+                      return {
+                        onDragStart: (gx: number, gy: number) => {
+                          hapticButtonDown();
+                          setDeskGhost({ x: gx, y: gy, label: face.label, icon: face.icon, color: tint });
+                          // The layer steps back: the desks are where it goes.
+                          databasesLayer.close();
+                        },
+                        onDragMove: (gx: number, gy: number) =>
+                          setDeskGhost((prev) => (prev ? { ...prev, x: gx, y: gy } : prev)),
+                        onDrop: () => {
+                          setDeskGhost(null);
+                          makeDesk(key);
+                        },
+                      };
+                    })()}
                     onCarryStart={() => {
                       hapticButtonDown();
                       carryOrigin.current = { x: x * cellStep, y: rowTop(y) };
@@ -1428,6 +1503,27 @@ export default function DatabasesScreen() {
         }}
       />
 
+      {/* The tile on its way to the desks, under the finger. */}
+      {deskGhost && (
+        <GlassPortal priority={5}>
+          <View
+            pointerEvents="none"
+            style={[
+              styles.deskGhost,
+              { left: deskGhost.x - 44, top: deskGhost.y - 44, backgroundColor: mutedForTheme(deskGhost.color, theme) },
+            ]}
+          >
+            <Ionicons name={deskGhost.icon} size={26} color={contrastTextColor(mutedForTheme(deskGhost.color, theme))} />
+            <Text
+              numberOfLines={1}
+              style={[styles.deskGhostLabel, { color: contrastTextColor(mutedForTheme(deskGhost.color, theme)) }]}
+            >
+              {deskGhost.label}
+            </Text>
+          </View>
+        </GlassPortal>
+      )}
+
       {/* In the layer: its own bar and dock, inside it and moving with it. */}
       {databasesLayer && (
         <>
@@ -1480,6 +1576,7 @@ function BoardDivider({
     .onStart(() => onCarryStart())
     .onUpdate((e) => onCarryMove(e.translationY))
     .onFinalize(() => onCarryEnd());
+
   return (
     <Animated.View
       layout={carried ? undefined : LinearTransition.duration(220)}
@@ -1522,6 +1619,7 @@ function BoardTile({
   onCarryStart,
   onCarryMove,
   onCarryEnd,
+  deskDrag,
 }: {
   item: BoardItem;
   left: number;
@@ -1546,8 +1644,22 @@ function BoardTile({
   onCarryStart: () => void;
   onCarryMove: (dx: number, dy: number) => void;
   onCarryEnd: () => void;
+  // In the databases' layer, a tile that can stand as a desk: held and let
+  // go it starts the arranging (as a hold always has); held and DRAGGED it
+  // is carried out of the layer onto the desks - "як в блоках документу:
+  // затиснув і відпустив - редагування, продовжуєш тягнути - на робочий
+  // стіл".
+  deskDrag?: {
+    onDragStart: (x: number, y: number) => void;
+    onDragMove: (x: number, y: number) => void;
+    onDrop: (x: number, y: number) => void;
+  } | null;
 }) {
   const styles = useStyles(makeStyles);
+  // Whether this hold has turned into a drag - and, after it, that the
+  // release must not also count as a tap.
+  const deskDragging = useRef(false);
+  const swallowPress = useRef(false);
   const label =
     item.kind === 'builtin'
       ? item.tile.label
@@ -1642,6 +1754,35 @@ function BoardTile({
     // too, and calling both would save the same order twice.
     .onFinalize(() => onCarryEnd());
 
+  // The same hold, outside the arranging: see `deskDrag`.
+  const toDesk = Gesture.Pan()
+    .runOnJS(true)
+    .activateAfterLongPress(400)
+    .enabled(!editing && !!deskDrag)
+    .onStart(() => {
+      deskDragging.current = false;
+      swallowPress.current = true;
+    })
+    .onUpdate((e) => {
+      if (!deskDrag) return;
+      if (!deskDragging.current && Math.hypot(e.translationX, e.translationY) > 24) {
+        deskDragging.current = true;
+        deskDrag.onDragStart(e.absoluteX, e.absoluteY);
+      }
+      if (deskDragging.current) deskDrag.onDragMove(e.absoluteX, e.absoluteY);
+    })
+    .onEnd((e) => {
+      if (deskDragging.current) deskDrag?.onDrop(e.absoluteX, e.absoluteY);
+      else onHold();
+    })
+    .onFinalize(() => {
+      deskDragging.current = false;
+      setTimeout(() => {
+        swallowPress.current = false;
+      }, 300);
+    });
+  const tileGesture = Gesture.Race(carry, toDesk);
+
   return (
     <Animated.View
       // A carried tile is not animated into place - it is under a finger,
@@ -1666,11 +1807,17 @@ function BoardTile({
         </>
       )}
 
-      <GestureDetector gesture={carry}>
+      <GestureDetector gesture={tileGesture}>
       <Pressable
         style={styles.tileTap}
-        onPress={editing ? onColor : onOpen}
-        onLongPress={onHold}
+        onPress={() => {
+          if (swallowPress.current) return;
+          if (editing) onColor();
+          else onOpen();
+        }}
+        // With the desk drag on, the hold is the drag's to read (a hold let
+        // go is still the arranging - see toDesk).
+        onLongPress={deskDrag && !editing ? undefined : onHold}
         delayLongPress={400}
       >
         {/* Name, icon and count - nothing else: "залиш лише назву, іконку
@@ -1723,6 +1870,29 @@ function BoardTile({
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
+  // A database tile in the hand, on its way to becoming a desk.
+  deskGhost: {
+    position: 'absolute',
+    width: 88,
+    height: 88,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    transform: [{ scale: 1.05 }],
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
+  },
+  deskGhostLabel: {
+    fontSize: 11,
+    fontFamily: FONT_SEMIBOLD,
+  },
   container: {
     flex: 1,
   },

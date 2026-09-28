@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { DeskContext } from '../navigation/desks';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
@@ -157,6 +158,8 @@ export default function TasksScreen() {
   const accent = theme.sections.tasks;
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // Drawn as one of the desks - see navigation/desks.
+  const desk = useContext(DeskContext);
   const route = useRoute<RouteProp<RootStackParamList, 'Tasks'>>();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -193,7 +196,9 @@ export default function TasksScreen() {
           setSearchQuery('');
           setIsSearching(false);
         }
-      : () => navigation.goBack();
+      : desk
+        ? desk.back
+        : () => navigation.goBack();
   // On a phone the bar at the top holds the way back (TopNavBar, drawn in
   // the render with this screen's own name), and search is the left bead.
   const bar = useTopNavOn();
@@ -213,7 +218,7 @@ export default function TasksScreen() {
               setIsSearching((prev) => !prev);
             },
           }
-        : { icon: 'arrow-back', onPress: back }
+        : { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
       : null,
     isFocused && !isSelectMode
       ? { icon: 'checkbox-outline', badge: 'add-circle-outline', onPress: () => setCreating(true) }
@@ -1642,7 +1647,7 @@ export default function TasksScreen() {
         {/* The band the status bar and the rail's top capsule stand in.
             It was the header row's own top padding until the header went. */}
         <View style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
-        {isFocused && bar && <TopNavBar title={{ icon: 'checkbox-outline', label: 'Справи' }} />}
+        {isFocused && bar && !desk && <TopNavBar title={{ icon: 'checkbox-outline', label: 'Справи' }} />}
         {/* No header row any more. Its title said the name of the screen
             you had just tapped to reach, and its three buttons were a
             light capsule of this screen's own invention - the one screen

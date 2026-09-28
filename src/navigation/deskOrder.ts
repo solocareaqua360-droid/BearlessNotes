@@ -1,4 +1,6 @@
+import { useContext } from 'react';
 import { useNavigation } from '@react-navigation/native';
+import { DeskContext } from './desks';
 
 // The four desks in the order the dock and the swipe walk them - the same
 // names, in the same order, as TAB_SCREENS (tabScreens.tsx). Kept apart
@@ -14,6 +16,11 @@ export type DeskName = (typeof DESK_ORDER)[number];
 // nothing before it; the back bead stays there, dimmed.
 export function useGoToPreviousDesk(desk: DeskName): (() => void) | null {
   const navigation = useNavigation();
+  // On the phone the desks are the user's own now, in the user's order -
+  // the one drawn as a desk is told its way back (see Tabs). The fixed
+  // order below is the browser's, which still has the four.
+  const deskContext = useContext(DeskContext);
+  if (deskContext) return deskContext.back;
   const index = DESK_ORDER.indexOf(desk);
   if (index <= 0) return null;
   const previous = DESK_ORDER[index - 1];

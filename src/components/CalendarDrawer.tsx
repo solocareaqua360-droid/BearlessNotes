@@ -14,8 +14,11 @@ export const SIDE_DRAWER_FRACTION = 1;
 // own bar and dock inside the layer and publishes nothing for the
 // window's, which fade out as it comes in.
 export default function CalendarDrawer() {
-  const { calendarOpen, closeCalendar, calendarProgress, calendarDragging } = useSideDrawers();
-  const drawer = useMemo(() => ({ open: calendarOpen, close: closeCalendar }), [calendarOpen, closeCalendar]);
+  const { calendarOpen, closeCalendar, calendarProgress, calendarDragging, calendarJump } = useSideDrawers();
+  const drawer = useMemo(
+    () => ({ open: calendarOpen, close: closeCalendar, jump: calendarJump }),
+    [calendarOpen, closeCalendar, calendarJump]
+  );
   return (
     <SideLayer side="left" open={calendarOpen} close={closeCalendar} progress={calendarProgress} dragging={calendarDragging}>
       <CalendarDrawerContext.Provider value={drawer}>

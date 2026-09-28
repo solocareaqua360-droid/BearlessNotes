@@ -926,12 +926,18 @@ export default function CalendarScreen() {
   // again and fight whatever day the user has since navigated to on their
   // own.
   const handledJumpRef = useRef<string | null>(null);
+  // In the layer, a day asked for from elsewhere arrives through the
+  // layer itself (see calendarRequest) - counted, so asking for the same
+  // day twice still jumps twice.
+  const layerJump = calendarDrawer?.jump ?? null;
+  const jumpKey = layerJump ? layerJump.key : jumpToDate;
+  const jumpToken = layerJump ? `${layerJump.key}#${layerJump.n}` : jumpToDate;
   useEffect(() => {
-    if (jumpToDate && jumpToDate !== handledJumpRef.current) {
-      handledJumpRef.current = jumpToDate;
-      selectDay(parseDateKey(jumpToDate));
+    if (jumpKey && jumpToken && jumpToken !== handledJumpRef.current) {
+      handledJumpRef.current = jumpToken;
+      selectDay(parseDateKey(jumpKey));
     }
-  }, [jumpToDate]);
+  }, [jumpToken]);
 
   function handleWeekScrollEnd(e: NativeSyntheticEvent<NativeScrollEvent>) {
     const page = Math.round(e.nativeEvent.contentOffset.x / stripWidth);

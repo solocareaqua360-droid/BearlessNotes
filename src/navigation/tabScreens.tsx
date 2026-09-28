@@ -6,6 +6,15 @@ import DatabasesScreen from '../screens/DatabasesScreen';
 import BoardsListScreen from '../screens/BoardsListScreen';
 import BoardScreen from '../screens/BoardScreen';
 import { BoardsStackParamList } from '../navigation';
+import TasksScreen from '../screens/TasksScreen';
+import PhotosScreen from '../screens/PhotosScreen';
+import FilesScreen from '../screens/FilesScreen';
+import StickersScreen from '../screens/StickersScreen';
+import FlashcardsScreen from '../screens/FlashcardsScreen';
+import DiaryScreen from '../screens/DiaryScreen';
+import LinksScreen from '../screens/LinksScreen';
+import CustomDatabaseScreen from '../screens/CustomDatabaseScreen';
+import { BOARDS_DESK, DeskScreen, PERMANENT_DESK } from './desks';
 
 // The four tabs, as a list - shared by the two tab navigators (Tabs.tsx
 // and Tabs.web.tsx), which differ only in the navigator that carries
@@ -35,3 +44,36 @@ export const TAB_SCREENS: { name: string; component: ComponentType<any> }[] = [
   { name: 'Дошки', component: BoardsStack },
   { name: 'Більше', component: DatabasesScreen },
 ];
+
+// THE PHONE'S DESKS - see navigation/desks. What draws each database when
+// it stands as a desk; null for the ones that cannot (the registries).
+// The browser keeps TAB_SCREENS above until it gets desks of its own.
+export function deskScreenFor(key: string): DeskScreen | null {
+  if (key === PERMANENT_DESK) return { component: DocumentsScreen };
+  if (key === BOARDS_DESK) return { component: BoardsStack };
+  if (key.startsWith('db:custom:')) {
+    return { component: CustomDatabaseScreen, props: { databaseId: key.slice('db:custom:'.length) } };
+  }
+  switch (key) {
+    case 'db:tasks':
+      return { component: TasksScreen };
+    case 'db:photos':
+      return { component: PhotosScreen };
+    case 'db:files':
+      return { component: FilesScreen };
+    case 'db:stickers':
+      return { component: StickersScreen };
+    case 'db:flashcards':
+      return { component: FlashcardsScreen };
+    case 'db:diary':
+      return { component: DiaryScreen };
+    case 'db:geo':
+      return { component: LinksScreen, props: { category: 'geo' } };
+    case 'db:links':
+      return { component: LinksScreen, props: { category: 'other' } };
+    case 'db:video':
+      return { component: LinksScreen, props: { category: 'video' } };
+    default:
+      return null;
+  }
+}

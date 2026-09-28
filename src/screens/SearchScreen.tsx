@@ -52,10 +52,9 @@ export default function SearchScreen() {
         navigation.navigate('CustomDatabase', { databaseId: target.databaseId });
         return;
       case 'board':
-        navigation.navigate('Tabs', {
-          screen: 'Дошки',
-          params: { screen: 'Board', params: { boardId: target.boardId } },
-        });
+        // Pushed on its own, not through the boards' desk: that desk is
+        // the user's to close now (see navigation/desks).
+        navigation.navigate('BoardCopy', { boardId: target.boardId });
     }
   }
 

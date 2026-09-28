@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { requestCalendarDay } from '../navigation/calendarRequest';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -102,7 +103,16 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
           {
             label: 'Відкрити в календарі',
             icon: 'calendar-outline',
-            onPress: () => navigation.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: openDate } }),
+            onPress: () => {
+              // The phone's calendar is the layer beside the desks; the
+              // browser's is still a desk of its own.
+              if (Platform.OS === 'web') {
+                navigation.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: openDate } });
+                return;
+              }
+              navigation.navigate('Tabs');
+              requestCalendarDay(openDate);
+            },
           },
         ]
       : null,

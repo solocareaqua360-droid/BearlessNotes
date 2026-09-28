@@ -61,7 +61,7 @@ export type RootStackParamList = {
   BoardsCopy: undefined;
   // One board, opened FROM the boards copy - the root stack has no Board
   // route of its own, that lives in the tab's nested stack.
-  BoardCopy: { boardId: string };
+  BoardCopy: { boardId: string; openDocumentId?: string; focusCardIds?: string[] };
   // Geo/video/other links all live in the one `links` mirror collection
   // (see DocumentEditorScreen's fetchLinkPreview) - this param is what
   // splits LinksScreen's one query into three separate-looking databases.

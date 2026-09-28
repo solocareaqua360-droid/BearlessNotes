@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { DeskContext } from '../navigation/desks';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { withAlpha } from '../utils/color';
@@ -230,6 +231,8 @@ export default function CustomDatabaseScreen({
   const dockClear = useDockClearance();
   const showContext = useDockShowContext();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // Drawn as one of the desks - see navigation/desks.
+  const desk = useContext(DeskContext);
   // The way out of this database is the dock's left bead now (see the
   // useDockBeads call below), the same as every other database.
   const route = useRoute();
@@ -775,7 +778,9 @@ export default function CustomDatabaseScreen({
           setSearchQuery('');
           setIsSearching(false);
         }
-      : () => navigation.goBack();
+      : desk
+        ? desk.back
+        : () => navigation.goBack();
   // On a phone the bar at the top holds the way back (TopNavBar, drawn in
   // the render with this database's own name), and search is the left
   // bead. Not inside another screen's pane.
@@ -799,7 +804,7 @@ export default function CustomDatabaseScreen({
               });
             },
           }
-        : { icon: 'arrow-back', onPress: back }
+        : { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
       : null,
     isFocused && !isSelectMode
       ? { icon: 'albums-outline', badge: 'add-circle-outline', onPress: openNewRow }
@@ -2543,7 +2548,7 @@ export default function CustomDatabaseScreen({
           records a screenful. What is left of the header is the line the
           tabs start on - the same one as every other database. */}
       <View style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
-      {isFocused && bar && (
+      {isFocused && bar && !desk && (
         <TopNavBar title={{ icon: database?.icon ?? 'grid-outline', label: database?.name || 'База' }} />
       )}
       <SearchCorner
