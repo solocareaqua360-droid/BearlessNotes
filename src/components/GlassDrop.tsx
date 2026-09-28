@@ -1,3 +1,4 @@
+import { useFrostPaused } from './frostPause';
 import { useId, useState } from 'react';
 import { StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -99,6 +100,8 @@ export default function GlassDrop({
   // was the diary. Such a drop keeps every other layer and simply has no
   // blur; a screen that wants the blur draws the drop through GlassPortal.
   const insideTarget = useInsideBlurTarget();
+  // Stands down with the rest of the glass - see frostPause.
+  const frostPaused = useFrostPaused();
   const how = lift ?? theme.lift;
   const g = theme.glass;
   // Unique per instance: in the browser every <Svg> shares one document,
@@ -126,7 +129,7 @@ export default function GlassDrop({
       }}
     >
       <View style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]} pointerEvents="none">
-        {!insideTarget && (
+        {!insideTarget && !frostPaused && (
           <BlurView
             intensity={blurAmount ?? g.blur}
             tint={blurTint ?? g.blurTint}

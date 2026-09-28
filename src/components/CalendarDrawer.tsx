@@ -8,6 +8,7 @@ import CalendarScreen from '../screens/CalendarScreen';
 import { CalendarDrawerContext, SideDrawersContext, useSideDrawers } from '../navigation/sideDrawers';
 import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
+import { usePauseFrost } from './frostPause';
 import { DockLayerContext } from '../navigation/navDock';
 import { LayoutFrameContext } from '../hooks/useResponsiveLayout';
 
@@ -65,6 +66,13 @@ export default function CalendarDrawer() {
   // in the portal now, outside the picture the blur takes, so scrolling
   // them no longer makes the blur redraw them.
   const blurShown = (calendarOpen || calendarDragging) && tabsFocused;
+  // WHAT WAS MISSED: the glass UNDER the layer - the desks' bar, the dock,
+  // a database's project pills - is only faded out, not gone, and each
+  // piece of it went on blurring the screen on every frame: half a dozen
+  // to a dozen live blurs nobody could see, for one that anyone could.
+  // While the layer is up they all stand down to flat glass (frostPause);
+  // its own blur is a plain BlurView and is not paused.
+  usePauseFrost(calendarOpen && tabsFocused);
 
   // Opened or shut from anywhere but a swipe (back, the bar's arrow): the
   // layer finishes the way there on its own. A swipe has already put it

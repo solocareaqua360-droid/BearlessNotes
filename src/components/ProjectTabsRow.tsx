@@ -3,6 +3,7 @@ import { useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { useFrostPaused } from './frostPause';
 import { FONT_SEMIBOLD } from '../utils/fonts';
 
 // Sentinel for "no group/project assigned" - an id string, since a real
@@ -159,6 +160,9 @@ function Tab({
   blurTarget?: RefObject<View | null> | null;
 }) {
   const styles = useStyles(makeStyles);
+  // Every inactive pill is a live blur of its own - a row of them is a
+  // dozen; they stand down with the rest of the glass (see frostPause).
+  const frostPaused = useFrostPaused();
   // On the dark gradient, an active tab inverts to a solid white pill with
   // dark text (matching CalendarScreen's own "Сьогодні" button) rather than
   // just swapping to a barely-brighter glass tint - the light-glass screens
@@ -170,7 +174,7 @@ function Tab({
     >
       {/* No blur under the active pill - it is a solid white one, and
           there would be nothing to see through it. */}
-      {dark && !active && !!blurTarget && (
+      {dark && !active && !!blurTarget && !frostPaused && (
         <BlurView
           intensity={60}
           tint="dark"
