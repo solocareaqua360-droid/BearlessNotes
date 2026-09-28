@@ -61,6 +61,14 @@ function DayPageMiniature({
     <View
       style={[styles.sheet, { width, height, borderRadius: radius, backgroundColor: theme.paper.fill }]}
       pointerEvents="none"
+      // Drawn ONCE into a texture the size of the small sheet, and moved
+      // as that picture from then on. Each miniature is a whole day's
+      // page of rows laid out full size and scaled down, and a scrolling
+      // list of them redrew every row of every page on every frame - the
+      // overview lagged behind the finger ("затримка ... в темпі
+      // пролистування"). The page never changes while it is on show.
+      renderToHardwareTextureAndroid
+      shouldRasterizeIOS
     >
       {/* Laid out at full size, centred, and scaled about its centre - so
           it lands exactly on the sheet's edges. */}
