@@ -19,11 +19,6 @@ import { DeskContext, DesksControlContext, useDesks } from './desks';
 // Tabs.web.tsx - because the pager these swiped on has no web build.
 const Tab = createMaterialTopTabNavigator();
 
-// The band across the middle of the screen a sideways swipe has to start
-// in - the same band the smartfolders drawer used, away from the top
-// (the bar) and the bottom (the dock), and away from the screen's edges,
-// which Android keeps for its own "back".
-const BAND = 0.3;
 
 export default function Tabs() {
   const { desks, setDesks } = useDesks();
@@ -67,10 +62,8 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
     setDatabasesDragging,
     swipeBlocked,
   } = useSideDrawers();
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const drawerWidth = Math.round(width * SIDE_DRAWER_FRACTION);
-  const bandTop = height * (0.5 - BAND / 2);
-  const bandBottom = height * (0.5 + BAND / 2);
   const startX = useSharedValue(0);
   const startY = useSharedValue(0);
   const startAt = useSharedValue(0);
@@ -95,8 +88,12 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
       Gesture.Pan()
         .manualActivation(true)
         .onTouchesDown((e, state) => {
+          // No band any more - "свайп витягування ... повинен працювати
+          // всюди по екрану обмежень не треба": anywhere is a candidate,
+          // and onTouchesMove is what tells a real sideways drag from a
+          // scroll or a long-press pickup.
           const touch = e.allTouches[0];
-          if ((!canCalendar && !canDatabases) || !touch || touch.absoluteY < bandTop || touch.absoluteY > bandBottom) {
+          if ((!canCalendar && !canDatabases) || !touch) {
             state.fail();
             return;
           }
@@ -148,8 +145,6 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
     [
       canCalendar,
       canDatabases,
-      bandTop,
-      bandBottom,
       openCalendar,
       openDatabases,
       startX,

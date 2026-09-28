@@ -205,7 +205,9 @@ function sectionColour(i: number, scheme: ColourScheme, groundBrightness: number
 // 3. THE BANDS ALSO GIVE THE LIST ITS RHYTHM. Nine cards parted by
 //    hue alone read as a patchwork; parted by value as well, they read
 //    as a list.
-const CARD_COUNT = 9;
+// 9 -> 5 (2026-09-28, same trim as the fixed themes' CARD_FILLS -
+// "кольорову гамму карток варто скоротити до 5 кольорів всюди").
+const CARD_COUNT = 5;
 // The bands are a trade, and these numbers are where it settles. The
 // dark band's FLOOR is how far the darkest card stands off the ground
 // (raise it and the card stops sinking); its CEILING is how much room

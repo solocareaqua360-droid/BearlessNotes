@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost, { FlatFrostContext } from './DockFrost';
@@ -440,7 +440,19 @@ function SearchRow({ search, radius, ink, inkMuted }: { search: TopSearch; radiu
         returnKeyType="search"
         style={[styles.searchInput, { color: ink }]}
       />
-      <Pressable hitSlop={8} onPress={search.onClose} accessibilityLabel="Закрити пошук" style={styles.searchClose}>
+      <Pressable
+        hitSlop={8}
+        onPress={() => {
+          // The field's own close: puts the keyboard away too - it was
+          // only ever the screen behind it (useSearchDismissal, on
+          // keyboardDidHide) that did that, and this button skipped it
+          // ("хрестик в пошуку також повинен опускати клавіатуру").
+          Keyboard.dismiss();
+          search.onClose();
+        }}
+        accessibilityLabel="Закрити пошук"
+        style={styles.searchClose}
+      >
         <Ionicons name="close" size={20} color={ink} />
       </Pressable>
     </DockFrost>

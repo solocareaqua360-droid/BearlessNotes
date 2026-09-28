@@ -276,16 +276,16 @@ const CANVAS_LIGHT = {
 // a scheme is actually applied - and shared by all three themes
 // because white and black never read it (colorForDocument hands those
 // two their own surface instead, deliberately).
+// Trimmed from nine to five (2026-09-28, "кольорову гамму карток варто
+// скоротити до 5 кольорів всюди") - the five that already covered five
+// distinct roles (a dark anchor, a mid green, a warm tan, a terracotta
+// accent, a near-white) rather than the four extra greens crowding them.
 const CARD_FILLS = [
-  '#DAA587', // Теплий Бежевий
+  '#556E78', // Глибокий Шорсткий Зелений
   '#84B799', // М'який Шорсткий Зелений
+  '#DAA587', // Теплий Бежевий
   '#BE7657', // Теплий Теракотовий
   '#F8F8F8', // Майже Білий
-  '#69736E', // М'який Сірий Гекс
-  '#A0B4AF', // Блідо-М'ятний Зелений
-  '#E6EBE6', // Світло-Кремовий Зелений
-  '#556E78', // Глибокий Шорсткий Зелений
-  '#788782', // М'який Блідий Шорсткий Зелений
 ];
 
 const SECTIONS: Record<SectionKey, string> = {

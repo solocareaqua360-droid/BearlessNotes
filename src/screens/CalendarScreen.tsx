@@ -2382,8 +2382,11 @@ const makeStyles = (t: Theme) =>
     overflow: 'hidden',
   },
   // Flush with the header above (square top), rounded only at the bottom.
+  // No fill any more - "підкладка під назвою дня ... повинна бути
+  // прозорою": the week/month plate used to be an opaque card; now it is
+  // just the outline, and whatever is behind it (the note's own paper,
+  // scrolled up under it) shows through.
   calendarPlate: {
-    backgroundColor: t.raised,
     // The strong edge, not the hairline: on an almost-white ground the
     // plate was held up by its shadow alone and read as unfinished
     // beside the rail capsule's own crisp rim.
