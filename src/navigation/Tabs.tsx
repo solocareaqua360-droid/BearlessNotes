@@ -1,4 +1,5 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -43,7 +44,13 @@ function TabsWithDrawers() {
   const startX = useSharedValue(0);
   const startY = useSharedValue(0);
   const startAt = useSharedValue(0);
-  const blocked = swipeBlocked || calendarOpen;
+  // The desks are swiped between again ("верни свайпи на робочі
+  // столи"), so the calendar's swipe is the one PAST the first desk -
+  // iOS's own arrangement: a rightward swipe on the first home page is
+  // the widgets page. On any other desk the same swipe is the desk
+  // before it, and belongs to the pager.
+  const [focusedTab, setFocusedTab] = useState(TAB_SCREENS[0].name);
+  const blocked = swipeBlocked || calendarOpen || focusedTab !== TAB_SCREENS[0].name;
 
   // A swipe to the RIGHT across the middle opens the calendar. Manual, so
   // it fails before it activates on anything that is not clearly that -
@@ -111,16 +118,25 @@ function TabsWithDrawers() {
               // gradient edge to edge, so the pager must not put a colour
               // behind them.
               sceneStyle: { backgroundColor: 'transparent' },
-              // NOT swiped between any more: a sideways swipe opens a
-              // drawer now (the calendar from the left, the databases from
-              // the right), and three meanings for one swipe is two too
-              // many. The desks change from the bar at the top.
-              swipeEnabled: false,
+              // Swiped between, as desks are; the calendar waits past the
+              // first one (see `blocked` above).
+              swipeEnabled: true,
               animationEnabled: false,
             }}
           >
             {TAB_SCREENS.map(({ name, component }) => (
-              <Tab.Screen key={name} name={name} component={component} />
+              <Tab.Screen
+                key={name}
+                name={name}
+                component={component}
+                listeners={{ focus: () => setFocusedTab(name) }}
+                options={
+                  // A board's canvas takes every sideways drag itself.
+                  name === 'Дошки'
+                    ? ({ route }) => ({ swipeEnabled: getFocusedRouteNameFromRoute(route) !== 'Board' })
+                    : undefined
+                }
+              />
             ))}
           </Tab.Navigator>
         </BlurTargetView>
