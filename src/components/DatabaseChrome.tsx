@@ -23,7 +23,7 @@ import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras } from '../navigation/navDock';
 import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
-import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from './TagsDrawer';
+import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter } from './TagsDrawer';
 import { usePublishRailTree } from '../navigation/navRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
@@ -188,7 +188,6 @@ export default function DatabaseChrome<T extends { id: string }>({
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const drawerRef = useRef<TagsDrawerHandle>(null);
-  const drawerSwipe = useDrawerSwipe(useCallback(() => drawerRef.current?.open(), []));
   const { isTwoPane } = useResponsiveLayout();
   // The rail on the left is the sign that this chrome stands in another
   // screen's pane - and a pane is never split again, whatever the window
@@ -456,7 +455,9 @@ export default function DatabaseChrome<T extends { id: string }>({
     pullHaptic();
     list.setIsSearching(true);
   });
-  const listGesture = useMemo(() => Gesture.Simultaneous(pull.gesture, drawerSwipe), [pull.gesture, drawerSwipe]);
+  // The sideways swipe no longer opens the smartfolders: they are a
+  // window from "⋯" now, and that swipe belongs to the calendar's drawer.
+  const listGesture = pull.gesture;
   // The search takes the screen; what hangs off the rail goes with it.
   useEffect(() => {
     if (list.isSearching || list.isSelectMode) {

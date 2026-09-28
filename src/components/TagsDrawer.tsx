@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -408,6 +409,13 @@ function TagsDrawerInner({
   const blurTarget = useBlurTarget();
   const { width: windowWidth } = useWindowDimensions();
   const drawerWidth = Math.round(windowWidth * DRAWER_FRACTION);
+  // A WINDOW now, not a drawer - the user's move: the left edge's swipe
+  // belongs to the calendar, and this whole panel (smartfolders,
+  // projects, the list's mode, the account row) opens from "⋯" as a
+  // window of its own, "щоб цей інтерфейс не загубився". Centred, the
+  // sheets' own width, clear of the status bar and the gesture bar.
+  const insets = useSafeAreaInsets();
+  const windowPanelWidth = Math.min(windowWidth - 32, 480);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [filterMode, setFilterMode] = useState<TagFilterMode>('multi');
   // Who everything belongs to, live - the row at the foot of the drawer
@@ -509,8 +517,12 @@ function TagsDrawerInner({
     }
   }
 
+  // Opens as a window does: fading in, a touch larger as it arrives.
   const panelStyle = useAnimatedStyle(
-    () => ({ transform: [{ translateX: openAmount.value - drawerWidth }] }),
+    () => ({
+      opacity: openAmount.value / Math.max(1, drawerWidth),
+      transform: [{ scale: 0.96 + 0.04 * (openAmount.value / Math.max(1, drawerWidth)) }],
+    }),
     [drawerWidth]
   );
   const backdropStyle = useAnimatedStyle(() => ({ opacity: dimAmount.value }));
@@ -532,7 +544,18 @@ function TagsDrawerInner({
           <Pressable style={StyleSheet.absoluteFill} onPress={closeDrawer} />
         </Animated.View>
 
-        <Animated.View style={[styles.panel, { width: drawerWidth }, panelStyle]}>
+        <Animated.View
+          style={[
+            styles.panel,
+            {
+              width: windowPanelWidth,
+              left: (windowWidth - windowPanelWidth) / 2,
+              top: insets.top + 40,
+              bottom: insets.bottom + 40,
+            },
+            panelStyle,
+          ]}
+        >
           {/* The frost, clipped to the panel by its overflow. Under its own
               tint, which is why the panel itself carries no background:
               a child paints over its parent's fill, so the colour has to
@@ -757,20 +780,14 @@ const makeStyles = (t: Theme) =>
   },
   panel: {
     position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
     // No elevation and no shadow: on Android elevation paints a black
-    // halo right round the view, which is the dark outline that was
-    // running down the drawer's whole perimeter. A hairline on the edge
-    // it actually has - the one facing the screen - does the job.
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(255,255,255,0.18)',
-    borderTopRightRadius: 24,
-    borderBottomRightRadius: 24,
+    // halo right round the view. A hairline all round does the job.
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 28,
     // The blur inside is clipped to this.
     overflow: 'hidden',
-    paddingTop: 56,
+    paddingTop: 20,
     paddingHorizontal: 16,
     paddingBottom: 20,
   },

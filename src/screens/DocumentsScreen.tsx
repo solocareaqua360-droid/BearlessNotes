@@ -19,7 +19,7 @@ import {
 import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import AttachmentImage from '../components/AttachmentImage';
-import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -58,7 +58,7 @@ import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
-import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter, useDrawerSwipe } from '../components/TagsDrawer';
+import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter } from '../components/TagsDrawer';
 import { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import GroupPickerSheet from '../components/GroupPickerSheet';
@@ -241,10 +241,11 @@ export default function DocumentsScreen({
     needle,
   } = list;
   const searching = searchOpen && needle.length > 0;
-  // The drawer opens on a swipe to the right across the list - see
-  // useDrawerSwipe; the folder button is gone.
+  // The smartfolders are a window from "⋯" now; the sideways swipe that
+  // used to open them belongs to the calendar's drawer. The detector
+  // stays where it stood, holding a gesture that never begins.
   const drawerRef = useRef<TagsDrawerHandle>(null);
-  const drawerSwipe = useDrawerSwipe(useCallback(() => drawerRef.current?.open(), []));
+  const drawerSwipe = useMemo(() => Gesture.Pan().enabled(false), []);
 
   // «Провідник» - the folders in the list itself, one level at a time.
   //
