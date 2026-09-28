@@ -26,7 +26,8 @@ import { hapticButtonDown } from '../utils/haptics';
 // занадто швидко і нема відчуття що ти тягнув"). The list now follows
 // the finger itself, with resistance, all the way to the point where
 // search opens.
-const PULL_TO_OPEN = 280;
+// 280 was liked, then trimmed by a fifth ("трохи меншу ... на 20%").
+const PULL_TO_OPEN = 225;
 
 // The list's own travel for a pull of `t`: close behind the finger, with
 // only a light give towards the end - a rubber band, never a stop. It was
