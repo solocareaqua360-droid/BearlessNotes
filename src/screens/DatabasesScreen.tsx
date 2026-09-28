@@ -1055,28 +1055,32 @@ export default function DatabasesScreen() {
   // when the tiles overlap, and whether it stops there.
   const lastMove = useRef<{ x: number; y: number; t: number } | null>(null);
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const SLOW = 0.35; // px per ms - slower than this is "stopping over it"
+  // px per ms - slower than this is "stopping over it". A finger carrying
+  // a tile with care still moves at ~0.3; resting is well under that.
+  const SLOW = 0.12;
 
-  // The database or folder the carried tile overlaps most, on the board
-  // WITHOUT it (so what it is over does not slide away under it) - any
-  // real overlap counts, an edge included.
+  // The database or folder the carried tile is ON, on the board WITHOUT it
+  // (so what it is over does not slide away under it): where the middle of
+  // its FIRST cell - the one that claims a cell as it moves - has come to
+  // lie. A one-cell tile counts whole; a bigger one, its middle. "Any
+  // overlap at all" was tried and read every careful drag as resting on
+  // something - nothing moved aside any more.
   function overlapTarget(item: BoardItem, nextX: number, nextY: number) {
-    const size = sizeFor(item.key);
-    const carried = { left: nextX, top: nextY, width: spanSize(size.w), height: spanSize(size.h) };
-    let best: { key: string; area: number } | null = null;
-    for (const p of boardWith(null, null, item.key).placed) {
-      if (p.item.key === item.key) continue;
-      if (p.item.kind !== 'builtin' && p.item.kind !== 'custom' && p.item.kind !== 'folder') continue;
+    const cx = nextX + cellSize / 2;
+    const cy = nextY + cellSize / 2;
+    const hit = boardWith(null, null, item.key).placed.find((p) => {
+      if (p.item.key === item.key) return false;
+      if (p.item.kind !== 'builtin' && p.item.kind !== 'custom' && p.item.kind !== 'folder') return false;
       const r = tileRect(p);
-      const w = Math.min(carried.left + carried.width, r.left + r.width) - Math.max(carried.left, r.left);
-      const h = Math.min(carried.top + carried.height, r.top + r.height) - Math.max(carried.top, r.top);
-      if (w <= 0 || h <= 0) continue;
-      const area = w * h;
-      // More than a sliver: a fifth of the smaller of the two.
-      if (area < 0.2 * Math.min(carried.width * carried.height, r.width * r.height)) continue;
-      if (!best || area > best.area) best = { key: p.item.key, area };
-    }
-    return best?.key ?? null;
+      const inset = p.size.w * p.size.h === 1 ? 0 : 0.25;
+      return (
+        cx > r.left + r.width * inset &&
+        cx < r.left + r.width * (1 - inset) &&
+        cy > r.top + r.height * inset &&
+        cy < r.top + r.height * (1 - inset)
+      );
+    });
+    return hit?.item.key ?? null;
   }
 
   // Resting over a tile: it goes back where it stood, and after a moment
