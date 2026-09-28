@@ -81,12 +81,10 @@ import VideoPlayerModal from '../components/VideoPlayerModal';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
 import PageCover from '../components/PageCover';
-import { liftStyle } from '../theme/tokens';
 // How far the save/project badge stands in from the sheet's own top and
 // right edges - one number, because the two gaps are meant to look the
 // same.
 const SHEET_BADGE_INSET = 12;
-import ScreenBackdrop from '../components/ScreenBackdrop';
 import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { BLOCK_ACTIONS, BlockAction } from '../components/blockActions';
@@ -167,7 +165,9 @@ import {
   useNavDockFace,
   useTopBack,
   useTopExtras,
+  useChromeStyle,
 } from '../navigation/navDock';
+import { softCursor, useSoft } from '../theme/soft';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import TopNavBar, { TOP_NAV_SPACE } from '../components/TopNavBar';
@@ -2542,6 +2542,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // step at a time, exactly as the corner arrow always did it: put the
   // text down, then shut the drawer, and leave the note only once there
   // is nothing left open.
+  // THE NOTE IN THE SOFT STYLE (theme/soft) - the user's first pick of
+  // where it goes next: "сама нотатка". Its own sheet on a phone, the
+  // same condition as sheetPage below (computed here: hooks must stand
+  // above the screen's early returns). The bar and the dock follow.
+  const softPage = !embedded && !('pane' in props) && !pointerDensity;
+  const soft = useSoft();
+  useChromeStyle('soft', softPage);
   useTopBack(
     embedded
       ? null
@@ -4934,7 +4941,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // where the ground is light and a glow where it is dark. The
         // sheet had none at all and lay flat on the backdrop, while the
         // card it came from stands off it.
-        sheetPage && !scrollSheet && liftStyle(theme, theme.lift, 1),
+        sheetPage && !scrollSheet && [styles.softSheet, { boxShadow: soft.shadow }],
         sheetPage && !scrollSheet && {
           marginTop: editorInsets.top,
           // Ends above the screen's own bottom edge, so the sheet shows
@@ -5349,7 +5356,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           },
           scrollSheet && [
             styles.pageSheet,
-            liftStyle(theme, theme.lift, 1),
+            // The soft sheet: rounder, and a soft shadow instead of the
+            // theme's lift (Material's elevation, or a glow).
+            styles.softSheet,
+            { boxShadow: soft.shadow },
             {
               flexGrow: 1,
               marginTop: editorInsets.top,
@@ -5459,6 +5469,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onBlur={() => setTitleActive(false)}
           placeholder={dayName ?? 'Без назви'}
           placeholderTextColor={paperColor?.textMuted ?? theme.paper.inkFaint}
+          {...softCursor(theme.scheme)}
           style={[styles.titleInput, paperColor && { color: paperColor.text }]}
           multiline
         />
@@ -6006,7 +6017,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   if (!sheetPage) return page;
   return (
     <View style={styles.sheetRoot}>
-      <ScreenBackdrop id="editorSheetBg" />
+      {/* The soft ground: one quiet colour, not the drifting backdrop. */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: soft.bg }]} />
       {page}
       {bottomChrome}
     </View>

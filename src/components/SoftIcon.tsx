@@ -130,3 +130,42 @@ export function SoftCheck({
     </View>
   );
 }
+
+// A TASK's box on the page - round, as in the soft mockup's note, and so
+// distinct from the square mark that means "chosen" (SoftCheck). Done,
+// it fills with the text's own ink (the style's rule: checks are ink, the
+// accent is kept for the cursor and for what is chosen).
+export function SoftTaskCheck({
+  checked,
+  size = 21,
+  ink,
+  faint,
+  paper,
+}: {
+  checked: boolean;
+  size?: number;
+  ink: string;
+  faint: string;
+  paper: string;
+}) {
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        borderWidth: checked ? 0 : 1.8,
+        borderColor: faint,
+        backgroundColor: checked ? ink : 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {checked && (
+        <Svg width={size * 0.66} height={size * 0.66} viewBox="0 0 24 24">
+          <Path d="M6.6 12.6l3.4 3.3L17.4 8.6" stroke={paper} strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </Svg>
+      )}
+    </View>
+  );
+}

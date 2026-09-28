@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native';
 import type { Theme } from '../theme/tokens';
 import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
-import { FONT_BOLD, FONT_EXTRABOLD, FONT_MEDIUM, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_EXTRABOLD, FONT_MEDIUM, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { STICKER_INK } from '../utils/documentBlocks';
 
 // Pulled out of DocumentEditorScreen.tsx (2026-09-19), same move as
@@ -35,6 +35,15 @@ export const PAGE_SHEET_INSET = 16;
 // A sheet starts below the status bar, so this is just air now.
 export const PAGE_HEADER_TOP = 12;
 
+// The page's text sizes, before the reader's own "Розмір тексту" scale.
+// In ONE place because BlockRow scales them too (see its scaledTextStyle)
+// and two copies of these numbers drifted apart once already. The line
+// heights are the soft style's: ~1.6 for text, where it used to be 1.37.
+export const PAGE_TEXT = { size: 17, line: 27 };
+export const PAGE_H1 = { size: 28, line: 35 };
+export const PAGE_H2 = { size: 22, line: 29 };
+export const PAGE_H3 = { size: 19, line: 26 };
+
 export const makeStyles = (t: Theme) => StyleSheet.create({
   container: {
     flex: 1,
@@ -43,6 +52,13 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
   // The ground a sheet lies on - see DocumentEditorScreen's `sheetPage`.
   sheetRoot: {
     flex: 1,
+  },
+  // The soft style's sheet (theme/soft): rounder than the old 16, and
+  // no elevation - the shadow comes as a boxShadow alongside.
+  softSheet: {
+    borderRadius: 26,
+    elevation: 0,
+    shadowOpacity: 0,
   },
   pageSheet: {
     marginHorizontal: PAGE_SHEET_INSET,
@@ -241,11 +257,20 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     width: '100%',
     height: 180,
   },
+  // THE PAGE IN THE SOFT STYLE (theme/soft, 2026-09-28): set in Inter,
+  // with more air between lines - the user's own reason for it, "там
+  // хочеться писати навіть неважливі речі". Shared with the list's page
+  // miniatures, which draw this same page, so the card and the note stay
+  // one picture.
   titleInput: {
-    // At least 2x the previous 24.
+    // At least 2x the previous 24 - the user's own size, kept.
     fontSize: 48,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
+    lineHeight: 54,
+    letterSpacing: -1,
+    // The weight is the FILE's (Inter_600SemiBold); a bold on top makes
+    // Android draw a fake heavier one.
+    fontWeight: 'normal',
+    fontFamily: SOFT_SEMIBOLD,
     color: t.paper.ink,
     paddingHorizontal: 20,
     paddingBottom: 12,
@@ -346,9 +371,10 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
   // as the document twitching on every tap.
   blockInput: {
     flex: 1,
-    fontSize: 16,
-    fontFamily: FONT_REGULAR,
-    lineHeight: 22,
+    fontSize: PAGE_TEXT.size,
+    fontFamily: SOFT_REGULAR,
+    lineHeight: PAGE_TEXT.line,
+    letterSpacing: -0.1,
     includeFontPadding: false,
     textAlignVertical: 'top',
     color: t.paper.ink,
@@ -361,9 +387,10 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
   },
   blockDisplayText: {
-    fontSize: 16,
-    fontFamily: FONT_REGULAR,
-    lineHeight: 22,
+    fontSize: PAGE_TEXT.size,
+    fontFamily: SOFT_REGULAR,
+    lineHeight: PAGE_TEXT.line,
+    letterSpacing: -0.1,
     includeFontPadding: false,
   },
   // Its own ground, so a block of code is plainly not prose.
@@ -387,19 +414,22 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     color: t.paper.inkFaint,
   },
   heading1: {
-    fontSize: 26,
-    lineHeight: 32,
-    fontFamily: FONT_BOLD,
+    fontSize: PAGE_H1.size,
+    lineHeight: PAGE_H1.line,
+    fontFamily: SOFT_SEMIBOLD,
+    letterSpacing: -0.5,
   },
   heading2: {
-    fontSize: 21,
-    lineHeight: 27,
-    fontFamily: FONT_SEMIBOLD,
+    fontSize: PAGE_H2.size,
+    lineHeight: PAGE_H2.line,
+    fontFamily: SOFT_SEMIBOLD,
+    letterSpacing: -0.35,
   },
   heading3: {
-    fontSize: 18,
-    lineHeight: 24,
-    fontFamily: FONT_SEMIBOLD,
+    fontSize: PAGE_H3.size,
+    lineHeight: PAGE_H3.line,
+    fontFamily: SOFT_SEMIBOLD,
+    letterSpacing: -0.2,
   },
   blockPlaceholder: {
     color: t.paper.inkFaint,
@@ -416,6 +446,11 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
   },
   checkboxBlock: {
     flex: 1,
+  },
+  // A little air after the round box, so the text starts where a
+  // paragraph's would.
+  taskCheck: {
+    paddingHorizontal: 4,
   },
   checkboxReminderRow: {
     flexDirection: 'row',
@@ -437,7 +472,7 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
   },
   bulletMark: {
     fontSize: 18,
-    fontFamily: FONT_REGULAR,
+    fontFamily: SOFT_REGULAR,
     color: t.paper.ink,
     paddingLeft: 4,
   },

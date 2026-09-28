@@ -72,6 +72,16 @@ export function softTokens(scheme: 'light' | 'dark'): SoftTokens {
   return scheme === 'dark' ? DARK : LIGHT;
 }
 
+// What a text field on a soft page draws its caret and selection in: the
+// accent - one of its three jobs - with the selection's wash see-through
+// so the words stay readable under it. On Android the caret and the
+// handles take their own props (cursorColor, selectionHandleColor).
+export function softCursor(scheme: 'light' | 'dark') {
+  const accent = softTokens(scheme).accent;
+  const wash = scheme === 'dark' ? 'rgba(232,154,98,0.35)' : 'rgba(217,121,63,0.28)';
+  return { selectionColor: wash, cursorColor: accent, selectionHandleColor: accent };
+}
+
 export function useSoft(): SoftTokens {
   return softTokens(useTheme().scheme);
 }

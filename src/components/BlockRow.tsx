@@ -20,7 +20,9 @@ import { Block, Tag } from '../types';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { useStyles, useTextScale, useTheme } from '../theme/ThemeProvider';
-import { makeStyles } from './documentEditorStyles';
+import { makeStyles, PAGE_H1, PAGE_H2, PAGE_H3, PAGE_TEXT } from './documentEditorStyles';
+import { SoftTaskCheck } from './SoftIcon';
+import { softCursor } from '../theme/soft';
 import type { colorForDocument } from '../utils/documentColor';
 import { caretIndexFromDom } from '../utils/caretAtPoint';
 import { canPlaceCaretByTouch, measureNode } from '../utils/measureNode';
@@ -173,15 +175,17 @@ export default function BlockRow({
   // paragraph text at anything but 1x.
   const textScale = useTextScale();
   const scaledTextStyle = (() => {
+    // The sizes themselves live beside the styles (PAGE_* in
+    // documentEditorStyles) - one copy, not two that can disagree.
     const base =
       (item.type ?? 'paragraph') === 'heading'
         ? item.headingLevel === 1
-          ? { fontSize: 26, lineHeight: 32 }
+          ? PAGE_H1
           : item.headingLevel === 3
-            ? { fontSize: 18, lineHeight: 24 }
-            : { fontSize: 21, lineHeight: 27 }
-        : { fontSize: 16, lineHeight: 22 };
-    return { fontSize: Math.round(base.fontSize * textScale), lineHeight: Math.round(base.lineHeight * textScale) };
+            ? PAGE_H3
+            : PAGE_H2
+        : PAGE_TEXT;
+    return { fontSize: Math.round(base.size * textScale), lineHeight: Math.round(base.line * textScale) };
   })();
 
   // Kept alongside the ref the screen collects, purely so the field can be
@@ -697,6 +701,7 @@ export default function BlockRow({
         }
         onFocus={() => onFocus(item.id)}
         onBlur={() => onBlur(item.id)}
+        {...softCursor(theme.scheme)}
         onSelectionChange={({ nativeEvent }) =>
           onSelectionChange(item.id, nativeEvent.selection.start, nativeEvent.selection.end)
         }
@@ -803,11 +808,15 @@ export default function BlockRow({
       content = (
         <View style={styles.checkboxBlock}>
         <View style={styles.prefixedRow}>
-          <Pressable hitSlop={8} onPress={() => onToggleChecked(item.id)}>
-            <Ionicons
-              name={item.checked ? 'checkbox' : 'square-outline'}
-              size={20}
-              color={item.checked ? theme.accent : theme.paper.inkFaint}
+          <Pressable hitSlop={8} onPress={() => onToggleChecked(item.id)} style={styles.taskCheck}>
+            {/* Round and in the text's own ink - the soft style's task box
+                (see SoftTaskCheck); on a note with its own paper colour,
+                that paper's ink. */}
+            <SoftTaskCheck
+              checked={!!item.checked}
+              ink={rowPaperColor?.text ?? theme.paper.ink}
+              faint={rowPaperColor?.textMuted ?? theme.paper.inkFaint}
+              paper={rowPaperColor?.background ?? theme.paper.fill}
             />
           </Pressable>
           {textField}
