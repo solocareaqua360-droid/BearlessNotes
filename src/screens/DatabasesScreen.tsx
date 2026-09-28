@@ -155,21 +155,15 @@ const FOLDER_PREFIX = 'folder:';
 // inside its cells (so folders side by side stand clearly apart), and its
 // tiles are set in from that outline by a margin of their own, with a
 // gap between them.
-// EVERY ICON ON THE SAME AXES, the user's rule, in a folder or not: each
-// stands TILE_INSET inside its cell, centred on it, and a tile two cells
-// long is two icons and the gap between them. A folder's outline is its
-// icons with a margin round them - wider along a side two cells or more
-// long, thinner along a side one cell long - drawn out into the gaps, never
-// so far that two folders side by side would touch. (Laying a folder's
-// icons out on their own spacing, iOS's way, put a two-row folder a few
-// points lower than a one-row one beside it - "несиметричність".)
-//
-// ONE margin, the same on every side of every folder: two margins (wider
-// on a long side) left a 2x1 folder's edge off the line of a 2x2's beside
-// it. With one, every folder's edges lie on the same lines, as the icons
-// do.
+// APPLE'S SYMMETRY, which the user came back to: a folder is square, and
+// inside it the margin to its edge EQUALS the gap between its icons. Every
+// tile stands TILE_INSET inside its cell; a folder's outline is drawn
+// narrower than its cells by what makes that margin and those gaps both
+// TILE_INSET, with its icons the size of a tile on the board. Every folder
+// being square, their outlines all lie on the same lines. (Icons on the
+// board's own cells, with a margin round them, was tried: the thin
+// outline it needed "ріже око".)
 const TILE_INSET = 12;
-const FOLDER_MARGIN = 8;
 type TileFolder = { members: string[] };
 
 type BoardItem =
@@ -670,7 +664,7 @@ export default function DatabasesScreen() {
     // A folder: its own shape, never too small for what is in it.
     if (key.startsWith(FOLDER_PREFIX)) {
       const count = folderMembersOf(key).length;
-      return grownFolderSize(parseFolderSize(viewData.sizes?.[fieldKey(key)]) ?? { w: 2, h: 1 }, count);
+      return grownFolderSize(parseFolderSize(viewData.sizes?.[fieldKey(key)]) ?? { w: 2, h: 2 }, count);
     }
     // This view's own size; before it has one, the size from before the
     // views existed; before that, the default.
@@ -1045,12 +1039,13 @@ export default function DatabasesScreen() {
     const base = { left: x * cellStep, top: rowTop(y), width: spanSize(size.w), height: spanSize(size.h) };
     return drag?.key === key ? { ...base, left: drag.x, top: drag.y } : base;
   }
-  // The outline a folder is drawn with: its icons (on their cells) and one
-  // margin round them - see FOLDER_MARGIN.
+  // The outline a folder is drawn with: narrower than its cells by what
+  // makes the margin inside it and the gaps between its icons one number -
+  // TILE_INSET - with icons the size of a tile on the board.
   function folderFrameOf(r: { left: number; top: number; width: number; height: number }, size: TileSize) {
-    void size;
-    const inset = TILE_INSET - FOLDER_MARGIN;
-    return { left: r.left + inset, top: r.top + inset, width: r.width - inset * 2, height: r.height - inset * 2 };
+    const ix = ((size.w - 1) * (gap + TILE_INSET)) / 2;
+    const iy = ((size.h - 1) * (gap + TILE_INSET)) / 2;
+    return { left: r.left + ix, top: r.top + iy, width: r.width - ix * 2, height: r.height - iy * 2 };
   }
   const mergeRect = (() => {
     if (!mergeTarget) return null;
@@ -1233,7 +1228,7 @@ export default function DatabasesScreen() {
         [tileView]: {
           positions: { [fieldKey(folderKey)]: formatTilePosition(relOf(target)) },
           sections: { [fieldKey(folderKey)]: section || deleteField() },
-          sizes: { [fieldKey(folderKey)]: '2x1' },
+          sizes: { [fieldKey(folderKey)]: '2x2' },
         },
       },
       { merge: true }
@@ -1463,11 +1458,10 @@ export default function DatabasesScreen() {
               {cellSize > 0 &&
                 placed.flatMap(({ item, x, y, size }) => {
                   if (item.kind !== 'folder') return [renderTile(item, x, y, size)];
-                  // Its tiles in reading order across its own width, each on
-                  // its own cell exactly as a tile on the board stands - one
-                  // set of axes for every icon - moving with the folder
-                  // while it is carried.
-                  const cellsAt = folderRect(item.key, x, y, size);
+                  // Its tiles in reading order across its own width, moving
+                  // with it while it is carried - the size of a tile on the
+                  // board, spaced by the folder's one margin.
+                  const frame = folderFrameOf(folderRect(item.key, x, y, size), size);
                   const icon = cellSize - TILE_INSET * 2;
                   return item.members.map((member, index) => {
                     const col = index % size.w;
@@ -1478,8 +1472,8 @@ export default function DatabasesScreen() {
                       y + row,
                       { w: 1, h: 1 },
                       {
-                        left: cellsAt.left + col * cellStep + TILE_INSET,
-                        top: cellsAt.top + row * cellStep + TILE_INSET,
+                        left: frame.left + TILE_INSET + col * (icon + TILE_INSET),
+                        top: frame.top + TILE_INSET + row * (icon + TILE_INSET),
                         width: icon,
                         height: icon,
                       },

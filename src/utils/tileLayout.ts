@@ -371,19 +371,16 @@ export function layoutSections<T>(
 // it are ordinary one-cell tiles, as many as its cells. It never opens; it
 // only holds databases together. Two cells at the least.
 //
-// No three-cell shapes (3x1, 1x3): on a four-column board a three-wide
-// folder always leaves a one-cell hole beside it, and the board stops
-// being symmetric - the user's call, "відмовитись від всього що не кратно
-// двум". A folder stored in one of them falls back to the nearest shape
-// that holds it.
+// SQUARE ONLY, as Apple's are - the user's own conclusion after trying the
+// rest: "розумію чому епл відмовились від всіх папок окрім квадратних". A
+// long folder beside a square one never shares its edges, and the thin
+// outline a long one needs to keep them in line "ріже око". Every folder
+// being one shape is what lets them all line up AND keep Apple's
+// proportions inside. A folder stored in another shape falls back to the
+// nearest square that holds it.
 export const FOLDER_SIZES: TileSize[] = [
-  { w: 2, h: 1 },
-  { w: 4, h: 1 },
-  { w: 1, h: 2 },
-  { w: 1, h: 4 },
   { w: 2, h: 2 },
-  { w: 4, h: 2 },
-  { w: 2, h: 4 },
+  { w: 4, h: 4 },
 ];
 
 export function folderCapacity(size: TileSize): number {
@@ -412,15 +409,9 @@ export function snapFolderSize(w: number, h: number, count: number): TileSize {
   return best ?? FOLDER_SIZES[FOLDER_SIZES.length - 1];
 }
 
-// A folder that has to take one more: it grows along the way it already
-// runs - 2x1 to 4x1 to 4x2, 1x2 to 1x4 to 2x4 - and stays as it is while
-// it still has room. Any other shape is the user's to choose by its
-// corner.
+// A folder that has to take one more grows to the next square - 2x2 to
+// 4x4 - and stays as it is while it still has room.
 export function grownFolderSize(size: TileSize, count: number): TileSize {
   if (folderCapacity(size) >= count) return size;
-  const lying = size.w >= size.h;
-  const path: TileSize[] = lying
-    ? [{ w: 2, h: 1 }, { w: 4, h: 1 }, { w: 4, h: 2 }]
-    : [{ w: 1, h: 2 }, { w: 1, h: 4 }, { w: 2, h: 4 }];
-  return path.find((s) => folderCapacity(s) >= count) ?? path[path.length - 1];
+  return FOLDER_SIZES.find((s) => folderCapacity(s) >= count) ?? FOLDER_SIZES[FOLDER_SIZES.length - 1];
 }
