@@ -2268,7 +2268,27 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the right of the window. So the margin comes back off.
   const referencePanelRight = 'pane' in props ? Math.max(0, (props.railRight ?? RAIL_RIGHT) - RAIL_RIGHT) : 0;
   useEffect(() => {
-    if (focusedBlockId === null) activeInputBottomSV.value = -1;
+    if (focusedBlockId === null) {
+      activeInputBottomSV.value = -1;
+      // The room made at the tap (below) goes with the block, unless a
+      // keyboard really is standing there.
+      if (keyboardSV.value === 0 && panelHeightSV.value === 0) keyboardTargetSV.value = 0;
+      return;
+    }
+    // THE ROOM AT THE BOTTOM, MADE AT THE TAP - not on the keyboard's
+    // first frame. Measured on the phone (2026-09-28, an on-screen trace
+    // of every frame): the spacer's new height was asked for on that
+    // first frame but reached the layout only ten frames later, at a
+    // keyboard of 245 out of 338. Until then the page stood at the end
+    // of its content (584) and every synced scroll was clamped; when the
+    // room arrived it caught up in ONE frame, 584 -> 694 - the "панель
+    // слеш тремтить" as the keyboard rises, seen only near a note's end,
+    // where the page has nowhere to scroll without that room. The tap
+    // comes well before the keyboard does, so the room is laid out by
+    // the time the scroll needs it.
+    if (keyboardSV.value === 0) {
+      keyboardTargetSV.value = Math.max(keyboardTargetSV.value, lastKeyboardHeightRef.current || 340);
+    }
   }, [focusedBlockId]);
   function measureActiveInputForSync(input: TextInput) {
     activeInputBottomSV.value = -1;
@@ -2278,36 +2298,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       activeInputOffsetSV.value = scrollOffsetRef.current;
     });
   }
-  // TEMPORARY TRACE (2026-09-28): "панель слеш знову тримтить" while the
-  // keyboard rises. The bar has one position source (keyboardSV, written
-  // per frame below), so the question is whether those numbers shake or
-  // something else does. Every frame's height, the scroll offset and how
-  // many times this screen rendered meanwhile, drawn over the screen for
-  // a few seconds afterwards - one screenshot answers it. Remove after.
-  const traceFramesRef = useRef<string[]>([]);
-  const traceRendersRef = useRef(0);
-  const traceRenderStartRef = useRef(0);
-  const [traceText, setTraceText] = useState('');
-  traceRendersRef.current += 1;
-  const traceStart = (height: number, progress: number) => {
-    traceFramesRef.current = [`S${Math.round(height)}p${progress}`];
-    traceRenderStartRef.current = traceRendersRef.current;
-  };
-  const tracePush = (height: number, offset: number, bar: number) => {
-    traceFramesRef.current.push(`${Math.round(height)}/${Math.round(offset)}/${Math.round(bar)}`);
-  };
-  const traceEnd = (height: number) => {
-    traceFramesRef.current.push(`E${Math.round(height)}`);
-    const renders = traceRendersRef.current - traceRenderStartRef.current;
-    setTraceText(`r${renders} ` + traceFramesRef.current.join(' '));
-    setTimeout(() => setTraceText(''), 8000);
-  };
   useEditorKeyboard(
     {
       onStart: (e) => {
         'worklet';
         if (appActiveSV.value === 0) return; // see onMove
-        if (!embedded) runOnJS(traceStart)(e.height, e.progress);
         syncShift.value = 0;
         // Opening: the full height is the target from this frame on.
         // Closing: let go at once, so the spacer follows the keyboard
@@ -2339,7 +2334,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // really did go away meanwhile, the resync on return says so.
         if (appActiveSV.value === 0) return;
         keyboardSV.value = e.height;
-        if (!embedded) runOnJS(tracePush)(e.height, scrollOffsetSV.value, Math.max(e.height, panelHeightSV.value));
         if (syncShift.value > 0) {
           // The keyboard PUSHES the line; the page does not run ahead of it.
           //
@@ -2366,7 +2360,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         'worklet';
         if (appActiveSV.value === 0) return; // see onMove
         keyboardSV.value = e.height;
-        if (!embedded) runOnJS(traceEnd)(e.height);
         if (syncShift.value > 0) {
           scrollTo(scrollViewRef, 0, syncBaseOffset.value + syncShift.value, false);
           syncShift.value = 0;
@@ -2882,6 +2875,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     focusToEndRef.current = cursorIndex === undefined;
     focusCursorIndexRef.current = cursorIndex ?? null;
     focusedBlockIdRef.current = id;
+    // The room at the bottom, at the very tap - see the focusedBlockId
+    // effect for why it cannot wait for the keyboard.
+    if (keyboardSV.value === 0) {
+      keyboardTargetSV.value = Math.max(keyboardTargetSV.value, lastKeyboardHeightRef.current || 340);
+    }
     setTitleActive(false);
     setFocusedBlockId(id);
   }
@@ -4841,11 +4839,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // page IS the screen and they stay inside it, exactly as before.
   const bottomChrome = (
     <>
-      {!!traceText && (
-        <View pointerEvents="none" style={{ position: 'absolute', top: 110, left: 12, right: 12, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.78)', borderRadius: 10, padding: 8 }}>
-          <Text style={{ color: '#7CFC00', fontSize: 10, lineHeight: 13 }}>{traceText}</Text>
-        </View>
-      )}
       {!embedded && referencePanelOpen && (
         <View
           style={[styles.referencePanelDock, { right: referencePanelRight, width: referencePanelWidth }]}
