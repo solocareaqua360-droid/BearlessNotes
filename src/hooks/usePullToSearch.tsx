@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Keyboard, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
-import { Gesture } from 'react-native-gesture-handler';
+import { Keyboard, NativeScrollEvent, NativeSyntheticEvent, StyleProp, View, ViewStyle } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { hapticButtonDown } from '../utils/haptics';
 
@@ -66,13 +66,17 @@ export function usePullToSearch(onPull: () => void) {
         fired.value = false;
       })
       .onUpdate((e) => {
-        if (!armed.value) return;
+        if (!armed.value || fired.value) return;
         pulled.value = rubberBand(e.translationY);
-        if (fired.value) return;
         // Down, far enough that the stretch has already played out, and
         // not a sideways swipe between tabs that sagged a little.
         if (e.translationY > PULL_TO_OPEN && Math.abs(e.translationX) < 80) {
           fired.value = true;
+          // Home straight away: opening search swaps the list out from
+          // under this gesture, and a detector that is gone never gets
+          // its finalize - the list came back still pulled down, the
+          // tiles stuck below their place.
+          pulled.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
           runOnJS(onPull)();
         }
       })
@@ -108,6 +112,28 @@ export function usePullToSearch(onPull: () => void) {
   };
 
   return { gesture, listProps, scrollY, pullStyle };
+}
+
+// The empty screen under an open, still empty search: a tap or a swipe
+// anywhere on it puts the keyboard away and closes the search ("після
+// зворотнього свайпа по екрану або просто тапа ... пошук повинен
+// пропадати"). A plain View there caught neither.
+export function SearchVoid({ onClose, style }: { onClose: () => void; style?: StyleProp<ViewStyle> }) {
+  const gesture = useMemo(() => {
+    const close = () => {
+      Keyboard.dismiss();
+      onClose();
+    };
+    return Gesture.Race(
+      Gesture.Tap().runOnJS(true).onEnd(close),
+      Gesture.Pan().runOnJS(true).minDistance(12).onEnd(close)
+    );
+  }, [onClose]);
+  return (
+    <GestureDetector gesture={gesture}>
+      <View style={style} collapsable={false} />
+    </GestureDetector>
+  );
 }
 
 // Opening it is a gesture; closing it is everything else.

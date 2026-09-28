@@ -49,7 +49,7 @@ import { detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/use
 import { useDatabaseList } from '../hooks/useDatabaseList';
 import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
 import Animated from 'react-native-reanimated';
-import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
+import { pullHaptic, SearchVoid, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
@@ -1471,7 +1471,13 @@ export default function DocumentsScreen({
             bare until something is typed for, and everything comes back
             when the keyboard goes (see useSearchDismissal). */}
         {searchOpen && needle.length === 0 ? (
-          <View style={styles.emptySearch} />
+          <SearchVoid
+            style={styles.emptySearch}
+            onClose={() => {
+              setSearchText('');
+              setSearchOpen(false);
+            }}
+          />
         ) : searching ? (
           searchMatches.length === 0 ? (
             <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>

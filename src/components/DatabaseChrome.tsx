@@ -26,7 +26,7 @@ import { DeskContext } from '../navigation/desks';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter } from './TagsDrawer';
 import { usePublishRailTree } from '../navigation/navRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { pullHaptic, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
+import { pullHaptic, SearchVoid, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { CHROME_TOP } from '../constants/rail';
 
@@ -632,7 +632,13 @@ export default function DatabaseChrome<T extends { id: string }>({
         {/* Nothing under the field until something is typed for - an
             empty search is a question, not a list. */}
         {list.isSearching && list.needle.length === 0 ? (
-          <View style={styles.emptySearch} />
+          <SearchVoid
+            style={styles.emptySearch}
+            onClose={() => {
+              list.setSearchQuery('');
+              list.setIsSearching(false);
+            }}
+          />
         ) : (
           // ONE detector, with the two gestures composed as equals.
           //
