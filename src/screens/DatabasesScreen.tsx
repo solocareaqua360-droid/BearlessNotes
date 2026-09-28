@@ -1042,60 +1042,77 @@ export default function DatabasesScreen() {
     if (fromFolder) setExtracting(item.key);
     carryOrigin.current = { x: px, y: py };
     carryStartCell.current = { x, y };
+    lastMove.current = null;
     setDrag({ key: item.key, x: px, y: py });
     setDraftPosition({ key: item.key, x, y });
+  }
+
+  // THE iOS RULE, the user's own words: carried QUICKLY over another tile,
+  // that tile gets out of the way, as it always has; stopped over it -
+  // even with just an edge on it - and held a moment, the two make a
+  // folder (or it goes into the folder), and the tile underneath comes
+  // back to its place. So what decides is how fast the finger is going
+  // when the tiles overlap, and whether it stops there.
+  const lastMove = useRef<{ x: number; y: number; t: number } | null>(null);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const SLOW = 0.35; // px per ms - slower than this is "stopping over it"
+
+  // The database or folder the carried tile overlaps most, on the board
+  // WITHOUT it (so what it is over does not slide away under it) - any
+  // real overlap counts, an edge included.
+  function overlapTarget(item: BoardItem, nextX: number, nextY: number) {
+    const size = sizeFor(item.key);
+    const carried = { left: nextX, top: nextY, width: spanSize(size.w), height: spanSize(size.h) };
+    let best: { key: string; area: number } | null = null;
+    for (const p of boardWith(null, null, item.key).placed) {
+      if (p.item.key === item.key) continue;
+      if (p.item.kind !== 'builtin' && p.item.kind !== 'custom' && p.item.kind !== 'folder') continue;
+      const r = tileRect(p);
+      const w = Math.min(carried.left + carried.width, r.left + r.width) - Math.max(carried.left, r.left);
+      const h = Math.min(carried.top + carried.height, r.top + r.height) - Math.max(carried.top, r.top);
+      if (w <= 0 || h <= 0) continue;
+      const area = w * h;
+      // More than a sliver: a fifth of the smaller of the two.
+      if (area < 0.2 * Math.min(carried.width * carried.height, r.width * r.height)) continue;
+      if (!best || area > best.area) best = { key: p.item.key, area };
+    }
+    return best?.key ?? null;
+  }
+
+  // Resting over a tile: it goes back where it stood, and after a moment
+  // the ring says the carried one will go INTO it.
+  function beginDwell(item: BoardItem, key: string) {
+    if (hover.current?.key === key) return;
+    clearHover();
+    setMergeTarget(null);
+    setDraftPosition({ key: item.key, x: carryStartCell.current.x, y: carryStartCell.current.y });
+    hover.current = {
+      key,
+      timer: setTimeout(() => {
+        hapticButtonDown();
+        setMergeTarget(key);
+      }, 400),
+    };
   }
 
   function moveCarry(item: BoardItem, dx: number, dy: number) {
     const nextX = carryOrigin.current.x + dx;
     const nextY = carryOrigin.current.y + dy;
     setDrag({ key: item.key, x: nextX, y: nextY });
-    // A database rested over the MIDDLE of another database or a folder is
-    // on its way into it (after a moment - see hover); anywhere else it is
-    // being moved, as before. The board it is measured against is the one
-    // without it, so what it is over does not slide away from under it.
-    if (item.kind === 'builtin' || item.kind === 'custom') {
-      // Measured from the middle of the carried tile's FIRST cell - the one
-      // that claims a cell as it moves (cellUnder). Its middle as a whole
-      // reached a small tile only after that corner had already pushed it
-      // away.
-      const cx = nextX + cellSize / 2;
-      const cy = nextY + cellSize / 2;
-      const rest = boardWith(null, null, item.key).placed;
-      const target = rest.find((p) => {
-        if (p.item.key === item.key) return false;
-        if (p.item.kind !== 'builtin' && p.item.kind !== 'custom' && p.item.kind !== 'folder') return false;
-        const r = tileRect(p);
-        // A one-cell tile counts WHOLE: its middle is barely half a cell,
-        // and on the way to it the carried tile used to reach its cell
-        // first and push it off - "з маленькими плитками ... завжди
-        // намагається втекти". Resting anywhere on it holds it still.
-        const inset = p.size.w * p.size.h === 1 ? 0 : 0.25;
-        return (
-          cx > r.left + r.width * inset &&
-          cx < r.left + r.width * (1 - inset) &&
-          cy > r.top + r.height * inset &&
-          cy < r.top + r.height * (1 - inset)
-        );
-      });
-      if (target) {
-        if (hover.current?.key !== target.item.key) {
-          clearHover();
-          setMergeTarget(null);
-          const key = target.item.key;
-          hover.current = {
-            key,
-            timer: setTimeout(() => {
-              hapticButtonDown();
-              setMergeTarget(key);
-            }, 450),
-          };
-          // Whatever it had pushed aside to get here goes back.
-          setDraftPosition({ key: item.key, x: carryStartCell.current.x, y: carryStartCell.current.y });
-        }
-        return;
-      }
+    const now = Date.now();
+    const last = lastMove.current;
+    lastMove.current = { x: nextX, y: nextY, t: now };
+    const speed = last ? Math.hypot(nextX - last.x, nextY - last.y) / Math.max(1, now - last.t) : 0;
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = null;
+    const target = item.kind === 'builtin' || item.kind === 'custom' ? overlapTarget(item, nextX, nextY) : null;
+    if (target && speed < SLOW) {
+      beginDwell(item, target);
+      return;
     }
+    // Going fast: the tile under it moves out of the way, as before. If the
+    // finger stops right there, that is resting on it after all.
+    if (target) settle.current = setTimeout(() => beginDwell(item, target), 160);
     clearHover();
     setMergeTarget(null);
     const cell = cellUnder(item.key, nextX, nextY);
@@ -1162,6 +1179,9 @@ export default function DatabasesScreen() {
 
   function endCarry() {
     clearHover();
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = null;
+    lastMove.current = null;
     const key = carryKey.current;
     const from = carryFrom.current;
     const target = mergeTarget;
