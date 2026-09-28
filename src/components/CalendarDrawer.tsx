@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useIsFocused } from '@react-navigation/native';
 import { BackHandler, InteractionManager, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import CalendarScreen from '../screens/CalendarScreen';
@@ -52,14 +53,17 @@ export default function CalendarDrawer() {
     progress.value = withTiming(calendarOpen ? 1 : 0, { duration: 200, easing: Easing.out(Easing.cubic) });
   }, [calendarOpen, progress]);
 
+  // Only while the desks are in front: a note opened from the calendar is
+  // pushed over them, and its "back" is its own.
+  const tabsFocused = useIsFocused();
   useEffect(() => {
-    if (!calendarOpen) return;
+    if (!calendarOpen || !tabsFocused) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       closeCalendar();
       return true;
     });
     return () => sub.remove();
-  }, [calendarOpen, closeCalendar]);
+  }, [calendarOpen, closeCalendar, tabsFocused]);
 
   const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: (progress.value - 1) * width }] }), [width]);
   const dimStyle = useAnimatedStyle(() => ({ opacity: progress.value }));

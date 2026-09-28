@@ -1,4 +1,5 @@
-import { useLayoutEffect, useMemo, useEffect, useRef, useState } from 'react';
+import { ReactNode, useLayoutEffect, useMemo, useEffect, useRef, useState } from 'react';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -27,6 +28,7 @@ import {
   useNavDockFlipRequest,
   useNavDockTabsDrifting,
   useNavTopNavUp,
+  useNavDrawerCover,
   useNavTopExtras,
   useNavDockHidden,
   useNavDockLeave,
@@ -1857,7 +1859,7 @@ export default function ContextDock() {
       : Math.floor(frame.width / 5);
     const stripW = short ? buttonW * actions.length : frame.width;
     return (
-      <GlassPortal>
+      <DockPortal>
         <View
           pointerEvents="box-none"
           style={[
@@ -1896,7 +1898,7 @@ export default function ContextDock() {
             </DockFrost>
           </View>
         </View>
-      </GlassPortal>
+      </DockPortal>
     );
   }
   // A TOOLS SCREEN (the board): its two beads where every other screen
@@ -1923,7 +1925,7 @@ export default function ContextDock() {
         <View style={{ width: TWO_BEAD }} />
       );
     return (
-      <GlassPortal>
+      <DockPortal>
         <View
           pointerEvents="box-none"
           style={[
@@ -1958,7 +1960,7 @@ export default function ContextDock() {
           </View>
           {slot(beads.right)}
         </View>
-      </GlassPortal>
+      </DockPortal>
     );
   }
   if (compactMiddle && !actions?.length) {
@@ -1970,7 +1972,7 @@ export default function ContextDock() {
         <View style={{ width: TWO_BEAD }} />
       );
     return (
-      <GlassPortal>
+      <DockPortal>
         <View
           pointerEvents="box-none"
           // Half a bead in from the bar's edges on either side - the
@@ -1987,12 +1989,12 @@ export default function ContextDock() {
           {slot(beads.left)}
           {slot(beads.right)}
         </View>
-      </GlassPortal>
+      </DockPortal>
     );
   }
 
   return (
-    <GlassPortal>
+    <DockPortal>
       {/* Drawn BEFORE the dock, so it is behind it - it comes out from
           under the dock rather than over it. */}
       {deskHintDesks && deskHint > 0.001 && (
@@ -2299,7 +2301,7 @@ export default function ContextDock() {
           )}
         </View>
       </View>
-    </GlassPortal>
+    </DockPortal>
   );
 }
 
@@ -2314,7 +2316,7 @@ export default function ContextDock() {
 // One action button - pulled out of renderCard's own actions branch so
 // the split's own zone draws the exact same button rather than a
 // second, drifting copy of the same JSX.
-function ActionButton({
+export function ActionButton({
   action,
   width,
   height,
@@ -2429,7 +2431,32 @@ function ActionGroups({
   );
 }
 
-function Bead({
+// Every part of the dock goes into the glass layer through here, so all of
+// it fades out together as the calendar's drawer comes in over the desks
+// - the drawer carries buttons of its own, and two docks at once is the
+// "ні до чого не прив'язані" the user caught. Only while the desks are
+// the screen in front: a note pushed from the calendar keeps its dock.
+function DockPortal({ children }: { children: ReactNode }) {
+  const cover = useNavDrawerCover();
+  const active = !!cover?.active;
+  const progress = cover?.progress;
+  const fade = useAnimatedStyle(
+    () => ({ opacity: active && progress ? 1 - progress.value : 1 }),
+    [active, progress]
+  );
+  return (
+    <GlassPortal>
+      <Animated.View
+        style={[StyleSheet.absoluteFill, fade]}
+        pointerEvents={active && cover?.open ? 'none' : 'box-none'}
+      >
+        {children}
+      </Animated.View>
+    </GlassPortal>
+  );
+}
+
+export function Bead({
   bead,
   theme,
   lift,

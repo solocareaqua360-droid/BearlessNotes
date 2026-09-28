@@ -2,6 +2,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useId, us
 import type { View } from 'react-native';
 import type { MenuEntry } from '../components/surfaces/Menu';
 import { useIsFocused } from '@react-navigation/native';
+import { SharedValue, useSharedValue } from 'react-native-reanimated';
 
 // What the dock is showing instead of the desks.
 //
@@ -194,6 +195,13 @@ type Value = {
   publishBeads: (id: string, beads: { left: DockBead | null; right: DockBead | null } | null, layer?: number) => void;
   leave: DockLeave | null;
   publishLeave: (leave: DockLeave | null) => void;
+  // A DRAWER OVER THE DESKS (the calendar's): how far out it is, 0..1 on
+  // the UI thread, and whether it is there at all right now (the desks
+  // are the screen in front) and open. The desks' own bar and the dock
+  // fade out as it comes in - it carries a bar and buttons of its own.
+  drawerProgress: SharedValue<number>;
+  drawerCover: { active: boolean; open: boolean };
+  publishDrawerCover: (cover: { active: boolean; open: boolean }) => void;
   topBack: TopBack | null;
   publishTopBack: (id: string, back: TopBack | null, layer?: number) => void;
   topExtras: TopExtras | null;
@@ -392,6 +400,11 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       setTimeout(() => setTopNavClaims((n) => n - 1), TOP_NAV_RELEASE_MS);
     };
   }, []);
+  const drawerProgress = useSharedValue(0);
+  const [drawerCover, setDrawerCover] = useState({ active: false, open: false });
+  const publishDrawerCover = useCallback((next: { active: boolean; open: boolean }) => {
+    setDrawerCover((prev) => (prev.active === next.active && prev.open === next.open ? prev : next));
+  }, []);
   // Claims too, like the dock's own beads and actions - a drawer over the
   // desks publishes its own bar without wiping the desk's, which comes
   // back the moment the drawer closes.
@@ -514,6 +527,9 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishBeads,
       leave,
       publishLeave,
+      drawerProgress,
+      drawerCover,
+      publishDrawerCover,
       topBack,
       publishTopBack,
       topExtras,
@@ -547,6 +563,9 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishBeads,
       leave,
       publishLeave,
+      drawerProgress,
+      drawerCover,
+      publishDrawerCover,
       topBack,
       publishTopBack,
       topExtras,
@@ -666,9 +685,9 @@ export function useNavTopNavUp(): boolean {
 }
 
 // Held by a TopNavBar for as long as it is drawn.
-export function useTopNavClaim() {
+export function useTopNavClaim(enabled = true) {
   const claim = useContext(NavDockContext)?.claimTopNav;
-  useEffect(() => (claim ? claim() : undefined), [claim]);
+  useEffect(() => (claim && enabled ? claim() : undefined), [claim, enabled]);
 }
 
 // What a writing screen puts at the bar's right end - see TopExtras. The
@@ -726,6 +745,19 @@ export function useTopExtras(
 
 export function useNavTopExtras(): TopExtras | null {
   return useContext(NavDockContext)?.topExtras ?? null;
+}
+
+export function useNavDrawerCover() {
+  const context = useContext(NavDockContext);
+  return context ? { progress: context.drawerProgress, ...context.drawerCover } : null;
+}
+
+export function useDrawerCoverPublisher() {
+  return useContext(NavDockContext)?.publishDrawerCover;
+}
+
+export function useNavDrawerProgress() {
+  return useContext(NavDockContext)?.drawerProgress ?? null;
 }
 
 export function useNavTopBack(): TopBack | null {

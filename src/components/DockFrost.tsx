@@ -1,8 +1,13 @@
-import { ReactNode } from 'react';
+import { createContext, ReactNode, useContext } from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
 import { useFrostPaused } from './frostPause';
+
+// Glass drawn ON something opaque - the calendar's bar inside its drawer -
+// has nothing behind it worth blurring, and it moves with the drawer, so
+// it takes the flat recipe throughout.
+export const FlatFrostContext = createContext(false);
 import { useTheme } from '../theme/ThemeProvider';
 
 // THE DOCK'S MATERIAL, and now the only copy of it.
@@ -69,7 +74,8 @@ export default function DockFrost({
   const blurTarget = useBlurTarget();
   // Paused while something heavy scrolls underneath - see frostPause.
   const frostPaused = useFrostPaused();
-  const blur = blurWanted && !frostPaused;
+  const flat = useContext(FlatFrostContext);
+  const blur = blurWanted && !frostPaused && !flat;
   // `surface` is an opaque dark fill in black/white (a real tint the blur
   // can lean on) but a near-transparent WHITE highlight in colour
   // (rgba(255,255,255,0.07), meant to lighten that theme's own dark

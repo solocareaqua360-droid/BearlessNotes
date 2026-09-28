@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
-import { useSideDrawers } from '../navigation/sideDrawers';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
@@ -122,7 +121,6 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   // those screens: it has its own bar (its name, not the desks), and the
   // dock under it no longer carries the desks' dots either.
   const topNavOn = useTopNavOn();
-  const { calendarOpen } = useSideDrawers();
   const onBoard =
     state.routes[state.index]?.name === 'Дошки' &&
     getFocusedRouteNameFromRoute(state.routes[state.index]) === 'Board';
@@ -143,9 +141,6 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
 
   const barUp = tabsFocused && !onBoard && topNavOn;
   if (!barUp) return null;
-  // With the calendar's drawer out, the bar says where you are: in the
-  // calendar, not on whichever desk is under it.
-  if (calendarOpen) return <TopNavBar title={{ icon: 'calendar-outline', label: 'Календар' }} />;
   return (
     <TopNavBar
       desks={state.routes.map((route, index) => ({
@@ -156,6 +151,9 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         onPress: desks[index].onPress,
       }))}
       onLongPress={openCapture}
+      // The calendar's drawer carries its own bar; this one steps back
+      // as it comes in.
+      fadeWithDrawer
     />
   );
 }

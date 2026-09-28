@@ -1,16 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import DockFrost from './DockFrost';
+import DockFrost, { FlatFrostContext } from './DockFrost';
 import { GlassPortal } from './GlassPortal';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { CHROME_TOP } from '../constants/rail';
 import { DOCK_PIECE_RADIUS, dockCardHeight } from '../navigation/dockGeometry';
 import Menu from './surfaces/Menu';
 import SaveRing from './SaveRing';
-import { DockContext, useNavDockOwnContext, useNavDockTargets, useNavTopBack, useNavTopExtras, useTopNavClaim } from '../navigation/navDock';
+import { DockContext, TopBack, TopExtras, useNavDockOwnContext, useNavDockTargets, useNavDrawerCover, useNavTopBack, useNavTopExtras, useTopNavClaim } from '../navigation/navDock';
 import { FONT_MEDIUM, FONT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
 
@@ -105,26 +105,50 @@ export default function TopNavBar({
   trail,
   onLongPress,
   saving,
+  inline,
+  backOverride,
+  extrasOverride,
+  fadeWithDrawer,
 }: {
   desks?: TopDesk[];
   title?: TopTitle;
   trail?: TopTrail;
   onLongPress?: () => void;
+  // Drawn INSIDE something rather than over the whole window - the
+  // calendar's drawer: laid out to its width, in the tree (so it moves
+  // with it), flat glass (it sits on an opaque surface), and told its
+  // back and "⋯" directly instead of reading what the desks published.
+  inline?: { width: number };
+  backOverride?: TopBack | null;
+  extrasOverride?: TopExtras | null;
+  // The desks' own bar: fades out as a drawer comes in over the desks.
+  fadeWithDrawer?: boolean;
   // The save indicator, drawn on the extras cluster's own outline - see
   // the note's own call: "індикатор збереження навколо цієї здвоєної
   // кнопки". Screens that never pass it simply never animate.
   saving?: boolean;
 }) {
   // While this bar is drawn, the path is drawn in it (not over the dock).
-  useTopNavClaim();
+  // A bar inside a drawer is not the window's bar: it says nothing about
+  // where the window's path and days should stand.
+  useTopNavClaim(!inline);
   const theme = useTheme();
   const lift = useLift();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
-  const back = useNavTopBack();
-  const extras = useNavTopExtras();
+  const publishedBack = useNavTopBack();
+  const publishedExtras = useNavTopExtras();
+  const back = inline ? backOverride ?? null : publishedBack;
+  const extras = inline ? extrasOverride ?? null : publishedExtras;
   const [menuOpen, setMenuOpen] = useState(false);
-  const frame = topBarFrame(windowWidth);
+  const frame = topBarFrame(inline ? inline.width : windowWidth);
+  const cover = useNavDrawerCover();
+  const fading = !!fadeWithDrawer && !!cover?.active;
+  const coverProgress = cover?.progress;
+  const fadeStyle = useAnimatedStyle(
+    () => ({ opacity: fading && coverProgress ? 1 - coverProgress.value : 1 }),
+    [fading, coverProgress]
+  );
   const barTop = insets.top + CHROME_TOP;
   const corners = cornersFor(windowWidth);
   // The middle: a plate of desks or a pushed database's title - or, on a
@@ -151,7 +175,8 @@ export default function TopNavBar({
   // The path, kept drawn from the last one while the plate rolls back to
   // the desks, so it does not empty in the middle of its way out.
   const own = useNavDockOwnContext();
-  const path = own?.kind === 'path' ? own : null;
+  // A drawer's bar is not where the desk's folder path belongs.
+  const path = !inline && own?.kind === 'path' ? own : null;
   const lastPath = useRef<PathContext | null>(null);
   if (path) lastPath.current = path;
   const shownPath = path ?? lastPath.current;
@@ -172,12 +197,14 @@ export default function TopNavBar({
     opacity: interpolate(roll.value, [0.3, 1], [0, 1], Extrapolation.CLAMP),
   }));
 
+  const Layer = inline ? InlineLayer : PortalLayer;
   return (
     <>
-    <GlassPortal priority={1}>
-      <View
-        pointerEvents="box-none"
-        style={[styles.row, { top: barTop, left: frame.left, width: frame.width }]}
+    <Layer>
+      <FlatFrostContext.Provider value={!!inline}>
+      <Animated.View
+        pointerEvents={fading && cover?.open ? 'none' : 'box-none'}
+        style={[styles.row, { top: barTop, left: frame.left, width: frame.width }, fadeStyle]}
       >
         <Pressable
           disabled={!back || back.dimmed}
@@ -294,8 +321,9 @@ export default function TopNavBar({
             <SaveRing saving={!!saving} color={theme.glass.ink} radius={corners.plate} />
           </View>
         )}
-      </View>
-    </GlassPortal>
+      </Animated.View>
+      </FlatFrostContext.Provider>
+    </Layer>
     {/* The screen's own list, hanging from the bar's right end - its own
         portal, not one inside the bar's. */}
     <Menu
@@ -305,6 +333,20 @@ export default function TopNavBar({
       style={{ position: 'absolute', right: windowWidth - frame.left - frame.width, top: barTop + TOP_NAV_H + 6 }}
     />
     </>
+  );
+}
+
+// Where the bar is drawn: over the whole window through the glass layer,
+// or - inline - right where it is in the tree, covering what it is in.
+function PortalLayer({ children }: { children: ReactNode }) {
+  return <GlassPortal priority={1}>{children}</GlassPortal>;
+}
+
+function InlineLayer({ children }: { children: ReactNode }) {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      {children}
+    </View>
   );
 }
 

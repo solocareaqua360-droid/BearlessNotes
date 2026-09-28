@@ -1,5 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { SharedValue, useSharedValue } from 'react-native-reanimated';
+import { useIsFocused } from '@react-navigation/native';
+import { useDrawerCoverPublisher, useNavDrawerProgress } from './navDock';
 
 // THE TWO DRAWERS OVER THE DESKS - the user's new layout (2026-09-28):
 // the calendar slides in from the left, the databases (next stage) from
@@ -34,7 +36,19 @@ const SideDrawersContext = createContext<SideDrawers | null>(null);
 export function SideDrawersProvider({ children }: { children: ReactNode }) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [blocks, setBlocks] = useState(0);
-  const calendarProgress = useSharedValue(0);
+  // The dock's own copy when there is a dock (there always is): the bar
+  // and the dock fade by the same number the drawer slides by.
+  const fallbackProgress = useSharedValue(0);
+  const calendarProgress = useNavDrawerProgress() ?? fallbackProgress;
+  // Told to the dock: whether the desks are the screen in front (a note
+  // opened from the calendar is pushed OVER them, and must keep its own
+  // bar and dock), and whether the drawer is out.
+  const tabsFocused = useIsFocused();
+  const publishCover = useDrawerCoverPublisher();
+  useEffect(() => {
+    publishCover?.({ active: tabsFocused, open: calendarOpen });
+  }, [publishCover, tabsFocused, calendarOpen]);
+  useEffect(() => () => publishCover?.({ active: false, open: false }), [publishCover]);
   const openCalendar = useCallback(() => setCalendarOpen(true), []);
   const closeCalendar = useCallback(() => setCalendarOpen(false), []);
   const blockSwipe = useCallback(() => {

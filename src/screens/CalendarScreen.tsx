@@ -54,7 +54,8 @@ import { extractPreview } from '../utils/documentPreview';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher, useTopBack, useTopExtras } from '../navigation/navDock';
+import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockActions, useNavDockFace, useNavDockPublisher, useTopBack, useTopExtras } from '../navigation/navDock';
+import InlineDock from '../components/InlineDock';
 import {
   MONTH_FULL,
   WEEKDAY_SHORT,
@@ -80,7 +81,7 @@ import { useDockClearance } from '../navigation/dockGeometry';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 import { listenError } from '../utils/listenError';
-import { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
 
 // calendarPlate carries its own marginHorizontal:16 on each side, so the
@@ -804,7 +805,10 @@ export default function CalendarScreen() {
   // of the desks bar (TopNavBar); search, opening the diary, is on the
   // left bead again.
   const toPreviousDesk = useGoToPreviousDesk('Календар');
-  useTopBack(calendarDrawer ? calendarDrawer.close : toPreviousDesk, !drawerShut);
+  // In the drawer the calendar's bar and buttons are its OWN, drawn inside
+  // it (see the end of the render) - nothing is published for the
+  // window's bar or dock, which fade out while the drawer is out.
+  useTopBack(toPreviousDesk, !calendarDrawer);
   const searchBead = calendarFocused
     ? { icon: 'search-outline', onPress: () => navigation.navigate('Diary') }
     : null;
@@ -844,8 +848,7 @@ export default function CalendarScreen() {
   const pencilBead = calendarFocused && !notePanelOpen
     ? { icon: 'pencil-outline', onPress: () => noteEditorRef.current?.startWriting() }
     : null;
-  useTopExtras(
-    [
+  const calendarMenu = [
       {
         label: 'Місяць',
         icon: 'calendar-outline',
@@ -862,11 +865,15 @@ export default function CalendarScreen() {
           setHistoryExpanded((v) => !v);
         },
       },
-    ],
-    { active: noteSelectMode, onPress: () => noteEditorRef.current?.toggleSelectMode() },
-    !pointerDensity && !drawerShut
-  );
-  useDockBeads(pointerDensity || notePanelOpen ? null : searchBead, pointerDensity ? null : pencilBead);
+    ] as const;
+  const calendarSelect = { active: noteSelectMode, onPress: () => noteEditorRef.current?.toggleSelectMode() };
+  useTopExtras([...calendarMenu], calendarSelect, !pointerDensity && !calendarDrawer);
+  const shownSearchBead = pointerDensity || notePanelOpen ? null : searchBead;
+  const shownPencilBead = pointerDensity ? null : pencilBead;
+  useDockBeads(calendarDrawer ? null : shownSearchBead, calendarDrawer ? null : shownPencilBead);
+  // What the day's note publishes while its blocks are chosen - read back
+  // here so the drawer's own dock can carry it.
+  const publishedActions = useNavDockActions();
   useDockActions(null);
   // The same list, for the column head. A bead and an action differ only
   // in where the dock puts them, and this row has no such two places.
@@ -2057,6 +2064,27 @@ export default function CalendarScreen() {
             </ScrollView>
           )}
         </View>
+      )}
+
+      {/* In the drawer: the calendar's own bar and dock, inside it and
+          moving with it - see CalendarDrawer. */}
+      {calendarDrawer && (
+        <>
+          <TopNavBar
+            inline={{ width: windowWidth }}
+            title={{ icon: 'calendar-outline', label: 'Календар' }}
+            backOverride={{ onPress: calendarDrawer.close, dimmed: false }}
+            extrasOverride={{ menu: [...calendarMenu], select: calendarSelect }}
+          />
+          <InlineDock
+            width={windowWidth}
+            beads={{
+              left: notePanelOpen ? null : { icon: 'search-outline', onPress: () => navigation.navigate('Diary') },
+              right: notePanelOpen ? null : { icon: 'pencil-outline', onPress: () => noteEditorRef.current?.startWriting() },
+            }}
+            actions={noteSelectMode ? publishedActions : null}
+          />
+        </>
       )}
     </View>
   );
