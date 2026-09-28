@@ -261,6 +261,12 @@ export default function TopNavBar({
     opacity: interpolate(expand.value, [0.3, 1], [0, 1], Extrapolation.CLAMP),
   }));
   const plateFrost = hasMiddle || searchShown;
+  // The pieces inside the plate: in the soft chrome FULLY round, and
+  // concentric with the capsule around them (its 23 less the plate's own
+  // 6 of padding is exactly half a piece) - a squarer piece inside a
+  // round capsule read as "a rectangle in a world of curves" (the desk's
+  // name, 2026-09-28).
+  const pieceRadius = soft ? PIECE_H / 2 : corners.piece;
 
   const Layer = inline ? InlineLayer : PortalLayer;
   return (
@@ -299,13 +305,13 @@ export default function TopNavBar({
           {plateFrost && (
             <>
               {!soft && <DockFrost style={StyleSheet.absoluteFill} radius={corners.plate} />}
-              <View style={[styles.viewport, { borderRadius: corners.piece }]}>
+              <View style={[styles.viewport, { borderRadius: pieceRadius }]}>
                 <Animated.View style={[StyleSheet.absoluteFill, rowsAway]} pointerEvents={searchShown ? 'none' : 'box-none'}>
                 <Animated.View
                   style={[styles.layer, desksStyle]}
                   pointerEvents={path ? 'none' : 'box-none'}
                 >
-                  {trail && <TrailRow trail={trail} radius={corners.piece} ink={ink} inkMuted={inkMuted} soft={soft} />}
+                  {trail && <TrailRow trail={trail} radius={pieceRadius} ink={ink} inkMuted={inkMuted} soft={soft} />}
                   {title && (
                     <Pressable
                       disabled={!title.onPress}
@@ -313,7 +319,7 @@ export default function TopNavBar({
                       accessibilityLabel={title.label}
                       style={styles.titlePress}
                     >
-                      <Surface soft={soft} style={styles.piece} radius={corners.piece}>
+                      <Surface soft={soft} style={styles.piece} radius={pieceRadius}>
                         <Glyph name={title.icon} size={20} color={ink} soft={soft} />
                         <Text numberOfLines={1} style={[styles.label, styles.titleLabel, { color: ink }, soft && styles.softLabel]}>
                           {title.label}
@@ -324,7 +330,7 @@ export default function TopNavBar({
                   {desks?.map((desk) => (
                     <DeskPill
                       key={desk.key}
-                      radius={corners.piece}
+                      radius={pieceRadius}
                       showName={nameFits(desk.label)}
                       desk={desk}
                       openWidth={openWidth}
@@ -337,7 +343,7 @@ export default function TopNavBar({
                 </Animated.View>
                 {shownPath && (
                   <Animated.View style={[styles.layer, pathStyle]} pointerEvents={path ? 'box-none' : 'none'}>
-                    <PathRow path={shownPath} radius={corners.piece} ink={ink} inkMuted={inkMuted} soft={soft ? S : null} />
+                    <PathRow path={shownPath} radius={pieceRadius} ink={ink} inkMuted={inkMuted} soft={soft ? S : null} />
                   </Animated.View>
                 )}
                 </Animated.View>
@@ -346,7 +352,7 @@ export default function TopNavBar({
                     <SearchRow
                       key={lastSearch.current.placeholder}
                       search={lastSearch.current}
-                      radius={corners.piece}
+                      radius={pieceRadius}
                       ink={ink}
                       inkMuted={inkMuted}
                       soft={soft ? S : null}
