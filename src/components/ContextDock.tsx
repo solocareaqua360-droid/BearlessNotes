@@ -6,7 +6,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { openCapture } from './CaptureWindow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Rect } from 'react-native-svg';
 import { GlassPortal } from './GlassPortal';
 import DockFrost from './DockFrost';
 import { topBarFrame } from './TopNavBar';
@@ -427,10 +427,6 @@ const DOCK_WRAP_PAD = 6;
 // The two beads standing alone (see "JUST THE TWO") - a thumb's main
 // button, not the whole dock's height: 56, the size Android gives its own.
 const TWO_BEAD = 56;
-// The soft dock: the padding around its round piece, and how far above the
-// capsule the page's colour starts to gather.
-const SOFT_DOCK_PAD = 6;
-const SOFT_FADE_ABOVE = 36;
 
 // The two beads' Ionicons, as the soft dock draws them (see SoftIcon).
 const SOFT_DOCK_GLYPHS: Record<string, SoftIconName> = {
@@ -446,10 +442,10 @@ const SOFT_DOCK_GLYPHS: Record<string, SoftIconName> = {
 // The soft dock's own search field - the one place search lives on a soft
 // screen. Keeps what is typed itself and hands every change to the screen,
 // the way the bar's plate did.
-function SoftSearchField({ search, soft }: { search: TopSearch; soft: SoftTokens }) {
+function SoftSearchField({ search, soft, height }: { search: TopSearch; soft: SoftTokens; height: number }) {
   const [text, setText] = useState(search.initialQuery);
   return (
-    <View style={[styles.softField, styles.softFieldTyping]}>
+    <View style={[styles.softField, { height, borderRadius: height / 2, backgroundColor: soft.chrome, boxShadow: soft.shadow }]}>
       <SoftIcon name="search" size={20} color={soft.ink2} />
       <TextInput
         autoFocus
@@ -2075,85 +2071,64 @@ export default function ContextDock() {
     );
   }
   // THE SOFT DOCK: not two floating discs - that is Material's own
-  // floating action button, the thing that most gave the old look away.
-  // ONE capsule, the bottom's mirror of the bar at the top: the search
-  // field across it and "write" as a round piece inside its right end.
-  // Two pieces with a gap between them let the card underneath show
-  // through and read as "moved there by accident" (2026-09-28); so does
-  // a capsule floating over text, hence the ground it stands on - the
-  // list fades into the page's own colour before it reaches the dock.
+  // floating action button, the thing that most gave the old look away -
+  // but a search FIELD across the bar's width and a "write" button beside
+  // it, both the same quiet surface as the bar at the top. The beads are
+  // the same two the screen published; only their shape changes.
   if (compactMiddle && !actions?.length && chromeStyle === 'soft') {
     const frame = topBarFrame(windowW);
+    const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow, height: TWO_BEAD, borderRadius: TWO_BEAD / 2 };
     const left = beads.left;
     const right = beads.right;
     const leftIcon = left ? SOFT_DOCK_GLYPHS[left.icon] : undefined;
     const rightIcon = right ? SOFT_DOCK_GLYPHS[right.icon] : undefined;
-    // The round piece inside: concentric with the capsule (its radius
-    // less the 6 of padding around the piece).
-    const inner = TWO_BEAD - SOFT_DOCK_PAD * 2;
-    const fadeH = softRest + TWO_BEAD + SOFT_FADE_ABOVE;
     return (
       <DockPortal>
-        <View pointerEvents="none" style={[styles.softFade, { height: fadeH }]}>
-          <Svg width={windowW} height={fadeH}>
-            <Defs>
-              <LinearGradient id="softDockFade" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={soft.bg} stopOpacity={0} />
-                <Stop offset="0.45" stopColor={soft.bg} stopOpacity={0.85} />
-                <Stop offset="1" stopColor={soft.bg} stopOpacity={1} />
-              </LinearGradient>
-            </Defs>
-            <Rect x={0} y={0} width={windowW} height={fadeH} fill="url(#softDockFade)" />
-          </Svg>
-        </View>
         <Animated.View
           pointerEvents="box-none"
-          style={[styles.twoBeads, { bottom: softRest, left: frame.left, width: frame.width }, softRide]}
+          style={[
+            styles.twoBeads,
+            { bottom: softRest, left: frame.left, width: frame.width, gap: 10 },
+            softRide,
+          ]}
         >
-          <View
-            style={[
-              styles.softBar,
-              { height: TWO_BEAD, borderRadius: TWO_BEAD / 2, backgroundColor: soft.chrome, boxShadow: soft.shadow },
-            ]}
-          >
-            {dockSearch ? (
-              <SoftSearchField key={dockSearch.placeholder} search={dockSearch} soft={soft} />
-            ) : left ? (
-              <Pressable
-                onPress={left.onPress}
-                onLongPress={left.onLongPress}
-                disabled={left.dimmed}
-                accessibilityLabel={left.active ? 'Закрити пошук' : 'Пошук'}
-                style={styles.softField}
-              >
-                {leftIcon ? (
-                  <SoftIcon name={leftIcon} size={20} color={soft.ink2} />
-                ) : (
-                  <Ionicons name={left.icon as keyof typeof Ionicons.glyphMap} size={19} color={soft.ink2} />
-                )}
-                <Text style={[styles.softFieldText, { color: soft.ink3 }]} numberOfLines={1}>
-                  {left.active ? 'Закрити пошук' : 'Пошук'}
-                </Text>
-              </Pressable>
-            ) : (
-              <View style={{ flex: 1 }} />
-            )}
-            {right && !dockSearch && (
-              <Pressable
-                onPress={right.onPress}
-                onLongPress={right.onLongPress}
-                disabled={right.dimmed}
-                accessibilityLabel="Новий документ"
-                style={[styles.softButton, { width: inner, height: inner, borderRadius: inner / 2, backgroundColor: soft.fill }]}
-              >
-                {rightIcon ? (
-                  <SoftIcon name={rightIcon} size={22} color={soft.ink} />
-                ) : (
-                  <Ionicons name={right.icon as keyof typeof Ionicons.glyphMap} size={21} color={soft.ink} />
-                )}
-              </Pressable>
-            )}
-          </View>
+          {dockSearch ? (
+            <SoftSearchField key={dockSearch.placeholder} search={dockSearch} soft={soft} height={TWO_BEAD} />
+          ) : left ? (
+            <Pressable
+              onPress={left.onPress}
+              onLongPress={left.onLongPress}
+              disabled={left.dimmed}
+              accessibilityLabel={left.active ? 'Закрити пошук' : 'Пошук'}
+              style={[styles.softField, surface]}
+            >
+              {leftIcon ? (
+                <SoftIcon name={leftIcon} size={20} color={soft.ink2} />
+              ) : (
+                <Ionicons name={left.icon as keyof typeof Ionicons.glyphMap} size={19} color={soft.ink2} />
+              )}
+              <Text style={[styles.softFieldText, { color: soft.ink3 }]} numberOfLines={1}>
+                {left.active ? 'Закрити пошук' : 'Пошук'}
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={{ flex: 1 }} />
+          )}
+          {right && (
+            <Pressable
+              onPress={right.onPress}
+              onLongPress={right.onLongPress}
+              disabled={right.dimmed}
+              accessibilityLabel="Новий документ"
+              style={[styles.softButton, surface, { width: TWO_BEAD }]}
+            >
+              {rightIcon ? (
+                <SoftIcon name={rightIcon} size={23} color={soft.ink} />
+              ) : (
+                <Ionicons name={right.icon as keyof typeof Ionicons.glyphMap} size={21} color={soft.ink} />
+              )}
+            </Pressable>
+          )}
         </Animated.View>
       </DockPortal>
     );
@@ -2707,29 +2682,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  softBar: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingRight: SOFT_DOCK_PAD,
-  },
   softField: {
     flex: 1,
-    alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingLeft: 18,
-    paddingRight: 8,
-  },
-  softFieldTyping: {
-    paddingRight: 10,
-  },
-  softFade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+    paddingHorizontal: 18,
   },
   softFieldText: {
     flex: 1,
