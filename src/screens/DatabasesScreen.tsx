@@ -155,18 +155,17 @@ const FOLDER_PREFIX = 'folder:';
 // inside its cells (so folders side by side stand clearly apart), and its
 // tiles are set in from that outline by a margin of their own, with a
 // gap between them.
-// iOS'S PROPORTIONS, measured off the user's own screenshot of the app
-// library: inside a folder the margin to its edge EQUALS the gap between
-// its icons (about a fifth of an icon), two folders stand about twice that
-// apart, and an icon is the same size inside a folder as out of it.
-//
-// Every tile stands TILE_INSET inside its cell, centred on it. A folder's
-// outline is then drawn narrower than its cells - by what makes its
-// margin and its gaps one number, TILE_INSET (see folderFrameOf) - and its
-// icons are laid out in it at that spacing, so they do not sit on the
-// board's own cells. What is left between two folders is the rest: about
-// twice that.
+// EVERY ICON ON THE SAME AXES, the user's rule, in a folder or not: each
+// stands TILE_INSET inside its cell, centred on it, and a tile two cells
+// long is two icons and the gap between them. A folder's outline is its
+// icons with a margin round them - wider along a side two cells or more
+// long, thinner along a side one cell long - drawn out into the gaps, never
+// so far that two folders side by side would touch. (Laying a folder's
+// icons out on their own spacing, iOS's way, put a two-row folder a few
+// points lower than a one-row one beside it - "несиметричність".)
 const TILE_INSET = 12;
+const FOLDER_MARGIN_WIDE = 11;
+const FOLDER_MARGIN_THIN = 7;
 type TileFolder = { members: string[] };
 
 type BoardItem =
@@ -1042,14 +1041,14 @@ export default function DatabasesScreen() {
     const base = { left: x * cellStep, top: rowTop(y), width: spanSize(size.w), height: spanSize(size.h) };
     return drag?.key === key ? { ...base, left: drag.x, top: drag.y } : base;
   }
-  // The outline a folder is drawn with: narrower than its cells by what
-  // makes the margin inside it and the gaps between its icons one number -
-  // TILE_INSET - with icons the size of a tile on the board. (A folder one
-  // row tall has TILE_INSET above and below its icons by the cells alone;
-  // across, the cells would leave more, so the outline gives that back.)
+  // The outline a folder is drawn with: its icons (on their cells) and a
+  // margin round them - wider along a side of two cells or more, thinner
+  // along a side of one - see FOLDER_MARGIN_WIDE.
   function folderFrameOf(r: { left: number; top: number; width: number; height: number }, size: TileSize) {
-    const ix = ((size.w - 1) * (gap + TILE_INSET)) / 2;
-    const iy = ((size.h - 1) * (gap + TILE_INSET)) / 2;
+    const mx = size.w >= 2 ? FOLDER_MARGIN_WIDE : FOLDER_MARGIN_THIN;
+    const my = size.h >= 2 ? FOLDER_MARGIN_WIDE : FOLDER_MARGIN_THIN;
+    const ix = TILE_INSET - mx;
+    const iy = TILE_INSET - my;
     return { left: r.left + ix, top: r.top + iy, width: r.width - ix * 2, height: r.height - iy * 2 };
   }
   const mergeRect = (() => {
@@ -1463,10 +1462,11 @@ export default function DatabasesScreen() {
               {cellSize > 0 &&
                 placed.flatMap(({ item, x, y, size }) => {
                   if (item.kind !== 'folder') return [renderTile(item, x, y, size)];
-                  // Its tiles in reading order across its own width, moving
-                  // with it while it is carried - the size of a tile on the
-                  // board, spaced by the folder's one margin (see TILE_INSET).
-                  const frame = folderFrameOf(folderRect(item.key, x, y, size), size);
+                  // Its tiles in reading order across its own width, each on
+                  // its own cell exactly as a tile on the board stands - one
+                  // set of axes for every icon - moving with the folder
+                  // while it is carried.
+                  const cellsAt = folderRect(item.key, x, y, size);
                   const icon = cellSize - TILE_INSET * 2;
                   return item.members.map((member, index) => {
                     const col = index % size.w;
@@ -1477,8 +1477,8 @@ export default function DatabasesScreen() {
                       y + row,
                       { w: 1, h: 1 },
                       {
-                        left: frame.left + TILE_INSET + col * (icon + TILE_INSET),
-                        top: frame.top + TILE_INSET + row * (icon + TILE_INSET),
+                        left: cellsAt.left + col * cellStep + TILE_INSET,
+                        top: cellsAt.top + row * cellStep + TILE_INSET,
                         width: icon,
                         height: icon,
                       },
