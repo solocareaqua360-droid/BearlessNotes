@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput, useWindowDimensions, View, ViewStyle } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost, { FlatFrostContext } from './DockFrost';
@@ -10,8 +10,10 @@ import { CHROME_TOP } from '../constants/rail';
 import { DOCK_PIECE_RADIUS, dockCardHeight } from '../navigation/dockGeometry';
 import Menu from './surfaces/Menu';
 import SaveRing from './SaveRing';
-import { DockContext, TopBack, TopExtras, TopSearch, useNavDockOwnContext, useNavDockTargets, useNavDrawerCover, useNavTopBack, useNavTopExtras, useNavTopSearch, useTopNavClaim } from '../navigation/navDock';
-import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { DockContext, TopBack, TopExtras, TopSearch, useNavChromeStyle, useNavDockOwnContext, useNavDockTargets, useNavDrawerCover, useNavTopBack, useNavTopExtras, useNavTopSearch, useTopNavClaim } from '../navigation/navDock';
+import SoftIcon, { SoftIconName } from './SoftIcon';
+import { SoftTokens, useSoft } from '../theme/soft';
+import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
 
 // THE DESKS, AT THE TOP - the user's plan after looking at Notion: the
@@ -147,6 +149,17 @@ export default function TopNavBar({
   const publishedSearch = useNavTopSearch();
   const liveSearch = inline ? searchOverride ?? null : publishedSearch;
   const [menuOpen, setMenuOpen] = useState(false);
+  // THE SOFT CHROME - the look the screen in front asked for (see
+  // useChromeStyle; only the Documents desk asks, for now). One capsule
+  // under the whole bar instead of three glass pieces, the icons free
+  // inside it, a chevron for the way back. A drawer's own inline bar
+  // keeps its look.
+  const chromeStyle = useNavChromeStyle();
+  const soft = !inline && chromeStyle === 'soft';
+  const S = useSoft();
+  const gap = soft ? 0 : GAP;
+  const ink = soft ? S.ink : theme.glass.ink;
+  const inkMuted = soft ? S.ink2 : theme.glass.inkMuted;
   const frame = topBarFrame(inline ? inline.width : windowWidth);
   const cover = useNavDrawerCover();
   const fading = !!fadeWithDrawer && !!cover?.active;
@@ -169,7 +182,7 @@ export default function TopNavBar({
   const clusterCount = toolCount + (extras?.menu ? 1 : 0) + (extras?.select ? 1 : 0) + (extras?.pane ? 1 : 0);
   const clusterWidth =
     toolCount * MENU_W + (extras?.menu ? MENU_W : 0) + (extras?.select ? SIDE_W : 0) + (extras?.pane ? SIDE_W : 0);
-  const plateWidth = frame.width - (SIDE_W + GAP) - (clusterCount > 0 ? clusterWidth + GAP : 0);
+  const plateWidth = frame.width - (SIDE_W + gap) - (clusterCount > 0 ? clusterWidth + gap : 0);
   const innerWidth = plateWidth - PLATE_PAD * 2;
   // The open desk takes whatever the plate has left once the closed desks
   // and the cuts between them have theirs - so the widths always add up,
@@ -238,7 +251,7 @@ export default function TopNavBar({
     opacity: interpolate(expand.value, [0, 0.6], [1, 0], Extrapolation.CLAMP),
   }));
   const plateGrow = useAnimatedStyle(() => ({
-    marginLeft: -(SIDE_W + GAP) * expand.value,
+    marginLeft: -(SIDE_W + gap) * expand.value,
     width: plateWidth + (frame.width - plateWidth) * expand.value,
   }));
   const rowsAway = useAnimatedStyle(() => ({
@@ -256,8 +269,14 @@ export default function TopNavBar({
       <FlatFrostContext.Provider value={!!inline}>
       <Animated.View
         pointerEvents={fading && cover?.open ? 'none' : 'box-none'}
-        style={[styles.row, { top: barTop, left: frame.left, width: frame.width }, fadeStyle]}
+        style={[styles.row, { top: barTop, left: frame.left, width: frame.width, gap }, fadeStyle]}
       >
+        {soft && (
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: S.chrome, borderRadius: TOP_NAV_H / 2, boxShadow: S.shadow }]}
+          />
+        )}
         <Animated.View style={backAway} pointerEvents={searchShown ? 'none' : 'auto'}>
         <Pressable
           disabled={!back || back.dimmed}
@@ -265,31 +284,28 @@ export default function TopNavBar({
           accessibilityLabel="Назад"
           style={{ width: SIDE_W, height: TOP_NAV_H }}
         >
-          <DockFrost style={[styles.piece, lift]} radius={corners.plate}>
-            <Ionicons
-              name={(back?.icon ?? 'arrow-back') as keyof typeof Ionicons.glyphMap}
-              size={21}
-              color={theme.glass.ink}
-              style={(!back || back.dimmed) && { opacity: 0.3 }}
-            />
-          </DockFrost>
+          <Surface soft={soft} style={[styles.piece, !soft && lift]} radius={corners.plate}>
+            <View style={(!back || back.dimmed) && { opacity: 0.3 }}>
+              <Glyph name={back?.icon ?? 'arrow-back'} size={soft ? 24 : 21} color={ink} soft={soft} />
+            </View>
+          </Surface>
         </Pressable>
         </Animated.View>
 
         {/* The plate, and on it whichever of the two rows is in front -
             or, with neither a title nor desks to show, no plate at all:
             just the room it would have taken, between the two ends. */}
-        <Animated.View style={[styles.plate, plateFrost && lift, { borderRadius: plateFrost ? corners.plate : 0 }, plateGrow]}>
+        <Animated.View style={[styles.plate, plateFrost && !soft && lift, { borderRadius: plateFrost ? corners.plate : 0 }, plateGrow]}>
           {plateFrost && (
             <>
-              <DockFrost style={StyleSheet.absoluteFill} radius={corners.plate} />
+              {!soft && <DockFrost style={StyleSheet.absoluteFill} radius={corners.plate} />}
               <View style={[styles.viewport, { borderRadius: corners.piece }]}>
                 <Animated.View style={[StyleSheet.absoluteFill, rowsAway]} pointerEvents={searchShown ? 'none' : 'box-none'}>
                 <Animated.View
                   style={[styles.layer, desksStyle]}
                   pointerEvents={path ? 'none' : 'box-none'}
                 >
-                  {trail && <TrailRow trail={trail} radius={corners.piece} ink={theme.glass.ink} inkMuted={theme.glass.inkMuted} />}
+                  {trail && <TrailRow trail={trail} radius={corners.piece} ink={ink} inkMuted={inkMuted} soft={soft} />}
                   {title && (
                     <Pressable
                       disabled={!title.onPress}
@@ -297,12 +313,12 @@ export default function TopNavBar({
                       accessibilityLabel={title.label}
                       style={styles.titlePress}
                     >
-                      <DockFrost style={styles.piece} radius={corners.piece}>
-                        <Ionicons name={title.icon as keyof typeof Ionicons.glyphMap} size={20} color={theme.glass.ink} />
-                        <Text numberOfLines={1} style={[styles.label, styles.titleLabel, { color: theme.glass.ink }]}>
+                      <Surface soft={soft} style={styles.piece} radius={corners.piece}>
+                        <Glyph name={title.icon} size={20} color={ink} soft={soft} />
+                        <Text numberOfLines={1} style={[styles.label, styles.titleLabel, { color: ink }, soft && styles.softLabel]}>
                           {title.label}
                         </Text>
-                      </DockFrost>
+                      </Surface>
                     </Pressable>
                   )}
                   {desks?.map((desk) => (
@@ -313,14 +329,15 @@ export default function TopNavBar({
                       desk={desk}
                       openWidth={openWidth}
                       onLongPress={onLongPress}
-                      ink={theme.glass.ink}
-                      inkMuted={theme.glass.inkMuted}
+                      ink={ink}
+                      inkMuted={inkMuted}
+                      soft={soft ? S : null}
                     />
                   ))}
                 </Animated.View>
                 {shownPath && (
                   <Animated.View style={[styles.layer, pathStyle]} pointerEvents={path ? 'box-none' : 'none'}>
-                    <PathRow path={shownPath} radius={corners.piece} ink={theme.glass.ink} inkMuted={theme.glass.inkMuted} />
+                    <PathRow path={shownPath} radius={corners.piece} ink={ink} inkMuted={inkMuted} soft={soft ? S : null} />
                   </Animated.View>
                 )}
                 </Animated.View>
@@ -330,8 +347,9 @@ export default function TopNavBar({
                       key={lastSearch.current.placeholder}
                       search={lastSearch.current}
                       radius={corners.piece}
-                      ink={theme.glass.ink}
-                      inkMuted={theme.glass.inkMuted}
+                      ink={ink}
+                      inkMuted={inkMuted}
+                      soft={soft ? S : null}
                     />
                   </Animated.View>
                 )}
@@ -347,9 +365,9 @@ export default function TopNavBar({
         {clusterCount > 0 && (
           <Animated.View
             pointerEvents={searchShown ? 'none' : 'auto'}
-            style={[styles.cluster, lift, { width: clusterWidth, borderRadius: corners.plate }, clusterAway]}
+            style={[styles.cluster, !soft && lift, { width: clusterWidth, borderRadius: corners.plate }, clusterAway]}
           >
-            <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} />
+            {!soft && <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} />}
             {[
               ...(extras?.tools ?? []).map((t) => ({
                 key: `tool:${t.key}`,
@@ -379,16 +397,13 @@ export default function TopNavBar({
                   accessibilityLabel={b.label}
                   style={[styles.clusterButton, { width: b.width }]}
                 >
-                  {i > 0 && <View style={[styles.clusterDivider, { backgroundColor: theme.glass.inkMuted }]} />}
-                  <Ionicons
-                    name={b.icon as keyof typeof Ionicons.glyphMap}
-                    size={21}
-                    color={b.active ? theme.accent : theme.glass.ink}
-                    style={'dimmed' in b && b.dimmed ? { opacity: 0.3 } : null}
-                  />
+                  {i > 0 && !soft && <View style={[styles.clusterDivider, { backgroundColor: theme.glass.inkMuted }]} />}
+                  <View style={'dimmed' in b && b.dimmed ? { opacity: 0.3 } : null}>
+                    <Glyph name={b.icon} size={soft ? 22 : 21} color={b.active ? (soft ? S.accent : theme.accent) : ink} soft={soft} />
+                  </View>
                 </Pressable>
               ))}
-            <SaveRing saving={!!saving} color={theme.glass.ink} radius={corners.plate} />
+            <SaveRing saving={!!saving} color={ink} radius={corners.plate} />
           </Animated.View>
         )}
       </Animated.View>
@@ -404,6 +419,53 @@ export default function TopNavBar({
     />
     </>
   );
+}
+
+// A piece of the bar: the glass everywhere else, and in the soft chrome
+// a plain surface - the capsule under the whole bar is the only material,
+// and a piece is either nothing on it or a faint tint (`fill`).
+function Surface({
+  soft,
+  style,
+  radius,
+  fill,
+  children,
+}: {
+  soft: boolean;
+  style?: StyleProp<ViewStyle>;
+  radius: number;
+  fill?: string;
+  children?: ReactNode;
+}) {
+  if (!soft) {
+    return (
+      <DockFrost style={style} radius={radius}>
+        {children}
+      </DockFrost>
+    );
+  }
+  return <View style={[style, styles.softPiece, { borderRadius: radius, backgroundColor: fill ?? 'transparent' }]}>{children}</View>;
+}
+
+// An Ionicons name, drawn as the soft style's own icon where it has one
+// (see SoftIcon) - the few shapes that most gave the old chrome away.
+const SOFT_GLYPHS: Record<string, SoftIconName> = {
+  'arrow-back': 'back',
+  'chevron-back': 'back',
+  'ellipsis-horizontal': 'more',
+  'checkmark-circle-outline': 'select',
+  'search-outline': 'search',
+  'close-outline': 'close',
+  close: 'close',
+  'document-text-outline': 'doc',
+  'document-text': 'doc',
+  'folder-outline': 'folder',
+  'trash-outline': 'trash',
+};
+function Glyph({ name, size, color, soft }: { name: string; size: number; color: string; soft: boolean }) {
+  const own = soft ? SOFT_GLYPHS[name] : undefined;
+  if (own) return <SoftIcon name={own} size={size} color={color} />;
+  return <Ionicons name={name as keyof typeof Ionicons.glyphMap} size={size - (soft ? 2 : 0)} color={color} />;
 }
 
 // Where the bar is drawn: over the whole window through the glass layer,
@@ -423,11 +485,23 @@ function InlineLayer({ children }: { children: ReactNode }) {
 // The field inside the plate: the same frame the name sits in, holding
 // the input instead. It keeps what is typed itself and hands every change
 // to the screen.
-function SearchRow({ search, radius, ink, inkMuted }: { search: TopSearch; radius: number; ink: string; inkMuted: string }) {
+function SearchRow({
+  search,
+  radius,
+  ink,
+  inkMuted,
+  soft,
+}: {
+  search: TopSearch;
+  radius: number;
+  ink: string;
+  inkMuted: string;
+  soft: SoftTokens | null;
+}) {
   const [text, setText] = useState(search.initialQuery);
   return (
-    <DockFrost style={[styles.piece, styles.searchPiece]} radius={radius}>
-      <Ionicons name="search" size={19} color={inkMuted} />
+    <Surface soft={!!soft} fill={soft?.fill} style={[styles.piece, styles.searchPiece]} radius={radius}>
+      {soft ? <SoftIcon name="search" size={20} color={inkMuted} /> : <Ionicons name="search" size={19} color={inkMuted} />}
       <TextInput
         autoFocus
         value={text}
@@ -438,7 +512,9 @@ function SearchRow({ search, radius, ink, inkMuted }: { search: TopSearch; radiu
         placeholder={search.placeholder}
         placeholderTextColor={inkMuted}
         returnKeyType="search"
-        style={[styles.searchInput, { color: ink }]}
+        selectionColor={soft?.accent}
+        cursorColor={soft?.accent}
+        style={[styles.searchInput, { color: ink }, soft && { fontFamily: SOFT_REGULAR }]}
       />
       <Pressable
         hitSlop={8}
@@ -453,9 +529,9 @@ function SearchRow({ search, radius, ink, inkMuted }: { search: TopSearch; radiu
         accessibilityLabel="Закрити пошук"
         style={styles.searchClose}
       >
-        <Ionicons name="close" size={20} color={ink} />
+        {soft ? <SoftIcon name="close" size={20} color={ink} /> : <Ionicons name="close" size={20} color={ink} />}
       </Pressable>
-    </DockFrost>
+    </Surface>
   );
 }
 
@@ -470,6 +546,7 @@ function DeskPill({
   onLongPress,
   ink,
   inkMuted,
+  soft,
 }: {
   radius: number;
   showName: boolean;
@@ -478,6 +555,9 @@ function DeskPill({
   onLongPress?: () => void;
   ink: string;
   inkMuted: string;
+  // The soft chrome: the open desk is a faint tint on the capsule, the
+  // closed ones nothing at all - no glass piece for each.
+  soft: SoftTokens | null;
 }) {
   const target = desk.active ? openWidth : PILL_W;
   const width = useSharedValue(target);
@@ -507,23 +587,27 @@ function DeskPill({
         accessibilityLabel={desk.label}
         style={styles.fill}
       >
-        <DockFrost style={[styles.piece, styles.clip]} radius={radius}>
-          <Ionicons
-            name={(desk.active ? desk.icon.replace(/-outline$/, '') : desk.icon) as keyof typeof Ionicons.glyphMap}
-            size={20}
-            color={desk.active ? ink : inkMuted}
-          />
+        <Surface soft={!!soft} fill={desk.active ? soft?.fill : undefined} style={[styles.piece, styles.clip]} radius={radius}>
+          {soft ? (
+            <Glyph name={desk.icon} size={20} color={desk.active ? ink : soft.ink3} soft />
+          ) : (
+            <Ionicons
+              name={(desk.active ? desk.icon.replace(/-outline$/, '') : desk.icon) as keyof typeof Ionicons.glyphMap}
+              size={20}
+              color={desk.active ? ink : inkMuted}
+            />
+          )}
           <Animated.View style={[styles.labelBox, labelStyle]}>
-            <Text numberOfLines={1} ellipsizeMode="clip" style={[styles.label, { color: ink }]}>
+            <Text numberOfLines={1} ellipsizeMode="clip" style={[styles.label, { color: ink }, soft && styles.softLabel]}>
               {desk.label}
             </Text>
           </Animated.View>
           {desk.active && desk.onClose && (
             <Pressable hitSlop={8} onPress={desk.onClose} accessibilityLabel="Закрити стіл" style={styles.deskClose}>
-              <Ionicons name="close" size={16} color={inkMuted} />
+              {soft ? <SoftIcon name="close" size={15} color={inkMuted} /> : <Ionicons name="close" size={16} color={inkMuted} />}
             </Pressable>
           )}
-        </DockFrost>
+        </Surface>
       </Pressable>
     </Animated.View>
   );
@@ -532,16 +616,28 @@ function DeskPill({
 // Where a note lives: its database's glyph, then the folders down to it,
 // then its own name - the same look as the folder path below, and the
 // same rule: every crumb but the last is a way there.
-function TrailRow({ trail, radius, ink, inkMuted }: { trail: TopTrail; radius: number; ink: string; inkMuted: string }) {
+function TrailRow({
+  trail,
+  radius,
+  ink,
+  inkMuted,
+  soft = false,
+}: {
+  trail: TopTrail;
+  radius: number;
+  ink: string;
+  inkMuted: string;
+  soft?: boolean;
+}) {
   const scroll = useRef<ScrollView>(null);
   return (
     <>
       <View style={{ width: PILL_W, height: PIECE_H }}>
-        <DockFrost style={styles.piece} radius={radius}>
-          <Ionicons name={trail.icon as keyof typeof Ionicons.glyphMap} size={20} color={ink} />
-        </DockFrost>
+        <Surface soft={soft} style={styles.piece} radius={radius}>
+          <Glyph name={trail.icon} size={20} color={ink} soft={soft} />
+        </Surface>
       </View>
-      <DockFrost style={[styles.piece, styles.crumbsPiece]} radius={radius}>
+      <Surface soft={soft} style={[styles.piece, styles.crumbsPiece]} radius={radius}>
         <ScrollView
           ref={scroll}
           horizontal
@@ -570,7 +666,7 @@ function TrailRow({ trail, radius, ink, inkMuted }: { trail: TopTrail; radius: n
             );
           })}
         </ScrollView>
-      </DockFrost>
+      </Surface>
     </>
   );
 }
@@ -579,19 +675,31 @@ function TrailRow({ trail, radius, ink, inkMuted }: { trail: TopTrail; radius: n
 // root), then the folders down to the one you are in. Every crumb but the
 // last is a way up; a card being carried can be stepped into them too
 // (the targets the dock's own path registered).
-function PathRow({ path, radius, ink, inkMuted }: { path: PathContext; radius: number; ink: string; inkMuted: string }) {
+function PathRow({
+  path,
+  radius,
+  ink,
+  inkMuted,
+  soft,
+}: {
+  path: PathContext;
+  radius: number;
+  ink: string;
+  inkMuted: string;
+  soft: SoftTokens | null;
+}) {
   const targets = useNavDockTargets();
   const scroll = useRef<ScrollView>(null);
   return (
     <>
       <View ref={targets?.('')} collapsable={false}>
         <Pressable onPress={() => path.onGo('')} accessibilityLabel="Корінь" style={{ width: PILL_W, height: PIECE_H }}>
-          <DockFrost style={styles.piece} radius={radius}>
-            <Ionicons name={path.icon as keyof typeof Ionicons.glyphMap} size={20} color={ink} />
-          </DockFrost>
+          <Surface soft={!!soft} fill={soft?.fill} style={styles.piece} radius={radius}>
+            <Glyph name={path.icon} size={20} color={ink} soft={!!soft} />
+          </Surface>
         </Pressable>
       </View>
-      <DockFrost style={[styles.piece, styles.crumbsPiece]} radius={radius}>
+      <Surface soft={!!soft} style={[styles.piece, styles.crumbsPiece]} radius={radius}>
         <ScrollView
           ref={scroll}
           horizontal
@@ -623,7 +731,7 @@ function PathRow({ path, radius, ink, inkMuted }: { path: PathContext; radius: n
             );
           })}
         </ScrollView>
-      </DockFrost>
+      </Surface>
     </>
   );
 }
@@ -746,6 +854,14 @@ const styles = StyleSheet.create({
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // The soft chrome's piece: no glass, no hairline - see Surface.
+  softPiece: {
+    borderWidth: 0,
+  },
+  softLabel: {
+    fontFamily: SOFT_SEMIBOLD,
+    letterSpacing: -0.2,
   },
   deskClose: {
     marginLeft: 6,

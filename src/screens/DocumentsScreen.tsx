@@ -65,7 +65,9 @@ import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import DocumentCard from '../components/DocumentCard';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
-import { useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { useSoft } from '../theme/soft';
+import SoftIcon from '../components/SoftIcon';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
@@ -78,7 +80,7 @@ import {
   findTitleMatch,
   EXPANDED_PREVIEW_LENGTH,
 } from '../utils/documentPreview';
-import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM } from '../utils/fonts';
 import StickerComposer from '../components/StickerComposer';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import SketchEditor from '../components/SketchEditor';
@@ -539,6 +541,14 @@ export default function DocumentsScreen({
   // from «Більше» (which draws its own, titled) - either way the bar is up
   // and the way back is in it.
   const onDesk = !inPane && topNavOn;
+  // THE SOFT STYLE, tried here first (theme/soft; the user's call on
+  // 2026-09-28: "другий варіант давай" - this desk alone, before the
+  // rest). The desk asks the shared bar and dock to wear it, and draws
+  // its own ground, cards and folders in it. A copy in another screen's
+  // pane keeps the old look.
+  const softStyle = useSoft();
+  const soft = onDesk ? softStyle : null;
+  useChromeStyle('soft', onDesk);
   const chromeTop = insets.top + CHROME_TOP + (onDesk ? TOP_NAV_SPACE : 0);
   const chromeBottom = chromeTop + chromeHeight + 8;
   // The island is drawn through the portal, over the whole window, so it
@@ -1309,7 +1319,11 @@ export default function DocumentsScreen({
       {/* 1px bled past every edge - windowWidth/Height can round to a hair
           less than the actual screen, leaving a sliver of the default
           white background visible at an edge otherwise. */}
-      <ScreenBackdrop id="documentsBg" scrollY={pull.scrollY} />
+      {soft ? (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: soft.bg }]} />
+      ) : (
+        <ScreenBackdrop id="documentsBg" scrollY={pull.scrollY} />
+      )}
 
       {/* One column on a phone, two on a Fold's inner screen: the list keeps
           its own width and the open document takes the rest. Everything
@@ -1547,6 +1561,7 @@ export default function DocumentsScreen({
                     }}
                     project={groups.find((g) => g.id === item.groupId) ?? null}
                     onProjectPress={() => setSingleGroupTargetId(item.id)}
+                    soft={soft}
                   />
                 );
               }}
@@ -1635,6 +1650,51 @@ export default function DocumentsScreen({
                     )}
                   </View>
                   <Text style={styles.trashHint}>Затисни нотатку, щоб відновити або видалити назавжди. Через 30 днів кошик очищається сам.</Text>
+                </View>
+              ) : explorerMode && soft && (explorer.folders.length > 0 || (explorer.active && explorer.path !== '')) ? (
+                // THE SOFT FOLDERS: small pills in a line instead of tall
+                // rows - three rows took about a third of the outer
+                // screen's height. Every pill is still a drop target
+                // (registerFolder), the bin too, exactly as the rows are.
+                <View style={[styles.explorerHead, styles.softFolders]}>
+                  {explorer.folders.map((folder) => (
+                    <View key={folder.fullPath} ref={carrying.carry.registerFolder(folder.fullPath)} collapsable={false}>
+                      <Pressable
+                        style={[styles.softFolder, { backgroundColor: soft.fill }]}
+                        onPress={() => {
+                          explorer.setPath(folder.fullPath);
+                          if (searching) {
+                            setSearchText('');
+                            setSearchOpen(false);
+                          }
+                        }}
+                        onLongPress={() => openFolderMenu(folder)}
+                      >
+                        {folder.tag?.icon ? (
+                          <Ionicons
+                            name={folder.tag.icon as keyof typeof Ionicons.glyphMap}
+                            size={15}
+                            color={folder.tag.color ?? soft.ink2}
+                          />
+                        ) : (
+                          <SoftIcon name="folder" size={17} color={folder.tag?.color ?? soft.ink2} strokeWidth={1.9} />
+                        )}
+                        <Text style={[styles.softFolderName, { color: soft.ink }]} numberOfLines={1}>
+                          {folder.name}
+                        </Text>
+                        <Text style={[styles.softFolderCount, { color: soft.ink3 }]}>{folder.docs + folder.subfolders}</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                  {explorer.active && explorer.path === '' && (trashed.length > 0 || !!carrying.carry.ghost) && (
+                    <View ref={carrying.carry.registerFolder(CARRY_BIN_PATH)} collapsable={false}>
+                      <Pressable style={[styles.softFolder, { backgroundColor: soft.fill }]} onPress={() => setTrashOpen(true)}>
+                        <SoftIcon name="trash" size={17} color={soft.ink2} strokeWidth={1.9} />
+                        <Text style={[styles.softFolderName, { color: soft.ink2 }]}>Кошик</Text>
+                        <Text style={[styles.softFolderCount, { color: soft.ink3 }]}>{trashed.length}</Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               ) : explorerMode && (explorer.folders.length > 0 || (explorer.active && explorer.path !== '')) ? (
                 <View
@@ -1838,6 +1898,7 @@ export default function DocumentsScreen({
                   }}
                   project={groups.find((g) => g.id === item.groupId) ?? null}
                   onProjectPress={() => setSingleGroupTargetId(item.id)}
+                  soft={soft}
                   {...(carried ? carrying.cardProps(item, () => selectFromHold(item)) : {})}
                 />
               );
@@ -2413,6 +2474,33 @@ const makeStyles = (t: Theme) =>
     paddingHorizontal: 20,
     gap: 8,
     marginBottom: 8,
+  },
+  // The soft style's folders: pills that wrap onto a second line rather
+  // than rows - see the list's own soft branch.
+  softFolders: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 14,
+  },
+  softFolder: {
+    height: 40,
+    borderRadius: 20,
+    paddingLeft: 12,
+    paddingRight: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    maxWidth: 240,
+  },
+  softFolderName: {
+    fontSize: 14.5,
+    fontFamily: SOFT_MEDIUM,
+    flexShrink: 1,
+  },
+  softFolderCount: {
+    fontSize: 13,
+    fontFamily: SOFT_MEDIUM,
+    fontVariant: ['tabular-nums'],
   },
   explorerCrumb: {
     flexDirection: 'row',

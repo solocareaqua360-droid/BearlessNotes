@@ -14,7 +14,7 @@ import { useLift, useTheme } from '../theme/ThemeProvider';
 import { liftStyle } from '../theme/tokens';
 import { hapticButtonDown } from '../utils/haptics';
 import { NAV_BOTTOM, NAV_BUTTON, NAV_PADDING } from '../constants/rail';
-import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR } from '../utils/fonts';
 import { DOCK_BOTTOM, DOCK_PATH_GAP, DOCK_PATH_H, DOCK_PIECE_RADIUS, dockCardHeight, dockEdgeInset, dockRowWidth } from '../navigation/dockGeometry';
 import { navigationRef } from '../navigationRef';
 import {
@@ -37,7 +37,10 @@ import {
   useNavDockWide,
   useNavDockTabsInFlux,
   useNavDockTargets,
+  useNavChromeStyle,
 } from '../navigation/navDock';
+import SoftIcon, { SoftIconName } from './SoftIcon';
+import { useSoft } from '../theme/soft';
 
 // The dock, when it is holding a CONTEXT rather than the four desks.
 //
@@ -421,6 +424,14 @@ const DOCK_WRAP_PAD = 6;
 // The two beads standing alone (see "JUST THE TWO") - a thumb's main
 // button, not the whole dock's height: 56, the size Android gives its own.
 const TWO_BEAD = 56;
+
+// The two beads' Ionicons, as the soft dock draws them (see SoftIcon).
+const SOFT_DOCK_GLYPHS: Record<string, SoftIconName> = {
+  'search-outline': 'search',
+  'close-outline': 'close',
+  'document-text-outline': 'compose',
+  'add-outline': 'plus',
+};
 // One button of a SHORT strip (see the strip in ContextDock's body): room
 // for its icon and a one-word label, and no more.
 const STRIP_BUTTON_W = 84;
@@ -582,6 +593,10 @@ const DESK_HINT_TRAVEL = 18;
 
 export default function ContextDock() {
   const theme = useTheme();
+  // The soft chrome (see useChromeStyle) - asked for by the screen in
+  // front, the Documents desk for now.
+  const chromeStyle = useNavChromeStyle();
+  const soft = useSoft();
   const { width: windowW } = useWindowDimensions();
   const { isTwoPane } = useResponsiveLayout();
   // Kept as its own name rather than `isTwoPane` read directly
@@ -1963,6 +1978,66 @@ export default function ContextDock() {
       </DockPortal>
     );
   }
+  // THE SOFT DOCK: not two floating discs - that is Material's own
+  // floating action button, the thing that most gave the old look away -
+  // but a search FIELD across the bar's width and a "write" button beside
+  // it, both the same quiet surface as the bar at the top. The beads are
+  // the same two the screen published; only their shape changes.
+  if (compactMiddle && !actions?.length && chromeStyle === 'soft') {
+    const frame = topBarFrame(windowW);
+    const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow, height: TWO_BEAD, borderRadius: TWO_BEAD / 2 };
+    const left = beads.left;
+    const right = beads.right;
+    const leftIcon = left ? SOFT_DOCK_GLYPHS[left.icon] : undefined;
+    const rightIcon = right ? SOFT_DOCK_GLYPHS[right.icon] : undefined;
+    return (
+      <DockPortal>
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.twoBeads,
+            { bottom: DOCK_BOTTOM + bottomInset + DOCK_WRAP_PAD, left: frame.left, width: frame.width, gap: 10 },
+          ]}
+        >
+          {left ? (
+            <Pressable
+              onPress={left.onPress}
+              onLongPress={left.onLongPress}
+              disabled={left.dimmed}
+              accessibilityLabel={left.active ? 'Закрити пошук' : 'Пошук'}
+              style={[styles.softField, surface]}
+            >
+              {leftIcon ? (
+                <SoftIcon name={leftIcon} size={20} color={soft.ink2} />
+              ) : (
+                <Ionicons name={left.icon as keyof typeof Ionicons.glyphMap} size={19} color={soft.ink2} />
+              )}
+              <Text style={[styles.softFieldText, { color: soft.ink3 }]} numberOfLines={1}>
+                {left.active ? 'Закрити пошук' : 'Пошук'}
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={{ flex: 1 }} />
+          )}
+          {right && (
+            <Pressable
+              onPress={right.onPress}
+              onLongPress={right.onLongPress}
+              disabled={right.dimmed}
+              accessibilityLabel="Новий документ"
+              style={[styles.softButton, surface, { width: TWO_BEAD }]}
+            >
+              {rightIcon ? (
+                <SoftIcon name={rightIcon} size={23} color={soft.ink} />
+              ) : (
+                <Ionicons name={right.icon as keyof typeof Ionicons.glyphMap} size={21} color={soft.ink} />
+              )}
+            </Pressable>
+          )}
+        </View>
+      </DockPortal>
+    );
+  }
   if (compactMiddle && !actions?.length) {
     const frame = topBarFrame(windowW);
     const slot = (bead: typeof beads.left) =>
@@ -2503,6 +2578,22 @@ const styles = StyleSheet.create({
     position: 'absolute',
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  softField: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 18,
+  },
+  softFieldText: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: SOFT_REGULAR,
+  },
+  softButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   stripActions: {
     alignItems: 'center',

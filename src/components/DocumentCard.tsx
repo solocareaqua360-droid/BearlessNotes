@@ -9,7 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import type { Block, Tag } from '../types';
 import AttachmentImage from './AttachmentImage';
 import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/documentPreview';
-import { FONT_REGULAR, FONT_BOLD } from '../utils/fonts';
+import { FONT_REGULAR, FONT_BOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import type { SoftTokens } from '../theme/soft';
 import ProjectBadge from './ProjectBadge';
 import DocumentPageMiniature from './DocumentPageMiniature';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
@@ -353,6 +354,11 @@ type Props = {
   // user's own shape: "картку розміром як дві, обкладинка ліворуч". The
   // grid puts it on a row of its own (see DocumentsScreen's spacers).
   wide?: boolean;
+  // The soft style (theme/soft), tried on the Documents desk first: the
+  // card is a quiet surface - no colour of its own, no grain, no
+  // Material elevation, a soft shadow and rounder corners - and its text
+  // is set in Inter. Absent everywhere else, which keeps its old look.
+  soft?: SoftTokens | null;
 };
 
 // The card shared by Documents and Search: a thumbnail (the document's
@@ -421,7 +427,9 @@ function PageBody({
   paperColor,
   ink,
   search,
+  soft,
 }: {
+  soft?: SoftTokens | null;
   search?: string;
   id: string;
   title: string;
@@ -478,7 +486,7 @@ function PageBody({
           rather than inside it, so the picture stays the page. */}
       <View style={styles.pageChrome} pointerEvents="box-none">
         <PageChromeFade id={id} color={paper} />
-        <Text style={[styles.dateCompact, { color: ink }]}>{formatUpdatedAt(updatedAt)}</Text>
+        <Text style={[styles.dateCompact, { color: ink }, soft && styles.softText]}>{formatUpdatedAt(updatedAt)}</Text>
         {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
       </View>
     </View>
@@ -516,9 +524,15 @@ export default function DocumentCard({
   project,
   onProjectPress,
   wide,
+  soft,
 }: Props) {
   const recordColour = useRecordColour();
-  const { background, text, textMuted } = recordColour(id);
+  const { background, text, textMuted } = soft
+    ? { background: soft.card, text: soft.ink, textMuted: soft.ink2 }
+    : recordColour(id);
+  // The soft card's own frame: the surface, the rounder corner, the soft
+  // shadow in place of elevation.
+  const softFrame = soft ? [styles.softCard, { boxShadow: soft.shadow }] : null;
   const isGrid = layout === 'grid';
   // Packed for a cursor, spaced for a thumb - see hooks/useDensity.
   // Only the list row answers to this so far; a grid tile is sized by
@@ -570,12 +584,12 @@ export default function DocumentCard({
   const titleNode = titleMatch ? (
     <HighlightedLine
       match={titleMatch}
-      style={[isGrid ? styles.titleCompact : styles.title, { color: text }, scaledTitle]}
+      style={[isGrid ? styles.titleCompact : styles.title, { color: text }, scaledTitle, soft && styles.softTitle]}
       highlightStyle={styles.highlight}
     />
   ) : (
     <Text
-      style={[isGrid ? styles.titleCompact : styles.title, { color: text }, scaledTitle]}
+      style={[isGrid ? styles.titleCompact : styles.title, { color: text }, scaledTitle, soft && styles.softTitle]}
       // ONE LINE in a row that carries a sheet, and an ellipsis where it
       // would have wrapped. A second line made every card a different
       // height, and equal heights are what let the sheet be a rectangle
@@ -652,10 +666,11 @@ export default function DocumentCard({
           // standing out past the folders above it.
           gridWidth !== undefined ? { width: gridWidth } : null,
           { backgroundColor: background },
+          softFrame,
           dimmed && styles.dimmed,
         ]}
       >
-        <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
+        {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
         <Pressable style={styles.wideTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
           {page ? (
             /* The same picture, in a wider window: twice a tile's width
@@ -676,6 +691,7 @@ export default function DocumentCard({
               paperColor={pagePaper}
               ink={pageInk}
               search={search}
+              soft={soft}
             />
           ) : (
             <>
@@ -717,10 +733,11 @@ export default function DocumentCard({
           { height: gridHeight },
           gridWidth !== undefined ? { width: gridWidth } : styles.gridCardHalf,
           { backgroundColor: background },
+          softFrame,
           dimmed && styles.dimmed,
         ]}
       >
-        <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
+        {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
         <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
           {page ? (
             <PageBody
@@ -737,6 +754,7 @@ export default function DocumentCard({
               paperColor={pagePaper}
               ink={pageInk}
               search={search}
+              soft={soft}
             />
           ) : (
             <>
@@ -794,10 +812,12 @@ export default function DocumentCard({
         // the same, which is the whole point of the one line above.
         page && (dense ? styles.rowPagedDense : styles.rowPaged),
         { backgroundColor: background },
+        softFrame,
+        soft && styles.softRow,
         dimmed && styles.dimmed,
       ]}
     >
-      <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />
+      {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
       <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
         {/* A ROW IS A LINE OF TEXT BESIDE A THUMBNAIL, and it stays one:
             a strip of the page across the whole width was the title and
@@ -831,7 +851,7 @@ export default function DocumentCard({
           {titleNode}
           {previewBody}
           <View style={styles.dateRow}>
-            <Text style={[styles.date, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
+            <Text style={[styles.date, { color: textMuted }, soft && styles.softText]}>{formatUpdatedAt(updatedAt)}</Text>
             {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
           </View>
         </View>
@@ -842,6 +862,28 @@ export default function DocumentCard({
 }
 
 const styles = StyleSheet.create({
+  // The soft style's card (theme/soft): no border, no Material
+  // elevation - the shadow comes as a boxShadow alongside - and a rounder
+  // corner, the page picture clipped to it as before.
+  softCard: {
+    borderWidth: 0,
+    borderRadius: 22,
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  softRow: {
+    borderRadius: 20,
+  },
+  softTitle: {
+    fontFamily: SOFT_SEMIBOLD,
+    // The weight is the FILE's (Inter_600SemiBold); a bold on top of it
+    // makes Android draw a fake heavier one.
+    fontWeight: 'normal',
+    letterSpacing: -0.2,
+  },
+  softText: {
+    fontFamily: SOFT_REGULAR,
+  },
   // A card whose document is in hand right now.
   dimmed: {
     opacity: 0.4,
