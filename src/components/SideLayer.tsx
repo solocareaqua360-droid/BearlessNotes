@@ -10,6 +10,7 @@ import { LayoutFrameContext } from '../hooks/useResponsiveLayout';
 import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
 import { usePauseFrost } from './frostPause';
+import { holdPushFromLayer } from '../navigation/layerPush';
 
 // ONE OF THE TWO SCREENS BESIDE THE DESKS - the user's iOS model: the
 // calendar to the left of the first desk (the widgets page), the
@@ -62,9 +63,33 @@ export default function SideLayer({
   // underneath it: while another screen is in front the layer steps
   // aside, whole, and comes back as it was.
   const tabsFocused = useIsFocused();
+  // Stepping aside DISSOLVES rather than vanishing: the screen it opened
+  // is already whole underneath (pushed with no animation - see
+  // layerPush), so fading the layer out over it is the whole transition,
+  // and the sharp desk is never seen. Coming back is instant - the
+  // closing screen is still on top underneath, and the layer simply is
+  // there again, as it was left.
+  const presence = useSharedValue(1);
+  const [fadingAside, setFadingAside] = useState(false);
+  useEffect(() => {
+    if (tabsFocused) {
+      presence.value = 1;
+      setFadingAside(false);
+      return;
+    }
+    setFadingAside(true);
+    // Slow to start: a heavy screen can take a moment to draw itself under
+    // the layer, and the layer should still be there while it does.
+    presence.value = withTiming(0, { duration: 300, easing: Easing.in(Easing.quad) });
+    const timer = setTimeout(() => setFadingAside(false), 340);
+    return () => clearTimeout(timer);
+  }, [tabsFocused, presence]);
+  // Told to the navigator while this layer is out and in front: whatever
+  // is pushed now comes from here.
+  useEffect(() => (open && tabsFocused ? holdPushFromLayer() : undefined), [open, tabsFocused]);
   // The blur only while it can be seen - left mounted behind a shut layer
   // it would go on redrawing the desk for nothing.
-  const blurShown = (open || dragging) && tabsFocused;
+  const blurShown = (open || dragging) && (tabsFocused || fadingAside);
   // The glass UNDER the layer - the desks' bar, the dock, a database's
   // project pills - is only faded out, not gone, and each piece of it
   // went on blurring the screen every frame: half a dozen to a dozen live
@@ -95,8 +120,8 @@ export default function SideLayer({
     () => ({ transform: [{ translateX: (1 - progress.value) * width * direction }] }),
     [width, direction]
   );
-  // An animated opacity outranks a plain one, so stepping aside is said here.
-  const groundStyle = useAnimatedStyle(() => ({ opacity: tabsFocused ? progress.value : 0 }), [tabsFocused]);
+  const groundStyle = useAnimatedStyle(() => ({ opacity: progress.value * presence.value }));
+  const presenceStyle = useAnimatedStyle(() => ({ opacity: presence.value }));
   const frame = useMemo(() => ({ width, height: windowHeight }), [width, windowHeight]);
   // Shut by a swipe back the way it came, following the finger. Only a
   // clearly sideways drag: up and down belongs to the screen.
@@ -142,8 +167,8 @@ export default function SideLayer({
         <NavigationContext.Provider value={navigation}>
           <NavigationRouteContext.Provider value={route}>
             <SideDrawersContext.Provider value={sideDrawers}>
-              <View
-                style={[StyleSheet.absoluteFill, !tabsFocused && styles.aside]}
+              <Animated.View
+                style={[StyleSheet.absoluteFill, presenceStyle]}
                 pointerEvents={open && tabsFocused ? 'box-none' : 'none'}
               >
                 <GestureDetector gesture={closeSwipe}>
@@ -153,7 +178,7 @@ export default function SideLayer({
                     </LayoutFrameContext.Provider>
                   </Animated.View>
                 </GestureDetector>
-              </View>
+              </Animated.View>
             </SideDrawersContext.Provider>
           </NavigationRouteContext.Provider>
         </NavigationContext.Provider>
@@ -165,10 +190,6 @@ export default function SideLayer({
 const styles = StyleSheet.create({
   dim: {
     backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  // Out of sight while another screen is in front, but still mounted.
-  aside: {
-    opacity: 0,
   },
   panel: {
     position: 'absolute',

@@ -1,3 +1,4 @@
+import { pushFromLayer } from './navigation/layerPush';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Tabs from './navigation/Tabs';
 import PlaceholderScreen from './screens/PlaceholderScreen';
@@ -40,7 +41,11 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      // A screen opened from a layer beside the desks arrives whole, under
+      // the layer, which then dissolves over it - see layerPush.
+      screenOptions={() => (pushFromLayer() ? { headerShown: false, animation: 'none' } : { headerShown: false })}
+    >
       {/* animation: 'none' only on the root screen - the navigator
           mounts after the splash view above hands over, and its
           entry animation played as a blink at startup. Pushes from
