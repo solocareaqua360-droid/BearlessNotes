@@ -2441,7 +2441,7 @@ function DockPortal({ children }: { children: ReactNode }) {
   const active = !!cover?.active;
   const progress = cover?.progress;
   const fade = useAnimatedStyle(
-    () => ({ opacity: active && progress ? 1 - progress.value : 1 }),
+    () => ({ opacity: active && progress ? 1 - Math.max(progress.left.value, progress.right.value) : 1 }),
     [active, progress]
   );
   return (

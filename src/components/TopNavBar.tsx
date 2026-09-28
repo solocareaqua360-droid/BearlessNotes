@@ -146,7 +146,9 @@ export default function TopNavBar({
   const fading = !!fadeWithDrawer && !!cover?.active;
   const coverProgress = cover?.progress;
   const fadeStyle = useAnimatedStyle(
-    () => ({ opacity: fading && coverProgress ? 1 - coverProgress.value : 1 }),
+    () => ({
+      opacity: fading && coverProgress ? 1 - Math.max(coverProgress.left.value, coverProgress.right.value) : 1,
+    }),
     [fading, coverProgress]
   );
   const barTop = insets.top + CHROME_TOP;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import { mutedForTheme, type Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
@@ -54,7 +54,11 @@ import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
-import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { DatabasesLayerContext } from '../navigation/sideDrawers';
+import InlineDock from '../components/InlineDock';
+import type { MenuEntry } from '../components/surfaces/Menu';
+import TopNavBar from '../components/TopNavBar';
 import { NavigationContext } from '@react-navigation/native';
 import { GlassPortalHost } from '../components/GlassPortal';
 import { GlassTargetProvider } from '../components/GlassTarget';
@@ -195,25 +199,31 @@ export default function DatabasesScreen() {
   const styles = useStyles(makeStyles);
   const recordColour = useRecordColour();
   const databasesBlurTarget = useBlurTarget();
-  const databasesFocused = useIsFocused();
+  // In the layer right of the last desk (see CalendarDrawer's
+  // DatabasesLayer): its own bar and dock are drawn inside it, and nothing
+  // is published for the window's, which fade out as it comes in.
+  const databasesLayer = useContext(DatabasesLayerContext);
+  const layerShut = !!databasesLayer && !databasesLayer.open;
+  const databasesFocused = useIsFocused() && !layerShut;
   const databasesInsets = useSafeAreaInsets();
   const dockClear = useDockClearance();
   // "Більше" - a tab's own root: its way back steps to the desk before
   // it and stands at the top-left of the desks bar (TopNavBar); search
   // across everything is on the left bead again, settings on the right.
   const toPreviousDesk = useGoToPreviousDesk('Більше');
-  useTopBack(toPreviousDesk);
+  useTopBack(toPreviousDesk, !databasesLayer);
   const navSpace = useTopNavOn() ? TOP_NAV_SPACE : 0;
+  const searchBead = { icon: 'search-outline', onPress: () => navigation.navigate('Search') };
+  // The right bead makes something, as on every screen: here, a new
+  // database. Settings moved into the dock's middle (below).
+  const newDatabaseBead = { icon: 'grid-outline', badge: 'add-circle-outline', onPress: () => setCreatingDatabase(true) };
   useDockBeads(
-    databasesFocused ? { icon: 'search-outline', onPress: () => navigation.navigate('Search') } : null,
-    // The right bead makes something, as on every screen: here, a new
-    // database. Settings moved into the dock's middle (below).
-    databasesFocused
-      ? { icon: 'grid-outline', badge: 'add-circle-outline', onPress: () => setCreatingDatabase(true) }
-      : null
+    databasesFocused && !databasesLayer ? searchBead : null,
+    databasesFocused && !databasesLayer ? newDatabaseBead : null
   );
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  // The frame's size - the window's, or the layer's inside one.
+  const { width: windowWidth, height: windowHeight } = useFrameDimensions();
   const responsive = useResponsiveLayout();
   // Two panes only LYING DOWN. Standing up, half the inner screen is a
   // phone's width and a database in it is a database squeezed - the user's
@@ -321,17 +331,14 @@ export default function DatabasesScreen() {
   // the documents list and the boards): arranging the board, importing a
   // table, pinning, and the settings. A new database is the dock's "+",
   // so it is not said twice. The dock keeps just search and "+".
-  useTopExtras(
-    [
-      { label: 'Упорядкувати', icon: 'move-outline', checked: editing, onPress: () => setEditing((v) => !v) },
-      { label: 'Імпорт таблиці', icon: 'download-outline', onPress: () => setImporting(true) },
-      { label: 'Закріпити', icon: 'bookmark-outline', onPress: () => setPinSheetVisible(true) },
-      { kind: 'rule' },
-      { label: 'Налаштування', icon: 'settings-outline', onPress: () => navigation.navigate('Settings') },
-    ],
-    null,
-    databasesFocused
-  );
+  const databasesMenu: MenuEntry[] = [
+    { label: 'Упорядкувати', icon: 'move-outline', checked: editing, onPress: () => setEditing((v) => !v) },
+    { label: 'Імпорт таблиці', icon: 'download-outline', onPress: () => setImporting(true) },
+    { label: 'Закріпити', icon: 'bookmark-outline', onPress: () => setPinSheetVisible(true) },
+    { kind: 'rule' },
+    { label: 'Налаштування', icon: 'settings-outline', onPress: () => navigation.navigate('Settings') },
+  ];
+  useTopExtras(databasesMenu, null, databasesFocused && !databasesLayer);
   // With a pointer there is no bar at the top to hang that list from, so
   // the dock's middle keeps these as it had them.
   const pointerLayout = !useTopNavOn();
@@ -1158,7 +1165,8 @@ export default function DatabasesScreen() {
           bleached clouds in white, plain black in black. This screen
           drew its own fixed gradient and stood in the colour theme
           whatever the setting said. */}
-      <ScreenBackdrop id="databasesBg" />
+      {/* Over the desk the blurred desk IS the ground - see SideLayer. */}
+      {!databasesLayer && <ScreenBackdrop id="databasesBg" />}
       {/* The rail, as on every other screen: right edge, same width, same
           glass, hanging from the same line. Through the portal for the
           blur, so it withdraws when this screen isn't the one on show. */}
@@ -1419,6 +1427,19 @@ export default function DatabasesScreen() {
           setStyling(null);
         }}
       />
+
+      {/* In the layer: its own bar and dock, inside it and moving with it. */}
+      {databasesLayer && (
+        <>
+          <TopNavBar
+            inline={{ width: windowWidth }}
+            title={{ icon: 'apps-outline', label: 'Бази' }}
+            backOverride={{ onPress: databasesLayer.close, dimmed: false }}
+            extrasOverride={{ menu: databasesMenu, select: null }}
+          />
+          <InlineDock width={windowWidth} beads={{ left: searchBead, right: newDatabaseBead }} actions={null} />
+        </>
+      )}
     </View>
   );
 }

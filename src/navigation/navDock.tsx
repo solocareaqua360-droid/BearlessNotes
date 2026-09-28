@@ -199,7 +199,7 @@ type Value = {
   // the UI thread, and whether it is there at all right now (the desks
   // are the screen in front) and open. The desks' own bar and the dock
   // fade out as it comes in - it carries a bar and buttons of its own.
-  drawerProgress: SharedValue<number>;
+  drawerProgress: { left: SharedValue<number>; right: SharedValue<number> };
   drawerCover: { active: boolean; open: boolean };
   publishDrawerCover: (cover: { active: boolean; open: boolean }) => void;
   topBack: TopBack | null;
@@ -400,7 +400,12 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       setTimeout(() => setTopNavClaims((n) => n - 1), TOP_NAV_RELEASE_MS);
     };
   }, []);
-  const drawerProgress = useSharedValue(0);
+  const drawerProgressLeft = useSharedValue(0);
+  const drawerProgressRight = useSharedValue(0);
+  const drawerProgress = useMemo(
+    () => ({ left: drawerProgressLeft, right: drawerProgressRight }),
+    [drawerProgressLeft, drawerProgressRight]
+  );
   const [drawerCover, setDrawerCover] = useState({ active: false, open: false });
   const publishDrawerCover = useCallback((next: { active: boolean; open: boolean }) => {
     setDrawerCover((prev) => (prev.active === next.active && prev.open === next.open ? prev : next));
