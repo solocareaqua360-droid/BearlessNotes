@@ -421,7 +421,8 @@ export default function TopNavBar({
       visible={menuOpen && !!extras?.menu}
       onClose={() => setMenuOpen(false)}
       entries={extras?.menu ?? []}
-      style={{ position: 'absolute', right: windowWidth - frame.left - frame.width, top: barTop + TOP_NAV_H + 6 }}
+      style={{ position: 'absolute', right: windowWidth - frame.left - frame.width, top: barTop + TOP_NAV_H + (soft ? 8 : 6) }}
+      soft={soft ? S : null}
     />
     </>
   );

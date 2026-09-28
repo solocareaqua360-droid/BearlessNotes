@@ -6,7 +6,8 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../GlassTarget';
 import { GlassPortal } from '../GlassPortal';
-import { FONT_BOLD, FONT_REGULAR } from '../../utils/fonts';
+import { FONT_BOLD, FONT_REGULAR, SOFT_MEDIUM, SOFT_REGULAR } from '../../utils/fonts';
+import type { SoftTokens } from '../../theme/soft';
 import { GLASS_DANGER, GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../../constants/glass';
 
 // «Меню» - a short list of commands, beside the thing it acts on.
@@ -55,6 +56,7 @@ export default function Menu({
   width = MENU_WIDTH,
   accent,
   children,
+  soft,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -67,6 +69,10 @@ export default function Menu({
   accent?: string;
   // Anything the rows cannot express (a row of colours, a slider).
   children?: ReactNode;
+  // The soft style (theme/soft): a plain surface with a soft shadow
+  // instead of the glass (blur, bright rim), labels in sentence case
+  // instead of spaced capitals - "вікно трьох крапок... не таке".
+  soft?: SoftTokens | null;
 }) {
   const theme = useTheme();
   const lift = useLift();
@@ -84,30 +90,40 @@ export default function Menu({
   return (
     <GlassPortal>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.panel, { width }, { maxHeight: maxHeight ?? windowHeight * 0.6 }, lift, style]}>
-        <BlurView
-          intensity={60}
-          tint="dark"
-          blurMethod="dimezisBlurView"
-          blurTarget={blurTarget ?? undefined}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
+      <View
+        style={[
+          styles.panel,
+          { width },
+          { maxHeight: maxHeight ?? windowHeight * 0.6 },
+          soft ? [styles.softPanel, { backgroundColor: soft.chrome, boxShadow: soft.popShadow }] : lift,
+          style,
+        ]}
+      >
+        {!soft && (
+          <BlurView
+            intensity={60}
+            tint="dark"
+            blurMethod="dimezisBlurView"
+            blurTarget={blurTarget ?? undefined}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        )}
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           {entries.map((entry, index) => {
             if (entry.kind === 'section') {
               return (
-                <Text key={`s${index}`} style={styles.sectionLabel}>
+                <Text key={`s${index}`} style={[styles.sectionLabel, soft && [styles.softSection, { color: soft.ink3 }]]}>
                   {entry.label}
                 </Text>
               );
             }
-            if (entry.kind === 'rule') return <View key={`r${index}`} style={styles.rule} />;
+            if (entry.kind === 'rule') return <View key={`r${index}`} style={[styles.rule, soft && { backgroundColor: soft.line }]} />;
             const danger = entry.tone === 'danger';
             return (
               <Pressable
                 key={`${entry.label}${index}`}
-                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                style={({ pressed }) => [styles.row, pressed && (soft ? { backgroundColor: soft.fill } : styles.rowPressed)]}
                 onPress={() => {
                   // Closed first, always: a menu that stays up while the
                   // screen changes under it is the thing that made these
@@ -117,13 +133,16 @@ export default function Menu({
                 }}
               >
                 {!!entry.icon && (
-                  <Ionicons name={entry.icon} size={17} color={danger ? GLASS_DANGER : theme.ink.primary} />
+                  <Ionicons name={entry.icon} size={soft ? 18 : 17} color={danger ? GLASS_DANGER : soft ? soft.ink2 : theme.ink.primary} />
                 )}
-                <Text style={[styles.rowLabel, danger && styles.rowLabelDanger]} numberOfLines={1}>
+                <Text
+                  style={[styles.rowLabel, soft && [styles.softRowLabel, { color: soft.ink }], danger && styles.rowLabelDanger]}
+                  numberOfLines={1}
+                >
                   {entry.label}
                 </Text>
                 {entry.checked && (
-                  <Ionicons name="checkmark-outline" size={18} color={accent ?? theme.ink.primary} />
+                  <Ionicons name="checkmark" size={18} color={soft ? soft.accent : accent ?? theme.ink.primary} />
                 )}
               </Pressable>
             );
@@ -159,6 +178,24 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: 6,
+  },
+  softPanel: {
+    borderWidth: 0,
+    borderRadius: 24,
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  softSection: {
+    fontFamily: SOFT_MEDIUM,
+    fontSize: 12.5,
+    letterSpacing: 0,
+    textTransform: 'none',
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  softRowLabel: {
+    fontFamily: SOFT_REGULAR,
+    fontSize: 15,
   },
   sectionLabel: {
     fontSize: 11,

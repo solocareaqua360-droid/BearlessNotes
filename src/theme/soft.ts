@@ -28,6 +28,9 @@ export type SoftTokens = {
   // Android's elevation is Material's own grey, hard-edged shadow - one
   // of the things that gave the old look away.
   shadow: string;
+  // A surface that floats OVER the screen (a menu): lifted further than a
+  // card, still soft.
+  popShadow: string;
 };
 
 const LIGHT: SoftTokens = {
@@ -42,6 +45,7 @@ const LIGHT: SoftTokens = {
   line: 'rgba(30,30,28,0.08)',
   accent: '#D9793F',
   shadow: '0px 1px 2px rgba(30,30,28,0.05), 0px 10px 24px -12px rgba(30,30,28,0.18)',
+  popShadow: '0px 1px 2px rgba(30,30,28,0.06), 0px 18px 40px -14px rgba(30,30,28,0.32)',
 };
 
 const DARK: SoftTokens = {
@@ -56,6 +60,7 @@ const DARK: SoftTokens = {
   line: 'rgba(255,255,255,0.08)',
   accent: '#E89A62',
   shadow: '0px 0px 0px 1px rgba(255,255,255,0.05)',
+  popShadow: '0px 0px 0px 1px rgba(255,255,255,0.08)',
 };
 
 export function softTokens(scheme: 'light' | 'dark'): SoftTokens {

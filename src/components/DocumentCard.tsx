@@ -10,8 +10,9 @@ import type { Block, Tag } from '../types';
 import AttachmentImage from './AttachmentImage';
 import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/documentPreview';
 import { FONT_REGULAR, FONT_BOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
-import type { SoftTokens } from '../theme/soft';
+import { softTokens, type SoftTokens } from '../theme/soft';
 import ProjectBadge from './ProjectBadge';
+import { SoftCheck } from './SoftIcon';
 import DocumentPageMiniature from './DocumentPageMiniature';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -487,7 +488,9 @@ function PageBody({
       <View style={styles.pageChrome} pointerEvents="box-none">
         <PageChromeFade id={id} color={paper} />
         <Text style={[styles.dateCompact, { color: ink }, soft && styles.softText]}>{formatUpdatedAt(updatedAt)}</Text>
-        {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
+        {/* On the page's own paper, which is light in every theme - so
+            the light soft tint, whichever theme is on. */}
+        {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft ? softTokens('light') : null} />}
       </View>
     </View>
   );
@@ -643,7 +646,12 @@ export default function DocumentCard({
     />
   );
 
-  const selectIcon = isSelectMode && (
+  const softCheck = soft
+    ? (size: number) => (
+        <SoftCheck checked={!!isSelected} size={size} accent={soft.accent} outline={soft.ink3} tickColor={soft.dark ? '#000000' : '#FFFFFF'} />
+      )
+    : null;
+  const selectIcon = isSelectMode && softCheck ? softCheck(22) : isSelectMode && (
     <Ionicons
       name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
       size={22}
@@ -704,13 +712,18 @@ export default function DocumentCard({
             {previewBody}
             <View style={[styles.dateCompactPinned, styles.dateRow]}>
               <Text style={[styles.dateCompact, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
-              {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
+              {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft} />}
             </View>
           </View>
             </>
           )}
         </Pressable>
         {isSelectMode && (
+          softCheck ? (
+            <View style={styles.softSelectBox} pointerEvents="none">
+              {softCheck(22)}
+            </View>
+          ) : (
           <View style={styles.gridSelectBox} pointerEvents="none">
             <Ionicons
               name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
@@ -718,6 +731,7 @@ export default function DocumentCard({
               color={isSelected ? text : '#fff'}
             />
           </View>
+          )
         )}
       </View>
     );
@@ -776,7 +790,7 @@ export default function DocumentCard({
                 thumbnail above it, is the whole card's bottom edge). */}
             <View style={[styles.dateCompactPinned, styles.dateRow]}>
               <Text style={[styles.dateCompact, { color: textMuted }]}>{formatUpdatedAt(updatedAt)}</Text>
-              {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
+              {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft} />}
             </View>
           </View>
             </>
@@ -788,6 +802,11 @@ export default function DocumentCard({
           // sibling View sits in front for hit-testing even with no onPress
           // of its own, which made tapping right on the icon miss almost
           // every time).
+          softCheck ? (
+            <View style={styles.softSelectBox} pointerEvents="none">
+              {softCheck(22)}
+            </View>
+          ) : (
           <View style={styles.gridSelectBox} pointerEvents="none">
             <Ionicons
               name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
@@ -795,6 +814,7 @@ export default function DocumentCard({
               color={isSelected ? text : '#fff'}
             />
           </View>
+          )
         )}
       </View>
     );
@@ -852,7 +872,7 @@ export default function DocumentCard({
           {previewBody}
           <View style={styles.dateRow}>
             <Text style={[styles.date, { color: textMuted }, soft && styles.softText]}>{formatUpdatedAt(updatedAt)}</Text>
-            {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass />}
+            {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft} />}
           </View>
         </View>
         {isSelectMode && <View style={styles.selectBox}>{selectIcon}</View>}
@@ -883,6 +903,16 @@ const styles = StyleSheet.create({
   },
   softText: {
     fontFamily: SOFT_REGULAR,
+  },
+  // Over a tile's page picture, which is light paper in every theme: a
+  // small paper-coloured seat so an empty outline still reads.
+  softSelectBox: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    padding: 3,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.85)',
   },
   // A card whose document is in hand right now.
   dimmed: {

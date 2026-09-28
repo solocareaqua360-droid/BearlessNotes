@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GLASS_EDGE, GLASS_ISLAND, GLASS_TEXT } from '../constants/glass';
-import { FONT_MEDIUM } from '../utils/fonts';
+import { FONT_MEDIUM, SOFT_MEDIUM } from '../utils/fonts';
+import type { SoftTokens } from '../theme/soft';
 
 type Props = {
   // null/undefined both read as "no project" - a gray chip, same as a
@@ -16,6 +17,10 @@ type Props = {
   // project's-own-color chip would clash on a colourful card fill
   // (Links), so those opt into the frosted-glass look instead.
   glass?: boolean;
+  // The soft style (theme/soft): a quiet tint with no outline - the
+  // outlined glass chip read as "не такий" beside the soft cards - and
+  // a small dot of the project's own colour instead of coloured text.
+  soft?: SoftTokens | null;
 };
 
 const UNSET_COLOR = '#9CA3AF';
@@ -24,12 +29,21 @@ const UNSET_COLOR = '#9CA3AF';
 // hidden the way a tag chip is, since "which project" should read at a
 // glance even on a mixed "Всі" list. Same small-pill family as
 // TagChips, sat at the card's own date row, in its right corner.
-export default function ProjectBadge({ project, onPress, glass }: Props) {
-  const chipStyle = [
-    styles.chip,
-    glass ? styles.chipGlass : { backgroundColor: project ? `${project.color}1A` : 'rgba(156,163,175,0.14)' },
-  ];
-  const label = (
+export default function ProjectBadge({ project, onPress, glass, soft }: Props) {
+  const chipStyle = soft
+    ? [styles.chip, styles.softChip, { backgroundColor: soft.fill }]
+    : [
+        styles.chip,
+        glass ? styles.chipGlass : { backgroundColor: project ? `${project.color}1A` : 'rgba(156,163,175,0.14)' },
+      ];
+  const label = soft ? (
+    <>
+      {project && <View style={[styles.softDot, { backgroundColor: project.color }]} />}
+      <Text style={[styles.softLabel, { color: project ? soft.ink2 : soft.ink3 }]} numberOfLines={1}>
+        {project?.name ?? 'Без проекту'}
+      </Text>
+    </>
+  ) : (
     <Text
       style={[styles.chipLabel, glass ? styles.chipLabelGlass : { color: project ? project.color : UNSET_COLOR }]}
       numberOfLines={1}
@@ -73,5 +87,23 @@ const styles = StyleSheet.create({
   },
   chipLabelGlass: {
     color: GLASS_TEXT,
+  },
+  softChip: {
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  softDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  softLabel: {
+    fontSize: 11.5,
+    fontFamily: SOFT_MEDIUM,
+    flexShrink: 1,
   },
 });

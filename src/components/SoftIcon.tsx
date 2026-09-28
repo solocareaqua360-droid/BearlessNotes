@@ -1,3 +1,4 @@
+import { View } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 // The soft style's own icons (see theme/soft). Not Ionicons, and not
@@ -84,5 +85,46 @@ export default function SoftIcon({
       )}
       {name === 'close' && <Path d="M6.5 6.5l11 11M17.5 6.5l-11 11" {...line} />}
     </Svg>
+  );
+}
+
+// The mark a card wears while choosing - the SAME shape as the bar's own
+// "select" icon above (a rounded square with a tick), not the ring the
+// cards used to wear: "іконки виділення не відповідають іконці в
+// стрічці". Chosen, it fills with the accent ("обране" is one of the
+// accent's three jobs); not chosen, an outline in the quiet ink.
+export function SoftCheck({
+  checked,
+  size = 22,
+  accent,
+  outline,
+  tickColor,
+}: {
+  checked: boolean;
+  size?: number;
+  accent: string;
+  outline: string;
+  tickColor: string;
+}) {
+  const radius = Math.round(size * 0.32);
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        borderWidth: checked ? 0 : 1.8,
+        borderColor: outline,
+        backgroundColor: checked ? accent : 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {checked && (
+        <Svg width={size * 0.72} height={size * 0.72} viewBox="0 0 24 24">
+          <Path d="M6.5 12.6l3.6 3.5L17.6 8.4" stroke={tickColor} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </Svg>
+      )}
+    </View>
   );
 }
