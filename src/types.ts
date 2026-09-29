@@ -544,6 +544,16 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // wherever it was last dropped, and are recomputed whenever the column's
   // contents change. Cleared by dragging the card out of every column.
   columnId?: string;
+  // A COPY of another card on this board (a car planned for Monday AND
+  // Thursday): the card it was copied from. The board draws a line from
+  // the original to every copy, in its own colour, that cannot be taken
+  // away - "при копіюванні з оригіналом повинна бути лінія зв'язку ...
+  // ця лінія не видаляється". It goes when either card does.
+  copyOf?: string;
+  // The record this card shows, when that is not its own id. A 'dbRow'
+  // card normally IS its row (id = row id, see blockFromCustomRow); a copy
+  // needs an id of its own, so it points at the row here instead.
+  recordId?: string;
   // 'document' cards only - toggled by tapping the card; persisted like
   // any other card field so a board reopens with the same cards expanded.
   // Pan-to-drag is disabled while expanded (see BoardScreen) rather than
@@ -618,6 +628,9 @@ export interface BoardColumn {
   // як заготовка з семи днів тижня ... в їх налаштування можна вибрати
   // дату початку". `id` names the week the seven share.
   week?: { id: string; index: number; start: string };
+  // A SOURCE column: records brought in from a database to plan with. A
+  // card dragged out of it is copied, not moved - the source stays whole.
+  source?: boolean;
   // See BoardCard's own layerId/hidden comments - the same two fields,
   // same meaning, on a column instead of a card. A column carried NEITHER
   // until now - «Шари» listed cards/shapes/containers only, so a column

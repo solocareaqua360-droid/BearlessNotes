@@ -1,4 +1,6 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { rowTitleOf } from '../utils/customRowDisplay';
+import type { CustomDatabase, CustomDatabaseRow } from '../types';
 import { MONTH_SHORT, WEEKDAY_SHORT, addDays, dateKey, mondayIndex, parseDateKey } from '../utils/dateLocale';
 import { mutedForTheme, type Theme } from '../theme/tokens';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -282,6 +284,10 @@ const ACCENT_GLASS = 'rgba(139,92,246,0.55)';
 // second of those and not the first.
 const COLUMN_SNAP_MARGIN = 90;
 const CONNECTION_COLOR = '#8B5CF6';
+// The line from a copy back to its original (BoardCard.copyOf): its own
+// colour, dashed, so it never reads as an ordinary connection - and it has
+// no tap, so it cannot be taken away.
+const ORIGIN_COLOR = '#D9793F';
 // Padding around a connection's own bounding box, so the curve's bulge and
 // the stroke width itself aren't clipped by the little Svg canvas each
 // connection is drawn into.
@@ -1762,7 +1768,7 @@ function DraggableCard({
           <View style={styles.dbRowCard} pointerEvents="none">
             <CustomRowBlockCard
               databaseId={card.dbRowDatabaseId}
-              rowId={card.id}
+              rowId={card.recordId ?? card.id}
               fallbackTitle={card.dbRowTitle}
               tags={[]}
               onOpen={() => {}}
@@ -4016,7 +4022,32 @@ export default function BoardScreen() {
     // never touches this state until now (see the position registry's
     // own comment).
     const before = cards.find((c) => c.id === id);
+    // Out of a SOURCE column (records brought in to plan with), a drag
+    // COPIES: the original goes back where it was, and a copy - with its
+    // line back to the original - lands where the finger let go.
+    const fromSource = !!before?.columnId && columns.some((c) => c.id === before.columnId && c.source);
+    let copied = false;
     setCards((prev) => {
+      if (fromSource && before) {
+        const probe = { ...before, x, y };
+        const others = prev.filter((c) => c.id !== id);
+        const target = columnAtPoint(columns, others, cardHeights, x + widthInColumn(probe) / 2, y + heightOf(probe, cardHeights) / 2, undefined);
+        if (!target || target.id !== before.columnId) {
+          copied = true;
+          const copy: BoardCard = {
+            ...releaseFromColumn(before),
+            id: generateId(),
+            x,
+            y,
+            copyOf: before.id,
+            recordId: before.recordId ?? before.id,
+            ...(target ? { columnId: target.id } : {}),
+          };
+          delete copy.order;
+          if (target) hapticDrop();
+          return reflowColumns([...prev, copy], columns, cardHeights);
+        }
+      }
       const dropped = prev.map((c) => (c.id === id ? { ...c, x, y } : c));
       const card = dropped.find((c) => c.id === id);
       if (!card) return dropped;
@@ -4045,7 +4076,24 @@ export default function BoardScreen() {
       return reflowColumns(assigned, columns, cardHeights);
     });
     setDraggedCardId(null);
-    if (before) commitConnectionPull(x - before.x, y - before.y);
+    if (before && !copied) commitConnectionPull(x - before.x, y - before.y);
+  }
+
+  // «Дублювати»: a copy of this card beside it, tied to it by the line
+  // every copy keeps (see BoardCard.copyOf) - to put one car into Monday
+  // AND Thursday.
+  function duplicateCard(card: BoardCard) {
+    const copy: BoardCard = {
+      ...releaseFromColumn(card),
+      id: generateId(),
+      x: card.x + 28,
+      y: card.y + 28,
+      copyOf: card.id,
+      recordId: card.recordId ?? card.id,
+    };
+    delete copy.order;
+    setCards((prev) => reflowColumns([...prev, copy], columns, cardHeights));
+    hapticDrop();
   }
 
   // Dragging any one selected card moves the whole selection - see
@@ -4096,6 +4144,99 @@ export default function BoardScreen() {
       return [...prev, ...days];
     });
     setAddSheetVisible(false);
+  }
+
+  // A DATABASE AS SOURCE: its records brought in to plan with - a car, a
+  // road list - one column per value of the field chosen to group them by
+  // ("канбан стовпчики згруповані за категорією машин ... один довгий
+  // стовпчик - це таке собі"). The columns are sources: a card dragged out
+  // of one is copied (see commitCardDrag).
+  async function importDatabaseAsSource() {
+    setAddSheetVisible(false);
+    try {
+      const databasesSnap = await getDocs(ownedQuery('customDatabases'));
+      const databases = databasesSnap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabase, 'id'>) }))
+        .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')));
+      if (databases.length === 0) {
+        notify('Ще немає баз', 'Створіть власну базу у «Базах» - і її записи можна буде принести сюди.');
+        return;
+      }
+      const databaseId = await ask({
+        title: 'Яку базу принести?',
+        actions: databases.map((d) => ({ id: d.id, label: d.name || 'Без назви', icon: 'grid-outline' as const })),
+      });
+      const database = databases.find((d) => d.id === databaseId);
+      if (!database) return;
+      const groupable = (database.fields ?? []).filter(
+        (f, index) => index > 0 && (f.type === 'select' || f.type === 'multiSelect' || f.type === 'text' || f.type === 'number')
+      );
+      const groupChoice = await ask({
+        title: 'Розкласти по стовпчиках за…',
+        message: 'Кожне значення поля стане своїм стовпчиком.',
+        actions: [
+          ...groupable.map((f) => ({ id: f.id, label: f.name, icon: 'albums-outline' as const })),
+          { id: '__none__', label: 'Не розкладати - один стовпчик', icon: 'reorder-four-outline' as const },
+        ],
+      });
+      if (!groupChoice || groupChoice === 'cancel') return;
+      const groupField = groupable.find((f) => f.id === groupChoice) ?? null;
+      const rowsSnap = await getDocs(ownedQuery('customDatabaseRows'));
+      const rows = rowsSnap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) }))
+        .filter((r) => r.databaseId === database.id);
+      if (rows.length === 0) {
+        notify('База порожня', `У «${database.name}» ще немає записів.`);
+        return;
+      }
+      const EMPTY = 'Без значення';
+      const labelOf = (row: CustomDatabaseRow): string => {
+        if (!groupField) return database.name || 'Записи';
+        const value = row.values?.[groupField.id];
+        if (value === undefined || value === null || value === '') return EMPTY;
+        const optionName = (id: string) => groupField.options?.find((o) => o.id === id)?.label;
+        if (groupField.type === 'select') return optionName(String(value)) ?? EMPTY;
+        if (groupField.type === 'multiSelect') return Array.isArray(value) && value.length ? optionName(value[0]) ?? EMPTY : EMPTY;
+        return String(value).trim() || EMPTY;
+      };
+      const groups = new Map<string, CustomDatabaseRow[]>();
+      rows
+        .map((row) => ({ row, title: rowTitleOf(database, row) }))
+        .sort((a, b) => a.title.localeCompare(b.title))
+        .forEach(({ row }) => {
+          const label = labelOf(row);
+          groups.set(label, [...(groups.get(label) ?? []), row]);
+        });
+      const labels = [...groups.keys()].sort((a, b) => (a === EMPTY ? 1 : b === EMPTY ? -1 : a.localeCompare(b)));
+      const centre = viewCenter();
+      const newColumns: BoardColumn[] = [];
+      const newCards: BoardCard[] = [];
+      let x = columns.length === 0 ? centre.x - COLUMN_WIDTH / 2 : Math.max(...columns.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
+      const y = columns.length === 0 ? centre.y - COLUMN_MIN_HEIGHT / 2 : columns[0].y;
+      labels.forEach((label) => {
+        const columnId = generateId();
+        newColumns.push({ id: columnId, title: label, x, y, source: true });
+        (groups.get(label) ?? []).forEach((row, index) => {
+          newCards.push({
+            id: generateId(),
+            text: '',
+            type: 'dbRow',
+            dbRowDatabaseId: database.id,
+            dbRowTitle: rowTitleOf(database, row),
+            recordId: row.id,
+            columnId,
+            order: index,
+            x: x + COLUMN_PADDING,
+            y: y + COLUMN_HEADER_HEIGHT + index * (APPROX_CARD_HEIGHT + COLUMN_CARD_GAP),
+          } as BoardCard);
+        });
+        x += COLUMN_WIDTH + COLUMN_SPACING;
+      });
+      setColumns((prev) => [...prev, ...newColumns]);
+      setCards((prev) => [...prev, ...newCards]);
+    } catch (e) {
+      notify('Не вдалося принести базу', (e as Error).message);
+    }
   }
 
   // The week's own menu - what a tap on any of its seven headers opens.
@@ -5421,6 +5562,18 @@ export default function BoardScreen() {
                     label: 'Копіювати',
                     onPress: () => copyCardText(onlySelectedCard),
                   },
+                  // A record card (a car, a road list) can be planned on
+                  // several days: a copy of it, linked to it.
+                  ...(onlySelectedCard.type === 'dbRow'
+                    ? [
+                        {
+                          key: 'duplicate',
+                          icon: 'duplicate-outline',
+                          label: 'Дублювати',
+                          onPress: () => duplicateCard(onlySelectedCard),
+                        },
+                      ]
+                    : []),
                 ]
               : []),
             ...(onlySelectedDocumentCard
@@ -5743,6 +5896,43 @@ export default function BoardScreen() {
                   dimmed={isolatedIds !== null && !isolatedIds.has(shape.id)}
                 />
               ))}
+
+              {cards.map((copy) => {
+                if (!copy.copyOf) return null;
+                const from = nodeById.get(copy.copyOf);
+                const to = nodeById.get(copy.id);
+                if (!from || !to) return null;
+                if (isObjectHiddenById(from.id) || isObjectHiddenById(to.id)) return null;
+                // Redrawn once the move is over, like the resting curves.
+                if (allMovingIds && (allMovingIds.has(from.id) || allMovingIds.has(to.id))) return null;
+                const { x1, y1, x2, y2, vertical } = connectionEndpoints(
+                  from.x,
+                  from.y,
+                  from.width,
+                  from.height,
+                  to.x,
+                  to.y,
+                  to.width,
+                  to.height
+                );
+                const left = Math.min(x1, x2) - CONNECTION_PADDING;
+                const top = Math.min(y1, y2) - CONNECTION_PADDING;
+                const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
+                const height = Math.abs(y2 - y1) + CONNECTION_PADDING * 2;
+                return (
+                  <View key={`origin-${copy.id}`} style={[styles.connection, { left, top, width, height }]} pointerEvents="none">
+                    <Svg width={width} height={height}>
+                      <Path
+                        d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top, vertical)}
+                        stroke={ORIGIN_COLOR}
+                        strokeWidth={2}
+                        strokeDasharray="6 5"
+                        fill="none"
+                      />
+                    </Svg>
+                  </View>
+                );
+              })}
 
               {connections.map((connection) => {
                 const from = nodeById.get(connection.fromCardId);
@@ -6372,6 +6562,10 @@ export default function BoardScreen() {
               <Pressable style={styles.sheetRow} onPress={addColumn}>
                 <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Стовпчик</Text>
+              </Pressable>
+              <Pressable style={styles.sheetRow} onPress={importDatabaseAsSource}>
+                <MaterialCommunityIcons name="database-arrow-right-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>База як джерело</Text>
               </Pressable>
               <Pressable style={styles.sheetRow} onPress={addWeek}>
                 <MaterialCommunityIcons name="calendar-week" size={18} color="#111827" />
