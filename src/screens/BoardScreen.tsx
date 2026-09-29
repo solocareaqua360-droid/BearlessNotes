@@ -110,7 +110,8 @@ import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
 import Menu, { MENU_WIDTH } from '../components/surfaces/Menu';
-import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import {
   GLASS_BODY_BLURRED,
   GLASS_CARD,
@@ -128,7 +129,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useDockActions, useDockBeads, useDockLeave, useDockWide, useTopBack, useTopExtras } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockWide, useTopBack, useTopExtras } from '../navigation/navDock';
 import TopNavBar, { useTopNavOn } from '../components/TopNavBar';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { listenError } from '../utils/listenError';
@@ -682,7 +683,7 @@ function ConnectDraftLine({
   visible: SharedValue<boolean>;
 }) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useBoardStyles();
   const animatedStyle = useAnimatedStyle(() => {
     const dx = endX.value - startX.value;
     const dy = endY.value - startY.value;
@@ -730,7 +731,7 @@ type LiveEndpoint = {
 // card is dropped.
 function LiveConnectionLine({ from, to }: { from: LiveEndpoint; to: LiveEndpoint }) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useBoardStyles();
   const animatedStyle = useAnimatedStyle(() => {
     const fromX =
       from.posX.value +
@@ -796,7 +797,7 @@ function AlignmentGuides({
   guideHY: SharedValue<number>;
   guideHVisible: SharedValue<boolean>;
 }) {
-  const styles = useStyles(makeStyles);
+  const styles = useBoardStyles();
   const vStyle = useAnimatedStyle(() => ({
     opacity: guideVVisible.value ? 1 : 0,
     transform: [{ translateX: guideVX.value }],
@@ -867,7 +868,7 @@ function DraggableColumn({
   onOpenTask?: (task: BoardTask) => void;
 }) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useBoardStyles();
   const posX = useSharedValue(column.x);
   const posY = useSharedValue(column.y);
   const reportedX = useSharedValue(column.x);
@@ -1034,7 +1035,7 @@ function DraggableContainer({
   onResize: (id: string, width: number, height: number) => void;
   onStepFontSize: (container: BoardContainer, dir: 1 | -1) => void;
 }) {
-  const styles = useStyles(makeStyles);
+  const styles = useBoardStyles();
   const reportedX = useSharedValue(container.x);
   const reportedY = useSharedValue(container.y);
 
@@ -1320,7 +1321,7 @@ function DraggableCard({
   canvasHoldGesture,
 }: DraggableCardProps) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useBoardStyles();
   // The last position this card itself put into the parent's state. Used
   // only to tell "our own drag echoing back" (ignore) apart from a real
   // external move (adopt).
@@ -1843,7 +1844,7 @@ function DraggableShape({
   onResize: (id: string, width: number, height: number) => void;
 }) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useBoardStyles();
   const reportedX = useSharedValue(shape.x);
   const reportedY = useSharedValue(shape.y);
   useEffect(() => {
@@ -2000,7 +2001,7 @@ type Props = NativeStackScreenProps<BoardsStackParamList, 'Board'>;
 // unmodified, exactly like inserting one into a document does.
 export default function BoardScreen() {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useBoardStyles();
   const keyboardHeight = useKeyboardHeight();
   const boardFocused = useIsFocused();
   const boardInsets = useSafeAreaInsets();
@@ -5221,6 +5222,10 @@ export default function BoardScreen() {
   const leaveOrClosePane = () => (isTwoPane && paneDocId !== null ? closePane() : navigation.goBack());
   useDockLeave('easel-outline', leaveOrClosePane, !bar);
   useTopBack(leaveOrClosePane, bar);
+  // THE BOARD IN THE SOFT STYLE (theme/soft) - the user's pick after the
+  // databases ("дошки"). On a phone the bar and the dock follow; every
+  // piece of the canvas takes its styles through useBoardStyles.
+  useChromeStyle('soft', !!useSoftDatabase());
   useTopExtras(
     [
       { label: 'Ізоляція', icon: 'scan-outline', checked: isolateArmed || isolatedIds !== null, onPress: toggleIsolation },
@@ -6670,6 +6675,40 @@ export default function BoardScreen() {
       )}
     </View>
   );
+}
+
+// THE SOFT BOARD: the soft ground under the canvas, cards lifted by the
+// soft shadow instead of an outline and a Material shadow, lanes as soft
+// tints, the chosen and the catching in the accent, Inter. The glass
+// pieces that float over the canvas (the selection capsule, the layers
+// panel) keep their glass for now - their icons are drawn white.
+const softBoard = (S: SoftTokens) => {
+  const wash = S.dark ? 'rgba(232,154,98,0.12)' : 'rgba(217,121,63,0.10)';
+  return StyleSheet.create({
+    container: { backgroundColor: S.bg },
+    refCard: { backgroundColor: S.card, borderWidth: 0, borderRadius: 16, elevation: 0, shadowOpacity: 0, boxShadow: S.shadow },
+    stickyCard: { borderRadius: 12, elevation: 0, shadowOpacity: 0, boxShadow: S.shadow },
+    stickyText: { fontFamily: SOFT_REGULAR },
+    refThumbBare: { borderRadius: 14, elevation: 0, shadowOpacity: 0, boxShadow: S.shadow },
+    refThumbPlaceholder: { backgroundColor: S.fill },
+    refLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink },
+    documentPreviewText: { fontFamily: SOFT_REGULAR, color: S.ink2 },
+    cardSelected: { borderRadius: 16, borderColor: S.accent },
+    shapeSelected: { borderColor: S.accent },
+    column: { backgroundColor: S.fill, borderWidth: 0, borderRadius: 20 },
+    columnCatching: { borderWidth: 2, borderColor: S.accent, backgroundColor: wash },
+    columnTitle: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink2 },
+    columnCount: { fontFamily: SOFT_MEDIUM, color: S.ink3 },
+    liveTaskText: { fontFamily: SOFT_REGULAR, color: S.ink },
+    liveTaskEmpty: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+    frame: { borderRadius: 20, borderColor: S.ink3 },
+    frameLabelText: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink2 },
+    marquee: { borderColor: S.accent, backgroundColor: wash, borderRadius: 10 },
+  }) as Record<string, object>;
+};
+
+function useBoardStyles() {
+  return softenStyles(useStyles(makeStyles), useSoftDatabase(), softBoard);
 }
 
 const makeStyles = (theme: Theme) =>
