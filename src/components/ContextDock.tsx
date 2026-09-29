@@ -2017,7 +2017,11 @@ export default function ContextDock() {
   // ...and, in the soft style, EVERY screen with beads and a strip of what
   // it does (a personal database: search, «Зберегти / Подача / Параметри»,
   // "+") - the soft row below, rather than the glass card further down.
-  if (compactMiddle && !!actions?.length && (dockWide || chromeStyle === 'soft') && (!!beads.left || !!beads.right)) {
+  // (A soft screen with no bar at the top - the chat - is not "compact
+  // middle", and would fall through to the glass dock below; it gets the
+  // soft row too.)
+  const softRow = chromeStyle === 'soft' && !ringOwn && !desksCard;
+  if ((compactMiddle || softRow) && !!actions?.length && (dockWide || softRow) && (!!beads.left || !!beads.right)) {
     const frame = topBarFrame(windowW);
     const gap = 6;
     const minButton = 52;

@@ -39,7 +39,7 @@ import {
 } from '../utils/copyToNote';
 import { formatShortDate } from '../utils/dateLocale';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
-import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
+import { SoftSurfaceContext, softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -448,6 +448,7 @@ export default function ChatScreen() {
   }
 
   return (
+    <SoftSurfaceContext.Provider value={softChat}>
     <View style={styles.container}>
       {softChat ? (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: softChat.bg }]} pointerEvents="none" />
@@ -641,6 +642,7 @@ export default function ChatScreen() {
       {/* Above the dock, where the button that opens it lives - the same
           spot every other database's own menus stand in. */}
       <Menu
+        soft={softChat}
         visible={filterMenuOpen}
         onClose={() => setFilterMenuOpen(false)}
         style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
@@ -696,6 +698,7 @@ export default function ChatScreen() {
         onSave={gatherIntoNewNote}
       />
     </View>
+    </SoftSurfaceContext.Provider>
   );
 }
 
