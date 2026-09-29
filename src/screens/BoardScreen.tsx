@@ -4025,7 +4025,11 @@ export default function BoardScreen() {
     // Out of a SOURCE column (records brought in to plan with), a drag
     // COPIES: the original goes back where it was, and a copy - with its
     // line back to the original - lands where the finger let go.
-    const fromSource = !!before?.columnId && columns.some((c) => c.id === before.columnId && c.source);
+    // SWITCHED OFF (2026-09-29): every move of an original made a new copy
+    // ("кожне переміщення картки оригіналу ... створює нову копію"). Source
+    // columns behave as plain ones until the database WINDOW replaces them
+    // (the user's next step); «Дублювати» is how a copy is made for now.
+    const fromSource = false && !!before?.columnId && columns.some((c) => c.id === before.columnId && c.source);
     let copied = false;
     setCards((prev) => {
       if (fromSource && before) {
