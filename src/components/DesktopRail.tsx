@@ -4,11 +4,14 @@ import { Ionicons } from './icons/Ionicons';
 import { useRailPanel, useRailTree } from '../navigation/navRail';
 import { useNavDockLeave } from '../navigation/navDock';
 import { navigationRef } from '../navigationRef';
+import { useWorkspace } from '../navigation/workspace';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 
-export const RAIL_WIDTH = 240;
+import { DESKTOP_RAIL_WIDTH } from '../constants/desktop';
+
+export const RAIL_WIDTH = DESKTOP_RAIL_WIDTH;
 
 const SECTIONS: { name: 'Документи' | 'Календар' | 'Дошки' | 'Більше'; icon: string }[] = [
   { name: 'Документи', icon: 'document-text-outline' },
@@ -65,6 +68,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   // and had no way back at all. It belongs at the top of the rail, which
   // is where a Mac keeps "back" anyway.
   const leave = useNavDockLeave();
+  const workspace = useWorkspace();
   const [open, setOpen] = useState<Set<string>>(new Set());
 
   // Which of the four is showing. Read through the global ref, not
@@ -166,6 +170,42 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
         })}
       </View>
 
+      {/* The side panels: what opens to the right of the main pane. Each
+          is a switch - open it, or put it away again. */}
+      {!!workspace && (
+        <View style={styles.panels}>
+          <Text style={styles.panelsLabel}>Панелі</Text>
+          {(
+            [
+              { spec: { kind: 'databases' as const }, icon: 'apps-outline', label: 'Бази' },
+              { spec: { kind: 'chat' as const }, icon: 'chatbubbles-outline', label: 'Чат' },
+            ]
+          ).map((item) => {
+            const on = workspace.has(item.spec) && !workspace.hidden;
+            return (
+              <Pressable
+                key={item.label}
+                style={[styles.section, on && styles.sectionActive]}
+                onPress={() => workspace.toggle(item.spec)}
+              >
+                <Ionicons name={item.icon as never} size={17} color={on ? theme.accent : theme.ink.muted} />
+                <Text style={[styles.sectionLabel, on && styles.sectionLabelActive]}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
+          {workspace.panels.length > 0 && (
+            <Pressable style={styles.section} onPress={workspace.toggleHidden}>
+              <Ionicons
+                name={(workspace.hidden ? 'chevron-back' : 'chevron-forward') as never}
+                size={17}
+                color={theme.ink.muted}
+              />
+              <Text style={styles.sectionLabel}>{workspace.hidden ? 'Показати колонку' : 'Сховати колонку'}</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+
       {!!tree && (
         <>
           <View style={styles.rule} />
@@ -259,6 +299,18 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   sections: {
     paddingHorizontal: 8,
     gap: 2,
+  },
+  panels: {
+    paddingHorizontal: 8,
+    gap: 2,
+    marginTop: 10,
+  },
+  panelsLabel: {
+    fontSize: 11,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.faint,
+    paddingHorizontal: 10,
+    paddingBottom: 2,
   },
   section: {
     flexDirection: 'row',

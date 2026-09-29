@@ -2287,7 +2287,7 @@ function BoardTile({
         {/* Name, icon and count - nothing else: "залиш лише назву, іконку
             і кількість". The icon stands at the tile's own centre whatever
             its size, the name along the foot. */}
-        <View style={[styles.tileIconWrap, size.h === 1 && !tiny && { paddingBottom: 16 }]} pointerEvents="none">
+        <View style={[styles.tileIconWrap, size.h === 1 && !tiny && { paddingBottom: 26 }]} pointerEvents="none">
           <Ionicons name={icon} size={tiny ? 24 : 26} color={isAction ? (softTile ? softTile.ink3 : 'rgba(255,255,255,0.6)') : softIconInk ?? ink} />
         </View>
         {/* The name on every tile now, the one-cell ones and the ones in

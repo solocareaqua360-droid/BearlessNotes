@@ -31,6 +31,8 @@ import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
 import ContextDock from './src/components/ContextDock';
 import DesktopRail from './src/components/DesktopRail';
+import RightColumn from './src/components/desktop/RightColumn';
+import { WorkspaceProvider } from './src/navigation/workspace';
 import DesktopToolbar from './src/components/DesktopToolbar';
 import DesktopTabs from './src/components/DesktopTabs';
 import { useDensity } from './src/hooks/useDensity';
@@ -540,6 +542,7 @@ export default function App() {
                   cursor never goes. Where there is a finger, nothing
                   about this changes - see hooks/useDensity. */}
               {pointer ? (
+                <WorkspaceProvider>
                 <View style={styles.deskRow}>
                   <DesktopRail footer={accountStrip} />
                   <View style={styles.deskBody}>
@@ -555,7 +558,9 @@ export default function App() {
                       <RootNavigator />
                     </View>
                   </View>
+                  <RightColumn />
                 </View>
+                </WorkspaceProvider>
               ) : (
                 <RootNavigator />
               )}

@@ -40,7 +40,8 @@ function ActionIcon({ icon, size, color }: { icon: string; size: number; color: 
 // landed on top of these buttons until it was.
 export const DESKTOP_TOOLBAR_HEIGHT = 46;
 
-export default function DesktopToolbar() {
+// `compact`: the toolbar of a side panel - icons only, whatever their number.
+export default function DesktopToolbar({ compact = false }: { compact?: boolean }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const context = useNavDockContext();
@@ -69,7 +70,7 @@ export default function DesktopToolbar() {
   // the row, so they ran back over the path on the left and the two
   // were drawn on top of each other. Past five it is icons, which is
   // what the dock itself does when it runs out of room.
-  const withLabels = shown.length <= 5;
+  const withLabels = !compact && shown.length <= 5;
 
   const crumbs = context?.kind === 'path' ? context.crumbs : [];
   const onGo = context?.kind === 'path' ? context.onGo : undefined;

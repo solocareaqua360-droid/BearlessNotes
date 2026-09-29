@@ -8,6 +8,8 @@ import { GlassPortal } from './GlassPortal';
 import { Ionicons } from './icons/Ionicons';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { useSoft } from '../theme/soft';
+import { useDensity } from '../hooks/useDensity';
+import { DESKTOP_RAIL_WIDTH } from '../constants/desktop';
 import { DOCK_PIECE_RADIUS, dockCardHeight, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
 import { FONT_REGULAR } from '../utils/fonts';
 
@@ -58,8 +60,12 @@ export default function SearchCorner({
   const insets = useSafeAreaInsets();
   const bead = dockCardHeight(windowWidth);
   const height = searchCornerHeight(windowWidth);
-  const full = dockRowWidth(windowWidth);
-  const left = dockRowLeft(windowWidth);
+  // At a pointer the corner stands at the main pane's left edge, beside the
+  // rail - the dock's row is a phone's geometry, and in a window with side
+  // panels it landed under the toolbar's buttons.
+  const pointer = useDensity() === 'pointer';
+  const full = pointer ? 320 : dockRowWidth(windowWidth);
+  const left = pointer ? DESKTOP_RAIL_WIDTH + 16 : dockRowLeft(windowWidth);
   const expanded = open && !!onClose;
 
   const width = useSharedValue(expanded ? full : bead);
