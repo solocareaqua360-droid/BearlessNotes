@@ -9,7 +9,7 @@ import { Ionicons } from './icons/Ionicons';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { useSoft } from '../theme/soft';
 import { useDensity } from '../hooks/useDensity';
-import { DESKTOP_RAIL_WIDTH } from '../constants/desktop';
+import { DESKTOP_RAIL_WIDTH, DESKTOP_TABS_HEIGHT, DESKTOP_TOOLBAR_ROW } from '../constants/desktop';
 import { DOCK_PIECE_RADIUS, dockCardHeight, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
 import { FONT_REGULAR } from '../utils/fonts';
 
@@ -88,7 +88,12 @@ export default function SearchCorner({
     <GlassPortal>
       <Animated.View
         pointerEvents="box-none"
-        style={[styles.wrap, { top: insets.top + 6, left, height }, widthStyle]}
+        style={[
+          styles.wrap,
+          // At a pointer: in the toolbar's row, under the tabs.
+          { top: pointer ? DESKTOP_TABS_HEIGHT + Math.round((DESKTOP_TOOLBAR_ROW - height) / 2) : insets.top + 6, left, height },
+          widthStyle,
+        ]}
       >
         {soft ? (
           <View

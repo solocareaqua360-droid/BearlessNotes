@@ -1,3 +1,4 @@
+import { useIsFocused } from '@react-navigation/native';
 import { ReactNode, useEffect, useId, useState } from 'react';
 
 // What the desktop rail shows about the screen it is standing beside.
@@ -94,8 +95,11 @@ function publishPanel(id: string, value: ReactNode | null) {
 
 export function usePublishRailPanel(value: ReactNode | null): void {
   const id = useId();
+  // Only while the screen is in front: the tabs keep every screen mounted,
+  // and the calendar's month went on standing in the rail under a board.
+  const focused = useIsFocused();
   useEffect(() => {
-    publishPanel(id, value);
+    publishPanel(id, focused ? value : null);
   });
   useEffect(() => () => publishPanel(id, null), [id]);
 }
