@@ -6691,6 +6691,9 @@ export default function BoardScreen() {
           <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }]} onPress={() => setAddSheetVisible(false)}>
             <Pressable style={styles.sheet} onPress={() => {}}>
               <View style={styles.sheetHandle} />
+              {/* The list of what can be added has grown past a screen - it
+                  scrolls, under the handle, instead of running off it. */}
+              <ScrollView style={{ maxHeight: Math.round(windowHeight * 0.72) }} showsVerticalScrollIndicator={false}>
               {/* First, because it's the one row that brings a whole
                   theme's worth of material at once rather than one card. */}
               <Pressable
@@ -6792,6 +6795,7 @@ export default function BoardScreen() {
                 <MaterialCommunityIcons name="selection-drag" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Область</Text>
               </Pressable>
+              </ScrollView>
             </Pressable>
           </Pressable>
         </Modal>
