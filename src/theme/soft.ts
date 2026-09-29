@@ -52,20 +52,25 @@ const LIGHT: SoftTokens = {
   popShadow: '0px 1px 2px rgba(30,30,28,0.06), 0px 18px 40px -14px rgba(30,30,28,0.32)',
 };
 
+// On black a card is found by its TONE, not its shadow: iOS's own dark
+// ladder (ground #000, surfaces a clear step up) plus a hairline of light
+// on the edge. At #1A1A1C with a 5% edge the cards and folders all but
+// vanished on the OLED screen - "їх майже не видно ... важко розрізняти
+// контури" (2026-09-29).
 const DARK: SoftTokens = {
   dark: true,
   bg: '#000000',
-  card: '#1A1A1C',
-  chrome: '#1A1A1C',
+  card: '#242426',
+  chrome: '#242426',
   ink: '#F1F0EC',
-  ink2: '#9C9B96',
-  ink3: '#5F5E5A',
-  fill: 'rgba(255,255,255,0.07)',
-  fillSolid: '#121212',
-  line: 'rgba(255,255,255,0.08)',
+  ink2: '#A3A29D',
+  ink3: '#6A6964',
+  fill: 'rgba(255,255,255,0.09)',
+  fillSolid: '#1C1C1E',
+  line: 'rgba(255,255,255,0.10)',
   accent: '#E89A62',
-  shadow: '0px 0px 0px 1px rgba(255,255,255,0.05)',
-  popShadow: '0px 0px 0px 1px rgba(255,255,255,0.08)',
+  shadow: '0px 0px 0px 1px rgba(255,255,255,0.09)',
+  popShadow: '0px 0px 0px 1px rgba(255,255,255,0.12)',
 };
 
 export function softTokens(scheme: 'light' | 'dark'): SoftTokens {

@@ -536,7 +536,9 @@ const black: Theme = {
   sections: SECTIONS,
   cards: CARD_FILLS,
   paper: {
-    fill: '#0E0F12',
+    // A step up from the black ground, so a sheet (and its miniature on
+    // a card) reads as a sheet rather than a hole - was #0E0F12.
+    fill: '#1C1C1E',
     ink: '#ECEDEF',
     inkMuted: 'rgba(236,237,239,0.62)',
     inkFaint: 'rgba(236,237,239,0.38)',

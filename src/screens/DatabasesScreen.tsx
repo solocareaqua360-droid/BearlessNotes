@@ -2472,7 +2472,7 @@ function softenDatabases(base: DatabasesStyles, S: SoftTokens): DatabasesStyles 
     tileLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', letterSpacing: -0.1 },
     tileCount: { fontFamily: SOFT_MEDIUM },
     // Barely there: a folder is a place on the ground, not another card.
-    folderFrame: { backgroundColor: S.dark ? 'rgba(255,255,255,0.05)' : 'rgba(30,30,28,0.035)', borderWidth: 0 },
+    folderFrame: { backgroundColor: S.dark ? 'rgba(255,255,255,0.08)' : 'rgba(30,30,28,0.035)', borderWidth: 0 },
     folderFrameHighlighted: { borderWidth: 1.5, borderColor: S.accent },
     dividerLabel: { fontFamily: SOFT_MEDIUM, textTransform: 'none', letterSpacing: 0, fontSize: 13, color: S.ink3 },
     dividerLine: { backgroundColor: S.line },
