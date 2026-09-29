@@ -2151,6 +2151,13 @@ function BoardTile({
   const theme = useTheme();
   const paint = mutedForTheme(color, theme);
   const ink = painted ? contrastTextColor(paint) : '#fff';
+  // SOFT: the colour moves from the whole tile onto its icon. Filled, the
+  // muted colours read dim on black and muddy on the light ground - "виглядає
+  // тьмяно ... а білий варіант виглядає дуже брудним". The tile is the
+  // quiet card surface; the user's colour is the icon, at full strength,
+  // where it is small enough to stay clean.
+  const softPainted = !!softTile && painted;
+  const softIconInk = softPainted ? softIconColour(color, softTile!) : null;
   const inkMuted = !painted
     ? 'rgba(255,255,255,0.55)'
     : ink === '#FFFFFF'
@@ -2247,7 +2254,7 @@ function BoardTile({
       style={[
         styles.tile,
         painted && { backgroundColor: paint, borderColor: 'rgba(255,255,255,0.18)' },
-        softTile && painted && { borderWidth: 0 },
+        softPainted && { backgroundColor: softTile!.card, borderWidth: 0 },
         isAction && styles.newTile,
         { left, top, width, height },
         carried && { left: carried.x, top: carried.y, zIndex: 20, opacity: 0.95, transform: [{ scale: 1.04 }] },
@@ -2282,7 +2289,7 @@ function BoardTile({
             і кількість". The icon stands at the tile's own centre whatever
             its size, the name along the foot. */}
         <View style={styles.tileIconWrap} pointerEvents="none">
-          <Ionicons name={icon} size={tiny ? 24 : 26} color={isAction ? (softTile ? softTile.ink3 : 'rgba(255,255,255,0.6)') : ink} />
+          <Ionicons name={icon} size={tiny ? 24 : 26} color={isAction ? (softTile ? softTile.ink3 : 'rgba(255,255,255,0.6)') : softIconInk ?? ink} />
         </View>
         {/* The name on every tile now, the one-cell ones and the ones in
             folders included - "написи всередині іконок ... ті що ні можна
@@ -2293,7 +2300,7 @@ function BoardTile({
             styles.tileLabel,
             size.h === 1 && styles.tileLabelShort,
             tiny && styles.tileLabelTiny,
-            { color: isAction ? (softTile ? softTile.ink2 : 'rgba(255,255,255,0.6)') : ink },
+            { color: isAction ? (softTile ? softTile.ink2 : 'rgba(255,255,255,0.6)') : softPainted ? softTile!.ink : ink },
           ]}
           // One row tall, the name gets one line: two would reach up into
           // the centred icon.
@@ -2313,7 +2320,7 @@ function BoardTile({
           gone while the board is being arranged so it cannot be mistaken
           for a control. */}
       {showCount && !editing && (
-        <Text style={[styles.tileCount, { color: ink }]}>{count}</Text>
+        <Text style={[styles.tileCount, { color: softPainted ? softTile!.ink3 : ink }]}>{count}</Text>
       )}
 
       {editing && !fixedSize && (
@@ -2422,6 +2429,23 @@ function FolderHandles({
   );
 }
 
+// A tile's own colour as its icon on the soft card: as it is, unless it
+// would all but vanish on that card - too pale on the light one, too dark
+// on the black one - where the quiet ink stands in.
+function softIconColour(colour: string, S: SoftTokens): string {
+  const hex = /^#([0-9a-f]{6})$/i.exec(colour.trim());
+  if (!hex) return S.ink;
+  const n = parseInt(hex[1], 16);
+  const channel = (v: number) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const lum = 0.2126 * channel((n >> 16) & 255) + 0.7152 * channel((n >> 8) & 255) + 0.0722 * channel(n & 255);
+  if (!S.dark && lum > 0.62) return S.ink2;
+  if (S.dark && lum < 0.06) return S.ink2;
+  return colour;
+}
+
 // THE SOFT BOARD: what changes, key by key (the same overlay as the
 // calendar's). Tiles keep the colours the user gave them - only the glass
 // habits go: no outline, a soft shadow, rounder corners, Inter. The tiles
@@ -2447,8 +2471,9 @@ function softenDatabases(base: DatabasesStyles, S: SoftTokens): DatabasesStyles 
     newTile: { borderStyle: 'dashed', borderWidth: 1.5, borderColor: S.ink3 },
     tileLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', letterSpacing: -0.1 },
     tileCount: { fontFamily: SOFT_MEDIUM },
-    folderFrame: { backgroundColor: S.fill, borderWidth: 0 },
-    folderFrameHighlighted: { backgroundColor: S.fill, borderWidth: 1.5, borderColor: S.accent },
+    // Barely there: a folder is a place on the ground, not another card.
+    folderFrame: { backgroundColor: S.dark ? 'rgba(255,255,255,0.05)' : 'rgba(30,30,28,0.035)', borderWidth: 0 },
+    folderFrameHighlighted: { borderWidth: 1.5, borderColor: S.accent },
     dividerLabel: { fontFamily: SOFT_MEDIUM, textTransform: 'none', letterSpacing: 0, fontSize: 13, color: S.ink3 },
     dividerLine: { backgroundColor: S.line },
     doneButton: { backgroundColor: S.chrome, boxShadow: S.popShadow },
