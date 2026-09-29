@@ -18,6 +18,12 @@ import * as Clipboard from 'expo-clipboard';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { openCapture, openCaptureForEdit } from '../components/CaptureWindow';
 import ProjectTabsRow from '../components/ProjectTabsRow';
+import ChatMessageMenu, { type ChatMenuAction } from '../components/ChatMessageMenu';
+import { addDoc } from '../utils/owned';
+import { groupKindFields } from '../utils/groups';
+import { hapticPickUp } from '../utils/haptics';
+import { collection, getDocs } from '../firestore';
+import { db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
 import { onSnapshot } from '../firestore';
 import type { Group } from '../types';
@@ -85,6 +91,10 @@ const FILTER_ICONS: Record<AttachmentGroup, keyof typeof Ionicons.glyphMap> = {
   link: 'link-outline',
   file: 'document-outline',
 };
+
+// A project made from a held message gets the same colour the project
+// picker would give it (GroupPickerSheet's own set).
+const PROJECT_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
 
 function newBlockId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -348,8 +358,8 @@ export default function ChatScreen() {
 
   // Into a note that already exists, or into today's - the two that need
   // no name. A new one asks for one first (see gatherIntoNewNote).
-  async function sendInto(where: 'today' | { id: string; title: string }) {
-    const ids = sending ?? [];
+  async function sendInto(where: 'today' | { id: string; title: string }, idsGiven?: string[]) {
+    const ids = idsGiven ?? sending ?? [];
     const { chosen, blocks } = blocksFor(ids);
     if (chosen.length === 0) return doneSending();
     setBusy(true);
@@ -369,8 +379,8 @@ export default function ChatScreen() {
     }
   }
 
-  async function gatherIntoNewNote(title: string) {
-    const ids = sending ?? [];
+  async function gatherIntoNewNote(title: string, idsGiven?: string[]) {
+    const ids = idsGiven ?? sending ?? [];
     const { chosen, blocks } = blocksFor(ids);
     if (chosen.length === 0) return doneSending();
     setBusy(true);
@@ -388,43 +398,65 @@ export default function ChatScreen() {
     }
   }
 
-  // Everything one message can become, in the menu every list in this app
-  // opens on a long press.
-  async function openMessageMenu(message: ChatMessage) {
-    const choice = await ask({
-      title: message.text.length > 60 ? `${message.text.slice(0, 60)}…` : message.text,
-      actions: [
-        { id: 'copy', label: 'Копіювати', icon: 'copy-outline' },
-        { id: 'edit', label: 'Виправити', icon: 'pencil-outline' },
-        { id: 'note', label: 'У нотатку…', icon: 'document-text-outline' },
-        { id: 'task', label: 'Зробити справою', icon: 'checkbox-outline' },
-        // Gemini's own words are not asked about again by default - a
-        // reply of a reply is a rabbit hole nobody asked this screen to
-        // dig, and "ask" simply isn't offered on one.
-        ...(message.from !== 'gemini'
-          ? [{ id: 'ask' as const, label: 'Запитати Gemini', icon: 'sparkles-outline' as const }]
-          : []),
-        { id: 'select', label: 'Вибрати кілька', icon: 'checkmark-circle-outline' },
-        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' as const },
-      ],
+  // A MESSAGE HELD (see ChatMessageMenu): the list stays, blurred, and
+  // this message is lifted above it with everything it can become.
+  const bubbleRefs = useRef<Record<string, View | null>>({});
+  const [pressed, setPressed] = useState<{ message: ChatMessage; rect: { x: number; y: number; width: number; height: number } } | null>(null);
+  const [recentNotes, setRecentNotes] = useState<{ id: string; title: string }[] | null>(null);
+  function liftMessage(message: ChatMessage) {
+    const node = bubbleRefs.current[message.id];
+    if (!node) return;
+    node.measureInWindow((x, y, width, height) => {
+      hapticPickUp();
+      setPressed({ message, rect: { x, y, width, height } });
     });
-    if (choice === 'copy') await Clipboard.setStringAsync(message.text);
-    else if (choice === 'edit') openCaptureForEdit(message);
-    else if (choice === 'note') setSending([message.id]);
-    else if (choice === 'task') makeTask(message);
-    else if (choice === 'ask') await askGeminiFor(message);
-    else if (choice === 'select') {
-      setIsSelectMode(true);
-      setSelected(new Set([message.id]));
-    } else if (choice === 'delete') {
-      const sure = await confirm({
-        title: 'Видалити повідомлення?',
-        message: 'Це єдине, що справді прибирає його з чату.',
-        confirmLabel: 'Видалити',
-      });
-      if (sure) await deleteChatMessage(message.id).catch((e: Error) => notify('Не вдалося', e.message));
-    }
   }
+  function loadRecentNotes() {
+    if (recentNotes) return;
+    getDocs(ownedQuery('documents'))
+      .then((snapshot) =>
+        setRecentNotes(
+          snapshot.docs
+            .filter((d) => !d.id.startsWith('day_') && !d.data().deletedAt)
+            .map((d) => ({ id: d.id, title: (d.data().title as string) ?? '', updatedAt: (d.data().updatedAt as number) ?? 0 }))
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .map(({ id, title }) => ({ id, title }))
+        )
+      )
+      .catch((e: Error) => notify('Нотатки не завантажились', e.message));
+  }
+  const pressedLive = pressed ? messages.find((m) => m.id === pressed.message.id) ?? pressed.message : null;
+  const menuActions: ChatMenuAction[] = pressedLive
+    ? [
+        { key: 'edit', label: 'Виправити', icon: 'pencil-outline', onPress: () => openCaptureForEdit(pressedLive) },
+        { key: 'copy', label: 'Копіювати', icon: 'copy-outline', onPress: () => Clipboard.setStringAsync(pressedLive.text) },
+        { key: 'project', label: 'У проект', icon: 'albums-outline', page: 'projects' },
+        { key: 'note', label: 'У нотатку', icon: 'document-text-outline', page: 'notes' },
+        { key: 'task', label: 'Зробити справою', icon: 'checkbox-outline', onPress: () => makeTask(pressedLive) },
+        // Gemini's own words are not asked about again - a reply of a
+        // reply is a rabbit hole nobody asked this screen to dig.
+        ...(pressedLive.from !== 'gemini'
+          ? [{ key: 'ask', label: 'Запитати Gemini', icon: 'sparkles-outline', onPress: () => askGeminiFor(pressedLive) }]
+          : []),
+        {
+          key: 'select',
+          label: 'Вибрати',
+          icon: 'checkmark-circle-outline',
+          onPress: () => {
+            setIsSelectMode(true);
+            setSelected(new Set([pressedLive.id]));
+          },
+        },
+        {
+          key: 'delete',
+          label: 'Видалити',
+          icon: 'trash-outline',
+          tone: 'danger',
+          confirmLabel: 'Точно видалити?',
+          onPress: () => deleteChatMessage(pressedLive.id).catch((e: Error) => notify('Не вдалося', e.message)),
+        },
+      ]
+    : [];
 
   // "Спитати" - the ONE optional thing Gemini does here, per the plan.
   // No key configured is not an error, it is the expected first state:
@@ -511,6 +543,167 @@ export default function ChatScreen() {
     }
   }
 
+  // One message's bubble - in the list, and (lifted) above the blur while
+  // its menu is open, so the two are exactly the same picture.
+  function renderMessageBubble(message: ChatMessage, lifted: boolean) {
+    const used = Object.entries(message.usedIn ?? {});
+    const picked = !lifted && selected.has(message.id);
+    const fromGemini = message.from === 'gemini';
+    return (
+      <Pressable
+        ref={
+          lifted
+            ? undefined
+            : (node: View | null) => {
+                bubbleRefs.current[message.id] = node;
+              }
+        }
+        collapsable={false}
+        disabled={lifted}
+        style={[
+          styles.bubble,
+          fromGemini && styles.bubbleGemini,
+          picked && { borderColor: theme.accent },
+          // The one being held stands in the overlay above; its place in
+          // the list is kept, empty, so nothing below it moves.
+          !lifted && pressed?.message.id === message.id && { opacity: 0 },
+        ]}
+        onPress={() => (isSelectMode ? toggle(message.id) : undefined)}
+        onLongPress={() => {
+          if (isSelectMode) return;
+          liftMessage(message);
+        }}
+      >
+        {fromGemini && (
+          <View style={styles.geminiLabel}>
+            <Ionicons name="sparkles" size={12} color={theme.accent} />
+            <Text style={[styles.geminiLabelText, { color: theme.accent }]}>Gemini</Text>
+          </View>
+        )}
+        {/* Each attachment is drawn as the CARD ITS OWN DATABASE
+            draws it - the same component «Посилання», «Файли»
+            and «Зображення» use, so a video arrives with its
+            preview: "в чаті повинен бути вигляд картки з бази
+            даних". It is the same record, not a copy, so
+            touching it goes to where it lives. */}
+        {(message.attachments ?? []).map((item, index) => (
+          <View key={`${item.kind}-${item.id}-${index}`} style={styles.attachment}>
+            {item.kind === 'photo' ? (
+              <PhotoRow
+                photo={{ id: item.id, imageUri: item.uri, documentIds: [], tagIds: [] }}
+                tags={[]}
+                onPress={() =>
+                  isSelectMode ? toggle(message.id) : navigation.navigate('Photos')
+                }
+              />
+            ) : item.kind === 'file' ? (
+              <FileRow
+                file={{ id: item.id, fileName: item.name, fileUri: item.uri, tagIds: [] }}
+                tags={[]}
+                onPress={() =>
+                  isSelectMode ? toggle(message.id) : navigation.navigate('Files')
+                }
+              />
+            ) : (
+              <LinkRow
+                link={{
+                  id: item.id,
+                  url: item.url,
+                  title: item.title,
+                  siteName: item.siteName,
+                  imageUrl: item.imageUrl,
+                  tagIds: [],
+                }}
+                tags={[]}
+                onPress={() => {
+                  if (isSelectMode) return toggle(message.id);
+                  Linking.openURL(item.url).catch(() => {});
+                }}
+              />
+            )}
+          </View>
+        ))}
+        {!!message.text && <Text style={styles.bubbleText}>{message.text}</Text>}
+        {askingId === message.id && (
+          <View style={styles.askingRow}>
+            <ActivityIndicator size="small" color={theme.ink.muted} />
+            <Text style={styles.askingLabel}>Gemini думає…</Text>
+          </View>
+        )}
+        <View style={styles.bubbleFoot}>
+          <Text style={styles.bubbleTime}>
+            {new Date(message.createdAt).toLocaleTimeString('uk-UA', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </Text>
+          {Object.entries(message.tasks ?? {}).map(([taskId]) => (
+            <Pressable
+              key={taskId}
+              style={styles.usedChip}
+              onPress={() => navigation.navigate('Tasks')}
+            >
+              <Ionicons name="checkbox-outline" size={11} color={theme.accent} />
+              <Text style={[styles.usedLabel, { color: theme.accent }]}>Справа</Text>
+            </Pressable>
+          ))}
+          {used.map(([documentId, documentTitle]) => (
+            <Pressable
+              key={documentId}
+              style={styles.usedChip}
+              onPress={() => navigation.navigate('Editor', { documentId })}
+            >
+              <Ionicons name="document-text-outline" size={11} color={theme.accent} />
+              <Text style={[styles.usedLabel, { color: theme.accent }]} numberOfLines={1}>
+                {documentTitle}
+              </Text>
+            </Pressable>
+          ))}
+          {/* This message went into a group - "хотілося, щоб
+              вона лишилася однією ідеєю". It stays right here
+              (same rule as usedIn above), this just says where
+              the combined one is. */}
+          {/* Where else this message is shown - its projects, and
+              the project it was written in. In a project's own
+              chat that project is the place itself, so it is
+              not repeated. */}
+          {(message.projectIds ?? [])
+            .filter((id) => id !== projectFilter)
+            .map((id) => {
+              const project = projectById.get(id);
+              if (!project) return null;
+              return (
+                <Pressable key={`project-${id}`} style={styles.usedChip} onPress={() => setProjectFilter(id)}>
+                  <View style={[styles.projectDot, { backgroundColor: project.color }]} />
+                  <Text style={[styles.usedLabel, { color: theme.ink.muted }]} numberOfLines={1}>
+                    {message.createdInProject === id ? `Створено в чаті «${project.name}»` : project.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          {!!message.groupedInto && (
+            <Pressable
+              style={styles.usedChip}
+              onPress={() => scrollToMessage(message.groupedInto!)}
+            >
+              <Ionicons name="git-merge-outline" size={11} color={theme.accent} />
+              <Text style={[styles.usedLabel, { color: theme.accent }]}>Об'єднано</Text>
+            </Pressable>
+          )}
+        </View>
+        {isSelectMode && !lifted && (
+          <View style={styles.tick}>
+            <Ionicons
+              name={picked ? 'checkmark-circle' : 'ellipse-outline'}
+              size={20}
+              color={picked ? theme.accent : theme.ink.faint}
+            />
+          </View>
+        )}
+      </Pressable>
+    );
+  }
+
   return (
     <SoftSurfaceContext.Provider value={softChat}>
     <View style={styles.container}>
@@ -588,151 +781,7 @@ export default function ChatScreen() {
                   </View>
                 );
               }
-              const message = item.message;
-              const used = Object.entries(message.usedIn ?? {});
-              const picked = selected.has(message.id);
-              const fromGemini = message.from === 'gemini';
-              return (
-                <Pressable
-                  style={[
-                    styles.bubble,
-                    fromGemini && styles.bubbleGemini,
-                    picked && { borderColor: theme.accent },
-                  ]}
-                  onPress={() => (isSelectMode ? toggle(message.id) : undefined)}
-                  onLongPress={() => {
-                    if (isSelectMode) return;
-                    openMessageMenu(message);
-                  }}
-                >
-                  {fromGemini && (
-                    <View style={styles.geminiLabel}>
-                      <Ionicons name="sparkles" size={12} color={theme.accent} />
-                      <Text style={[styles.geminiLabelText, { color: theme.accent }]}>Gemini</Text>
-                    </View>
-                  )}
-                  {/* Each attachment is drawn as the CARD ITS OWN DATABASE
-                      draws it - the same component «Посилання», «Файли»
-                      and «Зображення» use, so a video arrives with its
-                      preview: "в чаті повинен бути вигляд картки з бази
-                      даних". It is the same record, not a copy, so
-                      touching it goes to where it lives. */}
-                  {(message.attachments ?? []).map((item, index) => (
-                    <View key={`${item.kind}-${item.id}-${index}`} style={styles.attachment}>
-                      {item.kind === 'photo' ? (
-                        <PhotoRow
-                          photo={{ id: item.id, imageUri: item.uri, documentIds: [], tagIds: [] }}
-                          tags={[]}
-                          onPress={() =>
-                            isSelectMode ? toggle(message.id) : navigation.navigate('Photos')
-                          }
-                        />
-                      ) : item.kind === 'file' ? (
-                        <FileRow
-                          file={{ id: item.id, fileName: item.name, fileUri: item.uri, tagIds: [] }}
-                          tags={[]}
-                          onPress={() =>
-                            isSelectMode ? toggle(message.id) : navigation.navigate('Files')
-                          }
-                        />
-                      ) : (
-                        <LinkRow
-                          link={{
-                            id: item.id,
-                            url: item.url,
-                            title: item.title,
-                            siteName: item.siteName,
-                            imageUrl: item.imageUrl,
-                            tagIds: [],
-                          }}
-                          tags={[]}
-                          onPress={() => {
-                            if (isSelectMode) return toggle(message.id);
-                            Linking.openURL(item.url).catch(() => {});
-                          }}
-                        />
-                      )}
-                    </View>
-                  ))}
-                  {!!message.text && <Text style={styles.bubbleText}>{message.text}</Text>}
-                  {askingId === message.id && (
-                    <View style={styles.askingRow}>
-                      <ActivityIndicator size="small" color={theme.ink.muted} />
-                      <Text style={styles.askingLabel}>Gemini думає…</Text>
-                    </View>
-                  )}
-                  <View style={styles.bubbleFoot}>
-                    <Text style={styles.bubbleTime}>
-                      {new Date(message.createdAt).toLocaleTimeString('uk-UA', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </Text>
-                    {Object.entries(message.tasks ?? {}).map(([taskId]) => (
-                      <Pressable
-                        key={taskId}
-                        style={styles.usedChip}
-                        onPress={() => navigation.navigate('Tasks')}
-                      >
-                        <Ionicons name="checkbox-outline" size={11} color={theme.accent} />
-                        <Text style={[styles.usedLabel, { color: theme.accent }]}>Справа</Text>
-                      </Pressable>
-                    ))}
-                    {used.map(([documentId, documentTitle]) => (
-                      <Pressable
-                        key={documentId}
-                        style={styles.usedChip}
-                        onPress={() => navigation.navigate('Editor', { documentId })}
-                      >
-                        <Ionicons name="document-text-outline" size={11} color={theme.accent} />
-                        <Text style={[styles.usedLabel, { color: theme.accent }]} numberOfLines={1}>
-                          {documentTitle}
-                        </Text>
-                      </Pressable>
-                    ))}
-                    {/* This message went into a group - "хотілося, щоб
-                        вона лишилася однією ідеєю". It stays right here
-                        (same rule as usedIn above), this just says where
-                        the combined one is. */}
-                    {/* Where else this message is shown - its projects, and
-                        the project it was written in. In a project's own
-                        chat that project is the place itself, so it is
-                        not repeated. */}
-                    {(message.projectIds ?? [])
-                      .filter((id) => id !== projectFilter)
-                      .map((id) => {
-                        const project = projectById.get(id);
-                        if (!project) return null;
-                        return (
-                          <Pressable key={`project-${id}`} style={styles.usedChip} onPress={() => setProjectFilter(id)}>
-                            <View style={[styles.projectDot, { backgroundColor: project.color }]} />
-                            <Text style={[styles.usedLabel, { color: theme.ink.muted }]} numberOfLines={1}>
-                              {message.createdInProject === id ? `Створено в чаті «${project.name}»` : project.name}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    {!!message.groupedInto && (
-                      <Pressable
-                        style={styles.usedChip}
-                        onPress={() => scrollToMessage(message.groupedInto!)}
-                      >
-                        <Ionicons name="git-merge-outline" size={11} color={theme.accent} />
-                        <Text style={[styles.usedLabel, { color: theme.accent }]}>Об'єднано</Text>
-                      </Pressable>
-                    )}
-                  </View>
-                  {isSelectMode && (
-                    <View style={styles.tick}>
-                      <Ionicons
-                        name={picked ? 'checkmark-circle' : 'ellipse-outline'}
-                        size={20}
-                        color={picked ? theme.accent : theme.ink.faint}
-                      />
-                    </View>
-                  )}
-                </Pressable>
-              );
+              return renderMessageBubble(item.message, false);
             }}
           />
         )}
@@ -795,6 +844,33 @@ export default function ChatScreen() {
           setSending(null);
         }}
         onSave={gatherIntoNewNote}
+      />
+      <ChatMessageMenu
+        anchor={pressed?.rect ?? null}
+        bubble={pressedLive ? renderMessageBubble(pressedLive, true) : null}
+        actions={menuActions}
+        projects={projects.map((p) => ({ id: p.id, name: p.name, color: p.color, on: (pressedLive?.projectIds ?? []).includes(p.id) }))}
+        onToggleProject={(projectId) => {
+          if (!pressedLive) return;
+          const on = (pressedLive.projectIds ?? []).includes(projectId);
+          setChatMessagesInProject([pressedLive.id], projectId, !on);
+        }}
+        onNewProject={async (name) => {
+          if (!pressedLive) return;
+          const ref = await addDoc(collection(db, 'groups'), {
+            name,
+            color: PROJECT_COLORS[projects.length % PROJECT_COLORS.length],
+            ...groupKindFields([]),
+          });
+          setChatMessagesInProject([pressedLive.id], ref.id, true);
+        }}
+        recentNotes={recentNotes}
+        onLoadNotes={loadRecentNotes}
+        onToToday={() => pressedLive && sendInto('today', [pressedLive.id])}
+        onToNewNote={(title) => pressedLive && gatherIntoNewNote(title, [pressedLive.id])}
+        onToNote={(id, title) => pressedLive && sendInto({ id, title }, [pressedLive.id])}
+        newNoteDefault={`Думки · ${formatShortDate(new Date())}`}
+        onClose={() => setPressed(null)}
       />
     </View>
     </SoftSurfaceContext.Provider>
