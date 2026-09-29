@@ -5014,7 +5014,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     >
       {/* The room above the title - inside the scrolling paper instead
           (its own top padding) where the paper scrolls. */}
-      {!embedded && !scrollSheet && (
+      {/* Not over the canvas on a phone: there the bar floats over the
+          surface itself, and this row was a band of paper under the bar,
+          twice its height, hiding the cards - "плашка в двічі більша яка
+          закриває контент". The canvas starts its cards clear of the bar
+          on its own (its first offset). */}
+      {!embedded && !scrollSheet && !(canvasMode && !pointerDensity && railTop === undefined) && (
       <View
         style={[
           styles.header,
