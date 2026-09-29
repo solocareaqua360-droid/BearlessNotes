@@ -2032,6 +2032,61 @@ export default function ContextDock() {
       ) : (
         <View style={{ width: TWO_BEAD }} />
       );
+    if (chromeStyle === 'soft') {
+      // The same row in the soft material: round quiet buttons either side
+      // and one soft capsule of tools, no glass, no hairlines - "док не
+      // змінився" on the board.
+      const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow };
+      const softSlot = (bead: typeof beads.left) => {
+        if (!bead) return <View style={{ width: TWO_BEAD }} />;
+        const own = SOFT_DOCK_GLYPHS[bead.icon];
+        const ink = bead.active ? soft.accent : soft.ink;
+        return (
+          <Pressable
+            onPress={bead.onPress}
+            onLongPress={bead.onLongPress}
+            disabled={bead.dimmed}
+            style={[styles.softButton, surface, { width: TWO_BEAD, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, opacity: bead.dimmed ? 0.5 : 1 }]}
+          >
+            {own ? (
+              <SoftIcon name={own} size={23} color={ink} />
+            ) : (
+              <Ionicons name={bead.icon as keyof typeof Ionicons.glyphMap} size={22} color={ink} />
+            )}
+          </Pressable>
+        );
+      };
+      return (
+        <DockPortal>
+          <View
+            pointerEvents="box-none"
+            style={[
+              styles.twoBeads,
+              { bottom: softRest, left: frame.left + inset, width: rowW, alignItems: 'center' },
+            ]}
+          >
+            {softSlot(beads.left)}
+            <View style={[surface, { width: stripW, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, overflow: 'hidden' }]}>
+              <View style={[styles.stripActions, { flexDirection: 'row' }]}>
+                {actions.map((action) => (
+                  <ActionButton
+                    key={action.key}
+                    action={action}
+                    width={buttonW}
+                    height={TWO_BEAD - 4}
+                    iconSize={ACT_ICON}
+                    theme={theme}
+                    onDone={() => {}}
+                    soft={soft}
+                  />
+                ))}
+              </View>
+            </View>
+            {softSlot(beads.right)}
+          </View>
+        </DockPortal>
+      );
+    }
     return (
       <DockPortal>
         <View
