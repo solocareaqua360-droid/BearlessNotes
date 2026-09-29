@@ -2967,7 +2967,7 @@ export default function BoardScreen() {
     const top = Math.min(y1, y2);
     const bottom = Math.max(y1, y2);
     const matched = cards.filter(
-      (c) => c.x < right && c.x + c.width > left && c.y < bottom && c.y + APPROX_CARD_HEIGHT > top
+      (c) => c.x < right && c.x + (c.width ?? DEFAULT_CARD_WIDTH) > left && c.y < bottom && c.y + APPROX_CARD_HEIGHT > top
     );
     setSelectedCardIds(new Set(matched.map((c) => c.id)));
     // Loose text auto-sizes its own box - same stand-in width/height the
@@ -2993,7 +2993,7 @@ export default function BoardScreen() {
       .filter(
         (c) =>
           worldX >= c.x &&
-          worldX <= c.x + c.width &&
+          worldX <= c.x + (c.width ?? DEFAULT_CARD_WIDTH) &&
           worldY >= c.y &&
           worldY <= c.y + APPROX_CARD_HEIGHT
       )
@@ -4041,6 +4041,7 @@ export default function BoardScreen() {
             y,
             copyOf: before.id,
             recordId: before.recordId ?? before.id,
+            width: Number.isFinite(before.width) ? before.width : DEFAULT_CARD_WIDTH,
             ...(target ? { columnId: target.id } : {}),
           };
           delete copy.order;
@@ -4090,6 +4091,7 @@ export default function BoardScreen() {
       y: card.y + 28,
       copyOf: card.id,
       recordId: card.recordId ?? card.id,
+      width: Number.isFinite(card.width) ? card.width : DEFAULT_CARD_WIDTH,
     };
     delete copy.order;
     setCards((prev) => reflowColumns([...prev, copy], columns, cardHeights));
@@ -4226,6 +4228,11 @@ export default function BoardScreen() {
             recordId: row.id,
             columnId,
             order: index,
+            // In a column a card takes the column's width and stores none
+            // - but a COPY of it leaves the column, and a card with no
+            // width has no size to draw a line to (NaN into the svg is a
+            // native crash: the white screen on «Дублювати»).
+            width: DEFAULT_CARD_WIDTH,
             x: x + COLUMN_PADDING,
             y: y + COLUMN_HEADER_HEIGHT + index * (APPROX_CARD_HEIGHT + COLUMN_CARD_GAP),
           } as BoardCard);
@@ -4433,7 +4440,7 @@ export default function BoardScreen() {
       const x =
         prev.length === 0
           ? viewCenter().x - CONTAINER_DEFAULT_WIDTH / 2
-          : Math.max(...prev.map((c) => c.x + c.width)) + CONTAINER_SPACING;
+          : Math.max(...prev.map((c) => c.x + (c.width ?? DEFAULT_CARD_WIDTH))) + CONTAINER_SPACING;
       const y = prev.length === 0 ? viewCenter().y - CONTAINER_DEFAULT_HEIGHT / 2 : prev[0].y;
       return [
         ...prev,
@@ -5175,7 +5182,7 @@ export default function BoardScreen() {
       id: card.id,
       x: card.x,
       y: card.y,
-      width: widthInColumn(card),
+      width: Number.isFinite(widthInColumn(card)) ? widthInColumn(card) : DEFAULT_CARD_WIDTH,
       height: heightOf(card, cardHeights),
     });
   }

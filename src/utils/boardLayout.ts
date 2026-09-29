@@ -34,8 +34,11 @@ export const COLUMN_WIDTH = DEFAULT_CARD_WIDTH + COLUMN_PADDING * 2;
 // card) hangs out past its neighbours and the stack stops reading as a
 // stack.
 export const COLUMN_INNER_WIDTH = COLUMN_WIDTH - COLUMN_PADDING * 2;
-export function widthInColumn(card: { width: number; columnId?: string }): number {
-  return card.columnId ? COLUMN_INNER_WIDTH : card.width;
+export function widthInColumn(card: { width?: number; columnId?: string }): number {
+  // A card that never stored a width (the first source-column imports did
+  // not) still has one: the default. A NaN width reaches the native svg and
+  // a view alike, and takes the whole app down.
+  return card.columnId ? COLUMN_INNER_WIDTH : Number.isFinite(card.width) ? (card.width as number) : DEFAULT_CARD_WIDTH;
 }
 export const COLUMN_HEADER_HEIGHT = 44;
 export const COLUMN_CARD_GAP = 12;
