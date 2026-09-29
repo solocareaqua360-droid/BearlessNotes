@@ -17,6 +17,9 @@ import {
 } from '../../constants/glass';
 import { hapticButtonDown } from '../../utils/haptics';
 import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
+import { useNavChromeStyle } from '../../navigation/navDock';
+import { useSoft } from '../../theme/soft';
+import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
 
 // «Питання» - the first of the named surfaces.
 //
@@ -103,6 +106,14 @@ export function AskHost() {
   // black theme, a shadow in the white one, nothing in the colour one,
   // where the glass already does the job.
   const lift = useLift();
+  // THE SOFT QUESTION: asked from a screen that wears the soft style (the
+  // note's "/" menu, a confirmation on the Documents desk), the card
+  // wears it too - its quiet surface, Inter, answers as soft tints -
+  // instead of the dark glass every other screen still asks in.
+  const chromeStyle = useNavChromeStyle();
+  const softTokens = useSoft();
+  const S = chromeStyle === 'soft' ? softTokens : null;
+  const softDanger = S ? (S.dark ? '#FF7A6E' : '#C8452F') : null;
   useEffect(() => {
     if (current) Keyboard.dismiss();
   }, [current]);
@@ -137,9 +148,18 @@ export function AskHost() {
     // closes and the hardware back button all come with the layer.
     <GlassLayer visible onClose={() => answer('cancel')} intensity={60}>
       <View style={[styles.frame, { paddingBottom: keyboardHeight }]} pointerEvents="box-none">
-      <View style={[styles.card, lift]}>
-        <Text style={styles.title}>{current.title}</Text>
-        {!!current.message && <Text style={styles.message}>{current.message}</Text>}
+      <View
+        style={[
+          styles.card,
+          S ? { backgroundColor: S.card, borderWidth: 0, borderRadius: 28, boxShadow: S.popShadow } : lift,
+        ]}
+      >
+        <Text style={[styles.title, S && { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', letterSpacing: -0.3, fontSize: 20, color: S.ink }]}>
+          {current.title}
+        </Text>
+        {!!current.message && (
+          <Text style={[styles.message, S && { fontFamily: SOFT_REGULAR, color: S.ink2 }]}>{current.message}</Text>
+        )}
 
         {/* Scrolls once there are more answers than fit. The rows were a
             plain column, which is right for the four or five a question
@@ -159,7 +179,8 @@ export function AskHost() {
                 key={action.id}
                 style={({ pressed }) => [
                   styles.action,
-                  primary && styles.actionPrimary,
+                  S && { backgroundColor: S.fill, borderRadius: 18 },
+                  primary && (S ? { backgroundColor: S.ink } : styles.actionPrimary),
                   pressed && styles.actionPressed,
                 ]}
                 onPress={() => {
@@ -171,21 +192,40 @@ export function AskHost() {
                   <Ionicons
                     name={action.icon}
                     size={20}
-                    color={primary ? '#171310' : danger ? GLASS_DANGER : GLASS_TEXT}
+                    color={
+                      S
+                        ? primary
+                          ? S.card
+                          : danger
+                            ? softDanger!
+                            : S.ink2
+                        : primary
+                          ? '#171310'
+                          : danger
+                            ? GLASS_DANGER
+                            : GLASS_TEXT
+                    }
                   />
                 )}
                 <View style={styles.actionText}>
                   <Text
                     style={[
                       styles.actionLabel,
-                      danger && styles.actionLabelDanger,
-                      primary && styles.actionLabelPrimary,
+                      S && { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', color: S.ink },
+                      danger && (S ? { color: softDanger! } : styles.actionLabelDanger),
+                      primary && (S ? { color: S.card } : styles.actionLabelPrimary),
                     ]}
                   >
                     {action.label}
                   </Text>
                   {!!action.hint && (
-                    <Text style={[styles.actionHint, primary && styles.actionHintPrimary]}>
+                    <Text
+                      style={[
+                        styles.actionHint,
+                        S && { fontFamily: SOFT_REGULAR, color: S.ink3 },
+                        primary && (S ? { color: S.card, opacity: 0.7 } : styles.actionHintPrimary),
+                      ]}
+                    >
                       {action.hint}
                     </Text>
                   )}
@@ -197,10 +237,12 @@ export function AskHost() {
 
         {cancelLabel !== null && (
           <Pressable
-            style={({ pressed }) => [styles.cancel, pressed && styles.actionPressed]}
+            style={({ pressed }) => [styles.cancel, S && { borderTopWidth: 0 }, pressed && styles.actionPressed]}
             onPress={() => answer('cancel')}
           >
-            <Text style={styles.cancelLabel}>{cancelLabel}</Text>
+            <Text style={[styles.cancelLabel, S && { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', color: S.ink2 }]}>
+              {cancelLabel}
+            </Text>
           </Pressable>
         )}
       </View>

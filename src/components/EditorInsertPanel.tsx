@@ -4,7 +4,8 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR } from '../utils/fonts';
+import type { SoftTokens } from '../theme/soft';
 
 // The panel that stands WHERE THE KEYBOARD WAS.
 //
@@ -57,6 +58,7 @@ export default function EditorInsertPanel({
   height,
   groups,
   jumpTo,
+  soft,
 }: {
   // Exactly what the keyboard had, so nothing moves when one replaces
   // the other.
@@ -65,8 +67,13 @@ export default function EditorInsertPanel({
   // Set by the bar above when a section button is pressed; cleared by
   // the panel once it has scrolled there.
   jumpTo: { section: PanelSection; at: number } | null;
+  // The soft style: the bar's own quiet surface, tiles as soft tints,
+  // Inter, what is on marked by an accent ring rather than a darker box.
+  soft?: SoftTokens | null;
 }) {
-  const styles = useStyles(makeStyles);
+  const baseStyles = useStyles(makeStyles);
+  const styles = soft ? softenPanel(baseStyles, soft) : baseStyles;
+  const iconColor = soft ? soft.ink2 : null;
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
   const offsets = useRef(new Map<PanelSection, number>());
@@ -158,10 +165,10 @@ export default function EditorInsertPanel({
                       <MaterialCommunityIcons
                         name={item.icon as never}
                         size={19}
-                        color={theme.ink.primary}
+                        color={iconColor ?? theme.ink.primary}
                       />
                     ) : (
-                      <Ionicons name={item.icon as never} size={19} color={theme.ink.primary} />
+                      <Ionicons name={item.icon as never} size={19} color={iconColor ?? theme.ink.primary} />
                     )}
                     <Text style={styles.tileLabel} numberOfLines={2}>
                       {item.label}
@@ -179,6 +186,31 @@ export default function EditorInsertPanel({
       </ScrollView>
     </View>
   );
+}
+
+// The soft overlay, key by key (see AddExistingItemModal's own).
+type PanelStyles = ReturnType<typeof makeStyles>;
+const softPanelCache = new WeakMap<object, Map<SoftTokens, PanelStyles>>();
+function softenPanel(base: PanelStyles, S: SoftTokens): PanelStyles {
+  let byTokens = softPanelCache.get(base);
+  if (!byTokens) softPanelCache.set(base, (byTokens = new Map()));
+  const hit = byTokens.get(S);
+  if (hit) return hit;
+  const over = StyleSheet.create({
+    panel: { backgroundColor: S.card, borderTopWidth: 0 },
+    content: { paddingHorizontal: 14 },
+    sectionTitle: { fontFamily: SOFT_MEDIUM, fontSize: 13, color: S.ink3, paddingLeft: 6 },
+    tile: { borderRadius: 16, paddingVertical: 13, paddingHorizontal: 14, backgroundColor: S.fill },
+    tileOn: { backgroundColor: S.fill, boxShadow: `0px 0px 0px 1.5px ${S.accent}` },
+    tileLabel: { fontFamily: SOFT_REGULAR, fontSize: 14, color: S.ink },
+    swatch: { borderColor: S.line },
+    swatchOn: { borderWidth: 0, boxShadow: `0px 0px 0px 2px ${S.card}, 0px 0px 0px 4px ${S.accent}` },
+  }) as Record<string, object>;
+  const merged = { ...base } as Record<string, unknown>;
+  for (const key of Object.keys(over)) merged[key] = [merged[key], over[key]];
+  const result = merged as PanelStyles;
+  byTokens.set(S, result);
+  return result;
 }
 
 const makeStyles = (t: Theme) =>

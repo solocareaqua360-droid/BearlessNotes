@@ -4942,6 +4942,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         >
           {blockAccessory ?? (phonePanel ? (
             <EditorPanelBar
+              soft={softPage ? soft : null}
               canUndo={canUndo}
               canRedo={canRedo}
               onUndo={undo}
@@ -4976,6 +4977,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {phonePanel && (panelSection !== null || panelClosing) && (
         <View style={styles.insertPanelDock}>
           <EditorInsertPanel
+            soft={softPage ? soft : null}
             height={panelHeight || lastKeyboardHeightRef.current || 300}
             groups={panelGroups}
             jumpTo={panelJump}

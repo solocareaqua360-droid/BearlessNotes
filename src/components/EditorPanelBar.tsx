@@ -3,6 +3,8 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import type { PanelSection } from './EditorInsertPanel';
+import type { SoftTokens } from '../theme/soft';
+import SoftIcon, { type SoftIconName } from './SoftIcon';
 
 // The short row above the keyboard, on a PHONE.
 //
@@ -37,22 +39,26 @@ export type PanelBarProps = {
   onLowerAll: () => void;
   onPickFromDatabase: () => void;
   onCreateInDatabase: () => void;
+  // The soft style (theme/soft): its own icons in ink, one quiet surface
+  // lifted off the page by a shadow instead of a hairline.
+  soft?: SoftTokens | null;
 };
 
 type Door = {
   section: PanelSection;
+  softIcon: SoftIconName;
   family: 'ionicons' | 'material-community';
   icon: string;
   label: string;
 };
 
 const DOORS: Door[] = [
-  { section: 'lists', family: 'material-community', icon: 'format-list-bulleted', label: 'Списки' },
+  { section: 'lists', softIcon: 'list', family: 'material-community', icon: 'format-list-bulleted', label: 'Списки' },
   // One door for text, not two. Bold and size are the same subject, and
   // the row is shorter for it.
-  { section: 'text', family: 'material-community', icon: 'format-size', label: 'Текст' },
-  { section: 'rules', family: 'ionicons', icon: 'remove-outline', label: 'Лінії' },
-  { section: 'insert', family: 'ionicons', icon: 'add-circle-outline', label: 'Вставка' },
+  { section: 'text', softIcon: 'text', family: 'material-community', icon: 'format-size', label: 'Текст' },
+  { section: 'rules', softIcon: 'rule', family: 'ionicons', icon: 'remove-outline', label: 'Лінії' },
+  { section: 'insert', softIcon: 'insert', family: 'ionicons', icon: 'add-circle-outline', label: 'Вставка' },
 ];
 
 export default function EditorPanelBar({
@@ -66,53 +72,76 @@ export default function EditorPanelBar({
   onLowerAll,
   onPickFromDatabase,
   onCreateInDatabase,
+  soft,
 }: PanelBarProps) {
   const styles = useStyles(makeStyles);
   const theme = useTheme();
   // The theme's own ink, not the glass ink: this bar is no longer a
   // pill floating on the page, it is a surface of its own.
-  const ink = theme.ink.primary;
-  const inkMuted = theme.ink.faint;
+  const ink = soft ? soft.ink : theme.ink.primary;
+  const inkMuted = soft ? soft.ink3 : theme.ink.faint;
+  // One glyph, in whichever set this bar is drawn in.
+  const glyph = (softName: SoftIconName, fallback: React.ReactNode, color = ink) =>
+    soft ? <SoftIcon name={softName} size={22} color={color} /> : fallback;
 
   return (
-    <View style={styles.row}>
-      <Pressable style={styles.button} hitSlop={4} disabled={!canUndo} onPress={onUndo}>
-        <Ionicons name="arrow-undo-outline" size={20} color={canUndo ? ink : inkMuted} />
+    <View
+      style={[
+        styles.row,
+        soft && {
+          backgroundColor: soft.card,
+          borderTopWidth: 0,
+          height: 50,
+          paddingHorizontal: 10,
+          // Lifted UP off the page: the shadow falls above the bar.
+          boxShadow: soft.dark ? '0px -1px 0px rgba(255,255,255,0.06)' : '0px -8px 20px -12px rgba(30,30,28,0.22)',
+        },
+      ]}
+    >
+      <Pressable style={[styles.button, soft && styles.softButton]} hitSlop={4} disabled={!canUndo} onPress={onUndo}>
+        {glyph('undo', <Ionicons name="arrow-undo-outline" size={20} color={canUndo ? ink : inkMuted} />, canUndo ? ink : inkMuted)}
       </Pressable>
-      <Pressable style={styles.button} hitSlop={4} disabled={!canRedo} onPress={onRedo}>
-        <Ionicons name="arrow-redo-outline" size={20} color={canRedo ? ink : inkMuted} />
+      <Pressable style={[styles.button, soft && styles.softButton]} hitSlop={4} disabled={!canRedo} onPress={onRedo}>
+        {glyph('redo', <Ionicons name="arrow-redo-outline" size={20} color={canRedo ? ink : inkMuted} />, canRedo ? ink : inkMuted)}
       </Pressable>
 
-      <View style={[styles.divider, { backgroundColor: inkMuted }]} />
+      <View style={[styles.divider, { backgroundColor: inkMuted }, soft && { opacity: 0.35 }]} />
 
       {DOORS.map((door) => (
         <Pressable
           key={door.section}
-          style={[styles.button, openSection === door.section && styles.buttonOn]}
+          style={[
+            styles.button,
+            soft && styles.softButton,
+            openSection === door.section && (soft ? { backgroundColor: soft.fill } : styles.buttonOn),
+          ]}
           hitSlop={4}
           accessibilityLabel={door.label}
           onPress={() => onOpenSection(door.section)}
         >
-          {door.family === 'material-community' ? (
-            <MaterialCommunityIcons name={door.icon as never} size={20} color={ink} />
-          ) : (
-            <Ionicons name={door.icon as never} size={20} color={ink} />
+          {glyph(
+            door.softIcon,
+            door.family === 'material-community' ? (
+              <MaterialCommunityIcons name={door.icon as never} size={20} color={ink} />
+            ) : (
+              <Ionicons name={door.icon as never} size={20} color={ink} />
+            )
           )}
         </Pressable>
       ))}
 
-      <View style={[styles.divider, { backgroundColor: inkMuted }]} />
+      <View style={[styles.divider, { backgroundColor: inkMuted }, soft && { opacity: 0.35 }]} />
 
-      <Pressable style={styles.button} hitSlop={4} accessibilityLabel="З бази даних" onPress={onPickFromDatabase}>
-        <Ionicons name="search-outline" size={20} color={ink} />
+      <Pressable style={[styles.button, soft && styles.softButton]} hitSlop={4} accessibilityLabel="З бази даних" onPress={onPickFromDatabase}>
+        {glyph('search', <Ionicons name="search-outline" size={20} color={ink} />)}
       </Pressable>
       <Pressable
-        style={styles.button}
+        style={[styles.button, soft && styles.softButton]}
         hitSlop={4}
         accessibilityLabel="Створити в базі"
         onPress={onCreateInDatabase}
       >
-        <MaterialCommunityIcons name="database-plus-outline" size={20} color={ink} />
+        {glyph('databaseAdd', <MaterialCommunityIcons name="database-plus-outline" size={20} color={ink} />)}
       </Pressable>
 
       {/* Two slots at the right edge that are ALWAYS there, so nothing
@@ -130,14 +159,14 @@ export default function EditorPanelBar({
           panel without bringing the keyboard back, or the keyboard
           itself. */}
       {openSection !== null ? (
-        <Pressable style={styles.button} hitSlop={4} accessibilityLabel="Клавіатура" onPress={onShowKeyboard}>
-          <MaterialCommunityIcons name="keyboard-outline" size={21} color={ink} />
+        <Pressable style={[styles.button, soft && styles.softButton]} hitSlop={4} accessibilityLabel="Клавіатура" onPress={onShowKeyboard}>
+          {glyph('keyboard', <MaterialCommunityIcons name="keyboard-outline" size={21} color={ink} />)}
         </Pressable>
       ) : (
-        <View style={[styles.button, styles.slotHeld]} />
+        <View style={[styles.button, styles.slotHeld, soft && styles.softButton]} />
       )}
-      <Pressable style={styles.button} hitSlop={4} accessibilityLabel="Опустити" onPress={onLowerAll}>
-        <Ionicons name="chevron-down" size={22} color={ink} />
+      <Pressable style={[styles.button, soft && styles.softButton]} hitSlop={4} accessibilityLabel="Опустити" onPress={onLowerAll}>
+        {glyph('down', <Ionicons name="chevron-down" size={22} color={ink} />)}
       </Pressable>
     </View>
   );
@@ -176,6 +205,16 @@ const makeStyles = (t: Theme) =>
     slotHeld: {
       width: 33,
       height: 33,
+    },
+    // Soft: a round seat the same size for every button, so the open
+    // section's tint is a circle rather than a rounded box.
+    softButton: {
+      width: 38,
+      height: 38,
+      padding: 0,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     buttonOn: {
       backgroundColor: t.edge.strong,

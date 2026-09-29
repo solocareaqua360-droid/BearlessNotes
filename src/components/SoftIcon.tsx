@@ -25,7 +25,17 @@ export type SoftIconName =
   | 'trash'
   | 'doc'
   | 'close'
-  | 'forward';
+  | 'forward'
+  // The row above the keyboard (EditorPanelBar).
+  | 'undo'
+  | 'redo'
+  | 'list'
+  | 'text'
+  | 'rule'
+  | 'insert'
+  | 'databaseAdd'
+  | 'keyboard'
+  | 'down';
 
 export default function SoftIcon({
   name,
@@ -86,6 +96,56 @@ export default function SoftIcon({
       )}
       {name === 'close' && <Path d="M6.5 6.5l11 11M17.5 6.5l-11 11" {...line} />}
       {name === 'forward' && <Path d="M9.4 5.4L16 12l-6.6 6.6" {...line} />}
+      {name === 'undo' && (
+        <>
+          <Path d="M9.2 6.4L5.4 10.2l3.8 3.8" {...line} />
+          <Path d="M5.8 10.2h8.1a4.6 4.6 0 0 1 0 9.2h-2.6" {...line} />
+        </>
+      )}
+      {name === 'redo' && (
+        <>
+          <Path d="M14.8 6.4l3.8 3.8-3.8 3.8" {...line} />
+          <Path d="M18.2 10.2h-8.1a4.6 4.6 0 0 0 0 9.2h2.6" {...line} />
+        </>
+      )}
+      {name === 'list' && (
+        <>
+          <Circle cx={5.6} cy={7} r={1.35} fill={color} />
+          <Circle cx={5.6} cy={12} r={1.35} fill={color} />
+          <Circle cx={5.6} cy={17} r={1.35} fill={color} />
+          <Path d="M10 7h9.4M10 12h9.4M10 17h9.4" {...line} />
+        </>
+      )}
+      {name === 'text' && (
+        <>
+          <Path d="M4.4 6.2h9.4M9.1 6.2v12.4" {...line} />
+          <Path d="M14.6 11h5.6M17.4 11v7.6" {...line} />
+        </>
+      )}
+      {name === 'rule' && <Path d="M4.6 12h14.8" {...line} />}
+      {name === 'insert' && (
+        <>
+          <Rect x={4} y={4} width={16} height={16} rx={5} {...line} />
+          <Path d="M12 8.6v6.8M8.6 12h6.8" {...line} />
+        </>
+      )}
+      {name === 'databaseAdd' && (
+        <>
+          <Path d="M5.4 7c0-1.5 2.9-2.6 6.4-2.6s6.4 1.1 6.4 2.6-2.9 2.6-6.4 2.6S5.4 8.5 5.4 7z" {...line} />
+          <Path d="M5.4 7v10c0 1.5 2.9 2.6 6.4 2.6" {...line} />
+          <Path d="M18.2 7v4" {...line} />
+          <Path d="M5.4 12c0 1.5 2.9 2.6 6.4 2.6" {...line} />
+          <Path d="M17.6 14.6v5.4M14.9 17.3h5.4" {...line} />
+        </>
+      )}
+      {name === 'keyboard' && (
+        <>
+          <Rect x={3} y={6.2} width={18} height={11.6} rx={3.2} {...line} />
+          <Path d="M7.2 10.2h.01M10.4 10.2h.01M13.6 10.2h.01M16.8 10.2h.01" {...line} strokeWidth={strokeWidth + 0.4} />
+          <Path d="M8.6 14h6.8" {...line} />
+        </>
+      )}
+      {name === 'down' && <Path d="M6.4 9.6L12 15.2l5.6-5.6" {...line} />}
     </Svg>
   );
 }
