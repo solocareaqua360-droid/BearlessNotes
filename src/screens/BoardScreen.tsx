@@ -4508,7 +4508,7 @@ export default function BoardScreen() {
         collapsable={false}
         style={[styles.memberRow, isCarrying && styles.memberRowDimmed]}
       >
-        <Ionicons name={iconForMember(member)} size={15} color={GLASS_TEXT_MUTED} />
+        <Ionicons name={iconForMember(member)} size={15} color={layerInkMuted} />
         <Text style={styles.memberLabel} numberOfLines={1}>
           {labelForMember(member)}
         </Text>
@@ -4516,11 +4516,11 @@ export default function BoardScreen() {
           <Ionicons
             name={hidden ? 'eye-off-outline' : 'eye-outline'}
             size={15}
-            color={hidden ? '#F87171' : GLASS_TEXT_MUTED}
+            color={hidden ? '#F87171' : layerInkMuted}
           />
         </Pressable>
         <Pressable hitSlop={8} onPress={() => locateObject(member.id)}>
-          <Ionicons name="locate-outline" size={15} color={GLASS_TEXT_MUTED} />
+          <Ionicons name="locate-outline" size={15} color={layerInkMuted} />
         </Pressable>
       </View>
     );
@@ -5225,7 +5225,12 @@ export default function BoardScreen() {
   // THE BOARD IN THE SOFT STYLE (theme/soft) - the user's pick after the
   // databases ("дошки"). On a phone the bar and the dock follow; every
   // piece of the canvas takes its styles through useBoardStyles.
-  useChromeStyle('soft', !!useSoftDatabase());
+  const softBoardTokens = useSoftDatabase();
+  useChromeStyle('soft', !!softBoardTokens);
+  // The layers panel draws its icons in these - the glass's white, or the
+  // soft ink (on the soft panel white would vanish).
+  const layerInk = softBoardTokens ? softBoardTokens.ink : GLASS_TEXT;
+  const layerInkMuted = softBoardTokens ? softBoardTokens.ink2 : GLASS_TEXT_MUTED;
   useTopExtras(
     [
       { label: 'Ізоляція', icon: 'scan-outline', checked: isolateArmed || isolatedIds !== null, onPress: toggleIsolation },
@@ -6421,23 +6426,26 @@ export default function BoardScreen() {
             <View style={styles.layersLayer} pointerEvents="box-none">
               <View style={[StyleSheet.absoluteFill, styles.layersDim]} pointerEvents="none" />
               <View style={[styles.layersPanel, { width: layersPanelWidth }]}>
-                <BlurView
-                  intensity={60}
-                  tint="dark"
-                  blurMethod="dimezisBlurView"
-                  blurTarget={boardBlurTarget ?? undefined}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                />
+                {/* Soft: a plain surface, no live blur under it. */}
+                {!softBoardTokens && (
+                  <BlurView
+                    intensity={60}
+                    tint="dark"
+                    blurMethod="dimezisBlurView"
+                    blurTarget={boardBlurTarget ?? undefined}
+                    style={StyleSheet.absoluteFill}
+                    pointerEvents="none"
+                  />
+                )}
                 <View style={[StyleSheet.absoluteFill, styles.layersPanelTint]} pointerEvents="none" />
               <View style={styles.layersHeader}>
                 <Text style={styles.layersTitle}>Шари</Text>
                 <View style={styles.layersHeaderActions}>
                   <Pressable hitSlop={8} onPress={addLayer}>
-                    <Ionicons name="add" size={22} color={GLASS_TEXT} />
+                    <Ionicons name="add" size={22} color={layerInk} />
                   </Pressable>
                   <Pressable hitSlop={8} onPress={() => setLayersDrawerVisible(false)}>
-                    <Ionicons name="close" size={22} color={GLASS_TEXT} />
+                    <Ionicons name="close" size={22} color={layerInk} />
                   </Pressable>
                 </View>
               </View>
@@ -6457,9 +6465,9 @@ export default function BoardScreen() {
                       <Ionicons
                         name={collapsedLayerIds.has('__none__') ? 'chevron-forward' : 'chevron-down'}
                         size={16}
-                        color={GLASS_TEXT_MUTED}
+                        color={layerInkMuted}
                       />
-                      <Text style={[styles.layerName, { color: GLASS_TEXT_MUTED }]} numberOfLines={1}>
+                      <Text style={[styles.layerName, { color: layerInkMuted }]} numberOfLines={1}>
                         Без шару
                       </Text>
                       <Text style={styles.layerCount}>{(layerMembers.get('') ?? []).length}</Text>
@@ -6480,7 +6488,7 @@ export default function BoardScreen() {
                           <Ionicons
                             name={collapsedLayerIds.has(layer.id) ? 'chevron-forward' : 'chevron-down'}
                             size={16}
-                            color={GLASS_TEXT}
+                            color={layerInk}
                           />
                         </Pressable>
                         <Pressable style={styles.layerNameTap} onPress={() => setRenamingLayer(layer)}>
@@ -6493,18 +6501,18 @@ export default function BoardScreen() {
                           <Ionicons
                             name={layer.hidden ? 'eye-off-outline' : 'eye-outline'}
                             size={17}
-                            color={layer.hidden ? '#F87171' : GLASS_TEXT}
+                            color={layer.hidden ? '#F87171' : layerInk}
                           />
                         </Pressable>
                         <Pressable hitSlop={6} onPress={() => toggleLayerLocked(layer)}>
                           <Ionicons
                             name={layer.locked ? 'lock-closed' : 'lock-open-outline'}
                             size={17}
-                            color={layer.locked ? '#F5C77E' : GLASS_TEXT}
+                            color={layer.locked ? '#F5C77E' : layerInk}
                           />
                         </Pressable>
                         <Pressable hitSlop={6} onPress={() => confirmDeleteLayer(layer)}>
-                          <Ionicons name="trash-outline" size={16} color={GLASS_TEXT_MUTED} />
+                          <Ionicons name="trash-outline" size={16} color={layerInkMuted} />
                         </Pressable>
                       </View>
                       {!collapsedLayerIds.has(layer.id) &&
@@ -6704,6 +6712,15 @@ const softBoard = (S: SoftTokens) => {
     frame: { borderRadius: 20, borderColor: S.ink3 },
     frameLabelText: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink2 },
     marquee: { borderColor: S.accent, backgroundColor: wash, borderRadius: 10 },
+    // The layers panel: a soft sheet drawn in from the right edge.
+    layersPanel: { borderLeftWidth: 0, borderTopLeftRadius: 26, borderBottomLeftRadius: 26, boxShadow: S.popShadow },
+    layersPanelTint: { backgroundColor: S.bg },
+    layersTitle: { fontFamily: SOFT_SEMIBOLD, letterSpacing: -0.3, color: S.ink },
+    layerHeaderRow: { backgroundColor: S.card, borderRadius: 16, boxShadow: S.shadow },
+    layerName: { fontFamily: SOFT_SEMIBOLD, color: S.ink },
+    layerCount: { fontFamily: SOFT_MEDIUM, color: S.ink3 },
+    memberLabel: { fontFamily: SOFT_REGULAR, color: S.ink2 },
+    layersEmpty: { fontFamily: SOFT_REGULAR, color: S.ink3 },
   }) as Record<string, object>;
 };
 
