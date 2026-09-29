@@ -1008,7 +1008,7 @@ export interface CustomDatabaseView {
   id: string;
   databaseId: string;
   name: string;
-  viewMode: 'list' | 'table' | 'cards' | 'schedule';
+  viewMode: 'list' | 'table' | 'cards' | 'schedule' | 'kanban';
   sortField: string;
   sortDir: 'asc' | 'desc';
   // Same array the screen stores in its prefs doc; a filter naming a field

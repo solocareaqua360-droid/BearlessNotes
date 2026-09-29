@@ -1,4 +1,5 @@
 import { DeskContext } from '../navigation/desks';
+import CustomDatabaseKanban from '../components/CustomDatabaseKanban';
 import { SoftSurfaceContext, softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useContext, useEffect, useRef, useState } from 'react';
@@ -154,12 +155,14 @@ const VIEW_LABELS: Record<ViewMode, string> = {
   cards: 'Галерея',
   table: 'Таблиця',
   schedule: 'Графік',
+  kanban: 'Канбан',
 };
 const VIEW_ICONS: Record<ViewMode, keyof typeof Ionicons.glyphMap> = {
   list: 'reorder-four-outline',
   cards: 'albums-outline',
   table: 'grid-outline',
   schedule: 'calendar-outline',
+  kanban: 'apps-outline',
 };
 // A day column's own width, and how tall one row of the grid stands -
 // the same two numbers decide the row-header column's height per record
@@ -197,7 +200,7 @@ function titleColumnWidth(titles: string[], windowWidth: number): number {
 // keeps them in step.
 const TABLE_ROW_HEIGHT = 46;
 
-type ViewMode = 'list' | 'table' | 'cards' | 'schedule';
+type ViewMode = 'list' | 'table' | 'cards' | 'schedule' | 'kanban';
 // The three tabs of the parameters window. They were three buttons on the
 // rail and three anchored lists; the user's own call was that they are one
 // window with three tabs, "як менше основного екрану по центру" - the
@@ -2121,6 +2124,50 @@ export default function CustomDatabaseScreen({
     );
   }
 
+  // THE KANBAN VIEW: columns from the options of the field the database is
+  // grouped by (it has to be a select / multi-select one), and a record
+  // dragged to another column takes that option as its value.
+  async function moveKanbanRow(row: CustomDatabaseRow, field: FieldDef, optionId: string | null) {
+    if (optionId === null) {
+      await updateDoc(doc(db, 'customDatabaseRows', row.id), { [`values.${field.id}`]: deleteField(), updatedAt: Date.now() });
+      return;
+    }
+    await writeRowValue(row.id, field.id, field.type === 'multiSelect' ? [optionId] : optionId);
+  }
+  function renderKanban() {
+    const kanbanField = groupField && (groupField.type === 'select' || groupField.type === 'multiSelect') ? groupField : null;
+    if (!kanbanField) {
+      const choices = groupFields.filter((f) => f.type === 'select' || f.type === 'multiSelect');
+      return (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyLabel}>За яким полем стовпчики?</Text>
+          <Text style={styles.emptyHint}>
+            {choices.length === 0
+              ? 'Потрібне поле з вибором (одним чи кількома варіантами) - додайте його в «Полях».'
+              : 'Кожен варіант поля стане стовпчиком; перетягнутий запис отримає цей варіант.'}
+          </Text>
+          <View style={{ gap: 8, marginTop: 16, alignSelf: 'stretch', paddingHorizontal: 24 }}>
+            {choices.map((f) => (
+              <Pressable key={f.id} style={styles.viewCapsule} onPress={() => selectGroupField(f.id)}>
+                <Text style={styles.viewCapsuleLabel}>{f.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      );
+    }
+    return (
+      <CustomDatabaseKanban
+        field={kanbanField}
+        rows={displayedRows}
+        renderRow={renderRowCard}
+        titleOf={titleOf}
+        onMove={(row, optionId) => moveKanbanRow(row, kanbanField, optionId)}
+        bottomInset={dockClear}
+      />
+    );
+  }
+
   function renderTableCell(row: CustomDatabaseRow, field: FieldDef, width: number = TABLE_COLUMN_WIDTH) {
     const raw = row.values[field.id];
     // Text/number cells are live inputs rather than a tap-to-swap Pressable:
@@ -2923,7 +2970,7 @@ export default function CustomDatabaseScreen({
 
               {paramsTab === 'representation' && (
                 <>
-                  {(['list', 'table', 'cards'] as ViewMode[]).map((mode) => (
+                  {(['list', 'table', 'cards', 'kanban'] as ViewMode[]).map((mode) => (
                     <Pressable key={mode} style={styles.paramOption} onPress={() => changeViewMode(mode)}>
                       <Ionicons
                         name={VIEW_ICONS[mode]}
@@ -2994,6 +3041,8 @@ export default function CustomDatabaseScreen({
                 : 'Натисніть "+", щоб додати перший запис'}
           </Text>
         </View>
+      ) : viewMode === 'kanban' ? (
+        renderKanban()
       ) : viewMode === 'table' ? (
         renderTable()
       ) : viewMode === 'cards' ? (
