@@ -4508,19 +4508,19 @@ export default function BoardScreen() {
         collapsable={false}
         style={[styles.memberRow, isCarrying && styles.memberRowDimmed]}
       >
-        <Ionicons name={iconForMember(member)} size={15} color={layerInkMuted} />
+        <Ionicons name={iconForMember(member)} size={layerIcon} color={layerInkMuted} />
         <Text style={styles.memberLabel} numberOfLines={1}>
           {labelForMember(member)}
         </Text>
-        <Pressable hitSlop={8} onPress={() => toggleObjectHidden(member)}>
+        <Pressable hitSlop={layerButtonSlop} onPress={() => toggleObjectHidden(member)}>
           <Ionicons
             name={hidden ? 'eye-off-outline' : 'eye-outline'}
-            size={15}
+            size={layerIcon}
             color={hidden ? '#F87171' : layerInkMuted}
           />
         </Pressable>
-        <Pressable hitSlop={8} onPress={() => locateObject(member.id)}>
-          <Ionicons name="locate-outline" size={15} color={layerInkMuted} />
+        <Pressable hitSlop={layerButtonSlop} onPress={() => locateObject(member.id)}>
+          <Ionicons name="locate-outline" size={layerIcon} color={layerInkMuted} />
         </Pressable>
       </View>
     );
@@ -5231,6 +5231,10 @@ export default function BoardScreen() {
   // soft ink (on the soft panel white would vanish).
   const layerInk = softBoardTokens ? softBoardTokens.ink : GLASS_TEXT;
   const layerInkMuted = softBoardTokens ? softBoardTokens.ink2 : GLASS_TEXT_MUTED;
+  // ...and at a size for a finger on the phone: "строки об'єктів та шари
+  // дрібні ... тут може бути все трішки зручнішим для пальця".
+  const layerIcon = softBoardTokens ? 21 : 16;
+  const layerButtonSlop = softBoardTokens ? 12 : 6;
   useTopExtras(
     [
       { label: 'Ізоляція', icon: 'scan-outline', checked: isolateArmed || isolatedIds !== null, onPress: toggleIsolation },
@@ -6442,10 +6446,10 @@ export default function BoardScreen() {
                 <Text style={styles.layersTitle}>Шари</Text>
                 <View style={styles.layersHeaderActions}>
                   <Pressable hitSlop={8} onPress={addLayer}>
-                    <Ionicons name="add" size={22} color={layerInk} />
+                    <Ionicons name="add" size={softBoardTokens ? 26 : 22} color={layerInk} />
                   </Pressable>
                   <Pressable hitSlop={8} onPress={() => setLayersDrawerVisible(false)}>
-                    <Ionicons name="close" size={22} color={layerInk} />
+                    <Ionicons name="close" size={softBoardTokens ? 26 : 22} color={layerInk} />
                   </Pressable>
                 </View>
               </View>
@@ -6464,7 +6468,7 @@ export default function BoardScreen() {
                     >
                       <Ionicons
                         name={collapsedLayerIds.has('__none__') ? 'chevron-forward' : 'chevron-down'}
-                        size={16}
+                        size={layerIcon}
                         color={layerInkMuted}
                       />
                       <Text style={[styles.layerName, { color: layerInkMuted }]} numberOfLines={1}>
@@ -6484,10 +6488,10 @@ export default function BoardScreen() {
                       style={styles.layerGroup}
                     >
                       <View style={styles.layerHeaderRow}>
-                        <Pressable hitSlop={6} onPress={() => toggleLayerCollapsed(layer.id)}>
+                        <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerCollapsed(layer.id)}>
                           <Ionicons
                             name={collapsedLayerIds.has(layer.id) ? 'chevron-forward' : 'chevron-down'}
-                            size={16}
+                            size={layerIcon}
                             color={layerInk}
                           />
                         </Pressable>
@@ -6497,22 +6501,22 @@ export default function BoardScreen() {
                           </Text>
                         </Pressable>
                         <Text style={styles.layerCount}>{(layerMembers.get(layer.id) ?? []).length}</Text>
-                        <Pressable hitSlop={6} onPress={() => toggleLayerHidden(layer)}>
+                        <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerHidden(layer)}>
                           <Ionicons
                             name={layer.hidden ? 'eye-off-outline' : 'eye-outline'}
-                            size={17}
+                            size={layerIcon}
                             color={layer.hidden ? '#F87171' : layerInk}
                           />
                         </Pressable>
-                        <Pressable hitSlop={6} onPress={() => toggleLayerLocked(layer)}>
+                        <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerLocked(layer)}>
                           <Ionicons
                             name={layer.locked ? 'lock-closed' : 'lock-open-outline'}
-                            size={17}
+                            size={layerIcon}
                             color={layer.locked ? '#F5C77E' : layerInk}
                           />
                         </Pressable>
-                        <Pressable hitSlop={6} onPress={() => confirmDeleteLayer(layer)}>
-                          <Ionicons name="trash-outline" size={16} color={layerInkMuted} />
+                        <Pressable hitSlop={layerButtonSlop} onPress={() => confirmDeleteLayer(layer)}>
+                          <Ionicons name="trash-outline" size={layerIcon} color={layerInkMuted} />
                         </Pressable>
                       </View>
                       {!collapsedLayerIds.has(layer.id) &&
@@ -6715,12 +6719,17 @@ const softBoard = (S: SoftTokens) => {
     // The layers panel: a soft sheet drawn in from the right edge.
     layersPanel: { borderLeftWidth: 0, borderTopLeftRadius: 26, borderBottomLeftRadius: 26, boxShadow: S.popShadow },
     layersPanelTint: { backgroundColor: S.bg },
-    layersTitle: { fontFamily: SOFT_SEMIBOLD, letterSpacing: -0.3, color: S.ink },
-    layerHeaderRow: { backgroundColor: S.card, borderRadius: 16, boxShadow: S.shadow },
-    layerName: { fontFamily: SOFT_SEMIBOLD, color: S.ink },
-    layerCount: { fontFamily: SOFT_MEDIUM, color: S.ink3 },
-    memberLabel: { fontFamily: SOFT_REGULAR, color: S.ink2 },
-    layersEmpty: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+    // Sized for a finger: taller rows, larger words, more room between
+    // the eye, the lock and the rest.
+    layersTitle: { fontSize: 26, fontFamily: SOFT_SEMIBOLD, letterSpacing: -0.4, color: S.ink },
+    layersHeaderActions: { gap: 22 },
+    layerGroup: { marginBottom: 14 },
+    layerHeaderRow: { minHeight: 54, gap: 14, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: S.card, borderRadius: 18, boxShadow: S.shadow },
+    layerName: { fontSize: 17.5, fontFamily: SOFT_SEMIBOLD, color: S.ink },
+    layerCount: { fontSize: 15, fontFamily: SOFT_MEDIUM, color: S.ink3 },
+    memberRow: { minHeight: 52, gap: 14, paddingVertical: 12, paddingLeft: 30, paddingRight: 14 },
+    memberLabel: { fontSize: 17, fontFamily: SOFT_REGULAR, color: S.ink2 },
+    layersEmpty: { fontSize: 15, fontFamily: SOFT_REGULAR, color: S.ink3 },
   }) as Record<string, object>;
 };
 
