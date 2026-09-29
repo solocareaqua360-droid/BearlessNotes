@@ -4128,6 +4128,69 @@ export default function BoardScreen() {
     setAddSheetVisible(false);
   }
 
+  // A ROW OF COLUMNS of any length. One to begin with, and a «+» at its end
+  // for the next - "створюється один, біля нього є плюсик додати ще
+  // один". Each has its own name; they stay close and move together.
+  function addStrip() {
+    setColumns((prev) => {
+      const centre = viewCenter();
+      const x =
+        prev.length === 0
+          ? centre.x - COLUMN_WIDTH / 2
+          : Math.max(...prev.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
+      const y = prev.length === 0 ? centre.y - COLUMN_MIN_HEIGHT / 2 : prev[0].y;
+      return [...prev, { id: generateId(), title: 'Стовпчик 1', x, y, strip: { id: generateId() } }];
+    });
+    setAddSheetVisible(false);
+  }
+  function addStripColumn(stripId: string) {
+    setColumns((prev) => {
+      const mine = prev.filter((c) => c.strip?.id === stripId);
+      if (mine.length === 0) return prev;
+      const last = mine.reduce((a, b) => (b.x > a.x ? b : a));
+      return [
+        ...prev,
+        { id: generateId(), title: `Стовпчик ${mine.length + 1}`, x: last.x + COLUMN_WIDTH + WEEK_COLUMN_GAP, y: last.y, strip: { id: stripId } },
+      ];
+    });
+  }
+  // Left to right, close together again from where the row starts: run
+  // after a column is taken out or moved along, with the cards of every
+  // column that shifted carried the same way.
+  function relayoutStrip(stripId: string, list: BoardColumn[]): { columns: BoardColumn[]; shifts: Map<string, number> } {
+    const mine = list.filter((c) => c.strip?.id === stripId).sort((a, b) => a.x - b.x);
+    const shifts = new Map<string, number>();
+    if (mine.length === 0) return { columns: list, shifts };
+    const startX = Math.min(...mine.map((c) => c.x));
+    const placed = new Map<string, number>();
+    mine.forEach((c, index) => {
+      const x = startX + index * (COLUMN_WIDTH + WEEK_COLUMN_GAP);
+      placed.set(c.id, x);
+      if (x !== c.x) shifts.set(c.id, x - c.x);
+    });
+    return { columns: list.map((c) => (placed.has(c.id) ? { ...c, x: placed.get(c.id) as number } : c)), shifts };
+  }
+  function applyShifts(shifts: Map<string, number>) {
+    if (shifts.size === 0) return;
+    setCards((prev) => prev.map((c) => (c.columnId && shifts.has(c.columnId) ? { ...c, x: c.x + (shifts.get(c.columnId) as number) } : c)));
+  }
+  // «Ліворуч / Праворуч»: the column trades places with its neighbour.
+  function moveStripColumn(column: BoardColumn, direction: -1 | 1) {
+    const stripId = column.strip?.id;
+    if (!stripId) return;
+    const ordered = columns.filter((c) => c.strip?.id === stripId).sort((a, b) => a.x - b.x);
+    const index = ordered.findIndex((c) => c.id === column.id);
+    const neighbour = ordered[index + direction];
+    if (index === -1 || !neighbour) return;
+    const swapped = columns.map((c) => (c.id === column.id ? { ...c, x: neighbour.x } : c.id === neighbour.id ? { ...c, x: column.x } : c));
+    const shifts = new Map<string, number>([
+      [column.id, neighbour.x - column.x],
+      [neighbour.id, column.x - neighbour.x],
+    ]);
+    setColumns(swapped);
+    applyShifts(shifts);
+  }
+
   // A WEEK: seven columns side by side, close together, starting from this
   // week's Monday - the start date is theirs to change (openWeekMenu).
   function addWeek() {
@@ -4337,14 +4400,24 @@ export default function BoardScreen() {
   // taken off the board at all ("навіть не можу видалити ... сам
   // стовпчик"). Both are now a visible choice.
   async function openColumnMenu(column: BoardColumn) {
+    const inRow = column.strip
+      ? columns.filter((c) => c.strip?.id === column.strip!.id).sort((a, b) => a.x - b.x)
+      : [];
+    const position = inRow.findIndex((c) => c.id === column.id);
     const choice = await ask({
       title: column.title || 'Стовпчик',
       actions: [
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        ...(position > 0 ? [{ id: 'left', label: 'Пересунути ліворуч', icon: 'chevron-back' as const }] : []),
+        ...(position !== -1 && position < inRow.length - 1
+          ? [{ id: 'right', label: 'Пересунути праворуч', icon: 'chevron-forward' as const }]
+          : []),
         { id: 'delete', label: 'Видалити стовпчик', icon: 'trash-outline', tone: 'danger' },
       ],
     });
     if (choice === 'rename') setRenamingColumn(column);
+    else if (choice === 'left') moveStripColumn(column, -1);
+    else if (choice === 'right') moveStripColumn(column, 1);
     else if (choice === 'delete') confirmDeleteColumn(column);
   }
 
@@ -4498,8 +4571,9 @@ export default function BoardScreen() {
   function columnsMovingWith(id: string | null): Set<string> {
     if (!id) return new Set();
     const column = columns.find((c) => c.id === id);
-    if (!column?.week) return new Set([id]);
-    return new Set(columns.filter((c) => c.week?.id === column.week!.id).map((c) => c.id));
+    if (column?.week) return new Set(columns.filter((c) => c.week?.id === column.week!.id).map((c) => c.id));
+    if (column?.strip) return new Set(columns.filter((c) => c.strip?.id === column.strip!.id).map((c) => c.id));
+    return new Set([id]);
   }
   // What moves while a column is dragged - the column, or its whole week.
   const movingColumnIds = columnsMovingWith(draggingColumnId);
@@ -4528,7 +4602,16 @@ export default function BoardScreen() {
     if (!yes) return;
     // Cards keep the position the column had them in - the reflow effect
     // below strips the now-dangling columnId when `columns` changes.
-    setColumns((prev) => prev.filter((c) => c.id !== column.id));
+    const stripId = column.strip?.id;
+    const rest = columns.filter((c) => c.id !== column.id);
+    if (stripId) {
+      // A row closes up over the gap instead of leaving a hole.
+      const { columns: closed, shifts } = relayoutStrip(stripId, rest);
+      setColumns(closed);
+      applyShifts(shifts);
+    } else {
+      setColumns(rest);
+    }
   }
 
   function addContainer() {
@@ -6006,6 +6089,28 @@ export default function BoardScreen() {
                 />
               ))}
 
+              {(() => {
+                // One «+» at the end of each row of columns.
+                const strips = new Map<string, BoardColumn[]>();
+                columns.forEach((c) => {
+                  if (c.strip) strips.set(c.strip.id, [...(strips.get(c.strip.id) ?? []), c]);
+                });
+                return [...strips.entries()].map(([stripId, list]) => {
+                  if (list.some((c) => c.id === draggingColumnId)) return null;
+                  if (list.some((c) => isObjectHiddenById(c.id))) return null;
+                  const last = list.reduce((a, b) => (b.x > a.x ? b : a));
+                  return (
+                    <Pressable
+                      key={`strip-plus-${stripId}`}
+                      onPress={() => addStripColumn(stripId)}
+                      accessibilityLabel="Додати стовпчик"
+                      style={[styles.stripPlus, { left: last.x + COLUMN_WIDTH + 10, top: last.y + 6 }]}
+                    >
+                      <Ionicons name="add" size={24} color="#FFFFFF" />
+                    </Pressable>
+                  );
+                });
+              })()}
               {originLinks.map((link) => {
                 const from = nodeById.get(link.from);
                 const to = nodeById.get(link.to);
@@ -6675,6 +6780,10 @@ export default function BoardScreen() {
                 <MaterialCommunityIcons name="database-arrow-right-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Вікно бази</Text>
               </Pressable>
+              <Pressable style={styles.sheetRow} onPress={addStrip}>
+                <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Ряд стовпчиків (з «+»)</Text>
+              </Pressable>
               <Pressable style={styles.sheetRow} onPress={addWeek}>
                 <MaterialCommunityIcons name="calendar-week" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Тиждень (7 стовпчиків)</Text>
@@ -7163,6 +7272,7 @@ const softBoard = (S: SoftTokens) => {
     frame: { borderRadius: 20, borderColor: S.ink3 },
     frameLabelText: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink2 },
     marquee: { borderColor: S.accent, backgroundColor: wash, borderRadius: 10 },
+    stripPlus: { backgroundColor: S.accent, boxShadow: S.shadow },
     // The layers panel: a soft sheet drawn in from the right edge.
     layersPanel: { borderLeftWidth: 0, borderTopLeftRadius: 26, borderBottomLeftRadius: 26, boxShadow: S.popShadow },
     layersPanelTint: { backgroundColor: S.bg },
@@ -7297,6 +7407,17 @@ const makeStyles = (theme: Theme) =>
       fontSize: 14,
       fontFamily: FONT_REGULAR,
       color: theme.canvas.ink,
+    },
+    // The «+» at the end of a row of columns.
+    stripPlus: {
+      position: 'absolute',
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: '#8B5CF6',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 3,
     },
     dbRowCard: {
       padding: 2,

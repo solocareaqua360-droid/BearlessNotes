@@ -645,6 +645,10 @@ export interface BoardColumn {
   // як заготовка з семи днів тижня ... в їх налаштування можна вибрати
   // дату початку". `id` names the week the seven share.
   week?: { id: string; index: number; start: string };
+  // A column of a ROW of columns of any length: made one at a time with the
+  // «+» at the row's end, kept close together, moved as one, each with a
+  // name of its own. Their order is their x, left to right.
+  strip?: { id: string };
   // A SOURCE column: records brought in from a database to plan with. A
   // card dragged out of it is copied, not moved - the source stays whole.
   source?: boolean;
