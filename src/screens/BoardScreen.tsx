@@ -7280,7 +7280,17 @@ export default function BoardScreen() {
           win={w}
           placed={placedByRecord}
           onChange={(patch) => patchWindow(w.id, patch)}
-          onClose={() => setDbWindows((prev) => prev.filter((x) => x.id !== w.id))}
+          // Asked first: the ✕ sits beside the fold button, and a closed
+          // window loses its chosen records, filters and field settings
+          // ("інколи промахуюсь і натискаю не звернути, а закрити").
+          onClose={async () => {
+            const yes = await confirm({
+              title: 'Закрити вікно бази?',
+              message: 'Вибрані записи, фільтри й налаштування полів для цього вікна зникнуть. Картки на дошці лишаться.',
+              confirmLabel: 'Закрити',
+            });
+            if (yes) setDbWindows((prev) => prev.filter((x) => x.id !== w.id));
+          }}
           onPlace={placeRecord}
           onFind={findRecord}
           onCarryMove={carryMove}
