@@ -2156,6 +2156,44 @@ export default function ContextDock() {
   // but a search FIELD across the bar's width and a "write" button beside
   // it, both the same quiet surface as the bar at the top. The beads are
   // the same two the screen published; only their shape changes.
+  // A soft screen with no bar at the top and nothing in the middle (the
+  // chat while choosing, before anything is chosen): its two beads as
+  // round soft buttons - not the glass dock, and not the search field
+  // below, which assumes the left bead IS search ("старий док").
+  if (softRow && !compactMiddle && !actions?.length && (!!beads.left || !!beads.right)) {
+    const frame = topBarFrame(windowW);
+    const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow };
+    const roundBead = (bead: typeof beads.left) => {
+      if (!bead) return <View style={{ width: TWO_BEAD }} />;
+      const own = SOFT_DOCK_GLYPHS[bead.icon];
+      const ink = bead.active ? soft.accent : soft.ink;
+      return (
+        <Pressable
+          onPress={bead.onPress}
+          onLongPress={bead.onLongPress}
+          disabled={bead.dimmed}
+          style={[styles.softButton, surface, { width: TWO_BEAD, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, opacity: bead.dimmed ? 0.5 : 1 }]}
+        >
+          {own ? (
+            <SoftIcon name={own} size={23} color={ink} />
+          ) : (
+            <Ionicons name={bead.icon as keyof typeof Ionicons.glyphMap} size={22} color={ink} />
+          )}
+        </Pressable>
+      );
+    };
+    return (
+      <DockPortal>
+        <View
+          pointerEvents="box-none"
+          style={[styles.twoBeads, { bottom: softRest, left: frame.left, width: frame.width, justifyContent: 'space-between' }]}
+        >
+          {roundBead(beads.left)}
+          {roundBead(beads.right)}
+        </View>
+      </DockPortal>
+    );
+  }
   if (compactMiddle && !actions?.length && chromeStyle === 'soft') {
     const frame = topBarFrame(windowW);
     const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow, height: TWO_BEAD, borderRadius: TWO_BEAD / 2 };
