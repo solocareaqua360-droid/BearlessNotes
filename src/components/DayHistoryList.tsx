@@ -78,6 +78,7 @@ export default function DayHistoryList({
   expanded: expandedProp,
   onToggleExpanded,
   hideHeader,
+  fillBottomInset,
 }: {
   items: HistoryItem[];
   fill?: boolean;
@@ -91,6 +92,10 @@ export default function DayHistoryList({
   // here - CalendarScreen moved that button onto its rail, and a control
   // somewhere else can only work if the state is somewhere both can see.
   expanded?: boolean;
+  // Given: the open list FILLS its parent instead of stopping at 360, and
+  // its end clears this much at the bottom (the dock) - the calendar's
+  // phone layout, where the history takes the room under the month.
+  fillBottomInset?: number;
   onToggleExpanded?: () => void;
   hideHeader?: boolean;
 }) {
@@ -293,12 +298,16 @@ export default function DayHistoryList({
       )}
 
       {expanded && (
-        <View style={styles.bodyRow}>
+        <View style={[styles.bodyRow, fillBottomInset !== undefined && styles.bodyRowFill]}>
           {/* A fixed max height with its own scroll - this list can end up
               being the main thing on screen (the note collapsed
               specifically to make room for it), so it must never depend
               on how much space whatever surrounds it happens to leave. */}
-          <ScrollView style={styles.list} nestedScrollEnabled contentContainerStyle={styles.listContent}>
+          <ScrollView
+            style={fillBottomInset !== undefined ? styles.listFill : styles.list}
+            nestedScrollEnabled
+            contentContainerStyle={[styles.listContent, fillBottomInset !== undefined && { paddingBottom: fillBottomInset }]}
+          >
             {items.map((item) => (
               <View key={`${item.kind}-${item.id}`}>
                 {item.kind === 'photo' || item.kind === 'file' || item.kind.startsWith('link-')
@@ -344,6 +353,12 @@ const styles = StyleSheet.create({
   },
   list: {
     maxHeight: 360,
+  },
+  bodyRowFill: {
+    flex: 1,
+  },
+  listFill: {
+    flex: 1,
   },
   column: {
     flex: 1,

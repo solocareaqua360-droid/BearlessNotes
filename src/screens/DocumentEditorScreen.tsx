@@ -5413,7 +5413,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // the overview is measured exactly as before.
           embeddedPaperScrolls && {
             flexGrow: 1,
-            borderRadius: 16,
+            // On a phone the same corner as the month's soft card above it
+            // (CalendarScreen's calendarPlate), since the two stand one
+            // over the other and are read together.
+            borderRadius: pointerDensity ? 16 : 24,
             overflow: 'hidden',
             backgroundColor: paperColor?.background ?? theme.paper.fill,
           },

@@ -867,7 +867,7 @@ export default function CalendarScreen() {
   // note. While the note's blocks are being chosen, the note's own
   // actions fill the dock's middle.
   const pencilBead = calendarFocused && !notePanelOpen
-    ? { icon: 'pencil-outline', onPress: () => noteEditorRef.current?.startWriting() }
+    ? { icon: 'pencil-outline', onPress: () => { setHistoryExpanded(false); noteEditorRef.current?.startWriting(); } }
     : null;
   const calendarMenu = [
       {
@@ -1044,9 +1044,14 @@ export default function CalendarScreen() {
   // it was still charging most of the height the week strip used to.
   // ("Тільки заповнені дні" is the exception - its strip is the content,
   // not a month, so the plate stands for it.)
+  // Soft: room between the month's card and the paper under it, grown
+  // with the month itself - the two stood edge to edge ("злипаються
+  // разом на стику"), and folded there is no card to part from.
+  const plateGap = S ? 12 : 0;
   const calendarPlateStyle = useAnimatedStyle(() => {
     const open = onlyFilledDays ? 1 : expandAmount.value;
     return {
+      marginBottom: plateGap * visibleAmount.value * open,
       opacity: visibleAmount.value * open,
       // Padded out to the capsule's own height: 27 + the weekday header
       // (22) + a row (40) + 32 + the border comes to the same 123.
@@ -1054,7 +1059,7 @@ export default function CalendarScreen() {
       paddingBottom: 32 * visibleAmount.value * open,
       borderWidth: visibleAmount.value * open,
     };
-  }, [onlyFilledDays]);
+  }, [onlyFilledDays, plateGap]);
   // Folded no longer means "a week" - it means the month's NAME, and
   // nothing else. The week strip's job (moving from day to day) went to
   // the dock, where it is under the thumb; what is left up here is the
@@ -1202,6 +1207,10 @@ export default function CalendarScreen() {
           // to the paper and move with it.
           scrollPaper && styles.noteAreaOpen,
           zooms && noteZoomStyle,
+          // The history has the screen while it is open (historyFill):
+          // the note stays mounted - the dock's pencil talks to it - but
+          // takes no room.
+          primary && historyFill && styles.noteAreaGone,
         ]}
       >
         {/* The day IS the page's title, so on a pointer it stands ON the
@@ -1256,6 +1265,15 @@ export default function CalendarScreen() {
 
   const selectedKey = dateKey(selectedDate);
   const dayHistoryCount = historyByDate.get(selectedKey)?.length ?? 0;
+  // THE HISTORY OPEN ON A PHONE TAKES THE ROOM UNDER THE MONTH, to the
+  // bottom of the screen. It was a list 360 tall under the month, and on
+  // the cover screen most of it lay below the screen's edge: it scrolled
+  // only in the strip that showed and never reached its last items - "може
+  // прогортатись тільки в нижній третині екрану і то не до кінця списку".
+  // Now it fills what is left, ends clear of the dock, and the note steps
+  // aside (still mounted) until the history is closed or the pencil is.
+  const historyFill = !pointerDensity && !foldedAway && !isTwoPane && monthOpen && dayHistoryCount > 0 && historyExpanded;
+  const historyBottomRoom = calendarInsets.bottom + 110;
   const dailyDocId = `day_${selectedKey}`;
   // Another day picked - from a card here, or from the dock's own days -
   // is that day's page, so the overview gives way to it.
@@ -1659,6 +1677,7 @@ export default function CalendarScreen() {
       >
         <Animated.View
           style={[
+            historyFill && styles.historyFillTop,
             stackedWide
               ? [styles.topBand, { height: bandHeight }, foldedAway && styles.bandFolded]
               : calendarPaneWidthFixed !== null
@@ -1964,12 +1983,13 @@ export default function CalendarScreen() {
             </Pressable>
           )}
           {!foldedAway && !isTwoPane && monthOpen && dayHistoryCount > 0 && (
-            <View style={styles.capsuleRow}>
+            <View style={[styles.capsuleRow, historyFill && styles.historyFillRow]}>
               <DayHistoryList
                 items={historyByDate.get(selectedKey) ?? []}
                 expanded={historyExpanded}
                 onToggleExpanded={() => setHistoryExpanded((v) => !v)}
                 hideHeader
+                fillBottomInset={historyFill ? historyBottomRoom : undefined}
               />
             </View>
           )}
@@ -2177,7 +2197,7 @@ export default function CalendarScreen() {
                 active: daySearch !== null,
                 onPress: () => setDaySearch((prev) => (prev === null ? '' : null)),
               },
-              right: notePanelOpen ? null : { icon: 'pencil-outline', onPress: () => noteEditorRef.current?.startWriting() },
+              right: notePanelOpen ? null : { icon: 'pencil-outline', onPress: () => { setHistoryExpanded(false); noteEditorRef.current?.startWriting(); } },
             }}
             actions={noteSelectMode ? publishedActions : null}
             soft={S}
@@ -2335,7 +2355,11 @@ function softCalendarOverrides(S: SoftTokens) {
     todayButtonLabel: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', fontSize: 13, color: S.ink },
     headerDateLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', fontSize: 17, letterSpacing: -0.2, color: S.ink },
     // The month: a soft card lifted off the ground, not an outline.
-    calendarPlate: { borderColor: 'transparent', borderRadius: 26, backgroundColor: S.card, boxShadow: S.shadow },
+    // The same corner as the day's paper under it (24) and the same right
+    // edge (16), so the two read as one column of cards.
+    calendarPlate: { borderColor: 'transparent', borderRadius: 24, marginRight: 16, backgroundColor: S.card, boxShadow: S.shadow },
+    historyHead: { marginRight: 16 },
+    capsuleRow: { marginRight: 16 },
     monthNavLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', fontSize: 17, letterSpacing: -0.2, color: S.ink },
     weekdayHeaderLabel: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', color: S.ink3 },
     dayCircleSelected: { borderColor: 'transparent', backgroundColor: S.fill },
@@ -2972,6 +2996,16 @@ const makeStyles = (t: Theme) =>
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
     color: 'rgba(255,255,255,0.85)',
+  },
+  historyFillTop: {
+    flex: 1,
+  },
+  historyFillRow: {
+    flex: 1,
+  },
+  noteAreaGone: {
+    flex: 0,
+    height: 0,
   },
   noteAreaOpen: {
     borderRadius: 0,
