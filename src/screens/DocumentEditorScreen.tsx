@@ -4686,12 +4686,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // The same drop, onto the PAGE: a list has gaps rather than points, so
   // what the block list answers with is the index the drop-line was
   // standing in (see BlockListHandle).
+  // `index` is a gap in what is ON SCREEN (BlockList draws shownBlocks),
+  // not in `blocks`: a folded toggle's children are not on screen. Used
+  // as a position in `blocks` it landed INSIDE the folded section above
+  // the drop - saved, and hidden: "референси не вставляються між пустих
+  // строчок" (the rows below a folded «тест випадення»). So the gap is
+  // named by the shown block it stands before, and found again in the
+  // whole list; past the last shown block it is the very end.
   function insertReferenceBlockAt(block: Block, index: number) {
     snapshotBeforeChange();
     const created: Block = { ...block, id: generateId(), createdAt: Date.now() };
+    const before = index >= 0 && index < shownBlocks.length ? shownBlocks[index].id : null;
     setBlocks((prev) => {
       const next = [...prev];
-      next.splice(Math.max(0, Math.min(index, next.length)), 0, created);
+      const at = before === null ? -1 : next.findIndex((b) => b.id === before);
+      next.splice(at === -1 ? next.length : at, 0, created);
       return next;
     });
   }
