@@ -1614,7 +1614,7 @@ export default function CalendarScreen() {
             {/* The ring went round the rail's capsule, and the rail is
                 gone. It belongs here anyway: what it reports is the
                 DAY'S note being written, and this is the day. */}
-            <SaveRing saving={noteSaveStatus === 'saving'} color={theme.ink.muted} />
+            <SaveRing saving={noteSaveStatus === 'saving'} color={S ? S.ink2 : theme.ink.muted} />
             {isWriting ? (
               <Ionicons name="chevron-down" size={12} color={theme.ink.muted} />
             ) : (
@@ -2351,8 +2351,13 @@ const SoftCalendarContext = createContext<SoftTokens | null>(null);
 
 function softCalendarOverrides(S: SoftTokens) {
   return StyleSheet.create({
-    todayButton: { borderWidth: 0, borderRadius: 17, backgroundColor: S.fillSolid, paddingHorizontal: 14, paddingVertical: 7 },
+    todayButton: { borderWidth: 0, height: 36, borderRadius: 18, justifyContent: 'center', backgroundColor: S.fillSolid, paddingHorizontal: 14, paddingVertical: 0 },
     todayButtonLabel: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', fontSize: 13, color: S.ink },
+    // The day's name in a capsule of its own, the same as «Сьогодні»
+    // beside it: the save ring runs round its parent's outline, and with
+    // no outline there it ran through the letters - "рухається по
+    // неіснуючому контуру і залазить на літери".
+    headerDateTap: { height: 36, backgroundColor: S.fillSolid, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 0, gap: 6 },
     headerDateLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', fontSize: 17, letterSpacing: -0.2, color: S.ink },
     // The month: a soft card lifted off the ground, not an outline.
     // The same corner as the day's paper under it (24) and the same right
