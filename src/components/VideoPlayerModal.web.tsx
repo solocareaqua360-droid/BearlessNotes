@@ -1,6 +1,6 @@
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
-import { getVideoEmbedInfo } from '../utils/videoEmbed';
+import { useEmbedUrl } from '../hooks/useEmbedUrl';
 import { GLASS_BACKDROP, GLASS_TEXT } from '../constants/glass';
 
 // The browser plays video better than the phone does, and with less: the
@@ -8,7 +8,7 @@ import { GLASS_BACKDROP, GLASS_TEXT } from '../constants/glass';
 // all), where here the same embed is an iframe the page already knows how
 // to show.
 export default function VideoPlayerModal({ url, onClose }: { url: string | null; onClose: () => void }) {
-  const embed = url ? getVideoEmbedInfo(url)?.embedUrl : null;
+  const embed = useEmbedUrl(url);
   if (!url || !embed) return null;
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
