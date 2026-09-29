@@ -4029,7 +4029,7 @@ export default function BoardScreen() {
     // ("кожне переміщення картки оригіналу ... створює нову копію"). Source
     // columns behave as plain ones until the database WINDOW replaces them
     // (the user's next step); «Дублювати» is how a copy is made for now.
-    const fromSource = false && !!before?.columnId && columns.some((c) => c.id === before.columnId && c.source);
+    const fromSource = false as boolean;
     let copied = false;
     setCards((prev) => {
       if (fromSource && before) {
