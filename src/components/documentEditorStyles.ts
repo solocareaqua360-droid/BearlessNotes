@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native';
+import { IS_POINTER } from '../utils/pointer';
 import type { Theme } from '../theme/tokens';
 import { GLASS_ISLAND, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { NAV_BUTTON, NAV_GAP, NAV_PADDING } from '../constants/rail';
@@ -39,10 +40,14 @@ export const PAGE_HEADER_TOP = 12;
 // In ONE place because BlockRow scales them too (see its scaledTextStyle)
 // and two copies of these numbers drifted apart once already. The line
 // heights are the soft style's: ~1.6 for text, where it used to be 1.37.
-export const PAGE_TEXT = { size: 17, line: 27 };
-export const PAGE_H1 = { size: 28, line: 35 };
-export const PAGE_H2 = { size: 22, line: 29 };
-export const PAGE_H3 = { size: 19, line: 26 };
+// Under a mouse the page is drawn at 85% (the Mac shell's zoom) and the
+// user's own text-size setting (106% here) rides on top of the base, so the
+// body is 18: 18 * 1.06 * 0.85 lands on the 16 that was asked for. The
+// headings keep their steps above it. Everything else is the phone's.
+export const PAGE_TEXT = IS_POINTER ? { size: 18, line: 29 } : { size: 17, line: 27 };
+export const PAGE_H1 = IS_POINTER ? { size: 28, line: 35 } : { size: 28, line: 35 };
+export const PAGE_H2 = IS_POINTER ? { size: 23, line: 30 } : { size: 22, line: 29 };
+export const PAGE_H3 = IS_POINTER ? { size: 20, line: 27 } : { size: 19, line: 26 };
 
 export const makeStyles = (t: Theme) => StyleSheet.create({
   container: {
@@ -270,8 +275,9 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
   // one picture.
   titleInput: {
     // At least 2x the previous 24 - the user's own size, kept.
-    fontSize: 48,
-    lineHeight: 54,
+    // Under a mouse: 34, which is 29 once the shell's 85% is on it.
+    fontSize: IS_POINTER ? 34 : 48,
+    lineHeight: IS_POINTER ? 40 : 54,
     letterSpacing: -1,
     // The weight is the FILE's (Inter_600SemiBold); a bold on top makes
     // Android draw a fake heavier one.

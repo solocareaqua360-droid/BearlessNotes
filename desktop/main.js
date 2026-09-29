@@ -433,6 +433,27 @@ function command(name) {
   );
 }
 
+// THE PAGE'S SCALE. The app is drawn in points a finger can hit; a mouse
+// hits smaller things, so on the Mac everything is drawn at 85% by default
+// (the user's own pick, Mac density plan step 1). A real page zoom - the
+// text is re-laid out and stays sharp, unlike a scaled picture - and it is
+// also what gives the window more room: at 0.85 a 1440-wide window is laid
+// out as 1694. Kept in settings.json, changed with Cmd + / Cmd - / Cmd 0.
+const ZOOM_DEFAULT = 0.85;
+const ZOOM_MIN = 0.6;
+const ZOOM_MAX = 1.4;
+
+function currentZoom() {
+  const saved = Number(readSettings().zoom);
+  return Number.isFinite(saved) && saved >= ZOOM_MIN && saved <= ZOOM_MAX ? saved : ZOOM_DEFAULT;
+}
+
+function applyZoom(zoom) {
+  const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(zoom * 100) / 100));
+  writeSettings({ ...readSettings(), zoom: next });
+  BrowserWindow.getAllWindows().forEach((w) => w.webContents.setZoomFactor(next));
+}
+
 function installMenu() {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -483,7 +504,22 @@ function installMenu() {
         ],
       },
       { role: 'editMenu' },
-      { role: 'viewMenu' },
+      {
+        label: 'Вигляд',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { label: 'Збільшити', accelerator: 'CmdOrCtrl+Plus', click: () => applyZoom(currentZoom() + 0.05) },
+          // The keyboard's own "=" key, which is the plus without shift.
+          { label: 'Збільшити', accelerator: 'CmdOrCtrl+=', visible: false, click: () => applyZoom(currentZoom() + 0.05) },
+          { label: 'Зменшити', accelerator: 'CmdOrCtrl+-', click: () => applyZoom(currentZoom() - 0.05) },
+          { label: 'Звичайний розмір', accelerator: 'CmdOrCtrl+0', click: () => applyZoom(ZOOM_DEFAULT) },
+          { type: 'separator' },
+          { role: 'togglefullscreen' },
+        ],
+      },
       { role: 'windowMenu' },
     ])
   );
@@ -509,6 +545,10 @@ function createWindow(port) {
       spellcheck: true,
     },
   });
+
+  // The zoom is the page's, so it is set once the page exists - and again
+  // on every load, since a navigation resets it.
+  window.webContents.on('dom-ready', () => window.webContents.setZoomFactor(currentZoom()));
 
   rememberBounds(window);
   window.once('ready-to-show', () => window.show());
