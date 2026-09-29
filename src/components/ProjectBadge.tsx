@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GLASS_EDGE, GLASS_ISLAND, GLASS_TEXT } from '../constants/glass';
 import { FONT_MEDIUM, SOFT_MEDIUM } from '../utils/fonts';
-import type { SoftTokens } from '../theme/soft';
+import { useSoftSurface, type SoftTokens } from '../theme/soft';
 
 type Props = {
   // null/undefined both read as "no project" - a gray chip, same as a
@@ -34,7 +34,12 @@ const UNSET_COLOR = '#9CA3AF';
 // hidden the way a tag chip is, since "which project" should read at a
 // glance even on a mixed "Всі" list. Same small-pill family as
 // TagChips, sat at the card's own date row, in its right corner.
-export default function ProjectBadge({ project, onPress, glass, soft, softSize = 12 }: Props) {
+export default function ProjectBadge({ project, onPress, glass, soft: softProp, softSize = 12 }: Props) {
+  // Said outright, or heard from a soft surface around it - every
+  // database's cards (ItemCards), which pass nothing: "капсула проекту
+  // стара".
+  const softSurface = useSoftSurface();
+  const soft = softProp !== undefined ? softProp : softSurface;
   const chipStyle = soft
     ? [styles.softChip]
     : [

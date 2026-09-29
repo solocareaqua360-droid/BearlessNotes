@@ -4,7 +4,8 @@ import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { ExplorerFolder } from '../hooks/useExplorer';
-import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
+import { softenStyles, useSoftSurface, type SoftTokens } from '../theme/soft';
 
 // What stands above a database's records while it is in explorer mode:
 // where you are, and the folders at this level.
@@ -50,9 +51,15 @@ export default function ExplorerHead({
   folderRef?: (path: string) => (node: View | null) => void;
 }) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  // Soft (a database's chrome says so - see SoftSurfaceContext): the same
+  // folder tiles the Documents desk has - two across, a quiet card, a
+  // small tinted seat for the icon, Inter - instead of the tall glass rows
+  // with an outlined box: "папки зі старим виглядом ... у всіх змінених
+  // базах".
+  const soft = useSoftSurface();
+  const styles = softenStyles(useStyles(makeStyles), soft, softExplorer);
   const [width, setWidth] = useState(0);
-  const cols = Math.max(1, columns ?? 1);
+  const cols = Math.max(soft ? 2 : 1, columns ?? 1);
   const rowWidth = cols > 1 && width > 0 ? Math.floor((width - FOLDER_GAP * (cols - 1)) / cols) : undefined;
 
   // Nothing above the list unless there is something to put there. The
@@ -69,11 +76,11 @@ export default function ExplorerHead({
             onPress={() => onGo(folder.fullPath)}
             onLongPress={() => onFolderMenu(folder)}
           >
-            <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
+            <View style={[styles.folderThumb, !soft && { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
               <Ionicons
                 name={(folder.tag?.icon as keyof typeof Ionicons.glyphMap) || 'folder-outline'}
-                size={26}
-                color={folder.tag?.color ?? theme.ink.muted}
+                size={soft ? 20 : 26}
+                color={folder.tag?.color ?? (soft ? soft.ink2 : theme.ink.muted)}
               />
             </View>
             <View style={styles.folderBody}>
@@ -81,13 +88,13 @@ export default function ExplorerHead({
                 {folder.name}
               </Text>
               <View style={styles.folderMeta}>
-                <Ionicons name={itemIcon} size={14} color={theme.ink.muted} />
+                <Ionicons name={itemIcon} size={soft ? 13 : 14} color={soft ? soft.ink3 : theme.ink.muted} />
                 <Text style={styles.folderCount}>{folder.docs}</Text>
-                <Ionicons name="folder-outline" size={14} color={theme.ink.muted} style={styles.folderMetaGap} />
+                <Ionicons name="folder-outline" size={soft ? 13 : 14} color={soft ? soft.ink3 : theme.ink.muted} style={styles.folderMetaGap} />
                 <Text style={styles.folderCount}>{folder.subfolders}</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
+            <Ionicons name="chevron-forward" size={soft ? 16 : 18} color={soft ? soft.ink3 : theme.ink.faint} />
           </Pressable>
         </View>
       ))}
@@ -97,17 +104,17 @@ export default function ExplorerHead({
           style={[styles.folderRow, styles.trashRow, rowWidth !== undefined && { width: rowWidth }]}
           onPress={trash.onOpen}
         >
-          <View style={[styles.folderThumb, { borderColor: theme.ink.faint }]}>
-            <Ionicons name="trash-outline" size={26} color={theme.ink.muted} />
+          <View style={[styles.folderThumb, !soft && { borderColor: theme.ink.faint }]}>
+            <Ionicons name="trash-outline" size={soft ? 20 : 26} color={soft ? soft.ink2 : theme.ink.muted} />
           </View>
           <View style={styles.folderBody}>
-            <Text style={[styles.folderName, { color: theme.ink.muted }]}>Кошик</Text>
+            <Text style={[styles.folderName, { color: soft ? soft.ink2 : theme.ink.muted }]}>Кошик</Text>
             <View style={styles.folderMeta}>
-              <Ionicons name={itemIcon} size={14} color={theme.ink.muted} />
+              <Ionicons name={itemIcon} size={soft ? 13 : 14} color={soft ? soft.ink3 : theme.ink.muted} />
               <Text style={styles.folderCount}>{trash.count}</Text>
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={theme.ink.faint} />
+          <Ionicons name="chevron-forward" size={soft ? 16 : 18} color={soft ? soft.ink3 : theme.ink.faint} />
         </Pressable>
       )}
       </View>
@@ -116,6 +123,30 @@ export default function ExplorerHead({
 }
 
 const FOLDER_GAP = 10;
+
+// The soft overlay (theme/soft's softenStyles) - matched to the Documents
+// desk's own soft folders (DocumentsScreen's softFolder*).
+const softExplorer = (S: SoftTokens) =>
+  StyleSheet.create({
+    folderGrid: { gap: 12 },
+    folderRow: {
+      height: 64,
+      gap: 10,
+      paddingLeft: 12,
+      paddingRight: 10,
+      paddingVertical: 0,
+      borderRadius: 20,
+      borderWidth: 0,
+      backgroundColor: S.card,
+      boxShadow: S.shadow,
+    },
+    trashRow: { backgroundColor: S.card },
+    folderThumb: { width: 38, height: 38, borderRadius: 13, borderWidth: 0, backgroundColor: S.fill },
+    folderBody: { gap: 3 },
+    folderName: { fontSize: 15, fontFamily: SOFT_SEMIBOLD, letterSpacing: -0.2, color: S.ink },
+    folderMetaGap: { marginLeft: 6 },
+    folderCount: { fontSize: 12.5, fontFamily: SOFT_MEDIUM, fontVariant: ['tabular-nums'], color: S.ink3 },
+  }) as Record<string, object>;
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
