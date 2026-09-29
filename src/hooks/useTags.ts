@@ -243,16 +243,38 @@ export function useTags() {
   }
 
   // Quick inline rename from the picker's pencil icon.
+  // A folder's name is its path, and the folders inside it carry that path
+  // as their prefix - so renaming one renames the whole branch under it,
+  // in every database at once. It used to rename the folder alone: the
+  // ones nested under it kept the old name and the renamed one stood
+  // apart as a new branch - "при перейменуванні папки вищого рівня
+  // вкладені папки ... залишились зі старою назвою".
+  function renameBranch(batch: ReturnType<typeof writeBatch>, oldPath: string, newPath: string) {
+    const from = oldPath.trim();
+    const to = newPath.trim();
+    if (!from || !to || from === to) return;
+    tags.forEach((t) => {
+      if (t.path === from || t.path.startsWith(`${from}/`)) {
+        batch.update(doc(db, 'tags', t.id), { path: to + t.path.slice(from.length) });
+      }
+    });
+  }
+
   async function renameTag(tag: Tag, newPath: string) {
     const batch = writeBatch(db);
     batch.update(doc(db, 'tags', tag.id), { path: newPath.trim() });
+    renameBranch(batch, tag.path, newPath);
     await batch.commit();
   }
 
   // Full edit from TagManageScreen - path, icon and color all at once,
   // unlike renameTag's path-only quick fix from the per-item picker.
   async function updateTag(tag: Tag, updates: { path: string; icon: string; color: string; types?: TaggableKind[] }) {
-    await updateDoc(doc(db, 'tags', tag.id), {
+    const batch = writeBatch(db);
+    // The branch first: it rewrites this folder's own path too, and the
+    // full update below then lands on top with the same path.
+    renameBranch(batch, tag.path, updates.path);
+    batch.update(doc(db, 'tags', tag.id), {
       path: updates.path.trim(),
       icon: updates.icon,
       color: updates.color,
@@ -260,6 +282,7 @@ export function useTags() {
       // (TagEditSheet) - "присвоїти цю папку і іншому типу об'єкту".
       ...(updates.types ? { types: updates.types } : {}),
     });
+    await batch.commit();
   }
 
   // Explicit delete from TagManageScreen - strips the tag off every item
