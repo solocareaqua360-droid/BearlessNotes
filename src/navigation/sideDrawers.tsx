@@ -34,6 +34,11 @@ type SideDrawers = {
   // How many screens are holding the swipe back right now.
   swipeBlocked: boolean;
   blockSwipe: () => () => void;
+  // A screen with a sideways scroll of its own (a table, a kanban) holds
+  // this: the swipe to the calendar / databases then starts only from the
+  // screen's EDGE, where the scroll is not, instead of anywhere.
+  swipeEdgeOnly: boolean;
+  holdEdgeOnly: () => () => void;
 };
 
 const NONE: SideDrawers = {
@@ -52,6 +57,8 @@ const NONE: SideDrawers = {
   closeDatabases: () => {},
   swipeBlocked: true,
   blockSwipe: () => () => {},
+  swipeEdgeOnly: false,
+  holdEdgeOnly: () => () => {},
 };
 
 // Exported so the layers - drawn through the glass portal, outside this
@@ -106,6 +113,11 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
     setBlocks((n) => n + 1);
     return () => setBlocks((n) => n - 1);
   }, []);
+  const [edgeOnly, setEdgeOnly] = useState(0);
+  const holdEdgeOnly = useCallback(() => {
+    setEdgeOnly((n) => n + 1);
+    return () => setEdgeOnly((n) => n - 1);
+  }, []);
   const value = useMemo(
     () => ({
       calendarProgress,
@@ -123,6 +135,8 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
       closeDatabases,
       swipeBlocked: blocks > 0,
       blockSwipe,
+      swipeEdgeOnly: edgeOnly > 0,
+      holdEdgeOnly,
     }),
     [
       calendarProgress,
@@ -138,6 +152,8 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
       closeDatabases,
       blocks,
       blockSwipe,
+      edgeOnly,
+      holdEdgeOnly,
     ]
   );
   return <SideDrawersContext.Provider value={value}>{children}</SideDrawersContext.Provider>;
@@ -147,6 +163,13 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
 // layers: everything reads closed and blocked.
 export function useSideDrawers(): SideDrawers {
   return useContext(SideDrawersContext) ?? NONE;
+}
+
+// Held by a screen that scrolls sideways itself: the swipe past the desks
+// then begins at the edge of the screen only (see Tabs).
+export function useEdgeOnlyDrawerSwipe(active: boolean) {
+  const { holdEdgeOnly } = useSideDrawers();
+  useEffect(() => (active ? holdEdgeOnly() : undefined), [active, holdEdgeOnly]);
 }
 
 // Held by a screen whose own sideways drags would be taken by the swipe.

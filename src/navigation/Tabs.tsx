@@ -61,8 +61,10 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
     databasesProgress,
     setDatabasesDragging,
     swipeBlocked,
+    swipeEdgeOnly,
   } = useSideDrawers();
   const { width } = useWindowDimensions();
+  const screenWidth = width;
   const drawerWidth = Math.round(width * SIDE_DRAWER_FRACTION);
   const startX = useSharedValue(0);
   const startY = useSharedValue(0);
@@ -78,6 +80,10 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
   const layerOpen = calendarOpen || databasesOpen;
   const canCalendar = !swipeBlocked && !layerOpen && focusedTab === desks[0];
   const canDatabases = !swipeBlocked && !layerOpen && focusedTab === desks[desks.length - 1];
+  // Over a screen that scrolls sideways itself, the swipe starts from the
+  // edge: EDGE_BAND wide on the side it goes to, and it takes over at once
+  // (the scroll's own slop would otherwise win the race).
+  const edgeBand = swipeEdgeOnly ? EDGE_BAND : 0;
 
   // Manual, so it fails before it activates on anything that is not
   // clearly one of the two - up or down is a list scrolling, and a finger
@@ -97,6 +103,14 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
             state.fail();
             return;
           }
+          if (edgeBand > 0) {
+            const nearLeft = touch.absoluteX <= edgeBand;
+            const nearRight = touch.absoluteX >= screenWidth - edgeBand;
+            if (!((canCalendar && nearLeft) || (canDatabases && nearRight))) {
+              state.fail();
+              return;
+            }
+          }
           startX.value = touch.absoluteX;
           startY.value = touch.absoluteY;
           startAt.value = Date.now();
@@ -111,7 +125,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
             state.fail();
             return;
           }
-          if (Math.abs(dx) > 14) {
+          if (Math.abs(dx) > (edgeBand > 0 ? 4 : 14)) {
             if (Date.now() - startAt.value > 350) {
               state.fail();
               return;
@@ -143,6 +157,8 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
           else if (way.value < 0) runOnJS(setDatabasesDragging)(false);
         }),
     [
+      edgeBand,
+      screenWidth,
       canCalendar,
       canDatabases,
       openCalendar,
@@ -209,6 +225,9 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
     </View>
   );
 }
+
+// How far from the screen's edge a swipe may begin, over a sideways scroll.
+const EDGE_BAND = 32;
 
 const styles = StyleSheet.create({
   fill: {

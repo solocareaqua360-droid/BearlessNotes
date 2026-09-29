@@ -1,4 +1,5 @@
 import { DeskContext } from '../navigation/desks';
+import { useEdgeOnlyDrawerSwipe } from '../navigation/sideDrawers';
 import CustomDatabaseKanban from '../components/CustomDatabaseKanban';
 import { SoftSurfaceContext, softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
@@ -275,6 +276,10 @@ export default function CustomDatabaseScreen({
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  // A table, a kanban and a schedule scroll sideways themselves: the swipe
+  // to the databases layer then begins from the edge of the screen (see
+  // Tabs) - "не можу перейти ... свайпом до вікна з базами даних".
+  useEdgeOnlyDrawerSwipe(isFocused && (viewMode === 'table' || viewMode === 'kanban' || viewMode === 'schedule'));
   // Which capsule is selected at the top of the screen - null means
   // "Поточні зміни" (the working area: sort/filter/group/representation/
   // hidden fields persist for it same as before, just now explicitly
