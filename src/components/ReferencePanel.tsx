@@ -1,5 +1,10 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { GestureDetector } from 'react-native-gesture-handler';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardRide } from '../hooks/useKeyboardRide';
+import { TOP_NAV_SPACE } from './TopNavBar';
 import { Ionicons } from '@expo/vector-icons';
 import AddExistingItemModal from './AddExistingItemModal';
 import GlassDrop, { GlassIcon } from './GlassDrop';
@@ -32,6 +37,7 @@ export default function ReferencePanel({
   hint,
   excludeIds,
   soft,
+  sheet = false,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -48,6 +54,16 @@ export default function ReferencePanel({
   // quiet ground, Inter, the soft icons, and a card in hand instead of
   // a glass drop.
   soft?: SoftTokens | null;
+  // A SHEET FROM THE BOTTOM instead of a drawer at the side (the user's
+  // pick of three, 2026-09-29: "давай спробуємо 1"). The drawer had no
+  // place of its own - it slid under the note's bar and lay over half
+  // the text. The sheet takes the lower part of the screen at full
+  // width, the bar and the top of the note stay clear above it, and
+  // things are dragged UP out of it into the note. Pulled up by its
+  // grabber it stands just under the bar; pulled down, it goes. Kept
+  // mounted by the caller while closed, so it can slide away rather
+  // than vanish.
+  sheet?: boolean;
 }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -70,12 +86,71 @@ export default function ReferencePanel({
   // repeated what React had already done.
   const ghost = drag.ghost;
 
-  if (!visible) return null;
+  // The sheet's resting places, as the top edge's distance from the
+  // window's top: half the screen, just under the bar, and gone.
+  const { height: windowH } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const fullTop = insets.top + TOP_NAV_SPACE;
+  const halfTop = Math.round(windowH * 0.42);
+  const topSV = useSharedValue(windowH);
+  const dragSV = useSharedValue(0);
+  const keyboard = useKeyboardRide();
+  const [shown, setShown] = useState(visible);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const closeFromGesture = useCallback(() => onCloseRef.current(), []);
+  useEffect(() => {
+    if (!sheet) return;
+    if (visible) {
+      setShown(true);
+      topSV.value = withTiming(halfTop, { duration: 320, easing: Easing.out(Easing.cubic) });
+    } else {
+      topSV.value = withTiming(windowH, { duration: 240, easing: Easing.in(Easing.cubic) }, (done) => {
+        if (done) runOnJS(setShown)(false);
+      });
+    }
+    // halfTop/windowH only move on a fold or rotation; a resting sheet
+    // is re-placed by the next open.
+  }, [visible, sheet]);
+  // The grabber: follows the finger, then settles on the nearer of the
+  // two places - or, pulled well below half, closes. Plain numbers and
+  // shared values only inside the worklets (see reanimated_worklet_closure).
+  const sheetPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([-6, 6])
+        .onUpdate((e) => {
+          dragSV.value = e.translationY;
+        })
+        .onEnd((e) => {
+          const from = topSV.value + e.translationY;
+          const projected = from + e.velocityY * 0.15;
+          topSV.value = Math.max(fullTop, from);
+          dragSV.value = 0;
+          if (projected > halfTop + 110) {
+            runOnJS(closeFromGesture)();
+            return;
+          }
+          const target = Math.abs(projected - fullTop) < Math.abs(projected - halfTop) ? fullTop : halfTop;
+          topSV.value = withTiming(target, { duration: 260, easing: Easing.out(Easing.cubic) });
+        }),
+    [fullTop, halfTop, topSV, dragSV, closeFromGesture]
+  );
+  const sheetStyle = useAnimatedStyle(() => {
+    // With the keyboard up (typing in its search) the sheet stands on
+    // the keyboard and reaches up to the bar, or there would be no list
+    // left to see.
+    const lift = Math.max(0, -keyboard.height.value);
+    const resting = Math.max(fullTop, topSV.value + dragSV.value);
+    const top = resting + (fullTop - resting) * Math.min(1, keyboard.progress.value);
+    return { top, bottom: lift };
+  });
 
-  return (
+  if (sheet ? !visible && !shown : !visible) return null;
+
+  const header = (
     <>
-      <View style={[styles.panel, soft && [styles.softPanel, { backgroundColor: soft.bg, boxShadow: soft.popShadow }]]}>
-        <View style={[styles.header, soft && styles.softHeader]}>
+      <View style={[styles.header, soft && styles.softHeader]}>
           {soft ? (
             <Text style={[styles.softTitle, { color: soft.ink }]}>Референси</Text>
           ) : (
@@ -99,6 +174,9 @@ export default function ReferencePanel({
           )}
         </View>
         <Text style={[styles.hint, soft && [styles.softHint, { color: soft.ink3 }]]}>{hint}</Text>
+    </>
+  );
+  const list = (
         <GestureDetector gesture={drag.gesture}>
           <View style={{ flex: 1 }}>
             <AddExistingItemModal
@@ -114,7 +192,30 @@ export default function ReferencePanel({
             />
           </View>
         </GestureDetector>
-      </View>
+  );
+
+  return (
+    <>
+      {sheet && soft ? (
+        <Animated.View
+          style={[styles.sheet, { backgroundColor: soft.bg, boxShadow: soft.popShadow }, sheetStyle]}
+        >
+          <GestureDetector gesture={sheetPan}>
+            <View collapsable={false}>
+              <View style={styles.grabberRow}>
+                <View style={[styles.grabber, { backgroundColor: soft.ink3 }]} />
+              </View>
+              {header}
+            </View>
+          </GestureDetector>
+          {list}
+        </Animated.View>
+      ) : (
+        <View style={[styles.panel, soft && [styles.softPanel, { backgroundColor: soft.bg, boxShadow: soft.popShadow }]]}>
+          {header}
+          {list}
+        </View>
+      )}
 
       {ghost && (
         <View style={[styles.ghostWrap, { left: ghost.x, top: ghost.y }]} pointerEvents="none">
@@ -187,6 +288,25 @@ const makeStyles = (t: Theme) =>
       borderLeftWidth: 0,
       borderTopLeftRadius: 26,
       borderBottomLeftRadius: 26,
+    },
+    sheet: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      overflow: 'hidden',
+    },
+    grabberRow: {
+      alignItems: 'center',
+      paddingTop: 10,
+      paddingBottom: 2,
+    },
+    grabber: {
+      width: 38,
+      height: 5,
+      borderRadius: 2.5,
+      opacity: 0.6,
     },
     softHeader: {
       paddingHorizontal: 18,

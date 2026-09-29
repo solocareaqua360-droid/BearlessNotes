@@ -89,6 +89,12 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     zIndex: 30,
     elevation: 30,
   },
+  // «Референси» as a sheet: the whole screen to stand in, touches pass
+  // through everywhere the sheet itself is not.
+  referenceSheetDock: {
+    zIndex: 30,
+    elevation: 30,
+  },
   loadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',

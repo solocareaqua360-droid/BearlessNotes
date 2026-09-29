@@ -2228,6 +2228,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // window coordinates by whoever put the note in a pane.
   const noteWidth = editorWidth || Math.max(0, windowWidth - paneLeft - railRight);
   const referencesSplit = referencePanelOpen && !embedded && noteWidth >= REFERENCES_SPLIT_MIN;
+  // Where the note does not split, a soft note takes «Референси» as a
+  // SHEET FROM THE BOTTOM (see ReferencePanel's `sheet`) - the side
+  // drawer had no place of its own and slid under the bar.
+  const referenceSheet = !embedded && !('pane' in props) && !pointerDensity && noteWidth < REFERENCES_SPLIT_MIN;
   // Always a real number, off THIS pane's own measured width - never a
   // percentage of the portal host, which spans the whole window and
   // would size the drawer against the BOARD sharing that window with a
@@ -2497,9 +2501,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // With the room there from the start, the synced scroll is never
   // clamped, reaches its target in step with the keyboard, and the safety
   // net finds nothing left to do.
+  // The same for «Референси» as a sheet: the end of a long note can be
+  // scrolled up above it, so there is somewhere to drop at the end too.
+  const referenceRoomSV = useSharedValue(0);
+  useEffect(() => {
+    referenceRoomSV.value = referenceSheet && referencePanelOpen ? Math.round(windowHeight * 0.58) : 0;
+  }, [referenceSheet, referencePanelOpen, windowHeight, referenceRoomSV]);
   const bottomSpacerStyle = useAnimatedStyle(() => ({
     height: Math.max(
       160,
+      referenceRoomSV.value,
       Math.max(keyboardSV.value, keyboardTargetSV.value, panelHeightSV.value) +
         KEYBOARD_ROOM +
         EDITOR_TOOLBAR_HEIGHT
@@ -2626,7 +2637,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // ...nor while it is on its way back: ⌨ has closed the panel and the
   // keyboard is still rising, and for that moment nothing "stands" at
   // the bottom - which let the dock pop up for a second.
-  const dockLive = !embedded && editorFocused && !keyboardOpen && panelSection === null && !panelClosing;
+  // ...nor while «Референси» stands there as a sheet: it takes the foot
+  // of the screen, and its own grabber and ✕ are the way back.
+  const dockLive =
+    !embedded && editorFocused && !keyboardOpen && panelSection === null && !panelClosing &&
+    !(referenceSheet && referencePanelOpen);
   // THE DAILY NOTE'S SELECT MODE REACHES THE DOCK TOO, though the note
   // itself has no card there (the calendar owns the dock's context).
   //
@@ -4839,9 +4854,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // page IS the screen and they stay inside it, exactly as before.
   const bottomChrome = (
     <>
-      {!embedded && referencePanelOpen && (
+      {!embedded && (referencePanelOpen || referenceSheet) && (
         <View
-          style={[styles.referencePanelDock, { right: referencePanelRight, width: referencePanelWidth }]}
+          style={
+            referenceSheet
+              ? [StyleSheet.absoluteFill, styles.referenceSheetDock]
+              : [styles.referencePanelDock, { right: referencePanelRight, width: referencePanelWidth }]
+          }
           pointerEvents="box-none"
         >
           {/* Its own boundary: a panel that browses every database in the
@@ -4850,7 +4869,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           <CrashBoundary>
             <ReferencePanel
               soft={softPage ? soft : null}
-              visible
+              sheet={referenceSheet}
+              visible={referencePanelOpen}
               onClose={() => setReferencePanelOpen(false)}
               // The hint has to match the gesture - see useReferenceDrag:
               // a pointer drags at once, a finger holds first.
