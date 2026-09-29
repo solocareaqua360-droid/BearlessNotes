@@ -57,7 +57,7 @@ export default function DesktopToolbar() {
   // that left no way to make a folder at all.
   //
   // So it is back, under the name of what it actually is now.
-  const shown = (actions ?? []).map((a) => (a.key === 'tags' ? { ...a, label: 'Теги' } : a));
+  const shown = (actions ?? []).map((a) => (a.key === 'tags' ? { ...a, label: 'Папки' } : a));
 
   // Words under the icons only while they fit. A note publishes seven
   // actions - «Полотно», «Референси», «Вибір», «Вигляд», «Проект»,

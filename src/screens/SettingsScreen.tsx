@@ -789,14 +789,14 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Ionicons name="pricetags-outline" size={22} color={accent} />
-            <Text style={styles.cardTitle}>Об'єднати теги з однаковою назвою</Text>
+            <Text style={styles.cardTitle}>Об'єднати папки з однаковою назвою</Text>
           </View>
           <Text style={styles.cardBody}>
             {mergeTagsResult
               ? mergeTagsResult.groups === 0
                 ? 'Двійників не знайдено - усе вже гаразд'
-                : `Об'єднано ${mergeTagsResult.groups} ${mergeTagsResult.groups === 1 ? 'назву' : 'назви'}, прибрано ${mergeTagsResult.tagsRemoved} зайвих тегів`
-              : 'Разова перевірка й виправлення - для тегів, які раніше створились по одному на кожен виділений елемент замість одного спільного.'}
+                : `Об'єднано ${mergeTagsResult.groups} ${mergeTagsResult.groups === 1 ? 'назву' : 'назви'}, прибрано ${mergeTagsResult.tagsRemoved} зайвих папок`
+              : 'Разова перевірка й виправлення - для папок, які раніше створились по одному на кожен виділений елемент замість одного спільного.'}
           </Text>
           <Pressable style={styles.checkButton} onPress={handleMergeDuplicateTags} disabled={mergeTagsBusy}>
             {mergeTagsBusy ? (

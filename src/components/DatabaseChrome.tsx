@@ -422,7 +422,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             ...(bulk && list.selectedIds.size > 0
               ? [
                   ...(bulk.onTag
-                    ? [{ key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: bulk.onTag }]
+                    ? [{ key: 'tag', icon: 'pricetag-outline' as const, label: 'Папки', onPress: bulk.onTag }]
                     : []),
                   { key: 'group', icon: 'folder-outline' as const, label: 'Проект', onPress: bulk.onGroup },
                   ...(bulk.onBoard
@@ -584,7 +584,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             {list.tagFilter.type === 'untagged' ? (
               <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
                 <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-                <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
+                <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без папки</Text>
                 <Pressable hitSlop={8} onPress={() => list.setTagFilter(null)}>
                   <Ionicons name="close" size={14} color="#6B7280" />
                 </Pressable>

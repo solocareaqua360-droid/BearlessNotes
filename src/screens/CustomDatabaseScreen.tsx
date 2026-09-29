@@ -839,7 +839,7 @@ export default function CustomDatabaseScreen({
             },
             ...(selectedIds.size > 0
               ? [
-                  { key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: () => setBulkTagPickerVisible(true) },
+                  { key: 'tag', icon: 'pricetag-outline' as const, label: 'Папки', onPress: () => setBulkTagPickerVisible(true) },
                   { key: 'group', icon: 'folder-outline' as const, label: 'Проект', onPress: () => setBulkGroupPickerVisible(true) },
                   { key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: confirmDeleteSelected },
                 ]
@@ -3387,7 +3387,7 @@ export default function CustomDatabaseScreen({
 
                 {(rowPageRow.tagIds ?? []).length > 0 && (
                   <View style={styles.pageField}>
-                    <Text style={styles.pageFieldLabel}>Теги</Text>
+                    <Text style={styles.pageFieldLabel}>Папки</Text>
                     <View style={styles.pageTags}>
                       <TagChips tags={tags.filter((t) => (rowPageRow.tagIds ?? []).includes(t.id))} onPress={() => {}} />
                     </View>
@@ -3468,12 +3468,12 @@ export default function CustomDatabaseScreen({
                 <Text style={styles.addFieldLabel}>Поле</Text>
               </Pressable>
               <View style={styles.editorField}>
-                <Text style={styles.editorFieldLabel}>Теги</Text>
+                <Text style={styles.editorFieldLabel}>Папки</Text>
                 <Pressable style={styles.fieldPressable} onPress={() => setTagPickerVisible(true)}>
                   {draftTagIds.length > 0 ? (
                     <TagChips tags={tags.filter((t) => draftTagIds.includes(t.id))} onPress={() => setTagPickerVisible(true)} />
                   ) : (
-                    <Text style={styles.fieldPressablePlaceholder}>Додати теги</Text>
+                    <Text style={styles.fieldPressablePlaceholder}>Додати в папки</Text>
                   )}
                 </Pressable>
               </View>

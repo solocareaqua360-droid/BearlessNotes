@@ -576,7 +576,7 @@ function TagsDrawerInner({
               itself had no way out at all ("немає кнопки назад або
               закрити ... тупикова гілка"). */}
           <View style={styles.titleRow}>
-            <Text style={styles.title}>Теги</Text>
+            <Text style={styles.title}>Папки</Text>
             <Pressable hitSlop={10} onPress={closeDrawer} accessibilityLabel="Закрити" style={styles.closeButton}>
               <Ionicons name="close" size={22} color={theme.ink.primary} />
             </Pressable>
@@ -684,7 +684,7 @@ function TagsDrawerInner({
                 )}
                 <View style={{ width: 17 }} />
                 <Ionicons name="pricetag-outline" size={19} color={theme.ink.muted} />
-                <Text style={styles.untaggedLabel}>Без тегів</Text>
+                <Text style={styles.untaggedLabel}>Без папки</Text>
                 <Text style={styles.rowCount}>{counts?.untagged ?? 0}</Text>
                 <View style={styles.treeCheckSlot}>
                   {activeFilter?.type === 'untagged' && (

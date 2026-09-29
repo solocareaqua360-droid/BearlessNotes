@@ -62,6 +62,9 @@ export function parseUsedInKey(key: string): { kind: TaggableKind; itemId: strin
 // item) is hidden; everything else (including a brand-new tag, or one
 // shared with file/photo) is allowed.
 export function isTagAllowedForKind(tag: Tag, kind: TaggableKind): boolean {
+  // Given this kind on purpose (the folder's editor lets it span photos,
+  // links and videos at once): offered, whatever the separations below say.
+  if (tag.types.includes(kind)) return true;
   // Every custom database is its own vocabulary, same reasoning as the
   // link sub-categories below - a "recipes" database's tags shouldn't leak
   // into a "books" database's suggestions. Unlike the link kinds, a
@@ -248,11 +251,14 @@ export function useTags() {
 
   // Full edit from TagManageScreen - path, icon and color all at once,
   // unlike renameTag's path-only quick fix from the per-item picker.
-  async function updateTag(tag: Tag, updates: { path: string; icon: string; color: string }) {
+  async function updateTag(tag: Tag, updates: { path: string; icon: string; color: string; types?: TaggableKind[] }) {
     await updateDoc(doc(db, 'tags', tag.id), {
       path: updates.path.trim(),
       icon: updates.icon,
       color: updates.color,
+      // Which databases the folder shows in, chosen by hand in its editor
+      // (TagEditSheet) - "присвоїти цю папку і іншому типу об'єкту".
+      ...(updates.types ? { types: updates.types } : {}),
     });
   }
 

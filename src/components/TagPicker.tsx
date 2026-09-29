@@ -16,16 +16,8 @@ import RenamePrompt from './RenamePrompt';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { TAG_KIND_LABELS as KIND_LABELS } from '../constants/tagKinds';
 
-const KIND_LABELS: Record<string, string> = {
-  board: 'Дошки',
-  file: 'Файли',
-  photo: 'Фото',
-  'link-video': 'Відео',
-  'link-geo': 'Геоточки',
-  'link-other': 'Посилання',
-  document: 'Документи',
-};
 
 // Every custom database mints its own `customRow:${id}` kind (see
 // types.ts's TaggableKind comment) - KIND_LABELS has no entry per database,
@@ -165,7 +157,7 @@ export default function TagPicker({
           {mode === 'list' ? (
             <>
               <View style={styles.titleRow}>
-                <Text style={styles.title}>Теги</Text>
+                <Text style={styles.title}>Папки</Text>
                 {/* The way out. This sheet stands nearly edge to edge and
                     the keyboard covers the rest, so the backdrop a tap
                     used to close it through is barely on the screen -
@@ -222,7 +214,7 @@ export default function TagPicker({
                 {canCreate && (
                   <Pressable style={styles.createRow} onPress={startCreate}>
                     <Ionicons name="add" size={18} color={accent} />
-                    <Text style={styles.createLabel}>Створити тег "{query.trim()}"</Text>
+                    <Text style={styles.createLabel}>Створити папку "{query.trim()}"</Text>
                   </Pressable>
                 )}
               </ScrollView>
@@ -233,7 +225,7 @@ export default function TagPicker({
                 <Pressable onPress={() => setMode('list')}>
                   <Text style={styles.createHeaderCancel}>Скасувати</Text>
                 </Pressable>
-                <Text style={styles.createHeaderTitle}>Новий тег</Text>
+                <Text style={styles.createHeaderTitle}>Нова папка</Text>
                 <Pressable onPress={saveNewTag}>
                   <Text style={styles.createHeaderSave}>Зберегти</Text>
                 </Pressable>
@@ -306,7 +298,7 @@ export default function TagPicker({
 
       <RenamePrompt
         visible={renamingTag !== null}
-        title="Назва тега"
+        title="Назва папки"
         initialValue={renamingTag?.path ?? ''}
         onCancel={() => setRenamingTag(null)}
         onSave={(value) => {

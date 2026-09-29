@@ -122,7 +122,7 @@ export default function TagItemsScreen({ route }: Props) {
   if (!tag) {
     return (
       <View style={[styles.container, styles.emptyState]}>
-        <Text style={styles.emptyLabel}>Цей тег більше не існує</Text>
+        <Text style={styles.emptyLabel}>Цієї папки більше не існує</Text>
       </View>
     );
   }
@@ -166,7 +166,7 @@ export default function TagItemsScreen({ route }: Props) {
 
             <Pressable style={styles.createRow} onPress={createTaggedDocument}>
               <Ionicons name="add" size={18} color={theme.sections.documents} />
-              <Text style={styles.createLabel}>Створити новий документ з тегом "{tag.path}"</Text>
+              <Text style={styles.createLabel}>Створити новий документ у папці "{tag.path}"</Text>
             </Pressable>
           </ScrollView>
         )}

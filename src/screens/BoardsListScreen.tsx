@@ -348,7 +348,7 @@ export default function BoardsListScreen({
       title: board.title || 'Без назви',
       actions: [
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
-        { id: 'tags', label: 'Теги', icon: 'pricetag-outline' },
+        { id: 'tags', label: 'Папки', icon: 'pricetag-outline' },
         // Only where there are folders to move it BETWEEN.
         ...(explorer.active
           ? [{ id: 'move', label: 'Перемістити', icon: 'arrow-forward-outline' as const }]

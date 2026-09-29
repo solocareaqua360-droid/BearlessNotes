@@ -14,12 +14,15 @@ import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { TAG_KIND_CHOICES } from '../constants/tagKinds';
+import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 
 type Props = {
   visible: boolean;
   tag: Tag | null;
   onCancel: () => void;
-  onSave: (path: string, icon: string, color: string) => void;
+  // `types`: which databases the folder shows in - chosen here by hand.
+  onSave: (path: string, icon: string, color: string, types: string[]) => void;
 };
 
 // Full tag editor for TagManageScreen - path, color and icon together,
@@ -36,6 +39,19 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
   const [iconQuery, setIconQuery] = useState('');
   const [selectedIcon, setSelectedIcon] = useState(TAG_ICONS[0]);
   const [selectedColor, setSelectedColor] = useState(swatches[0]);
+  // WHERE THE FOLDER SHOWS: every kind of object it may hold. A folder
+  // used to belong only to the kinds something had been put in, with no
+  // way to widen it by hand - "не можу присвоїти цю папку і іншому типу
+  // об'єкту ... не тільки фотографіям, а ще й посиланням або YouTube".
+  // A kind that already has something in this folder stays on: taking it
+  // off would hide those things, not remove them.
+  const [types, setTypes] = useState<string[]>([]);
+  const { customDatabases } = useDatabaseTiles();
+  const kindChoices = [
+    ...TAG_KIND_CHOICES,
+    ...customDatabases.map((d) => ({ kind: `customRow:${d.id}`, label: d.name || 'База' })),
+  ];
+  const holding = (kind: string) => !!tag && Object.keys(tag.usedIn).some((key) => key.startsWith(`${kind}:`));
 
   useEffect(() => {
     if (visible && tag) {
@@ -43,8 +59,14 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
       setIconQuery('');
       setSelectedIcon(tag.icon);
       setSelectedColor(tag.color);
+      setTypes(tag.types);
     }
   }, [visible, tag]);
+
+  function toggleType(kind: string) {
+    if (holding(kind)) return;
+    setTypes((prev) => (prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind]));
+  }
 
   const filteredIcons =
     iconQuery.trim().length === 0
@@ -53,7 +75,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
 
   function save() {
     if (!path.trim()) return;
-    onSave(path.trim(), selectedIcon, selectedColor);
+    onSave(path.trim(), selectedIcon, selectedColor, types);
   }
 
   return (
@@ -71,7 +93,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
             <Pressable onPress={onCancel}>
               <Text style={styles.headerCancel}>Скасувати</Text>
             </Pressable>
-            <Text style={styles.headerTitle}>Тег</Text>
+            <Text style={styles.headerTitle}>Папка</Text>
             <Pressable onPress={save} disabled={!path.trim()}>
               <Text style={[styles.headerSave, !path.trim() && styles.headerSaveDisabled]}>Зберегти</Text>
             </Pressable>
@@ -88,6 +110,25 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
               placeholderTextColor={theme.ink.faint}
               style={styles.pathInput}
             />
+          </View>
+
+          <Text style={styles.sectionLabel}>ДЕ ПОКАЗУВАТИ</Text>
+          <View style={styles.kindRow}>
+            {kindChoices.map((choice) => {
+              const on = types.includes(choice.kind);
+              const locked = holding(choice.kind);
+              return (
+                <Pressable
+                  key={choice.kind}
+                  style={[styles.kindChip, on && { backgroundColor: selectedColor, borderColor: selectedColor }, locked && styles.kindChipLocked]}
+                  onPress={() => toggleType(choice.kind)}
+                  accessibilityState={{ selected: on, disabled: locked }}
+                >
+                  {on && <Ionicons name={locked ? 'lock-closed-outline' : 'checkmark'} size={13} color="#fff" />}
+                  <Text style={[styles.kindChipLabel, on && styles.kindChipLabelOn]}>{choice.label}</Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           <Text style={styles.sectionLabel}>КОЛІР</Text>
@@ -136,6 +177,33 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
 }
 
 const makeStyles = (t: Theme) => StyleSheet.create({
+  kindRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  kindChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: t.edge.strong,
+  },
+  kindChipLocked: {
+    opacity: 0.85,
+  },
+  kindChipLabel: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.primary,
+  },
+  kindChipLabelOn: {
+    color: '#fff',
+  },
   backdrop: {
     ...SHEET_BACKDROP,
   },

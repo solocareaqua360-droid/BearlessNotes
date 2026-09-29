@@ -11,20 +11,12 @@ import { RootStackParamList } from '../navigation';
 import { useTags } from '../hooks/useTags';
 import TagEditSheet from '../components/TagEditSheet';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { TAG_KIND_LABELS as KIND_LABELS } from '../constants/tagKinds';
 import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
 import { confirm } from '../components/surfaces/Ask';
 
 const DANGER = '#EF4444';
 
-const KIND_LABELS: Record<string, string> = {
-  board: 'Дошки',
-  file: 'Файли',
-  photo: 'Фото',
-  'link-video': 'Відео',
-  'link-geo': 'Геоточки',
-  'link-other': 'Посилання',
-  document: 'Документи',
-};
 
 // Edit/delete-only, per the design decision this app settled on: a tag can
 // only be CREATED alongside a first assignment (see TagPicker), so there's
@@ -78,8 +70,8 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   function confirmDelete(tag: Tag) {
     const count = Object.keys(tag.usedIn).length;
     confirm({
-      title: `Видалити тег "${tag.path}"?`,
-      message: `Він буде знятий з ${count} ${count === 1 ? 'елемента' : 'елементів'}.`,
+      title: `Видалити папку "${tag.path}"?`,
+      message: `Її буде знято з ${count} ${count === 1 ? 'елемента' : 'елементів'}.`,
       confirmLabel: 'Видалити',
     }).then((yes) => {
       if (!yes) return;
@@ -90,7 +82,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   return (
     <PlainScreenShell id="tagsBg">
       <Text style={[styles.subtitle, shellClear(railSide, 4)]}>
-        Керування вже існуючими тегами. Створити новий тег можна лише разом із присвоєнням елементу.
+        Керування вже існуючими папками. Нова папка з'являється разом із першим елементом у ній.
       </Text>
 
         {!isLoading && tags.length === 0 ? (
@@ -98,8 +90,8 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
             <View style={styles.emptyIcon}>
               <Ionicons name="pricetag-outline" size={32} color="#3B82F6" />
             </View>
-            <Text style={styles.emptyLabel}>Ще немає тегів</Text>
-            <Text style={styles.emptyHint}>Додайте перший тег через меню тегів на будь-якому елементі</Text>
+            <Text style={styles.emptyLabel}>Ще немає папок</Text>
+            <Text style={styles.emptyHint}>Додайте першу папку через меню папок на будь-якому елементі</Text>
           </View>
         ) : (
           <ScrollView contentContainerStyle={[styles.list, shellClear(railSide, 4)]}>
@@ -136,7 +128,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
                     </Text>
                     <Text style={styles.rowMeta} numberOfLines={1}>
                       {Object.keys(tag.usedIn).length} {Object.keys(tag.usedIn).length === 1 ? 'елемент' : 'елементів'} ·{' '}
-                      {tag.types.map((t) => KIND_LABELS[t] ?? t).join(', ')}
+                      {tag.types.map((t) => KIND_LABELS[t] ?? 'База').join(', ')}
                     </Text>
                   </View>
                 </Pressable>
@@ -155,8 +147,8 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
           visible={editingTag !== null}
           tag={editingTag}
           onCancel={() => setEditingTag(null)}
-          onSave={(path, icon, color) => {
-            if (editingTag) updateTag(editingTag, { path, icon, color });
+          onSave={(path, icon, color, types) => {
+            if (editingTag) updateTag(editingTag, { path, icon, color, types });
             setEditingTag(null);
           }}
         />

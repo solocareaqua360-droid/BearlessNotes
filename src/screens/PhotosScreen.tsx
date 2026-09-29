@@ -701,7 +701,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       {
         key: 'tags',
         icon: 'pricetag-outline',
-        label: 'Теги',
+        label: 'Папки',
         onPress: () => {
           setViewerPhotoId(null);
           setTagPickerForId(photo.id);

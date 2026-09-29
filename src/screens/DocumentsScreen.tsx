@@ -731,7 +731,7 @@ export default function DocumentsScreen({
                         },
                       ]
                     : []),
-                  { key: 'tag', icon: 'pricetag-outline' as const, label: 'Теги', onPress: () => setBulkTagPickerVisible(true) },
+                  { key: 'tag', icon: 'pricetag-outline' as const, label: 'Папки', onPress: () => setBulkTagPickerVisible(true) },
                   { key: 'group', icon: 'folder-outline' as const, label: 'Проект', onPress: () => setBulkGroupPickerVisible(true) },
                   {
                     key: 'wide',
@@ -1428,7 +1428,7 @@ export default function DocumentsScreen({
               {activeFilter.type === 'untagged' ? (
                 <View style={[styles.filterChip, { borderColor: '#6B7280' }]}>
                   <Ionicons name="pricetag-outline" size={13} color="#6B7280" />
-                  <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без тегів</Text>
+                  <Text style={[styles.filterChipLabel, { color: '#6B7280' }]}>Без папки</Text>
                   <Pressable hitSlop={8} onPress={() => setActiveFilter(null)}>
                     <Ionicons name="close-outline" size={14} color="#6B7280" />
                   </Pressable>
@@ -2148,13 +2148,13 @@ export default function DocumentsScreen({
         visible={folderEdit !== null}
         tag={folderEdit}
         onCancel={() => setFolderEdit(null)}
-        onSave={(path, icon, color) => {
+        onSave={(path, icon, color, types) => {
           const target = folderEdit;
           setFolderEdit(null);
           if (!target) return;
           // The name is the folder's path; a changed name goes through
           // renameFolder so the folders under it follow.
-          list.updateTag(target, { path: target.path, icon, color }).then(() => explorer.renameFolder(target.path, path.trim()));
+          list.updateTag(target, { path: target.path, icon, color, types }).then(() => explorer.renameFolder(target.path, path.trim()));
         }}
       />
 
