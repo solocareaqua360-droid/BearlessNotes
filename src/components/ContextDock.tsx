@@ -2014,7 +2014,10 @@ export default function ContextDock() {
   // its tools as a strip between them. Opted into by the screen through
   // `dockWide`; a database's ordinary dock (beads + a card of what it
   // does) is not this and keeps the whole dock below.
-  if (compactMiddle && !!actions?.length && dockWide && (!!beads.left || !!beads.right)) {
+  // ...and, in the soft style, EVERY screen with beads and a strip of what
+  // it does (a personal database: search, «Зберегти / Подача / Параметри»,
+  // "+") - the soft row below, rather than the glass card further down.
+  if (compactMiddle && !!actions?.length && (dockWide || chromeStyle === 'soft') && (!!beads.left || !!beads.right)) {
     const frame = topBarFrame(windowW);
     const gap = 6;
     const minButton = 52;

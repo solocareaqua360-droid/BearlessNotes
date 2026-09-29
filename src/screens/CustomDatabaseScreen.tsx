@@ -1,4 +1,6 @@
 import { DeskContext } from '../navigation/desks';
+import { SoftSurfaceContext, softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
+import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -130,7 +132,7 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import { GLASS_ISLAND } from '../constants/glass';
@@ -223,7 +225,14 @@ export default function CustomDatabaseScreen({
   const theme = useTheme();
   const accent = theme.sections.custom;
   const accentGlass = withAlpha(accent, 0.55);
-  const styles = useStyles(makeStyles);
+  // A PERSONAL DATABASE IN THE SOFT STYLE (theme/soft) - "особисті бази
+  // данних". It stands on no shared chrome, so it asks for the soft bar
+  // and dock itself, draws the soft ground, and tells its cards through
+  // SoftSurfaceContext. Its windows (the record page, the parameters) are
+  // still their own dark glass - a whole, readable piece for now.
+  const softDb = useSoftDatabase();
+  useChromeStyle('soft', !!softDb);
+  const styles = softenStyles(useStyles(makeStyles), softDb, softCustomDatabase);
   const recordColour = useRecordColour();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
@@ -1968,7 +1977,7 @@ export default function CustomDatabaseScreen({
                     <Ionicons
                       name={item.collapsed ? 'chevron-forward' : 'chevron-down'}
                       size={13}
-                      color="rgba(255,255,255,0.6)"
+                      color={softDb ? softDb.ink3 : "rgba(255,255,255,0.6)"}
                     />
                     <Text style={styles.groupHeaderLabel} numberOfLines={1}>
                       {item.label}
@@ -2087,7 +2096,7 @@ export default function CustomDatabaseScreen({
                 <Ionicons
                   name={collapsed ? 'chevron-forward' : 'chevron-down'}
                   size={14}
-                  color="rgba(255,255,255,0.6)"
+                  color={softDb ? softDb.ink3 : "rgba(255,255,255,0.6)"}
                 />
                 <Text style={styles.groupHeaderLabel} numberOfLines={1}>
                   {group.label}
@@ -2540,7 +2549,11 @@ export default function CustomDatabaseScreen({
   }
 
   return (
+    <SoftSurfaceContext.Provider value={softDb}>
     <View style={styles.container}>
+      {softDb ? (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: softDb.bg }]} pointerEvents="none" />
+      ) : (
       <Svg
         width={windowWidth + 2}
         height={windowHeight + 2}
@@ -2556,6 +2569,7 @@ export default function CustomDatabaseScreen({
         </Defs>
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#customDbBg)" />
       </Svg>
+      )}
 
       {/* No title, no arrow in the corner: the capsule holds the way out,
           the tile the user came from said the name, and the row cost the
@@ -2600,7 +2614,7 @@ export default function CustomDatabaseScreen({
             <Ionicons
               name="ellipse-outline"
               size={12}
-              color={activeViewId === null ? '#0B1220' : 'rgba(255,255,255,0.75)'}
+              color={activeViewId === null ? (softDb ? softDb.bg : '#0B1220') : softDb ? softDb.ink2 : 'rgba(255,255,255,0.75)'}
             />
             <Text style={[styles.viewCapsuleLabel, activeViewId === null && styles.viewCapsuleLabelActive]}>
               Поточні зміни
@@ -2617,7 +2631,7 @@ export default function CustomDatabaseScreen({
                 <Ionicons
                   name={(view.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[view.viewMode]}
                   size={12}
-                  color={active ? '#0B1220' : 'rgba(255,255,255,0.75)'}
+                  color={active ? (softDb ? softDb.bg : '#0B1220') : softDb ? softDb.ink2 : 'rgba(255,255,255,0.75)'}
                 />
                 <Text style={[styles.viewCapsuleLabel, active && styles.viewCapsuleLabelActive]} numberOfLines={1}>
                   {view.name}
@@ -2646,6 +2660,7 @@ export default function CustomDatabaseScreen({
       </View>
 
       <Menu
+        soft={softDb}
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
         // Above the dock, where the button that opens it lives.
@@ -2992,7 +3007,7 @@ export default function CustomDatabaseScreen({
                   <Ionicons
                     name={collapsed ? 'chevron-forward' : 'chevron-down'}
                     size={14}
-                    color="rgba(255,255,255,0.6)"
+                    color={softDb ? softDb.ink3 : "rgba(255,255,255,0.6)"}
                   />
                   <Text style={styles.groupHeaderLabel} numberOfLines={1}>
                     {group.label}
@@ -3750,6 +3765,7 @@ export default function CustomDatabaseScreen({
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
     </View>
+    </SoftSurfaceContext.Provider>
   );
 }
 
@@ -4952,6 +4968,25 @@ function SortOption({
     </Pressable>
   );
 }
+
+// The soft overlay for the list (theme/soft's softenStyles): the view
+// capsules as the soft pills, group headings and totals in the soft
+// inks, empty states quiet. The windows keep their glass for now.
+const softCustomDatabase = (S: SoftTokens) =>
+  StyleSheet.create({
+    viewCapsule: { backgroundColor: S.fillSolid, borderWidth: 0, height: 38, paddingVertical: 0, paddingHorizontal: 15, borderRadius: 19 },
+    viewCapsuleActive: { backgroundColor: S.ink, borderWidth: 0 },
+    viewCapsuleLabel: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', fontSize: 14, color: S.ink2 },
+    viewCapsuleLabelActive: { color: S.bg },
+    groupHeaderLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', letterSpacing: -0.2, color: S.ink },
+    groupHeaderCount: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', color: S.ink3 },
+    groupTotal: { borderTopColor: S.line },
+    groupTotalLabel: { fontFamily: SOFT_REGULAR, color: S.ink2 },
+    groupTotalCount: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink },
+    emptyLabel: { fontFamily: SOFT_REGULAR, color: S.ink },
+    emptyHint: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+    emptyIcon: { backgroundColor: S.card, boxShadow: S.shadow },
+  }) as Record<string, object>;
 
 const makeStyles = (t: Theme) => StyleSheet.create({
   container: {

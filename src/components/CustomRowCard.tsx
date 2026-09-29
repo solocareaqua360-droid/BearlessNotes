@@ -1,4 +1,6 @@
 import { ReactNode } from 'react';
+import { softCardFrame, softRecordColours, useSoftSurface } from '../theme/soft';
+import { SOFT_SEMIBOLD } from '../utils/fonts';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
@@ -95,9 +97,11 @@ export default function CustomRowCard({
   right,
 }: Props) {
   const recordColour = useRecordColour();
-  const { background, text, textMuted } = recordColour(rowId);
+  // Soft (a soft screen around it says so): the card surface and inks.
+  const soft = useSoftSurface();
+  const { background, text, textMuted } = softRecordColours(soft, recordColour(rowId));
   return (
-    <View style={[styles.row, { backgroundColor: background }]}>
+    <View style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }]}>
       <Pressable
         style={styles.rowTap}
         onPress={onPress}
@@ -113,7 +117,7 @@ export default function CustomRowCard({
             </View>
           ))}
         <View style={styles.rowBody}>
-          <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
+          <Text style={[styles.rowTitle, soft && { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal' }, { color: text }]} numberOfLines={2}>
             {display.title}
           </Text>
           {(display.chips.length > 0 || !!documentCount) && (
@@ -252,11 +256,13 @@ export function CustomRowGridCard({
   width?: number;
 }) {
   const recordColour = useRecordColour();
-  const { background, text, textMuted } = recordColour(rowId);
+  // Soft (a soft screen around it says so): the card surface and inks.
+  const soft = useSoftSurface();
+  const { background, text, textMuted } = softRecordColours(soft, recordColour(rowId));
   const hasCover = display.cover !== undefined;
   return (
     <Pressable
-      style={[gridStyles.tile, width !== undefined && { width }, { backgroundColor: background }]}
+      style={[gridStyles.tile, soft && softCardFrame(soft), width !== undefined && { width }, { backgroundColor: background }]}
       onPress={onPress}
       onLongPress={onLongPress}
       disabled={!onPress && !onLongPress}
