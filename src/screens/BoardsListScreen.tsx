@@ -324,7 +324,11 @@ export default function BoardsListScreen({
   // from a copy pushed over the tile board it is a route on the ROOT
   // stack, because the copy is not inside that nested stack at all.
   function openBoardById(boardId: string) {
-    if (standalone) {
+    // In a PANE (the boards list standing beside the database tiles in
+    // «Більше») the navigation is the tiles' own, which has no 'Board'
+    // route - so the tap did nothing at all ("картка дошки не відкривається").
+    // A pane is not inside the tab's nested stack either: the copy route.
+    if (standalone || inPane) {
       (navigation as unknown as NativeStackNavigationProp<RootStackParamList>).navigate('BoardCopy', { boardId });
       return;
     }

@@ -1230,7 +1230,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   rowPagedDense: {
-    height: ROW_SHEET_H_DENSE + 16,
+    // A floor, not a height: a fixed 78 was laid down when a row was one
+    // line, and now it holds a title, two lines of the page and the date -
+    // measured in the running app at 99 - so the cards were cut top and
+    // bottom and overlapped (2026-09-30).
+    minHeight: ROW_SHEET_H_DENSE + 16,
     alignItems: 'center',
   },
   gridSelectBox: {
