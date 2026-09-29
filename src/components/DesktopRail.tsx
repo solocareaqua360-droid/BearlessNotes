@@ -9,9 +9,12 @@ import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 
-import { DESKTOP_RAIL_WIDTH, useDesktopNarrow, DESKTOP_RAIL_NARROW } from '../constants/desktop';
+import { DESKTOP_RAIL_WIDTH, useDesktopNarrow, DESKTOP_RAIL_NARROW, DESKTOP_TITLE_BAND } from '../constants/desktop';
 
 export const RAIL_WIDTH = DESKTOP_RAIL_WIDTH;
+
+// Electron's own words for "this part moves the window" - harmless in a browser.
+const DRAG = { WebkitAppRegion: 'drag' } as never;
 
 const SECTIONS: { name: 'Документи' | 'Календар' | 'Дошки' | 'Більше'; icon: string }[] = [
   { name: 'Документи', icon: 'document-text-outline' },
@@ -70,6 +73,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   const leave = useNavDockLeave();
   const workspace = useWorkspace();
   const narrow = useDesktopNarrow();
+  const [accountOpen, setAccountOpen] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
 
   // Which of the four is showing. Read through the global ref, not
@@ -143,6 +147,9 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
 
   return (
     <View style={[styles.rail, narrow && { width: DESKTOP_RAIL_NARROW }]}>
+      {/* Where the traffic lights are. Empty, and draggable: it is the
+          window's title bar now. */}
+      <View style={[{ height: DESKTOP_TITLE_BAND - 10 }, DRAG]} />
       {!!leave && (
         <Pressable style={styles.leave} onPress={leave.onLeave}>
           <Ionicons name="chevron-back" size={16} color={theme.ink.primary} />
@@ -263,6 +270,22 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
           keeps it. It is the same strip the phone shows across the top;
           only its place changes. */}
       {!!footer && !narrow && <View style={styles.footer}>{footer}</View>}
+      {/* Narrow: the account is one icon at the foot of the strip, and what it
+          says opens as a card beside it - a bar across the window's foot cost
+          a whole line of a half-screen window. */}
+      {!!footer && narrow && (
+        <View style={styles.accountWrap}>
+          <Pressable style={styles.section} onPress={() => setAccountOpen((v) => !v)} accessibilityLabel="Акаунт">
+            <Ionicons name="person-circle-outline" size={19} color={accountOpen ? theme.accent : theme.ink.muted} />
+          </Pressable>
+          {accountOpen && (
+            <>
+              <Pressable style={styles.accountScrim} onPress={() => setAccountOpen(false)} />
+              <View style={styles.accountCard}>{footer}</View>
+            </>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -278,8 +301,10 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     backgroundColor: t.ground,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: t.edge.hairline,
-    paddingTop: 10,
+    paddingTop: 0,
     paddingBottom: 10,
+    // Over the main pane's edge, so the account card can hang out of the strip.
+    zIndex: 40,
   },
   leave: {
     flexDirection: 'row',
@@ -301,6 +326,30 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingHorizontal: 8,
     gap: 2,
   },
+  accountWrap: {
+    marginTop: 'auto' as never,
+    paddingHorizontal: 8,
+  },
+  accountScrim: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  } as never,
+  accountCard: {
+    position: 'absolute',
+    left: 52,
+    bottom: 0,
+    width: 260,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: t.paper.fill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: t.edge.hairline,
+    boxShadow: '0px 8px 24px rgba(0,0,0,0.16)',
+    zIndex: 60,
+  } as never,
   panels: {
     paddingHorizontal: 8,
     gap: 2,

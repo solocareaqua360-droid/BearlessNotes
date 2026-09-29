@@ -538,6 +538,11 @@ function createWindow(port) {
     // exactly where this app keeps its controls. Worth revisiting once
     // the desktop-width layout exists and can leave room for them.
     backgroundColor: '#FAFAFA',
+    // The title bar is hidden and the traffic lights sit over the rail's own
+    // empty top band (DESKTOP_TITLE_BAND) - a white strip across the top of
+    // the window cost 35 points of a half-screen window for a title nobody reads.
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 16, y: 14 },
     show: false,
     webPreferences: {
       // The page is our own build and talks to Firebase directly; it needs

@@ -28,3 +28,8 @@ export function useDesktopNarrow(): boolean {
 export function useDesktopRailWidth(): number {
   return useDesktopNarrow() ? DESKTOP_RAIL_NARROW : DESKTOP_RAIL_WIDTH;
 }
+
+// The band along the very top of the window where macOS puts the traffic
+// lights (the shell hides its own title bar): the rail keeps it empty, and
+// it drags the window.
+export const DESKTOP_TITLE_BAND = 40;

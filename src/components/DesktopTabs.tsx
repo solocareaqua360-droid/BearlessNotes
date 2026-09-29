@@ -10,6 +10,11 @@ import { navigationRef } from '../navigationRef';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
+import { useDesktopNarrow } from '../constants/desktop';
+
+// The strip is also the window's title bar now (see the shell); its buttons are not.
+const DRAG = { WebkitAppRegion: 'drag' } as never;
+const NO_DRAG = { WebkitAppRegion: 'no-drag' } as never;
 
 // The tabs of the main pane, the documents list as the first of them.
 //
@@ -110,7 +115,7 @@ function TabItem({ tab, active, onClose }: { tab: Tab; active: boolean; onClose:
   const styles = useStyles(makeStyles);
   const { title, icon } = useTabLabel(tab);
   return (
-    <Pressable style={[styles.tab, active && styles.tabActive]} onPress={() => go(tab)}>
+    <Pressable style={[styles.tab, active && styles.tabActive, NO_DRAG]} onPress={() => go(tab)}>
       {!!icon && <Ionicons name={icon as never} size={13} color={active ? theme.ink.primary : theme.ink.muted} />}
       <Text style={[styles.label, active && styles.labelActive]} numberOfLines={1}>
         {title}
@@ -128,6 +133,7 @@ export default function DesktopTabs() {
   const tabs = useOpenTabs();
   const [place, setPlace] = useState<Place>(null);
   const [adding, setAdding] = useState(false);
+  const narrow = useDesktopNarrow();
 
   // Which one is in front. Read off the navigator rather than kept here, so
   // a tab stays lit when something else navigates - a card inside a note,
@@ -153,10 +159,10 @@ export default function DesktopTabs() {
   }
 
   return (
-    <View style={styles.frame}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+    <View style={[styles.frame, DRAG]}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.row, narrow && { paddingLeft: 26 }]}>
         <Pressable
-          style={[styles.tab, styles.home, activeKey === 'home' && styles.tabActive]}
+          style={[styles.tab, styles.home, activeKey === 'home' && styles.tabActive, NO_DRAG]}
           onPress={() => go(null)}
         >
           <Ionicons
@@ -169,7 +175,7 @@ export default function DesktopTabs() {
           <TabItem key={tab.key} tab={tab} active={tab.key === activeKey} onClose={() => close(tab)} />
         ))}
         <Pressable
-          style={[styles.tab, styles.home, adding && styles.tabActive]}
+          style={[styles.tab, styles.home, adding && styles.tabActive, NO_DRAG]}
           onPress={() => setAdding((v) => !v)}
           accessibilityLabel="Нова вкладка"
         >
@@ -180,7 +186,7 @@ export default function DesktopTabs() {
       {adding && (
         <>
           <Pressable style={styles.scrim} onPress={() => setAdding(false)} />
-          <View style={styles.menu}>
+          <View style={[styles.menu, NO_DRAG]}>
             {SECTIONS.map((section) => (
               <Pressable
                 key={section.ref}

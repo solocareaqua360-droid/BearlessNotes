@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   useFonts,
   Nunito_400Regular,
@@ -33,7 +33,6 @@ import ContextDock from './src/components/ContextDock';
 import DesktopRail from './src/components/DesktopRail';
 import RightColumn from './src/components/desktop/RightColumn';
 import { WorkspaceProvider } from './src/navigation/workspace';
-import { DESKTOP_NARROW_BELOW } from './src/constants/desktop';
 import DesktopToolbar from './src/components/DesktopToolbar';
 import DesktopTabs from './src/components/DesktopTabs';
 import { useDensity } from './src/hooks/useDensity';
@@ -320,11 +319,9 @@ export default function App() {
   const [needsDrive, setNeedsDrive] = useState(!isDesktopShell());
   const [prefetch, setPrefetch] = useState(prefetchState());
   const pointer = useDensity() === 'pointer';
-  // Half a screen beside another window: the rail is icons only and cannot
-  // carry the account strip, so it goes back across the foot of the window.
-  const shellWidth = useWindowDimensions().width;
-  const narrowShell = pointer && shellWidth < DESKTOP_NARROW_BELOW;
-  const railStrip = pointer && !narrowShell;
+  // The strip in the rail's own dress wherever a mouse is; in a narrow rail it
+  // opens from an icon (see DesktopRail).
+  const railStrip = pointer;
 
   // Not a request - a look in the browser's storage for a token from
   // within the hour. Nothing is asked of Google here, because nothing
@@ -550,7 +547,7 @@ export default function App() {
               {pointer ? (
                 <WorkspaceProvider>
                 <View style={styles.deskRow}>
-                  <DesktopRail footer={railStrip ? accountStrip : undefined} />
+                  <DesktopRail footer={accountStrip} />
                   <View style={styles.deskBody}>
                     {/* The dock, unrolled - the path on the left and
                         what this screen can do on the right, off the
@@ -566,9 +563,6 @@ export default function App() {
                   </View>
                   <RightColumn />
                 </View>
-                {/* At the FOOT, so nothing drawn at window level (the search
-                    corner) has to allow for it above. */}
-                {narrowShell && accountStrip}
                 </WorkspaceProvider>
               ) : (
                 <RootNavigator />
