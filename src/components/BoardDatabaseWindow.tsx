@@ -11,6 +11,7 @@ import { ownedQuery } from '../utils/owned';
 import { listenError } from '../utils/listenError';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import { blockFromCustomRow } from '../utils/copyToNote';
+import { useDensity } from '../hooks/useDensity';
 import { useReferenceDrag } from '../hooks/useReferenceDrag';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { BoardFieldsContext } from './boardFieldsContext';
@@ -34,6 +35,8 @@ import type { Block, BoardDbWindow, CustomDatabase, CustomDatabaseRow, FieldDef 
 // that count lights those cards up.
 
 const WIDTH = 300;
+// A pinned window is a side panel: a little wider, the whole height.
+const DOCKED_WIDTH = 340;
 const CIRCLE = 56;
 
 export type BoardWindowProps = {
@@ -51,12 +54,18 @@ export type BoardWindowProps = {
   // it would fall into) and when it ends.
   onCarryMove?: (screenX: number, screenY: number) => void;
   onCarryEnd?: () => void;
+  // The board's own size. A window is placed inside the board, which on a
+  // laptop is not the whole window (the sidebar takes a third of it), so
+  // the window's size would put it off the right edge.
+  bounds?: { width: number; height: number };
 };
 
-export default function BoardDatabaseWindow({ win, placed, onChange, onClose, onPlace, onFind, onCarryMove, onCarryEnd }: BoardWindowProps) {
+export default function BoardDatabaseWindow({ win, placed, onChange, onClose, onPlace, onFind, onCarryMove, onCarryEnd, bounds }: BoardWindowProps) {
   const S = useSoft();
   const insets = useSafeAreaInsets();
-  const { width: windowW, height: windowH } = useWindowDimensions();
+  const dims = useWindowDimensions();
+  const windowW = bounds?.width ?? dims.width;
+  const windowH = bounds?.height ?? dims.height;
   const [database, setDatabase] = useState<CustomDatabase | null>(null);
   const [rows, setRows] = useState<CustomDatabaseRow[]>([]);
   const [settings, setSettings] = useState(false);
@@ -131,11 +140,15 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
     (x: number, y: number) => onChange({ x: Math.round(x), y: Math.round(y) }),
     [onChange]
   );
+  const pointer = useDensity() === 'pointer';
   const collapsed = !!win.collapsed;
+  const docked = pointer && !!win.docked && !collapsed;
+  const toggleDocked = useCallback(() => onChange({ docked: !win.docked }), [onChange, win.docked]);
   const toggleCollapsed = useCallback(() => onChange({ collapsed: !collapsed }), [onChange, collapsed]);
   const maxX = windowW - (collapsed ? CIRCLE : WIDTH) - 8;
   const maxY = windowH - (collapsed ? CIRCLE : 120) - 8;
   const pan = Gesture.Pan()
+    .enabled(!docked)
     .minDistance(6)
     .onChange((e) => {
       posX.value = Math.max(8, Math.min(maxX, posX.value + e.changeX));
@@ -214,8 +227,10 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
           styles.frame,
           collapsed
             ? { width: CIRCLE, height: CIRCLE, borderRadius: CIRCLE / 2, backgroundColor: S.chrome, boxShadow: S.popShadow }
-            : { width: WIDTH, height, borderRadius: 26, backgroundColor: S.card, boxShadow: S.popShadow },
-          frameStyle,
+            : docked
+              ? { width: DOCKED_WIDTH, left: 'auto', right: 8, top: insets.top + 8, bottom: 8, borderRadius: 26, backgroundColor: S.card, boxShadow: S.popShadow }
+              : { width: WIDTH, height, borderRadius: 26, backgroundColor: S.card, boxShadow: S.popShadow },
+          !docked && frameStyle,
         ]}
       >
         {collapsed ? (
@@ -241,6 +256,11 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
                   {shown.length}
                   {chosen ? `/${titled.length}` : ''}
                 </Text>
+                {pointer && (
+                  <Pressable hitSlop={8} onPress={toggleDocked} style={styles.headerButton} accessibilityLabel={docked ? 'Відкріпити' : 'Закріпити збоку'}>
+                    <Ionicons name="pin" size={19} color={docked ? S.accent : S.ink2} />
+                  </Pressable>
+                )}
                 <Pressable hitSlop={8} onPress={() => setSettings((v) => !v)} style={styles.headerButton} accessibilityLabel="Параметри вікна">
                   <Ionicons name={settings ? 'checkmark' : 'options-outline'} size={20} color={settings ? S.accent : S.ink2} />
                 </Pressable>

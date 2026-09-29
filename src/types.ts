@@ -613,6 +613,9 @@ export interface BoardDbWindow {
   y: number;
   // Folded into a circle.
   collapsed?: boolean;
+  // Pinned to the board's right edge, full height (the laptop): a side
+  // panel rather than a floating window. x/y are kept for unpinning.
+  docked?: boolean;
   // The fields to HIDE on this database's cards on this board, in the
   // window and on the canvas alike. Unset: the database's own choice.
   hiddenFieldIds?: string[];

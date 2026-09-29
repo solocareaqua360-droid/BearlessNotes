@@ -4313,7 +4313,10 @@ export default function BoardScreen() {
     return () => clearTimeout(timer);
   }, [dbWindows, isLoaded, boardId]);
   function patchWindow(id: string, patch: Partial<BoardDbWindow>) {
-    setDbWindows((prev) => prev.map((w) => (w.id === id ? { ...w, ...patch } : w)));
+    // One side panel at a time: pinning a window lets go of the others.
+    setDbWindows((prev) =>
+      prev.map((w) => (w.id === id ? { ...w, ...patch } : patch.docked ? { ...w, docked: false } : w))
+    );
   }
 
   async function addDatabaseWindow() {
@@ -4335,7 +4338,7 @@ export default function BoardScreen() {
       const open = dbWindows.length;
       setDbWindows((prev) => [
         ...prev,
-        { id: generateId(), databaseId, chosen: null, x: Math.max(8, windowWidth - 316 - open * 24), y: 110 + open * 24 },
+        { id: generateId(), databaseId, chosen: null, x: Math.max(8, viewport.width - 316 - open * 24), y: 110 + open * 24 },
       ]);
     } catch (e) {
       notify('Не вдалося відкрити базу', (e as Error).message);
@@ -7347,6 +7350,7 @@ export default function BoardScreen() {
           onFind={findRecord}
           onCarryMove={carryMove}
           onCarryEnd={carryEnd}
+          bounds={viewport}
         />
       ))}
     </View>
