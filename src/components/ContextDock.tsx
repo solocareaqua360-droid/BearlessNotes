@@ -430,6 +430,9 @@ const DOCK_WRAP_PAD = 6;
 const TWO_BEAD = 56;
 
 // The two beads' Ionicons, as the soft dock draws them (see SoftIcon).
+// The back chevron's own width at the start of the soft capsule.
+const SOFT_BACK_W = 48;
+
 export const SOFT_DOCK_GLYPHS: Record<string, SoftIconName> = {
   'search-outline': 'search',
   'close-outline': 'close',
@@ -2044,6 +2047,9 @@ export default function ContextDock() {
       // and one soft capsule of tools, no glass, no hairlines - "док не
       // змінився" on the board.
       const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow };
+      const backRoom = leave ? SOFT_BACK_W : 0;
+      const softButtonW = Math.min(STRIP_BUTTON_W, Math.floor((room - backRoom) / actions.length));
+      const softStripW = backRoom + softButtonW * actions.length;
       const softSlot = (bead: typeof beads.left) => {
         if (!bead) return <View style={{ width: TWO_BEAD }} />;
         const own = SOFT_DOCK_GLYPHS[bead.icon];
@@ -2073,13 +2079,25 @@ export default function ContextDock() {
             ]}
           >
             {softSlot(beads.left)}
-            <View style={[surface, { width: stripW, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, overflow: 'hidden' }]}>
+            <View style={[surface, { width: softStripW, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, overflow: 'hidden' }]}>
               <View style={[styles.stripActions, { flexDirection: 'row' }]}>
+                {/* The way out of a screen that has no bar at the top (the
+                    chat): at the capsule's own start, as the glass dock
+                    carried it - "немає кнопки назад". */}
+                {!!leave && (
+                  <Pressable
+                    onPress={stepOut}
+                    accessibilityLabel="Назад"
+                    style={[styles.softButton, { width: SOFT_BACK_W, height: TWO_BEAD - 4 }]}
+                  >
+                    <SoftIcon name="back" size={22} color={soft.ink} />
+                  </Pressable>
+                )}
                 {actions.map((action) => (
                   <ActionButton
                     key={action.key}
                     action={action}
-                    width={buttonW}
+                    width={softButtonW}
                     height={TWO_BEAD - 4}
                     iconSize={ACT_ICON}
                     theme={theme}
