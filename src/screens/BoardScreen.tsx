@@ -33,7 +33,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Path, Polygon } from 'react-native-svg';
+import Svg, { Circle, Path, Polygon } from 'react-native-svg';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -3066,11 +3066,18 @@ export default function BoardScreen() {
   // which is which.
   function connectedComponent(startId: string): Set<string> {
     const adjacency = new Map<string, string[]>();
-    for (const c of connections) {
-      if (!adjacency.has(c.fromCardId)) adjacency.set(c.fromCardId, []);
-      if (!adjacency.has(c.toCardId)) adjacency.set(c.toCardId, []);
-      adjacency.get(c.fromCardId)!.push(c.toCardId);
-      adjacency.get(c.toCardId)!.push(c.fromCardId);
+    // A copy is tied to its original as firmly as a drawn line: the chain
+    // of one car takes in every place it stands (the user's own reading:
+    // "дублікати в режимі ізоляції показуються ... це зв'язок").
+    const links = [
+      ...connections.map((c) => ({ from: c.fromCardId, to: c.toCardId })),
+      ...originLinks,
+    ];
+    for (const c of links) {
+      if (!adjacency.has(c.from)) adjacency.set(c.from, []);
+      if (!adjacency.has(c.to)) adjacency.set(c.to, []);
+      adjacency.get(c.from)!.push(c.to);
+      adjacency.get(c.to)!.push(c.from);
     }
     const visited = new Set<string>([startId]);
     const queue = [startId];
@@ -3127,6 +3134,14 @@ export default function BoardScreen() {
     const ids = connectedComponent(id);
     setIsolatedIds(ids);
     fitViewToBounds(ids);
+  }
+
+  // From the menu a held card opens (the selection bar): isolate THIS
+  // card's chain at once, no arming and no second tap.
+  function isolateSelectedCard(id: string) {
+    setIsolateArmed(false);
+    clearSelection();
+    pickIsolationAnchor(id);
   }
 
   // The dock's own toggle: arm it (waiting for the next tap), or - if
@@ -5671,7 +5686,7 @@ export default function BoardScreen() {
   const layerButtonSlop = softBoardTokens ? 12 : 6;
   useTopExtras(
     [
-      { label: 'Ізоляція', icon: 'scan-outline', checked: isolateArmed || isolatedIds !== null, onPress: toggleIsolation },
+      ...(isolatedIds !== null ? [{ label: 'Вийти з ізоляції', icon: 'scan-outline' as const, onPress: toggleIsolation }] : []),
     ],
     null,
     bar,
@@ -5748,6 +5763,12 @@ export default function BoardScreen() {
               : []),
             ...(onlySelectedCard
               ? [
+                  {
+                    key: 'isolate',
+                    icon: 'mc:image-filter-center-focus',
+                    label: 'Ізоляція',
+                    onPress: () => isolateSelectedCard(onlySelectedCard.id),
+                  },
                   {
                     key: 'copy',
                     icon: 'copy-outline',
@@ -5885,16 +5906,21 @@ export default function BoardScreen() {
               active: canvasTool === 'connect',
               onPress: () => setCanvasTool('connect'),
             },
-            // Not a canvasTool, deliberately - it's a lens, not a way of
-            // touching the canvas, so it stays lit through 'move' once a
-            // chain is picked (see isolatedIds's own comment).
-            {
-              key: 'isolate',
-              icon: 'mc:image-filter-center-focus',
-              label: 'Ізоляція',
-              active: isolateArmed || isolatedIds !== null,
-              onPress: toggleIsolation,
-            },
+            // Isolation is no tool of the strip: it lives in the menu a held
+            // card opens (see the selection bar) - "режим ізоляції треба
+            // перенести в док в меню яке виникає при затисканні картки".
+            // Only the way OUT stays here, while a chain is isolated.
+            ...(isolatedIds !== null
+              ? [
+                  {
+                    key: 'isolate',
+                    icon: 'mc:image-filter-center-focus',
+                    label: 'Вийти з ізоляції',
+                    active: true,
+                    onPress: toggleIsolation,
+                  },
+                ]
+              : []),
             // Also not tools - one-shot actions, shown only once there is
             // something to do (see undo/redo's own comment on why they
             // stay in sync for free with every mutation on the board).
@@ -6138,10 +6164,15 @@ export default function BoardScreen() {
                       <Path
                         d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top, vertical)}
                         stroke={ORIGIN_COLOR}
-                        strokeWidth={2}
-                        strokeDasharray="6 5"
+                        strokeWidth={3.5}
+                        strokeDasharray="10 6"
+                        strokeLinecap="round"
                         fill="none"
                       />
+                      {/* A dot at each end, so the tie reads even where the
+                          line is short or passes behind a card. */}
+                      <Circle cx={x1 - left} cy={y1 - top} r={5} fill={ORIGIN_COLOR} />
+                      <Circle cx={x2 - left} cy={y2 - top} r={5} fill={ORIGIN_COLOR} />
                     </Svg>
                   </View>
                 );
