@@ -114,6 +114,7 @@ export default function TopNavBar({
   extrasOverride,
   searchOverride,
   fadeWithDrawer,
+  softInline,
 }: {
   desks?: TopDesk[];
   title?: TopTitle;
@@ -129,6 +130,10 @@ export default function TopNavBar({
   searchOverride?: TopSearch | null;
   // The desks' own bar: fades out as a drawer comes in over the desks.
   fadeWithDrawer?: boolean;
+  // An inline bar reads no published chrome style (it belongs to its
+  // drawer, not to the screen in front), so a drawer that wears the soft
+  // style says so here - the calendar's.
+  softInline?: boolean;
   // The save indicator, drawn on the extras cluster's own outline - see
   // the note's own call: "індикатор збереження навколо цієї здвоєної
   // кнопки". Screens that never pass it simply never animate.
@@ -154,7 +159,7 @@ export default function TopNavBar({
   // inside it, a chevron for the way back. A drawer's own inline bar
   // keeps its look.
   const chromeStyle = useNavChromeStyle();
-  const soft = !inline && chromeStyle === 'soft';
+  const soft = inline ? !!softInline : chromeStyle === 'soft';
   // The soft chrome keeps the top for WHERE you are and the dock for what
   // you DO: its search is the dock's own field (ContextDock), so the plate
   // does not open out here as well - the jump from the field below to one

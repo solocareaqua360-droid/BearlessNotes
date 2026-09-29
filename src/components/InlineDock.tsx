@@ -1,7 +1,11 @@
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from './icons/Ionicons';
+import SoftIcon from './SoftIcon';
+import type { SoftTokens } from '../theme/soft';
+import { SOFT_REGULAR } from '../utils/fonts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost, { FlatFrostContext } from './DockFrost';
-import { ActionButton, Bead } from './ContextDock';
+import { ActionButton, Bead, SOFT_DOCK_GLYPHS } from './ContextDock';
 import { topBarFrame } from './TopNavBar';
 import { DOCK_BOTTOM, DOCK_PIECE_RADIUS } from '../navigation/dockGeometry';
 import { DockAction, DockBead } from '../navigation/navDock';
@@ -23,10 +27,15 @@ export default function InlineDock({
   width,
   beads,
   actions,
+  soft,
 }: {
   width: number;
   beads: { left: DockBead | null; right: DockBead | null };
   actions: DockAction[] | null;
+  // The soft style (theme/soft) - the same two pieces the window's dock
+  // draws on a soft screen: a search field and a round write button, or
+  // one quiet capsule of actions.
+  soft?: SoftTokens | null;
 }) {
   const theme = useTheme();
   const lift = useLift();
@@ -38,6 +47,24 @@ export default function InlineDock({
     const short = actions.length <= 5;
     const buttonW = short ? Math.min(STRIP_BUTTON_W, Math.floor(frame.width / actions.length)) : Math.floor(frame.width / 5);
     const stripW = short ? buttonW * actions.length : frame.width;
+    if (soft) {
+      return (
+        <View
+          pointerEvents="box-none"
+          style={[styles.row, { bottom, left: frame.left + (frame.width - stripW) / 2, width: stripW }]}
+        >
+          <View
+            style={{ width: stripW, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, backgroundColor: soft.chrome, boxShadow: soft.shadow, overflow: 'hidden' }}
+          >
+            <ScrollView horizontal scrollEnabled={!short} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
+              {actions.map((action) => (
+                <ActionButton key={action.key} action={action} width={buttonW} height={TWO_BEAD - 4} iconSize={20} theme={theme} onDone={() => {}} soft={soft} />
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      );
+    }
     return (
       <FlatFrostContext.Provider value>
         <View
@@ -56,6 +83,53 @@ export default function InlineDock({
           </DockFrost>
         </View>
       </FlatFrostContext.Provider>
+    );
+  }
+
+  if (soft) {
+    const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow, height: TWO_BEAD, borderRadius: TWO_BEAD / 2 };
+    const left = beads.left;
+    const right = beads.right;
+    const leftIcon = left ? SOFT_DOCK_GLYPHS[left.icon] : undefined;
+    const rightIcon = right ? SOFT_DOCK_GLYPHS[right.icon] : undefined;
+    return (
+      <View pointerEvents="box-none" style={[styles.row, { bottom, left: frame.left, width: frame.width, gap: 10 }]}>
+        {left ? (
+          <Pressable
+            onPress={left.onPress}
+            onLongPress={left.onLongPress}
+            disabled={left.dimmed}
+            accessibilityLabel={left.active ? 'Закрити пошук' : 'Пошук'}
+            style={[styles.softField, surface]}
+          >
+            {leftIcon ? (
+              <SoftIcon name={leftIcon} size={20} color={soft.ink2} />
+            ) : (
+              <Ionicons name={left.icon as never} size={19} color={soft.ink2} />
+            )}
+            <Text style={[styles.softFieldText, { color: soft.ink3 }]} numberOfLines={1}>
+              {left.active ? 'Закрити пошук' : 'Пошук'}
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={{ flex: 1 }} />
+        )}
+        {right && (
+          <Pressable
+            onPress={right.onPress}
+            onLongPress={right.onLongPress}
+            disabled={right.dimmed}
+            accessibilityLabel="Писати"
+            style={[styles.softButton, surface, { width: TWO_BEAD }]}
+          >
+            {rightIcon ? (
+              <SoftIcon name={rightIcon} size={23} color={soft.ink} />
+            ) : (
+              <Ionicons name={right.icon as never} size={21} color={soft.ink} />
+            )}
+          </Pressable>
+        )}
+      </View>
     );
   }
 
@@ -79,6 +153,22 @@ const styles = StyleSheet.create({
   },
   beads: {
     justifyContent: 'space-between',
+  },
+  softField: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 18,
+  },
+  softFieldText: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: SOFT_REGULAR,
+  },
+  softButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   strip: {
     flexDirection: 'row',

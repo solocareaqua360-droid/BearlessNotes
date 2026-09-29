@@ -180,9 +180,14 @@ export default function CalendarScreen() {
   // next screen after the note ("календар"). On a phone, and not when it
   // is the drawer over a desk (there the blurred desk is its ground). The
   // bar and the dock follow through useChromeStyle, like the note's.
-  const softCalendar = !pointerDensity && !calendarDrawer;
+  // Both where it stands: as a screen of its own, and as the full-window
+  // layer left of the desks (CalendarDrawer) - which is where the user
+  // actually meets it. The layer draws its own bar and dock (inline), so
+  // it tells them directly; asking the window's chrome from there would
+  // turn every desk's bar soft, the layer being always mounted.
+  const softCalendar = !pointerDensity;
   const softTokensAll = useSoft();
-  useChromeStyle('soft', softCalendar);
+  useChromeStyle('soft', softCalendar && !calendarDrawer);
   const S = softCalendar ? softTokensAll : null;
   const styles = S ? softenCalendar(baseStyles, S) : baseStyles;
   // The calendar's own column, measured rather than assumed: in two panes
@@ -1557,13 +1562,13 @@ export default function CalendarScreen() {
           white background, painted over this, not a separate override
           here. */}
       {/* Over the desk the blurred desk IS the ground - see CalendarDrawer. */}
-      {!calendarDrawer &&
-        (S ? (
-          // The soft ground: one quiet colour, not the drifting backdrop.
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: S.bg }]} />
-        ) : (
-          <ScreenBackdrop id="calendarBg" />
-        ))}
+      {S ? (
+        // The soft ground: one quiet colour - not the drifting backdrop,
+        // and in the layer not the blurred desk either.
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: S.bg }]} />
+      ) : (
+        !calendarDrawer && <ScreenBackdrop id="calendarBg" />
+      )}
 
       {!pointerDensity && (
       <Animated.View style={[styles.headerRow, { paddingTop: headerPadTop }, phoneOverview && overviewFadeStyle]}>
@@ -2146,6 +2151,7 @@ export default function CalendarScreen() {
         <>
           <TopNavBar
             inline={{ width: windowWidth }}
+            softInline={!!S}
             title={{ icon: 'calendar-outline', label: 'Календар' }}
             backOverride={{ onPress: calendarDrawer.close, dimmed: false }}
             extrasOverride={{ menu: [...calendarMenu], select: calendarSelect }}
@@ -2174,6 +2180,7 @@ export default function CalendarScreen() {
               right: notePanelOpen ? null : { icon: 'pencil-outline', onPress: () => noteEditorRef.current?.startWriting() },
             }}
             actions={noteSelectMode ? publishedActions : null}
+            soft={S}
           />
         </>
       )}

@@ -430,7 +430,7 @@ const DOCK_WRAP_PAD = 6;
 const TWO_BEAD = 56;
 
 // The two beads' Ionicons, as the soft dock draws them (see SoftIcon).
-const SOFT_DOCK_GLYPHS: Record<string, SoftIconName> = {
+export const SOFT_DOCK_GLYPHS: Record<string, SoftIconName> = {
   'search-outline': 'search',
   'close-outline': 'close',
   'document-text-outline': 'compose',
@@ -443,7 +443,7 @@ const SOFT_DOCK_GLYPHS: Record<string, SoftIconName> = {
 // The soft dock's own search field - the one place search lives on a soft
 // screen. Keeps what is typed itself and hands every change to the screen,
 // the way the bar's plate did.
-function SoftSearchField({ search, soft, height }: { search: TopSearch; soft: SoftTokens; height: number }) {
+export function SoftSearchField({ search, soft, height }: { search: TopSearch; soft: SoftTokens; height: number }) {
   const [text, setText] = useState(search.initialQuery);
   return (
     <View style={[styles.softField, { height, borderRadius: height / 2, backgroundColor: soft.chrome, boxShadow: soft.shadow }]}>
