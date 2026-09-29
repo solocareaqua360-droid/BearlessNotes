@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { softCardFrame, softenStyles, softRecordColours, useSoftDatabase, type SoftTokens } from '../theme/soft';
+import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import {
   ActivityIndicator,
   Modal,
@@ -57,7 +59,9 @@ import { formatUpdatedAt } from '../utils/documentPreview';
 // deck, not on the database: "як опція для певної групи карток".
 export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  // Soft on a phone, as the database chrome around it is (theme/soft).
+  const softDb = useSoftDatabase();
+  const styles = softenStyles(useStyles(makeStyles), softDb, softFlashcards);
   const recordColour = useRecordColour();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const accent = theme.sections.custom;
@@ -280,7 +284,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       : undefined;
 
   function renderRow(card: Flashcard) {
-    const { background, text, textMuted } = recordColour(card.id);
+    const { background, text, textMuted } = softRecordColours(softDb, recordColour(card.id));
     const selected = list.selectedIds.has(card.id);
     const first = card.images[0];
     return (
@@ -333,7 +337,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
   // the shorter one simply keeps some empty room. A cascade (each column
   // at its own pace) is a later step, named but not taken.
   function renderCell(card: Flashcard) {
-    const { background, text, textMuted } = recordColour(card.id);
+    const { background, text, textMuted } = softRecordColours(softDb, recordColour(card.id));
     const selected = list.selectedIds.has(card.id);
     const first = card.images[0];
     return (
@@ -516,6 +520,19 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
     </DatabaseChrome>
   );
 }
+
+// The soft overlay (see theme/soft's softenStyles).
+const softFlashcards = (S: SoftTokens) =>
+  StyleSheet.create({
+    cell: softCardFrame(S),
+    row: softCardFrame(S),
+    cellTitle: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal' },
+    rowTitle: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal' },
+    cellCaption: { fontFamily: SOFT_REGULAR },
+    rowCaption: { fontFamily: SOFT_REGULAR },
+    emptyLabel: { fontFamily: SOFT_REGULAR, color: S.ink },
+    emptyHint: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+  }) as Record<string, object>;
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({

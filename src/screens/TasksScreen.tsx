@@ -1,4 +1,6 @@
 import { DeskContext } from '../navigation/desks';
+import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
+import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -155,7 +157,9 @@ function kanbanColumnWidthFor(screenWidth: number): number {
 export default function TasksScreen() {
   const theme = useTheme();
   const accent = theme.sections.tasks;
-  const styles = useStyles(makeStyles);
+  // Soft on a phone, as the database chrome around it is (theme/soft).
+  const softDb = useSoftDatabase();
+  const styles = softenStyles(useStyles(makeStyles), softDb, softTasks);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // Drawn as one of the desks - see navigation/desks.
   const desk = useContext(DeskContext);
@@ -2008,6 +2012,41 @@ export default function TasksScreen() {
     </View>
   );
 }
+
+// The soft overlay (see theme/soft's softenStyles): cards lifted by the
+// soft shadow instead of an outline, the kanban's lanes a soft tint,
+// sentence-case headings, Inter throughout.
+const softTasks = (S: SoftTokens) =>
+  StyleSheet.create({
+    row: { backgroundColor: S.card, borderWidth: 0, borderRadius: 18, boxShadow: S.shadow },
+    rowText: { fontFamily: SOFT_REGULAR, color: S.ink },
+    groupTitle: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', letterSpacing: 0 },
+    groupTitleList: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', letterSpacing: -0.3 },
+    listDescriptionText: { fontFamily: SOFT_REGULAR, color: S.ink2 },
+    collapseLabel: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+    emptyLabel: { fontFamily: SOFT_REGULAR, color: S.ink },
+    emptyFilterLabel: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+    emptyHint: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+    emptyIcon: { backgroundColor: S.card, boxShadow: S.shadow },
+    todayDivider: { backgroundColor: S.line },
+    chipText: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal' },
+    reminderChip: { backgroundColor: S.fill },
+    reminderChipText: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal' },
+    subtaskText: { fontFamily: SOFT_REGULAR, color: S.ink },
+    attachmentChip: { backgroundColor: S.fill },
+    attachmentChipText: { fontFamily: SOFT_REGULAR, color: S.ink },
+    kanbanColumnTitle: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0, fontSize: 14, color: S.ink2 },
+    kanbanColumnCount: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', backgroundColor: S.fill, color: S.ink3 },
+    kanbanColumnBody: { backgroundColor: S.fill, borderRadius: 20 },
+    kanbanCard: { backgroundColor: S.card, borderRadius: 16, elevation: 0, shadowOpacity: 0, boxShadow: S.shadow },
+    kanbanCardText: { fontFamily: SOFT_REGULAR, color: S.ink },
+    kanbanArrowButton: { backgroundColor: S.fill, borderRadius: 13 },
+    menuPanel: { backgroundColor: S.card, borderRadius: 20, elevation: 0, shadowOpacity: 0, boxShadow: S.popShadow },
+    modalSheet: { backgroundColor: S.card },
+    modalTitle: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink },
+    modalRowText: { fontFamily: SOFT_REGULAR, color: S.ink },
+    modalInput: { fontFamily: SOFT_REGULAR, color: S.ink },
+  }) as Record<string, object>;
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({

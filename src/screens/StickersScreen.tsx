@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { softCardFrame, softenStyles, softRecordColours, useSoftDatabase, type SoftTokens } from '../theme/soft';
+import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { railClear } from '../constants/rail';
@@ -61,7 +63,9 @@ export default function StickersScreen({
   inPane,
 }: Partial<Props> & { inPane?: boolean } = {}) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  // Soft on a phone, as the database chrome around it is (theme/soft).
+  const softDb = useSoftDatabase();
+  const styles = softenStyles(useStyles(makeStyles), softDb, softStickers);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // Opened straight from the sticker widget on the home screen - see
   // App.tsx's deep-link handling. Read once: the param does not change
@@ -340,6 +344,17 @@ export default function StickersScreen({
     </DatabaseChrome>
   );
 }
+
+// The soft overlay (see theme/soft's softenStyles). A sticker stays a
+// yellow sticker - only the Material shadow under it goes.
+const softStickers = (S: SoftTokens) =>
+  StyleSheet.create({
+    card: { borderRadius: 14, elevation: 0, shadowOpacity: 0, boxShadow: S.shadow },
+    cardText: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal' },
+    cardStatus: { fontFamily: SOFT_REGULAR },
+    emptyLabel: { fontFamily: SOFT_REGULAR, color: S.ink },
+    emptyHint: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+  }) as Record<string, object>;
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({

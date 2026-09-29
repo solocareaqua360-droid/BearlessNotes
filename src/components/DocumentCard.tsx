@@ -10,7 +10,7 @@ import type { Block, Tag } from '../types';
 import AttachmentImage from './AttachmentImage';
 import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/documentPreview';
 import { FONT_REGULAR, FONT_BOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
-import { softTokens, type SoftTokens } from '../theme/soft';
+import { softTokens, useSoftSurface, type SoftTokens } from '../theme/soft';
 import ProjectBadge from './ProjectBadge';
 import { SoftCheck } from './SoftIcon';
 import DocumentPageMiniature from './DocumentPageMiniature';
@@ -527,9 +527,13 @@ export default function DocumentCard({
   project,
   onProjectPress,
   wide,
-  soft,
+  soft: softProp,
 }: Props) {
   const recordColour = useRecordColour();
+  // Said outright, or heard from a soft surface around the card (a
+  // database's chrome - the diary's cards, see SoftSurfaceContext).
+  const softSurface = useSoftSurface();
+  const soft = softProp !== undefined ? softProp : softSurface;
   const { background, text, textMuted } = soft
     ? { background: soft.card, text: soft.ink, textMuted: soft.ink2 }
     : recordColour(id);

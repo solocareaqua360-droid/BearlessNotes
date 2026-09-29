@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import { useTheme } from './ThemeProvider';
+import { useDensity } from '../hooks/useDensity';
 
 // «М'ЯКИЙ» - the style chosen from the mockups on 2026-09-28 (artifact
 // «М'який стиль»). The user's own words for what it has to be: "дизайн
@@ -104,4 +105,36 @@ export function useSoftSurface(): SoftTokens | null {
 // Material shadow: no outline, the soft shadow, a rounder corner.
 export function softCardFrame(S: SoftTokens, radius = 20) {
   return { borderWidth: 0, elevation: 0, shadowOpacity: 0, borderRadius: radius, boxShadow: S.shadow };
+}
+
+// The soft tokens a DATABASE screen wears, or null: the same rule its
+// chrome (DatabaseChrome) goes by - on a phone. For the screen's own
+// styles, which are worked out above that chrome's SoftSurfaceContext.
+export function useSoftDatabase(): SoftTokens | null {
+  const S = useSoft();
+  return useDensity() !== 'pointer' ? S : null;
+}
+
+// The record's own colour on a card, or the soft card's surface and inks.
+export function softRecordColours(S: SoftTokens | null, own: { background: string; text: string; textMuted: string }) {
+  return S ? { background: S.card, text: S.ink, textMuted: S.ink2 } : own;
+}
+
+// A screen's StyleSheet with the soft style laid over it key by key -
+// `make` names only what changes. Cached per base sheet, token set and
+// recipe, so it is the same object every render.
+const softenCache = new WeakMap<object, Map<SoftTokens, Map<unknown, unknown>>>();
+export function softenStyles<T extends object>(base: T, S: SoftTokens | null, make: (S: SoftTokens) => Record<string, object>): T {
+  if (!S) return base;
+  let byTokens = softenCache.get(base);
+  if (!byTokens) softenCache.set(base, (byTokens = new Map()));
+  let byRecipe = byTokens.get(S);
+  if (!byRecipe) byTokens.set(S, (byRecipe = new Map()));
+  const hit = byRecipe.get(make);
+  if (hit) return hit as T;
+  const over = make(S);
+  const merged = { ...base } as Record<string, unknown>;
+  for (const key of Object.keys(over)) merged[key] = [merged[key], over[key]];
+  byRecipe.set(make, merged);
+  return merged as T;
 }

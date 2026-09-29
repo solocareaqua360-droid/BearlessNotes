@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { softCardFrame, softenStyles, softRecordColours, useSoftDatabase, type SoftTokens } from '../theme/soft';
+import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { CoverGradientView, defaultCoverFor } from '../theme/covers';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import { withAlpha } from '../utils/color';
@@ -67,7 +69,9 @@ export default function BoardsListScreen({
   const theme = useTheme();
   const accent = theme.sections.boards;
   const accentGlass = withAlpha(accent, 0.55);
-  const styles = useStyles(makeStyles);
+  // Soft on a phone, as the database chrome around it is (theme/soft).
+  const softDb = useSoftDatabase();
+  const styles = softenStyles(useStyles(makeStyles), softDb, softBoardsList);
   const recordColour = useRecordColour();
   const insets = useSafeAreaInsets();
   const dockClear = useDockClearance();
@@ -375,7 +379,7 @@ export default function BoardsListScreen({
   }
 
   function renderBoardRow(item: BoardItem) {
-    const { background, text, textMuted } = recordColour(item.id);
+    const { background, text, textMuted } = softRecordColours(softDb, recordColour(item.id));
     // Carried, the row gives up its own onLongPress - the drag gesture
     // opens the menu itself, on its own timing, rather than racing it.
     const carried = explorer.active;
@@ -464,7 +468,7 @@ export default function BoardsListScreen({
   // A board as a tile: its own miniature at a size where the cards are
   // cards, with the name under it.
   function renderBoardTile(item: BoardItem, tileWidth: number) {
-    const { background, text, textMuted } = recordColour(item.id);
+    const { background, text, textMuted } = softRecordColours(softDb, recordColour(item.id));
     const mapHeight = Math.round(tileWidth * 0.72);
     const carried = explorer.active;
     const carriedProps = carried ? carrying.cardProps(item, () => askBoardActions(item)) : undefined;
@@ -729,6 +733,17 @@ export default function BoardsListScreen({
     </DatabaseChrome>
   );
 }
+
+// The soft overlay (see theme/soft's softenStyles).
+const softBoardsList = (S: SoftTokens) =>
+  StyleSheet.create({
+    tile: { borderWidth: 0, borderRadius: 20, boxShadow: S.shadow },
+    row: softCardFrame(S),
+    rowTitle: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal' },
+    rowMeta: { fontFamily: SOFT_REGULAR },
+    emptyLabel: { fontFamily: SOFT_REGULAR, color: S.ink },
+    emptyHint: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+  }) as Record<string, object>;
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
