@@ -12,6 +12,7 @@ import { listenError } from '../utils/listenError';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import { blockFromCustomRow } from '../utils/copyToNote';
 import { useReferenceDrag } from '../hooks/useReferenceDrag';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import type { Block, BoardDbWindow, CustomDatabase, CustomDatabaseRow, FieldDef } from '../types';
@@ -61,6 +62,10 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
   const [fieldId, setFieldId] = useState<string | null>(null);
   const [valueId, setValueId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  // Find by name in the list itself - "листати список, поки там машин 60,
+  // ... просто підійметься клавіатура, знайшов, додав".
+  const [listQuery, setListQuery] = useState('');
+  const keyboardH = useKeyboardHeight();
 
   useEffect(
     () =>
@@ -92,7 +97,10 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
     [rows, database]
   );
   const chosen = useMemo(() => (win.chosen ? new Set(win.chosen) : null), [win.chosen]);
-  const shown = titled.filter(({ row }) => !chosen || chosen.has(row.id));
+  const listNeedle = listQuery.trim().toLowerCase();
+  const shown = titled.filter(
+    ({ row, title }) => (!chosen || chosen.has(row.id)) && (!listNeedle || title.toLowerCase().includes(listNeedle))
+  );
 
   // Held and dragged out: the block is the record; the board makes the
   // card where it is let go.
@@ -136,10 +144,18 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
     if (success && collapsed) runOnJS(toggleCollapsed)();
   });
   const headerGesture = Gesture.Race(pan, tap);
-  const frameStyle = useAnimatedStyle(() => ({ transform: [{ translateX: posX.value }, { translateY: posY.value }] }));
+  // With the keyboard up the window goes to the top of the screen and takes
+  // only the room above the keyboard, so the list and the search field are
+  // both in sight.
+  const lifted = keyboardH > 0 && !collapsed;
+  const liftedTop = insets.top + 8;
+  const frameStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: posX.value }, { translateY: lifted ? liftedTop : posY.value }],
+  }));
 
   const totalPlaced = [...placed.values()].reduce((a, b) => a + b, 0);
-  const height = Math.min(Math.round(windowH * 0.5), 440);
+  const baseHeight = Math.min(Math.round(windowH * 0.5), 440);
+  const height = lifted ? Math.max(200, Math.min(windowH - keyboardH - liftedTop - 8, windowH * 0.9)) : baseHeight;
 
   // ---- settings: the filter and the ticks ------------------------------------
   const filterFields: FieldDef[] = (database?.fields ?? []).filter(
@@ -296,7 +312,25 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
             ) : (
               <GestureDetector gesture={drag.gesture}>
                 <View style={styles.body}>
-                  <Text style={[styles.hint, { color: S.ink3 }]}>Затисни картку й перетягни на дошку, або тапни «+»</Text>
+                  <View style={[styles.search, { backgroundColor: S.fill }]}>
+                    <Ionicons name="search" size={16} color={S.ink3} />
+                    <TextInput
+                      value={listQuery}
+                      onChangeText={setListQuery}
+                      placeholder="Пошук за назвою"
+                      placeholderTextColor={S.ink3}
+                      style={[styles.searchInput, { color: S.ink }]}
+                      returnKeyType="search"
+                    />
+                    {listQuery.length > 0 && (
+                      <Pressable hitSlop={8} onPress={() => setListQuery('')} accessibilityLabel="Очистити пошук">
+                        <Ionicons name="close" size={16} color={S.ink3} />
+                      </Pressable>
+                    )}
+                  </View>
+                  {!listQuery && !lifted && (
+                    <Text style={[styles.hint, { color: S.ink3 }]}>Затисни картку й перетягни на дошку, або тапни «+»</Text>
+                  )}
                   <ScrollView style={styles.list} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
                     {shown.map(({ row, title }) => {
                       const block = blockFromCustomRow({ id: row.id, databaseId: win.databaseId, title, createdAt: row.createdAt });
@@ -333,7 +367,11 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
                     })}
                     {shown.length === 0 && (
                       <Text style={[styles.empty, { color: S.ink3 }]}>
-                        {titled.length === 0 ? 'У базі ще немає записів' : 'Нічого не вибрано - відкрий параметри'}
+                        {titled.length === 0
+                          ? 'У базі ще немає записів'
+                          : listNeedle
+                            ? 'Нічого не знайдено'
+                            : 'Нічого не вибрано - відкрий параметри'}
                       </Text>
                     )}
                   </ScrollView>
