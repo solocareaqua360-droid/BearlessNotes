@@ -25,10 +25,11 @@
 // find the same folders and count into the same total.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, increment } from '../firestore';
-import { setDoc } from './owned';
+import { doc, getDocs, increment, updateDoc } from '../firestore';
+import { ownedQuery, setDoc } from './owned';
+import { dropPending, keepPending, listPending, readPending } from './pendingUploads';
 import { db } from '../firebase';
-import { getDriveToken, markDriveNeeded } from './driveToken.web';
+import { getDriveToken, hasDriveToken, markDriveNeeded, subscribeToDriveToken } from './driveToken.web';
 
 const driveStatsDoc = doc(db, 'settings', 'driveStats');
 
@@ -145,9 +146,21 @@ export async function backupFileToDrive(
   subFolder: DriveSubFolder
 ): Promise<{ fileId: string; bytes: number } | null> {
   try {
-    const response = await fetch(localUri);
-    if (!response.ok) return null;
-    const blob = await response.blob();
+    // The bytes: from the URL while this tab still holds it, else from
+    // what was kept for it (see pendingUploads.web) - after a reload a
+    // blob: URL is dead and the kept copy is all that is left.
+    let blob: Blob | null = null;
+    try {
+      const response = await fetch(localUri);
+      if (response.ok) blob = await response.blob();
+    } catch {
+      blob = null;
+    }
+    if (!blob && localUri.startsWith('blob:')) blob = await readPending(localUri);
+    if (!blob) return null;
+    // Kept BEFORE the upload is attempted: with no Drive token the attempt
+    // throws on the next line, and these bytes must outlive the tab.
+    if (localUri.startsWith('blob:')) await keepPending({ uri: localUri, fileName, mimeType, subFolder }, blob);
     const folderId = await ensureSubFolder(subFolder);
 
     // Drive's multipart upload, built as real form data: the browser
@@ -171,6 +184,7 @@ export async function backupFileToDrive(
       return null;
     }
     adjustDriveStats(blob.size, 1);
+    if (localUri.startsWith('blob:')) dropPending(localUri);
     return { fileId, bytes: blob.size };
   } catch (e) {
     console.warn('[googleDrive.web] backupFileToDrive failed', fileName, e);
@@ -225,3 +239,47 @@ export async function ensureLocalFile(): Promise<boolean> {
 export async function adoptSignedInAccountForDrive(): Promise<string | null> {
   return null;
 }
+
+// THE RETRY. Whatever was kept because its upload could not run goes up
+// as soon as this tab has a Drive token again - the "Підключити Диск"
+// click, or a token handed over by another window - and its record
+// (photos/files) gets the driveFileId every device then reads. The records
+// are matched by the blob: URL they still hold; filtered here rather than
+// in the query (an ownerId + field query would need its own index).
+let flushing = false;
+async function flushPendingUploads(): Promise<void> {
+  if (flushing || !hasDriveToken()) return;
+  flushing = true;
+  try {
+    const pending = await listPending();
+    if (pending.length === 0) return;
+    const [photos, files] = await Promise.all([getDocs(ownedQuery('photos')), getDocs(ownedQuery('files'))]);
+    for (const entry of pending) {
+      const collectionName = entry.subFolder === 'Photos' ? 'photos' : 'files';
+      const field = entry.subFolder === 'Photos' ? 'imageUri' : 'fileUri';
+      const records = (entry.subFolder === 'Photos' ? photos : files).docs.filter(
+        (d) => (d.data() as Record<string, unknown>)[field] === entry.uri && !(d.data() as { driveFileId?: string }).driveFileId
+      );
+      // Nothing points at these bytes any more (the block was deleted, or
+      // another window already sent them): let them go.
+      if (records.length === 0) {
+        await dropPending(entry.uri);
+        continue;
+      }
+      const uploaded = await backupFileToDrive(entry.uri, entry.fileName, entry.mimeType, entry.subFolder);
+      if (!uploaded) continue;
+      await Promise.all(
+        records.map((d) => updateDoc(doc(db, collectionName, d.id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes }))
+      );
+    }
+  } catch (e) {
+    console.warn('[googleDrive.web] pending uploads not flushed', e);
+  } finally {
+    flushing = false;
+  }
+}
+subscribeToDriveToken(() => {
+  flushPendingUploads();
+});
+// And once on load, for a token that is still good from before.
+setTimeout(() => flushPendingUploads(), 4000);

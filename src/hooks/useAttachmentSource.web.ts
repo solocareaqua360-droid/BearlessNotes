@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { CacheStatus } from './useCachedAttachment';
 import { getDriveToken, markDriveNeeded, subscribeToDriveToken } from '../utils/driveToken.web';
 import { keepAttachment, keptAttachmentUrl } from '../utils/desktopBridge.web';
+import { readPending } from '../utils/pendingUploads';
 
 // The browser's answer to "where is this picture".
 //
@@ -87,6 +88,36 @@ export function useAttachmentSource(
 
   useEffect(() => {
     let cancelled = false;
+    // A blob: URL is alive only in the tab that made it. After a reload it
+    // is dead: the bytes kept for it while its upload waits (see
+    // pendingUploads.web) stand in, and failing those, its Drive copy.
+    if (uri && uri.startsWith('blob:')) {
+      setState({ status: 'checking' });
+      (async () => {
+        const alive = await fetch(uri).then((r) => r.ok, () => false);
+        if (cancelled) return;
+        if (alive) {
+          setState({ status: 'ready', source: uri });
+          return;
+        }
+        const kept = await readPending(uri);
+        if (cancelled) return;
+        if (kept) {
+          setState({ status: 'ready', source: URL.createObjectURL(kept) });
+          return;
+        }
+        if (!driveFileId) {
+          setState({ status: 'missing' });
+          return;
+        }
+        setState({ status: 'restoring' });
+        const source = await fetchFromDrive(driveFileId);
+        if (!cancelled) setState(source ? { status: 'ready', source } : { status: 'missing' });
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
     // A picture that is already a web address - a link's preview, say -
     // is simply itself.
     if (uri && !uri.startsWith('file://')) {
