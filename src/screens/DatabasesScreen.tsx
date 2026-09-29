@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import { mutedForTheme, type Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
@@ -53,6 +53,8 @@ import StockPhotoPicker from '../components/StockPhotoPicker';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TAG_COLORS } from '../constants/tags';
+import { useDensity } from '../hooks/useDensity';
+import { LayoutFrameContext } from '../hooks/useResponsiveLayout';
 import { FONT_REGULAR, FONT_MEDIUM, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft, type SoftTokens } from '../theme/soft';
 import {contrastTextColor } from '../utils/documentColor';
@@ -241,6 +243,11 @@ export default function DatabasesScreen() {
   // tells them directly, like the calendar's; the window's chrome is asked
   // only when this is a screen of its own - the layer is always mounted.
   const softDatabases = true;
+  // In a side panel of the laptop the tile board is a plain list: tiles are
+  // sized for a finger and their names and counts do not fit a panel.
+  const panelFrame = useContext(LayoutFrameContext);
+  const panelDensity = useDensity();
+  const inPanel = !!panelFrame && panelDensity === 'pointer';
   const softTokensAll = useSoft();
   useChromeStyle('soft', softDatabases && !databasesLayer);
   const S = softDatabases ? softTokensAll : null;
@@ -1277,6 +1284,44 @@ export default function DatabasesScreen() {
 
   // One tile, wherever it stands - on the board, or in a folder (`at` is
   // then its pixel place and `inFolder` the folder it lies in). Folder
+  // What opening a tile does - shared by the tile itself and by the
+  // panel's list of the same items.
+  const openItem = (item: BoardItem) => {
+    // On a wide screen a database opens BESIDE the board,
+    // in the left pane, rather than replacing it.
+    const pane =
+      item.kind === 'builtin'
+        ? paneTargetFor(item.tile)
+        : item.kind === 'custom'
+          ? ({ kind: 'custom', databaseId: item.database.id } as const)
+          : null;
+    if (isTwoPane && pane) {
+      setColorMenuKey(null);
+      setOpenInPane(pane);
+      return;
+    }
+    if (item.kind === 'builtin') openTile(item.tile);
+    else if (item.kind === 'custom')
+      navigation.navigate('CustomDatabase', { databaseId: item.database.id });
+    else if (item.kind === 'pin') {
+      // A group opens the documents with that group
+      // chosen - and everything else in it follows under
+      // the rule there (see GroupSections). A smart folder
+      // opens its own list, which is already cross-database.
+      if (item.pinKind === 'group') {
+        // The documents are a desk under this layer: the
+        // layer has to get out of the way to show them.
+        databasesLayer?.close();
+        navigation.navigate('Tabs', {
+          screen: 'Документи',
+          params: { groupId: item.pin.id },
+        });
+      } else navigation.navigate('TagItems', { tagId: item.pin.id });
+    } else if (item.key === NEW_TILE_KEY) setCreatingDatabase(true);
+    else if (item.key === PIN_TILE_KEY) setPinSheetVisible(true);
+    else setImporting(true);
+  };
+
   // tiles are drawn in the same flat list as the rest, under the same key,
   // so a tile carried out of its folder stays the one component under the
   // finger instead of being rebuilt.
@@ -1312,41 +1357,7 @@ export default function DatabasesScreen() {
       size={size}
       background={tileBackgrounds[item.key]}
       count={item.kind === 'pin' ? item.pin.count : counts[item.key]}
-      onOpen={() => {
-        // On a wide screen a database opens BESIDE the board,
-        // in the left pane, rather than replacing it.
-        const pane =
-          item.kind === 'builtin'
-            ? paneTargetFor(item.tile)
-            : item.kind === 'custom'
-              ? ({ kind: 'custom', databaseId: item.database.id } as const)
-              : null;
-        if (isTwoPane && pane) {
-          setColorMenuKey(null);
-          setOpenInPane(pane);
-          return;
-        }
-        if (item.kind === 'builtin') openTile(item.tile);
-        else if (item.kind === 'custom')
-          navigation.navigate('CustomDatabase', { databaseId: item.database.id });
-        else if (item.kind === 'pin') {
-          // A group opens the documents with that group
-          // chosen - and everything else in it follows under
-          // the rule there (see GroupSections). A smart folder
-          // opens its own list, which is already cross-database.
-          if (item.pinKind === 'group') {
-            // The documents are a desk under this layer: the
-            // layer has to get out of the way to show them.
-            databasesLayer?.close();
-            navigation.navigate('Tabs', {
-              screen: 'Документи',
-              params: { groupId: item.pin.id },
-            });
-          } else navigation.navigate('TagItems', { tagId: item.pin.id });
-        } else if (item.key === NEW_TILE_KEY) setCreatingDatabase(true);
-        else if (item.key === PIN_TILE_KEY) setPinSheetVisible(true);
-        else setImporting(true);
-      }}
+      onOpen={() => openItem(item)}
       onHold={() => {
         // The tick was the lift, when the hold became long enough - not a
         // second one on letting go.
@@ -1399,6 +1410,75 @@ export default function DatabasesScreen() {
       onCarryEnd={endCarry}
     />
   );
+
+  // THE LIST a panel shows in place of the board: every tile in the board's
+  // own order, one row each, a folder's members standing in its place, the
+  // dividers as section titles. Same items, same opening (openItem).
+  const rowOf = (item: BoardItem) => {
+    const label =
+      item.kind === 'builtin'
+        ? item.tile.label
+        : item.kind === 'custom'
+          ? item.database.name || 'Без назви'
+          : item.kind === 'pin'
+            ? item.pin.name
+            : item.key === NEW_TILE_KEY
+              ? 'Нова база'
+              : item.key === PIN_TILE_KEY
+                ? 'Закріпити'
+                : 'Імпорт таблиці';
+    const icon =
+      item.kind === 'builtin'
+        ? item.tile.icon
+        : item.kind === 'custom'
+          ? item.database.icon ?? 'grid-outline'
+          : item.kind === 'pin'
+            ? item.pin.icon
+            : item.key === NEW_TILE_KEY
+              ? 'add'
+              : item.key === PIN_TILE_KEY
+                ? 'bookmark-outline'
+                : 'download-outline';
+    const color =
+      item.kind === 'custom'
+        ? item.database.color ?? recordColour(item.database.id).background
+        : item.kind === 'pin'
+          ? item.pin.color
+          : colorFor(item.key);
+    return { label, icon: icon as string, color, count: item.kind === 'pin' ? item.pin.count : counts[item.key] };
+  };
+  const listView = inPanel ? (
+    <ScrollView contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 8 }}>
+      {(() => {
+        const out: ReactNode[] = [];
+        let next = 0;
+        const sortedDividers = [...dividers].sort((a, b) => a.y - b.y);
+        [...placed]
+          .sort((a, b) => a.y - b.y || a.x - b.x)
+          .forEach((tile) => {
+            while (next < sortedDividers.length && sortedDividers[next].y <= tile.y) {
+              const d = sortedDividers[next++];
+              if (d.label) out.push(<PanelListTitle key={`d-${d.id}`} label={d.label} />);
+            }
+            (tile.item.kind === 'folder' ? tile.item.members : [tile.item]).forEach((item) => {
+              const row = rowOf(item);
+              out.push(
+                <PanelListRow
+                  key={item.key}
+                  label={row.label}
+                  icon={row.icon}
+                  color={softTokensAll ? softIconColour(row.color || '', softTokensAll) : row.color}
+                  count={item.kind === 'action' ? undefined : row.count}
+                  dashed={item.kind === 'action'}
+                  onPress={() => openItem(item)}
+                />
+              );
+            });
+          });
+        return out;
+      })()}
+    </ScrollView>
+  ) : null;
 
   const boardScroll = (
           <ScrollView
@@ -1747,7 +1827,7 @@ export default function DatabasesScreen() {
               the board a screenful. The tiles run all the way up and
               scroll off the top edge, the way the cards do everywhere
               else. */}
-          {boardScroll}
+          {inPanel ? listView : boardScroll}
         </ContentColumn>
       )}
 
@@ -2334,6 +2414,54 @@ function BoardTile({
     </Animated.View>
   );
 }
+
+// One row of the panel's list: an icon in the tile's colour, the full name,
+// the count at the right. 30 tall - a mouse does not need more - and lit
+// under the cursor.
+function PanelListRow({
+  label,
+  icon,
+  color,
+  count,
+  dashed,
+  onPress,
+}: {
+  label: string;
+  icon: string;
+  color: string;
+  count?: number;
+  dashed?: boolean;
+  onPress: () => void;
+}) {
+  const S = useSoft();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={(state) => [
+        panelListStyles.row,
+        (state as { hovered?: boolean }).hovered && { backgroundColor: S.fill },
+      ]}
+    >
+      <Ionicons name={icon as never} size={16} color={dashed ? S.ink3 : color} />
+      <Text style={[panelListStyles.label, { color: dashed ? S.ink2 : S.ink }]} numberOfLines={1}>
+        {label}
+      </Text>
+      {count !== undefined && count > 0 && <Text style={[panelListStyles.count, { color: S.ink3 }]}>{count}</Text>}
+    </Pressable>
+  );
+}
+
+function PanelListTitle({ label }: { label: string }) {
+  const S = useSoft();
+  return <Text style={[panelListStyles.title, { color: S.ink3 }]}>{label}</Text>;
+}
+
+const panelListStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 30, paddingHorizontal: 10, borderRadius: 8 },
+  label: { flex: 1, fontSize: 13.5, fontFamily: SOFT_MEDIUM },
+  count: { fontSize: 12, fontFamily: SOFT_MEDIUM },
+  title: { fontSize: 11.5, fontFamily: SOFT_MEDIUM, paddingHorizontal: 10, paddingTop: 14, paddingBottom: 4 },
+});
 
 // A FOLDER'S OUTLINE: the shell its tiles stand in, a little wider than
 // they are ("контур папки трохи ширшим за іконки") - into the gaps round
