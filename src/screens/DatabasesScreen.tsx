@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import { mutedForTheme, type Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
@@ -53,7 +53,9 @@ import StockPhotoPicker from '../components/StockPhotoPicker';
 import { db } from '../firebase';
 import { RootStackParamList } from '../navigation';
 import { TAG_COLORS } from '../constants/tags';
-import { FONT_REGULAR, FONT_MEDIUM, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_REGULAR, FONT_MEDIUM, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
+import { useSoft, type SoftTokens } from '../theme/soft';
+import { useDensity } from '../hooks/useDensity';
 import {contrastTextColor } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -85,7 +87,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
-import { useDockActions, useDockBeads, useTopBack, useTopExtras } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useTopBack, useTopExtras } from '../navigation/navDock';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
 import { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { useDockClearance } from '../navigation/dockGeometry';
@@ -226,7 +228,7 @@ function paneTargetFor(tile: Tile): PaneTarget | null {
 export default function DatabasesScreen() {
   const theme = useTheme();
   const accent = theme.sections.databases;
-  const styles = useStyles(makeStyles);
+  const baseStyles = useStyles(makeStyles);
   const recordColour = useRecordColour();
   const databasesBlurTarget = useBlurTarget();
   // In the layer right of the last desk (see CalendarDrawer's
@@ -234,6 +236,16 @@ export default function DatabasesScreen() {
   // is published for the window's, which fade out as it comes in.
   const databasesLayer = useContext(DatabasesLayerContext);
   const layerShut = !!databasesLayer && !databasesLayer.open;
+  // «БАЗИ» IN THE SOFT STYLE (theme/soft) - the user's pick after the
+  // calendar. On a phone, as a screen and as the layer right of the desks
+  // (where it is usually met): the layer draws its own bar and dock, so it
+  // tells them directly, like the calendar's; the window's chrome is asked
+  // only when this is a screen of its own - the layer is always mounted.
+  const softDatabases = useDensity() !== 'pointer';
+  const softTokensAll = useSoft();
+  useChromeStyle('soft', softDatabases && !databasesLayer);
+  const S = softDatabases ? softTokensAll : null;
+  const styles = S ? softenDatabases(baseStyles, S) : baseStyles;
   const desksControl = useContext(DesksControlContext);
   // The tile being carried out of the layer onto the desks, under the
   // finger - drawn over everything, since the layer it came from is on its
@@ -1639,6 +1651,7 @@ export default function DatabasesScreen() {
   );
 
   return (
+    <SoftDatabasesContext.Provider value={S}>
     <View style={styles.container}>
       {/* Same fixed gradient as Documents/Calendar. 1px bled past every edge
           (see the -1/+2 below) - windowWidth/Height can round to a hair
@@ -1649,7 +1662,12 @@ export default function DatabasesScreen() {
           drew its own fixed gradient and stood in the colour theme
           whatever the setting said. */}
       {/* Over the desk the blurred desk IS the ground - see SideLayer. */}
-      {!databasesLayer && <ScreenBackdrop id="databasesBg" />}
+      {S ? (
+        // The soft ground - over the blurred desk too, in the layer.
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: S.bg }]} />
+      ) : (
+        !databasesLayer && <ScreenBackdrop id="databasesBg" />
+      )}
       {/* The rail, as on every other screen: right edge, same width, same
           glass, hanging from the same line. Through the portal for the
           blur, so it withdraws when this screen isn't the one on show. */}
@@ -1948,14 +1966,16 @@ export default function DatabasesScreen() {
         <>
           <TopNavBar
             inline={{ width: windowWidth }}
+            softInline={!!S}
             title={{ icon: 'apps-outline', label: 'Бази' }}
             backOverride={{ onPress: databasesLayer.close, dimmed: false }}
             extrasOverride={{ menu: databasesMenu, select: null }}
           />
-          <InlineDock width={windowWidth} beads={{ left: searchBead, right: newDatabaseBead }} actions={null} />
+          <InlineDock width={windowWidth} beads={{ left: searchBead, right: newDatabaseBead }} actions={null} soft={S} />
         </>
       )}
     </View>
+    </SoftDatabasesContext.Provider>
   );
 }
 
@@ -1987,7 +2007,7 @@ function BoardDivider({
   onCarryEnd: () => void;
 }) {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  const styles = useSoftDatabaseStyles();
   const carry = Gesture.Pan()
     .runOnJS(true)
     .activateAfterLongPress(220)
@@ -2080,7 +2100,7 @@ function BoardTile({
   // Carried along inside something that is under the finger: no easing.
   following?: boolean;
 }) {
-  const styles = useStyles(makeStyles);
+  const styles = useSoftDatabaseStyles();
   // Whether this hold has turned into a drag - and, after it, that the
   // release must not also count as a tap.
   const deskDragging = useRef(false);
@@ -2124,6 +2144,7 @@ function BoardTile({
   // a tile carrying a background picture keeps its scrim and white text,
   // because what is behind the ink there is the picture, not the colour.
   const painted = !isAction && !background;
+  const softTile = useContext(SoftDatabasesContext);
   // Every tile passes through here - custom, pinned, built-in - so this
   // is where the paint is muted outside the colour theme; muting only
   // the custom ones left "Проекти" and "Стікери" shouting on their own.
@@ -2226,6 +2247,7 @@ function BoardTile({
       style={[
         styles.tile,
         painted && { backgroundColor: paint, borderColor: 'rgba(255,255,255,0.18)' },
+        softTile && painted && { borderWidth: 0 },
         isAction && styles.newTile,
         { left, top, width, height },
         carried && { left: carried.x, top: carried.y, zIndex: 20, opacity: 0.95, transform: [{ scale: 1.04 }] },
@@ -2260,7 +2282,7 @@ function BoardTile({
             і кількість". The icon stands at the tile's own centre whatever
             its size, the name along the foot. */}
         <View style={styles.tileIconWrap} pointerEvents="none">
-          <Ionicons name={icon} size={tiny ? 24 : 26} color={isAction ? 'rgba(255,255,255,0.6)' : ink} />
+          <Ionicons name={icon} size={tiny ? 24 : 26} color={isAction ? (softTile ? softTile.ink3 : 'rgba(255,255,255,0.6)') : ink} />
         </View>
         {/* The name on every tile now, the one-cell ones and the ones in
             folders included - "написи всередині іконок ... ті що ні можна
@@ -2271,7 +2293,7 @@ function BoardTile({
             styles.tileLabel,
             size.h === 1 && styles.tileLabelShort,
             tiny && styles.tileLabelTiny,
-            { color: isAction ? 'rgba(255,255,255,0.6)' : ink },
+            { color: isAction ? (softTile ? softTile.ink2 : 'rgba(255,255,255,0.6)') : ink },
           ]}
           // One row tall, the name gets one line: two would reach up into
           // the centred icon.
@@ -2319,7 +2341,7 @@ function FolderFrame({
   pad: number;
   highlighted: boolean;
 }) {
-  const styles = useStyles(makeStyles);
+  const styles = useSoftDatabaseStyles();
   return (
     <View
       pointerEvents="none"
@@ -2362,7 +2384,7 @@ function FolderHandles({
   onResize: (size: TileSize) => void;
   onResizeEnd: (size: TileSize) => void;
 }) {
-  const styles = useStyles(makeStyles);
+  const styles = useSoftDatabaseStyles();
   const base = useRef(size);
   const sizeFromDrag = (dx: number, dy: number) =>
     snapFolderSize(
@@ -2398,6 +2420,45 @@ function FolderHandles({
       </GestureDetector>
     </>
   );
+}
+
+// THE SOFT BOARD: what changes, key by key (the same overlay as the
+// calendar's). Tiles keep the colours the user gave them - only the glass
+// habits go: no outline, a soft shadow, rounder corners, Inter. The tiles
+// that are actions rather than databases, and the folders, become soft
+// tints of the ground instead of white-on-glass.
+const SoftDatabasesContext = createContext<SoftTokens | null>(null);
+
+function useSoftDatabaseStyles() {
+  const base = useStyles(makeStyles);
+  const S = useContext(SoftDatabasesContext);
+  return S ? softenDatabases(base, S) : base;
+}
+
+type DatabasesStyles = ReturnType<typeof makeStyles>;
+const softDatabasesCache = new WeakMap<object, Map<SoftTokens, DatabasesStyles>>();
+function softenDatabases(base: DatabasesStyles, S: SoftTokens): DatabasesStyles {
+  let byTokens = softDatabasesCache.get(base);
+  if (!byTokens) softDatabasesCache.set(base, (byTokens = new Map()));
+  const hit = byTokens.get(S);
+  if (hit) return hit;
+  const over = StyleSheet.create({
+    tile: { backgroundColor: S.fill, borderWidth: 0, borderRadius: 22, boxShadow: S.shadow },
+    newTile: { borderStyle: 'dashed', borderWidth: 1.5, borderColor: S.ink3 },
+    tileLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', letterSpacing: -0.1 },
+    tileCount: { fontFamily: SOFT_MEDIUM },
+    folderFrame: { backgroundColor: S.fill, borderWidth: 0 },
+    folderFrameHighlighted: { backgroundColor: S.fill, borderWidth: 1.5, borderColor: S.accent },
+    dividerLabel: { fontFamily: SOFT_MEDIUM, textTransform: 'none', letterSpacing: 0, fontSize: 13, color: S.ink3 },
+    dividerLine: { backgroundColor: S.line },
+    doneButton: { backgroundColor: S.chrome, boxShadow: S.popShadow },
+    doneLabel: { fontFamily: SOFT_MEDIUM, color: S.ink },
+  }) as Record<string, object>;
+  const merged = { ...base } as Record<string, unknown>;
+  for (const key of Object.keys(over)) merged[key] = [merged[key], over[key]];
+  const result = merged as DatabasesStyles;
+  byTokens.set(S, result);
+  return result;
 }
 
 const makeStyles = (t: Theme) =>
