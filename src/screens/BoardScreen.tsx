@@ -5763,12 +5763,27 @@ export default function BoardScreen() {
               : []),
             ...(onlySelectedCard
               ? [
-                  {
-                    key: 'isolate',
-                    icon: 'mc:image-filter-center-focus',
-                    label: 'Ізоляція',
-                    onPress: () => isolateSelectedCard(onlySelectedCard.id),
-                  },
+                  // While a chain is isolated the same button is the way OUT -
+                  // a second hold offers it at once, no trip to the "..."
+                  // menu. On a card of the chain itself, isolating again
+                  // would change nothing; on any other card it re-aims.
+                  isolatedIds !== null && isolatedIds.has(onlySelectedCard.id)
+                    ? {
+                        key: 'isolate',
+                        icon: 'mc:image-filter-center-focus',
+                        label: 'Вийти з ізоляції',
+                        active: true,
+                        onPress: () => {
+                          clearSelection();
+                          setIsolatedIds(null);
+                        },
+                      }
+                    : {
+                        key: 'isolate',
+                        icon: 'mc:image-filter-center-focus',
+                        label: 'Ізоляція',
+                        onPress: () => isolateSelectedCard(onlySelectedCard.id),
+                      },
                   {
                     key: 'copy',
                     icon: 'copy-outline',
