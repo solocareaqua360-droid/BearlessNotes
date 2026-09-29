@@ -612,6 +612,12 @@ export interface BoardColumn {
   // проект" inserts one of these per list PLUS one 'projectUnlisted' for
   // whatever's left with no list. `groupId: null` means "Вхідні".
   liveTaskSource?: { kind: 'projectUnlisted'; groupId: string | null } | { kind: 'list'; listId: string };
+  // One day of a WEEK: seven columns made together and kept together - they
+  // move as one, and their titles are the days counted from `start`
+  // (YYYY-MM-DD, the week's first day; `index` 0..6). "Стовпчики канбану
+  // як заготовка з семи днів тижня ... в їх налаштування можна вибрати
+  // дату початку". `id` names the week the seven share.
+  week?: { id: string; index: number; start: string };
   // See BoardCard's own layerId/hidden comments - the same two fields,
   // same meaning, on a column instead of a card. A column carried NEITHER
   // until now - «Шари» listed cards/shapes/containers only, so a column

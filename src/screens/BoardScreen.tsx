@@ -1,4 +1,5 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { MONTH_SHORT, WEEKDAY_SHORT, addDays, dateKey, mondayIndex, parseDateKey } from '../utils/dateLocale';
 import { mutedForTheme, type Theme } from '../theme/tokens';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -819,6 +820,18 @@ function AlignmentGuides({
 // transform), and the same shared-offset trick group drags use: this
 // column writes columnOffsetX/Y, and every card inside it reads the same
 // values, so the lane and its contents move together in one paint.
+// A week column's title: its day, counted from the week's start - "Пн, 5
+// жов". Worked out every time rather than stored, so moving the start
+// date renames all seven at once.
+function weekDayTitle(week: NonNullable<BoardColumn['week']>): string {
+  const day = addDays(parseDateKey(week.start), week.index);
+  return `${WEEKDAY_SHORT[mondayIndex(day)]}, ${day.getDate()} ${MONTH_SHORT[day.getMonth()]}`;
+}
+
+// The gap between the days of one week - close, so the seven read as one
+// piece, where separate columns keep COLUMN_SPACING.
+const WEEK_COLUMN_GAP = 8;
+
 function DraggableColumn({
   column,
   memberCount,
@@ -933,7 +946,7 @@ function DraggableColumn({
         <View style={styles.columnHeader}>
           <View style={styles.columnTitleWrap}>
             <Text style={styles.columnTitle} numberOfLines={1}>
-              {column.title}
+              {column.week ? weekDayTitle(column.week) : column.title}
             </Text>
           </View>
           <Text style={styles.columnCount}>{memberCount}</Text>
@@ -4060,6 +4073,84 @@ export default function BoardScreen() {
     setAddSheetVisible(false);
   }
 
+  // A WEEK: seven columns side by side, close together, starting from this
+  // week's Monday - the start date is theirs to change (openWeekMenu).
+  function addWeek() {
+    setColumns((prev) => {
+      const centre = viewCenter();
+      const x0 =
+        prev.length === 0
+          ? centre.x - (COLUMN_WIDTH * 7 + WEEK_COLUMN_GAP * 6) / 2
+          : Math.max(...prev.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
+      const y = prev.length === 0 ? centre.y - COLUMN_MIN_HEIGHT / 2 : prev[0].y;
+      const today = new Date();
+      const start = dateKey(addDays(today, -mondayIndex(today)));
+      const weekId = generateId();
+      const days: BoardColumn[] = Array.from({ length: 7 }, (_, index) => ({
+        id: generateId(),
+        title: weekDayTitle({ id: weekId, index, start }),
+        x: x0 + index * (COLUMN_WIDTH + WEEK_COLUMN_GAP),
+        y,
+        week: { id: weekId, index, start },
+      }));
+      return [...prev, ...days];
+    });
+    setAddSheetVisible(false);
+  }
+
+  // The week's own menu - what a tap on any of its seven headers opens.
+  const [weekDateEditing, setWeekDateEditing] = useState<{ weekId: string; start: string } | null>(null);
+  function setWeekStart(weekId: string, start: string) {
+    setColumns((prev) =>
+      prev.map((c) => (c.week?.id === weekId ? { ...c, week: { ...c.week, start }, title: weekDayTitle({ ...c.week, start }) } : c))
+    );
+  }
+  async function openWeekMenu(column: BoardColumn) {
+    const week = column.week;
+    if (!week) return;
+    const startDate = parseDateKey(week.start);
+    const first = weekDayTitle({ ...week, index: 0 });
+    const last = weekDayTitle({ ...week, index: 6 });
+    const choice = await ask({
+      title: 'Тиждень',
+      message: `${first} - ${last}`,
+      actions: [
+        { id: 'prev', label: 'На тиждень раніше', icon: 'chevron-back' },
+        { id: 'next', label: 'На тиждень пізніше', icon: 'chevron-forward' },
+        { id: 'this', label: 'З цього понеділка', icon: 'today-outline' },
+        { id: 'date', label: 'Інша дата початку…', icon: 'calendar-outline' },
+        { id: 'delete', label: 'Видалити тиждень', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'prev') setWeekStart(week.id, dateKey(addDays(startDate, -7)));
+    else if (choice === 'next') setWeekStart(week.id, dateKey(addDays(startDate, 7)));
+    else if (choice === 'this') {
+      const today = new Date();
+      setWeekStart(week.id, dateKey(addDays(today, -mondayIndex(today))));
+    } else if (choice === 'date') setWeekDateEditing({ weekId: week.id, start: week.start });
+    else if (choice === 'delete') confirmDeleteWeek(column);
+  }
+  async function confirmDeleteWeek(column: BoardColumn) {
+    const weekId = column.week?.id;
+    if (!weekId) return;
+    const yes = await confirm({
+      title: 'Видалити тиждень?',
+      message: 'Сім стовпчиків зникнуть, картки з них залишаться на дошці.',
+      confirmLabel: 'Видалити',
+    });
+    if (!yes) return;
+    setColumns((prev) => prev.filter((c) => c.week?.id !== weekId));
+  }
+  // "дд.мм.рррр" -> YYYY-MM-DD, or null.
+  function parseTypedDate(text: string): string | null {
+    const m = /^\s*(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})\s*$/.exec(text);
+    if (!m) return null;
+    const year = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    const date = new Date(year, Number(m[2]) - 1, Number(m[1]));
+    if (Number.isNaN(date.getTime()) || date.getDate() !== Number(m[1])) return null;
+    return dateKey(date);
+  }
+
   // One or several live task columns at once (see BoardColumn.
   // liveTaskSource) - "Весь проект" adds one per list in a single batch,
   // so each one still needs to know about the others just added, not only
@@ -4148,10 +4239,20 @@ export default function BoardScreen() {
   // effect that follows (columns changed) lands on the same positions,
   // which is what keeps the drop from visibly nudging anything.
   function commitColumnDrag(id: string, dx: number, dy: number) {
-    setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
-    setCards((prev) => prev.map((c) => (c.columnId === id ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    // A day of a week takes its whole week along - the seven are one piece.
+    const moving = columnsMovingWith(id);
+    setColumns((prev) => prev.map((c) => (moving.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    setCards((prev) => prev.map((c) => (c.columnId && moving.has(c.columnId) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
     setDraggingColumnId(null);
   }
+  function columnsMovingWith(id: string | null): Set<string> {
+    if (!id) return new Set();
+    const column = columns.find((c) => c.id === id);
+    if (!column?.week) return new Set([id]);
+    return new Set(columns.filter((c) => c.week?.id === column.week!.id).map((c) => c.id));
+  }
+  // What moves while a column is dragged - the column, or its whole week.
+  const movingColumnIds = columnsMovingWith(draggingColumnId);
 
   function renameColumn(column: BoardColumn, title: string) {
     setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, title: title.trim() || c.title } : c)));
@@ -4465,7 +4566,7 @@ export default function BoardScreen() {
     }
     if (member.kind === 'column') {
       const column = columns.find((c) => c.id === member.id);
-      return column?.title || 'Стовпчик';
+      return (column?.week ? weekDayTitle(column.week) : column?.title) || 'Стовпчик';
     }
     const container = containers.find((c) => c.id === member.id);
     return container?.title || 'Область';
@@ -5109,7 +5210,7 @@ export default function BoardScreen() {
   function liveEndpointFor(node: BoardNode): LiveEndpoint {
     const card = cardById.get(node.id);
     const inGroupDrag = !!card && selectedCardIds.has(node.id);
-    const inColumnDrag = !!card?.columnId && card.columnId === draggingColumnId;
+    const inColumnDrag = !!card?.columnId && movingColumnIds.has(card.columnId);
     // True for the container itself while it's being dragged, AND for
     // every card/shape riding along with it - same set startContainerDrag
     // snapshotted (see containerDragMembers's own comment).
@@ -5143,7 +5244,7 @@ export default function BoardScreen() {
 
   // Dragging a column moves every card in it, so their links go too.
   const movingCardIds = draggingColumnId
-    ? new Set(cards.filter((c) => c.columnId === draggingColumnId).map((c) => c.id))
+    ? new Set(cards.filter((c) => !!c.columnId && movingColumnIds.has(c.columnId)).map((c) => c.id))
     : !draggedCardId
       ? null
       : selectedCardIds.has(draggedCardId) && selectedCardIds.size > 1
@@ -5557,7 +5658,7 @@ export default function BoardScreen() {
                       column={column}
                       memberCount={liveTasksForCol.length}
                       height={COLUMN_HEADER_HEIGHT + rowsCount * (LIVE_TASK_ROW_HEIGHT + 10) + COLUMN_PADDING}
-                      isDragging={column.id === draggingColumnId}
+                      isDragging={movingColumnIds.has(column.id)}
                       locked={isLocked(column)}
                       dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand'}
                       canvasScale={scale}
@@ -5582,7 +5683,7 @@ export default function BoardScreen() {
                     column={column}
                     memberCount={members.length}
                     height={columnHeight(members, cardHeights)}
-                    isDragging={column.id === draggingColumnId}
+                    isDragging={movingColumnIds.has(column.id)}
                     locked={isLocked(column)}
                     dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand'}
                     canvasScale={scale}
@@ -5592,8 +5693,8 @@ export default function BoardScreen() {
                     isCatching={column.id === hoverColumnId}
                     onDragStart={setDraggingColumnId}
                     onDragEnd={commitColumnDrag}
-                    onRename={setRenamingColumn}
-                    onDelete={confirmDeleteColumn}
+                    onRename={(c) => (c.week ? openWeekMenu(c) : setRenamingColumn(c))}
+                    onDelete={(c) => (c.week ? confirmDeleteWeek(c) : confirmDeleteColumn(c))}
                   />
                 );
               })}
@@ -5794,7 +5895,7 @@ export default function BoardScreen() {
                     isGroupDrag={isSelected && selectedCardIds.size > 1}
                     groupOffsetX={groupOffsetX}
                     groupOffsetY={groupOffsetY}
-                    followsColumnDrag={!!card.columnId && card.columnId === draggingColumnId}
+                    followsColumnDrag={!!card.columnId && movingColumnIds.has(card.columnId)}
                     onHover={reportCardHover}
                     columnOffsetX={columnOffsetX}
                     columnOffsetY={columnOffsetY}
@@ -6272,6 +6373,10 @@ export default function BoardScreen() {
                 <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Стовпчик</Text>
               </Pressable>
+              <Pressable style={styles.sheetRow} onPress={addWeek}>
+                <MaterialCommunityIcons name="calendar-week" size={18} color="#111827" />
+                <Text style={styles.sheetRowLabel}>Тиждень (7 стовпчиків)</Text>
+              </Pressable>
               <Pressable style={styles.sheetRow} onPress={addContainer}>
                 <MaterialCommunityIcons name="selection-drag" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Область</Text>
@@ -6304,6 +6409,32 @@ export default function BoardScreen() {
           </Pressable>
         </Modal>
 
+        {/* The week's start, typed - see openWeekMenu. */}
+        <RenamePrompt
+          visible={weekDateEditing !== null}
+          title="Дата початку тижня"
+          placeholder="дд.мм.рррр"
+          initialValue={
+            weekDateEditing
+              ? (() => {
+                  const d = parseDateKey(weekDateEditing.start);
+                  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+                })()
+              : ''
+          }
+          onCancel={() => setWeekDateEditing(null)}
+          onSave={(text) => {
+            const editing = weekDateEditing;
+            setWeekDateEditing(null);
+            if (!editing) return;
+            const start = parseTypedDate(text);
+            if (!start) {
+              notify('Не та дата', 'Напишіть її як дд.мм.рррр, наприклад 05.10.2026.');
+              return;
+            }
+            setWeekStart(editing.weekId, start);
+          }}
+        />
         <RenamePrompt
           visible={editingShape !== null}
           title={editingShape?.kind === 'text' ? 'Напис' : 'Текст у фігурі'}
