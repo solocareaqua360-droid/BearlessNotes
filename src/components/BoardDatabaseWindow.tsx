@@ -13,6 +13,7 @@ import { rowTitleOf } from '../utils/customRowDisplay';
 import { blockFromCustomRow } from '../utils/copyToNote';
 import { useReferenceDrag } from '../hooks/useReferenceDrag';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { BoardFieldsContext } from './boardFieldsContext';
 import { useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import type { Block, BoardDbWindow, CustomDatabase, CustomDatabaseRow, FieldDef } from '../types';
@@ -59,6 +60,9 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
   const [database, setDatabase] = useState<CustomDatabase | null>(null);
   const [rows, setRows] = useState<CustomDatabaseRow[]>([]);
   const [settings, setSettings] = useState(false);
+  // The settings have two pages: which records are listed, and which fields
+  // the cards show - here and on the board.
+  const [settingsTab, setSettingsTab] = useState<'records' | 'fields'>('records');
   const [fieldId, setFieldId] = useState<string | null>(null);
   const [valueId, setValueId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -193,6 +197,14 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
     </Pressable>
   );
 
+  // Fields of the database that can be shown on a card (not the name - it
+  // is always there - and not the layout-only kinds).
+  const cardFields: FieldDef[] = (database?.fields ?? []).filter((f, index) => index > 0 && f.type !== 'section');
+  const hiddenNow = win.hiddenFieldIds ?? cardFields.filter((f) => f.hidden).map((f) => f.id);
+  const setHiddenFields = (ids: string[]) => onChange({ hiddenFieldIds: ids });
+  const toggleField = (id: string) =>
+    setHiddenFields(hiddenNow.includes(id) ? hiddenNow.filter((x) => x !== id) : [...hiddenNow, id]);
+
   const ghost = drag.ghost;
 
   return (
@@ -243,6 +255,48 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
 
             {settings ? (
               <View style={styles.body}>
+                <View style={styles.tabs}>
+                  {chip('Записи', settingsTab === 'records', () => setSettingsTab('records'), 'tab-records')}
+                  {chip('Поля на картках', settingsTab === 'fields', () => setSettingsTab('fields'), 'tab-fields')}
+                </View>
+                {settingsTab === 'fields' ? (
+                  <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+                    <Text style={[styles.hint, { color: S.ink3 }]}>
+                      Що показувати на картках - у цьому вікні й на дошці. У самій базі це не міняється.
+                    </Text>
+                    {cardFields.map((f) => {
+                      const on = !hiddenNow.includes(f.id);
+                      return (
+                        <Pressable key={f.id} style={styles.tickRow} onPress={() => toggleField(f.id)}>
+                          <View style={[styles.tick, on ? { backgroundColor: S.accent, borderColor: S.accent } : { borderColor: S.ink3 }]}>
+                            {on && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+                          </View>
+                          <Text style={[styles.tickLabel, { color: S.ink }]} numberOfLines={1}>
+                            {f.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                    <View style={styles.bulk}>
+                      <Pressable style={[styles.bulkButton, { backgroundColor: S.fillSolid }]} onPress={() => setHiddenFields([])}>
+                        <Text style={[styles.bulkLabel, { color: S.ink }]}>Усі</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.bulkButton, { backgroundColor: S.fillSolid }]}
+                        onPress={() => setHiddenFields(cardFields.map((f) => f.id))}
+                      >
+                        <Text style={[styles.bulkLabel, { color: S.ink }]}>Лише назва</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.bulkButton, { backgroundColor: S.fillSolid }]}
+                        onPress={() => onChange({ hiddenFieldIds: undefined })}
+                      >
+                        <Text style={[styles.bulkLabel, { color: S.ink }]}>Як у базі</Text>
+                      </Pressable>
+                    </View>
+                  </ScrollView>
+                ) : (
+                <>
                 {filterFields.length > 0 && (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chipRow}>
                     {chip('Усі', activeField === null, () => {
@@ -308,6 +362,8 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
                   })}
                   {listed.length === 0 && <Text style={[styles.empty, { color: S.ink3 }]}>Нічого не знайдено</Text>}
                 </ScrollView>
+                </>
+                )}
               </View>
             ) : (
               <GestureDetector gesture={drag.gesture}>
@@ -339,7 +395,9 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
                         <View key={row.id} style={styles.rowWrap}>
                           <View ref={drag.registerRow(`win-${win.id}-${row.id}`, () => block, title)} collapsable={false}>
                             <View pointerEvents="none">
-                              <CustomRowBlockCard databaseId={win.databaseId} rowId={row.id} fallbackTitle={title} tags={[]} onOpen={() => {}} />
+                              <BoardFieldsContext.Provider value={win.hiddenFieldIds ? { [win.databaseId]: win.hiddenFieldIds } : {}}>
+                                <CustomRowBlockCard databaseId={win.databaseId} rowId={row.id} fallbackTitle={title} tags={[]} onOpen={() => {}} />
+                              </BoardFieldsContext.Provider>
                             </View>
                           </View>
                           <View style={styles.rowTools}>
@@ -503,6 +561,11 @@ const styles = StyleSheet.create({
     fontFamily: SOFT_REGULAR,
     textAlign: 'center',
     paddingVertical: 24,
+  },
+  tabs: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
   },
   chipScroll: {
     flexGrow: 0,

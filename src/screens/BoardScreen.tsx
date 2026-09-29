@@ -1,4 +1,5 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { BoardFieldsContext } from '../components/boardFieldsContext';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import type { BoardDbWindow, CustomDatabase, CustomDatabaseRow } from '../types';
 import BoardDatabaseWindow from '../components/BoardDatabaseWindow';
@@ -5946,7 +5947,15 @@ export default function BoardScreen() {
       : null
   );
 
+  // The fields each database's cards show ON THIS BOARD - see
+  // boardFieldsContext.
+  const boardFields: Record<string, string[]> = {};
+  dbWindows.forEach((w) => {
+    if (w.hiddenFieldIds) boardFields[w.databaseId] = w.hiddenFieldIds;
+  });
+
   return (
+    <BoardFieldsContext.Provider value={boardFields}>
     <View style={styles.splitRoot}>
       {/* The board keeps every pixel it had until a document is opened
           beside it, and all of them again when that document goes full
@@ -7279,6 +7288,7 @@ export default function BoardScreen() {
         />
       ))}
     </View>
+    </BoardFieldsContext.Provider>
   );
 }
 

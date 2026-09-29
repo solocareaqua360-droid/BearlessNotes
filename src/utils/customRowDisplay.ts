@@ -236,7 +236,11 @@ export type RowDisplay = {
 export function buildRowDisplay(
   database: CustomDatabase | null | undefined,
   row: CustomDatabaseRow | null | undefined,
-  ctx: RowDisplayContext
+  ctx: RowDisplayContext,
+  // A place that shows the row its own way (a board) hides more - or fewer
+  // - fields than the database's own choice; given, it REPLACES that
+  // choice (the database-wide `hidden` flag) for this display.
+  hiddenFieldIds?: string[]
 ): RowDisplay {
   if (!database || !row) return { title: rowTitleOf(database, row), cover: undefined, chips: [] };
   const cover = coverFieldOf(database);
@@ -246,7 +250,10 @@ export function buildRowDisplay(
     cover: !cover ? undefined : coverRaw ? resolveRelationValue(cover, coverRaw, ctx) : null,
     chips: database.fields
       .slice(1)
-      .filter((f) => !f.hidden && f.type !== 'section' && f.id !== cover?.id)
+      .filter(
+        (f) =>
+          (hiddenFieldIds ? !hiddenFieldIds.includes(f.id) : !f.hidden) && f.type !== 'section' && f.id !== cover?.id
+      )
       .map((f) => ({
         field: f,
         // A backlink holds nothing in row.values - its "value" is however

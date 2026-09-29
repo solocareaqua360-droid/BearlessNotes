@@ -613,6 +613,9 @@ export interface BoardDbWindow {
   y: number;
   // Folded into a circle.
   collapsed?: boolean;
+  // The fields to HIDE on this database's cards on this board, in the
+  // window and on the canvas alike. Unset: the database's own choice.
+  hiddenFieldIds?: string[];
 }
 
 export interface BoardColumn {

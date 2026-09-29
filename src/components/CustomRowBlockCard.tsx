@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { Tag } from '../types';
 import { useCustomRowData } from '../hooks/useCustomRowData';
+import { useBoardHiddenFields } from './boardFieldsContext';
 import { buildRowDisplay } from '../utils/customRowDisplay';
 import CustomRowCard from './CustomRowCard';
 import { FONT_REGULAR } from '../utils/fonts';
@@ -27,6 +28,8 @@ export default function CustomRowBlockCard({ databaseId, rowId, fallbackTitle, t
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const { database, row, context } = useCustomRowData(databaseId, rowId);
+  // On a board, the fields its window for this database chose.
+  const boardHidden = useBoardHiddenFields(databaseId);
 
   // Deleted from its database (or never resolvable) - the block stays, so
   // the document doesn't silently lose a line, but it says plainly that
@@ -43,7 +46,7 @@ export default function CustomRowBlockCard({ databaseId, rowId, fallbackTitle, t
   }
 
   const display = row
-    ? buildRowDisplay(database, row, context)
+    ? buildRowDisplay(database, row, context, boardHidden)
     : { title: fallbackTitle || 'Без назви', cover: undefined, chips: [] };
 
   return (
