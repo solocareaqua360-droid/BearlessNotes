@@ -1,4 +1,4 @@
-import { collection, deleteDoc, deleteField, doc, onSnapshot, updateDoc } from '../firestore';
+import { arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, onSnapshot, updateDoc } from '../firestore';
 import { addDoc, ownedQuery } from './owned';
 import { ChatAttachment } from './chatAttach';
 import { db } from '../firebase';
@@ -42,7 +42,22 @@ export type ChatMessage = {
   // groupChatMessages) - same idea as usedIn: the original stays right
   // where it is, never deleted, and says what it became.
   groupedInto?: string;
+  // PROJECT CHATS: the projects (groups) this message is shown in. One
+  // message shown in several places, not copies - editing it anywhere
+  // edits it everywhere, and taking it out of a project leaves it in the
+  // main chat (the user's own answers, 2026-09-29).
+  projectIds?: string[];
+  // Written in a project's own chat - the main chat says so.
+  createdInProject?: string;
 };
+
+// The project chat open right now, if any: what the capture window
+// writes into while the chat stands filtered to one project (ChatScreen
+// sets it while it is focused, and clears it on the way out).
+let currentProject: string | null = null;
+export function setChatProjectContext(projectId: string | null) {
+  currentProject = projectId;
+}
 
 const chatCollection = collection(db, 'chat');
 
@@ -58,6 +73,7 @@ export async function sendChatMessage(
     text: trimmed,
     createdAt: Date.now(),
     ...(attachments?.length ? { attachments } : {}),
+    ...(currentProject ? { projectIds: [currentProject], createdInProject: currentProject } : {}),
   });
   return ref.id;
 }
@@ -98,6 +114,8 @@ export function watchChat(
           from: d.data().from as 'gemini' | undefined,
           replyTo: d.data().replyTo as string | undefined,
           groupedInto: d.data().groupedInto as string | undefined,
+          projectIds: d.data().projectIds as string[] | undefined,
+          createdInProject: d.data().createdInProject as string | undefined,
           // `attachment`, singular, is what the first messages were
           // written with - read as a list of one rather than migrated,
           // since nothing is gained by rewriting what already works.
@@ -168,4 +186,14 @@ export async function deleteChatMessage(id: string) {
 // What a message became, when it became something to do.
 export async function markChatMessageTask(id: string, taskId: string, documentId: string) {
   await updateDoc(doc(db, 'chat', id), { [`tasks.${taskId}`]: documentId });
+}
+
+// Shows messages in a project's chat, or takes them out of it - they stay
+// in the main chat either way.
+export async function setChatMessagesInProject(ids: string[], projectId: string, inProject: boolean) {
+  await Promise.all(
+    ids.map((id) =>
+      updateDoc(doc(db, 'chat', id), { projectIds: inProject ? arrayUnion(projectId) : arrayRemove(projectId) })
+    )
+  );
 }

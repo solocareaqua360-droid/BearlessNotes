@@ -62,6 +62,9 @@ type Props = {
   // with the ink - the one place pills stay, because projects really are
   // one flat level to choose among (folders, which nest, became tiles).
   soft?: SoftTokens | null;
+  // No «Без проєкту» tab - the chat's project row, where "no project" is
+  // simply «Всі».
+  hideUnassigned?: boolean;
 };
 
 // Horizontal row of pills (see the videobookmark reference the user showed:
@@ -80,6 +83,7 @@ export default function ProjectTabsRow({
   unassignedFirst,
   allLast,
   soft: softProp,
+  hideUnassigned,
 }: Props) {
   const styles = useStyles(makeStyles);
   // Said outright by the caller, or heard from a soft surface around it
@@ -128,7 +132,7 @@ export default function ProjectTabsRow({
       ]}
     >
       {!allLast && allTab}
-      {unassignedFirst && unassignedTab}
+      {unassignedFirst && !hideUnassigned && unassignedTab}
       {items.map((p) => (
         <Tab
           key={p.id}
@@ -141,7 +145,7 @@ export default function ProjectTabsRow({
           soft={soft}
         />
       ))}
-      {!unassignedFirst && unassignedTab}
+      {!unassignedFirst && !hideUnassigned && unassignedTab}
       {pinnedTab && (
         <Tab
           label={pinnedTab.label}

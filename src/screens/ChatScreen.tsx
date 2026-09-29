@@ -17,20 +17,16 @@ import { categoryFromSiteName } from '../utils/linkCategory';
 import * as Clipboard from 'expo-clipboard';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { openCapture, openCaptureForEdit } from '../components/CaptureWindow';
+import ProjectTabsRow from '../components/ProjectTabsRow';
+import { ownedQuery } from '../utils/owned';
+import { onSnapshot } from '../firestore';
+import type { Group } from '../types';
 import { askGemini } from '../utils/gemini';
 import { getGeminiKey } from '../utils/geminiKey';
 import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import {
-  ChatMessage,
-  deleteChatMessage,
-  groupChatMessages,
-  markChatMessageTask,
-  markChatMessagesUsed,
-  sendGeminiReply,
-  watchChat,
-} from '../utils/chat';
+import { ChatMessage, deleteChatMessage, groupChatMessages, markChatMessageTask, markChatMessagesUsed, sendGeminiReply, watchChat, setChatMessagesInProject, setChatProjectContext } from '../utils/chat';
 import {
   appendBlocksToToday,
   clipBlocksToNote,
@@ -129,6 +125,36 @@ export default function ChatScreen() {
   // вкладеннях (з групуванням фото, youtube, геоточка, посилання)".
   const [filterKind, setFilterKind] = useState<AttachmentGroup | 'any' | null>(null);
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  // PROJECT CHATS (2026-09-29): the same chat, narrowed to one project -
+  // "чати проектів". Projects are the app's one project concept (groups).
+  const [projects, setProjects] = useState<Group[]>([]);
+  const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  useEffect(
+    () =>
+      onSnapshot(
+        ownedQuery('groups'),
+        (snapshot) =>
+          setProjects(
+            snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) })).sort((a, b) => a.name.localeCompare(b.name))
+          ),
+        (e) => notify('Проекти не завантажились', (e as Error).message)
+      ),
+    []
+  );
+  // Only the projects something has been put in - "лише ті, де вже є
+  // повідомлення" - so the row is never a list of empty rooms.
+  const chatProjects = useMemo(() => {
+    const used = new Set(messages.flatMap((m) => m.projectIds ?? []));
+    return projects.filter((p) => used.has(p.id));
+  }, [projects, messages]);
+  const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
+  const openProject = projectFilter ? projectById.get(projectFilter) ?? null : null;
+  // Writing from the capture window while a project's chat is open lands
+  // in that project (and in the main chat, marked as written there).
+  useEffect(() => {
+    setChatProjectContext(isFocused && projectFilter ? projectFilter : null);
+    return () => setChatProjectContext(null);
+  }, [isFocused, projectFilter]);
 
   useEffect(
     () =>
@@ -148,9 +174,40 @@ export default function ChatScreen() {
     return (message.attachments ?? []).some((a) => attachmentLabel(a).toLowerCase().includes(needle));
   }
   const visibleMessages = useMemo(
-    () => messages.filter((m) => messageMatchesFilter(m) && messageMatchesSearch(m)),
-    [messages, filterKind, needle]
+    () =>
+      messages.filter(
+        (m) =>
+          messageMatchesFilter(m) &&
+          messageMatchesSearch(m) &&
+          (!projectFilter || (m.projectIds ?? []).includes(projectFilter))
+      ),
+    [messages, filterKind, needle, projectFilter]
   );
+
+  // "Затисканням на повідомленні його можна скопіювати в чат проекту":
+  // the chosen messages go into a project (or come out of it, if every
+  // one of them is already there). They stay in the main chat.
+  async function putChosenInProject() {
+    const ids = [...selected];
+    if (projects.length === 0) {
+      notify('Ще немає проектів', 'Створіть проект у будь-якій базі - і сюди можна буде складати повідомлення.');
+      return;
+    }
+    const chosenMessages = messages.filter((m) => ids.includes(m.id));
+    const picked = await ask({
+      title: 'У чат проекту',
+      message: 'Повідомлення лишаться й тут, з позначкою проекту.',
+      actions: projects.map((p) => {
+        const allIn = chosenMessages.every((m) => (m.projectIds ?? []).includes(p.id));
+        return { id: p.id, label: p.name, hint: allIn ? 'Вже там - прибрати звідти' : undefined, icon: allIn ? 'checkmark-circle' : 'ellipse-outline' };
+      }),
+    });
+    if (!picked || picked === 'cancel') return;
+    const allIn = chosenMessages.every((m) => (m.projectIds ?? []).includes(picked));
+    await setChatMessagesInProject(ids, picked, !allIn);
+    setSelected(new Set());
+    setIsSelectMode(false);
+  }
 
   // Day headings, in the order a chat is read: oldest at the top, today
   // at the bottom, where the newest thing said always is.
@@ -221,6 +278,13 @@ export default function ChatScreen() {
                     },
                   ]
                 : []),
+              {
+                key: 'project',
+                icon: 'albums-outline',
+                label: 'У проект',
+                onPress: () => putChosenInProject(),
+                closesStack: true,
+              },
               {
                 key: 'delete',
                 icon: 'trash-outline',
@@ -455,8 +519,25 @@ export default function ChatScreen() {
       ) : (
         <ScreenBackdrop id="chatBg" />
       )}
+      {/* A project's chat stands on its project's own colour, faintly -
+          so it cannot be mistaken for the main one ("щоб не плутатись"). */}
+      {openProject && (
+        <View
+          style={[StyleSheet.absoluteFill, { backgroundColor: openProject.color, opacity: theme.scheme === 'dark' ? 0.16 : 0.1 }]}
+          pointerEvents="none"
+        />
+      )}
       <ContentColumn>
         <View style={{ height: insets.top + CHROME_TOP + 8 }} />
+        {chatProjects.length > 0 && (
+          <ProjectTabsRow
+            items={chatProjects}
+            selected={projectFilter}
+            onSelect={(id) => setProjectFilter(id)}
+            hideUnassigned
+            endPadding={16}
+          />
+        )}
         {isSearching && (
           <SearchField
             autoFocus
@@ -613,6 +694,24 @@ export default function ChatScreen() {
                         вона лишилася однією ідеєю". It stays right here
                         (same rule as usedIn above), this just says where
                         the combined one is. */}
+                    {/* Where else this message is shown - its projects, and
+                        the project it was written in. In a project's own
+                        chat that project is the place itself, so it is
+                        not repeated. */}
+                    {(message.projectIds ?? [])
+                      .filter((id) => id !== projectFilter)
+                      .map((id) => {
+                        const project = projectById.get(id);
+                        if (!project) return null;
+                        return (
+                          <Pressable key={`project-${id}`} style={styles.usedChip} onPress={() => setProjectFilter(id)}>
+                            <View style={[styles.projectDot, { backgroundColor: project.color }]} />
+                            <Text style={[styles.usedLabel, { color: theme.ink.muted }]} numberOfLines={1}>
+                              {message.createdInProject === id ? `Створено в чаті «${project.name}»` : project.name}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
                     {!!message.groupedInto && (
                       <Pressable
                         style={styles.usedChip}
@@ -797,6 +896,11 @@ const makeStyles = (t: Theme) =>
       fontSize: 11,
       fontFamily: FONT_REGULAR,
       color: t.ink.faint,
+    },
+    projectDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
     },
     usedChip: {
       flexDirection: 'row',
