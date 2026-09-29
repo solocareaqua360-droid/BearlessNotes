@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useContext, useEffect, useRef } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { Ionicons } from './icons/Ionicons';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { useSoft } from '../theme/soft';
 import { useDensity } from '../hooks/useDensity';
+import { LayoutFrameContext } from '../hooks/useResponsiveLayout';
 import { DESKTOP_RAIL_WIDTH, DESKTOP_TABS_HEIGHT, DESKTOP_TOOLBAR_ROW } from '../constants/desktop';
 import { DOCK_PIECE_RADIUS, dockCardHeight, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
 import { FONT_REGULAR } from '../utils/fonts';
@@ -64,8 +65,13 @@ export default function SearchCorner({
   // rail - the dock's row is a phone's geometry, and in a window with side
   // panels it landed under the toolbar's buttons.
   const pointer = useDensity() === 'pointer';
-  const full = pointer ? 320 : dockRowWidth(windowWidth);
-  const left = pointer ? DESKTOP_RAIL_WIDTH + 16 : dockRowLeft(windowWidth);
+  // Inside a side panel (the frame it really has) the corner stands at the
+  // panel's own top-left, in its toolbar's row - the portal it draws
+  // through is the panel's, not the window's.
+  const frame = useContext(LayoutFrameContext);
+  const inPanel = pointer && !!frame;
+  const full = inPanel ? Math.min(320, (frame?.width ?? 320) - 24) : pointer ? 320 : dockRowWidth(windowWidth);
+  const left = inPanel ? 12 : pointer ? DESKTOP_RAIL_WIDTH + 16 : dockRowLeft(windowWidth);
   const expanded = open && !!onClose;
 
   const width = useSharedValue(expanded ? full : bead);
@@ -91,7 +97,15 @@ export default function SearchCorner({
         style={[
           styles.wrap,
           // At a pointer: in the toolbar's row, under the tabs.
-          { top: pointer ? DESKTOP_TABS_HEIGHT + Math.round((DESKTOP_TOOLBAR_ROW - height) / 2) : insets.top + 6, left, height },
+          {
+            top: inPanel
+              ? Math.round((DESKTOP_TOOLBAR_ROW - height) / 2)
+              : pointer
+                ? DESKTOP_TABS_HEIGHT + Math.round((DESKTOP_TOOLBAR_ROW - height) / 2)
+                : insets.top + 6,
+            left,
+            height,
+          },
           widthStyle,
         ]}
       >

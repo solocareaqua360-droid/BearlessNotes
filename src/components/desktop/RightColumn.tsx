@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Ionicons } from '../icons/Ionicons';
@@ -102,11 +102,12 @@ export default function RightColumn() {
   return (
     <View style={[styles.column, { width: workspace.width, backgroundColor: S.bg }]}>
       <View ref={handle} style={styles.splitter} />
-      <View style={styles.stack}>
+      {/* No limit on how many: past what fits, the column scrolls. */}
+      <ScrollView style={styles.stackScroll} contentContainerStyle={styles.stack} showsVerticalScrollIndicator={false}>
         {workspace.panels.map((panel) => (
           <PanelFrame key={panel.id} panel={panel} />
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -115,9 +116,12 @@ const styles = StyleSheet.create({
   column: { flexDirection: 'row' },
   // A strip a little wider than it looks, so the cursor finds it.
   splitter: { width: 8, cursor: 'col-resize' } as never,
-  stack: { flex: 1, minWidth: 0, paddingRight: 8, paddingVertical: 8, gap: 8 },
+  stackScroll: { flex: 1, minWidth: 0 },
+  stack: { flexGrow: 1, paddingRight: 8, paddingVertical: 8, gap: 8 },
   panel: { borderRadius: 18, overflow: 'hidden', minHeight: HEADER },
-  panelOpen: { flex: 1 },
+  // Shares the column while there is room, and never gets shorter than a
+  // panel can be used at - past that the column scrolls instead.
+  panelOpen: { flexGrow: 1, flexBasis: 0, minHeight: 300 },
   panelFolded: { flexGrow: 0, flexShrink: 0 },
   header: {
     height: HEADER,

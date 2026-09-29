@@ -2,10 +2,10 @@ import { createContext, ReactNode, useCallback, useContext, useMemo, useState } 
 
 // THE LAPTOP'S WORKSPACE (Mac stage 6): the main pane in the middle, and a
 // column of side panels on the right - the databases list, one database
-// held open, the chat. The shape is the one Claude Code's window has, and
-// its limit too: three panels and no more, because a fourth is where you
-// stop knowing which is which. Opening a fourth lets the oldest go rather
-// than asking.
+// held open, the chat. The shape is the one Claude Code's window has, but
+// not its limit: a phone stops at a few because its screen does, a laptop
+// has no such reason. So there is no cap - the column scrolls when the
+// panels no longer fit, and any of them folds to its header.
 //
 // The main pane is the navigator, unchanged. These panels stand BESIDE
 // it, the way the rail does, and each one is a whole screen with its own
@@ -20,7 +20,6 @@ export type Panel = {
   folded?: boolean;
 };
 
-export const MAX_PANELS = 3;
 export const COLUMN_MIN = 300;
 export const COLUMN_MAX = 640;
 export const COLUMN_DEFAULT = 380;
@@ -67,8 +66,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setPanels((prev) => {
       const found = prev.find((p) => same(p, spec));
       if (found) return prev.map((p) => (p === found ? { ...p, folded: false } : p));
-      const next = [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ...spec }];
-      return next.length > MAX_PANELS ? next.slice(next.length - MAX_PANELS) : next;
+      return [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ...spec }];
     });
   }, []);
   const close = useCallback((id: string) => setPanels((prev) => prev.filter((p) => p.id !== id)), []);
