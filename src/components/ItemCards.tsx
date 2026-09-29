@@ -1,4 +1,5 @@
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { rightClick } from '../utils/rightClick';
 import { softCardFrame, useSoftSurface, type SoftTokens } from '../theme/soft';
 import { SOFT_SEMIBOLD } from '../utils/fonts';
 import { useRecordColour } from '../theme/ThemeProvider';
@@ -204,7 +205,7 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
       style={[styles.row, soft && softCardFrame(soft), rest.playing && styles.rowPlaying, { backgroundColor: background }, rest.dimmed && styles.dimmed]}
     >
       <View style={styles.rowLine}>
-      <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
+      <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {link.imageUrl ? (
           <Image source={{ uri: link.imageUrl }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
         ) : (
@@ -299,7 +300,7 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
           <PlayerControls onStop={rest.onStopPlaying} onFullscreen={rest.onOpenFullscreen} />
         </View>
       )}
-      <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
+      <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {rest.playing ? null : link.imageUrl ? (
           <Image source={{ uri: link.imageUrl }} style={styles.gridThumb} resizeMode="cover" resizeMethod="resize" />
         ) : (
@@ -350,7 +351,7 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
 
   return (
     <View ref={rest.cardRef} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
-      <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
+      <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {/* The page picture at a video thumbnail's size - wide enough to
             recognise the document by its shape, small enough to leave the
             name room. Blown up to the full width it was still not
@@ -421,7 +422,7 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
         rest.dimmed && styles.dimmed,
       ]}
     >
-      <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
+      <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {preview?.thumbUri ? (
           <Image source={{ uri: preview.thumbUri }} style={styles.gridThumb} resizeMode="cover" resizeMethod="resize" />
         ) : preview?.text ? (
@@ -488,7 +489,7 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
 
   return (
     <View ref={rest.cardRef} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
-      <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
+      <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {status === 'ready' ? (
           <Image source={{ uri: source ?? photo.imageUri }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
         ) : (
@@ -547,6 +548,7 @@ export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common)
       style={[styles.cell, soft && softCardFrame(soft), rest.dimmed && styles.dimmed]}
       onPress={rest.onPress}
       onLongPress={rest.onLongPress}
+      {...rightClick(rest.onLongPress)}
     >
       {/* The grid was the last place in the Photos database still
           drawing the phone's path directly - see AttachmentImage. */}

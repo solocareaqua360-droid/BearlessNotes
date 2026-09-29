@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { rightClick } from '../utils/rightClick';
 import { ActivityIndicator, FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FileRow, LinkRow, PhotoRow } from '../components/ItemCards';
 import { Ionicons } from '../components/icons/Ionicons';
@@ -573,6 +574,7 @@ export default function ChatScreen() {
           if (isSelectMode) return;
           liftMessage(message);
         }}
+        {...rightClick(isSelectMode ? undefined : () => liftMessage(message))}
       >
         {fromGemini && (
           <View style={styles.geminiLabel}>

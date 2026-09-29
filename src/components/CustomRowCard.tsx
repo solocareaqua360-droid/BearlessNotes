@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { rightClick } from '../utils/rightClick';
 import { softCardFrame, softRecordColours, useSoftSurface } from '../theme/soft';
 import { SOFT_SEMIBOLD } from '../utils/fonts';
 import { useRecordColour } from '../theme/ThemeProvider';
@@ -106,6 +107,7 @@ export default function CustomRowCard({
         style={styles.rowTap}
         onPress={onPress}
         onLongPress={onLongPress}
+        {...rightClick(onLongPress)}
         disabled={!onPress && !onLongPress}
       >
         {display.cover !== undefined &&
@@ -265,6 +267,7 @@ export function CustomRowGridCard({
       style={[gridStyles.tile, soft && softCardFrame(soft), width !== undefined && { width }, { backgroundColor: background }]}
       onPress={onPress}
       onLongPress={onLongPress}
+      {...rightClick(onLongPress)}
       disabled={!onPress && !onLongPress}
     >
       {hasCover &&

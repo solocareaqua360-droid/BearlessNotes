@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { rightClick } from '../utils/rightClick';
 import type { LayoutChangeEvent } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
@@ -683,7 +684,7 @@ export default function DocumentCard({
         ]}
       >
         {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-        <Pressable style={styles.wideTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
+        <Pressable style={styles.wideTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)}>
           {page ? (
             /* The same picture, in a wider window: twice a tile's width
                means the page is drawn nearly at its own size, so this is
@@ -756,7 +757,7 @@ export default function DocumentCard({
         ]}
       >
         {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-        <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
+        <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)}>
           {page ? (
             <PageBody
               id={id}
@@ -842,7 +843,7 @@ export default function DocumentCard({
       ]}
     >
       {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-      <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress}>
+      <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)}>
         {/* A ROW IS A LINE OF TEXT BESIDE A THUMBNAIL, and it stays one:
             a strip of the page across the whole width was the title and
             nothing else, at a size nobody asked for - "виглядає погано і

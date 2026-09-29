@@ -114,6 +114,7 @@ import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScre
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
+import { rightClick } from '../utils/rightClick';
 import Menu, { MENU_WIDTH } from '../components/surfaces/Menu';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
@@ -951,7 +952,7 @@ function DraggableColumn({
       pointerEvents="box-none"
     >
       <GestureDetector gesture={headerGesture}>
-        <View style={styles.columnHeader}>
+        <View style={styles.columnHeader} {...rightClick(locked ? undefined : () => onRename(column))}>
           <View style={styles.columnTitleWrap}>
             <Text style={styles.columnTitle} numberOfLines={1}>
               {column.week ? weekDayTitle(column.week) : column.title}

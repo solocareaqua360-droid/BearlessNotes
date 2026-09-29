@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { rightClick } from '../utils/rightClick';
 import { softCardFrame, softenStyles, softRecordColours, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { CoverGradientView, defaultCoverFor } from '../theme/covers';
@@ -401,6 +402,7 @@ export default function BoardsListScreen({
         ]}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openBoard(item))}
         onLongPress={carried || isSelectMode ? undefined : () => askBoardActions(item)}
+        {...rightClick(carried || isSelectMode ? undefined : () => askBoardActions(item))}
       >
         {/* The board's own layout in miniature, drawn from its cards -
             always current, because it is the cards. Falls back to the
@@ -488,6 +490,7 @@ export default function BoardsListScreen({
         ]}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openBoard(item))}
         onLongPress={carried || isSelectMode ? undefined : () => askBoardActions(item)}
+        {...rightClick(carried || isSelectMode ? undefined : () => askBoardActions(item))}
       >
         <View style={[styles.tileMap, { height: mapHeight }]}>
           {item.previewImageUri ? (

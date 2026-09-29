@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { bindRightClick } from '../utils/rightClick';
 import { View } from 'react-native';
 import { hapticDrop, hapticPickUp, hapticWarning } from '../utils/haptics';
 
@@ -194,6 +195,8 @@ export function useCardCarry<T extends { id: string }>({
     return (node: View | null) => {
       if (node) cardNodes.current.set(id, { node, group, onMenu });
       else cardNodes.current.delete(id);
+      // The mouse's twin of the hold that opens this card's menu.
+      bindRightClick(node, onMenu);
     };
   }
 

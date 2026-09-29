@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { rightClick } from '../utils/rightClick';
 import { withAlpha } from '../utils/color';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -1677,6 +1678,7 @@ export default function DocumentsScreen({
                           }
                         }}
                         onLongPress={() => openFolderMenu(folder)}
+                        {...rightClick(() => openFolderMenu(folder))}
                       >
                         <View style={[styles.softFolderIcon, { backgroundColor: soft.fill }]}>
                           {folder.tag?.icon ? (
@@ -1756,6 +1758,7 @@ export default function DocumentsScreen({
                         }
                       }}
                       onLongPress={() => openFolderMenu(folder)}
+                      {...rightClick(() => openFolderMenu(folder))}
                     >
                       <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
                         <Ionicons
