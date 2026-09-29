@@ -185,7 +185,7 @@ export default function CalendarScreen() {
   // actually meets it. The layer draws its own bar and dock (inline), so
   // it tells them directly; asking the window's chrome from there would
   // turn every desk's bar soft, the layer being always mounted.
-  const softCalendar = !pointerDensity;
+  const softCalendar = true;
   const softTokensAll = useSoft();
   useChromeStyle('soft', softCalendar && !calendarDrawer);
   const S = softCalendar ? softTokensAll : null;

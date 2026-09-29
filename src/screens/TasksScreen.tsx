@@ -1659,7 +1659,11 @@ export default function TasksScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenBackdrop id="tasksBg" />
+      {softDb ? (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: softDb.bg }]} />
+      ) : (
+        <ScreenBackdrop id="tasksBg" />
+      )}
 
       <ContentColumn>
         {/* The band the status bar and the rail's top capsule stand in.
@@ -1683,6 +1687,7 @@ export default function TasksScreen() {
 
         <SearchCorner
           visible={!bar && isFocused && !isSelectMode}
+          soft={!!softDb}
           open={isSearching}
           query={searchQuery}
           onChangeQuery={setSearchQuery}

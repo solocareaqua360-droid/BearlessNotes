@@ -1,6 +1,5 @@
 import { createContext, useContext } from 'react';
 import { useTheme } from './ThemeProvider';
-import { useDensity } from '../hooks/useDensity';
 
 // «М'ЯКИЙ» - the style chosen from the mockups on 2026-09-28 (artifact
 // «М'який стиль»). The user's own words for what it has to be: "дизайн
@@ -108,11 +107,12 @@ export function softCardFrame(S: SoftTokens, radius = 20) {
 }
 
 // The soft tokens a DATABASE screen wears, or null: the same rule its
-// chrome (DatabaseChrome) goes by - on a phone. For the screen's own
+// chrome (DatabaseChrome) goes by - on a phone and, since Mac stage 4, on
+// the laptop too. For the screen's own
 // styles, which are worked out above that chrome's SoftSurfaceContext.
 export function useSoftDatabase(): SoftTokens | null {
   const S = useSoft();
-  return useDensity() !== 'pointer' ? S : null;
+  return S;
 }
 
 // The record's own colour on a card, or the soft card's surface and inks.

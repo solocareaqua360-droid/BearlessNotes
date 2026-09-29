@@ -2643,6 +2643,7 @@ export default function CustomDatabaseScreen({
         query={searchQuery}
         onChangeQuery={setSearchQuery}
         placeholder="Пошук у базі"
+        soft={!!softDb}
         onOpen={() => setIsSearching(true)}
         onClose={() => {
           setSearchQuery('');

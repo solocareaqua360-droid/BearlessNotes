@@ -21,7 +21,6 @@ import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import { SoftSurfaceContext, useSoft } from '../theme/soft';
-import { useDensity } from '../hooks/useDensity';
 import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
 import { DeskContext } from '../navigation/desks';
@@ -193,8 +192,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   // after the board of tiles ("бази"). One place: every database screen
   // stands on this chrome, so the bar and the dock follow (useChromeStyle),
   // the ground goes quiet, and the cards inside hear it through
-  // SoftSurfaceContext. On a phone; a laptop keeps its own layout.
-  const softDb = useDensity() !== 'pointer';
+  // SoftSurfaceContext. On a phone and on the laptop alike (Mac stage 4).
+  const softDb = true;
   const softTokens = useSoft();
   useChromeStyle('soft', softDb);
   const soft = softDb ? softTokens : null;
@@ -617,6 +616,7 @@ export default function DatabaseChrome<T extends { id: string }>({
         {isFocused && topNav && navTitle && !desk && <TopNavBar title={navTitle} />}
         <SearchCorner
           visible={!topNav && isFocused && !list.isSelectMode}
+          soft={!!soft}
           open={list.isSearching}
           query={list.searchQuery}
           onChangeQuery={list.setSearchQuery}

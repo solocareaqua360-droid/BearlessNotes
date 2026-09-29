@@ -552,7 +552,7 @@ export default function DocumentsScreen({
   // its own ground, cards and folders in it. A copy in another screen's
   // pane keeps the old look.
   const softStyle = useSoft();
-  const soft = onDesk ? softStyle : null;
+  const soft = onDesk || (pointerDensity && !inPane) ? softStyle : null;
   useChromeStyle('soft', onDesk);
   const chromeTop = insets.top + CHROME_TOP + (onDesk ? TOP_NAV_SPACE : 0);
   const chromeBottom = chromeTop + chromeHeight + 8;
@@ -1384,6 +1384,7 @@ export default function DocumentsScreen({
           query={searchText}
           onChangeQuery={setSearchText}
           placeholder="Пошук документів"
+          soft={!!soft}
           onOpen={() => setSearchOpen(true)}
           onClose={() => {
             setSearchText('');

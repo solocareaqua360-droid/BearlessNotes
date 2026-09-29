@@ -175,6 +175,32 @@ const styles = StyleSheet.create({
 // The navigator paints its own card behind every screen, and its default
 // theme's is WHITE - see App.tsx, where the same patches showed through
 // on a rotation.
+// The account strip's words. They were drawn for the phone's dark bar
+// (white at 62%, a pale gold link) and vanished on the light sidebar, so
+// in the rail they take the theme's own ink instead.
+function AccountText({
+  rail,
+  link,
+  lines,
+  children,
+}: {
+  rail: boolean;
+  link?: boolean;
+  lines?: number;
+  children: React.ReactNode;
+}) {
+  const theme = useTheme();
+  const base = link ? styles.linkLabel : styles.driveText;
+  return (
+    <Text
+      style={[base, rail && styles.driveTextRail, rail && { color: link ? theme.accent : theme.ink.muted }]}
+      numberOfLines={lines}
+    >
+      {children}
+    </Text>
+  );
+}
+
 function ThemedNavigationContainer({ children }: { children: React.ReactNode }) {
   const theme = useTheme();
   const navTheme: NavTheme = {
@@ -408,16 +434,14 @@ export default function App() {
   // account at the bottom.
   const accountStrip = (
     <View style={[styles.driveBar, pointer && styles.driveBarRail]}>
-      <Text style={[styles.driveText, pointer && styles.driveTextRail]} numberOfLines={1}>
+      <AccountText rail={!!pointer} lines={1}>
         {user.email ?? 'Акаунт Google'}
-      </Text>
+      </AccountText>
       {/* In the corner with the account, not across the middle: it
           repeats, it is nobody's business most of the time, and it
           goes away by itself when the folder is full. */}
       {prefetch.running && prefetch.total > 0 && (
-        <Text style={[styles.driveText, pointer && styles.driveTextRail]}>
-          {`Готую офлайн: ${prefetch.done} з ${prefetch.total}`}
-        </Text>
+        <AccountText rail={!!pointer}>{`Готую офлайн: ${prefetch.done} з ${prefetch.total}`}</AccountText>
       )}
       <Pressable
         style={styles.linkButton}
@@ -426,7 +450,9 @@ export default function App() {
           await signInWithGoogleAccount().catch(() => {});
         }}
       >
-        <Text style={styles.linkLabel}>Змінити акаунт</Text>
+        <AccountText rail={!!pointer} link>
+          Змінити акаунт
+        </AccountText>
       </Pressable>
       {/* The one click Drive costs in a browser, and it is a real
           cost rather than a leftover: Google's token client opens a
@@ -439,14 +465,14 @@ export default function App() {
           rather than made. */}
       {!drive && needsDrive && (
         <>
-          <Text style={[styles.driveText, pointer && styles.driveTextRail]} numberOfLines={2}>
+          <AccountText rail={!!pointer} lines={2}>
             {/* The reason, when there is one. This bar used to say the
                 same sentence whether Drive had never been asked, had
                 refused, or had answered and been ignored - so a
                 failure was indistinguishable from a fresh start, and
                 the only way to find out was to guess. */}
             {driveTokenError() ?? 'Картинки лежать на Google Диску'}
-          </Text>
+          </AccountText>
           <Pressable
             style={styles.driveButton}
             onPress={async () => {

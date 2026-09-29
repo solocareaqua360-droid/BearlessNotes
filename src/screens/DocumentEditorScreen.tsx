@@ -189,6 +189,8 @@ import { listenError } from '../utils/listenError';
 // Below this, a note has no room to stand beside «Референси» and the
 // drawer lies over it instead - see referencesSplit. 300 is the drawer's
 // own floor and the rest is a column of text still worth reading.
+// How wide a note's column runs at a pointer, in points.
+const DESKTOP_NOTE_MEASURE = 860;
 const REFERENCES_SPLIT_MIN = 640;
 
 // The project badge's own line: its height (3 of padding above and below
@@ -5021,7 +5023,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       ]}
       // The paper's own width, which is what the blocks are laid out in -
       // the screen's less the sheet's margins where the paper scrolls.
-      onLayout={(e) => setEditorWidth(e.nativeEvent.layout.width - (scrollSheet ? PAGE_SHEET_INSET * 2 : 0))}
+      onLayout={(e) => {
+        const paper = e.nativeEvent.layout.width - (scrollSheet ? PAGE_SHEET_INSET * 2 : 0);
+        setEditorWidth(pointerDensity && !embedded && !scrollSheet ? Math.min(paper, DESKTOP_NOTE_MEASURE) : paper);
+      }}
     >
       {/* The room above the title - inside the scrolling paper instead
           (its own top padding) where the paper scrolls. */}
@@ -5413,6 +5418,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         style={[styles.scrollArea, referencesSplit && { paddingRight: referencePanelWidth }]}
         contentContainerStyle={[
           embedded && styles.scrollAreaEmbedded,
+          // A line of text is read across a column, not across a 1440-wide
+          // window: at a pointer the note keeps to a readable measure, centred.
+          pointerDensity && !embedded && !scrollSheet && { width: '100%', maxWidth: DESKTOP_NOTE_MEASURE, alignSelf: 'center' },
           // THE PAPER ITSELF, as the scroll's content: the sheet's margins,
           // corners, lift and colour, and the room under the bar at its
           // top (what the header row gave the still sheet). At least the

@@ -5,6 +5,7 @@ import { useNavDockActions, useNavDockBeads, useNavDockContext } from '../naviga
 import { MAX_CONTENT_WIDTH } from './ContentColumn';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { useSoft } from '../theme/soft';
 import type { Theme } from '../theme/tokens';
 
 // Where a cursor is pointing, this is the dock - unrolled.
@@ -45,6 +46,9 @@ export default function DesktopToolbar() {
   const context = useNavDockContext();
   const actions = useNavDockActions();
   const beads = useNavDockBeads();
+  // The screens under it wear the soft ground now; a strip of the old
+  // beige across their top read as a seam.
+  const soft = useSoft();
 
   // «Папки» stays, and dropping it was a mistake worth writing down.
   //
@@ -75,7 +79,7 @@ export default function DesktopToolbar() {
   if (!shown.length && !beads.left && !beads.right && crumbs.length === 0) return null;
 
   return (
-    <View style={styles.frame} pointerEvents="box-none">
+    <View style={[styles.frame, { backgroundColor: soft.bg }]} pointerEvents="box-none">
       <View style={styles.bar}>
         <View style={styles.crumbs}>
           {crumbs.length > 0 && (

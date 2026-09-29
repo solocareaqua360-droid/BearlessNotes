@@ -55,7 +55,6 @@ import { RootStackParamList } from '../navigation';
 import { TAG_COLORS } from '../constants/tags';
 import { FONT_REGULAR, FONT_MEDIUM, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft, type SoftTokens } from '../theme/soft';
-import { useDensity } from '../hooks/useDensity';
 import {contrastTextColor } from '../utils/documentColor';
 import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -241,7 +240,7 @@ export default function DatabasesScreen() {
   // (where it is usually met): the layer draws its own bar and dock, so it
   // tells them directly, like the calendar's; the window's chrome is asked
   // only when this is a screen of its own - the layer is always mounted.
-  const softDatabases = useDensity() !== 'pointer';
+  const softDatabases = true;
   const softTokensAll = useSoft();
   useChromeStyle('soft', softDatabases && !databasesLayer);
   const S = softDatabases ? softTokensAll : null;
@@ -2288,7 +2287,7 @@ function BoardTile({
         {/* Name, icon and count - nothing else: "залиш лише назву, іконку
             і кількість". The icon stands at the tile's own centre whatever
             its size, the name along the foot. */}
-        <View style={styles.tileIconWrap} pointerEvents="none">
+        <View style={[styles.tileIconWrap, size.h === 1 && !tiny && { paddingBottom: 16 }]} pointerEvents="none">
           <Ionicons name={icon} size={tiny ? 24 : 26} color={isAction ? (softTile ? softTile.ink3 : 'rgba(255,255,255,0.6)') : softIconInk ?? ink} />
         </View>
         {/* The name on every tile now, the one-cell ones and the ones in

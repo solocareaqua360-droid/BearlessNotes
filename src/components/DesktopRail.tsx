@@ -349,6 +349,8 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flex: 1,
     minHeight: 0,
     paddingTop: 10,
+    // What does not fit is cut, not drawn over the account strip below.
+    overflow: 'hidden',
   },
   footer: {
     borderTopWidth: StyleSheet.hairlineWidth,

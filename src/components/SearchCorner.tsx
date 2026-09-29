@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react';
-import { Keyboard, Pressable, StyleSheet, TextInput, useWindowDimensions } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost from './DockFrost';
 import { GlassIcon } from './GlassDrop';
 import { GlassPortal } from './GlassPortal';
+import { Ionicons } from './icons/Ionicons';
 import { useLift, useTheme } from '../theme/ThemeProvider';
+import { useSoft } from '../theme/soft';
 import { DOCK_PIECE_RADIUS, dockCardHeight, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
 import { FONT_REGULAR } from '../utils/fonts';
 
@@ -36,6 +38,7 @@ export default function SearchCorner({
   placeholder = 'Пошук',
   onOpen,
   onClose,
+  soft = false,
 }: {
   visible?: boolean;
   open?: boolean;
@@ -44,9 +47,13 @@ export default function SearchCorner({
   placeholder?: string;
   onOpen: () => void;
   onClose?: () => void;
+  // The soft style's own pill - a plain card, no frost - for the screens
+  // that wear it (theme/soft).
+  soft?: boolean;
 }) {
   const theme = useTheme();
   const lift = useLift();
+  const S = useSoft();
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const bead = dockCardHeight(windowWidth);
@@ -77,6 +84,43 @@ export default function SearchCorner({
         pointerEvents="box-none"
         style={[styles.wrap, { top: insets.top + 6, left, height }, widthStyle]}
       >
+        {soft ? (
+          <View
+            style={[
+              styles.piece,
+              { backgroundColor: S.card, borderWidth: 0, borderRadius: DOCK_PIECE_RADIUS, boxShadow: S.shadow },
+            ]}
+          >
+            {expanded ? (
+              <>
+                <Ionicons name="search-outline" size={17} color={S.ink3} style={styles.lead} />
+                <TextInput
+                  ref={input}
+                  value={query}
+                  onChangeText={onChangeQuery}
+                  placeholder={placeholder}
+                  placeholderTextColor={S.ink3}
+                  returnKeyType="search"
+                  style={[styles.input, { color: S.ink }]}
+                />
+                <Pressable
+                  hitSlop={10}
+                  style={styles.close}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    onClose?.();
+                  }}
+                >
+                  <Ionicons name="close-outline" size={18} color={S.ink3} />
+                </Pressable>
+              </>
+            ) : (
+              <Pressable style={styles.tap} hitSlop={8} onPress={onOpen} accessibilityLabel="Пошук">
+                <Ionicons name="search-outline" size={18} color={S.ink} />
+              </Pressable>
+            )}
+          </View>
+        ) : (
         <DockFrost style={[styles.piece, lift]} radius={DOCK_PIECE_RADIUS}>
           {expanded ? (
             <>
@@ -107,6 +151,7 @@ export default function SearchCorner({
             </Pressable>
           )}
         </DockFrost>
+        )}
       </Animated.View>
     </GlassPortal>
   );
