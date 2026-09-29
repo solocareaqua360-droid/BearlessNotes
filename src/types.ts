@@ -598,6 +598,23 @@ export interface BoardConnection {
 // everything else, so `x`/`y` are plain world coordinates - set when the
 // column is created (each new one lands to the right of the last), not yet
 // draggable the way a card is.
+// A DATABASE HELD OPEN ON A BOARD - a floating window (components/
+// BoardDatabaseWindow) listing a custom database's records, from which
+// copies are taken onto the board. Kept on the board document, in its own
+// `dbWindows` field beside the keyed parts (cards, columns...), so the
+// choice of records survives and reaches the other device.
+export interface BoardDbWindow {
+  id: string;
+  databaseId: string;
+  // The records shown, by id - or null for every record of the database.
+  chosen: string[] | null;
+  // Where the window stands, in screen points.
+  x: number;
+  y: number;
+  // Folded into a circle.
+  collapsed?: boolean;
+}
+
 export interface BoardColumn {
   id: string;
   title: string;

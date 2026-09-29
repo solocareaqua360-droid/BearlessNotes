@@ -1,6 +1,7 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import { rowTitleOf } from '../utils/customRowDisplay';
-import type { CustomDatabase, CustomDatabaseRow } from '../types';
+import type { BoardDbWindow, CustomDatabase, CustomDatabaseRow } from '../types';
+import BoardDatabaseWindow from '../components/BoardDatabaseWindow';
 import { MONTH_SHORT, WEEKDAY_SHORT, addDays, dateKey, mondayIndex, parseDateKey } from '../utils/dateLocale';
 import { mutedForTheme, type Theme } from '../theme/tokens';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -4093,8 +4094,8 @@ export default function BoardScreen() {
       id: generateId(),
       x: card.x + 28,
       y: card.y + 28,
-      copyOf: card.id,
       recordId: card.recordId ?? card.id,
+      createdAt: Date.now(),
       width: Number.isFinite(card.width) ? card.width : DEFAULT_CARD_WIDTH,
     };
     delete copy.order;
@@ -4152,12 +4153,39 @@ export default function BoardScreen() {
     setAddSheetVisible(false);
   }
 
-  // A DATABASE AS SOURCE: its records brought in to plan with - a car, a
-  // road list - one column per value of the field chosen to group them by
-  // ("канбан стовпчики згруповані за категорією машин ... один довгий
-  // стовпчик - це таке собі"). The columns are sources: a card dragged out
-  // of one is copied (see commitCardDrag).
-  async function importDatabaseAsSource() {
+  // ---- DATABASE WINDOWS -------------------------------------------------
+  // Floating windows over the board, each holding one database open (see
+  // BoardDatabaseWindow). Kept in the board document's own `dbWindows`
+  // field - apart from the keyed parts the card sync guards - and written
+  // after a short pause, so dragging a window is not a write per frame.
+  const [dbWindows, setDbWindows] = useState<BoardDbWindow[]>([]);
+  const dbWindowsJson = useRef('[]');
+  useEffect(() => {
+    if (!isLoaded) return;
+    return onSnapshot(doc(db, 'boards', boardId), (snapshot) => {
+      if (snapshot.metadata.hasPendingWrites) return;
+      const incoming = (snapshot.data()?.dbWindows as BoardDbWindow[] | undefined) ?? [];
+      const json = JSON.stringify(incoming);
+      if (json === dbWindowsJson.current) return;
+      dbWindowsJson.current = json;
+      setDbWindows(incoming);
+    }, listenError('BoardScreen:dbWindows'));
+  }, [isLoaded, boardId]);
+  useEffect(() => {
+    if (!isLoaded) return;
+    const json = JSON.stringify(dbWindows);
+    if (json === dbWindowsJson.current) return;
+    const timer = setTimeout(() => {
+      dbWindowsJson.current = json;
+      updateDoc(doc(db, 'boards', boardId), { dbWindows }).catch((e: Error) => notify('Вікно бази не збереглося', e.message));
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [dbWindows, isLoaded, boardId]);
+  function patchWindow(id: string, patch: Partial<BoardDbWindow>) {
+    setDbWindows((prev) => prev.map((w) => (w.id === id ? { ...w, ...patch } : w)));
+  }
+
+  async function addDatabaseWindow() {
     setAddSheetVisible(false);
     try {
       const databasesSnap = await getDocs(ownedQuery('customDatabases'));
@@ -4165,90 +4193,143 @@ export default function BoardScreen() {
         .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabase, 'id'>) }))
         .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')));
       if (databases.length === 0) {
-        notify('Ще немає баз', 'Створіть власну базу у «Базах» - і її записи можна буде принести сюди.');
+        notify('Ще немає баз', 'Створіть власну базу у «Базах» - і її можна буде відкрити тут вікном.');
         return;
       }
       const databaseId = await ask({
-        title: 'Яку базу принести?',
+        title: 'Яку базу відкрити вікном?',
         actions: databases.map((d) => ({ id: d.id, label: d.name || 'Без назви', icon: 'grid-outline' as const })),
       });
-      const database = databases.find((d) => d.id === databaseId);
-      if (!database) return;
-      const groupable = (database.fields ?? []).filter(
-        (f, index) => index > 0 && (f.type === 'select' || f.type === 'multiSelect' || f.type === 'text' || f.type === 'number')
-      );
-      const groupChoice = await ask({
-        title: 'Розкласти по стовпчиках за…',
-        message: 'Кожне значення поля стане своїм стовпчиком.',
-        actions: [
-          ...groupable.map((f) => ({ id: f.id, label: f.name, icon: 'albums-outline' as const })),
-          { id: '__none__', label: 'Не розкладати - один стовпчик', icon: 'reorder-four-outline' as const },
-        ],
-      });
-      if (!groupChoice || groupChoice === 'cancel') return;
-      const groupField = groupable.find((f) => f.id === groupChoice) ?? null;
-      const rowsSnap = await getDocs(ownedQuery('customDatabaseRows'));
-      const rows = rowsSnap.docs
-        .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) }))
-        .filter((r) => r.databaseId === database.id);
-      if (rows.length === 0) {
-        notify('База порожня', `У «${database.name}» ще немає записів.`);
-        return;
-      }
-      const EMPTY = 'Без значення';
-      const labelOf = (row: CustomDatabaseRow): string => {
-        if (!groupField) return database.name || 'Записи';
-        const value = row.values?.[groupField.id];
-        if (value === undefined || value === null || value === '') return EMPTY;
-        const optionName = (id: string) => groupField.options?.find((o) => o.id === id)?.label;
-        if (groupField.type === 'select') return optionName(String(value)) ?? EMPTY;
-        if (groupField.type === 'multiSelect') return Array.isArray(value) && value.length ? optionName(value[0]) ?? EMPTY : EMPTY;
-        return String(value).trim() || EMPTY;
-      };
-      const groups = new Map<string, CustomDatabaseRow[]>();
-      rows
-        .map((row) => ({ row, title: rowTitleOf(database, row) }))
-        .sort((a, b) => a.title.localeCompare(b.title))
-        .forEach(({ row }) => {
-          const label = labelOf(row);
-          groups.set(label, [...(groups.get(label) ?? []), row]);
-        });
-      const labels = [...groups.keys()].sort((a, b) => (a === EMPTY ? 1 : b === EMPTY ? -1 : a.localeCompare(b)));
-      const centre = viewCenter();
-      const newColumns: BoardColumn[] = [];
-      const newCards: BoardCard[] = [];
-      let x = columns.length === 0 ? centre.x - COLUMN_WIDTH / 2 : Math.max(...columns.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
-      const y = columns.length === 0 ? centre.y - COLUMN_MIN_HEIGHT / 2 : columns[0].y;
-      labels.forEach((label) => {
-        const columnId = generateId();
-        newColumns.push({ id: columnId, title: label, x, y, source: true });
-        (groups.get(label) ?? []).forEach((row, index) => {
-          newCards.push({
-            id: generateId(),
-            text: '',
-            type: 'dbRow',
-            dbRowDatabaseId: database.id,
-            dbRowTitle: rowTitleOf(database, row),
-            recordId: row.id,
-            columnId,
-            order: index,
-            // In a column a card takes the column's width and stores none
-            // - but a COPY of it leaves the column, and a card with no
-            // width has no size to draw a line to (NaN into the svg is a
-            // native crash: the white screen on «Дублювати»).
-            width: DEFAULT_CARD_WIDTH,
-            x: x + COLUMN_PADDING,
-            y: y + COLUMN_HEADER_HEIGHT + index * (APPROX_CARD_HEIGHT + COLUMN_CARD_GAP),
-          } as BoardCard);
-        });
-        x += COLUMN_WIDTH + COLUMN_SPACING;
-      });
-      setColumns((prev) => [...prev, ...newColumns]);
-      setCards((prev) => [...prev, ...newCards]);
+      if (!databaseId || databaseId === 'cancel') return;
+      const open = dbWindows.length;
+      setDbWindows((prev) => [
+        ...prev,
+        { id: generateId(), databaseId, chosen: null, x: Math.max(8, windowWidth - 316 - open * 24), y: 110 + open * 24 },
+      ]);
     } catch (e) {
-      notify('Не вдалося принести базу', (e as Error).message);
+      notify('Не вдалося відкрити базу', (e as Error).message);
     }
   }
+
+  // How many cards each record already has on the board - the count on the
+  // window's rows. A card IS its record (id) or points at it (recordId).
+  const placedByRecord = new Map<string, number>();
+  for (const card of cards) {
+    if (card.type !== 'dbRow') continue;
+    const key = card.recordId ?? card.id;
+    placedByRecord.set(key, (placedByRecord.get(key) ?? 0) + 1);
+  }
+
+  // A record put on the board from a window: where the finger let go (a
+  // screen point), or the middle of what is on screen. Into the column
+  // under it, if there is one.
+  function placeRecord(block: Block, at: { x: number; y: number } | null, respond?: (accepted: boolean) => void) {
+    const put = (world: { x: number; y: number }, jitter: number) => {
+      const card: BoardCard = {
+        ...(block as unknown as BoardCard),
+        id: generateId(),
+        recordId: block.id,
+        createdAt: Date.now(),
+        width: DEFAULT_CARD_WIDTH,
+        x: world.x - DEFAULT_CARD_WIDTH / 2 + jitter,
+        y: world.y - APPROX_CARD_HEIGHT / 2 + jitter,
+      };
+      const target = columnAtPoint(columns, cards, cardHeights, world.x, world.y, undefined);
+      if (target) card.columnId = target.id;
+      setCards((prev) => reflowColumns([...prev, card], columns, cardHeights));
+      respond?.(true);
+    };
+    if (!at) {
+      put(viewCenter(), Math.round((Math.random() - 0.5) * 60));
+      return;
+    }
+    const node = canvasRef.current;
+    if (!node) {
+      respond?.(false);
+      return;
+    }
+    node.measureInWindow((ox, oy, width, height) => {
+      const lx = at.x - ox;
+      const ly = at.y - oy;
+      // Let go outside the canvas (over the window itself, say): nothing.
+      if (lx < 0 || ly < 0 || lx > width || ly > height) {
+        respond?.(false);
+        return;
+      }
+      put(
+        {
+          x: (lx - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER,
+          y: (ly - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER,
+        },
+        0
+      );
+    });
+  }
+
+  // While a row is carried, the column it would fall into lights up.
+  const carryOrigin = useRef<{ x: number; y: number } | null>(null);
+  function carryMove(screenX: number, screenY: number) {
+    const node = canvasRef.current;
+    if (!node) return;
+    const apply = (ox: number, oy: number) => {
+      const wx = (screenX - ox - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (screenY - oy - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      setHoverColumnId(columnAtPoint(columns, cards, cardHeights, wx, wy, undefined)?.id ?? null);
+    };
+    if (carryOrigin.current) apply(carryOrigin.current.x, carryOrigin.current.y);
+    else
+      node.measureInWindow((ox, oy) => {
+        carryOrigin.current = { x: ox, y: oy };
+        apply(ox, oy);
+      });
+  }
+  function carryEnd() {
+    carryOrigin.current = null;
+    setHoverColumnId(null);
+  }
+
+  // "Where is this record?" - every card of it lit, the rest dimmed for a
+  // moment, and the board brought round to them.
+  const [findRecordId, setFindRecordId] = useState<string | null>(null);
+  const findTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function findRecord(recordId: string) {
+    const mine = cards.filter((c) => c.type === 'dbRow' && (c.recordId ?? c.id) === recordId);
+    if (mine.length === 0) return;
+    setFindRecordId(recordId);
+    if (findTimer.current) clearTimeout(findTimer.current);
+    findTimer.current = setTimeout(() => setFindRecordId(null), 3500);
+    const xs = mine.map((c) => c.x);
+    const ys = mine.map((c) => c.y);
+    const centerX = (Math.min(...xs) + Math.max(...xs) + DEFAULT_CARD_WIDTH) / 2;
+    const centerY = (Math.min(...ys) + Math.max(...ys) + APPROX_CARD_HEIGHT) / 2;
+    translateX.value = withTiming(-(centerX - WORLD_CENTER) * scale.value, { duration: 320 });
+    translateY.value = withTiming(-(centerY - WORLD_CENTER) * scale.value, { duration: 320 });
+  }
+  // THE ORIGIN LINES: every card of a record but the first is tied to the
+  // first - "перша картка ... стає оригіналом" (the window is a catalogue,
+  // not an original). Worked out from the cards themselves rather than
+  // stored, so taking the first one away simply makes the next one the
+  // original, and no line can be left pointing at nothing.
+  const originLinks: { from: string; to: string }[] = [];
+  {
+    const groups = new Map<string, BoardCard[]>();
+    for (const card of cards) {
+      if (card.type !== 'dbRow') continue;
+      const key = `${card.dbRowDatabaseId ?? ''}:${card.recordId ?? card.id}`;
+      groups.set(key, [...(groups.get(key) ?? []), card]);
+    }
+    groups.forEach((members) => {
+      if (members.length < 2) return;
+      const ordered = members
+        .map((card, index) => ({ card, index }))
+        .sort((a, b) => (a.card.createdAt ?? 0) - (b.card.createdAt ?? 0) || a.index - b.index);
+      const anchor = ordered[0].card;
+      ordered.slice(1).forEach(({ card }) => originLinks.push({ from: anchor.id, to: card.id }));
+    });
+  }
+  const findIds = findRecordId
+    ? new Set(cards.filter((c) => c.type === 'dbRow' && (c.recordId ?? c.id) === findRecordId).map((c) => c.id))
+    : null;
 
   // A plain column's menu - what a tap on its header opens. It was a
   // rename on a tap and a delete on a HOLD, and the hold lost its race
@@ -5925,10 +6006,9 @@ export default function BoardScreen() {
                 />
               ))}
 
-              {cards.map((copy) => {
-                if (!copy.copyOf) return null;
-                const from = nodeById.get(copy.copyOf);
-                const to = nodeById.get(copy.id);
+              {originLinks.map((link) => {
+                const from = nodeById.get(link.from);
+                const to = nodeById.get(link.to);
                 if (!from || !to) return null;
                 if (isObjectHiddenById(from.id) || isObjectHiddenById(to.id)) return null;
                 // Redrawn once the move is over, like the resting curves.
@@ -5948,7 +6028,7 @@ export default function BoardScreen() {
                 const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
                 const height = Math.abs(y2 - y1) + CONNECTION_PADDING * 2;
                 return (
-                  <View key={`origin-${copy.id}`} style={[styles.connection, { left, top, width, height }]} pointerEvents="none">
+                  <View key={`origin-${link.to}`} style={[styles.connection, { left, top, width, height }]} pointerEvents="none">
                     <Svg width={width} height={height}>
                       <Path
                         d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top, vertical)}
@@ -6143,7 +6223,7 @@ export default function BoardScreen() {
                     onLongPress={handleCardLongPress}
                     onResize={commitCardResize}
                     canvasHoldGesture={holdToSelectGesture}
-                    dimmed={isolatedIds !== null && !isolatedIds.has(card.id)}
+                    dimmed={(isolatedIds !== null && !isolatedIds.has(card.id)) || (findIds !== null && !findIds.has(card.id))}
                   />
                 );
               })}
@@ -6591,9 +6671,9 @@ export default function BoardScreen() {
                 <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
                 <Text style={styles.sheetRowLabel}>Стовпчик</Text>
               </Pressable>
-              <Pressable style={styles.sheetRow} onPress={importDatabaseAsSource}>
+              <Pressable style={styles.sheetRow} onPress={addDatabaseWindow}>
                 <MaterialCommunityIcons name="database-arrow-right-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>База як джерело</Text>
+                <Text style={styles.sheetRowLabel}>Вікно бази</Text>
               </Pressable>
               <Pressable style={styles.sheetRow} onPress={addWeek}>
                 <MaterialCommunityIcons name="calendar-week" size={18} color="#111827" />
@@ -7038,6 +7118,20 @@ export default function BoardScreen() {
           />
         </View>
       )}
+      {/* Databases held open over the board - see BoardDatabaseWindow. */}
+      {dbWindows.map((w) => (
+        <BoardDatabaseWindow
+          key={w.id}
+          win={w}
+          placed={placedByRecord}
+          onChange={(patch) => patchWindow(w.id, patch)}
+          onClose={() => setDbWindows((prev) => prev.filter((x) => x.id !== w.id))}
+          onPlace={placeRecord}
+          onFind={findRecord}
+          onCarryMove={carryMove}
+          onCarryEnd={carryEnd}
+        />
+      ))}
     </View>
   );
 }
