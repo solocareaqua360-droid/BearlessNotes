@@ -1,6 +1,6 @@
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRecordColour } from '../theme/ThemeProvider';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { Tag } from '../types';
 import TagChips from './TagChips';
 import ProjectBadge from './ProjectBadge';

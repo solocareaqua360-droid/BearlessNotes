@@ -7,7 +7,7 @@ import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 // so a sheet with a search/name field only scrolled when a finger happened to
 // land between rows. Same fix, same reason, as FieldsEditorSheet.
 import { ScrollView } from 'react-native-gesture-handler';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { Tag, TaggableKind } from '../types';
 import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
 import { isTagAllowedForKind } from '../hooks/useTags';

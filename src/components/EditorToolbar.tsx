@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 // editor is built on gesture-handler (drag-to-reorder, swipe), and these
 // two rows were rendered with that same component before they moved here.
 import { ScrollView } from 'react-native-gesture-handler';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { BLOCK_ACTIONS, BlockAction, BlockActionIcon } from './blockActions';
 import DockFrost from './DockFrost';
 import { useStyles, useTheme } from '../theme/ThemeProvider';

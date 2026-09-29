@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { useLift, useTheme } from '../../theme/ThemeProvider';
 import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../icons/Ionicons';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../GlassTarget';

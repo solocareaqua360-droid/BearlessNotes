@@ -10,7 +10,7 @@ import {
   type ViewStateChangeEvent,
 } from '@maplibre/maplibre-react-native';
 import Supercluster, { type PointFeature } from 'supercluster';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { useTheme } from '../theme/ThemeProvider';
 import { MAP_STYLE_URL } from '../utils/geoMapStyle';
 import GeoOfflineRegionsSheet from './GeoOfflineRegionsSheet';

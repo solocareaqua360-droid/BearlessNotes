@@ -1,5 +1,5 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import Svg, { Line } from 'react-native-svg';
 import AttachmentImage from './AttachmentImage';
 import ShapeBody from './BoardShapeBody';

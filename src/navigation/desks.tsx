@@ -1,5 +1,5 @@
 import { ComponentType, createContext, useCallback, useEffect, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../components/icons/Ionicons';
 import { doc, onSnapshot } from '../firestore';
 import { setDoc } from '../utils/owned';
 import { db } from '../firebase';

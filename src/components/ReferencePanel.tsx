@@ -5,7 +5,7 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardRide } from '../hooks/useKeyboardRide';
 import { TOP_NAV_SPACE } from './TopNavBar';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import AddExistingItemModal from './AddExistingItemModal';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import { useStyles, useTheme } from '../theme/ThemeProvider';

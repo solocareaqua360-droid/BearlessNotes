@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import AttachmentImage from './AttachmentImage';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { Flashcard } from '../types';

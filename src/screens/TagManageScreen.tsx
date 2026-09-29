@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../components/icons/Ionicons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useDockLeave } from '../navigation/navDock';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';

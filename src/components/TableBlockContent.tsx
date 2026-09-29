@@ -5,7 +5,7 @@ import { Pressable, Text, TextInput, View } from 'react-native';
 // file on 2026-09-19): the grid needs to sit inside that file's own
 // gesture arena.
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { Block, TableRow } from '../types';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import { makeStyles } from './documentEditorStyles';

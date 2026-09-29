@@ -13,7 +13,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import Svg, { Circle, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SketchElement, SketchPathElement, SketchShape } from '../types';

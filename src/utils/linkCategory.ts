@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../components/icons/Ionicons';
 
 // Which of the three link "databases" a link belongs to. The one `links`
 // collection holds every kind, and this is what splits it back into three

@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 import { GLASS_BODY, GLASS_EDGE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 

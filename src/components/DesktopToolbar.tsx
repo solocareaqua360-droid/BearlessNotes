@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { useNavDockActions, useNavDockBeads, useNavDockContext } from '../navigation/navDock';
 import { MAX_CONTENT_WIDTH } from './ContentColumn';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';

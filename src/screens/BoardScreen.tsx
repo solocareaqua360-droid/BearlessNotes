@@ -16,7 +16,8 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '../components/icons/Ionicons';
 // gesture-handler's ScrollView for the outline: it lives over a canvas
 // that claims pans of its own, and the core RN one loses the drag to it.
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';

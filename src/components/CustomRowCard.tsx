@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { Tag } from '../types';
 import { RowDisplay } from '../utils/customRowDisplay';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';

@@ -1,5 +1,5 @@
 import { ActivityIndicator, Image, ImageResizeMode, StyleProp, StyleSheet, View, ImageStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 
 // A picture that lives on the phone, drawn wherever the app is running.

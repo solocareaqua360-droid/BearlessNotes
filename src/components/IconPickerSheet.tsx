@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import Sheet from './surfaces/Sheet';
 import { TAG_ICONS } from '../constants/tags';
 import { useStyles, useTheme } from '../theme/ThemeProvider';

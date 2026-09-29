@@ -16,7 +16,7 @@ import {
 // when a finger happened to land between two cards. Same fix and same
 // reason as DocumentEditorScreen's block list.
 import { ScrollView } from 'react-native-gesture-handler';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { FieldDef, FieldOption, FieldType, RelationTarget } from '../types';
 import { canJoinTitle } from '../utils/customRowDisplay';
 import { TAG_COLORS } from '../constants/tags';

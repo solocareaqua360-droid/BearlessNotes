@@ -7,7 +7,7 @@ import {
   type LngLatBounds,
   type MapRef,
 } from '@maplibre/maplibre-react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';

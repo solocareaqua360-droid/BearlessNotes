@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './components/icons/Ionicons';
 
 export type RootStackParamList = {
   // The plain `undefined` shape is how every existing navigate('Tabs')

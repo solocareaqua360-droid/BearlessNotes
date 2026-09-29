@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import AttachmentImage from './AttachmentImage';
 import { useFlashcardLive } from '../hooks/useFlashcardLive';
 import { useRecordColour, useTheme } from '../theme/ThemeProvider';

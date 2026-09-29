@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../components/icons/Ionicons';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { CustomDatabase, CustomDatabaseRow, Group } from '../types';

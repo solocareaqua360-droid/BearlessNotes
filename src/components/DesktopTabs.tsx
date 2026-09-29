@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { StackActions } from '@react-navigation/native';
 import { closeTab, useOpenTabs } from '../navigation/desktopTabs';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';

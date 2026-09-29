@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../components/icons/Ionicons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { doc } from '../firestore';
 import { db } from '../firebase';

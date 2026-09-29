@@ -1,5 +1,5 @@
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { GLASS_BACKDROP, GLASS_TEXT } from '../constants/glass';
 

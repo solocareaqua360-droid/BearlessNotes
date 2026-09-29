@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import { GlassPortal } from './GlassPortal';
 import { useTheme } from '../theme/ThemeProvider';

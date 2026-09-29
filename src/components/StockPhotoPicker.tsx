@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import GlassLayer from './GlassLayer';
 import { getPexelsKey, subscribeToPexelsKey } from '../utils/pexelsKey';

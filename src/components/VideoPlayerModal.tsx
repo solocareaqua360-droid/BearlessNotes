@@ -1,5 +1,5 @@
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import InlineVideoPlayer from './InlineVideoPlayer';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 

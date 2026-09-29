@@ -17,7 +17,7 @@ import {
   View,
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 'react-native-svg';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '../components/icons/Ionicons';
 import AttachmentImage from '../components/AttachmentImage';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';

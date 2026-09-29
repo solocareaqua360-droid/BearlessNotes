@@ -14,7 +14,7 @@ import {
 // same note in DocumentEditorScreen.tsx (this component moved out of that
 // file on 2026-09-19).
 import { ScrollView } from 'react-native-gesture-handler';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import Svg, { Line, Path, Text as SvgText } from 'react-native-svg';
 import { Block, Tag } from '../types';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';

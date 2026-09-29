@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { WebView } from 'react-native-webview';
 import { Asset } from 'expo-asset';
 import * as LegacyFileSystem from 'expo-file-system/legacy';

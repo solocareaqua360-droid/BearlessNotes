@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, type StyleProp, type ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import { useTheme } from '../theme/ThemeProvider';
 import { FONT_REGULAR } from '../utils/fonts';

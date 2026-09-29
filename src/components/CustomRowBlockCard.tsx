@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { Tag } from '../types';
 import { useCustomRowData } from '../hooks/useCustomRowData';
 import { buildRowDisplay } from '../utils/customRowDisplay';

@@ -7,7 +7,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 // and this sheet is mostly inputs - it only scrolled when a finger happened
 // to land between cards. Same fix, same reason, as FieldsEditorSheet.
 import { ScrollView } from 'react-native-gesture-handler';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import * as DocumentPicker from 'expo-document-picker';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';

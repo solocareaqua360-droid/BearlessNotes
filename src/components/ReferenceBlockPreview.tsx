@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import AttachmentImage from './AttachmentImage';
 import { FONT_BOLD, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import type { Block } from '../types';

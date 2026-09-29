@@ -5,7 +5,7 @@ import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
 import { useRecordColour, useTextScale, useTheme } from '../theme/ThemeProvider';
 import { useDensity } from '../hooks/useDensity';
 import CardPreview from './CardPreview';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import type { Block, Tag } from '../types';
 import AttachmentImage from './AttachmentImage';
 import { PreviewChecklistItem, TextMatch, formatUpdatedAt } from '../utils/documentPreview';

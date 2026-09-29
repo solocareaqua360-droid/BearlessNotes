@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import { Tag } from '../types';
 import { useCustomDatabaseViewData } from '../hooks/useCustomDatabaseViewData';
 import { buildRowDisplay } from '../utils/customRowDisplay';

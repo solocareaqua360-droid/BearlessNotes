@@ -3,7 +3,7 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { ComponentProps } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from './icons/Ionicons';
 import Sheet from './surfaces/Sheet';
 import { FONT_REGULAR } from '../utils/fonts';
 
