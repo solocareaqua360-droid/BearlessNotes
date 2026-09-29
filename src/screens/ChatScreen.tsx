@@ -19,7 +19,7 @@ import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { openCapture, openCaptureForEdit } from '../components/CaptureWindow';
 import { askGemini } from '../utils/gemini';
 import { getGeminiKey } from '../utils/geminiKey';
-import { useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import {
@@ -38,7 +38,8 @@ import {
   createTaskInToday,
 } from '../utils/copyToNote';
 import { formatShortDate } from '../utils/dateLocale';
-import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { Block } from '../types';
 import { RootStackParamList } from '../navigation';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -95,7 +96,12 @@ function newBlockId(): string {
 
 export default function ChatScreen() {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
+  // THE CHAT IN THE SOFT STYLE (theme/soft) - the last screen still in
+  // glass ("чат"). On a phone: the soft bar and dock, the soft ground,
+  // messages as soft cards, Inter.
+  const softChat = useSoftDatabase();
+  useChromeStyle('soft', !!softChat);
+  const styles = softenStyles(useStyles(makeStyles), softChat, softChatRecipe);
   const insets = useSafeAreaInsets();
   const dockClear = useDockClearance();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -443,7 +449,11 @@ export default function ChatScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenBackdrop id="chatBg" />
+      {softChat ? (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: softChat.bg }]} pointerEvents="none" />
+      ) : (
+        <ScreenBackdrop id="chatBg" />
+      )}
       <ContentColumn>
         <View style={{ height: insets.top + CHROME_TOP + 8 }} />
         {isSearching && (
@@ -688,6 +698,22 @@ export default function ChatScreen() {
     </View>
   );
 }
+
+// The soft overlay (theme/soft's softenStyles).
+const softChatRecipe = (S: SoftTokens) =>
+  StyleSheet.create({
+    dayLabel: { fontFamily: SOFT_MEDIUM, color: S.ink3 },
+    bubble: { backgroundColor: S.card, borderWidth: 0, borderRadius: 20, boxShadow: S.shadow },
+    // Gemini's answers: a warm tint of the accent rather than an outline.
+    bubbleGemini: { borderWidth: 0, backgroundColor: S.dark ? 'rgba(232,154,98,0.14)' : 'rgba(217,121,63,0.10)', boxShadow: [] },
+    geminiLabelText: { fontFamily: SOFT_SEMIBOLD, textTransform: 'none', letterSpacing: 0, fontSize: 12 },
+    askingLabel: { fontFamily: SOFT_REGULAR, color: S.ink2 },
+    bubbleText: { fontFamily: SOFT_REGULAR, fontSize: 16.5, lineHeight: 24, color: S.ink },
+    bubbleTime: { fontFamily: SOFT_MEDIUM, color: S.ink3 },
+    usedLabel: { fontFamily: SOFT_MEDIUM },
+    emptyLabel: { fontFamily: SOFT_SEMIBOLD, color: S.ink },
+    emptyHint: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+  }) as Record<string, object>;
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
