@@ -6691,110 +6691,97 @@ export default function BoardScreen() {
           <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }]} onPress={() => setAddSheetVisible(false)}>
             <Pressable style={styles.sheet} onPress={() => {}}>
               <View style={styles.sheetHandle} />
-              {/* The list of what can be added has grown past a screen - it
-                  scrolls, under the handle, instead of running off it. */}
-              <ScrollView style={{ maxHeight: Math.round(windowHeight * 0.72) }} showsVerticalScrollIndicator={false}>
-              {/* First, because it's the one row that brings a whole
-                  theme's worth of material at once rather than one card. */}
-              <Pressable
-                style={styles.sheetRow}
-                onPress={() => {
-                  setAddSheetVisible(false);
-                  setGroupPickerVisible(true);
-                }}
-              >
-                <Ionicons name="albums-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>З проекту</Text>
-              </Pressable>
-              {/* A live column (see BoardColumn.liveTaskSource) - separate
-                  from "З проекту" above, which makes a one-time snapshot.
-                  A task's own project can carry several lists, so this
-                  needs its own two-step picker rather than reusing that
-                  generic one. */}
-              <Pressable
-                style={styles.sheetRow}
-                onPress={() => {
-                  setAddSheetVisible(false);
-                  setTaskColumnPickerVisible(true);
-                }}
-              >
-                <Ionicons name="checkbox-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Проект справ</Text>
-              </Pressable>
-              {/* «Наліпка», not «Текст» - a bare text label with no card
-                  under it is a SHAPE and is already called Текст, and
-                  two different things under one word in one board is
-                  exactly the confusion this renames away from. */}
-              <Pressable style={styles.sheetRow} onPress={addTextCard}>
-                <Ionicons name="text-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Наліпка</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={createDocumentCard}>
-                <Ionicons name="document-text-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Документ</Text>
-              </Pressable>
-              {/* Beside «Документ», because it is the same move one step
-                  out: a card that stands for somewhere else. */}
-              <Pressable style={styles.sheetRow} onPress={openBoardPicker}>
-                <Ionicons name="easel-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Інша дошка</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('other')}>
-                <Ionicons name="link-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Посилання</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('video')}>
-                <Ionicons name="videocam-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>YouTube / TikTok</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={() => openLinkPrompt('geo')}>
-                <Ionicons name="location-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Геоточка</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={createImageCard}>
-                <Ionicons name="image-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Зображення</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={createFileCard}>
-                <Ionicons name="document-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Файл</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={openExistingItemPicker}>
-                <Ionicons name="search-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>З бази даних</Text>
-              </Pressable>
-              {/* Furniture, not content - so it sits at the bottom,
-                  below everything that becomes part of a document. */}
-              <Pressable
-                style={styles.sheetRow}
-                onPress={() => {
-                  setAddSheetVisible(false);
-                  setShapeSheetVisible(true);
-                }}
-              >
-                <MaterialCommunityIcons name="shape-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Фігура або напис</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={addColumn}>
-                <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Стовпчик</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={addDatabaseWindow}>
-                <MaterialCommunityIcons name="database-arrow-right-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Вікно бази</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={addStrip}>
-                <MaterialCommunityIcons name="view-column-outline" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Ряд стовпчиків (з «+»)</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={addWeek}>
-                <MaterialCommunityIcons name="calendar-week" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Тиждень (7 стовпчиків)</Text>
-              </Pressable>
-              <Pressable style={styles.sheetRow} onPress={addContainer}>
-                <MaterialCommunityIcons name="selection-drag" size={18} color="#111827" />
-                <Text style={styles.sheetRowLabel}>Область</Text>
-              </Pressable>
+              {/* WHAT CAN BE ADDED, as sections of icon tiles rather than one
+                  long list of words - the user's own ask: orientation by
+                  icons and sections, compact ("як під клавіатурне меню").
+                  Still scrolls, for a small screen. */}
+              <ScrollView style={{ maxHeight: Math.round(windowHeight * 0.74) }} showsVerticalScrollIndicator={false}>
+                {(() => {
+                  type Tile = { key: string; icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void };
+                  const sections: { title: string; tiles: Tile[] }[] = [
+                    {
+                      title: 'Картки',
+                      tiles: [
+                        { key: 'doc', icon: 'document-text-outline', label: 'Документ', onPress: createDocumentCard },
+                        // «Наліпка», not «Текст» - a bare text label with no
+                        // card under it is a SHAPE and is already called
+                        // Текст; two things under one word is the confusion
+                        // this renames away from.
+                        { key: 'sticky', icon: 'text-outline', label: 'Наліпка', onPress: addTextCard },
+                        { key: 'link', icon: 'link-outline', label: 'Посилання', onPress: () => openLinkPrompt('other') },
+                        { key: 'video', icon: 'videocam-outline', label: 'Відео', onPress: () => openLinkPrompt('video') },
+                        { key: 'geo', icon: 'location-outline', label: 'Геоточка', onPress: () => openLinkPrompt('geo') },
+                        { key: 'image', icon: 'image-outline', label: 'Зображення', onPress: createImageCard },
+                        { key: 'file', icon: 'document-outline', label: 'Файл', onPress: createFileCard },
+                        { key: 'board', icon: 'easel-outline', label: 'Дошка', onPress: openBoardPicker },
+                        { key: 'existing', icon: 'search-outline', label: 'З бази', onPress: openExistingItemPicker },
+                      ],
+                    },
+                    {
+                      title: 'Пачкою',
+                      tiles: [
+                        // The one that brings a whole theme's worth of
+                        // material at once rather than one card.
+                        {
+                          key: 'project',
+                          icon: 'albums-outline',
+                          label: 'З проекту',
+                          onPress: () => {
+                            setAddSheetVisible(false);
+                            setGroupPickerVisible(true);
+                          },
+                        },
+                        // A live column (BoardColumn.liveTaskSource), apart
+                        // from «З проекту», which makes a one-time snapshot.
+                        {
+                          key: 'tasks',
+                          icon: 'checkbox-outline',
+                          label: 'Справи',
+                          onPress: () => {
+                            setAddSheetVisible(false);
+                            setTaskColumnPickerVisible(true);
+                          },
+                        },
+                        { key: 'window', icon: 'server-outline', label: 'Вікно бази', onPress: addDatabaseWindow },
+                      ],
+                    },
+                    {
+                      // Furniture, not content - below everything that
+                      // becomes part of a document.
+                      title: 'Розмітка',
+                      tiles: [
+                        { key: 'column', icon: 'browsers-outline', label: 'Стовпчик', onPress: addColumn },
+                        { key: 'strip', icon: 'newspaper-outline', label: 'Ряд з «+»', onPress: addStrip },
+                        { key: 'week', icon: 'calendar-number-outline', label: 'Тиждень', onPress: addWeek },
+                        { key: 'area', icon: 'scan-outline', label: 'Область', onPress: addContainer },
+                        {
+                          key: 'shape',
+                          icon: 'shapes-outline',
+                          label: 'Фігура',
+                          onPress: () => {
+                            setAddSheetVisible(false);
+                            setShapeSheetVisible(true);
+                          },
+                        },
+                      ],
+                    },
+                  ];
+                  return sections.map((section) => (
+                    <View key={section.title}>
+                      <Text style={styles.addSectionTitle}>{section.title}</Text>
+                      <View style={styles.addGrid}>
+                        {section.tiles.map((tile) => (
+                          <Pressable key={tile.key} style={styles.addTile} onPress={tile.onPress} accessibilityLabel={tile.label}>
+                            <Ionicons name={tile.icon} size={28} color="#111827" />
+                            <Text style={styles.addTileLabel} numberOfLines={1}>
+                              {tile.label}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  ));
+                })()}
               </ScrollView>
             </Pressable>
           </Pressable>
@@ -7929,6 +7916,36 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: 20,
       paddingTop: 12,
       paddingBottom: 28,
+    },
+    // The add sheet's sections of icon tiles.
+    addSectionTitle: {
+      fontSize: 13,
+      fontFamily: FONT_SEMIBOLD,
+      color: '#6B7280',
+      marginTop: 10,
+      marginBottom: 8,
+      paddingLeft: 2,
+    },
+    addGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    addTile: {
+      flexBasis: '31%',
+      flexGrow: 1,
+      height: 80,
+      borderRadius: 18,
+      backgroundColor: '#F3F4F6',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      paddingHorizontal: 4,
+    },
+    addTileLabel: {
+      fontSize: 12.5,
+      fontFamily: FONT_SEMIBOLD,
+      color: '#111827',
     },
     sheetTitle: {
       fontSize: 16,
