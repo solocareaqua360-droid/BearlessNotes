@@ -1089,6 +1089,9 @@ export default function LinksScreen({
 
           <LinkDetailSheet
             link={detailLink ? { ...detailLink, category: categoryOf(detailLink) } : null}
+            folders={detailLink ? tags.filter((tag) => (detailLink.tagIds ?? []).includes(tag.id)) : []}
+            // The same picker a card's folder button opens, over the card.
+            onPickFolder={() => detailLink && setTagPickerForId(detailLink.id)}
             onClose={() => setDetailLinkId(null)}
             onOpen={() => {
               if (!detailLink) return;

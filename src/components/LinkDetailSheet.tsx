@@ -11,7 +11,7 @@ import AttachmentImage from './AttachmentImage';
 import ZoomableImageViewer from './ZoomableImageViewer';
 import GeoThumbnail from './GeoThumbnail';
 import GeoPointMapPicker from './GeoPointMapPicker';
-import { FONT_BOLD, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { FONT_BOLD, FONT_MONO, FONT_REGULAR, FONT_SEMIBOLD, FONT_MEDIUM } from '../utils/fonts';
 import { formatUpdatedAt } from '../utils/documentPreview';
 import { formatDecimalLatLng, formatMgrs, type LatLng } from '../utils/geoCoordinates';
 import { hostnameOf } from '../utils/linkPreview';
@@ -73,6 +73,8 @@ export default function LinkDetailSheet({
   onDeleteArticle,
   onRemoveFragment,
   onFragmentsToNote,
+  folders = [],
+  onPickFolder,
 }: {
   link: DetailLink | null;
   onClose: () => void;
@@ -87,6 +89,10 @@ export default function LinkDetailSheet({
   onDeleteArticle: () => void;
   onRemoveFragment: (fragment: LinkFragment) => void;
   onFragmentsToNote: (fragments: LinkFragment[]) => void;
+  // The folders this link is in, and the way to put it in more - "в меню
+  // «Редагувати» повинно бути «Присвоїти папку»".
+  folders?: { id: string; path: string; color: string; icon: string }[];
+  onPickFolder?: () => void;
 }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -346,6 +352,26 @@ export default function LinkDetailSheet({
               </Panel>
             )}
 
+            {(editing || folders.length > 0) && (
+              <Panel icon="folder-outline" title="Папки" count={folders.length || undefined} styles={styles} theme={theme}>
+                {folders.length > 0 && (
+                  <View style={styles.folderChips}>
+                    {folders.map((folder) => (
+                      <View key={folder.id} style={[styles.folderChip, { backgroundColor: `${folder.color}1F` }]}>
+                        <Ionicons name={folder.icon as keyof typeof Ionicons.glyphMap} size={14} color={folder.color} />
+                        <Text style={styles.folderChipText} numberOfLines={1}>
+                          {folder.path}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {editing && onPickFolder && (
+                  <Button icon="folder-open-outline" label="Присвоїти папку" onPress={onPickFolder} styles={styles} theme={theme} />
+                )}
+              </Panel>
+            )}
+
             {(editing || !!comment.trim()) && (
               <Panel icon="chatbox-ellipses-outline" title="Коментар" styles={styles} theme={theme}>
                 {editing ? (
@@ -556,6 +582,26 @@ function CoordRow({
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
+    folderChips: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    folderChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      maxWidth: '100%',
+      paddingHorizontal: 12,
+      height: 32,
+      borderRadius: 16,
+    },
+    folderChipText: {
+      flexShrink: 1,
+      fontSize: 14,
+      fontFamily: FONT_MEDIUM,
+      color: t.ink.primary,
+    },
     header: {
       flexDirection: 'row',
       alignItems: 'center',

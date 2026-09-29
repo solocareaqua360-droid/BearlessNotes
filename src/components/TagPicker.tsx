@@ -10,7 +10,6 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from './icons/Ionicons';
 import { Tag, TaggableKind } from '../types';
 import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
-import { isTagAllowedForKind } from '../hooks/useTags';
 import { useHiddenTags } from '../hooks/useHiddenTags';
 import RenamePrompt from './RenamePrompt';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
@@ -47,6 +46,9 @@ type Props = {
 // row) - see TagPicker.dc.html / IconColorPicker.dc.html. Two internal
 // modes: the search+list, and a "new tag" icon+color form reached only
 // from a first assignment (there's no standalone tag-creation path).
+// Marks where the other folders begin in the one list (see `elsewhere`).
+const SECTION_BREAK = { id: '__section__' } as Tag;
+
 export default function TagPicker({
   visible,
   kind,
@@ -109,15 +111,25 @@ export default function TagPicker({
   }, [visible]);
 
   const needle = query.trim().toLowerCase();
-  const visibleTags = tags.filter((tag) => isTagAllowedForKind(tag, kind));
-  // The empty-search "recommended" list drops anything hidden via the "x"
-  // below; typing a search still surfaces a hidden tag so it can be found
-  // and re-attached - attachTag un-hides it the moment that happens (see
-  // useTags), which is exactly how a hidden tag is meant to come back.
-  const matches =
+  // TWO KINDS OF FOLDER to put this in: the ones that already belong to
+  // this database, and every other one - which, once picked, belongs here
+  // too (attaching adds this kind to it). The user's own reading: "або
+  // присвоїти папку, та яка вже є в YouTube, або вибрати папку, яка ще не
+  // присвоєна YouTube, і тоді вона присвоїться YouTube". The second list
+  // leaves the old separation between the link databases behind on
+  // purpose (isTagAllowedForKind is no longer what decides).
+  //
+  // The empty-search list drops anything hidden via the "x" below; typing
+  // a search still surfaces a hidden folder so it can be found and
+  // re-attached - attachTag un-hides it the moment that happens.
+  const shownFor = (list: Tag[]) =>
     needle.length === 0
-      ? visibleTags.filter((tag) => !hiddenIds.has(tag.id))
-      : visibleTags.filter((tag) => tag.path.toLowerCase().includes(needle));
+      ? list.filter((tag) => !hiddenIds.has(tag.id) || selectedTagIds.includes(tag.id))
+      : list.filter((tag) => tag.path.toLowerCase().includes(needle));
+  const here = tags.filter((tag) => tag.types.includes(kind) || selectedTagIds.includes(tag.id));
+  const elsewhere = tags.filter((tag) => !here.includes(tag));
+  const matches = shownFor(here);
+  const otherMatches = shownFor(elsewhere);
   // Checked against the FULL tag list (not just what's visible for this
   // kind) so a name already used by a hidden, cross-kind tag can't be
   // duplicated - it just stays unavailable here, same as being filtered out.
@@ -180,7 +192,15 @@ export default function TagPicker({
               </View>
 
               <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
-                {matches.map((tag) => {
+                {matches.length > 0 && otherMatches.length > 0 && <Text style={styles.sectionHead}>У цій базі</Text>}
+                {[...matches, ...(otherMatches.length > 0 ? [SECTION_BREAK] : []), ...otherMatches].map((tag) => {
+                  if (tag === SECTION_BREAK) {
+                    return (
+                      <Text key="__others__" style={styles.sectionHead}>
+                        Інші папки - з'являться й тут
+                      </Text>
+                    );
+                  }
                   const selected = selectedTagIds.includes(tag.id);
                   return (
                     <View key={tag.id} style={styles.row}>
@@ -335,6 +355,14 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 10,
+  },
+  sectionHead: {
+    fontSize: 12.5,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.faint,
+    paddingTop: 12,
+    paddingBottom: 6,
+    paddingHorizontal: 4,
   },
   title: {
     fontSize: 17,
