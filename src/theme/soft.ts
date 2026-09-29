@@ -1,3 +1,4 @@
+import { createContext, useContext } from 'react';
 import { useTheme } from './ThemeProvider';
 
 // «М'ЯКИЙ» - the style chosen from the mockups on 2026-09-28 (artifact
@@ -89,4 +90,18 @@ export function softCursor(scheme: 'light' | 'dark') {
 
 export function useSoft(): SoftTokens {
   return softTokens(useTheme().scheme);
+}
+
+// A surface that wears the soft style says so to everything drawn inside
+// it (DatabaseChrome does, for every database's cards), so a card needs no
+// prop threaded down to it: null outside a soft screen.
+export const SoftSurfaceContext = createContext<SoftTokens | null>(null);
+export function useSoftSurface(): SoftTokens | null {
+  return useContext(SoftSurfaceContext);
+}
+
+// The soft card's frame, for cards that were drawn with an outline and a
+// Material shadow: no outline, the soft shadow, a rounder corner.
+export function softCardFrame(S: SoftTokens, radius = 20) {
+  return { borderWidth: 0, elevation: 0, shadowOpacity: 0, borderRadius: radius, boxShadow: S.shadow };
 }

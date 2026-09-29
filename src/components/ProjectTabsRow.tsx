@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useFrostPaused } from './frostPause';
 import { FONT_SEMIBOLD, SOFT_MEDIUM } from '../utils/fonts';
-import type { SoftTokens } from '../theme/soft';
+import { useSoftSurface, type SoftTokens } from '../theme/soft';
 
 // Sentinel for "no group/project assigned" - an id string, since a real
 // document's id (a Firestore auto-id) can never collide with it. `null`
@@ -79,9 +79,13 @@ export default function ProjectTabsRow({
   startPadding,
   unassignedFirst,
   allLast,
-  soft,
+  soft: softProp,
 }: Props) {
   const styles = useStyles(makeStyles);
+  // Said outright by the caller, or heard from a soft surface around it
+  // (every database's chrome - see SoftSurfaceContext).
+  const surface = useSoftSurface();
+  const soft = softProp !== undefined ? softProp : surface;
   const allTab = (
     <Tab
       key="__all__"

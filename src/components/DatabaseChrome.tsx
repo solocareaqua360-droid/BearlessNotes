@@ -19,7 +19,9 @@ import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, TopTitle, topBarFrame, useTopNavOn
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
-import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { SoftSurfaceContext, useSoft } from '../theme/soft';
+import { useDensity } from '../hooks/useDensity';
 import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
 import { DeskContext } from '../navigation/desks';
@@ -187,6 +189,15 @@ export default function DatabaseChrome<T extends { id: string }>({
 }: DatabaseChromeProps<T>) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
+  // EVERY DATABASE IN THE SOFT STYLE (theme/soft) - the user's go-ahead
+  // after the board of tiles ("бази"). One place: every database screen
+  // stands on this chrome, so the bar and the dock follow (useChromeStyle),
+  // the ground goes quiet, and the cards inside hear it through
+  // SoftSurfaceContext. On a phone; a laptop keeps its own layout.
+  const softDb = useDensity() !== 'pointer';
+  const softTokens = useSoft();
+  useChromeStyle('soft', softDb);
+  const soft = softDb ? softTokens : null;
   const drawerRef = useRef<TagsDrawerHandle>(null);
   const { isTwoPane } = useResponsiveLayout();
   // The rail on the left is the sign that this chrome stands in another
@@ -668,11 +679,16 @@ export default function DatabaseChrome<T extends { id: string }>({
   );
 
   return (
+    <SoftSurfaceContext.Provider value={soft}>
     <View style={styles.container}>
       {/* The same fixed gradient every screen stands on. 1px bled past
           every edge - windowWidth/Height can round to a hair less than the
           real screen, leaving a sliver of white at an edge otherwise. */}
-      <ScreenBackdrop id="databaseBg" scrollY={pull.scrollY} />
+      {soft ? (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: soft.bg }]} />
+      ) : (
+        <ScreenBackdrop id="databaseBg" scrollY={pull.scrollY} />
+      )}
 
 
       {splitting ? (
@@ -723,6 +739,7 @@ export default function DatabaseChrome<T extends { id: string }>({
       )}
 
     </View>
+    </SoftSurfaceContext.Provider>
   );
 }
 

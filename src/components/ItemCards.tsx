@@ -1,4 +1,6 @@
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { softCardFrame, useSoftSurface, type SoftTokens } from '../theme/soft';
+import { SOFT_SEMIBOLD } from '../utils/fonts';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { Ionicons } from './icons/Ionicons';
 import { Tag } from '../types';
@@ -193,12 +195,13 @@ function Trailing({
 export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
   const recordColour = useRecordColour();
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
-  const { background, text, textMuted } = recordColour(link.id);
+  const soft = useSoftSurface();
+  const { background, text, textMuted } = softColours(soft, recordColour(link.id));
   return (
     <View
       ref={rest.cardRef}
       collapsable={false}
-      style={[styles.row, rest.playing && styles.rowPlaying, { backgroundColor: background }, rest.dimmed && styles.dimmed]}
+      style={[styles.row, soft && softCardFrame(soft), rest.playing && styles.rowPlaying, { backgroundColor: background }, rest.dimmed && styles.dimmed]}
     >
       <View style={styles.rowLine}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
@@ -222,7 +225,7 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
           </View>
         )}
         <View style={styles.rowBody}>
-          <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
+          <Text style={[styles.rowTitle, soft && softTitle, { color: text }]} numberOfLines={2}>
             {link.title || hostnameOf(link.url)}
           </Text>
           <View style={styles.dateRow}>
@@ -274,13 +277,15 @@ export const GRID_CARD_RATIO = 1.3;
 export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardItem } & Common & { columns?: number }) {
   const recordColour = useRecordColour();
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
-  const { background, text, textMuted } = recordColour(link.id);
+  const soft = useSoftSurface();
+  const { background, text, textMuted } = softColours(soft, recordColour(link.id));
   return (
     <View
       ref={rest.cardRef}
       collapsable={false}
       style={[
         styles.gridCard,
+        soft && softCardFrame(soft),
         { backgroundColor: background, flexBasis: gridBasis(columns) },
       ,
         rest.dimmed && styles.dimmed,
@@ -311,7 +316,7 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
             )}
           </View>
         )}
-        <Text style={[styles.gridTitle, { color: text }]} numberOfLines={2}>
+        <Text style={[styles.gridTitle, soft && softTitle, { color: text }]} numberOfLines={2}>
           {link.title || hostnameOf(link.url)}
         </Text>
         <View style={styles.dateRow}>
@@ -337,13 +342,14 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
 
 export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
   const recordColour = useRecordColour();
-  const { background, text, textMuted } = recordColour(file.id);
+  const soft = useSoftSurface();
+  const { background, text, textMuted } = softColours(soft, recordColour(file.id));
   // What is actually inside it - the first page of a PDF, the first lines
   // of a document. Worked out once, elsewhere (see FilePreviewWorker).
   const preview = useFilePreview(file);
 
   return (
-    <View ref={rest.cardRef} collapsable={false} style={[styles.row, { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
+    <View ref={rest.cardRef} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {/* The page picture at a video thumbnail's size - wide enough to
             recognise the document by its shape, small enough to leave the
@@ -367,7 +373,7 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
           </View>
         )}
         <View style={styles.rowBody}>
-          <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
+          <Text style={[styles.rowTitle, soft && softTitle, { color: text }]} numberOfLines={2}>
             {file.title || file.fileName}
           </Text>
           {!!preview?.text && (
@@ -399,7 +405,8 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
 
 export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardItem } & Common & { columns?: number }) {
   const recordColour = useRecordColour();
-  const { background, text, textMuted } = recordColour(file.id);
+  const soft = useSoftSurface();
+  const { background, text, textMuted } = softColours(soft, recordColour(file.id));
   const preview = useFilePreview(file);
   return (
     <View
@@ -407,6 +414,7 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
       collapsable={false}
       style={[
         styles.gridCard,
+        soft && softCardFrame(soft),
         styles.gridCardRatio,
         { backgroundColor: background, flexBasis: gridBasis(columns) },
       ,
@@ -431,7 +439,7 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
             <Ionicons name={fileIconFor(file.fileName)} size={26} color={fileIconColorFor(file.fileName)} />
           </View>
         )}
-        <Text style={[styles.gridTitle, { color: text }]} numberOfLines={2}>
+        <Text style={[styles.gridTitle, soft && softTitle, { color: text }]} numberOfLines={2}>
           {file.title || file.fileName}
         </Text>
         {(!!(file.createdAt ?? file.updatedAt) || rest.onProjectPress) && (
@@ -469,7 +477,8 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
 // control. A photo is not a different kind of thing to a file here.
 export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) {
   const recordColour = useRecordColour();
-  const { background, text, textMuted } = recordColour(photo.id);
+  const soft = useSoftSurface();
+  const { background, text, textMuted } = softColours(soft, recordColour(photo.id));
   // Through useAttachmentSource, not useCachedAttachment: it answers with
   // an address rather than only a verdict, which is what a browser needs
   // and what the phone gets for free. A thumbnail in a list is not
@@ -478,7 +487,7 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
   const docCount = photo.documentIds.length;
 
   return (
-    <View ref={rest.cardRef} collapsable={false} style={[styles.row, { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
+    <View ref={rest.cardRef} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress}>
         {status === 'ready' ? (
           <Image source={{ uri: source ?? photo.imageUri }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
@@ -492,7 +501,7 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
           </View>
         )}
         <View style={styles.rowBody}>
-          <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
+          <Text style={[styles.rowTitle, soft && softTitle, { color: text }]} numberOfLines={2}>
             {photo.title || 'Без назви'}
           </Text>
           {(!!(photo.createdAt ?? photo.updatedAt) || rest.onProjectPress) && (
@@ -530,11 +539,12 @@ export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common)
   // re-pulled from the Drive backup the first time it is rendered.
   // A thumbnail in the grid is not someone looking at the photo.
   const docCount = photo.documentIds.length;
+  const soft = useSoftSurface();
   return (
     <Pressable
       ref={rest.cardRef}
       collapsable={false}
-      style={[styles.cell, rest.dimmed && styles.dimmed]}
+      style={[styles.cell, soft && softCardFrame(soft), rest.dimmed && styles.dimmed]}
       onPress={rest.onPress}
       onLongPress={rest.onLongPress}
     >
@@ -581,6 +591,13 @@ export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common)
     </Pressable>
   );
 }
+
+// Soft: the card surface and inks instead of the record's own colour, and
+// Inter for the title (see theme/soft's SoftSurfaceContext).
+function softColours(S: SoftTokens | null, own: { background: string; text: string; textMuted: string }) {
+  return S ? { background: S.card, text: S.ink, textMuted: S.ink2 } : own;
+}
+const softTitle = { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal' as const };
 
 const styles = StyleSheet.create({
   // A card whose item is in hand right now.
