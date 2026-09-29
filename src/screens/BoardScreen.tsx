@@ -112,6 +112,7 @@ import { importGroupToBoard } from '../utils/importGroupToBoard';
 import { Group } from '../types';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
+import { useBoardKeys } from '../hooks/useBoardKeys';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { rightClick } from '../utils/rightClick';
@@ -3354,6 +3355,47 @@ export default function BoardScreen() {
     maxScale: MAX_SCALE,
   });
 
+  // THE KEYBOARD (Mac / browser; nothing on the phone). Copy remembers
+  // which cards, paste makes copies of them a step further along each time.
+  const copiedCardIds = useRef<string[]>([]);
+  const pasteRound = useRef(0);
+  const deleteAsking = useRef(false);
+  useBoardKeys({
+    active: boardFocused && isLoaded,
+    onDelete: () => {
+      if (selectedConnectionId) return deleteConnection(selectedConnectionId);
+      if (selectedShapeId) return deleteShape(selectedShapeId);
+      if (deleteAsking.current) return;
+      deleteAsking.current = true;
+      deleteSelection().finally(() => {
+        deleteAsking.current = false;
+      });
+    },
+    onEscape: () => {
+      if (selectedCardIds.size + selectedShapeIds.size > 0 || selectedShapeId || selectedConnectionId) {
+        clearSelection();
+      }
+    },
+    onCopy: () => {
+      if (selectedCardIds.size === 0) return;
+      copiedCardIds.current = [...selectedCardIds];
+      pasteRound.current = 0;
+    },
+    onPaste: () => {
+      const originals = cards.filter((c) => copiedCardIds.current.includes(c.id));
+      if (originals.length === 0) return;
+      pasteRound.current += 1;
+      const copies = duplicateCards(originals, 28 * pasteRound.current);
+      if (copies) setSelectedCardIds(new Set(copies.map((c) => c.id)));
+    },
+    onDuplicate: () => {
+      const originals = cards.filter((c) => selectedCardIds.has(c.id));
+      const copies = duplicateCards(originals, 28);
+      if (copies) setSelectedCardIds(new Set(copies.map((c) => c.id)));
+    },
+    onSelectAll: () => setSelectedCardIds(new Set(cards.map((c) => c.id))),
+  });
+
   // The same screen->world conversion the marquee and the connector use.
   // Selecting the card first means every action below is the SAME code
   // the selection bar runs - the menu is a second way in, not a second
@@ -4106,18 +4148,27 @@ export default function BoardScreen() {
   // every copy keeps (see BoardCard.copyOf) - to put one car into Monday
   // AND Thursday.
   function duplicateCard(card: BoardCard) {
-    const copy: BoardCard = {
-      ...releaseFromColumn(card),
-      id: generateId(),
-      x: card.x + 28,
-      y: card.y + 28,
-      recordId: card.recordId ?? card.id,
-      createdAt: Date.now(),
-      width: Number.isFinite(card.width) ? card.width : DEFAULT_CARD_WIDTH,
-    };
-    delete copy.order;
-    setCards((prev) => reflowColumns([...prev, copy], columns, cardHeights));
+    duplicateCards([card], 28);
+  }
+
+  function duplicateCards(originals: BoardCard[], offset: number) {
+    if (originals.length === 0) return;
+    const copies = originals.map((card) => {
+      const copy: BoardCard = {
+        ...releaseFromColumn(card),
+        id: generateId(),
+        x: card.x + offset,
+        y: card.y + offset,
+        recordId: card.recordId ?? card.id,
+        createdAt: Date.now(),
+        width: Number.isFinite(card.width) ? card.width : DEFAULT_CARD_WIDTH,
+      };
+      delete copy.order;
+      return copy;
+    });
+    setCards((prev) => reflowColumns([...prev, ...copies], columns, cardHeights));
     hapticDrop();
+    return copies;
   }
 
   // Dragging any one selected card moves the whole selection - see
@@ -5049,8 +5100,8 @@ export default function BoardScreen() {
     const cardIds = selectedCardIds;
     const shapeIds = selectedShapeIds;
     const count = cardIds.size + shapeIds.size;
-    if (count === 0) return;
-    confirm({
+    if (count === 0) return Promise.resolve();
+    return confirm({
       title: count === 1 ? 'Видалити обʼєкт?' : `Видалити обʼєкти (${count})?`,
       confirmLabel: 'Видалити',
     }).then((yes) => {
