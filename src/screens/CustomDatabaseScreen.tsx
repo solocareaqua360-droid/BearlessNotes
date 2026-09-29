@@ -231,8 +231,14 @@ export default function CustomDatabaseScreen({
   // SoftSurfaceContext. Its windows (the record page, the parameters) are
   // still their own dark glass - a whole, readable piece for now.
   const softDb = useSoftDatabase();
+  // Inline glass colours, taken to the soft inks when the soft style is on
+  // (see softCustomDatabaseWindows for the same rule on the styles).
+  const sInk = (glass: string) => (softDb ? softDb.ink : glass);
+  const sInk2 = (glass: string) => (softDb ? softDb.ink2 : glass);
+  const sInk3 = (glass: string) => (softDb ? softDb.ink3 : glass);
+  const sBg = (glass: string) => (softDb ? softDb.bg : glass);
   useChromeStyle('soft', !!softDb);
-  const styles = softenStyles(useStyles(makeStyles), softDb, softCustomDatabase);
+  const styles = softenStyles(softenStyles(useStyles(makeStyles), softDb, softCustomDatabaseWindows), softDb, softCustomDatabase);
   const recordColour = useRecordColour();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
@@ -896,7 +902,7 @@ export default function CustomDatabaseScreen({
   if (!database) {
     return (
       <View style={[styles.container, styles.emptyState]}>
-        <ActivityIndicator color="#fff" />
+        <ActivityIndicator color={sInk('#fff')} />
       </View>
     );
   }
@@ -1762,7 +1768,7 @@ export default function CustomDatabaseScreen({
                 hitSlop={8}
                 onPress={() => unlinkBacklinkRow(field, r.id).catch(() => {})}
               >
-                <Ionicons name="close" size={16} color={GLASS_TEXT_FAINT} />
+                <Ionicons name="close" size={16} color={sInk3(GLASS_TEXT_FAINT)} />
               </Pressable>
             </View>
           ))}
@@ -1780,7 +1786,7 @@ export default function CustomDatabaseScreen({
           value={typeof value === 'string' ? value : ''}
           onChangeText={(text) => setDraftValue(field.id, text)}
           placeholder={field.name}
-          placeholderTextColor={GLASS_TEXT_FAINT}
+          placeholderTextColor={sInk3(GLASS_TEXT_FAINT)}
         />
       );
     }
@@ -1792,7 +1798,7 @@ export default function CustomDatabaseScreen({
           onChangeText={(text) => setDraftValue(field.id, text === '' ? '' : Number(text.replace(',', '.')) || 0)}
           keyboardType="numeric"
           placeholder={field.name}
-          placeholderTextColor={GLASS_TEXT_FAINT}
+          placeholderTextColor={sInk3(GLASS_TEXT_FAINT)}
         />
       );
     }
@@ -1802,7 +1808,7 @@ export default function CustomDatabaseScreen({
           <Text style={value ? styles.fieldPressableValue : styles.fieldPressablePlaceholder}>
             {value ? displayValue(field, value) : 'Обрати дату'}
           </Text>
-          <Ionicons name="calendar-outline" size={16} color={GLASS_TEXT_FAINT} />
+          <Ionicons name="calendar-outline" size={16} color={sInk3(GLASS_TEXT_FAINT)} />
         </Pressable>
       );
     }
@@ -1822,7 +1828,7 @@ export default function CustomDatabaseScreen({
           ) : (
             <Text style={styles.fieldPressablePlaceholder}>Обрати</Text>
           )}
-          <Ionicons name="chevron-down" size={16} color={GLASS_TEXT_FAINT} />
+          <Ionicons name="chevron-down" size={16} color={sInk3(GLASS_TEXT_FAINT)} />
         </Pressable>
       );
     }
@@ -1840,7 +1846,7 @@ export default function CustomDatabaseScreen({
           ) : (
             <Text style={styles.fieldPressablePlaceholder}>Обрати</Text>
           )}
-          <Ionicons name="chevron-down" size={16} color={GLASS_TEXT_FAINT} />
+          <Ionicons name="chevron-down" size={16} color={sInk3(GLASS_TEXT_FAINT)} />
         </Pressable>
       );
     }
@@ -1863,7 +1869,7 @@ export default function CustomDatabaseScreen({
         ) : (
           <Text style={styles.fieldPressablePlaceholder}>Обрати</Text>
         )}
-        <Ionicons name="chevron-down" size={16} color={GLASS_TEXT_FAINT} />
+        <Ionicons name="chevron-down" size={16} color={sInk3(GLASS_TEXT_FAINT)} />
       </Pressable>
     );
   }
@@ -1946,7 +1952,7 @@ export default function CustomDatabaseScreen({
           <View style={[styles.tableFrozenHeader, { width: TABLE_HANDLE_WIDTH + titleWidth }]}>
             <View style={styles.tableRowHandle} />
             <View style={[styles.tableHeaderCell, { width: titleWidth }]}>
-              <Ionicons name={FIELD_TYPE_ICON[firstField.type]} size={12} color="rgba(255,255,255,0.65)" />
+              <Ionicons name={FIELD_TYPE_ICON[firstField.type]} size={12} color={sInk2('rgba(255,255,255,0.65)')} />
               <Text style={styles.tableHeaderLabel} numberOfLines={1}>
                 {firstField.name}
               </Text>
@@ -1955,7 +1961,7 @@ export default function CustomDatabaseScreen({
           <ScrollView horizontal ref={headerScrollRef} scrollEnabled={false} showsHorizontalScrollIndicator={false}>
             {restFields.map((field) => (
               <View key={field.id} style={[styles.tableHeaderCell, { width: TABLE_COLUMN_WIDTH }]}>
-                <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color="rgba(255,255,255,0.65)" />
+                <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color={sInk2('rgba(255,255,255,0.65)')} />
                 <Text style={styles.tableHeaderLabel} numberOfLines={1}>
                   {field.name}
                 </Text>
@@ -2003,7 +2009,7 @@ export default function CustomDatabaseScreen({
                             : 'open-outline'
                         }
                         size={16}
-                        color="rgba(255,255,255,0.75)"
+                        color={sInk2('rgba(255,255,255,0.75)')}
                       />
                     </Pressable>
                     {renderTableCell(item.row, firstField, titleWidth)}
@@ -2059,11 +2065,11 @@ export default function CustomDatabaseScreen({
                 <Ionicons
                   name={selectedIds.has(row.id) ? 'checkmark-circle' : 'ellipse-outline'}
                   size={22}
-                  color="#fff"
+                  color={sInk('#fff')}
                 />
               ) : (
                 <Pressable hitSlop={8} onPress={() => setRowMenuId(row.id)}>
-                  <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.85)" />
+                  <Ionicons name="ellipsis-horizontal" size={16} color={sInk2('rgba(255,255,255,0.85)')} />
                 </Pressable>
               )
             }
@@ -2130,7 +2136,7 @@ export default function CustomDatabaseScreen({
           style={[styles.tableCellInput, { width }]}
           defaultValue={asText}
           placeholder="—"
-          placeholderTextColor="rgba(255,255,255,0.3)"
+          placeholderTextColor={sInk3('rgba(255,255,255,0.3)')}
           keyboardType={field.type === 'number' ? 'numeric' : 'default'}
           returnKeyType="done"
           onEndEditing={(e) => commitCellText(row, field, e.nativeEvent.text)}
@@ -2306,7 +2312,7 @@ export default function CustomDatabaseScreen({
             style={styles.scheduleWindowArrow}
             onPress={() => scheduleShiftWindow(-Math.round(SCHEDULE_WINDOW_DAYS / 2))}
           >
-            <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
+            <Ionicons name="chevron-back" size={18} color={sInk(GLASS_TEXT)} />
           </Pressable>
           <Text style={styles.scheduleWindowLabel} numberOfLines={1}>
             {windowStartDate.getDate()} {MONTH_FULL[windowStartDate.getMonth()]} — {lastDay.getDate()}{' '}
@@ -2317,7 +2323,7 @@ export default function CustomDatabaseScreen({
             style={styles.scheduleWindowArrow}
             onPress={() => scheduleShiftWindow(Math.round(SCHEDULE_WINDOW_DAYS / 2))}
           >
-            <Ionicons name="chevron-forward" size={18} color={GLASS_TEXT} />
+            <Ionicons name="chevron-forward" size={18} color={sInk(GLASS_TEXT)} />
           </Pressable>
           {scheduleWindowStart !== todayKey && (
             <Pressable
@@ -2719,9 +2725,9 @@ export default function CustomDatabaseScreen({
                   <Ionicons
                     name={(activeView?.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[viewMode]}
                     size={16}
-                    color="#fff"
+                    color={sInk('#fff')}
                   />
-                  <Ionicons name="pencil-outline" size={10} color="rgba(255,255,255,0.6)" />
+                  <Ionicons name="pencil-outline" size={10} color={sInk2('rgba(255,255,255,0.6)')} />
                 </Pressable>
                 <Text style={styles.editingViewBannerLabel} numberOfLines={1}>
                   Редагування: {activeView?.name ?? ''}
@@ -2751,7 +2757,7 @@ export default function CustomDatabaseScreen({
                     <Ionicons
                       name={tab.icon}
                       size={14}
-                      color={paramsTab === tab.key ? '#fff' : 'rgba(255,255,255,0.55)'}
+                      color={paramsTab === tab.key ? sInk('#fff') : sInk3('rgba(255,255,255,0.55)')}
                     />
                     <Text
                       style={[styles.paramsTabLabel, paramsTab === tab.key && styles.paramsTabLabelActive]}
@@ -2762,7 +2768,7 @@ export default function CustomDatabaseScreen({
                   </Pressable>
                 ))}
               <Pressable hitSlop={8} style={styles.paramsClose} onPress={closeParamList}>
-                <Ionicons name="close" size={18} color="rgba(255,255,255,0.7)" />
+                <Ionicons name="close" size={18} color={sInk2('rgba(255,255,255,0.7)')} />
               </Pressable>
             </View>
 
@@ -2802,14 +2808,14 @@ export default function CustomDatabaseScreen({
                     <Text style={[styles.paramOptionLabel, !groupField && styles.paramOptionLabelActive]}>
                       Без групування
                     </Text>
-                    {!groupField && <Ionicons name="checkmark" size={14} color="#fff" />}
+                    {!groupField && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
                   </Pressable>
                   {groupFields.map((field) => (
                     <Pressable key={field.id} style={styles.paramOption} onPress={() => selectGroupField(field.id)}>
                       <Ionicons
                         name={FIELD_TYPE_ICON[field.type]}
                         size={14}
-                        color={groupField?.id === field.id ? '#fff' : 'rgba(255,255,255,0.7)'}
+                        color={groupField?.id === field.id ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
                       />
                       <Text
                         style={[
@@ -2820,7 +2826,7 @@ export default function CustomDatabaseScreen({
                       >
                         {field.name}
                       </Text>
-                      {groupField?.id === field.id && <Ionicons name="checkmark" size={14} color="#fff" />}
+                      {groupField?.id === field.id && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
                     </Pressable>
                   ))}
                 </>
@@ -2830,7 +2836,7 @@ export default function CustomDatabaseScreen({
                 <>
                   {openFilterField && (
                     <Pressable style={styles.paramsBack} onPress={() => setFilterFieldId(null)}>
-                      <Ionicons name="chevron-back" size={14} color="#fff" />
+                      <Ionicons name="chevron-back" size={14} color={sInk('#fff')} />
                       <Text style={styles.paramsBackLabel} numberOfLines={1}>
                         {openFilterField.name}
                       </Text>
@@ -2844,7 +2850,7 @@ export default function CustomDatabaseScreen({
                           <Ionicons
                             name={FIELD_TYPE_ICON[field.type]}
                             size={14}
-                            color={active ? '#fff' : 'rgba(255,255,255,0.7)'}
+                            color={active ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
                           />
                           <Text style={[styles.paramOptionLabel, !!active && styles.paramOptionLabelActive]}>
                             {field.name}
@@ -2854,7 +2860,7 @@ export default function CustomDatabaseScreen({
                               {active.op === 'filled' ? '≠∅' : active.op === 'empty' ? '∅' : active.values?.length}
                             </Text>
                           )}
-                          <Ionicons name="chevron-forward" size={13} color="rgba(255,255,255,0.45)" />
+                          <Ionicons name="chevron-forward" size={13} color={sInk3('rgba(255,255,255,0.45)')} />
                         </Pressable>
                       );
                     })}
@@ -2872,7 +2878,7 @@ export default function CustomDatabaseScreen({
                             <Ionicons
                               name={on ? 'checkbox' : 'square-outline'}
                               size={15}
-                              color={on ? '#fff' : 'rgba(255,255,255,0.5)'}
+                              color={on ? sInk('#fff') : sInk3('rgba(255,255,255,0.5)')}
                             />
                             <Text style={[styles.paramOptionLabel, on && styles.paramOptionLabelActive]} numberOfLines={1}>
                               {facet.label}
@@ -2893,7 +2899,7 @@ export default function CustomDatabaseScreen({
                             <Ionicons
                               name={on ? 'radio-button-on' : 'radio-button-off'}
                               size={15}
-                              color={on ? '#fff' : 'rgba(255,255,255,0.5)'}
+                              color={on ? sInk('#fff') : sInk3('rgba(255,255,255,0.5)')}
                             />
                             <Text style={[styles.paramOptionLabel, on && styles.paramOptionLabelActive]}>
                               {op === 'filled' ? 'Заповнено' : 'Порожньо'}
@@ -2922,12 +2928,12 @@ export default function CustomDatabaseScreen({
                       <Ionicons
                         name={VIEW_ICONS[mode]}
                         size={14}
-                        color={viewMode === mode ? '#fff' : 'rgba(255,255,255,0.7)'}
+                        color={viewMode === mode ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
                       />
                       <Text style={[styles.paramOptionLabel, viewMode === mode && styles.paramOptionLabelActive]}>
                         {VIEW_LABELS[mode]}
                       </Text>
-                      {viewMode === mode && <Ionicons name="checkmark" size={14} color="#fff" />}
+                      {viewMode === mode && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
                     </Pressable>
                   ))}
                   {/* Graphic needs its own relation/date fields first, so
@@ -2947,12 +2953,12 @@ export default function CustomDatabaseScreen({
                     <Ionicons
                       name={VIEW_ICONS.schedule}
                       size={14}
-                      color={viewMode === 'schedule' ? '#fff' : 'rgba(255,255,255,0.7)'}
+                      color={viewMode === 'schedule' ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
                     />
                     <Text style={[styles.paramOptionLabel, viewMode === 'schedule' && styles.paramOptionLabelActive]}>
                       {VIEW_LABELS.schedule}
                     </Text>
-                    {viewMode === 'schedule' && <Ionicons name="checkmark" size={14} color="#fff" />}
+                    {viewMode === 'schedule' && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
                   </Pressable>
                 </>
               )}
@@ -2970,7 +2976,7 @@ export default function CustomDatabaseScreen({
         renderSchedule(activeView.id, activeView.scheduleConfig)
       ) : isLoading ? (
         <View style={styles.emptyState}>
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={sInk('#fff')} />
         </View>
       ) : displayedRows.length === 0 ? (
         <View style={styles.emptyState}>
@@ -3122,7 +3128,7 @@ export default function CustomDatabaseScreen({
             <View style={styles.paramsTabs}>
               <Text style={styles.paramsSheetTitle}>Показати, приховати властивості</Text>
               <Pressable hitSlop={8} style={styles.paramsClose} onPress={() => setQuickHiddenSheetVisible(false)}>
-                <Ionicons name="close" size={18} color="rgba(255,255,255,0.7)" />
+                <Ionicons name="close" size={18} color={sInk2('rgba(255,255,255,0.7)')} />
               </Pressable>
             </View>
             <ScrollView style={styles.paramsBody}>
@@ -3135,10 +3141,10 @@ export default function CustomDatabaseScreen({
                       <Ionicons
                         name={hidden ? 'eye-off-outline' : 'eye-outline'}
                         size={16}
-                        color={hidden ? 'rgba(255,255,255,0.4)' : '#fff'}
+                        color={hidden ? sInk3('rgba(255,255,255,0.4)') : sInk('#fff')}
                       />
                       <Text
-                        style={[styles.paramOptionLabel, hidden && { color: 'rgba(255,255,255,0.4)' }]}
+                        style={[styles.paramOptionLabel, hidden && { color: sInk3('rgba(255,255,255,0.4)') }]}
                         numberOfLines={1}
                       >
                         {field.name}
@@ -3161,7 +3167,7 @@ export default function CustomDatabaseScreen({
             <View style={styles.paramsTabs}>
               <Text style={styles.paramsSheetTitle}>Налаштування виглядів</Text>
               <Pressable hitSlop={8} style={styles.paramsClose} onPress={() => setViewsManagerVisible(false)}>
-                <Ionicons name="close" size={18} color="rgba(255,255,255,0.7)" />
+                <Ionicons name="close" size={18} color={sInk2('rgba(255,255,255,0.7)')} />
               </Pressable>
             </View>
             <ScrollView style={styles.paramsBody}>
@@ -3179,7 +3185,7 @@ export default function CustomDatabaseScreen({
                     setScheduleSetupVisible(true);
                   }}
                 >
-                  <Ionicons name="add-circle-outline" size={16} color="rgba(255,255,255,0.7)" />
+                  <Ionicons name="add-circle-outline" size={16} color={sInk2('rgba(255,255,255,0.7)')} />
                   <Text style={styles.viewManagerRowLabel} numberOfLines={1}>
                     Новий графік
                   </Text>
@@ -3191,19 +3197,19 @@ export default function CustomDatabaseScreen({
                   <Ionicons
                     name={(view.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[view.viewMode]}
                     size={16}
-                    color="rgba(255,255,255,0.7)"
+                    color={sInk2('rgba(255,255,255,0.7)')}
                   />
                   <Text style={styles.viewManagerRowLabel} numberOfLines={1}>
                     {view.name}
                   </Text>
                   <Pressable hitSlop={8} onPress={() => startEditView(view)}>
-                    <Ionicons name="options-outline" size={16} color="rgba(255,255,255,0.7)" />
+                    <Ionicons name="options-outline" size={16} color={sInk2('rgba(255,255,255,0.7)')} />
                   </Pressable>
                   <Pressable hitSlop={8} onPress={() => setViewPrompt({ mode: 'rename', view })}>
-                    <Ionicons name="pencil-outline" size={16} color="rgba(255,255,255,0.7)" />
+                    <Ionicons name="pencil-outline" size={16} color={sInk2('rgba(255,255,255,0.7)')} />
                   </Pressable>
                   <Pressable hitSlop={8} onPress={() => setViewGroupPickerFor(view)}>
-                    <Ionicons name="folder-outline" size={16} color="rgba(255,255,255,0.7)" />
+                    <Ionicons name="folder-outline" size={16} color={sInk2('rgba(255,255,255,0.7)')} />
                   </Pressable>
                   <Pressable hitSlop={8} onPress={() => confirmDeleteView(view)}>
                     <Ionicons name="trash-outline" size={16} color={DANGER} />
@@ -3224,16 +3230,16 @@ export default function CustomDatabaseScreen({
             <View style={styles.paramsTabs}>
               <Text style={styles.paramsSheetTitle}>Іконка вигляду</Text>
               <Pressable hitSlop={8} style={styles.paramsClose} onPress={() => setIconPickerVisible(false)}>
-                <Ionicons name="close" size={18} color="rgba(255,255,255,0.7)" />
+                <Ionicons name="close" size={18} color={sInk2('rgba(255,255,255,0.7)')} />
               </Pressable>
             </View>
             <View style={styles.iconSearchRow}>
-              <Ionicons name="search" size={14} color="rgba(255,255,255,0.5)" />
+              <Ionicons name="search" size={14} color={sInk3('rgba(255,255,255,0.5)')} />
               <TextInput
                 value={iconQuery}
                 onChangeText={setIconQuery}
                 placeholder="пошук іконки"
-                placeholderTextColor="rgba(255,255,255,0.4)"
+                placeholderTextColor={sInk3('rgba(255,255,255,0.4)')}
                 style={styles.iconSearchInput}
               />
             </View>
@@ -3248,7 +3254,7 @@ export default function CustomDatabaseScreen({
                     <Ionicons
                       name={name as keyof typeof Ionicons.glyphMap}
                       size={18}
-                      color={activeView?.icon === name ? '#0B1220' : 'rgba(255,255,255,0.8)'}
+                      color={activeView?.icon === name ? sBg('#0B1220') : sInk2('rgba(255,255,255,0.8)')}
                     />
                   </Pressable>
                 ))}
@@ -3282,7 +3288,7 @@ export default function CustomDatabaseScreen({
           <View style={styles.pageContainer}>
             <View style={styles.pageHeader}>
               <Pressable hitSlop={10} onPress={() => setRowPageId(null)}>
-                <Ionicons name="close" size={24} color={GLASS_TEXT} />
+                <Ionicons name="close" size={24} color={sInk(GLASS_TEXT)} />
               </Pressable>
               <Text style={styles.pageHeaderTitle} numberOfLines={1}>
                 {rowPageRow ? titleOf(rowPageRow) : ''}
@@ -3467,7 +3473,7 @@ export default function CustomDatabaseScreen({
                 ) : (
                   <View key={field.id} style={styles.editorField}>
                     <View style={styles.editorFieldLabelRow}>
-                      <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color={GLASS_TEXT_MUTED} />
+                      <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color={sInk2(GLASS_TEXT_MUTED)} />
                       <Text style={styles.editorFieldLabel}>{field.name}</Text>
                     </View>
                     {renderFieldInput(field)}
@@ -3479,7 +3485,7 @@ export default function CustomDatabaseScreen({
                   form - see addFieldFromForm for why that is the point
                   rather than a shortcut. */}
               <Pressable style={styles.addFieldRow} onPress={addFieldFromForm}>
-                <Ionicons name="add" size={16} color={GLASS_TEXT_MUTED} />
+                <Ionicons name="add" size={16} color={sInk2(GLASS_TEXT_MUTED)} />
                 <Text style={styles.addFieldLabel}>Поле</Text>
               </Pressable>
               <View style={styles.editorField}>
@@ -3703,12 +3709,12 @@ export default function CustomDatabaseScreen({
                 if (rowMenuRow) openEditRow(rowMenuRow);
               }}
             >
-              <Ionicons name="pencil-outline" size={18} color={GLASS_TEXT} />
+              <Ionicons name="pencil-outline" size={18} color={sInk(GLASS_TEXT)} />
               <Text style={styles.cardMenuRowLabel}>Редагувати</Text>
             </Pressable>
             {rowMenuRow && documentIdsOf(rowMenuRow).length > 0 && (
               <Pressable style={styles.cardMenuRow} onPress={() => openRowDocuments(rowMenuRow)}>
-                <Ionicons name="document-text-outline" size={18} color={GLASS_TEXT} />
+                <Ionicons name="document-text-outline" size={18} color={sInk(GLASS_TEXT)} />
                 <Text style={styles.cardMenuRowLabel}>
                   Документи ({documentIdsOf(rowMenuRow).length})
                 </Text>
@@ -3727,7 +3733,7 @@ export default function CustomDatabaseScreen({
                 setRowMenuId(null);
               }}
             >
-              <Ionicons name="folder-outline" size={18} color={GLASS_TEXT} />
+              <Ionicons name="folder-outline" size={18} color={sInk(GLASS_TEXT)} />
               <Text style={styles.cardMenuRowLabel}>Проект</Text>
             </Pressable>
             <Pressable
@@ -4968,6 +4974,88 @@ function SortOption({
     </Pressable>
   );
 }
+
+// The windows (the record page, the parameters, the editors) in the soft
+// style: every glass colour taken to its soft counterpart - white ink to
+// the soft ink, see-through white to the quiet inks, glass bodies to the
+// card surface. Generated from the base styles' own colours, so a window
+// cannot keep a stray white; the few white labels that stand on the
+// accent ("Редагувати", "Зберегти") stay white.
+const softCustomDatabaseWindows = (S: SoftTokens) =>
+  StyleSheet.create({
+    headerButtonsDivider: { backgroundColor: S.fill },
+    menuSectionLabel: { color: S.ink3 },
+    menuRowLabel: { color: S.ink },
+    menuDivider: { backgroundColor: S.line },
+    pageContainer: { backgroundColor: S.card },
+    pageHeader: { borderBottomColor: S.line },
+    pageField: { borderBottomColor: S.line },
+    pageFieldEmpty: { color: S.ink3 },
+    backlinkRow: { backgroundColor: S.fill },
+    backlinkRowLabel: { color: S.ink },
+    paramChipActive: { borderColor: S.line },
+    paramChip: { backgroundColor: S.fillSolid, borderColor: S.line },
+    paramChipLabel: { color: S.ink2 },
+    paramExpanded: { backgroundColor: S.card, borderColor: S.line },
+    paramOptionLabel: { color: S.ink2 },
+    paramOptionCount: { color: S.ink3 },
+    paramDivider: { backgroundColor: S.fill },
+    paramOptionLabelActive: { color: S.ink },
+    searchRow: { backgroundColor: S.fill },
+    searchInput: { color: S.ink },
+    tableHeaderRow: { backgroundColor: S.fill },
+    tableHeaderLabel: { color: S.ink },
+    tableRow: { borderBottomColor: S.line },
+    tableCell: { color: S.ink },
+    scheduleRowHeaderCell: { borderBottomColor: S.line },
+    scheduleRowHeaderLabel: { color: S.ink },
+    scheduleWindowLabel: { color: S.ink },
+    scheduleWindowToday: { backgroundColor: S.fill },
+    scheduleWindowTodayLabel: { color: S.ink },
+    scheduleTotalsRowLabel: { color: S.ink3 },
+    scheduleTotalsValue: { color: S.ink },
+    scheduleDateHeaderCellToday: { backgroundColor: S.fill },
+    scheduleDateHeaderWeekday: { color: S.ink2 },
+    scheduleDateHeaderNum: { color: S.ink },
+    scheduleDayCell: { borderColor: S.line },
+    scheduleDayCellToday: { backgroundColor: S.fill },
+    tableCellEmpty: { color: S.ink3 },
+    tableCellInput: { color: S.ink },
+    sheet: { backgroundColor: S.card },
+    paramsSheet: { backgroundColor: S.card },
+    paramsTabs: { borderBottomColor: S.line },
+    paramsTabActive: { backgroundColor: S.fill },
+    paramsTabLabel: { color: S.ink3 },
+    paramsTabLabelActive: { color: S.ink },
+    paramsSheetTitle: { color: S.ink },
+    editingViewIconBtn: { backgroundColor: S.fill },
+    editingViewBannerLabel: { color: S.ink2 },
+    viewManagerRowLabel: { color: S.ink },
+    iconSearchRow: { backgroundColor: S.fill },
+    iconSearchInput: { color: S.ink },
+    iconCellSelected: { backgroundColor: S.ink },
+    paramsBack: { borderBottomColor: S.line },
+    paramsBackLabel: { color: S.ink },
+    editorSheet: { backgroundColor: S.card },
+    handle: { backgroundColor: S.line },
+    title: { color: S.ink },
+    addFieldLabel: { color: S.ink2 },
+    editorFieldLabel: { color: S.ink2 },
+    optionPickerEmpty: { color: S.ink3 },
+    fieldInput: { borderColor: S.line, color: S.ink },
+    fieldPressable: { borderColor: S.line },
+    fieldPressableValue: { color: S.ink },
+    fieldPressablePlaceholder: { color: S.ink3 },
+    optionPickerLabel: { color: S.ink },
+    relationSearchInput: { borderColor: S.line, color: S.ink },
+    cancelLabel: { color: S.ink2 },
+    cardMenuSheet: { backgroundColor: S.card },
+    cardMenuRowLabel: { color: S.ink },
+    pageTitle: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', letterSpacing: -0.3, color: S.ink },
+    pageHeaderTitle: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink },
+    pageFieldValue: { fontFamily: SOFT_REGULAR, color: S.ink },
+    pageFieldLabel: { fontFamily: SOFT_MEDIUM, color: S.ink3 },
+  }) as Record<string, object>;
 
 // The soft overlay for the list (theme/soft's softenStyles): the view
 // capsules as the soft pills, group headings and totals in the soft
