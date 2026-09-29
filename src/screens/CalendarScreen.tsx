@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import {
@@ -53,8 +53,9 @@ import DayPageMiniature from '../components/DayPageMiniature';
 import { extractPreview } from '../utils/documentPreview';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { DockMark, useDockActions, useDockBeads, useDockShowContext, useNavDockActions, useNavDockFace, useNavDockPublisher, useTopBack, useTopExtras } from '../navigation/navDock';
+import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import { useSoft, type SoftTokens } from '../theme/soft';
+import { DockMark, useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockActions, useNavDockFace, useNavDockPublisher, useTopBack, useTopExtras } from '../navigation/navDock';
 import InlineDock from '../components/InlineDock';
 import {
   MONTH_FULL,
@@ -143,7 +144,7 @@ const HEADER_GAP = 8;
 const FILLED_ROW_HEIGHT = ROW_HEIGHT + WEEKDAY_HEADER_HEIGHT;
 
 export default function CalendarScreen() {
-  const styles = useStyles(makeStyles);
+  const baseStyles = useStyles(makeStyles);
   const theme = useTheme();
   const accent = theme.sections.calendar;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -175,6 +176,15 @@ export default function CalendarScreen() {
   // which is exactly the cramped feeling a column of its own removes.
   const { isTwoPane, isThreePane } = useResponsiveLayout();
   const pointerDensity = useDensity() === 'pointer';
+  // THE CALENDAR IN THE SOFT STYLE (theme/soft) - the user's pick of the
+  // next screen after the note ("календар"). On a phone, and not when it
+  // is the drawer over a desk (there the blurred desk is its ground). The
+  // bar and the dock follow through useChromeStyle, like the note's.
+  const softCalendar = !pointerDensity && !calendarDrawer;
+  const softTokensAll = useSoft();
+  useChromeStyle('soft', softCalendar);
+  const S = softCalendar ? softTokensAll : null;
+  const styles = S ? softenCalendar(baseStyles, S) : baseStyles;
   // The calendar's own column, measured rather than assumed: in two panes
   // the window is no longer the space the strip has, and a strip whose
   // pages are sized against the wrong width is exactly how this screen
@@ -1535,6 +1545,7 @@ export default function CalendarScreen() {
   }
 
   return (
+    <SoftCalendarContext.Provider value={S}>
     <View style={styles.container} onLayout={(e) => {
         containerHRef.current = e.nativeEvent.layout.height;
         updatePageShift();
@@ -1546,7 +1557,13 @@ export default function CalendarScreen() {
           white background, painted over this, not a separate override
           here. */}
       {/* Over the desk the blurred desk IS the ground - see CalendarDrawer. */}
-      {!calendarDrawer && <ScreenBackdrop id="calendarBg" />}
+      {!calendarDrawer &&
+        (S ? (
+          // The soft ground: one quiet colour, not the drifting backdrop.
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: S.bg }]} />
+        ) : (
+          <ScreenBackdrop id="calendarBg" />
+        ))}
 
       {!pointerDensity && (
       <Animated.View style={[styles.headerRow, { paddingTop: headerPadTop }, phoneOverview && overviewFadeStyle]}>
@@ -1691,6 +1708,7 @@ export default function CalendarScreen() {
                         blocks={day.blocks}
                         checklistItems={preview.checklistItems}
                         layout="grid"
+                        soft={S}
                         gridWidth={DESKTOP_CALENDAR_WIDTH - 40}
                         onPress={() => selectDay(date)}
                       />
@@ -2107,6 +2125,7 @@ export default function CalendarScreen() {
                       previewText={preview.previewText}
                       bodyMatch={findBodyMatch(day.blocks, needle)}
                       search={needle}
+                      soft={S}
                       layout="list"
                       onPress={() => {
                         setDaySearch(null);
@@ -2159,6 +2178,7 @@ export default function CalendarScreen() {
         </>
       )}
     </View>
+    </SoftCalendarContext.Provider>
   );
 }
 
@@ -2166,13 +2186,23 @@ export default function CalendarScreen() {
 // sheet would have, like the diary search's cards, saying only the date.
 function ShortDayCard({ id, label, height, onPress }: { id: string; label: string; height: number; onPress: () => void }) {
   const recordColour = useRecordColour();
-  const { background, text, textMuted } = recordColour(id);
+  const S = useContext(SoftCalendarContext);
+  const own = recordColour(id);
+  // Soft: the quiet card surface, lifted by the soft shadow - no outline.
+  const { background, text, textMuted } = S ? { background: S.card, text: S.ink, textMuted: S.ink3 } : own;
   return (
-    <Pressable onPress={onPress} style={[shortCardStyles.card, { height, backgroundColor: background }]}>
-      <Text style={[shortCardStyles.date, { color: text }]} numberOfLines={1}>
+    <Pressable
+      onPress={onPress}
+      style={[
+        shortCardStyles.card,
+        { height, backgroundColor: background },
+        S && { borderWidth: 0, borderRadius: 18, elevation: 0, shadowOpacity: 0, boxShadow: S.shadow },
+      ]}
+    >
+      <Text style={[shortCardStyles.date, { color: text }, S && { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal' }]} numberOfLines={1}>
         {label}
       </Text>
-      <Text style={[shortCardStyles.empty, { color: textMuted }]} numberOfLines={1}>
+      <Text style={[shortCardStyles.empty, { color: textMuted }, S && { fontFamily: SOFT_REGULAR }]} numberOfLines={1}>
         Порожній день
       </Text>
     </Pressable>
@@ -2244,7 +2274,9 @@ function DayCell({
   height?: number;
   onPress: () => void;
 }) {
-  const styles = useStyles(makeStyles);
+  const baseStyles = useStyles(makeStyles);
+  const S = useContext(SoftCalendarContext);
+  const styles = S ? softenCalendar(baseStyles, S) : baseStyles;
   const numColor = isToday ? styles.dayNumToday : muted ? styles.dayNumMuted : null;
   return (
     <Pressable
@@ -2283,6 +2315,52 @@ function DayCell({
       </View>
     </Pressable>
   );
+}
+
+// THE SOFT CALENDAR: what changes, key by key, laid over the base styles
+// (the same pattern as the note's canvas and «Референси»). Handed to the
+// day cells and the overview's short cards through SoftCalendarContext.
+const SoftCalendarContext = createContext<SoftTokens | null>(null);
+
+function softCalendarOverrides(S: SoftTokens) {
+  return StyleSheet.create({
+    todayButton: { borderWidth: 0, borderRadius: 17, backgroundColor: S.fillSolid, paddingHorizontal: 14, paddingVertical: 7 },
+    todayButtonLabel: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', fontSize: 13, color: S.ink },
+    headerDateLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', fontSize: 17, letterSpacing: -0.2, color: S.ink },
+    // The month: a soft card lifted off the ground, not an outline.
+    calendarPlate: { borderColor: 'transparent', borderRadius: 26, backgroundColor: S.card, boxShadow: S.shadow },
+    monthNavLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', fontSize: 17, letterSpacing: -0.2, color: S.ink },
+    weekdayHeaderLabel: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', color: S.ink3 },
+    dayCircleSelected: { borderColor: 'transparent', backgroundColor: S.fill },
+    dayCircleToday: { backgroundColor: S.ink, borderColor: S.ink },
+    dayNum: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', color: S.ink },
+    dayNumMuted: { color: S.ink3 },
+    dayNumToday: { color: S.card },
+    filledDot: { backgroundColor: S.ink2 },
+    filledDotOnToday: { backgroundColor: S.card },
+    // History, the one other mark a day can carry: the accent rather
+    // than a stray blue.
+    historyDot: { backgroundColor: S.accent },
+    overviewDate: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', letterSpacing: -0.2, color: S.ink },
+    historyHeadLabel: { fontFamily: SOFT_MEDIUM, color: S.ink2 },
+    dueCard: { backgroundColor: S.card, borderRadius: 20, boxShadow: S.shadow },
+    noteArea: { borderRadius: 24 },
+  }) as Record<string, object>;
+}
+
+type CalendarStyles = ReturnType<typeof makeStyles>;
+const softCalendarCache = new WeakMap<object, Map<SoftTokens, CalendarStyles>>();
+function softenCalendar(base: CalendarStyles, S: SoftTokens): CalendarStyles {
+  let byTokens = softCalendarCache.get(base);
+  if (!byTokens) softCalendarCache.set(base, (byTokens = new Map()));
+  const hit = byTokens.get(S);
+  if (hit) return hit;
+  const over = softCalendarOverrides(S);
+  const merged = { ...base } as Record<string, unknown>;
+  for (const key of Object.keys(over)) merged[key] = [merged[key], over[key]];
+  const result = merged as CalendarStyles;
+  byTokens.set(S, result);
+  return result;
 }
 
 const makeStyles = (t: Theme) =>
