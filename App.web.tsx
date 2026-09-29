@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
   useFonts,
   Nunito_400Regular,
@@ -33,6 +33,7 @@ import ContextDock from './src/components/ContextDock';
 import DesktopRail from './src/components/DesktopRail';
 import RightColumn from './src/components/desktop/RightColumn';
 import { WorkspaceProvider } from './src/navigation/workspace';
+import { DESKTOP_NARROW_BELOW } from './src/constants/desktop';
 import DesktopToolbar from './src/components/DesktopToolbar';
 import DesktopTabs from './src/components/DesktopTabs';
 import { useDensity } from './src/hooks/useDensity';
@@ -144,7 +145,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   driveTextRail: {
-    fontSize: 11,
+    fontSize: 13,
     textAlign: 'left',
   },
   driveText: {
@@ -319,6 +320,11 @@ export default function App() {
   const [needsDrive, setNeedsDrive] = useState(!isDesktopShell());
   const [prefetch, setPrefetch] = useState(prefetchState());
   const pointer = useDensity() === 'pointer';
+  // Half a screen beside another window: the rail is icons only and cannot
+  // carry the account strip, so it goes back across the foot of the window.
+  const shellWidth = useWindowDimensions().width;
+  const narrowShell = pointer && shellWidth < DESKTOP_NARROW_BELOW;
+  const railStrip = pointer && !narrowShell;
 
   // Not a request - a look in the browser's storage for a token from
   // within the hour. Nothing is asked of Google here, because nothing
@@ -435,15 +441,15 @@ export default function App() {
   // does not on a Mac, where every sidebar in the world keeps the
   // account at the bottom.
   const accountStrip = (
-    <View style={[styles.driveBar, pointer && styles.driveBarRail]}>
-      <AccountText rail={!!pointer} lines={1}>
+    <View style={[styles.driveBar, railStrip && styles.driveBarRail]}>
+      <AccountText rail={railStrip} lines={1}>
         {user.email ?? 'Акаунт Google'}
       </AccountText>
       {/* In the corner with the account, not across the middle: it
           repeats, it is nobody's business most of the time, and it
           goes away by itself when the folder is full. */}
       {prefetch.running && prefetch.total > 0 && (
-        <AccountText rail={!!pointer}>{`Готую офлайн: ${prefetch.done} з ${prefetch.total}`}</AccountText>
+        <AccountText rail={railStrip}>{`Готую офлайн: ${prefetch.done} з ${prefetch.total}`}</AccountText>
       )}
       <Pressable
         style={styles.linkButton}
@@ -452,7 +458,7 @@ export default function App() {
           await signInWithGoogleAccount().catch(() => {});
         }}
       >
-        <AccountText rail={!!pointer} link>
+        <AccountText rail={railStrip} link>
           Змінити акаунт
         </AccountText>
       </Pressable>
@@ -467,7 +473,7 @@ export default function App() {
           rather than made. */}
       {!drive && needsDrive && (
         <>
-          <AccountText rail={!!pointer} lines={2}>
+          <AccountText rail={railStrip} lines={2}>
             {/* The reason, when there is one. This bar used to say the
                 same sentence whether Drive had never been asked, had
                 refused, or had answered and been ignored - so a
@@ -544,7 +550,7 @@ export default function App() {
               {pointer ? (
                 <WorkspaceProvider>
                 <View style={styles.deskRow}>
-                  <DesktopRail footer={accountStrip} />
+                  <DesktopRail footer={railStrip ? accountStrip : undefined} />
                   <View style={styles.deskBody}>
                     {/* The dock, unrolled - the path on the left and
                         what this screen can do on the right, off the
@@ -560,6 +566,9 @@ export default function App() {
                   </View>
                   <RightColumn />
                 </View>
+                {/* At the FOOT, so nothing drawn at window level (the search
+                    corner) has to allow for it above. */}
+                {narrowShell && accountStrip}
                 </WorkspaceProvider>
               ) : (
                 <RootNavigator />

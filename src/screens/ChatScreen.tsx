@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { IS_POINTER } from '../utils/pointer';
 import { rightClick } from '../utils/rightClick';
 import { ActivityIndicator, FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { FileRow, LinkRow, PhotoRow } from '../components/ItemCards';
@@ -888,7 +889,7 @@ const softChatRecipe = (S: SoftTokens) =>
     bubbleGemini: { borderWidth: 0, backgroundColor: S.dark ? 'rgba(232,154,98,0.14)' : 'rgba(217,121,63,0.10)', boxShadow: [] },
     geminiLabelText: { fontFamily: SOFT_SEMIBOLD, textTransform: 'none', letterSpacing: 0, fontSize: 12 },
     askingLabel: { fontFamily: SOFT_REGULAR, color: S.ink2 },
-    bubbleText: { fontFamily: SOFT_REGULAR, fontSize: 16.5, lineHeight: 24, color: S.ink },
+    bubbleText: { fontFamily: SOFT_REGULAR, fontSize: IS_POINTER ? 14.5 : 16.5, lineHeight: IS_POINTER ? 21 : 24, color: S.ink },
     bubbleTime: { fontFamily: SOFT_MEDIUM, color: S.ink3 },
     usedLabel: { fontFamily: SOFT_MEDIUM },
     emptyLabel: { fontFamily: SOFT_SEMIBOLD, color: S.ink },
@@ -956,8 +957,8 @@ const makeStyles = (t: Theme) =>
       color: t.ink.muted,
     },
     bubbleText: {
-      fontSize: 16,
-      lineHeight: 22,
+      fontSize: IS_POINTER ? 14.5 : 16,
+      lineHeight: IS_POINTER ? 21 : 22,
       fontFamily: FONT_REGULAR,
       color: t.ink.primary,
     },

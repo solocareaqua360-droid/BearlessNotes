@@ -189,7 +189,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   crumbLabel: {
     flexShrink: 1,
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
   },
@@ -217,7 +217,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     backgroundColor: t.selected,
   },
   buttonLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
   },

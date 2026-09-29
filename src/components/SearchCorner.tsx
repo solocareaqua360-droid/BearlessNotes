@@ -10,7 +10,7 @@ import { useLift, useTheme } from '../theme/ThemeProvider';
 import { useSoft } from '../theme/soft';
 import { useDensity } from '../hooks/useDensity';
 import { LayoutFrameContext } from '../hooks/useResponsiveLayout';
-import { DESKTOP_RAIL_WIDTH, DESKTOP_TABS_HEIGHT, DESKTOP_TOOLBAR_ROW } from '../constants/desktop';
+import { DESKTOP_TABS_HEIGHT, DESKTOP_TOOLBAR_ROW, useDesktopRailWidth } from '../constants/desktop';
 import { DOCK_PIECE_RADIUS, dockCardHeight, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
 import { FONT_REGULAR } from '../utils/fonts';
 
@@ -70,8 +70,9 @@ export default function SearchCorner({
   // through is the panel's, not the window's.
   const frame = useContext(LayoutFrameContext);
   const inPanel = pointer && !!frame;
+  const railWidth = useDesktopRailWidth();
   const full = inPanel ? Math.min(320, (frame?.width ?? 320) - 24) : pointer ? 320 : dockRowWidth(windowWidth);
-  const left = inPanel ? 12 : pointer ? DESKTOP_RAIL_WIDTH + 16 : dockRowLeft(windowWidth);
+  const left = inPanel ? 12 : pointer ? railWidth + 16 : dockRowLeft(windowWidth);
   const expanded = open && !!onClose;
 
   const width = useSharedValue(expanded ? full : bead);

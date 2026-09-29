@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { IS_POINTER } from '../utils/pointer';
 import { rightClick } from '../utils/rightClick';
 import type { LayoutChangeEvent } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -178,7 +179,7 @@ function PreviewBody({
   // Same rule as the title's own scaling above - only the LIST row's
   // plain-text preview, never the grid card's (fixed-height tile).
   const textScale = useTextScale();
-  const scaledPreview = compact ? null : { fontSize: Math.round(15 * textScale), lineHeight: Math.round(21 * textScale) };
+  const scaledPreview = compact ? null : { fontSize: Math.round((IS_POINTER ? 13.5 : 15) * textScale), lineHeight: Math.round((IS_POINTER ? 19 : 21) * textScale) };
   if (checklistItems.length > 0) {
     // What is LEFT of the card after the rows. textLines is the card's
     // own line budget (see previewLinesFitting), and a checklist row is
@@ -576,7 +577,7 @@ export default function DocumentCard({
   // exactly the "iconography stops fitting" risk the user named. The
   // list row has no such fixed box to overflow.
   const textScale = useTextScale();
-  const scaledTitle = isGrid ? null : { fontSize: Math.round(18 * textScale) };
+  const scaledTitle = isGrid ? null : { fontSize: Math.round((IS_POINTER ? 16 : 18) * textScale) };
   // A list row keeps its own square placeholder regardless (a small
   // thumbnail beside text reads as "no photo yet", not as reserved cover
   // space) - only the grid card's top-of-card image slot goes away

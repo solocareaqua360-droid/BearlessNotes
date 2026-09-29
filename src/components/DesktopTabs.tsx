@@ -234,7 +234,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   label: {
     flexShrink: 1,
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
   },
@@ -274,7 +274,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingHorizontal: 14,
   },
   menuLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: FONT_REGULAR,
     color: t.ink.primary,
   },

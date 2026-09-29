@@ -434,12 +434,14 @@ function command(name) {
 }
 
 // THE PAGE'S SCALE. The app is drawn in points a finger can hit; a mouse
-// hits smaller things, so on the Mac everything is drawn at 85% by default
-// (the user's own pick, Mac density plan step 1). A real page zoom - the
+// hits smaller things, so on the Mac everything is drawn at 95% by default
+// (the user's own pick, Mac density plan step 1; raised to 0.95 once the
+// small text turned out to land under 12px - see the type notes in
+// documentEditorStyles). A real page zoom - the
 // text is re-laid out and stays sharp, unlike a scaled picture - and it is
 // also what gives the window more room: at 0.85 a 1440-wide window is laid
 // out as 1694. Kept in settings.json, changed with Cmd + / Cmd - / Cmd 0.
-const ZOOM_DEFAULT = 0.85;
+const ZOOM_DEFAULT = 0.95;
 const ZOOM_MIN = 0.6;
 const ZOOM_MAX = 1.4;
 

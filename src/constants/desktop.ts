@@ -8,3 +8,23 @@ export const DESKTOP_RAIL_WIDTH = 240;
 // drawn at window level, like the search corner, has to stand below.
 export const DESKTOP_TABS_HEIGHT = 41;
 export const DESKTOP_TOOLBAR_ROW = 46;
+
+// A window is NARROW below this (CSS points): half a screen beside another
+// application is the way this app is really used on a Mac, and at 720-760
+// the full rail, the main pane and a side column cannot all stand at once.
+// Narrow, the rail folds to icons and the side column is capped so the main
+// pane keeps room to be used.
+export const DESKTOP_NARROW_BELOW = 1000;
+export const DESKTOP_RAIL_NARROW = 52;
+export const DESKTOP_MAIN_MIN = 380;
+
+import { useWindowDimensions } from 'react-native';
+
+export function useDesktopNarrow(): boolean {
+  return useWindowDimensions().width < DESKTOP_NARROW_BELOW;
+}
+
+// The rail's width now, as anything standing against its edge needs it.
+export function useDesktopRailWidth(): number {
+  return useDesktopNarrow() ? DESKTOP_RAIL_NARROW : DESKTOP_RAIL_WIDTH;
+}

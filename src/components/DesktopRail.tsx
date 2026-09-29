@@ -9,7 +9,7 @@ import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 
-import { DESKTOP_RAIL_WIDTH } from '../constants/desktop';
+import { DESKTOP_RAIL_WIDTH, useDesktopNarrow, DESKTOP_RAIL_NARROW } from '../constants/desktop';
 
 export const RAIL_WIDTH = DESKTOP_RAIL_WIDTH;
 
@@ -69,6 +69,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   // is where a Mac keeps "back" anyway.
   const leave = useNavDockLeave();
   const workspace = useWorkspace();
+  const narrow = useDesktopNarrow();
   const [open, setOpen] = useState<Set<string>>(new Set());
 
   // Which of the four is showing. Read through the global ref, not
@@ -141,11 +142,11 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   }
 
   return (
-    <View style={styles.rail}>
+    <View style={[styles.rail, narrow && { width: DESKTOP_RAIL_NARROW }]}>
       {!!leave && (
         <Pressable style={styles.leave} onPress={leave.onLeave}>
           <Ionicons name="chevron-back" size={16} color={theme.ink.primary} />
-          <Text style={styles.leaveLabel}>Назад</Text>
+          {!narrow && <Text style={styles.leaveLabel}>Назад</Text>}
         </Pressable>
       )}
       <View style={styles.sections}>
@@ -164,7 +165,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
                 size={17}
                 color={active ? theme.accent : theme.ink.muted}
               />
-              <Text style={[styles.sectionLabel, active && styles.sectionLabelActive]}>{s.name}</Text>
+              {!narrow && <Text style={[styles.sectionLabel, active && styles.sectionLabelActive]}>{s.name}</Text>}
             </Pressable>
           );
         })}
@@ -174,7 +175,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
           is a switch - open it, or put it away again. */}
       {!!workspace && (
         <View style={styles.panels}>
-          <Text style={styles.panelsLabel}>Панелі</Text>
+          {!narrow && <Text style={styles.panelsLabel}>Панелі</Text>}
           {(
             [
               { spec: { kind: 'databases' as const }, icon: 'apps-outline', label: 'Бази' },
@@ -189,7 +190,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
                 onPress={() => workspace.toggle(item.spec)}
               >
                 <Ionicons name={item.icon as never} size={17} color={on ? theme.accent : theme.ink.muted} />
-                <Text style={[styles.sectionLabel, on && styles.sectionLabelActive]}>{item.label}</Text>
+                {!narrow && <Text style={[styles.sectionLabel, on && styles.sectionLabelActive]}>{item.label}</Text>}
               </Pressable>
             );
           })}
@@ -200,13 +201,13 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
                 size={17}
                 color={theme.ink.muted}
               />
-              <Text style={styles.sectionLabel}>{workspace.hidden ? 'Показати колонку' : 'Сховати колонку'}</Text>
+              {!narrow && <Text style={styles.sectionLabel}>{workspace.hidden ? 'Показати колонку' : 'Сховати колонку'}</Text>}
             </Pressable>
           )}
         </View>
       )}
 
-      {!!tree && (
+      {!!tree && !narrow && (
         <>
           <View style={styles.rule} />
           {!!tree.onNewFolder && (
@@ -256,12 +257,12 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
       {/* Whatever the screen puts here - the calendar's month and the
           day's history. Under the sections, above the account, in the
           same place the folder tree stands for a list. */}
-      {!!panel && <View style={styles.panel}>{panel}</View>}
+      {!!panel && !narrow && <View style={styles.panel}>{panel}</View>}
 
       {/* Whose data this is, at the foot of the column - where a sidebar
           keeps it. It is the same strip the phone shows across the top;
           only its place changes. */}
-      {!!footer && <View style={styles.footer}>{footer}</View>}
+      {!!footer && !narrow && <View style={styles.footer}>{footer}</View>}
     </View>
   );
 }
@@ -292,7 +293,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     backgroundColor: t.selected,
   },
   leaveLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: FONT_SEMIBOLD,
     color: t.ink.primary,
   },
@@ -306,7 +307,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     marginTop: 10,
   },
   panelsLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: FONT_SEMIBOLD,
     color: t.ink.faint,
     paddingHorizontal: 10,
@@ -324,7 +325,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     backgroundColor: t.selected,
   },
   sectionLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
   },
@@ -349,7 +350,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     borderRadius: 7,
   },
   newFolderLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: FONT_REGULAR,
     color: t.ink.faint,
   },
@@ -380,7 +381,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   folderName: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
   },
@@ -389,7 +390,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     color: t.ink.primary,
   },
   count: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: FONT_REGULAR,
     color: t.ink.faint,
   },

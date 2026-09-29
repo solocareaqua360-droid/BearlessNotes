@@ -2760,7 +2760,7 @@ const makeStyles = (t: Theme) =>
     paddingBottom: 6,
   },
   railMonthLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     fontFamily: FONT_SEMIBOLD,
     color: t.ink.primary,
@@ -2771,7 +2771,7 @@ const makeStyles = (t: Theme) =>
   railWeekday: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 9.5,
+    fontSize: 12,
     color: t.ink.faint,
   },
   railWeek: {
@@ -2788,7 +2788,7 @@ const makeStyles = (t: Theme) =>
     backgroundColor: t.edge.strong,
   },
   railDayLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: t.ink.primary,
   },
   railDayLabelHere: {

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Ionicons } from '../icons/Ionicons';
 import PaneScreen from './PaneScreen';
 import { useWorkspace, type Panel } from '../../navigation/workspace';
 import { useSoft } from '../../theme/soft';
+import { DESKTOP_MAIN_MIN, useDesktopNarrow, useDesktopRailWidth } from '../../constants/desktop';
 import { SOFT_SEMIBOLD } from '../../utils/fonts';
 
 // The side panels, in a column against the window's right edge: each a
@@ -70,6 +71,9 @@ function PanelFrame({ panel }: { panel: Panel }) {
 export default function RightColumn() {
   const workspace = useWorkspace();
   const S = useSoft();
+  const windowWidth = useWindowDimensions().width;
+  const railWidth = useDesktopRailWidth();
+  useDesktopNarrow();
   const startX = useRef(0);
   const startWidth = useRef(0);
   const handle = useRef<View | null>(null);
@@ -100,7 +104,7 @@ export default function RightColumn() {
 
   if (!workspace || workspace.hidden || workspace.panels.length === 0) return null;
   return (
-    <View style={[styles.column, { width: workspace.width, backgroundColor: S.bg }]}>
+    <View style={[styles.column, { width: Math.max(260, Math.min(workspace.width, windowWidth - railWidth - DESKTOP_MAIN_MIN)), backgroundColor: S.bg }]}>
       <View ref={handle} style={styles.splitter} />
       {/* No limit on how many: past what fits, the column scrolls. */}
       <ScrollView style={styles.stackScroll} contentContainerStyle={styles.stack} showsVerticalScrollIndicator={false}>
