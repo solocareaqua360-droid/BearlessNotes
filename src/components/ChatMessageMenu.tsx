@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import Animated, { FadeIn, FadeOut, SlideInLeft, SlideInRight } from 'react-native-reanimated';
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import Animated, { Easing, SlideInLeft, SlideInRight, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import GlassLayer from './GlassLayer';
+import { BlurView } from 'expo-blur';
+import { GlassPortal } from './GlassPortal';
+import { useBlurTarget } from './GlassTarget';
 import { Ionicons } from './icons/Ionicons';
 import SoftIcon from './SoftIcon';
 import { useSoft } from '../theme/soft';
@@ -122,6 +124,47 @@ export default function ChatMessageMenu({
     return { bubbleTop, bubbleH, menuTop, menuLeft };
   }, [anchor, menuH, windowH, windowW, insets.top, insets.bottom]);
 
+  // THE MOTION (the user's call: "зараз це ривок"). One progress, 0 -> 1:
+  // the message glides from where it stood to where it is shown and comes
+  // a touch forward; the card grows out of the corner nearest the message
+  // to its own size; the dim comes up with them. Closing runs it back
+  // before anything is taken away.
+  const progress = useSharedValue(0);
+  const closing = useSharedValue(0);
+  useEffect(() => {
+    if (!anchor) return;
+    closing.value = 0;
+    progress.value = 0;
+    progress.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) });
+  }, [anchor, progress, closing]);
+  const travel = anchor && place ? anchor.y - place.bubbleTop : 0;
+  const menuBelow = anchor && place ? place.menuTop > place.bubbleTop : true;
+  const bubbleMotion = useAnimatedStyle(() => ({
+    transform: [{ translateY: travel * (1 - progress.value) }, { scale: 1 + 0.02 * progress.value }],
+  }));
+  const menuMotion = useAnimatedStyle(() => ({
+    opacity: Math.min(1, progress.value * 1.6),
+    transform: [{ scale: 0.55 + 0.45 * progress.value }],
+  }));
+  const dimMotion = useAnimatedStyle(() => ({ opacity: progress.value }));
+  const close = () => {
+    if (closing.value) return;
+    closing.value = 1;
+    progress.value = withTiming(0, { duration: 200, easing: Easing.in(Easing.cubic) }, (done) => {
+      if (done) runOnJS(onClose)();
+    });
+  };
+
+  const blurTarget = useBlurTarget();
+  useEffect(() => {
+    if (!anchor) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      close();
+      return true;
+    });
+    return () => sub.remove();
+  });
+
   if (!anchor || !place) return null;
 
   const row = (key: string, icon: ReactNode, label: string, onPress: () => void, opts: { danger?: boolean; trailing?: ReactNode; strong?: boolean } = {}) => (
@@ -147,7 +190,7 @@ export default function ChatMessageMenu({
       if (confirming === action.key) {
         return row(action.key, icon(action.icon, DANGER(S.dark)), action.confirmLabel ?? 'Точно?', () => {
           action.onPress?.();
-          onClose();
+          close();
         }, { danger: true, strong: true });
       }
       return row(
@@ -161,7 +204,7 @@ export default function ChatMessageMenu({
           } else if (action.confirmLabel) setConfirming(action.key);
           else {
             action.onPress?.();
-            onClose();
+            close();
           }
         },
         { danger: action.tone === 'danger', trailing: action.page ? chevron : undefined }
@@ -194,7 +237,7 @@ export default function ChatMessageMenu({
         {back()}
         {row('today', icon('today-outline'), 'Сьогоднішня нотатка', () => {
           onToToday();
-          onClose();
+          close();
         })}
         {row('new', icon('add'), 'Нова нотатка', () => {
           setDraft(newNoteDefault);
@@ -216,7 +259,7 @@ export default function ChatMessageMenu({
           shown.map((n) =>
             row(n.id, icon('document-text-outline'), n.title || 'Без назви', () => {
               onToNote(n.id, n.title);
-              onClose();
+              close();
             })
           )
         )}
@@ -232,7 +275,7 @@ export default function ChatMessageMenu({
         go('projects', false);
       } else {
         onToNewNote(name);
-        onClose();
+        close();
       }
     };
     content = (
@@ -255,15 +298,23 @@ export default function ChatMessageMenu({
   }
 
   return (
-    <GlassLayer visible onClose={onClose} intensity={40}>
-      <View style={StyleSheet.absoluteFill}>
-        <Pressable
-          style={[StyleSheet.absoluteFill, { backgroundColor: S.dark ? 'rgba(0,0,0,0.35)' : 'rgba(30,30,28,0.10)' }]}
-          onPress={onClose}
-        />
+    <GlassPortal>
+      <View style={styles.layer}>
+        {/* The blur fades in with everything else - in the ground's own
+            tone, light over a light screen - rather than dropping in dark. */}
+        <Animated.View style={[StyleSheet.absoluteFill, dimMotion]} pointerEvents="none">
+          <BlurView
+            intensity={40}
+            tint={S.dark ? 'dark' : 'light'}
+            blurMethod="dimezisBlurView"
+            blurTarget={blurTarget ?? undefined}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: S.dark ? 'rgba(0,0,0,0.35)' : 'rgba(30,30,28,0.08)' }]} />
+        </Animated.View>
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} />
         {/* The message, sharp above the blur, a touch forward. */}
         <Animated.View
-          entering={FadeIn.duration(140)}
           pointerEvents="none"
           style={[
             styles.lifted,
@@ -274,18 +325,26 @@ export default function ChatMessageMenu({
               maxHeight: place.bubbleH,
               borderRadius: 20,
               boxShadow: S.popShadow,
-              transform: [{ scale: 1.02 }],
             },
+            bubbleMotion,
           ]}
         >
           {bubble}
         </Animated.View>
         <Animated.View
-          entering={FadeIn.duration(160)}
-          exiting={FadeOut.duration(120)}
           style={[
             styles.card,
-            { top: place.menuTop, left: place.menuLeft, width: MENU_W, maxHeight: menuH, backgroundColor: S.card, boxShadow: S.popShadow },
+            {
+              top: place.menuTop,
+              left: place.menuLeft,
+              width: MENU_W,
+              maxHeight: menuH,
+              backgroundColor: S.card,
+              boxShadow: S.popShadow,
+              // Grows out of the corner that faces the message.
+              transformOrigin: menuBelow ? 'right top' : 'right bottom',
+            },
+            menuMotion,
           ]}
         >
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -295,13 +354,21 @@ export default function ChatMessageMenu({
           </ScrollView>
         </Animated.View>
       </View>
-    </GlassLayer>
+    </GlassPortal>
   );
 }
 
 const DANGER = (dark: boolean) => (dark ? '#FF7A6E' : '#C8452F');
 
 const styles = StyleSheet.create({
+  layer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 50,
+  },
   lifted: {
     position: 'absolute',
     overflow: 'hidden',
