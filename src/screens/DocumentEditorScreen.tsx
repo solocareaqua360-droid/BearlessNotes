@@ -270,6 +270,13 @@ type Props =
       // round it - the same move the note's own sheet made (see
       // scrollSheet), asked for on the calendar too.
       scrollPaper?: boolean;
+      // How far the frame this note sits in stands in from the screen's
+      // sides. The bar above the keyboard and the panel that replaces it
+      // belong to the SCREEN, edge to edge, not to the paper: "слеш панель
+      // обрамляється аркушом а не екраном це погано". They reach out by
+      // this much (the frame must not clip - the calendar's scrolling
+      // paper does not).
+      panelBleed?: number;
     }
   // Pane mode (DocumentsScreen's two-pane layout on a wide screen): the
   // WHOLE editor, header and title and cover included - unlike embedded
@@ -441,6 +448,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const onPullPastEnd = 'embedded' in props ? props.onPullPastEnd : undefined;
   const onPanelChange = 'embedded' in props ? props.onPanelChange : undefined;
   const scrollPaperProp = 'embedded' in props ? !!props.scrollPaper : false;
+  const panelBleed = 'embedded' in props ? props.panelBleed ?? 0 : 0;
   const [scrollViewportH, setScrollViewportH] = useState(0);
   const onSaveStatusChange =
     'embedded' in props ? props.onSaveStatusChange : 'pane' in props ? props.onSaveStatusChange : undefined;
@@ -4923,6 +4931,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <Animated.View
           style={[
             styles.pinnedToolbar,
+            panelBleed > 0 && { left: -panelBleed, right: -panelBleed },
             // Centred on the note's own column, not on the window, while
             // the drawer holds the other one.
             referencesSplit && { paddingRight: referencePanelWidth },
@@ -4942,7 +4951,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         >
           {blockAccessory ?? (phonePanel ? (
             <EditorPanelBar
-              soft={softPage ? soft : null}
+              soft={softPage || (embedded && !pointerDensity) ? soft : null}
               canUndo={canUndo}
               canRedo={canRedo}
               onUndo={undo}
@@ -4975,9 +4984,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           child of the bar above it - the bar rides the keyboard's live
           height and this does not move at all. */}
       {phonePanel && (panelSection !== null || panelClosing) && (
-        <View style={styles.insertPanelDock}>
+        <View style={[styles.insertPanelDock, panelBleed > 0 && { left: -panelBleed, right: -panelBleed }]}>
           <EditorInsertPanel
-            soft={softPage ? soft : null}
+            soft={softPage || (embedded && !pointerDensity) ? soft : null}
             height={panelHeight || lastKeyboardHeightRef.current || 300}
             groups={panelGroups}
             jumpTo={panelJump}

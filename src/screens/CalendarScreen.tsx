@@ -1257,6 +1257,9 @@ export default function CalendarScreen() {
           onSaveStatusChange={primary ? setNoteSaveStatus : undefined}
           onPullPastEnd={zooms ? openOverview : undefined}
           scrollPaper={scrollPaper}
+          // noteArea's own side margins, so the bar above the keyboard and
+          // the insert panel span the screen, not the paper.
+          panelBleed={scrollPaper ? 16 : 0}
         />
       </Animated.View>
     );
@@ -2192,7 +2195,9 @@ export default function CalendarScreen() {
               // Search is back, now that it is the bar's own plate
               // ("залишити те саме поле для пошуку і тоді можна буде
               // вернути і кнопку пошуку").
-              left: {
+              // Not while the note's panel stands where the keyboard was:
+              // the field lay over the panel's own tiles.
+              left: notePanelOpen ? null : {
                 icon: daySearch !== null ? 'close-outline' : 'search-outline',
                 active: daySearch !== null,
                 onPress: () => setDaySearch((prev) => (prev === null ? '' : null)),
