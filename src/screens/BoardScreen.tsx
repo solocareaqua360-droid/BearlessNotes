@@ -4250,6 +4250,23 @@ export default function BoardScreen() {
     }
   }
 
+  // A plain column's menu - what a tap on its header opens. It was a
+  // rename on a tap and a delete on a HOLD, and the hold lost its race
+  // with the tap and the drag often enough that the column could not be
+  // taken off the board at all ("навіть не можу видалити ... сам
+  // стовпчик"). Both are now a visible choice.
+  async function openColumnMenu(column: BoardColumn) {
+    const choice = await ask({
+      title: column.title || 'Стовпчик',
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        { id: 'delete', label: 'Видалити стовпчик', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'rename') setRenamingColumn(column);
+    else if (choice === 'delete') confirmDeleteColumn(column);
+  }
+
   // The week's own menu - what a tap on any of its seven headers opens.
   const [weekDateEditing, setWeekDateEditing] = useState<{ weekId: string; start: string } | null>(null);
   function setWeekStart(weekId: string, start: string) {
@@ -5832,7 +5849,7 @@ export default function BoardScreen() {
                       isCatching={column.id === hoverColumnId}
                       onDragStart={setDraggingColumnId}
                       onDragEnd={commitColumnDrag}
-                      onRename={setRenamingColumn}
+                      onRename={openColumnMenu}
                       onDelete={confirmDeleteColumn}
                       liveTasks={liveTasksForCol}
                       onToggleTask={toggleLiveTask}
@@ -5857,7 +5874,7 @@ export default function BoardScreen() {
                     isCatching={column.id === hoverColumnId}
                     onDragStart={setDraggingColumnId}
                     onDragEnd={commitColumnDrag}
-                    onRename={(c) => (c.week ? openWeekMenu(c) : setRenamingColumn(c))}
+                    onRename={(c) => (c.week ? openWeekMenu(c) : openColumnMenu(c))}
                     onDelete={(c) => (c.week ? confirmDeleteWeek(c) : confirmDeleteColumn(c))}
                   />
                 );
