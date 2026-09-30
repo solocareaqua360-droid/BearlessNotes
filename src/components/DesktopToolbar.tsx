@@ -44,6 +44,8 @@ function ActionIcon({ icon, size, color }: { icon: string; size: number; color: 
 export const DESKTOP_TOOLBAR_HEIGHT = 44;
 
 // `compact`: the toolbar of a side panel - icons only, whatever their number.
+const DRAG = { WebkitAppRegion: 'drag' } as never;
+
 export default function DesktopToolbar({ compact = false }: { compact?: boolean }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -93,7 +95,10 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
   if (compact && !shown.length && !leftBead && !beads.right && crumbs.length === 0) return null;
 
   return (
-    <View style={[styles.frame, { backgroundColor: 'transparent' }]} pointerEvents="box-none">
+    // The main pane's toolbar band moves the window where it is empty - it is
+    // the window's top now that there is no band of its own (its buttons are
+    // no-drag, App.web.tsx).
+    <View style={[styles.frame, { backgroundColor: 'transparent' }, !compact && DRAG]} pointerEvents="box-none">
       <View style={styles.bar} pointerEvents="box-none">
         <View style={styles.crumbs} pointerEvents="box-none">
           {!compact && <UpButton fallback={up} />}

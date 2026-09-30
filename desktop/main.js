@@ -589,11 +589,13 @@ function createWindow(port) {
     // the desktop-width layout exists and can leave room for them.
     // The rail lets the desktop show through, the way Finder's and Craft's
     // sidebars do (2026-10-01): the window is transparent and macOS draws
-    // its own blurred "sidebar" material behind everything the page leaves
+    // its own blurred material behind everything the page leaves
+    // ('under-window': the one with the least grey of its own - 'sidebar'
+    // read as a flat grey coat whatever the page laid over it)
     // unpainted. The page paints its content ground itself, so only the rail
     // (translucent on purpose) shows it.
     ...(process.platform === 'darwin'
-      ? { vibrancy: 'sidebar', visualEffectState: 'active', backgroundColor: '#00000000' }
+      ? { vibrancy: 'under-window', visualEffectState: 'active', backgroundColor: '#00000000' }
       : { backgroundColor: '#FAFAFA' }),
     // The title bar is hidden and the traffic lights sit over the rail's own
     // empty top band (DESKTOP_TITLE_BAND) - a white strip across the top of
@@ -663,7 +665,7 @@ function createWindow(port) {
           minHeight: 480,
           title: 'mindEva',
           ...(process.platform === 'darwin'
-            ? { vibrancy: 'sidebar', visualEffectState: 'active', backgroundColor: '#00000000' }
+            ? { vibrancy: 'under-window', visualEffectState: 'active', backgroundColor: '#00000000' }
             : { backgroundColor: '#FAFAFA' }),
           titleBarStyle: 'hiddenInset',
           trafficLightPosition: { x: 16, y: 14 },

@@ -169,10 +169,11 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
     <View
       style={[
         styles.rail,
-        vibrant ? [styles.railVibrant, !narrow && { overflow: 'hidden' }] : { backgroundColor: D.ground },
+        vibrant ? styles.railVibrant : { backgroundColor: D.ground },
         narrow && { width: DESKTOP_RAIL_NARROW },
       ]}
     >
+      {vibrant && <RailFrame ground={D.ground} />}
       <View
         style={[
           styles.railCard,
@@ -181,18 +182,19 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
                 // ONLY the card shows the desktop, not the strip it stands in
                 // (2026-10-01: "ніби щось відклеїлось" - the whole left strip
                 // was see-through, cut off straight where the content began).
-                // The ground round the card is painted by the card's own
-                // shadow, spread wide and clipped by the strip - so the hole
-                // it leaves has the card's rounded corners exactly, and the
-                // window's corners are ground too. (Narrow, the strip cannot
-                // clip - the account card hangs out of it - so the spread is
-                // only the gap's 8.)
-                boxShadow: `0 0 0 ${narrow ? 8 : 60}px ${D.ground}, inset 0 0 0 0.5px ${D.soft.dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.7)'}`,
-                // And a veil that is not one flat coat: clearer at the top,
-                // milkier towards the foot (the way Craft's sidebar reads).
+                // The ground round the card is painted by RailFrame below,
+                // plain pieces of colour (a box-shadow spread did not reach
+                // the window's edge in the real window).
+                boxShadow: `inset 0 0 0 0.5px ${D.soft.dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.7)'}`,
+                borderRadius: RAIL_CARD_RADIUS,
+                // A veil that visibly changes, the way Craft's sidebar reads:
+                // milky at the top, where the traffic lights and the first
+                // rows are, thinning towards the foot so the desktop's own
+                // colour comes through there. (0.14 -> 0.58 over macOS's
+                // already-grey material read as one flat coat.)
                 backgroundImage: D.soft.dark
-                  ? 'linear-gradient(170deg, rgba(36,36,38,0.18), rgba(36,36,38,0.42) 55%, rgba(36,36,38,0.62))'
-                  : 'linear-gradient(170deg, rgba(255,255,255,0.14), rgba(255,255,255,0.34) 55%, rgba(255,255,255,0.58))',
+                  ? 'linear-gradient(175deg, rgba(36,36,38,0.62), rgba(36,36,38,0.34) 45%, rgba(36,36,38,0.08))'
+                  : 'linear-gradient(175deg, rgba(255,255,255,0.72), rgba(255,255,255,0.40) 40%, rgba(255,255,255,0.10) 85%, rgba(255,255,255,0.04))',
               } as never)
             : { backgroundColor: D.chrome, boxShadow: D.soft.shadow },
         ]}
@@ -344,6 +346,43 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
         </View>
       )}
       </View>
+    </View>
+  );
+}
+
+// THE GROUND ROUND THE SEE-THROUGH CARD (the Mac app's): the window is
+// transparent there (vibrancy), and only the card should show the desktop.
+// Four bands for the gaps and four corner pieces whose radial gradient
+// leaves exactly the card's rounded corner clear. Plain colour, nothing to
+// touch.
+const GAP = 8;
+// CONCENTRIC, not equal (the user, 2026-10-01: "радіуси однакові, тому вони
+// ніколи не зійдуться"): a corner nested in another at a gap looks parallel
+// only when its radius is the outer one LESS the gap. The outer one is the
+// window's own - macOS 26 rounds a window like this about 16 points, which
+// at the shell's 0.95 zoom is ~17 of the page's - so the card is 17 - 8.
+const WINDOW_RADIUS = 17;
+export const RAIL_CARD_RADIUS = WINDOW_RADIUS - GAP;
+function RailFrame({ ground }: { ground: string }) {
+  const r = RAIL_CARD_RADIUS;
+  const band = { position: 'absolute', backgroundColor: ground } as const;
+  const corner = (at: string) =>
+    ({
+      position: 'absolute',
+      width: r,
+      height: r,
+      backgroundImage: `radial-gradient(circle at ${at}, transparent ${r - 0.5}px, ${ground} ${r}px)`,
+    }) as never;
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <View style={[band, { left: 0, right: 0, top: 0, height: GAP }]} />
+      <View style={[band, { left: 0, right: 0, bottom: 0, height: GAP }]} />
+      <View style={[band, { left: 0, top: 0, bottom: 0, width: GAP }]} />
+      <View style={[band, { right: 0, top: 0, bottom: 0, width: GAP }]} />
+      <View style={[corner('100% 100%'), { left: GAP, top: GAP }]} />
+      <View style={[corner('0% 100%'), { right: GAP, top: GAP }]} />
+      <View style={[corner('100% 0%'), { left: GAP, bottom: GAP }]} />
+      <View style={[corner('0% 0%'), { right: GAP, bottom: GAP }]} />
     </View>
   );
 }

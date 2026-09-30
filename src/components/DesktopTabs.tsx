@@ -367,7 +367,10 @@ export default function DesktopTabs() {
 
   return (
     <View style={[styles.frame, { backgroundColor: D.ground }, DRAG]}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.row, narrow && { paddingLeft: 26 }]}>
+      {/* The scroller carries the drag itself: a region set only on its
+          parent did not reach through it, and the row stopped moving the
+          window once nothing else above the content did. */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={DRAG} contentContainerStyle={[styles.row, DRAG, narrow && { paddingLeft: 26 }]}>
         <Pressable
           style={[styles.tab, styles.home, activeKey === 'home' && [styles.tabActive, { backgroundColor: D.card, boxShadow: D.soft.shadow }], NO_DRAG]}
           onPress={() => go(null)}

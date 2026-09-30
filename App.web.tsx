@@ -230,7 +230,13 @@ if (typeof document !== 'undefined') {
   // screen shows the macOS material. Only the rail leaves it showing.
   if (inShell()) {
     const clear = document.createElement('style');
-    clear.textContent = 'html, body, #root { background: transparent !important; }';
+    clear.textContent =
+      'html, body, #root { background: transparent !important; }' +
+      // The window is moved by its empty top (the tab row, the toolbar's
+      // band, a panel's header - see DRAG where they are drawn), and in a
+      // region that moves the window nothing is clickable unless it says
+      // so. Everything that can be clicked or typed in says so here, once.
+      ' [role="button"], [role="link"], [tabindex], button, a, input, textarea, select { -webkit-app-region: no-drag; }';
     document.head.appendChild(clear);
   }
   const noRing = document.createElement('style');

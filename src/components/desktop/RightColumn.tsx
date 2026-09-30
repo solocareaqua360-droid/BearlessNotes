@@ -81,7 +81,7 @@ function PanelFrame({ panel }: { panel: Panel }) {
         panel.folded ? styles.panelFolded : styles.panelOpen,
       ]}
     >
-      <View style={[styles.header, { borderBottomColor: S.line }, panel.folded && { borderBottomWidth: 0 }]}>
+      <View style={[styles.header, { borderBottomColor: S.line }, panel.folded && { borderBottomWidth: 0 }, { WebkitAppRegion: 'drag' } as never]}>
         {/* The panel's one way back (navigation/innerBack): the screen's own
             step inside itself first, then where a click inside the panel
             took it. Its place is kept either way. */}
