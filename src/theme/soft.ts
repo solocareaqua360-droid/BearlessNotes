@@ -63,9 +63,13 @@ const LIGHT: SoftTokens = {
   line: 'rgba(30,30,28,0.08)',
   accent: '#D9793F',
   shadow: DESK
-    ? '0px 1px 2px rgba(30,30,28,0.04), 0px 6px 16px -10px rgba(30,30,28,0.10)'
+    ? // On glass a white piece also gets a hairline rim (the user: "не
+      // вистачає тоненького кантика ... без нього вони здаються пласкими") -
+      // a shadow of 0.5 spread, so it takes no room and follows every corner.
+      (GLASS ? '0px 0px 0px 0.5px rgba(30,30,28,0.11), ' : '') +
+      '0px 1px 2px rgba(30,30,28,0.04), 0px 6px 16px -10px rgba(30,30,28,0.10)'
     : '0px 1px 2px rgba(30,30,28,0.05), 0px 10px 24px -12px rgba(30,30,28,0.18)',
-  popShadow: '0px 1px 2px rgba(30,30,28,0.06), 0px 18px 40px -14px rgba(30,30,28,0.32)',
+  popShadow: (GLASS ? '0px 0px 0px 0.5px rgba(30,30,28,0.12), ' : '') + '0px 1px 2px rgba(30,30,28,0.06), 0px 18px 40px -14px rgba(30,30,28,0.32)',
 };
 
 // On black a card is found by its TONE, not its shadow: iOS's own dark
