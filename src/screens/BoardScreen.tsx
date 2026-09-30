@@ -4160,6 +4160,10 @@ export default function BoardScreen() {
         x: card.x + offset,
         y: card.y + offset,
         recordId: card.recordId ?? card.id,
+        // The card it was made FROM - a copy of a copy draws its line to
+        // that copy, not to the first card (the count is by record, so it
+        // does not change).
+        copyOf: card.id,
         createdAt: Date.now(),
         width: Number.isFinite(card.width) ? card.width : DEFAULT_CARD_WIDTH,
       };
@@ -4440,7 +4444,9 @@ export default function BoardScreen() {
     translateY.value = withTiming(-(centerY - WORLD_CENTER) * scale.value, { duration: 320 });
   }
   // THE ORIGIN LINES: every card of a record but the first is tied to the
-  // first - "перша картка ... стає оригіналом" (the window is a catalogue,
+  // card it was copied from (copyOf) - a copy of a copy to that copy, the
+  // user's own proposal - or, where that one is gone, to the first -
+  // "перша картка ... стає оригіналом" (the window is a catalogue,
   // not an original). Worked out from the cards themselves rather than
   // stored, so taking the first one away simply makes the next one the
   // original, and no line can be left pointing at nothing.
@@ -4458,7 +4464,14 @@ export default function BoardScreen() {
         .map((card, index) => ({ card, index }))
         .sort((a, b) => (a.card.createdAt ?? 0) - (b.card.createdAt ?? 0) || a.index - b.index);
       const anchor = ordered[0].card;
-      ordered.slice(1).forEach(({ card }) => originLinks.push({ from: anchor.id, to: card.id }));
+      const here = new Set(members.map((m) => m.id));
+      // Each copy to the card it was made from, while that one is still on
+      // the board; otherwise (and for copies made before this was kept) to
+      // the first card of the record.
+      ordered.slice(1).forEach(({ card }) => {
+        const parent = card.copyOf && card.copyOf !== card.id && here.has(card.copyOf) ? card.copyOf : anchor.id;
+        originLinks.push({ from: parent, to: card.id });
+      });
     });
   }
   const findIds = findRecordId
