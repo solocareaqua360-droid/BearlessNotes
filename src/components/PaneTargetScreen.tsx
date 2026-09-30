@@ -11,6 +11,7 @@ import TagManageScreen from '../screens/TagManageScreen';
 import GroupsScreen from '../screens/GroupsScreen';
 import DiaryScreen from '../screens/DiaryScreen';
 import TasksScreen from '../screens/TasksScreen';
+import ChatScreen from '../screens/ChatScreen';
 
 // The screen a PaneTarget names, drawn to live inside a pane - one switch,
 // shared by the databases screen's own pane and the laptop's side panels.
@@ -34,6 +35,8 @@ export default function PaneTargetScreen({ target }: { target: PaneTarget }) {
       return <GroupsScreen inPane />;
     case 'Diary':
       return <DiaryScreen inPane />;
+    case 'Chat':
+      return <ChatScreen />;
     default:
       return <TasksScreen />;
   }

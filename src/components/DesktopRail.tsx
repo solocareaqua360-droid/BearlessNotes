@@ -2,7 +2,8 @@ import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { useRailPanel, useRailTree } from '../navigation/navRail';
-import { useNavDockLeave, useNavTopBack } from '../navigation/navDock';
+import { useInnerBackNow } from '../navigation/innerBack';
+import { useMainPaneUp } from '../navigation/mainPaneUp';
 import { navigationRef } from '../navigationRef';
 import { useWorkspace } from '../navigation/workspace';
 import TemplatesGroup from './desktop/TemplatesGroup';
@@ -71,12 +72,12 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   // hiding the dock took the only exit with it: the user opened a board
   // and had no way back at all. It belongs at the top of the rail, which
   // is where a Mac keeps "back" anyway.
-  const dockLeave = useNavDockLeave();
-  // A screen whose way back is the bar's (the note: useTopBack) has no dock
-  // "leave" to publish, and the bar is not drawn under a mouse - so the
-  // rail offers that one too, or a note opened full-pane had no way back.
-  const topBack = useNavTopBack();
-  const leave = dockLeave ?? (topBack && !topBack.dimmed ? { onLeave: topBack.onPress } : null);
+  // The same way back as the main pane's arrow (navigation/innerBack): the
+  // screen's own step first, then the level above it - never by history.
+  const inner = useInnerBackNow();
+  const paneUp = useMainPaneUp();
+  const upRun = inner ?? paneUp;
+  const leave = upRun ? { onLeave: upRun } : null;
   const workspace = useWorkspace();
   const narrow = useDesktopNarrow();
   const [accountOpen, setAccountOpen] = useState(false);
@@ -156,11 +157,15 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
       {/* Where the traffic lights are. Empty, and draggable: it is the
           window's title bar now. */}
       <View style={[{ height: DESKTOP_TITLE_BAND - 10 }, DRAG]} />
-      {!!leave && (
+      {/* Its place is kept when there is nowhere to go, so the sections
+          under it never jump as it comes and goes. */}
+      {leave ? (
         <Pressable style={styles.leave} onPress={leave.onLeave}>
           <Ionicons name="chevron-back" size={16} color={theme.ink.primary} />
           {!narrow && <Text style={styles.leaveLabel}>Назад</Text>}
         </Pressable>
+      ) : (
+        <View style={[styles.leave, styles.leaveEmpty]} />
       )}
       <View style={styles.sections}>
         {SECTIONS.map((s) => {
@@ -325,6 +330,9 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 8,
     backgroundColor: t.selected,
+  },
+  leaveEmpty: {
+    backgroundColor: 'transparent',
   },
   leaveLabel: {
     fontSize: 14,

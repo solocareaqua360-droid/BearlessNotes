@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useInnerBack } from '../navigation/innerBack';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
@@ -97,6 +98,8 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
   // AN OPEN DAY: its own bar - the date, the way back to the list, and
   // "⋯ → У календарі" for the day in its place among the others.
   useTopBack(() => setOpenDate(null), !!openDate && topNavOn);
+  // The laptop's one way back: the open day back to the list of days.
+  useInnerBack(openDate ? () => setOpenDate(null) : null);
   useTopExtras(
     openDate
       ? [

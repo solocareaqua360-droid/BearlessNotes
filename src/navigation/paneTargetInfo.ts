@@ -58,6 +58,7 @@ export function targetFromRoute(name: string, params?: Record<string, unknown>):
     case 'Tags':
     case 'Groups':
     case 'Diary':
+    case 'Chat':
       return { kind: 'route', route: name };
     case 'DocumentsCopy':
       return { kind: 'documents' };

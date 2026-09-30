@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useInnerBack } from '../navigation/innerBack';
 import { rightClick } from '../utils/rightClick';
 import { useFlipLayout } from '../hooks/useFlipLayout';
 import { flipId } from '../utils/flipId';
@@ -625,6 +626,10 @@ export default function DocumentsScreen({
   // The user's own arrangement, and Samsung's own reasoning - a pile of
   // cards is for what changes.
   useTopBack(back, onDesk);
+  // The laptop's one way back (navigation/innerBack): out of the bin, or
+  // one folder up - the list's own levels. Search and choosing have their
+  // own ways out.
+  useInnerBack(trashOpen ? () => setTrashOpen(false) : explorer.active && explorer.path !== '' ? explorerUp : null);
   // On a desk the search is the bar's own name plate, opened out.
   useTopSearch(
     searchOpen

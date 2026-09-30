@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useInnerBack } from '../navigation/innerBack';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -300,6 +301,8 @@ export default function DatabaseChrome<T extends { id: string }>({
         }
       : folderUp ?? backTarget ?? null;
   useTopBack(back, !!topNav);
+  // The laptop's one way back: one folder up inside the list.
+  useInnerBack(folderUp);
   // Under a bar the search is the bar's own name plate, opened out - no
   // second field under it.
   useTopSearch(

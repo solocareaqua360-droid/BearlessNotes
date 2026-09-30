@@ -2,6 +2,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Ionicons } from './icons/Ionicons';
 import { useNavDockActions, useNavDockBeads, useNavDockContext } from '../navigation/navDock';
+import UpButton from './desktop/UpButton';
+import { useMainPaneUp } from '../navigation/mainPaneUp';
 import { MAX_CONTENT_WIDTH } from './ContentColumn';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -47,6 +49,13 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
   const context = useNavDockContext();
   const actions = useNavDockActions();
   const beads = useNavDockBeads();
+  // The one way back of the main pane (see navigation/innerBack): at the
+  // toolbar's start, its place kept. A side panel carries its own in its
+  // header, so a panel's toolbar has none. A screen's own back bead (the
+  // phone's dock) is not drawn here - that was a second arrow, and on a
+  // laptop it went by history, into whatever tab was open before.
+  const up = useMainPaneUp();
+  const leftBead = beads.left && !/back/.test(beads.left.icon) ? beads.left : null;
   // The screens under it wear the soft ground now; a strip of the old
   // beige across their top read as a seam.
   const soft = useSoft();
@@ -77,12 +86,13 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
 
   // Nothing published means nothing to show - a board, say, which owns
   // its whole window.
-  if (!shown.length && !beads.left && !beads.right && crumbs.length === 0) return null;
+  if (compact && !shown.length && !leftBead && !beads.right && crumbs.length === 0) return null;
 
   return (
     <View style={[styles.frame, { backgroundColor: soft.bg }]} pointerEvents="box-none">
       <View style={styles.bar}>
         <View style={styles.crumbs}>
+          {!compact && <UpButton fallback={up} />}
           {crumbs.length > 0 && (
             <Pressable style={styles.crumb} onPress={() => onGo?.('')}>
               <Ionicons name="home-outline" size={14} color={theme.ink.muted} />
@@ -107,13 +117,13 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
         </View>
 
         <View style={styles.controls}>
-          {!!beads.left && (
+          {!!leftBead && (
             <Pressable
-              style={[styles.button, beads.left.active && styles.buttonOn]}
-              onPress={beads.left.onPress}
-              onLongPress={beads.left.onLongPress}
+              style={[styles.button, leftBead.active && styles.buttonOn]}
+              onPress={leftBead.onPress}
+              onLongPress={leftBead.onLongPress}
             >
-              <ActionIcon icon={beads.left.icon} size={17} color={theme.ink.primary} />
+              <ActionIcon icon={leftBead.icon} size={17} color={theme.ink.primary} />
             </Pressable>
           )}
           {shown.map((action) => (

@@ -37,6 +37,7 @@ import RightColumn from './src/components/desktop/RightColumn';
 import StartPage, { CreateWatcher } from './src/components/desktop/StartPage';
 import { useStartFront } from './src/navigation/desktopTabs';
 import { WorkspaceProvider } from './src/navigation/workspace';
+import { InnerBackProvider } from './src/navigation/innerBack';
 import DesktopToolbar from './src/components/DesktopToolbar';
 import DesktopTabs from './src/components/DesktopTabs';
 import { useDensity } from './src/hooks/useDensity';
@@ -584,6 +585,7 @@ export default function App() {
                   about this changes - see hooks/useDensity. */}
               {pointer ? (
                 <WorkspaceProvider>
+                <InnerBackProvider>
                 <View style={styles.deskRow}>
                   <DesktopRail footer={accountStrip} />
                   <View style={styles.deskBody}>
@@ -607,6 +609,7 @@ export default function App() {
                   </View>
                   <RightColumn />
                 </View>
+                </InnerBackProvider>
                 </WorkspaceProvider>
               ) : (
                 <RootNavigator />

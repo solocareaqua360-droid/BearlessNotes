@@ -4,6 +4,8 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Ionicons } from '../icons/Ionicons';
 import PaneScreen from './PaneScreen';
+import UpButton from './UpButton';
+import { InnerBackProvider } from '../../navigation/innerBack';
 import { targetInfo } from '../../navigation/paneTargetInfo';
 import { COLUMN_MIN, useWorkspace, type Panel } from '../../navigation/workspace';
 import { useSoft } from '../../theme/soft';
@@ -42,6 +44,7 @@ function PanelFrame({ panel }: { panel: Panel }) {
   const workspace = useWorkspace();
   const { icon, title } = usePanelTitle(panel);
   return (
+    <InnerBackProvider>
     <View
       onLayout={(e) => panelHeights.set(panel.id, e.nativeEvent.layout.height)}
       style={[
@@ -53,6 +56,12 @@ function PanelFrame({ panel }: { panel: Panel }) {
       ]}
     >
       <View style={[styles.header, { borderBottomColor: S.line }, panel.folded && { borderBottomWidth: 0 }]}>
+        {/* The panel's one way back (navigation/innerBack): the screen's own
+            step inside itself first, then where a click inside the panel
+            took it. Its place is kept either way. */}
+        {!panel.folded && (
+          <UpButton size={26} fallback={panel.stack?.length ? () => workspace?.popInPanel(panel.id) : null} />
+        )}
         <Ionicons name={icon as never} size={16} color={S.ink2} />
         <Text style={[styles.title, { color: S.ink }]} numberOfLines={1}>
           {title}
@@ -77,6 +86,7 @@ function PanelFrame({ panel }: { panel: Panel }) {
         </View>
       )}
     </View>
+    </InnerBackProvider>
   );
 }
 
