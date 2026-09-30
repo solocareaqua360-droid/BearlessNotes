@@ -1,3 +1,5 @@
+import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
+import { useDensity } from '../hooks/useDensity';
 import { DeskContext } from '../navigation/desks';
 import { useEdgeOnlyDrawerSwipe } from '../navigation/sideDrawers';
 import CustomDatabaseKanban from '../components/CustomDatabaseKanban';
@@ -225,6 +227,9 @@ export default function CustomDatabaseScreen({
   databaseId: databaseIdProp,
   inPane,
 }: Partial<Props> & { databaseId?: string; inPane?: boolean }) {
+  // Up here with the other hooks - below the early returns it is a hook
+  // called conditionally (the white-screen crash).
+  const rowMenuPointer = useDensity() === 'pointer';
   const theme = useTheme();
   const accent = theme.sections.custom;
   const accentGlass = withAlpha(accent, 0.55);
@@ -1010,6 +1015,38 @@ export default function CustomDatabaseScreen({
   }
   const selectedRows = rows.filter((r) => selectedIds.has(r.id));
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
+  // The rows of a record's menu, for CardMenu - the same things, in the same
+  // order, as the glass sheet's.
+  function rowMenuRows(row: (typeof rows)[number]): CardMenuRow[] {
+    return [
+      { icon: 'pencil-outline', label: 'Редагувати', onPress: () => openEditRow(row) },
+      ...(documentIdsOf(row).length > 0
+        ? [{ icon: 'document-text-outline', label: `Документи (${documentIdsOf(row).length})`, onPress: () => openRowDocuments(row) }]
+        : []),
+      {
+        icon: 'folder-outline',
+        label: 'Проект',
+        onPress: () => {
+          setBulkGroupPickerVisible(true);
+          // Bulk-group UI acts on `selectedRows` - a single row's group
+          // change goes through the same selection, one code path.
+          toggleSelected(row.id);
+          setRowMenuId(null);
+        },
+      },
+      {
+        icon: 'trash-outline',
+        label: 'Видалити',
+        danger: true,
+        onPress: () => {
+          confirm({ title: 'Видалити запис?', confirmLabel: 'Видалити' }).then((yes) => {
+            if (yes) deleteRow(row);
+          });
+          setRowMenuId(null);
+        },
+      },
+    ];
+  }
   const rowPageRow = rowPageId ? rows.find((r) => r.id === rowPageId) ?? null : null;
 
   // Where a parameter change actually lands, in order: mid-"редагувати"
@@ -3753,7 +3790,16 @@ export default function CustomDatabaseScreen({
         onClose={() => setBulkGroupPickerVisible(false)}
       />
 
-      <GlassLayer visible={rowMenuRow !== null} onClose={() => setRowMenuId(null)}>
+      {/* At a pointer the row's menu is a small menu at the click (CardMenu),
+          with the same rows; a phone keeps its glass sheet below. */}
+      {rowMenuPointer && (
+        <CardMenu
+          visible={rowMenuRow !== null}
+          onClose={() => setRowMenuId(null)}
+          rows={rowMenuRow ? rowMenuRows(rowMenuRow) : []}
+        />
+      )}
+      <GlassLayer visible={!rowMenuPointer && rowMenuRow !== null} onClose={() => setRowMenuId(null)}>
         <Pressable style={styles.layerBackdrop} onPress={() => setRowMenuId(null)}>
           <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
             <View style={styles.handle} />
