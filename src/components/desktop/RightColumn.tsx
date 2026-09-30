@@ -6,6 +6,7 @@ import { db } from '../../firebase';
 import { Ionicons } from '../icons/Ionicons';
 import PaneScreen from './PaneScreen';
 import EdgeFade from './EdgeFade';
+import { IN_SHELL } from '../../utils/shell';
 import UpButton from './UpButton';
 import { InnerBackProvider } from '../../navigation/innerBack';
 import { navigateToTarget, targetInfo } from '../../navigation/paneTargetInfo';
@@ -125,7 +126,9 @@ function PanelFrame({ panel }: { panel: Panel }) {
       {!panel.folded && (
         <View style={styles.body}>
           <PaneScreen panel={panel} />
-          <EdgeFade height={96} />
+          {/* Over glass the panel's own content is not masked yet; a blur
+              band there drew a lighter strip, so it is left out. */}
+          {!IN_SHELL && <EdgeFade height={96} />}
         </View>
       )}
     </View>

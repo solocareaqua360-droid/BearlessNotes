@@ -31,19 +31,6 @@ function washStops(ground: string, top: number): string {
   return parts.join(', ');
 }
 
-// The wash over glass: towards the glass's own tint, so the band ends as the
-// ground around it is, not as a solid strip.
-function glassStops(rgb: string, top: number): string {
-  const steps = 8;
-  const parts: string[] = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const eased = t * t * (3 - 2 * t);
-    parts.push(`rgba(${rgb},${(eased * top).toFixed(3)}) ${Math.round(t * 100)}%`);
-  }
-  return parts.join(', ');
-}
-
 export default function EdgeFade({
   height = 120,
   color,
@@ -95,20 +82,24 @@ export default function EdgeFade({
           />
         );
       })}
-      <View
-        style={
-          {
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            backgroundImage: ground
-              ? `linear-gradient(${toward}, ${washStops(ground, 0.92)})`
-              : `linear-gradient(${toward}, ${glassStops(glass.mainRgb, glass.mainAlpha)})`,
-          } as never
-        }
-      />
+      {/* The wash - only over a solid ground. Over glass (the Mac app) any
+          tint laid here is a second coat on the glass's own and reads as a
+          whiter band (2026-10-01); there the content itself is faded out by
+          a mask instead (see UnderToolbar), so nothing is added. */}
+      {ground && (
+        <View
+          style={
+            {
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              backgroundImage: `linear-gradient(${toward}, ${washStops(ground, 0.92)})`,
+            } as never
+          }
+        />
+      )}
     </View>
   );
 }
