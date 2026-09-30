@@ -1,3 +1,4 @@
+import EdgeFade from './src/components/desktop/EdgeFade';
 import { IS_POINTER } from './src/utils/pointer';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -625,6 +626,7 @@ export default function App() {
                       <DesktopToolbar />
                       <View style={styles.deskBody}>
                         <RootNavigator />
+                        <EdgeFade />
                       </View>
                       {/* The new tab's page, over the navigator AND its
                           toolbar while it is the tab in front - see

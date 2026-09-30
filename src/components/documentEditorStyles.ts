@@ -305,7 +305,9 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: 'transparent',
-    backgroundColor: deskPage(t),
+    // A block on a light laptop has no fill of its own: it takes whatever it
+    // stands on - the page, or a card's white in the documents list.
+    backgroundColor: IS_POINTER && t.scheme === 'light' ? 'transparent' : t.paper.fill,
   },
   // Under a toggle's section - see BlockList's own `indented` and
   // isUnderToggle. The user's own complaint: with nothing marking it,

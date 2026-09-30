@@ -4,6 +4,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Ionicons } from '../icons/Ionicons';
 import PaneScreen from './PaneScreen';
+import EdgeFade from './EdgeFade';
 import UpButton from './UpButton';
 import { InnerBackProvider } from '../../navigation/innerBack';
 import { navigateToTarget, targetInfo } from '../../navigation/paneTargetInfo';
@@ -121,6 +122,7 @@ function PanelFrame({ panel }: { panel: Panel }) {
       {!panel.folded && (
         <View style={styles.body}>
           <PaneScreen panel={panel} />
+          <EdgeFade height={64} color={S.bg} />
         </View>
       )}
     </View>
