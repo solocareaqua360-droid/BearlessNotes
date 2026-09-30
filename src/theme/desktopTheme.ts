@@ -6,13 +6,8 @@ import { useSoft, type SoftTokens } from './soft';
 // not here, it is a deviation, and `sh scripts/audit-desktop-theme.sh`
 // lists every one.
 
-// Shape. Three corners and a pill; nothing in between.
-export const RADIUS = {
-  control: 8, // buttons, fields, rows that light on hover
-  card: 14, // a record, a tile, a menu
-  panel: 20, // a panel, a window
-  pill: 999, // a chip, a capsule
-} as const;
+// Shape: see scale.ts (three corners and a pill; nothing in between).
+export { RADIUS, cardRadius } from './scale';
 
 // Type. Five sizes, three weights (regular, medium, semibold - never bold).
 export const TYPE = {

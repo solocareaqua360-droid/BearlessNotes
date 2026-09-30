@@ -1,3 +1,4 @@
+import { cardRadius } from '../theme/scale';
 import { useState } from 'react';
 import { flipId } from '../utils/flipId';
 import { IS_POINTER } from '../utils/pointer';
@@ -897,12 +898,12 @@ const styles = StyleSheet.create({
   // corner, the page picture clipped to it as before.
   softCard: {
     borderWidth: 0,
-    borderRadius: 22,
+    borderRadius: cardRadius(22),
     elevation: 0,
     shadowOpacity: 0,
   },
   softRow: {
-    borderRadius: 20,
+    borderRadius: cardRadius(20),
   },
   softTitle: {
     fontFamily: SOFT_SEMIBOLD,
@@ -968,7 +969,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 8,
-    borderRadius: 16,
+    borderRadius: cardRadius(16),
     // A thin, muted border so a light-colored card doesn't visually merge
     // into the page's gradient background behind it - reads as an edge on
     // both the warm and the cool end of that gradient.
@@ -1091,7 +1092,7 @@ const styles = StyleSheet.create({
     // No padding here - the thumbnail (when there is one) needs to reach
     // all four... well, three of this card's own edges. Text content gets
     // its own padding one level in (see gridContent).
-    borderRadius: 16,
+    borderRadius: cardRadius(16),
     borderWidth: 1,
     borderColor: 'rgba(176,176,176,0.5)',
     // A fixed height is a hard ceiling, not just a look - clips rather

@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import { useTheme } from './ThemeProvider';
+import { cardRadius } from './scale';
 
 // «М'ЯКИЙ» - the style chosen from the mockups on 2026-09-28 (artifact
 // «М'який стиль»). The user's own words for what it has to be: "дизайн
@@ -102,7 +103,7 @@ export function useSoftSurface(): SoftTokens | null {
 
 // The soft card's frame, for cards that were drawn with an outline and a
 // Material shadow: no outline, the soft shadow, a rounder corner.
-export function softCardFrame(S: SoftTokens, radius = 20) {
+export function softCardFrame(S: SoftTokens, radius = cardRadius(20)) {
   return { borderWidth: 0, elevation: 0, shadowOpacity: 0, borderRadius: radius, boxShadow: S.shadow };
 }
 

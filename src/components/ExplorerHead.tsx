@@ -1,3 +1,4 @@
+import { cardRadius } from '../theme/scale';
 import { useState } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -135,7 +136,7 @@ const softExplorer = (S: SoftTokens) =>
       paddingLeft: 12,
       paddingRight: 10,
       paddingVertical: 0,
-      borderRadius: 20,
+      borderRadius: cardRadius(20),
       borderWidth: 0,
       backgroundColor: S.card,
       boxShadow: S.shadow,
@@ -207,7 +208,7 @@ const makeStyles = (t: Theme) =>
     gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderRadius: 16,
+    borderRadius: cardRadius(16),
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.16)',

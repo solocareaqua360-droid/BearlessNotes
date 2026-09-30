@@ -1,3 +1,4 @@
+import { cardRadius } from '../theme/scale';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { rightClick } from '../utils/rightClick';
 import { softCardFrame, useSoftSurface, type SoftTokens } from '../theme/soft';
@@ -743,7 +744,7 @@ const styles = StyleSheet.create({
     // what every version of this card being "deformed" came from.
     flexBasis: '46%',
     flexGrow: 1,
-    borderRadius: 16,
+    borderRadius: cardRadius(16),
     borderWidth: 1,
     borderColor: 'rgba(176,176,176,0.5)',
     padding: 10,
