@@ -17,9 +17,13 @@ import type { View } from 'react-native';
 
 export type Rect = { x: number; y: number; width: number; height: number };
 
+// `into` / `from`: the key of a registered node the page stands in, when
+// that is not the phone's full-screen sheet - the right half of the Fold's
+// inner screen, where a note opens in a pane beside the list. That node
+// only exists once the note is open, so it is measured after `update`.
 type Driver = {
-  open: (from: Rect, radius: number, color: string | undefined, key: string, update: () => void) => void;
-  back: (key: string, color: string | undefined, leave: () => void) => void;
+  open: (from: Rect, radius: number, color: string | undefined, key: string, update: () => void, into?: string) => void;
+  back: (key: string, color: string | undefined, leave: () => void, from?: string) => void;
 };
 
 let driver: Driver | null = null;
@@ -79,7 +83,11 @@ export function morphLanded(key: string): void {
 // `update(true)` means the move is on and the screen should open without its
 // own slide (a stack slide under a growing sheet is two moves fighting);
 // `update(false)`, that it simply opens the way it always did.
-export function morph(key: string, update: (morphing: boolean) => void, opts?: { color?: string; radius?: number }): void {
+export function morph(
+  key: string,
+  update: (morphing: boolean) => void,
+  opts?: { color?: string; radius?: number; into?: string }
+): void {
   const run = driver;
   if (!run) {
     update(false);
@@ -90,19 +98,19 @@ export function morph(key: string, update: (morphing: boolean) => void, opts?: {
       update(false);
       return;
     }
-    run.open(from, opts?.radius ?? 22, opts?.color, key, () => update(true));
+    run.open(from, opts?.radius ?? 22, opts?.color, key, () => update(true), opts?.into);
   });
 }
 
 // The page is left: the sheet comes up over it, `leave` takes the screen
 // away under the sheet, and the sheet folds onto the card (or fades, with
 // no card on screen to fold onto).
-export function morphBack(key: string, leave: () => void, opts?: { color?: string }): void {
+export function morphBack(key: string, leave: () => void, opts?: { color?: string; from?: string }): void {
   if (!driver) {
     leave();
     return;
   }
-  driver.back(key, opts?.color, leave);
+  driver.back(key, opts?.color, leave, opts?.from);
 }
 
 // Several dataSet markers on one element - the web's concern; nothing here.

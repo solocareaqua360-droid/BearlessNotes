@@ -48,7 +48,7 @@ function fill(el: HTMLElement | null): string | null {
 // the card simply fades, the way everything else moves.
 const WAIT_MS = 400;
 
-export function morph(key: string, open: (morphing: boolean) => void, _opts?: { color?: string; radius?: number }): void {
+export function morph(key: string, open: (morphing: boolean) => void, _opts?: { color?: string; radius?: number; into?: string }): void {
   const update = () => open(false);
   const from = find(key);
   if (!from) {
@@ -98,6 +98,6 @@ export function measureCard(_key: string): Promise<Rect | null> {
 }
 export function whenLanded(_key: string, _then: () => void): void {}
 export function morphLanded(_key: string): void {}
-export function morphBack(_key: string, leave: () => void, _opts?: { color?: string }): void {
+export function morphBack(_key: string, leave: () => void, _opts?: { color?: string; from?: string }): void {
   leave();
 }

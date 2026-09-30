@@ -654,9 +654,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // Only for a note opened that way - the route says so, and it was pushed
   // without the stack's slide.
   const openedByMorph = !embedded && !('pane' in props) && !!(props.route.params as { morph?: boolean }).morph;
+  // Said by a note in a pane too (the Fold's inner screen opens one beside
+  // the list); with no move waiting it is nothing.
   useEffect(() => {
-    if (isLoaded && openedByMorph) morphLanded(`note:${documentId}`);
-  }, [isLoaded, openedByMorph, documentId]);
+    if (isLoaded && !embedded) morphLanded(`note:${documentId}`);
+  }, [isLoaded, embedded, documentId]);
   useEffect(() => {
     if (!openedByMorph || !navigation) return;
     let passing = false;
