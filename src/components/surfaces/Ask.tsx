@@ -19,7 +19,7 @@ import { hapticButtonDown } from '../../utils/haptics';
 import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
 import { useNavChromeStyle } from '../../navigation/navDock';
 import { useSoft } from '../../theme/soft';
-import { takeRecentContextPoint, type ContextPoint } from '../../utils/contextPoint';
+import { takeRecentClickPoint, takeRecentContextPoint, type ContextPoint } from '../../utils/contextPoint';
 import { useWindowDimensions } from 'react-native';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
 import { useDensity } from '../../hooks/useDensity';
@@ -59,7 +59,12 @@ export type AskOptions = {
   cancelLabel?: string | null;
 };
 
-type Pending = AskOptions & { resolve: (id: string) => void; anchor: ContextPoint | null };
+type Pending = AskOptions & {
+  resolve: (id: string) => void;
+  anchor: ContextPoint | null;
+  // Where the left button was pressed just before - see AskHost.
+  clickAnchor: ContextPoint | null;
+};
 
 let queue: Pending[] = [];
 let listener: (() => void) | null = null;
@@ -73,8 +78,9 @@ function announce() {
 export function ask(options: AskOptions): Promise<string> {
   // Straight out of a right click: it stands at the pointer, small.
   const anchor = takeRecentContextPoint();
+  const clickAnchor = takeRecentClickPoint();
   return new Promise((resolve) => {
-    queue = [...queue, { ...options, resolve, anchor }];
+    queue = [...queue, { ...options, resolve, anchor, clickAnchor }];
     announce();
   });
 }
@@ -145,9 +151,10 @@ export function AskHost() {
   }
 
   if (!current) return null;
+  const isConfirmation = current.actions.length <= 2 && current.actions.every((a) => !a.icon && !a.hint);
   // Asked by a right click: not a window over the whole screen but a small
   // menu at the cursor.
-  if (current.anchor) {
+  if (current.anchor && !(pointer && isConfirmation)) {
     return (
       <AskPopover
         title={current.title}
@@ -159,11 +166,24 @@ export function AskHost() {
       />
     );
   }
+  // At a pointer, a question with a list of answers is a menu too: beside
+  // the click that asked it, or, asked by nothing on screen, in the middle.
+  if (pointer && !isConfirmation) {
+    return (
+      <AskPopover
+        title={current.title}
+        message={current.message}
+        actions={current.actions}
+        at={current.clickAnchor}
+        onAnswer={answer}
+        tokens={softTokens}
+      />
+    );
+  }
   const cancelLabel = current.cancelLabel === undefined ? 'Скасувати' : current.cancelLabel;
   // At a pointer, a confirmation - one or two plain answers, no icons, no
-  // hints - is a Mac's alert, not a phone's sheet. A question with a list
-  // of answers stays as it is.
-  if (pointer && current.actions.length <= 2 && current.actions.every((a) => !a.icon && !a.hint)) {
+  // hints - is a Mac's alert, not a phone's sheet.
+  if (pointer && isConfirmation) {
     return (
       <MacAlert
         title={current.title}
@@ -377,7 +397,9 @@ function AskPopover({
   title: string;
   message?: string;
   actions: AskAction[];
-  at: ContextPoint;
+  // Null: asked by nothing on screen - it stands in the middle, over a
+  // barely dimmed app, like the alert.
+  at: ContextPoint | null;
   onAnswer: (id: string) => void;
   tokens: ReturnType<typeof useSoft>;
 }) {
@@ -393,14 +415,14 @@ function AskPopover({
   }, []);
   const MENU_W = 244;
   const estimate = 30 + (message ? 34 : 0) + actions.reduce((sum, a) => sum + (a.hint ? 44 : 30), 0) + 12;
-  const left = Math.max(8, Math.min(at.x, width - MENU_W - 8));
-  const top = Math.max(8, Math.min(at.y, height - estimate - 8));
+  const left = at ? Math.max(8, Math.min(at.x, width - MENU_W - 8)) : Math.max(8, (width - MENU_W) / 2);
+  const top = at ? Math.max(8, Math.min(at.y, height - estimate - 8)) : Math.max(8, (height - estimate) / 2);
   return (
     <View style={styles.popoverFrame} pointerEvents="box-none">
       {/* A sheet that catches the click away - and the second right click,
           which closes this menu instead of opening the browser's. */}
       <Pressable
-        style={styles.popoverScrim}
+        style={[styles.popoverScrim, !at && { backgroundColor: 'rgba(0,0,0,0.12)' }]}
         onPress={() => onAnswer('cancel')}
         {...({ onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}
       />

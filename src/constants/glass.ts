@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 // The one place the glass palette lives. Bottom sheets used to be white
 // cards, each carrying its own greys as literals - so a change of mind
 // meant fourteen files, and one of them always got missed. These are the
@@ -12,7 +13,11 @@ export const GLASS_BODY = 'rgba(24,21,19,0.96)';
 // For a sheet that has a real blur behind it (see GlassLayer): the fill
 // only has to darken what the blur already softened, and at 0.96 it would
 // hide it completely.
-export const GLASS_BODY_BLURRED = 'rgba(24,21,19,0.55)';
+//
+// Not in the browser/Mac build: a window there stands over the app with no
+// blur at all (see GlassLayer - a Mac's window, not the phone's glass), and
+// at 0.55 the list behind showed through the sheet's own text.
+export const GLASS_BODY_BLURRED = Platform.OS === 'web' ? GLASS_BODY : 'rgba(24,21,19,0.55)';
 // A small piece of glass that floats over the screen rather than covering
 // it - the control island and the menu that opens beside it. Lighter than
 // a sheet's fill: at sheet strength a capsule this size reads as a black

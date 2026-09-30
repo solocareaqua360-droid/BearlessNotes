@@ -21,3 +21,27 @@ export function takeRecentContextPoint(): ContextPoint | null {
   last = null;
   return point;
 }
+
+// WHERE THE LEFT BUTTON WAS PRESSED, the same way: a question a click
+// opens (a card in the bin: restore, or delete for good?) stands beside
+// that click on a laptop, as a small menu - see AskHost. Read from every
+// press on the page, so no button has to report itself. Nothing is
+// listened to where there is no document (the phone).
+let click: (ContextPoint & { at: number }) | null = null;
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      if (event.button === 0) click = { x: event.clientX, y: event.clientY, at: Date.now() };
+    },
+    true
+  );
+}
+
+export function takeRecentClickPoint(): ContextPoint | null {
+  if (!click || Date.now() - click.at > 700) return null;
+  const point = { x: click.x, y: click.y };
+  click = null;
+  return point;
+}

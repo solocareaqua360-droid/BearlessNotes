@@ -4,6 +4,7 @@ import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
 import { GLASS_BACKDROP } from '../constants/glass';
+import { useDensity } from '../hooks/useDensity';
 
 // What a bottom sheet sits in, now that a sheet is a layer rather than a
 // window. The reason is the blur: on Android it blurs what is inside ITS
@@ -28,6 +29,17 @@ export default function GlassLayer({
   // Without this ref expo-blur falls back to a plain translucent view on
   // Android - which is what made the first two attempts look like a dim.
   const blurTarget = useBlurTarget();
+  // At a pointer (the laptop) a window over the app is a Mac's: no blur, the
+  // app behind barely dimmed, Esc closes it. The phone keeps its glass.
+  const pointer = useDensity() === 'pointer';
+  useEffect(() => {
+    if (!visible || !pointer || typeof document === 'undefined') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [visible, pointer, onClose]);
 
   useEffect(() => {
     if (!visible) return;
@@ -46,6 +58,7 @@ export default function GlassLayer({
       {/* The blur covers the whole screen, not just the sheet: what is
           beside a sheet is as much "behind the glass" as what is under it,
           and blurring only the sheet's own rectangle looks like a cut-out. */}
+      {!pointer && (
       <BlurView
         intensity={intensity}
         tint="dark"
@@ -54,11 +67,12 @@ export default function GlassLayer({
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
+      )}
       {/* The dim, and the tap that closes. A SIBLING behind the sheet, not
           its parent: as a parent it took the touch responder for every drag
           that didn't land on a deeper child, which is what used to keep
           these lists from scrolling. */}
-      <Pressable style={[StyleSheet.absoluteFill, styles.dim]} onPress={onClose} />
+      <Pressable style={[StyleSheet.absoluteFill, pointer ? styles.dimLight : styles.dim]} onPress={onClose} />
       {children}
     </View>
     </GlassPortal>
@@ -79,5 +93,8 @@ const styles = StyleSheet.create({
   },
   dim: {
     backgroundColor: GLASS_BACKDROP,
+  },
+  dimLight: {
+    backgroundColor: 'rgba(0,0,0,0.12)',
   },
 });
