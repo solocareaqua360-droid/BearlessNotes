@@ -1,6 +1,6 @@
 import { RADIUS } from '../theme/scale';
 import { IN_SHELL } from '../utils/shell';
-import { morphKey, morphLanded } from '../utils/morph';
+import { morphKey } from '../utils/morph';
 import { dragSelectJustEnded } from '../hooks/useBlockMarquee';
 import { ForwardedRef, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
@@ -647,14 +647,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [isLoaded, setIsLoaded] = useState(false);
-
-  // THE CARD THAT BECOMES THIS PAGE (utils/morph): once the note is drawn,
-  // the page may grow out of its card (MorphFrame, around this screen, does
-  // the growing and the way back). Said by a note in a pane too (the Fold's
-  // inner screen); with no move waiting it is nothing.
-  useEffect(() => {
-    if (isLoaded && !embedded) morphLanded(`note:${documentId}`);
-  }, [isLoaded, embedded, documentId]);
 
   // Landing on the card that mentions the note we came from, rather than
   // at the top of this one.

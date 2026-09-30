@@ -48,8 +48,7 @@ function fill(el: HTMLElement | null): string | null {
 // the card simply fades, the way everything else moves.
 const WAIT_MS = 400;
 
-export function morph(key: string, open: (morphing: boolean) => void, _opts?: { color?: string; radius?: number; into?: string }): void {
-  const update = () => open(false);
+export function morph(key: string, update: () => void): void {
   const from = find(key);
   if (!from) {
     withTransition(update);
@@ -84,23 +83,4 @@ export function morph(key: string, open: (morphing: boolean) => void, _opts?: { 
 export function dataSets(...parts: object[]): object {
   const dataSet = Object.assign({}, ...parts.map((p) => (p as { dataSet?: object }).dataSet ?? {}));
   return Object.keys(dataSet).length ? { dataSet } : {};
-}
-
-// The phone's half of the API (utils/morph.ts): here the move is the view
-// transition above, and none of this is needed.
-export type Rect = { x: number; y: number; width: number; height: number };
-export function setMorphDriver(_driver: unknown): void {}
-export function morphCardRef(_key: string): undefined {
-  return undefined;
-}
-export function measureCard(_key: string): Promise<Rect | null> {
-  return Promise.resolve(null);
-}
-export function whenLanded(_key: string, _then: () => void): void {}
-export function morphLanded(_key: string): void {}
-export function morphBack(_key: string, leave: () => void, _opts?: { color?: string; from?: string }): void {
-  leave();
-}
-export function takeMorphFrom(_key: string): Rect | null {
-  return null;
 }
