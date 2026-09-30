@@ -31,7 +31,18 @@ function washStops(ground: string, top: number): string {
   return parts.join(', ');
 }
 
-export default function EdgeFade({ height = 120, color }: { height?: number; color?: string }) {
+export default function EdgeFade({
+  height = 120,
+  color,
+  edge = 'bottom',
+}: {
+  height?: number;
+  color?: string;
+  // Which edge the content runs off: the foot of a window, or its head
+  // (under the toolbar, where scrolled content used to be cut by a line).
+  edge?: 'top' | 'bottom';
+}) {
+  const toward = edge === 'bottom' ? 'to bottom' : 'to top';
   const D = useDeskColors();
   const ground = color ?? D.ground;
   const n = LAYERS.length;
@@ -39,7 +50,7 @@ export default function EdgeFade({ height = 120, color }: { height?: number; col
   // gives way over the one after - the neighbours overlap it on both sides.
   const step = 100 / (n + 1);
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height, zIndex: 5 }}>
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, [edge]: 0, height, zIndex: 5 }}>
       {LAYERS.map((blur, i) => {
         const a = i * step;
         const b = (i + 1) * step;
@@ -47,8 +58,8 @@ export default function EdgeFade({ height = 120, color }: { height?: number; col
         const d = (i + 3) * step;
         const last = i === n - 1;
         const mask = last
-          ? `linear-gradient(to bottom, transparent ${a}%, black ${b}%, black 100%)`
-          : `linear-gradient(to bottom, transparent ${a}%, black ${b}%, black ${c}%, transparent ${d}%)`;
+          ? `linear-gradient(${toward}, transparent ${a}%, black ${b}%, black 100%)`
+          : `linear-gradient(${toward}, transparent ${a}%, black ${b}%, black ${c}%, transparent ${d}%)`;
         return (
           <View
             key={blur}
@@ -76,7 +87,7 @@ export default function EdgeFade({ height = 120, color }: { height?: number; col
             right: 0,
             top: 0,
             bottom: 0,
-            backgroundImage: `linear-gradient(to bottom, ${washStops(ground, 0.92)})`,
+            backgroundImage: `linear-gradient(${toward}, ${washStops(ground, 0.92)})`,
           } as never
         }
       />

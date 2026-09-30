@@ -93,9 +93,9 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
   if (compact && !shown.length && !leftBead && !beads.right && crumbs.length === 0) return null;
 
   return (
-    <View style={[styles.frame, { backgroundColor: compact ? 'transparent' : D.ground }]} pointerEvents="box-none">
-      <View style={styles.bar}>
-        <View style={styles.crumbs}>
+    <View style={[styles.frame, { backgroundColor: 'transparent' }]} pointerEvents="box-none">
+      <View style={styles.bar} pointerEvents="box-none">
+        <View style={styles.crumbs} pointerEvents="box-none">
           {!compact && <UpButton fallback={up} />}
           {crumbs.length > 0 && (
             <Pressable style={styles.crumb} onPress={() => onGo?.('')}>

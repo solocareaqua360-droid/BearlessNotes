@@ -1,4 +1,4 @@
-import EdgeFade from './src/components/desktop/EdgeFade';
+import UnderToolbar from './src/components/desktop/UnderToolbar';
 import { IS_POINTER } from './src/utils/pointer';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -127,6 +127,13 @@ const styles = StyleSheet.create({
   deskBody: {
     flex: 1,
     minWidth: 0,
+  },
+  toolbarOver: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
   },
   driveBar: {
     flexDirection: 'row',
@@ -623,10 +630,12 @@ export default function App() {
                         toolbar is about whichever one is in front. */}
                     <DesktopTabs />
                     <View style={styles.deskBody}>
-                      <DesktopToolbar />
-                      <View style={styles.deskBody}>
+                      <UnderToolbar>
                         <RootNavigator />
-                        <EdgeFade />
+                      </UnderToolbar>
+                      {/* Over the content, not above it - see UnderToolbar. */}
+                      <View style={styles.toolbarOver} pointerEvents="box-none">
+                        <DesktopToolbar />
                       </View>
                       {/* The new tab's page, over the navigator AND its
                           toolbar while it is the tab in front - see
