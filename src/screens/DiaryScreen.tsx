@@ -223,7 +223,7 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
   );
 }
 
-const makeStyles = (_t: Theme) =>
+const makeStyles = (t: Theme) =>
   StyleSheet.create({
     list: {
       paddingBottom: 120,
@@ -241,5 +241,8 @@ const makeStyles = (_t: Theme) =>
       flex: 1,
       borderRadius: 18,
       overflow: 'hidden',
+      // Its own paper: in the Mac app the editor's ground is glass, and a day
+      // is a document - white, as a note is.
+      backgroundColor: t.paper.fill,
     },
   });

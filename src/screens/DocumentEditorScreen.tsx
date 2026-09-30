@@ -1,3 +1,5 @@
+import { RADIUS } from '../theme/scale';
+import { IN_SHELL } from '../utils/shell';
 import { dragSelectJustEnded } from '../hooks/useBlockMarquee';
 import { ForwardedRef, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
@@ -4898,7 +4900,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // Phone only, and not in a pane: a pane is already a sheet standing
   // beside a list, and on a pointer the toolbar above the page is what
   // marks its top edge.
-  const sheetPage = !embedded && !('pane' in props) && !pointerDensity;
+  // In the Mac app (glass grounds) a note is a white sheet too - the page is
+  // the document, as its card is, and text is not read on glass; the glass
+  // shows round it (the user, 2026-10-01). The phone's own sheet, reused.
+  const sheetPage = !embedded && !('pane' in props) && (!pointerDensity || IN_SHELL);
   // THE SHEET SCROLLS, NOT THE TEXT IN IT - the user's call: "повинно
   // прокручуватися полотно". The rounded paper used to be a still frame
   // with the text moving inside it; now the frame is the scroll's own
@@ -5073,7 +5078,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // the screen's less the sheet's margins where the paper scrolls.
       onLayout={(e) => {
         const paper = e.nativeEvent.layout.width - (scrollSheet ? PAGE_SHEET_INSET * 2 : 0);
-        setEditorWidth(pointerDensity && !embedded && !scrollSheet ? Math.min(paper, DESKTOP_NOTE_MEASURE) : paper);
+        setEditorWidth(pointerDensity && !embedded ? Math.min(paper, DESKTOP_NOTE_MEASURE) : paper);
       }}
     >
       {/* The room above the title - inside the scrolling paper instead
@@ -5497,6 +5502,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               marginBottom: sheetBottomRest,
               paddingTop: PAGE_HEADER_TOP + TOP_NAV_SPACE + 12,
               backgroundColor: paperColor?.background ?? theme.paper.fill,
+            },
+            // The laptop's sheet (the Mac app, on glass): a page of the
+            // note's own readable measure, centred, with the glass on both
+            // sides; a card's corner, not a phone sheet's; the room at the
+            // top is a page's margin - the phone's bar clearance is not
+            // there to clear.
+            pointerDensity && {
+              width: '100%',
+              maxWidth: DESKTOP_NOTE_MEASURE + 48,
+              alignSelf: 'center',
+              paddingTop: 28,
+              paddingHorizontal: 24,
+              borderRadius: RADIUS.card,
+              marginTop: 4,
+              marginBottom: 24,
             },
           ],
           onPullPastEnd && scrollViewportH > 0 && { minHeight: scrollViewportH + PULL_ZONE },
