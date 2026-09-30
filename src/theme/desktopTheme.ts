@@ -93,7 +93,8 @@ export function useDeskColors(): DeskColors {
 
 // THE MAC APP'S GLASS (2026-10-01, after Craft): the window is macOS's own
 // material, and the page lays one tint over it per kind of surface - the
-// main ground the clearest, the rail and the side panels milkier. Cards are
+// main ground the clearest, the rail and the side panels milkier (their
+// tint is laid over the main glass, so it is chosen for the SUM). Cards are
 // never glass: they stay white. Outside the shell these are the ordinary
 // solid grounds.
 export function deskGlass(S: SoftTokens): { main: string; panel: string; mainRgb: string; mainAlpha: number } {
@@ -101,7 +102,11 @@ export function deskGlass(S: SoftTokens): { main: string; panel: string; mainRgb
     const ground = S.dark ? '#000000' : '#FAF9F6';
     return { main: ground, panel: ground, mainRgb: S.dark ? '0,0,0' : '250,249,246', mainAlpha: 1 };
   }
+  // A panel always lies ON the main glass, so its own tint is what brings
+  // the two together to its level - 65%, the rail's own middle - not a
+  // second 80% on top of 42% (that came to ~90%: a white slab, 2026-10-01):
+  // 1 - (1 - 0.42)(1 - p) = 0.65  ->  p = 0.40.
   return S.dark
-    ? { main: 'rgba(0,0,0,0.42)', panel: 'rgba(28,28,30,0.78)', mainRgb: '0,0,0', mainAlpha: 0.42 }
-    : { main: 'rgba(250,249,246,0.42)', panel: 'rgba(250,249,246,0.8)', mainRgb: '250,249,246', mainAlpha: 0.42 };
+    ? { main: 'rgba(0,0,0,0.42)', panel: 'rgba(28,28,30,0.4)', mainRgb: '0,0,0', mainAlpha: 0.42 }
+    : { main: 'rgba(250,249,246,0.42)', panel: 'rgba(250,249,246,0.4)', mainRgb: '250,249,246', mainAlpha: 0.42 };
 }
