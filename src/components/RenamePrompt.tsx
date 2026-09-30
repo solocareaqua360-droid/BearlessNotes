@@ -5,6 +5,7 @@ import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
+import { useDensity } from '../hooks/useDensity';
 
 type Props = {
   visible: boolean;
@@ -60,6 +61,9 @@ export default function RenamePrompt({
 }: Props) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
+  // At a pointer the dialog is a Mac's: smaller type, a field and buttons
+  // 30 tall - the phone's are sized for a thumb.
+  const pointer = useDensity() === 'pointer';
   const [value, setValue] = useState(initialValue);
   // Some Android keyboards (Samsung's own, confirmed on-device) silently
   // reset the cursor to the START of the field after every character
@@ -111,8 +115,8 @@ export default function RenamePrompt({
           keyboard's height, so the card sits in the middle of the free
           part of the screen rather than under the keys. */}
       <View style={styles.frame} pointerEvents="box-none">
-      <View style={[styles.card, { marginBottom: keyboardHeight }]}>
-        <Text style={styles.title}>{title}</Text>
+      <View style={[styles.card, pointer && styles.cardDesk, { marginBottom: keyboardHeight }]}>
+        <Text style={[styles.title, pointer && styles.titleDesk]}>{title}</Text>
         <TextInput
           autoFocus
           editable={!busy}
@@ -123,7 +127,7 @@ export default function RenamePrompt({
           placeholder={placeholder ?? 'Назва'}
           placeholderTextColor={theme.ink.faint}
           multiline={multiline}
-          style={[styles.input, multiline && styles.inputTall, busy && styles.inputBusy]}
+          style={[styles.input, pointer && styles.inputDesk, multiline && styles.inputTall, busy && styles.inputBusy]}
           onSubmitEditing={
             multiline ? undefined : () => (allowEmpty || value.trim()) && !busy && onSave(value.trim())
           }
@@ -136,21 +140,22 @@ export default function RenamePrompt({
         ) : (
           <View style={styles.buttons}>
             <Pressable
-              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.cancelButton, pointer && styles.cancelButtonDesk, pressed && styles.pressed]}
               onPress={onCancel}
             >
-              <Text style={styles.cancelLabel}>Скасувати</Text>
+              <Text style={[styles.cancelLabel, pointer && styles.labelDesk]}>Скасувати</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [
                 styles.saveButton,
+                pointer && styles.saveButtonDesk,
                 !allowEmpty && !value.trim() && styles.saveButtonDisabled,
                 pressed && styles.pressed,
               ]}
               disabled={!allowEmpty && !value.trim()}
               onPress={() => onSave(value.trim())}
             >
-              <Text style={styles.saveLabel}>Зберегти</Text>
+              <Text style={[styles.saveLabel, pointer && styles.labelDesk]}>Зберегти</Text>
             </Pressable>
           </View>
         )}
@@ -172,6 +177,12 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     padding: 20,
     gap: 12,
   },
+  cardDesk: { borderRadius: 14, padding: 18, gap: 10, maxWidth: 400 },
+  titleDesk: { fontSize: 14.5, fontFamily: FONT_SEMIBOLD },
+  inputDesk: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, fontSize: 13.5 },
+  cancelButtonDesk: { minHeight: 30, paddingHorizontal: 12, borderRadius: 8 },
+  saveButtonDesk: { minHeight: 30, paddingHorizontal: 16, borderRadius: 8 },
+  labelDesk: { fontSize: 13, fontFamily: FONT_SEMIBOLD },
   title: {
     fontSize: 19,
     fontFamily: FONT_BOLD,

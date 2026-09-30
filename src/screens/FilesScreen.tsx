@@ -54,6 +54,7 @@ import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
 import { openTabWithSequence } from '../navigation/desktopTabs';
+import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
 import { go } from '../components/DesktopTabs';
 import { useDensity } from '../hooks/useDensity';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
@@ -62,7 +63,6 @@ import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import FilePreviewWorker from '../components/FilePreviewWorker';
-import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT , railClear } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -377,6 +377,82 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     } catch (error) {
       notify('Не вдалося завантажити', (error as Error).message);
     }
+  }
+
+  // The rows of a file's menu (see CardMenu - a sheet on a phone, a small
+  // menu at the click on a laptop).
+  function fileMenuRows(file: FileItem): CardMenuRow[] {
+    const close = () => setCardMenuFileId(null);
+    return [
+      // The laptop's: the file looked at in a tab of its own, whose arrows
+      // step through the files of this folder.
+      ...(pointer
+        ? [
+            {
+              icon: 'browsers-outline',
+              label: 'Відкрити в новій вкладці',
+              onPress: () => {
+                close();
+                go(openTabWithSequence('file', file.id, filesHere.map((f) => f.id)));
+              },
+            },
+          ]
+        : []),
+      {
+        icon: 'pencil-outline',
+        label: 'Редагувати назву',
+        onPress: () => {
+          setRenamingFile(file);
+          close();
+        },
+      },
+      // Where the drag-and-drop lands a card, for anyone who would rather
+      // pick the folder from a list - and the only way to reach a folder
+      // that is not on screen.
+      {
+        icon: 'folder-outline',
+        label: 'Перемістити в папку',
+        onPress: async () => {
+          close();
+          const destination = await explorer.pickDestination(`Перемістити «${file.title || file.fileName}» в…`);
+          if (destination === 'cancel') return;
+          await explorer.moveItem(file, destination);
+        },
+      },
+      // Saved where the phone keeps everything else, into the folder picked
+      // once - the app's own copy is not somewhere a person can reach.
+      {
+        icon: 'download-outline',
+        label: 'Завантажити',
+        onPress: () => {
+          close();
+          handleDownloadFile(file);
+        },
+      },
+      ...(file.documentIds.length > 0
+        ? [
+            {
+              icon: 'document-text-outline',
+              label: `Документи${file.documentIds.length > 1 ? ` (${file.documentIds.length})` : ''}`,
+              onPress: () => {
+                openDocumentIcon(file);
+                close();
+              },
+            },
+          ]
+        : []),
+      // The only way to a single delete used to be select-mode on exactly
+      // one item. Straight to the bin, no confirmation: the bin is the undo.
+      {
+        icon: 'trash-outline',
+        label: 'Видалити',
+        danger: true,
+        onPress: () => {
+          bin.moveToBin(file.id);
+          close();
+        },
+      },
+    ];
   }
 
   async function openFile(file: FileItem) {
@@ -823,107 +899,11 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
 
           {/* The per-card "..." - rename, and the documents this file sits
               in when it sits in any. */}
-          <Modal
+          <CardMenu
             visible={cardMenuFile !== null}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setCardMenuFileId(null)}
-          >
-            <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuFileId(null)}>
-              <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
-                <View style={styles.cardMenuHandle} />
-                {/* The laptop's: the file looked at in a tab of its own,
-                    whose arrows step through the files of this folder. */}
-                {pointer && (
-                  <Pressable
-                    style={styles.cardMenuRow}
-                    onPress={() => {
-                      const file = cardMenuFile;
-                      setCardMenuFileId(null);
-                      if (file) go(openTabWithSequence('file', file.id, filesHere.map((f) => f.id)));
-                    }}
-                  >
-                    <Ionicons name="browsers-outline" size={18} color="#111827" />
-                    <Text style={styles.cardMenuRowLabel}>Відкрити в новій вкладці</Text>
-                  </Pressable>
-                )}
-                <Pressable
-                  style={styles.cardMenuRow}
-                  onPress={() => {
-                    if (cardMenuFile) setRenamingFile(cardMenuFile);
-                    setCardMenuFileId(null);
-                  }}
-                >
-                  <Ionicons name="pencil-outline" size={18} color="#111827" />
-                  <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
-                </Pressable>
-                {/* Where the drag-and-drop lands a card, for anyone who
-                    would rather pick the folder from a list - and the only
-                    way to reach a folder that is not on screen. */}
-                <Pressable
-                  style={styles.cardMenuRow}
-                  onPress={async () => {
-                    const file = cardMenuFile;
-                    setCardMenuFileId(null);
-                    if (!file) return;
-                    const destination = await explorer.pickDestination(
-                      `Перемістити «${file.title || file.fileName}» в…`
-                    );
-                    if (destination === 'cancel') return;
-                    await explorer.moveItem(file, destination);
-                  }}
-                >
-                  {/* The sheet under it is white in every theme (its own
-                      fixed pair with cardMenuRowLabel), so this ink is the
-                      literal its siblings use and not the theme's. */}
-                  <Ionicons name="folder-outline" size={18} color="#111827" />
-                  <Text style={styles.cardMenuRowLabel}>Перемістити в папку</Text>
-                </Pressable>
-                {/* Saved where the phone keeps everything else, into the
-                  folder picked once - the app's own copy is not somewhere
-                  a person can reach. */}
-              <Pressable
-                style={styles.cardMenuRow}
-                onPress={() => {
-                  const file = cardMenuFile;
-                  setCardMenuFileId(null);
-                  if (file) handleDownloadFile(file);
-                }}
-              >
-                <Ionicons name="download-outline" size={18} color="#111827" />
-                <Text style={styles.cardMenuRowLabel}>Завантажити</Text>
-              </Pressable>
-              {cardMenuFile && cardMenuFile.documentIds.length > 0 && (
-                  <Pressable
-                    style={styles.cardMenuRow}
-                    onPress={() => {
-                      if (cardMenuFile) openDocumentIcon(cardMenuFile);
-                      setCardMenuFileId(null);
-                    }}
-                  >
-                    <Ionicons name="document-text-outline" size={18} color="#111827" />
-                    <Text style={styles.cardMenuRowLabel}>
-                      Документи{cardMenuFile.documentIds.length > 1 ? ` (${cardMenuFile.documentIds.length})` : ''}
-                    </Text>
-                  </Pressable>
-                )}
-                {/* The only way to a single delete used to be select-mode
-                    on exactly one item - "в файлах немає функції
-                    видалення". Straight to the bin, no confirmation: the
-                    bin is the undo, same as Photos' own single delete. */}
-                <Pressable
-                  style={styles.cardMenuRow}
-                  onPress={() => {
-                    if (cardMenuFile) bin.moveToBin(cardMenuFile.id);
-                    setCardMenuFileId(null);
-                  }}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                  <Text style={[styles.cardMenuRowLabel, { color: '#EF4444' }]}>Видалити</Text>
-                </Pressable>
-              </Pressable>
-            </Pressable>
-          </Modal>
+            onClose={() => setCardMenuFileId(null)}
+            rows={cardMenuFile ? fileMenuRows(cardMenuFile) : []}
+          />
 
           <RenamePrompt
             visible={renamingFile !== null}
@@ -1200,36 +1180,5 @@ const makeStyles = (t: Theme) =>
     flexWrap: 'wrap',
     alignItems: 'flex-start',
     gap: 12,
-  },
-  cardMenuBackdrop: {
-    backgroundColor: t.scrim,
-    ...SHEET_BACKDROP,
-  },
-  cardMenuSheet: {
-    backgroundColor: '#fff',
-    ...SHEET_WINDOW,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-  },
-  cardMenuHandle: {
-    ...PHONE_ONLY,
-    width: 36,
-    height: 4,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  cardMenuRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-  },
-  cardMenuRowLabel: {
-    fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
   },
   });

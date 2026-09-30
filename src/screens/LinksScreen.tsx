@@ -43,6 +43,7 @@ import GeoMapView, { type GeoMapPoint } from '../components/GeoMapView';
 import LinkDetailSheet from '../components/LinkDetailSheet';
 import LinkReaderSheet from '../components/LinkReaderSheet';
 import { addFragment, deleteArticleForLink, removeFragment, saveArticleForLink, type LinkFragment } from '../utils/articleReader';
+import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
 import { pickPhotosFromDevice } from '../utils/photoLibrary';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import { mapsUrlForLatLng, type LatLng } from '../utils/geoCoordinates';
@@ -72,7 +73,6 @@ import VideoPlayerModal from '../components/VideoPlayerModal';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { listenError } from '../utils/listenError';
 
 // The same half-strength tint the documents screen's add button takes -
@@ -414,6 +414,57 @@ export default function LinksScreen({
 
   // The document icon jumps straight to the one document a link is used in,
   // or - when it's inserted in several - shows a picker to choose which.
+  // The rows of a link's menu (see CardMenu).
+  function linkMenuRows(link: LinkItem): CardMenuRow[] {
+    const close = () => setCardMenuLinkId(null);
+    return [
+      {
+        icon: 'pencil-outline',
+        label: 'Редагувати назву',
+        onPress: () => {
+          setRenamingLink(link);
+          close();
+        },
+      },
+      // Where the drag-and-drop lands a card, for anyone who would rather
+      // pick the folder from a list - and the only way to reach a folder
+      // that is nowhere near the screen.
+      {
+        icon: 'folder-outline',
+        label: 'Перемістити в папку',
+        onPress: async () => {
+          close();
+          const destination = await explorer.pickDestination(`Перемістити «${link.title || link.url}» в…`);
+          if (destination === 'cancel') return;
+          await explorer.moveItem(link, destination);
+        },
+      },
+      ...(link.documentIds.length > 0
+        ? [
+            {
+              icon: 'document-text-outline',
+              label: `Документи${link.documentIds.length > 1 ? ` (${link.documentIds.length})` : ''}`,
+              onPress: () => {
+                openDocumentIcon(link);
+                close();
+              },
+            },
+          ]
+        : []),
+      // Straight to the bin, no confirmation: the bin is the undo, same as
+      // Photos' own single delete.
+      {
+        icon: 'trash-outline',
+        label: 'Видалити',
+        danger: true,
+        onPress: () => {
+          bin.moveToBin(link.id);
+          close();
+        },
+      },
+    ];
+  }
+
   async function openDocumentIcon(link: LinkItem) {
     if (link.documentIds.length === 0) return;
     if (link.documentIds.length === 1) {
@@ -993,75 +1044,11 @@ export default function LinksScreen({
 
           {/* The per-card "..." - rename, and the documents this link sits
               in when it sits in any. */}
-          <Modal
+          <CardMenu
             visible={cardMenuLink !== null}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setCardMenuLinkId(null)}
-          >
-            <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuLinkId(null)}>
-              <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
-                <View style={styles.cardMenuHandle} />
-                <Pressable
-                  style={styles.cardMenuRow}
-                  onPress={() => {
-                    if (cardMenuLink) setRenamingLink(cardMenuLink);
-                    setCardMenuLinkId(null);
-                  }}
-                >
-                  <Ionicons name="pencil-outline" size={18} color="#111827" />
-                  <Text style={styles.cardMenuRowLabel}>Редагувати назву</Text>
-                </Pressable>
-                {/* Where the drag-and-drop lands a card, for anyone who
-                    would rather pick the folder from a list - and the only
-                    way to reach a folder that is nowhere near the screen. */}
-                <Pressable
-                  style={styles.cardMenuRow}
-                  onPress={async () => {
-                    const link = cardMenuLink;
-                    setCardMenuLinkId(null);
-                    if (!link) return;
-                    const destination = await explorer.pickDestination(
-                      `Перемістити «${link.title || link.url}» в…`
-                    );
-                    if (destination === 'cancel') return;
-                    await explorer.moveItem(link, destination);
-                  }}
-                >
-                  <Ionicons name="folder-outline" size={18} color="#111827" />
-                  <Text style={styles.cardMenuRowLabel}>Перемістити в папку</Text>
-                </Pressable>
-                {cardMenuLink && cardMenuLink.documentIds.length > 0 && (
-                  <Pressable
-                    style={styles.cardMenuRow}
-                    onPress={() => {
-                      if (cardMenuLink) openDocumentIcon(cardMenuLink);
-                      setCardMenuLinkId(null);
-                    }}
-                  >
-                    <Ionicons name="document-text-outline" size={18} color="#111827" />
-                    <Text style={styles.cardMenuRowLabel}>
-                      Документи{cardMenuLink.documentIds.length > 1 ? ` (${cardMenuLink.documentIds.length})` : ''}
-                    </Text>
-                  </Pressable>
-                )}
-                {/* The only way to a single delete used to be select-mode
-                    on exactly one item - "в посиланнях немає функції
-                    видалення". Straight to the bin, no confirmation: the
-                    bin is the undo, same as Photos' own single delete. */}
-                <Pressable
-                  style={styles.cardMenuRow}
-                  onPress={() => {
-                    if (cardMenuLink) bin.moveToBin(cardMenuLink.id);
-                    setCardMenuLinkId(null);
-                  }}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                  <Text style={[styles.cardMenuRowLabel, { color: '#EF4444' }]}>Видалити</Text>
-                </Pressable>
-              </Pressable>
-            </Pressable>
-          </Modal>
+            onClose={() => setCardMenuLinkId(null)}
+            rows={cardMenuLink ? linkMenuRows(cardMenuLink) : []}
+          />
 
           <RenamePrompt
             visible={renamingLink !== null}
@@ -1457,36 +1444,5 @@ const makeStyles = (t: Theme) =>
     flexWrap: 'wrap',
     alignItems: 'flex-start',
     gap: 12,
-  },
-  cardMenuBackdrop: {
-    backgroundColor: t.scrim,
-    ...SHEET_BACKDROP,
-  },
-  cardMenuSheet: {
-    backgroundColor: '#fff',
-    ...SHEET_WINDOW,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-  },
-  cardMenuHandle: {
-    ...PHONE_ONLY,
-    width: 36,
-    height: 4,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  cardMenuRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-  },
-  cardMenuRowLabel: {
-    fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
   },
   });

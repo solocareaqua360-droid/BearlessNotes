@@ -36,7 +36,8 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import ReferenceBlockPreview from './ReferenceBlockPreview';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
-import type { SoftTokens } from '../theme/soft';
+import { useSoft, type SoftTokens } from '../theme/soft';
+import { useDensity } from '../hooks/useDensity';
 import SoftIcon from './SoftIcon';
 
 // Every listener gets one of these. A read the rules refuse does not come
@@ -203,9 +204,15 @@ export default function AddExistingItemModal({
   docked,
   rowRef,
   allowedTabs,
-  soft,
+  soft: softProp,
 }: Props) {
   const theme = useTheme();
+  // At a pointer the window wears the soft style on its own - the dark glass
+  // it was written in belongs to a phone (a caller that passes its own
+  // still wins).
+  const deskSoft = useSoft();
+  const pointer = useDensity() === 'pointer';
+  const soft = softProp ?? (pointer ? deskSoft : undefined);
   const baseStyles = useStyles(makeStyles);
   // Soft: the same browser in the soft material - the quiet ground, pill
   // tabs, a capsule search, icons in ink rather than the accent. Laid
@@ -767,6 +774,10 @@ export default function AddExistingItemModal({
 function softOverrides(S: SoftTokens) {
   return StyleSheet.create({
     dockedRoot: { backgroundColor: 'transparent', paddingHorizontal: 14 },
+    // The window itself, floating (not docked): the soft card, a window's
+    // corners, a shadow instead of an outline.
+    sheet: { backgroundColor: S.card, borderWidth: 0, borderRadius: 14, boxShadow: S.popShadow },
+    title: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', fontSize: 15, color: S.ink },
     tabRowContent: { gap: 6 },
     tab: { height: 34, paddingVertical: 0, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 17, backgroundColor: S.fillSolid },
     tabActive: { backgroundColor: S.ink },
