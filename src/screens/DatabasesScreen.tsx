@@ -75,7 +75,8 @@ import { GlassTargetProvider } from '../components/GlassTarget';
 import PaneTargetScreen from '../components/PaneTargetScreen';
 import type { PaneTarget } from '../navigation/paneTarget';
 import { useWorkspace } from '../navigation/workspace';
-import { windowUrlFor } from '../navigation/paneTargetInfo';
+import { navigateToTarget, windowUrlFor } from '../navigation/paneTargetInfo';
+import { addTab } from '../navigation/desktopTabs';
 import { rightClick } from '../utils/rightClick';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
@@ -1287,11 +1288,19 @@ export default function DatabasesScreen() {
     const answer = await ask({
       title: rowOf(item).label,
       actions: [
+        { id: 'tab', label: 'Відкрити в новій вкладці', icon: 'browsers-outline' },
         { id: 'panel', label: 'Відкрити в новій панелі', icon: 'albums-outline' },
         { id: 'window', label: 'Відкрити в новому вікні', icon: 'copy-outline' },
       ],
     });
-    if (answer === 'panel') workspace.openAnother({ kind: 'target', target });
+    // In the main pane: going there makes it a tab of its own (DesktopTabs).
+    if (answer === 'tab') {
+      // Sections are tabs only when asked for; the rest become one by going.
+      if (target.kind === 'route' && target.route === 'Tasks') addTab('section', 'Tasks');
+      else if (target.kind === 'boards') addTab('section', 'Дошки');
+      navigateToTarget(target);
+    }
+    else if (answer === 'panel') workspace.openAnother({ kind: 'target', target });
     else if (answer === 'window') window.open(windowUrlFor(target), '_blank');
   };
 

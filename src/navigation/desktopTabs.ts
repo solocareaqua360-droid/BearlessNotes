@@ -17,7 +17,9 @@ import { useEffect, useState } from 'react';
 //
 // References only. A title is looked up live, so a note renamed anywhere is
 // renamed on its tab.
-export type TabKind = 'note' | 'board' | 'database' | 'section' | 'start';
+// 'target': any other database screen (a links list, photos, files...) -
+// ref is its PaneTarget as JSON (navigation/paneTarget).
+export type TabKind = 'note' | 'board' | 'database' | 'section' | 'start' | 'target';
 export type Tab = { key: string; kind: TabKind; ref: string };
 
 const STORAGE_KEY = 'mindeva.desktopTabs';

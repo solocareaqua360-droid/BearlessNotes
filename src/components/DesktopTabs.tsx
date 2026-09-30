@@ -7,6 +7,8 @@ import { StackActions } from '@react-navigation/native';
 import { START_KEY, addTab, closeTab, leaveStart, noteRecent, openStart, showStart, tabKey, useOpenTabs, useStartFront, type Tab } from '../navigation/desktopTabs';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';
 import { navigationRef } from '../navigationRef';
+import { navigateToTarget, targetInfo } from '../navigation/paneTargetInfo';
+import type { PaneTarget } from '../navigation/paneTarget';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -49,6 +51,16 @@ export function placeNow(): Place {
       return params?.boardId ? { kind: 'board', ref: params.boardId } : null;
     case 'CustomDatabase':
       return params?.databaseId ? { kind: 'database', ref: params.databaseId } : null;
+    case 'Links':
+      return { kind: 'target', ref: JSON.stringify({ kind: 'links', category: (params as { category?: string })?.category ?? 'other' }) };
+    case 'Photos':
+    case 'Files':
+    case 'Stickers':
+    case 'Flashcards':
+    case 'Tags':
+    case 'Groups':
+    case 'Diary':
+      return { kind: 'target', ref: JSON.stringify({ kind: 'route', route: name }) };
     case 'Документи':
       return { kind: 'home' };
     case 'BoardsList':
@@ -74,6 +86,14 @@ export function go(tab: Tab | null) {
   if (tab === null) {
     if (current === 'Editor') navigationRef.goBack();
     else navigationRef.navigate('Tabs', { screen: 'Документи' } as never);
+    return;
+  }
+  if (tab.kind === 'target') {
+    try {
+      navigateToTarget(JSON.parse(tab.ref) as PaneTarget);
+    } catch {
+      // A tab from an older build - nothing to go to.
+    }
     return;
   }
   if (tab.kind === 'note') {
@@ -109,6 +129,13 @@ function useTabLabel(tab: Tab): { title: string; icon: string } {
     });
   }, [tab.kind, tab.ref]);
   if (tab.kind === 'start') return { title: 'Нова вкладка', icon: 'sparkles-outline' };
+  if (tab.kind === 'target') {
+    try {
+      return targetInfo(JSON.parse(tab.ref) as PaneTarget);
+    } catch {
+      return { title: 'База', icon: 'grid-outline' };
+    }
+  }
   if (tab.kind === 'note') return { title: index.get(tab.ref)?.title?.trim() || 'Без назви', icon: '' };
   if (tab.kind === 'board') return { title: name || 'Дошка', icon: 'easel-outline' };
   if (tab.kind === 'database') return { title: name || 'База', icon: 'grid-outline' };
@@ -151,9 +178,9 @@ export default function DesktopTabs() {
       setPlace(now);
       // The navigator moved: whatever stood in front of it gives way.
       showStart(false);
-      if (now && (now.kind === 'note' || now.kind === 'board' || now.kind === 'database')) {
+      if (now && (now.kind === 'note' || now.kind === 'board' || now.kind === 'database' || now.kind === 'target')) {
         addTab(now.kind, now.ref);
-        noteRecent(now.kind, now.ref);
+        if (now.kind !== 'target') noteRecent(now.kind, now.ref);
       }
     };
     read();
