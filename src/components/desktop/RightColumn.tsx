@@ -1,3 +1,4 @@
+import { WINDOW_INNER_RADIUS } from '../../theme/scale';
 import { deskGlass } from '../../theme/desktopTheme';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -448,7 +449,8 @@ const styles = StyleSheet.create({
   // stands outside it, and with nothing on the left the panel's left edge
   // had no shadow and ran into the ground ("лівий край зливається").
   stack: { flexGrow: 1, paddingLeft: 6, paddingRight: 8, paddingVertical: 8, gap: 8 },
-  panel: { borderRadius: 24, overflow: 'hidden', minHeight: HEADER },
+  // Concentric with the window's corner it stands in (scale.ts).
+  panel: { borderRadius: WINDOW_INNER_RADIUS, overflow: 'hidden', minHeight: HEADER },
   // Shares the column while there is room, and never gets shorter than a
   // panel can be used at - past that the column scrolls instead.
   panelOpen: { flex: 1 },

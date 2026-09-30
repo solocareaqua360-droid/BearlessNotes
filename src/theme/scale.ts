@@ -52,3 +52,13 @@ export function snapRadii<T extends Record<string, unknown>>(sheet: T): T {
   }
   return out as T;
 }
+
+// A PANEL THAT STANDS IN A CORNER OF THE WINDOW (the rail's card, the side
+// panels, «Референси») is CONCENTRIC with the window's own corner: a corner
+// nested in another at a gap runs parallel to it only when its radius is the
+// outer one less the gap (the user, 2026-10-01: equal radii never line up).
+// macOS 26 rounds a window like this ~16 pt, ~17 of the page's at the
+// shell's 0.95 zoom; the panels stand 8 in.
+export const WINDOW_CORNER = 17;
+export const PANEL_INSET = 8;
+export const WINDOW_INNER_RADIUS = WINDOW_CORNER - PANEL_INSET;

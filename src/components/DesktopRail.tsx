@@ -1,3 +1,4 @@
+import { WINDOW_INNER_RADIUS } from '../theme/scale';
 import { CONTROL, RADIUS, TYPE, deskGlass, useDeskColors } from '../theme/desktopTheme';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -373,8 +374,7 @@ const GAP = 8;
 // only when its radius is the outer one LESS the gap. The outer one is the
 // window's own - macOS 26 rounds a window like this about 16 points, which
 // at the shell's 0.95 zoom is ~17 of the page's - so the card is 17 - 8.
-const WINDOW_RADIUS = 17;
-export const RAIL_CARD_RADIUS = WINDOW_RADIUS - GAP;
+export const RAIL_CARD_RADIUS = WINDOW_INNER_RADIUS;
 function RailFrame({ ground }: { ground: string }) {
   const r = RAIL_CARD_RADIUS;
   const band = { position: 'absolute', backgroundColor: ground } as const;

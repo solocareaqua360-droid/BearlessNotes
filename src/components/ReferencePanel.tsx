@@ -1,3 +1,4 @@
+import { WINDOW_INNER_RADIUS } from '../theme/scale';
 import { deskGlass } from '../theme/desktopTheme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -331,7 +332,7 @@ function ResizeEdge({ width, onResize }: { width: number; onResize: (width: numb
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
     deskFrame: { flex: 1, paddingTop: 8, paddingBottom: 8, paddingRight: 8, paddingLeft: 6 },
-    deskCard: { flex: 1, borderRadius: 24, overflow: 'hidden' },
+    deskCard: { flex: 1, borderRadius: WINDOW_INNER_RADIUS, overflow: 'hidden' },
     deskHeader: {
       height: 38,
       flexDirection: 'row',
