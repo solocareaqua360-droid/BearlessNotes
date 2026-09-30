@@ -1,3 +1,4 @@
+import { dragSelectJustEnded } from '../hooks/useBlockMarquee';
 import { ForwardedRef, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -2896,6 +2897,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // cursor - at cursorIndex when the tap position gave one, else at the
   // end).
   function handleActivateBlock(id: string, cursorIndex?: number) {
+    // The release that ended a drag-pick is not a tap that starts writing.
+    if (dragSelectJustEnded()) return;
     focusIdRef.current = id;
     focusToEndRef.current = cursorIndex === undefined;
     focusCursorIndexRef.current = cursorIndex ?? null;
@@ -3539,6 +3542,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   function toggleSelected(id: string) {
+    // The release that ended a drag-pick is not a tap on the block under it.
+    if (dragSelectJustEnded()) return;
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -4581,6 +4586,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   //
   // Already in select mode: the hold is just another tick, which is what
   // the tap does too - a hold that undid a selection would be a trap.
+  // Blocks picked by dragging the mouse across them (the laptop's - see
+  // useBlockMarquee): the whole set, again each time it changes, and select
+  // mode on with the dock turned to its actions, the way a hold gets there.
+  function selectBlocks(ids: string[]) {
+    if (ids.length === 0) return;
+    setIsSelectMode(true);
+    setSelectedIds(new Set(ids));
+    showActions();
+  }
+
   function selectFromHold(id: string) {
     if (isSelectMode) {
       toggleSelected(id);
@@ -5604,6 +5619,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           blocks={shownBlocks}
           onReorder={handleReorderBlocks}
           onHoldWithoutDrag={selectFromHold}
+          onSelectRange={selectBlocks}
           selectedIds={selectedIds}
           isSelectMode={isSelectMode}
           focusedBlockId={focusedBlockId}

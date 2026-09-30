@@ -8,6 +8,8 @@ import type { colorForDocument } from '../utils/documentColor';
 import { hapticDrop, hapticPickUp, hapticSnapTick } from '../utils/haptics';
 import SortableBlockRow from './SortableBlockRow';
 import type { DocumentIndex } from '../hooks/useDocumentIndex';
+import { useBlockMarquee } from '../hooks/useBlockMarquee';
+import { useDensity } from '../hooks/useDensity';
 
 // Pulled out of DocumentEditorScreen.tsx (2026-09-19) alongside BlockRow/
 // SortableBlockRow - a plain, prop-only component.
@@ -30,6 +32,9 @@ type BlockListProps = {
   // duration (a second, longer press would sit INSIDE the wait the drag
   // already needs, and a slow hand would trip it on the way to dragging).
   onHoldWithoutDrag?: (id: string) => void;
+  // At a pointer: press and drag across blocks picks them - the whole set
+  // each time it changes (see useBlockMarquee).
+  onSelectRange?: (ids: string[]) => void;
   selectedIds: Set<string>;
   isSelectMode: boolean;
   focusedBlockId: string | null;
@@ -100,6 +105,7 @@ function BlockList({
   blocks,
   onReorder,
   onHoldWithoutDrag,
+  onSelectRange,
   selectedIds,
   isSelectMode,
   focusedBlockId,
@@ -152,6 +158,8 @@ function BlockList({
   blocksRef.current = blocks;
   // See BlockListHandle - a drop coming from outside the list.
   const containerRef = useRef<View | null>(null);
+  const pointer = useDensity() === 'pointer';
+  useBlockMarquee(containerRef, pointer && !!onSelectRange, (ids) => onSelectRange?.(ids));
   const [externalIndex, setExternalIndexState] = useState<number | null>(null);
   const externalIndexRef = useRef<number | null>(null);
   // Did this drag actually go anywhere? See onHoldWithoutDrag.
@@ -401,6 +409,7 @@ function BlockList({
             handleDragUpdate(item.id, dragGroupFor(item.id), translationY)
           }
           onDragEnd={() => handleDragEnd(item.id, dragGroupFor(item.id))}
+          onHandleClick={() => onHoldWithoutDrag?.(item.id)}
           onToggleSelected={onToggleSelected}
           onToggleChecked={onToggleChecked}
           onOpenReminder={onOpenReminder}

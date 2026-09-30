@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useDensity } from '../hooks/useDensity';
 import { LayoutChangeEvent, TextInput, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -47,6 +48,8 @@ type SortableBlockRowProps = {
   onDragStart: () => void;
   onDragUpdate: (translationY: number) => void;
   onDragEnd: () => void;
+  // At a pointer: a click on the handle, without a drag.
+  onHandleClick?: () => void;
   onToggleSelected: (id: string) => void;
   onToggleChecked: (id: string) => void;
   onOpenReminder: (id: string) => void;
@@ -105,6 +108,7 @@ export default function SortableBlockRow({
   onDragStart,
   onDragUpdate,
   onDragEnd,
+  onHandleClick,
   onToggleSelected,
   onToggleChecked,
   onOpenReminder,
@@ -131,16 +135,36 @@ export default function SortableBlockRow({
   softInputDisabled,
   paperColor,
 }: SortableBlockRowProps) {
+  // At a pointer a block is moved by its handle (shown on hover) at once,
+  // not by holding the row for half a second - which is also what a press
+  // and a drag across blocks is for (see useBlockMarquee).
+  const pointer = useDensity() === 'pointer';
   // This gesture's whole job is JS-side (finding the nearest gap, updating
   // React state) - there's no per-frame UI-thread animation to protect
   // here, so it runs plainly on the JS thread instead of being wrapped in
   // worklet/runOnJS ceremony for no benefit.
   const dragGesture = Gesture.Pan()
+    .enabled(!pointer)
     .activateAfterLongPress(DRAG_LONG_PRESS_MS)
     .runOnJS(true)
     .onStart(() => onDragStart())
     .onUpdate((e) => onDragUpdate(e.translationY))
     .onEnd(() => onDragEnd());
+
+  // The handle's: a drag from the first few points, a click without one.
+  const handleGesture = pointer
+    ? Gesture.Exclusive(
+        Gesture.Pan()
+          .minDistance(3)
+          .runOnJS(true)
+          .onStart(() => onDragStart())
+          .onUpdate((e) => onDragUpdate(e.translationY))
+          .onEnd(() => onDragEnd()),
+        Gesture.Tap()
+          .runOnJS(true)
+          .onEnd(() => onHandleClick?.())
+      )
+    : undefined;
 
   // TextInput has its own native touch handling (cursor placement, text
   // selection) that otherwise wins the race for any touch starting on the
@@ -178,12 +202,13 @@ export default function SortableBlockRow({
   }));
 
   return (
-    <View onLayout={onLayout}>
+    <View onLayout={onLayout} {...({ dataSet: { blockId: item.id } } as object)}>
       <GestureDetector gesture={gesture}>
         <Animated.View style={compressStyle}>
           <BlockRow
             item={item}
             hideHandle={hideHandle}
+            handleGesture={handleGesture}
             searchHighlight={searchHighlight}
             indented={indented}
             isSelected={isSelected}

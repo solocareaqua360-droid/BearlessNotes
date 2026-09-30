@@ -1,5 +1,5 @@
 import FlashcardBlockCard from './FlashcardBlockCard';
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ComponentProps, ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   GestureResponderEvent,
@@ -13,7 +13,9 @@ import {
 // Deliberately gesture-handler's ScrollView, not react-native's - see the
 // same note in DocumentEditorScreen.tsx (this component moved out of that
 // file on 2026-09-19).
-import { ScrollView } from 'react-native-gesture-handler';
+import { GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import { useRowHover } from '../hooks/useRowHover';
+import { useDensity } from '../hooks/useDensity';
 import { Ionicons } from './icons/Ionicons';
 import Svg, { Line, Path, Text as SvgText } from 'react-native-svg';
 import { Block, Tag } from '../types';
@@ -58,6 +60,9 @@ type BlockRowProps = {
   // would sit beneath the buttons. Dragging still works - the whole row
   // is the drag target, the handle was only ever a sign that it is.
   hideHandle?: boolean;
+  // At a pointer: what dragging the handle does (move the block, or the
+  // picked group) - built by the sortable row, which knows the list.
+  handleGesture?: ComponentProps<typeof GestureDetector>['gesture'];
   // Under a toggle's section - see BlockList's own `indented` computation.
   indented?: boolean;
   isSelected: boolean;
@@ -119,6 +124,7 @@ type BlockRowProps = {
 export default function BlockRow({
   item,
   hideHandle,
+  handleGesture,
   indented,
   isSelected,
   isSelectMode,
@@ -836,8 +842,15 @@ export default function BlockRow({
     }
   }
 
+  // A pointer's rows: the handle shows where the pointer is (and only
+  // there), a pick is a light tint - no tick squares - see below.
+  const pointer = useDensity() === 'pointer';
+  const [hoverRef, hover] = useRowHover();
+  const showPointerHandle = pointer && !!handleGesture && hover;
+
   return (
     <View
+      ref={hoverRef}
       style={[
         styles.blockRow,
         indented && styles.blockRowIndented,
@@ -850,7 +863,7 @@ export default function BlockRow({
         // that colour's own text already reads, so whichever text was
         // chosen for it stays legible: never perfect for every hue, but
         // never backwards either.
-        isSelected && (rowPaperColor ? { backgroundColor: rowPaperColor.text === '#FFFFFF' ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)' } : styles.blockRowSelected),
+        isSelected && (rowPaperColor ? { backgroundColor: rowPaperColor.text === '#FFFFFF' ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)' } : pointer ? { backgroundColor: softTokens(theme.scheme).fill } : styles.blockRowSelected),
         showBoundary && styles.blockRowBoundary,
         // A sticker keeps its yellow background even once placed here -
         // agreed explicitly: it should stay visibly "a sticker", not blend
@@ -883,7 +896,21 @@ export default function BlockRow({
           Absolute rather than in the row, because a handle that joined
           the layout on focus would reflow the text of the block being
           typed in - the one row where a jump is least acceptable. */}
-      {(!hideHandle || isSelectMode) && (isSelectMode || isActive) && (
+      {/* At a pointer the handle is a hover's: on the right, as on the phone,
+          and it does what the phone's hold does - dragging it moves the
+          block (or the picked group), a click on it picks the block. */}
+      {/* (Its data-no-marquee keeps it from starting a pick - see useBlockMarquee.) */}
+      {showPointerHandle && (
+        <GestureDetector gesture={handleGesture}>
+          <View
+            {...({ dataSet: { noMarquee: '1' } } as object)}
+            style={[styles.dragHandle, styles.dragHandleFloating, { top: '50%', marginTop: -16, opacity: 0.85, cursor: 'grab' } as never]}
+          >
+            <Ionicons name="reorder-two-outline" size={20} color={theme.ink.muted} />
+          </View>
+        </GestureDetector>
+      )}
+      {!pointer && (!hideHandle || isSelectMode) && (isSelectMode || isActive) && (
         <Pressable
           hitSlop={8}
           disabled={!isSelectMode}
