@@ -22,6 +22,7 @@ import { useSoft } from '../../theme/soft';
 import { takeRecentContextPoint, type ContextPoint } from '../../utils/contextPoint';
 import { useWindowDimensions } from 'react-native';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
+import { useDensity } from '../../hooks/useDensity';
 
 // «Питання» - the first of the named surfaces.
 //
@@ -118,6 +119,7 @@ export function AskHost() {
   const softTokens = useSoft();
   const S = chromeStyle === 'soft' ? softTokens : null;
   const softDanger = S ? (S.dark ? '#FF7A6E' : '#C8452F') : null;
+  const pointer = useDensity() === 'pointer';
   useEffect(() => {
     if (current) Keyboard.dismiss();
   }, [current]);
@@ -158,6 +160,21 @@ export function AskHost() {
     );
   }
   const cancelLabel = current.cancelLabel === undefined ? 'Скасувати' : current.cancelLabel;
+  // At a pointer, a confirmation - one or two plain answers, no icons, no
+  // hints - is a Mac's alert, not a phone's sheet. A question with a list
+  // of answers stays as it is.
+  if (pointer && current.actions.length <= 2 && current.actions.every((a) => !a.icon && !a.hint)) {
+    return (
+      <MacAlert
+        title={current.title}
+        message={current.message}
+        actions={current.actions}
+        cancelLabel={cancelLabel}
+        onAnswer={answer}
+        tokens={softTokens}
+      />
+    );
+  }
 
   return (
     // A layer, not a window. The blur on Android only reaches what is
@@ -269,6 +286,83 @@ export function AskHost() {
   );
 }
 
+// A MAC'S ALERT (the laptop's confirmation): a small window over a barely
+// dimmed app - no blur, nothing drawn edge to edge - its answers as buttons
+// in a row at the bottom right, the way macOS lays them out: the way out
+// first, the action last and filled. Return answers the action, Esc walks
+// away. A click beside it does nothing, as on a Mac: a question that
+// matters is not dismissed by a stray click.
+function MacAlert({
+  title,
+  message,
+  actions,
+  cancelLabel,
+  onAnswer,
+  tokens: S,
+}: {
+  title: string;
+  message?: string;
+  actions: AskAction[];
+  cancelLabel: string | null;
+  onAnswer: (id: string) => void;
+  tokens: ReturnType<typeof useSoft>;
+}) {
+  const danger = S.dark ? '#FF7A6E' : '#C8452F';
+  // What Return does: the last action - or, with none, the way out.
+  const main = actions[actions.length - 1]?.id ?? 'cancel';
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && cancelLabel !== null) {
+        event.preventDefault();
+        onAnswer('cancel');
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        onAnswer(main);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const button = (id: string, label: string, tone: AskTone | 'cancel') => {
+    const filled = id === main;
+    const background = !filled ? S.fill : tone === 'danger' ? danger : S.ink;
+    const color = !filled ? S.ink : S.dark && tone !== 'danger' ? S.bg : '#FFFFFF';
+    return (
+      <Pressable
+        key={id}
+        onPress={() => onAnswer(id)}
+        style={(state) => [
+          styles.alertButton,
+          { backgroundColor: background },
+          (state as { hovered?: boolean }).hovered && { opacity: 0.85 },
+        ]}
+      >
+        <Text style={[styles.alertButtonLabel, { color }]}>{label}</Text>
+      </Pressable>
+    );
+  };
+  return (
+    <View style={styles.alertFrame} pointerEvents="box-none">
+      <View style={styles.alertDim} />
+      <View
+        style={[
+          styles.alert,
+          { backgroundColor: S.card, boxShadow: S.popShadow, borderColor: S.line },
+        ]}
+      >
+        <Text style={[styles.alertTitle, { color: S.ink }]}>{title}</Text>
+        {!!message && <Text style={[styles.alertMessage, { color: S.ink2 }]}>{message}</Text>}
+        <View style={styles.alertButtons}>
+          {cancelLabel !== null && actions.length > 0 && button('cancel', cancelLabel, 'cancel')}
+          {actions.map((a) => button(a.id, a.label, a.tone ?? 'normal'))}
+          {actions.length === 0 && cancelLabel !== null && button('cancel', cancelLabel, 'primary')}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // THE SMALL MENU AT THE CURSOR - the same question, drawn the way a right
 // click's own menu is: rows 30 tall, the name of what was clicked as a quiet
 // header, no cancel row (the click beside it, or Esc, is the cancel).
@@ -352,6 +446,14 @@ function AskPopover({
 
 const styles = StyleSheet.create({
   popoverFrame: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000 } as never,
+  alertFrame: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, alignItems: 'center', justifyContent: 'center' } as never,
+  alertDim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.12)' },
+  alert: { width: 380, maxWidth: '90%', borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 20, paddingBottom: 16, gap: 6 },
+  alertTitle: { fontSize: 14.5, fontFamily: SOFT_SEMIBOLD },
+  alertMessage: { fontSize: 13, lineHeight: 18, fontFamily: SOFT_REGULAR },
+  alertButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 14 },
+  alertButton: { minWidth: 88, height: 30, paddingHorizontal: 14, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  alertButtonLabel: { fontSize: 13, fontFamily: SOFT_MEDIUM },
   popoverScrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   popover: { position: 'absolute', borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 5 },
   popoverTitle: { fontSize: 12, fontFamily: SOFT_MEDIUM, paddingHorizontal: 10, paddingTop: 6, paddingBottom: 4 },
