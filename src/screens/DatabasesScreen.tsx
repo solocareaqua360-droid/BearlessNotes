@@ -1296,12 +1296,6 @@ export default function DatabasesScreen() {
   };
 
   const openItem = (item: BoardItem) => {
-    // In a side panel a database opens as a panel beside it, not in the main pane.
-    const inPanelTarget = inPanel && workspace ? targetOf(item) : null;
-    if (inPanelTarget) {
-      workspace?.open({ kind: 'target', target: inPanelTarget });
-      return;
-    }
     // On a wide screen a database opens BESIDE the board,
     // in the left pane, rather than replacing it.
     const pane =

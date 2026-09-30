@@ -39,3 +39,37 @@ export function navigateToTarget(target: PaneTarget): void {
 export function windowUrlFor(target: PaneTarget): string {
   return `${window.location.origin}/?desktop=1&open=${encodeURIComponent(JSON.stringify(target))}`;
 }
+
+// The other direction: a screen asked for by name (what a tile's press does
+// on the phone) as a target, for a panel to show inside itself. Null for
+// what is not a pane's business - a note, the settings - which goes to the
+// main pane.
+export function targetFromRoute(name: string, params?: Record<string, unknown>): PaneTarget | null {
+  switch (name) {
+    case 'CustomDatabase':
+      return typeof params?.databaseId === 'string' ? { kind: 'custom', databaseId: params.databaseId } : null;
+    case 'Links':
+      return { kind: 'links', category: (params?.category as 'video' | 'geo' | 'other') ?? 'other' };
+    case 'Photos':
+    case 'Files':
+    case 'Stickers':
+    case 'Flashcards':
+    case 'Tasks':
+    case 'Tags':
+    case 'Groups':
+    case 'Diary':
+      return { kind: 'route', route: name };
+    case 'DocumentsCopy':
+      return { kind: 'documents' };
+    case 'BoardsCopy':
+      return { kind: 'boards' };
+    case 'Tabs': {
+      const screen = params?.screen;
+      if (screen === 'Документи') return { kind: 'documents' };
+      if (screen === 'Дошки') return { kind: 'boards' };
+      return null;
+    }
+    default:
+      return null;
+  }
+}

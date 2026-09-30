@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { sameTarget, type PaneTarget } from './paneTarget';
 
 // THE LAPTOP'S WORKSPACE (Mac stage 6): the main pane in the middle, and
@@ -28,6 +28,10 @@ export type Panel = {
   column: 0 | 1;
   // Folded to its header, the column keeping its place.
   folded?: boolean;
+  // Where a click inside the panel has taken it: what it shows now is the
+  // last of these, and going back pops one - the panel is a small navigator
+  // of its own, as a phone's screen is. Empty: the panel's own screen.
+  stack?: PaneTarget[];
 };
 
 export const COLUMN_MIN = 260;
@@ -49,6 +53,10 @@ type Workspace = {
   // (a second look at a database, with another filter).
   openAnother: (spec: OpenSpec) => void;
   close: (id: string) => void;
+  // A click inside a panel that goes somewhere: on in the same panel...
+  pushInPanel: (id: string, target: PaneTarget) => void;
+  // ...and back out of it. False when there was nothing to go back to.
+  popInPanel: (id: string) => boolean;
   toggleFold: (id: string) => void;
   toggleHidden: () => void;
   // Whether a panel of this kind is showing, for the buttons that open it.
@@ -101,6 +109,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const open = useCallback((spec: OpenSpec) => add(spec, false), [add]);
   const openAnother = useCallback((spec: OpenSpec) => add(spec, true), [add]);
   const close = useCallback((id: string) => setPanels((prev) => prev.filter((p) => p.id !== id)), []);
+  const panelsRef = useRef<Panel[]>([]);
+  panelsRef.current = panels;
+  const pushInPanel = useCallback(
+    (id: string, target: PaneTarget) =>
+      setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, stack: [...(p.stack ?? []), target] } : p))),
+    []
+  );
+  const popInPanel = useCallback((id: string) => {
+    const panel = panelsRef.current.find((p) => p.id === id);
+    if (!panel?.stack?.length) return false;
+    setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, stack: (p.stack ?? []).slice(0, -1) } : p)));
+    return true;
+  }, []);
   const toggleFold = useCallback(
     (id: string) => setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, folded: !p.folded } : p))),
     []
@@ -117,8 +138,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<Workspace>(
-    () => ({ panels, hidden, widths, setWidth, open, openAnother, close, toggleFold, toggleHidden, has, toggle }),
-    [panels, hidden, widths, setWidth, open, openAnother, close, toggleFold, toggleHidden, has, toggle]
+    () => ({ panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, toggleHidden, has, toggle }),
+    [panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, toggleHidden, has, toggle]
   );
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

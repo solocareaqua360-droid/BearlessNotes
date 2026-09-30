@@ -18,16 +18,19 @@ const HEADER = 38;
 
 function usePanelTitle(panel: Panel): { icon: string; title: string } {
   const [name, setName] = useState<string | null>(null);
-  const databaseId = panel.target?.kind === 'custom' ? panel.target.databaseId : null;
+  // What the panel shows now: where a click took it, else its own thing.
+  const shown = panel.stack?.length ? panel.stack[panel.stack.length - 1] : panel.target;
+  const databaseId = shown?.kind === 'custom' ? shown.databaseId : null;
   useEffect(() => {
     if (!databaseId) return;
     return onSnapshot(doc(db, 'customDatabases', databaseId), (snapshot) => {
       setName((snapshot.data()?.name as string | undefined) ?? null);
     });
   }, [databaseId]);
+  if (panel.stack?.length && shown) return targetInfo(shown, name);
   if (panel.kind === 'chat') return { icon: 'chatbubbles-outline', title: 'Чат' };
-  if (panel.kind === 'databases' || !panel.target) return { icon: 'apps-outline', title: 'Бази' };
-  return targetInfo(panel.target, name);
+  if (panel.kind === 'databases' || !shown) return { icon: 'apps-outline', title: 'Бази' };
+  return targetInfo(shown, name);
 }
 
 function PanelFrame({ panel }: { panel: Panel }) {

@@ -7,6 +7,7 @@ import DesktopToolbar from '../DesktopToolbar';
 import { NavDockProvider } from '../../navigation/navDock';
 import { LayoutFrameContext } from '../../hooks/useResponsiveLayout';
 import { navigationRef } from '../../navigationRef';
+import { targetFromRoute } from '../../navigation/paneTargetInfo';
 import { useWorkspace, type Panel } from '../../navigation/workspace';
 import ChatScreen from '../../screens/ChatScreen';
 import PaneTargetScreen from '../PaneTargetScreen';
@@ -34,10 +35,17 @@ export default function PaneScreen({ panel }: { panel: Panel }) {
     [panel.id, panel.kind, panel.target]
   );
   const navigation = useMemo(() => {
-    const close = () => workspace?.close(panel.id);
-    const go = (name: string, params?: { databaseId?: string }) => {
-      if (name === 'CustomDatabase' && params?.databaseId) {
-        workspace?.open({ kind: 'target', target: { kind: 'custom', databaseId: params.databaseId } });
+    // Back: one step out of where a click took the panel, and only when there
+    // is none, out of the panel itself.
+    const back = () => {
+      if (!workspace?.popInPanel(panel.id)) workspace?.close(panel.id);
+    };
+    const go = (name: string, params?: Record<string, unknown>) => {
+      const target = targetFromRoute(name, params);
+      if (target) {
+        // In the same panel - as it would on a phone, where the list gives
+        // way to the thing that was tapped in it.
+        workspace?.pushInPanel(panel.id, target);
       } else if (name === 'Chat') {
         workspace?.open({ kind: 'chat' });
       } else if (navigationRef.isReady()) {
@@ -49,9 +57,9 @@ export default function PaneScreen({ panel }: { panel: Panel }) {
       navigate: go,
       push: go,
       replace: go,
-      goBack: close,
-      pop: close,
-      popToTop: close,
+      goBack: back,
+      pop: back,
+      popToTop: back,
       canGoBack: () => true,
       isFocused: () => true,
       addListener: () => noop,
@@ -64,9 +72,11 @@ export default function PaneScreen({ panel }: { panel: Panel }) {
       getState: () => ({ index: 0, routes: [route] }),
     };
   }, [workspace, panel.id, route]);
+  const shown = panel.stack?.length ? panel.stack[panel.stack.length - 1] : null;
 
   let screen: ReactNode = null;
-  if (panel.kind === 'chat') screen = <ChatScreen />;
+  if (shown) screen = <PaneTargetScreen key={JSON.stringify(shown)} target={shown} />;
+  else if (panel.kind === 'chat') screen = <ChatScreen />;
   else if (panel.kind === 'target' && panel.target) screen = <PaneTargetScreen target={panel.target} />;
   else if (panel.kind === 'databases') screen = <DatabasesScreen />;
 
