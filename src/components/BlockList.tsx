@@ -35,6 +35,8 @@ type BlockListProps = {
   // At a pointer: press and drag across blocks picks them - the whole set
   // each time it changes (see useBlockMarquee).
   onSelectRange?: (ids: string[]) => void;
+  // A click on the empty place: the pick is let go (only told while there is one).
+  onClearSelect?: () => void;
   selectedIds: Set<string>;
   isSelectMode: boolean;
   focusedBlockId: string | null;
@@ -106,6 +108,7 @@ function BlockList({
   onReorder,
   onHoldWithoutDrag,
   onSelectRange,
+  onClearSelect,
   selectedIds,
   isSelectMode,
   focusedBlockId,
@@ -159,7 +162,14 @@ function BlockList({
   // See BlockListHandle - a drop coming from outside the list.
   const containerRef = useRef<View | null>(null);
   const pointer = useDensity() === 'pointer';
-  useBlockMarquee(containerRef, pointer && !!onSelectRange, (ids) => onSelectRange?.(ids));
+  useBlockMarquee(
+    containerRef,
+    pointer && !!onSelectRange,
+    (ids) => onSelectRange?.(ids),
+    () => {
+      if (isSelectMode) onClearSelect?.();
+    }
+  );
   const [externalIndex, setExternalIndexState] = useState<number | null>(null);
   const externalIndexRef = useRef<number | null>(null);
   // Did this drag actually go anywhere? See onHoldWithoutDrag.

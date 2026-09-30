@@ -863,7 +863,7 @@ export default function BlockRow({
         // that colour's own text already reads, so whichever text was
         // chosen for it stays legible: never perfect for every hue, but
         // never backwards either.
-        isSelected && (rowPaperColor ? { backgroundColor: rowPaperColor.text === '#FFFFFF' ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)' } : pointer ? { backgroundColor: softTokens(theme.scheme).fill } : styles.blockRowSelected),
+        isSelected && (rowPaperColor ? { backgroundColor: rowPaperColor.text === '#FFFFFF' ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)' } : pointer ? { backgroundColor: softTokens(theme.scheme).dark ? 'rgba(255,255,255,0.045)' : 'rgba(30,30,28,0.028)' } : styles.blockRowSelected),
         showBoundary && styles.blockRowBoundary,
         // A sticker keeps its yellow background even once placed here -
         // agreed explicitly: it should stay visibly "a sticker", not blend

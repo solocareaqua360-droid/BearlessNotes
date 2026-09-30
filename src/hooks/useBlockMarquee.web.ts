@@ -11,7 +11,8 @@ import type { View } from 'react-native';
 //    text's own selection, until the pointer leaves that block - then it
 //    is a pick of whole blocks from there on;
 //  - past the top or bottom of the page, the page scrolls under the
-//    pointer for as long as it is held there, and the pick follows.
+//    pointer for as long as it is held there, and the pick follows;
+//  - a plain click on the empty place (not on a block) lets the pick go.
 //
 // What is picked is told to `onSelect` (the whole set each time) - the
 // editor's own select mode does the rest. Rows are found in the page by
@@ -43,9 +44,16 @@ function scrollerOf(node: HTMLElement): HTMLElement | null {
   return null;
 }
 
-export function useBlockMarquee(container: RefObject<View | null>, enabled: boolean, onSelect: (ids: string[]) => void) {
+export function useBlockMarquee(
+  container: RefObject<View | null>,
+  enabled: boolean,
+  onSelect: (ids: string[]) => void,
+  onClear?: () => void
+) {
   const latest = useRef(onSelect);
   latest.current = onSelect;
+  const clearLatest = useRef(onClear);
+  clearLatest.current = onClear;
 
   useEffect(() => {
     if (!enabled || typeof document === 'undefined') return;
@@ -57,6 +65,8 @@ export function useBlockMarquee(container: RefObject<View | null>, enabled: bool
       // Inside the text being written in: not a pick until the pointer leaves that block.
       textRow: string | null;
       engaged: boolean;
+      // Pressed on the empty place, not on a block.
+      blank: boolean;
       x: number;
       y: number;
       startX: number;
@@ -156,6 +166,7 @@ export function useBlockMarquee(container: RefObject<View | null>, enabled: bool
         startContentY: event.clientY - base,
         textRow: textarea ? (textarea.closest('[data-block-id]')?.getAttribute('data-block-id') ?? null) : null,
         engaged: false,
+        blank: !target.closest('[data-block-id]'),
         x: event.clientX,
         y: event.clientY,
         startX: event.clientX,
@@ -191,6 +202,8 @@ export function useBlockMarquee(container: RefObject<View | null>, enabled: bool
     }
 
     function onUp() {
+      // A click that went nowhere, on the empty place: let the pick go.
+      if (down && !down.engaged && down.blank) clearLatest.current?.();
       if (down?.engaged) suppressUntil = Date.now() + SUPPRESS_MS;
       cancelAnimationFrame(raf);
       if (down?.engaged) document.body.style.cursor = '';

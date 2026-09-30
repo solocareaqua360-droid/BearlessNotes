@@ -4596,6 +4596,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     showActions();
   }
 
+  // A click on the empty place lets the pick go (the laptop's).
+  function clearSelection() {
+    setIsSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
   function selectFromHold(id: string) {
     if (isSelectMode) {
       toggleSelected(id);
@@ -5620,6 +5626,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onReorder={handleReorderBlocks}
           onHoldWithoutDrag={selectFromHold}
           onSelectRange={selectBlocks}
+          onClearSelect={clearSelection}
           selectedIds={selectedIds}
           isSelectMode={isSelectMode}
           focusedBlockId={focusedBlockId}
