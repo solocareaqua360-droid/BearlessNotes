@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -33,12 +33,17 @@ function usePanelTitle(panel: Panel): { icon: string; title: string } {
   return targetInfo(shown, name);
 }
 
+// How tall each panel stands now, for the line between two of them to start
+// a drag from - read at the moment of the press, so not state.
+const panelHeights = new Map<string, number>();
+
 function PanelFrame({ panel }: { panel: Panel }) {
   const S = useSoft();
   const workspace = useWorkspace();
   const { icon, title } = usePanelTitle(panel);
   return (
     <View
+      onLayout={(e) => panelHeights.set(panel.id, e.nativeEvent.layout.height)}
       style={[
         styles.panel,
         { backgroundColor: S.bg, boxShadow: S.shadow },
@@ -104,37 +109,144 @@ function FoldedIcon({ panel, color, fill, onPress }: { panel: Panel; color: stri
   );
 }
 
-// The strip on a column's left edge. Dragged left it makes THAT column
-// wider, dragged right narrower - each column has its own, so the near one
-// and the far one are not tied together. Pointer events on the strip, then
-// on the window for the rest of the drag, so a fast move that outruns the
-// strip is still followed. RNW gives a View's ref as the DOM node.
-function Splitter({ column, width }: { column: 0 | 1; width: number }) {
-  const workspace = useWorkspace();
-  const handle = useRef<View | null>(null);
-  const latest = useRef({ workspace, width });
-  latest.current = { workspace, width };
+// The small capsule that comes up when the pointer rests on a splitter: one
+// action, in words - «Поміняти місцями».
+function SwapCapsule({ vertical, onPress }: { vertical: boolean; onPress: () => void }) {
+  const S = useSoft();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityLabel="Поміняти місцями"
+      style={[
+        styles.capsule,
+        vertical ? styles.capsuleBeside : styles.capsuleAbove,
+        { backgroundColor: S.ink, boxShadow: S.popShadow },
+      ]}
+    >
+      <Ionicons name={(vertical ? 'swap-horizontal' : 'swap-vertical') as never} size={13} color={S.bg} />
+      <Text style={[styles.capsuleLabel, { color: S.bg }]} numberOfLines={1}>
+        Поміняти місцями
+      </Text>
+    </Pressable>
+  );
+}
+
+// Hover on a node, told through the DOM: React Native Web's own hover
+// callbacks do not fire for a View that is not a Pressable.
+function useHover(): [RefObject<View | null>, boolean] {
+  const ref = useRef<View | null>(null);
+  const [hover, setHover] = useState(false);
   useEffect(() => {
-    const node = handle.current as unknown as HTMLElement | null;
+    const node = ref.current as unknown as HTMLElement | null;
+    if (!node || typeof node.addEventListener !== 'function') return;
+    const on = () => setHover(true);
+    const off = () => setHover(false);
+    node.addEventListener('mouseenter', on);
+    node.addEventListener('mouseleave', off);
+    return () => {
+      node.removeEventListener('mouseenter', on);
+      node.removeEventListener('mouseleave', off);
+    };
+  }, []);
+  return [ref, hover];
+}
+
+// A drag along one axis on a node: the position at the press, the position
+// now, and the end. Pointer events on the node, then on the window for the
+// rest of the drag, so a fast move that outruns the strip is still
+// followed. RNW gives a View's ref as the DOM node.
+function useDrag(
+  ref: RefObject<View | null>,
+  axis: 'x' | 'y',
+  handlers: { start: () => void; move: (delta: number) => void }
+) {
+  const latest = useRef(handlers);
+  latest.current = handlers;
+  useEffect(() => {
+    const node = ref.current as unknown as HTMLElement | null;
     if (!node || typeof node.addEventListener !== 'function') return;
     function onDown(event: PointerEvent) {
+      // The capsule inside the strip is a button, not a handle.
+      if ((event.target as HTMLElement).closest?.('[aria-label="Поміняти місцями"]')) return;
       event.preventDefault();
-      const startX = event.clientX;
-      const startWidth = latest.current.width;
-      const move = (e: PointerEvent) => latest.current.workspace?.setWidth(column, startWidth + (startX - e.clientX));
+      const from = axis === 'x' ? event.clientX : event.clientY;
+      latest.current.start();
+      const move = (e: PointerEvent) => latest.current.move((axis === 'x' ? e.clientX : e.clientY) - from);
       const up = () => {
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
         document.body.style.cursor = '';
       };
-      document.body.style.cursor = 'col-resize';
+      document.body.style.cursor = axis === 'x' ? 'col-resize' : 'row-resize';
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
     }
     node.addEventListener('pointerdown', onDown);
     return () => node.removeEventListener('pointerdown', onDown);
-  }, [column]);
-  return <View ref={handle} style={styles.splitter} />;
+  }, [ref, axis]);
+}
+
+// The line on a column's left edge. Dragged left it makes THAT column
+// wider, dragged right narrower - each column has its own, so the near one
+// and the far one are not tied together. Rests on it: a line lights up and,
+// between two columns, a capsule offers to swap them.
+function Splitter({ column, width, swap }: { column: 0 | 1; width: number; swap?: () => void }) {
+  const S = useSoft();
+  const workspace = useWorkspace();
+  const [ref, hover] = useHover();
+  const base = useRef(width);
+  const latest = useRef({ workspace, width });
+  latest.current = { workspace, width };
+  useDrag(ref, 'x', {
+    start: () => {
+      base.current = latest.current.width;
+    },
+    move: (delta) => latest.current.workspace?.setWidth(column, base.current - delta),
+  });
+  return (
+    <View ref={ref} style={styles.splitter}>
+      <View style={[styles.splitterLine, { backgroundColor: hover ? S.ink3 : S.line }, hover && styles.splitterLineOn]} />
+      {hover && !!swap && <SwapCapsule vertical onPress={swap} />}
+    </View>
+  );
+}
+
+// The line between two panels of one column: drags their heights against
+// each other, and rests offer to swap them.
+function HSplitter({ above, below }: { above: Panel; below: Panel }) {
+  const S = useSoft();
+  const workspace = useWorkspace();
+  const [ref, hover] = useHover();
+  const base = useRef({ a: 0, b: 0 });
+  const latest = useRef({ workspace, above, below });
+  latest.current = { workspace, above, below };
+  const both = !above.folded && !below.folded;
+  useDrag(ref, 'y', {
+    start: () => {
+      base.current = { a: panelHeights.get(latest.current.above.id) ?? 0, b: panelHeights.get(latest.current.below.id) ?? 0 };
+    },
+    move: (delta) => {
+      if (!both) return;
+      const { a, b } = base.current;
+      const total = a + b;
+      if (total <= 0) return;
+      // Neither gets smaller than a panel can be used at.
+      const nextA = Math.max(120, Math.min(total - 120, a + delta));
+      // The two keep their COMBINED share of the column, so a third panel
+      // beside them is not squeezed by the drag.
+      const share = (latest.current.above.weight ?? 1) + (latest.current.below.weight ?? 1);
+      latest.current.workspace?.setWeight(latest.current.above.id, (share * nextA) / total);
+      latest.current.workspace?.setWeight(latest.current.below.id, share - (share * nextA) / total);
+    },
+  });
+  return (
+    <View ref={ref} style={[styles.hsplitter, both && styles.hsplitterResizable]}>
+      <View style={[styles.hsplitterLine, { backgroundColor: hover ? S.ink3 : 'transparent' }]} />
+      {hover && (
+        <SwapCapsule vertical={false} onPress={() => workspace?.swapPanels(above.id, below.id)} />
+      )}
+    </View>
+  );
 }
 
 export default function RightColumn() {
@@ -181,15 +293,22 @@ export default function RightColumn() {
           </View>
         ) : (
         <View key={column.index} style={styles.groupColumn}>
-          <Splitter column={column.index} width={widths[position]} />
+          <Splitter
+            column={column.index}
+            width={widths[position]}
+            swap={position > 0 ? () => workspace.swapColumns() : undefined}
+          />
           {/* No limit on how many: past what fits, the column scrolls. */}
           <ScrollView
             style={[styles.stackScroll, { width: widths[position] }]}
             contentContainerStyle={styles.stack}
             showsVerticalScrollIndicator={false}
           >
-            {column.panels.map((panel) => (
-              <PanelFrame key={panel.id} panel={panel} />
+            {column.panels.map((panel, at) => (
+              <View key={panel.id} style={panel.folded ? styles.slotFolded : [styles.slotOpen, { flexGrow: panel.weight ?? 1 }]}>
+                {at > 0 && <HSplitter above={column.panels[at - 1]} below={panel} />}
+                <PanelFrame panel={panel} />
+              </View>
             ))}
           </ScrollView>
         </View>
@@ -205,14 +324,25 @@ const styles = StyleSheet.create({
   splitterSpace: { width: 8 },
   strip: { paddingVertical: 8, paddingRight: 6, gap: 4, alignItems: 'center' },
   stripButton: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  // A strip a little wider than it looks, so the cursor finds it.
-  splitter: { width: 8, cursor: 'col-resize' } as never,
+  // A strip a little wider than the line it draws, so the cursor finds it.
+  splitter: { width: 8, cursor: 'col-resize', alignItems: 'center', justifyContent: 'center', zIndex: 20 } as never,
+  splitterLine: { width: 2, height: '18%', minHeight: 60, borderRadius: 1 },
+  splitterLineOn: { width: 3 },
+  hsplitter: { position: 'absolute', top: -8, left: 0, right: 0, height: 8, zIndex: 20, alignItems: 'center', justifyContent: 'center' },
+  hsplitterResizable: { cursor: 'row-resize' } as never,
+  hsplitterLine: { height: 2, width: '22%', minWidth: 60, borderRadius: 1 },
+  capsule: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 6, width: 150, height: 26, justifyContent: 'center', borderRadius: 13, zIndex: 30 },
+  capsuleBeside: { top: '46%', left: '50%', transform: [{ translateX: '-50%' as never }] },
+  capsuleAbove: { top: -9, left: '50%', transform: [{ translateX: '-50%' as never }] },
+  capsuleLabel: { fontSize: 12, fontFamily: SOFT_SEMIBOLD },
+  slotOpen: { flexBasis: 0, minHeight: 300 },
+  slotFolded: { flexGrow: 0, flexShrink: 0 },
   stackScroll: { flexGrow: 0, flexShrink: 0 },
   stack: { flexGrow: 1, paddingRight: 8, paddingVertical: 8, gap: 8 },
   panel: { borderRadius: 18, overflow: 'hidden', minHeight: HEADER },
   // Shares the column while there is room, and never gets shorter than a
   // panel can be used at - past that the column scrolls instead.
-  panelOpen: { flexGrow: 1, flexBasis: 0, minHeight: 300 },
+  panelOpen: { flex: 1 },
   panelFolded: { flexGrow: 0, flexShrink: 0 },
   header: {
     height: HEADER,

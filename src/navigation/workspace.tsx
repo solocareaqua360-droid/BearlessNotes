@@ -32,6 +32,9 @@ export type Panel = {
   // last of these, and going back pops one - the panel is a small navigator
   // of its own, as a phone's screen is. Empty: the panel's own screen.
   stack?: PaneTarget[];
+  // How much of its column's height it takes next to the panels beside it
+  // (a share, 1 by default) - what a drag on the line between two panels sets.
+  weight?: number;
 };
 
 export const COLUMN_MIN = 260;
@@ -58,6 +61,11 @@ type Workspace = {
   // ...and back out of it. False when there was nothing to go back to.
   popInPanel: (id: string) => boolean;
   toggleFold: (id: string) => void;
+  setWeight: (id: string, weight: number) => void;
+  // Two panels change places (and keep the sizes of the places).
+  swapPanels: (a: string, b: string) => void;
+  // The near column and the far one change places, widths going with them.
+  swapColumns: () => void;
   toggleHidden: () => void;
   // Whether a panel of this kind is showing, for the buttons that open it.
   has: (spec: OpenSpec) => boolean;
@@ -126,6 +134,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     (id: string) => setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, folded: !p.folded } : p))),
     []
   );
+  const setWeight = useCallback(
+    (id: string, weight: number) => setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, weight } : p))),
+    []
+  );
+  const swapPanels = useCallback((a: string, b: string) => {
+    setPanels((prev) => {
+      const i = prev.findIndex((p) => p.id === a);
+      const j = prev.findIndex((p) => p.id === b);
+      if (i < 0 || j < 0) return prev;
+      const next = [...prev];
+      // The panels trade places in the list, and their column and share
+      // stay with the PLACE - so what is bigger stays bigger.
+      const first = next[i];
+      const second = next[j];
+      next[i] = { ...second, column: first.column, weight: first.weight };
+      next[j] = { ...first, column: second.column, weight: second.weight };
+      return next;
+    });
+  }, []);
+  const swapColumns = useCallback(() => {
+    setPanels((prev) => prev.map((p) => ({ ...p, column: (p.column === 0 ? 1 : 0) as 0 | 1 })));
+    setWidths((prev) => [prev[1], prev[0]]);
+  }, []);
   const toggleHidden = useCallback(() => setHidden((v) => !v), []);
   const has = useCallback((spec: OpenSpec) => panels.some((p) => same(p, spec)), [panels]);
   const toggle = useCallback(
@@ -138,8 +169,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<Workspace>(
-    () => ({ panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, toggleHidden, has, toggle }),
-    [panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, toggleHidden, has, toggle]
+    () => ({ panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, toggleHidden, has, toggle }),
+    [panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, toggleHidden, has, toggle]
   );
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
