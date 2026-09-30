@@ -13,8 +13,12 @@ export const MAX_CONTENT_WIDTH = 760;
 // changes below it. Deliberately wraps the content only - a screen's
 // background gradient stays full-bleed behind it, and anything that must
 // cover the whole window (the tags drawer) stays outside.
-export default function ContentColumn({ children }: { children: ReactNode }) {
-  return <View style={styles.column}>{children}</View>;
+// `full`: the cap lifted - for what is a surface rather than a column of
+// rows (a map), which should have all the room there is.
+export default function ContentColumn({ children, full = false }: { children: ReactNode; full?: boolean }) {
+  // A separate style, not the cap overridden with undefined: an undefined in
+  // a later style does not take an earlier value away.
+  return <View style={full ? styles.full : styles.column}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
@@ -23,5 +27,9 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MAX_CONTENT_WIDTH,
     alignSelf: 'center',
+  },
+  full: {
+    flex: 1,
+    width: '100%',
   },
 });

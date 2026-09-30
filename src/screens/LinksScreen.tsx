@@ -913,6 +913,7 @@ export default function LinksScreen({
 
   return (
     <DatabaseChrome
+      fullWidth={mapVisible && category === 'geo'}
       list={list}
       railSide={inPane ? 'left' : 'right'}
       accent={accent}

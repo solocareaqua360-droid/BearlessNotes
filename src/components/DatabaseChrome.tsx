@@ -42,6 +42,9 @@ import { CHROME_TOP } from '../constants/rail';
 // draws whatever that database looks like.
 
 export type DatabaseChromeProps<T extends { id: string }> = {
+  // The screen is a surface (the map of «Геоточки»), not a list: the
+  // readable-column cap does not apply.
+  fullWidth?: boolean;
   list: DatabaseList<T>;
   accent: string;
   // The "+" button's fill - the accent at half strength, since the blur
@@ -185,6 +188,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   pane,
   topNav: topNavWanted,
   navTitle,
+  fullWidth = false,
 }: DatabaseChromeProps<T>) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -705,7 +709,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           <View style={styles.sidePane}>{pane}</View>
         </View>
       ) : (
-        <ContentColumn>
+        <ContentColumn full={fullWidth}>
           <View style={styles.container} onLayout={(e) => setColumnWidth(e.nativeEvent.layout.width)}>
             {column}
           </View>
