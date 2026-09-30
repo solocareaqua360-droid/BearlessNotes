@@ -70,34 +70,55 @@ function PanelFrame({ panel }: { panel: Panel }) {
   );
 }
 
-export default function RightColumn() {
-  const workspace = useWorkspace();
+// A column whose panels are ALL folded gives its width back: it shrinks to a
+// narrow strip with one icon per panel, and a click on an icon unfolds that
+// panel (the column takes its width again).
+const STRIP_WIDTH = 44;
+function FoldedStrip({ panels }: { panels: Panel[] }) {
   const S = useSoft();
-  const windowWidth = useWindowDimensions().width;
-  const railWidth = useDesktopRailWidth();
-  const startX = useRef(0);
-  const startWidth = useRef(0);
+  const workspace = useWorkspace();
+  return (
+    <View style={[styles.strip, { width: STRIP_WIDTH }]}>
+      {panels.map((panel) => (
+        <FoldedIcon key={panel.id} panel={panel} color={S.ink2} fill={S.fill} onPress={() => workspace?.toggleFold(panel.id)} />
+      ))}
+    </View>
+  );
+}
+
+function FoldedIcon({ panel, color, fill, onPress }: { panel: Panel; color: string; fill: string; onPress: () => void }) {
+  const { icon, title } = usePanelTitle(panel);
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityLabel={`Розгорнути: ${title}`}
+      // The browser's own tooltip - a name for an icon that has none.
+      {...({ title } as object)}
+      style={(state) => [styles.stripButton, (state as { hovered?: boolean }).hovered && { backgroundColor: fill }]}
+    >
+      <Ionicons name={icon as never} size={17} color={color} />
+    </Pressable>
+  );
+}
+
+// The strip on a column's left edge. Dragged left it makes THAT column
+// wider, dragged right narrower - each column has its own, so the near one
+// and the far one are not tied together. Pointer events on the strip, then
+// on the window for the rest of the drag, so a fast move that outruns the
+// strip is still followed. RNW gives a View's ref as the DOM node.
+function Splitter({ column, width }: { column: 0 | 1; width: number }) {
+  const workspace = useWorkspace();
   const handle = useRef<View | null>(null);
-
-  // Two columns need room for two of them and for the main pane; a window
-  // that has it shows two, one that has not stacks everything in one.
-  const room = windowWidth - railWidth - DESKTOP_MAIN_MIN;
-  const twoColumns = room >= COLUMN_MIN * 2 + 8;
-  const columnsShown = twoColumns ? 2 : 1;
-
-  // The splitter: pointer events on the strip itself, then on the window
-  // for the rest of the drag, so a fast move that outruns the strip is
-  // still followed. RNW gives a View's ref as the DOM node. The width it
-  // moves is ONE column's, so the drag is shared out between them.
+  const latest = useRef({ workspace, width });
+  latest.current = { workspace, width };
   useEffect(() => {
     const node = handle.current as unknown as HTMLElement | null;
     if (!node || typeof node.addEventListener !== 'function') return;
     function onDown(event: PointerEvent) {
       event.preventDefault();
-      startX.current = event.clientX;
-      startWidth.current = workspace?.width ?? 0;
-      const move = (e: PointerEvent) =>
-        workspace?.setWidth(startWidth.current + (startX.current - e.clientX) / columnsShown);
+      const startX = event.clientX;
+      const startWidth = latest.current.width;
+      const move = (e: PointerEvent) => latest.current.workspace?.setWidth(column, startWidth + (startX - e.clientX));
       const up = () => {
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
@@ -109,7 +130,20 @@ export default function RightColumn() {
     }
     node.addEventListener('pointerdown', onDown);
     return () => node.removeEventListener('pointerdown', onDown);
-  });
+  }, [column]);
+  return <View ref={handle} style={styles.splitter} />;
+}
+
+export default function RightColumn() {
+  const workspace = useWorkspace();
+  const S = useSoft();
+  const windowWidth = useWindowDimensions().width;
+  const railWidth = useDesktopRailWidth();
+
+  // Two columns need room for two of them and for the main pane; a window
+  // that has it shows two, one that has not stacks everything in one.
+  const room = windowWidth - railWidth - DESKTOP_MAIN_MIN;
+  const twoColumns = room >= COLUMN_MIN * 2 + 16;
 
   if (!workspace || workspace.hidden || workspace.panels.length === 0) return null;
   // The panels of each column, in the order they were opened. With one
@@ -117,23 +151,46 @@ export default function RightColumn() {
   const nearest = workspace.panels.filter((p) => (twoColumns ? p.column === 0 : true));
   const far = twoColumns ? workspace.panels.filter((p) => p.column === 1) : [];
   // A column with nothing in it is not drawn, and the other takes its place.
-  const columns = [nearest, far].filter((c) => c.length > 0);
-  const each = Math.max(COLUMN_MIN, Math.min(workspace.width, room / Math.max(1, columns.length)));
+  const columns = [
+    { panels: nearest, index: 0 as const },
+    { panels: far, index: 1 as const },
+  ].filter((c) => c.panels.length > 0);
+  // Each keeps its own width, but together they leave the main pane its room.
+  const widthOf = (position: number, index: 0 | 1) => {
+    const wanted = workspace.widths[index];
+    if (columns.length < 2) return Math.max(COLUMN_MIN, Math.min(wanted, room - 8));
+    const first = position === 0 ? Math.min(wanted, room - COLUMN_MIN - 16) : 0;
+    if (position === 0) return Math.max(COLUMN_MIN, first);
+    const nearW = Math.max(COLUMN_MIN, Math.min(workspace.widths[columns[0].index], room - COLUMN_MIN - 16));
+    return Math.max(COLUMN_MIN, Math.min(wanted, room - nearW - 16));
+  };
+  // A column of nothing but folded panels is a strip, not a column.
+  const folded = columns.map((c) => c.panels.every((p) => p.folded));
+  const widths = columns.map((c, position) => (folded[position] ? STRIP_WIDTH : widthOf(position, c.index)));
+  const total = widths.reduce((a, b) => a + b, 0) + 8 * columns.length;
   return (
-    <View style={[styles.group, { width: each * columns.length + 8, backgroundColor: S.bg }]}>
-      <View ref={handle} style={styles.splitter} />
-      {columns.map((panels, index) => (
-        // No limit on how many: past what fits, the column scrolls.
-        <ScrollView
-          key={index}
-          style={[styles.stackScroll, { width: each }]}
-          contentContainerStyle={styles.stack}
-          showsVerticalScrollIndicator={false}
-        >
-          {panels.map((panel) => (
-            <PanelFrame key={panel.id} panel={panel} />
-          ))}
-        </ScrollView>
+    <View style={[styles.group, { width: total, backgroundColor: S.bg }]}>
+      {columns.map((column, position) => (
+        folded[position] ? (
+          <View key={column.index} style={styles.groupColumn}>
+            <View style={styles.splitterSpace} />
+            <FoldedStrip panels={column.panels} />
+          </View>
+        ) : (
+        <View key={column.index} style={styles.groupColumn}>
+          <Splitter column={column.index} width={widths[position]} />
+          {/* No limit on how many: past what fits, the column scrolls. */}
+          <ScrollView
+            style={[styles.stackScroll, { width: widths[position] }]}
+            contentContainerStyle={styles.stack}
+            showsVerticalScrollIndicator={false}
+          >
+            {column.panels.map((panel) => (
+              <PanelFrame key={panel.id} panel={panel} />
+            ))}
+          </ScrollView>
+        </View>
+        )
       ))}
     </View>
   );
@@ -141,6 +198,10 @@ export default function RightColumn() {
 
 const styles = StyleSheet.create({
   group: { flexDirection: 'row' },
+  groupColumn: { flexDirection: 'row' },
+  splitterSpace: { width: 8 },
+  strip: { paddingVertical: 8, paddingRight: 6, gap: 4, alignItems: 'center' },
+  stripButton: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   // A strip a little wider than it looks, so the cursor finds it.
   splitter: { width: 8, cursor: 'col-resize' } as never,
   stackScroll: { flexGrow: 0, flexShrink: 0 },

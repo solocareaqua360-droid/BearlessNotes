@@ -24,7 +24,7 @@ import ChatMessageMenu, { type ChatMenuAction } from '../components/ChatMessageM
 import { addDoc } from '../utils/owned';
 import { groupKindFields } from '../utils/groups';
 import { hapticPickUp } from '../utils/haptics';
-import { collection, getDocs } from '../firestore';
+import { collection, doc, getDocs } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
 import { onSnapshot } from '../firestore';
@@ -100,6 +100,38 @@ const PROJECT_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '
 
 function newBlockId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// A photo in a message, drawn as its database draws it. The message keeps
+// only the id and the address of the copy on the phone that took it; the
+// photo's OWN record is what knows where its Drive copy is, which is all a
+// laptop can show - so the record is looked up, and the row is given that.
+function ChatPhoto({ id, uri, onPress }: { id: string; uri: string; onPress: () => void }) {
+  const [record, setRecord] = useState<{ driveFileId?: string; title?: string; createdAt?: number } | null>(null);
+  useEffect(
+    () =>
+      onSnapshot(
+        doc(db, 'photos', id),
+        (snapshot) => setRecord((snapshot.data() as typeof record) ?? null),
+        () => setRecord(null)
+      ),
+    [id]
+  );
+  return (
+    <PhotoRow
+      photo={{
+        id,
+        imageUri: uri,
+        driveFileId: record?.driveFileId,
+        title: record?.title,
+        createdAt: record?.createdAt,
+        documentIds: [],
+        tagIds: [],
+      }}
+      tags={[]}
+      onPress={onPress}
+    />
+  );
 }
 
 export default function ChatScreen() {
@@ -592,9 +624,9 @@ export default function ChatScreen() {
         {(message.attachments ?? []).map((item, index) => (
           <View key={`${item.kind}-${item.id}-${index}`} style={styles.attachment}>
             {item.kind === 'photo' ? (
-              <PhotoRow
-                photo={{ id: item.id, imageUri: item.uri, documentIds: [], tagIds: [] }}
-                tags={[]}
+              <ChatPhoto
+                id={item.id}
+                uri={item.uri}
                 onPress={() =>
                   isSelectMode ? toggle(message.id) : navigation.navigate('Photos')
                 }

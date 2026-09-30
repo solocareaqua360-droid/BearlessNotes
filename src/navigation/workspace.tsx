@@ -40,9 +40,9 @@ type Workspace = {
   panels: Panel[];
   // The whole side area put away (its panels keep their place).
   hidden: boolean;
-  // One column's width; two columns are two of these.
-  width: number;
-  setWidth: (width: number) => void;
+  // Each column's own width - the near one and the far one.
+  widths: [number, number];
+  setWidth: (column: 0 | 1, width: number) => void;
   // Opens a panel - or, if one like it is already there, shows it.
   open: (spec: OpenSpec) => void;
   // Always a NEW panel, even if the same thing is already open elsewhere
@@ -77,10 +77,14 @@ function columnForNext(count: number): 0 | 1 {
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [panels, setPanels] = useState<Panel[]>([]);
   const [hidden, setHidden] = useState(false);
-  const [width, setWidthState] = useState(COLUMN_DEFAULT);
+  const [widths, setWidths] = useState<[number, number]>([COLUMN_DEFAULT, COLUMN_DEFAULT]);
 
   const setWidth = useCallback(
-    (next: number) => setWidthState(Math.max(COLUMN_MIN, Math.min(COLUMN_MAX, Math.round(next)))),
+    (column: 0 | 1, next: number) =>
+      setWidths((prev) => {
+        const clamped = Math.max(COLUMN_MIN, Math.min(COLUMN_MAX, Math.round(next)));
+        return column === 0 ? [clamped, prev[1]] : [prev[0], clamped];
+      }),
     []
   );
   const add = useCallback((spec: OpenSpec, another: boolean) => {
@@ -113,8 +117,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<Workspace>(
-    () => ({ panels, hidden, width, setWidth, open, openAnother, close, toggleFold, toggleHidden, has, toggle }),
-    [panels, hidden, width, setWidth, open, openAnother, close, toggleFold, toggleHidden, has, toggle]
+    () => ({ panels, hidden, widths, setWidth, open, openAnother, close, toggleFold, toggleHidden, has, toggle }),
+    [panels, hidden, widths, setWidth, open, openAnother, close, toggleFold, toggleHidden, has, toggle]
   );
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
