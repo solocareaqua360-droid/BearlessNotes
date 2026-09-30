@@ -5,6 +5,7 @@ import { useRailPanel, useRailTree } from '../navigation/navRail';
 import { useNavDockLeave, useNavTopBack } from '../navigation/navDock';
 import { navigationRef } from '../navigationRef';
 import { useWorkspace } from '../navigation/workspace';
+import TemplatesGroup from './desktop/TemplatesGroup';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -218,6 +219,9 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
           )}
         </View>
       )}
+
+      {/* Saved windows - see navigation/workspaceTemplates. */}
+      {!!workspace && !narrow && <TemplatesGroup />}
 
       {!!tree && !narrow && (
         <>

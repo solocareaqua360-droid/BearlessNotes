@@ -67,6 +67,8 @@ type Workspace = {
   // The near column and the far one change places, widths going with them.
   swapColumns: () => void;
   toggleHidden: () => void;
+  // Everything at once - a saved workspace put back (workspaceTemplates).
+  replaceAll: (state: { panels: Panel[]; widths: [number, number]; hidden: boolean }) => void;
   // Whether a panel of this kind is showing, for the buttons that open it.
   has: (spec: OpenSpec) => boolean;
   // Open it, or close it when it is already open.
@@ -158,6 +160,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setWidths((prev) => [prev[1], prev[0]]);
   }, []);
   const toggleHidden = useCallback(() => setHidden((v) => !v), []);
+  const replaceAll = useCallback((state: { panels: Panel[]; widths: [number, number]; hidden: boolean }) => {
+    setPanels(state.panels);
+    setWidths(state.widths);
+    setHidden(state.hidden);
+  }, []);
   const has = useCallback((spec: OpenSpec) => panels.some((p) => same(p, spec)), [panels]);
   const toggle = useCallback(
     (spec: OpenSpec) => {
@@ -169,8 +176,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<Workspace>(
-    () => ({ panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, toggleHidden, has, toggle }),
-    [panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, toggleHidden, has, toggle]
+    () => ({ panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, toggleHidden, replaceAll, has, toggle }),
+    [panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, replaceAll, toggleHidden, has, toggle]
   );
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

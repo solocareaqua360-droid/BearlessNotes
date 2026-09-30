@@ -35,7 +35,7 @@ const SECTIONS: { ref: string; label: string; icon: string }[] = [
 type Place = { kind: 'home' } | { kind: Tab['kind']; ref: string } | null;
 
 // Where the navigator is standing, read off its deepest route.
-function placeNow(): Place {
+export function placeNow(): Place {
   if (!navigationRef.isReady()) return null;
   const route = navigationRef.getCurrentRoute();
   const params = route?.params as { documentId?: string; boardId?: string; databaseId?: string } | undefined;
@@ -63,7 +63,7 @@ function placeNow(): Place {
   }
 }
 
-function go(tab: Tab | null) {
+export function go(tab: Tab | null) {
   if (tab?.kind === 'start') {
     showStart(true);
     return;

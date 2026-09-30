@@ -169,3 +169,15 @@ export function useRecentPlaces(): RecentPlace[] {
   }, []);
   return value;
 }
+
+// The row as it stands, and the whole of it replaced at once - what a saved
+// workspace (workspaceTemplates) reads and puts back.
+export function getTabs(): Tab[] {
+  return tabs.filter((t) => t.kind !== 'start');
+}
+
+export function replaceTabs(next: Tab[]): void {
+  tabs = next.filter((t) => t && typeof t.key === 'string' && t.kind !== 'start');
+  startFront = false;
+  notify();
+}
