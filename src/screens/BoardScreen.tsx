@@ -6640,6 +6640,13 @@ export default function BoardScreen() {
                     icon: 'copy-outline',
                     onPress: () => copyCardText(cardMenu.card),
                   },
+                  // A copy beside it, tied to it by the line every copy
+                  // keeps - the same as the held card's «Дублювати» and ⌘D.
+                  {
+                    label: 'Дублювати',
+                    icon: 'duplicate-outline' as const,
+                    onPress: () => duplicateCard(cardMenu.card),
+                  },
                   ...((cardMenu.card.type ?? 'paragraph') === 'document'
                     ? [
                         {
