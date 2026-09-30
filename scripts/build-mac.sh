@@ -38,6 +38,16 @@ if [ "$1" = "--run" ]; then
   exit 0
 fi
 
+# A copy that is running while its own files are replaced under it never
+# writes what it still holds (the tab row, in localStorage) - it came back
+# with no tabs, twice, on 2026-09-30. So it is asked to quit first, the
+# ordinary way, which lets it write everything down.
+if pgrep -f "mindEva.app/Contents/MacOS/mindEva" >/dev/null 2>&1; then
+  echo "==> Closing the running mindEva (its files are about to be replaced)"
+  osascript -e 'quit app "mindEva"' >/dev/null 2>&1 || true
+  sleep 3
+fi
+
 echo "==> Packaging"
 (cd desktop && npm run dist)
 

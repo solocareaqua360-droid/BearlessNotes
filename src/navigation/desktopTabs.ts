@@ -53,12 +53,19 @@ function notify() {
 
 export const tabKey = (kind: TabKind, ref: string) => `${kind}:${ref}`;
 
+// Where the start page stood when it gave way to something opened from it:
+// that thing takes its place in the row, not the row's end - the start page
+// is FILLED, a browser's new tab.
+let startSlot: number | null = null;
+
 export function addTab(kind: TabKind, ref: string): Tab {
   const key = tabKey(kind, ref);
   const found = tabs.find((t) => t.key === key);
+  const slot = startSlot;
+  startSlot = null;
   if (found) return found;
   const tab = { key, kind, ref };
-  tabs = [...tabs, tab];
+  tabs = slot !== null && slot <= tabs.length ? [...tabs.slice(0, slot), tab, ...tabs.slice(slot)] : [...tabs, tab];
   notify();
   return tab;
 }
@@ -67,6 +74,16 @@ export function addTab(kind: TabKind, ref: string): Tab {
 // its neighbours. Already open, it learns them.
 export function openTabWithSequence(kind: TabKind, ref: string, seq: string[]): Tab {
   const key = tabKey(kind, ref);
+  // A start page in the row is filled rather than a tab added beside it.
+  const startAt = tabs.findIndex((t) => t.key === START_KEY);
+  if (startAt !== -1) {
+    const tab = { key, kind, ref, seq };
+    tabs = tabs.flatMap((t, i) => (i === startAt ? [tab] : t.key === key ? [] : [t]));
+    startFront = false;
+    startSlot = null;
+    notify();
+    return tab;
+  }
   const found = tabs.find((t) => t.key === key);
   const tab = { ...(found ?? { key, kind, ref }), seq };
   tabs = found ? tabs.map((t) => (t === found ? tab : t)) : [...tabs, tab];
@@ -136,8 +153,23 @@ export function showStart(front: boolean): void {
 
 // Something was opened from the start page: the page gives way to it.
 export function leaveStart(): void {
+  const at = tabs.findIndex((t) => t.key === START_KEY);
+  startSlot = at === -1 ? null : at;
   tabs = tabs.filter((t) => t.key !== START_KEY);
   startFront = false;
+  notify();
+}
+
+// Leaving a note (its back arrow): its tab becomes the start page, in the
+// same place in the row, ready to be filled with the next thing. There is
+// only ever one start page, so one elsewhere gives way.
+export function turnIntoStart(key: string): void {
+  const rest = tabs.filter((t) => t.key !== START_KEY);
+  const at = rest.findIndex((t) => t.key === key);
+  const start: Tab = { key: START_KEY, kind: 'start', ref: 'new' };
+  tabs = at === -1 ? [...rest, start] : rest.map((t, i) => (i === at ? start : t));
+  startFront = true;
+  startSlot = null;
   notify();
 }
 
