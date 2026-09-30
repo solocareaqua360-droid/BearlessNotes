@@ -1,6 +1,8 @@
 import UnderToolbar from './src/components/desktop/UnderToolbar';
+import { inShell } from './src/navigation/desktopTabs';
+import { softTokens } from './src/theme/soft';
 import { IS_POINTER } from './src/utils/pointer';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   useFonts,
@@ -223,6 +225,14 @@ function AccountText({
 // editor was being tested (2026-09-14) and is gone now, at the user's word
 // (2026-10-01): the caret says where the writing is.
 if (typeof document !== 'undefined') {
+  // In the Mac app the window is transparent (vibrancy - see desktop/main.js):
+  // the page leaves its own ground unpainted, so what is not painted by a
+  // screen shows the macOS material. Only the rail leaves it showing.
+  if (inShell()) {
+    const clear = document.createElement('style');
+    clear.textContent = 'html, body, #root { background: transparent !important; }';
+    document.head.appendChild(clear);
+  }
   const noRing = document.createElement('style');
   noRing.textContent =
     'textarea:focus, input:focus, textarea:focus-visible, input:focus-visible { outline: none !important; }' +
@@ -239,6 +249,14 @@ if (typeof document !== 'undefined') {
         ' @media (prefers-reduced-motion: reduce) { div, span { transition: none !important; } [data-fade-in] { animation: none !important; } }'
       : '');
   document.head.appendChild(noRing);
+}
+
+// The main pane's own ground, painted here: in the Mac app the window itself
+// is transparent (vibrancy - desktop/main.js), and only the rail is meant to
+// let the desktop show through. Inside the theme, to read its scheme.
+function DeskGround({ children }: { children: ReactNode }) {
+  const ground = softTokens(useTheme().scheme).bg;
+  return <View style={[styles.deskBody, { backgroundColor: ground }]}>{children}</View>;
 }
 
 function StartPageHost() {
@@ -621,7 +639,7 @@ export default function App() {
                 <InnerBackProvider>
                 <View style={styles.deskRow}>
                   <DesktopRail footer={accountStrip} />
-                  <View style={styles.deskBody}>
+                  <DeskGround>
                     {/* The dock, unrolled - the path on the left and
                         what this screen can do on the right, off the
                         same publications the dock reads. */}
@@ -643,7 +661,7 @@ export default function App() {
                       <StartPageHost />
                       <TabStepper />
                     </View>
-                  </View>
+                  </DeskGround>
                   <RightColumn />
                 </View>
                 </InnerBackProvider>

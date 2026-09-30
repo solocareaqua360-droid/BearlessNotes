@@ -587,7 +587,14 @@ function createWindow(port) {
     // traffic lights on top of the page's own top-left corner, which is
     // exactly where this app keeps its controls. Worth revisiting once
     // the desktop-width layout exists and can leave room for them.
-    backgroundColor: '#FAFAFA',
+    // The rail lets the desktop show through, the way Finder's and Craft's
+    // sidebars do (2026-10-01): the window is transparent and macOS draws
+    // its own blurred "sidebar" material behind everything the page leaves
+    // unpainted. The page paints its content ground itself, so only the rail
+    // (translucent on purpose) shows it.
+    ...(process.platform === 'darwin'
+      ? { vibrancy: 'sidebar', visualEffectState: 'active', backgroundColor: '#00000000' }
+      : { backgroundColor: '#FAFAFA' }),
     // The title bar is hidden and the traffic lights sit over the rail's own
     // empty top band (DESKTOP_TITLE_BAND) - a white strip across the top of
     // the window cost 35 points of a half-screen window for a title nobody reads.
@@ -655,7 +662,9 @@ function createWindow(port) {
           minWidth: 480,
           minHeight: 480,
           title: 'mindEva',
-          backgroundColor: '#FAFAFA',
+          ...(process.platform === 'darwin'
+            ? { vibrancy: 'sidebar', visualEffectState: 'active', backgroundColor: '#00000000' }
+            : { backgroundColor: '#FAFAFA' }),
           titleBarStyle: 'hiddenInset',
           trafficLightPosition: { x: 16, y: 14 },
         },

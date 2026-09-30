@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { useRailPanel, useRailTree } from '../navigation/navRail';
 import { useInnerBackNow } from '../navigation/innerBack';
-import { useStartFront } from '../navigation/desktopTabs';
+import { inShell, useStartFront } from '../navigation/desktopTabs';
 import { useMainPaneUp } from '../navigation/mainPaneUp';
 import { navigationRef } from '../navigationRef';
 import { useWorkspace } from '../navigation/workspace';
@@ -67,7 +67,10 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   const styles = useStyles(makeStyles);
   // The frame is one tone (chrome); what is ON in it is a white card.
   const D = useDeskColors();
-  const on = { backgroundColor: D.card };
+  // In the Mac app the rail is see-through: the window's own macOS material
+  // (vibrancy, desktop/main.js) is what shows behind it. A browser has none.
+  const vibrant = inShell();
+  const on = { backgroundColor: vibrant ? 'rgba(255,255,255,0.7)' : D.card };
   const onCard = on;
   // The folders of the screen under the start page are not what is on
   // show while the start page is - home stands over the documents list.
@@ -163,8 +166,16 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
     // A floating card on the window's ground, not a column with a line down
     // its side: space and a soft shadow set it apart (the way Craft does), and
     // the traffic lights sit inside it.
-    <View style={[styles.rail, { backgroundColor: D.ground }, narrow && { width: DESKTOP_RAIL_NARROW }]}>
-      <View style={[styles.railCard, { backgroundColor: D.chrome, boxShadow: D.soft.shadow }]}>
+    <View style={[styles.rail, { backgroundColor: vibrant ? 'transparent' : D.ground }, narrow && { width: DESKTOP_RAIL_NARROW }]}>
+      <View
+        style={[
+          styles.railCard,
+          vibrant
+            ? // A veil, not a fill: macOS's own blurred desktop shows through it.
+              { backgroundColor: D.soft.dark ? 'rgba(36,36,38,0.35)' : 'rgba(255,255,255,0.32)', boxShadow: D.soft.shadow }
+            : { backgroundColor: D.chrome, boxShadow: D.soft.shadow },
+        ]}
+      >
       {/* Where the traffic lights are. Empty, and draggable: it is the
           window's title bar now. */}
       <View style={[{ height: DESKTOP_TITLE_BAND - 10 }, DRAG]} />
