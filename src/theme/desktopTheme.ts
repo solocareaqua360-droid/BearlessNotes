@@ -68,7 +68,9 @@ export type DeskColors = {
 export function deskColors(S: SoftTokens): DeskColors {
   return {
     ground: S.bg,
-    chrome: S.fillSolid,
+    // One step below the ground, not a grey slab: the frame is told apart by
+    // a hairline and this faint step, never by a contrast of its own.
+    chrome: S.dark ? S.fillSolid : '#F3F2EF',
     card: S.card,
     accent: S.accent,
     ink: S.ink,

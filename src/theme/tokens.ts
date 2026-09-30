@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import type { ViewStyle } from 'react-native';
 
 // The theme contract: ROLES, never colours.
@@ -423,6 +424,11 @@ const colour: Theme = {
 // складається в купу". Not pure white, WARM throughout, one undertone
 // carried from the ground through the ink to the accent - that
 // consistency is what reads as clean, not the lightness.
+// On the laptop the white theme stands on the soft style's ground (see
+// soft.ts), not on its own beige: two light palettes side by side read as
+// dirty. The phone keeps the beige.
+const DESK_GROUND: string | null = Platform.OS === 'web' ? '#FAF9F6' : null;
+
 const white: Theme = {
   key: 'white',
   name: 'Біла',
@@ -434,8 +440,8 @@ const white: Theme = {
   cloudStrength: 1,
   // backdrop is 'clouds' here, not 'gradient' - wash is never drawn,
   // kept equal to ground so nothing could show through by accident.
-  wash: ['#EFE8DD', '#EFE8DD', '#EFE8DD'],
-  ground: '#EFE8DD',
+  wash: DESK_GROUND ? [DESK_GROUND, DESK_GROUND, DESK_GROUND] : ['#EFE8DD', '#EFE8DD', '#EFE8DD'],
+  ground: DESK_GROUND ?? '#EFE8DD',
   // A shade off the ground, same reason as before - only the step and
   // the shadow tell a card from the page - just warm now, so the card
   // reads as brighter paper rather than a colder rectangle on it.

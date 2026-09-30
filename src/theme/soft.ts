@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import { Platform } from 'react-native';
 import { useTheme } from './ThemeProvider';
 import { cardRadius } from './scale';
 
@@ -38,19 +39,27 @@ export type SoftTokens = {
   popShadow: string;
 };
 
+// On the laptop (the web build) the light palette is ONE warm family in
+// three steps - ground #FAF9F6, the frame a step darker (see desktopTheme's
+// chrome), white cards - with a fainter shadow. The phone's stays as it was.
+// (2026-10-01: grey chrome, a beige list and white cards side by side read as
+// "brudno", not soft.)
+const DESK = Platform.OS === 'web';
 const LIGHT: SoftTokens = {
   dark: false,
-  bg: '#F6F5F2',
+  bg: DESK ? '#FAF9F6' : '#F6F5F2',
   card: '#FFFFFF',
   chrome: '#FFFFFF',
   ink: '#1E1E1C',
   ink2: '#6E6D68',
   ink3: '#A9A79F',
   fill: 'rgba(30,30,28,0.05)',
-  fillSolid: '#EBEAE7',
+  fillSolid: DESK ? '#F1F0EC' : '#EBEAE7',
   line: 'rgba(30,30,28,0.08)',
   accent: '#D9793F',
-  shadow: '0px 1px 2px rgba(30,30,28,0.05), 0px 10px 24px -12px rgba(30,30,28,0.18)',
+  shadow: DESK
+    ? '0px 1px 2px rgba(30,30,28,0.04), 0px 6px 16px -10px rgba(30,30,28,0.10)'
+    : '0px 1px 2px rgba(30,30,28,0.05), 0px 10px 24px -12px rgba(30,30,28,0.18)',
   popShadow: '0px 1px 2px rgba(30,30,28,0.06), 0px 18px 40px -14px rgba(30,30,28,0.32)',
 };
 
