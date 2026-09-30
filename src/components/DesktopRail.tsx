@@ -166,13 +166,34 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
     // A floating card on the window's ground, not a column with a line down
     // its side: space and a soft shadow set it apart (the way Craft does), and
     // the traffic lights sit inside it.
-    <View style={[styles.rail, { backgroundColor: vibrant ? 'transparent' : D.ground }, narrow && { width: DESKTOP_RAIL_NARROW }]}>
+    <View
+      style={[
+        styles.rail,
+        vibrant ? [styles.railVibrant, !narrow && { overflow: 'hidden' }] : { backgroundColor: D.ground },
+        narrow && { width: DESKTOP_RAIL_NARROW },
+      ]}
+    >
       <View
         style={[
           styles.railCard,
           vibrant
-            ? // A veil, not a fill: macOS's own blurred desktop shows through it.
-              { backgroundColor: D.soft.dark ? 'rgba(36,36,38,0.35)' : 'rgba(255,255,255,0.32)', boxShadow: D.soft.shadow }
+            ? ({
+                // ONLY the card shows the desktop, not the strip it stands in
+                // (2026-10-01: "ніби щось відклеїлось" - the whole left strip
+                // was see-through, cut off straight where the content began).
+                // The ground round the card is painted by the card's own
+                // shadow, spread wide and clipped by the strip - so the hole
+                // it leaves has the card's rounded corners exactly, and the
+                // window's corners are ground too. (Narrow, the strip cannot
+                // clip - the account card hangs out of it - so the spread is
+                // only the gap's 8.)
+                boxShadow: `0 0 0 ${narrow ? 8 : 60}px ${D.ground}, inset 0 0 0 0.5px ${D.soft.dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.7)'}`,
+                // And a veil that is not one flat coat: clearer at the top,
+                // milkier towards the foot (the way Craft's sidebar reads).
+                backgroundImage: D.soft.dark
+                  ? 'linear-gradient(170deg, rgba(36,36,38,0.18), rgba(36,36,38,0.42) 55%, rgba(36,36,38,0.62))'
+                  : 'linear-gradient(170deg, rgba(255,255,255,0.14), rgba(255,255,255,0.34) 55%, rgba(255,255,255,0.58))',
+              } as never)
             : { backgroundColor: D.chrome, boxShadow: D.soft.shadow },
         ]}
       >
@@ -340,6 +361,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingRight: 0,
     // Over the main pane's edge, so the account card can hang out of the strip.
     zIndex: 40,
+  },
+  // The Mac app's: the strip itself is clear (its ground comes from the
+  // card's shadow), and a gap on the right too, so the card stands off the
+  // content as it does off the window.
+  railVibrant: {
+    backgroundColor: 'transparent',
+    paddingRight: 8,
   },
   railCard: {
     flex: 1,
