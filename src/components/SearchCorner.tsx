@@ -9,6 +9,7 @@ import { Ionicons } from './icons/Ionicons';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { useSoft } from '../theme/soft';
 import { useDensity } from '../hooks/useDensity';
+import { useStartFront } from '../navigation/desktopTabs';
 import { LayoutFrameContext } from '../hooks/useResponsiveLayout';
 import { DESKTOP_TABS_HEIGHT, DESKTOP_TOOLBAR_ROW, useDesktopRailWidth } from '../constants/desktop';
 import { DOCK_PIECE_RADIUS, dockCardHeight, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
@@ -57,6 +58,8 @@ export default function SearchCorner({
   const theme = useTheme();
   const lift = useLift();
   const S = useSoft();
+  // The start page has a search of its own, over the screen this belongs to.
+  const startFront = useStartFront();
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const bead = dockCardHeight(windowWidth);
@@ -90,7 +93,7 @@ export default function SearchCorner({
     return () => clearTimeout(id);
   }, [expanded]);
 
-  if (!visible) return null;
+  if (!visible || startFront) return null;
   return (
     <GlassPortal>
       <Animated.View

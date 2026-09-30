@@ -4,7 +4,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Ionicons } from './icons/Ionicons';
 import { StackActions } from '@react-navigation/native';
-import { addTab, closeTab, tabKey, useOpenTabs, type Tab } from '../navigation/desktopTabs';
+import { START_KEY, addTab, closeTab, leaveStart, noteRecent, openStart, showStart, tabKey, useOpenTabs, useStartFront, type Tab } from '../navigation/desktopTabs';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';
 import { navigationRef } from '../navigationRef';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -64,6 +64,11 @@ function placeNow(): Place {
 }
 
 function go(tab: Tab | null) {
+  if (tab?.kind === 'start') {
+    showStart(true);
+    return;
+  }
+  showStart(false);
   if (!navigationRef.isReady()) return;
   const current = navigationRef.getCurrentRoute()?.name;
   if (tab === null) {
@@ -103,6 +108,7 @@ function useTabLabel(tab: Tab): { title: string; icon: string } {
       setName((tab.kind === 'board' ? data?.title : data?.name) ?? null);
     });
   }, [tab.kind, tab.ref]);
+  if (tab.kind === 'start') return { title: 'Нова вкладка', icon: 'sparkles-outline' };
   if (tab.kind === 'note') return { title: index.get(tab.ref)?.title?.trim() || 'Без назви', icon: '' };
   if (tab.kind === 'board') return { title: name || 'Дошка', icon: 'easel-outline' };
   if (tab.kind === 'database') return { title: name || 'База', icon: 'grid-outline' };
@@ -132,7 +138,7 @@ export default function DesktopTabs() {
   const styles = useStyles(makeStyles);
   const tabs = useOpenTabs();
   const [place, setPlace] = useState<Place>(null);
-  const [adding, setAdding] = useState(false);
+  const startFront = useStartFront();
   const narrow = useDesktopNarrow();
 
   // Which one is in front. Read off the navigator rather than kept here, so
@@ -143,16 +149,30 @@ export default function DesktopTabs() {
     const read = () => {
       const now = placeNow();
       setPlace(now);
-      if (now && now.kind !== 'home' && now.kind !== 'section') addTab(now.kind, now.ref);
+      // The navigator moved: whatever stood in front of it gives way.
+      showStart(false);
+      if (now && (now.kind === 'note' || now.kind === 'board' || now.kind === 'database')) {
+        addTab(now.kind, now.ref);
+        noteRecent(now.kind, now.ref);
+      }
     };
     read();
     return navigationRef.addListener('state', read);
   }, []);
 
-  const activeKey =
-    place === null ? null : place.kind === 'home' ? 'home' : tabKey(place.kind, place.ref);
+  const activeKey = startFront
+    ? START_KEY
+    : place === null
+      ? null
+      : place.kind === 'home'
+        ? 'home'
+        : tabKey(place.kind, place.ref);
 
   function close(tab: Tab) {
+    if (tab.kind === 'start') {
+      leaveStart();
+      return;
+    }
     const next = closeTab(tab.key);
     // Only the tab in front has anything to switch away from.
     if (tab.key === activeKey) go(next);
@@ -175,34 +195,14 @@ export default function DesktopTabs() {
           <TabItem key={tab.key} tab={tab} active={tab.key === activeKey} onClose={() => close(tab)} />
         ))}
         <Pressable
-          style={[styles.tab, styles.home, adding && styles.tabActive, NO_DRAG]}
-          onPress={() => setAdding((v) => !v)}
+          style={[styles.tab, styles.home, NO_DRAG]}
+          onPress={openStart}
           accessibilityLabel="Нова вкладка"
         >
           <Ionicons name="add" size={16} color={theme.ink.muted} />
         </Pressable>
       </ScrollView>
 
-      {adding && (
-        <>
-          <Pressable style={styles.scrim} onPress={() => setAdding(false)} />
-          <View style={[styles.menu, NO_DRAG]}>
-            {SECTIONS.map((section) => (
-              <Pressable
-                key={section.ref}
-                style={styles.menuItem}
-                onPress={() => {
-                  setAdding(false);
-                  go(addTab('section', section.ref));
-                }}
-              >
-                <Ionicons name={section.icon as never} size={16} color={theme.ink.muted} />
-                <Text style={styles.menuLabel}>{section.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </>
-      )}
     </View>
   );
 }

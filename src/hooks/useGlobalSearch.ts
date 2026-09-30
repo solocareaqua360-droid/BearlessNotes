@@ -30,7 +30,7 @@ export type SearchTarget =
   | { kind: 'document'; documentId: string }
   | { kind: 'links'; category: 'video' | 'geo' | 'other' }
   | { kind: 'screen'; route: 'Photos' | 'Files' | 'Stickers' | 'Tasks' | 'Diary' }
-  | { kind: 'customDatabase'; databaseId: string }
+  | { kind: 'customDatabase'; databaseId: string; rowId?: string }
   | { kind: 'board'; boardId: string };
 
 export type SearchHit = {
@@ -258,7 +258,7 @@ export function useGlobalSearch(rawQuery: string) {
         title: title || 'Без назви',
         match,
         updatedAt: asNumber(row.updatedAt),
-        target: { kind: 'customDatabase', databaseId: database.id },
+        target: { kind: 'customDatabase', databaseId: database.id, rowId: asString(row.id) || undefined },
       });
     }
 

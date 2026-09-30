@@ -34,6 +34,8 @@ import FatalErrorOverlay from './src/components/FatalErrorOverlay';
 import ContextDock from './src/components/ContextDock';
 import DesktopRail from './src/components/DesktopRail';
 import RightColumn from './src/components/desktop/RightColumn';
+import StartPage, { CreateWatcher } from './src/components/desktop/StartPage';
+import { useStartFront } from './src/navigation/desktopTabs';
 import { WorkspaceProvider } from './src/navigation/workspace';
 import DesktopToolbar from './src/components/DesktopToolbar';
 import DesktopTabs from './src/components/DesktopTabs';
@@ -202,6 +204,16 @@ function AccountText({
     >
       {children}
     </Text>
+  );
+}
+
+function StartPageHost() {
+  const front = useStartFront();
+  return (
+    <>
+      <CreateWatcher />
+      {front && <StartPage />}
+    </>
   );
 }
 
@@ -582,9 +594,15 @@ export default function App() {
                         the tabs are what you are switching BETWEEN, the
                         toolbar is about whichever one is in front. */}
                     <DesktopTabs />
-                    <DesktopToolbar />
                     <View style={styles.deskBody}>
-                      <RootNavigator />
+                      <DesktopToolbar />
+                      <View style={styles.deskBody}>
+                        <RootNavigator />
+                      </View>
+                      {/* The new tab's page, over the navigator AND its
+                          toolbar while it is the tab in front - see
+                          StartPage. */}
+                      <StartPageHost />
                     </View>
                   </View>
                   <RightColumn />

@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react';
 //
 // References only. A title is looked up live, so a note renamed anywhere is
 // renamed on its tab.
-export type TabKind = 'note' | 'board' | 'database' | 'section';
+export type TabKind = 'note' | 'board' | 'database' | 'section' | 'start';
 export type Tab = { key: string; kind: TabKind; ref: string };
 
 const STORAGE_KEY = 'mindeva.desktopTabs';
@@ -26,7 +26,9 @@ function load(): Tab[] {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
     const parsed = raw ? (JSON.parse(raw) as Tab[]) : [];
-    return Array.isArray(parsed) ? parsed.filter((t) => t && typeof t.key === 'string') : [];
+    // The start page is never brought back from a restart: it is a moment,
+    // not a place.
+    return Array.isArray(parsed) ? parsed.filter((t) => t && typeof t.key === 'string' && t.kind !== 'start') : [];
   } catch {
     return [];
   }
@@ -80,6 +82,89 @@ export function useOpenTabs(): Tab[] {
     listener();
     return () => {
       listeners.delete(listener);
+    };
+  }, []);
+  return value;
+}
+
+// THE START PAGE: what the «+» opens - a tab of its own that stands in front
+// of the navigator while it is the one chosen. Like a browser's new tab it
+// gives way to whatever is opened from it (leaveStart), and stays in the
+// row, keeping its place, if another tab is chosen instead.
+export const START_KEY = 'start:new';
+let startFront = false;
+
+export function openStart(): void {
+  if (!tabs.some((t) => t.key === START_KEY)) tabs = [...tabs, { key: START_KEY, kind: 'start', ref: 'new' }];
+  startFront = true;
+  notify();
+}
+
+export function showStart(front: boolean): void {
+  if (startFront === front) return;
+  startFront = front;
+  notify();
+}
+
+// Something was opened from the start page: the page gives way to it.
+export function leaveStart(): void {
+  tabs = tabs.filter((t) => t.key !== START_KEY);
+  startFront = false;
+  notify();
+}
+
+export function useStartFront(): boolean {
+  const [value, setValue] = useState(startFront);
+  useEffect(() => {
+    const listener = () => setValue(startFront);
+    listeners.add(listener);
+    listener();
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
+  return value;
+}
+
+// WHAT WAS WORKED WITH LATELY, on this Mac only (the user's choice): every
+// note, board and database the main pane has stood on, newest first. The
+// start page's «Нещодавні».
+export type RecentPlace = { kind: 'note' | 'board' | 'database'; ref: string; at: number };
+const RECENT_KEY = 'mindeva.recentPlaces';
+const RECENT_MAX = 30;
+
+function loadRecent(): RecentPlace[] {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(RECENT_KEY) : null;
+    const parsed = raw ? (JSON.parse(raw) as RecentPlace[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+let recent: RecentPlace[] = loadRecent();
+const recentListeners = new Set<() => void>();
+
+export function noteRecent(kind: RecentPlace['kind'], ref: string): void {
+  if (recent[0]?.kind === kind && recent[0]?.ref === ref) return;
+  recent = [{ kind, ref, at: Date.now() }, ...recent.filter((r) => !(r.kind === kind && r.ref === ref))].slice(0, RECENT_MAX);
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
+  } catch {
+    // Not kept past a restart, then.
+  }
+  recentListeners.forEach((l) => l());
+}
+
+export function useRecentPlaces(): RecentPlace[] {
+  const [value, setValue] = useState(recent);
+  useEffect(() => {
+    const listener = () => setValue(recent);
+    recentListeners.add(listener);
+    listener();
+    return () => {
+      recentListeners.delete(listener);
     };
   }, []);
   return value;

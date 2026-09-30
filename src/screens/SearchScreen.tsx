@@ -49,7 +49,7 @@ export default function SearchScreen() {
         navigation.navigate(target.route);
         return;
       case 'customDatabase':
-        navigation.navigate('CustomDatabase', { databaseId: target.databaseId });
+        navigation.navigate('CustomDatabase', { databaseId: target.databaseId, openRowId: target.rowId });
         return;
       case 'board':
         // Pushed on its own, not through the boards' desk: that desk is
