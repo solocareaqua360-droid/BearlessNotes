@@ -134,6 +134,37 @@ function ChatPhoto({ id, uri, onPress }: { id: string; uri: string; onPress: () 
   );
 }
 
+// The same for a file: what the message keeps is a name and the phone's
+// address; the record has the title it was given since, and when it was
+// added - what its row in «Файли» shows.
+function ChatFile({ id, name, uri, onPress }: { id: string; name: string; uri: string; onPress: () => void }) {
+  const [record, setRecord] = useState<{ title?: string; fileName?: string; createdAt?: number; updatedAt?: number } | null>(null);
+  useEffect(
+    () =>
+      onSnapshot(
+        doc(db, 'files', id),
+        (snapshot) => setRecord((snapshot.data() as typeof record) ?? null),
+        () => setRecord(null)
+      ),
+    [id]
+  );
+  return (
+    <FileRow
+      file={{
+        id,
+        fileName: record?.fileName ?? name,
+        fileUri: uri,
+        title: record?.title,
+        createdAt: record?.createdAt,
+        updatedAt: record?.updatedAt,
+        tagIds: [],
+      }}
+      tags={[]}
+      onPress={onPress}
+    />
+  );
+}
+
 export default function ChatScreen() {
   const theme = useTheme();
   // THE CHAT IN THE SOFT STYLE (theme/soft) - the last screen still in
@@ -632,9 +663,10 @@ export default function ChatScreen() {
                 }
               />
             ) : item.kind === 'file' ? (
-              <FileRow
-                file={{ id: item.id, fileName: item.name, fileUri: item.uri, tagIds: [] }}
-                tags={[]}
+              <ChatFile
+                id={item.id}
+                name={item.name}
+                uri={item.uri}
                 onPress={() =>
                   isSelectMode ? toggle(message.id) : navigation.navigate('Files')
                 }
