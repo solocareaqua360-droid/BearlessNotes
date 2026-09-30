@@ -52,7 +52,13 @@ export default function RootNavigator() {
           entry animation played as a blink at startup. Pushes from
           here (Editor and the rest) keep their own animation. */}
       <Stack.Screen name="Tabs" component={Tabs} options={{ animation: 'none' }} />
-      <Stack.Screen name="Editor" component={DocumentEditorScreen} />
+      {/* Opened out of its card (utils/morph), a note has no slide of its
+          own: the card's sheet is already moving. */}
+      <Stack.Screen
+        name="Editor"
+        component={DocumentEditorScreen}
+        options={({ route }) => ((route.params as { morph?: boolean } | undefined)?.morph ? { animation: 'none' } : {})}
+      />
       <Stack.Screen name="EditorModal" component={DocumentEditorScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Tasks" component={TasksScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />

@@ -1,6 +1,6 @@
 import { RADIUS } from '../theme/scale';
 import { IN_SHELL } from '../utils/shell';
-import { morphKey } from '../utils/morph';
+import { morphBack, morphKey, morphLanded } from '../utils/morph';
 import { dragSelectJustEnded } from '../hooks/useBlockMarquee';
 import { ForwardedRef, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
@@ -647,6 +647,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // THE CARD THAT BECAME THIS PAGE (utils/morph, the phone's): once the note
+  // is drawn, the sheet that grew out of its card may fade off it; and
+  // leaving, the sheet comes back over the page and folds onto the card.
+  // Only for a note opened that way - the route says so, and it was pushed
+  // without the stack's slide.
+  const openedByMorph = !embedded && !('pane' in props) && !!(props.route.params as { morph?: boolean }).morph;
+  useEffect(() => {
+    if (isLoaded && openedByMorph) morphLanded(`note:${documentId}`);
+  }, [isLoaded, openedByMorph, documentId]);
+  useEffect(() => {
+    if (!openedByMorph || !navigation) return;
+    let passing = false;
+    return navigation.addListener('beforeRemove', (e) => {
+      if (passing) return;
+      const type = e.data.action.type;
+      if (type !== 'GO_BACK' && type !== 'POP') return;
+      e.preventDefault();
+      passing = true;
+      morphBack(`note:${documentId}`, () => navigation.dispatch(e.data.action));
+    });
+  }, [openedByMorph, navigation, documentId]);
 
   // Landing on the card that mentions the note we came from, rather than
   // at the top of this one.

@@ -23,6 +23,7 @@ import { migrateBoardShapes } from './src/utils/boardMigration';
 import { navigationRef } from './src/navigationRef';
 import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
+import MorphHost from './src/components/MorphHost';
 import { AskHost } from './src/components/surfaces/Ask';
 import CaptureWindow from './src/components/CaptureWindow';
 import BoardPreviewCaptureHost from './src/components/BoardMiniature';
@@ -192,6 +193,9 @@ export default function App() {
             <ContextDock />
             </GlassTargetProvider>
           </GlassPortalHost>
+          {/* The sheet a note's card grows into its page with (utils/morph):
+              after everything else, so it draws over the dock too. */}
+          <MorphHost />
           </NavDockProvider>
           {/* Above the portal host, and outside every boundary:
               what it reports is the error class that leaves NOTHING

@@ -1,5 +1,5 @@
 import { lift } from '../utils/lift';
-import { morph } from '../utils/morph';
+import { morph, morphCardRef } from '../utils/morph';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInnerBack } from '../navigation/innerBack';
 import { rightClick } from '../utils/rightClick';
@@ -1150,10 +1150,11 @@ export default function DocumentsScreen({
       setOpenDoc({ id, autoFocusTitle, searchQuery });
       return;
     }
-    // The card grows into the note (utils/morph) - the laptop's.
-    morph(`note:${id}`, () =>
+    // The card grows into the note (utils/morph).
+    morph(`note:${id}`, (morphing) =>
       navigation.navigate('Editor', {
         documentId: id,
+        ...(morphing ? { morph: true } : {}),
         ...(autoFocusTitle ? { autoFocusTitle: true } : {}),
         ...(searchQuery ? { searchQuery } : {}),
       })
@@ -1596,6 +1597,7 @@ export default function DocumentsScreen({
                     titleMatch={titleMatch}
                     bodyMatch={bodyMatch}
                     search={searching ? needle : undefined}
+                    cardRef={morphCardRef(`note:${item.id}`)}
                     onPress={() => openDocument(item.id, false, searching ? needle : undefined)}
                     layout={drawnMode === 'list' ? 'list' : 'grid'}
                     // A result is the same card as in the list itself -
@@ -1968,6 +1970,7 @@ export default function DocumentsScreen({
                   // room - see CardPreview.
                   blocks={(item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords))}
                   checklistItems={checklistItems}
+                  cardRef={morphCardRef(`note:${item.id}`)}
                   onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}
                   onLongPress={
                     carried ? undefined : () => (trashOpen ? openTrashMenu(item) : holdDocument(item))
