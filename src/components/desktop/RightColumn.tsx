@@ -266,32 +266,30 @@ export default function RightColumn() {
   const nearest = workspace.panels.filter((p) => (twoColumns ? p.column === 0 : true));
   const far = twoColumns ? workspace.panels.filter((p) => p.column === 1) : [];
   // A column with nothing in it is not drawn, and the other takes its place.
-  const columns = [
+  const all = [
     { panels: nearest, index: 0 as const },
     { panels: far, index: 1 as const },
   ].filter((c) => c.panels.length > 0);
+  // A column of nothing but folded panels is not a column: its panels go to
+  // ONE strip at the right edge, whichever column they came from - a strip
+  // per column was two rails where one would hold them.
+  const columns = all.filter((c) => !c.panels.every((p) => p.folded));
+  const stripPanels = all.filter((c) => c.panels.every((p) => p.folded)).flatMap((c) => c.panels);
+  const stripRoom = stripPanels.length > 0 ? STRIP_WIDTH + 8 : 0;
+  const usable = room - stripRoom;
   // Each keeps its own width, but together they leave the main pane its room.
   const widthOf = (position: number, index: 0 | 1) => {
     const wanted = workspace.widths[index];
-    if (columns.length < 2) return Math.max(COLUMN_MIN, Math.min(wanted, room - 8));
-    const first = position === 0 ? Math.min(wanted, room - COLUMN_MIN - 16) : 0;
-    if (position === 0) return Math.max(COLUMN_MIN, first);
-    const nearW = Math.max(COLUMN_MIN, Math.min(workspace.widths[columns[0].index], room - COLUMN_MIN - 16));
-    return Math.max(COLUMN_MIN, Math.min(wanted, room - nearW - 16));
+    if (columns.length < 2) return Math.max(COLUMN_MIN, Math.min(wanted, usable - 8));
+    if (position === 0) return Math.max(COLUMN_MIN, Math.min(wanted, usable - COLUMN_MIN - 16));
+    const nearW = Math.max(COLUMN_MIN, Math.min(workspace.widths[columns[0].index], usable - COLUMN_MIN - 16));
+    return Math.max(COLUMN_MIN, Math.min(wanted, usable - nearW - 16));
   };
-  // A column of nothing but folded panels is a strip, not a column.
-  const folded = columns.map((c) => c.panels.every((p) => p.folded));
-  const widths = columns.map((c, position) => (folded[position] ? STRIP_WIDTH : widthOf(position, c.index)));
-  const total = widths.reduce((a, b) => a + b, 0) + 8 * columns.length;
+  const widths = columns.map((c, position) => widthOf(position, c.index));
+  const total = widths.reduce((a, b) => a + b, 0) + 8 * columns.length + stripRoom;
   return (
     <View style={[styles.group, { width: total, backgroundColor: S.bg }]}>
       {columns.map((column, position) => (
-        folded[position] ? (
-          <View key={column.index} style={styles.groupColumn}>
-            <View style={styles.splitterSpace} />
-            <FoldedStrip panels={column.panels} />
-          </View>
-        ) : (
         <View key={column.index} style={styles.groupColumn}>
           <Splitter
             column={column.index}
@@ -312,8 +310,13 @@ export default function RightColumn() {
             ))}
           </ScrollView>
         </View>
-        )
       ))}
+      {stripPanels.length > 0 && (
+        <View style={styles.groupColumn}>
+          <View style={styles.splitterSpace} />
+          <FoldedStrip panels={stripPanels} />
+        </View>
+      )}
     </View>
   );
 }
