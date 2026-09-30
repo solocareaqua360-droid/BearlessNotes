@@ -6647,6 +6647,23 @@ export default function BoardScreen() {
                     icon: 'duplicate-outline' as const,
                     onPress: () => duplicateCard(cardMenu.card),
                   },
+                  // Isolation, and the way out of it, as the held card's bar
+                  // offers them: on a card of the isolated chain the entry is
+                  // the way out, on any other it isolates (or re-aims).
+                  isolatedIds !== null && isolatedIds.has(cardMenu.card.id)
+                    ? {
+                        label: 'Вийти з ізоляції',
+                        icon: 'scan-outline' as const,
+                        onPress: () => {
+                          clearSelection();
+                          setIsolatedIds(null);
+                        },
+                      }
+                    : {
+                        label: 'Ізоляція',
+                        icon: 'scan-outline' as const,
+                        onPress: () => isolateSelectedCard(cardMenu.card.id),
+                      },
                   ...((cardMenu.card.type ?? 'paragraph') === 'document'
                     ? [
                         {
