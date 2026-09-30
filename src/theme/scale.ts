@@ -2,11 +2,14 @@ import { Platform } from 'react-native';
 
 // The laptop's shape scale, in a file of its own with no imports of the
 // theme: soft.ts needs it and desktopTheme.ts needs soft.ts.
+// Round, the way Craft is (2026-10-01, "жодного різкого краю"): nothing on
+// the laptop is told apart by a line, only by space, tone and a soft shadow.
 export const RADIUS = {
-  control: 8, // buttons, fields, rows that light on hover
-  card: 14, // a record, a tile, a menu
-  panel: 20, // a panel, a window
-  pill: 999, // a chip, a capsule
+  control: 8, // a field, a row that lights on hover
+  menu: 14, // a menu at the click, a small popover
+  card: 20, // a record, a tile, a document
+  panel: 24, // a panel, the rail, a window
+  pill: 999, // a button, a tab, a chip, a capsule
 } as const;
 
 // A card's corner: the scale's on the laptop (the web build), what the screen
@@ -30,7 +33,7 @@ export function deskSize(native: number): number {
 }
 
 // A whole style sheet put on the corner scale: every rounded corner of 5 or
-// more becomes 8 (up to 10), 14 (up to 17) or 20 - on the laptop only; on a
+// more becomes 8 (up to 10), 14 (up to 15), 20 (up to 21) or 24 - on the laptop only; on a
 // phone the sheet comes back as it was. For a screen whose styles are too
 // many to go through by hand (the editor's); a hairline's own tiny corner
 // (under 5) is left alone.
@@ -41,7 +44,7 @@ export function snapRadii<T extends Record<string, unknown>>(sheet: T): T {
     const style = sheet[key];
     if (style && typeof style === 'object' && typeof (style as { borderRadius?: unknown }).borderRadius === 'number') {
       const r = (style as { borderRadius: number }).borderRadius;
-      const snapped = r < 5 || r >= 100 ? r : r <= 10 ? RADIUS.control : r <= 17 ? RADIUS.card : RADIUS.panel;
+      const snapped = r < 5 || r >= 100 ? r : r <= 10 ? RADIUS.control : r <= 15 ? RADIUS.menu : r <= 21 ? RADIUS.card : RADIUS.panel;
       out[key] = { ...(style as object), borderRadius: snapped };
     } else {
       out[key] = style;

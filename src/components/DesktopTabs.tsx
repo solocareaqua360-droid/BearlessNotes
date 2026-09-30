@@ -193,7 +193,7 @@ function TabItem({ tab, active, onClose }: { tab: Tab; active: boolean; onClose:
   const { title, icon } = useTabLabel(tab);
   const D = useDeskColors();
   return (
-    <Pressable style={[styles.tab, active && [styles.tabActive, { backgroundColor: D.card }], NO_DRAG]} onPress={() => go(tab)}>
+    <Pressable style={[styles.tab, active && [styles.tabActive, { backgroundColor: D.card, boxShadow: D.soft.shadow }], NO_DRAG]} onPress={() => go(tab)}>
       {!!icon && <Ionicons name={icon as never} size={13} color={active ? theme.ink.primary : theme.ink.muted} />}
       <Text style={[styles.label, active && styles.labelActive]} numberOfLines={1}>
         {title}
@@ -366,10 +366,10 @@ export default function DesktopTabs() {
   }
 
   return (
-    <View style={[styles.frame, { backgroundColor: D.chrome }, DRAG]}>
+    <View style={[styles.frame, { backgroundColor: D.ground }, DRAG]}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.row, narrow && { paddingLeft: 26 }]}>
         <Pressable
-          style={[styles.tab, styles.home, activeKey === 'home' && [styles.tabActive, { backgroundColor: D.card }], NO_DRAG]}
+          style={[styles.tab, styles.home, activeKey === 'home' && [styles.tabActive, { backgroundColor: D.card, boxShadow: D.soft.shadow }], NO_DRAG]}
           onPress={() => go(null)}
         >
           <Ionicons
@@ -397,8 +397,7 @@ export default function DesktopTabs() {
 const makeStyles = (t: Theme) => StyleSheet.create({
   frame: {
     backgroundColor: t.ground,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.edge.hairline,
+    // No line under it: the tabs stand on the ground like everything else.
     // Over the toolbar under it, so the menu of «+» can hang down.
     zIndex: 30,
   },
@@ -417,7 +416,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     maxWidth: 220,
     paddingLeft: 12,
     paddingRight: 6,
-    borderRadius: RADIUS.control,
+    borderRadius: RADIUS.pill,
   },
   home: {
     paddingHorizontal: 10,
@@ -437,7 +436,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   close: {
     padding: 2,
-    borderRadius: RADIUS.control,
+    borderRadius: RADIUS.pill,
   },
   // A sheet over the whole window that only catches the tap away.
   scrim: {
@@ -453,7 +452,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     left: 10,
     minWidth: 180,
     paddingVertical: 6,
-    borderRadius: RADIUS.card,
+    borderRadius: RADIUS.menu,
     backgroundColor: t.paper.fill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: t.edge.hairline,

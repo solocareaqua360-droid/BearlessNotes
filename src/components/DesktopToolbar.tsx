@@ -93,7 +93,7 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
   if (compact && !shown.length && !leftBead && !beads.right && crumbs.length === 0) return null;
 
   return (
-    <View style={[styles.frame, { backgroundColor: compact ? 'transparent' : D.chrome }]} pointerEvents="box-none">
+    <View style={[styles.frame, { backgroundColor: compact ? 'transparent' : D.ground }]} pointerEvents="box-none">
       <View style={styles.bar}>
         <View style={styles.crumbs}>
           {!compact && <UpButton fallback={up} />}
@@ -120,10 +120,22 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
           })}
         </View>
 
-        <View style={styles.controls}>
+        {/* In the main pane the buttons are one floating capsule (the way
+            Craft groups them), not icons painted on a strip. */}
+        <View
+          style={[
+            styles.controls,
+            !compact && (!!leftBead || shown.length > 0 || !!beads.right) && {
+              backgroundColor: D.card,
+              boxShadow: D.soft.shadow,
+              borderRadius: RADIUS.pill,
+              padding: 3,
+            },
+          ]}
+        >
           {!!leftBead && (
             <Pressable
-              style={[styles.button, leftBead.active && [styles.buttonOn, { backgroundColor: D.card }]]}
+              style={[styles.button, leftBead.active && [styles.buttonOn, { backgroundColor: D.fill }]]}
               onPress={leftBead.onPress}
               onLongPress={leftBead.onLongPress}
             >
@@ -133,7 +145,7 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
           {shown.map((action) => (
             <Pressable
               key={action.key}
-              style={[styles.button, action.active && [styles.buttonOn, { backgroundColor: D.card }]]}
+              style={[styles.button, action.active && [styles.buttonOn, { backgroundColor: D.fill }]]}
               onPress={action.onPress}
               onLongPress={action.onLongPress}
             >
@@ -199,7 +211,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   crumb: {
     paddingHorizontal: 4,
     paddingVertical: 3,
-    borderRadius: RADIUS.control,
+    borderRadius: RADIUS.pill,
   },
   crumbLabel: {
     flexShrink: 1,
@@ -225,7 +237,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     gap: 5,
     height: CONTROL.button,
     paddingHorizontal: 9,
-    borderRadius: RADIUS.control,
+    borderRadius: RADIUS.pill,
   },
   buttonOn: {
     backgroundColor: t.selected,
@@ -238,7 +250,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   primary: {
     width: CONTROL.button,
     height: CONTROL.button,
-    borderRadius: RADIUS.control,
+    borderRadius: RADIUS.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: t.accent,

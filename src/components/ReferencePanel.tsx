@@ -330,7 +330,7 @@ function ResizeEdge({ width, onResize }: { width: number; onResize: (width: numb
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
     deskFrame: { flex: 1, paddingTop: 8, paddingBottom: 8, paddingRight: 8, paddingLeft: 6 },
-    deskCard: { flex: 1, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+    deskCard: { flex: 1, borderRadius: 24, overflow: 'hidden' },
     deskHeader: {
       height: 38,
       flexDirection: 'row',
@@ -338,7 +338,7 @@ const makeStyles = (t: Theme) =>
       gap: 8,
       paddingLeft: 14,
       paddingRight: 8,
-      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomWidth: 0,
     },
     deskTitle: { flex: 1, fontSize: 13.5, fontFamily: SOFT_SEMIBOLD },
     deskClose: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },

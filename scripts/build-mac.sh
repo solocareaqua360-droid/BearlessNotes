@@ -45,7 +45,15 @@ fi
 if pgrep -f "mindEva.app/Contents/MacOS/mindEva" >/dev/null 2>&1; then
   echo "==> Closing the running mindEva (its files are about to be replaced)"
   osascript -e 'quit app "mindEva"' >/dev/null 2>&1 || true
-  sleep 3
+  # Until it is really gone, not a fixed three seconds: a quit that is still
+  # writing its storage when the files are replaced came back with an OLDER
+  # tab row (2026-10-01) - a write cut in half falls back to the last whole one.
+  i=0
+  while pgrep -f "mindEva.app/Contents/MacOS/mindEva" >/dev/null 2>&1 && [ $i -lt 40 ]; do
+    sleep 0.5
+    i=$((i + 1))
+  done
+  sleep 1
 fi
 
 echo "==> Packaging"

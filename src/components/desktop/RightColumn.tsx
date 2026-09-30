@@ -76,7 +76,7 @@ function PanelFrame({ panel }: { panel: Panel }) {
         styles.panel,
         // A hairline all round as well as the shadow: the panel is the same
         // colour as the ground, and a shadow alone is soft on the lit side.
-        { backgroundColor: S.bg, boxShadow: S.shadow, borderWidth: StyleSheet.hairlineWidth, borderColor: S.line },
+        { backgroundColor: S.bg, boxShadow: S.shadow },
         panel.folded ? styles.panelFolded : styles.panelOpen,
       ]}
     >
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
   // stands outside it, and with nothing on the left the panel's left edge
   // had no shadow and ran into the ground ("лівий край зливається").
   stack: { flexGrow: 1, paddingLeft: 6, paddingRight: 8, paddingVertical: 8, gap: 8 },
-  panel: { borderRadius: 20, overflow: 'hidden', minHeight: HEADER },
+  panel: { borderRadius: 24, overflow: 'hidden', minHeight: HEADER },
   // Shares the column while there is room, and never gets shorter than a
   // panel can be used at - past that the column scrolls instead.
   panelOpen: { flex: 1 },
@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingLeft: 14,
     paddingRight: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 0,
   },
   title: { flex: 1, fontSize: 13.5, fontFamily: SOFT_SEMIBOLD },
   headerButton: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },

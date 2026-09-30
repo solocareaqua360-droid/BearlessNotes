@@ -160,7 +160,11 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   }
 
   return (
-    <View style={[styles.rail, { backgroundColor: D.chrome }, narrow && { width: DESKTOP_RAIL_NARROW }]}>
+    // A floating card on the window's ground, not a column with a line down
+    // its side: space and a soft shadow set it apart (the way Craft does), and
+    // the traffic lights sit inside it.
+    <View style={[styles.rail, { backgroundColor: D.ground }, narrow && { width: DESKTOP_RAIL_NARROW }]}>
+      <View style={[styles.railCard, { backgroundColor: D.chrome, boxShadow: D.soft.shadow }]}>
       {/* Where the traffic lights are. Empty, and draggable: it is the
           window's title bar now. */}
       <View style={[{ height: DESKTOP_TITLE_BAND - 10 }, DRAG]} />
@@ -307,6 +311,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
           )}
         </View>
       )}
+      </View>
     </View>
   );
 }
@@ -320,12 +325,15 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     // screen has to paint itself; only the screens have a background
     // of their own.
     backgroundColor: t.ground,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: t.edge.hairline,
-    paddingTop: 0,
-    paddingBottom: 10,
+    padding: 8,
+    paddingRight: 0,
     // Over the main pane's edge, so the account card can hang out of the strip.
     zIndex: 40,
+  },
+  railCard: {
+    flex: 1,
+    borderRadius: RADIUS.panel,
+    paddingBottom: 10,
   },
   leave: {
     flexDirection: 'row',
@@ -367,7 +375,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     bottom: 0,
     width: 260,
     padding: 10,
-    borderRadius: RADIUS.card,
+    borderRadius: RADIUS.menu,
     backgroundColor: t.paper.fill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: t.edge.hairline,
@@ -406,11 +414,10 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     fontFamily: FONT_SEMIBOLD,
     color: t.ink.primary,
   },
+  // Space where a line used to be.
   rule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: t.edge.hairline,
-    marginVertical: 10,
-    marginHorizontal: 12,
+    height: 0,
+    marginVertical: 8,
   },
   newFolder: {
     flexDirection: 'row',
@@ -478,10 +485,9 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     // What does not fit is cut, not drawn over the account strip below.
     overflow: 'hidden',
   },
+  // Set apart by space, not a line.
   footer: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.edge.hairline,
-    marginTop: 8,
-    paddingTop: 8,
+    marginTop: 12,
+    paddingTop: 4,
   },
 });
