@@ -9,7 +9,7 @@ import { LayoutFrameContext } from '../../hooks/useResponsiveLayout';
 import { navigationRef } from '../../navigationRef';
 import { useWorkspace, type Panel } from '../../navigation/workspace';
 import ChatScreen from '../../screens/ChatScreen';
-import CustomDatabaseScreen from '../../screens/CustomDatabaseScreen';
+import PaneTargetScreen from '../PaneTargetScreen';
 import DatabasesScreen from '../../screens/DatabasesScreen';
 
 // A SCREEN LIVING IN A SIDE PANEL. Everything a screen takes for granted
@@ -30,14 +30,14 @@ export default function PaneScreen({ panel }: { panel: Panel }) {
   const [frame, setFrame] = useState<{ width: number; height: number } | null>(null);
 
   const route = useMemo(
-    () => ({ key: panel.id, name: panel.kind, params: { databaseId: panel.databaseId } }),
-    [panel.id, panel.kind, panel.databaseId]
+    () => ({ key: panel.id, name: panel.kind, params: { databaseId: panel.target?.kind === 'custom' ? panel.target.databaseId : undefined } }),
+    [panel.id, panel.kind, panel.target]
   );
   const navigation = useMemo(() => {
     const close = () => workspace?.close(panel.id);
     const go = (name: string, params?: { databaseId?: string }) => {
       if (name === 'CustomDatabase' && params?.databaseId) {
-        workspace?.open({ kind: 'database', databaseId: params.databaseId });
+        workspace?.open({ kind: 'target', target: { kind: 'custom', databaseId: params.databaseId } });
       } else if (name === 'Chat') {
         workspace?.open({ kind: 'chat' });
       } else if (navigationRef.isReady()) {
@@ -67,7 +67,7 @@ export default function PaneScreen({ panel }: { panel: Panel }) {
 
   let screen: ReactNode = null;
   if (panel.kind === 'chat') screen = <ChatScreen />;
-  else if (panel.kind === 'database' && panel.databaseId) screen = <CustomDatabaseScreen databaseId={panel.databaseId} inPane />;
+  else if (panel.kind === 'target' && panel.target) screen = <PaneTargetScreen target={panel.target} />;
   else if (panel.kind === 'databases') screen = <DatabasesScreen />;
 
   return (

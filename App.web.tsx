@@ -21,6 +21,8 @@ import { signInForHandoff } from './src/firebase.web';
 import { onAuthStateChanged } from 'firebase/auth';
 import RootNavigator from './src/AppNavigator';
 import { navigationRef } from './src/navigationRef';
+import { navigateToTarget } from './src/navigation/paneTargetInfo';
+import type { PaneTarget } from './src/navigation/paneTarget';
 import { AskHost } from './src/components/surfaces/Ask';
 import CaptureWindow from './src/components/CaptureWindow';
 import BoardPreviewCaptureHost from './src/components/BoardMiniature';
@@ -346,6 +348,30 @@ export default function App() {
       stopWatching();
       stopListening();
     };
+  }, [user]);
+
+  // A NEW WINDOW (the right button on a database: «Відкрити в новому вікні»)
+  // is this same app at an address that says what to open. Once the
+  // navigator is up, the main pane goes there - and the address is cleaned,
+  // so a reload does not do it again.
+  useEffect(() => {
+    if (!user) return;
+    let target: PaneTarget | null = null;
+    try {
+      const raw = new URLSearchParams(window.location.search).get('open');
+      target = raw ? (JSON.parse(raw) as PaneTarget) : null;
+    } catch {
+      target = null;
+    }
+    if (!target) return;
+    const wanted = target;
+    const timer = setInterval(() => {
+      if (!navigationRef.isReady()) return;
+      clearInterval(timer);
+      navigateToTarget(wanted);
+      window.history.replaceState(null, '', `${window.location.pathname}?desktop=1`);
+    }, 150);
+    return () => clearInterval(timer);
   }, [user]);
 
   // The two menu commands that are only a navigation. «Новий документ»

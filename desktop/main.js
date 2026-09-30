@@ -594,12 +594,41 @@ function createWindow(port) {
         overrideBrowserWindowOptions: { width: 520, height: 680, autoHideMenuBar: true },
       };
     }
+    // Our own address with something to open: «Відкрити в новому вікні» - a
+    // second window of the same app, on that database.
+    if ((host === 'localhost' || host === '127.0.0.1') && /[?&]open=/.test(url)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 900,
+          height: 760,
+          minWidth: 480,
+          minHeight: 480,
+          title: 'mindEva',
+          backgroundColor: '#FAFAFA',
+          titleBarStyle: 'hiddenInset',
+          trafficLightPosition: { x: 16, y: 14 },
+        },
+      };
+    }
     shell.openExternal(url);
     return { action: 'deny' };
   });
 
   return window;
 }
+
+// A window of the app itself (not a sign-in popup) gets the same page zoom.
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('dom-ready', () => {
+    try {
+      const url = new URL(contents.getURL());
+      if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') contents.setZoomFactor(currentZoom());
+    } catch {
+      /* not a page of ours */
+    }
+  });
+});
 
 app.whenReady().then(async () => {
   if (!fs.existsSync(path.join(ROOT, 'index.html'))) {

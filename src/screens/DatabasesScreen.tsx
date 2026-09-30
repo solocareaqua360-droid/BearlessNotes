@@ -72,18 +72,11 @@ import TopNavBar from '../components/TopNavBar';
 import { NavigationContext } from '@react-navigation/native';
 import { GlassPortalHost } from '../components/GlassPortal';
 import { GlassTargetProvider } from '../components/GlassTarget';
-import CustomDatabaseScreen from './CustomDatabaseScreen';
-import DocumentsScreen from './DocumentsScreen';
-import BoardsListScreen from './BoardsListScreen';
-import LinksScreen from './LinksScreen';
-import PhotosScreen from './PhotosScreen';
-import FilesScreen from './FilesScreen';
-import StickersScreen from './StickersScreen';
-import FlashcardsScreen from './FlashcardsScreen';
-import TagManageScreen from './TagManageScreen';
-import GroupsScreen from './GroupsScreen';
-import DiaryScreen from './DiaryScreen';
-import TasksScreen from './TasksScreen';
+import PaneTargetScreen from '../components/PaneTargetScreen';
+import type { PaneTarget } from '../navigation/paneTarget';
+import { useWorkspace } from '../navigation/workspace';
+import { windowUrlFor } from '../navigation/paneTargetInfo';
+import { rightClick } from '../utils/rightClick';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -193,16 +186,6 @@ function defaultSizeFor(key: string): TileSize {
 // The tiles a wide screen can open beside the board rather than instead
 // of it. The rest - the tabs (documents, boards) and the placeholders -
 // are whole screens of their own, not a database, so they still navigate.
-type PaneTarget =
-  | { kind: 'custom'; databaseId: string }
-  | { kind: 'links'; category: 'video' | 'geo' | 'other' }
-  | { kind: 'documents' }
-  | { kind: 'boards' }
-  // The three registries - the diary, the groups and the tags - open in
-  // the pane like every other database now. They are not lists of records
-  // and carry no chrome of their own; see PlainScreenShell.
-  | { kind: 'route'; route: 'Photos' | 'Files' | 'Stickers' | 'Flashcards' | 'Tasks' | 'Tags' | 'Groups' | 'Diary' };
-
 function paneTargetFor(tile: Tile): PaneTarget | null {
   if (tile.linkCategory) return { kind: 'links', category: tile.linkCategory };
   // Documents and boards open here too now - every database in the same
@@ -1286,7 +1269,39 @@ export default function DatabasesScreen() {
   // then its pixel place and `inFolder` the folder it lies in). Folder
   // What opening a tile does - shared by the tile itself and by the
   // panel's list of the same items.
+  // The pane target an item stands for, where it has one: a database of your
+  // own, or a built-in one that opens in a pane.
+  const targetOf = (item: BoardItem): PaneTarget | null =>
+    item.kind === 'custom'
+      ? { kind: 'custom', databaseId: item.database.id }
+      : item.kind === 'builtin'
+        ? paneTargetFor(item.tile)
+        : null;
+
+  // The right button on a tile or a row: the same thing the tile is, opened
+  // somewhere else - in a panel of its own, or in a window of its own.
+  const workspace = useWorkspace();
+  const openElsewhere = async (item: BoardItem) => {
+    const target = targetOf(item);
+    if (!target || !workspace) return;
+    const answer = await ask({
+      title: rowOf(item).label,
+      actions: [
+        { id: 'panel', label: 'Відкрити в новій панелі', icon: 'albums-outline' },
+        { id: 'window', label: 'Відкрити в новому вікні', icon: 'copy-outline' },
+      ],
+    });
+    if (answer === 'panel') workspace.openAnother({ kind: 'target', target });
+    else if (answer === 'window') window.open(windowUrlFor(target), '_blank');
+  };
+
   const openItem = (item: BoardItem) => {
+    // In a side panel a database opens as a panel beside it, not in the main pane.
+    const inPanelTarget = inPanel && workspace ? targetOf(item) : null;
+    if (inPanelTarget) {
+      workspace?.open({ kind: 'target', target: inPanelTarget });
+      return;
+    }
     // On a wide screen a database opens BESIDE the board,
     // in the left pane, rather than replacing it.
     const pane =
@@ -1358,6 +1373,7 @@ export default function DatabasesScreen() {
       background={tileBackgrounds[item.key]}
       count={item.kind === 'pin' ? item.pin.count : counts[item.key]}
       onOpen={() => openItem(item)}
+      onContext={targetOf(item) ? () => openElsewhere(item) : undefined}
       onHold={() => {
         // The tick was the lift, when the hold became long enough - not a
         // second one on letting go.
@@ -1471,6 +1487,7 @@ export default function DatabasesScreen() {
                   count={item.kind === 'action' ? undefined : row.count}
                   dashed={item.kind === 'action'}
                   onPress={() => openItem(item)}
+                  onContext={targetOf(item) ? () => openElsewhere(item) : undefined}
                 />
               );
             });
@@ -1780,31 +1797,7 @@ export default function DatabasesScreen() {
               <GlassPortalHost>
                 <GlassTargetProvider>
                   <NavigationContext.Provider value={paneNavigation}>
-                    {openInPane.kind === 'custom' ? (
-                      <CustomDatabaseScreen databaseId={openInPane.databaseId} inPane />
-                    ) : openInPane.kind === 'documents' ? (
-                      <DocumentsScreen inPane />
-                    ) : openInPane.kind === 'boards' ? (
-                      <BoardsListScreen inPane />
-                    ) : openInPane.kind === 'links' ? (
-                      <LinksScreen category={openInPane.category} inPane />
-                    ) : openInPane.route === 'Photos' ? (
-                      <PhotosScreen inPane />
-                    ) : openInPane.route === 'Files' ? (
-                      <FilesScreen inPane />
-                    ) : openInPane.route === 'Stickers' ? (
-                      <StickersScreen inPane />
-                    ) : openInPane.route === 'Flashcards' ? (
-                      <FlashcardsScreen inPane />
-                    ) : openInPane.route === 'Tags' ? (
-                      <TagManageScreen inPane />
-                    ) : openInPane.route === 'Groups' ? (
-                      <GroupsScreen inPane />
-                    ) : openInPane.route === 'Diary' ? (
-                      <DiaryScreen inPane />
-                    ) : (
-                      <TasksScreen />
-                    )}
+                    <PaneTargetScreen target={openInPane} />
                   </NavigationContext.Provider>
                 </GlassTargetProvider>
               </GlassPortalHost>
@@ -2129,6 +2122,7 @@ function BoardTile({
   cellSize,
   editing,
   onOpen,
+  onContext,
   onHold,
   onColor,
   onResize,
@@ -2154,6 +2148,8 @@ function BoardTile({
   cellSize: number;
   editing: boolean;
   onOpen: () => void;
+  // The right button: open it elsewhere (a panel, a window).
+  onContext?: () => void;
   onHold: () => void;
   onColor: () => void;
   onResize: (size: TileSize) => void;
@@ -2354,6 +2350,7 @@ function BoardTile({
       <GestureDetector gesture={tileGesture}>
       <Pressable
         style={styles.tileTap}
+        {...rightClick(onContext)}
         onPress={() => {
           if (swallowPress.current) return;
           if (editing) onColor();
@@ -2425,6 +2422,7 @@ function PanelListRow({
   count,
   dashed,
   onPress,
+  onContext,
 }: {
   label: string;
   icon: string;
@@ -2432,11 +2430,13 @@ function PanelListRow({
   count?: number;
   dashed?: boolean;
   onPress: () => void;
+  onContext?: () => void;
 }) {
   const S = useSoft();
   return (
     <Pressable
       onPress={onPress}
+      {...rightClick(onContext)}
       style={(state) => [
         panelListStyles.row,
         (state as { hovered?: boolean }).hovered && { backgroundColor: S.fill },
