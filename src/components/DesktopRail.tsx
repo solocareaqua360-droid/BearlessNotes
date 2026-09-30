@@ -187,12 +187,13 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
                 // the window's edge in the real window).
                 boxShadow: `inset 0 0 0 0.5px ${D.soft.dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.7)'}`,
                 borderRadius: RAIL_CARD_RADIUS,
-                // NO veil of the page's own. What Craft shows there is not a
-                // gradient anyone painted - it is the desktop's own colours,
-                // blurred by macOS (blue at the top, green at the foot, on
-                // the user's wallpaper), and any white laid over it washed
-                // them out into one flat coat (2026-10-01, twice).
-                backgroundColor: 'transparent',
+                // What Craft shows there is not a gradient anyone painted - it
+                // is the desktop's own colours, blurred by macOS - so the veil
+                // is ONE even tint, never a gradient of its own (a white
+                // gradient washed them into a flat coat, 2026-10-01). Half of
+                // the see-through, at the user's word: the colours keep their
+                // change down the card, at half the strength.
+                backgroundColor: D.soft.dark ? 'rgba(36,36,38,0.5)' : 'rgba(243,242,239,0.5)',
               } as never)
             : { backgroundColor: D.chrome, boxShadow: D.soft.shadow },
         ]}
