@@ -3,6 +3,7 @@ import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PAGE_SHEET_INSET } from './documentEditorStyles';
+import { TOP_NAV_SPACE } from './TopNavBar';
 import { measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
 
 // THE PAGE THAT GROWS OUT OF ITS CARD (utils/morph tells the whole story).
@@ -21,6 +22,15 @@ const BACK_MS = 300;
 const CARD_RADIUS = 22;
 // The editor's sheet's side inset on a phone.
 const SHEET_X = PAGE_SHEET_INSET;
+// What the page leaves above its title that the card's picture does not:
+// the room kept clear for the capsules over the page (the editor's sheet
+// pads PAGE_HEADER_TOP + TOP_NAV_SPACE + 12, DocumentPageMiniature's band
+// is PAGE_HEADER_TOP + 12). Aligned on the sheet's own top, the page
+// folding into its card still showed that empty band above the title, and
+// the card that replaced it had none - the title jumped up by it at the
+// last moment (2026-10-01). So the card's corner stands on the line the
+// card's picture starts on, and the band stays outside the clip.
+const PAGE_BAND_EXTRA = TOP_NAV_SPACE;
 // The editor gets this long to draw the note before the page grows anyway.
 const LAND_WAIT_MS = 900;
 
@@ -155,7 +165,7 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
       width: bw.value,
       height: bh.value,
       left: -SHEET_X * s0 * (1 - k),
-      top: -sheetY.value * s0 * (1 - k),
+      top: -(sheetY.value + PAGE_BAND_EXTRA) * s0 * (1 - k),
       transform: [{ scale: s }],
     };
   });
