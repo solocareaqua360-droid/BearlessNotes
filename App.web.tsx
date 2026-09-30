@@ -1,3 +1,4 @@
+import { enableScreens } from 'react-native-screens';
 import { MOTION, deskGlass } from './src/theme/desktopTheme';
 import UnderToolbar from './src/components/desktop/UnderToolbar';
 import { inShell } from './src/navigation/desktopTabs';
@@ -225,6 +226,13 @@ function AccountText({
 // block border anywhere in the editor's styles). It was kept while the web
 // editor was being tested (2026-09-14) and is gone now, at the user's word
 // (2026-10-01): the caret says where the writing is.
+// A tab the navigator is not showing stands BEHIND the one it is, and only
+// the front screen's solid ground used to hide it. In the Mac app grounds are
+// glass, and the documents list showed through the boards (2026-10-01). With
+// react-native-screens switched on, an inactive tab is display: none - the
+// navigators already say which one that is.
+if (inShell()) enableScreens(true);
+
 if (typeof document !== 'undefined') {
   // In the Mac app the window is transparent (vibrancy - see desktop/main.js):
   // the page leaves its own ground unpainted, so what is not painted by a
@@ -266,7 +274,20 @@ if (typeof document !== 'undefined') {
         ` [data-fade-in] { animation: mindevaFadeIn ${MOTION.base}ms ${MOTION.ease}; transform-origin: top left; }` +
         ` [data-fade-out] { animation: mindevaFadeOut ${MOTION.out}ms ease-in forwards; transform-origin: top left; pointer-events: none; }` +
         ' [data-fade-in][data-origin="center"], [data-fade-out][data-origin="center"] { transform-origin: center; }' +
-        ' @media (prefers-reduced-motion: reduce) { div, span { transition: none !important; } [data-fade-in], [data-fade-out] { animation: none !important; } [data-lift]:hover, [data-lift]:active, [tabindex]:active { transform: none !important; } }'
+        // Stage 2 - the arrangement moves (utils/viewTransition): every named
+        // piece goes from where it was to where it is on the one curve; the
+        // main pane and the panels are never stretched on the way (their
+        // pictures stay anchored at the top left and are clipped), a panel
+        // that arrives slides in from the right, one that goes slides out.
+        ` ::view-transition-group(*) { animation-duration: ${MOTION.slow}ms; animation-timing-function: ${MOTION.ease}; }` +
+        ` ::view-transition-old(*), ::view-transition-new(*) { animation-duration: ${MOTION.base}ms; }` +
+        ' ::view-transition-old(desk-main), ::view-transition-new(desk-main), ::view-transition-old(desk-panels), ::view-transition-new(desk-panels), ::view-transition-old(*.panel), ::view-transition-new(*.panel) { height: 100%; width: auto; object-fit: none; object-position: left top; }' +
+        ' ::view-transition-group(desk-main), ::view-transition-group(desk-panels), ::view-transition-group(*.panel) { overflow: clip; }' +
+        ` @keyframes mindevaPanelIn { from { opacity: 0; transform: translateX(28px); } }` +
+        ` @keyframes mindevaPanelOut { to { opacity: 0; transform: translateX(28px); } }` +
+        ` ::view-transition-new(*.panel):only-child { animation: mindevaPanelIn ${MOTION.slow}ms ${MOTION.ease}; }` +
+        ` ::view-transition-old(*.panel):only-child { animation: mindevaPanelOut ${MOTION.base}ms ease-in forwards; }` +
+        ' @media (prefers-reduced-motion: reduce) { div, span { transition: none !important; } [data-fade-in], [data-fade-out] { animation: none !important; } [data-lift]:hover, [data-lift]:active, [tabindex]:active { transform: none !important; } ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }'
       : '');
   document.head.appendChild(noRing);
 }
@@ -277,7 +298,8 @@ if (typeof document !== 'undefined') {
 function DeskGround({ children }: { children: ReactNode }) {
   // In the Mac app, the main ground's glass - the clearest of the window's.
   const ground = deskGlass(softTokens(useTheme().scheme)).main;
-  return <View style={[styles.deskBody, { backgroundColor: ground }]}>{children}</View>;
+  // Named, so a change of the arrangement moves it (see utils/viewTransition).
+  return <View style={[styles.deskBody, { backgroundColor: ground }, { viewTransitionName: 'desk-main' } as never]}>{children}</View>;
 }
 
 function StartPageHost() {

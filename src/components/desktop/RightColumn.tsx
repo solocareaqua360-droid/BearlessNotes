@@ -83,6 +83,9 @@ function PanelFrame({ panel }: { panel: Panel }) {
         // elsewhere its solid ground.
         { backgroundColor: deskGlass(S).panel, boxShadow: S.shadow },
         panel.folded ? styles.panelFolded : styles.panelOpen,
+        // Each panel moves as itself when the arrangement changes (see
+        // utils/viewTransition) - and slides in or out as a panel.
+        { viewTransitionName: `panel-${panel.id}`, viewTransitionClass: 'panel' } as never,
       ]}
     >
       <View style={[styles.header, { borderBottomColor: S.line }, panel.folded && { borderBottomWidth: 0 }, { WebkitAppRegion: 'drag' } as never]}>
@@ -388,7 +391,7 @@ export default function RightColumn() {
   };
   const total = widths.reduce((a, b) => a + b, 0) + 8 * columns.length + stripRoom;
   return (
-    <View style={[styles.group, { width: total, backgroundColor: deskGlass(S).main }]}>
+    <View style={[styles.group, { width: total, backgroundColor: deskGlass(S).main }, { viewTransitionName: 'desk-panels' } as never]}>
       {columns.map((column, position) => (
         <View key={column.index} style={styles.groupColumn}>
           <Splitter

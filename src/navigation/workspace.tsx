@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { sameTarget, type PaneTarget } from './paneTarget';
+import { withTransition } from '../utils/viewTransition';
 
 // THE LAPTOP'S WORKSPACE (Mac stage 6): the main pane in the middle, and
 // side panels on the right - the databases list, the chat, any database or
@@ -119,31 +120,40 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       ];
     });
   }, []);
-  const open = useCallback((spec: OpenSpec) => add(spec, false), [add]);
+  // Every change of the arrangement MOVES (withTransition - the soft
+  // motion's stage 2): a panel slides in, the main pane gives way, a fold
+  // closes up. Only where the browser can; elsewhere it simply happens.
+  const open = useCallback((spec: OpenSpec) => withTransition(() => add(spec, false)), [add]);
   const openAtRoot = useCallback(
-    (spec: OpenSpec) => {
-      add(spec, false);
-      setPanels((prev) => prev.map((p) => (same(p, spec) && p.stack?.length ? { ...p, stack: [] } : p)));
-    },
+    (spec: OpenSpec) =>
+      withTransition(() => {
+        add(spec, false);
+        setPanels((prev) => prev.map((p) => (same(p, spec) && p.stack?.length ? { ...p, stack: [] } : p)));
+      }),
     [add]
   );
-  const openAnother = useCallback((spec: OpenSpec) => add(spec, true), [add]);
-  const close = useCallback((id: string) => setPanels((prev) => prev.filter((p) => p.id !== id)), []);
+  const openAnother = useCallback((spec: OpenSpec) => withTransition(() => add(spec, true)), [add]);
+  const close = useCallback((id: string) => withTransition(() => setPanels((prev) => prev.filter((p) => p.id !== id))), []);
   const panelsRef = useRef<Panel[]>([]);
   panelsRef.current = panels;
   const pushInPanel = useCallback(
     (id: string, target: PaneTarget) =>
-      setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, stack: [...(p.stack ?? []), target] } : p))),
+      withTransition(() =>
+        setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, stack: [...(p.stack ?? []), target] } : p)))
+      ),
     []
   );
   const popInPanel = useCallback((id: string) => {
     const panel = panelsRef.current.find((p) => p.id === id);
     if (!panel?.stack?.length) return false;
-    setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, stack: (p.stack ?? []).slice(0, -1) } : p)));
+    withTransition(() =>
+      setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, stack: (p.stack ?? []).slice(0, -1) } : p)))
+    );
     return true;
   }, []);
   const toggleFold = useCallback(
-    (id: string) => setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, folded: !p.folded } : p))),
+    (id: string) =>
+      withTransition(() => setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, folded: !p.folded } : p)))),
     []
   );
   const setWeight = useCallback(
@@ -151,7 +161,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     []
   );
   const swapPanels = useCallback((a: string, b: string) => {
-    setPanels((prev) => {
+    withTransition(() => setPanels((prev) => {
       const i = prev.findIndex((p) => p.id === a);
       const j = prev.findIndex((p) => p.id === b);
       if (i < 0 || j < 0) return prev;
@@ -163,17 +173,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       next[i] = { ...second, column: first.column, weight: first.weight };
       next[j] = { ...first, column: second.column, weight: second.weight };
       return next;
-    });
+    }));
   }, []);
   const swapColumns = useCallback(() => {
-    setPanels((prev) => prev.map((p) => ({ ...p, column: (p.column === 0 ? 1 : 0) as 0 | 1 })));
-    setWidths((prev) => [prev[1], prev[0]]);
+    withTransition(() => {
+      setPanels((prev) => prev.map((p) => ({ ...p, column: (p.column === 0 ? 1 : 0) as 0 | 1 })));
+      setWidths((prev) => [prev[1], prev[0]]);
+    });
   }, []);
-  const toggleHidden = useCallback(() => setHidden((v) => !v), []);
+  const toggleHidden = useCallback(() => withTransition(() => setHidden((v) => !v)), []);
   const replaceAll = useCallback((state: { panels: Panel[]; widths: [number, number]; hidden: boolean }) => {
-    setPanels(state.panels);
-    setWidths(state.widths);
-    setHidden(state.hidden);
+    withTransition(() => {
+      setPanels(state.panels);
+      setWidths(state.widths);
+      setHidden(state.hidden);
+    });
   }, []);
   const has = useCallback((spec: OpenSpec) => panels.some((p) => same(p, spec)), [panels]);
   const toggle = useCallback(

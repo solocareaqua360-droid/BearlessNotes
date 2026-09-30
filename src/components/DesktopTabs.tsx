@@ -1,3 +1,4 @@
+import { withTransition } from '../utils/viewTransition';
 import { CONTROL, RADIUS, TYPE, useDeskColors } from '../theme/desktopTheme';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -108,7 +109,13 @@ export function goHome() {
   }, 400);
 }
 
+// Switching tabs moves: the main pane cross-fades from one to the other
+// (utils/viewTransition).
 export function go(tab: Tab | null) {
+  withTransition(() => goNow(tab));
+}
+
+function goNow(tab: Tab | null) {
   if (tab?.kind === 'start') {
     showStart(true);
     return;
@@ -366,7 +373,7 @@ export default function DesktopTabs() {
   }
 
   return (
-    <View style={[styles.frame, { backgroundColor: D.ground }, DRAG]}>
+    <View style={[styles.frame, { backgroundColor: D.ground }, DRAG, { viewTransitionName: 'desk-tabs' } as never]}>
       {/* The scroller carries the drag itself: a region set only on its
           parent did not reach through it, and the row stopped moving the
           window once nothing else above the content did. */}
@@ -386,7 +393,7 @@ export default function DesktopTabs() {
         ))}
         <Pressable
           style={[styles.tab, styles.home, NO_DRAG]}
-          onPress={openStart}
+          onPress={() => withTransition(openStart)}
           accessibilityLabel="Нова вкладка"
         >
           <Ionicons name="add" size={16} color={theme.ink.muted} />

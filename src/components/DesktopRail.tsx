@@ -171,6 +171,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
         styles.rail,
         vibrant ? styles.railVibrant : { backgroundColor: D.ground },
         narrow && { width: DESKTOP_RAIL_NARROW },
+        { viewTransitionName: 'desk-rail' } as never,
       ]}
     >
       {vibrant && <RailFrame ground={deskGlass(D.soft).main} />}
