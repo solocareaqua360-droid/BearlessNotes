@@ -122,7 +122,7 @@ function PanelFrame({ panel }: { panel: Panel }) {
       {!panel.folded && (
         <View style={styles.body}>
           <PaneScreen panel={panel} />
-          <EdgeFade height={64} color={S.bg} />
+          <EdgeFade height={96} color={S.bg} />
         </View>
       )}
     </View>
