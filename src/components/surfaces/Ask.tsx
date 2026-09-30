@@ -19,6 +19,8 @@ import { hapticButtonDown } from '../../utils/haptics';
 import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
 import { useNavChromeStyle } from '../../navigation/navDock';
 import { useSoft } from '../../theme/soft';
+import { takeRecentContextPoint, type ContextPoint } from '../../utils/contextPoint';
+import { useWindowDimensions } from 'react-native';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
 
 // «Питання» - the first of the named surfaces.
@@ -56,7 +58,7 @@ export type AskOptions = {
   cancelLabel?: string | null;
 };
 
-type Pending = AskOptions & { resolve: (id: string) => void };
+type Pending = AskOptions & { resolve: (id: string) => void; anchor: ContextPoint | null };
 
 let queue: Pending[] = [];
 let listener: (() => void) | null = null;
@@ -68,8 +70,10 @@ function announce() {
 // Ask, and wait for the answer. Resolves with the chosen action's id, or
 // 'cancel' if it was dismissed.
 export function ask(options: AskOptions): Promise<string> {
+  // Straight out of a right click: it stands at the pointer, small.
+  const anchor = takeRecentContextPoint();
   return new Promise((resolve) => {
-    queue = [...queue, { ...options, resolve }];
+    queue = [...queue, { ...options, resolve, anchor }];
     announce();
   });
 }
@@ -139,6 +143,20 @@ export function AskHost() {
   }
 
   if (!current) return null;
+  // Asked by a right click: not a window over the whole screen but a small
+  // menu at the cursor.
+  if (current.anchor) {
+    return (
+      <AskPopover
+        title={current.title}
+        message={current.message}
+        actions={current.actions}
+        at={current.anchor}
+        onAnswer={answer}
+        tokens={softTokens}
+      />
+    );
+  }
   const cancelLabel = current.cancelLabel === undefined ? 'Скасувати' : current.cancelLabel;
 
   return (
@@ -251,7 +269,97 @@ export function AskHost() {
   );
 }
 
+// THE SMALL MENU AT THE CURSOR - the same question, drawn the way a right
+// click's own menu is: rows 30 tall, the name of what was clicked as a quiet
+// header, no cancel row (the click beside it, or Esc, is the cancel).
+function AskPopover({
+  title,
+  message,
+  actions,
+  at,
+  onAnswer,
+  tokens: S,
+}: {
+  title: string;
+  message?: string;
+  actions: AskAction[];
+  at: ContextPoint;
+  onAnswer: (id: string) => void;
+  tokens: ReturnType<typeof useSoft>;
+}) {
+  const { width, height } = useWindowDimensions();
+  const danger = S.dark ? '#FF7A6E' : '#C8452F';
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onAnswer('cancel');
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const MENU_W = 244;
+  const estimate = 30 + (message ? 34 : 0) + actions.reduce((sum, a) => sum + (a.hint ? 44 : 30), 0) + 12;
+  const left = Math.max(8, Math.min(at.x, width - MENU_W - 8));
+  const top = Math.max(8, Math.min(at.y, height - estimate - 8));
+  return (
+    <View style={styles.popoverFrame} pointerEvents="box-none">
+      {/* A sheet that catches the click away - and the second right click,
+          which closes this menu instead of opening the browser's. */}
+      <Pressable
+        style={styles.popoverScrim}
+        onPress={() => onAnswer('cancel')}
+        {...({ onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}
+      />
+      <View
+        style={[
+          styles.popover,
+          { left, top, width: MENU_W, backgroundColor: S.card, boxShadow: S.popShadow, borderColor: S.line },
+        ]}
+      >
+        <Text style={[styles.popoverTitle, { color: S.ink3 }]} numberOfLines={1}>
+          {title}
+        </Text>
+        {!!message && <Text style={[styles.popoverMessage, { color: S.ink2 }]}>{message}</Text>}
+        {actions.map((action) => {
+          const isDanger = action.tone === 'danger';
+          return (
+            <Pressable
+              key={action.id}
+              onPress={() => onAnswer(action.id)}
+              style={(state) => [
+                styles.popoverRow,
+                (state as { hovered?: boolean }).hovered && { backgroundColor: S.fill },
+              ]}
+            >
+              {!!action.icon && <Ionicons name={action.icon} size={15} color={isDanger ? danger : S.ink2} />}
+              <View style={styles.popoverText}>
+                <Text style={[styles.popoverLabel, { color: isDanger ? danger : S.ink }]} numberOfLines={1}>
+                  {action.label}
+                </Text>
+                {!!action.hint && (
+                  <Text style={[styles.popoverHint, { color: S.ink3 }]} numberOfLines={1}>
+                    {action.hint}
+                  </Text>
+                )}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  popoverFrame: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000 } as never,
+  popoverScrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  popover: { position: 'absolute', borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 5 },
+  popoverTitle: { fontSize: 12, fontFamily: SOFT_MEDIUM, paddingHorizontal: 10, paddingTop: 6, paddingBottom: 4 },
+  popoverMessage: { fontSize: 12.5, fontFamily: SOFT_REGULAR, paddingHorizontal: 10, paddingBottom: 6 },
+  popoverRow: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 30, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 7 },
+  popoverText: { flex: 1 },
+  popoverLabel: { fontSize: 13.5, fontFamily: SOFT_MEDIUM },
+  popoverHint: { fontSize: 11.5, fontFamily: SOFT_REGULAR },
   frame: SHEET_FRAME,
   card: {
     ...SHEET_WINDOW,

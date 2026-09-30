@@ -181,6 +181,7 @@ export default function CustomDatabaseKanban({
             </View>
           ))}
         </ScrollView>
+        <View ref={drag.ghostAnchor} pointerEvents="none" collapsable={false} style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0 }} />
         {drag.ghost && (
           <View style={[styles.ghostWrap, { left: drag.ghost.x, top: drag.ghost.y }]} pointerEvents="none">
             <View style={[styles.ghost, S && { backgroundColor: S.card, boxShadow: S.popShadow }]}>

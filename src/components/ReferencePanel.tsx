@@ -217,6 +217,7 @@ export default function ReferencePanel({
         </View>
       )}
 
+      <View ref={drag.ghostAnchor} pointerEvents="none" collapsable={false} style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0 }} />
       {ghost && (
         <View style={[styles.ghostWrap, { left: ghost.x, top: ghost.y }]} pointerEvents="none">
           {soft ? (

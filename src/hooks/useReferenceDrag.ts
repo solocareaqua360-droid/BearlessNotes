@@ -17,8 +17,10 @@ import type { Block } from '../types';
 // press (so the panel's own list goes on scrolling), a ghost pinned to
 // the finger, and a drop read off the finger's own position.
 const LONG_PRESS_MS = 550;
-const GHOST_NUDGE_X = -18;
-const GHOST_NUDGE_Y = -58;
+// A finger hides what is under it, so the ghost rides above and beside it; a
+// pointer hides nothing, and the ghost hangs just below-right of the arrow.
+const FINGER_NUDGE = { x: -18, y: -58 };
+const POINTER_NUDGE = { x: 14, y: 8 };
 
 export type ReferenceGhost = { label: string; x: number; y: number };
 
@@ -57,6 +59,15 @@ export function useReferenceDrag({
   const [ghost, setGhost] = useState<ReferenceGhost | null>(null);
   const ghostRef = useRef<ReferenceGhost | null>(null);
   const fingerRef = useRef({ x: 0, y: 0 });
+  // Where the ghost's own container begins in the window. The finger's place
+  // arrives in WINDOW coordinates, and the ghost is positioned inside its
+  // container - which on a phone is the whole window and on a laptop is a
+  // pane beside a rail: without this the ghost stood a pane's offset away
+  // from the pointer ("на відстані 5 сантиметрів"). A zero-size node the
+  // caller puts beside the ghost (ghostAnchor) is what it is measured by.
+  const anchorNode = useRef<View | null>(null);
+  const origin = useRef({ x: 0, y: 0 });
+  const nudge = pointer ? POINTER_NUDGE : FINGER_NUDGE;
   const carried = useRef<Block | null>(null);
   // Every row on screen: its node, and how to build the block it stands
   // for. Built on DROP, not on pickup - a row is a record, and the block
@@ -84,9 +95,14 @@ export function useReferenceDrag({
           hapticPickUp();
           carried.current = hit.build();
           fingerRef.current = { x, y };
-          const next = { label: hit.label, x: x + GHOST_NUDGE_X, y: y + GHOST_NUDGE_Y };
-          ghostRef.current = next;
-          setGhost(next);
+          const start = (ox: number, oy: number) => {
+            origin.current = { x: ox, y: oy };
+            const next = { label: hit.label, x: x - ox + nudge.x, y: y - oy + nudge.y };
+            ghostRef.current = next;
+            setGhost(next);
+          };
+          if (anchorNode.current) anchorNode.current.measureInWindow((ax, ay) => start(ax, ay));
+          else start(0, 0);
         }
       });
     });
@@ -96,7 +112,7 @@ export function useReferenceDrag({
     (x: number, y: number) => {
       if (!ghostRef.current) return;
       fingerRef.current = { x, y };
-      const next = { ...ghostRef.current, x: x + GHOST_NUDGE_X, y: y + GHOST_NUDGE_Y };
+      const next = { ...ghostRef.current, x: x - origin.current.x + nudge.x, y: y - origin.current.y + nudge.y };
       ghostRef.current = next;
       setGhost(next);
       onMoveRef.current?.(x, y);
@@ -155,5 +171,9 @@ export function useReferenceDrag({
     [pointer, pickUpAt, updateDrag, endDrag, cancelDrag]
   );
 
-  return { ghost, gesture, registerRow, dragging: ghost !== null };
+  // Goes on a zero-size View in the same container as the ghost.
+  const ghostAnchor = useCallback((node: View | null) => {
+    anchorNode.current = node;
+  }, []);
+  return { ghost, gesture, registerRow, ghostAnchor, dragging: ghost !== null };
 }

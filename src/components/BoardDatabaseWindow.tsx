@@ -461,6 +461,7 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
       </Animated.View>
 
       {/* The card in hand, pinned to the finger. */}
+      <View ref={drag.ghostAnchor} pointerEvents="none" collapsable={false} style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0 }} />
       {ghost && (
         <View style={[styles.ghostWrap, { left: ghost.x, top: ghost.y }]} pointerEvents="none">
           <View style={[styles.ghost, { backgroundColor: S.card, boxShadow: S.popShadow }]}>
