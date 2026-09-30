@@ -1606,7 +1606,7 @@ export default function DocumentsScreen({
                     titleMatch={titleMatch}
                     bodyMatch={bodyMatch}
                     search={searching ? needle : undefined}
-                    cardRef={morphCardRef(`note:${item.id}`)}
+                    morphRef={morphCardRef(`note:${item.id}`)}
                     onPress={() => openDocument(item.id, false, searching ? needle : undefined)}
                     layout={drawnMode === 'list' ? 'list' : 'grid'}
                     // A result is the same card as in the list itself -
@@ -1979,7 +1979,7 @@ export default function DocumentsScreen({
                   // room - see CardPreview.
                   blocks={(item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords))}
                   checklistItems={checklistItems}
-                  cardRef={morphCardRef(`note:${item.id}`)}
+                  morphRef={morphCardRef(`note:${item.id}`)}
                   onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}
                   onLongPress={
                     carried ? undefined : () => (trashOpen ? openTrashMenu(item) : holdDocument(item))
