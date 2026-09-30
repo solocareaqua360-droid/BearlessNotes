@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { IN_SHELL } from '../utils/shell';
 import type { ViewStyle } from 'react-native';
 
 // The theme contract: ROLES, never colours.
@@ -427,7 +428,7 @@ const colour: Theme = {
 // On the laptop the white theme stands on the soft style's ground (see
 // soft.ts), not on its own beige: two light palettes side by side read as
 // dirty. The phone keeps the beige.
-const DESK_GROUND: string | null = Platform.OS === 'web' ? '#FAF9F6' : null;
+const DESK_GROUND: string | null = Platform.OS === 'web' ? (IN_SHELL ? 'transparent' : '#FAF9F6') : null;
 
 const white: Theme = {
   key: 'white',

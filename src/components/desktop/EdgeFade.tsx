@@ -1,5 +1,5 @@
 import { View } from 'react-native';
-import { useDeskColors } from '../../theme/desktopTheme';
+import { deskGlass, useDeskColors } from '../../theme/desktopTheme';
 import { withAlpha } from '../../utils/color';
 
 // WHAT RUNS OFF THE BOTTOM of a window melts into it instead of being cut
@@ -31,6 +31,19 @@ function washStops(ground: string, top: number): string {
   return parts.join(', ');
 }
 
+// The wash over glass: towards the glass's own tint, so the band ends as the
+// ground around it is, not as a solid strip.
+function glassStops(rgb: string, top: number): string {
+  const steps = 8;
+  const parts: string[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const eased = t * t * (3 - 2 * t);
+    parts.push(`rgba(${rgb},${(eased * top).toFixed(3)}) ${Math.round(t * 100)}%`);
+  }
+  return parts.join(', ');
+}
+
 export default function EdgeFade({
   height = 120,
   color,
@@ -44,7 +57,10 @@ export default function EdgeFade({
 }) {
   const toward = edge === 'bottom' ? 'to bottom' : 'to top';
   const D = useDeskColors();
-  const ground = color ?? D.ground;
+  // Over glass (the Mac app) there is no solid ground to wash into: the
+  // blur does the melting alone, washing into the glass's own tint.
+  const glass = deskGlass(D.soft);
+  const ground = color ?? (glass.mainAlpha < 1 ? null : D.ground);
   const n = LAYERS.length;
   // Each layer's slice: it rises over one step, holds over the next, and
   // gives way over the one after - the neighbours overlap it on both sides.
@@ -87,7 +103,9 @@ export default function EdgeFade({
             right: 0,
             top: 0,
             bottom: 0,
-            backgroundImage: `linear-gradient(${toward}, ${washStops(ground, 0.92)})`,
+            backgroundImage: ground
+              ? `linear-gradient(${toward}, ${washStops(ground, 0.92)})`
+              : `linear-gradient(${toward}, ${glassStops(glass.mainRgb, glass.mainAlpha)})`,
           } as never
         }
       />

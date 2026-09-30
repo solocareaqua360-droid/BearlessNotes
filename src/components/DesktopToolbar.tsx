@@ -1,3 +1,4 @@
+import { useStartFront } from '../navigation/desktopTabs';
 import { CONTROL, RADIUS, SPACE, TYPE, useDeskColors } from '../theme/desktopTheme';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -52,6 +53,7 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
   // The toolbar is part of the frame round the content - the same tone as
   // the rail and the tabs - and what is on in it is a white card.
   const D = useDeskColors();
+  const startFront = useStartFront();
   const context = useNavDockContext();
   const actions = useNavDockActions();
   const beads = useNavDockBeads();
@@ -93,6 +95,9 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
   // Nothing published means nothing to show - a board, say, which owns
   // its whole window.
   if (compact && !shown.length && !leftBead && !beads.right && crumbs.length === 0) return null;
+  // The start page stands in front of the main pane, and its ground is glass
+  // in the Mac app: the screen's buttons under it would show through.
+  if (!compact && startFront) return null;
 
   return (
     // The main pane's toolbar band moves the window where it is empty - it is

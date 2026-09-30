@@ -1,3 +1,4 @@
+import { deskGlass } from './src/theme/desktopTheme';
 import UnderToolbar from './src/components/desktop/UnderToolbar';
 import { inShell } from './src/navigation/desktopTabs';
 import { softTokens } from './src/theme/soft';
@@ -261,7 +262,8 @@ if (typeof document !== 'undefined') {
 // is transparent (vibrancy - desktop/main.js), and only the rail is meant to
 // let the desktop show through. Inside the theme, to read its scheme.
 function DeskGround({ children }: { children: ReactNode }) {
-  const ground = softTokens(useTheme().scheme).bg;
+  // In the Mac app, the main ground's glass - the clearest of the window's.
+  const ground = deskGlass(softTokens(useTheme().scheme)).main;
   return <View style={[styles.deskBody, { backgroundColor: ground }]}>{children}</View>;
 }
 

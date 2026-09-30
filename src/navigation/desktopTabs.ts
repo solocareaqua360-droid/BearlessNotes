@@ -33,13 +33,8 @@ const STORAGE_KEY = 'mindeva.desktopTabs';
 // came back older after some relaunches. Read synchronously, once, at start -
 // the row is drawn from it on the first frame. localStorage stays as the
 // browser's own keep and the fallback.
-export function inShell(): boolean {
-  try {
-    return typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('desktop') === '1';
-  } catch {
-    return false;
-  }
-}
+export { inShell } from '../utils/shell';
+import { inShell } from '../utils/shell';
 
 export function readShellState(key: string): string | null {
   if (!inShell()) return null;

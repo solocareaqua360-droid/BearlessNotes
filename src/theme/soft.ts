@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import { Platform } from 'react-native';
+import { IN_SHELL } from '../utils/shell';
 import { useTheme } from './ThemeProvider';
 import { cardRadius } from './scale';
 
@@ -45,9 +46,13 @@ export type SoftTokens = {
 // (2026-10-01: grey chrome, a beige list and white cards side by side read as
 // "brudno", not soft.)
 const DESK = Platform.OS === 'web';
+// In the Mac app the window is glass (vibrancy): the GROUNDS are left
+// unpainted here and laid as one tinted glass by the shell itself
+// (desktopTheme's glass) - cards stay white.
+const GLASS = DESK && IN_SHELL;
 const LIGHT: SoftTokens = {
   dark: false,
-  bg: DESK ? '#FAF9F6' : '#F6F5F2',
+  bg: GLASS ? 'transparent' : DESK ? '#FAF9F6' : '#F6F5F2',
   card: '#FFFFFF',
   chrome: '#FFFFFF',
   ink: '#1E1E1C',
@@ -70,7 +75,7 @@ const LIGHT: SoftTokens = {
 // контури" (2026-09-29).
 const DARK: SoftTokens = {
   dark: true,
-  bg: '#000000',
+  bg: GLASS ? 'transparent' : '#000000',
   card: '#242426',
   chrome: '#242426',
   ink: '#F1F0EC',

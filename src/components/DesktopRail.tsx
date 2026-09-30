@@ -1,4 +1,4 @@
-import { CONTROL, RADIUS, TYPE, useDeskColors } from '../theme/desktopTheme';
+import { CONTROL, RADIUS, TYPE, deskGlass, useDeskColors } from '../theme/desktopTheme';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
@@ -173,7 +173,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
         narrow && { width: DESKTOP_RAIL_NARROW },
       ]}
     >
-      {vibrant && <RailFrame ground={D.ground} />}
+      {vibrant && <RailFrame ground={deskGlass(D.soft).main} />}
       <View
         style={[
           styles.railCard,

@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { DESKTOP_TOOLBAR_HEIGHT } from '../DesktopToolbar';
 import EdgeFade from './EdgeFade';
+import { useStartFront } from '../../navigation/desktopTabs';
 
 // THE MAIN PANE WITH NO TOOLBAR BAND (2026-10-01, "не під смугою а замість
 // смуги"): the toolbar's buttons float over the content, and what scrolls up
@@ -20,6 +21,9 @@ const PULLED = 'mindevaUnderToolbar';
 
 export default function UnderToolbar({ children }: { children: ReactNode }) {
   const ref = useRef<View | null>(null);
+  // The start page stands over the screen; its ground is glass now, so the
+  // screen under it is put out of sight while it is in front.
+  const startFront = useStartFront();
   useEffect(() => {
     const host = ref.current as unknown as HTMLElement | null;
     if (!host || typeof MutationObserver === 'undefined') return;
@@ -64,7 +68,7 @@ export default function UnderToolbar({ children }: { children: ReactNode }) {
   }, []);
   return (
     <View ref={ref} style={{ flex: 1, minWidth: 0, paddingTop: DESKTOP_TOOLBAR_HEIGHT }}>
-      {children}
+      <View style={[{ flex: 1, minHeight: 0 }, startFront && ({ visibility: 'hidden' } as never)]}>{children}</View>
       {/* Where the band was: what scrolls up under the buttons blurs away. */}
       <EdgeFade edge="top" height={DESKTOP_TOOLBAR_HEIGHT + 20} />
       <EdgeFade />

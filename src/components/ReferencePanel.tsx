@@ -1,3 +1,4 @@
+import { deskGlass } from '../theme/desktopTheme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -244,7 +245,7 @@ export default function ReferencePanel({
         // do, so its shadow has room.
         <View style={styles.deskFrame}>
           {!!onResizeWidth && !!width && <ResizeEdge width={width} onResize={onResizeWidth} />}
-          <View style={[styles.deskCard, { backgroundColor: S.bg, boxShadow: S.shadow, borderColor: S.line }]}>
+          <View style={[styles.deskCard, { backgroundColor: deskGlass(S).panel, boxShadow: S.shadow, borderColor: S.line }]}>
             {header}
             {list}
           </View>

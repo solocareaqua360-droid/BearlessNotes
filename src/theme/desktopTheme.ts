@@ -1,4 +1,5 @@
 import { useSoft, type SoftTokens } from './soft';
+import { IN_SHELL } from '../utils/shell';
 
 // THE LAPTOP'S RULES (agreed 2026-10-01, for the whole interface): one scale
 // for shape, size, position and colour, built on «М'який» (soft.ts) - not a
@@ -88,4 +89,19 @@ export function deskColors(S: SoftTokens): DeskColors {
 
 export function useDeskColors(): DeskColors {
   return deskColors(useSoft());
+}
+
+// THE MAC APP'S GLASS (2026-10-01, after Craft): the window is macOS's own
+// material, and the page lays one tint over it per kind of surface - the
+// main ground the clearest, the rail and the side panels milkier. Cards are
+// never glass: they stay white. Outside the shell these are the ordinary
+// solid grounds.
+export function deskGlass(S: SoftTokens): { main: string; panel: string; mainRgb: string; mainAlpha: number } {
+  if (!IN_SHELL) {
+    const ground = S.dark ? '#000000' : '#FAF9F6';
+    return { main: ground, panel: ground, mainRgb: S.dark ? '0,0,0' : '250,249,246', mainAlpha: 1 };
+  }
+  return S.dark
+    ? { main: 'rgba(0,0,0,0.42)', panel: 'rgba(28,28,30,0.78)', mainRgb: '0,0,0', mainAlpha: 0.42 }
+    : { main: 'rgba(250,249,246,0.42)', panel: 'rgba(250,249,246,0.8)', mainRgb: '250,249,246', mainAlpha: 0.42 };
 }

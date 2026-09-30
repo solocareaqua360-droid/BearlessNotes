@@ -1,3 +1,4 @@
+import { deskGlass } from '../../theme/desktopTheme';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -77,7 +78,9 @@ function PanelFrame({ panel }: { panel: Panel }) {
         styles.panel,
         // A hairline all round as well as the shadow: the panel is the same
         // colour as the ground, and a shadow alone is soft on the lit side.
-        { backgroundColor: S.bg, boxShadow: S.shadow },
+        // A panel is milkier glass than the main ground (the Mac app's);
+        // elsewhere its solid ground.
+        { backgroundColor: deskGlass(S).panel, boxShadow: S.shadow },
         panel.folded ? styles.panelFolded : styles.panelOpen,
       ]}
     >
@@ -122,7 +125,7 @@ function PanelFrame({ panel }: { panel: Panel }) {
       {!panel.folded && (
         <View style={styles.body}>
           <PaneScreen panel={panel} />
-          <EdgeFade height={96} color={S.bg} />
+          <EdgeFade height={96} />
         </View>
       )}
     </View>
@@ -382,7 +385,7 @@ export default function RightColumn() {
   };
   const total = widths.reduce((a, b) => a + b, 0) + 8 * columns.length + stripRoom;
   return (
-    <View style={[styles.group, { width: total, backgroundColor: S.bg }]}>
+    <View style={[styles.group, { width: total, backgroundColor: deskGlass(S).main }]}>
       {columns.map((column, position) => (
         <View key={column.index} style={styles.groupColumn}>
           <Splitter
