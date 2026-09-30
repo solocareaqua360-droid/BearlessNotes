@@ -261,6 +261,18 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
                     <Ionicons name="pin" size={19} color={docked ? S.accent : S.ink2} />
                   </Pressable>
                 )}
+                <Pressable
+                  hitSlop={8}
+                  onPress={() => onChange({ hideLinks: !win.hideLinks })}
+                  style={styles.headerButton}
+                  accessibilityLabel={win.hideLinks ? 'Показати лінії звʼязку' : 'Приховати лінії звʼязку'}
+                >
+                  <Ionicons
+                    name={win.hideLinks ? 'eye-off-outline' : 'git-network-outline'}
+                    size={19}
+                    color={win.hideLinks ? S.accent : S.ink2}
+                  />
+                </Pressable>
                 <Pressable hitSlop={8} onPress={() => setSettings((v) => !v)} style={styles.headerButton} accessibilityLabel="Параметри вікна">
                   <Ionicons name={settings ? 'checkmark' : 'options-outline'} size={20} color={settings ? S.accent : S.ink2} />
                 </Pressable>
@@ -508,13 +520,15 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    // Tight: five buttons stand in 300, and the name needs what is left.
+    gap: 2,
     height: 52,
     paddingLeft: 16,
     paddingRight: 8,
   },
   title: {
     flex: 1,
+    marginLeft: 6,
     fontSize: 16,
     fontFamily: SOFT_SEMIBOLD,
     letterSpacing: -0.2,
@@ -524,7 +538,7 @@ const styles = StyleSheet.create({
     fontFamily: SOFT_MEDIUM,
   },
   headerButton: {
-    width: 32,
+    width: 30,
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',

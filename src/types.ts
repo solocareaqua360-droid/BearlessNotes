@@ -616,6 +616,10 @@ export interface BoardDbWindow {
   // Pinned to the board's right edge, full height (the laptop): a side
   // panel rather than a floating window. x/y are kept for unpinning.
   docked?: boolean;
+  // The origin lines of this database's cards (copy -> the card it was
+  // copied from) not drawn - a busy week reads better without them. They
+  // are still there, and still what isolation follows.
+  hideLinks?: boolean;
   // The fields to HIDE on this database's cards on this board, in the
   // window and on the canvas alike. Unset: the database's own choice.
   hiddenFieldIds?: string[];

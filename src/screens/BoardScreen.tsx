@@ -3075,6 +3075,7 @@ export default function BoardScreen() {
     const links = [
       ...connections.map((c) => ({ from: c.fromCardId, to: c.toCardId })),
       ...originLinks,
+      ...hiddenOriginLinks,
     ];
     for (const c of links) {
       if (!adjacency.has(c.from)) adjacency.set(c.from, []);
@@ -4451,6 +4452,8 @@ export default function BoardScreen() {
   // stored, so taking the first one away simply makes the next one the
   // original, and no line can be left pointing at nothing.
   const originLinks: { from: string; to: string }[] = [];
+  const hiddenOriginLinks: { from: string; to: string }[] = [];
+  const hiddenLinkDatabases = new Set(dbWindows.filter((w) => w.hideLinks).map((w) => w.databaseId));
   {
     const groups = new Map<string, BoardCard[]>();
     for (const card of cards) {
@@ -4464,6 +4467,14 @@ export default function BoardScreen() {
         .map((card, index) => ({ card, index }))
         .sort((a, b) => (a.card.createdAt ?? 0) - (b.card.createdAt ?? 0) || a.index - b.index);
       const anchor = ordered[0].card;
+      // Not drawn while this database's window says so (BoardDbWindow.
+      // hideLinks); isolation still follows them (connectedComponent).
+      if (hiddenLinkDatabases.has(anchor.dbRowDatabaseId ?? '')) {
+        members.forEach((m) => {
+          if (m.id !== anchor.id) hiddenOriginLinks.push({ from: anchor.id, to: m.id });
+        });
+        return;
+      }
       const here = new Set(members.map((m) => m.id));
       // Each copy to the card it was made from, while that one is still on
       // the board; otherwise (and for copies made before this was kept) to
