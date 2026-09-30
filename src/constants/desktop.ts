@@ -7,7 +7,7 @@ export const DESKTOP_RAIL_WIDTH = 240;
 // below, and its hairline) and the toolbar under it (46) - what anything
 // drawn at window level, like the search corner, has to stand below.
 export const DESKTOP_TABS_HEIGHT = 41;
-export const DESKTOP_TOOLBAR_ROW = 46;
+export const DESKTOP_TOOLBAR_ROW = 44;
 
 // A window is NARROW below this (CSS points): half a screen beside another
 // application is the way this app is really used on a Mac, and at 720-760
@@ -32,4 +32,4 @@ export function useDesktopRailWidth(): number {
 // The band along the very top of the window where macOS puts the traffic
 // lights (the shell hides its own title bar): the rail keeps it empty, and
 // it drags the window.
-export const DESKTOP_TITLE_BAND = 40;
+export const DESKTOP_TITLE_BAND = 44;

@@ -1,3 +1,4 @@
+import { CONTROL, RADIUS, TYPE, useDeskColors } from '../theme/desktopTheme';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
@@ -64,6 +65,10 @@ function buildTree(paths: string[]): Node[] {
 export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
+  // The frame is one tone (chrome); what is ON in it is a white card.
+  const D = useDeskColors();
+  const on = { backgroundColor: D.card };
+  const onCard = on;
   // The folders of the screen under the start page are not what is on
   // show while the start page is - home stands over the documents list.
   const startFront = useStartFront();
@@ -126,7 +131,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
     return (
       <View key={node.path}>
         <Pressable
-          style={[styles.folder, { paddingLeft: 10 + depth * 14 }, here && styles.folderHere]}
+          style={[styles.folder, { paddingLeft: 10 + depth * 14 }, here && [styles.folderHere, on]]}
           onPress={() => tree?.onGo(node.path)}
         >
           {node.children.length > 0 ? (
@@ -155,14 +160,14 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   }
 
   return (
-    <View style={[styles.rail, narrow && { width: DESKTOP_RAIL_NARROW }]}>
+    <View style={[styles.rail, { backgroundColor: D.chrome }, narrow && { width: DESKTOP_RAIL_NARROW }]}>
       {/* Where the traffic lights are. Empty, and draggable: it is the
           window's title bar now. */}
       <View style={[{ height: DESKTOP_TITLE_BAND - 10 }, DRAG]} />
       {/* Its place is kept when there is nowhere to go, so the sections
           under it never jump as it comes and goes. */}
       {leave ? (
-        <Pressable style={styles.leave} onPress={leave.onLeave}>
+        <Pressable style={[styles.leave, on]} onPress={leave.onLeave}>
           <Ionicons name="chevron-back" size={16} color={theme.ink.primary} />
           {!narrow && <Text style={styles.leaveLabel}>Назад</Text>}
         </Pressable>
@@ -175,7 +180,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
           return (
             <Pressable
               key={s.name}
-              style={[styles.section, active && styles.sectionActive]}
+              style={[styles.section, active && [styles.sectionActive, on]]}
               onPress={() => {
                 if (navigationRef.isReady()) navigationRef.navigate('Tabs', { screen: s.name } as never);
               }}
@@ -206,7 +211,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
             return (
               <Pressable
                 key={item.label}
-                style={[styles.section, on && styles.sectionActive]}
+                style={[styles.section, on && [styles.sectionActive, onCard]]}
                 onPress={() => workspace.toggle(item.spec)}
               >
                 <Ionicons name={item.icon as never} size={17} color={on ? theme.accent : theme.ink.muted} />
@@ -247,7 +252,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
           )}
           <ScrollView style={styles.tree} contentContainerStyle={styles.treeContent}>
             <Pressable
-              style={[styles.folder, styles.rootRow, tree.current === '' && !tree.bin?.active && styles.folderHere]}
+              style={[styles.folder, styles.rootRow, tree.current === '' && !tree.bin?.active && [styles.folderHere, on]]}
               onPress={() => tree.onGo('')}
             >
               <View style={styles.twist} />
@@ -262,7 +267,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
           </ScrollView>
           {!!tree.bin && (
             <Pressable
-              style={[styles.folder, styles.bin, tree.bin.active && styles.folderHere]}
+              style={[styles.folder, styles.bin, tree.bin.active && [styles.folderHere, on]]}
               onPress={tree.bin.onOpen}
             >
               <View style={styles.twist} />
@@ -330,14 +335,14 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     marginHorizontal: 8,
     marginBottom: 6,
     paddingHorizontal: 8,
-    borderRadius: 8,
+    borderRadius: RADIUS.control,
     backgroundColor: t.selected,
   },
   leaveEmpty: {
     backgroundColor: 'transparent',
   },
   leaveLabel: {
-    fontSize: 14,
+    fontSize: TYPE.sm,
     fontFamily: FONT_SEMIBOLD,
     color: t.ink.primary,
   },
@@ -362,7 +367,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     bottom: 0,
     width: 260,
     padding: 10,
-    borderRadius: 12,
+    borderRadius: RADIUS.card,
     backgroundColor: t.paper.fill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: t.edge.hairline,
@@ -375,7 +380,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     marginTop: 10,
   },
   panelsLabel: {
-    fontSize: 13,
+    fontSize: TYPE.xs,
     fontFamily: FONT_SEMIBOLD,
     color: t.ink.faint,
     paddingHorizontal: 10,
@@ -385,15 +390,15 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    height: 32,
+    height: CONTROL.nav,
     paddingHorizontal: 10,
-    borderRadius: 8,
+    borderRadius: RADIUS.control,
   },
   sectionActive: {
     backgroundColor: t.selected,
   },
   sectionLabel: {
-    fontSize: 14,
+    fontSize: TYPE.sm,
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
   },
@@ -411,14 +416,14 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 26,
+    height: CONTROL.tab,
     marginHorizontal: 8,
     marginBottom: 2,
     paddingHorizontal: 10,
-    borderRadius: 7,
+    borderRadius: RADIUS.control,
   },
   newFolderLabel: {
-    fontSize: 13,
+    fontSize: TYPE.xs,
     fontFamily: FONT_REGULAR,
     color: t.ink.faint,
   },
@@ -436,9 +441,9 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    height: 28,
+    height: CONTROL.tab,
     paddingRight: 8,
-    borderRadius: 7,
+    borderRadius: RADIUS.control,
   },
   folderHere: {
     backgroundColor: t.selected,
@@ -449,7 +454,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   folderName: {
     flex: 1,
-    fontSize: 14,
+    fontSize: TYPE.sm,
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
   },
@@ -458,7 +463,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     color: t.ink.primary,
   },
   count: {
-    fontSize: 13,
+    fontSize: TYPE.xs,
     fontFamily: FONT_REGULAR,
     color: t.ink.faint,
   },

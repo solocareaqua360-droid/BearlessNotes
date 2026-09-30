@@ -1,3 +1,4 @@
+import { CONTROL, RADIUS, SPACE, TYPE, useDeskColors } from '../theme/desktopTheme';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Ionicons } from './icons/Ionicons';
@@ -40,12 +41,15 @@ function ActionIcon({ icon, size, color }: { icon: string; size: number; color: 
 // sits at window level and cannot see this row taking its space, so it
 // has to be told - the project badge in the editor is exactly that, and
 // landed on top of these buttons until it was.
-export const DESKTOP_TOOLBAR_HEIGHT = 46;
+export const DESKTOP_TOOLBAR_HEIGHT = 44;
 
 // `compact`: the toolbar of a side panel - icons only, whatever their number.
 export default function DesktopToolbar({ compact = false }: { compact?: boolean }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
+  // The toolbar is part of the frame round the content - the same tone as
+  // the rail and the tabs - and what is on in it is a white card.
+  const D = useDeskColors();
   const context = useNavDockContext();
   const actions = useNavDockActions();
   const beads = useNavDockBeads();
@@ -89,7 +93,7 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
   if (compact && !shown.length && !leftBead && !beads.right && crumbs.length === 0) return null;
 
   return (
-    <View style={[styles.frame, { backgroundColor: soft.bg }]} pointerEvents="box-none">
+    <View style={[styles.frame, { backgroundColor: compact ? 'transparent' : D.chrome }]} pointerEvents="box-none">
       <View style={styles.bar}>
         <View style={styles.crumbs}>
           {!compact && <UpButton fallback={up} />}
@@ -119,7 +123,7 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
         <View style={styles.controls}>
           {!!leftBead && (
             <Pressable
-              style={[styles.button, leftBead.active && styles.buttonOn]}
+              style={[styles.button, leftBead.active && [styles.buttonOn, { backgroundColor: D.card }]]}
               onPress={leftBead.onPress}
               onLongPress={leftBead.onLongPress}
             >
@@ -129,7 +133,7 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
           {shown.map((action) => (
             <Pressable
               key={action.key}
-              style={[styles.button, action.active && styles.buttonOn]}
+              style={[styles.button, action.active && [styles.buttonOn, { backgroundColor: D.card }]]}
               onPress={action.onPress}
               onLongPress={action.onLongPress}
             >
@@ -172,8 +176,8 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 20,
-    paddingTop: 10,
+    paddingHorizontal: SPACE.xl - SPACE.xs,
+    paddingTop: SPACE.sm,
     paddingBottom: 6,
   },
   crumbs: {
@@ -195,11 +199,11 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   crumb: {
     paddingHorizontal: 4,
     paddingVertical: 3,
-    borderRadius: 6,
+    borderRadius: RADIUS.control,
   },
   crumbLabel: {
     flexShrink: 1,
-    fontSize: 14,
+    fontSize: TYPE.sm,
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
   },
@@ -219,22 +223,22 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    height: 30,
+    height: CONTROL.button,
     paddingHorizontal: 9,
-    borderRadius: 8,
+    borderRadius: RADIUS.control,
   },
   buttonOn: {
     backgroundColor: t.selected,
   },
   buttonLabel: {
-    fontSize: 13,
+    fontSize: TYPE.sm,
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
   },
   primary: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
+    width: CONTROL.button,
+    height: CONTROL.button,
+    borderRadius: RADIUS.control,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: t.accent,

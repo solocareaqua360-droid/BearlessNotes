@@ -1,3 +1,4 @@
+import { CONTROL, RADIUS, TYPE, useDeskColors } from '../theme/desktopTheme';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -190,8 +191,9 @@ function TabItem({ tab, active, onClose }: { tab: Tab; active: boolean; onClose:
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const { title, icon } = useTabLabel(tab);
+  const D = useDeskColors();
   return (
-    <Pressable style={[styles.tab, active && styles.tabActive, NO_DRAG]} onPress={() => go(tab)}>
+    <Pressable style={[styles.tab, active && [styles.tabActive, { backgroundColor: D.card }], NO_DRAG]} onPress={() => go(tab)}>
       {!!icon && <Ionicons name={icon as never} size={13} color={active ? theme.ink.primary : theme.ink.muted} />}
       <Text style={[styles.label, active && styles.labelActive]} numberOfLines={1}>
         {title}
@@ -296,6 +298,7 @@ const stepStyles = StyleSheet.create({
 export default function DesktopTabs() {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
+  const D = useDeskColors();
   const tabs = useOpenTabs();
   const [place, setPlace] = useState<Place>(null);
   const startFront = useStartFront();
@@ -363,10 +366,10 @@ export default function DesktopTabs() {
   }
 
   return (
-    <View style={[styles.frame, DRAG]}>
+    <View style={[styles.frame, { backgroundColor: D.chrome }, DRAG]}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.row, narrow && { paddingLeft: 26 }]}>
         <Pressable
-          style={[styles.tab, styles.home, activeKey === 'home' && styles.tabActive, NO_DRAG]}
+          style={[styles.tab, styles.home, activeKey === 'home' && [styles.tabActive, { backgroundColor: D.card }], NO_DRAG]}
           onPress={() => go(null)}
         >
           <Ionicons
@@ -410,11 +413,11 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 28,
+    height: CONTROL.tab,
     maxWidth: 220,
     paddingLeft: 12,
     paddingRight: 6,
-    borderRadius: 8,
+    borderRadius: RADIUS.control,
   },
   home: {
     paddingHorizontal: 10,
@@ -424,7 +427,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   label: {
     flexShrink: 1,
-    fontSize: 13,
+    fontSize: TYPE.sm,
     fontFamily: FONT_REGULAR,
     color: t.ink.muted,
   },
@@ -434,7 +437,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   close: {
     padding: 2,
-    borderRadius: 5,
+    borderRadius: RADIUS.control,
   },
   // A sheet over the whole window that only catches the tap away.
   scrim: {
@@ -450,7 +453,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     left: 10,
     minWidth: 180,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: RADIUS.card,
     backgroundColor: t.paper.fill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: t.edge.hairline,
@@ -464,7 +467,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingHorizontal: 14,
   },
   menuLabel: {
-    fontSize: 14,
+    fontSize: TYPE.sm,
     fontFamily: FONT_REGULAR,
     color: t.ink.primary,
   },
