@@ -903,7 +903,7 @@ export default function BlockRow({
       {showPointerHandle && (
         <GestureDetector gesture={handleGesture}>
           <View
-            {...({ dataSet: { noMarquee: '1' } } as object)}
+            {...({ dataSet: { noMarquee: '1', fadeIn: '1' } } as object)}
             style={[styles.dragHandle, styles.dragHandleFloating, { top: '50%', marginTop: -16, opacity: 0.85, cursor: 'grab' } as never]}
           >
             <Ionicons name="reorder-two-outline" size={20} color={theme.ink.muted} />

@@ -50,10 +50,15 @@ export const PAGE_H1 = IS_POINTER ? { size: 25, line: 32 } : { size: 28, line: 3
 export const PAGE_H2 = IS_POINTER ? { size: 20, line: 27 } : { size: 22, line: 29 };
 export const PAGE_H3 = IS_POINTER ? { size: 17, line: 24 } : { size: 19, line: 26 };
 
+// On a light laptop the page IS the ground: a cream sheet the size of the
+// main pane met the ground with square corners ("жодного різкого краю",
+// 2026-10-01). A paper colour the user picked still paints over it.
+const deskPage = (t: Theme) => (IS_POINTER && t.scheme === 'light' ? t.ground : t.paper.fill);
+
 export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: t.paper.fill,
+    backgroundColor: deskPage(t),
   },
   // The ground a sheet lies on - see DocumentEditorScreen's `sheetPage`.
   sheetRoot: {
@@ -300,7 +305,7 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: 'transparent',
-    backgroundColor: t.paper.fill,
+    backgroundColor: deskPage(t),
   },
   // Under a toggle's section - see BlockList's own `indented` and
   // isUnderToggle. The user's own complaint: with nothing marking it,

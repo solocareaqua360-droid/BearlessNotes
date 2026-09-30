@@ -1,3 +1,4 @@
+import { IS_POINTER } from './src/utils/pointer';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
@@ -215,7 +216,20 @@ function AccountText({
 // (2026-10-01): the caret says where the writing is.
 if (typeof document !== 'undefined') {
   const noRing = document.createElement('style');
-  noRing.textContent = 'textarea:focus, input:focus, textarea:focus-visible, input:focus-visible { outline: none !important; }';
+  noRing.textContent =
+    'textarea:focus, input:focus, textarea:focus-visible, input:focus-visible { outline: none !important; }' +
+    // Soft, not sudden (2026-10-01, "тіні і підсвічування з'являються
+    // різко"): a hover's fill, a picked block's tint, a tab coming to the
+    // front, a shadow - every change of tone eases in and out. Only colour
+    // and shadow: position and size are the animations' own business.
+    (IS_POINTER
+      ? ' div, span { transition: background-color 180ms ease, box-shadow 220ms ease, border-color 180ms ease, color 160ms ease, opacity 180ms ease; }' +
+        // What APPEARS (a hover's handle, a menu, an alert) fades in rather
+        // than being there all at once: it carries data-fade-in.
+        ' @keyframes mindevaFadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }' +
+        ' [data-fade-in] { animation: mindevaFadeIn 180ms ease-out; }' +
+        ' @media (prefers-reduced-motion: reduce) { div, span { transition: none !important; } [data-fade-in] { animation: none !important; } }'
+      : '');
   document.head.appendChild(noRing);
 }
 

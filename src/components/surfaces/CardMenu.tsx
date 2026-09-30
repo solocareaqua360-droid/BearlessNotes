@@ -55,6 +55,7 @@ export default function CardMenu({
           {...({ onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}
         >
           <View
+            {...({ dataSet: { fadeIn: '1' } } as object)}
             style={[
               styles.popover,
               { left, top, width: MENU_W, backgroundColor: S.card, borderColor: S.line, boxShadow: S.popShadow },

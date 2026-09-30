@@ -366,6 +366,7 @@ function MacAlert({
     <View style={styles.alertFrame} pointerEvents="box-none">
       <View style={styles.alertDim} />
       <View
+        {...({ dataSet: { fadeIn: '1' } } as object)}
         style={[
           styles.alert,
           { backgroundColor: S.card, boxShadow: S.popShadow, borderColor: S.line },
@@ -427,6 +428,7 @@ function AskPopover({
         {...({ onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}
       />
       <View
+        {...({ dataSet: { fadeIn: '1' } } as object)}
         style={[
           styles.popover,
           { left, top, width: MENU_W, backgroundColor: S.card, boxShadow: S.popShadow, borderColor: S.line },
