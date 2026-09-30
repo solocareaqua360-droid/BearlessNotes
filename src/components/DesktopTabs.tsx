@@ -53,6 +53,10 @@ export function placeNow(): Place {
       return params?.boardId ? { kind: 'board', ref: params.boardId } : null;
     case 'CustomDatabase':
       return params?.databaseId ? { kind: 'database', ref: params.databaseId } : null;
+    case 'FileView': {
+      const fileId = (params as { fileId?: string } | undefined)?.fileId;
+      return fileId ? { kind: 'file', ref: fileId } : null;
+    }
     case 'Links':
       return { kind: 'target', ref: JSON.stringify({ kind: 'links', category: (params as { category?: string })?.category ?? 'other' }) };
     case 'Photos':
@@ -101,6 +105,9 @@ export function go(tab: Tab | null) {
   if (tab.kind === 'note') {
     if (current === 'Editor') navigationRef.dispatch(StackActions.replace('Editor', { documentId: tab.ref }));
     else navigationRef.navigate('Editor', { documentId: tab.ref } as never);
+  } else if (tab.kind === 'file') {
+    if (current === 'FileView') navigationRef.dispatch(StackActions.replace('FileView', { fileId: tab.ref }));
+    else navigationRef.navigate('FileView', { fileId: tab.ref } as never);
   } else if (tab.kind === 'board') {
     navigationRef.navigate('Tabs', {
       screen: 'Дошки',
@@ -123,12 +130,16 @@ function useTabLabel(tab: Tab): { title: string; icon: string } {
   const index = useDocumentIndex();
   const [name, setName] = useState<string | null>(null);
   useEffect(() => {
-    if (tab.kind !== 'board' && tab.kind !== 'database') return;
-    const path = tab.kind === 'board' ? 'boards' : 'customDatabases';
-    return onSnapshot(doc(db, path, tab.ref), (snapshot) => {
-      const data = snapshot.data() as { title?: string; name?: string } | undefined;
-      setName((tab.kind === 'board' ? data?.title : data?.name) ?? null);
-    });
+    if (tab.kind !== 'board' && tab.kind !== 'database' && tab.kind !== 'file') return;
+    const path = tab.kind === 'board' ? 'boards' : tab.kind === 'file' ? 'files' : 'customDatabases';
+    return onSnapshot(
+      doc(db, path, tab.ref),
+      (snapshot) => {
+        const data = snapshot.data() as { title?: string; name?: string; fileName?: string } | undefined;
+        setName((tab.kind === 'database' ? data?.name : tab.kind === 'file' ? data?.title || data?.fileName : data?.title) ?? null);
+      },
+      () => setName(null)
+    );
   }, [tab.kind, tab.ref]);
   if (tab.kind === 'start') return { title: 'Нова вкладка', icon: 'sparkles-outline' };
   if (tab.kind === 'target') {
@@ -144,6 +155,7 @@ function useTabLabel(tab: Tab): { title: string; icon: string } {
   }
   if (tab.kind === 'note') return { title: index.get(tab.ref)?.title?.trim() || 'Без назви', icon: '' };
   if (tab.kind === 'board') return { title: name || 'Дошка', icon: 'easel-outline' };
+  if (tab.kind === 'file') return { title: name || 'Файл', icon: 'document-outline' };
   if (tab.kind === 'database') return { title: name || 'База', icon: 'grid-outline' };
   const section = SECTIONS.find((s) => s.ref === tab.ref);
   return { title: section?.label ?? tab.ref, icon: section?.icon ?? 'apps-outline' };
@@ -274,9 +286,9 @@ export default function DesktopTabs() {
       setPlace(now);
       // The navigator moved: whatever stood in front of it gives way.
       showStart(false);
-      if (now && (now.kind === 'note' || now.kind === 'board' || now.kind === 'database' || now.kind === 'target')) {
+      if (now && (now.kind === 'note' || now.kind === 'board' || now.kind === 'database' || now.kind === 'target' || now.kind === 'file')) {
         addTab(now.kind, now.ref);
-        if (now.kind !== 'target') noteRecent(now.kind, now.ref);
+        if (now.kind === 'note' || now.kind === 'board' || now.kind === 'database') noteRecent(now.kind, now.ref);
       }
     };
     read();

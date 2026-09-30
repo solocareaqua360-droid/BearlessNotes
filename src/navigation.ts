@@ -38,6 +38,8 @@ export type RootStackParamList = {
   // offerBoard: this note was just made out of another one's blocks,
   // and the offer to put it on a board rides in with it - see the
   // clipping bar in DocumentEditorScreen.
+  // A file looked at in a tab of its own - the laptop's (FileViewScreen).
+  FileView: { fileId: string };
   Editor: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean; focusLinkTo?: string; searchQuery?: string };
   // Same DocumentEditorScreen as `Editor`, registered a second time purely
   // for its App.tsx presentation style (slide-up modal, swipe-down to

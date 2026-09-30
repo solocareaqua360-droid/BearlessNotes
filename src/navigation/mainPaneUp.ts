@@ -57,6 +57,12 @@ const leaveDatabase = (workspace: Opener) => () => {
 const DATABASE_ROUTES = new Set(['CustomDatabase', 'Links', 'Photos', 'Files', 'Stickers', 'Flashcards', 'Tasks', 'Tags', 'Groups', 'Diary', 'Chat', 'TagItems', 'BoardsCopy']);
 UP.Editor = TO_START;
 UP.EditorModal = TO_START;
+// A file in its tab is left the same way as a note.
+UP.FileView = () => {
+  const id = (navigationRef.getCurrentRoute()?.params as { fileId?: string } | undefined)?.fileId;
+  if (id) startInPlaceOf(tabKey('file', id));
+  else TO_HOME();
+};
 UP.Settings = TO_HOME;
 UP.Search = TO_HOME;
 UP.DocumentsCopy = TO_HOME;

@@ -53,6 +53,9 @@ import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
+import { openTabWithSequence } from '../navigation/desktopTabs';
+import { go } from '../components/DesktopTabs';
+import { useDensity } from '../hooks/useDensity';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { downloadToFolder, showDownloadedFile } from '../utils/downloadToFolder';
 import { useDownloadToast } from '../hooks/useDownloadToast';
@@ -243,6 +246,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     detachTag: list.detachTag,
   });
   const filesHere = explorer.visibleItems;
+  const pointer = useDensity() === 'pointer';
 
   // Carrying a card into a folder - the whole of it (gesture state, the
   // undo toast, the carried card's survival across a folder change) in
@@ -828,6 +832,21 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             <Pressable style={styles.cardMenuBackdrop} onPress={() => setCardMenuFileId(null)}>
               <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
                 <View style={styles.cardMenuHandle} />
+                {/* The laptop's: the file looked at in a tab of its own,
+                    whose arrows step through the files of this folder. */}
+                {pointer && (
+                  <Pressable
+                    style={styles.cardMenuRow}
+                    onPress={() => {
+                      const file = cardMenuFile;
+                      setCardMenuFileId(null);
+                      if (file) go(openTabWithSequence('file', file.id, filesHere.map((f) => f.id)));
+                    }}
+                  >
+                    <Ionicons name="browsers-outline" size={18} color="#111827" />
+                    <Text style={styles.cardMenuRowLabel}>Відкрити в новій вкладці</Text>
+                  </Pressable>
+                )}
                 <Pressable
                   style={styles.cardMenuRow}
                   onPress={() => {

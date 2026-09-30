@@ -19,7 +19,8 @@ import { useEffect, useState } from 'react';
 // renamed on its tab.
 // 'target': any other database screen (a links list, photos, files...) -
 // ref is its PaneTarget as JSON (navigation/paneTarget).
-export type TabKind = 'note' | 'board' | 'database' | 'section' | 'start' | 'target';
+// 'file': a file looked at in a tab (FileViewScreen) - ref is its id.
+export type TabKind = 'note' | 'board' | 'database' | 'section' | 'start' | 'target' | 'file';
 // `seq`: the refs a tab steps through with its arrows (see stepTab) - the
 // notes of the folder it was opened from, the boards of the list, the days
 // of the diary. Only a tab opened with «Відкрити в новій вкладці» has one.
