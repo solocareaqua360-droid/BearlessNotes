@@ -6,7 +6,7 @@ import { useStyles, useTheme } from '../../theme/ThemeProvider';
 import EdgeFade from '../EdgeFade';
 import type { Theme } from '../../theme/tokens';
 import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
-import { SHEET_FRAME, SHEET_WINDOW } from '../../constants/glass';
+import { SHEET_FRAME, SHEET_WINDOW, PHONE_ONLY } from '../../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../../utils/fonts';
 
 // «Аркуш» - a panel of content over the screen, and the second of the
@@ -166,6 +166,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingBottom: 24,
   },
   handle: {
+    ...PHONE_ONLY,
     width: 36,
     height: 4,
     borderRadius: 2,

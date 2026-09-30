@@ -128,8 +128,7 @@ import {
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
   SHEET_BACKDROP,
-  SHEET_WINDOW,
-} from '../constants/glass';
+  SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { GlassPortal } from '../components/GlassPortal';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { BlurView } from 'expo-blur';
@@ -8150,6 +8149,7 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: 10,
     },
     sheetHandle: {
+      ...PHONE_ONLY,
       width: 36,
       height: 4,
       backgroundColor: '#E5E7EB',

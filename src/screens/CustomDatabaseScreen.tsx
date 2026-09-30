@@ -55,8 +55,7 @@ import {
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
   SHEET_BACKDROP,
-  SHEET_WINDOW,
-} from '../constants/glass';
+  SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
 import { LINK_CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
@@ -6062,6 +6061,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     maxHeight: '55%',
   },
   handle: {
+    ...PHONE_ONLY,
     width: 36,
     height: 4,
     backgroundColor: GLASS_LINE,

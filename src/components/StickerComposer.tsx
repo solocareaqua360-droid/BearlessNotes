@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { GLASS_TEXT_FAINT, SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { GLASS_TEXT_FAINT, SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
@@ -233,6 +233,7 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
   },
   handle: {
+    ...PHONE_ONLY,
     width: 36,
     height: 4,
     backgroundColor: '#E5E7EB',

@@ -53,10 +53,14 @@ export const SHEET_BACKDROP = {
   alignItems: 'center',
   paddingHorizontal: 16,
 } as const;
+// In the browser/Mac build a window is a desktop's: narrower, its corners
+// a window's rather than a phone sheet's, and no grab bar (PHONE_ONLY) -
+// there is no thumb to drag it down with.
+const DESKTOP = Platform.OS === 'web';
 export const SHEET_WINDOW = {
   width: '100%',
-  maxWidth: 560,
-  borderRadius: 28,
+  maxWidth: DESKTOP ? 480 : 560,
+  borderRadius: DESKTOP ? 14 : 28,
   borderWidth: 1,
   borderColor: GLASS_EDGE,
 } as const;
@@ -68,3 +72,7 @@ export const SHEET_WINDOW = {
 export const SHEET_FRAME = {
   ...SHEET_BACKDROP,
 } as const;
+
+// For what only a phone has a use for - a sheet's grab bar: spread into its
+// style, it is not drawn in the browser/Mac build.
+export const PHONE_ONLY = (DESKTOP ? { display: 'none' } : {}) as { display?: 'none' };

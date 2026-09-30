@@ -62,7 +62,7 @@ import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import FilePreviewWorker from '../components/FilePreviewWorker';
-import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT , railClear } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1213,6 +1213,7 @@ const makeStyles = (t: Theme) =>
     paddingBottom: 28,
   },
   cardMenuHandle: {
+    ...PHONE_ONLY,
     width: 36,
     height: 4,
     backgroundColor: '#E5E7EB',

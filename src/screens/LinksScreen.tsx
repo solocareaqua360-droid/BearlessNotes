@@ -72,7 +72,7 @@ import VideoPlayerModal from '../components/VideoPlayerModal';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { listenError } from '../utils/listenError';
 
 // The same half-strength tint the documents screen's add button takes -
@@ -1470,6 +1470,7 @@ const makeStyles = (t: Theme) =>
     paddingBottom: 28,
   },
   cardMenuHandle: {
+    ...PHONE_ONLY,
     width: 36,
     height: 4,
     backgroundColor: '#E5E7EB',

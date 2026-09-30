@@ -4,7 +4,7 @@ import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import {
   ActivityIndicator,
   Keyboard,
@@ -2440,6 +2440,7 @@ const makeStyles = (t: Theme) =>
     paddingBottom: 28,
   },
   modalHandle: {
+    ...PHONE_ONLY,
     width: 36,
     height: 4,
     backgroundColor: t.edge.hairline,

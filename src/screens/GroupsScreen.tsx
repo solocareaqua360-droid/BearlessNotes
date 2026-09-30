@@ -19,7 +19,7 @@ import { Ionicons } from '../components/icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from '../firestore';
-import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { db } from '../firebase';
 import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -438,6 +438,7 @@ const makeStyles = (t: Theme) =>
     maxHeight: '80%',
   },
   handle: {
+    ...PHONE_ONLY,
     width: 36,
     height: 4,
     backgroundColor: 'rgba(255,255,255,0.3)',

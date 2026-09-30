@@ -31,8 +31,7 @@ import {
   GLASS_TEXT_FAINT,
   GLASS_TEXT_MUTED,
   SHEET_BACKDROP,
-  SHEET_WINDOW,
-} from '../constants/glass';
+  SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import ReferenceBlockPreview from './ReferenceBlockPreview';
@@ -830,6 +829,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     maxHeight: '75%',
   },
   handle: {
+    ...PHONE_ONLY,
     width: 36,
     height: 4,
     backgroundColor: t.edge.hairline,

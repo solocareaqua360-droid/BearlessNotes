@@ -10,7 +10,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from './icons/Ionicons';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
-import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -127,6 +127,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     maxHeight: '70%',
   },
   handle: {
+    ...PHONE_ONLY,
     width: 36,
     height: 4,
     backgroundColor: t.edge.hairline,

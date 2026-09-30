@@ -8,7 +8,7 @@ import {
 } from 'expo-speech-recognition';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
-import { SHEET_WINDOW } from '../constants/glass';
+import { SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 import { ChatMessage, editChatMessage, sendChatMessage } from '../utils/chat';
 import { ChatAttachment, attachLinkToChat, pickFileForChat, pickMediaForChat } from '../utils/chatAttach';
@@ -380,6 +380,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingBottom: 24,
   },
   handle: {
+    ...PHONE_ONLY,
     width: 36,
     height: 4,
     backgroundColor: t.edge.hairline,

@@ -7,7 +7,7 @@ import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { ImportableItem, MAX_CARDS_PER_COLUMN } from '../utils/importGroupToBoard';
 import { hapticSelectItem, hapticWarning } from '../utils/haptics';
-import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
+import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { listenError } from '../utils/listenError';
@@ -228,6 +228,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     maxHeight: '80%',
   },
   handle: {
+    ...PHONE_ONLY,
     width: 36,
     height: 4,
     backgroundColor: t.edge.hairline,
