@@ -727,6 +727,22 @@ app.whenReady().then(async () => {
   });
 });
 
+// Chromium writes localStorage to disk lazily, and what changed shortly
+// before quitting - the tab row, a moment after a note was opened - came
+// back missing even after an ordinary quit (2026-09-30). So it is written
+// down on purpose: when a window closes, when the app quits, and every few
+// seconds meanwhile, in case the app does not get to quit at all.
+function flushStorage() {
+  try {
+    session.defaultSession.flushStorageData();
+  } catch {
+    // Before the app is ready there is no session yet - nothing to write.
+  }
+}
+app.on('before-quit', flushStorage);
+app.on('browser-window-created', (_event, window) => window.on('close', flushStorage));
+app.whenReady().then(() => setInterval(flushStorage, 5000));
+
 // Standard macOS behaviour: closing the last window does not quit the app.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

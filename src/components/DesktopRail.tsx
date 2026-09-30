@@ -18,12 +18,10 @@ export const RAIL_WIDTH = DESKTOP_RAIL_WIDTH;
 // Electron's own words for "this part moves the window" - harmless in a browser.
 const DRAG = { WebkitAppRegion: 'drag' } as never;
 
-const SECTIONS: { name: 'Документи' | 'Календар' | 'Дошки' | 'Більше'; icon: string }[] = [
-  { name: 'Документи', icon: 'document-text-outline' },
-  { name: 'Календар', icon: 'calendar-outline' },
-  { name: 'Дошки', icon: 'easel-outline' },
-  { name: 'Більше', icon: 'apps-outline' },
-];
+// Only the calendar is left here (2026-09-30, the user's): the documents
+// are the ⌂ tab, the boards and the databases open from the start page and
+// from «Панелі → Бази». Where the calendar goes is still undecided.
+const SECTIONS: { name: 'Календар'; icon: string }[] = [{ name: 'Календар', icon: 'calendar-outline' }];
 
 // One folder in the tree, and its children under it.
 type Node = { path: string; name: string; children: Node[] };
