@@ -19,6 +19,7 @@ const { app, BrowserWindow, Menu, session, shell, dialog } = require('electron')
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const offline = require('./offline');
 
 // In the same order as the authorized origins. 8899 is the one the browser
 // version is normally served on, so it is also the one most likely to be
@@ -330,6 +331,11 @@ function serve(req, res) {
 
   // The shell's own endpoints come first - they are not files, and the
   // fallback below would otherwise answer them with index.html.
+  if (pathname.startsWith('/__desktop/offline')) {
+    // Offline maps - see offline.js.
+    offline.handle(req, res, pathname, servedPort, readBody);
+    return;
+  }
   if (pathname.startsWith('/__desktop/')) {
     serveDesktopApi(req, res, pathname);
     return;
@@ -631,6 +637,7 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 app.whenReady().then(async () => {
+  offline.init(app.getPath('userData'));
   if (!fs.existsSync(path.join(ROOT, 'index.html'))) {
     dialog.showErrorBox(
       'mindEva',

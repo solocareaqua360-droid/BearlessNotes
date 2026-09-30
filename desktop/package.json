@@ -16,13 +16,31 @@
   "build": {
     "appId": "com.bearlessnotes.notes.desktop",
     "productName": "mindEva",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["main.js", "app/**/*"],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "offline.js",
+      "app/**/*"
+    ],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": [{ "target": "dir", "arch": ["arm64"] }],
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
       "icon": "build/icon.icns",
       "identity": null
     }
+  },
+  "dependencies": {
+    "@protomaps/basemaps": "^5.7.2",
+    "pmtiles": "^4.5.0"
   }
 }
