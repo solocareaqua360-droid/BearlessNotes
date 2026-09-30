@@ -1,3 +1,4 @@
+import { cardRadius, controlRadius, deskSize } from '../../theme/scale';
 import { ReactNode } from 'react';
 import { useLift, useTheme } from '../../theme/ThemeProvider';
 import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
@@ -181,13 +182,13 @@ const styles = StyleSheet.create({
   },
   softPanel: {
     borderWidth: 0,
-    borderRadius: 24,
+    borderRadius: cardRadius(24),
     elevation: 0,
     shadowOpacity: 0,
   },
   softSection: {
     fontFamily: SOFT_MEDIUM,
-    fontSize: 12.5,
+    fontSize: deskSize(12.5),
     letterSpacing: 0,
     textTransform: 'none',
     paddingTop: 8,
@@ -213,7 +214,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
     paddingHorizontal: 8,
-    borderRadius: 12,
+    borderRadius: controlRadius(12),
   },
   rowPressed: {
     backgroundColor: 'rgba(255,255,255,0.10)',

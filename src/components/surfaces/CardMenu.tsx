@@ -97,8 +97,8 @@ export default function CardMenu({
 
 const styles = StyleSheet.create({
   scrim: { flex: 1 },
-  popover: { position: 'absolute', borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 5 },
-  popRow: { flexDirection: 'row', alignItems: 'center', gap: 9, height: 30, paddingHorizontal: 10, borderRadius: 7 },
+  popover: { position: 'absolute', borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 5 },
+  popRow: { flexDirection: 'row', alignItems: 'center', gap: 9, height: 30, paddingHorizontal: 10, borderRadius: 8 },
   popLabel: { flex: 1, fontSize: 13.5, fontFamily: SOFT_MEDIUM },
   sheet: {
     backgroundColor: '#fff',

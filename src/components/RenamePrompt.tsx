@@ -178,11 +178,11 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     gap: 12,
   },
   cardDesk: { borderRadius: 14, padding: 18, gap: 10, maxWidth: 400 },
-  titleDesk: { fontSize: 14.5, fontFamily: FONT_SEMIBOLD },
+  titleDesk: { fontSize: 15, fontFamily: FONT_SEMIBOLD },
   inputDesk: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, fontSize: 13.5 },
   cancelButtonDesk: { minHeight: 30, paddingHorizontal: 12, borderRadius: 8 },
   saveButtonDesk: { minHeight: 30, paddingHorizontal: 16, borderRadius: 8 },
-  labelDesk: { fontSize: 13, fontFamily: FONT_SEMIBOLD },
+  labelDesk: { fontSize: 13.5, fontFamily: FONT_SEMIBOLD },
   title: {
     fontSize: 19,
     fontFamily: FONT_BOLD,

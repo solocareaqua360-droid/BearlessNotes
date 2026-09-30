@@ -7,7 +7,7 @@ import { useSoft, type SoftTokens } from './soft';
 // lists every one.
 
 // Shape: see scale.ts (three corners and a pill; nothing in between).
-export { RADIUS, cardRadius } from './scale';
+export { RADIUS, cardRadius, controlRadius, deskSize } from './scale';
 
 // Type. Five sizes, three weights (regular, medium, semibold - never bold).
 export const TYPE = {

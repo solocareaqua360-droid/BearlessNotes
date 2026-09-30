@@ -1,3 +1,4 @@
+import { snapRadii } from '../theme/scale';
 import { StyleSheet } from 'react-native';
 import { IS_POINTER } from '../utils/pointer';
 import type { Theme } from '../theme/tokens';
@@ -49,7 +50,7 @@ export const PAGE_H1 = IS_POINTER ? { size: 25, line: 32 } : { size: 28, line: 3
 export const PAGE_H2 = IS_POINTER ? { size: 20, line: 27 } : { size: 22, line: 29 };
 export const PAGE_H3 = IS_POINTER ? { size: 17, line: 24 } : { size: 19, line: 26 };
 
-export const makeStyles = (t: Theme) => StyleSheet.create({
+export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: t.paper.fill,
@@ -1122,4 +1123,4 @@ export const makeStyles = (t: Theme) => StyleSheet.create({
     fontFamily: FONT_SEMIBOLD,
     color: '#fff',
   },
-});
+}));
