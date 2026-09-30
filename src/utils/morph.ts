@@ -1,5 +1,4 @@
 import type { View } from 'react-native';
-import { dropDock } from './dockVeil';
 
 // THE CARD THAT BECOMES THE PAGE, on the phone (the laptop's is the .web
 // sibling, on view transitions).
@@ -133,9 +132,6 @@ export function morph(
     if (!opts?.into) {
       fromRects.set(key, from);
       landedAt.delete(key);
-      // The list's dock goes with the tap; the note's comes in as the page
-      // grows (MorphFrame).
-      dropDock();
       update(true);
       return;
     }

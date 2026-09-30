@@ -4,7 +4,6 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PAGE_SHEET_INSET } from './documentEditorStyles';
 import { TOP_NAV_SPACE } from './TopNavBar';
-import { unveilDock, veilDock } from '../utils/dockVeil';
 import { measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
 
 // THE PAGE THAT GROWS OUT OF ITS CARD (utils/morph tells the whole story).
@@ -78,8 +77,6 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
     started.current = true;
     shown.value = 1;
     t.value = withTiming(1, { duration: OUT_MS, easing: EASE });
-    // The note's dock comes in with the page (it was veiled at the tap).
-    unveilDock();
   };
 
   useEffect(() => {
@@ -105,13 +102,7 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
       if (type !== 'GO_BACK' && type !== 'POP') return;
       e.preventDefault();
       passing = true;
-      // The note's dock steps aside as the page starts to fold, and the
-      // list's comes back once the list is the screen again.
-      veilDock();
-      const leave = () => {
-        navigation.dispatch(e.data.action as never);
-        requestAnimationFrame(() => requestAnimationFrame(() => unveilDock()));
-      };
+      const leave = () => navigation.dispatch(e.data.action as never);
       const frame = box.current;
       measureCard(morphKey).then((card) => {
         if (!card || !frame) {

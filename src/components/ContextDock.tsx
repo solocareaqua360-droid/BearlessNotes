@@ -1,5 +1,4 @@
 import { ReactNode, useLayoutEffect, useMemo, useEffect, useRef, useState } from 'react';
-import { dockVeil } from '../utils/dockVeil';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useKeyboardRide } from '../hooks/useKeyboardRide';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, ViewStyle, useWindowDimensions } from 'react-native';
@@ -2739,11 +2738,7 @@ function DockPortal({ children }: { children: ReactNode }) {
   const active = !!cover?.active;
   const progress = cover?.progress;
   const fade = useAnimatedStyle(
-    // Times the dock's own veil (utils/dockVeil) - a page folding into
-    // its card.
-    () => ({
-      opacity: (active && progress ? 1 - Math.max(progress.left.value, progress.right.value) : 1) * dockVeil.value,
-    }),
+    () => ({ opacity: active && progress ? 1 - Math.max(progress.left.value, progress.right.value) : 1 }),
     [active, progress]
   );
   return (
