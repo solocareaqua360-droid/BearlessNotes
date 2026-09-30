@@ -101,3 +101,6 @@ export function morphLanded(_key: string): void {}
 export function morphBack(_key: string, leave: () => void, _opts?: { color?: string; from?: string }): void {
   leave();
 }
+export function takeMorphFrom(_key: string): Rect | null {
+  return null;
+}

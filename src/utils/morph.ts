@@ -1,19 +1,24 @@
 import type { View } from 'react-native';
 
 // THE CARD THAT BECOMES THE PAGE, on the phone (the laptop's is the .web
-// sibling, on view transitions). Drawn by MorphHost (components/MorphHost),
-// mounted once at the app's root above everything; this file is what the
-// rest of the app calls.
+// sibling, on view transitions).
 //
-// NOT the 2026-09-24 attempt (reverted - see the pending-morph memory). That
-// one flew a second render of the page and swapped it for the editor's, and
-// two renders of one page are never the same pixels: it blinked at the hand-
-// over however it was tuned. Here nothing is drawn twice. What moves is a
-// plain sheet of the page's colour: it comes up over the card (the card's
-// picture fades into paper), grows to where the page will stand, the editor
-// is opened under it, and once the editor has drawn itself (morphLanded) the
-// sheet fades away off the real page. A dissolve from blank paper has no
-// second picture to disagree with. The way back is the same, reversed.
+// A PUSHED NOTE (the phone's own screen) - components/MorphFrame: the REAL
+// page grows out of the card. The note is opened at once, over the list (a
+// transparent modal, so the list stays drawn under it), and the whole page
+// stands scaled down in the card's own rectangle; once the editor has drawn
+// the note it grows to the full screen, and back it shrinks into the card
+// before the screen goes. One picture from the first frame to the last.
+//
+// Two attempts before this said what not to do. 2026-09-24 flew a second
+// render of the page and swapped it for the editor's - two renders are
+// never the same pixels, it blinked at the swap. 2026-10-01's first phone
+// version grew a blank sheet and faded it off the editor once that had
+// loaded: no blink, but "розбілення екрану" for a second and no morph at
+// all - the user's verdict. The page itself has to be what moves.
+//
+// A NOTE IN A PANE (the Fold's inner screen) still takes the blank sheet
+// (components/MorphHost) - next to be converted.
 
 export type Rect = { x: number; y: number; width: number; height: number };
 
@@ -65,17 +70,41 @@ export function measureCard(key: string): Promise<Rect | null> {
 // ---- the page saying it is drawn ---------------------------------------------
 
 const landedWaiters = new Map<string, () => void>();
+// When each page last said so: a page inside MorphFrame says it before the
+// frame around it has had its own effects run (a child's effects run
+// first), so a waiter that comes a moment late must still hear it.
+const landedAt = new Map<string, number>();
 
 export function whenLanded(key: string, then: () => void): void {
+  const at = landedAt.get(key);
+  if (at !== undefined && Date.now() - at < 1500) {
+    landedAt.delete(key);
+    then();
+    return;
+  }
   landedWaiters.set(key, then);
 }
 
 // Called by the editor once it has read its note and drawn it.
 export function morphLanded(key: string): void {
   const then = landedWaiters.get(key);
-  if (!then) return;
+  if (!then) {
+    landedAt.set(key, Date.now());
+    return;
+  }
   landedWaiters.delete(key);
   then();
+}
+
+// ---- the card a pushed page grows out of --------------------------------------
+
+// Handed from the tap to the page's MorphFrame, once.
+const fromRects = new Map<string, Rect>();
+
+export function takeMorphFrom(key: string): Rect | null {
+  const rect = fromRects.get(key) ?? null;
+  fromRects.delete(key);
+  return rect;
 }
 
 // ---- the calls ---------------------------------------------------------------
@@ -89,7 +118,7 @@ export function morph(
   opts?: { color?: string; radius?: number; into?: string }
 ): void {
   const run = driver;
-  if (!run) {
+  if (!run && opts?.into) {
     update(false);
     return;
   }
@@ -98,7 +127,15 @@ export function morph(
       update(false);
       return;
     }
-    run.open(from, opts?.radius ?? 22, opts?.color, key, () => update(true), opts?.into);
+    // A pushed page: the page itself grows out of the card (MorphFrame) -
+    // it is handed the card's rectangle and opened at once.
+    if (!opts?.into) {
+      fromRects.set(key, from);
+      landedAt.delete(key);
+      update(true);
+      return;
+    }
+    run!.open(from, opts?.radius ?? 22, opts?.color, key, () => update(true), opts?.into);
   });
 }
 
