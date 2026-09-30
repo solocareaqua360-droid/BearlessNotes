@@ -109,6 +109,17 @@ export default function GeoMapView({
         }
 
         m.on('load', () => {
+          // House numbers from zoom 17, as on the phone (GeoHouseNumbers):
+          // the data has them, OpenFreeMap's style draws none.
+          m.addLayer({
+            id: 'bearless-housenumber',
+            type: 'symbol',
+            source: 'openmaptiles',
+            'source-layer': 'housenumber',
+            minzoom: 17,
+            layout: { 'text-field': ['get', 'housenumber'], 'text-font': ['Noto Sans Regular'], 'text-size': 11 },
+            paint: { 'text-color': '#666', 'text-halo-color': '#ffffff', 'text-halo-width': 1, 'text-halo-blur': 0.5 },
+          });
           m.addSource('points', {
             type: 'geojson',
             data: toGeoJson(pointsRef.current),
