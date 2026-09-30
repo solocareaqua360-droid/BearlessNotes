@@ -43,7 +43,8 @@ import { CHROME_TOP } from '../constants/rail';
 
 export type DatabaseChromeProps<T extends { id: string }> = {
   // The screen is a surface (the map of «Геоточки»), not a list: the
-  // readable-column cap does not apply.
+  // readable-column cap does not apply, and a drag down is the surface's
+  // own (moving the map), never the pull that opens search.
   fullWidth?: boolean;
   list: DatabaseList<T>;
   accent: string;
@@ -488,7 +489,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   const pull = usePullToSearch(() => {
     pullHaptic();
     list.setIsSearching(true);
-  });
+  }, !fullWidth);
   // The sideways swipe no longer opens the smartfolders: they are a
   // window from "⋯" now, and that swipe belongs to the calendar's drawer.
   const listGesture = pull.gesture;

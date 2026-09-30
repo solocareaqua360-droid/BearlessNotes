@@ -40,7 +40,9 @@ function rubberBand(t: number): number {
   return (t * 0.85) / (1 + t / 900);
 }
 
-export function usePullToSearch(onPull: () => void) {
+// `enabled` false: the screen is a surface of its own (a map) that is
+// dragged, not a list pulled down past its top.
+export function usePullToSearch(onPull: () => void, enabled = true) {
   // Shared values, not refs: these are read inside gesture callbacks,
   // which run on the UI thread, where a ref's .current is a copy that
   // neither sees writes from JS nor keeps its own.
@@ -52,6 +54,7 @@ export function usePullToSearch(onPull: () => void) {
   const gesture = useMemo(() => {
     const list = Gesture.Native();
     const pull = Gesture.Pan()
+      .enabled(enabled)
       .simultaneousWithExternalGesture(list)
       // Vertical only, and it gives up the moment the finger goes
       // sideways: the pager that carries the tabs is the OTHER gesture
@@ -86,7 +89,7 @@ export function usePullToSearch(onPull: () => void) {
         pulled.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
       });
     return Gesture.Simultaneous(list, pull);
-  }, [onPull]);
+  }, [onPull, enabled]);
 
   // Put on a view AROUND the list's gesture detector (not on the list
   // itself - the detector has to sit directly on the list).
