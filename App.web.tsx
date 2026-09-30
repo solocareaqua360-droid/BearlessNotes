@@ -208,6 +208,17 @@ function AccountText({
   );
 }
 
+// The browser's own focus ring on a text field - the orange box round the
+// block being written in - is not part of the design (there is no active-
+// block border anywhere in the editor's styles). It was kept while the web
+// editor was being tested (2026-09-14) and is gone now, at the user's word
+// (2026-10-01): the caret says where the writing is.
+if (typeof document !== 'undefined') {
+  const noRing = document.createElement('style');
+  noRing.textContent = 'textarea:focus, input:focus, textarea:focus-visible, input:focus-visible { outline: none !important; }';
+  document.head.appendChild(noRing);
+}
+
 function StartPageHost() {
   const front = useStartFront();
   return (
