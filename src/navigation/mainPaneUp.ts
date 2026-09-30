@@ -4,6 +4,7 @@ import { tabKey, turnIntoStart, useStartFront } from './desktopTabs';
 import { useWorkspace } from './workspace';
 import { targetFromRoute } from './paneTargetInfo';
 import { flashDatabase } from './databaseFlash';
+import { morph } from '../utils/morph';
 import { goHome, placeNow } from '../components/DesktopTabs';
 
 // THE LEVEL ABOVE a screen in the main pane - where its back arrow goes when
@@ -37,7 +38,8 @@ const TO_START = () => {
     TO_HOME();
     return;
   }
-  startInPlaceOf(tabKey('note', id));
+  // The sheet shrinks back into its card on the start page (utils/morph).
+  morph(`note:${id}`, () => startInPlaceOf(tabKey('note', id)));
 };
 
 // A database is left the same way - the databases list never stands in the

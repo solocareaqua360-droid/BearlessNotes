@@ -1,4 +1,5 @@
 import { lift } from '../utils/lift';
+import { morph } from '../utils/morph';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInnerBack } from '../navigation/innerBack';
 import { rightClick } from '../utils/rightClick';
@@ -1149,11 +1150,14 @@ export default function DocumentsScreen({
       setOpenDoc({ id, autoFocusTitle, searchQuery });
       return;
     }
-    navigation.navigate('Editor', {
-      documentId: id,
-      ...(autoFocusTitle ? { autoFocusTitle: true } : {}),
-      ...(searchQuery ? { searchQuery } : {}),
-    });
+    // The card grows into the note (utils/morph) - the laptop's.
+    morph(`note:${id}`, () =>
+      navigation.navigate('Editor', {
+        documentId: id,
+        ...(autoFocusTitle ? { autoFocusTitle: true } : {}),
+        ...(searchQuery ? { searchQuery } : {}),
+      })
+    );
   }
 
   // ⌘N from the Mac menu bar. Answered HERE rather than by the menu,

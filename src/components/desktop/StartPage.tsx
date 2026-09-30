@@ -8,6 +8,7 @@ import AttachmentImage from '../AttachmentImage';
 import DocumentPageMiniature from '../DocumentPageMiniature';
 import { navigationRef } from '../../navigationRef';
 import { useNavDockBeads } from '../../navigation/navDock';
+import { dataSets, morph, morphKey } from '../../utils/morph';
 import { addTab, leaveStart, useRecentPlaces, type RecentPlace } from '../../navigation/desktopTabs';
 import { useWorkspace } from '../../navigation/workspace';
 import { groupHits, useGlobalSearch, type SearchHit, type SearchTarget } from '../../hooks/useGlobalSearch';
@@ -66,11 +67,16 @@ function navigate(route: string, params?: Record<string, unknown>) {
 }
 
 function openTarget(target: SearchTarget) {
+  if (target.kind === 'document') {
+    const id = target.documentId;
+    morph(`note:${id}`, () => {
+      leaveStart();
+      navigate('Editor', { documentId: id });
+    });
+    return;
+  }
   leaveStart();
   switch (target.kind) {
-    case 'document':
-      navigate('Editor', { documentId: target.documentId });
-      return;
     case 'links':
       navigate('Links', { category: target.category });
       return;
@@ -86,9 +92,16 @@ function openTarget(target: SearchTarget) {
 }
 
 function openRecent(place: RecentPlace) {
+  // A note's card grows into the note (utils/morph).
+  if (place.kind === 'note') {
+    morph(`note:${place.ref}`, () => {
+      leaveStart();
+      navigate('Editor', { documentId: place.ref });
+    });
+    return;
+  }
   leaveStart();
-  if (place.kind === 'note') navigate('Editor', { documentId: place.ref });
-  else if (place.kind === 'board') navigate('BoardCopy', { boardId: place.ref });
+  if (place.kind === 'board') navigate('BoardCopy', { boardId: place.ref });
   else navigate('CustomDatabase', { databaseId: place.ref });
 }
 
@@ -110,7 +123,7 @@ function RecentNote({ id, onPress }: { id: string; onPress: () => void }) {
     [id]
   );
   return (
-    <RecentFrame onPress={onPress} label={data?.title?.trim() || 'Без назви'} icon="document-text-outline">
+    <RecentFrame onPress={onPress} label={data?.title?.trim() || 'Без назви'} icon="document-text-outline" marker={morphKey(`note:${id}`)}>
       <View style={[styles.cardPicture, { backgroundColor: S.card }]}>
         {data && (
           <DocumentPageMiniature
@@ -184,17 +197,19 @@ function RecentFrame({
   icon,
   onPress,
   children,
+  marker,
 }: {
   label: string;
   icon: string;
   onPress: () => void;
   children: React.ReactNode;
+  marker?: object;
 }) {
   const S = useSoft();
   return (
     <Pressable
       onPress={onPress}
-      {...lift()}
+      {...dataSets(lift(), marker ?? {})}
       style={(state) => [
         styles.card,
         { backgroundColor: S.card, boxShadow: (state as { hovered?: boolean }).hovered ? S.popShadow : S.shadow },

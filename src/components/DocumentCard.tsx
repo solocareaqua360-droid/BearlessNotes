@@ -2,6 +2,7 @@ import { lift } from '../utils/lift';
 import { cardRadius } from '../theme/scale';
 import { useState } from 'react';
 import { flipId } from '../utils/flipId';
+import { dataSets, morphKey } from '../utils/morph';
 import { IS_POINTER } from '../utils/pointer';
 import { rightClick } from '../utils/rightClick';
 import type { LayoutChangeEvent } from 'react-native';
@@ -673,8 +674,7 @@ export default function DocumentCard({
       <View
         ref={cardRef}
         collapsable={false}
-        {...flipId(id)}
-        {...lift()}
+        {...dataSets(flipId(id), lift(), morphKey(`note:${id}`))}
         style={[
           styles.gridCard,
           styles.wideCard,
@@ -753,8 +753,7 @@ export default function DocumentCard({
       <View
         ref={cardRef}
         collapsable={false}
-        {...flipId(id)}
-        {...lift()}
+        {...dataSets(flipId(id), lift(), morphKey(`note:${id}`))}
         style={[
           styles.gridCard,
           { height: gridHeight },
@@ -837,8 +836,7 @@ export default function DocumentCard({
     <View
       ref={cardRef}
       collapsable={false}
-      {...flipId(id)}
-        {...lift()}
+      {...dataSets(flipId(id), lift(), morphKey(`note:${id}`))}
       style={[
         styles.row,
         dense && styles.rowDense,

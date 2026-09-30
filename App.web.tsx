@@ -1,5 +1,6 @@
 import { enableScreens } from 'react-native-screens';
 import { MOTION, deskGlass } from './src/theme/desktopTheme';
+import { RADIUS } from './src/theme/scale';
 import UnderToolbar from './src/components/desktop/UnderToolbar';
 import { inShell } from './src/navigation/desktopTabs';
 import { softTokens } from './src/theme/soft';
@@ -287,6 +288,24 @@ if (typeof document !== 'undefined') {
         ` @keyframes mindevaPanelOut { to { opacity: 0; transform: translateX(28px); } }` +
         ` ::view-transition-new(*.panel):only-child { animation: mindevaPanelIn ${MOTION.slow}ms ${MOTION.ease}; }` +
         ` ::view-transition-old(*.panel):only-child { animation: mindevaPanelOut ${MOTION.base}ms ease-in forwards; }` +
+        // The card that becomes the page (utils/morph): both pictures keep
+        // the width of the moving piece and their own proportions, so the
+        // page arrives as the card's miniature growing to full size; the
+        // piece keeps a card's corner all the way and clips the tall page.
+        ` ::view-transition-group(morph) { border-radius: ${RADIUS.card}px; overflow: clip; }` +
+        // Not a cross-fade: any two pictures of different scale seen through
+        // each other read as doubled text (tried both ways, 2026-10-01).
+        // A container transform instead - the leaving picture fades in the
+        // first fifth, a plain card of the page's own colour (--morph-fill,
+        // set by utils/morph) goes on growing, and the arriving picture
+        // comes up in it. Never two texts at once.
+        ` ::view-transition-group(morph) { background: var(--morph-fill, transparent); box-shadow: 0 6px 28px rgba(0, 0, 0, 0.08); }` +
+        ' ::view-transition-image-pair(morph) { isolation: auto; }' +
+        ' ::view-transition-old(morph), ::view-transition-new(morph) { mix-blend-mode: normal; }' +
+        ' @keyframes mindevaMorphOld { 0% { opacity: 1; } 20%, 100% { opacity: 0; } }' +
+        ' @keyframes mindevaMorphNew { 0%, 20% { opacity: 0; } 55%, 100% { opacity: 1; } }' +
+        ` ::view-transition-old(morph) { animation: mindevaMorphOld ${MOTION.slow}ms linear both; }` +
+        ` ::view-transition-new(morph) { animation: mindevaMorphNew ${MOTION.slow}ms ease-out both; }` +
         ' @media (prefers-reduced-motion: reduce) { div, span { transition: none !important; } [data-fade-in], [data-fade-out] { animation: none !important; } [data-lift]:hover, [data-lift]:active, [tabindex]:active { transform: none !important; } ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }'
       : '');
   document.head.appendChild(noRing);

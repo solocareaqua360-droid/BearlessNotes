@@ -1,5 +1,6 @@
 import { RADIUS } from '../theme/scale';
 import { IN_SHELL } from '../utils/shell';
+import { morphKey } from '../utils/morph';
 import { dragSelectJustEnded } from '../hooks/useBlockMarquee';
 import { ForwardedRef, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
@@ -5466,6 +5467,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {!(canvasMode && !embedded) && (
       <ScrollView
         ref={scrollViewRef}
+        // Its content - the sheet - is what a note's card grows into
+        // (utils/morph). Not in a pane or embedded: those open in place.
+        {...(!embedded && !('pane' in props) ? morphKey(`note:${documentId}`, 'child') : {})}
         // Split, the note moves aside into what is left of the row
         // rather than lying under the drawer - see referencesSplit.
         style={[styles.scrollArea, referencesSplit && { paddingRight: referencePanelWidth }]}
