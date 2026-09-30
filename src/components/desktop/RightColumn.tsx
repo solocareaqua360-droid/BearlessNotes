@@ -205,22 +205,21 @@ function useDrag(
   }, [ref, axis]);
 }
 
-// The line on a column's left edge. Dragged left it makes THAT column
-// wider, dragged right narrower - each column has its own, so the near one
-// and the far one are not tied together. Rests on it: a line lights up and,
-// between two columns, a capsule offers to swap them.
-function Splitter({ column, width, swap }: { column: 0 | 1; width: number; swap?: () => void }) {
+// The line on a column's left edge moves THE BOUNDARY it stands on, and only
+// that - the way every split view does: the line between the main pane and
+// the first column trades width between those two (the far column does not
+// move), the line between the two columns trades between those two (the
+// main pane does not move). `onDrag` is told how far the pointer has gone
+// since the press and does the trading. Rests on it: the line lights up
+// and, between two columns, the round button offers to swap them.
+function Splitter({ onStart, onDrag, swap }: { onStart: () => void; onDrag: (delta: number) => void; swap?: () => void }) {
   const S = useSoft();
-  const workspace = useWorkspace();
   const [ref, hover] = useHover();
-  const base = useRef(width);
-  const latest = useRef({ workspace, width });
-  latest.current = { workspace, width };
+  const latest = useRef({ onStart, onDrag });
+  latest.current = { onStart, onDrag };
   useDrag(ref, 'x', {
-    start: () => {
-      base.current = latest.current.width;
-    },
-    move: (delta) => latest.current.workspace?.setWidth(column, base.current - delta),
+    start: () => latest.current.onStart(),
+    move: (delta) => latest.current.onDrag(delta),
   });
   return (
     <View ref={ref} style={styles.splitter}>
@@ -229,6 +228,12 @@ function Splitter({ column, width, swap }: { column: 0 | 1; width: number; swap?
     </View>
   );
 }
+
+// The widths the columns were DRAWN at when a splitter was pressed. A drag
+// starts from those, not from what was asked for - they differ once the
+// room has clamped a width, and a drag from the asked-for number first had
+// to eat that difference before anything moved.
+const dragBase: { current: number[] } = { current: [] };
 
 // The line between two panels of one column: drags their heights against
 // each other, and rests offer to swap them.
@@ -296,23 +301,41 @@ export default function RightColumn() {
   const stripPanels = all.filter((c) => c.panels.every((p) => p.folded)).flatMap((c) => c.panels);
   const stripRoom = stripPanels.length > 0 ? STRIP_WIDTH + 8 : 0;
   const usable = room - stripRoom;
-  // Each keeps its own width, but together they leave the main pane its room.
-  const widthOf = (position: number, index: 0 | 1) => {
-    const wanted = workspace.widths[index];
-    if (columns.length < 2) return Math.max(COLUMN_MIN, Math.min(wanted, usable - 8));
-    if (position === 0) return Math.max(COLUMN_MIN, Math.min(wanted, usable - COLUMN_MIN - 16));
-    const nearW = Math.max(COLUMN_MIN, Math.min(workspace.widths[columns[0].index], usable - COLUMN_MIN - 16));
-    return Math.max(COLUMN_MIN, Math.min(wanted, usable - nearW - 16));
+  // What each column is drawn at. The OUTER one keeps what it was given (as
+  // far as the room allows); the one beside the main pane takes what is
+  // left of the room after it, so a window that narrows eats the main pane's
+  // neighbour first, never the far edge.
+  const widths: number[] = (() => {
+    if (columns.length < 2) return columns.map((c) => Math.max(COLUMN_MIN, Math.min(workspace.widths[c.index], usable - 8)));
+    const far = Math.max(COLUMN_MIN, Math.min(workspace.widths[columns[1].index], usable - COLUMN_MIN - 16));
+    const near = Math.max(COLUMN_MIN, Math.min(workspace.widths[columns[0].index], usable - far - 16));
+    return [near, far];
+  })();
+  const startDrag = () => {
+    dragBase.current = widths;
   };
-  const widths = columns.map((c, position) => widthOf(position, c.index));
+  // Main | first column: the first column alone changes, the main pane
+  // absorbs it.
+  const dragOuter = (delta: number) => {
+    const [near0, far0] = dragBase.current;
+    const max = usable - (columns.length > 1 ? far0 + 16 : 8);
+    workspace.setWidth(columns[0].index, Math.max(COLUMN_MIN, Math.min(max, near0 - delta)));
+  };
+  // First column | second: the two trade, the main pane stays.
+  const dragBetween = (delta: number) => {
+    const [near0, far0] = dragBase.current;
+    const shift = Math.max(COLUMN_MIN - near0, Math.min(far0 - COLUMN_MIN, delta));
+    workspace.setWidth(columns[0].index, near0 + shift);
+    workspace.setWidth(columns[1].index, far0 - shift);
+  };
   const total = widths.reduce((a, b) => a + b, 0) + 8 * columns.length + stripRoom;
   return (
     <View style={[styles.group, { width: total, backgroundColor: S.bg }]}>
       {columns.map((column, position) => (
         <View key={column.index} style={styles.groupColumn}>
           <Splitter
-            column={column.index}
-            width={widths[position]}
+            onStart={startDrag}
+            onDrag={position === 0 ? dragOuter : dragBetween}
             swap={position > 0 ? () => workspace.swapColumns() : undefined}
           />
           {/* No limit on how many: past what fits, the column scrolls. */}
