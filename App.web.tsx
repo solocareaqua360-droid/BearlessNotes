@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   useFonts,
@@ -36,7 +36,7 @@ import DesktopRail from './src/components/DesktopRail';
 import RightColumn from './src/components/desktop/RightColumn';
 import StartPage, { CreateWatcher } from './src/components/desktop/StartPage';
 import { useStartFront } from './src/navigation/desktopTabs';
-import { WorkspaceProvider } from './src/navigation/workspace';
+import { WorkspaceProvider, useWorkspace } from './src/navigation/workspace';
 import { InnerBackProvider } from './src/navigation/innerBack';
 import DesktopToolbar from './src/components/DesktopToolbar';
 import DesktopTabs from './src/components/DesktopTabs';
@@ -205,6 +205,26 @@ function AccountText({
     >
       {children}
     </Text>
+  );
+}
+
+// The tabs, measured: where they end is where a panel drawn as a window
+// starts (see workspace's maximized).
+function TabsBand() {
+  const workspace = useWorkspace();
+  return (
+    <View onLayout={(e) => workspace?.setAreaTop(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
+      <DesktopTabs />
+    </View>
+  );
+}
+
+// The main pane and its toolbar - kept, and only not shown, while a panel
+// stands over them as a window, so nothing of them shows round its edges.
+function MainUnderWindow({ children }: { children: ReactNode }) {
+  const workspace = useWorkspace();
+  return (
+    <View style={[styles.deskBody, !!workspace?.maximized && ({ visibility: 'hidden' } as never)]}>{children}</View>
   );
 }
 
@@ -595,8 +615,8 @@ export default function App() {
                     {/* Above everything the screen says about itself:
                         the tabs are what you are switching BETWEEN, the
                         toolbar is about whichever one is in front. */}
-                    <DesktopTabs />
-                    <View style={styles.deskBody}>
+                    <TabsBand />
+                    <MainUnderWindow>
                       <DesktopToolbar />
                       <View style={styles.deskBody}>
                         <RootNavigator />
@@ -605,7 +625,7 @@ export default function App() {
                           toolbar while it is the tab in front - see
                           StartPage. */}
                       <StartPageHost />
-                    </View>
+                    </MainUnderWindow>
                   </View>
                   <RightColumn />
                 </View>

@@ -7,6 +7,8 @@ import PaneScreen from './PaneScreen';
 import UpButton from './UpButton';
 import { InnerBackProvider } from '../../navigation/innerBack';
 import { targetInfo } from '../../navigation/paneTargetInfo';
+import { sameTarget, type PaneTarget } from '../../navigation/paneTarget';
+import { navigationRef } from '../../navigationRef';
 import { COLUMN_MIN, useWorkspace, type Panel } from '../../navigation/workspace';
 import { useSoft } from '../../theme/soft';
 import { DESKTOP_MAIN_MIN, useDesktopRailWidth } from '../../constants/desktop';
@@ -22,13 +24,25 @@ function usePanelTitle(panel: Panel): { icon: string; title: string } {
   const [name, setName] = useState<string | null>(null);
   // What the panel shows now: where a click took it, else its own thing.
   const shown = panel.stack?.length ? panel.stack[panel.stack.length - 1] : panel.target;
-  const databaseId = shown?.kind === 'custom' ? shown.databaseId : null;
+  // The name lives in the thing itself: a database's, a note's, a board's.
+  const named: [string, string, string] | null =
+    shown?.kind === 'custom'
+      ? ['customDatabases', shown.databaseId, 'name']
+      : shown?.kind === 'note'
+        ? ['documents', shown.documentId, 'title']
+        : shown?.kind === 'board'
+          ? ['boards', shown.boardId, 'title']
+          : null;
+  const [collectionName, id, field] = named ?? [null, null, null];
   useEffect(() => {
-    if (!databaseId) return;
-    return onSnapshot(doc(db, 'customDatabases', databaseId), (snapshot) => {
-      setName((snapshot.data()?.name as string | undefined) ?? null);
-    });
-  }, [databaseId]);
+    setName(null);
+    if (!collectionName || !id || !field) return;
+    return onSnapshot(
+      doc(db, collectionName, id),
+      (snapshot) => setName((snapshot.data()?.[field] as string | undefined) || null),
+      () => setName(null)
+    );
+  }, [collectionName, id, field]);
   if (panel.stack?.length && shown) return targetInfo(shown, name);
   if (panel.kind === 'chat') return { icon: 'chatbubbles-outline', title: 'Чат' };
   if (panel.kind === 'databases' || !shown) return { icon: 'apps-outline', title: 'Бази' };
@@ -39,20 +53,65 @@ function usePanelTitle(panel: Panel): { icon: string; title: string } {
 // a drag from - read at the moment of the press, so not state.
 const panelHeights = new Map<string, number>();
 
+// A window's steps: where the panel is in its sequence, and the things
+// either side of it.
+function useSteps(panel: Panel): { at: number; count: number; prev: PaneTarget | null; next: PaneTarget | null } {
+  const sequence = panel.sequence ?? [];
+  const at = panel.target ? sequence.findIndex((t) => sameTarget(t, panel.target as PaneTarget)) : -1;
+  return {
+    at,
+    count: sequence.length,
+    prev: at > 0 ? sequence[at - 1] : null,
+    next: at >= 0 && at < sequence.length - 1 ? sequence[at + 1] : null,
+  };
+}
+
 function PanelFrame({ panel }: { panel: Panel }) {
   const S = useSoft();
   const workspace = useWorkspace();
+  const railWidth = useDesktopRailWidth();
   const { icon, title } = usePanelTitle(panel);
+  const isWindow = workspace?.maximized === panel.id;
+  const steps = useSteps(panel);
+  const stepping = isWindow && steps.count > 1 && steps.at >= 0;
+  const step = (to: PaneTarget | null) => {
+    if (to) workspace?.stepTo(panel.id, to);
+  };
+  // ← and → step too, unless they are moving a caret in some text.
+  const latest = useRef({ prev: steps.prev, next: steps.next, step });
+  latest.current = { prev: steps.prev, next: steps.next, step };
+  useEffect(() => {
+    if (!stepping) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      const el = event.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      event.preventDefault();
+      latest.current.step(event.key === 'ArrowLeft' ? latest.current.prev : latest.current.next);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [stepping]);
   return (
     <InnerBackProvider>
     <View
-      onLayout={(e) => panelHeights.set(panel.id, e.nativeEvent.layout.height)}
+      onLayout={(e) => {
+        if (!isWindow) panelHeights.set(panel.id, e.nativeEvent.layout.height);
+      }}
       style={[
         styles.panel,
         // A hairline all round as well as the shadow: the panel is the same
         // colour as the ground, and a shadow alone is soft on the lit side.
         { backgroundColor: S.bg, boxShadow: S.shadow, borderWidth: StyleSheet.hairlineWidth, borderColor: S.line },
         panel.folded ? styles.panelFolded : styles.panelOpen,
+        // A window: the same panel, the same screen inside it (nothing is
+        // built again), standing over everything from the rail to the right
+        // edge, under the tabs.
+        isWindow && [
+          styles.window,
+          { top: (workspace?.areaTop ?? 0) + 8, left: railWidth + 8, boxShadow: S.popShadow },
+        ],
       ]}
     >
       <View style={[styles.header, { borderBottomColor: S.line }, panel.folded && { borderBottomWidth: 0 }]}>
@@ -65,11 +124,26 @@ function PanelFrame({ panel }: { panel: Panel }) {
         <Ionicons name={icon as never} size={16} color={S.ink2} />
         <Text style={[styles.title, { color: S.ink }]} numberOfLines={1}>
           {title}
+          {stepping && <Text style={{ color: S.ink3 }}>{`   ${steps.at + 1} / ${steps.count}`}</Text>}
         </Text>
+        {/* A window's own "maximise": the panel over everything, and back
+            into its column. */}
+        <Pressable
+          hitSlop={6}
+          style={(state) => [styles.headerButton, (state as { hovered?: boolean }).hovered && { backgroundColor: S.fill }]}
+          onPress={() => workspace?.setMaximized(isWindow ? null : panel.id)}
+          accessibilityLabel={isWindow ? 'Повернути в панель' : 'На весь екран'}
+          {...({ title: isWindow ? 'Повернути в панель' : 'На весь екран' } as object)}
+        >
+          <Ionicons name={isWindow ? 'contract' : 'expand'} size={14} color={S.ink2} />
+        </Pressable>
         <Pressable
           hitSlop={6}
           style={styles.headerButton}
-          onPress={() => workspace?.toggleFold(panel.id)}
+          onPress={() => {
+            if (isWindow) workspace?.setMaximized(null);
+            workspace?.toggleFold(panel.id);
+          }}
           accessibilityLabel={panel.folded ? 'Розгорнути' : 'Згорнути'}
         >
           <Ionicons name={panel.folded ? 'chevron-down' : 'chevron-up'} size={16} color={S.ink2} />
@@ -83,10 +157,36 @@ function PanelFrame({ panel }: { panel: Panel }) {
       {!panel.folded && (
         <View style={styles.body}>
           <PaneScreen panel={panel} />
+          {stepping && (
+            <>
+              {steps.prev && <StepArrow side="left" onPress={() => step(steps.prev)} />}
+              {steps.next && <StepArrow side="right" onPress={() => step(steps.next)} />}
+            </>
+          )}
         </View>
       )}
     </View>
     </InnerBackProvider>
+  );
+}
+
+// The window's way to the thing before or after this one, at its edge.
+function StepArrow({ side, onPress }: { side: 'left' | 'right'; onPress: () => void }) {
+  const S = useSoft();
+  const label = side === 'left' ? 'Попереднє' : 'Наступне';
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityLabel={label}
+      {...({ title: label } as object)}
+      style={(state) => [
+        styles.stepArrow,
+        side === 'left' ? { left: 12 } : { right: 12 },
+        { backgroundColor: (state as { hovered?: boolean }).hovered ? S.fill : S.card, boxShadow: S.shadow },
+      ]}
+    >
+      <Ionicons name={side === 'left' ? 'chevron-back' : 'chevron-forward'} size={20} color={S.ink} />
+    </Pressable>
   );
 }
 
@@ -296,6 +396,21 @@ export default function RightColumn() {
   const room = windowWidth - railWidth - DESKTOP_MAIN_MIN;
   const twoColumns = room >= COLUMN_MIN * 2 + 16;
 
+  // Going somewhere in the main pane - a tab, the rail, a link - is going
+  // to what the window stands over: it steps back into its column.
+  const maximized = workspace?.maximized ?? null;
+  const setMaximized = workspace?.setMaximized;
+  useEffect(() => {
+    if (!maximized || !setMaximized) return;
+    let last = navigationRef.isReady() ? navigationRef.getCurrentRoute()?.key : undefined;
+    return navigationRef.addListener('state', () => {
+      const now = navigationRef.getCurrentRoute()?.key;
+      if (now === last) return;
+      last = now;
+      setMaximized(null);
+    });
+  }, [maximized, setMaximized]);
+
   if (!workspace || workspace.hidden || workspace.panels.length === 0) return null;
   // The panels of each column, in the order they were opened. With one
   // column shown they all stand in it, still in that order.
@@ -342,7 +457,9 @@ export default function RightColumn() {
   };
   const total = widths.reduce((a, b) => a + b, 0) + 8 * columns.length + stripRoom;
   return (
-    <View style={[styles.group, { width: total, backgroundColor: S.bg }]}>
+    // Under a window the columns keep their place and are only not shown -
+    // the window itself is one of their panels.
+    <View style={[styles.group, { width: total, backgroundColor: S.bg }, maximized && styles.underWindow]}>
       {columns.map((column, position) => (
         <View key={column.index} style={styles.groupColumn}>
           <Splitter
@@ -352,7 +469,9 @@ export default function RightColumn() {
           />
           {/* No limit on how many: past what fits, the column scrolls. */}
           <ScrollView
-            style={[styles.stackScroll, { width: widths[position] }]}
+            // A scroll view is a layer of its own (translateZ), which would
+            // keep the window inside it.
+            style={[styles.stackScroll, { width: widths[position] }, maximized && styles.noLayer]}
             contentContainerStyle={styles.stack}
             showsVerticalScrollIndicator={false}
           >
@@ -404,6 +523,20 @@ const styles = StyleSheet.create({
   // panel can be used at - past that the column scrolls instead.
   panelOpen: { flex: 1 },
   panelFolded: { flexGrow: 0, flexShrink: 0 },
+  window: { position: 'fixed', right: 8, bottom: 8, zIndex: 60, visibility: 'visible' } as never,
+  underWindow: { visibility: 'hidden' } as never,
+  noLayer: { transform: 'none' } as never,
+  stepArrow: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 30,
+  },
   header: {
     height: HEADER,
     flexDirection: 'row',
