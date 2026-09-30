@@ -533,11 +533,19 @@ export default function DocumentsScreen({
   // The soft folder tiles stand in the cards' own columns: the grid's
   // where there is a grid, otherwise two (three on the inner screen).
   const softFolderColumns = drawnMode === 'grid' ? gridColumns : listWidth > 560 ? 3 : 2;
-  const softFolderWidth = Math.floor((listWidth - 12 * (softFolderColumns - 1)) / softFolderColumns);
+  // A folder tile's SHARE of the row, not a width in pixels. Measured widths
+  // lost to rounding and to the scroll bar: two tiles of 336 plus the gap
+  // came to 684 in a row of 683.6, so the second fell under the first and a
+  // row of three became a column with a hole beside it - and while the
+  // window was resized it flicked between the two. A share cannot overflow:
+  // n tiles always stand n to a row, whatever the row really measures.
+  const softFolderSlot = { width: `${100 / softFolderColumns}%` as const, paddingHorizontal: 6, paddingBottom: 12 };
   // The cards and folders slide to their new places when the room changes
   // (a side panel opened or dragged wider) instead of jumping.
   const flipScope = useRef<View | null>(null);
-  useFlipLayout(flipScope, `${gridColumns}|${softFolderColumns}|${Math.round(listWidth)}|${drawnMode}`);
+  // Keyed on how many stand in a row, not on the width: a drag of a splitter
+  // changes the width every frame, and a slide started every frame is a shiver.
+  useFlipLayout(flipScope, `${gridColumns}|${softFolderColumns}|${drawnMode}`);
   const folderColumns = foldersInGrid ? gridColumns : wideList ? 2 : 1;
   const folderRowWidth = foldersInGrid
     ? gridCardWidth
@@ -1679,10 +1687,11 @@ export default function DocumentsScreen({
                       key={folder.fullPath}
                       ref={carrying.carry.registerFolder(folder.fullPath)}
                       collapsable={false}
+                      style={softFolderSlot}
                       {...flipId(`folder:${folder.fullPath}`)}
                     >
                       <Pressable
-                        style={[styles.softFolder, { width: softFolderWidth, backgroundColor: soft.card, boxShadow: soft.shadow }]}
+                        style={[styles.softFolder, { backgroundColor: soft.card, boxShadow: soft.shadow }]}
                         onPress={() => {
                           explorer.setPath(folder.fullPath);
                           if (searching) {
@@ -1724,9 +1733,14 @@ export default function DocumentsScreen({
                     </View>
                   ))}
                   {explorer.active && explorer.path === '' && (trashed.length > 0 || !!carrying.carry.ghost) && (
-                    <View ref={carrying.carry.registerFolder(CARRY_BIN_PATH)} collapsable={false}>
+                    <View
+                      ref={carrying.carry.registerFolder(CARRY_BIN_PATH)}
+                      collapsable={false}
+                      style={softFolderSlot}
+                      {...flipId('folder:__bin__')}
+                    >
                       <Pressable
-                        style={[styles.softFolder, { width: softFolderWidth, backgroundColor: soft.card, boxShadow: soft.shadow }]}
+                        style={[styles.softFolder, { backgroundColor: soft.card, boxShadow: soft.shadow }]}
                         onPress={() => setTrashOpen(true)}
                       >
                         <View style={[styles.softFolderIcon, { backgroundColor: soft.fill }]}>
@@ -2532,11 +2546,14 @@ const makeStyles = (t: Theme) =>
   },
   // The soft style's folders: pills that wrap onto a second line rather
   // than rows - see the list's own soft branch.
+  // The tiles bring their own 6 on either side (softFolderSlot), so the row
+  // stands 6 further out to end on the same line as the cards.
   softFolders: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 14,
+    gap: 0,
+    paddingHorizontal: 14,
+    marginBottom: 2,
   },
   softFolder: {
     height: 64,

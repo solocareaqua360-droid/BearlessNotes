@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { useRailPanel, useRailTree } from '../navigation/navRail';
-import { useNavDockLeave } from '../navigation/navDock';
+import { useNavDockLeave, useNavTopBack } from '../navigation/navDock';
 import { navigationRef } from '../navigationRef';
 import { useWorkspace } from '../navigation/workspace';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -70,7 +70,12 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   // hiding the dock took the only exit with it: the user opened a board
   // and had no way back at all. It belongs at the top of the rail, which
   // is where a Mac keeps "back" anyway.
-  const leave = useNavDockLeave();
+  const dockLeave = useNavDockLeave();
+  // A screen whose way back is the bar's (the note: useTopBack) has no dock
+  // "leave" to publish, and the bar is not drawn under a mouse - so the
+  // rail offers that one too, or a note opened full-pane had no way back.
+  const topBack = useNavTopBack();
+  const leave = dockLeave ?? (topBack && !topBack.dimmed ? { onLeave: topBack.onPress } : null);
   const workspace = useWorkspace();
   const narrow = useDesktopNarrow();
   const [accountOpen, setAccountOpen] = useState(false);

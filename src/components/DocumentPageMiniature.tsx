@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { IS_POINTER } from '../utils/pointer';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -90,7 +91,11 @@ function DocumentPageMiniature({
   // picture of it laid out at the window's width would be a picture of
   // something else.
   const { width: windowWidth } = useWindowDimensions();
-  const pageWidth = windowWidth - PAGE_SHEET_INSET * 2;
+  // Under a mouse the window is a desk-wide 1300+, and a page laid out that
+  // wide and shrunk into a 380 tile came out at 5px type - unreadable
+  // ("мініатюра занадто дрібна"). There the page is laid out as a phone's
+  // sheet is (440), so the tile shows it at nearly its own size.
+  const pageWidth = IS_POINTER ? Math.max(width, 440) : windowWidth - PAGE_SHEET_INSET * 2;
   const scale = width / pageWidth;
   let numbered = 0;
   let indented = false;

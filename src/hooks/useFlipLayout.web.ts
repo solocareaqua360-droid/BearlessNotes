@@ -63,13 +63,20 @@ export function useFlipLayout(scope: RefObject<View | null>, layoutKey: string):
     root.querySelectorAll<HTMLElement>('[data-flip-id]').forEach((el) => {
       const id = el.getAttribute('data-flip-id');
       if (!id) return;
-      // Where it stands without any slide still in flight.
-      el.getAnimations().forEach((a) => a.cancel());
+      // A slide still in flight: where it is SEEN is where the next one must
+      // start from, or it would jump back to the end of the first.
+      let inFlight = { x: 0, y: 0 };
+      if (el.getAnimations().length > 0) {
+        const m = new DOMMatrixReadOnly(getComputedStyle(el).transform === 'none' ? undefined : getComputedStyle(el).transform);
+        inFlight = { x: m.m41, y: m.m42 };
+        el.getAnimations().forEach((a) => a.cancel());
+      }
       const r = el.getBoundingClientRect();
       const spot = { x: r.left - baseRect.left, y: r.top - baseRect.top + scrollTop };
       next.set(id, spot);
-      const from = spots.current.get(id);
-      if (!changed || !from) return;
+      const stored = spots.current.get(id);
+      if (!changed || !stored) return;
+      const from = { x: stored.x + inFlight.x, y: stored.y + inFlight.y };
       const dx = from.x - spot.x;
       const dy = from.y - spot.y;
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
