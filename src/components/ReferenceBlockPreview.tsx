@@ -1,4 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import FormattedText from './FormattedText';
+import { displayValueOf, parseFormattedText } from '../utils/documentBlocks';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Ionicons } from './icons/Ionicons';
@@ -54,7 +56,9 @@ export default function ReferenceBlockPreview({ block, index }: { block: Block; 
     return <IconLine icon="albums-outline" label={text || 'База даних'} />;
   }
   if (type === 'table') {
-    return <IconLine icon="grid-outline" label={text || 'Таблиця'} />;
+    // The table ITSELF, not a line that says there is one - a row of it was
+    // never enough to recognise it by ("таблиці не в повному вигляді").
+    return block.tableRows?.length ? <ReferenceTable block={block} /> : <IconLine icon="grid-outline" label={text || 'Таблиця'} />;
   }
   if (type === 'code') {
     // The one block where every newline is the author's own - so it keeps
@@ -98,6 +102,54 @@ export default function ReferenceBlockPreview({ block, index }: { block: Block; 
   }
   // Paragraph, and anything saved before block types existed.
   return <Text style={styles.text}>{text || ' '}</Text>;
+}
+
+// A table, read-only: every row, the columns at their own widths, the header
+// row and column drawn strong, a formula as the number that comes out of it.
+// Wider than the panel, it scrolls sideways - which is how it is in the note.
+const TABLE_ROWS_SHOWN = 120;
+const DEFAULT_COLUMN = 110;
+function ReferenceTable({ block }: { block: Block }) {
+  const theme = useTheme();
+  const styles = useStyles(makeStyles);
+  const rows = block.tableRows ?? [];
+  const shown = rows.slice(0, TABLE_ROWS_SHOWN);
+  const columns = Math.max(0, ...rows.map((r) => r.cells.length));
+  const widthOf = (c: number) => {
+    const stored = block.tableColumnWidths?.[c];
+    return stored && stored > 0 ? stored : DEFAULT_COLUMN;
+  };
+  return (
+    <View>
+      <ScrollView horizontal showsHorizontalScrollIndicator>
+        <View style={[styles.table, { borderColor: theme.edge.hairline }]}>
+          {shown.map((row, r) => (
+            <View key={r} style={styles.tableRow}>
+              {Array.from({ length: columns }, (_, c) => {
+                const raw = row.cells[c] ?? '';
+                const strong = (!!block.tableHeaderRow && r === 0) || (!!block.tableHeaderColumn && c === 0);
+                return (
+                  <View
+                    key={c}
+                    style={[styles.tableCell, { width: widthOf(c), borderColor: theme.edge.hairline }, strong && styles.tableCellStrong]}
+                  >
+                    <Text style={[styles.cellText, strong && styles.cellStrong]}>
+                      {raw.trim().startsWith('=') ? (
+                        displayValueOf(rows, r, c)
+                      ) : (
+                        <FormattedText segments={parseFormattedText(raw)} defaultColor={theme.ink.primary} />
+                      )}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+      {rows.length > shown.length && <Text style={styles.caption}>{`… ще рядків: ${rows.length - shown.length}`}</Text>}
+    </View>
+  );
 }
 
 function IconLine({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
@@ -150,6 +202,12 @@ const makeStyles = (t: Theme) =>
     marginVertical: 6,
     backgroundColor: t.edge.hairline,
   },
+  table: { borderTopWidth: 1, borderLeftWidth: 1 },
+  tableRow: { flexDirection: 'row' },
+  tableCell: { borderRightWidth: 1, borderBottomWidth: 1, paddingHorizontal: 7, paddingVertical: 5 },
+  tableCellStrong: { backgroundColor: t.edge.hairline },
+  cellText: { fontSize: 12.5, lineHeight: 17, fontFamily: FONT_REGULAR, color: t.ink.primary },
+  cellStrong: { fontFamily: FONT_SEMIBOLD, fontWeight: '600' },
   imageWrap: { gap: 6 },
   image: {
     width: '100%',

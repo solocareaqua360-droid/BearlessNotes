@@ -14,7 +14,9 @@ import { useReferenceDrag } from '../hooks/useReferenceDrag';
 import type { Block } from '../types';
 import type { SoftTokens } from '../theme/soft';
 import SoftIcon from './SoftIcon';
-import { SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import { useDensity } from '../hooks/useDensity';
+import { useSoft } from '../theme/soft';
 
 // «Референси» - the user's own idea: browse everything this app already
 // knows how to list (files, photos, links, custom databases, and another
@@ -38,6 +40,8 @@ export default function ReferencePanel({
   excludeIds,
   soft,
   sheet = false,
+  width,
+  onResizeWidth,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -64,8 +68,17 @@ export default function ReferencePanel({
   // mounted by the caller while closed, so it can slide away rather
   // than vanish.
   sheet?: boolean;
+  // At a pointer the panel is as wide as the editor says, and its left edge
+  // is a handle that moves that width (told to onResizeWidth).
+  width?: number;
+  onResizeWidth?: (width: number) => void;
 }) {
   const theme = useTheme();
+  // The laptop's panel is one of the app's soft cards, like the side panels
+  // (RightColumn): a header row with the icon and the name, a round close,
+  // a soft shadow - not a flat slab with a rule down its side.
+  const pointer = useDensity() === 'pointer' && !sheet;
+  const S = useSoft();
   const styles = useStyles(makeStyles);
   const drag = useReferenceDrag({ onDrop, onMove: onDragMove, onFinished: onDragFinished });
 
@@ -148,7 +161,23 @@ export default function ReferencePanel({
 
   if (sheet ? !visible && !shown : !visible) return null;
 
-  const header = (
+  const header = pointer ? (
+    <>
+      <View style={[styles.deskHeader, { borderBottomColor: S.line }]}>
+        <SoftIcon name="doc" size={16} color={S.ink2} />
+        <Text style={[styles.deskTitle, { color: S.ink }]}>Референси</Text>
+        <Pressable
+          onPress={onClose}
+          hitSlop={6}
+          accessibilityLabel="Закрити"
+          style={(state) => [styles.deskClose, (state as { hovered?: boolean }).hovered && { backgroundColor: S.fill }]}
+        >
+          <Ionicons name="close" size={17} color={S.ink2} />
+        </Pressable>
+      </View>
+      <Text style={[styles.deskHint, { color: S.ink3 }]}>{hint}</Text>
+    </>
+  ) : (
     <>
       <View style={[styles.header, soft && styles.softHeader]}>
           {soft ? (
@@ -210,6 +239,16 @@ export default function ReferencePanel({
           </GestureDetector>
           {list}
         </Animated.View>
+      ) : pointer ? (
+        // Standing off the window's edges by a gap, the way the side panels
+        // do, so its shadow has room.
+        <View style={styles.deskFrame}>
+          {!!onResizeWidth && !!width && <ResizeEdge width={width} onResize={onResizeWidth} />}
+          <View style={[styles.deskCard, { backgroundColor: S.bg, boxShadow: S.shadow, borderColor: S.line }]}>
+            {header}
+            {list}
+          </View>
+        </View>
       ) : (
         <View style={[styles.panel, soft && [styles.softPanel, { backgroundColor: soft.bg, boxShadow: soft.popShadow }]]}>
           {header}
@@ -243,8 +282,69 @@ export default function ReferencePanel({
   );
 }
 
+// The panel's left edge: a drag along it moves the panel's width. Pointer
+// events on the node, then on the window for the rest of the drag, so a
+// fast move that outruns the strip is still followed.
+function ResizeEdge({ width, onResize }: { width: number; onResize: (width: number) => void }) {
+  const S = useSoft();
+  const styles = useStyles(makeStyles);
+  const ref = useRef<View | null>(null);
+  const [hover, setHover] = useState(false);
+  const latest = useRef({ width, onResize });
+  latest.current = { width, onResize };
+  useEffect(() => {
+    const node = ref.current as unknown as HTMLElement | null;
+    if (!node || typeof node.addEventListener !== 'function') return;
+    const on = () => setHover(true);
+    const off = () => setHover(false);
+    function onDown(event: PointerEvent) {
+      event.preventDefault();
+      const from = event.clientX;
+      const base = latest.current.width;
+      const move = (e: PointerEvent) => latest.current.onResize(base + (from - e.clientX));
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        document.body.style.cursor = '';
+      };
+      document.body.style.cursor = 'col-resize';
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    }
+    node.addEventListener('mouseenter', on);
+    node.addEventListener('mouseleave', off);
+    node.addEventListener('pointerdown', onDown);
+    return () => {
+      node.removeEventListener('mouseenter', on);
+      node.removeEventListener('mouseleave', off);
+      node.removeEventListener('pointerdown', onDown);
+    };
+  }, []);
+  return (
+    <View ref={ref} style={styles.resizeEdge}>
+      <View style={[styles.resizeLine, { backgroundColor: hover ? S.ink3 : 'transparent' }]} />
+    </View>
+  );
+}
+
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
+    deskFrame: { flex: 1, paddingTop: 8, paddingBottom: 8, paddingRight: 8, paddingLeft: 6 },
+    deskCard: { flex: 1, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+    deskHeader: {
+      height: 38,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingLeft: 14,
+      paddingRight: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    deskTitle: { flex: 1, fontSize: 13.5, fontFamily: SOFT_SEMIBOLD },
+    deskClose: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+    deskHint: { fontSize: 12, fontFamily: SOFT_MEDIUM, paddingHorizontal: 14, paddingTop: 8, paddingBottom: 2 },
+    resizeEdge: { position: 'absolute', left: -2, top: 0, bottom: 0, width: 10, zIndex: 40, cursor: 'col-resize' } as never,
+    resizeLine: { position: 'absolute', left: 4, top: '42%', height: '16%', minHeight: 50, width: 3, borderRadius: 1.5 },
     // Sized by whoever mounts this - a real side pane on the Fold's wide
     // inner screen, a narrower glass drawer over part of the canvas on a
     // phone. Either way it is never the full screen: the canvas has to

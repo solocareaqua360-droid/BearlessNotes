@@ -2250,9 +2250,34 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // повинно бути видно" - the board's own area must stay clear, so the
   // drawer's size and position both have to be read off the pane, never
   // the window).
+  // At a pointer the panel is wider by default and the user's own to resize
+  // (its left edge) - 300 shows a table as a corner of itself. Kept on this
+  // machine. Elsewhere it is what it always was.
+  const [referenceWidthPref, setReferenceWidthPref] = useState<number | null>(() => {
+    try {
+      const saved = typeof localStorage !== 'undefined' ? Number(localStorage.getItem('mindeva.referenceWidth')) : 0;
+      return saved > 0 ? saved : null;
+    } catch {
+      return null;
+    }
+  });
+  const referenceMax = Math.max(300, Math.min(780, noteWidth - 380));
   const referencePanelWidth = referencesSplit
-    ? Math.round(Math.min(420, Math.max(300, noteWidth * 0.36)))
+    ? pointerDensity
+      ? Math.round(
+          Math.max(300, Math.min(referenceMax, referenceWidthPref ?? Math.min(560, Math.max(400, noteWidth * 0.42))))
+        )
+      : Math.round(Math.min(420, Math.max(300, noteWidth * 0.36)))
     : Math.round(Math.max(260, noteWidth * 0.45));
+  function resizeReferences(width: number) {
+    const next = Math.round(Math.max(300, Math.min(referenceMax, width)));
+    setReferenceWidthPref(next);
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('mindeva.referenceWidth', String(next));
+    } catch {
+      // Not kept past a restart, then.
+    }
+  }
 
   // Which SIDE it takes. The right, where a panel of tools belongs on a
   // desktop and where every editor in the world puts one - the user's
@@ -4910,6 +4935,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             <ReferencePanel
               soft={softPage ? soft : null}
               sheet={referenceSheet}
+              width={referencePanelWidth}
+              onResizeWidth={pointerDensity && referencesSplit ? resizeReferences : undefined}
               visible={referencePanelOpen}
               onClose={() => setReferencePanelOpen(false)}
               // The hint has to match the gesture - see useReferenceDrag:
