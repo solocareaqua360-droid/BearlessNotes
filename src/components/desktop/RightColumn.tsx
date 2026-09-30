@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Ionicons } from '../icons/Ionicons';
@@ -109,10 +109,27 @@ function FoldedIcon({ panel, color, fill, onPress }: { panel: Panel; color: stri
   );
 }
 
-// The small capsule that comes up when the pointer rests on a splitter: one
-// action, in words - «Поміняти місцями».
+// The round button that comes up when the pointer rests on a splitter: two
+// arrows going opposite ways, sliding to and fro the whole time it is there
+// (Samsung's own way to say "these two trade places") - no words. Between
+// columns the arrows go sideways, between two panels up and down.
 function SwapCapsule({ vertical, onPress }: { vertical: boolean; onPress: () => void }) {
   const S = useSoft();
+  const slide = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(slide, { toValue: 1, duration: 620, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(slide, { toValue: 0, duration: 620, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [slide]);
+  const TRAVEL = 4;
+  const forward = slide.interpolate({ inputRange: [0, 1], outputRange: [-TRAVEL, TRAVEL] });
+  const backward = slide.interpolate({ inputRange: [0, 1], outputRange: [TRAVEL, -TRAVEL] });
+  const axis = vertical ? 'translateX' : 'translateY';
   return (
     <Pressable
       onPress={onPress}
@@ -123,10 +140,12 @@ function SwapCapsule({ vertical, onPress }: { vertical: boolean; onPress: () => 
         { backgroundColor: S.ink, boxShadow: S.popShadow },
       ]}
     >
-      <Ionicons name={(vertical ? 'swap-horizontal' : 'swap-vertical') as never} size={13} color={S.bg} />
-      <Text style={[styles.capsuleLabel, { color: S.bg }]} numberOfLines={1}>
-        Поміняти місцями
-      </Text>
+      <Animated.View style={{ transform: [{ [axis]: forward }] as never }}>
+        <Ionicons name={(vertical ? 'arrow-forward' : 'arrow-down') as never} size={13} color={S.bg} />
+      </Animated.View>
+      <Animated.View style={{ transform: [{ [axis]: backward }] as never }}>
+        <Ionicons name={(vertical ? 'arrow-back' : 'arrow-up') as never} size={13} color={S.bg} />
+      </Animated.View>
     </Pressable>
   );
 }
@@ -334,10 +353,10 @@ const styles = StyleSheet.create({
   hsplitter: { position: 'absolute', top: -8, left: 0, right: 0, height: 8, zIndex: 20, alignItems: 'center', justifyContent: 'center' },
   hsplitterResizable: { cursor: 'row-resize' } as never,
   hsplitterLine: { height: 2, width: '22%', minWidth: 60, borderRadius: 1 },
-  capsule: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 6, width: 150, height: 26, justifyContent: 'center', borderRadius: 13, zIndex: 30 },
-  capsuleBeside: { top: '46%', left: '50%', transform: [{ translateX: '-50%' as never }] },
-  capsuleAbove: { top: -9, left: '50%', transform: [{ translateX: '-50%' as never }] },
-  capsuleLabel: { fontSize: 12, fontFamily: SOFT_SEMIBOLD },
+  // Round, two arrows stacked (side by side for a horizontal splitter).
+  capsule: { position: 'absolute', width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', gap: 1, zIndex: 30 },
+  capsuleBeside: { top: '46%', left: '50%', marginLeft: -17, flexDirection: 'column' },
+  capsuleAbove: { top: -13, left: '50%', marginLeft: -17, flexDirection: 'row', gap: 2 },
   slotOpen: { flexBasis: 0, minHeight: 300 },
   slotFolded: { flexGrow: 0, flexShrink: 0 },
   stackScroll: { flexGrow: 0, flexShrink: 0 },
