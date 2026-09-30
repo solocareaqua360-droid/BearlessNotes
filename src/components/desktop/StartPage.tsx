@@ -397,6 +397,12 @@ export default function StartPage() {
                     icon={section.icon}
                     quiet
                     onPress={() => {
+                      // The databases list never stands in the main pane:
+                      // it is the panel beside it.
+                      if (section.ref === 'Більше' && workspace) {
+                        workspace.open({ kind: 'databases' });
+                        return;
+                      }
                       leaveStart();
                       const tab = addTab('section', section.ref);
                       if (tab.ref === 'Tasks') navigate('Tasks');

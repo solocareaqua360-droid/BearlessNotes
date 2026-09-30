@@ -52,6 +52,9 @@ type Workspace = {
   setWidth: (column: 0 | 1, width: number) => void;
   // Opens a panel - or, if one like it is already there, shows it.
   open: (spec: OpenSpec) => void;
+  // Opens it, or shows it back at its own screen (what a click inside it
+  // had taken it to is let go).
+  openAtRoot: (spec: OpenSpec) => void;
   // Always a NEW panel, even if the same thing is already open elsewhere
   // (a second look at a database, with another filter).
   openAnother: (spec: OpenSpec) => void;
@@ -117,6 +120,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     });
   }, []);
   const open = useCallback((spec: OpenSpec) => add(spec, false), [add]);
+  const openAtRoot = useCallback(
+    (spec: OpenSpec) => {
+      add(spec, false);
+      setPanels((prev) => prev.map((p) => (same(p, spec) && p.stack?.length ? { ...p, stack: [] } : p)));
+    },
+    [add]
+  );
   const openAnother = useCallback((spec: OpenSpec) => add(spec, true), [add]);
   const close = useCallback((id: string) => setPanels((prev) => prev.filter((p) => p.id !== id)), []);
   const panelsRef = useRef<Panel[]>([]);
@@ -176,8 +186,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<Workspace>(
-    () => ({ panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, toggleHidden, replaceAll, has, toggle }),
-    [panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, replaceAll, toggleHidden, has, toggle]
+    () => ({ panels, hidden, widths, setWidth, open, openAtRoot, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, toggleHidden, replaceAll, has, toggle }),
+    [panels, hidden, widths, setWidth, open, openAtRoot, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, replaceAll, toggleHidden, has, toggle]
   );
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

@@ -73,7 +73,9 @@ import { NavigationContext } from '@react-navigation/native';
 import { GlassPortalHost } from '../components/GlassPortal';
 import { GlassTargetProvider } from '../components/GlassTarget';
 import PaneTargetScreen from '../components/PaneTargetScreen';
-import type { PaneTarget } from '../navigation/paneTarget';
+import { sameTarget, type PaneTarget } from '../navigation/paneTarget';
+import { useDatabaseFlash } from '../navigation/databaseFlash';
+import { withAlpha } from '../utils/color';
 import { useWorkspace } from '../navigation/workspace';
 import { navigateToTarget, windowUrlFor } from '../navigation/paneTargetInfo';
 import { addTab } from '../navigation/desktopTabs';
@@ -232,6 +234,7 @@ export default function DatabasesScreen() {
   const panelFrame = useContext(LayoutFrameContext);
   const panelDensity = useDensity();
   const inPanel = !!panelFrame && panelDensity === 'pointer';
+  const flashTarget = useDatabaseFlash();
   const softTokensAll = useSoft();
   useChromeStyle('soft', softDatabases && !databasesLayer);
   const S = softDatabases ? softTokensAll : null;
@@ -1491,6 +1494,7 @@ export default function DatabasesScreen() {
                   dashed={item.kind === 'action'}
                   onPress={() => openItem(item)}
                   onContext={targetOf(item) ? () => openElsewhere(item) : undefined}
+                  lit={!!flashTarget && !!targetOf(item) && sameTarget(targetOf(item) as PaneTarget, flashTarget)}
                 />
               );
             });
@@ -2426,6 +2430,7 @@ function PanelListRow({
   dashed,
   onPress,
   onContext,
+  lit,
 }: {
   label: string;
   icon: string;
@@ -2434,6 +2439,8 @@ function PanelListRow({
   dashed?: boolean;
   onPress: () => void;
   onContext?: () => void;
+  // The database just left in the main pane - see databaseFlash.
+  lit?: boolean;
 }) {
   const S = useSoft();
   return (
@@ -2443,6 +2450,7 @@ function PanelListRow({
       style={(state) => [
         panelListStyles.row,
         (state as { hovered?: boolean }).hovered && { backgroundColor: S.fill },
+        lit && { backgroundColor: withAlpha(color || S.ink, 0.2) },
       ]}
     >
       <Ionicons name={icon as never} size={16} color={dashed ? S.ink3 : color} />
@@ -2460,7 +2468,17 @@ function PanelListTitle({ label }: { label: string }) {
 }
 
 const panelListStyles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 30, paddingHorizontal: 10, borderRadius: 8 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 30,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    // The light going out is a fade, not a blink.
+    transitionProperty: 'background-color',
+    transitionDuration: '600ms',
+  } as never,
   label: { flex: 1, fontSize: 13.5, fontFamily: SOFT_MEDIUM },
   count: { fontSize: 12, fontFamily: SOFT_MEDIUM },
   title: { fontSize: 11.5, fontFamily: SOFT_MEDIUM, paddingHorizontal: 10, paddingTop: 14, paddingBottom: 4 },

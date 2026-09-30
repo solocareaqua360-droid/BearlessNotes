@@ -45,7 +45,8 @@ function usePanelTitle(panel: Panel): { icon: string; title: string } {
 function moveToTab(panel: Panel, close: () => void) {
   const shown: PaneTarget | undefined = panel.stack?.length ? panel.stack[panel.stack.length - 1] : panel.target;
   if (!shown) {
-    go(addTab('section', panel.kind === 'chat' ? 'Chat' : 'Більше'));
+    if (panel.kind !== 'chat') return;
+    go(addTab('section', 'Chat'));
   } else if (shown.kind === 'documents') {
     go(null);
   } else if (shown.kind === 'boards') {
@@ -90,6 +91,9 @@ function PanelFrame({ panel }: { panel: Panel }) {
         <Text style={[styles.title, { color: S.ink }]} numberOfLines={1}>
           {title}
         </Text>
+        {/* Not for the databases list itself: it never stands in the main
+            pane. A database opened inside it can go. */}
+        {!(panel.kind === 'databases' && !panel.stack?.length) && (
         <Pressable
           hitSlop={6}
           style={(state) => [styles.headerButton, (state as { hovered?: boolean }).hovered && { backgroundColor: S.fill }]}
@@ -99,6 +103,7 @@ function PanelFrame({ panel }: { panel: Panel }) {
         >
           <Ionicons name="browsers-outline" size={15} color={S.ink2} />
         </Pressable>
+        )}
         <Pressable
           hitSlop={6}
           style={styles.headerButton}
