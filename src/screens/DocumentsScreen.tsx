@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { rightClick } from '../utils/rightClick';
+import { useFlipLayout } from '../hooks/useFlipLayout';
+import { flipId } from '../utils/flipId';
 import { withAlpha } from '../utils/color';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -532,6 +534,10 @@ export default function DocumentsScreen({
   // where there is a grid, otherwise two (three on the inner screen).
   const softFolderColumns = drawnMode === 'grid' ? gridColumns : listWidth > 560 ? 3 : 2;
   const softFolderWidth = Math.floor((listWidth - 12 * (softFolderColumns - 1)) / softFolderColumns);
+  // The cards and folders slide to their new places when the room changes
+  // (a side panel opened or dragged wider) instead of jumping.
+  const flipScope = useRef<View | null>(null);
+  useFlipLayout(flipScope, `${gridColumns}|${softFolderColumns}|${Math.round(listWidth)}|${drawnMode}`);
   const folderColumns = foldersInGrid ? gridColumns : wideList ? 2 : 1;
   const folderRowWidth = foldersInGrid
     ? gridCardWidth
@@ -1626,6 +1632,7 @@ export default function DocumentsScreen({
         ) : (
           <GestureDetector gesture={drawerSwipe}>
             <Animated.View style={[{ flex: 1 }, pull.pullStyle]}>
+            <View ref={flipScope} style={{ flex: 1 }}>
             <GestureDetector gesture={pull.gesture}>
             <GestureDetector gesture={carrying.listGesture}>
           <FlatList
@@ -1668,7 +1675,12 @@ export default function DocumentsScreen({
                 // bin too, exactly as the rows are.
                 <View style={[styles.explorerHead, styles.softFolders]}>
                   {explorer.folders.map((folder) => (
-                    <View key={folder.fullPath} ref={carrying.carry.registerFolder(folder.fullPath)} collapsable={false}>
+                    <View
+                      key={folder.fullPath}
+                      ref={carrying.carry.registerFolder(folder.fullPath)}
+                      collapsable={false}
+                      {...flipId(`folder:${folder.fullPath}`)}
+                    >
                       <Pressable
                         style={[styles.softFolder, { width: softFolderWidth, backgroundColor: soft.card, boxShadow: soft.shadow }]}
                         onPress={() => {
@@ -1746,7 +1758,12 @@ export default function DocumentsScreen({
                       list. Its two small numbers: the documents directly
                       in it, and the folders directly in it. */}
                   {explorer.folders.map((folder) => (
-                    <View key={folder.fullPath} ref={carrying.carry.registerFolder(folder.fullPath)} collapsable={false}>
+                    <View
+                      key={folder.fullPath}
+                      ref={carrying.carry.registerFolder(folder.fullPath)}
+                      collapsable={false}
+                      {...flipId(`folder:${folder.fullPath}`)}
+                    >
                     <Pressable
                       style={[styles.folderRow, folderRowWidth !== undefined && { width: folderRowWidth }]}
                       onPress={() => {
@@ -1948,6 +1965,7 @@ export default function DocumentsScreen({
           />
           </GestureDetector>
           </GestureDetector>
+            </View>
             </Animated.View>
             </GestureDetector>
         )}

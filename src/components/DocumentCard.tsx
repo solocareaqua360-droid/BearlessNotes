@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { flipId } from '../utils/flipId';
 import { IS_POINTER } from '../utils/pointer';
 import { rightClick } from '../utils/rightClick';
 import type { LayoutChangeEvent } from 'react-native';
@@ -670,6 +671,7 @@ export default function DocumentCard({
       <View
         ref={cardRef}
         collapsable={false}
+        {...flipId(id)}
         style={[
           styles.gridCard,
           styles.wideCard,
@@ -748,6 +750,7 @@ export default function DocumentCard({
       <View
         ref={cardRef}
         collapsable={false}
+        {...flipId(id)}
         style={[
           styles.gridCard,
           { height: gridHeight },
@@ -830,6 +833,7 @@ export default function DocumentCard({
     <View
       ref={cardRef}
       collapsable={false}
+      {...flipId(id)}
       style={[
         styles.row,
         dense && styles.rowDense,
