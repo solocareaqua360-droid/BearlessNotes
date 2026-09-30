@@ -61,7 +61,10 @@ export default function ExplorerHead({
   const styles = softenStyles(useStyles(makeStyles), soft, softExplorer);
   const [width, setWidth] = useState(0);
   const cols = Math.max(soft ? 2 : 1, columns ?? 1);
-  const rowWidth = cols > 1 && width > 0 ? Math.floor((width - FOLDER_GAP * (cols - 1)) / cols) : undefined;
+  // A point short of the exact share: two halves and the gap came to the
+  // row's width EXACTLY, and a fraction of a point of rounding sent the
+  // second folder onto a line of its own - folders stood one under another.
+  const rowWidth = cols > 1 && width > 0 ? Math.floor((width - FOLDER_GAP * (cols - 1)) / cols) - 1 : undefined;
 
   // Nothing above the list unless there is something to put there. The
   // path used to count as something; it lives in the dock now.

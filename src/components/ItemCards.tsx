@@ -535,7 +535,7 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
   );
 }
 
-export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common) {
+export function PhotoCell({ photo, columns = 2, ...rest }: { photo: PhotoCardItem } & Common & { columns?: number }) {
   // This device may never have had the actual bytes (a fresh install, a
   // different device than the one the photo was taken on) - quietly
   // re-pulled from the Drive backup the first time it is rendered.
@@ -546,7 +546,9 @@ export function PhotoCell({ photo, ...rest }: { photo: PhotoCardItem } & Common)
     <Pressable
       ref={rest.cardRef}
       collapsable={false}
-      style={[styles.cell, soft && softCardFrame(soft), rest.dimmed && styles.dimmed]}
+      // Its share of the row from the row's own count - a fixed 46% made
+      // three across 138% wide, and the third ran off the window.
+      style={[styles.cell, { flexBasis: gridBasis(columns) }, soft && softCardFrame(soft), rest.dimmed && styles.dimmed]}
       onPress={rest.onPress}
       onLongPress={rest.onLongPress}
       {...rightClick(rest.onLongPress)}

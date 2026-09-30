@@ -44,6 +44,7 @@ import LinkDetailSheet from '../components/LinkDetailSheet';
 import LinkReaderSheet from '../components/LinkReaderSheet';
 import { addFragment, deleteArticleForLink, removeFragment, saveArticleForLink, type LinkFragment } from '../utils/articleReader';
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
+import { useDensity } from '../hooks/useDensity';
 import { pickPhotosFromDevice } from '../utils/photoLibrary';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import { mapsUrlForLatLng, type LatLng } from '../utils/geoCoordinates';
@@ -168,6 +169,8 @@ export default function LinksScreen({
   category: categoryProp,
   inPane,
 }: Partial<Props> & { category?: 'video' | 'geo' | 'other'; inPane?: boolean }) {
+  // The laptop's folders stand two across, not one under another.
+  const pointerFolders = useDensity() === 'pointer' ? 2 : undefined;
   const theme = useTheme();
   const accent = theme.sections.links;
   const accentGlass = withAlpha(accent, 0.55);
@@ -945,6 +948,7 @@ export default function LinksScreen({
     if (!list.explorerMode) return null;
     return (
       <ExplorerHead
+        columns={pointerFolders}
         folderRef={carrying.carry.registerFolder}
         path={explorer.path}
         folders={explorer.folders}

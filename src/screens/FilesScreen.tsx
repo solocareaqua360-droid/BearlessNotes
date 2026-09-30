@@ -775,6 +775,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     if (!list.explorerMode) return null;
     return (
       <ExplorerHead
+        columns={pointer ? 2 : undefined}
         path={explorer.path}
         folders={explorer.folders}
         itemIcon="document-outline"

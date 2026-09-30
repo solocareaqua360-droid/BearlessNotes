@@ -44,6 +44,7 @@ import RenamePrompt from '../components/RenamePrompt';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
 import { PhotoCell, PhotoRow } from '../components/ItemCards';
+import { useDensity } from '../hooks/useDensity';
 import GroupSections from '../components/GroupSections';
 import TagPicker from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
@@ -106,6 +107,8 @@ type PhotoItem = {
 
 export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   const { width: windowWidth } = useWindowDimensions();
+  // The laptop's folders stand two across, not one under another.
+  const pointerFolders = useDensity() === 'pointer' ? 2 : undefined;
   const theme = useTheme();
   const accent = theme.sections.photos;
   const accentGlass = withAlpha(accent, 0.55);
@@ -1085,6 +1088,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                 </View>
               ) : list.explorerMode ? (
                 <ExplorerHead
+                  columns={pointerFolders}
                   folderRef={carrying.carry.registerFolder}
                   path={explorer.path}
                   folders={explorer.folders}
@@ -1131,7 +1135,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               return viewMode === 'list' ? (
                 <PhotoRow {...shared} {...carried} />
               ) : (
-                <PhotoCell {...shared} {...carried} />
+                <PhotoCell {...shared} {...carried} columns={photoColumns} />
               );
             }}
           />
