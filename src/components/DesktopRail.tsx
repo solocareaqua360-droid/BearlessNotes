@@ -187,12 +187,10 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
                 // the window's edge in the real window).
                 boxShadow: `inset 0 0 0 0.5px ${D.soft.dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.7)'}`,
                 borderRadius: RAIL_CARD_RADIUS,
-                // The veil, at the user's word (2026-10-01): 65% of the
-                // chrome tone in the middle of the card, easing away to
-                // nothing at the top and the foot - so the desktop's own
-                // colours show fully at the two ends and are held back
-                // through the middle, where the rows are read. Eased
-                // (smoothstep) stops, not a straight ramp.
+                // The veil, at the user's word (2026-10-01): an ordinary,
+                // solid window at the top and the foot, easing to its most
+                // see-through (65% of the chrome tone) in the middle of the
+                // card. Eased (smoothstep) stops, not a straight ramp.
                 backgroundImage: railVeil(D.soft.dark ? '36,36,38' : '243,242,239', 0.65),
               } as never)
             : { backgroundColor: D.chrome, boxShadow: D.soft.shadow },
@@ -354,15 +352,16 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
 // Four bands for the gaps and four corner pieces whose radial gradient
 // leaves exactly the card's rounded corner clear. Plain colour, nothing to
 // touch.
-// A veil of `rgb` at `peak` in the middle, easing to 0 at both ends.
-function railVeil(rgb: string, peak: number): string {
+// A veil of `rgb`: solid (`edge`) at the top and the foot, easing to `middle`
+// - the most see-through - in the centre.
+function railVeil(rgb: string, middle: number, edge = 1): string {
   const stops: string[] = [];
   for (let i = 0; i <= 12; i++) {
     const at = i / 12;
-    // 0 at the ends, 1 in the middle, eased (smoothstep of the distance).
-    const t = 1 - Math.abs(at - 0.5) * 2;
+    // 1 at the ends, 0 in the middle, eased (smoothstep of the distance).
+    const t = Math.abs(at - 0.5) * 2;
     const eased = t * t * (3 - 2 * t);
-    stops.push(`rgba(${rgb},${(eased * peak).toFixed(3)}) ${Math.round(at * 100)}%`);
+    stops.push(`rgba(${rgb},${(middle + (edge - middle) * eased).toFixed(3)}) ${Math.round(at * 100)}%`);
   }
   return `linear-gradient(to bottom, ${stops.join(', ')})`;
 }
