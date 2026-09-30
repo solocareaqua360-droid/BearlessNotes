@@ -46,7 +46,9 @@ function PanelFrame({ panel }: { panel: Panel }) {
       onLayout={(e) => panelHeights.set(panel.id, e.nativeEvent.layout.height)}
       style={[
         styles.panel,
-        { backgroundColor: S.bg, boxShadow: S.shadow },
+        // A hairline all round as well as the shadow: the panel is the same
+        // colour as the ground, and a shadow alone is soft on the lit side.
+        { backgroundColor: S.bg, boxShadow: S.shadow, borderWidth: StyleSheet.hairlineWidth, borderColor: S.line },
         panel.folded ? styles.panelFolded : styles.panelOpen,
       ]}
     >
@@ -383,7 +385,10 @@ const styles = StyleSheet.create({
   slotOpen: { flexBasis: 0, minHeight: 300 },
   slotFolded: { flexGrow: 0, flexShrink: 0 },
   stackScroll: { flexGrow: 0, flexShrink: 0 },
-  stack: { flexGrow: 1, paddingRight: 8, paddingVertical: 8, gap: 8 },
+  // Room on BOTH sides for the panel's shadow: the scroll view clips what
+  // stands outside it, and with nothing on the left the panel's left edge
+  // had no shadow and ran into the ground ("лівий край зливається").
+  stack: { flexGrow: 1, paddingLeft: 6, paddingRight: 8, paddingVertical: 8, gap: 8 },
   panel: { borderRadius: 18, overflow: 'hidden', minHeight: HEADER },
   // Shares the column while there is room, and never gets shorter than a
   // panel can be used at - past that the column scrolls instead.
