@@ -23,6 +23,10 @@ import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { railClear } from '../constants/rail';
 import { withAlpha } from '../utils/color';
+import { ask } from '../components/surfaces/Ask';
+import { useDensity } from '../hooks/useDensity';
+import { openTabWithSequence } from '../navigation/desktopTabs';
+import { go } from '../components/DesktopTabs';
 
 type Sheet = DocumentItem & { calendarDate?: string };
 
@@ -75,6 +79,23 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
       () => setSheets([])
     );
   }, []);
+
+  // The laptop's right button: the day in a tab of its own, whose arrows
+  // step through the days shown here - the filled ones, the only ones the
+  // diary lists - in the calendar's order: ← the day before, → the day after.
+  const pointer = useDensity() === 'pointer';
+  function holdDay(item: Sheet) {
+    if (!item.calendarDate) return;
+    const date = item.calendarDate;
+    ask({
+      title: dateLabel(item),
+      actions: [{ id: 'tab', label: 'Відкрити в новій вкладці', icon: 'browsers-outline' }],
+    }).then((answer) => {
+      if (answer !== 'tab') return;
+      const days = list.displayed.flatMap((d) => (d.calendarDate ? [d.calendarDate] : [])).sort();
+      go(openTabWithSequence('note', `day_${date}`, days.map((d) => `day_${d}`)));
+    });
+  }
 
   const dateLabel = (item: Sheet) =>
     item.calendarDate ? formatShortDate(parseDateKey(item.calendarDate)) : item.title || 'Без назви';
@@ -192,6 +213,7 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
                 layout={grid ? 'grid' : 'list'}
                 gridWidth={grid ? Math.floor((listWidth - 20 - 12) / 2) : undefined}
                 onPress={() => item.calendarDate && setOpenDate(item.calendarDate)}
+                onLongPress={pointer && item.calendarDate ? () => holdDay(item) : undefined}
               />
             );
           })}

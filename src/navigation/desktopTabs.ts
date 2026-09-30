@@ -20,7 +20,10 @@ import { useEffect, useState } from 'react';
 // 'target': any other database screen (a links list, photos, files...) -
 // ref is its PaneTarget as JSON (navigation/paneTarget).
 export type TabKind = 'note' | 'board' | 'database' | 'section' | 'start' | 'target';
-export type Tab = { key: string; kind: TabKind; ref: string };
+// `seq`: the refs a tab steps through with its arrows (see stepTab) - the
+// notes of the folder it was opened from, the boards of the list, the days
+// of the diary. Only a tab opened with «Відкрити в новій вкладці» has one.
+export type Tab = { key: string; kind: TabKind; ref: string; seq?: string[] };
 
 const STORAGE_KEY = 'mindeva.desktopTabs';
 
@@ -56,6 +59,29 @@ export function addTab(kind: TabKind, ref: string): Tab {
   if (found) return found;
   const tab = { key, kind, ref };
   tabs = [...tabs, tab];
+  notify();
+  return tab;
+}
+
+// «Відкрити в новій вкладці» on a note, a board, a day: a tab that knows
+// its neighbours. Already open, it learns them.
+export function openTabWithSequence(kind: TabKind, ref: string, seq: string[]): Tab {
+  const key = tabKey(kind, ref);
+  const found = tabs.find((t) => t.key === key);
+  const tab = { ...(found ?? { key, kind, ref }), seq };
+  tabs = found ? tabs.map((t) => (t === found ? tab : t)) : [...tabs, tab];
+  notify();
+  return tab;
+}
+
+// One of its arrows: the SAME tab, in the same place in the row, now on
+// `ref` - so stepping through a folder is one tab, not a tab per note. A
+// tab already open on `ref` elsewhere gives way to it.
+export function stepTab(key: string, ref: string): Tab | null {
+  const at = tabs.findIndex((t) => t.key === key);
+  if (at === -1) return null;
+  const tab = { ...tabs[at], key: tabKey(tabs[at].kind, ref), ref };
+  tabs = tabs.flatMap((t, i) => (i === at ? [tab] : t.key === tab.key ? [] : [t]));
   notify();
   return tab;
 }

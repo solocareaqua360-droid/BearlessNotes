@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Ionicons } from './icons/Ionicons';
 import { StackActions } from '@react-navigation/native';
-import { START_KEY, addTab, closeTab, leaveStart, noteRecent, openStart, showStart, tabKey, useOpenTabs, useStartFront, type Tab } from '../navigation/desktopTabs';
+import { START_KEY, addTab, closeTab, leaveStart, noteRecent, openStart, showStart, stepTab, tabKey, useOpenTabs, useStartFront, type Tab } from '../navigation/desktopTabs';
+import { useSoft } from '../theme/soft';
+import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';
 import { navigationRef } from '../navigationRef';
 import { navigateToTarget, targetInfo } from '../navigation/paneTargetInfo';
@@ -136,6 +138,10 @@ function useTabLabel(tab: Tab): { title: string; icon: string } {
       return { title: 'База', icon: 'grid-outline' };
     }
   }
+  // A day of the diary is a note too (`day_<date>`), and is called by its date.
+  if (tab.kind === 'note' && tab.ref.startsWith('day_')) {
+    return { title: formatShortDate(parseDateKey(tab.ref.slice(4))), icon: 'book-outline' };
+  }
   if (tab.kind === 'note') return { title: index.get(tab.ref)?.title?.trim() || 'Без назви', icon: '' };
   if (tab.kind === 'board') return { title: name || 'Дошка', icon: 'easel-outline' };
   if (tab.kind === 'database') return { title: name || 'База', icon: 'grid-outline' };
@@ -153,12 +159,102 @@ function TabItem({ tab, active, onClose }: { tab: Tab; active: boolean; onClose:
       <Text style={[styles.label, active && styles.labelActive]} numberOfLines={1}>
         {title}
       </Text>
+      {/* Where the tab stands among the things its arrows step through. */}
+      {!!tab.seq && tab.seq.length > 1 && tab.seq.includes(tab.ref) && (
+        <Text style={[styles.label, { color: theme.ink.faint }]}>{`${tab.seq.indexOf(tab.ref) + 1}/${tab.seq.length}`}</Text>
+      )}
       <Pressable hitSlop={6} style={styles.close} onPress={onClose}>
         <Ionicons name="close" size={13} color={theme.ink.faint} />
       </Pressable>
     </Pressable>
   );
 }
+
+// The tab in front, read off the navigator the way the row reads it.
+function useActiveTab(): Tab | null {
+  const tabs = useOpenTabs();
+  const startFront = useStartFront();
+  const [place, setPlace] = useState<Place>(null);
+  useEffect(() => {
+    const read = () => setPlace(placeNow());
+    read();
+    return navigationRef.addListener('state', read);
+  }, []);
+  if (startFront || !place || place.kind === 'home') return null;
+  const key = tabKey(place.kind, place.ref);
+  return tabs.find((t) => t.key === key) ?? null;
+}
+
+// A tab opened with «Відкрити в новій вкладці» steps through what it was
+// opened among: round arrows at the main pane's sides, and ← → on the
+// keyboard while no text has the caret. The same tab, on the next thing.
+export function TabStepper() {
+  const S = useSoft();
+  const tab = useActiveTab();
+  const seq = tab?.seq ?? [];
+  const at = tab ? seq.indexOf(tab.ref) : -1;
+  const prev = at > 0 ? seq[at - 1] : null;
+  const next = at >= 0 && at < seq.length - 1 ? seq[at + 1] : null;
+  const stepping = !!tab && seq.length > 1 && at >= 0;
+  const step = (ref: string | null) => {
+    if (!tab || !ref) return;
+    const moved = stepTab(tab.key, ref);
+    if (moved) go(moved);
+  };
+  const latest = useRef({ prev, next, step });
+  latest.current = { prev, next, step };
+  useEffect(() => {
+    if (!stepping) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      const el = event.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      event.preventDefault();
+      latest.current.step(event.key === 'ArrowLeft' ? latest.current.prev : latest.current.next);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [stepping]);
+  if (!stepping) return null;
+  const arrow = (side: 'left' | 'right', ref: string) => {
+    const label = side === 'left' ? 'Попереднє' : 'Наступне';
+    return (
+      <Pressable
+        onPress={() => step(ref)}
+        accessibilityLabel={label}
+        {...({ title: label } as object)}
+        style={(state) => [
+          stepStyles.arrow,
+          side === 'left' ? { left: 12 } : { right: 12 },
+          { backgroundColor: (state as { hovered?: boolean }).hovered ? S.fill : S.card, boxShadow: S.shadow },
+        ]}
+      >
+        <Ionicons name={side === 'left' ? 'chevron-back' : 'chevron-forward'} size={20} color={S.ink} />
+      </Pressable>
+    );
+  };
+  return (
+    <>
+      {prev && arrow('left', prev)}
+      {next && arrow('right', next)}
+    </>
+  );
+}
+
+const stepStyles = StyleSheet.create({
+  arrow: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 25,
+  },
+});
 
 export default function DesktopTabs() {
   const theme = useTheme();

@@ -94,6 +94,8 @@ import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
+import { openTabWithSequence } from '../navigation/desktopTabs';
+import { go } from '../components/DesktopTabs';
 import TagEditSheet from '../components/TagEditSheet';
 import { listenError } from '../utils/listenError';
 
@@ -339,6 +341,26 @@ export default function DocumentsScreen({
   // there, so what can be done with the selection is already under the
   // thumb. What the old hold menu offered stays reachable from that card:
   // «Перемістити», «Перейменувати» (one card) and «Видалити».
+  // The laptop's right button (and a held mouse): the note in a tab of its
+  // own, whose arrows step through the notes of this folder - or the hold's
+  // usual job, choosing it. The phone's hold is unchanged.
+  function holdDocument(item: DocumentItem) {
+    if (!pointerDensity || isSelectMode) {
+      selectFromHold(item);
+      return;
+    }
+    ask({
+      title: item.title || 'Без назви',
+      actions: [
+        { id: 'tab', label: 'Відкрити в новій вкладці', icon: 'browsers-outline' },
+        { id: 'select', label: 'Вибрати', icon: 'checkmark-circle-outline' },
+      ],
+    }).then((answer) => {
+      if (answer === 'tab') {
+        go(openTabWithSequence('note', item.id, explorer.visibleItems.map((d) => d.id)));
+      } else if (answer === 'select') selectFromHold(item);
+    });
+  }
   function selectFromHold(item: DocumentItem) {
     if (isSelectMode) {
       toggleSelected(item.id);
@@ -1941,7 +1963,7 @@ export default function DocumentsScreen({
                   checklistItems={checklistItems}
                   onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}
                   onLongPress={
-                    carried ? undefined : () => (trashOpen ? openTrashMenu(item) : selectFromHold(item))
+                    carried ? undefined : () => (trashOpen ? openTrashMenu(item) : holdDocument(item))
                   }
                   isSelectMode={isSelectMode}
                   isSelected={selectedIds.has(item.id)}
@@ -1972,7 +1994,7 @@ export default function DocumentsScreen({
                   project={groups.find((g) => g.id === item.groupId) ?? null}
                   onProjectPress={() => setSingleGroupTargetId(item.id)}
                   soft={soft}
-                  {...(carried ? carrying.cardProps(item, () => selectFromHold(item)) : {})}
+                  {...(carried ? carrying.cardProps(item, () => holdDocument(item)) : {})}
                 />
               );
               // In the wide column the card brings the side margin

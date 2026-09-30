@@ -6,7 +6,10 @@ import { Ionicons } from '../icons/Ionicons';
 import PaneScreen from './PaneScreen';
 import UpButton from './UpButton';
 import { InnerBackProvider } from '../../navigation/innerBack';
-import { targetInfo } from '../../navigation/paneTargetInfo';
+import { navigateToTarget, targetInfo } from '../../navigation/paneTargetInfo';
+import type { PaneTarget } from '../../navigation/paneTarget';
+import { addTab } from '../../navigation/desktopTabs';
+import { go } from '../DesktopTabs';
 import { COLUMN_MIN, useWorkspace, type Panel } from '../../navigation/workspace';
 import { useSoft } from '../../theme/soft';
 import { DESKTOP_MAIN_MIN, useDesktopRailWidth } from '../../constants/desktop';
@@ -33,6 +36,27 @@ function usePanelTitle(panel: Panel): { icon: string; title: string } {
   if (panel.kind === 'chat') return { icon: 'chatbubbles-outline', title: 'Чат' };
   if (panel.kind === 'databases' || !shown) return { icon: 'apps-outline', title: 'Бази' };
   return targetInfo(shown, name);
+}
+
+// What a panel shows, moved into a tab of the main pane: the panel closes,
+// and the same screen is the tab in front. A section that is not a tab by
+// going there (Бази, Справи, Чат, Дошки) is made one first, as the
+// databases' own «Відкрити в новій вкладці» does.
+function moveToTab(panel: Panel, close: () => void) {
+  const shown: PaneTarget | undefined = panel.stack?.length ? panel.stack[panel.stack.length - 1] : panel.target;
+  if (!shown) {
+    go(addTab('section', panel.kind === 'chat' ? 'Chat' : 'Більше'));
+  } else if (shown.kind === 'documents') {
+    go(null);
+  } else if (shown.kind === 'boards') {
+    go(addTab('section', 'Дошки'));
+  } else if (shown.kind === 'route' && (shown.route === 'Tasks' || shown.route === 'Chat')) {
+    go(addTab('section', shown.route));
+  } else {
+    // A database: going there makes it a tab (DesktopTabs).
+    navigateToTarget(shown);
+  }
+  close();
 }
 
 // How tall each panel stands now, for the line between two of them to start
@@ -66,6 +90,15 @@ function PanelFrame({ panel }: { panel: Panel }) {
         <Text style={[styles.title, { color: S.ink }]} numberOfLines={1}>
           {title}
         </Text>
+        <Pressable
+          hitSlop={6}
+          style={(state) => [styles.headerButton, (state as { hovered?: boolean }).hovered && { backgroundColor: S.fill }]}
+          onPress={() => moveToTab(panel, () => workspace?.close(panel.id))}
+          accessibilityLabel="Перенести у вкладку"
+          {...({ title: 'Перенести у вкладку' } as object)}
+        >
+          <Ionicons name="browsers-outline" size={15} color={S.ink2} />
+        </Pressable>
         <Pressable
           hitSlop={6}
           style={styles.headerButton}

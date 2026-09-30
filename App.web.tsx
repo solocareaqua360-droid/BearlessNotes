@@ -39,7 +39,7 @@ import { useStartFront } from './src/navigation/desktopTabs';
 import { WorkspaceProvider } from './src/navigation/workspace';
 import { InnerBackProvider } from './src/navigation/innerBack';
 import DesktopToolbar from './src/components/DesktopToolbar';
-import DesktopTabs from './src/components/DesktopTabs';
+import DesktopTabs, { TabStepper } from './src/components/DesktopTabs';
 import { useDensity } from './src/hooks/useDensity';
 import { NavDockProvider } from './src/navigation/navDock';
 import {
@@ -605,6 +605,7 @@ export default function App() {
                           toolbar while it is the tab in front - see
                           StartPage. */}
                       <StartPageHost />
+                      <TabStepper />
                     </View>
                   </View>
                   <RightColumn />

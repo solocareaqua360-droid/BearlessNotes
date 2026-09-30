@@ -51,6 +51,9 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { railClear } from '../constants/rail';
 import { ask, confirm } from '../components/surfaces/Ask';
+import { openTabWithSequence } from '../navigation/desktopTabs';
+import { go } from '../components/DesktopTabs';
+import { useDensity } from '../hooks/useDensity';
 import { listenError } from '../utils/listenError';
 
 // The "+" fill: the accent at half strength, since the blur behind it is
@@ -222,6 +225,7 @@ export default function BoardsListScreen({
   // In explorer mode the list is what is IN this folder; in the other two
   // it is everything the filters left.
   const boardsHere = explorer.visibleItems;
+  const pointer = useDensity() === 'pointer';
 
   // Carrying a board into a folder - see useExplorerCarry.
   const carrying = useExplorerCarry<BoardItem>({
@@ -352,6 +356,9 @@ export default function BoardsListScreen({
     ask({
       title: board.title || 'Без назви',
       actions: [
+        // The laptop's: the board in a tab of its own, whose arrows step
+        // through the boards shown here.
+        ...(pointer ? [{ id: 'tab', label: 'Відкрити в новій вкладці', icon: 'browsers-outline' as const }] : []),
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
         { id: 'tags', label: 'Папки', icon: 'pricetag-outline' },
         // Only where there are folders to move it BETWEEN.
@@ -361,6 +368,7 @@ export default function BoardsListScreen({
         { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
       ],
     }).then(async (answer) => {
+      if (answer === 'tab') go(openTabWithSequence('board', board.id, boardsHere.map((b) => b.id)));
       if (answer === 'rename') setRenamingBoard(board);
       if (answer === 'tags') setTagPickerBoardId(board.id);
       if (answer === 'delete') confirmDeleteBoard(board);
