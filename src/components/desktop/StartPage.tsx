@@ -1,3 +1,4 @@
+import { lift } from '../../utils/lift';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { doc, onSnapshot } from '../../firestore';
@@ -193,6 +194,7 @@ function RecentFrame({
   return (
     <Pressable
       onPress={onPress}
+      {...lift()}
       style={(state) => [
         styles.card,
         { backgroundColor: S.card, boxShadow: (state as { hovered?: boolean }).hovered ? S.popShadow : S.shadow },
@@ -443,6 +445,7 @@ function CreateTile({ label, icon, onPress, quiet }: { label: string; icon: stri
   return (
     <Pressable
       onPress={onPress}
+      {...lift()}
       style={(state) => [
         styles.tile,
         { backgroundColor: quiet ? S.fill : S.card },

@@ -1,3 +1,4 @@
+import { lift } from '../utils/lift';
 import { cardRadius } from '../theme/scale';
 import { useState } from 'react';
 import { flipId } from '../utils/flipId';
@@ -673,6 +674,7 @@ export default function DocumentCard({
         ref={cardRef}
         collapsable={false}
         {...flipId(id)}
+        {...lift()}
         style={[
           styles.gridCard,
           styles.wideCard,
@@ -752,6 +754,7 @@ export default function DocumentCard({
         ref={cardRef}
         collapsable={false}
         {...flipId(id)}
+        {...lift()}
         style={[
           styles.gridCard,
           { height: gridHeight },
@@ -835,6 +838,7 @@ export default function DocumentCard({
       ref={cardRef}
       collapsable={false}
       {...flipId(id)}
+        {...lift()}
       style={[
         styles.row,
         dense && styles.rowDense,

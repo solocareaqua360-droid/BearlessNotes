@@ -1,4 +1,4 @@
-import { deskGlass } from './src/theme/desktopTheme';
+import { MOTION, deskGlass } from './src/theme/desktopTheme';
 import UnderToolbar from './src/components/desktop/UnderToolbar';
 import { inShell } from './src/navigation/desktopTabs';
 import { softTokens } from './src/theme/soft';
@@ -249,11 +249,24 @@ if (typeof document !== 'undefined') {
     // and shadow: position and size are the animations' own business.
     (IS_POINTER
       ? ' div, span { transition: background-color 180ms ease, box-shadow 220ms ease, border-color 180ms ease, color 160ms ease, opacity 180ms ease; }' +
-        // What APPEARS (a hover's handle, a menu, an alert) fades in rather
-        // than being there all at once: it carries data-fade-in.
-        ' @keyframes mindevaFadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }' +
-        ' [data-fade-in] { animation: mindevaFadeIn 180ms ease-out; }' +
-        ' @media (prefers-reduced-motion: reduce) { div, span { transition: none !important; } [data-fade-in] { animation: none !important; } }'
+        // THE SOFT MOTION, stage 1 (see desktopTheme's MOTION):
+        // - a card (data-lift) rises two points under the pointer and settles
+        //   a hair smaller while pressed; a button settles too. Only where no
+        //   inline transform is already moving it (a drag, a FLIP);
+        // - what APPEARS (a menu, an alert, a sheet - data-fade-in) grows out
+        //   of where it came from, and what LEAVES (data-fade-out) shrinks
+        //   back and fades, a little quicker.
+        ` [data-lift]:not([style*="transform"]) { transition: transform ${MOTION.base}ms ${MOTION.ease}, background-color 180ms ease, box-shadow ${MOTION.base}ms ease, opacity 180ms ease; }` +
+        ' [data-lift]:not([style*="transform"]):hover { transform: translateY(-2px); }' +
+        ` [data-lift]:not([style*="transform"]):active { transform: translateY(0) scale(0.985); transition-duration: ${MOTION.fast}ms; }` +
+        ` [tabindex="0"]:not([data-lift]):not([style*="transform"]) { transition: transform ${MOTION.fast}ms ${MOTION.ease}, background-color 180ms ease, box-shadow 220ms ease, color 160ms ease, opacity 180ms ease; }` +
+        ' [tabindex="0"]:not([data-lift]):not([style*="transform"]):active { transform: scale(0.96); }' +
+        ` @keyframes mindevaFadeIn { from { opacity: 0; transform: scale(0.96) translateY(-3px); } to { opacity: 1; transform: none; } }` +
+        ` @keyframes mindevaFadeOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.97) translateY(-2px); } }` +
+        ` [data-fade-in] { animation: mindevaFadeIn ${MOTION.base}ms ${MOTION.ease}; transform-origin: top left; }` +
+        ` [data-fade-out] { animation: mindevaFadeOut ${MOTION.out}ms ease-in forwards; transform-origin: top left; pointer-events: none; }` +
+        ' [data-fade-in][data-origin="center"], [data-fade-out][data-origin="center"] { transform-origin: center; }' +
+        ' @media (prefers-reduced-motion: reduce) { div, span { transition: none !important; } [data-fade-in], [data-fade-out] { animation: none !important; } [data-lift]:hover, [data-lift]:active, [tabindex]:active { transform: none !important; } }'
       : '');
   document.head.appendChild(noRing);
 }

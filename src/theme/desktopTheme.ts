@@ -110,3 +110,15 @@ export function deskGlass(S: SoftTokens): { main: string; panel: string; mainRgb
     ? { main: 'rgba(0,0,0,0.42)', panel: 'rgba(28,28,30,0.4)', mainRgb: '0,0,0', mainAlpha: 0.42 }
     : { main: 'rgba(250,249,246,0.42)', panel: 'rgba(250,249,246,0.4)', mainRgb: '250,249,246', mainAlpha: 0.42 };
 }
+
+// MOTION (stage 1 of the soft motion, 2026-10-01): three durations and one
+// curve - a soft ease-out that arrives slowly, never a bounce. Everything the
+// laptop moves takes these (the CSS in App.web.tsx reads the same numbers).
+export const MOTION = {
+  fast: 160, // a press, a hover
+  base: 240, // a menu, a card rising
+  slow: 320, // a panel, a window
+  ease: 'cubic-bezier(0.22, 1, 0.36, 1)',
+  // What leaves goes quicker than what comes: 60% of the way in.
+  out: 140,
+} as const;

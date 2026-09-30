@@ -1,4 +1,6 @@
-import { ReactNode, useEffect } from 'react';
+import { MOTION } from '../theme/desktopTheme';
+import { useLeaving } from '../hooks/useLeaving';
+import { ReactNode, useEffect, useRef } from 'react';
 import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
@@ -50,7 +52,12 @@ export default function GlassLayer({
     return () => sub.remove();
   }, [visible, onClose]);
 
-  if (!visible) return null;
+  // At a pointer a window grows in and plays its way out, drawing what it
+  // showed last - the caller's own content may already be gone.
+  const { mounted, leaving } = useLeaving(visible, pointer ? MOTION.out : 0);
+  const lastChildren = useRef(children);
+  if (visible) lastChildren.current = children;
+  if (!mounted) return null;
 
   return (
     <GlassPortal>
@@ -73,7 +80,17 @@ export default function GlassLayer({
           that didn't land on a deeper child, which is what used to keep
           these lists from scrolling. */}
       <Pressable style={[StyleSheet.absoluteFill, pointer ? styles.dimLight : styles.dim]} onPress={onClose} />
-      {children}
+      {pointer ? (
+        <View
+          {...({ dataSet: leaving ? { fadeOut: '1', origin: 'center' } : { fadeIn: '1', origin: 'center' } } as object)}
+          style={styles.content}
+          pointerEvents="box-none"
+        >
+          {leaving ? lastChildren.current : children}
+        </View>
+      ) : (
+        children
+      )}
     </View>
     </GlassPortal>
   );
@@ -93,6 +110,16 @@ const styles = StyleSheet.create({
   },
   dim: {
     backgroundColor: GLASS_BACKDROP,
+  },
+  // The window's own layer (a pointer's), so it can grow in and out without
+  // the dim behind it moving: it fills the layer and centres as the layer did.
+  content: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
   },
   dimLight: {
     backgroundColor: 'rgba(0,0,0,0.12)',

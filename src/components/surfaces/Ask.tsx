@@ -1,3 +1,4 @@
+import { MOTION } from '../../theme/desktopTheme';
 import { useLift } from '../../theme/ThemeProvider';
 import { useEffect, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -141,10 +142,20 @@ export function AskHost() {
     };
   }, []);
 
+  // At a pointer the question plays its way out before the next one comes.
+  const [leaving, setLeaving] = useState(false);
   function answer(id: string) {
-    if (!current) return;
+    if (!current || leaving) return;
     queue = queue.filter((item) => item !== current);
     current.resolve(id);
+    if (pointer) {
+      setLeaving(true);
+      setTimeout(() => {
+        setLeaving(false);
+        setCurrent(queue[0] ?? null);
+      }, MOTION.out);
+      return;
+    }
     setCurrent(null);
     // Straight on to the next one, if the same moment raised two.
     setTimeout(() => setCurrent(queue[0] ?? null), 0);
@@ -162,6 +173,7 @@ export function AskHost() {
         actions={current.actions}
         at={current.anchor}
         onAnswer={answer}
+        leaving={leaving}
         tokens={softTokens}
       />
     );
@@ -176,6 +188,7 @@ export function AskHost() {
         actions={current.actions}
         at={current.clickAnchor}
         onAnswer={answer}
+        leaving={leaving}
         tokens={softTokens}
       />
     );
@@ -191,6 +204,7 @@ export function AskHost() {
         actions={current.actions}
         cancelLabel={cancelLabel}
         onAnswer={answer}
+        leaving={leaving}
         tokens={softTokens}
       />
     );
@@ -318,6 +332,7 @@ function MacAlert({
   actions,
   cancelLabel,
   onAnswer,
+  leaving,
   tokens: S,
 }: {
   title: string;
@@ -325,6 +340,7 @@ function MacAlert({
   actions: AskAction[];
   cancelLabel: string | null;
   onAnswer: (id: string) => void;
+  leaving?: boolean;
   tokens: ReturnType<typeof useSoft>;
 }) {
   const danger = S.dark ? '#FF7A6E' : '#C8452F';
@@ -366,7 +382,7 @@ function MacAlert({
     <View style={styles.alertFrame} pointerEvents="box-none">
       <View style={styles.alertDim} />
       <View
-        {...({ dataSet: { fadeIn: '1' } } as object)}
+        {...({ dataSet: leaving ? { fadeOut: '1', origin: 'center' } : { fadeIn: '1', origin: 'center' } } as object)}
         style={[
           styles.alert,
           { backgroundColor: S.card, boxShadow: S.popShadow, borderColor: S.line },
@@ -393,11 +409,13 @@ function AskPopover({
   actions,
   at,
   onAnswer,
+  leaving,
   tokens: S,
 }: {
   title: string;
   message?: string;
   actions: AskAction[];
+  leaving?: boolean;
   // Null: asked by nothing on screen - it stands in the middle, over a
   // barely dimmed app, like the alert.
   at: ContextPoint | null;
@@ -428,7 +446,7 @@ function AskPopover({
         {...({ onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}
       />
       <View
-        {...({ dataSet: { fadeIn: '1' } } as object)}
+        {...({ dataSet: leaving ? { fadeOut: '1' } : { fadeIn: '1' } } as object)}
         style={[
           styles.popover,
           { left, top, width: MENU_W, backgroundColor: S.card, boxShadow: S.popShadow, borderColor: S.line },

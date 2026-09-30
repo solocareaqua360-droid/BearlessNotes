@@ -1,3 +1,4 @@
+import { lift } from '../utils/lift';
 import { ReactNode } from 'react';
 import { rightClick } from '../utils/rightClick';
 import { softCardFrame, softRecordColours, useSoftSurface } from '../theme/soft';
@@ -102,7 +103,7 @@ export default function CustomRowCard({
   const soft = useSoftSurface();
   const { background, text, textMuted } = softRecordColours(soft, recordColour(rowId));
   return (
-    <View style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }]}>
+    <View {...lift()} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }]}>
       <Pressable
         style={styles.rowTap}
         onPress={onPress}
@@ -264,6 +265,7 @@ export function CustomRowGridCard({
   const hasCover = display.cover !== undefined;
   return (
     <Pressable
+      {...lift()}
       style={[gridStyles.tile, soft && softCardFrame(soft), width !== undefined && { width }, { backgroundColor: background }]}
       onPress={onPress}
       onLongPress={onLongPress}

@@ -1,3 +1,4 @@
+import { lift } from '../utils/lift';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInnerBack } from '../navigation/innerBack';
 import { rightClick } from '../utils/rightClick';
@@ -1728,6 +1729,7 @@ export default function DocumentsScreen({
                         }}
                         onLongPress={() => openFolderMenu(folder)}
                         {...rightClick(() => openFolderMenu(folder))}
+                      {...lift()}
                       >
                         <View style={[styles.softFolderIcon, { backgroundColor: soft.fill }]}>
                           {folder.tag?.icon ? (
@@ -1818,6 +1820,7 @@ export default function DocumentsScreen({
                       }}
                       onLongPress={() => openFolderMenu(folder)}
                       {...rightClick(() => openFolderMenu(folder))}
+                      {...lift()}
                     >
                       <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
                         <Ionicons

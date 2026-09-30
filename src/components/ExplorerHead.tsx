@@ -1,3 +1,4 @@
+import { lift } from '../utils/lift';
 import { cardRadius } from '../theme/scale';
 import { useState } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -76,6 +77,7 @@ export default function ExplorerHead({
       {folders.map((folder) => (
         <View key={folder.fullPath} ref={folderRef?.(folder.fullPath)} collapsable={false}>
           <Pressable
+            {...lift()}
             style={[styles.folderRow, rowWidth !== undefined && { width: rowWidth }]}
             onPress={() => onGo(folder.fullPath)}
             onLongPress={() => onFolderMenu(folder)}
@@ -105,7 +107,8 @@ export default function ExplorerHead({
 
       {!!trash && trash.count > 0 && path === '' && (
         <Pressable
-          style={[styles.folderRow, styles.trashRow, rowWidth !== undefined && { width: rowWidth }]}
+          {...lift()}
+            style={[styles.folderRow, styles.trashRow, rowWidth !== undefined && { width: rowWidth }]}
           onPress={trash.onOpen}
         >
           <View style={[styles.folderThumb, !soft && { borderColor: theme.ink.faint }]}>

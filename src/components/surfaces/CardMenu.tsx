@@ -1,4 +1,6 @@
-import { useLayoutEffect, useState } from 'react';
+import { MOTION } from '../../theme/desktopTheme';
+import { useLeaving } from '../../hooks/useLeaving';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '../icons/Ionicons';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -41,27 +43,33 @@ export default function CardMenu({
   useLayoutEffect(() => {
     if (visible && pointer) setAnchor(takeRecentContextPoint() ?? takeRecentClickPoint());
   }, [visible, pointer]);
+  // At a pointer it plays its way out, showing the rows it had - the
+  // caller's are already gone by then.
+  const { mounted, leaving } = useLeaving(visible, pointer ? MOTION.out : 0);
+  const lastRows = useRef(rows);
+  if (visible && rows.length > 0) lastRows.current = rows;
 
   if (pointer) {
-    const estimate = rows.length * 30 + 12;
+    const shownRows = leaving ? lastRows.current : rows;
+    const estimate = (leaving ? lastRows.current : rows).length * 30 + 12;
     const left = anchor ? Math.max(8, Math.min(anchor.x, width - MENU_W - 8)) : Math.max(8, (width - MENU_W) / 2);
     const top = anchor ? Math.max(8, Math.min(anchor.y, height - estimate - 8)) : Math.max(8, (height - estimate) / 2);
     const danger = S.dark ? '#FF7A6E' : '#C8452F';
     return (
-      <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
         <Pressable
           style={[styles.scrim, !anchor && { backgroundColor: 'rgba(0,0,0,0.12)' }]}
           onPress={onClose}
           {...({ onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}
         >
           <View
-            {...({ dataSet: { fadeIn: '1' } } as object)}
+            {...({ dataSet: leaving ? { fadeOut: '1' } : { fadeIn: '1' } } as object)}
             style={[
               styles.popover,
               { left, top, width: MENU_W, backgroundColor: S.card, borderColor: S.line, boxShadow: S.popShadow },
             ]}
           >
-            {rows.map((row) => (
+            {shownRows.map((row) => (
               <Pressable
                 key={row.label}
                 onPress={row.onPress}

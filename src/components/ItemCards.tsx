@@ -1,3 +1,4 @@
+import { lift } from '../utils/lift';
 import { cardRadius } from '../theme/scale';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { rightClick } from '../utils/rightClick';
@@ -202,6 +203,7 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
   return (
     <View
       ref={rest.cardRef}
+      {...lift()}
       collapsable={false}
       style={[styles.row, soft && softCardFrame(soft), rest.playing && styles.rowPlaying, { backgroundColor: background }, rest.dimmed && styles.dimmed]}
     >
@@ -284,6 +286,7 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
   return (
     <View
       ref={rest.cardRef}
+      {...lift()}
       collapsable={false}
       style={[
         styles.gridCard,
@@ -351,7 +354,8 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
   const preview = useFilePreview(file);
 
   return (
-    <View ref={rest.cardRef} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
+    <View ref={rest.cardRef}
+      {...lift()} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {/* The page picture at a video thumbnail's size - wide enough to
             recognise the document by its shape, small enough to leave the
@@ -413,6 +417,7 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
   return (
     <View
       ref={rest.cardRef}
+      {...lift()}
       collapsable={false}
       style={[
         styles.gridCard,
@@ -489,7 +494,8 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
   const docCount = photo.documentIds.length;
 
   return (
-    <View ref={rest.cardRef} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
+    <View ref={rest.cardRef}
+      {...lift()} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
       <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {status === 'ready' ? (
           <Image source={{ uri: source ?? photo.imageUri }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
@@ -545,6 +551,7 @@ export function PhotoCell({ photo, columns = 2, ...rest }: { photo: PhotoCardIte
   return (
     <Pressable
       ref={rest.cardRef}
+      {...lift()}
       collapsable={false}
       // Its share of the row from the row's own count - a fixed 46% made
       // three across 138% wide, and the third ran off the window.
