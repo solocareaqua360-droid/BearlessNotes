@@ -51,7 +51,6 @@ import { GlassPortal } from '../components/GlassPortal';
 import { useBlurTarget } from '../components/GlassTarget';
 import { railClear } from '../constants/rail';
 import { ask, confirm } from '../components/surfaces/Ask';
-import { useWorkspace } from '../navigation/workspace';
 import { listenError } from '../utils/listenError';
 
 // The "+" fill: the accent at half strength, since the blur behind it is
@@ -223,7 +222,6 @@ export default function BoardsListScreen({
   // In explorer mode the list is what is IN this folder; in the other two
   // it is everything the filters left.
   const boardsHere = explorer.visibleItems;
-  const workspace = useWorkspace();
 
   // Carrying a board into a folder - see useExplorerCarry.
   const carrying = useExplorerCarry<BoardItem>({
@@ -354,9 +352,6 @@ export default function BoardsListScreen({
     ask({
       title: board.title || 'Без назви',
       actions: [
-        // The laptop's: the board in a window of its own, whose arrows
-        // step through the boards shown here.
-        ...(workspace ? [{ id: 'window', label: 'Відкрити у вікні', icon: 'expand-outline' as const }] : []),
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
         { id: 'tags', label: 'Папки', icon: 'pricetag-outline' },
         // Only where there are folders to move it BETWEEN.
@@ -366,12 +361,6 @@ export default function BoardsListScreen({
         { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
       ],
     }).then(async (answer) => {
-      if (answer === 'window' && workspace) {
-        workspace.openWindow(
-          { kind: 'board', boardId: board.id },
-          boardsHere.map((b) => ({ kind: 'board' as const, boardId: b.id }))
-        );
-      }
       if (answer === 'rename') setRenamingBoard(board);
       if (answer === 'tags') setTagPickerBoardId(board.id);
       if (answer === 'delete') confirmDeleteBoard(board);

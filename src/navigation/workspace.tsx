@@ -35,10 +35,6 @@ export type Panel = {
   // How much of its column's height it takes next to the panels beside it
   // (a share, 1 by default) - what a drag on the line between two panels sets.
   weight?: number;
-  // The things a WINDOW steps through with its arrows (see openWindow) -
-  // the documents of the folder it was opened from, the boards of the
-  // list, the days of the diary. What it shows is always one of them.
-  sequence?: PaneTarget[];
 };
 
 export const COLUMN_MIN = 260;
@@ -71,20 +67,6 @@ type Workspace = {
   // The near column and the far one change places, widths going with them.
   swapColumns: () => void;
   toggleHidden: () => void;
-  // The panel drawn as a window: over the main pane and the other panels,
-  // from the rail to the right edge, under the tabs - a window's own
-  // "maximise". Null: none. Only one at a time.
-  maximized: string | null;
-  setMaximized: (id: string | null) => void;
-  // Where the tabs end, which is where a window's top edge goes.
-  areaTop: number;
-  setAreaTop: (top: number) => void;
-  // "Відкрити у вікні": a new panel on one thing, drawn as a window, whose
-  // arrows step through `sequence`.
-  openWindow: (target: PaneTarget, sequence: PaneTarget[]) => void;
-  // One of those steps: the panel shows `target` instead, its own history
-  // starting afresh.
-  stepTo: (id: string, target: PaneTarget) => void;
   // Everything at once - a saved workspace put back (workspaceTemplates).
   replaceAll: (state: { panels: Panel[]; widths: [number, number]; hidden: boolean }) => void;
   // Whether a panel of this kind is showing, for the buttons that open it.
@@ -114,8 +96,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [panels, setPanels] = useState<Panel[]>([]);
   const [hidden, setHidden] = useState(false);
   const [widths, setWidths] = useState<[number, number]>([COLUMN_DEFAULT, COLUMN_DEFAULT]);
-  const [maximizedId, setMaximizedId] = useState<string | null>(null);
-  const [areaTop, setAreaTop] = useState(0);
 
   const setWidth = useCallback(
     (column: 0 | 1, next: number) =>
@@ -180,28 +160,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setWidths((prev) => [prev[1], prev[0]]);
   }, []);
   const toggleHidden = useCallback(() => setHidden((v) => !v), []);
-  const setMaximized = useCallback((id: string | null) => {
-    setMaximizedId(id);
-    if (!id) return;
-    // A window is never folded, and is never inside a put-away side area.
-    setHidden(false);
-    setPanels((prev) => prev.map((p) => (p.id === id && p.folded ? { ...p, folded: false } : p)));
-  }, []);
-  const openWindow = useCallback((target: PaneTarget, sequence: PaneTarget[]) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    setHidden(false);
-    setPanels((prev) => [...prev, { id, kind: 'target', target, sequence, column: columnForNext(prev.length) }]);
-    setMaximizedId(id);
-  }, []);
-  const stepTo = useCallback(
-    (id: string, target: PaneTarget) =>
-      setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, target, stack: [] } : p))),
-    []
-  );
-  // Closed, or put away with the rest: no longer a window.
-  const maximized = maximizedId && !hidden && panels.some((p) => p.id === maximizedId) ? maximizedId : null;
   const replaceAll = useCallback((state: { panels: Panel[]; widths: [number, number]; hidden: boolean }) => {
-    setMaximizedId(null);
     setPanels(state.panels);
     setWidths(state.widths);
     setHidden(state.hidden);
@@ -217,8 +176,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<Workspace>(
-    () => ({ panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, toggleHidden, maximized, setMaximized, areaTop, setAreaTop, openWindow, stepTo, replaceAll, has, toggle }),
-    [panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, replaceAll, toggleHidden, maximized, setMaximized, areaTop, openWindow, stepTo, has, toggle]
+    () => ({ panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, toggleHidden, replaceAll, has, toggle }),
+    [panels, hidden, widths, setWidth, open, openAnother, close, pushInPanel, popInPanel, toggleFold, setWeight, swapPanels, swapColumns, replaceAll, toggleHidden, has, toggle]
   );
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

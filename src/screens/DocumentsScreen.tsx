@@ -94,7 +94,6 @@ import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useBlurTarget } from '../components/GlassTarget';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
-import { useWorkspace } from '../navigation/workspace';
 import TagEditSheet from '../components/TagEditSheet';
 import { listenError } from '../utils/listenError';
 
@@ -161,7 +160,6 @@ export default function DocumentsScreen({
   // list is the whole of this screen and a tapped document is pushed,
   // exactly as on a phone.
   const pointerDensity = useDensity() === 'pointer';
-  const workspace = useWorkspace();
   // Not where a cursor is pointing. The user's own conclusion, after
   // Craft: "документ можна відкрити тільки на повний екран... на фолді
   // це здавалось зручним а на ноутбуці ні". And the pane is where most
@@ -341,29 +339,6 @@ export default function DocumentsScreen({
   // there, so what can be done with the selection is already under the
   // thumb. What the old hold menu offered stays reachable from that card:
   // «Перемістити», «Перейменувати» (one card) and «Видалити».
-  // The laptop's right button (and a held mouse): the note in a window of
-  // its own, whose arrows step through the notes of this folder - or the
-  // hold's usual job, choosing it. The phone's hold is unchanged.
-  function holdDocument(item: DocumentItem) {
-    if (!workspace || isSelectMode) {
-      selectFromHold(item);
-      return;
-    }
-    ask({
-      title: item.title || 'Без назви',
-      actions: [
-        { id: 'window', label: 'Відкрити у вікні', icon: 'expand-outline' },
-        { id: 'select', label: 'Вибрати', icon: 'checkmark-circle-outline' },
-      ],
-    }).then((answer) => {
-      if (answer === 'window') {
-        workspace.openWindow(
-          { kind: 'note', documentId: item.id },
-          explorer.visibleItems.map((d) => ({ kind: 'note' as const, documentId: d.id }))
-        );
-      } else if (answer === 'select') selectFromHold(item);
-    });
-  }
   function selectFromHold(item: DocumentItem) {
     if (isSelectMode) {
       toggleSelected(item.id);
@@ -1966,7 +1941,7 @@ export default function DocumentsScreen({
                   checklistItems={checklistItems}
                   onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}
                   onLongPress={
-                    carried ? undefined : () => (trashOpen ? openTrashMenu(item) : holdDocument(item))
+                    carried ? undefined : () => (trashOpen ? openTrashMenu(item) : selectFromHold(item))
                   }
                   isSelectMode={isSelectMode}
                   isSelected={selectedIds.has(item.id)}
@@ -1997,7 +1972,7 @@ export default function DocumentsScreen({
                   project={groups.find((g) => g.id === item.groupId) ?? null}
                   onProjectPress={() => setSingleGroupTargetId(item.id)}
                   soft={soft}
-                  {...(carried ? carrying.cardProps(item, () => holdDocument(item)) : {})}
+                  {...(carried ? carrying.cardProps(item, () => selectFromHold(item)) : {})}
                 />
               );
               // In the wide column the card brings the side margin

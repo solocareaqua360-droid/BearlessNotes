@@ -23,8 +23,6 @@ import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { railClear } from '../constants/rail';
 import { withAlpha } from '../utils/color';
-import { ask } from '../components/surfaces/Ask';
-import { useWorkspace } from '../navigation/workspace';
 
 type Sheet = DocumentItem & { calendarDate?: string };
 
@@ -77,30 +75,6 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
       () => setSheets([])
     );
   }, []);
-
-  // The laptop's right button: the day in a window of its own, whose
-  // arrows step through the days shown here (the filled ones - the only
-  // ones the diary lists).
-  const workspace = useWorkspace();
-  function holdDay(item: Sheet) {
-    if (!workspace || !item.calendarDate) return;
-    const date = item.calendarDate;
-    ask({
-      title: dateLabel(item),
-      actions: [{ id: 'window', label: 'Відкрити у вікні', icon: 'expand-outline' }],
-    }).then((answer) => {
-      if (answer !== 'window') return;
-      workspace.openWindow(
-        { kind: 'day', date },
-        // In the calendar's order whatever the list's: ← the day before,
-        // → the day after.
-        list.displayed
-          .flatMap((d) => (d.calendarDate ? [d.calendarDate] : []))
-          .sort()
-          .map((d) => ({ kind: 'day' as const, date: d }))
-      );
-    });
-  }
 
   const dateLabel = (item: Sheet) =>
     item.calendarDate ? formatShortDate(parseDateKey(item.calendarDate)) : item.title || 'Без назви';
@@ -218,7 +192,6 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
                 layout={grid ? 'grid' : 'list'}
                 gridWidth={grid ? Math.floor((listWidth - 20 - 12) / 2) : undefined}
                 onPress={() => item.calendarDate && setOpenDate(item.calendarDate)}
-                onLongPress={workspace && item.calendarDate ? () => holdDay(item) : undefined}
               />
             );
           })}

@@ -1,7 +1,6 @@
 import { GRID_TILES, WIDE_TILES } from '../constants/databaseTiles';
 import type { PaneTarget } from './paneTarget';
 import { navigationRef } from '../navigationRef';
-import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 
 // What a PaneTarget is called and drawn with, off the database tiles - one
 // source, so a panel's header says what the tile it came from said. A
@@ -20,9 +19,6 @@ export function targetInfo(target: PaneTarget, name?: string | null): { icon: st
             ? tiles.find((t) => t.route === target.route)
             : undefined;
   if (target.kind === 'custom') return { icon: 'grid-outline', title: name || 'База' };
-  if (target.kind === 'note') return { icon: 'document-text-outline', title: name || 'Без назви' };
-  if (target.kind === 'board') return { icon: 'easel-outline', title: name || 'Дошка' };
-  if (target.kind === 'day') return { icon: 'book-outline', title: formatShortDate(parseDateKey(target.date)) };
   if (target.kind === 'boards') return { icon: 'easel-outline', title: 'Дошки' };
   return { icon: tile?.icon ?? 'apps-outline', title: tile?.label ?? 'База' };
 }
@@ -36,9 +32,6 @@ export function navigateToTarget(target: PaneTarget): void {
   else if (target.kind === 'links') go('Links', { category: target.category });
   else if (target.kind === 'documents') go('Tabs', { screen: 'Документи' });
   else if (target.kind === 'boards') go('Tabs', { screen: 'Дошки' });
-  else if (target.kind === 'note') go('Editor', { documentId: target.documentId });
-  else if (target.kind === 'board') go('Tabs', { screen: 'Дошки', params: { screen: 'Board', params: { boardId: target.boardId } } });
-  else if (target.kind === 'day') go('Tabs', { screen: 'Календар', params: { jumpToDate: target.date } });
   else go(target.route);
 }
 

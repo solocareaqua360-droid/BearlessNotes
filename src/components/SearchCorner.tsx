@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost from './DockFrost';
 import { GlassIcon } from './GlassDrop';
 import { GlassPortal } from './GlassPortal';
-import { useWorkspace } from '../navigation/workspace';
 import { Ionicons } from './icons/Ionicons';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { useSoft } from '../theme/soft';
@@ -75,7 +74,6 @@ export default function SearchCorner({
   const frame = useContext(LayoutFrameContext);
   const inPanel = pointer && !!frame;
   const railWidth = useDesktopRailWidth();
-  const underWindow = !!useWorkspace()?.maximized;
   const full = inPanel ? Math.min(320, (frame?.width ?? 320) - 24) : pointer ? 320 : dockRowWidth(windowWidth);
   const left = inPanel ? 12 : pointer ? railWidth + 16 : dockRowLeft(windowWidth);
   const expanded = open && !!onClose;
@@ -95,9 +93,7 @@ export default function SearchCorner({
     return () => clearTimeout(id);
   }, [expanded]);
 
-  // A panel drawn as a window stands over the main pane - and over its
-  // corner, which draws through the window's own portal, above everything.
-  if (!visible || startFront || (!inPanel && underWindow)) return null;
+  if (!visible || startFront) return null;
   return (
     <GlassPortal>
       <Animated.View
