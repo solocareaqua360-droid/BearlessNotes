@@ -28,9 +28,44 @@ export type Tab = { key: string; kind: TabKind; ref: string; seq?: string[] };
 
 const STORAGE_KEY = 'mindeva.desktopTabs';
 
+// IN THE MAC APP the row is kept in a file the shell writes whole
+// (/__desktop/state - see desktop/main.js), not only in localStorage, which
+// came back older after some relaunches. Read synchronously, once, at start -
+// the row is drawn from it on the first frame. localStorage stays as the
+// browser's own keep and the fallback.
+function inShell(): boolean {
+  try {
+    return typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('desktop') === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function readShellState(key: string): string | null {
+  if (!inShell()) return null;
+  try {
+    const request = new XMLHttpRequest();
+    request.open('GET', `/__desktop/state/${key}`, false);
+    request.send();
+    return request.status === 200 ? request.responseText : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeShellState(key: string, json: string): void {
+  if (!inShell()) return;
+  try {
+    fetch(`/__desktop/state/${key}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: json, keepalive: true }).catch(() => {});
+  } catch {
+    // The next change writes it again.
+  }
+}
+
 function load(): Tab[] {
   try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+    const raw =
+      readShellState('desktopTabs') ?? (typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null);
     const parsed = raw ? (JSON.parse(raw) as Tab[]) : [];
     // The start page is never brought back from a restart: it is a moment,
     // not a place.
@@ -44,6 +79,7 @@ let tabs: Tab[] = load();
 const listeners = new Set<() => void>();
 
 function notify() {
+  writeShellState('desktopTabs', JSON.stringify(tabs));
   try {
     if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs));
   } catch {
@@ -233,7 +269,8 @@ const RECENT_MAX = 30;
 
 function loadRecent(): RecentPlace[] {
   try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(RECENT_KEY) : null;
+    const raw =
+      readShellState('recentPlaces') ?? (typeof localStorage !== 'undefined' ? localStorage.getItem(RECENT_KEY) : null);
     const parsed = raw ? (JSON.parse(raw) as RecentPlace[]) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -247,6 +284,7 @@ const recentListeners = new Set<() => void>();
 export function noteRecent(kind: RecentPlace['kind'], ref: string): void {
   if (recent[0]?.kind === kind && recent[0]?.ref === ref) return;
   recent = [{ kind, ref, at: Date.now() }, ...recent.filter((r) => !(r.kind === kind && r.ref === ref))].slice(0, RECENT_MAX);
+  writeShellState('recentPlaces', JSON.stringify(recent));
   try {
     if (typeof localStorage !== 'undefined') localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
   } catch {

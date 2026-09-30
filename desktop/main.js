@@ -302,6 +302,50 @@ async function serveDesktopApi(req, res, pathname) {
     return done(405, { error: 'method not allowed' });
   }
 
+  // The window's own state, kept in a FILE beside the settings rather than
+  // in the page's localStorage: the tab row came back older, or empty, after
+  // some relaunches (2026-09-30/10-01) - Chromium writes localStorage
+  // lazily and a write cut short falls back to an older one. A file written
+  // whole and renamed into place cannot be half there.
+  //   GET  /__desktop/state/<key>  -> the JSON, or 404
+  //   PUT  /__desktop/state/<key>  <- the JSON
+  if (pathname.startsWith('/__desktop/state/')) {
+    const key = pathname.slice('/__desktop/state/'.length);
+    if (!SAFE_ID.test(key)) return done(400, { error: 'bad key' });
+    const dir = path.join(app.getPath('userData'), 'state');
+    const file = path.join(dir, key + '.json');
+    if (req.method === 'GET') {
+      let text;
+      try {
+        text = fs.readFileSync(file, 'utf8');
+      } catch {
+        return done(404);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(text);
+      return undefined;
+    }
+    if (req.method === 'PUT') {
+      let bytes;
+      try {
+        bytes = await readBytes(req, 1024 * 1024);
+        JSON.parse(bytes.toString('utf8'));
+      } catch {
+        return done(400, { error: 'not json' });
+      }
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+        const temporary = file + '.part';
+        fs.writeFileSync(temporary, bytes);
+        fs.renameSync(temporary, file);
+      } catch (e) {
+        return done(500, { error: String(e) });
+      }
+      return done(204);
+    }
+    return done(405, { error: 'method not allowed' });
+  }
+
   if (pathname === '/__desktop/handoff/clear' && req.method === 'POST') {
     handoff = null;
     return done(204);
