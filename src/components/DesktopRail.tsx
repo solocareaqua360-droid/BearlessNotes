@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { useRailPanel, useRailTree } from '../navigation/navRail';
 import { useInnerBackNow } from '../navigation/innerBack';
+import { useStartFront } from '../navigation/desktopTabs';
 import { useMainPaneUp } from '../navigation/mainPaneUp';
 import { navigationRef } from '../navigationRef';
 import { useWorkspace } from '../navigation/workspace';
@@ -63,6 +64,9 @@ function buildTree(paths: string[]): Node[] {
 export default function DesktopRail({ footer }: { footer?: ReactNode }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
+  // The folders of the screen under the start page are not what is on
+  // show while the start page is - home stands over the documents list.
+  const startFront = useStartFront();
   const tree = useRailTree();
   const panel = useRailPanel();
   // The way OUT of a screen that was pushed over the tabs - a board, a
@@ -226,7 +230,7 @@ export default function DesktopRail({ footer }: { footer?: ReactNode }) {
       {/* Saved windows - see navigation/workspaceTemplates. */}
       {!!workspace && !narrow && <TemplatesGroup />}
 
-      {!!tree && !narrow && (
+      {!!tree && !narrow && !startFront && (
         <>
           <View style={styles.rule} />
           {!!tree.onNewFolder && (

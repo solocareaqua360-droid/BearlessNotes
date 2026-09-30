@@ -4,7 +4,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Ionicons } from './icons/Ionicons';
 import { StackActions } from '@react-navigation/native';
-import { START_KEY, addTab, closeTab, leaveStart, noteRecent, openStart, showStart, stepTab, tabKey, useOpenTabs, useStartFront, type Tab } from '../navigation/desktopTabs';
+import { START_KEY, addTab, closeTab, leaveStart, noteRecent, openHome, openStart, showStart, stepTab, tabKey, useOpenTabs, useStartFront, useStartIsHome, type Tab } from '../navigation/desktopTabs';
 import { useSoft } from '../theme/soft';
 import { formatShortDate, parseDateKey } from '../utils/dateLocale';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';
@@ -29,6 +29,8 @@ const NO_DRAG = { WebkitAppRegion: 'no-drag' } as never;
 
 // The whole sections a tab can be, and how the «+» offers them.
 const SECTIONS: { ref: string; label: string; icon: string }[] = [
+  // The documents list is a tab like the rest now - the ⌂ is the start page.
+  { ref: 'Документи', label: 'Документи', icon: 'document-text-outline' },
   { ref: 'Календар', label: 'Календар', icon: 'calendar-outline' },
   { ref: 'Дошки', label: 'Дошки', icon: 'easel-outline' },
   { ref: 'Більше', label: 'Бази', icon: 'apps-outline' },
@@ -68,7 +70,7 @@ export function placeNow(): Place {
     case 'Diary':
       return { kind: 'target', ref: JSON.stringify({ kind: 'route', route: name }) };
     case 'Документи':
-      return { kind: 'home' };
+      return { kind: 'section', ref: 'Документи' };
     case 'BoardsList':
       return { kind: 'section', ref: 'Дошки' };
     case 'Календар':
@@ -81,19 +83,42 @@ export function placeNow(): Place {
   }
 }
 
+// THE HOME: the start page, with the documents list put under it rather
+// than whatever was open - a note left under it showed its badge through.
+// The page comes up once the navigator has moved, because the row hides
+// the start page on every move and runs first.
+export function goHome() {
+  if (!navigationRef.isReady() || (navigationRef.getCurrentRoute()?.name as string | undefined) === 'Документи') {
+    openHome();
+    return;
+  }
+  let done = false;
+  const off = navigationRef.addListener('state', () => {
+    off();
+    done = true;
+    openHome();
+  });
+  navigationRef.navigate('Tabs', { screen: 'Документи' } as never);
+  // A move that changes nothing tells nobody.
+  setTimeout(() => {
+    if (done) return;
+    off();
+    openHome();
+  }, 400);
+}
+
 export function go(tab: Tab | null) {
   if (tab?.kind === 'start') {
     showStart(true);
     return;
   }
+  if (tab === null) {
+    goHome();
+    return;
+  }
   showStart(false);
   if (!navigationRef.isReady()) return;
   const current = navigationRef.getCurrentRoute()?.name;
-  if (tab === null) {
-    if (current === 'Editor') navigationRef.goBack();
-    else navigationRef.navigate('Tabs', { screen: 'Документи' } as never);
-    return;
-  }
   if (tab.kind === 'target') {
     try {
       navigateToTarget(JSON.parse(tab.ref) as PaneTarget);
@@ -274,6 +299,7 @@ export default function DesktopTabs() {
   const tabs = useOpenTabs();
   const [place, setPlace] = useState<Place>(null);
   const startFront = useStartFront();
+  const startIsHome = useStartIsHome();
   const narrow = useDesktopNarrow();
 
   // Which one is in front. Read off the navigator rather than kept here, so
@@ -281,9 +307,15 @@ export default function DesktopTabs() {
   // «Пов'язані», the back button. A note, a board or a database opened by
   // ANY route also becomes a tab here, so no screen has to register itself.
   useEffect(() => {
+    // What it read last: an event that leaves the navigator where it was
+    // (params settling, a screen's own setParams) is not a move.
+    let last: string | undefined;
     const read = () => {
       const now = placeNow();
       setPlace(now);
+      const key = !now ? '' : now.kind === 'home' ? 'home' : `${now.kind}:${now.ref}`;
+      if (key === last) return;
+      last = key;
       // The navigator moved: whatever stood in front of it gives way.
       showStart(false);
       if (now && (now.kind === 'note' || now.kind === 'board' || now.kind === 'database' || now.kind === 'target' || now.kind === 'file')) {
@@ -292,11 +324,28 @@ export default function DesktopTabs() {
       }
     };
     read();
-    return navigationRef.addListener('state', read);
+    const off = navigationRef.addListener('state', read);
+    // The app opens at home - once the navigator is there to open it over.
+    let waiting: ReturnType<typeof setTimeout> | undefined;
+    const launch = () => {
+      if (!navigationRef.isReady()) {
+        waiting = setTimeout(launch, 50);
+        return;
+      }
+      read();
+      goHome();
+    };
+    launch();
+    return () => {
+      off();
+      if (waiting) clearTimeout(waiting);
+    };
   }, []);
 
   const activeKey = startFront
-    ? START_KEY
+    ? startIsHome
+      ? 'home'
+      : START_KEY
     : place === null
       ? null
       : place.kind === 'home'

@@ -81,6 +81,7 @@ export function openTabWithSequence(kind: TabKind, ref: string, seq: string[]): 
     const tab = { key, kind, ref, seq };
     tabs = tabs.flatMap((t, i) => (i === startAt ? [tab] : t.key === key ? [] : [t]));
     startFront = false;
+    startIsHome = false;
     startSlot = null;
     notify();
     return tab;
@@ -139,21 +140,56 @@ export function useOpenTabs(): Tab[] {
 // row, keeping its place, if another tab is chosen instead.
 export const START_KEY = 'start:new';
 let startFront = false;
+// THE HOME (2026-09-30, the user's): the ⌂ at the row's start is the start
+// page now, not the documents list. The same page, standing in front with
+// no tab of its own in the row - so opening something from it adds a tab
+// and leaves the home where it is.
+let startIsHome = false;
+
+export function openHome(): void {
+  startFront = true;
+  startIsHome = true;
+  startSlot = null;
+  notify();
+}
+
+export function useStartIsHome(): boolean {
+  const [value, setValue] = useState(startIsHome);
+  useEffect(() => {
+    const listener = () => setValue(startIsHome);
+    listeners.add(listener);
+    listener();
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
+  return value;
+}
 
 export function openStart(): void {
   if (!tabs.some((t) => t.key === START_KEY)) tabs = [...tabs, { key: START_KEY, kind: 'start', ref: 'new' }];
   startFront = true;
+  startIsHome = false;
   notify();
 }
 
 export function showStart(front: boolean): void {
-  if (startFront === front) return;
+  if (startFront === front && (!front || !startIsHome)) return;
   startFront = front;
+  if (front) startIsHome = false;
   notify();
 }
 
 // Something was opened from the start page: the page gives way to it.
 export function leaveStart(): void {
+  // The home gives way and stays home: nothing in the row to fill.
+  if (startFront && startIsHome) {
+    startFront = false;
+    startIsHome = false;
+    startSlot = null;
+    notify();
+    return;
+  }
   const at = tabs.findIndex((t) => t.key === START_KEY);
   startSlot = at === -1 ? null : at;
   tabs = tabs.filter((t) => t.key !== START_KEY);
@@ -170,6 +206,7 @@ export function turnIntoStart(key: string): void {
   const start: Tab = { key: START_KEY, kind: 'start', ref: 'new' };
   tabs = at === -1 ? [...rest, start] : rest.map((t, i) => (i === at ? start : t));
   startFront = true;
+  startIsHome = false;
   startSlot = null;
   notify();
 }
@@ -240,5 +277,6 @@ export function getTabs(): Tab[] {
 export function replaceTabs(next: Tab[]): void {
   tabs = next.filter((t) => t && typeof t.key === 'string' && t.kind !== 'start');
   startFront = false;
+  startIsHome = false;
   notify();
 }

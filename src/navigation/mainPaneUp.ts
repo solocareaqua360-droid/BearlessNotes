@@ -4,7 +4,7 @@ import { tabKey, turnIntoStart, useStartFront } from './desktopTabs';
 import { useWorkspace } from './workspace';
 import { targetFromRoute } from './paneTargetInfo';
 import { flashDatabase } from './databaseFlash';
-import { placeNow } from '../components/DesktopTabs';
+import { goHome, placeNow } from '../components/DesktopTabs';
 
 // THE LEVEL ABOVE a screen in the main pane - where its back arrow goes when
 // the screen has no step of its own left (see innerBack). By what the
@@ -63,9 +63,10 @@ UP.FileView = () => {
   if (id) startInPlaceOf(tabKey('file', id));
   else TO_HOME();
 };
-UP.Settings = TO_HOME;
-UP.Search = TO_HOME;
-UP.DocumentsCopy = TO_HOME;
+// Home is the start page (see DesktopTabs' goHome).
+UP.Settings = () => goHome();
+UP.Search = () => goHome();
+UP.DocumentsCopy = () => goHome();
 UP.Board = go('Tabs', { screen: 'Дошки', params: { screen: 'BoardsList' } });
 UP.BoardCopy = go('BoardsCopy');
 for (const name of ['CustomDatabase', 'Links', 'Photos', 'Files', 'Stickers', 'Flashcards', 'Tasks', 'Tags', 'Groups', 'Diary', 'Chat', 'TagItems', 'BoardsCopy']) {

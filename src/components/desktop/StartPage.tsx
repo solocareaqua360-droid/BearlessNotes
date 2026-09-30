@@ -296,6 +296,8 @@ export default function StartPage() {
   };
 
   const sections: { key: string; label: string; icon: string; ref: string }[] = [
+    // The documents list's way in, now that the ⌂ is this page.
+    { key: 'docs', label: 'Документи', icon: 'document-text-outline', ref: 'Документи' },
     { key: 'cal', label: 'Календар', icon: 'calendar-outline', ref: 'Календар' },
     { key: 'boards', label: 'Дошки', icon: 'easel-outline', ref: 'Дошки' },
     { key: 'dbs', label: 'Бази', icon: 'apps-outline', ref: 'Більше' },
