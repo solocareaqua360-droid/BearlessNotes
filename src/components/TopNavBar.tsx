@@ -1,4 +1,5 @@
 import { Ionicons } from './icons/Ionicons';
+import { dockVeil } from '../utils/dockVeil';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput, useWindowDimensions, View, ViewStyle } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -486,8 +487,18 @@ function Glyph({ name, size, color, soft }: { name: string; size: number; color:
 
 // Where the bar is drawn: over the whole window through the glass layer,
 // or - inline - right where it is in the tree, covering what it is in.
+// Over the whole window it steps aside with the dock while a page grows out
+// of its card or folds back into it (utils/dockVeil) - the bar belongs to the
+// focused screen too, and jumped from the note's to the list's at the end.
 function PortalLayer({ children }: { children: ReactNode }) {
-  return <GlassPortal priority={1}>{children}</GlassPortal>;
+  const veil = useAnimatedStyle(() => ({ opacity: dockVeil.value }));
+  return (
+    <GlassPortal priority={1}>
+      <Animated.View style={[StyleSheet.absoluteFill, veil]} pointerEvents="box-none">
+        {children}
+      </Animated.View>
+    </GlassPortal>
+  );
 }
 
 function InlineLayer({ children }: { children: ReactNode }) {
