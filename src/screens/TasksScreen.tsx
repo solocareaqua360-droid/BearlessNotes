@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Keyboard,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -51,7 +52,7 @@ import UndoToast from '../components/UndoToast';
 import { useSortPref } from '../hooks/useSortPref';
 import { cancelReminder, scheduleReminder, type ReminderKind } from '../utils/reminders';
 import { formatShortDate, parseDateKey, WEEKDAY_FULL } from '../utils/dateLocale';
-import { createTaskInToday, createTaskOnDate } from '../utils/copyToNote';
+import { blockFromPhoto, createTaskInToday, createTaskOnDate } from '../utils/copyToNote';
 import { sortItems } from '../utils/sortItems';
 import ContentColumn from '../components/ContentColumn';
 import { BlurView } from 'expo-blur';
@@ -66,7 +67,8 @@ import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import RenamePrompt from '../components/RenamePrompt';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { confirm, notify } from '../components/surfaces/Ask';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
+import { pickPhotosFromDevice } from '../utils/photoLibrary';
 
 // The foot the list keeps clear for the dock - the same reckoning
 // DatabaseChrome makes.
@@ -165,6 +167,10 @@ export default function TasksScreen() {
   const desk = useContext(DeskContext);
   const route = useRoute<RouteProp<RootStackParamList, 'Tasks'>>();
   const [tasks, setTasks] = useState<Task[]>([]);
+  // The latest list for work that finishes after an await (a photo picked
+  // from the phone) - the render's own `tasks` is stale by then.
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
   const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [kanbanMode, setKanbanMode] = useState(false);
@@ -690,8 +696,44 @@ export default function TasksScreen() {
   }
 
   function addAttachment(task: Task, block: Block) {
-    const next = [...(task.attachments ?? []), block];
+    addAttachments(task, [block]);
+  }
+
+  function addAttachments(task: Task, blocks: Block[]) {
+    const next = [...(task.attachments ?? []), ...blocks];
     updateTaskBothSides(task, { attachments: next }, (b) => ({ ...b, attachments: next }));
+  }
+
+  // A file or photo already in the databases, or a photo straight from the
+  // phone - a new Photos record (backed up to Drive like any photo), which
+  // the gallery then hides as a technical one: attached to a record and
+  // used in no note (see useRecordPhotoIds). The same three ways in as a
+  // link's card. The browser has no camera to offer; its "gallery" is a
+  // file chooser.
+  async function askAttachSource(task: Task) {
+    const web = Platform.OS === 'web';
+    const answer = await ask({
+      title: 'Додати файл або фото',
+      actions: web
+        ? [
+            { id: 'library', label: 'Із «Файлів» чи «Зображень»', icon: 'images-outline' },
+            { id: 'gallery', label: 'Фото з комп’ютера', icon: 'laptop-outline' },
+          ]
+        : [
+            { id: 'library', label: 'Із «Файлів» чи «Зображень»', icon: 'images-outline' },
+            { id: 'gallery', label: 'Галерея телефону', icon: 'phone-portrait-outline' },
+            { id: 'camera', label: 'Камера', icon: 'camera-outline' },
+          ],
+    });
+    if (answer === 'library') {
+      setAttachTaskId(task.id);
+      return;
+    }
+    if (answer !== 'gallery' && answer !== 'camera') return;
+    const added = await pickPhotosFromDevice(answer);
+    if (added.length === 0) return;
+    const latest = tasksRef.current.find((t) => t.id === task.id) ?? task;
+    addAttachments(latest, added.map((p) => blockFromPhoto(p)));
   }
 
   function removeAttachment(task: Task, attachmentId: string) {
@@ -1358,7 +1400,7 @@ export default function TasksScreen() {
             ))}
           </View>
         )}
-        <Pressable style={styles.attachButton} onPress={() => setAttachTaskId(item.id)}>
+        <Pressable style={styles.attachButton} onPress={() => askAttachSource(item)}>
           <Ionicons name="attach-outline" size={16} color={accent} />
           <Text style={[styles.attachButtonText, { color: accent }]}>Додати файл або фото</Text>
         </Pressable>
