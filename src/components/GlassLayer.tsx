@@ -3,6 +3,7 @@ import { useLeaving } from '../hooks/useLeaving';
 import { ReactNode, useEffect, useRef } from 'react';
 import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
 import { GLASS_BACKDROP } from '../constants/glass';
@@ -52,9 +53,10 @@ export default function GlassLayer({
     return () => sub.remove();
   }, [visible, onClose]);
 
-  // At a pointer a window grows in and plays its way out, drawing what it
-  // showed last - the caller's own content may already be gone.
-  const { mounted, leaving } = useLeaving(visible, pointer ? MOTION.out : 0);
+  // A window grows in and plays its way out, drawing what it showed last -
+  // the caller's own content may already be gone. At a pointer by CSS, on
+  // the phone by GrowIn below (the soft motion, 2026-10-02).
+  const { mounted, leaving } = useLeaving(visible, MOTION.out);
   const lastChildren = useRef(children);
   if (visible) lastChildren.current = children;
   if (!mounted) return null;
@@ -89,10 +91,34 @@ export default function GlassLayer({
           {leaving ? lastChildren.current : children}
         </View>
       ) : (
-        children
+        <GrowIn leaving={leaving}>{leaving ? lastChildren.current : children}</GrowIn>
       )}
     </View>
     </GlassPortal>
+  );
+}
+
+// THE PHONE'S WINDOW COMING AND GOING: it grows in from a little smaller
+// and fades up, and plays the same way out. Only the window - the blur
+// behind it stays as it was: a live blur that animates is the one thing
+// that has frozen this app (see the live-blur memory).
+const IN_MS = 220;
+const SMALL = 0.96;
+function GrowIn({ leaving, children }: { leaving: boolean; children: ReactNode }) {
+  const shown = useSharedValue(0);
+  useEffect(() => {
+    shown.value = leaving
+      ? withTiming(0, { duration: MOTION.out, easing: Easing.in(Easing.cubic) })
+      : withTiming(1, { duration: IN_MS, easing: Easing.bezier(0.22, 1, 0.36, 1) });
+  }, [leaving, shown]);
+  const style = useAnimatedStyle(() => ({
+    opacity: shown.value,
+    transform: [{ scale: SMALL + (1 - SMALL) * shown.value }],
+  }));
+  return (
+    <Animated.View style={[styles.content, style]} pointerEvents={leaving ? 'none' : 'box-none'}>
+      {children}
+    </Animated.View>
   );
 }
 
