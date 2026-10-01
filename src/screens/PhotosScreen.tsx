@@ -1032,6 +1032,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             folderPaths={explorer.allFolderPaths}
             folderOf={(photo) => explorer.folderOf(photo as PhotoItem)}
             onMove={(photo, folder) => explorer.moveItem(photo as PhotoItem, folder)}
+            onMoveFolder={(path, parent) => explorer.renameFolder(path, parent ? `${parent}/${nameOf(path)}` : nameOf(path))}
             onOpenPhoto={(photo) => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id))}
             onPhotoMenu={(photo) => openPhotoMenu(photo as PhotoItem)}
             topPad={listTopPad}

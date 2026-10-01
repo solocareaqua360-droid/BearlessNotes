@@ -9,6 +9,7 @@ import { useSoft } from '../theme/soft';
 import { withAlpha } from '../utils/color';
 import AttachmentImage from './AttachmentImage';
 import { Ionicons } from './icons/Ionicons';
+import { notify } from './surfaces/Ask';
 
 // «ПОЛОТНО» FOR PHOTOS (the user's, 2026-10-02): a table the photos are
 // poured out on, like a puzzle - "висипаємо на стіл, збираємо маленькі
@@ -25,8 +26,12 @@ import { Ionicons } from './icons/Ionicons';
 // Positions (the loose photos', the nodes') and which folders are open are
 // kept in settings/photoCanvas, so the table is the same on both devices.
 //
-// Step one. Still to come: "Додати в іншу" (pale copies), piles, the
-// rectangle selection, a new folder, a folder dropped into a folder.
+// A folder - a node, or a sub-folder's line in an island - is carried the
+// same way: onto another folder it goes inside it, onto the table it
+// becomes a top-level folder where it was let go.
+//
+// Still to come: "Додати в іншу" (pale copies), piles, the rectangle
+// selection, a new folder.
 
 export type CanvasPhoto = { id: string; imageUri: string; driveFileId?: string; title?: string };
 
@@ -74,6 +79,7 @@ export default function PhotoCanvas({
   folderPaths,
   folderOf,
   onMove,
+  onMoveFolder,
   onOpenPhoto,
   onPhotoMenu,
   topPad,
@@ -82,6 +88,8 @@ export default function PhotoCanvas({
   folderPaths: string[];
   folderOf: (photo: CanvasPhoto) => string | null;
   onMove: (photo: CanvasPhoto, folder: string | null) => Promise<void>;
+  // A folder put into another (or, null, out to the top level).
+  onMoveFolder: (path: string, parent: string | null) => Promise<void>;
   onOpenPhoto: (photo: CanvasPhoto) => void;
   onPhotoMenu: (photo: CanvasPhoto) => void;
   topPad: number;
@@ -230,18 +238,24 @@ export default function PhotoCanvas({
 
   // ---- what is under a point ------------------------------------------------
   // Smallest first: a sub-folder line inside an island beats the island.
-  const targetAt = (wx: number, wy: number): string | null => {
+  // `exclude`: a folder being carried - it is never its own target, nor is
+  // anything inside it.
+  const targetAt = (wx: number, wy: number, exclude: string | null = null): string | null => {
+    const skip = (path: string) => exclude !== null && (path === exclude || path.startsWith(`${exclude}/`));
     for (const island of islands) {
       for (const chip of island.chips) {
+        if (skip(chip.path)) continue;
         if (wx >= chip.x && wx <= chip.x + chip.w && wy >= chip.y && wy <= chip.y + CHIP_H) return chip.path;
       }
     }
     for (const node of nodes) {
+      if (skip(node.path)) continue;
       if (wx >= node.x && wx <= node.x + NODE_W && wy >= node.y && wy <= node.y + NODE_H) return node.path;
     }
     // The deepest island the point is in.
     let best: Island | null = null;
     for (const island of islands) {
+      if (skip(island.path)) continue;
       if (wx >= island.x && wx <= island.x + island.w && wy >= island.y && wy <= island.y + island.h) {
         if (!best || depthOf(island.path) > depthOf(best.path)) best = island;
       }
@@ -250,7 +264,7 @@ export default function PhotoCanvas({
   };
   const targetRef = useRef(targetAt);
   targetRef.current = targetAt;
-  const hoverAt = (wx: number, wy: number) => setHover(targetRef.current(wx, wy));
+  const hoverAt = (wx: number, wy: number, exclude: string | null) => setHover(targetRef.current(wx, wy, exclude));
 
   // A photo let go at (x, y), its top-left corner, in world units.
   const dropPhoto = (photo: CanvasPhoto, x: number, y: number): boolean => {
@@ -267,8 +281,28 @@ export default function PhotoCanvas({
     if (current !== null) onMove(photo, null).catch(() => {});
     return true;
   };
-  const dropNode = (path: string, x: number, y: number): boolean => {
-    save({ folders: { [path]: { x: Math.round(x), y: Math.round(y) } } });
+  // A folder let go at (x, y), its top-left corner, in world units (`w`,
+  // `h` its own size). Onto another folder: it goes inside. Onto the
+  // table: a top-level folder where it was let go (already one - it
+  // simply moves).
+  const parentOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null);
+  const dropFolder = (path: string, x: number, y: number, w: number, h: number): boolean => {
+    setHover(null);
+    const target = targetRef.current(x + w / 2, y + h / 2, path);
+    const parent = parentOf(path);
+    const newParent = target;
+    if (newParent === parent) {
+      if (parent !== null) return false;
+      save({ folders: { [path]: { x: Math.round(x), y: Math.round(y) } } });
+      return true;
+    }
+    const newPath = newParent ? `${newParent}/${nameOf(path)}` : nameOf(path);
+    if (folderPaths.includes(newPath)) {
+      notify('Там уже є папка з такою назвою', `«${nameOf(path)}» лишилася, де була.`);
+      return false;
+    }
+    if (newParent === null) save({ folders: { [newPath]: { x: Math.round(x), y: Math.round(y) } } });
+    onMoveFolder(path, newParent).catch(() => {});
     return true;
   };
   const toggle = (path: string) => save({ open: { [path]: !layout.open[path] } });
@@ -306,8 +340,9 @@ export default function PhotoCanvas({
                 w={chip.w}
                 h={CHIP_H}
                 canvas={canvas}
-                movable={false}
+                carries={chip.path}
                 onTap={() => toggle(chip.path)}
+                onDrop={(x, y) => dropFolder(chip.path, x, y, chip.w, CHIP_H)}
               >
                 <View style={[styles.chip, { backgroundColor: hover === chip.path ? accentTint : S.card }]}>
                   <Ionicons name={chip.open ? 'chevron-down' : 'chevron-forward'} size={14} color={S.ink3} />
@@ -328,8 +363,9 @@ export default function PhotoCanvas({
               w={NODE_W}
               h={NODE_H}
               canvas={canvas}
+              carries={node.path}
               onTap={() => toggle(node.path)}
-              onDrop={(x, y) => dropNode(node.path, x, y)}
+              onDrop={(x, y) => dropFolder(node.path, x, y, NODE_W, NODE_H)}
             >
               <View
                 style={[
@@ -376,7 +412,7 @@ type Canvas = {
   scale: SharedValue<number>;
   canvasPan: GestureType;
   pinch: GestureType;
-  hoverAt: (wx: number, wy: number) => void;
+  hoverAt: (wx: number, wy: number, exclude: string | null) => void;
 };
 
 // One thing on the table: where it stands (in world units), carried by a
@@ -390,6 +426,7 @@ function Dragged({
   h,
   canvas,
   movable = true,
+  carries = null,
   onTap,
   onLongPress,
   onDrop,
@@ -401,6 +438,8 @@ function Dragged({
   h: number;
   canvas: Canvas;
   movable?: boolean;
+  // The folder this is, when it is one: never its own drop target.
+  carries?: string | null;
   onTap?: () => void;
   onLongPress?: () => void;
   onDrop?: (x: number, y: number) => boolean;
@@ -455,7 +494,7 @@ function Dragged({
         py.value = from.value.y + e.translationY / canvasScale.value;
         if (Math.abs(px.value - from.value.hx) + Math.abs(py.value - from.value.hy) > HOVER_STEP) {
           from.value = { ...from.value, hx: px.value, hy: py.value };
-          runOnJS(hoverAt)(px.value + w / 2, py.value + h / 2);
+          runOnJS(hoverAt)(px.value + w / 2, py.value + h / 2, carries);
         }
       })
       .onEnd(() => {
@@ -468,7 +507,7 @@ function Dragged({
     // The callbacks change every render; the gesture reads them through
     // runOnJS at the moment it fires, which is what it wants.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [x, y, movable, onTap, onLongPress, onDrop]);
+  }, [x, y, movable, carries, onTap, onLongPress, onDrop]);
 
   const style = useAnimatedStyle(() => ({
     left: px.value + WORLD_HALF,
