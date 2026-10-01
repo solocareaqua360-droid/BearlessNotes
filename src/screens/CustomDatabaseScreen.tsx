@@ -179,6 +179,14 @@ const SCHEDULE_ROW_HEIGHT = 56;
 // rather than a real calendar month, since the grid's own columns are
 // dates, not weeks; "сьогодні" always starts the window on first open.
 const SCHEDULE_WINDOW_DAYS = 60;
+// How much of the past the schedule opens with, left of today (the user's,
+// 2026-10-02: "зараз графік працює тільки вперед в майбутнє").
+const SCHEDULE_PAST_DAYS = 14;
+// A group's own header line in the schedule's two stacks.
+const SCHEDULE_GROUP_HEIGHT = 34;
+// The schedule's three kinds of group (see renderSchedule's grouping).
+const SCHEDULE_ON_TRIP = '__trip__';
+const SCHEDULE_FREE = '__free__';
 // The card grid's own padding and gap, as numbers because the tile width is
 // computed from them (see gridTileWidth) as well as applied in the style.
 const CARD_GRID_PADDING = 20;
@@ -463,7 +471,16 @@ export default function CustomDatabaseScreen({
   // (see scheduleShiftWindow): a trip planned for next month used to be
   // simply undrawable, since the window was fixed at today..+60 for the
   // life of the screen.
-  const [scheduleWindowStart, setScheduleWindowStart] = useState(() => dateKey(new Date()));
+  // It opens with two weeks of the past on its left, scrolled to the cursor.
+  const [scheduleWindowStart, setScheduleWindowStart] = useState(() =>
+    dateKey(addDays(new Date(), -SCHEDULE_PAST_DAYS))
+  );
+  // THE CURSOR (the user's: "курсор який показуватиме вибрану дату"): the
+  // day the rows are grouped by - who is on a trip, under which manual
+  // status, or free on it. Today until a date in the header is tapped.
+  const [scheduleCursor, setScheduleCursor] = useState(() => dateKey(new Date()));
+  // Folded groups, by `${viewId}:${groupKey}` - this session only.
+  const [scheduleCollapsed, setScheduleCollapsed] = useState<Set<string>>(() => new Set());
   // This Android build doesn't resize the window under the keyboard - it
   // arrives as an inset over the content, not a shrink - so a bottom sheet
   // needs to track its height itself and push up by that much, same as
@@ -1271,6 +1288,26 @@ export default function CustomDatabaseScreen({
   // Moves the visible stretch of days - see scheduleWindowStart. Half a
   // window at a time, so what you were looking at is still half on
   // screen after a press.
+  // The window opens (and moves) with the cursor in view - its column one
+  // in from the left - rather than with the window's first day there,
+  // which is two weeks back now.
+  useEffect(() => {
+    if (viewMode !== 'schedule') return;
+    const index = Math.round(
+      (parseDateKey(scheduleCursor).getTime() - parseDateKey(scheduleWindowStart).getTime()) / 86400000
+    );
+    if (index < 0 || index >= SCHEDULE_WINDOW_DAYS) return;
+    const x = Math.max(0, (index - 1) * SCHEDULE_DAY_WIDTH);
+    const frame = requestAnimationFrame(() => {
+      scheduleBodyScrollRef.current?.scrollTo({ x, animated: false });
+      scheduleHeaderScrollRef.current?.scrollTo({ x, animated: false });
+    });
+    return () => cancelAnimationFrame(frame);
+    // Not on the cursor itself: tapping a date must not move the grid
+    // under the finger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, scheduleWindowStart]);
+
   function scheduleShiftWindow(days: number) {
     setScheduleWindowStart((prev) => dateKey(addDays(parseDateKey(prev), days)));
   }
@@ -2452,6 +2489,65 @@ export default function CustomDatabaseScreen({
     });
     const showTotals = !!config.showDayTotals && rowRecords.length > 0;
 
+    // GROUPED BY WHAT EACH ROW IS DOING ON THE CURSOR'S DAY (the user's,
+    // 2026-10-02: "відділити ті машини які їздять від тих які зламані а ті
+    // від тих які просто стоять"): on a trip, under one of this schedule's
+    // manual statuses («Ремонт», «Черговий»...), or free. Read from the
+    // schedule's own events and statuses, so nothing is kept by hand: a
+    // vehicle given «Ремонт» for a week is in that group for that week.
+    // Worked out from the records themselves, not from the visible window,
+    // so the cursor's day counts even when it is scrolled out of view.
+    const cursorKey = scheduleCursor;
+    const statusOptions = config.manualStatuses ?? [];
+    const groupOf = (row: CustomDatabaseRow): string => {
+      const onTrip = rows.some((r) => {
+        if (r.values[config.rowRelationFieldId] !== row.id) return false;
+        const range = dateRangeOf(r.values[config.dateFieldId]);
+        return !!range && range.start <= cursorKey && cursorKey <= (range.end ?? range.start);
+      });
+      if (onTrip) return SCHEDULE_ON_TRIP;
+      const status = scheduleCellStatuses.find(
+        (st) =>
+          st.viewId === viewId &&
+          st.rowId === row.id &&
+          !!st.startDate &&
+          st.startDate <= cursorKey &&
+          cursorKey <= (st.endDate ?? st.startDate)
+      );
+      if (status && statusOptions.some((o) => o.id === status.statusId)) return status.statusId;
+      return SCHEDULE_FREE;
+    };
+    const groupDefs = [
+      { key: SCHEDULE_ON_TRIP, label: 'В дорозі', color: accent },
+      ...statusOptions.map((o) => ({ key: o.id, label: o.label, color: o.color })),
+      { key: SCHEDULE_FREE, label: 'Вільні', color: sInk2('rgba(255,255,255,0.5)') },
+    ];
+    const byGroup = new Map<string, CustomDatabaseRow[]>();
+    rowRecords.forEach((row) => {
+      const key = groupOf(row);
+      byGroup.set(key, [...(byGroup.get(key) ?? []), row]);
+    });
+    type ScheduleLine =
+      | { kind: 'group'; key: string; label: string; color: string; count: number; collapsed: boolean }
+      | { kind: 'row'; row: CustomDatabaseRow };
+    const lines: ScheduleLine[] = [];
+    groupDefs.forEach((group) => {
+      const members = byGroup.get(group.key) ?? [];
+      if (!members.length) return;
+      const collapsed = scheduleCollapsed.has(`${viewId}:${group.key}`);
+      lines.push({ kind: 'group', key: group.key, label: group.label, color: group.color, count: members.length, collapsed });
+      if (!collapsed) members.forEach((row) => lines.push({ kind: 'row', row }));
+    });
+    const toggleGroup = (key: string) =>
+      setScheduleCollapsed((prev) => {
+        const next = new Set(prev);
+        const id = `${viewId}:${key}`;
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    const defaultStart = dateKey(addDays(new Date(), -SCHEDULE_PAST_DAYS));
+
     if (!rowDatabase) {
       return (
         <View style={styles.emptyState}>
@@ -2490,11 +2586,14 @@ export default function CustomDatabaseScreen({
           >
             <Ionicons name="chevron-forward" size={18} color={sInk(GLASS_TEXT)} />
           </Pressable>
-          {scheduleWindowStart !== todayKey && (
+          {(scheduleWindowStart !== defaultStart || cursorKey !== todayKey) && (
             <Pressable
               hitSlop={8}
               style={styles.scheduleWindowToday}
-              onPress={() => setScheduleWindowStart(todayKey)}
+              onPress={() => {
+                setScheduleCursor(todayKey);
+                setScheduleWindowStart(defaultStart);
+              }}
             >
               <Text style={styles.scheduleWindowTodayLabel}>Сьогодні</Text>
             </Pressable>
@@ -2524,18 +2623,25 @@ export default function CustomDatabaseScreen({
                 {days.map((d) => {
                   const key = dateKey(d);
                   const isToday = key === todayKey;
+                  const isCursor = key === cursorKey;
+                  // A tap puts the cursor here: the rows regroup by
+                  // what each is doing on this day.
                   return (
-                    <View
+                    <Pressable
                       key={key}
+                      onPress={() => setScheduleCursor(key)}
                       style={[
                         styles.scheduleDateHeaderCell,
                         isToday && styles.scheduleDateHeaderCellToday,
+                        isCursor && { backgroundColor: accent, borderRadius: 10 },
                         { width: SCHEDULE_DAY_WIDTH },
                       ]}
                     >
-                      <Text style={styles.scheduleDateHeaderWeekday}>{WEEKDAY_SHORT[(d.getDay() + 6) % 7]}</Text>
-                      <Text style={styles.scheduleDateHeaderNum}>{d.getDate()}</Text>
-                    </View>
+                      <Text style={[styles.scheduleDateHeaderWeekday, isCursor && { color: '#FFFFFF' }]}>
+                        {WEEKDAY_SHORT[(d.getDay() + 6) % 7]}
+                      </Text>
+                      <Text style={[styles.scheduleDateHeaderNum, isCursor && { color: '#FFFFFF' }]}>{d.getDate()}</Text>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -2560,17 +2666,32 @@ export default function CustomDatabaseScreen({
         <ScrollView contentContainerStyle={styles.tableBody}>
           <View style={styles.tableBodyRow}>
             <View style={[styles.tableFrozenColumn, { width: rowHeaderWidth }]}>
-              {rowRecords.map((row) => (
-                <Pressable
-                  key={row.id}
-                  style={[styles.scheduleRowHeaderCell, { width: rowHeaderWidth, height: rowHeight }]}
-                  onPress={() => navigation.navigate('CustomDatabase', { databaseId: config.rowDatabaseId, openRowId: row.id })}
-                >
-                  <Text style={styles.scheduleRowHeaderLabel} numberOfLines={1}>
-                    {rowTitleOf(rowDatabase, row)}
-                  </Text>
-                </Pressable>
-              ))}
+              {lines.map((line) =>
+                line.kind === 'group' ? (
+                  <Pressable
+                    key={`g:${line.key}`}
+                    style={[styles.scheduleGroupHeader, { width: rowHeaderWidth, height: SCHEDULE_GROUP_HEIGHT }]}
+                    onPress={() => toggleGroup(line.key)}
+                  >
+                    <Ionicons name={line.collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={sInk2('rgba(255,255,255,0.6)')} />
+                    <View style={[styles.scheduleGroupDot, { backgroundColor: line.color }]} />
+                    <Text style={styles.scheduleGroupLabel} numberOfLines={1}>
+                      {line.label}
+                    </Text>
+                    <Text style={styles.scheduleGroupCount}>{line.count}</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    key={line.row.id}
+                    style={[styles.scheduleRowHeaderCell, { width: rowHeaderWidth, height: rowHeight }]}
+                    onPress={() => navigation.navigate('CustomDatabase', { databaseId: config.rowDatabaseId, openRowId: line.row.id })}
+                  >
+                    <Text style={styles.scheduleRowHeaderLabel} numberOfLines={1}>
+                      {rowTitleOf(rowDatabase, line.row)}
+                    </Text>
+                  </Pressable>
+                )
+              )}
               {rowRecords.length === 0 && (
                 <View style={styles.scheduleRowHeaderCell}>
                   <Text style={styles.emptyHint}>Немає записів</Text>
@@ -2587,7 +2708,18 @@ export default function CustomDatabaseScreen({
               }
             >
               <View>
-                {rowRecords.map((row) => {
+                {lines.map((line) => {
+                  if (line.kind === 'group') {
+                    // The group's line across the days: empty, the same
+                    // height as its header in the frozen column.
+                    return (
+                      <View
+                        key={`g:${line.key}`}
+                        style={[styles.scheduleGroupTrack, { width: days.length * SCHEDULE_DAY_WIDTH, height: SCHEDULE_GROUP_HEIGHT }]}
+                      />
+                    );
+                  }
+                  const row = line.row;
                   // Every row of THIS database (Дорожній лист) whose own
                   // relation field points at this record - never
                   // `displayedRows`, which carries whatever sort/filter
@@ -2623,6 +2755,7 @@ export default function CustomDatabaseScreen({
                               style={[
                                 styles.scheduleDayCell,
                                 key === todayKey && styles.scheduleDayCellToday,
+                                key === cursorKey && { backgroundColor: withAlpha(accent, 0.12) },
                                 { width: SCHEDULE_DAY_WIDTH, height: rowHeight },
                               ]}
                             />
@@ -2634,6 +2767,7 @@ export default function CustomDatabaseScreen({
                             style={[
                               styles.scheduleDayCell,
                               key === todayKey && styles.scheduleDayCellToday,
+                              key === cursorKey && { backgroundColor: withAlpha(accent, 0.12) },
                               { width: SCHEDULE_DAY_WIDTH, height: rowHeight },
                             ]}
                             onPress={() => openScheduleStatusPicker(viewId, config, row, key, undefined)}
@@ -5212,6 +5346,10 @@ const softCustomDatabaseWindows = (S: SoftTokens) =>
     tableRow: { borderBottomColor: S.line },
     tableCell: { color: S.ink },
     scheduleRowHeaderCell: { borderBottomColor: S.line },
+    scheduleGroupHeader: { borderBottomColor: S.line },
+    scheduleGroupLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink },
+    scheduleGroupCount: { fontFamily: SOFT_MEDIUM, color: S.ink3 },
+    scheduleGroupTrack: { borderBottomColor: S.line },
     scheduleRowHeaderLabel: { color: S.ink },
     scheduleWindowLabel: { color: S.ink },
     scheduleWindowToday: { backgroundColor: S.fill },
@@ -5884,6 +6022,33 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   // tableHeaderRow/tableFrozenHeader/tableFrozenColumn/tableBody/
   // tableBodyRow wholesale (plain layout containers, nothing table-
   // specific about them) and only needs its own cell styling.
+  scheduleGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+  scheduleGroupDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  scheduleGroupLabel: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#FFFFFF',
+    flexShrink: 1,
+  },
+  scheduleGroupCount: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.55)',
+  },
+  scheduleGroupTrack: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
   scheduleRowHeaderCell: {
     height: SCHEDULE_ROW_HEIGHT,
     justifyContent: 'center',
