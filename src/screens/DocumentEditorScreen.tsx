@@ -175,7 +175,8 @@ import {
 import { softCursor, useSoft } from '../theme/soft';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
-import TopNavBar, { TOP_NAV_SPACE } from '../components/TopNavBar';
+import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE } from '../components/TopNavBar';
+import EdgeFade from '../components/EdgeFade';
 import { useEditorAccessory } from '../components/editorAccessory';
 import EditorInsertPanel, { PanelGroup, PanelSection } from '../components/EditorInsertPanel';
 import EditorPanelBar from '../components/EditorPanelBar';
@@ -6186,6 +6187,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {/* The soft ground: one quiet colour, not the drifting backdrop. */}
       <View style={[StyleSheet.absoluteFill, { backgroundColor: soft.bg }]} />
       {page}
+      {/* What runs off the top and the bottom melts into the ground under
+          the bar and the dock, as in every list (the user's, 2026-10-02).
+          At rest the top one lies over the sheet's empty top margin. */}
+      {!pointerDensity && (
+        <>
+          <EdgeFade edge="top" color={soft.bg} height={editorInsets.top + CHROME_TOP + TOP_NAV_H} />
+          <EdgeFade edge="bottom" color={soft.bg} height={editorInsets.bottom + 90} />
+        </>
+      )}
       {bottomChrome}
     </View>
   );

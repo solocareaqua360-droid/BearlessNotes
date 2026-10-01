@@ -68,7 +68,8 @@ import { DesksControlContext, MAX_DESKS, PERMANENT_DESK, canBeDesk, deskFace, de
 import InlineDock from '../components/InlineDock';
 import IconPickerSheet from '../components/IconPickerSheet';
 import type { MenuEntry } from '../components/surfaces/Menu';
-import TopNavBar from '../components/TopNavBar';
+import TopNavBar, { TOP_NAV_H } from '../components/TopNavBar';
+import EdgeFade from '../components/EdgeFade';
 import { NavigationContext } from '@react-navigation/native';
 import { GlassPortalHost } from '../components/GlassPortal';
 import { GlassTargetProvider } from '../components/GlassTarget';
@@ -1828,6 +1829,14 @@ export default function DatabasesScreen() {
               scroll off the top edge, the way the cards do everywhere
               else. */}
           {inPanel ? listView : boardScroll}
+          {/* What runs off the top and the bottom melts into the ground
+              under the bar and the dock (the user's, 2026-10-02). */}
+          {!inPanel && panelDensity !== 'pointer' && S && (
+            <>
+              <EdgeFade edge="top" color={S.bg} height={databasesInsets.top + CHROME_TOP + TOP_NAV_H} />
+              <EdgeFade edge="bottom" color={S.bg} height={Math.round((dockClear + databasesInsets.bottom) * 0.85)} />
+            </>
+          )}
         </ContentColumn>
       )}
 

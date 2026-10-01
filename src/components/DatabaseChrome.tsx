@@ -24,6 +24,8 @@ import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useTo
 import { SoftSurfaceContext, useSoft } from '../theme/soft';
 import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
+import EdgeFade from './EdgeFade';
+import { useDensity } from '../hooks/useDensity';
 import { DeskContext } from '../navigation/desks';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter } from './TagsDrawer';
 import { usePublishRailTree } from '../navigation/navRail';
@@ -274,6 +276,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   const searchingAlone = list.isSearching && keyboardUp;
   const showContext = useDockShowContext();
   const dockClear = useDockClearance();
+  // Under a mouse the desk draws its own edges (desktop/UnderToolbar).
+  const edgesFade = useDensity() !== 'pointer';
   // Everything this screen offers now goes to the DOCK, not the rail -
   // the same move the documents screen made, and it lands on files,
   // photos, links and the boards list at once because they all came
@@ -683,6 +687,16 @@ export default function DatabaseChrome<T extends { id: string }>({
             </GestureDetector>
           </Animated.View>
         )}
+      {/* What runs off the top and the bottom melts into the ground under
+          the bar and the dock instead of being cut by the screen's edge
+          (the user's, 2026-10-02 - every database, not only the personal
+          ones). The tabs are in the portal and stay over it. */}
+      {edgesFade && soft && (
+        <>
+          <EdgeFade edge="top" color={soft.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} />
+          <EdgeFade edge="bottom" color={soft.bg} height={Math.round((dockClear + insets.bottom) * 0.85)} />
+        </>
+      )}
     </>
   );
 

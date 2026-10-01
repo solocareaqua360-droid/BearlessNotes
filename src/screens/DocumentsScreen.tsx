@@ -63,7 +63,7 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
-import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
@@ -73,6 +73,7 @@ import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import TagPicker from '../components/TagPicker';
 import DocumentCard from '../components/DocumentCard';
+import EdgeFade from '../components/EdgeFade';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
 import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import { useSoft } from '../theme/soft';
@@ -2028,6 +2029,16 @@ export default function DocumentsScreen({
             </View>
             </Animated.View>
             </GestureDetector>
+        )}
+
+        {/* What runs off the top and the bottom melts into the ground under
+            the bar and the dock (the user's, 2026-10-02). The tabs float
+            in the portal, over it. */}
+        {soft && !pointerDensity && (
+          <>
+            <EdgeFade edge="top" color={soft.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} />
+            <EdgeFade edge="bottom" color={soft.bg} height={Math.round((listBottomPad + insets.bottom) * 0.85)} />
+          </>
         )}
 
         {carrying.movedToast && <UndoToast message={carrying.toastMessage} onUndo={carrying.undoMove} />}

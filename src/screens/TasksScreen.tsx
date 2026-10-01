@@ -2,6 +2,8 @@ import { DeskContext } from '../navigation/desks';
 import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import EdgeFade from '../components/EdgeFade';
+import { useDensity } from '../hooks/useDensity';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
@@ -63,7 +65,7 @@ import Menu from '../components/surfaces/Menu';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
-import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import RenamePrompt from '../components/RenamePrompt';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -315,6 +317,11 @@ export default function TasksScreen() {
   );
   const insets = useSafeAreaInsets();
   const dockClear = useDockClearance();
+  // On a phone the header floats over the list (see the render) and the
+  // list runs to the screen's edge; a fair guess at its height until it
+  // has measured itself. The kanban keeps to the room below it.
+  const phone = useDensity() !== 'pointer';
+  const [headerHeight, setHeaderHeight] = useState(0);
   const showContext = useDockShowContext();
   // Everything this screen offered on the rail goes to the DOCK now, as
   // on every database: the way out as the leave bead, and what the list
@@ -1699,6 +1706,8 @@ export default function TasksScreen() {
     );
   }
 
+  const floatHeader = phone && !kanbanMode;
+  const topPad = headerHeight || insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) + 52;
   return (
     <View style={styles.container}>
       {softDb ? (
@@ -1708,24 +1717,25 @@ export default function TasksScreen() {
       )}
 
       <ContentColumn>
+        {/* THE HEADER FLOATS over the list on a phone (the user's,
+            2026-10-02, as on the personal databases): the bar's room and
+            the project tabs lie over the tasks, see-through, and the list
+            starts at the screen's edge with that room inside it. The
+            empty parts pass touches through. */}
+        <View
+          pointerEvents="box-none"
+          style={floatHeader ? styles.floatingHeader : null}
+          onLayout={floatHeader ? (e) => setHeaderHeight(Math.round(e.nativeEvent.layout.height)) : undefined}
+        >
         {/* The band the status bar and the rail's top capsule stand in.
             It was the header row's own top padding until the header went. */}
-        <View style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
+        <View pointerEvents="none" style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
         {isFocused && bar && !desk && <TopNavBar title={{ icon: 'checkbox-outline', label: 'Справи' }} />}
         {/* No header row any more. Its title said the name of the screen
             you had just tapped to reach, and its three buttons were a
             light capsule of this screen's own invention - the one screen
             in the app that was still white. They are on the rail now,
             each in the place it has everywhere else. */}
-        {/* Ordering hangs off the button that opens it, above the dock. */}
-        {menuOpen && (
-          <>
-            <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
-            <View style={[styles.menuPanel, { bottom: dockClear + insets.bottom }]}>
-              <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={accent} />
-            </View>
-          </>
-        )}
 
         <SearchCorner
           visible={!bar && isFocused && !isSelectMode}
@@ -1742,7 +1752,7 @@ export default function TasksScreen() {
         />
         {/* The open field is the corner's, over the screen; this keeps
             its room so the tabs and the list start below it. */}
-        {isSearching && !bar && <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
+        {isSearching && !bar && <View pointerEvents="none" style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
 
         {!kanbanMode && groups.length > 0 && (
           <ProjectTabsRow
@@ -1754,6 +1764,17 @@ export default function TasksScreen() {
             unassignedFirst
             allLast
           />
+        )}
+        </View>
+
+        {/* Ordering hangs off the button that opens it, above the dock. */}
+        {menuOpen && (
+          <>
+            <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
+            <View style={[styles.menuPanel, { bottom: dockClear + insets.bottom }]}>
+              <SortMenuRows sortPref={sortPref} onSelectField={selectSortField} accentColor={accent} />
+            </View>
+          </>
         )}
 
         {kanbanMode ? (
@@ -1780,7 +1801,7 @@ export default function TasksScreen() {
             />
           </>
         ) : (
-        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }]}>
+        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad + 8 }]}>
           {todayTasks.length > 0 &&
             renderSection({
               key: '__today__',
@@ -1855,6 +1876,15 @@ export default function TasksScreen() {
             <Text style={styles.emptyFilterLabel}>Немає справ із цим фільтром</Text>
           )}
         </ScrollView>
+        )}
+
+        {/* What runs off the top and the bottom melts into the ground under
+            the bar and the dock (the user's, 2026-10-02). */}
+        {floatHeader && softDb && (
+          <>
+            <EdgeFade edge="top" color={softDb.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} />
+            <EdgeFade edge="bottom" color={softDb.bg} height={Math.round((dockClear + insets.bottom) * 0.85)} />
+          </>
         )}
 
         <GroupPickerSheet
@@ -2194,6 +2224,14 @@ const makeStyles = (t: Theme) =>
     fontFamily: FONT_REGULAR,
     color: t.ink.faint,
     textAlign: 'center',
+  },
+  // Over the list, under the sort menu and its backdrop (5 and 6).
+  floatingHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 4,
   },
   list: {
     paddingVertical: 8,
