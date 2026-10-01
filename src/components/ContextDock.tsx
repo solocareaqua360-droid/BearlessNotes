@@ -2073,6 +2073,30 @@ export default function ContextDock() {
           </Pressable>
         );
       };
+      // SEARCHING: the strip of what the screen does gives way to the
+      // search field, the way the documents' dock has it - the field
+      // across the row (its own "x" closes it), the "+" beside it, and the
+      // row riding the keyboard the field brings up. Without this the
+      // search bead turned into an "x" and no field appeared anywhere (a
+      // personal database, 2026-10-02): on a soft screen the bar at the
+      // top does not open out into a field, the dock is where it lives.
+      if (dockSearch) {
+        return (
+          <DockPortal>
+            <Animated.View
+              pointerEvents="box-none"
+              style={[
+                styles.twoBeads,
+                { bottom: softRest, left: frame.left, width: frame.width, gap: 10 },
+                softRide,
+              ]}
+            >
+              <SoftSearchField key={dockSearch.placeholder} search={dockSearch} soft={soft} height={TWO_BEAD} />
+              {!!beads.right && softSlot(beads.right)}
+            </Animated.View>
+          </DockPortal>
+        );
+      }
       return (
         <DockPortal>
           <View
