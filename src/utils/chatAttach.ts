@@ -1,12 +1,11 @@
 import * as ImagePicker from 'expo-image-picker';
+import { saveLinkFromUrl } from './linkRecord';
 import * as DocumentPicker from 'expo-document-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { doc, updateDoc } from '../firestore';
 import { setDoc } from './owned';
 import { db } from '../firebase';
 import { backupFileToDrive } from './googleDrive';
-import { fetchLinkPreview } from './linkPreview';
-import { linkDocId } from './linkId';
 
 // What a chat message can carry besides its words. Whatever is attached
 // becomes a record in its OWN database at the same moment - the user's
@@ -118,15 +117,7 @@ export async function pickFileForChat(): Promise<ChatAttachment[]> {
 // exactly as it does for a link shared into the app - so a map pasted
 // here lands in «Геоточки» without being told to.
 export async function attachLinkToChat(rawUrl: string): Promise<ChatAttachment[]> {
-  const url = rawUrl.trim();
-  if (!url) return [];
-  const preview = await fetchLinkPreview(url).catch(() => ({}) as Awaited<ReturnType<typeof fetchLinkPreview>>);
-  const id = linkDocId(url);
-  const now = Date.now();
-  const data: Record<string, unknown> = { url, createdAt: now, updatedAt: now, usedInDocuments: {} };
-  if (preview.title) data.title = preview.title;
-  if (preview.imageUrl) data.imageUrl = preview.imageUrl;
-  if (preview.siteName) data.siteName = preview.siteName;
-  await setDoc(doc(db, 'links', id), data, { merge: true });
-  return [{ kind: 'link', id, url, title: preview.title, imageUrl: preview.imageUrl, siteName: preview.siteName }];
+  const saved = await saveLinkFromUrl(rawUrl);
+  if (!saved) return [];
+  return [{ kind: 'link', id: saved.id, url: saved.url, title: saved.title, imageUrl: saved.imageUrl, siteName: saved.siteName }];
 }

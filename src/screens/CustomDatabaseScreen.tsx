@@ -1,5 +1,6 @@
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
-import { fieldWithRole, formatMoney, formatSubscription, subscriptionOf, subscriptionTotals } from '../utils/appsTemplate';
+import { saveLinkFromUrl } from '../utils/linkRecord';
+import { fieldWithRole, formatMoney, formatSubscription, linksField, subscriptionOf, subscriptionTotals } from '../utils/appsTemplate';
 import { useDensity } from '../hooks/useDensity';
 import { DeskContext } from '../navigation/desks';
 import { useEdgeOnlyDrawerSwipe } from '../navigation/sideDrawers';
@@ -18,6 +19,7 @@ import {
   BackHandler,
   Image,
   Keyboard,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -482,6 +484,15 @@ export default function CustomDatabaseScreen({
   const [scheduleCursor, setScheduleCursor] = useState(() => dateKey(new Date()));
   // The currencies and their rates (a database with a price role).
   const [ratesOpen, setRatesOpen] = useState(false);
+  // A «Додатки та сервіси» database made before its template grew the
+  // «Посилання» field (2026-10-02) gets it, once - so the user's first
+  // database need not be made again.
+  useEffect(() => {
+    if (!database || !databaseId) return;
+    const isTemplate = database.fields.some((f) => f.role === 'lessons');
+    if (!isTemplate || database.fields.some((f) => f.role === 'links')) return;
+    updateDoc(doc(db, 'customDatabases', databaseId), { fields: [...database.fields, linksField(Date.now())] }).catch(() => {});
+  }, [database, databaseId]);
   // Folded groups, by `${viewId}:${groupKey}` - this session only.
   const [scheduleCollapsed, setScheduleCollapsed] = useState<Set<string>>(() => new Set());
   // The window opens (and moves) with the cursor in view - its column one
@@ -2253,6 +2264,10 @@ export default function CustomDatabaseScreen({
       : [];
     const lessonsField = fieldWithRole(database, 'lessons');
     const lessons = lessonsField ? resolveRelationList(lessonsField, row.values[lessonsField.id], displayContext) : [];
+    const linksField = fieldWithRole(database, 'links');
+    const linkIdsRaw = linksField ? row.values[linksField.id] : undefined;
+    const linkIds = Array.isArray(linkIdsRaw) ? linkIdsRaw : typeof linkIdsRaw === 'string' && linkIdsRaw ? [linkIdsRaw] : [];
+    const rowLinks = linkIds.map((id) => linksList.find((l) => l.id === id)).filter((l): l is (typeof linksList)[number] => !!l);
     return (
       <View style={{ gap: 14, marginBottom: 8 }}>
         {(status || sub || renewal) && (
@@ -2305,9 +2320,43 @@ export default function CustomDatabaseScreen({
             )}
           </View>
         )}
+        {linksField && (
+          <View style={{ paddingHorizontal: 16, gap: 8 }}>
+            <Text style={styles.pageSectionHeading}>{linksField.name}</Text>
+            {rowLinks.length === 0 ? (
+              <Text style={styles.pageFieldEmpty}>Ще немає - додай у «Редагувати»</Text>
+            ) : (
+              rowLinks.map((link) => (
+                <Pressable
+                  key={link.id}
+                  onPress={() => Linking.openURL(link.url).catch(() => {})}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, backgroundColor: softCard }}
+                >
+                  <Ionicons name="link-outline" size={18} color={accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: softInk, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                      {link.title || hostOf(link.url)}
+                    </Text>
+                    <Text style={{ color: softInk2, fontSize: 12 }} numberOfLines={1}>
+                      {hostOf(link.url)}
+                    </Text>
+                  </View>
+                  <Ionicons name="open-outline" size={16} color={softInk2} />
+                </Pressable>
+              ))
+            )}
+          </View>
+        )}
       </View>
     );
   }
+  const hostOf = (url: string) => {
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      return url;
+    }
+  };
 
   // What the subscriptions cost, per status, in the base currency per
   // month (a year's is a twelfth; one-time ones apart). A tap opens the
@@ -3891,6 +3940,26 @@ export default function CustomDatabaseScreen({
                     );
                   }
                   const raw = rowPageRow.values[field.id];
+                  if (field.type === 'relation' && field.multiple && (field.relationTarget?.kind ?? 'photos') !== 'photos') {
+                    // Links, files, records: by name - a picture strip
+                    // showed only those that have a picture, and a list of
+                    // plain links came out as "—".
+                    const items = resolveRelationList(field, raw, displayContext);
+                    return (
+                      <View key={field.id} style={styles.pageField}>
+                        <Text style={styles.pageFieldLabel}>{field.name}</Text>
+                        {items.length === 0 ? (
+                          <Text style={styles.pageFieldEmpty}>—</Text>
+                        ) : (
+                          items.map((item, i) => (
+                            <Text key={i} style={styles.pageFieldValue}>
+                              {item.label}
+                            </Text>
+                          ))
+                        )}
+                      </View>
+                    );
+                  }
                   if (field.type === 'relation' && field.multiple) {
                     const photos = resolveRelationList(field, raw, displayContext)
                       .filter((item) => !!item.thumbUri)
@@ -4479,6 +4548,7 @@ function RelationPickerSheet({
   const accent = useTheme().sections.custom;
   const styles = useStyles(makeStyles);
   const [search, setSearch] = useState('');
+  const [addingUrl, setAddingUrl] = useState(false);
   const isMulti = !!field.multiple;
   const selectedIds = Array.isArray(value) ? value : typeof value === 'string' && value ? [value] : [];
   const currentId = isMulti ? undefined : typeof value === 'string' ? value : undefined;
@@ -4520,8 +4590,9 @@ function RelationPickerSheet({
     const nameOfLink = (l: { title?: string; url: string }) => l.title || l.url;
     const categoryLinks = links.filter((l) => l.category === linkCategory);
     const filteredLinks = needle
-      ? categoryLinks.filter((l) => nameOfLink(l).toLowerCase().includes(needle))
+      ? categoryLinks.filter((l) => nameOfLink(l).toLowerCase().includes(needle) || l.url.toLowerCase().includes(needle))
       : categoryLinks;
+    const looksLikeUrl = /^(https?:\/\/)?[^\s/]+\.[^\s]{2,}/i.test(search.trim()) && !links.some((l) => l.url === search.trim());
     return (
       <GlassLayer visible onClose={onClose}>
         <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
@@ -4536,6 +4607,28 @@ function RelationPickerSheet({
               placeholderTextColor={GLASS_TEXT_FAINT}
             />
             {clearRow}
+            {/* An address pasted into the search: made into a link here and
+                picked - an app's site or App Store page need not be saved
+                in the links first. */}
+            {looksLikeUrl && (
+              <Pressable
+                style={styles.optionPickerRow}
+                disabled={addingUrl}
+                onPress={async () => {
+                  setAddingUrl(true);
+                  const saved = await saveLinkFromUrl(/^https?:\/\//i.test(search.trim()) ? search.trim() : `https://${search.trim()}`).catch(() => null);
+                  setAddingUrl(false);
+                  if (!saved) return;
+                  setSearch('');
+                  choose(saved.id);
+                }}
+              >
+                {addingUrl ? <ActivityIndicator size="small" color={accent} /> : <Ionicons name="add-circle-outline" size={18} color={accent} />}
+                <Text style={[styles.optionPickerLabel, { color: accent }]} numberOfLines={1}>
+                  Додати «{search.trim()}»
+                </Text>
+              </Pressable>
+            )}
             <ScrollView style={styles.relationPickerScroll} keyboardShouldPersistTaps="handled">
               {filteredLinks.map((link) => (
                 <Pressable key={link.id} style={styles.optionPickerRow} onPress={() => choose(link.id)}>

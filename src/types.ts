@@ -962,7 +962,7 @@ export type RelationTarget =
 // currency and period, the status as a chip, the gallery as a strip, the
 // description as a paragraph, the lessons as video cards; and a summary of
 // what the subscriptions cost, per status. The cover stays `isCover`.
-export type FieldRole = 'gallery' | 'description' | 'price' | 'currency' | 'period' | 'status' | 'renewal' | 'lessons';
+export type FieldRole = 'gallery' | 'description' | 'price' | 'currency' | 'period' | 'status' | 'renewal' | 'lessons' | 'links';
 
 export interface FieldDef {
   id: string;

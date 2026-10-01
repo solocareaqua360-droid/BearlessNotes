@@ -66,8 +66,20 @@ export function appsTemplateFields(now: number): FieldDef[] {
       multiple: true,
       role: 'lessons',
     },
-    { id: id('site'), name: 'Сайт', type: 'text' },
+    // The site, the App Store page... - technical links (useRecordLinkIds).
+    linksField(now),
   ];
+}
+
+export function linksField(now: number): FieldDef {
+  return {
+    id: `${now}-links`,
+    name: 'Посилання',
+    type: 'relation',
+    relationTarget: { kind: 'links', category: 'other' },
+    multiple: true,
+    role: 'links',
+  };
 }
 
 export const APPS_TEMPLATE_RATES = { baseCurrency: 'USD', currencyRates: { USD: 1, EUR: 1.08, UAH: 0.024 } };

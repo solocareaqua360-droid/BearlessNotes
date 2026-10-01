@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useRecordLinkIds } from '../hooks/useRecordLinkIds';
 import FolderCanvas from '../components/FolderCanvas';
 import { LinkCanvasTile } from '../components/CanvasTiles';
 import { canvasFolderActions } from '../utils/canvasFolderActions';
@@ -242,7 +243,17 @@ export default function LinksScreen({
   // Only this category's links go into the shared machine - the other two
   // categories live in the same collection and are a different database
   // from the user's side.
-  const categoryLinks = links.filter((link) => categoryOf(link) === category);
+  // TECHNICAL LINKS - held by a record of a custom database (an app's
+  // site, its App Store page, its video lessons) and used in no note - are
+  // hidden by default, as technical photos are: useful where they are
+  // attached, noise here. Search still finds them; one row in "⋯" shows
+  // them again.
+  const recordLinkIds = useRecordLinkIds();
+  const [showRecordLinks, setShowRecordLinks] = useState(false);
+  const isTechnical = (link: LinkItem) => recordLinkIds.has(link.id) && link.documentIds.length === 0;
+  const allCategoryLinks = links.filter((link) => categoryOf(link) === category);
+  const recordLinkCount = allCategoryLinks.filter(isTechnical).length;
+  const categoryLinks = showRecordLinks ? allCategoryLinks : allCategoryLinks.filter((link) => !isTechnical(link));
   const list = useDatabaseList<LinkItem>({
     prefsKey: linksPrefsKey,
     groupKind,
@@ -981,6 +992,25 @@ export default function LinksScreen({
       navTitle={inPane ? undefined : { icon: info.icon, label: info.title }}
       searchPlaceholder="Пошук за назвою"
       onAdd={handleAddPress}
+      // Only when there is something to show or hide (see recordLinkIds).
+      menuRows={
+        recordLinkCount > 0 || showRecordLinks
+          ? (close) => (
+              <Pressable
+                style={menuStyles.menuRow}
+                onPress={() => {
+                  close();
+                  setShowRecordLinks((v) => !v);
+                }}
+              >
+                <Ionicons name={showRecordLinks ? 'eye-off-outline' : 'eye-outline'} size={17} color={theme.ink.primary} />
+                <Text style={menuStyles.menuRowLabel}>
+                  {showRecordLinks ? 'Сховати вкладення записів' : `Показати вкладення записів (${recordLinkCount})`}
+                </Text>
+              </Pressable>
+            )
+          : undefined
+      }
       // The shape of the list is a button on the rail now - it was two
       // rows here saying the same thing, on three screens. On «Геоточки»
       // alone it cycles a third stop - the map - rather than earning a
