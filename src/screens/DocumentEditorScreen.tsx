@@ -6033,7 +6033,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           start={noteVideo.start}
           seek={noteVideo.seek}
           top={editorInsets.top + (pointerDensity ? 12 : TOP_NAV_SPACE + 8)}
-          maxWidth={windowWidth - 24}
+          // Clear of the dock below - or of the keyboard and the toolbar
+          // standing on it.
+          bottom={pointerDensity ? 16 : keyboardHeight > 0 ? keyboardHeight + 64 : editorInsets.bottom + 96}
+          windowWidth={windowWidth}
+          windowHeight={windowHeight}
           background={theme.paper.fill}
           ink={theme.paper.ink}
           styles={styles}

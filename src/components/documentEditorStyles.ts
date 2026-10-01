@@ -373,7 +373,6 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
   // while it is closed.
   noteVideoPanel: {
     position: 'absolute',
-    right: 12,
     zIndex: 20,
     borderRadius: 18,
     overflow: 'hidden',
