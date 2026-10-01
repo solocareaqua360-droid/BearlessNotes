@@ -308,6 +308,12 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
     return own ? own.path : null;
   }
 
+  // Every folder a record is in - a folder is a tag, and a record can
+  // carry two (the photos' canvas draws it in each).
+  function foldersOf(item: T): string[] {
+    return explorerTags.filter((t) => tagIdsOf(item).includes(t.id)).map((t) => t.path);
+  }
+
   // Moving a record is swapping which folder tag it carries: off every
   // folder it is in now, on to the one chosen.
   async function moveItem(item: T, destination: string | null) {
@@ -386,6 +392,7 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
     pickDestination,
     moveItem,
     folderOf,
+    foldersOf,
     tagForFolder,
     assignToCurrentFolder,
     allFolderPaths,

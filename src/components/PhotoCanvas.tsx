@@ -9,7 +9,7 @@ import { useSoft } from '../theme/soft';
 import { withAlpha } from '../utils/color';
 import AttachmentImage from './AttachmentImage';
 import { Ionicons } from './icons/Ionicons';
-import { notify } from './surfaces/Ask';
+import { ask, notify } from './surfaces/Ask';
 import RenamePrompt from './RenamePrompt';
 
 // «ПОЛОТНО» FOR PHOTOS (the user's, 2026-10-02): a table the photos are
@@ -31,10 +31,21 @@ import RenamePrompt from './RenamePrompt';
 // same way: onto another folder it goes inside it, onto the table it
 // becomes a top-level folder where it was let go.
 //
-// Still to come: "Додати в іншу" (pale copies), piles, the rectangle
-// selection, a new folder.
+// A photo in two folders is drawn in both islands; carrying it out of one
+// leaves it in the other. Held, a photo offers «Додати в іншу папку»: a
+// pale copy (of it, or of all the chosen) is carried to a folder and
+// lights up there - the photo is now in both.
+//
+// Still to come: piles.
 
 export type CanvasPhoto = { id: string; imageUri: string; driveFileId?: string; title?: string };
+export type Move = { photo: CanvasPhoto; from: string | null };
+
+// ONE PHOTO ON THE TABLE, in one place: loose, or in one folder's island.
+// A photo in two folders is two of these, and carrying one takes the photo
+// out of THAT folder only. Chosen and carried by its key.
+type Instance = { key: string; photo: CanvasPhoto; folder: string | null; x: number; y: number };
+const instanceKey = (photoId: string, folder: string | null) => `${photoId}@${folder ?? ''}`;
 
 type Pos = { x: number; y: number };
 type Layout = { photos: Record<string, Pos>; folders: Record<string, Pos>; open: Record<string, boolean> };
@@ -71,15 +82,16 @@ type Island = {
   y: number;
   w: number;
   h: number;
-  tiles: { photo: CanvasPhoto; x: number; y: number }[];
+  tiles: Instance[];
   chips: { path: string; x: number; y: number; w: number; count: number; open: boolean }[];
 };
 
 export default function PhotoCanvas({
   photos,
   folderPaths,
-  folderOf,
-  onMove,
+  foldersOf,
+  onRelocate,
+  onAdd,
   onMoveFolder,
   onCreateFolder,
   onOpenPhoto,
@@ -88,12 +100,19 @@ export default function PhotoCanvas({
 }: {
   photos: CanvasPhoto[];
   folderPaths: string[];
-  folderOf: (photo: CanvasPhoto) => string | null;
-  onMove: (photo: CanvasPhoto, folder: string | null) => Promise<void>;
+  // Every folder a photo is in (a smart folder is a tag: a photo can be in
+  // two) - it is drawn in each of their islands.
+  foldersOf: (photo: CanvasPhoto) => string[];
+  // Photos taken out of the folder each was carried from (null: it was
+  // loose) and put into `to` (null: onto the table) - its other folders
+  // untouched.
+  onRelocate: (moves: Move[], to: string | null) => Promise<void>;
+  // Photos put into `to` as well, staying where they are.
+  onAdd: (photos: CanvasPhoto[], to: string) => Promise<void>;
   // A folder put into another (or, null, out to the top level).
   onMoveFolder: (path: string, parent: string | null) => Promise<void>;
   // A new top-level folder, with these photos put into it.
-  onCreateFolder: (name: string, photos: CanvasPhoto[]) => Promise<void>;
+  onCreateFolder: (name: string, moves: Move[]) => Promise<void>;
   onOpenPhoto: (photo: CanvasPhoto) => void;
   onPhotoMenu: (photo: CanvasPhoto) => void;
   topPad: number;
@@ -106,8 +125,12 @@ export default function PhotoCanvas({
   // rectangle, or tapped while something is already chosen - and carried
   // together: dragging any one of them carries them all.
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  // The photos «+ Нова папка» is being named for (empty: a folder alone).
-  const [newFolderFor, setNewFolderFor] = useState<CanvasPhoto[] | null>(null);
+  // What «+ Нова папка» is being named for: photos carried into it (moved),
+  // photos added to it (pale copies), or nothing (a folder alone).
+  const [newFolderFor, setNewFolderFor] = useState<{ moves: Move[]; adds: CanvasPhoto[] } | null>(null);
+  // «Додати в іншу»: pale copies of these photos, carried to a folder they
+  // are added to, where they light up. `seq` remakes the copy each time.
+  const [ghost, setGhost] = useState<{ photos: CanvasPhoto[]; x: number; y: number; seq: number; landed: boolean } | null>(null);
 
   useEffect(
     () =>
@@ -236,9 +259,9 @@ export default function PhotoCanvas({
   const inFolder = new Map<string, CanvasPhoto[]>();
   const loose: CanvasPhoto[] = [];
   photos.forEach((photo) => {
-    const folder = folderOf(photo);
-    if (folder === null) loose.push(photo);
-    else inFolder.set(folder, [...(inFolder.get(folder) ?? []), photo]);
+    const folders = foldersOf(photo);
+    if (!folders.length) loose.push(photo);
+    folders.forEach((folder) => inFolder.set(folder, [...(inFolder.get(folder) ?? []), photo]));
   });
   const countUnder = (path: string) => {
     let n = 0;
@@ -262,7 +285,13 @@ export default function PhotoCanvas({
     own.forEach((photo, i) => {
       const col = i % ISLAND_COLS;
       const row = Math.floor(i / ISLAND_COLS);
-      island.tiles.push({ photo, x: x + ISLAND_PAD + col * (TILE + GAP), y: cursor + row * (TILE + GAP) });
+      island.tiles.push({
+        key: instanceKey(photo.id, path),
+        photo,
+        folder: path,
+        x: x + ISLAND_PAD + col * (TILE + GAP),
+        y: cursor + row * (TILE + GAP),
+      });
     });
     if (own.length) cursor += Math.ceil(own.length / ISLAND_COLS) * (TILE + GAP);
     childrenOf(path).forEach((child) => {
@@ -303,11 +332,12 @@ export default function PhotoCanvas({
   const looseX = topFolders.length ? Math.max(NODE_W, islandW) + 40 : 0;
   const looseCols = Math.max(2, Math.min(ROOT_COLS, Math.floor((screenW - looseX - 40) / (TILE + GAP))));
   let unplaced = 0;
-  const looseTiles = loose.map((photo) => {
+  const looseTiles: Instance[] = loose.map((photo) => {
+    const key = instanceKey(photo.id, null);
     const saved = layout.photos[photo.id];
-    if (saved) return { photo, x: saved.x, y: saved.y };
+    if (saved) return { key, photo, folder: null, x: saved.x, y: saved.y };
     const i = unplaced++;
-    return { photo, x: looseX + (i % looseCols) * (TILE + GAP), y: Math.floor(i / looseCols) * (TILE + GAP) };
+    return { key, photo, folder: null, x: looseX + (i % looseCols) * (TILE + GAP), y: Math.floor(i / looseCols) * (TILE + GAP) };
   });
 
   // ---- what is under a point ------------------------------------------------
@@ -344,9 +374,11 @@ export default function PhotoCanvas({
   const hoverAt = (wx: number, wy: number, exclude: string | null) => setHover(targetRef.current(wx, wy, exclude));
 
   // Where each photo stands now (world units), for carrying a selection.
-  const placeOf = new Map<string, { x: number; y: number }>();
-  [...islands.flatMap((island) => island.tiles), ...looseTiles].forEach((t) => placeOf.set(t.photo.id, { x: t.x, y: t.y }));
-  const photoById = new Map(photos.map((p) => [p.id, p]));
+  const instances: Instance[] = [...islands.flatMap((island) => island.tiles), ...looseTiles];
+  const instanceByKey = new Map(instances.map((t) => [t.key, t]));
+  const placeOf = new Map(instances.map((t) => [t.key, { x: t.x, y: t.y }]));
+  const chosenInstances = () => Array.from(selected).map((k) => instanceByKey.get(k)).filter((t): t is Instance => !!t);
+  const uniquePhotos = (list: Instance[]) => Array.from(new Map(list.map((t) => [t.photo.id, t.photo])).values());
   selectInRef.current = (r) => {
     const x0 = Math.min(r.x0, r.x1);
     const x1 = Math.max(r.x0, r.x1);
@@ -360,19 +392,19 @@ export default function PhotoCanvas({
 
   // A photo let go at (x, y), its top-left corner, in world units - and,
   // when it is one of the chosen, all the chosen with it.
-  const dropPhoto = (photo: CanvasPhoto, x: number, y: number): boolean => {
+  const dropPhoto = (inst: Instance, x: number, y: number): boolean => {
     setHover(null);
-    const carried = selected.has(photo.id) ? Array.from(selected).map((id) => photoById.get(id)).filter((p): p is CanvasPhoto => !!p) : [photo];
-    const from = placeOf.get(photo.id) ?? { x, y };
+    const carried = selected.has(inst.key) ? chosenInstances() : [inst];
+    const from = placeOf.get(inst.key) ?? { x, y };
     const dx = x - from.x;
     const dy = y - from.y;
     const target = targetRef.current(x + TILE / 2, y + TILE / 2);
     const settleOthers = () => {
       // The others stand where they were drawn while carried, in the same
       // frame the shared offset goes - so nothing jumps back and forth.
-      carried.forEach((p) => {
-        if (p.id === photo.id) return;
-        const reg = registry.current.get(p.id);
+      carried.forEach((t) => {
+        if (t.key === inst.key) return;
+        const reg = registry.current.get(t.key);
         if (reg) {
           reg.px.value += dx;
           reg.py.value += dy;
@@ -382,44 +414,80 @@ export default function PhotoCanvas({
     };
     if (target === NEW_KEY) {
       group.value = { dx: 0, dy: 0, by: '' };
-      setNewFolderFor(carried);
+      setNewFolderFor({ moves: carried.map((t) => ({ photo: t.photo, from: t.folder })), adds: [] });
       return false;
     }
     if (target !== null) {
-      const moving = carried.filter((p) => folderOf(p) !== target);
+      const moving = carried.filter((t) => t.folder !== target);
       if (!moving.length) {
         group.value = { dx: 0, dy: 0, by: '' };
         return false;
       }
       settleOthers();
-      moving.forEach((p) => onMove(p, target).catch(() => {}));
+      onRelocate(moving.map((t) => ({ photo: t.photo, from: t.folder })), target).catch(() => {});
       setSelected(new Set());
       return true;
     }
-    // Onto the table: out of their folders, each where it was let go.
+    // Onto the table: out of the folder each came from, where it was let go.
     settleOthers();
     const placed: Record<string, Pos> = {};
-    carried.forEach((p) => {
-      const at = placeOf.get(p.id) ?? from;
-      placed[p.id] = { x: Math.round(at.x + dx), y: Math.round(at.y + dy) };
+    carried.forEach((t) => {
+      const at = placeOf.get(t.key) ?? from;
+      placed[t.photo.id] = { x: Math.round(at.x + dx), y: Math.round(at.y + dy) };
     });
     save({ photos: placed });
-    carried.forEach((p) => {
-      if (folderOf(p) !== null) onMove(p, null).catch(() => {});
-    });
+    const leaving = carried.filter((t) => t.folder !== null);
+    if (leaving.length) onRelocate(leaving.map((t) => ({ photo: t.photo, from: t.folder })), null).catch(() => {});
     return true;
   };
-  const tapPhoto = (photo: CanvasPhoto) => {
+  const tapPhoto = (inst: Instance) => {
     if (!selected.size) {
-      onOpenPhoto(photo);
+      onOpenPhoto(inst.photo);
       return;
     }
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(photo.id)) next.delete(photo.id);
-      else next.add(photo.id);
+      if (next.has(inst.key)) next.delete(inst.key);
+      else next.add(inst.key);
       return next;
     });
+  };
+  // Held: «Додати в іншу папку» (pale copies of it - of all the chosen,
+  // when it is one of them), or the photo's own menu.
+  const holdPhoto = async (inst: Instance) => {
+    const answer = await ask({
+      title: inst.photo.title?.trim() || 'Фото',
+      actions: [
+        { id: 'add', label: 'Додати в іншу папку', icon: 'copy-outline', hint: 'Лишиться і тут' },
+        { id: 'more', label: 'Інші дії', icon: 'ellipsis-horizontal' },
+      ],
+    });
+    if (answer === 'more') onPhotoMenu(inst.photo);
+    if (answer !== 'add') return;
+    const photosToAdd = selected.has(inst.key) ? uniquePhotos(chosenInstances()) : [inst.photo];
+    setGhost((prev) => ({ photos: photosToAdd, x: inst.x + 18, y: inst.y + 18, seq: (prev?.seq ?? 0) + 1, landed: false }));
+  };
+  // The pale copies let go: on a folder they are added to it and light up
+  // before they go; anywhere else they simply go.
+  const dropGhost = (x: number, y: number): boolean => {
+    setHover(null);
+    const current = ghost;
+    if (!current) return true;
+    const target = targetRef.current(x + TILE / 2, y + TILE / 2);
+    if (target === NEW_KEY) {
+      setGhost(null);
+      setNewFolderFor({ moves: [], adds: current.photos });
+      return true;
+    }
+    if (target === null) {
+      setGhost(null);
+      return true;
+    }
+    setGhost({ ...current, x, y, landed: true });
+    onAdd(current.photos, target).catch(() => {});
+    setSelected(new Set());
+    setTimeout(() => setGhost((g) => (g && g.seq === current.seq ? null : g)), 650);
+    return true;
   };
   // A folder let go at (x, y), its top-left corner, in world units (`w`,
   // `h` its own size). Onto another folder: it goes inside. Onto the
@@ -533,7 +601,7 @@ export default function PhotoCanvas({
             w={NODE_W}
             h={NODE_H}
             canvas={canvas}
-            onTap={() => setNewFolderFor(Array.from(selected).map((id) => photoById.get(id)).filter((p): p is CanvasPhoto => !!p))}
+            onTap={() => setNewFolderFor({ moves: chosenInstances().map((t) => ({ photo: t.photo, from: t.folder })), adds: [] })}
             onDrop={(x, y) => {
               save({ folders: { [NEW_KEY]: { x: Math.round(x), y: Math.round(y) } } });
               return true;
@@ -552,31 +620,63 @@ export default function PhotoCanvas({
               </Text>
             </View>
           </Dragged>
-          {[...islands.flatMap((island) => island.tiles), ...looseTiles].map(({ photo, x, y }) => (
+          {instances.map((inst) => (
             <Dragged
-              key={`photo:${photo.id}`}
-              id={photo.id}
-              selected={selected.has(photo.id)}
-              x={x}
-              y={y}
+              key={`photo:${inst.key}`}
+              id={inst.key}
+              selected={selected.has(inst.key)}
+              x={inst.x}
+              y={inst.y}
               w={TILE}
               h={TILE}
               canvas={canvas}
-              onTap={() => tapPhoto(photo)}
-              onLongPress={() => onPhotoMenu(photo)}
-              onDrop={(dx, dy) => dropPhoto(photo, dx, dy)}
+              onTap={() => tapPhoto(inst)}
+              onLongPress={() => holdPhoto(inst)}
+              onDrop={(dx, dy) => dropPhoto(inst, dx, dy)}
             >
               <View
                 style={[
                   styles.tile,
                   { backgroundColor: S.fill, boxShadow: S.shadow },
-                  selected.has(photo.id) && { borderWidth: 3, borderColor: S.accent },
+                  selected.has(inst.key) && { borderWidth: 3, borderColor: S.accent },
                 ]}
               >
-                <AttachmentImage uri={photo.imageUri} driveFileId={photo.driveFileId} style={styles.tileImage} />
+                <AttachmentImage uri={inst.photo.imageUri} driveFileId={inst.photo.driveFileId} style={styles.tileImage} />
               </View>
             </Dragged>
           ))}
+          {ghost && (
+            <Dragged
+              key={`ghost:${ghost.seq}`}
+              x={ghost.x}
+              y={ghost.y}
+              w={TILE + 12}
+              h={TILE + 12}
+              canvas={canvas}
+              onTap={() => setGhost(null)}
+              onDrop={dropGhost}
+            >
+              <View style={{ opacity: ghost.landed ? 1 : 0.45 }}>
+                {ghost.photos.slice(0, 3).map((photo, i) => (
+                  <View
+                    key={photo.id}
+                    style={[
+                      styles.tile,
+                      styles.ghostTile,
+                      { left: i * 6, top: i * 6, backgroundColor: S.fill, borderColor: ghost.landed ? S.accent : S.line },
+                    ]}
+                  >
+                    <AttachmentImage uri={photo.imageUri} driveFileId={photo.driveFileId} style={styles.tileImage} />
+                  </View>
+                ))}
+                {ghost.photos.length > 1 && (
+                  <View style={[styles.ghostCount, { backgroundColor: S.accent }]}>
+                    <Text style={styles.ghostCountLabel}>{ghost.photos.length}</Text>
+                  </View>
+                )}
+              </View>
+            </Dragged>
+          )}
           <Animated.View
             pointerEvents="none"
             style={[styles.marquee, { borderColor: S.accent, backgroundColor: withAlpha(S.accent, 0.1) }, marqueeStyle]}
@@ -589,13 +689,17 @@ export default function PhotoCanvas({
         )}
         <RenamePrompt
           visible={newFolderFor !== null}
-          title={newFolderFor?.length ? `Нова папка для ${newFolderFor.length} фото` : 'Нова папка'}
+          title={
+            newFolderFor && newFolderFor.moves.length + newFolderFor.adds.length
+              ? `Нова папка для ${newFolderFor.moves.length + newFolderFor.adds.length} фото`
+              : 'Нова папка'
+          }
           initialValue=""
           placeholder="Назва папки"
           onCancel={() => setNewFolderFor(null)}
           onSave={(name) => {
             const clean = name.trim().replace(/\//g, ' ');
-            const items = newFolderFor ?? [];
+            const items = newFolderFor ?? { moves: [], adds: [] };
             setNewFolderFor(null);
             if (!clean) return;
             if (folderPaths.includes(clean)) {
@@ -603,7 +707,9 @@ export default function PhotoCanvas({
               return;
             }
             setSelected(new Set());
-            onCreateFolder(clean, items).catch(() => {});
+            onCreateFolder(clean, items.moves)
+              .then(() => (items.adds.length ? onAdd(items.adds, clean) : undefined))
+              .catch(() => {});
           }}
         />
       </View>
@@ -805,6 +911,26 @@ const styles = StyleSheet.create({
   },
   newNode: {
     borderStyle: 'dashed',
+  },
+  ghostTile: {
+    position: 'absolute',
+    borderWidth: 2,
+  },
+  ghostCount: {
+    position: 'absolute',
+    right: -4,
+    top: -6,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  ghostCountLabel: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   marquee: {
     position: 'absolute',

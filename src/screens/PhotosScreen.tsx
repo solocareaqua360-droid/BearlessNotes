@@ -1030,18 +1030,29 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
           <PhotoCanvas
             photos={list.displayed}
             folderPaths={explorer.allFolderPaths}
-            folderOf={(photo) => explorer.folderOf(photo as PhotoItem)}
-            onMove={(photo, folder) => explorer.moveItem(photo as PhotoItem, folder)}
+            foldersOf={(photo) => explorer.foldersOf(photo as PhotoItem)}
+            // Out of the folder each photo was carried FROM, into `to` - its
+            // other folders untouched (a folder is a tag; a photo can be in
+            // two). The target's tag is made once for the whole batch:
+            // looked up per photo, a folder that was only a path segment
+            // would get a tag per photo before the tag list caught up.
+            onRelocate={async (moves, to) => {
+              const target = to ? await explorer.tagForFolder(to) : null;
+              for (const { photo, from } of moves) {
+                if (from) await list.detachTag(await explorer.tagForFolder(from), 'photo', photo.id, 'photos');
+                if (target) await list.attachTag(target, 'photo', photo.id, 'photos');
+              }
+            }}
+            onAdd={async (chosen, to) => {
+              const target = await explorer.tagForFolder(to);
+              for (const photo of chosen) await list.attachTag(target, 'photo', photo.id, 'photos');
+            }}
             onMoveFolder={(path, parent) => explorer.renameFolder(path, parent ? `${parent}/${nameOf(path)}` : nameOf(path))}
-            // The folder's tag made ONCE, then each photo taken off its
-            // old folder and given it - moveItem per photo would look the
-            // new folder up before the tag list has heard of it and make
-            // one tag per photo.
-            onCreateFolder={async (name, chosen) => {
-              const tag = await explorer.tagForFolder(name);
-              for (const photo of chosen) {
-                await explorer.moveItem(photo as PhotoItem, null);
-                await list.attachTag(tag, 'photo', photo.id, 'photos');
+            onCreateFolder={async (name, moves) => {
+              const target = await explorer.tagForFolder(name);
+              for (const { photo, from } of moves) {
+                if (from) await list.detachTag(await explorer.tagForFolder(from), 'photo', photo.id, 'photos');
+                await list.attachTag(target, 'photo', photo.id, 'photos');
               }
             }}
             onOpenPhoto={(photo) => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id))}
