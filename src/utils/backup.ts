@@ -9,9 +9,11 @@ import { stripFormatting } from './documentPreview';
 import { displayFieldValue, rowTitleOf, type RowDisplayContext } from './customRowDisplay';
 import { categoryFromSiteName } from './linkCategory';
 import {
+  backedUpIds,
   copyDriveFile,
   createDriveFolder,
   driveBackupReady,
+  ensureBackupMediaFolder,
   ensureBackupsFolder,
   uploadLocalFileToDrive,
   uploadToDrive,
@@ -29,7 +31,9 @@ import type { Block, CustomDatabase, CustomDatabaseRow, FieldDef } from '../type
 //   Щоденник/              the days' notes, named by their date
 //   Бази/                  each personal database, Tasks and Links as a
 //                          Google Sheet
-//   Фото/, Файли/          the originals, copied on the Drive itself
+//
+// and, shared by all copies, «Резервні копії / Фото» and «/ Файли»: every
+// photo and file once, a later copy adding only the new ones.
 //
 // Nothing is overwritten: a later copy is a new folder, and a note changed
 // since is in it as it is now, while the older copy keeps it as it was.
@@ -69,8 +73,11 @@ export type BackupResult = {
   folderName: string;
   notes: number;
   databases: number;
+  // New this time, and already in the shared folders from earlier copies.
   photos: number;
+  photosKept: number;
   files: number;
+  filesKept: number;
   failed: string[];
 };
 
@@ -114,7 +121,7 @@ export async function backupToDrive(
   if (!(await driveBackupReady())) throw new Error('Google Диск не підключено');
   const at = new Date();
   const folderName = stamp(at);
-  const result: BackupResult = { folderName, notes: 0, databases: 0, photos: 0, files: 0, failed: [] };
+  const result: BackupResult = { folderName, notes: 0, databases: 0, photos: 0, photosKept: 0, files: 0, filesKept: 0, failed: [] };
   const attempt = async (label: string, work: () => Promise<unknown>) => {
     try {
       await work();
@@ -230,32 +237,53 @@ export async function backupToDrive(
     }
   }
 
-  // ---- photos and files: copied on the Drive, or sent from here ---------
-  const copyAll = async (
+  // ---- photos and files: ONE shared folder each for all copies ----------
+  // (the user's choice "В"): «Резервні копії / Фото» and «/ Файли». Each
+  // photo and file is copied there once, marked with its record's id, and
+  // a later copy adds only what is not there yet - no copy per backup, and
+  // one deleted in the app stays here. Copied on the Drive itself when the
+  // Drive has the original, sent from the phone when it does not.
+  const copyNew = async (
     items: Rec[],
     stage: string,
-    folderName: string,
+    folderName: 'Фото' | 'Файли',
     nameOf: (r: Rec) => string,
     uriOf: (r: Rec) => string | undefined,
     mimeOf: (r: Rec) => string
   ) => {
-    if (!items.length) return 0;
-    const folder = await createDriveFolder(folderName, root);
-    let count = 0;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      onProgress({ stage, done: i, total: items.length });
+    if (!items.length) return { added: 0, kept: 0 };
+    onProgress({ stage, done: 0, total: items.length });
+    // Without knowing what is there, nothing is copied - copying all of it
+    // again is exactly the duplication this folder exists to avoid.
+    let folder: string;
+    let already: Set<string>;
+    try {
+      folder = await ensureBackupMediaFolder(folderName);
+      already = await backedUpIds(folder);
+    } catch (e) {
+      result.failed.push(`${folderName}: ${(e as Error)?.message ?? e}`);
+      return { added: 0, kept: 0 };
+    }
+    const fresh = items.filter((item) => !already.has(item.id));
+    let added = 0;
+    for (let i = 0; i < fresh.length; i++) {
+      const item = fresh[i];
+      onProgress({ stage, done: i, total: fresh.length });
       const name = nameOf(item);
       const driveId = item.driveFileId as string | undefined;
       const uri = uriOf(item);
       const ok = await attempt(name, () =>
-        driveId ? copyDriveFile(driveId, folder, name) : uri ? uploadLocalFileToDrive(folder, uri, name, mimeOf(item)) : Promise.reject(new Error('немає ні копії на Диску, ні файлу тут'))
+        driveId
+          ? copyDriveFile(driveId, folder, name, item.id)
+          : uri
+            ? uploadLocalFileToDrive(folder, uri, name, mimeOf(item), item.id)
+            : Promise.reject(new Error('немає ні копії на Диску, ні файлу тут'))
       );
-      if (ok) count++;
+      if (ok) added++;
     }
-    return count;
+    return { added, kept: items.length - fresh.length };
   };
-  result.photos = await copyAll(
+  const photos = await copyNew(
     want('photos') ? data.photos ?? [] : [],
     'Фото',
     'Фото',
@@ -263,7 +291,7 @@ export async function backupToDrive(
     (p) => p.imageUri as string | undefined,
     () => 'image/jpeg'
   );
-  result.files = await copyAll(
+  const files = await copyNew(
     want('files') ? data.files ?? [] : [],
     'Файли',
     'Файли',
@@ -271,6 +299,10 @@ export async function backupToDrive(
     (f) => f.fileUri as string | undefined,
     (f) => String(f.mimeType ?? 'application/octet-stream')
   );
+  result.photos = photos.added;
+  result.photosKept = photos.kept;
+  result.files = files.added;
+  result.filesKept = files.kept;
 
   // When and where, for Settings and the weekly offer.
   await setDoc(doc(db, 'settings', 'backup'), { lastAt: at.getTime(), lastFolder: folderName, choice }, { merge: true }).catch(() => {});

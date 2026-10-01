@@ -121,7 +121,8 @@ export default function BackupCard({ styles, accent, ink }: { styles: Styles; ac
       </View>
       <Text style={styles.cardHint}>
         Кожна копія - окрема папка в «Bearless Notes / Резервні копії»: нотатки як Google Документи, бази як
-        Google Таблиці, фото й файли, і архів усіх даних для відновлення. Старі копії не змінюються.
+        Google Таблиці і архів усіх даних для відновлення. Старі копії не змінюються. Фото й файли - в одній
+        спільній папці для всіх копій: кожне копіюється один раз, далі додаються лише нові.
       </Text>
       <Text style={styles.cardBody}>{lastLabel(lastAt)}</Text>
 
@@ -147,7 +148,7 @@ export default function BackupCard({ styles, accent, ink }: { styles: Styles; ac
       )}
       {result && (
         <Text style={styles.cardHint}>
-          {`Готово: папка «${result.folderName}». Нотаток ${result.notes}, таблиць ${result.databases}, фото ${result.photos}, файлів ${result.files}.`}
+          {`Готово: папка «${result.folderName}». Нотаток ${result.notes}, таблиць ${result.databases}. Фото: ${result.photos} нових, ${result.photosKept} уже були. Файли: ${result.files} нових, ${result.filesKept} уже були.`}
           {result.failed.length
             ? `\nНе вдалося ${result.failed.length}:\n${result.failed.slice(0, 6).join('\n')}${result.failed.length > 6 ? '\n…' : ''}`
             : ''}

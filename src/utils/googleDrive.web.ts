@@ -109,15 +109,51 @@ export async function driveBackupReady(): Promise<boolean> {
   return hasDriveToken();
 }
 
-export async function ensureBackupsFolder(): Promise<string> {
-  const cached = await AsyncStorage.getItem(BACKUPS_FOLDER_KEY);
+// A remembered folder, checked before it is used, unlike the other cached
+// folders: a user clearing out old copies may well have thrown it away, and
+// a copy made into a folder in the bin is a copy nobody sees.
+async function ensureLiveFolder(storageKey: string, name: string, parentId: string): Promise<string> {
+  const cached = await AsyncStorage.getItem(storageKey);
   if (cached) {
     const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${cached}?fields=trashed`);
     const json = await res.json().catch(() => null);
     if (res.ok && json && !json.trashed) return cached;
-    await AsyncStorage.removeItem(BACKUPS_FOLDER_KEY);
+    await AsyncStorage.removeItem(storageKey);
   }
-  return ensureFolder(BACKUPS_FOLDER_KEY, BACKUPS_FOLDER_NAME, await ensureFolder(FOLDER_ID_STORAGE_KEY, FOLDER_NAME));
+  return ensureFolder(storageKey, name, parentId);
+}
+
+export async function ensureBackupsFolder(): Promise<string> {
+  return ensureLiveFolder(BACKUPS_FOLDER_KEY, BACKUPS_FOLDER_NAME, await ensureFolder(FOLDER_ID_STORAGE_KEY, FOLDER_NAME));
+}
+
+// THE SHARED MEDIA FOLDERS of all copies («Фото», «Файли» right under
+// «Резервні копії» - the user's choice "В"): each photo and file is copied
+// there once, marked with the id of its record, and every later copy adds
+// only what is not there yet. A photo deleted in the app stays here.
+const MEDIA_FOLDER_KEYS = { 'Фото': 'bearlessNotes.driveFolderId.backupPhotos', 'Файли': 'bearlessNotes.driveFolderId.backupFiles' } as const;
+export async function ensureBackupMediaFolder(name: 'Фото' | 'Файли'): Promise<string> {
+  return ensureLiveFolder(MEDIA_FOLDER_KEYS[name], name, await ensureBackupsFolder());
+}
+
+// The record ids already copied into a folder (its files' `mindevaId`).
+export async function backedUpIds(folderId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let pageToken = '';
+  do {
+    const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+    const res = await driveFetch(
+      `https://www.googleapis.com/drive/v3/files?q=${q}&pageSize=1000&fields=nextPageToken,files(appProperties)${pageToken ? `&pageToken=${pageToken}` : ''}`
+    );
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json) throw new Error(`Не вдалося прочитати папку копій (HTTP ${res.status})`);
+    for (const f of json.files ?? []) {
+      const id = f.appProperties?.mindevaId;
+      if (id) ids.add(id);
+    }
+    pageToken = json.nextPageToken ?? '';
+  } while (pageToken);
+  return ids;
 }
 
 export async function createDriveFolder(name: string, parentId: string): Promise<string> {
@@ -145,10 +181,12 @@ export async function uploadToDrive(
   name: string,
   mimeType: string,
   content: DriveContent,
-  convertTo?: string
+  convertTo?: string,
+  mindevaId?: string
 ): Promise<string> {
   const metadata: Record<string, unknown> = { name, parents: [parentId] };
   if (convertTo) metadata.mimeType = convertTo;
+  if (mindevaId) metadata.appProperties = { mindevaId };
   const body = new FormData();
   body.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   body.append(
@@ -166,11 +204,11 @@ export async function uploadToDrive(
   return json.id as string;
 }
 
-export async function copyDriveFile(fileId: string, parentId: string, name: string): Promise<string> {
+export async function copyDriveFile(fileId: string, parentId: string, name: string, mindevaId?: string): Promise<string> {
   const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}/copy?fields=id`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, parents: [parentId] }),
+    body: JSON.stringify({ name, parents: [parentId], ...(mindevaId ? { appProperties: { mindevaId } } : {}) }),
   });
   const json = await res.json().catch(() => null);
   if (!json?.id) throw new Error(`«${name}» не скопійовано (HTTP ${res.status})`);
