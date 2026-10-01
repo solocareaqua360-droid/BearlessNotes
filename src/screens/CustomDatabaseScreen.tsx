@@ -481,6 +481,26 @@ export default function CustomDatabaseScreen({
   const [scheduleCursor, setScheduleCursor] = useState(() => dateKey(new Date()));
   // Folded groups, by `${viewId}:${groupKey}` - this session only.
   const [scheduleCollapsed, setScheduleCollapsed] = useState<Set<string>>(() => new Set());
+  // The window opens (and moves) with the cursor in view - its column one
+  // in from the left - rather than with the window's first day there,
+  // which is two weeks back now.
+  useEffect(() => {
+    if (viewMode !== 'schedule') return;
+    const index = Math.round(
+      (parseDateKey(scheduleCursor).getTime() - parseDateKey(scheduleWindowStart).getTime()) / 86400000
+    );
+    if (index < 0 || index >= SCHEDULE_WINDOW_DAYS) return;
+    const x = Math.max(0, (index - 1) * SCHEDULE_DAY_WIDTH);
+    const frame = requestAnimationFrame(() => {
+      scheduleBodyScrollRef.current?.scrollTo({ x, animated: false });
+      scheduleHeaderScrollRef.current?.scrollTo({ x, animated: false });
+    });
+    return () => cancelAnimationFrame(frame);
+    // Not on the cursor itself: tapping a date must not move the grid
+    // under the finger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, scheduleWindowStart]);
+
   // This Android build doesn't resize the window under the keyboard - it
   // arrives as an inset over the content, not a shrink - so a bottom sheet
   // needs to track its height itself and push up by that much, same as
@@ -1288,26 +1308,6 @@ export default function CustomDatabaseScreen({
   // Moves the visible stretch of days - see scheduleWindowStart. Half a
   // window at a time, so what you were looking at is still half on
   // screen after a press.
-  // The window opens (and moves) with the cursor in view - its column one
-  // in from the left - rather than with the window's first day there,
-  // which is two weeks back now.
-  useEffect(() => {
-    if (viewMode !== 'schedule') return;
-    const index = Math.round(
-      (parseDateKey(scheduleCursor).getTime() - parseDateKey(scheduleWindowStart).getTime()) / 86400000
-    );
-    if (index < 0 || index >= SCHEDULE_WINDOW_DAYS) return;
-    const x = Math.max(0, (index - 1) * SCHEDULE_DAY_WIDTH);
-    const frame = requestAnimationFrame(() => {
-      scheduleBodyScrollRef.current?.scrollTo({ x, animated: false });
-      scheduleHeaderScrollRef.current?.scrollTo({ x, animated: false });
-    });
-    return () => cancelAnimationFrame(frame);
-    // Not on the cursor itself: tapping a date must not move the grid
-    // under the finger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, scheduleWindowStart]);
-
   function scheduleShiftWindow(days: number) {
     setScheduleWindowStart((prev) => dateKey(addDays(parseDateKey(prev), days)));
   }
