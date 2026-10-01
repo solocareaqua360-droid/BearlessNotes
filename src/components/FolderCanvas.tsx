@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, type SharedValue } from 'react-native-reanimated';
 import { doc, onSnapshot } from '../firestore';
@@ -10,6 +10,8 @@ import { withAlpha } from '../utils/color';
 import { Ionicons } from './icons/Ionicons';
 import { ask, notify } from './surfaces/Ask';
 import RenamePrompt from './RenamePrompt';
+import { useDensity } from '../hooks/useDensity';
+import { bindRightClick } from '../utils/rightClick';
 
 // «ПОЛОТНО» - a database as a table (the user's, 2026-10-02; photos
 // first, then files, links and notes - the tile is each one's own, see
@@ -135,6 +137,14 @@ export default function FolderCanvas({
   const S = useSoft();
   const { width: screenW } = useWindowDimensions();
   const canvasDoc = useMemo(() => doc(db, 'settings', layoutKey), [layoutKey]);
+  // UNDER A MOUSE (the Mac app - where the user expects to do this most):
+  // dragging the empty table draws the rectangle at once, Finder's way;
+  // the table moves by two-finger scroll or the wheel and zooms by a
+  // trackpad pinch or ⌘ + wheel (see the wheel effect below); a right
+  // click is a hold; ⌘ or Shift + click adds to the chosen.
+  const pointer = useDensity() === 'pointer';
+  const viewportRef = useRef<View>(null);
+  const modifierHeld = useRef(false);
   const [layout, setLayout] = useState<Layout>(EMPTY_LAYOUT);
   const [hover, setHover] = useState<string | null>(null);
   // THE SELECTION (step two): photos taken together - drawn round with a
@@ -179,6 +189,7 @@ export default function FolderCanvas({
     () =>
       Gesture.Pan()
         .maxPointers(1)
+        .enabled(!pointer)
         .onStart(() => {
           start.value = { ...start.value, tx: tx.value, ty: ty.value };
         })
@@ -187,7 +198,7 @@ export default function FolderCanvas({
           ty.value = start.value.ty + e.translationY;
         }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [pointer]
   );
   const pinch = useMemo(
     () =>
@@ -218,7 +229,8 @@ export default function FolderCanvas({
         .maxPointers(1)
         // Longer than an item's own hold (HOLD_MS): a finger held on a
         // photo opens its menu, never a rectangle drawn from under it.
-        .activateAfterLongPress(HOLD_MS + 150)
+        // Under a mouse, at once.
+        .activateAfterLongPress(pointer ? 0 : HOLD_MS + 150)
         .onStart((e) => {
           const wx = (e.x - tx.value) / scale.value - WORLD_HALF;
           const wy = (e.y - ty.value) / scale.value - WORLD_HALF;
@@ -238,7 +250,7 @@ export default function FolderCanvas({
           marquee.value = { ...marquee.value, on: false };
         }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [pointer]
   );
   const tableTap = useMemo(
     () =>
@@ -269,6 +281,49 @@ export default function FolderCanvas({
   const surfaceStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
   }));
+  // The wheel and the trackpad (a pinch arrives as a wheel event with
+  // ctrlKey - see hooks/useCanvasWheel, whose two step sizes these are).
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const node = viewportRef.current as unknown as HTMLElement | null;
+    if (!node || typeof node.addEventListener !== 'function') return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      if (!event.ctrlKey && !event.metaKey) {
+        tx.value -= event.shiftKey ? event.deltaY : event.deltaX;
+        ty.value -= event.shiftKey ? 0 : event.deltaY;
+        return;
+      }
+      const from = scale.value;
+      const pinch = Math.abs(event.deltaY) < 50;
+      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, from * Math.exp(-event.deltaY * (pinch ? 0.012 : 0.0015))));
+      if (next === from) return;
+      const rect = node.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      // The point under the pointer stays under it.
+      tx.value = px - (px - tx.value) * (next / from);
+      ty.value = py - (py - ty.value) * (next / from);
+      scale.value = next;
+    };
+    const keys = (event: KeyboardEvent) => {
+      modifierHeld.current = event.metaKey || event.shiftKey;
+    };
+    const release = () => {
+      modifierHeld.current = false;
+    };
+    node.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('keydown', keys);
+    window.addEventListener('keyup', keys);
+    window.addEventListener('blur', release);
+    return () => {
+      node.removeEventListener('wheel', onWheel);
+      window.removeEventListener('keydown', keys);
+      window.removeEventListener('keyup', keys);
+      window.removeEventListener('blur', release);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---- where everything stands -------------------------------------------
   const topFolders = folderPaths.filter((p) => depthOf(p) === 1).sort((a, b) => a.localeCompare(b));
@@ -459,7 +514,7 @@ export default function FolderCanvas({
     return true;
   };
   const tapPhoto = (inst: Instance) => {
-    if (!selected.size) {
+    if (!selected.size && !modifierHeld.current) {
       onOpenPhoto(inst.photo);
       return;
     }
@@ -539,7 +594,7 @@ export default function FolderCanvas({
 
   return (
     <GestureDetector gesture={tableGesture}>
-      <View style={styles.viewport} collapsable={false}>
+      <View ref={viewportRef} style={styles.viewport} collapsable={false}>
         <Animated.View style={[styles.surface, surfaceStyle]}>
           {islands.map((island) => (
             <View
@@ -881,7 +936,12 @@ function Dragged({
 
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.item, { width: w, height: h }, style]}>{children}</Animated.View>
+      <Animated.View style={[styles.item, { width: w, height: h }, style]}>
+        {/* A right click is a hold (the laptop's - nothing on a phone). */}
+        <View ref={(node) => bindRightClick(node, onLongPress)} style={styles.fill}>
+          {children}
+        </View>
+      </Animated.View>
     </GestureDetector>
   );
 }
@@ -901,6 +961,9 @@ const styles = StyleSheet.create({
   },
   item: {
     position: 'absolute',
+  },
+  fill: {
+    flex: 1,
   },
   island: {
     position: 'absolute',
