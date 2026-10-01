@@ -27,6 +27,23 @@ export function buildBlock(id: string, type: BlockType, text: string): Block {
   return block;
 }
 
+// The same block as another kind - a list item made a heading, a heading
+// made plain text. Built fresh through buildBlock (so nothing the new kind
+// does not use is carried), but what belongs to the BLOCK rather than to its
+// kind stays: when it was written, where it stands on the canvas, and the
+// end of a toggle's section it marks. Rebuilt from scratch, a block lost
+// all three on every change of kind - its place on «Полотно» among them.
+// What belongs to the old kind (a checkbox's tick and its task fields, a
+// toggle's fold) goes with it on purpose: a reminder left on a block that
+// is no longer a task would ring for nothing.
+export function retype(block: Block, type: BlockType): Block {
+  const next = buildBlock(block.id, type, block.text);
+  if (block.createdAt) next.createdAt = block.createdAt;
+  if (block.canvas) next.canvas = block.canvas;
+  if (block.exitsToggle) next.exitsToggle = true;
+  return next;
+}
+
 export function newBlock(): Block {
   return buildBlock(generateId(), 'paragraph', '');
 }

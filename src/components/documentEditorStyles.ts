@@ -280,11 +280,14 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
   // miniatures, which draw this same page, so the card and the note stay
   // one picture.
   titleInput: {
-    // At least 2x the previous 24 - the user's own size, kept.
-    // Under a mouse: 32, which is 30 once the shell's 95% is on it.
-    fontSize: IS_POINTER ? 32 : 48,
-    lineHeight: IS_POINTER ? 38 : 54,
-    letterSpacing: -1,
+    // THE PAGE'S H1 (the user's, 2026-10-02: "заголовок нотатки повинен
+    // бути h1"): one step above the body's own headings, which the panel
+    // calls 2, 3 and 4 because this is the first (PAGE_H1 28 / 25 is
+    // «Заголовок 2»). It used to be 48 on a phone - 1.7x the biggest
+    // heading under it, a poster over the page rather than its title.
+    fontSize: IS_POINTER ? 30 : 34,
+    lineHeight: IS_POINTER ? 36 : 41,
+    letterSpacing: -0.7,
     // The weight is the FILE's (Inter_600SemiBold); a bold on top makes
     // Android draw a fake heavier one.
     fontWeight: 'normal',

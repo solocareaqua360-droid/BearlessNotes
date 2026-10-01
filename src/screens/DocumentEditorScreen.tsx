@@ -130,6 +130,7 @@ import { PAGE_HEADER_TOP, PAGE_SHEET_INSET, makeStyles } from '../components/doc
 import BlockList, { BlockListHandle } from '../components/BlockList';
 import {
   buildBlock,
+  retype,
   buildDocumentHtml,
   buildDocumentText,
   COLOR_CLOSE,
@@ -3766,8 +3767,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setBlocks((prev) =>
       prev.map((b) => {
         if (b.id !== id) return b;
-        if (level === null) return buildBlock(id, 'paragraph', b.text);
-        return { ...buildBlock(id, 'heading', b.text), headingLevel: level };
+        if (level === null) return retype(b, 'paragraph');
+        return { ...retype(b, 'heading'), headingLevel: level };
       })
     );
   }
@@ -3875,7 +3876,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // one-way conversion - and either way, the text already typed
           // carries over rather than starting from a blank block.
           const nextType = currentType === type ? 'paragraph' : type;
-          return buildBlock(id, nextType, b.text);
+          return retype(b, nextType);
         })
       );
     }
