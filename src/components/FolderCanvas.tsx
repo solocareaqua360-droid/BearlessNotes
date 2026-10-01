@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, type SharedValue } from 'react-native-reanimated';
-import { doc, onSnapshot } from '../firestore';
+import { deleteField, doc, onSnapshot } from '../firestore';
 import { db } from '../firebase';
 import { setDoc } from '../utils/owned';
 import { useSoft } from '../theme/soft';
@@ -39,7 +39,11 @@ import { bindRightClick } from '../utils/rightClick';
 // pale copy (of it, or of all the chosen) is carried to a folder and
 // lights up there - the photo is now in both.
 //
-// Still to come: piles.
+// PILES: a thing dropped on a loose thing makes a pile there (and onto a
+// pile, joins it) - drawn as a little stack with a count, carried whole
+// (onto a folder, all of it goes in), tapped open into a panel to take
+// things back out, held for «Розкласти на столі» / «У нову папку». Only
+// loose things pile; one put into a folder leaves its pile.
 
 // Any record with an id - what a tile shows is the database's own
 // (renderTile). Named "photo" inside, where it was first written for.
@@ -49,12 +53,21 @@ export type Move = { photo: CanvasPhoto; from: string | null };
 // ONE PHOTO ON THE TABLE, in one place: loose, or in one folder's island.
 // A photo in two folders is two of these, and carrying one takes the photo
 // out of THAT folder only. Chosen and carried by its key.
-type Instance = { key: string; photo: CanvasPhoto; folder: string | null; x: number; y: number };
+type Instance = { key: string; photo: CanvasPhoto; folder: string | null; x: number; y: number; pile?: string };
 const instanceKey = (photoId: string, folder: string | null) => `${photoId}@${folder ?? ''}`;
 
 type Pos = { x: number; y: number };
-type Layout = { photos: Record<string, Pos>; folders: Record<string, Pos>; open: Record<string, boolean> };
-const EMPTY_LAYOUT: Layout = { photos: {}, folders: {}, open: {} };
+// A PILE: loose things dropped on each other, carried as one (step three).
+type PileRec = { x: number; y: number; ids: string[] };
+type Layout = {
+  photos: Record<string, Pos>;
+  folders: Record<string, Pos>;
+  open: Record<string, boolean>;
+  piles: Record<string, PileRec>;
+};
+const EMPTY_LAYOUT: Layout = { photos: {}, folders: {}, open: {}, piles: {} };
+// Not "__x__"-shaped: Firestore refuses such a field name.
+const newPileId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
 // The world: a square this big around the origin, so everything on it
 // stays inside its parent's bounds - on Android a child outside them is
@@ -151,6 +164,8 @@ export default function FolderCanvas({
   // rectangle, or tapped while something is already chosen - and carried
   // together: dragging any one of them carries them all.
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // Piles spread out beside themselves (this session).
+  const [openPiles, setOpenPiles] = useState<Set<string>>(() => new Set());
   // What «+ Нова папка» is being named for: photos carried into it (moved),
   // photos added to it (pale copies), or nothing (a folder alone).
   const [newFolderFor, setNewFolderFor] = useState<{ moves: Move[]; adds: CanvasPhoto[] } | null>(null);
@@ -164,7 +179,7 @@ export default function FolderCanvas({
         canvasDoc,
         (snap: { data: () => Partial<Layout> | undefined }) => {
           const data = snap.data();
-          setLayout({ photos: data?.photos ?? {}, folders: data?.folders ?? {}, open: data?.open ?? {} });
+          setLayout({ photos: data?.photos ?? {}, folders: data?.folders ?? {}, open: data?.open ?? {}, piles: data?.piles ?? {} });
         },
         () => {}
       ),
@@ -175,8 +190,25 @@ export default function FolderCanvas({
       photos: { ...prev.photos, ...(patch.photos ?? {}) },
       folders: { ...prev.folders, ...(patch.folders ?? {}) },
       open: { ...prev.open, ...(patch.open ?? {}) },
+      piles: { ...prev.piles, ...(patch.piles ?? {}) },
     }));
     setDoc(canvasDoc, patch, { merge: true }).catch(() => {});
+  };
+  // Piles changed - each to its new record, or (null) gone.
+  const savePiles = (changes: Record<string, PileRec | null>) => {
+    setLayout((prev) => {
+      const piles = { ...prev.piles };
+      Object.entries(changes).forEach(([id, rec]) => {
+        if (rec) piles[id] = rec;
+        else delete piles[id];
+      });
+      return { ...prev, piles };
+    });
+    const patch: Record<string, unknown> = {};
+    Object.entries(changes).forEach(([id, rec]) => {
+      patch[id] = rec ?? deleteField();
+    });
+    setDoc(canvasDoc, { piles: patch }, { merge: true }).catch(() => {});
   };
 
   // ---- the table's own pan and zoom --------------------------------------
@@ -404,21 +436,78 @@ export default function FolderCanvas({
   // open island is wider than its node, and laid over the pile it hid it.
   const looseX = topFolders.length ? Math.max(NODE_W, islandW) + 40 : 0;
   const looseCols = Math.max(2, Math.min(ROOT_COLS, Math.floor((screenW - looseX - 40) / (TILE + GAP))));
-  let unplaced = 0;
-  const looseTiles: Instance[] = loose.map((photo) => {
-    const key = instanceKey(photo.id, null);
-    const saved = layout.photos[photo.id];
-    if (saved) return { key, photo, folder: null, x: saved.x, y: saved.y };
-    const i = unplaced++;
-    return { key, photo, folder: null, x: looseX + (i % looseCols) * (TILE + GAP), y: Math.floor(i / looseCols) * (TILE + GAP) };
+  // Piles: of what is still loose, each member in one pile only; a pile
+  // left with fewer than two is no pile - its last one lies where it was.
+  const photoById = new Map(photos.map((p) => [p.id, p]));
+  const looseIds = new Set(loose.map((p) => p.id));
+  const pileOf = new Map<string, string>();
+  const pileAt = new Map<string, Pos>();
+  const piles: { id: string; x: number; y: number; items: CanvasPhoto[]; open: boolean }[] = [];
+  Object.entries(layout.piles).forEach(([id, rec]) => {
+    const members = rec.ids.filter((pid) => looseIds.has(pid) && !pileOf.has(pid));
+    members.forEach((pid) => pileAt.set(pid, { x: rec.x, y: rec.y }));
+    if (members.length < 2) return;
+    members.forEach((pid) => pileOf.set(pid, id));
+    piles.push({ id, x: rec.x, y: rec.y, items: members.map((pid) => photoById.get(pid)!), open: openPiles.has(id) });
   });
+  let unplaced = 0;
+  const looseTiles: Instance[] = loose
+    .filter((photo) => !pileOf.has(photo.id))
+    .map((photo) => {
+      const key = instanceKey(photo.id, null);
+      const saved = layout.photos[photo.id] ?? pileAt.get(photo.id);
+      if (saved) return { key, photo, folder: null, x: saved.x, y: saved.y };
+      const i = unplaced++;
+      return { key, photo, folder: null, x: looseX + (i % looseCols) * (TILE + GAP), y: Math.floor(i / looseCols) * (TILE + GAP) };
+    });
+  // An open pile spreads its members in a panel under itself, each one an
+  // item that can be carried out of it.
+  const PILE_SIZE = TILE + 12;
+  const pilePanels = piles
+    .filter((pile) => pile.open)
+    .map((pile) => {
+      const cols = Math.min(3, pile.items.length);
+      const x = pile.x;
+      const y = pile.y + PILE_SIZE + GAP;
+      const w = cols * TILE + (cols - 1) * GAP + ISLAND_PAD * 2;
+      const rows = Math.ceil(pile.items.length / cols);
+      const h = rows * TILE + (rows - 1) * GAP + ISLAND_PAD * 2;
+      const tiles: Instance[] = pile.items.map((photo, i) => ({
+        key: instanceKey(photo.id, null),
+        photo,
+        folder: null,
+        pile: pile.id,
+        x: x + ISLAND_PAD + (i % cols) * (TILE + GAP),
+        y: y + ISLAND_PAD + Math.floor(i / cols) * (TILE + GAP),
+      }));
+      return { id: pile.id, x, y, w, h, tiles };
+    });
 
   // ---- what is under a point ------------------------------------------------
   // Smallest first: a sub-folder line inside an island beats the island.
   // `exclude`: a folder being carried - it is never its own target, nor is
   // anything inside it.
-  const targetAt = (wx: number, wy: number, exclude: string | null = null): string | null => {
+  // `skipKeys`: the things being carried (instance keys, "pile:<id>") -
+  // never their own target. Besides a folder's path and NEW_KEY this can
+  // answer "pile:<id>" (onto a pile) and "item:<id>" (onto a loose thing,
+  // making a pile) - only for things, never for a carried folder.
+  const targetAt = (wx: number, wy: number, exclude: string | null = null, skipKeys?: Set<string>): string | null => {
     const skip = (path: string) => exclude !== null && (path === exclude || path.startsWith(`${exclude}/`));
+    const inBox = (x: number, y: number, w: number, h: number) => wx >= x && wx <= x + w && wy >= y && wy <= y + h;
+    if (exclude === null) {
+      for (const pile of piles) {
+        if (skipKeys?.has(`pile:${pile.id}`)) continue;
+        if (inBox(pile.x, pile.y, PILE_SIZE, PILE_SIZE)) return `pile:${pile.id}`;
+      }
+      for (const panel of pilePanels) {
+        if (skipKeys?.has(`pile:${panel.id}`)) continue;
+        if (inBox(panel.x, panel.y, panel.w, panel.h)) return `pile:${panel.id}`;
+      }
+      for (const tile of looseTiles) {
+        if (skipKeys?.has(tile.key)) continue;
+        if (inBox(tile.x, tile.y, TILE, TILE)) return `item:${tile.photo.id}`;
+      }
+    }
     for (const island of islands) {
       for (const chip of island.chips) {
         if (skip(chip.path)) continue;
@@ -444,10 +533,12 @@ export default function FolderCanvas({
   };
   const targetRef = useRef(targetAt);
   targetRef.current = targetAt;
-  const hoverAt = (wx: number, wy: number, exclude: string | null) => setHover(targetRef.current(wx, wy, exclude));
+  const skipFor = (me: string) => (me && selected.has(me) ? new Set([...selected, me]) : new Set([me]));
+  const hoverAt = (wx: number, wy: number, exclude: string | null, me: string) =>
+    setHover(targetRef.current(wx, wy, exclude, exclude === null ? skipFor(me) : undefined));
 
   // Where each photo stands now (world units), for carrying a selection.
-  const instances: Instance[] = [...islands.flatMap((island) => island.tiles), ...looseTiles];
+  const instances: Instance[] = [...islands.flatMap((island) => island.tiles), ...pilePanels.flatMap((p) => p.tiles), ...looseTiles];
   const instanceByKey = new Map(instances.map((t) => [t.key, t]));
   const placeOf = new Map(instances.map((t) => [t.key, { x: t.x, y: t.y }]));
   const chosenInstances = () => Array.from(selected).map((k) => instanceByKey.get(k)).filter((t): t is Instance => !!t);
@@ -471,7 +562,18 @@ export default function FolderCanvas({
     const from = placeOf.get(inst.key) ?? { x, y };
     const dx = x - from.x;
     const dy = y - from.y;
-    const target = targetRef.current(x + TILE / 2, y + TILE / 2);
+    const target = targetRef.current(x + TILE / 2, y + TILE / 2, null, new Set(carried.map((t) => t.key)));
+    // Out of the piles they were in (a pile left with one is no pile).
+    const leavePiles = (except?: string) => {
+      const changes: Record<string, PileRec | null> = {};
+      const leavingIds = new Set(carried.map((t) => t.photo.id));
+      Object.entries(layout.piles).forEach(([id, rec]) => {
+        if (id === except || !rec.ids.some((pid) => leavingIds.has(pid))) return;
+        const rest = rec.ids.filter((pid) => !leavingIds.has(pid));
+        changes[id] = rest.length >= 2 ? { ...rec, ids: rest } : null;
+      });
+      if (Object.keys(changes).length) savePiles(changes);
+    };
     const settleOthers = () => {
       // The others stand where they were drawn while carried, in the same
       // frame the shared offset goes - so nothing jumps back and forth.
@@ -490,6 +592,31 @@ export default function FolderCanvas({
       setNewFolderFor({ moves: carried.map((t) => ({ photo: t.photo, from: t.folder })), adds: [] });
       return false;
     }
+    // Onto a pile, or onto a loose thing (which becomes a pile with them):
+    // out of their folders and other piles, into this one.
+    if (target !== null && (target.startsWith('pile:') || target.startsWith('item:'))) {
+      group.value = { dx: 0, dy: 0, by: '' };
+      const ids = Array.from(new Set(carried.map((t) => t.photo.id)));
+      const fromFolders = carried.filter((t) => t.folder !== null);
+      if (target.startsWith('pile:')) {
+        const pileId = target.slice(5);
+        const rec = layout.piles[pileId];
+        if (!rec) return false;
+        // All of them in it already (taken out of its panel and put back):
+        // nothing changes, so they spring back to their places.
+        if (ids.every((id) => rec.ids.includes(id))) return false;
+        leavePiles(pileId);
+        savePiles({ [pileId]: { ...rec, ids: Array.from(new Set([...rec.ids, ...ids])) } });
+      } else {
+        const onto = target.slice(5);
+        const at = placeOf.get(instanceKey(onto, null)) ?? { x, y };
+        leavePiles();
+        savePiles({ [newPileId()]: { x: Math.round(at.x), y: Math.round(at.y), ids: [onto, ...ids.filter((id) => id !== onto)] } });
+      }
+      if (fromFolders.length) onRelocate(fromFolders.map((t) => ({ photo: t.photo, from: t.folder })), null).catch(() => {});
+      setSelected(new Set());
+      return true;
+    }
     if (target !== null) {
       const moving = carried.filter((t) => t.folder !== target);
       if (!moving.length) {
@@ -497,6 +624,7 @@ export default function FolderCanvas({
         return false;
       }
       settleOthers();
+      leavePiles();
       onRelocate(moving.map((t) => ({ photo: t.photo, from: t.folder })), target).catch(() => {});
       setSelected(new Set());
       return true;
@@ -509,6 +637,7 @@ export default function FolderCanvas({
       placed[t.photo.id] = { x: Math.round(at.x + dx), y: Math.round(at.y + dy) };
     });
     save({ photos: placed });
+    leavePiles();
     const leaving = carried.filter((t) => t.folder !== null);
     if (leaving.length) onRelocate(leaving.map((t) => ({ photo: t.photo, from: t.folder })), null).catch(() => {});
     return true;
@@ -562,6 +691,63 @@ export default function FolderCanvas({
     setTimeout(() => setGhost((g) => (g && g.seq === current.seq ? null : g)), 650);
     return true;
   };
+  // A pile let go at (x, y): onto a folder - all of it into the folder;
+  // onto «+ Нова папка» - all of it into a new one; onto another pile or a
+  // loose thing - one pile; onto the table - it moves.
+  const dropPile = (pile: { id: string; items: CanvasPhoto[] }, x: number, y: number): boolean => {
+    setHover(null);
+    const target = targetRef.current(x + PILE_SIZE / 2, y + PILE_SIZE / 2, null, new Set([`pile:${pile.id}`]));
+    const rec = layout.piles[pile.id];
+    if (!rec) return false;
+    const ids = pile.items.map((p) => p.id);
+    if (target === NEW_KEY) {
+      setNewFolderFor({ moves: pile.items.map((photo) => ({ photo, from: null })), adds: [] });
+      return false;
+    }
+    if (target?.startsWith('pile:')) {
+      const other = layout.piles[target.slice(5)];
+      if (!other) return false;
+      savePiles({ [target.slice(5)]: { ...other, ids: Array.from(new Set([...other.ids, ...ids])) }, [pile.id]: null });
+      return true;
+    }
+    if (target?.startsWith('item:')) {
+      savePiles({ [pile.id]: { x: Math.round(x), y: Math.round(y), ids: Array.from(new Set([...ids, target.slice(5)])) } });
+      return true;
+    }
+    if (target !== null) {
+      savePiles({ [pile.id]: null });
+      onRelocate(pile.items.map((photo) => ({ photo, from: null })), target).catch(() => {});
+      return true;
+    }
+    savePiles({ [pile.id]: { ...rec, x: Math.round(x), y: Math.round(y) } });
+    return true;
+  };
+  const togglePile = (id: string) =>
+    setOpenPiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const holdPile = async (pile: { id: string; x: number; y: number; items: CanvasPhoto[] }) => {
+    const answer = await ask({
+      title: `Купка (${pile.items.length})`,
+      actions: [
+        { id: 'spread', label: 'Розкласти на столі', icon: 'grid-outline' },
+        { id: 'folder', label: 'У нову папку', icon: 'folder-outline' },
+      ],
+    });
+    if (answer === 'spread') {
+      const placed: Record<string, Pos> = {};
+      pile.items.forEach((photo, i) => {
+        placed[photo.id] = { x: pile.x + (i % 3) * (TILE + GAP), y: pile.y + Math.floor(i / 3) * (TILE + GAP) };
+      });
+      save({ photos: placed });
+      savePiles({ [pile.id]: null });
+    }
+    if (answer === 'folder') setNewFolderFor({ moves: pile.items.map((photo) => ({ photo, from: null })), adds: [] });
+  };
+
   // A folder let go at (x, y), its top-left corner, in world units (`w`,
   // `h` its own size). Onto another folder: it goes inside. Onto the
   // table: a top-level folder where it was let go (already one - it
@@ -693,6 +879,63 @@ export default function FolderCanvas({
               </Text>
             </View>
           </Dragged>
+          {pilePanels.map((panel) => (
+            <View
+              key={`pilepanel:${panel.id}`}
+              pointerEvents="none"
+              style={[
+                styles.island,
+                {
+                  left: panel.x + WORLD_HALF,
+                  top: panel.y + WORLD_HALF,
+                  width: panel.w,
+                  height: panel.h,
+                  backgroundColor: hover === `pile:${panel.id}` ? accentTint : withAlpha(S.ink, 0.04),
+                  borderColor: hover === `pile:${panel.id}` ? S.accent : S.line,
+                  borderStyle: 'dashed',
+                },
+              ]}
+            />
+          ))}
+          {piles.map((pile) => (
+            <Dragged
+              key={`pile:${pile.id}`}
+              id={`pile:${pile.id}`}
+              x={pile.x}
+              y={pile.y}
+              w={PILE_SIZE}
+              h={PILE_SIZE}
+              canvas={canvas}
+              onTap={() => togglePile(pile.id)}
+              onLongPress={() => holdPile(pile)}
+              onDrop={(px, py) => dropPile(pile, px, py)}
+            >
+              <View style={styles.fill}>
+                {pile.items.slice(0, 3).map((photo, i, top) => (
+                  <View
+                    key={photo.id}
+                    style={[
+                      styles.tile,
+                      styles.pileTile,
+                      {
+                        left: i * 5,
+                        top: i * 5,
+                        backgroundColor: S.fill,
+                        boxShadow: S.shadow,
+                        borderColor: hover === `pile:${pile.id}` && i === top.length - 1 ? S.accent : 'transparent',
+                        transform: [{ rotate: `${(i - (top.length - 1) / 2) * 4}deg` }],
+                      },
+                    ]}
+                  >
+                    {renderTile(photo)}
+                  </View>
+                ))}
+                <View style={[styles.ghostCount, { backgroundColor: pile.open ? S.ink : S.accent }]}>
+                  <Text style={styles.ghostCountLabel}>{pile.items.length}</Text>
+                </View>
+              </View>
+            </Dragged>
+          ))}
           {instances.map((inst) => (
             <Dragged
               key={`photo:${inst.key}`}
@@ -712,6 +955,7 @@ export default function FolderCanvas({
                   styles.tile,
                   { backgroundColor: S.fill, boxShadow: S.shadow },
                   selected.has(inst.key) && { borderWidth: 3, borderColor: S.accent },
+                  hover === `item:${inst.photo.id}` && inst.folder === null && !inst.pile && { borderWidth: 3, borderColor: S.accent },
                 ]}
               >
                 {renderTile(inst.photo)}
@@ -798,7 +1042,7 @@ type Canvas = {
   marqueePan: GestureType;
   group: SharedValue<{ dx: number; dy: number; by: string }>;
   registry: Map<string, { px: SharedValue<number>; py: SharedValue<number> }>;
-  hoverAt: (wx: number, wy: number, exclude: string | null) => void;
+  hoverAt: (wx: number, wy: number, exclude: string | null, me: string) => void;
 };
 
 // One thing on the table: where it stands (in world units), carried by a
@@ -908,7 +1152,7 @@ function Dragged({
         if (chosen) group.value = { dx: px.value - from.value.x, dy: py.value - from.value.y, by: me };
         if (Math.abs(px.value - from.value.hx) + Math.abs(py.value - from.value.hy) > HOVER_STEP) {
           from.value = { ...from.value, hx: px.value, hy: py.value };
-          runOnJS(hoverAt)(px.value + w / 2, py.value + h / 2, carries);
+          runOnJS(hoverAt)(px.value + w / 2, py.value + h / 2, carries, me);
         }
       })
       .onEnd(() => {
@@ -997,6 +1241,10 @@ const styles = StyleSheet.create({
   },
   newNode: {
     borderStyle: 'dashed',
+  },
+  pileTile: {
+    position: 'absolute',
+    borderWidth: 2,
   },
   ghostTile: {
     position: 'absolute',
