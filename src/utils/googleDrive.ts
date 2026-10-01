@@ -240,6 +240,99 @@ async function uploadBase64ToDrive(
   return json.id as string;
 }
 
+// ---- THE FULL BACKUP's own folders and uploads (utils/backup) ------------
+//
+// A copy of everything, made on request or once a week: under the app's
+// own folder, «Резервні копії», a folder per copy. Notes go in as Google
+// Docs and databases as Google Sheets - Drive converts what it is given
+// (HTML, an .xlsx) when the metadata names a Google type - and the photos
+// and files are copied on the Drive itself, never through the phone.
+
+const BACKUPS_FOLDER_KEY = 'bearlessNotes.driveFolderId.backups';
+const BACKUPS_FOLDER_NAME = 'Резервні копії';
+
+export async function driveBackupReady(): Promise<boolean> {
+  ensureConfigured();
+  return GoogleSignin.hasPreviousSignIn();
+}
+
+// The folder all copies go in. Checked, unlike the other cached folders:
+// a user clearing out old copies may well have thrown the whole folder
+// away, and a copy made into a folder in the bin is a copy nobody sees.
+export async function ensureBackupsFolder(): Promise<string> {
+  const cached = await AsyncStorage.getItem(BACKUPS_FOLDER_KEY);
+  if (cached) {
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${cached}?fields=trashed`);
+    const json = await res.json().catch(() => null);
+    if (res.ok && json && !json.trashed) return cached;
+    await AsyncStorage.removeItem(BACKUPS_FOLDER_KEY);
+  }
+  return ensureFolder(BACKUPS_FOLDER_KEY, BACKUPS_FOLDER_NAME, await ensureAppFolder());
+}
+
+// A new folder, always - a copy's own folder and its sections are never
+// looked up by name, so two copies made in one minute stay two.
+export async function createDriveFolder(name: string, parentId: string): Promise<string> {
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!json?.id) throw new Error(`Не вдалося створити папку "${name}" (HTTP ${res.status})`);
+  return json.id as string;
+}
+
+export type DriveContent = { text: string } | { base64: string };
+
+// One file into a folder. `convertTo` names the Google type Drive should
+// turn it into on the way in (a Doc from HTML, a Sheet from an .xlsx).
+export async function uploadToDrive(
+  parentId: string,
+  name: string,
+  mimeType: string,
+  content: DriveContent,
+  convertTo?: string
+): Promise<string> {
+  const boundary = `mindeva-${Math.random().toString(36).slice(2)}`;
+  const metadata: Record<string, unknown> = { name, parents: [parentId] };
+  if (convertTo) metadata.mimeType = convertTo;
+  const media =
+    'text' in content
+      ? `Content-Type: ${mimeType}; charset=UTF-8\r\n\r\n${content.text}`
+      : `Content-Type: ${mimeType}\r\nContent-Transfer-Encoding: base64\r\n\r\n${content.base64}`;
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\n${media}\r\n--${boundary}--`;
+  const res = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  const json = await res.json().catch(() => null);
+  if (!json?.id) throw new Error(`«${name}» не завантажено: ${json ? describeApiError(json) : `HTTP ${res.status}`}`);
+  return json.id as string;
+}
+
+// A copy of a file already on the Drive, made by the Drive itself.
+export async function copyDriveFile(fileId: string, parentId: string, name: string): Promise<string> {
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}/copy?fields=id`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, parents: [parentId] }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!json?.id) throw new Error(`«${name}» не скопійовано: ${json ? describeApiError(json) : `HTTP ${res.status}`}`);
+  return json.id as string;
+}
+
+// A local file, uploaded as it is - a photo or file the Drive has no copy
+// of yet.
+export async function uploadLocalFileToDrive(parentId: string, localUri: string, name: string, mimeType: string): Promise<string> {
+  const base64 = await LegacyFileSystem.readAsStringAsync(localUri, { encoding: 'base64' });
+  return uploadToDrive(parentId, name, mimeType, { base64 });
+}
+
 // Current-usage counter for SettingsScreen - approximate byte size from the
 // base64 payload (3 bytes per 4 base64 chars) rather than a second read of
 // the original file. Best-effort: a failed stats write must never fail the

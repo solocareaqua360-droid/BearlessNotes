@@ -99,6 +99,90 @@ async function ensureSubFolder(subFolder: DriveSubFolder): Promise<string> {
   return ensureFolder(SUBFOLDER_ID_STORAGE_KEY[subFolder], subFolder, await ensureFolder(FOLDER_ID_STORAGE_KEY, FOLDER_NAME));
 }
 
+// ---- THE FULL BACKUP's own folders and uploads (utils/backup) - the same
+// five calls as the phone's googleDrive.ts, sent the browser's way.
+
+const BACKUPS_FOLDER_KEY = 'bearlessNotes.driveFolderId.backups';
+const BACKUPS_FOLDER_NAME = 'Резервні копії';
+
+export async function driveBackupReady(): Promise<boolean> {
+  return hasDriveToken();
+}
+
+export async function ensureBackupsFolder(): Promise<string> {
+  const cached = await AsyncStorage.getItem(BACKUPS_FOLDER_KEY);
+  if (cached) {
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${cached}?fields=trashed`);
+    const json = await res.json().catch(() => null);
+    if (res.ok && json && !json.trashed) return cached;
+    await AsyncStorage.removeItem(BACKUPS_FOLDER_KEY);
+  }
+  return ensureFolder(BACKUPS_FOLDER_KEY, BACKUPS_FOLDER_NAME, await ensureFolder(FOLDER_ID_STORAGE_KEY, FOLDER_NAME));
+}
+
+export async function createDriveFolder(name: string, parentId: string): Promise<string> {
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!json?.id) throw new Error(`Не вдалося створити папку "${name}" (HTTP ${res.status})`);
+  return json.id as string;
+}
+
+export type DriveContent = { text: string } | { base64: string };
+
+function bytesOf(base64: string): Uint8Array {
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+export async function uploadToDrive(
+  parentId: string,
+  name: string,
+  mimeType: string,
+  content: DriveContent,
+  convertTo?: string
+): Promise<string> {
+  const metadata: Record<string, unknown> = { name, parents: [parentId] };
+  if (convertTo) metadata.mimeType = convertTo;
+  const body = new FormData();
+  body.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  body.append(
+    'file',
+    'text' in content
+      ? new Blob([content.text], { type: `${mimeType};charset=UTF-8` })
+      : new Blob([bytesOf(content.base64) as BlobPart], { type: mimeType })
+  );
+  const res = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'POST',
+    body,
+  });
+  const json = await res.json().catch(() => null);
+  if (!json?.id) throw new Error(`«${name}» не завантажено: ${await describeFailedResponse(res)}`);
+  return json.id as string;
+}
+
+export async function copyDriveFile(fileId: string, parentId: string, name: string): Promise<string> {
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}/copy?fields=id`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, parents: [parentId] }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!json?.id) throw new Error(`«${name}» не скопійовано (HTTP ${res.status})`);
+  return json.id as string;
+}
+
+// No file:// in a browser: a photo the Drive has no copy of lives on the
+// phone, and the phone's own backup is what carries it.
+export async function uploadLocalFileToDrive(): Promise<string> {
+  throw new Error('Цей файл є лише на телефоні');
+}
+
 // The same approximate counter SettingsScreen reads, written by both
 // devices into one document - so what it shows is what is on the Drive,
 // not what this machine happens to have sent. Best-effort: a failed

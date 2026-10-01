@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import BackupCard from '../components/BackupCard';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import * as ImagePicker from 'expo-image-picker';
@@ -70,9 +71,10 @@ import { listenError } from '../utils/listenError';
 // left with.
 const DANGER = '#EF4444';
 
-const SECTION_TITLES: Record<'menu' | 'account' | 'appearance' | 'integrations' | 'about', string> = {
+const SECTION_TITLES: Record<'menu' | 'account' | 'backup' | 'appearance' | 'integrations' | 'about', string> = {
   menu: 'Налаштування',
   account: 'Обліковий запис',
+  backup: 'Резервна копія',
   appearance: 'Зовнішній вигляд',
   integrations: 'Інтеграції',
   about: 'Про застосунок',
@@ -512,6 +514,7 @@ export default function SettingsScreen() {
             {(
               [
                 { id: 'account', icon: 'person-circle-outline', label: 'Обліковий запис' },
+                { id: 'backup', icon: 'cloud-upload-outline', label: 'Резервна копія' },
                 { id: 'appearance', icon: 'color-palette-outline', label: 'Зовнішній вигляд' },
                 { id: 'integrations', icon: 'key-outline', label: 'Інтеграції' },
                 { id: 'about', icon: 'information-circle-outline', label: 'Про застосунок' },
@@ -590,6 +593,8 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
         )}
+
+        {section === 'backup' && <BackupCard styles={styles} accent={accent} ink={theme.ink.primary} />}
 
         {section === 'account' && (
         <View style={styles.card}>
