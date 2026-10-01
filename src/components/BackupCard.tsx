@@ -39,11 +39,35 @@ function lastLabel(ms?: number): string {
   return `Остання копія: ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// What went wrong, in words - not "java.net.UnknownHostException" (the
-// first copy the user tried was made in airplane mode, 2026-10-02).
-function humanError(message: string): string {
-  if (/UnknownHost|Unable to resolve host|Network request failed|fetch failed|Failed to fetch|timeout/i.test(message)) {
-    return 'Немає з\'єднання з інтернетом. Копія робиться на Google Диск - увімкни інтернет і спробуй ще раз.';
+// What went wrong, in words - not "java.net.UnknownHostException". And
+// not a guess either: the first copy failed to find www.googleapis.com on
+// a phone that was plainly online (2026-10-02), and "no internet" was the
+// wrong answer. So the app asks the network itself which part fails.
+const NETWORK = /UnknownHost|Unable to resolve host|Network request failed|fetch failed|Failed to fetch|timeout/i;
+
+async function reachable(url: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    return res.status > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function humanError(message: string): Promise<string> {
+  if (NETWORK.test(message)) {
+    const [google, drive] = await Promise.all([
+      reachable('https://www.google.com/generate_204'),
+      reachable('https://www.googleapis.com/discovery/v1/apis?name=drive&preferred=true'),
+    ]);
+    if (google && drive) return `Зв'язок з Диском обірвався, зараз він знову є - спробуй ще раз.\n(${message})`;
+    if (google) {
+      return `Інтернет у застосунку є, але сервер Диска (www.googleapis.com) не знаходиться - схоже, його блокує приватний DNS, VPN або фільтр реклами.\n(${message})`;
+    }
+    return `Застосунок не дістається до інтернету, хоча телефон може бути в мережі: перевір дозволені мережеві дані для застосунку, VPN, приватний DNS.\n(${message})`;
   }
   if (/не підключено/i.test(message)) {
     return 'Google Диск не підключено. Підключи його в «Обліковий запис» і спробуй ще раз.';
@@ -106,7 +130,7 @@ export default function BackupCard({ styles, accent, ink }: { styles: Styles; ac
       setResult(done);
       setLastAt(Date.now());
     } catch (e) {
-      setError(humanError((e as Error)?.message ?? String(e)));
+      setError(await humanError((e as Error)?.message ?? String(e)));
     } finally {
       setProgress(null);
     }
