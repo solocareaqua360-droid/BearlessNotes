@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import FolderCanvas from '../components/FolderCanvas';
 import { FileCanvasTile } from '../components/CanvasTiles';
 import { canvasFolderActions } from '../utils/canvasFolderActions';
@@ -44,6 +44,9 @@ import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { useRecordRelationIds } from '../hooks/useRecordLinkIds';
+import { useTechnicalDocIds } from '../hooks/useTechnicalDocs';
+import { isTechnicalItem } from '../utils/recordNotes';
 import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
@@ -164,13 +167,30 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     return () => clearTimeout(timeoutId);
   }, [justAddedFile, saveDestinationVisible]);
 
+  // TECHNICAL FILES - held by a custom database's record (an app's papers)
+  // or used only in technical notes, and in no ordinary note - are hidden
+  // by default, the same rule as Photos and Links (isTechnicalItem); one
+  // row in "⋯" shows them again, search still finds them.
+  const recordFileIds = useRecordRelationIds('files');
+  const technicalDocIds = useTechnicalDocIds();
+  const [showRecordFiles, setShowRecordFiles] = useState(false);
+  const technicalFileIds = useMemo(
+    () =>
+      new Set(files.filter((f) => isTechnicalItem(f.id, f.documentIds, recordFileIds, technicalDocIds)).map((f) => f.id)),
+    [files, recordFileIds, technicalDocIds]
+  );
+  const shownFiles = useMemo(
+    () => (showRecordFiles ? files : files.filter((f) => !technicalFileIds.has(f.id))),
+    [files, technicalFileIds, showRecordFiles]
+  );
+
   // The machine every database shares - see useDatabaseList. What stays in
   // this file is only what files themselves do.
   const list = useDatabaseList<FileItem>({
     prefsKey: 'filesPrefs',
     groupKind: 'file',
     tagKind: 'file',
-    items: files,
+    items: shownFiles,
     tagIdsOf: (f) => f.tagIds,
     groupIdOf: (f) => f.groupId,
     titleOf: (f) => f.title || f.fileName,
@@ -234,7 +254,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   const explorer = useExplorer<FileItem>({
     kind: 'file',
     collection: 'files',
-    items: files,
+    items: shownFiles,
     displayed: displayedFiles,
     tagIdsOf: (f) => f.tagIds,
     tags: list.tags,
@@ -258,7 +278,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     path: explorer.path,
     folders: explorer.folders,
     moveItem: (item, destination) => explorer.moveItem(item, destination),
-    items: files,
+    items: shownFiles,
     isSelectMode,
     selectedIds,
     active: explorer.active,
@@ -807,6 +827,25 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       navTitle={inPane ? undefined : { icon: 'document-outline', label: 'Файли' }}
       searchPlaceholder="Пошук файлів"
       onAdd={addFileDirectly}
+      // Only when there is something to show or hide (see technicalFileIds).
+      menuRows={
+        technicalFileIds.size > 0 || showRecordFiles
+          ? (close) => (
+              <Pressable
+                style={menuStyles.menuRow}
+                onPress={() => {
+                  close();
+                  setShowRecordFiles((v) => !v);
+                }}
+              >
+                <Ionicons name={showRecordFiles ? 'eye-off-outline' : 'eye-outline'} size={17} color={theme.ink.primary} />
+                <Text style={menuStyles.menuRowLabel}>
+                  {showRecordFiles ? 'Сховати вкладення записів' : `Показати вкладення записів (${technicalFileIds.size})`}
+                </Text>
+              </Pressable>
+            )
+          : undefined
+      }
       // The shape of the list is a button on the rail now - it was two
       // rows here saying the same thing, on three screens.
       shape={{

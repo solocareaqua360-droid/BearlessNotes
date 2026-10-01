@@ -54,6 +54,8 @@ import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import { useDatabaseList } from '../hooks/useDatabaseList';
 import { useRecordPhotoIds } from '../hooks/useRecordPhotoIds';
+import { useTechnicalDocIds } from '../hooks/useTechnicalDocs';
+import { isTechnicalItem } from '../utils/recordNotes';
 import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
 import FolderCanvas, { CANVAS_TILE } from '../components/FolderCanvas';
@@ -151,16 +153,22 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   // database's photo field) and used in no note - are hidden by default,
   // the user's own rule: useful where they are attached, noise in the
   // gallery. One row in the "..." menu shows them again.
+  // A picture used only in technical notes (an app's «Розбір») is
+  // technical too - isTechnicalItem.
   const recordPhotoIds = useRecordPhotoIds();
+  const technicalDocIds = useTechnicalDocIds();
   const [showRecordPhotos, setShowRecordPhotos] = useState(false);
-  const recordPhotoCount = useMemo(
-    () => photos.filter((p) => recordPhotoIds.has(p.id) && p.documentIds.length === 0).length,
-    [photos, recordPhotoIds]
-  );
-  const galleryPhotos = useMemo(
+  const technicalPhotoIds = useMemo(
     () =>
-      showRecordPhotos ? photos : photos.filter((p) => !(recordPhotoIds.has(p.id) && p.documentIds.length === 0)),
-    [photos, recordPhotoIds, showRecordPhotos]
+      new Set(
+        photos.filter((p) => isTechnicalItem(p.id, p.documentIds, recordPhotoIds, technicalDocIds)).map((p) => p.id)
+      ),
+    [photos, recordPhotoIds, technicalDocIds]
+  );
+  const recordPhotoCount = technicalPhotoIds.size;
+  const galleryPhotos = useMemo(
+    () => (showRecordPhotos ? photos : photos.filter((p) => !technicalPhotoIds.has(p.id))),
+    [photos, technicalPhotoIds, showRecordPhotos]
   );
 
   const list = useDatabaseList<PhotoItem>({

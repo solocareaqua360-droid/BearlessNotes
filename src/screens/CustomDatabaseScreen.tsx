@@ -101,6 +101,9 @@ import {
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
+import { useTechnicalDocs } from '../hooks/useTechnicalDocs';
+import { stripFormatting } from '../utils/documentPreview';
+import { createOwnedNote, ensureMainNote, makeOrdinary, type DocOwner } from '../utils/recordNotes';
 import FieldsEditorSheet, { FIELD_TYPE_ICON, FIELD_TYPE_LABEL } from '../components/FieldsEditorSheet';
 import ImportTableSheet from '../components/ImportTableSheet';
 import PhotoCarousel from '../components/PhotoCarousel';
@@ -530,6 +533,8 @@ export default function CustomDatabaseScreen({
   }, []);
 
   const { filterPending, requestDeleteMany, undo, toast } = usePendingDelete<CustomDatabaseRow>();
+  // Technical notes (recordNotes): an app's «Розбір» and its other notes.
+  const technicalDocs = useTechnicalDocs();
   const { tags, attachTag, detachTag, createAndAttachTag, createAndAttachTagToMany, renameTag } = useTags();
   const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
     useMultiSelect();
@@ -1787,6 +1792,9 @@ export default function CustomDatabaseScreen({
 
   async function deleteRow(row: CustomDatabaseRow) {
     await deleteDoc(doc(db, 'customDatabaseRows', row.id));
+    // Its notes are not lost with it - they become ordinary ones (the
+    // user's choice).
+    await Promise.all(technicalDocs.filter((d) => d.owner.id === row.id).map((d) => makeOrdinary(d.id).catch(() => {})));
     await Promise.all(
       (row.tagIds ?? []).map((tagId) => {
         const tag = tags.find((t) => t.id === tagId);
@@ -2294,6 +2302,7 @@ export default function CustomDatabaseScreen({
           <Text style={{ color: softInk, fontSize: 16, lineHeight: 24, paddingHorizontal: 16 }}>{description}</Text>
         )}
         {gallery.length > 0 && <PhotoCarousel items={gallery} horizontalMargin={16} />}
+        {renderRecordNotes(row)}
         {lessonsField && (
           <View style={{ paddingHorizontal: 16, gap: 8 }}>
             <Text style={styles.pageSectionHeading}>{lessonsField.name}</Text>
@@ -2347,6 +2356,76 @@ export default function CustomDatabaseScreen({
             )}
           </View>
         )}
+      </View>
+    );
+  }
+  // «НОТАТКИ» on a record's page: the main one («Розбір», made on the
+  // first tap) and any others, each a card with its first lines. A tap
+  // opens the ordinary editor; back comes here. Held down: make it an
+  // ordinary note, which goes to the documents list.
+  function renderRecordNotes(row: CustomDatabaseRow) {
+    if (!database) return null;
+    const owner: DocOwner = { kind: 'row', id: row.id, databaseId: database.id };
+    const notes = technicalDocs
+      .filter((d) => d.owner.id === row.id)
+      .sort((a, b) => Number(b.main) - Number(a.main) || b.updatedAt - a.updatedAt);
+    const main = notes.find((d) => d.main);
+    const openMain = async () => {
+      const id = await ensureMainNote(owner, `${titleOf(row) || 'Запис'} - розбір`);
+      navigation.navigate('Editor', { documentId: id });
+    };
+    const addNote = async () => {
+      const id = await createOwnedNote(owner, '');
+      navigation.navigate('Editor', { documentId: id });
+    };
+    const noteMenu = async (id: string) => {
+      const choice = await ask({
+        title: 'Нотатка',
+        message: 'Звичайна нотатка переходить у «Документи» разом з усім, що в ній.',
+        actions: [{ id: 'ordinary', label: 'Зробити звичайною' }],
+      });
+      if (choice !== 'ordinary') return;
+      await makeOrdinary(id);
+    };
+    const card = (key: string, title: string, lines: string, onPress: () => void, onLongPress?: () => void) => (
+      <Pressable
+        key={key}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        style={{ gap: 4, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 16, backgroundColor: softCard }}
+      >
+        <Text style={{ color: softInk, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={{ color: softInk2, fontSize: 13, lineHeight: 18 }} numberOfLines={3}>
+          {lines || 'Ще порожньо'}
+        </Text>
+      </Pressable>
+    );
+    const firstLines = (blocks: { text?: string }[]) =>
+      blocks
+        .map((b) => stripFormatting(b.text ?? '').trim())
+        .filter(Boolean)
+        .slice(0, 3)
+        .join('\n');
+    return (
+      <View style={{ paddingHorizontal: 16, gap: 8 }}>
+        <Text style={styles.pageSectionHeading}>Нотатки</Text>
+        {card('main', 'Розбір', main ? firstLines(main.blocks) : '', openMain, main ? () => noteMenu(main.id) : undefined)}
+        {notes
+          .filter((d) => !d.main)
+          .map((d) =>
+            card(d.id, d.title || 'Без назви', firstLines(d.blocks), () => navigation.navigate('Editor', { documentId: d.id }), () =>
+              noteMenu(d.id)
+            )
+          )}
+        <Pressable
+          onPress={addNote}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: withAlpha(softInk, 0.12) }}
+        >
+          <Ionicons name="add" size={18} color={accent} />
+          <Text style={{ color: accent, fontSize: 14, fontWeight: '600' }}>Нотатка</Text>
+        </Pressable>
       </View>
     );
   }

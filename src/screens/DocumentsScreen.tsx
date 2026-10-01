@@ -1016,8 +1016,9 @@ export default function DocumentsScreen({
     return onSnapshot(ownedQuery('documents'), (snapshot) => {
       const all = snapshot.docs
         // Daily notes (CalendarScreen) live in this same collection but
-        // belong to the calendar, not this list.
-        .filter((docSnapshot) => !docSnapshot.data().calendarDate)
+        // belong to the calendar, not this list; technical notes (an
+        // app's «Розбір» - see recordNotes) belong to their record.
+        .filter((docSnapshot) => !docSnapshot.data().calendarDate && !docSnapshot.data().owner)
         .map((docSnapshot) => ({
           id: docSnapshot.id,
           title: docSnapshot.data().title,

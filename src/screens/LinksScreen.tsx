@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRecordLinkIds } from '../hooks/useRecordLinkIds';
+import { useTechnicalDocIds } from '../hooks/useTechnicalDocs';
+import { isTechnicalItem } from '../utils/recordNotes';
 import FolderCanvas from '../components/FolderCanvas';
 import { LinkCanvasTile } from '../components/CanvasTiles';
 import { canvasFolderActions } from '../utils/canvasFolderActions';
@@ -250,7 +252,8 @@ export default function LinksScreen({
   // them again.
   const recordLinkIds = useRecordLinkIds();
   const [showRecordLinks, setShowRecordLinks] = useState(false);
-  const isTechnical = (link: LinkItem) => recordLinkIds.has(link.id) && link.documentIds.length === 0;
+  const technicalDocIds = useTechnicalDocIds();
+  const isTechnical = (link: LinkItem) => isTechnicalItem(link.id, link.documentIds, recordLinkIds, technicalDocIds);
   const allCategoryLinks = links.filter((link) => categoryOf(link) === category);
   const recordLinkCount = allCategoryLinks.filter(isTechnical).length;
   const categoryLinks = showRecordLinks ? allCategoryLinks : allCategoryLinks.filter((link) => !isTechnical(link));

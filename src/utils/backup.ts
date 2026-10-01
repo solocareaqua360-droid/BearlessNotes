@@ -156,10 +156,19 @@ export async function backupToDrive(
   // ---- notes ------------------------------------------------------------
   const documents = (data.documents ?? []).filter((d) => !d.deletedAt);
   const days = want('days') ? documents.filter((d) => typeof d.calendarDate === 'string' && d.calendarDate) : [];
-  const notes = want('notes') ? documents.filter((d) => !(typeof d.calendarDate === 'string' && d.calendarDate)) : [];
+  const ordinary = want('notes') ? documents.filter((d) => !(typeof d.calendarDate === 'string' && d.calendarDate)) : [];
+  // Technical notes (an app's «Розбір» - recordNotes) apart from the
+  // ordinary ones, as they are apart in the app.
+  const notes = ordinary.filter((d) => !d.owner);
+  const technical = ordinary.filter((d) => !!d.owner);
   const notesFolder = notes.length ? await createDriveFolder('Нотатки', root) : null;
+  const technicalFolder = technical.length ? await createDriveFolder('Технічні нотатки', root) : null;
   const daysFolder = days.length ? await createDriveFolder('Щоденник', root) : null;
-  const allNotes = [...notes.map((d) => ({ d, folder: notesFolder! })), ...days.map((d) => ({ d, folder: daysFolder! }))];
+  const allNotes = [
+    ...notes.map((d) => ({ d, folder: notesFolder! })),
+    ...technical.map((d) => ({ d, folder: technicalFolder! })),
+    ...days.map((d) => ({ d, folder: daysFolder! })),
+  ];
   for (let i = 0; i < allNotes.length; i++) {
     const { d, folder } = allNotes[i];
     onProgress({ stage: 'Нотатки', done: i, total: allNotes.length });

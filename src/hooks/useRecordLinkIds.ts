@@ -12,6 +12,12 @@ import type { FieldDef } from '../types';
 // a binned record no longer counts. The link databases hide these unless
 // asked, search still finds them.
 export function useRecordLinkIds(): Set<string> {
+  return useRecordRelationIds('links');
+}
+
+// The same for any built-in database a relation field can point at - the
+// files an app's record holds are technical in Файли on the same rule.
+export function useRecordRelationIds(kind: 'links' | 'files'): Set<string> {
   const [linkFieldsByDb, setLinkFieldsByDb] = useState<Record<string, string[]>>({});
   const [rows, setRows] = useState<{ databaseId: string; values: Record<string, unknown> }[]>([]);
 
@@ -23,14 +29,14 @@ export function useRecordLinkIds(): Set<string> {
           const next: Record<string, string[]> = {};
           snapshot.docs.forEach((d) => {
             const fields = (d.data().fields ?? []) as FieldDef[];
-            const linkFields = fields.filter((f) => f.type === 'relation' && f.relationTarget?.kind === 'links').map((f) => f.id);
+            const linkFields = fields.filter((f) => f.type === 'relation' && f.relationTarget?.kind === kind).map((f) => f.id);
             if (linkFields.length > 0) next[d.id] = linkFields;
           });
           setLinkFieldsByDb(next);
         },
         listenError('useRecordLinkIds:customDatabases')
       ),
-    []
+    [kind]
   );
 
   useEffect(
