@@ -124,7 +124,8 @@ import { stableStringify } from '../utils/stableStringify';
 import { hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
-import InlineVideoPlayer, { type VideoSeek } from '../components/InlineVideoPlayer';
+import { type VideoSeek } from '../components/InlineVideoPlayer';
+import NoteVideoPanel from '../components/NoteVideoPanel';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
 import { PAGE_HEADER_TOP, PAGE_SHEET_INSET, makeStyles } from '../components/documentEditorStyles';
@@ -6027,36 +6028,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           A lesson's note with the player closed keeps a small way back
           to its video in the same place. */}
       {noteVideo ? (
-        <View
-          style={[
-            styles.noteVideoPanel,
-            {
-              top: editorInsets.top + (pointerDensity ? 12 : TOP_NAV_SPACE + 8),
-              width: Math.min(windowWidth - 24, 420),
-              backgroundColor: theme.paper.fill,
-            },
-          ]}
-        >
-          <View style={styles.noteVideoFrame}>
-            <InlineVideoPlayer key={noteVideo.url} url={noteVideo.url} start={noteVideo.start} seek={noteVideo.seek} />
-          </View>
-          <View style={styles.noteVideoActions}>
-            <Pressable
-              style={styles.noteVideoButton}
-              onPress={() => {
-                setPlayingVideoUrl(noteVideo.url);
-                setNoteVideo(null);
-              }}
-            >
-              <Ionicons name="expand-outline" size={16} color={theme.paper.ink} />
-              <Text style={[styles.noteVideoLabel, { color: theme.paper.ink }]}>На весь екран</Text>
-            </Pressable>
-            <Pressable style={styles.noteVideoButton} onPress={() => setNoteVideo(null)}>
-              <Ionicons name="close" size={16} color={theme.paper.ink} />
-              <Text style={[styles.noteVideoLabel, { color: theme.paper.ink }]}>Закрити</Text>
-            </Pressable>
-          </View>
-        </View>
+        <NoteVideoPanel
+          url={noteVideo.url}
+          start={noteVideo.start}
+          seek={noteVideo.seek}
+          top={editorInsets.top + (pointerDensity ? 12 : TOP_NAV_SPACE + 8)}
+          maxWidth={windowWidth - 24}
+          background={theme.paper.fill}
+          ink={theme.paper.ink}
+          styles={styles}
+          onFullscreen={() => {
+            setPlayingVideoUrl(noteVideo.url);
+            setNoteVideo(null);
+          }}
+          onClose={() => setNoteVideo(null)}
+        />
       ) : ownerVideoUrl ? (
         <Pressable
           style={[
