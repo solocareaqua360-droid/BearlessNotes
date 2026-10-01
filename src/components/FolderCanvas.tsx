@@ -7,12 +7,13 @@ import { db } from '../firebase';
 import { setDoc } from '../utils/owned';
 import { useSoft } from '../theme/soft';
 import { withAlpha } from '../utils/color';
-import AttachmentImage from './AttachmentImage';
 import { Ionicons } from './icons/Ionicons';
 import { ask, notify } from './surfaces/Ask';
 import RenamePrompt from './RenamePrompt';
 
-// «ПОЛОТНО» FOR PHOTOS (the user's, 2026-10-02): a table the photos are
+// «ПОЛОТНО» - a database as a table (the user's, 2026-10-02; photos
+// first, then files, links and notes - the tile is each one's own, see
+// renderTile): a table the photos are
 // poured out on, like a puzzle - "висипаємо на стіл, збираємо маленькі
 // фрагменти щоб побачити загальну картину". The folder tree lies on the
 // same table: what is not in any folder lies loose at the root, where it
@@ -38,7 +39,9 @@ import RenamePrompt from './RenamePrompt';
 //
 // Still to come: piles.
 
-export type CanvasPhoto = { id: string; imageUri: string; driveFileId?: string; title?: string };
+// Any record with an id - what a tile shows is the database's own
+// (renderTile). Named "photo" inside, where it was first written for.
+export type CanvasPhoto = { id: string };
 export type Move = { photo: CanvasPhoto; from: string | null };
 
 // ONE PHOTO ON THE TABLE, in one place: loose, or in one folder's island.
@@ -56,6 +59,8 @@ const EMPTY_LAYOUT: Layout = { photos: {}, folders: {}, open: {} };
 // drawn but never touched (see the android overlay touch memory).
 const WORLD_HALF = 4000;
 const TILE = 88;
+// A tile's side, for the databases drawing their own faces.
+export const CANVAS_TILE = TILE;
 const GAP = 10;
 const NODE_W = 160;
 const NODE_H = 48;
@@ -74,7 +79,6 @@ const HOVER_STEP = 10;
 // A hold on an item (its menu); the table's rectangle waits longer.
 const HOLD_MS = 350;
 
-const canvasDoc = doc(db, 'settings', 'photoCanvas');
 const nameOf = (path: string) => path.split('/').pop() ?? path;
 const depthOf = (path: string) => path.split('/').length;
 
@@ -88,7 +92,10 @@ type Island = {
   chips: { path: string; x: number; y: number; w: number; count: number; open: boolean }[];
 };
 
-export default function PhotoCanvas({
+export default function FolderCanvas({
+  layoutKey,
+  renderTile,
+  titleOf,
   photos,
   folderPaths,
   foldersOf,
@@ -100,6 +107,12 @@ export default function PhotoCanvas({
   onPhotoMenu,
   topPad,
 }: {
+  // Where the table's arrangement is kept: settings/<layoutKey>.
+  layoutKey: string;
+  // A tile's face (TILE x TILE): a photo, a file's icon and name, a note's
+  // first lines.
+  renderTile: (item: CanvasPhoto) => React.ReactNode;
+  titleOf: (item: CanvasPhoto) => string;
   photos: CanvasPhoto[];
   folderPaths: string[];
   // Every folder a photo is in (a smart folder is a tag: a photo can be in
@@ -121,6 +134,7 @@ export default function PhotoCanvas({
 }) {
   const S = useSoft();
   const { width: screenW } = useWindowDimensions();
+  const canvasDoc = useMemo(() => doc(db, 'settings', layoutKey), [layoutKey]);
   const [layout, setLayout] = useState<Layout>(EMPTY_LAYOUT);
   const [hover, setHover] = useState<string | null>(null);
   // THE SELECTION (step two): photos taken together - drawn round with a
@@ -144,7 +158,7 @@ export default function PhotoCanvas({
         },
         () => {}
       ),
-    []
+    [canvasDoc]
   );
   const save = (patch: Partial<Layout>) => {
     setLayout((prev) => ({
@@ -460,7 +474,7 @@ export default function PhotoCanvas({
   // when it is one of them), or the photo's own menu.
   const holdPhoto = async (inst: Instance) => {
     const answer = await ask({
-      title: inst.photo.title?.trim() || 'Фото',
+      title: titleOf(inst.photo),
       actions: [
         { id: 'add', label: 'Додати в іншу папку', icon: 'copy-outline', hint: 'Лишиться і тут' },
         { id: 'more', label: 'Інші дії', icon: 'ellipsis-horizontal' },
@@ -645,7 +659,7 @@ export default function PhotoCanvas({
                   selected.has(inst.key) && { borderWidth: 3, borderColor: S.accent },
                 ]}
               >
-                <AttachmentImage uri={inst.photo.imageUri} driveFileId={inst.photo.driveFileId} style={styles.tileImage} />
+                {renderTile(inst.photo)}
               </View>
             </Dragged>
           ))}
@@ -670,7 +684,7 @@ export default function PhotoCanvas({
                       { left: i * 6, top: i * 6, backgroundColor: S.fill, borderColor: ghost.landed ? S.accent : S.line },
                     ]}
                   >
-                    <AttachmentImage uri={photo.imageUri} driveFileId={photo.driveFileId} style={styles.tileImage} />
+                    {renderTile(photo)}
                   </View>
                 ))}
                 {ghost.photos.length > 1 && (
@@ -695,7 +709,7 @@ export default function PhotoCanvas({
           visible={newFolderFor !== null}
           title={
             newFolderFor && newFolderFor.moves.length + newFolderFor.adds.length
-              ? `Нова папка для ${newFolderFor.moves.length + newFolderFor.adds.length} фото`
+              ? `Нова папка (${newFolderFor.moves.length + newFolderFor.adds.length})`
               : 'Нова папка'
           }
           initialValue=""
@@ -707,7 +721,7 @@ export default function PhotoCanvas({
             setNewFolderFor(null);
             if (!clean) return;
             if (folderPaths.includes(clean)) {
-              notify('Така папка вже є', `Перетягни фото на «${clean}».`);
+              notify('Така папка вже є', `Перетягни на «${clean}».`);
               return;
             }
             setSelected(new Set());
@@ -897,6 +911,7 @@ const styles = StyleSheet.create({
     width: TILE,
     height: TILE,
     borderRadius: 14,
+    overflow: 'hidden',
   },
   tileImage: {
     width: TILE,

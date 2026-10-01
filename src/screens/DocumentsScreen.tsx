@@ -1,4 +1,7 @@
 import { lift } from '../utils/lift';
+import FolderCanvas from '../components/FolderCanvas';
+import { NoteCanvasTile } from '../components/CanvasTiles';
+import { canvasFolderActions } from '../utils/canvasFolderActions';
 import { morph, morphBack, morphCardRef } from '../utils/morph';
 
 // The pane a note opens in beside the list, as the card-to-page move knows it.
@@ -814,6 +817,7 @@ export default function DocumentsScreen({
                   { key: 'view-list', icon: 'reorder-four-outline', mode: 'list' as const },
                   { key: 'view-grid', icon: 'grid-outline', mode: 'grid' as const },
                   { key: 'view-wide', icon: 'tablet-landscape-outline', mode: 'wide' as const },
+                  { key: 'view-canvas', icon: 'easel-outline', mode: 'canvas' as const },
                 ].map((entry) => ({
                   key: entry.key,
                   icon: entry.icon,
@@ -828,11 +832,15 @@ export default function DocumentsScreen({
                         ? 'grid-outline'
                         : viewMode === 'wide'
                         ? 'tablet-landscape-outline'
+                        : viewMode === 'canvas'
+                        ? 'easel-outline'
                         : 'reorder-four-outline',
                     label: 'Вигляд',
                     // The icon says which one is on, as it always did.
                     onPress: () =>
-                      changeViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'wide' : 'list'),
+                      changeViewMode(
+                        viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'wide' : viewMode === 'wide' ? 'canvas' : 'list'
+                      ),
                     closesStack: true,
                   },
                 ]),
@@ -871,6 +879,7 @@ export default function DocumentsScreen({
       { label: 'Список', icon: 'reorder-four-outline', checked: viewMode === 'list', onPress: () => changeViewMode('list') },
       { label: 'Сітка', icon: 'grid-outline', checked: viewMode === 'grid', onPress: () => changeViewMode('grid') },
       { label: 'Широкі картки', icon: 'tablet-landscape-outline', checked: viewMode === 'wide', onPress: () => changeViewMode('wide') },
+      { label: 'Полотно', icon: 'easel-outline', checked: viewMode === 'canvas', onPress: () => changeViewMode('canvas') },
       { kind: 'section', label: 'Порядок' },
       ...FIELD_ORDER.map((field) => ({
         // The one in force says which way it runs; choosing it again
@@ -1666,6 +1675,25 @@ export default function DocumentsScreen({
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
             <ActivityIndicator color={accent} />
           </View>
+        ) : viewMode === 'canvas' && !trashOpen && !(isTwoPane && !!openDoc) ? (
+          // «Полотно» - the notes poured out on a table with the folder
+          // tree on it (FolderCanvas). Not beside an open note on the
+          // Fold's inner screen: half a screen is no table.
+          <FolderCanvas
+            layoutKey="documentCanvas"
+            renderTile={(item) => {
+              const note = item as DocumentItem;
+              return <NoteCanvasTile title={note.title} blocks={note.blocks} />;
+            }}
+            titleOf={(item) => (item as DocumentItem).title?.trim() || 'Без назви'}
+            photos={displayedDocuments}
+            folderPaths={explorer.allFolderPaths}
+            foldersOf={(item) => explorer.foldersOf(item as DocumentItem)}
+            {...canvasFolderActions(explorer, list, 'document', ITEMS_COLLECTION_BY_KIND.document)}
+            onOpenPhoto={(item) => (isSelectMode ? toggleSelected(item.id) : openDocument(item.id))}
+            onPhotoMenu={(item) => holdDocument(item as DocumentItem)}
+            topPad={chromeBottom}
+          />
         ) : !trashOpen && explorer.visibleItems.length === 0 && explorer.folders.length === 0 && !(explorer.active && explorer.path) ? (
           <View style={[styles.emptyState, { paddingTop: chromeBottom }]}>
             {documents.length === 0 ? (

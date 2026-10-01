@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import FolderCanvas from '../components/FolderCanvas';
+import { FileCanvasTile } from '../components/CanvasTiles';
+import { canvasFolderActions } from '../utils/canvasFolderActions';
 import { withAlpha } from '../utils/color';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -807,9 +810,12 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       // The shape of the list is a button on the rail now - it was two
       // rows here saying the same thing, on three screens.
       shape={{
-        icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
-        onToggle: () => changeViewMode(viewMode === 'list' ? 'grid' : 'list'),
+        icon: viewMode === 'grid' ? 'grid-outline' : viewMode === 'canvas' ? 'easel-outline' : 'reorder-four-outline',
+        // List → grid → canvas («Полотно», FolderCanvas) → list.
+        onToggle: () => changeViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'canvas' : 'list'),
       }}
+      // The canvas is a surface that moves on its own.
+      fullWidth={viewMode === 'canvas' && !trashOpen}
       explorer={{
         mode: list.listMode,
         onChangeMode: list.setListMode,
@@ -1020,6 +1026,24 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
+        ) : viewMode === 'canvas' && !trashOpen ? (
+          // «Полотно» - the files poured out on a table with the folder
+          // tree on it (FolderCanvas).
+          <FolderCanvas
+            layoutKey="fileCanvas"
+            renderTile={(item) => {
+              const file = item as FileItem;
+              return <FileCanvasTile name={file.title?.trim() || file.fileName} />;
+            }}
+            titleOf={(item) => (item as FileItem).title?.trim() || (item as FileItem).fileName}
+            photos={list.displayed}
+            folderPaths={explorer.allFolderPaths}
+            foldersOf={(item) => explorer.foldersOf(item as FileItem)}
+            {...canvasFolderActions(explorer, list, 'file', 'files')}
+            onOpenPhoto={(item) => (isSelectMode ? toggleSelected(item.id) : openFile(item as FileItem))}
+            onPhotoMenu={(item) => setCardMenuFileId(item.id)}
+            topPad={listTopPad}
+          />
         ) : // listedFiles, not filesHere: stepping into an empty folder while
         // carrying would otherwise swap the whole list for the empty state
         // and unmount the carried row with it - the very thing `orphan`

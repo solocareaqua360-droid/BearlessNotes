@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import FolderCanvas from '../components/FolderCanvas';
+import { LinkCanvasTile } from '../components/CanvasTiles';
+import { canvasFolderActions } from '../utils/canvasFolderActions';
 import { withAlpha } from '../utils/color';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -968,7 +971,7 @@ export default function LinksScreen({
 
   return (
     <DatabaseChrome
-      fullWidth={mapVisible && category === 'geo'}
+      fullWidth={(mapVisible && category === 'geo') || (viewMode === 'canvas' && !trashOpen)}
       list={list}
       railSide={inPane ? 'left' : 'right'}
       accent={accent}
@@ -985,18 +988,29 @@ export default function LinksScreen({
       // a point either has a place on a map or it does not, the same
       // binary a representation switch already is everywhere else.
       shape={{
-        icon: mapVisible ? 'map-outline' : viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
+        icon: mapVisible
+          ? 'map-outline'
+          : viewMode === 'grid'
+            ? 'grid-outline'
+            : viewMode === 'canvas'
+              ? 'easel-outline'
+              : 'reorder-four-outline',
+        // List → grid → (the map, for «Геоточки») → canvas («Полотно»,
+        // FolderCanvas) → list.
         onToggle: () => {
           if (category !== 'geo') {
-            changeViewMode(viewMode === 'list' ? 'grid' : 'list');
+            changeViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'canvas' : 'list');
             return;
           }
           if (mapVisible) {
             setMapVisible(false);
+            changeViewMode('canvas');
           } else if (viewMode === 'list') {
             changeViewMode('grid');
-          } else {
+          } else if (viewMode === 'grid') {
             setMapVisible(true);
+          } else {
+            changeViewMode('list');
           }
         },
       }}
@@ -1300,6 +1314,31 @@ export default function LinksScreen({
             <Text style={styles.emptyLabel}>{needle ? 'Нічого не знайдено' : 'Ще немає збережених посилань'}</Text>
             {!needle && <Text style={styles.emptyHint}>{info.emptyHint}</Text>}
           </View>
+        ) : viewMode === 'canvas' && !trashOpen && !(mapVisible && category === 'geo') ? (
+          // «Полотно» - the links poured out on a table with the folder
+          // tree on it (FolderCanvas); each category its own table.
+          <FolderCanvas
+            layoutKey={`linkCanvas_${category}`}
+            renderTile={(item) => {
+              const link = item as LinkItem;
+              return (
+                <LinkCanvasTile
+                  title={link.title?.trim() || link.siteName || link.url}
+                  imageUrl={link.imageUrl}
+                  icon={category === 'geo' ? 'location-outline' : category === 'video' ? 'videocam-outline' : 'link-outline'}
+                />
+              );
+            }}
+            titleOf={(item) => (item as LinkItem).title?.trim() || (item as LinkItem).url}
+            // This category's links only - the list holds all three.
+            photos={filteredLinks}
+            folderPaths={explorer.allFolderPaths}
+            foldersOf={(item) => explorer.foldersOf(item as LinkItem)}
+            {...canvasFolderActions(explorer, list, tagKind, 'links')}
+            onOpenPhoto={(item) => (isSelectMode ? toggleSelected(item.id) : openLinkCard(item as LinkItem))}
+            onPhotoMenu={(item) => setCardMenuLinkId(item.id)}
+            topPad={listTopPad}
+          />
         ) : mapVisible && category === 'geo' ? (
           <GeoMapView points={geoMapPoints} onPressPoint={(id) => setDetailLinkId(id)} />
         ) : viewMode === 'grid' ? (

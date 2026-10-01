@@ -56,7 +56,9 @@ import { useDatabaseList } from '../hooks/useDatabaseList';
 import { useRecordPhotoIds } from '../hooks/useRecordPhotoIds';
 import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
-import PhotoCanvas from '../components/PhotoCanvas';
+import FolderCanvas, { CANVAS_TILE } from '../components/FolderCanvas';
+import AttachmentImage from '../components/AttachmentImage';
+import { canvasFolderActions } from '../utils/canvasFolderActions';
 import ExplorerHead from '../components/ExplorerHead';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
@@ -1027,34 +1029,17 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
         ) : viewMode === 'canvas' && !trashOpen ? (
           // «Полотно» - the photos poured out on a table with the folder
           // tree on it (see PhotoCanvas).
-          <PhotoCanvas
+          <FolderCanvas
+            layoutKey="photoCanvas"
+            renderTile={(item) => {
+              const photo = item as PhotoItem;
+              return <AttachmentImage uri={photo.imageUri} driveFileId={photo.driveFileId} style={styles.canvasTile} />;
+            }}
+            titleOf={(item) => (item as PhotoItem).title?.trim() || 'Фото'}
             photos={list.displayed}
             folderPaths={explorer.allFolderPaths}
             foldersOf={(photo) => explorer.foldersOf(photo as PhotoItem)}
-            // Out of the folder each photo was carried FROM, into `to` - its
-            // other folders untouched (a folder is a tag; a photo can be in
-            // two). The target's tag is made once for the whole batch:
-            // looked up per photo, a folder that was only a path segment
-            // would get a tag per photo before the tag list caught up.
-            onRelocate={async (moves, to) => {
-              const target = to ? await explorer.tagForFolder(to) : null;
-              for (const { photo, from } of moves) {
-                if (from) await list.detachTag(await explorer.tagForFolder(from), 'photo', photo.id, 'photos');
-                if (target) await list.attachTag(target, 'photo', photo.id, 'photos');
-              }
-            }}
-            onAdd={async (chosen, to) => {
-              const target = await explorer.tagForFolder(to);
-              for (const photo of chosen) await list.attachTag(target, 'photo', photo.id, 'photos');
-            }}
-            onMoveFolder={(path, parent) => explorer.renameFolder(path, parent ? `${parent}/${nameOf(path)}` : nameOf(path))}
-            onCreateFolder={async (name, moves) => {
-              const target = await explorer.tagForFolder(name);
-              for (const { photo, from } of moves) {
-                if (from) await list.detachTag(await explorer.tagForFolder(from), 'photo', photo.id, 'photos');
-                await list.attachTag(target, 'photo', photo.id, 'photos');
-              }
-            }}
+            {...canvasFolderActions(explorer, list, 'photo', 'photos')}
             onOpenPhoto={(photo) => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id))}
             onPhotoMenu={(photo) => openPhotoMenu(photo as PhotoItem)}
             topPad={listTopPad}
@@ -1189,6 +1174,11 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
+    // A photo's face on the canvas (FolderCanvas).
+    canvasTile: {
+      width: CANVAS_TILE,
+      height: CANVAS_TILE,
+    },
   trashHead: {
     gap: 8,
     marginBottom: 8,
