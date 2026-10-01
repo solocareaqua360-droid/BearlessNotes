@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { APPS_TEMPLATE_NAME, APPS_TEMPLATE_RATES, appsTemplateFields } from '../utils/appsTemplate';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import { mutedForTheme, type Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
@@ -263,7 +264,7 @@ export default function DatabasesScreen() {
   const searchBead = { icon: 'search-outline', onPress: () => navigation.navigate('Search') };
   // The right bead makes something, as on every screen: here, a new
   // database. Settings moved into the dock's middle (below).
-  const newDatabaseBead = { icon: 'grid-outline', badge: 'add-circle-outline', onPress: () => setCreatingDatabase(true) };
+  const newDatabaseBead = { icon: 'grid-outline', badge: 'add-circle-outline', onPress: () => startNewDatabase() };
   useDockBeads(
     databasesFocused && !databasesLayer ? searchBead : null,
     databasesFocused && !databasesLayer ? newDatabaseBead : null
@@ -451,14 +452,33 @@ export default function DatabasesScreen() {
 
   async function createDatabase(name: string) {
     setCreatingDatabase(false);
+    const template = newDatabaseTemplate;
+    setNewDatabaseTemplate(null);
     const now = Date.now();
     const ref = await addDoc(collection(db, 'customDatabases'), {
       name,
-      fields: [{ id: `${now}-title`, name: 'Назва', type: 'text' }],
+      ...(template === 'apps'
+        ? { fields: appsTemplateFields(now), ...APPS_TEMPLATE_RATES }
+        : { fields: [{ id: `${now}-title`, name: 'Назва', type: 'text' }] }),
       createdAt: now,
       updatedAt: now,
     });
     navigation.navigate('CustomDatabase', { databaseId: ref.id });
+  }
+  // «Нова база»: an empty one, or one made from a template - «Додатки та
+  // сервіси» (the user's, 2026-10-02), its fields ready and given roles.
+  const [newDatabaseTemplate, setNewDatabaseTemplate] = useState<'apps' | null>(null);
+  async function startNewDatabase() {
+    const answer = await ask({
+      title: 'Нова база',
+      actions: [
+        { id: 'empty', label: 'Порожня база', icon: 'grid-outline' },
+        { id: 'apps', label: APPS_TEMPLATE_NAME, hint: 'Лого, вартість, галерея, уроки', icon: 'apps-outline' },
+      ],
+    });
+    if (answer !== 'empty' && answer !== 'apps') return;
+    setNewDatabaseTemplate(answer === 'apps' ? 'apps' : null);
+    setCreatingDatabase(true);
   }
 
   function pickColor(key: string, color: string) {
@@ -1339,7 +1359,7 @@ export default function DatabasesScreen() {
           params: { groupId: item.pin.id },
         });
       } else navigation.navigate('TagItems', { tagId: item.pin.id });
-    } else if (item.key === NEW_TILE_KEY) setCreatingDatabase(true);
+    } else if (item.key === NEW_TILE_KEY) startNewDatabase();
     else if (item.key === PIN_TILE_KEY) setPinSheetVisible(true);
     else setImporting(true);
   };
@@ -1896,11 +1916,15 @@ export default function DatabasesScreen() {
       />
 
       <RenamePrompt
+        key={newDatabaseTemplate ?? 'empty'}
         visible={creatingDatabase}
-        title="Нова база"
-        initialValue=""
+        title={newDatabaseTemplate === 'apps' ? `Нова база · ${APPS_TEMPLATE_NAME}` : 'Нова база'}
+        initialValue={newDatabaseTemplate === 'apps' ? APPS_TEMPLATE_NAME : ''}
         placeholder="Назва бази"
-        onCancel={() => setCreatingDatabase(false)}
+        onCancel={() => {
+          setCreatingDatabase(false);
+          setNewDatabaseTemplate(null);
+        }}
         onSave={createDatabase}
       />
 

@@ -51,6 +51,7 @@ export default function ShelfRows<T>({
   labelStyle,
   countStyle,
   footer,
+  header,
   bottomPad,
   topPad = 0,
 }: {
@@ -64,12 +65,15 @@ export default function ShelfRows<T>({
   labelStyle?: StyleProp<TextStyle>;
   countStyle?: StyleProp<TextStyle>;
   footer?: ReactNode;
+  // Above the shelves (a database's totals, say).
+  header?: ReactNode;
   bottomPad: number;
   // Room for a header that floats over the shelves.
   topPad?: number;
 }) {
   return (
     <Animated.ScrollView contentContainerStyle={{ paddingTop: topPad + 8, paddingBottom: bottomPad }}>
+      {header}
       {shelves.map((shelf, index) => (
         <View key={shelf.key} style={styles.shelf}>
           <View style={[styles.header, { paddingHorizontal: padding }]}>

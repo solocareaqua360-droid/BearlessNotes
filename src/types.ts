@@ -956,6 +956,14 @@ export type RelationTarget =
   | { kind: 'links'; category: LinkCategory }
   | { kind: 'customDb'; databaseId: string };
 
+// WHAT A FIELD IS FOR on a record's rich page (the «Додатки та сервіси»
+// template, 2026-10-02) - beyond its type. A database whose fields carry
+// roles gets a page laid out by them: the price as a pill with its
+// currency and period, the status as a chip, the gallery as a strip, the
+// description as a paragraph, the lessons as video cards; and a summary of
+// what the subscriptions cost, per status. The cover stays `isCover`.
+export type FieldRole = 'gallery' | 'description' | 'price' | 'currency' | 'period' | 'status' | 'renewal' | 'lessons';
+
 export interface FieldDef {
   id: string;
   name: string;
@@ -979,6 +987,8 @@ export interface FieldDef {
   // FieldsEditorSheet enforces that by clearing every other field's flag
   // the moment one is turned on.
   isCover?: boolean;
+  // See FieldRole. At most one field per role.
+  role?: FieldRole;
   // Appended to the row's NAME wherever it's shown (see rowTitleOf), after
   // the title field and in field order - for a table where the title field
   // repeats and only a combination identifies a row (a fleet where the
@@ -1001,6 +1011,11 @@ export interface CustomDatabase {
   icon?: string; // an Ionicons glyph name, shown on its DatabasesScreen tile
   color?: string;
   fields: FieldDef[];
+  // The subscriptions' arithmetic (a database with a price role): how much
+  // one unit of each currency (by its option label - "USD", "₴"...) is
+  // worth in the base one, which the totals are given in.
+  baseCurrency?: string;
+  currencyRates?: Record<string, number>;
   createdAt: number;
   updatedAt: number;
 }

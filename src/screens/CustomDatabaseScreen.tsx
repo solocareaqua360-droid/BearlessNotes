@@ -1,4 +1,5 @@
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
+import { fieldWithRole, formatMoney, formatSubscription, subscriptionOf, subscriptionTotals } from '../utils/appsTemplate';
 import { useDensity } from '../hooks/useDensity';
 import { DeskContext } from '../navigation/desks';
 import { useEdgeOnlyDrawerSwipe } from '../navigation/sideDrawers';
@@ -479,6 +480,8 @@ export default function CustomDatabaseScreen({
   // day the rows are grouped by - who is on a trip, under which manual
   // status, or free on it. Today until a date in the header is tapped.
   const [scheduleCursor, setScheduleCursor] = useState(() => dateKey(new Date()));
+  // The currencies and their rates (a database with a price role).
+  const [ratesOpen, setRatesOpen] = useState(false);
   // Folded groups, by `${viewId}:${groupKey}` - this session only.
   const [scheduleCollapsed, setScheduleCollapsed] = useState<Set<string>>(() => new Set());
   // The window opens (and moves) with the cursor in view - its column one
@@ -524,7 +527,18 @@ export default function CustomDatabaseScreen({
     return onSnapshot(doc(db, 'customDatabases', databaseId), (snapshot) => {
       const data = snapshot.data();
       if (!data) return;
-      setDatabase({ id: databaseId, name: data.name, icon: data.icon, color: data.color, fields: data.fields ?? [], createdAt: data.createdAt, updatedAt: data.updatedAt });
+      setDatabase({
+        id: databaseId,
+        name: data.name,
+        icon: data.icon,
+        color: data.color,
+        fields: data.fields ?? [],
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        // The subscriptions' currencies (see appsTemplate).
+        baseCurrency: data.baseCurrency,
+        currencyRates: data.currencyRates,
+      });
     },
     (error) => setReadError(error.message));
   }, [databaseId]);
@@ -2174,6 +2188,7 @@ export default function CustomDatabaseScreen({
     if (!groupField) {
       return (
         <ScrollView contentContainerStyle={{ paddingTop: topPad, paddingBottom: dockClear + insets.bottom }}>
+          {renderTotals()}
           {cardsGrid(displayedRows)}
         </ScrollView>
       );
@@ -2183,6 +2198,7 @@ export default function CustomDatabaseScreen({
     // grid, collapsible the same way.
     return (
       <ScrollView contentContainerStyle={[styles.list, { paddingHorizontal: 0, paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
+        {renderTotals()}
         {rowGroups.map((group) => {
           const key = group.key || '__empty__';
           const collapsed = collapsedGroups.has(key);
@@ -2211,6 +2227,115 @@ export default function CustomDatabaseScreen({
           <Text style={styles.groupTotalCount}>{displayedRows.length}</Text>
         </View>
       </ScrollView>
+    );
+  }
+
+  // ---- the rich page and the subscriptions (field roles) -----------------
+  const roleMode = !!database?.fields.some((f) => !!f.role);
+  const priceRole = fieldWithRole(database, 'price');
+  const softInk = softDb ? softDb.ink : '#FFFFFF';
+  const softInk2 = softDb ? softDb.ink2 : 'rgba(255,255,255,0.7)';
+  const softCard = softDb ? softDb.fill : 'rgba(255,255,255,0.12)';
+
+  function renderRolePage(row: CustomDatabaseRow) {
+    const statusField = fieldWithRole(database, 'status');
+    const status = statusField?.options?.find((o) => o.id === row.values[statusField.id]);
+    const sub = subscriptionOf(database, row);
+    const renewalField = fieldWithRole(database, 'renewal');
+    const renewal = renewalField ? displayValue(renewalField, row.values[renewalField.id]) : '';
+    const descriptionField = fieldWithRole(database, 'description');
+    const description = descriptionField ? String(row.values[descriptionField.id] ?? '').trim() : '';
+    const galleryField = fieldWithRole(database, 'gallery');
+    const gallery = galleryField
+      ? resolveRelationList(galleryField, row.values[galleryField.id], displayContext)
+          .filter((item) => !!item.thumbUri)
+          .map((item) => ({ uri: item.thumbUri as string, driveFileId: item.driveFileId }))
+      : [];
+    const lessonsField = fieldWithRole(database, 'lessons');
+    const lessons = lessonsField ? resolveRelationList(lessonsField, row.values[lessonsField.id], displayContext) : [];
+    return (
+      <View style={{ gap: 14, marginBottom: 8 }}>
+        {(status || sub || renewal) && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16 }}>
+            {status && (
+              <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: withAlpha(status.color, 0.16) }}>
+                <Text style={{ color: status.color, fontSize: 13, fontWeight: '600' }}>{status.label}</Text>
+              </View>
+            )}
+            {sub && (
+              <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: softCard }}>
+                <Text style={{ color: softInk, fontSize: 13, fontWeight: '600' }}>{formatSubscription(sub)}</Text>
+              </View>
+            )}
+            {!!renewal && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: softCard }}>
+                <Ionicons name="refresh-outline" size={13} color={softInk2} />
+                <Text style={{ color: softInk2, fontSize: 13 }}>Продовження {renewal}</Text>
+              </View>
+            )}
+          </View>
+        )}
+        {!!description && (
+          <Text style={{ color: softInk, fontSize: 16, lineHeight: 24, paddingHorizontal: 16 }}>{description}</Text>
+        )}
+        {gallery.length > 0 && <PhotoCarousel items={gallery} horizontalMargin={16} />}
+        {lessonsField && (
+          <View style={{ paddingHorizontal: 16, gap: 8 }}>
+            <Text style={styles.pageSectionHeading}>{lessonsField.name}</Text>
+            {lessons.length === 0 ? (
+              <Text style={styles.pageFieldEmpty}>Ще немає - додай у «Редагувати»</Text>
+            ) : (
+              lessons.map((lesson, i) => (
+                <View
+                  key={i}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 14, backgroundColor: softCard }}
+                >
+                  {lesson.thumbUri ? (
+                    <Image source={{ uri: lesson.thumbUri }} style={{ width: 96, height: 54, borderRadius: 8 }} />
+                  ) : (
+                    <View style={{ width: 96, height: 54, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha(softInk, 0.06) }}>
+                      <Ionicons name="videocam-outline" size={20} color={softInk2} />
+                    </View>
+                  )}
+                  <Text style={{ flex: 1, color: softInk, fontSize: 14 }} numberOfLines={2}>
+                    {lesson.label}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  // What the subscriptions cost, per status, in the base currency per
+  // month (a year's is a twelfth; one-time ones apart). A tap opens the
+  // currencies and their rates.
+  function renderTotals() {
+    if (!priceRole || !database) return null;
+    const totals = subscriptionTotals(database, displayedRows);
+    if (!totals.length) return null;
+    const base = database.baseCurrency ?? '';
+    return (
+      <Pressable
+        onPress={() => setRatesOpen(true)}
+        style={{ marginHorizontal: CARD_GRID_PADDING, marginBottom: 12, padding: 12, borderRadius: 18, backgroundColor: softCard, gap: 6 }}
+      >
+        {totals.map((t) => (
+          <View key={t.statusId} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.color }} />
+            <Text style={{ flex: 1, color: softInk, fontSize: 14 }} numberOfLines={1}>
+              {t.label} · {t.count}
+            </Text>
+            <Text style={{ color: softInk, fontSize: 14, fontWeight: '600' }}>
+              {t.monthly ? `${formatMoney(t.monthly, base)} / міс` : ''}
+              {t.monthly && t.once ? ' + ' : ''}
+              {t.once ? `${formatMoney(t.once, base)} разово` : ''}
+            </Text>
+          </View>
+        ))}
+      </Pressable>
     );
   }
 
@@ -2269,6 +2394,7 @@ export default function CustomDatabaseScreen({
         countStyle={styles.groupHeaderCount}
         bottomPad={dockClear + insets.bottom}
         topPad={topPad}
+        header={renderTotals()}
         footer={
           <View style={[styles.groupTotal, { paddingHorizontal: CARD_GRID_PADDING }]}>
             <Text style={styles.groupTotalLabel}>Усього</Text>
@@ -3324,6 +3450,7 @@ export default function CustomDatabaseScreen({
         // in for repair, how many altogether" read. Collapsible, same as
         // the table and gallery's own grouped rendering.
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
+          {renderTotals()}
           {rowGroups.map((group) => {
             const key = group.key || '__empty__';
             const collapsed = collapsedGroups.has(key);
@@ -3351,6 +3478,7 @@ export default function CustomDatabaseScreen({
         </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
+          {renderTotals()}
           {displayedRows.map(renderRowCard)}
         </ScrollView>
       )}
@@ -3610,6 +3738,69 @@ export default function CustomDatabaseScreen({
           reading. A layer, never a Modal: the form opens on top of this,
           and the form's own pickers on top of THAT, and layers stack in
           the order they mount while a Modal always wins. */}
+      {/* THE CURRENCIES (a database with a price role): which one the
+          totals are in, and what each of the others is worth in it. */}
+      {ratesOpen && database && (
+        <GlassLayer visible onClose={() => setRatesOpen(false)}>
+          <View style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setRatesOpen(false)} />
+            <View style={[styles.pageContainer, { maxHeight: 520 }]}>
+              <View style={styles.pageHeader}>
+                <Pressable hitSlop={10} onPress={() => setRatesOpen(false)}>
+                  <Ionicons name="close" size={24} color={sInk(GLASS_TEXT)} />
+                </Pressable>
+                <Text style={styles.pageHeaderTitle} numberOfLines={1}>
+                  Валюти
+                </Text>
+              </View>
+              <GestureScrollView contentContainerStyle={[styles.pageBody, { gap: 10, paddingHorizontal: 16 }]}>
+                <Text style={styles.pageFieldEmpty}>
+                  Підсумки - в основній валюті. Курс: скільки основної валюти коштує одиниця цієї.
+                </Text>
+                {(fieldWithRole(database, 'currency')?.options ?? []).map((opt) => {
+                  const isBase = (database.baseCurrency ?? '') === opt.label;
+                  const rate = database.currencyRates?.[opt.label];
+                  return (
+                    <View key={opt.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Pressable
+                        onPress={() =>
+                          updateDoc(doc(db, 'customDatabases', databaseId), {
+                            baseCurrency: opt.label,
+                            currencyRates: { ...(database.currencyRates ?? {}), [opt.label]: 1 },
+                          }).catch(() => {})
+                        }
+                        hitSlop={6}
+                      >
+                        <Ionicons name={isBase ? 'radio-button-on' : 'radio-button-off'} size={20} color={isBase ? accent : softInk2} />
+                      </Pressable>
+                      <Text style={{ width: 60, color: softInk, fontSize: 15, fontWeight: '600' }}>{opt.label}</Text>
+                      {isBase ? (
+                        <Text style={{ flex: 1, color: softInk2, fontSize: 14 }}>основна</Text>
+                      ) : (
+                        <TextInput
+                          defaultValue={rate !== undefined ? String(rate) : ''}
+                          placeholder="курс"
+                          placeholderTextColor={softInk2}
+                          keyboardType="decimal-pad"
+                          style={{ flex: 1, color: softInk, fontSize: 15, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: softCard }}
+                          onEndEditing={(e) => {
+                            const value = Number(e.nativeEvent.text.replace(',', '.'));
+                            if (!Number.isFinite(value) || value <= 0) return;
+                            updateDoc(doc(db, 'customDatabases', databaseId), {
+                              currencyRates: { ...(database.currencyRates ?? {}), [opt.label]: value },
+                            }).catch(() => {});
+                          }}
+                        />
+                      )}
+                    </View>
+                  );
+                })}
+              </GestureScrollView>
+            </View>
+          </View>
+        </GlassLayer>
+      )}
+
       {rowPageRow !== null && (
         <GlassLayer visible onClose={() => setRowPageId(null)}>
           <View style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]}>
@@ -3662,11 +3853,18 @@ export default function CustomDatabaseScreen({
 
                 <Text style={styles.pageTitle}>{titleOf(rowPageRow)}</Text>
 
+                {/* THE RICH PAGE (fields with roles - see FieldRole and the
+                    «Додатки та сервіси» template): what it is and what it
+                    costs right under the name, then its description, its
+                    pictures and its lessons; every other field after. */}
+                {roleMode && renderRolePage(rowPageRow)}
+
                 {/* Every field past the title, value-first and read-only.
                     Empty ones are shown too, greyed - on a reference page
                     "this is not filled in" is information. */}
                 {database.fields.slice(1).map((field) => {
                   if (field.id === coverField?.id) return null;
+                  if (roleMode && field.role) return null;
                   if (field.type === 'section') {
                     return (
                       <Text key={field.id} style={styles.pageSectionHeading}>
