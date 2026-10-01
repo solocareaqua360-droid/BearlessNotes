@@ -1033,6 +1033,17 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             folderOf={(photo) => explorer.folderOf(photo as PhotoItem)}
             onMove={(photo, folder) => explorer.moveItem(photo as PhotoItem, folder)}
             onMoveFolder={(path, parent) => explorer.renameFolder(path, parent ? `${parent}/${nameOf(path)}` : nameOf(path))}
+            // The folder's tag made ONCE, then each photo taken off its
+            // old folder and given it - moveItem per photo would look the
+            // new folder up before the tag list has heard of it and make
+            // one tag per photo.
+            onCreateFolder={async (name, chosen) => {
+              const tag = await explorer.tagForFolder(name);
+              for (const photo of chosen) {
+                await explorer.moveItem(photo as PhotoItem, null);
+                await list.attachTag(tag, 'photo', photo.id, 'photos');
+              }
+            }}
             onOpenPhoto={(photo) => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id))}
             onPhotoMenu={(photo) => openPhotoMenu(photo as PhotoItem)}
             topPad={listTopPad}
