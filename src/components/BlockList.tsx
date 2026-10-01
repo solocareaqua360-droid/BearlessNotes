@@ -61,6 +61,7 @@ type BlockListProps = {
   onOpenFileDatabase: () => void;
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
+  onTimecode?: (blockId: string, seconds: number) => void;
   onOpenSketch: (id: string) => void;
   // 'dbRow' blocks only - the full tag list (the card filters it by the
   // live row's own tagIds) and "open this row in its database".
@@ -131,6 +132,7 @@ function BlockList({
   onOpenFileDatabase,
   onOpenLink,
   onOpenLinkDatabase,
+  onTimecode,
   onOpenSketch,
   allTags,
   onOpenCustomRow,
@@ -436,6 +438,7 @@ function BlockList({
           onOpenFileDatabase={onOpenFileDatabase}
           onOpenLink={onOpenLink}
           onOpenLinkDatabase={onOpenLinkDatabase}
+          onTimecode={onTimecode}
           onOpenSketch={onOpenSketch}
           allTags={allTags}
           onOpenCustomRow={onOpenCustomRow}

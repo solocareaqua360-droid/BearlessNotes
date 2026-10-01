@@ -124,6 +124,7 @@ import { stableStringify } from '../utils/stableStringify';
 import { hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
+import InlineVideoPlayer, { type VideoSeek } from '../components/InlineVideoPlayer';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
 import { PAGE_HEADER_TOP, PAGE_SHEET_INSET, makeStyles } from '../components/documentEditorStyles';
@@ -809,6 +810,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setRecognizing({ request: { uris }, after });
   }
   const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
+  // THE NOTE'S OWN VIDEO (timecodes, 2026-10-02): a small player pinned
+  // over the page while you read and write under it. A video link in the
+  // note opens it here; a "04:32" in the text plays the video above that
+  // line - or, in a lesson's note, the lesson itself - from there.
+  const [noteVideo, setNoteVideo] = useState<{ url: string; start: number; seek: VideoSeek } | null>(null);
+  // A lesson's note (recordNotes: owned by a link) - its video.
+  const [ownerLinkId, setOwnerLinkId] = useState<string | null>(null);
+  const [ownerVideoUrl, setOwnerVideoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!ownerLinkId) return;
+    getDoc(doc(db, 'links', ownerLinkId))
+      .then((snap) => {
+        const url = snap.data()?.url as string | undefined;
+        setOwnerVideoUrl(url && getVideoEmbedInfo(url) ? url : null);
+      })
+      .catch(() => {});
+  }, [ownerLinkId]);
   const [imageRenameId, setImageRenameId] = useState<string | null>(null);
   const [sketchEditorBlockId, setSketchEditorBlockId] = useState<string | null>(null);
   // The Word or Excel file being looked at without leaving the note - see
@@ -1093,6 +1111,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       isNewDocumentRef.current = !snapshot.exists();
       setTitle(data?.title ?? '');
       setCalendarDate((data?.calendarDate as string | undefined) ?? null);
+      setOwnerLinkId(data?.owner?.kind === 'link' ? (data.owner.id as string) : null);
       setTagIds(data?.tagIds ?? []);
       setCoverImageUri(data?.coverImageUri);
       setCoverDrive(
@@ -3518,12 +3537,49 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     navigation.navigate('CustomDatabase', { databaseId, openViewId: viewId });
   }
 
+  // The video a timecode in this block points at: the nearest video link
+  // above it, else the lesson the note belongs to, else the first video
+  // anywhere in the note.
+  function videoForBlock(blockId: string): string | null {
+    const all = blocksRef.current;
+    const urlOf = (b: Block) => {
+      if ((b.type ?? 'paragraph') !== 'link') return null;
+      const url = b.linkUrl ?? b.text;
+      return url && getVideoEmbedInfo(url) ? url : null;
+    };
+    const at = all.findIndex((b) => b.id === blockId);
+    for (let i = at - 1; i >= 0; i--) {
+      const url = urlOf(all[i]);
+      if (url) return url;
+    }
+    if (ownerVideoUrl) return ownerVideoUrl;
+    for (const b of all) {
+      const url = urlOf(b);
+      if (url) return url;
+    }
+    return null;
+  }
+
+  function playNoteVideo(url: string, seconds: number) {
+    setNoteVideo((current) =>
+      current && current.url === url
+        ? { ...current, seek: { t: seconds, n: current.seek.n + 1 } }
+        : { url, start: seconds, seek: { t: seconds, n: 0 } }
+    );
+  }
+
+  function openTimecode(blockId: string, seconds: number) {
+    const url = videoForBlock(blockId);
+    if (url) playNoteVideo(url, seconds);
+  }
+
   async function openLinkBlock(url: string) {
-    // A YouTube/TikTok link plays right here (see VideoPlayerModal) instead
-    // of handing off to the YouTube/TikTok app or a browser tab - anything
-    // else keeps opening externally exactly as before.
+    // A YouTube/TikTok link plays right here - in the note's own pinned
+    // player now, so it can be watched while writing under it and its
+    // timecodes can seek it; "На весь екран" from there is the old
+    // full-screen player. Anything else keeps opening externally.
     if (getVideoEmbedInfo(url)) {
-      setPlayingVideoUrl(url);
+      playNoteVideo(url, 0);
       return;
     }
     try {
@@ -5710,6 +5766,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onOpenFileDatabase={() => navigation.navigate('Files')}
           onOpenLink={openLinkBlock}
           onOpenLinkDatabase={openLinkDatabase}
+          // Only in a note that has a video to seek: anywhere else "о 12:30"
+          // is just a time of day.
+          onTimecode={
+            ownerVideoUrl ||
+            blocks.some((b) => (b.type ?? 'paragraph') === 'link' && !!getVideoEmbedInfo(b.linkUrl ?? b.text ?? ''))
+              ? openTimecode
+              : undefined
+          }
           onOpenSketch={openSketchBlock}
           allTags={tags}
           onOpenCustomRow={openCustomRowBlock}
@@ -5958,6 +6022,53 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       )}
 
       <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />
+
+      {/* The note's own player (see noteVideo), pinned under the top bar.
+          A lesson's note with the player closed keeps a small way back
+          to its video in the same place. */}
+      {noteVideo ? (
+        <View
+          style={[
+            styles.noteVideoPanel,
+            {
+              top: editorInsets.top + (pointerDensity ? 12 : TOP_NAV_SPACE + 8),
+              width: Math.min(windowWidth - 24, 420),
+              backgroundColor: theme.paper.fill,
+            },
+          ]}
+        >
+          <View style={styles.noteVideoFrame}>
+            <InlineVideoPlayer key={noteVideo.url} url={noteVideo.url} start={noteVideo.start} seek={noteVideo.seek} />
+          </View>
+          <View style={styles.noteVideoActions}>
+            <Pressable
+              style={styles.noteVideoButton}
+              onPress={() => {
+                setPlayingVideoUrl(noteVideo.url);
+                setNoteVideo(null);
+              }}
+            >
+              <Ionicons name="expand-outline" size={16} color={theme.paper.ink} />
+              <Text style={[styles.noteVideoLabel, { color: theme.paper.ink }]}>На весь екран</Text>
+            </Pressable>
+            <Pressable style={styles.noteVideoButton} onPress={() => setNoteVideo(null)}>
+              <Ionicons name="close" size={16} color={theme.paper.ink} />
+              <Text style={[styles.noteVideoLabel, { color: theme.paper.ink }]}>Закрити</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : ownerVideoUrl ? (
+        <Pressable
+          style={[
+            styles.noteVideoPill,
+            { top: editorInsets.top + (pointerDensity ? 12 : TOP_NAV_SPACE + 8), backgroundColor: theme.paper.fill },
+          ]}
+          onPress={() => playNoteVideo(ownerVideoUrl, 0)}
+        >
+          <Ionicons name="play" size={14} color={theme.accent} />
+          <Text style={[styles.noteVideoLabel, { color: theme.paper.ink }]}>Відео уроку</Text>
+        </Pressable>
+      ) : null}
 
       {/* Pinned directly above the keyboard, mounted for as long as
           isToolbarVisible - which now means only `focusedBlockId !==

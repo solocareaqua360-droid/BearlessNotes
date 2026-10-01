@@ -49,3 +49,28 @@ export function getVideoEmbedInfo(url: string): VideoEmbedInfo | null {
   }
   return null;
 }
+
+// TIMECODES (a note's "04:32" seeks its video): the YouTube embed takes
+// commands through postMessage once it is loaded with enablejsapi=1 -
+// checked against the live player, 2026-10-02: started at 0:30, told to
+// seekTo 300, it reported 300. `start` is where a freshly mounted player
+// begins, so the first tap needs no command at all.
+export function youtubeEmbedAt(embedUrl: string, start?: number): string {
+  const extra = `enablejsapi=1${start ? `&start=${Math.floor(start)}` : ''}`;
+  return embedUrl.includes('?') ? `${embedUrl}&${extra}` : `${embedUrl}?${extra}`;
+}
+
+export function youtubeCommand(func: 'seekTo' | 'playVideo', args: unknown[] = []): string {
+  return JSON.stringify({ event: 'command', func, args });
+}
+
+// "4:32", "04:32", "1:02:03" -> seconds; anything else -> null.
+export function parseTimecode(text: string): number | null {
+  const m = text.match(/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const [h, min, sec] = [Number(m[1] ?? 0), Number(m[2]), Number(m[3])];
+  if (sec > 59 || (m[1] && min > 59)) return null;
+  return h * 3600 + min * 60 + sec;
+}
+
+export const TIMECODE_PATTERN = /\b(?:\d{1,2}:)?\d{1,2}:\d{2}\b/g;

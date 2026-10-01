@@ -101,6 +101,8 @@ type BlockRowProps = {
   onOpenFileDatabase: () => void;
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
+  // A "04:32" in this block's text was tapped (see FormattedText).
+  onTimecode?: (blockId: string, seconds: number) => void;
   onOpenSketch: (id: string) => void;
   // 'dbRow' blocks only - the full tag list (the card filters it by the
   // live row's own tagIds) and "open this row in its database".
@@ -151,6 +153,7 @@ export default function BlockRow({
   onOpenFileDatabase,
   onOpenLink,
   onOpenLinkDatabase,
+  onTimecode,
   onOpenSketch,
   allTags,
   onOpenCustomRow,
@@ -756,6 +759,8 @@ export default function BlockRow({
               segments={parseFormattedText(item.text)}
               defaultColor={item.isSticker ? STICKER_INK : (rowPaperColor?.text ?? theme.paper.ink)}
               search={searchHighlight}
+              onTimecode={onTimecode && !isSelectMode ? (seconds) => onTimecode(item.id, seconds) : undefined}
+              timecodeColor={theme.accent}
             />
           ) : (
             <Text style={[styles.blockPlaceholder, rowPaperColor && { color: rowPaperColor.textMuted }]}>…</Text>

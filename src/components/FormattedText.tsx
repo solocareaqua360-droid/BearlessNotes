@@ -1,5 +1,22 @@
 import { Text } from 'react-native';
 import type { TextSegment } from '../utils/documentBlocks';
+import { parseTimecode, TIMECODE_PATTERN } from '../utils/videoEmbed';
+
+// A segment's text cut around its timecodes ("04:32") - each one a run of
+// its own, carrying the second it points at.
+function splitByTimecode(text: string): { text: string; seconds?: number }[] {
+  const out: { text: string; seconds?: number }[] = [];
+  let from = 0;
+  for (const m of text.matchAll(TIMECODE_PATTERN)) {
+    const seconds = parseTimecode(m[0]);
+    if (seconds === null || m.index === undefined) continue;
+    if (m.index > from) out.push({ text: text.slice(from, m.index) });
+    out.push({ text: m[0], seconds });
+    from = m.index + m[0].length;
+  }
+  if (from < text.length) out.push({ text: text.slice(from) });
+  return out;
+}
 
 // The yellow search results have always used (DocumentCard's own
 // `highlight`), so a match looks the same on a card's line and on a page.
@@ -53,10 +70,16 @@ export default function FormattedText({
   segments,
   defaultColor,
   search,
+  onTimecode,
+  timecodeColor,
 }: {
   segments: TextSegment[];
   defaultColor: string;
   search?: string;
+  // Given (a note that has a video to seek), every "04:32" in the text is
+  // a link that plays the video from there.
+  onTimecode?: (seconds: number) => void;
+  timecodeColor?: string;
 }) {
   const query = search?.trim().toLowerCase() ?? '';
   return (
@@ -72,6 +95,26 @@ export default function FormattedText({
           color: seg.color ?? defaultColor,
           backgroundColor: seg.highlight,
         };
+        if (onTimecode && TIMECODE_PATTERN.test(seg.text)) {
+          TIMECODE_PATTERN.lastIndex = 0;
+          return (
+            <Text key={i} style={style}>
+              {splitByTimecode(seg.text).map((run, j) =>
+                run.seconds === undefined ? (
+                  run.text
+                ) : (
+                  <Text
+                    key={j}
+                    onPress={() => onTimecode(run.seconds as number)}
+                    style={{ color: timecodeColor ?? style.color, textDecorationLine: 'underline', fontWeight: '600' }}
+                  >
+                    {run.text}
+                  </Text>
+                )
+              )}
+            </Text>
+          );
+        }
         if (!query || !seg.text.toLowerCase().includes(query)) {
           return (
             <Text key={i} style={style}>

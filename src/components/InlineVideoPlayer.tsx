@@ -1,6 +1,11 @@
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { getVideoEmbedInfo } from '../utils/videoEmbed';
+import { getVideoEmbedInfo, youtubeCommand, youtubeEmbedAt } from '../utils/videoEmbed';
+
+// Where a timecode in a note sends the player: `t` seconds, and `n` a
+// counter, so tapping the same "04:32" twice seeks twice.
+export type VideoSeek = { t: number; n: number };
 
 // Navigating a WebView straight to youtube.com/embed/<id> reliably fails
 // on-device with YouTube's own "Помилка 153" (player configuration error) -
@@ -22,11 +27,23 @@ function htmlForYouTube(embedUrl: string): string {
 // a live WebView with a player in it, and a list that mounted one per
 // card would be running as many video players as there are rows. The
 // screens that use it hold a single "which card is playing" id.
-export default function InlineVideoPlayer({ url }: { url: string }) {
+export default function InlineVideoPlayer({ url, start, seek }: { url: string; start?: number; seek?: VideoSeek }) {
   const info = getVideoEmbedInfo(url);
+  const webRef = useRef<WebView>(null);
+  // The first seek is the `start` the player was mounted with; every later
+  // one is a command into the player's iframe (see youtubeEmbedAt).
+  const firstSeek = useRef(seek?.n);
+  useEffect(() => {
+    if (!seek || seek.n === firstSeek.current) return;
+    const post = (cmd: string) => `document.querySelector('iframe').contentWindow.postMessage(${JSON.stringify(cmd)}, '*');`;
+    webRef.current?.injectJavaScript(`${post(youtubeCommand('seekTo', [seek.t, true]))}${post(youtubeCommand('playVideo'))}true;`);
+  }, [seek]);
+  // Kept as it was mounted: a new `start` must not reload the player.
+  const startRef = useRef(start);
   if (!info) return null;
   return (
     <WebView
+      ref={webRef}
       source={
         info.provider === 'youtube'
           ? // `baseUrl` is the other half of the Error 153 fix: it makes
@@ -34,7 +51,7 @@ export default function InlineVideoPlayer({ url }: { url: string }) {
             // HTML page instead of `about:blank`, which is what the
             // IFrame player's origin check was actually rejecting -
             // wrapping the embed in an <iframe> alone wasn't enough.
-            { html: htmlForYouTube(info.embedUrl), baseUrl: 'https://www.youtube-nocookie.com' }
+            { html: htmlForYouTube(youtubeEmbedAt(info.embedUrl, startRef.current)), baseUrl: 'https://www.youtube-nocookie.com' }
           : { uri: info.embedUrl }
       }
       style={styles.webview}

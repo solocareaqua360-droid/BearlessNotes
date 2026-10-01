@@ -368,6 +368,52 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
     top: 0,
     opacity: 0.6,
   },
+  // The note's own video player, pinned under the top bar (see noteVideo
+  // in DocumentEditorScreen), and the pill a lesson's note shows instead
+  // while it is closed.
+  noteVideoPanel: {
+    position: 'absolute',
+    right: 12,
+    zIndex: 20,
+    borderRadius: 18,
+    overflow: 'hidden',
+    boxShadow: '0 8px 28px rgba(0,0,0,0.22)',
+  },
+  noteVideoFrame: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#000',
+  },
+  noteVideoActions: {
+    flexDirection: 'row',
+    gap: 8,
+    padding: 8,
+  },
+  noteVideoButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 12,
+  },
+  noteVideoLabel: {
+    fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
+  },
+  noteVideoPill: {
+    position: 'absolute',
+    right: 12,
+    zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    boxShadow: '0 4px 16px rgba(0,0,0,0.16)',
+  },
   // Says the recogniser is working, and how far it has got - it takes
   // seconds, and silence would read as nothing happening.
   ocrToast: {
