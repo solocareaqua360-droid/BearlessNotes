@@ -8,6 +8,7 @@ import notifee, {
   TriggerType,
   type Event,
 } from '@notifee/react-native';
+import { ensureNativeAlarmChannel } from './mindevaNative';
 
 // A task reminder is one of two things now, chosen per task: a quiet
 // notification, or a real alarm.
@@ -36,11 +37,16 @@ import notifee, {
 //   turn the screen on and show over the lock screen - see
 //   plugins/withAlarmRingActivity.
 //
-// Honest ceiling, still open: the alarm's sound plays on the
-// notification's own channel, not Android's separate ALARM volume
-// stream - that needs a small native module of its own
-// (AudioAttributes.USAGE_ALARM) and is a distinct piece of work.
-const ALARM_CHANNEL_ID = 'reminders-alarm';
+// The sound: on an APK with the app's own native module it plays on
+// Android's ALARM stream with the alarm ringtone (NATIVE_ALARM_CHANNEL_ID
+// below); on an older APK, on the notification's own channel as before.
+const LEGACY_ALARM_CHANNEL_ID = 'reminders-alarm';
+// The same alarm on Android's ALARM stream, with the phone's alarm
+// ringtone - made natively (utils/mindevaNative), since a channel's sound
+// is fixed once created and notifee cannot ask for the alarm stream. An
+// APK without the native module keeps the old channel.
+const NATIVE_ALARM_CHANNEL_ID = 'reminders-alarm-v2';
+let ALARM_CHANNEL_ID = LEGACY_ALARM_CHANNEL_ID;
 const NOTIFY_CHANNEL_ID = 'reminders-notify';
 // Matches app.json's android.package - see plugins/withAlarmRingActivity.
 const ANDROID_PACKAGE = 'com.bearlessnotes.notes';
@@ -51,10 +57,17 @@ let alarmChannelReady: Promise<void> | null = null;
 let notifyChannelReady: Promise<void> | null = null;
 
 function ensureAlarmChannel(): Promise<void> {
+  if (
+    !alarmChannelReady &&
+    ensureNativeAlarmChannel(NATIVE_ALARM_CHANNEL_ID, 'Будильник для справ', 'Нагадування, що дзвонить як будильник - на гучності будильника')
+  ) {
+    ALARM_CHANNEL_ID = NATIVE_ALARM_CHANNEL_ID;
+    alarmChannelReady = Promise.resolve();
+  }
   if (!alarmChannelReady) {
     alarmChannelReady = notifee
       .createChannel({
-        id: ALARM_CHANNEL_ID,
+        id: LEGACY_ALARM_CHANNEL_ID,
         name: 'Будильник для справ',
         description: 'Нагадування, що дзвонить як будильник',
         importance: AndroidImportance.HIGH,
@@ -101,6 +114,9 @@ export function reminderDateTime(reminderDate: string, reminderTime: string): Da
 // One place both a fresh alarm and a snooze go through, so the two can
 // never drift into different shapes.
 async function createAlarm(taskText: string, fireDate: Date): Promise<string> {
+  // A snooze from the background lands here without the screen having
+  // asked first - the channel decides the stream, so it is made here too.
+  await ensureAlarmChannel();
   return notifee.createTriggerNotification(
     {
       title: 'Нагадування',

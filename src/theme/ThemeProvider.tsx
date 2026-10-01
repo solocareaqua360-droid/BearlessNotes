@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { supportsWallpaper } from '../utils/mindevaNative';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { doc, onSnapshot } from '../firestore';
@@ -81,6 +82,14 @@ export type BackdropOverride =
       blur: number;
     }
   | {
+      // The PHONE'S OWN WALLPAPER, shown through the app (an APK with
+      // plugins/withWallpaperWindow - see utils/mindevaNative). `veil`,
+      // 0-100, is how much of the theme's ground lies over it, so text
+      // stays readable on any picture.
+      type: 'wallpaper';
+      veil: number;
+    }
+  | {
       type: 'image';
       // A STABLE local path (not the picker's own temp file - see
       // setBackdropImage) so useCachedAttachment can restore it from
@@ -139,6 +148,7 @@ function isBackdropSettings(value: unknown): value is BackdropSettings {
       Array.isArray(o.colors) && o.colors.every((c) => typeof c === 'string') && typeof o.blur === 'number'
     );
   if (o?.type === 'image') return typeof o.uri === 'string' && typeof o.blur === 'number';
+  if (o?.type === 'wallpaper') return typeof o.veil === 'number';
   return false;
 }
 
@@ -294,6 +304,9 @@ export function useBackdropSettings() {
 export function useActiveBackdropOverride(): BackdropOverride | null {
   const { theme, backdropSettings } = useContext(ThemeContext);
   if (!backdropSettings.override) return null;
+  // The wallpaper only where the window can show one - not in the
+  // browser, not on an APK built before it.
+  if (backdropSettings.override.type === 'wallpaper' && !supportsWallpaper) return null;
   return backdropSettings.appliesTo.includes(theme.key) ? backdropSettings.override : null;
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { supportsWallpaper } from '../utils/mindevaNative';
 import BackupCard from '../components/BackupCard';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -164,7 +165,7 @@ export default function SettingsScreen() {
     Math.round((range[0] + (pct / 100) * (range[1] - range[0])) * 100) / 100;
 
   const { backdropSettings, setBackdropSettings } = useBackdropSettings();
-  const [backdropMode, setBackdropMode] = useState<'default' | 'gradient' | 'image'>(
+  const [backdropMode, setBackdropMode] = useState<'default' | 'gradient' | 'image' | 'wallpaper'>(
     backdropSettings.override?.type ?? 'default'
   );
   const [gradientColors, setGradientColors] = useState<string[]>(
@@ -293,6 +294,17 @@ export default function SettingsScreen() {
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     await setBackdropImage(asset.uri, asset.width, asset.height);
+  }
+
+  // The phone's own wallpaper under the app (an APK that can - see
+  // supportsWallpaper). Chosen with no theme ticked, it starts on the
+  // theme in use, or it would seem to do nothing.
+  function chooseWallpaper(veil = backdropSettings.override?.type === 'wallpaper' ? backdropSettings.override.veil : 45) {
+    setBackdropSettings({
+      ...backdropSettings,
+      override: { type: 'wallpaper', veil },
+      appliesTo: backdropSettings.appliesTo.length > 0 ? backdropSettings.appliesTo : [theme.key],
+    });
   }
 
   function updateBackdropBlur(blur: number) {
@@ -923,12 +935,13 @@ export default function SettingsScreen() {
           <Text style={styles.cardHint}>
             Свій фон замість того, що дає тема - градієнт із власними кольорами або картинка з розмиттям.
           </Text>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
             {(
               [
                 { id: 'default', label: 'Стандартний' },
                 { id: 'gradient', label: 'Градієнт' },
                 { id: 'image', label: 'Зображення' },
+                ...(supportsWallpaper ? [{ id: 'wallpaper', label: 'Шпалери телефона' } as const] : []),
               ] as const
             ).map((opt) => (
               <Pressable
@@ -940,6 +953,8 @@ export default function SettingsScreen() {
                     setBackdropSettings({ ...backdropSettings, override: null });
                   } else if (opt.id === 'gradient' && backdropSettings.override?.type !== 'gradient') {
                     saveGradient(gradientColors);
+                  } else if (opt.id === 'wallpaper' && backdropSettings.override?.type !== 'wallpaper') {
+                    chooseWallpaper();
                   }
                 }}
               >
@@ -982,6 +997,19 @@ export default function SettingsScreen() {
                 value={gradientBlur / 100}
                 stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
                 onChange={(v) => updateGradientBlur(Math.round(v * 100))}
+              />
+            </>
+          )}
+
+          {backdropMode === 'wallpaper' && backdropSettings.override?.type === 'wallpaper' && (
+            <>
+              <Text style={[styles.cardHint, { marginTop: 14 }]}>
+                Під застосунком - шпалери самого телефона. Повзунок - наскільки їх приглушити, щоб текст добре читався.
+              </Text>
+              <GradientSlider
+                value={backdropSettings.override.veil / 100}
+                stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
+                onChange={(v) => chooseWallpaper(Math.round(v * 100))}
               />
             </>
           )}

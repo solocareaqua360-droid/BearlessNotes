@@ -28,7 +28,7 @@ import ChromeMorph from './src/components/ChromeMorph';
 import { AskHost } from './src/components/surfaces/Ask';
 import CaptureWindow from './src/components/CaptureWindow';
 import BoardPreviewCaptureHost from './src/components/BoardMiniature';
-import { ThemeProvider, ThemedStatusBar, useTheme } from './src/theme/ThemeProvider';
+import { ThemeProvider, ThemedStatusBar, useActiveBackdropOverride, useTheme } from './src/theme/ThemeProvider';
 import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
 import ContextDock from './src/components/ContextDock';
@@ -55,10 +55,18 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 // follows the theme like everything else.
 function ThemedNavigationContainer({ children }: { children: React.ReactNode }) {
   const theme = useTheme();
+  // Under the phone's wallpaper the navigator's card must not cover it -
+  // the screen's own backdrop lays the veil instead (ScreenBackdrop).
+  const wallpaper = useActiveBackdropOverride()?.type === 'wallpaper';
   const navTheme: NavTheme = {
     ...DefaultTheme,
     dark: theme.scheme === 'dark',
-    colors: { ...DefaultTheme.colors, background: theme.ground, card: theme.surface, text: theme.ink.primary },
+    colors: {
+      ...DefaultTheme.colors,
+      background: wallpaper ? 'transparent' : theme.ground,
+      card: theme.surface,
+      text: theme.ink.primary,
+    },
   };
   return (
     <NavigationContainer ref={navigationRef} theme={navTheme}>

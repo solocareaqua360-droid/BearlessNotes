@@ -91,6 +91,18 @@ export default function ScreenBackdrop({
     return { transform: [{ translateY: -travel }] };
   });
 
+  // The phone's wallpaper (see BackdropOverride): the window draws it
+  // behind the app, and all this screen lays over it is the theme's own
+  // ground, thinned to the chosen veil.
+  if (override?.type === 'wallpaper') {
+    return (
+      <View
+        style={[StyleSheet.absoluteFill, { backgroundColor: theme.ground, opacity: override.veil / 100 }]}
+        pointerEvents="none"
+      />
+    );
+  }
+
   return (
     <View
       // The ground under everything it draws: an SVG re-measures a frame
