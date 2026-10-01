@@ -156,6 +156,37 @@ export async function backedUpIds(folderId: string): Promise<Set<string>> {
   return ids;
 }
 
+// The dated copies in «Резервні копії» - folders named "YYYY-MM-DD HH-MM";
+// the shared «Фото» and «Файли» are not copies and never listed here.
+export async function listBackupCopies(): Promise<{ id: string; name: string; createdAt: number }[]> {
+  const parent = await ensureBackupsFolder();
+  const out: { id: string; name: string; createdAt: number }[] = [];
+  let pageToken = '';
+  do {
+    const q = encodeURIComponent(`'${parent}' in parents and trashed=false and mimeType='application/vnd.google-apps.folder'`);
+    const res = await driveFetch(
+      `https://www.googleapis.com/drive/v3/files?q=${q}&pageSize=1000&fields=nextPageToken,files(id,name,createdTime)${pageToken ? `&pageToken=${pageToken}` : ''}`
+    );
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json) throw new Error(`Не вдалося прочитати копії (HTTP ${res.status})`);
+    for (const f of json.files ?? []) {
+      if (/^\d{4}-\d{2}-\d{2} \d{2}-\d{2}$/.test(f.name)) out.push({ id: f.id, name: f.name, createdAt: Date.parse(f.createdTime) || 0 });
+    }
+    pageToken = json.nextPageToken ?? '';
+  } while (pageToken);
+  return out;
+}
+
+// Into the Drive's bin - not gone: the bin keeps it for 30 days more.
+export async function trashDriveFile(fileId: string): Promise<void> {
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trashed: true }),
+  });
+  if (!res.ok) throw new Error(`Не вдалося перенести в кошик (HTTP ${res.status})`);
+}
+
 export async function createDriveFolder(name: string, parentId: string): Promise<string> {
   const res = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
     method: 'POST',

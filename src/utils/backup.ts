@@ -15,6 +15,8 @@ import {
   driveBackupReady,
   ensureBackupMediaFolder,
   ensureBackupsFolder,
+  listBackupCopies,
+  trashDriveFile,
   uploadLocalFileToDrive,
   uploadToDrive,
 } from './googleDrive';
@@ -48,6 +50,8 @@ import type { Block, CustomDatabase, CustomDatabaseRow, FieldDef } from '../type
 const COLLECTIONS = [...OWNED_COLLECTIONS, 'chat', 'linkArticles', 'linkArticleTranslations', 'scheduleCellStatuses'];
 
 const GOOGLE_DOC = 'application/vnd.google-apps.document';
+// How long a dated copy is kept before it goes to the Drive's bin.
+const KEEP_DAYS = 30;
 const GOOGLE_SHEET = 'application/vnd.google-apps.spreadsheet';
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -78,6 +82,8 @@ export type BackupResult = {
   photosKept: number;
   files: number;
   filesKept: number;
+  // Copies older than a month moved to the Drive's bin.
+  trashed: number;
   failed: string[];
 };
 
@@ -121,7 +127,7 @@ export async function backupToDrive(
   if (!(await driveBackupReady())) throw new Error('Google Диск не підключено');
   const at = new Date();
   const folderName = stamp(at);
-  const result: BackupResult = { folderName, notes: 0, databases: 0, photos: 0, photosKept: 0, files: 0, filesKept: 0, failed: [] };
+  const result: BackupResult = { folderName, notes: 0, databases: 0, photos: 0, photosKept: 0, files: 0, filesKept: 0, trashed: 0, failed: [] };
   const attempt = async (label: string, work: () => Promise<unknown>) => {
     try {
       await work();
@@ -303,6 +309,23 @@ export async function backupToDrive(
   result.photosKept = photos.kept;
   result.files = files.added;
   result.filesKept = files.kept;
+
+  // ---- a month of copies (the user's: "треба обмежитись місяцем все
+  // старіше в корзину") ---------------------------------------------------
+  // Dated copies older than 30 days go to the Drive's bin - the newest one
+  // never, however old. The shared photo and file folders are not copies.
+  onProgress({ stage: 'Прибираю старі копії', done: 0, total: 1 });
+  await attempt('Старі копії', async () => {
+    const copies = await listBackupCopies();
+    const newest = copies.reduce((a, b) => (b.createdAt > a ? b.createdAt : a), 0);
+    const cutoff = at.getTime() - KEEP_DAYS * 24 * 60 * 60 * 1000;
+    for (const copy of copies) {
+      if (copy.createdAt < cutoff && copy.createdAt !== newest && copy.name !== folderName) {
+        await trashDriveFile(copy.id);
+        result.trashed++;
+      }
+    }
+  });
 
   // When and where, for Settings and the weekly offer.
   await setDoc(doc(db, 'settings', 'backup'), { lastAt: at.getTime(), lastFolder: folderName, choice }, { merge: true }).catch(() => {});
