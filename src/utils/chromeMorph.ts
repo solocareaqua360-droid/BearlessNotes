@@ -218,6 +218,9 @@ export async function chromeEnd(waitFor?: Side): Promise<void> {
         });
       });
     await Promise.all([mount(`bar:${waitFor}`), mount(`dock:${waitFor}`)]);
+    // And a beat for what they learn just after they mount (the bar its
+    // folder): the stand-in is the same picture, so waiting costs nothing.
+    await new Promise((resolve) => setTimeout(resolve, 120));
   }
   await frame();
   await frame();

@@ -215,8 +215,16 @@ export default function TopNavBar({
   // 0 = the desks, 1 = the path: one number rolls both, one out as the
   // other comes in.
   const roll = useSharedValue(path ? 1 : 0);
+  // A bar that has only just come up learns where it is a moment later
+  // (the folder is published after the screen's focus): that is not a
+  // move into the folder, so the path is simply there. Rolled, it slid up
+  // from below on every return to a folder - "стрибає вниз на пару
+  // міліметрів і назад" (2026-10-01).
+  const bornAt = useRef(Date.now());
   useEffect(() => {
-    roll.value = withTiming(path ? 1 : 0, { duration: 280, easing: Easing.inOut(Easing.cubic) });
+    const target = path ? 1 : 0;
+    if (Date.now() - bornAt.current < 500) roll.value = target;
+    else roll.value = withTiming(target, { duration: 280, easing: Easing.inOut(Easing.cubic) });
   }, [path, roll]);
   const travel = TOP_NAV_H;
   const desksStyle = useAnimatedStyle(() => ({

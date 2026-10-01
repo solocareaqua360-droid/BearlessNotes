@@ -1,7 +1,7 @@
 import { Image, StyleSheet, View } from 'react-native';
 import Animated, { Extrapolation, interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { useSoft } from '../theme/soft';
-import { chromeT, pictureLoaded, useChromeMorph, type Shot } from '../utils/chromeMorph';
+import { chromeCover, chromeT, pictureLoaded, useChromeMorph, type Shot } from '../utils/chromeMorph';
 
 // THE STAND-IN for the dock and the top bar while a page grows out of its
 // card or folds back into it - utils/chromeMorph tells the whole story.
@@ -49,22 +49,16 @@ function Bar({ list, note }: { list: Shot; note?: Shot }) {
   const listStyle = useAnimatedStyle(() => ({
     opacity: note ? interpolate(chromeT.value, [0.15, 0.85], [1, 0], Extrapolation.CLAMP) : 1,
   }));
+  const shadowShown = useShadowShown();
+  const capsule = { position: 'absolute' as const, left: r.x, top: r.y, width: r.width, height: r.height, borderRadius: r.height / 2 };
   return (
-    <View
-      style={{
-        position: 'absolute',
-        left: r.x,
-        top: r.y,
-        width: r.width,
-        height: r.height,
-        borderRadius: r.height / 2,
-        backgroundColor: S.chrome,
-        boxShadow: S.shadow,
-      }}
-    >
-      {note && <Picture shot={note} left={note.rect.x - r.x} top={note.rect.y - r.y} />}
-      <Picture shot={list} left={0} top={0} style={listStyle} />
-    </View>
+    <>
+      <Animated.View style={[capsule, { backgroundColor: S.chrome, boxShadow: S.shadow }, shadowShown]} />
+      <View style={[capsule, { backgroundColor: S.chrome, overflow: 'hidden' }]}>
+        {note && <Picture shot={note} left={note.rect.x - r.x} top={note.rect.y - r.y} />}
+        <Picture shot={list} left={0} top={0} style={listStyle} />
+      </View>
+    </>
   );
 }
 
@@ -101,6 +95,16 @@ function Dock({ list, note }: { list: Shot; note?: Shot }) {
   // The pictures stay where they are on the screen; the shapes move over
   // them - so inside a moving shape a picture is offset by the shape's own
   // movement.
+  // The button's shadow: where the button is, going as it goes, and only
+  // while the real dock is hidden.
+  const buttonShade = useAnimatedStyle(() => {
+    const k = chromeT.value;
+    return {
+      left: lerp(button.x, buttonEnd.x, k),
+      top: lerp(button.y, buttonEnd.y, k),
+      opacity: interpolate(k, [0, 0.6], [1, 0], Extrapolation.CLAMP) * chromeCover.value,
+    };
+  });
   const listInField = useAnimatedStyle(() => {
     const k = chromeT.value;
     return {
@@ -124,13 +128,19 @@ function Dock({ list, note }: { list: Shot; note?: Shot }) {
       top: L.y - lerp(button.y, buttonEnd.y, k),
     };
   });
-  const shape = { position: 'absolute' as const, overflow: 'hidden' as const, backgroundColor: S.chrome, boxShadow: S.shadow };
+  const shadowShown = useShadowShown();
+  const shape = { position: 'absolute' as const, overflow: 'hidden' as const, backgroundColor: S.chrome };
+  const shade = { position: 'absolute' as const, backgroundColor: S.chrome, boxShadow: S.shadow };
+  const round = { borderRadius: L.height / 2 };
+  const buttonSize = { width: BUTTON, height: L.height };
   return (
     <>
-      <Animated.View style={[shape, { width: BUTTON, height: L.height, borderRadius: L.height / 2 }, buttonShape]}>
+      <Animated.View style={[shade, round, buttonSize, buttonShade]} />
+      <Animated.View style={[shade, round, fieldShape, shadowShown]} />
+      <Animated.View style={[shape, round, buttonSize, buttonShape]}>
         <Moving shot={list} style={listInButton} />
       </Animated.View>
-      <Animated.View style={[shape, { borderRadius: L.height / 2 }, fieldShape]}>
+      <Animated.View style={[shape, round, fieldShape]}>
         <Moving shot={list} style={listInField} />
         {note && <Moving shot={note} style={noteInField} />}
       </Animated.View>
@@ -138,6 +148,14 @@ function Dock({ list, note }: { list: Shot; note?: Shot }) {
   );
 }
 
+// THE SHADOWS are the stand-in's only while the real chrome is hidden. Both
+// cast one, so for as long as the two were up together (the pictures
+// loading, the real chrome mounting) there were two shadows, one darker
+// band - "блимає тінь" (2026-10-01). Shown on the same shared value that
+// hides the real chrome, the two hand over in one frame.
+function useShadowShown() {
+  return useAnimatedStyle(() => ({ opacity: chromeCover.value }));
+}
 function Moving({ shot, style }: { shot: Shot; style: object }) {
   return (
     <Animated.View style={[{ position: 'absolute', width: shot.rect.width, height: shot.rect.height }, style]}>
