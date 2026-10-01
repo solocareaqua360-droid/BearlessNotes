@@ -39,6 +39,18 @@ function lastLabel(ms?: number): string {
   return `Остання копія: ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// What went wrong, in words - not "java.net.UnknownHostException" (the
+// first copy the user tried was made in airplane mode, 2026-10-02).
+function humanError(message: string): string {
+  if (/UnknownHost|Unable to resolve host|Network request failed|fetch failed|Failed to fetch|timeout/i.test(message)) {
+    return 'Немає з\'єднання з інтернетом. Копія робиться на Google Диск - увімкни інтернет і спробуй ще раз.';
+  }
+  if (/не підключено/i.test(message)) {
+    return 'Google Диск не підключено. Підключи його в «Обліковий запис» і спробуй ще раз.';
+  }
+  return message;
+}
+
 export default function BackupCard({ styles, accent, ink }: { styles: Styles; accent: string; ink: string }) {
   const [choice, setChoice] = useState<BackupChoice>(FULL_BACKUP);
   const [lastAt, setLastAt] = useState<number | undefined>();
@@ -94,7 +106,7 @@ export default function BackupCard({ styles, accent, ink }: { styles: Styles; ac
       setResult(done);
       setLastAt(Date.now());
     } catch (e) {
-      setError((e as Error)?.message ?? String(e));
+      setError(humanError((e as Error)?.message ?? String(e)));
     } finally {
       setProgress(null);
     }
