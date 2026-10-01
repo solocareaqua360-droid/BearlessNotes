@@ -3,6 +3,7 @@ import { useDensity } from '../hooks/useDensity';
 import { DeskContext } from '../navigation/desks';
 import { useEdgeOnlyDrawerSwipe } from '../navigation/sideDrawers';
 import ShelfRows from '../components/ShelfRows';
+import EdgeFade from '../components/EdgeFade';
 import CustomDatabaseKanban from '../components/CustomDatabaseKanban';
 import { SoftSurfaceContext, softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
@@ -233,6 +234,10 @@ export default function CustomDatabaseScreen({
   // Up here with the other hooks - below the early returns it is a hook
   // called conditionally (the white-screen crash).
   const rowMenuPointer = useDensity() === 'pointer';
+  // The header floats over the records on a phone (see the render); the
+  // records start at the screen's edge with this much room inside them.
+  const floatHeader = !rowMenuPointer;
+  const [headerHeight, setHeaderHeight] = useState(0);
   const theme = useTheme();
   const accent = theme.sections.custom;
   const accentGlass = withAlpha(accent, 0.55);
@@ -931,6 +936,10 @@ export default function CustomDatabaseScreen({
   // The rail's clearance comes off the right, as it does on every other
   // grid in the app - the tiles are an exact pixel width, so the number
   // they are worked out from has to be the width actually left over.
+  // Room at the top of every scroll that runs under the floating header.
+  // Before the header has measured itself, a fair guess at it (the bar's
+  // room and two capsule rows), so the first frame does not jump.
+  const topPad = floatHeader ? headerHeight || insets.top + CHROME_TOP + 8 + TOP_NAV_SPACE + 100 : 0;
   const gridUsable = windowWidth - CARD_GRID_PADDING * 2;
   const gridColumns = Math.max(2, Math.min(4, Math.floor(gridUsable / 300)));
   const gridTileWidth = Math.floor(
@@ -2127,7 +2136,7 @@ export default function CustomDatabaseScreen({
 
     if (!groupField) {
       return (
-        <ScrollView contentContainerStyle={{ paddingBottom: dockClear + insets.bottom }}>
+        <ScrollView contentContainerStyle={{ paddingTop: topPad, paddingBottom: dockClear + insets.bottom }}>
           {cardsGrid(displayedRows)}
         </ScrollView>
       );
@@ -2136,7 +2145,7 @@ export default function CustomDatabaseScreen({
     // Same grouping as the list and the table - each group its own tile
     // grid, collapsible the same way.
     return (
-      <ScrollView contentContainerStyle={[styles.list, { paddingHorizontal: 0, paddingBottom: dockClear + insets.bottom }]}>
+      <ScrollView contentContainerStyle={[styles.list, { paddingHorizontal: 0, paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
         {rowGroups.map((group) => {
           const key = group.key || '__empty__';
           const collapsed = collapsedGroups.has(key);
@@ -2222,6 +2231,7 @@ export default function CustomDatabaseScreen({
         labelStyle={styles.groupHeaderLabel}
         countStyle={styles.groupHeaderCount}
         bottomPad={dockClear + insets.bottom}
+        topPad={topPad}
         footer={
           <View style={[styles.groupTotal, { paddingHorizontal: CARD_GRID_PADDING }]}>
             <Text style={styles.groupTotalLabel}>Усього</Text>
@@ -2736,7 +2746,20 @@ export default function CustomDatabaseScreen({
           the tile the user came from said the name, and the row cost the
           records a screenful. What is left of the header is the line the
           tabs start on - the same one as every other database. */}
-      <View style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
+      {/* THE HEADER FLOATS on a phone (the user's, 2026-10-02: "велика
+          плашка, яка закриває частину контенту ... картки можуть уходити
+          вгору до краю екрану"): the room for the bar and the two capsule
+          rows lie OVER the records, see-through, and the records start at
+          the screen's edge with this much room inside them (headerHeight)
+          - the documents' own arrangement. Under a mouse it stays a row
+          of its own. The empty parts pass every touch to the cards
+          below. */}
+      <View
+        pointerEvents="box-none"
+        style={floatHeader ? styles.floatingHeader : null}
+        onLayout={floatHeader ? (e) => setHeaderHeight(Math.round(e.nativeEvent.layout.height)) : undefined}
+      >
+      <View pointerEvents="none" style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
       {isFocused && bar && !desk && (
         <TopNavBar title={{ icon: database?.icon ?? 'grid-outline', label: database?.name || 'База' }} />
       )}
@@ -2755,7 +2778,7 @@ export default function CustomDatabaseScreen({
       />
       {/* The open field is the corner's, over the screen; this keeps its
           room so the rows start below it. */}
-      {isSearching && !bar && <View style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
+      {isSearching && !bar && <View pointerEvents="none" style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
 
       {/* Which vigляд is on screen - "Поточні зміни" (the working area,
           always first, per its own comment on activeViewId) plus every
@@ -2763,7 +2786,7 @@ export default function CustomDatabaseScreen({
           Switching a capsule is the only thing this row does; managing
           the views themselves (rename/delete/edit/project) lives in
           Параметри → Налаштування виглядів now. */}
-      <View style={styles.controlsRow}>
+      <View style={styles.controlsRow} pointerEvents="box-none">
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -2776,7 +2799,7 @@ export default function CustomDatabaseScreen({
             <Ionicons
               name="ellipse-outline"
               size={12}
-              color={activeViewId === null ? (softDb ? softDb.bg : '#0B1220') : softDb ? softDb.ink2 : 'rgba(255,255,255,0.75)'}
+              color={activeViewId === null ? (softDb ? softDb.chrome : '#0B1220') : softDb ? softDb.ink2 : 'rgba(255,255,255,0.75)'}
             />
             <Text style={[styles.viewCapsuleLabel, activeViewId === null && styles.viewCapsuleLabelActive]}>
               Поточні зміни
@@ -2793,7 +2816,7 @@ export default function CustomDatabaseScreen({
                 <Ionicons
                   name={(view.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[view.viewMode]}
                   size={12}
-                  color={active ? (softDb ? softDb.bg : '#0B1220') : softDb ? softDb.ink2 : 'rgba(255,255,255,0.75)'}
+                  color={active ? (softDb ? softDb.chrome : '#0B1220') : softDb ? softDb.ink2 : 'rgba(255,255,255,0.75)'}
                 />
                 <Text style={[styles.viewCapsuleLabel, active && styles.viewCapsuleLabelActive]} numberOfLines={1}>
                   {view.name}
@@ -2806,7 +2829,7 @@ export default function CustomDatabaseScreen({
 
       {/* The tabs have this row to themselves now that the capsule stands
           on the rail. */}
-      <View style={styles.controlsRow}>
+      <View style={styles.controlsRow} pointerEvents="box-none">
         {groups.length > 0 ? (
           <ProjectTabsRow
             items={groups}
@@ -2817,8 +2840,9 @@ export default function CustomDatabaseScreen({
             endPadding={20}
           />
         ) : (
-          <View style={styles.controlsSpacer} />
+          <View pointerEvents="none" style={styles.controlsSpacer} />
         )}
+      </View>
       </View>
 
       <Menu
@@ -3129,13 +3153,13 @@ export default function CustomDatabaseScreen({
         // schedule's rows come from ANOTHER database (relatedRows), so
         // zero rows in THIS one (no waybills yet) must still show every
         // driver's own empty row, not the generic "Ще немає записів".
-        renderSchedule(activeView.id, activeView.scheduleConfig)
+        <View style={{ flex: 1, paddingTop: topPad }}>{renderSchedule(activeView.id, activeView.scheduleConfig)}</View>
       ) : isLoading ? (
-        <View style={styles.emptyState}>
+        <View style={[styles.emptyState, { paddingTop: topPad }]}>
           <ActivityIndicator color={sInk('#fff')} />
         </View>
       ) : displayedRows.length === 0 ? (
-        <View style={styles.emptyState}>
+        <View style={[styles.emptyState, { paddingTop: topPad }]}>
           <View style={styles.emptyIcon}>
             <Ionicons name={readError ? 'lock-closed-outline' : 'grid-outline'} size={32} color={accent} />
           </View>
@@ -3151,9 +3175,11 @@ export default function CustomDatabaseScreen({
           </Text>
         </View>
       ) : viewMode === 'kanban' ? (
-        renderKanban()
+        // These two scroll in two directions with frozen parts of their
+        // own: they keep to the room below the header.
+        <View style={{ flex: 1, paddingTop: topPad }}>{renderKanban()}</View>
       ) : viewMode === 'table' ? (
-        renderTable()
+        <View style={{ flex: 1, paddingTop: topPad }}>{renderTable()}</View>
       ) : viewMode === 'cards' ? (
         renderCards()
       ) : viewMode === 'shelves' ? (
@@ -3163,7 +3189,7 @@ export default function CustomDatabaseScreen({
         // the total under the last group - the "how many working, how many
         // in for repair, how many altogether" read. Collapsible, same as
         // the table and gallery's own grouped rendering.
-        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }]}>
+        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
           {rowGroups.map((group) => {
             const key = group.key || '__empty__';
             const collapsed = collapsedGroups.has(key);
@@ -3190,9 +3216,18 @@ export default function CustomDatabaseScreen({
           </View>
         </ScrollView>
       ) : (
-        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }]}>
+        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
           {displayedRows.map(renderRowCard)}
         </ScrollView>
+      )}
+
+      {/* What runs off the top and the bottom melts into the ground rather
+          than being cut by the screen's edge - under the bar and the dock. */}
+      {floatHeader && softDb && (
+        <>
+          <EdgeFade edge="top" color={softDb.bg} height={insets.top + CHROME_TOP + 46} />
+          <EdgeFade edge="bottom" color={softDb.bg} height={Math.round((dockClear + insets.bottom) * 0.85)} />
+        </>
       )}
 
       {/* The second half of adding a field from the form: the type is
@@ -5343,6 +5378,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 20,
     gap: 10,
+  },
+  floatingHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 6,
   },
   controlsRow: {
     flexDirection: 'row',
