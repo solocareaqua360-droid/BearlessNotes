@@ -1,4 +1,5 @@
 import { Ionicons } from './icons/Ionicons';
+import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput, useWindowDimensions, View, ViewStyle } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -283,6 +284,9 @@ export default function TopNavBar({
     <Layer>
       <FlatFrostContext.Provider value={!!inline}>
       <Animated.View
+        // The list's bar or the note's, as the chrome morph photographs it.
+        ref={!inline && desks?.length ? chromeNodeRef('bar', 'list') : !inline && trail ? chromeNodeRef('bar', 'note') : undefined}
+        collapsable={false}
         pointerEvents={fading && cover?.open ? 'none' : 'box-none'}
         style={[styles.row, { top: barTop, left: frame.left, width: frame.width, gap }, fadeStyle]}
       >
@@ -486,8 +490,17 @@ function Glyph({ name, size, color, soft }: { name: string; size: number; color:
 
 // Where the bar is drawn: over the whole window through the glass layer,
 // or - inline - right where it is in the tree, covering what it is in.
+// Hidden at once under the chrome morph's stand-in (utils/chromeMorph),
+// which draws its picture in exactly its place.
 function PortalLayer({ children }: { children: ReactNode }) {
-  return <GlassPortal priority={1}>{children}</GlassPortal>;
+  const cover = useAnimatedStyle(() => ({ opacity: 1 - chromeCover.value }));
+  return (
+    <GlassPortal priority={1}>
+      <Animated.View style={[StyleSheet.absoluteFill, cover]} pointerEvents="box-none">
+        {children}
+      </Animated.View>
+    </GlassPortal>
+  );
 }
 
 function InlineLayer({ children }: { children: ReactNode }) {

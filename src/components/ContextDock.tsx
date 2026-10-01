@@ -1,4 +1,5 @@
 import { ReactNode, useLayoutEffect, useMemo, useEffect, useRef, useState } from 'react';
+import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useKeyboardRide } from '../hooks/useKeyboardRide';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, ViewStyle, useWindowDimensions } from 'react-native';
@@ -1942,6 +1943,9 @@ export default function ContextDock() {
             style={[styles.twoBeads, { bottom: softRest, left: frame.left + (frame.width - stripW) / 2, width: stripW }]}
           >
             <View
+              // The note's dock, as the chrome morph photographs it.
+              ref={chromeNodeRef('dock', 'note')}
+              collapsable={false}
               style={{ width: stripW, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, backgroundColor: soft.chrome, boxShadow: soft.shadow, overflow: 'hidden' }}
             >
               <ScrollView
@@ -2204,6 +2208,9 @@ export default function ContextDock() {
     return (
       <DockPortal>
         <Animated.View
+          // The list's dock, as the chrome morph photographs it.
+          ref={chromeNodeRef('dock', 'list')}
+          collapsable={false}
           pointerEvents="box-none"
           style={[
             styles.twoBeads,
@@ -2738,7 +2745,11 @@ function DockPortal({ children }: { children: ReactNode }) {
   const active = !!cover?.active;
   const progress = cover?.progress;
   const fade = useAnimatedStyle(
-    () => ({ opacity: active && progress ? 1 - Math.max(progress.left.value, progress.right.value) : 1 }),
+    // Under the chrome morph's stand-in (utils/chromeMorph) it is hidden
+    // at once - the stand-in draws its picture in exactly its place.
+    () => ({
+      opacity: (active && progress ? 1 - Math.max(progress.left.value, progress.right.value) : 1) * (1 - chromeCover.value),
+    }),
     [active, progress]
   );
   return (

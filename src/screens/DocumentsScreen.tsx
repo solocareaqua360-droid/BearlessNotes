@@ -1,5 +1,8 @@
 import { lift } from '../utils/lift';
-import { morph } from '../utils/morph';
+import { morph, morphBack, morphCardRef } from '../utils/morph';
+
+// The pane a note opens in beside the list, as the card-to-page move knows it.
+const PANE_MORPH_KEY = 'pane:documents';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInnerBack } from '../navigation/innerBack';
 import { rightClick } from '../utils/rightClick';
@@ -441,6 +444,11 @@ export default function DocumentsScreen({
   // the window's own edge.
   const [editorPaneInset, setEditorPaneInset] = useState(0);
   const editorPaneRef = useRef<View>(null);
+  // The same node, known to the card-to-page move as the pane it grows into.
+  const editorPaneMorphRef = useCallback((node: View | null) => {
+    editorPaneRef.current = node;
+    morphCardRef(PANE_MORPH_KEY)?.(node);
+  }, []);
   // This pane's own left edge, in from the window's - see
   // DocumentEditorScreen's paneLeft. Not reliably 0: paneRow centres its
   // capped content on a screen wide enough (see MAX_CONTENT_WIDTH).
@@ -1147,13 +1155,15 @@ export default function DocumentsScreen({
   // first match and marks it (see DocumentEditorScreen).
   function openDocument(id: string, autoFocusTitle?: boolean, searchQuery?: string) {
     if (isTwoPane) {
-      setOpenDoc({ id, autoFocusTitle, searchQuery });
+      // Into the pane beside the list, where it lands (utils/morph).
+      morph(`note:${id}`, () => setOpenDoc({ id, autoFocusTitle, searchQuery }), { into: PANE_MORPH_KEY });
       return;
     }
-    // The card grows into the note (utils/morph) - the laptop's.
-    morph(`note:${id}`, () =>
+    // The card grows into the note (utils/morph).
+    morph(`note:${id}`, (morphing) =>
       navigation.navigate('Editor', {
         documentId: id,
+        ...(morphing ? { morph: true } : {}),
         ...(autoFocusTitle ? { autoFocusTitle: true } : {}),
         ...(searchQuery ? { searchQuery } : {}),
       })
@@ -1596,6 +1606,7 @@ export default function DocumentsScreen({
                     titleMatch={titleMatch}
                     bodyMatch={bodyMatch}
                     search={searching ? needle : undefined}
+                    morphRef={morphCardRef(`note:${item.id}`)}
                     onPress={() => openDocument(item.id, false, searching ? needle : undefined)}
                     layout={drawnMode === 'list' ? 'list' : 'grid'}
                     // A result is the same card as in the list itself -
@@ -1968,6 +1979,7 @@ export default function DocumentsScreen({
                   // room - see CardPreview.
                   blocks={(item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords))}
                   checklistItems={checklistItems}
+                  morphRef={morphCardRef(`note:${item.id}`)}
                   onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}
                   onLongPress={
                     carried ? undefined : () => (trashOpen ? openTrashMenu(item) : holdDocument(item))
@@ -2064,7 +2076,7 @@ export default function DocumentsScreen({
             and shows more of itself instead. */}
         {isTwoPane && !!openDoc && (
           <View
-            ref={editorPaneRef}
+            ref={editorPaneMorphRef}
             style={styles.editorPane}
             // Measured IN THE WINDOW, not in the parent - and that
             // distinction is the whole bug it fixes.
@@ -2104,10 +2116,17 @@ export default function DocumentsScreen({
                 onOpenInPane={(documentId, options) =>
                   setOpenDoc({ id: documentId, offerBoard: !!options?.offerBoard })
                 }
-                onClose={() => {
-                  setOpenDoc(null);
-                  setPaneFullscreen(false);
-                }}
+                onClose={() =>
+                  // Folds back onto its card (utils/morph).
+                  morphBack(
+                    `note:${openDoc.id}`,
+                    () => {
+                      setOpenDoc(null);
+                      setPaneFullscreen(false);
+                    },
+                    { from: PANE_MORPH_KEY }
+                  )
+                }
                 isFullscreen={paneFullscreen}
                 // The badge sits in the note's own top-right corner
                 // wherever the note is - phone, half a window or all of

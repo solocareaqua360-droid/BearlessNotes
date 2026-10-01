@@ -1,5 +1,6 @@
 import { pushFromLayer } from './navigation/layerPush';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createNativeStackNavigator, type NativeStackScreenProps } from '@react-navigation/native-stack';
+import MorphFrame from './components/MorphFrame';
 import Tabs from './navigation/Tabs';
 import PlaceholderScreen from './screens/PlaceholderScreen';
 import TasksScreen from './screens/TasksScreen';
@@ -40,6 +41,16 @@ import { RootStackParamList } from './navigation';
 // way every other difference in this port is.
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+// A note, inside the frame it grows out of its card in (utils/morph) -
+// which is just the note unless it was opened from a card.
+function EditorScreen(props: NativeStackScreenProps<RootStackParamList, 'Editor'>) {
+  return (
+    <MorphFrame morphKey={`note:${props.route.params.documentId}`} navigation={props.navigation as never}>
+      <DocumentEditorScreen {...props} />
+    </MorphFrame>
+  );
+}
+
 export default function RootNavigator() {
   return (
     <Stack.Navigator
@@ -52,7 +63,18 @@ export default function RootNavigator() {
           entry animation played as a blink at startup. Pushes from
           here (Editor and the rest) keep their own animation. */}
       <Stack.Screen name="Tabs" component={Tabs} options={{ animation: 'none' }} />
-      <Stack.Screen name="Editor" component={DocumentEditorScreen} />
+      {/* Opened out of its card (utils/morph), a note is the card growing:
+          no slide of its own, and a transparent modal, so the list stays
+          drawn under the page while it grows and shrinks. */}
+      <Stack.Screen
+        name="Editor"
+        component={EditorScreen}
+        options={({ route }) =>
+          (route.params as { morph?: boolean } | undefined)?.morph
+            ? { animation: 'none', presentation: 'transparentModal' }
+            : {}
+        }
+      />
       <Stack.Screen name="EditorModal" component={DocumentEditorScreen} options={{ presentation: 'modal' }} />
       <Stack.Screen name="Tasks" component={TasksScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />

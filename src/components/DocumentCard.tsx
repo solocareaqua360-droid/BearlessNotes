@@ -1,4 +1,6 @@
 import { lift } from '../utils/lift';
+import Animated from 'react-native-reanimated';
+import { usePressSettle } from '../hooks/usePressSettle';
 import { cardRadius } from '../theme/scale';
 import { useState } from 'react';
 import { flipId } from '../utils/flipId';
@@ -335,6 +337,11 @@ type Props = {
   // cards are flex items in a grid, and a wrapper takes that role for
   // itself (see ItemCards' cardRef, where the same lesson is written).
   cardRef?: (node: View | null) => void;
+  // The card as the card-to-page move measures it (utils/morph). Its own
+  // prop, on the card's tap area (which fills the card), because cardRef is
+  // taken over by the explorer's drag (useExplorerCarry.cardProps) - shared,
+  // the move never found a card and every note opened with the old slide.
+  morphRef?: (node: View | null) => void;
   // THE TILE AS THE PAGE ITSELF - see DocumentPageMiniature for why.
   // Given, a tile stops being its own composition (cover, title, extract)
   // and becomes the top of the document's real page, scaled. Absent,
@@ -527,6 +534,7 @@ export default function DocumentCard({
   gridWidth,
   flush,
   cardRef,
+  morphRef,
   page,
   pageHeight,
   dimmed,
@@ -536,6 +544,8 @@ export default function DocumentCard({
   soft: softProp,
 }: Props) {
   const recordColour = useRecordColour();
+  // A tile settles under the finger (the phone's; the laptop's is CSS).
+  const settle = usePressSettle();
   // Said outright, or heard from a soft surface around the card (a
   // database's chrome - the diary's cards, see SoftSurfaceContext).
   const softSurface = useSoftSurface();
@@ -671,7 +681,7 @@ export default function DocumentCard({
 
   if (isGrid && wide) {
     return (
-      <View
+      <Animated.View
         ref={cardRef}
         collapsable={false}
         {...dataSets(flipId(id), lift(), morphKey(`note:${id}`))}
@@ -687,10 +697,11 @@ export default function DocumentCard({
           { backgroundColor: background },
           softFrame,
           dimmed && styles.dimmed,
+          settle.style,
         ]}
       >
         {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-        <Pressable style={styles.wideTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)}>
+        <Pressable ref={morphRef} style={styles.wideTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)} {...settle.handlers}>
           {page ? (
             /* The same picture, in a wider window: twice a tile's width
                means the page is drawn nearly at its own size, so this is
@@ -744,13 +755,13 @@ export default function DocumentCard({
           </View>
           )
         )}
-      </View>
+      </Animated.View>
     );
   }
 
   if (isGrid) {
     return (
-      <View
+      <Animated.View
         ref={cardRef}
         collapsable={false}
         {...dataSets(flipId(id), lift(), morphKey(`note:${id}`))}
@@ -761,10 +772,11 @@ export default function DocumentCard({
           { backgroundColor: background },
           softFrame,
           dimmed && styles.dimmed,
+          settle.style,
         ]}
       >
         {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-        <Pressable style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)}>
+        <Pressable ref={morphRef} style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)} {...settle.handlers}>
           {page ? (
             <PageBody
               id={id}
@@ -828,7 +840,7 @@ export default function DocumentCard({
           </View>
           )
         )}
-      </View>
+      </Animated.View>
     );
   }
 
@@ -851,7 +863,7 @@ export default function DocumentCard({
       ]}
     >
       {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-      <Pressable style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)}>
+      <Pressable ref={morphRef} style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)}>
         {/* A ROW IS A LINE OF TEXT BESIDE A THUMBNAIL, and it stays one:
             a strip of the page across the whole width was the title and
             nothing else, at a size nobody asked for - "виглядає погано і

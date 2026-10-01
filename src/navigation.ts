@@ -40,7 +40,7 @@ export type RootStackParamList = {
   // clipping bar in DocumentEditorScreen.
   // A file looked at in a tab of its own - the laptop's (FileViewScreen).
   FileView: { fileId: string };
-  Editor: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean; focusLinkTo?: string; searchQuery?: string };
+  Editor: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean; focusLinkTo?: string; searchQuery?: string; morph?: boolean };
   // Same DocumentEditorScreen as `Editor`, registered a second time purely
   // for its App.tsx presentation style (slide-up modal, swipe-down to
   // dismiss) - used when opening a document FROM the board, so editing it
