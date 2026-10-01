@@ -301,6 +301,13 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
     return typeof choice === 'string' && choice.startsWith('p:') ? choice.slice(2) : 'cancel';
   }
 
+  // Which folder a record is in (the first, if it carries more than one
+  // folder tag), or null at the root - what the photos' canvas lays out by.
+  function folderOf(item: T): string | null {
+    const own = explorerTags.find((t) => tagIdsOf(item).includes(t.id));
+    return own ? own.path : null;
+  }
+
   // Moving a record is swapping which folder tag it carries: off every
   // folder it is in now, on to the one chosen.
   async function moveItem(item: T, destination: string | null) {
@@ -378,6 +385,7 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
     deleteFolder,
     pickDestination,
     moveItem,
+    folderOf,
     tagForFolder,
     assignToCurrentFolder,
     allFolderPaths,

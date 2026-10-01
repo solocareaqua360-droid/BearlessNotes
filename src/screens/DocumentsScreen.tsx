@@ -481,8 +481,9 @@ export default function DocumentsScreen({
   // not a grid of one column: the grid card is a fixed-height tile, and a
   // FlatList refuses columnWrapperStyle on a single column outright,
   // which is what the white screen was.
+  // The canvas is the photos' alone so far: a stray 'canvas' here is a grid.
   const drawnMode: 'list' | 'grid' | 'wide' =
-    viewMode !== 'list' && isTwoPane && !!openDoc ? 'list' : viewMode;
+    viewMode !== 'list' && isTwoPane && !!openDoc ? 'list' : viewMode === 'canvas' ? 'grid' : viewMode;
   // Widths in PIXELS, from the width the list actually has, so a row of
   // cards ends on the same line as a row of folders above it. As
   // percentages the two could not agree: the gaps between cards are

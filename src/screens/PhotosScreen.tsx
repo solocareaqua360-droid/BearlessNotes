@@ -56,6 +56,7 @@ import { useDatabaseList } from '../hooks/useDatabaseList';
 import { useRecordPhotoIds } from '../hooks/useRecordPhotoIds';
 import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
+import PhotoCanvas from '../components/PhotoCanvas';
 import ExplorerHead from '../components/ExplorerHead';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
@@ -818,9 +819,13 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       // The shape of the list is a button on the rail now - it was two
       // rows here saying the same thing, on three screens.
       shape={{
-        icon: viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
-        onToggle: () => changeViewMode(viewMode === 'list' ? 'grid' : 'list'),
+        icon: viewMode === 'grid' ? 'grid-outline' : viewMode === 'canvas' ? 'easel-outline' : 'reorder-four-outline',
+        // List → grid → canvas («Полотно», see PhotoCanvas) → list.
+        onToggle: () => changeViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'canvas' : 'list'),
       }}
+      // The canvas is a surface that moves on its own: no pull-to-search,
+      // no readable-column cap.
+      fullWidth={viewMode === 'canvas' && !trashOpen}
       explorer={{
         mode: list.listMode,
         onChangeMode: list.setListMode,
@@ -1019,6 +1024,18 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
+        ) : viewMode === 'canvas' && !trashOpen ? (
+          // «Полотно» - the photos poured out on a table with the folder
+          // tree on it (see PhotoCanvas).
+          <PhotoCanvas
+            photos={list.displayed}
+            folderPaths={explorer.allFolderPaths}
+            folderOf={(photo) => explorer.folderOf(photo as PhotoItem)}
+            onMove={(photo, folder) => explorer.moveItem(photo as PhotoItem, folder)}
+            onOpenPhoto={(photo) => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id))}
+            onPhotoMenu={(photo) => openPhotoMenu(photo as PhotoItem)}
+            topPad={listTopPad}
+          />
         ) : !trashOpen && itemsHere.length === 0 && explorer.folders.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>

@@ -86,7 +86,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
   // `wide`). Every other database offers two, and simply never sets it;
   // their own checks read anything that is not 'grid' as a list, which
   // is the right fallback if one ever inherits the preference.
-  const [viewMode, setViewMode] = useState<'list' | 'grid' | 'wide'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'grid' | 'wide' | 'canvas'>('list');
   // How the documents list is organised - ONE of three, because each
   // gives the list its one axis: 'groups' (the group tabs over the list),
   // 'list' (documents, folders through the drawer), 'explorer' (folders
@@ -107,7 +107,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     () =>
       onSnapshot(prefsDoc, (snapshot) => {
         setGroupsRowHiddenPref(!!snapshot.data()?.groupsRowHidden);
-        setViewMode((snapshot.data()?.viewMode as 'list' | 'grid' | 'wide' | undefined) ?? 'list');
+        setViewMode((snapshot.data()?.viewMode as 'list' | 'grid' | 'wide' | 'canvas' | undefined) ?? 'list');
         // The three-way mode; a preferences document from before it
         // existed is read through the two switches it had.
         const stored = snapshot.data()?.listMode as ListMode | undefined;
@@ -136,7 +136,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     [groupKind]
   );
 
-  function changeViewMode(mode: 'list' | 'grid' | 'wide') {
+  function changeViewMode(mode: 'list' | 'grid' | 'wide' | 'canvas') {
     setDoc(prefsDoc, { viewMode: mode }, { merge: true });
   }
 
