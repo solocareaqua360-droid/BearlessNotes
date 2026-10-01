@@ -2,6 +2,7 @@ import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
 import { useDensity } from '../hooks/useDensity';
 import { DeskContext } from '../navigation/desks';
 import { useEdgeOnlyDrawerSwipe } from '../navigation/sideDrawers';
+import ShelfRows from '../components/ShelfRows';
 import CustomDatabaseKanban from '../components/CustomDatabaseKanban';
 import { SoftSurfaceContext, softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
@@ -158,6 +159,7 @@ const VIEW_LABELS: Record<ViewMode, string> = {
   table: 'Таблиця',
   schedule: 'Графік',
   kanban: 'Канбан',
+  shelves: 'Полиці',
 };
 const VIEW_ICONS: Record<ViewMode, keyof typeof Ionicons.glyphMap> = {
   list: 'reorder-four-outline',
@@ -165,6 +167,7 @@ const VIEW_ICONS: Record<ViewMode, keyof typeof Ionicons.glyphMap> = {
   table: 'grid-outline',
   schedule: 'calendar-outline',
   kanban: 'apps-outline',
+  shelves: 'layers-outline',
 };
 // A day column's own width, and how tall one row of the grid stands -
 // the same two numbers decide the row-header column's height per record
@@ -202,7 +205,7 @@ function titleColumnWidth(titles: string[], windowWidth: number): number {
 // keeps them in step.
 const TABLE_ROW_HEIGHT = 46;
 
-type ViewMode = 'list' | 'table' | 'cards' | 'schedule' | 'kanban';
+type ViewMode = 'list' | 'table' | 'cards' | 'schedule' | 'kanban' | 'shelves';
 // The three tabs of the parameters window. They were three buttons on the
 // rail and three anchored lists; the user's own call was that they are one
 // window with three tabs, "як менше основного екрану по центру" - the
@@ -2165,6 +2168,70 @@ export default function CustomDatabaseScreen({
     );
   }
 
+  // «ПОЛИЦІ»: each group a shelf of gallery tiles scrolling sideways (see
+  // ShelfRows for the deck and the entrance). Needs something to group
+  // by, the way the kanban needs its columns: without a grouping it asks
+  // for one rather than drawing a single shelf of everything.
+  function renderShelves() {
+    if (!groupField) {
+      return (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyLabel}>За яким полем полиці?</Text>
+          <Text style={styles.emptyHint}>Кожне значення поля стане своєю полицею.</Text>
+          <View style={{ gap: 8, marginTop: 16, alignSelf: 'stretch', paddingHorizontal: 24 }}>
+            {groupFields.map((field) => (
+              <Pressable key={field.id} style={styles.viewCapsule} onPress={() => selectGroupField(field.id)}>
+                <Text style={styles.viewCapsuleLabel}>{field.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      );
+    }
+    return (
+      <ShelfRows
+        shelves={rowGroups.map((group) => ({ key: group.key || '__empty__', label: group.label, items: group.rows }))}
+        // A tile a little narrower than the gallery's, so the edge of the
+        // next one shows and says the shelf goes on.
+        tileWidth={Math.round(gridTileWidth * 0.86)}
+        padding={CARD_GRID_PADDING}
+        keyOf={(row) => row.id}
+        renderTile={(row, width) => (
+          <CustomRowGridCard
+            rowId={row.id}
+            width={width}
+            display={rowDisplayFor(row)}
+            documentCount={documentIdsOf(row).length}
+            onPress={() => (isSelectMode ? toggleSelected(row.id) : setRowPageId(row.id))}
+            onLongPress={() => setRowMenuId(row.id)}
+            right={
+              isSelectMode ? (
+                <Ionicons
+                  name={selectedIds.has(row.id) ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={22}
+                  color={sInk('#fff')}
+                />
+              ) : (
+                <Pressable hitSlop={8} onPress={() => setRowMenuId(row.id)}>
+                  <Ionicons name="ellipsis-horizontal" size={16} color={sInk2('rgba(255,255,255,0.85)')} />
+                </Pressable>
+              )
+            }
+          />
+        )}
+        labelStyle={styles.groupHeaderLabel}
+        countStyle={styles.groupHeaderCount}
+        bottomPad={dockClear + insets.bottom}
+        footer={
+          <View style={[styles.groupTotal, { paddingHorizontal: CARD_GRID_PADDING }]}>
+            <Text style={styles.groupTotalLabel}>Усього</Text>
+            <Text style={styles.groupTotalCount}>{displayedRows.length}</Text>
+          </View>
+        }
+      />
+    );
+  }
+
   // THE KANBAN VIEW: columns from the options of the field the database is
   // grouped by (it has to be a select / multi-select one), and a record
   // dragged to another column takes that option as its value.
@@ -3012,7 +3079,7 @@ export default function CustomDatabaseScreen({
 
               {paramsTab === 'representation' && (
                 <>
-                  {(['list', 'table', 'cards', 'kanban'] as ViewMode[]).map((mode) => (
+                  {(['list', 'table', 'cards', 'shelves', 'kanban'] as ViewMode[]).map((mode) => (
                     <Pressable key={mode} style={styles.paramOption} onPress={() => changeViewMode(mode)}>
                       <Ionicons
                         name={VIEW_ICONS[mode]}
@@ -3089,6 +3156,8 @@ export default function CustomDatabaseScreen({
         renderTable()
       ) : viewMode === 'cards' ? (
         renderCards()
+      ) : viewMode === 'shelves' ? (
+        renderShelves()
       ) : groupField ? (
         // Grouped by one field: a header per value with its own count, and
         // the total under the last group - the "how many working, how many
@@ -5165,7 +5234,7 @@ const softCustomDatabase = (S: SoftTokens) =>
     viewCapsule: { backgroundColor: S.fillSolid, borderWidth: 0, height: 38, paddingVertical: 0, paddingHorizontal: 15, borderRadius: 19 },
     viewCapsuleActive: { backgroundColor: S.ink, borderWidth: 0 },
     viewCapsuleLabel: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', fontSize: 14, color: S.ink2 },
-    viewCapsuleLabelActive: { color: S.bg },
+    viewCapsuleLabelActive: { color: S.chrome },
     groupHeaderLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', letterSpacing: -0.2, color: S.ink },
     groupHeaderCount: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', color: S.ink3 },
     groupTotal: { borderTopColor: S.line },

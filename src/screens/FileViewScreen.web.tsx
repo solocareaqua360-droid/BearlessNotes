@@ -256,7 +256,7 @@ function Message({
       <Text style={[styles.message, { color: S.ink2 }]}>{text}</Text>
       {action && (
         <Pressable onPress={action.onPress} style={[styles.action, { backgroundColor: S.ink }]}>
-          <Text style={[styles.actionLabel, { color: S.bg }]}>{action.label}</Text>
+          <Text style={[styles.actionLabel, { color: S.chrome }]}>{action.label}</Text>
         </Pressable>
       )}
     </View>

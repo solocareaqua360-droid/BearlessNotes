@@ -782,7 +782,7 @@ function softOverrides(S: SoftTokens) {
     tab: { height: 34, paddingVertical: 0, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 17, backgroundColor: S.fillSolid },
     tabActive: { backgroundColor: S.ink },
     tabLabel: { fontFamily: SOFT_MEDIUM, fontWeight: 'normal', fontSize: 13.5, color: S.ink2 },
-    tabLabelActive: { color: S.bg },
+    tabLabelActive: { color: S.chrome },
     searchRow: { height: 42, paddingVertical: 0, borderRadius: 21, paddingHorizontal: 14, backgroundColor: S.card, boxShadow: S.shadow, marginBottom: 8 },
     searchInput: { fontFamily: SOFT_REGULAR, fontSize: 15, color: S.ink },
     emptyLabel: { fontFamily: SOFT_REGULAR, color: S.ink3 },

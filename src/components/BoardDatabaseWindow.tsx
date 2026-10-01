@@ -449,7 +449,7 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
                               style={[styles.plus, { backgroundColor: S.ink }]}
                               accessibilityLabel="Додати на дошку"
                             >
-                              <Ionicons name="add" size={18} color={S.bg} />
+                              <Ionicons name="add" size={18} color={S.chrome} />
                             </Pressable>
                           </View>
                         </View>

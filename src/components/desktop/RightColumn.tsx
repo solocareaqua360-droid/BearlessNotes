@@ -203,10 +203,10 @@ function SwapCapsule({ vertical, onPress }: { vertical: boolean; onPress: () => 
       ]}
     >
       <Animated.View style={{ transform: [{ [axis]: forward }] as never }}>
-        <Ionicons name={(vertical ? 'arrow-forward' : 'arrow-down') as never} size={13} color={S.bg} />
+        <Ionicons name={(vertical ? 'arrow-forward' : 'arrow-down') as never} size={13} color={S.chrome} />
       </Animated.View>
       <Animated.View style={{ transform: [{ [axis]: backward }] as never }}>
-        <Ionicons name={(vertical ? 'arrow-back' : 'arrow-up') as never} size={13} color={S.bg} />
+        <Ionicons name={(vertical ? 'arrow-back' : 'arrow-up') as never} size={13} color={S.chrome} />
       </Animated.View>
     </Pressable>
   );

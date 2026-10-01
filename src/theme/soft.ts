@@ -50,6 +50,10 @@ const DESK = Platform.OS === 'web';
 // unpainted here and laid as one tinted glass by the shell itself
 // (desktopTheme's glass) - cards stay white.
 const GLASS = DESK && IN_SHELL;
+// NEVER `bg` as an INK - text or a glyph on an S.ink pill: in the Mac app it
+// is 'transparent', and the label simply vanished (the custom database's
+// «Поточні зміни» capsule, 2026-10-02, and five more like it). The light
+// thing on a dark pill is `chrome`.
 const LIGHT: SoftTokens = {
   dark: false,
   bg: GLASS ? 'transparent' : DESK ? '#FAF9F6' : '#F6F5F2',

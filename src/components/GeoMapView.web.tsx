@@ -567,8 +567,8 @@ function OfflinePanel({
           )}
           {!!error && <Text style={[styles.hint, { color: '#C8452F' }]}>{error}</Text>}
           <Pressable onPress={download} style={[styles.primary, { backgroundColor: S.ink }]}>
-            <Ionicons name="cloud-download-outline" size={16} color={S.bg} />
-            <Text style={[styles.primaryLabel, { color: S.bg }]}>Завантажити</Text>
+            <Ionicons name="cloud-download-outline" size={16} color={S.chrome} />
+            <Text style={[styles.primaryLabel, { color: S.chrome }]}>Завантажити</Text>
           </Pressable>
         </View>
       )}
