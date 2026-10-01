@@ -71,6 +71,8 @@ const MAX_SCALE = 2.5;
 // again - often enough to light up a folder in time, rarely enough not to
 // cross to JS every frame.
 const HOVER_STEP = 10;
+// A hold on an item (its menu); the table's rectangle waits longer.
+const HOLD_MS = 350;
 
 const canvasDoc = doc(db, 'settings', 'photoCanvas');
 const nameOf = (path: string) => path.split('/').pop() ?? path;
@@ -200,7 +202,9 @@ export default function PhotoCanvas({
     () =>
       Gesture.Pan()
         .maxPointers(1)
-        .activateAfterLongPress(320)
+        // Longer than an item's own hold (HOLD_MS): a finger held on a
+        // photo opens its menu, never a rectangle drawn from under it.
+        .activateAfterLongPress(HOLD_MS + 150)
         .onStart((e) => {
           const wx = (e.x - tx.value) / scale.value - WORLD_HALF;
           const wy = (e.y - ty.value) / scale.value - WORLD_HALF;
@@ -808,12 +812,16 @@ function Dragged({
   }, [id]);
   const gesture = useMemo(() => {
     const tap = Gesture.Tap()
-      .blocksExternalGesture(tableTap)
+      .blocksExternalGesture(tableTap, tableMarquee)
       .onEnd(() => {
         if (onTap) runOnJS(onTap)();
       });
     const hold = Gesture.LongPress()
-      .minDuration(450)
+      .minDuration(HOLD_MS)
+      // The table waits for this: held on a photo, the photo's own menu -
+      // the rectangle once took the hold and chose the photo on release
+      // instead (2026-10-02).
+      .blocksExternalGesture(tableMarquee, tablePan, tableTap)
       .onStart(() => {
         if (onLongPress) runOnJS(onLongPress)();
       });
