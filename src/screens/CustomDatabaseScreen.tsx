@@ -102,6 +102,9 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { useTechnicalDocs } from '../hooks/useTechnicalDocs';
+import InlineVideoPlayer from '../components/InlineVideoPlayer';
+import VideoPlayerModal from '../components/VideoPlayerModal';
+import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { stripFormatting } from '../utils/documentPreview';
 import { createOwnedNote, ensureMainNote, makeOrdinary, type DocOwner } from '../utils/recordNotes';
 import FieldsEditorSheet, { FIELD_TYPE_ICON, FIELD_TYPE_LABEL } from '../components/FieldsEditorSheet';
@@ -418,6 +421,26 @@ export default function CustomDatabaseScreen({
   // this one record - and editing is a deliberate step from there, rather
   // than every tap dropping straight into a form.
   const [rowPageId, setRowPageId] = useState<string | null>(null);
+  // A note opened FROM a record's page (its «Розбір», a lesson's note):
+  // the page is a layer drawn over the whole app, so it would stand over
+  // the editor. It closes on the way out and opens again on the way back -
+  // "назад повертає на сторінку застосунку".
+  const pageToReopenRef = useRef<string | null>(null);
+  useEffect(
+    () =>
+      navigation.addListener('focus', () => {
+        if (!pageToReopenRef.current) return;
+        setRowPageId(pageToReopenRef.current);
+        pageToReopenRef.current = null;
+      }),
+    [navigation]
+  );
+  // Which lesson plays in its own card (one at a time - see
+  // InlineVideoPlayer), and which one is open on the whole screen.
+  const [playingLessonId, setPlayingLessonId] = useState<string | null>(null);
+  const [fullscreenLessonUrl, setFullscreenLessonUrl] = useState<string | null>(null);
+  // A page closed (or another opened) stops its video.
+  useEffect(() => setPlayingLessonId(null), [rowPageId]);
   const [draftValues, setDraftValues] = useState<Record<string, string | number | string[] | DateRangeValue>>({});
   const [draftTagIds, setDraftTagIds] = useState<string[]>([]);
   const [tagPickerVisible, setTagPickerVisible] = useState(false);
@@ -2271,7 +2294,9 @@ export default function CustomDatabaseScreen({
           .map((item) => ({ uri: item.thumbUri as string, driveFileId: item.driveFileId }))
       : [];
     const lessonsField = fieldWithRole(database, 'lessons');
-    const lessons = lessonsField ? resolveRelationList(lessonsField, row.values[lessonsField.id], displayContext) : [];
+    const lessonIdsRaw = lessonsField ? row.values[lessonsField.id] : undefined;
+    const lessonIds = Array.isArray(lessonIdsRaw) ? lessonIdsRaw : typeof lessonIdsRaw === 'string' && lessonIdsRaw ? [lessonIdsRaw] : [];
+    const lessons = lessonIds.map((id) => linksList.find((l) => l.id === id)).filter((l): l is (typeof linksList)[number] => !!l);
     const linksField = fieldWithRole(database, 'links');
     const linkIdsRaw = linksField ? row.values[linksField.id] : undefined;
     const linkIds = Array.isArray(linkIdsRaw) ? linkIdsRaw : typeof linkIdsRaw === 'string' && linkIdsRaw ? [linkIdsRaw] : [];
@@ -2304,28 +2329,12 @@ export default function CustomDatabaseScreen({
         {gallery.length > 0 && <PhotoCarousel items={gallery} horizontalMargin={16} />}
         {renderRecordNotes(row)}
         {lessonsField && (
-          <View style={{ paddingHorizontal: 16, gap: 8 }}>
+          <View style={{ paddingHorizontal: 16, gap: 10 }}>
             <Text style={styles.pageSectionHeading}>{lessonsField.name}</Text>
             {lessons.length === 0 ? (
               <Text style={styles.pageFieldEmpty}>Ще немає - додай у «Редагувати»</Text>
             ) : (
-              lessons.map((lesson, i) => (
-                <View
-                  key={i}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 14, backgroundColor: softCard }}
-                >
-                  {lesson.thumbUri ? (
-                    <Image source={{ uri: lesson.thumbUri }} style={{ width: 96, height: 54, borderRadius: 8 }} />
-                  ) : (
-                    <View style={{ width: 96, height: 54, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha(softInk, 0.06) }}>
-                      <Ionicons name="videocam-outline" size={20} color={softInk2} />
-                    </View>
-                  )}
-                  <Text style={{ flex: 1, color: softInk, fontSize: 14 }} numberOfLines={2}>
-                    {lesson.label}
-                  </Text>
-                </View>
-              ))
+              lessons.map((lesson) => renderLessonCard(row, lesson))
             )}
           </View>
         )}
@@ -2363,6 +2372,98 @@ export default function CustomDatabaseScreen({
   // first tap) and any others, each a card with its first lines. A tap
   // opens the ordinary editor; back comes here. Held down: make it an
   // ordinary note, which goes to the documents list.
+  // A LESSON (a video on an app's page): the video itself, played right in
+  // its card - "на весь екран" from there - and under it the video's own
+  // note. The note belongs to the VIDEO, not to the app: one video can
+  // teach two apps, and it is the same lesson in both.
+  function renderLessonCard(row: CustomDatabaseRow, lesson: (typeof linksList)[number]) {
+    const playable = !!getVideoEmbedInfo(lesson.url);
+    const playing = playingLessonId === lesson.id;
+    const note = technicalDocs.find((d) => d.owner.kind === 'link' && d.owner.id === lesson.id && d.main);
+    const noteLines = note
+      ? note.blocks
+          .map((b) => stripFormatting(b.text ?? '').trim())
+          .filter(Boolean)
+          .slice(0, 3)
+          .join('\n')
+      : '';
+    const openNote = async () => {
+      const id = await ensureMainNote({ kind: 'link', id: lesson.id }, `${lesson.title || hostOf(lesson.url)} - нотатка`);
+      openNoteFromPage(row.id, id);
+    };
+    const title = lesson.title || hostOf(lesson.url);
+    return (
+      <View key={lesson.id} style={{ borderRadius: 18, overflow: 'hidden', backgroundColor: softCard }}>
+        {playing ? (
+          <View style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' }}>
+            <InlineVideoPlayer url={lesson.url} />
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => (playable ? setPlayingLessonId(lesson.id) : Linking.openURL(lesson.url).catch(() => {}))}
+            style={{ width: '100%', aspectRatio: 16 / 9, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha(softInk, 0.06) }}
+          >
+            {lesson.imageUrl ? (
+              <Image source={{ uri: lesson.imageUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            ) : null}
+            <View style={{ width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)' }}>
+              <Ionicons name={playable ? 'play' : 'open-outline'} size={24} color="#fff" />
+            </View>
+          </Pressable>
+        )}
+        <View style={{ padding: 12, gap: 10 }}>
+          <Text style={{ color: softInk, fontSize: 15, fontWeight: '600' }} numberOfLines={2}>
+            {title}
+          </Text>
+          {playing && (
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => {
+                  setPlayingLessonId(null);
+                  setFullscreenLessonUrl(lesson.url);
+                }}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 14, backgroundColor: withAlpha(softInk, 0.06) }}
+              >
+                <Ionicons name="expand-outline" size={16} color={softInk} />
+                <Text style={{ color: softInk, fontSize: 14 }}>На весь екран</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setPlayingLessonId(null)}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 14, backgroundColor: withAlpha(softInk, 0.06) }}
+              >
+                <Ionicons name="stop" size={16} color={softInk} />
+                <Text style={{ color: softInk, fontSize: 14 }}>Зупинити</Text>
+              </Pressable>
+            </View>
+          )}
+          <Pressable
+            onPress={openNote}
+            style={{ gap: 4, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: withAlpha(softInk, 0.1) }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name={note ? 'document-text-outline' : 'add'} size={15} color={note ? softInk2 : accent} />
+              <Text style={{ color: note ? softInk2 : accent, fontSize: 13, fontWeight: '600' }}>
+                Нотатка до відео
+              </Text>
+            </View>
+            {!!noteLines && (
+              <Text style={{ color: softInk, fontSize: 13, lineHeight: 18 }} numberOfLines={3}>
+                {noteLines}
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  function openNoteFromPage(rowId: string, documentId: string) {
+    pageToReopenRef.current = rowId;
+    setPlayingLessonId(null);
+    setRowPageId(null);
+    navigation.navigate('Editor', { documentId });
+  }
+
   function renderRecordNotes(row: CustomDatabaseRow) {
     if (!database) return null;
     const owner: DocOwner = { kind: 'row', id: row.id, databaseId: database.id };
@@ -2372,11 +2473,11 @@ export default function CustomDatabaseScreen({
     const main = notes.find((d) => d.main);
     const openMain = async () => {
       const id = await ensureMainNote(owner, `${titleOf(row) || 'Запис'} - розбір`);
-      navigation.navigate('Editor', { documentId: id });
+      openNoteFromPage(row.id, id);
     };
     const addNote = async () => {
       const id = await createOwnedNote(owner, '');
-      navigation.navigate('Editor', { documentId: id });
+      openNoteFromPage(row.id, id);
     };
     const noteMenu = async (id: string) => {
       const choice = await ask({
@@ -2415,7 +2516,7 @@ export default function CustomDatabaseScreen({
         {notes
           .filter((d) => !d.main)
           .map((d) =>
-            card(d.id, d.title || 'Без назви', firstLines(d.blocks), () => navigation.navigate('Editor', { documentId: d.id }), () =>
+            card(d.id, d.title || 'Без назви', firstLines(d.blocks), () => openNoteFromPage(row.id, d.id), () =>
               noteMenu(d.id)
             )
           )}
@@ -3929,6 +4030,7 @@ export default function CustomDatabaseScreen({
         </GlassLayer>
       )}
 
+      <VideoPlayerModal url={fullscreenLessonUrl} onClose={() => setFullscreenLessonUrl(null)} />
       {rowPageRow !== null && (
         <GlassLayer visible onClose={() => setRowPageId(null)}>
           <View style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]}>

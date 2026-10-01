@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRecordLinkIds } from '../hooks/useRecordLinkIds';
 import { useTechnicalDocIds } from '../hooks/useTechnicalDocs';
-import { isTechnicalItem } from '../utils/recordNotes';
+import { isTechnicalItem, mainNoteId, makeOrdinary } from '../utils/recordNotes';
 import FolderCanvas from '../components/FolderCanvas';
 import { LinkCanvasTile } from '../components/CanvasTiles';
 import { canvasFolderActions } from '../utils/canvasFolderActions';
@@ -751,6 +751,9 @@ export default function LinksScreen({
   // of any note that still references it.
   async function purgeLink(link: LinkItem) {
     deleteDoc(doc(db, 'links', link.id));
+    // A lesson's own note is not lost with the video - it becomes an
+    // ordinary note (the same rule as a deleted app's notes).
+    if (technicalDocIds.has(mainNoteId(link.id))) makeOrdinary(mainNoteId(link.id)).catch(() => {});
     if (link.articleSavedAt) {
       deleteDoc(doc(db, 'linkArticles', link.id)).catch(() => {});
       deleteDoc(doc(db, 'linkArticleTranslations', link.id)).catch(() => {});
