@@ -425,6 +425,14 @@ function Dragged({
     }
   };
 
+  // Taken out of `canvas` BEFORE any worklet sees them: a worklet copies
+  // every identifier it names whole, and `canvas` also holds the table's
+  // gestures - "Cannot copy value of type PanGesture" was the first open
+  // of this view on the phone (2026-10-02; see the worklet closure memory).
+  const canvasScale = canvas.scale;
+  const hoverAt = canvas.hoverAt;
+  const tablePan = canvas.canvasPan;
+  const tablePinch = canvas.pinch;
   const gesture = useMemo(() => {
     const tap = Gesture.Tap().onEnd(() => {
       if (onTap) runOnJS(onTap)();
@@ -437,17 +445,17 @@ function Dragged({
     if (!movable) return Gesture.Race(tap);
     const pan = Gesture.Pan()
       .minDistance(4)
-      .blocksExternalGesture(canvas.canvasPan, canvas.pinch)
+      .blocksExternalGesture(tablePan, tablePinch)
       .onStart(() => {
         dragging.value = true;
         from.value = { x: px.value, y: py.value, hx: px.value, hy: py.value };
       })
       .onUpdate((e) => {
-        px.value = from.value.x + e.translationX / canvas.scale.value;
-        py.value = from.value.y + e.translationY / canvas.scale.value;
+        px.value = from.value.x + e.translationX / canvasScale.value;
+        py.value = from.value.y + e.translationY / canvasScale.value;
         if (Math.abs(px.value - from.value.hx) + Math.abs(py.value - from.value.hy) > HOVER_STEP) {
           from.value = { ...from.value, hx: px.value, hy: py.value };
-          runOnJS(canvas.hoverAt)(px.value + w / 2, py.value + h / 2);
+          runOnJS(hoverAt)(px.value + w / 2, py.value + h / 2);
         }
       })
       .onEnd(() => {
