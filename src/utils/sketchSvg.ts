@@ -45,7 +45,10 @@ export function sketchToSvg(
     .map((el) =>
       // A turned element carries its turn (sketchGeometry.transformOf).
       (el.rot ? `<g transform="${transformOf(el)}">` : '') +
-      (el.kind === 'text'
+      (el.kind === 'image'
+        ? `<image href="${escapeXml(el.uri)}" x="${el.x}" y="${el.y}" width="${el.w}" height="${el.h}" ` +
+          `preserveAspectRatio="xMidYMid slice"/>`
+        : el.kind === 'text'
         ? `<text x="${el.x}" y="${el.y}" fill="${el.color}" font-size="${el.fontSize}" ` +
           `font-family="sans-serif">${escapeXml(el.text)}</text>`
         : `<path d="${escapeXml(el.d)}" stroke="${el.noStroke ? 'none' : el.color}" stroke-width="${el.width}" ` +
@@ -87,6 +90,11 @@ function boundsOf(elements: SketchElement[]): { w: number; h: number } {
     if (el.kind === 'text') {
       maxX = Math.max(maxX, el.x + el.text.length * el.fontSize * 0.6);
       maxY = Math.max(maxY, el.y);
+      continue;
+    }
+    if (el.kind === 'image') {
+      maxX = Math.max(maxX, el.x + el.w);
+      maxY = Math.max(maxY, el.y + el.h);
       continue;
     }
     // The path's own numbers - every command in these strings is written

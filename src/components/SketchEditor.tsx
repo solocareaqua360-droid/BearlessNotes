@@ -16,7 +16,12 @@ import {
 import { Ionicons } from './icons/Ionicons';
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SketchElement, SketchPathElement, SketchShape } from '../types';
+import { SketchElement, SketchImageElement, SketchPathElement, SketchShape } from '../types';
+import * as ImagePicker from 'expo-image-picker';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { backupFileToDrive } from '../utils/googleDrive';
+import { ask } from './surfaces/Ask';
+import AddExistingItemModal from './AddExistingItemModal';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft } from '../theme/soft';
 import { useTheme } from '../theme/ThemeProvider';
@@ -165,7 +170,7 @@ function intersects(a: Box, b: Box): boolean {
 // A turned stroke, with its turn written into its points - what the
 // eraser needs, since it rubs out where the stroke IS on the page.
 function bakeTurn(el: SketchElement): SketchElement {
-  if (!el.rot || el.kind === 'text') return el;
+  if (!el.rot || el.kind !== 'path') return el;
   const pivot = pivotOf(el);
   const runs = el.d
     .split(/(?=M)/)
@@ -180,7 +185,8 @@ function bakeTurn(el: SketchElement): SketchElement {
 // gets partly rubbed out loses its shape data (it's no longer a clean
 // rectangle/circle) and carries on as a plain path.
 function eraseFromElement(el: SketchElement, x: number, y: number, radius = ERASE_RADIUS): SketchElement[] {
-  if (el.kind === 'text') {
+  // Words and pictures go whole - there is nothing of them to rub at.
+  if (el.kind !== 'path') {
     const local = el.rot ? rotatePoint({ x, y }, pivotOf(el), -el.rot) : { x, y };
     const b = boundsOf(el);
     const hit = local.x >= b.minX - 8 && local.x <= b.maxX + 8 && local.y >= b.minY - 8 && local.y <= b.maxY + 8;
@@ -748,8 +754,85 @@ export default function SketchEditor({ visible, initialElements, background, pap
     if (selection.length) {
       remember();
       const chosen = new Set(selection);
-      setElements(elements.map((el, i) => (chosen.has(i) ? { ...el, color: c } : el)));
+      setElements(elements.map((el, i) => (chosen.has(i) && el.kind !== 'image' ? { ...el, color: c } : el)));
     }
+  }
+
+  // ---- pictures ---------------------------------------------------------------
+
+  // The latest elements, for the moment «Готово» waits on a backup.
+  const elementsRef = useRef(elements);
+  elementsRef.current = elements;
+  // Gallery pictures still on their way to Drive: «Готово» waits a little
+  // for them, so the drawing is saved knowing where its backup is.
+  const uploads = useRef(new Set<Promise<void>>());
+  const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
+
+  // Laid in the middle of what is on screen, a comfortable size, chosen -
+  // so it can be moved and sized straight away.
+  function placePicture(uri: string, driveFileId: string | undefined, aspect: number) {
+    const w = Math.min(canvasSize.width * 0.6, 320) / view.s;
+    const h = w / (aspect > 0 ? aspect : 4 / 3);
+    const cx = (canvasSize.width / 2 - view.tx) / view.s;
+    const cy = (canvasSize.height / 2 - view.ty) / view.s;
+    const picture: SketchImageElement = { kind: 'image', x: cx - w / 2, y: cy - h / 2, w, h, uri };
+    if (driveFileId) picture.driveFileId = driveFileId;
+    remember();
+    setElements((prev) => {
+      setSelection([prev.length]);
+      return [...prev, picture];
+    });
+    setTool('select');
+  }
+  function sizeOf(uri: string): Promise<number> {
+    return new Promise((resolve) => Image.getSize(uri, (w, h) => resolve(w > 0 && h > 0 ? w / h : 4 / 3), () => resolve(4 / 3)));
+  }
+
+  async function addPicture() {
+    const from = await ask({
+      title: 'Зображення',
+      actions: [
+        { id: 'gallery', label: 'З галереї телефону', icon: 'images-outline' },
+        { id: 'photos', label: 'Із «Зображень»', icon: 'image-outline' },
+      ],
+    });
+    if (from === 'photos') {
+      setPhotoPickerOpen(true);
+      return;
+    }
+    if (from !== 'gallery') return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+    if (picked.canceled || picked.assets.length === 0) return;
+    const asset = picked.assets[0];
+    // A copy of the drawing's own (the picker's address can be taken back
+    // by the app that gave it), backed up to Drive like any attachment -
+    // and NOT a record in «Зображення».
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // (A browser has no cache folder to copy into: there the picked
+    // address is all there is.)
+    const uri = LegacyFileSystem.cacheDirectory ? `${LegacyFileSystem.cacheDirectory}sketch-${id}.jpg` : asset.uri;
+    if (uri !== asset.uri) await LegacyFileSystem.copyAsync({ from: asset.uri, to: uri });
+    const aspect = asset.width && asset.height ? asset.width / asset.height : await sizeOf(uri);
+    placePicture(uri, undefined, aspect);
+    const upload = backupFileToDrive(uri, `sketch-${id}.jpg`, asset.mimeType || 'image/jpeg', 'Photos').then((done) => {
+      if (done) {
+        setElements((prev) => prev.map((el) => (el.kind === 'image' && el.uri === uri ? { ...el, driveFileId: done.fileId } : el)));
+        elementsRef.current = elementsRef.current.map((el) =>
+          el.kind === 'image' && el.uri === uri ? { ...el, driveFileId: done.fileId } : el
+        );
+      }
+    });
+    uploads.current.add(upload);
+    upload.finally(() => uploads.current.delete(upload));
+  }
+
+  async function finish() {
+    if (uploads.current.size) {
+      await Promise.race([Promise.all([...uploads.current]), new Promise((r) => setTimeout(r, 6000))]);
+    }
+    onSave(elementsRef.current, canvasSize.width, canvasSize.height);
   }
 
   // The closed shapes among the chosen ones.
@@ -987,7 +1070,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
           </View>
           <Pressable
             hitSlop={6}
-            onPress={() => onSave(elements, canvasSize.width, canvasSize.height)}
+            onPress={finish}
             style={[styles.roundButton, { backgroundColor: S.ink, boxShadow: S.shadow }]}
           >
             <Ionicons name={'lc:check' as never} size={21} color={S.card} />
@@ -1112,6 +1195,13 @@ export default function SketchEditor({ visible, initialElements, background, pap
                 <Ionicons name={icon as never} size={19} color={tool === t ? S.card : S.ink2} />
               </Pressable>
             ))}
+            {/* A picture: from the gallery, or from «Зображення». Not on a
+                photograph, which already is one. */}
+            {!background && (
+              <Pressable hitSlop={4} style={styles.tool} onPress={addPicture}>
+                <Ionicons name={'lc:image-plus' as never} size={19} color={S.ink2} />
+              </Pressable>
+            )}
           </ScrollView>
           <View style={[styles.toolbarDivider, { backgroundColor: S.line }]} />
           <Pressable
@@ -1139,6 +1229,18 @@ export default function SketchEditor({ visible, initialElements, background, pap
             </Pressable>
           )}
         </RNAnimated.View>
+
+        <AddExistingItemModal
+          visible={photoPickerOpen}
+          allowedTabs={['photo']}
+          onPick={(block) => {
+            setPhotoPickerOpen(false);
+            if (!block.imageUri) return;
+            const uri = block.imageUri;
+            sizeOf(uri).then((aspect) => placePicture(uri, block.driveFileId, aspect));
+          }}
+          onClose={() => setPhotoPickerOpen(false)}
+        />
 
         {(pendingText || labelFor !== null) && (
           <View style={styles.textBackdrop}>

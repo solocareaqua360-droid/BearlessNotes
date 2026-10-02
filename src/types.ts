@@ -109,7 +109,22 @@ export interface SketchTextElement {
 // it was added - one flat, ordered list (rather than separate arrays per
 // kind) so "undo" and z-order (a later element drawn on top of an
 // earlier one) both just mean "look at the last item".
-export type SketchElement = SketchPathElement | SketchTextElement;
+// A picture laid on a drawing (2026-10-02): from the phone's gallery or
+// the «Зображення» database. One from the gallery is a copy of the drawing's
+// own - kept in the cache and backed up to Drive like any attachment, but
+// NOT made a record in «Зображення» ("зберігати в базі його не треба").
+export interface SketchImageElement {
+  kind: 'image';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  uri: string;
+  driveFileId?: string;
+  rot?: number;
+}
+
+export type SketchElement = SketchPathElement | SketchTextElement | SketchImageElement;
 
 export interface Block {
   id: string;
