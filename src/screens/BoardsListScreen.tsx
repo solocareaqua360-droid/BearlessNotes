@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useFolderHold } from '../components/FolderHoldMenu';
 import { rightClick } from '../utils/rightClick';
 import { softCardFrame, softenStyles, softRecordColours, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
@@ -200,25 +201,8 @@ export default function BoardsListScreen({
 
   // What a held folder can do, the same three things it can do in the
   // documents explorer.
-  function openFolderMenu(folder: ExplorerFolder) {
-    ask({
-      title: nameOf(folder.fullPath),
-      actions: [
-        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
-        { id: 'move', label: 'Перемістити', icon: 'arrow-forward-outline' },
-        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
-      ],
-    }).then(async (answer) => {
-      if (answer === 'rename') explorer.setFolderPrompt({ mode: 'rename', path: folder.fullPath });
-      if (answer === 'delete') explorer.deleteFolder(folder.fullPath);
-      if (answer === 'move') {
-        const destination = await explorer.pickDestination('Куди перемістити папку?', folder.fullPath);
-        if (destination === 'cancel') return;
-        const name = nameOf(folder.fullPath);
-        await explorer.renameFolder(folder.fullPath, destination ? `${destination}/${name}` : name);
-      }
-    });
-  }
+  // Held: the chat's gesture - see FolderHoldMenu.
+  const folderHold = useFolderHold({ explorer, itemIcon: 'apps-outline' });
 
   const tagPickerBoard = tagPickerBoardId ? boards.find((b) => b.id === tagPickerBoardId) ?? null : null;
 
@@ -650,6 +634,7 @@ export default function BoardsListScreen({
             onClose={() => setSingleGroupTargetId(null)}
           />
 
+          {folderHold.menu}
           <RenamePrompt
             visible={explorer.folderPrompt !== null}
             title={explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}
@@ -733,7 +718,7 @@ export default function BoardsListScreen({
                     list.setIsSearching(false);
                   }
                 }}
-                onFolderMenu={openFolderMenu}
+                onFolderMenu={folderHold.open}
               />
               </View>
             )}

@@ -3,7 +3,7 @@ import { cardRadius } from '../theme/scale';
 import { useState } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { ExplorerFolder } from '../hooks/useExplorer';
 import { FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
@@ -34,7 +34,7 @@ export default function ExplorerHead({
   path: string;
   folders: ExplorerFolder[];
   onGo: (path: string) => void;
-  onFolderMenu: (folder: ExplorerFolder) => void;
+  onFolderMenu: (folder: ExplorerFolder, e?: GestureResponderEvent) => void;
   itemIcon: keyof typeof Ionicons.glyphMap;
   trash?: { count: number; onOpen: () => void };
   // How many folders stand across a line. One on a phone; two or three
@@ -80,7 +80,7 @@ export default function ExplorerHead({
             {...lift()}
             style={[styles.folderRow, rowWidth !== undefined && { width: rowWidth }]}
             onPress={() => onGo(folder.fullPath)}
-            onLongPress={() => onFolderMenu(folder)}
+            onLongPress={(e) => onFolderMenu(folder, e)}
           >
             <View style={[styles.folderThumb, !soft && { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
               <Ionicons

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useFolderHold } from '../components/FolderHoldMenu';
 import { useOpenRequest } from '../utils/openRequest';
 import FlipModal from '../components/FlipModal';
 import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
@@ -340,25 +341,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   const viewerNextId =
     viewerIndex >= 0 && viewerIndex < itemsHere.length - 1 ? itemsHere[viewerIndex + 1].id : null;
 
-  function openFolderMenu(folder: ExplorerFolder) {
-    ask({
-      title: nameOf(folder.fullPath),
-      actions: [
-        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
-        { id: 'move', label: 'Перемістити', icon: 'arrow-forward-outline' },
-        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
-      ],
-    }).then(async (answer) => {
-      if (answer === 'rename') explorer.setFolderPrompt({ mode: 'rename', path: folder.fullPath });
-      if (answer === 'delete') explorer.deleteFolder(folder.fullPath);
-      if (answer === 'move') {
-        const destination = await explorer.pickDestination('Куди перемістити папку?', folder.fullPath);
-        if (destination === 'cancel') return;
-        const name = nameOf(folder.fullPath);
-        await explorer.renameFolder(folder.fullPath, destination ? `${destination}/${name}` : name);
-      }
-    });
-  }
+  // Held: the chat's gesture - see FolderHoldMenu.
+  const folderHold = useFolderHold({ explorer, itemIcon: 'image-outline' });
 
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
 
@@ -1016,6 +1000,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             onClose={() => setTagPickerForId(null)}
           />
 
+          {folderHold.menu}
           <RenamePrompt
             visible={explorer.folderPrompt !== null}
             title={explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}
@@ -1198,7 +1183,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                       list.setIsSearching(false);
                     }
                   }}
-                  onFolderMenu={openFolderMenu}
+                  onFolderMenu={folderHold.open}
                   trash={{ count: trashedPhotos.length, onOpen: () => setTrashOpen(true) }}
                 />
               ) : null

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useFolderHold } from '../components/FolderHoldMenu';
 import BinRestoreRows from '../components/BinRestoreRows';
 import { useOpenRequest } from '../utils/openRequest';
 import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
@@ -402,25 +403,8 @@ export default function LinksScreen({
     },
   });
 
-  function openFolderMenu(folder: ExplorerFolder) {
-    ask({
-      title: nameOf(folder.fullPath),
-      actions: [
-        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
-        { id: 'move', label: 'Перемістити', icon: 'arrow-forward-outline' },
-        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
-      ],
-    }).then(async (answer) => {
-      if (answer === 'rename') explorer.setFolderPrompt({ mode: 'rename', path: folder.fullPath });
-      if (answer === 'delete') explorer.deleteFolder(folder.fullPath);
-      if (answer === 'move') {
-        const destination = await explorer.pickDestination('Куди перемістити папку?', folder.fullPath);
-        if (destination === 'cancel') return;
-        const name = nameOf(folder.fullPath);
-        await explorer.renameFolder(folder.fullPath, destination ? `${destination}/${name}` : name);
-      }
-    });
-  }
+  // Held: the chat's gesture - see FolderHoldMenu.
+  const folderHold = useFolderHold({ explorer, itemIcon: 'link-outline' });
 
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
   const cardMenuLink = cardMenuLinkId ? links.find((l) => l.id === cardMenuLinkId) ?? null : null;
@@ -1000,7 +984,7 @@ export default function LinksScreen({
             list.setIsSearching(false);
           }
         }}
-        onFolderMenu={openFolderMenu}
+        onFolderMenu={folderHold.open}
         trash={{ count: trashedLinks.length, onOpen: () => setTrashOpen(true) }}
       />
     );
@@ -1283,6 +1267,7 @@ export default function LinksScreen({
             onClose={() => setTagPickerForId(null)}
           />
 
+          {folderHold.menu}
           <RenamePrompt
             visible={explorer.folderPrompt !== null}
             title={explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}

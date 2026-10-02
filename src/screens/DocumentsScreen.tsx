@@ -1,4 +1,5 @@
 import { lift } from '../utils/lift';
+import { useFolderHold } from '../components/FolderHoldMenu';
 import RecentFolderStrip from '../components/RecentFolderStrip';
 import ScreenGround from '../components/ScreenGround';
 import FolderCanvas from '../components/FolderCanvas';
@@ -323,28 +324,26 @@ export default function DocumentsScreen({
     },
   });
 
-  // Held down on a folder row.
-  async function openFolderMenu(folder: { fullPath: string; tag: Tag | undefined }) {
-    const path = folder.fullPath;
-    const choice = await ask({
-      title: nameOf(path),
-      actions: [
-        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
-        { id: 'look', label: 'Іконка й колір', icon: 'color-palette-outline' },
-        { id: 'sub', label: 'Нова підпапка', icon: 'folder-open-outline' },
-        { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' },
-        { id: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger' },
-      ],
-    });
-    if (choice === 'rename') explorer.setFolderPrompt({ mode: 'rename', path });
-    else if (choice === 'look') setFolderEdit(await explorer.tagForFolder(path));
-    else if (choice === 'sub') explorer.setFolderPrompt({ mode: 'new', parent: path });
-    else if (choice === 'move') {
-      const dest = await explorer.pickDestination(`Перемістити «${nameOf(path)}» в…`, path);
-      if (dest === 'cancel') return;
-      await explorer.renameFolder(path, dest ? `${dest}/${nameOf(path)}` : nameOf(path));
-    } else if (choice === 'delete') await explorer.deleteFolder(path);
-  }
+  // Held down on a folder: the chat's gesture (FolderHoldMenu), with the
+  // two rows only the documents' explorer has.
+  const folderHold = useFolderHold({
+    explorer,
+    itemIcon: 'document-text-outline',
+    extras: (folder) => [
+      {
+        key: 'look',
+        label: 'Іконка й колір',
+        icon: 'color-palette-outline',
+        onPress: async () => setFolderEdit(await explorer.tagForFolder(folder.fullPath)),
+      },
+      {
+        key: 'sub',
+        label: 'Нова підпапка',
+        icon: 'folder-open-outline',
+        onPress: () => explorer.setFolderPrompt({ mode: 'new', parent: folder.fullPath }),
+      },
+    ],
+  });
   // Held down and let go without moving: the card is SELECTED, the way a
   // block is in the editor - "хочу повторити таку саму штуку й з
   // картками документів". The dock turns to its actions card as it does
@@ -1774,8 +1773,8 @@ export default function DocumentsScreen({
                             setSearchOpen(false);
                           }
                         }}
-                        onLongPress={() => openFolderMenu(folder)}
-                        {...rightClick(() => openFolderMenu(folder))}
+                        onLongPress={(e) => folderHold.open(folder, e)}
+                        {...rightClick(() => folderHold.open(folder))}
                       {...lift()}
                       >
                         <View style={[styles.softFolderIcon, { backgroundColor: soft.fill }]}>
@@ -1865,8 +1864,8 @@ export default function DocumentsScreen({
                           setSearchOpen(false);
                         }
                       }}
-                      onLongPress={() => openFolderMenu(folder)}
-                      {...rightClick(() => openFolderMenu(folder))}
+                      onLongPress={(e) => folderHold.open(folder, e)}
+                      {...rightClick(() => folderHold.open(folder))}
                       {...lift()}
                     >
                       <View style={[styles.folderThumb, { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
@@ -2247,6 +2246,7 @@ export default function DocumentsScreen({
         }}
       />
 
+      {folderHold.menu}
       <RenamePrompt
         visible={explorer.folderPrompt !== null}
         title={
