@@ -310,6 +310,14 @@ export function useActiveBackdropOverride(): BackdropOverride | null {
   return backdropSettings.appliesTo.includes(theme.key) ? backdropSettings.override : null;
 }
 
+// How opaque a screen's own ground is over the phone's wallpaper (the
+// 'wallpaper' backdrop): the veil, 0-1 - or null when there is no
+// wallpaper and the ground is solid as always.
+export function useWallpaperVeil(): number | null {
+  const override = useActiveBackdropOverride();
+  return override?.type === 'wallpaper' ? override.veil / 100 : null;
+}
+
 // The interface scheme - Settings' own read/write pair. Everything
 // else just reads the theme it produced.
 export function useColourScheme() {

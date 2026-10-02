@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import ScreenGround from './ScreenGround';
 import { useInnerBack } from '../navigation/innerBack';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -707,7 +708,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           every edge - windowWidth/Height can round to a hair less than the
           real screen, leaving a sliver of white at an edge otherwise. */}
       {soft ? (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: soft.bg }]} />
+        <ScreenGround color={soft.bg} />
       ) : (
         <ScreenBackdrop id="databaseBg" scrollY={pull.scrollY} />
       )}

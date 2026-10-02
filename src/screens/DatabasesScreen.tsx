@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import ScreenGround from '../components/ScreenGround';
 import { APPS_TEMPLATE_NAME, APPS_TEMPLATE_RATES, appsTemplateFields } from '../utils/appsTemplate';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import { mutedForTheme, type Theme } from '../theme/tokens';
@@ -1788,7 +1789,7 @@ export default function DatabasesScreen() {
       {/* Over the desk the blurred desk IS the ground - see SideLayer. */}
       {S ? (
         // The soft ground - over the blurred desk too, in the layer.
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: S.bg }]} />
+        <ScreenGround color={S.bg} />
       ) : (
         !databasesLayer && <ScreenBackdrop id="databasesBg" />
       )}

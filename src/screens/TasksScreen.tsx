@@ -1,4 +1,5 @@
 import { DeskContext } from '../navigation/desks';
+import ScreenGround from '../components/ScreenGround';
 import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
@@ -1711,7 +1712,7 @@ export default function TasksScreen() {
   return (
     <View style={styles.container}>
       {softDb ? (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: softDb.bg }]} />
+        <ScreenGround color={softDb.bg} />
       ) : (
         <ScreenBackdrop id="tasksBg" />
       )}

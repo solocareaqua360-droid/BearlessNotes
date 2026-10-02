@@ -1,4 +1,5 @@
 import { RADIUS } from '../theme/scale';
+import ScreenGround from '../components/ScreenGround';
 import { IN_SHELL } from '../utils/shell';
 import { morphKey, morphLanded } from '../utils/morph';
 import { dragSelectJustEnded } from '../hooks/useBlockMarquee';
@@ -6286,7 +6287,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   return (
     <View style={styles.sheetRoot}>
       {/* The soft ground: one quiet colour, not the drifting backdrop. */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: soft.bg }]} />
+      <ScreenGround color={soft.bg} />
       {page}
       {/* What runs off the top and the bottom melts into the ground under
           the bar and the dock, as in every list (the user's, 2026-10-02).

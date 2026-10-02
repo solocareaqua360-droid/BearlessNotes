@@ -1,4 +1,5 @@
 import { lift } from '../utils/lift';
+import ScreenGround from '../components/ScreenGround';
 import FolderCanvas from '../components/FolderCanvas';
 import { NoteCanvasTile } from '../components/CanvasTiles';
 import { canvasFolderActions } from '../utils/canvasFolderActions';
@@ -1393,7 +1394,7 @@ export default function DocumentsScreen({
           less than the actual screen, leaving a sliver of the default
           white background visible at an edge otherwise. */}
       {soft ? (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: soft.bg }]} />
+        <ScreenGround color={soft.bg} />
       ) : (
         <ScreenBackdrop id="documentsBg" scrollY={pull.scrollY} />
       )}

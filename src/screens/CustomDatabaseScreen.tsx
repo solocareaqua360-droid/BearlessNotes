@@ -1,4 +1,5 @@
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
+import ScreenGround from '../components/ScreenGround';
 import { saveLinkFromUrl } from '../utils/linkRecord';
 import { fieldWithRole, formatMoney, formatSubscription, linksField, subscriptionOf, subscriptionTotals } from '../utils/appsTemplate';
 import { useDensity } from '../hooks/useDensity';
@@ -3212,7 +3213,7 @@ export default function CustomDatabaseScreen({
     <SoftSurfaceContext.Provider value={softDb}>
     <View style={styles.container}>
       {softDb ? (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: softDb.bg }]} pointerEvents="none" />
+        <ScreenGround color={softDb.bg} />
       ) : (
       <Svg
         width={windowWidth + 2}

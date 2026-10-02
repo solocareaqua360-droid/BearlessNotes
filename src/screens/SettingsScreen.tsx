@@ -297,13 +297,16 @@ export default function SettingsScreen() {
   }
 
   // The phone's own wallpaper under the app (an APK that can - see
-  // supportsWallpaper). Chosen with no theme ticked, it starts on the
-  // theme in use, or it would seem to do nothing.
+  // supportsWallpaper).
   function chooseWallpaper(veil = backdropSettings.override?.type === 'wallpaper' ? backdropSettings.override.veil : 45) {
     setBackdropSettings({
       ...backdropSettings,
       override: { type: 'wallpaper', veil },
-      appliesTo: backdropSettings.appliesTo.length > 0 ? backdropSettings.appliesTo : [theme.key],
+      // The theme in use is always ticked - a wallpaper chosen while some
+      // other theme's tick was left from an old gradient did nothing.
+      appliesTo: backdropSettings.appliesTo.includes(theme.key)
+        ? backdropSettings.appliesTo
+        : [...backdropSettings.appliesTo, theme.key],
     });
   }
 

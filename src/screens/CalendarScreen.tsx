@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import ScreenGround from '../components/ScreenGround';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import {
@@ -1586,7 +1587,7 @@ export default function CalendarScreen() {
       {S ? (
         // The soft ground: one quiet colour - not the drifting backdrop,
         // and in the layer not the blurred desk either.
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: S.bg }]} />
+        <ScreenGround color={S.bg} />
       ) : (
         !calendarDrawer && <ScreenBackdrop id="calendarBg" />
       )}
