@@ -59,6 +59,9 @@ export type CanvasOverlayApi = {
   ty: SharedValue<number>;
   scale: SharedValue<number>;
   rects: Record<string, FolderRect>;
+  // A folder's LIVE place while a finger carries it (world units, its top
+  // left corner) - registered as `folder:<path>`; a line follows it there.
+  live: (path: string) => { px: SharedValue<number>; py: SharedValue<number> } | undefined;
 };
 export type Move = { photo: CanvasPhoto; from: string | null };
 
@@ -841,6 +844,7 @@ export default function FolderCanvas({
             island.chips.map((chip) => (
               <Dragged
                 key={`chip:${chip.path}`}
+                id={`folder:${chip.path}`}
                 x={chip.x}
                 y={chip.y}
                 w={chip.w}
@@ -864,6 +868,7 @@ export default function FolderCanvas({
           {nodes.map((node) => (
             <Dragged
               key={`node:${node.path}`}
+              id={`folder:${node.path}`}
               x={node.x}
               y={node.y}
               w={NODE_W}
@@ -1069,7 +1074,7 @@ export default function FolderCanvas({
         />
       </View>
     </GestureDetector>
-    {overlay?.({ tx, ty, scale, rects: folderRects })}
+    {overlay?.({ tx, ty, scale, rects: folderRects, live: (path) => registry.current.get(`folder:${path}`) })}
     </View>
   );
 }

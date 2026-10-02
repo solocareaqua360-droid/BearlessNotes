@@ -3,10 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FolderCanvas, { CANVAS_TILE, type CanvasPhoto, type Move } from './FolderCanvas';
 import FolderBaseLinks, { type BaseLink, type LinkBase } from './FolderBaseLinks';
-import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
-import { TAG_KIND_CHOICES } from '../constants/tagKinds';
-import { GRID_TILES, WIDE_TILES } from '../constants/databaseTiles';
-import { useRecordColour } from '../theme/ThemeProvider';
+import { useFolderBases } from '../hooks/useFolderBases';
 import { ask } from './surfaces/Ask';
 import { FileCanvasTile, LinkCanvasTile, NoteCanvasTile } from './CanvasTiles';
 import AttachmentImage from './AttachmentImage';
@@ -39,19 +36,6 @@ const KIND_ICON: Record<FolderItem['kind'], string> = {
 
 const nameOf = (path: string) => path.split('/').pop() ?? path;
 
-// Which tile on the Бази board each folder kind is - the circles of
-// FolderBaseLinks wear that tile's own icon and colour.
-const TILE_OF_KIND: Record<string, string> = {
-  document: 'documents',
-  photo: 'photos',
-  file: 'files',
-  'link-other': 'links',
-  'link-video': 'video',
-  'link-geo': 'geo',
-  board: 'board',
-  flashcard: 'flashcards',
-};
-const TILES = [...WIDE_TILES, ...GRID_TILES];
 const randomColor = () => TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
 
 export default function FoldersCanvas({
@@ -67,28 +51,8 @@ export default function FoldersCanvas({
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { tags, attachTag, detachTag, createFolderTag, renameTag, updateTag } = useTags();
   const items = useAllFolderItems(tags);
-  const { customDatabases, colorFor, iconFor } = useDatabaseTiles();
-  const recordColour = useRecordColour();
-  // The databases, as circles - in the icons and colours of their own
-  // tiles on the Бази board: the built-in ones, then the user's own.
-  const bases: LinkBase[] = [
-    ...TAG_KIND_CHOICES.map((c) => {
-      const tileKey = TILE_OF_KIND[c.kind];
-      const tile = TILES.find((t) => t.key === tileKey);
-      return {
-        kind: c.kind,
-        label: c.label,
-        icon: tile ? iconFor(tile.key, tile.icon) : 'grid-outline',
-        color: tileKey ? colorFor(tileKey) : S.ink2,
-      };
-    }),
-    ...customDatabases.map((d) => ({
-      kind: `customRow:${d.id}`,
-      label: d.name || 'База',
-      icon: d.icon ?? 'grid-outline',
-      color: d.color ?? recordColour(d.id).background,
-    })),
-  ];
+  // The databases, as circles - see useFolderBases.
+  const bases: LinkBase[] = useFolderBases();
   const baseLabel = (kind: string) => bases.find((b) => b.kind === kind)?.label ?? 'База';
   // A line for every database a folder shows in; how much of it is inside
   // decides solid or dashed.

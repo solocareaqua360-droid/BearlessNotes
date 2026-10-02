@@ -121,11 +121,13 @@ export default function FolderBaseLinks({
     if (hit && !links.some((l) => l.kind === kind && l.path === hit[0])) onBind(kind, hit[0]);
   };
 
+  // The line being drawn is THERE only while a finger draws it: a hidden
+  // path stayed on screen where the finger let go (2026-10-02).
+  const [drawing, setDrawing] = useState(false);
   const dragProps = useAnimatedProps(() => {
     const d = drag.value;
-    if (!d.on) return { d: 'M0,0', opacity: 0 };
     const mx = (d.x0 + d.x1) / 2;
-    return { d: `M${d.x0},${d.y0} C${mx},${d.y0} ${mx},${d.y1} ${d.x1},${d.y1}`, opacity: 1 };
+    return { d: `M${d.x0},${d.y0} C${mx},${d.y0} ${mx},${d.y1} ${d.x1},${d.y1}` };
   });
 
   return (
@@ -152,7 +154,9 @@ export default function FolderBaseLinks({
               />
             );
           })}
-          <AnimatedPath animatedProps={dragProps} stroke={S.ink2} strokeWidth={2} strokeDasharray="6 5" fill="none" />
+          {drawing && (
+            <AnimatedPath animatedProps={dragProps} stroke={S.ink2} strokeWidth={2} strokeDasharray="6 5" fill="none" />
+          )}
         </Svg>
       )}
       {shown &&
@@ -171,6 +175,7 @@ export default function FolderBaseLinks({
             focused={focus === base.kind}
             onTap={() => setFocus((f) => (f === base.kind ? null : base.kind))}
             onDrop={dropAt}
+            onDrawing={setDrawing}
           />
         ))}
     </View>
@@ -202,12 +207,20 @@ function LinkLine({
   // they came in (see the worklet-closure memory).
   const rx = rect.x;
   const ry = rect.y + rect.h / 2;
+  const half = rect.h / 2;
   const tx = api.tx;
   const ty = api.ty;
   const scale = api.scale;
+  // While a finger carries the folder, its live place - not where it was
+  // last put (the line stood still under a carried folder, 2026-10-02).
+  const live = api.live(link.path);
+  const lx = live?.px ?? null;
+  const ly = live?.py ?? null;
   const props = useAnimatedProps(() => {
-    const ex = (rx + WORLD_HALF) * scale.value + tx.value;
-    const ey = (ry + WORLD_HALF) * scale.value + ty.value;
+    const wx = lx ? lx.value : rx;
+    const wy = ly ? ly.value + half : ry;
+    const ex = (wx + WORLD_HALF) * scale.value + tx.value;
+    const ey = (wy + WORLD_HALF) * scale.value + ty.value;
     const c1x = bx + Math.max(40, (ex - bx) * 0.5);
     const c2x = ex - Math.max(40, (ex - bx) * 0.5);
     // The snake: the same curve cut at t (de Casteljau), t growing.
@@ -256,6 +269,7 @@ function BaseCircle({
   focused,
   onTap,
   onDrop,
+  onDrawing,
 }: {
   base: LinkBase;
   index: number;
@@ -268,6 +282,7 @@ function BaseCircle({
   focused: boolean;
   onTap: () => void;
   onDrop: (kind: string, x: number, y: number) => void;
+  onDrawing: (on: boolean) => void;
 }) {
   const S = useSoft();
   const kind = base.kind;
@@ -286,6 +301,10 @@ function BaseCircle({
     });
     const pan = Gesture.Pan()
       .minDistance(6)
+      .onStart(() => {
+        drag.value = { on: 1, x0, y0, x1: x0, y1: y0 };
+        runOnJS(onDrawing)(true);
+      })
       .onUpdate((e) => {
         drag.value = { on: 1, x0, y0, x1: cx + e.translationX, y1: cy + e.translationY };
       })
@@ -295,9 +314,10 @@ function BaseCircle({
       })
       .onFinalize(() => {
         drag.value = { on: 0, x0: 0, y0: 0, x1: 0, y1: 0 };
+        runOnJS(onDrawing)(false);
       });
     return Gesture.Exclusive(pan, tap);
-  }, [cx, cy, kind, drag, onTap, onDrop]);
+  }, [cx, cy, kind, drag, onTap, onDrop, onDrawing]);
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
