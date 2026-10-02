@@ -16,6 +16,9 @@ import type { Rect } from './morph';
 // (no shadow, other corners, taken a beat late).
 export type FlipFrom = { rect: Rect };
 
+// The turn's length, both ways - the window's half and the card's.
+export const FLIP_MS = 460;
+
 // 0 in the card .. 1 open. Driven by GlassLayer; read by the card whose
 // key is `flipKey`.
 export const flipProgress = makeMutable(0);

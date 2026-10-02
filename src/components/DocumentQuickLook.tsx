@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import FlipModal from './FlipModal';
+import type { FlipFrom } from '../utils/flipOpen';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { WebView } from 'react-native-webview';
@@ -141,7 +143,11 @@ export default function DocumentQuickLook({
   onClose,
   onOpenElsewhere,
   embedded,
+  flipFrom,
 }: {
+  // Opened from the file's card: the preview comes round from its back
+  // (utils/flipOpen, FlipModal).
+  flipFrom?: FlipFrom | null;
   // null closes it.
   file: { uri: string; name: string; kind: QuickLookKind } | null;
   onClose: () => void;
@@ -239,9 +245,9 @@ export default function DocumentQuickLook({
 
   if (embedded) return file ? body : null;
   return (
-    <Modal visible={file !== null} animationType="slide" onRequestClose={onClose}>
+    <FlipModal visible={file !== null} flipFrom={flipFrom} animationType="slide" onRequestClose={onClose}>
       {body}
-    </Modal>
+    </FlipModal>
   );
 }
 

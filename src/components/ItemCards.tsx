@@ -5,6 +5,7 @@ import { useCallback, useRef } from 'react';
 import Animated from 'react-native-reanimated';
 import { usePressSettle } from '../hooks/usePressSettle';
 import { withFlipTarget } from '../utils/flipOpen';
+import TurningPressable from './TurningPressable';
 import { rightClick } from '../utils/rightClick';
 import { softCardFrame, useSoftSurface, type SoftTokens } from '../theme/soft';
 import { SOFT_SEMIBOLD } from '../utils/fonts';
@@ -378,11 +379,12 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
   // What is actually inside it - the first page of a PDF, the first lines
   // of a document. Worked out once, elsewhere (see FilePreviewWorker).
   const preview = useFilePreview(file);
+  const turning = useTurningCard(file.id, rest);
 
   return (
-    <View ref={rest.cardRef}
-      {...lift()} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
-      <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
+    <Animated.View ref={turning.ref}
+      {...lift()} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, turning.style]}>
+      <Pressable style={styles.rowTap} {...turning.handlers} onPress={turning.press} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {/* The page picture at a video thumbnail's size - wide enough to
             recognise the document by its shape, small enough to leave the
             name room. Blown up to the full width it was still not
@@ -431,7 +433,7 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
         </View>
       </Pressable>
       <Trailing {...rest} text={text} textMuted={textMuted} />
-    </View>
+    </Animated.View>
   );
 }
 
@@ -440,9 +442,10 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
   const soft = useSoftSurface();
   const { background, text, textMuted } = softColours(soft, recordColour(file.id));
   const preview = useFilePreview(file);
+  const turning = useTurningCard(file.id, rest);
   return (
-    <View
-      ref={rest.cardRef}
+    <Animated.View
+      ref={turning.ref}
       {...lift()}
       collapsable={false}
       style={[
@@ -450,11 +453,10 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
         soft && softCardFrame(soft),
         styles.gridCardRatio,
         { backgroundColor: background, flexBasis: gridBasis(columns) },
-      ,
-        rest.dimmed && styles.dimmed,
+        turning.style,
       ]}
     >
-      <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
+      <Pressable style={styles.gridTap} {...turning.handlers} onPress={turning.press} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {preview?.thumbUri ? (
           <Image source={{ uri: preview.thumbUri }} style={styles.gridThumb} resizeMode="cover" resizeMethod="resize" />
         ) : preview?.text ? (
@@ -494,7 +496,7 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
       <View style={styles.gridTrailing}>
         <Trailing {...rest} text={text} textMuted={textMuted} />
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -518,11 +520,12 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
   // someone looking at the photo, hence the false.
   const { status, source } = useAttachmentSource(photo.imageUri, photo.driveFileId, false);
   const docCount = photo.documentIds.length;
+  const turning = useTurningCard(photo.id, rest);
 
   return (
-    <View ref={rest.cardRef}
-      {...lift()} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, rest.dimmed && styles.dimmed]}>
-      <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
+    <Animated.View ref={turning.ref}
+      {...lift()} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, turning.style]}>
+      <Pressable style={styles.rowTap} {...turning.handlers} onPress={turning.press} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {status === 'ready' ? (
           <Image source={{ uri: source ?? photo.imageUri }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
         ) : (
@@ -563,7 +566,7 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
         </View>
       </Pressable>
       <Trailing {...rest} text={text} textMuted={textMuted} />
-    </View>
+    </Animated.View>
   );
 }
 
@@ -575,13 +578,15 @@ export function PhotoCell({ photo, columns = 2, ...rest }: { photo: PhotoCardIte
   const docCount = photo.documentIds.length;
   const soft = useSoftSurface();
   return (
-    <Pressable
-      ref={rest.cardRef}
+    <TurningPressable
+      cardKey={photo.id}
+      dimmed={rest.dimmed}
+      ref={rest.cardRef as never}
       {...lift()}
       collapsable={false}
       // Its share of the row from the row's own count - a fixed 46% made
       // three across 138% wide, and the third ran off the window.
-      style={[styles.cell, { flexBasis: gridBasis(columns) }, soft && softCardFrame(soft), rest.dimmed && styles.dimmed]}
+      style={[styles.cell, { flexBasis: gridBasis(columns) }, soft && softCardFrame(soft)]}
       onPress={rest.onPress}
       onLongPress={rest.onLongPress}
       {...rightClick(rest.onLongPress)}
@@ -626,7 +631,7 @@ export function PhotoCell({ photo, columns = 2, ...rest }: { photo: PhotoCardIte
           )}
         </View>
       )}
-    </Pressable>
+    </TurningPressable>
   );
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import FolderCanvas from '../components/FolderCanvas';
 import { FileCanvasTile } from '../components/CanvasTiles';
 import { canvasFolderActions } from '../utils/canvasFolderActions';
@@ -12,8 +13,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View,
-} from 'react-native';
+  View, type GestureResponderEvent } from 'react-native';
 import { Ionicons } from '../components/icons/Ionicons';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
@@ -154,6 +154,17 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     kind: QuickLookKind;
     file: FileItem;
   } | null>(null);
+  // The card the preview was opened from (utils/flipOpen), dropped once
+  // the preview has turned back into it.
+  const [fileFlip, setFileFlip] = useState<FlipFrom | null>(null);
+  useEffect(() => {
+    if (quickLook !== null) return;
+    const spent = setTimeout(() => {
+      setFileFlip(null);
+      endFlip();
+    }, 700);
+    return () => clearTimeout(spent);
+  }, [quickLook]);
   // The record a "+" add just created, waiting on the "Перемістити" toast
   // (see relocateJustAddedFile) - the file itself already lives in the
   // base regardless of what happens here.
@@ -478,10 +489,14 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     ];
   }
 
-  async function openFile(file: FileItem) {
+  async function openFile(file: FileItem, event?: GestureResponderEvent) {
     const kind = quickLookKindFor(file.fileName);
     if (kind) {
+      // Measured at once, while the press still names the card; the file
+      // may take a moment to come down from Drive.
+      const flipping = prepareFlip(file.id, event);
       if (await ensureFileIsHere(file)) {
+        setFileFlip(await flipping);
         setQuickLook({ uri: file.fileUri, name: file.title || file.fileName, kind, file });
       }
       return;
@@ -702,7 +717,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         file={item}
         // The card says when it arrived - see FileCardItem.createdAt.
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
-        onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
+        onPress={(e) => (isSelectMode ? toggleSelected(item.id) : openFile(item, e))}
         onLongPress={carried ? undefined : () => setCardMenuFileId(item.id)}
         onMenu={() => setCardMenuFileId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
@@ -729,7 +744,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         columns={columns}
         file={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
-        onPress={() => (isSelectMode ? toggleSelected(item.id) : openFile(item))}
+        onPress={(e) => (isSelectMode ? toggleSelected(item.id) : openFile(item, e))}
         onLongPress={carried ? undefined : () => setCardMenuFileId(item.id)}
         onMenu={() => setCardMenuFileId(item.id)}
         onTagPress={() => setTagPickerForId(item.id)}
@@ -905,6 +920,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           {!isTwoPane && (
             <DocumentQuickLook
               file={quickLook}
+              flipFrom={fileFlip}
               onClose={() => setQuickLook(null)}
               onOpenElsewhere={() => {
                 const file = quickLook?.file;

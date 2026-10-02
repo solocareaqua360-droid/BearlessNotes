@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import FlipModal from '../components/FlipModal';
+import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import { withAlpha } from '../utils/color';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -12,8 +14,7 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
-} from 'react-native';
+  useWindowDimensions, type GestureResponderEvent } from 'react-native';
 import { Ionicons } from '../components/icons/Ionicons';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
@@ -124,6 +125,29 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   const [trashOpen, setTrashOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
+  // The card the viewer was opened from (utils/flipOpen): it turns over
+  // into the viewer and back. Moving to the next photo drops it - the way
+  // back is then a plain fade, not into a card that is not this photo's.
+  const [photoFlip, setPhotoFlip] = useState<FlipFrom | null>(null);
+  const openPhotoFromCard = (id: string, event?: GestureResponderEvent) => {
+    prepareFlip(id, event).then((flip) => {
+      setPhotoFlip(flip);
+      setViewerPhotoId(id);
+    });
+  };
+  const showOtherPhoto = (id: string) => {
+    setPhotoFlip(null);
+    endFlip();
+    setViewerPhotoId(id);
+  };
+  useEffect(() => {
+    if (viewerPhotoId !== null) return;
+    const spent = setTimeout(() => {
+      setPhotoFlip(null);
+      endFlip();
+    }, 700);
+    return () => clearTimeout(spent);
+  }, [viewerPhotoId]);
   const [renamingPhoto, setRenamingPhoto] = useState<PhotoItem | null>(null);
   const [documentPicker, setDocumentPicker] = useState<{ photo: PhotoItem; documents: PickableDocument[] } | null>(
     null
@@ -882,23 +906,31 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             />
           )}
 
-          {viewerPhoto && (
-            <Modal visible transparent animationType="fade" onRequestClose={() => setViewerPhotoId(null)}>
+          {/* Always there, shown by `visible`: opened from its card the
+              viewer turns back into it on the way out (FlipModal). */}
+          <FlipModal
+            visible={viewerPhoto !== null}
+            flipFrom={photoFlip}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setViewerPhotoId(null)}
+          >
+            {viewerPhoto && (
               <GestureHandlerRootView style={{ flex: 1 }}>
                 <ZoomableImageViewer
                   uri={viewerPhoto.imageUri}
                   driveFileId={viewerPhoto.driveFileId}
                   onClose={() => setViewerPhotoId(null)}
                   actions={viewerActionsFor(viewerPhoto)}
-                  onPrev={viewerPrevId ? () => setViewerPhotoId(viewerPrevId) : undefined}
-                  onNext={viewerNextId ? () => setViewerPhotoId(viewerNextId) : undefined}
+                  onPrev={viewerPrevId ? () => showOtherPhoto(viewerPrevId) : undefined}
+                  onNext={viewerNextId ? () => showOtherPhoto(viewerNextId) : undefined}
                   sketchElements={viewerPhoto.sketchElements}
                   sketchWidth={viewerPhoto.sketchWidth}
                   sketchHeight={viewerPhoto.sketchHeight}
                 />
               </GestureHandlerRootView>
-            </Modal>
-          )}
+            )}
+          </FlipModal>
 
           <SketchEditor
             visible={sketchPhotoId !== null}
@@ -1153,7 +1185,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                 : {
                     photo,
                     tags: tags.filter((t) => photo.tagIds.includes(t.id)),
-                    onPress: () => (isSelectMode ? toggleSelected(photo.id) : setViewerPhotoId(photo.id)),
+                    onPress: (e?: GestureResponderEvent) => (isSelectMode ? toggleSelected(photo.id) : openPhotoFromCard(photo.id, e)),
                     onMenu: () => openPhotoMenu(photo),
                     onLongPress: explorer.active ? undefined : () => openPhotoMenu(photo),
                     onTagPress: () => setTagPickerForId(photo.id),

@@ -2,7 +2,7 @@ import { MOTION } from '../theme/desktopTheme';
 import { useLeaving } from '../hooks/useLeaving';
 import { ReactNode, useEffect, useRef } from 'react';
 import { BackHandler, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { flipProgress, type FlipFrom } from '../utils/flipOpen';
+import { FLIP_MS, flipProgress, type FlipFrom } from '../utils/flipOpen';
 import { BlurView } from 'expo-blur';
 import Animated, { Easing, SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useBlurTarget } from './GlassTarget';
@@ -147,7 +147,6 @@ function GrowIn({ leaving, children }: { leaving: boolean; children: ReactNode }
 // growing from the card's size and place to its own. Edge-on, neither is
 // seen - that is where one hands over to the other. Closing plays it
 // backwards into the same card.
-const FLIP_MS = 460;
 const PERSPECTIVE = 1100;
 function FlipIn({
   leaving,
