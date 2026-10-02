@@ -23,6 +23,10 @@ export default function GradientSlider({
   onChange: (v: number) => void;
 }) {
   const [trackWidth, setTrackWidth] = useState(0);
+  // Its OWN gradient id: every slider used to define "gsTrack", and with
+  // several on one screen the colours of one painted all of them - the
+  // wallpaper's slider came out solid white beside the font sliders.
+  const [gradientId] = useState(() => `gsTrack${Math.random().toString(36).slice(2, 9)}`);
   // Read through a ref: PanResponder is built once, and a handler that
   // closed over the first render's width would divide by a stale
   // number forever.
@@ -53,13 +57,13 @@ export default function GradientSlider({
       {trackWidth > 0 && (
         <Svg width={trackWidth} height={28} style={StyleSheet.absoluteFill}>
           <Defs>
-            <LinearGradient id="gsTrack" x1="0" y1="0" x2="1" y2="0">
+            <LinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
               {stops.map((c, i) => (
                 <Stop key={i} offset={i / (stops.length - 1)} stopColor={c} />
               ))}
             </LinearGradient>
           </Defs>
-          <Rect width={trackWidth} height={28} rx={14} fill="url(#gsTrack)" />
+          <Rect width={trackWidth} height={28} rx={14} fill={`url(#${gradientId})`} />
         </Svg>
       )}
       <View pointerEvents="none" style={[styles.thumb, { left: `${value * 100}%` }]} />
