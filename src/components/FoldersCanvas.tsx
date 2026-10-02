@@ -42,10 +42,14 @@ export default function FoldersCanvas({
   topPad,
   linksOpen,
   resetFolders,
+  onFolderMenu,
+  focusFolder,
 }: {
   topPad: number;
   linksOpen: boolean;
   resetFolders?: number;
+  onFolderMenu?: (path: string, rect: { x: number; y: number; width: number; height: number }) => void;
+  focusFolder?: { path: string; n: number } | null;
 }) {
   const S = useSoft();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -242,6 +246,8 @@ export default function FoldersCanvas({
       onPhotoMenu={open}
       topPad={topPad}
       resetFolders={resetFolders}
+      onFolderMenu={onFolderMenu}
+      focusFolder={focusFolder}
       overlay={(api) => (
         <FolderBaseLinks
           open={linksOpen}

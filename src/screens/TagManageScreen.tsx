@@ -16,11 +16,16 @@ import { useChromeStyle, useDockBeads, useDockLeave, useTopBack, useTopExtras, u
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Tag } from '../types';
 import { RootStackParamList } from '../navigation';
-import { useTags } from '../hooks/useTags';
+import { itemsCollectionForKind, parseUsedInKey, useTags } from '../hooks/useTags';
+import { useFolderBases } from '../hooks/useFolderBases';
+import FolderTree, { type FolderRect } from '../components/FolderTree';
+import HoldMenu, { type HoldAction } from '../components/HoldMenu';
+import { doc, updateDoc } from '../firestore';
+import { db } from '../firebase';
 import TagEditSheet from '../components/TagEditSheet';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { TAG_KIND_LABELS as KIND_LABELS } from '../constants/tagKinds';
-import { confirm } from '../components/surfaces/Ask';
+import { ask, confirm } from '../components/surfaces/Ask';
 
 const DANGER = '#EF4444';
 
@@ -35,7 +40,8 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { tags, isLoading, updateTag, deleteTagCompletely } = useTags();
+  const { tags, isLoading, updateTag, deleteTagCompletely, renameTag } = useTags();
+  const bases = useFolderBases();
   const railSide = inPane ? ('left' as const) : ('right' as const);
   const isFocused = useIsFocused();
   useDockLeave('folder-outline', () => navigation.goBack(), isFocused);
@@ -138,17 +144,103 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   }
   const [editingTag, setEditingTag] = useState<Tag | null>(null);
 
-  function confirmDelete(tag: Tag) {
-    const count = Object.keys(tag.usedIn).length;
-    confirm({
-      title: `Видалити папку "${tag.path}"?`,
-      message: `Її буде знято з ${count} ${count === 1 ? 'елемента' : 'елементів'}.`,
-      confirmLabel: 'Видалити',
-    }).then((yes) => {
-      if (!yes) return;
-      deleteTagCompletely(tag);
-    });
+  // DELETING A FOLDER (the user's, 2026-10-02): it asks first; with
+  // something inside, it asks what becomes of that - deleted too (into
+  // each database's bin, where it has one), or out to the top level - or
+  // nothing at all. The folders inside it move up a level, as the
+  // explorer's own delete does.
+  const BIN_COLLECTIONS = ['documents', 'photos', 'files', 'links'];
+  async function removeFolder(tag: Tag) {
+    const parent = tag.path.includes('/') ? tag.path.slice(0, tag.path.lastIndexOf('/')) : '';
+    const below = tags.filter((t) => t.path.startsWith(`${tag.path}/`));
+    await Promise.all(
+      below.map((t) => {
+        const rest = t.path.slice(tag.path.length + 1);
+        return renameTag(t, parent ? `${parent}/${rest}` : rest);
+      })
+    );
+    await deleteTagCompletely(tag);
   }
+  async function deleteFolder(tag: Tag) {
+    const inside = Object.keys(tag.usedIn);
+    const name = tag.path.split('/').pop();
+    if (inside.length === 0) {
+      const yes = await confirm({ title: `Видалити папку «${name}»?`, confirmLabel: 'Видалити' });
+      if (yes) await removeFolder(tag);
+      return;
+    }
+    const choice = await ask({
+      title: `Видалити папку «${name}»?`,
+      message: `У ній ${inside.length} ${inside.length === 1 ? 'елемент' : 'елементів'}.`,
+      actions: [
+        { id: 'root', label: 'Папку - вміст у корінь', icon: 'arrow-undo-outline' },
+        { id: 'trash', label: 'Папку разом із вмістом', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'trash') {
+      const now = Date.now();
+      await Promise.all(
+        inside.map((key) => {
+          const { kind, itemId } = parseUsedInKey(key);
+          const collection = itemsCollectionForKind(kind);
+          return collection && BIN_COLLECTIONS.includes(collection)
+            ? updateDoc(doc(db, collection, itemId), { deletedAt: now }).catch(() => {})
+            : Promise.resolve();
+        })
+      );
+      await removeFolder(tag);
+    } else if (choice === 'root') {
+      await removeFolder(tag);
+    }
+  }
+
+  // A FOLDER HELD - in the list or on the canvas, the same menu (HoldMenu).
+  const [menuFor, setMenuFor] = useState<{ tagId: string; rect: FolderRect } | null>(null);
+  const [focusFolder, setFocusFolder] = useState<{ path: string; n: number } | null>(null);
+  const menuTag = menuFor ? tags.find((t) => t.id === menuFor.tagId) ?? null : null;
+  const menuActions: HoldAction[] = menuTag
+    ? [
+        { key: 'edit', label: 'Редагувати', icon: 'pencil-outline', onPress: () => setEditingTag(menuTag) },
+        {
+          key: 'canvas',
+          label: 'Показати на полотні',
+          icon: 'easel-outline',
+          onPress: () => {
+            if (view !== 'canvas') {
+              setView('canvas');
+              AsyncStorage.setItem('foldersView', 'canvas').catch(() => {});
+            }
+            setFocusFolder((f) => ({ path: menuTag.path, n: (f?.n ?? 0) + 1 }));
+          },
+        },
+        {
+          key: 'bases',
+          label: 'Додати в інші бази',
+          icon: 'git-network-outline',
+          page: {
+            title: 'Бази',
+            options: bases.map((b) => {
+              const count = Object.keys(menuTag.usedIn).filter((k) => k.startsWith(`${b.kind}:`)).length;
+              return {
+                key: b.kind,
+                label: b.label,
+                icon: b.icon,
+                color: b.color,
+                on: menuTag.types.includes(b.kind),
+                // Something of that base is inside: it stays on (see the lines).
+                locked: count > 0 ? String(count) : undefined,
+              };
+            }),
+            onToggle: (kind: string) => {
+              const types = menuTag.types.includes(kind) ? menuTag.types.filter((k) => k !== kind) : [...menuTag.types, kind];
+              updateTag(menuTag, { path: menuTag.path, icon: menuTag.icon, color: menuTag.color, types }).catch(() => {});
+            },
+          },
+        },
+        { key: 'delete', label: 'Видалити', icon: 'trash-outline', tone: 'danger', onPress: () => deleteFolder(menuTag) },
+      ]
+    : [];
+  const openFolderMenu = (tag: Tag, rect: FolderRect) => setMenuFor({ tagId: tag.id, rect });
 
   return (
     <View style={styles.container}>
@@ -159,6 +251,11 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
           topPad={insets.top + (topNavOn ? TOP_NAV_SPACE : 12)}
           linksOpen={linksOpen}
           resetFolders={resetFolders}
+          focusFolder={focusFolder}
+          onFolderMenu={(path, rect) => {
+            const tag = tags.find((t) => t.path === path);
+            if (tag) openFolderMenu(tag, rect);
+          }}
         />
       ) : (
       <ContentColumn>
@@ -176,58 +273,20 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
             <Text style={styles.emptyHint}>Додайте першу папку через меню папок на будь-якому елементі</Text>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + 24 }]}>
-            {rows.map(({ tag, depth, name, hasChildren }) => (
-              <View
-                key={tag.id}
-                style={[styles.row, softCardFrame(S), { backgroundColor: S.card, marginLeft: depth * 18 }]}
-              >
-                {/* The twist that folds a branch. A leaf keeps the space,
-                    so every row's icon starts on the same line. */}
-                <Pressable
-                  hitSlop={6}
-                  style={styles.twist}
-                  disabled={!hasChildren}
-                  onPress={() => toggleFold(tag.path)}
-                >
-                  {hasChildren && (
-                    <Ionicons
-                      name={folded.has(tag.path) ? 'chevron-forward' : 'chevron-down'}
-                      size={14}
-                      color={S.ink3}
-                    />
-                  )}
-                </Pressable>
-                <Pressable
-                  style={styles.rowTap}
-                  onPress={() => navigation.navigate('TagItems', { tagId: tag.id })}
-                >
-                  <View style={[styles.rowIcon, { backgroundColor: S.fill }]}>
-                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={20} color={tag.color} />
-                  </View>
-                  <View style={styles.rowBody}>
-                    {/* The tag's OWN name, not its whole path - the path is
-                        what the indent says. */}
-                    <Text style={[styles.rowLabel, { color: S.ink }]} numberOfLines={1}>
-                      {name}
-                    </Text>
-                    <Text style={[styles.rowMeta, { color: S.ink2 }]} numberOfLines={1}>
-                      {Object.keys(tag.usedIn).length} {Object.keys(tag.usedIn).length === 1 ? 'елемент' : 'елементів'} ·{' '}
-                      {tag.types.map((t) => KIND_LABELS[t] ?? 'База').join(', ')}
-                    </Text>
-                  </View>
-                </Pressable>
-                <Pressable hitSlop={8} style={styles.rowAction} onPress={() => setEditingTag(tag)}>
-                  <Ionicons name="pencil-outline" size={18} color={S.ink2} />
-                </Pressable>
-                <Pressable hitSlop={8} style={styles.rowAction} onPress={() => confirmDelete(tag)}>
-                  <Ionicons name="trash-outline" size={18} color={DANGER} />
-                </Pressable>
-              </View>
-            ))}
+          <ScrollView>
+            <FolderTree
+              tags={tags}
+              bases={bases}
+              query={query}
+              bottomPad={dockClear + 24}
+              onOpen={(tag) => navigation.navigate('TagItems', { tagId: tag.id })}
+              onHold={(tag, rect) => openFolderMenu(tag, rect)}
+            />
           </ScrollView>
         )}
 
+      </ContentColumn>
+      )}
         <TagEditSheet
           visible={editingTag !== null}
           tag={editingTag}
@@ -237,8 +296,23 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
             setEditingTag(null);
           }}
         />
-      </ContentColumn>
-      )}
+      <HoldMenu
+        anchor={menuFor?.rect ?? null}
+        card={
+          menuTag ? (
+            <View style={[styles.menuCard, { backgroundColor: S.card }]}>
+              <View style={[styles.rowIcon, { backgroundColor: S.fill }]}>
+                <Ionicons name={menuTag.icon as never} size={20} color={menuTag.color} />
+              </View>
+              <Text style={[styles.rowLabel, { color: S.ink }]} numberOfLines={1}>
+                {menuTag.path.split('/').pop()}
+              </Text>
+            </View>
+          ) : null
+        }
+        actions={menuActions}
+        onClose={() => setMenuFor(null)}
+      />
     </View>
   );
 }
@@ -247,6 +321,15 @@ const makeStyles = (t: Theme) =>
   StyleSheet.create({
   container: {
     flex: 1,
+  },
+  // The folder lifted over the blur while its menu is open.
+  menuCard: {
+    minHeight: 48,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
   },
   // The twist that folds a branch; a leaf keeps the space so every
   // row's icon starts on the same line.

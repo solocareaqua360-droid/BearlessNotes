@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, type SharedValue } from 'react-native-reanimated';
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
 import { deleteField, doc, onSnapshot } from '../firestore';
 import { db } from '../firebase';
 import { setDoc } from '../utils/owned';
@@ -138,6 +138,8 @@ export default function FolderCanvas({
   topPad,
   overlay,
   resetFolders,
+  onFolderMenu,
+  focusFolder,
 }: {
   // Where the table's arrangement is kept: settings/<layoutKey>.
   layoutKey: string;
@@ -169,9 +171,13 @@ export default function FolderCanvas({
   // they all stand in their column again - "навіть якщо я натворив
   // хаосу" (a folder lost under another was the reason, 2026-10-02).
   resetFolders?: number;
+  // A folder held: its menu, at its place on the screen.
+  onFolderMenu?: (path: string, rect: { x: number; y: number; width: number; height: number }) => void;
+  // «Показати на полотні»: the table glides to this folder and lights it.
+  focusFolder?: { path: string; n: number } | null;
 }) {
   const S = useSoft();
-  const { width: screenW } = useWindowDimensions();
+  const { width: screenW, height: screenH } = useWindowDimensions();
   const canvasDoc = useMemo(() => doc(db, 'settings', layoutKey), [layoutKey]);
   // UNDER A MOUSE (the Mac app - where the user expects to do this most):
   // dragging the empty table draws the rectangle at once, Finder's way;
@@ -816,6 +822,45 @@ export default function FolderCanvas({
       folderRects[chip.path] = { x: chip.x, y: chip.y, w: chip.w, h: CHIP_H };
     })
   );
+  // Where a folder stands on the screen now - for its menu.
+  const folderMenuAt = (path: string) => {
+    const r = folderRects[path];
+    if (!r || !onFolderMenu) return;
+    viewportRef.current?.measureInWindow((vx: number, vy: number) => {
+      onFolderMenu(path, {
+        x: vx + (r.x + WORLD_HALF) * scale.value + tx.value,
+        y: vy + (r.y + WORLD_HALF) * scale.value + ty.value,
+        width: r.w * scale.value,
+        height: r.h * scale.value,
+      });
+    });
+  };
+  // «Показати на полотні»: what holds the folder opens, the table glides
+  // until the folder stands in the middle, and it is lit for a moment.
+  const focusRef = useRef(0);
+  useEffect(() => {
+    if (!focusFolder || focusFolder.n === focusRef.current) return;
+    focusRef.current = focusFolder.n;
+    const parts = focusFolder.path.split('/');
+    const openUp: Record<string, boolean> = {};
+    parts.slice(0, -1).forEach((_, i) => {
+      openUp[parts.slice(0, i + 1).join('/')] = true;
+    });
+    if (Object.keys(openUp).length) save({ open: openUp });
+    const glide = () => {
+      const r = folderRects[focusFolder.path];
+      if (!r) return;
+      const k = scale.value;
+      const ease = { duration: 420, easing: Easing.inOut(Easing.cubic) };
+      tx.value = withTiming(screenW / 2 - (r.x + WORLD_HALF + r.w / 2) * k, ease);
+      ty.value = withTiming(screenH / 2 - (r.y + WORLD_HALF + r.h / 2) * k, ease);
+      setHover(focusFolder.path);
+      setTimeout(() => setHover(null), 1600);
+    };
+    // After the islands that hold it have opened.
+    setTimeout(glide, 60);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusFolder]);
   const accentTint = withAlpha(S.accent, 0.14);
 
   return (
@@ -852,6 +897,7 @@ export default function FolderCanvas({
                 canvas={canvas}
                 carries={chip.path}
                 onTap={() => toggle(chip.path)}
+                onLongPress={onFolderMenu ? () => folderMenuAt(chip.path) : undefined}
                 onDrop={(x, y) => dropFolder(chip.path, x, y, chip.w, CHIP_H)}
               >
                 <View style={[styles.chip, { backgroundColor: hover === chip.path ? accentTint : S.card }]}>
@@ -876,6 +922,7 @@ export default function FolderCanvas({
               canvas={canvas}
               carries={node.path}
               onTap={() => toggle(node.path)}
+              onLongPress={onFolderMenu ? () => folderMenuAt(node.path) : undefined}
               onDrop={(x, y) => dropFolder(node.path, x, y, NODE_W, NODE_H)}
             >
               <View
