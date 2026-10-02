@@ -1,5 +1,8 @@
 import { lift } from '../utils/lift';
-import { ReactNode } from 'react';
+import { ReactNode, useRef } from 'react';
+import Animated from 'react-native-reanimated';
+import { usePressSettle } from '../hooks/usePressSettle';
+import { withFlipTarget } from '../utils/flipOpen';
 import { rightClick } from '../utils/rightClick';
 import { softCardFrame, softRecordColours, useSoftSurface } from '../theme/soft';
 import { SOFT_SEMIBOLD } from '../utils/fonts';
@@ -104,11 +107,16 @@ export default function CustomRowCard({
   // Soft (a soft screen around it says so): the card surface and inks.
   const soft = useSoftSurface();
   const { background, text, textMuted } = softRecordColours(soft, recordColour(rowId));
+  // Settles under the finger, as a note's card does (usePressSettle); the
+  // whole card is what turns over when it opens (utils/flipOpen).
+  const settle = usePressSettle();
+  const cardRef = useRef<View>(null);
   return (
-    <View {...lift()} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }]}>
+    <Animated.View ref={cardRef} {...lift()} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, settle.style]}>
       <Pressable
         style={styles.rowTap}
-        onPress={onPress}
+        {...settle.handlers}
+        onPress={onPress ? (e) => onPress(withFlipTarget(e, cardRef.current)) : undefined}
         onLongPress={onLongPress}
         {...rightClick(onLongPress)}
         disabled={!onPress && !onLongPress}
@@ -151,7 +159,7 @@ export default function CustomRowCard({
         </View>
       </Pressable>
       {right}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -267,11 +275,17 @@ export function CustomRowGridCard({
   const soft = useSoftSurface();
   const { background, text, textMuted } = softRecordColours(soft, recordColour(rowId));
   const hasCover = display.cover !== undefined;
+  const settle = usePressSettle();
+  const cardRef = useRef<View>(null);
   return (
-    <Pressable
+    <Animated.View
+      ref={cardRef}
       {...lift()}
-      style={[gridStyles.tile, soft && softCardFrame(soft), width !== undefined && { width }, { backgroundColor: background }]}
-      onPress={onPress}
+      style={[gridStyles.tile, soft && softCardFrame(soft), width !== undefined && { width }, { backgroundColor: background }, settle.style]}
+    >
+    <Pressable
+      {...settle.handlers}
+      onPress={onPress ? (e) => onPress(withFlipTarget(e, cardRef.current)) : undefined}
       onLongPress={onLongPress}
       {...rightClick(onLongPress)}
       disabled={!onPress && !onLongPress}
@@ -307,6 +321,7 @@ export function CustomRowGridCard({
       </View>
       {right !== undefined && <View style={gridStyles.corner}>{right}</View>}
     </Pressable>
+    </Animated.View>
   );
 }
 

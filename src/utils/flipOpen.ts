@@ -21,7 +21,10 @@ type Measurable = {
 // cannot be measured or photographed.
 export async function captureCard(event: GestureResponderEvent | undefined): Promise<FlipFrom | null> {
   if (Platform.OS === 'web' || !event) return null;
-  const target = event.currentTarget as unknown as Measurable | null;
+  // A card may name the view to photograph (the whole card, frame and
+  // all) - else the pressed view itself.
+  const target = ((event as unknown as { flipTarget?: Measurable }).flipTarget ??
+    event.currentTarget) as unknown as Measurable | null;
   if (!target || typeof target.measureInWindow !== 'function') return null;
   try {
     const rect = await new Promise<Rect | null>((resolve) =>
@@ -33,4 +36,10 @@ export async function captureCard(event: GestureResponderEvent | undefined): Pro
   } catch {
     return null;
   }
+}
+
+// A card's press, told which view is the whole card (see captureCard).
+export function withFlipTarget(event: GestureResponderEvent, target: unknown): GestureResponderEvent {
+  if (target) (event as unknown as { flipTarget?: unknown }).flipTarget = target;
+  return event;
 }
