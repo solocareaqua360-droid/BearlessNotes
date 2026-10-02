@@ -1,4 +1,6 @@
 import { lift } from '../utils/lift';
+import { INK } from '../utils/sketchGeometry';
+import SketchLayer from '../components/SketchLayer';
 import { openCapture } from '../components/CaptureWindow';
 import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useFolderHold } from '../components/FolderHoldMenu';
@@ -1360,23 +1362,7 @@ export default function DocumentsScreen({
           // DocumentEditorScreen's own sketch block preview - the
           // drawing scales correctly into this much smaller box.
           <Svg width="100%" height="100%" viewBox={`0 0 ${s.sketchWidth || 1} ${s.sketchHeight || 1}`}>
-            {(s.sketchElements ?? []).map((el, i) =>
-              el.kind === 'text' ? (
-                <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-                  {el.text}
-                </SvgText>
-              ) : (
-                <Path
-                  key={i}
-                  d={el.d}
-                  stroke={el.color}
-                  strokeWidth={el.width}
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )
-            )}
+            <SketchLayer elements={(s.sketchElements ?? [])} ink={INK} />
           </Svg>
         ) : s.type === 'sketch' ? (
           <View style={styles.stickerCardIconWrap}>

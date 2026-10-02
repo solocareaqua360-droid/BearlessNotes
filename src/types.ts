@@ -65,7 +65,9 @@ export type BlockType =
 // path so the shape can still be moved/resized later - a freehand pen
 // stroke has no such structure and is deliberately not movable.
 export interface SketchShape {
-  kind: 'line' | 'arrow' | 'rect' | 'circle';
+  // 'ellipse' is a circle that has been stretched (its box, x1/y1 to
+  // x2/y2, rather than a centre and a point on the rim).
+  kind: 'line' | 'arrow' | 'rect' | 'circle' | 'ellipse';
   x1: number;
   y1: number;
   x2: number;
@@ -80,6 +82,9 @@ export interface SketchPathElement {
   // Absent on freehand strokes, and dropped from a shape the eraser has
   // partly rubbed out (it's no longer a clean rectangle/circle).
   shape?: SketchShape;
+  // Turned, in degrees, about the centre of its own box (sketchGeometry's
+  // pivotOf). Absent: not turned.
+  rot?: number;
 }
 
 // A text label placed on a 'sketch' block's canvas.
@@ -90,6 +95,7 @@ export interface SketchTextElement {
   text: string;
   color: string;
   fontSize: number;
+  rot?: number;
 }
 
 // A single drawn/placed thing on a 'sketch' block's canvas, in the order

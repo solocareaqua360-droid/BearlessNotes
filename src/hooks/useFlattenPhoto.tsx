@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { INK } from '../utils/sketchGeometry';
+import SketchLayer from '../components/SketchLayer';
 import { Image, View } from 'react-native';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
@@ -101,23 +103,7 @@ function FlattenStage({
     >
       <Image source={{ uri }} style={{ width, height, position: 'absolute' }} resizeMode="cover" />
       <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ position: 'absolute' }}>
-        {elements.map((el, i) =>
-          el.kind === 'text' ? (
-            <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-              {el.text}
-            </SvgText>
-          ) : (
-            <Path
-              key={i}
-              d={el.d}
-              stroke={el.color}
-              strokeWidth={el.width}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )
-        )}
+        <SketchLayer elements={elements} ink={INK} />
       </Svg>
     </View>
   );

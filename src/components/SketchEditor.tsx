@@ -14,13 +14,32 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
-import Svg, { Circle, Path, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SketchElement, SketchPathElement, SketchShape } from '../types';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft } from '../theme/soft';
 import { useTheme } from '../theme/ThemeProvider';
-import { INK, boundsOf, inkOn, parsePathPoints } from '../utils/sketchGeometry';
+import {
+  INK,
+  boundsOf,
+  inkOn,
+  normalizeDeg,
+  parsePathPoints,
+  pivotOf,
+  pointsToPath,
+  rotateElementAbout,
+  rotatePoint,
+  scaleElement,
+  shapeElement,
+  shapeToPath,
+  translateElement,
+  unionBox,
+  worldBoundsOf,
+  type Box,
+  type Point,
+} from '../utils/sketchGeometry';
+import SketchLayer from './SketchLayer';
 
 // The first is the paper's own ink (see sketchGeometry's INK).
 const COLORS = [INK, '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
@@ -31,12 +50,15 @@ const TEXT_FONT_SIZE = 22;
 // into separate strokes), rather than the whole element - erasing a whole
 // stroke is what plain "undo" already does.
 const ERASE_RADIUS = 18;
-const HANDLE_RADIUS = 8;
-const HANDLE_TOUCH_RADIUS = 22;
+const HANDLE = 12;
+const HANDLE_TOUCH_RADIUS = 24;
+// How far above the box the turning grip stands.
+const ROTATE_ARM = 34;
+// The selection box stands this far off what it holds.
+const FRAME_PAD = 8;
 
-type Point = { x: number; y: number };
 type Tool = 'pen' | 'line' | 'arrow' | 'rect' | 'circle' | 'text' | 'select' | 'eraser';
-type ShapeTool = SketchShape['kind'];
+type ShapeTool = 'line' | 'arrow' | 'rect' | 'circle';
 
 // Lucide's own glyphs, drawn directly ('lc:' - see the Ionicons shim).
 const TOOLS: { tool: Tool; icon: string }[] = [
@@ -73,99 +95,71 @@ interface Props {
   onClose: () => void;
 }
 
-function pointsToPath(points: Point[]): string {
-  return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+// ---- the selection's box ---------------------------------------------------
+
+// What is chosen, as one box: one element's own box, turned with it; or,
+// for several, the upright box around all of them.
+type Frame = { box: Box; rot: number; pivot: Point };
+
+function frameOf(elements: SketchElement[], ids: number[]): Frame | null {
+  const chosen = ids.map((i) => elements[i]).filter(Boolean);
+  if (chosen.length === 0) return null;
+  if (chosen.length === 1) {
+    const b = boundsOf(chosen[0]);
+    const box = { minX: b.minX - FRAME_PAD, minY: b.minY - FRAME_PAD, maxX: b.maxX + FRAME_PAD, maxY: b.maxY + FRAME_PAD };
+    return { box, rot: chosen[0].rot ?? 0, pivot: pivotOf(chosen[0]) };
+  }
+  const u = unionBox(chosen.map(worldBoundsOf));
+  if (!u) return null;
+  const box = { minX: u.minX - FRAME_PAD, minY: u.minY - FRAME_PAD, maxX: u.maxX + FRAME_PAD, maxY: u.maxY + FRAME_PAD };
+  return { box, rot: 0, pivot: { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 } };
 }
 
-// A shape is stored by its two defining points (plus its kind) rather than
-// only as a finished path, so it can still be moved and resized afterwards
-// - `d` is just regenerated from them each time.
-function shapeToPath(shape: SketchShape, strokeWidth: number): string {
-  const { kind, x1, y1, x2, y2 } = shape;
-  if (kind === 'line') return `M${x1} ${y1} L${x2} ${y2}`;
-  if (kind === 'arrow') {
-    const angle = Math.atan2(y2 - y1, x2 - x1);
-    const head = Math.max(14, strokeWidth * 4);
-    const spread = Math.PI / 7;
-    const hx1 = x2 - head * Math.cos(angle - spread);
-    const hy1 = y2 - head * Math.sin(angle - spread);
-    const hx2 = x2 - head * Math.cos(angle + spread);
-    const hy2 = y2 - head * Math.sin(angle + spread);
-    return `M${x1} ${y1} L${x2} ${y2} M${hx1} ${hy1} L${x2} ${y2} L${hx2} ${hy2}`;
-  }
-  if (kind === 'rect') {
-    return `M${x1} ${y1} L${x2} ${y1} L${x2} ${y2} L${x1} ${y2} L${x1} ${y1}`;
-  }
-  // Circle as a 32-sided polygon rather than a true SVG arc: visually
-  // indistinguishable at these stroke widths, and it keeps the path made
-  // of plain points so the eraser and hit tests work on it unchanged.
-  const r = Math.hypot(x2 - x1, y2 - y1) || 1;
-  const points: Point[] = [];
-  for (let i = 0; i <= 32; i++) {
-    const angle = (i / 32) * Math.PI * 2;
-    points.push({ x: x1 + r * Math.cos(angle), y: y1 + r * Math.sin(angle) });
-  }
-  return pointsToPath(points);
-}
-
-function shapeElement(shape: SketchShape, color: string, width: number): SketchPathElement {
-  return { kind: 'path', d: shapeToPath(shape, width), color, width, shape };
-}
-
-// Where the resize grips sit for a selected shape. A line/arrow grabs by
-// its two ends, a rectangle by its corners, a circle by one point on its
-// rim (its centre is the anchor).
-function shapeHandles(shape: SketchShape): Point[] {
-  const { kind, x1, y1, x2, y2 } = shape;
-  if (kind === 'rect') {
-    return [
-      { x: x1, y: y1 },
-      { x: x2, y: y1 },
-      { x: x2, y: y2 },
-      { x: x1, y: y2 },
-    ];
-  }
-  if (kind === 'circle') {
-    const r = Math.hypot(x2 - x1, y2 - y1) || 1;
-    return [{ x: x1 + r, y: y1 }];
-  }
+// The eight grips, in the box's own (unturned) frame: corners and the
+// middles of the sides. `ax`/`ay` say which way each one pulls.
+type Grip = { x: number; y: number; ax: -1 | 0 | 1; ay: -1 | 0 | 1 };
+function gripsOf(box: Box): Grip[] {
+  const mx = (box.minX + box.maxX) / 2;
+  const my = (box.minY + box.maxY) / 2;
   return [
-    { x: x1, y: y1 },
-    { x: x2, y: y2 },
+    { x: box.minX, y: box.minY, ax: -1, ay: -1 },
+    { x: mx, y: box.minY, ax: 0, ay: -1 },
+    { x: box.maxX, y: box.minY, ax: 1, ay: -1 },
+    { x: box.maxX, y: my, ax: 1, ay: 0 },
+    { x: box.maxX, y: box.maxY, ax: 1, ay: 1 },
+    { x: mx, y: box.maxY, ax: 0, ay: 1 },
+    { x: box.minX, y: box.maxY, ax: -1, ay: 1 },
+    { x: box.minX, y: my, ax: -1, ay: 0 },
   ];
 }
 
-function resizeShape(shape: SketchShape, handleIndex: number, p: Point): SketchShape {
-  if (shape.kind === 'rect') {
-    if (handleIndex === 0) return { ...shape, x1: p.x, y1: p.y };
-    if (handleIndex === 1) return { ...shape, x2: p.x, y1: p.y };
-    if (handleIndex === 2) return { ...shape, x2: p.x, y2: p.y };
-    return { ...shape, x1: p.x, y2: p.y };
-  }
-  if (shape.kind === 'circle') return { ...shape, x2: p.x, y2: p.y };
-  if (handleIndex === 0) return { ...shape, x1: p.x, y1: p.y };
-  return { ...shape, x2: p.x, y2: p.y };
-}
-
-function moveShape(shape: SketchShape, dx: number, dy: number): SketchShape {
-  return { ...shape, x1: shape.x1 + dx, y1: shape.y1 + dy, x2: shape.x2 + dx, y2: shape.y2 + dy };
-}
-
-// Only shapes and text can be picked up - a freehand pen stroke stays
-// where it was drawn (moving those was explicitly not wanted).
-function isSelectable(el: SketchElement): boolean {
-  return el.kind === 'text' || el.shape !== undefined;
-}
-
-function selectableIndexAt(elements: SketchElement[], x: number, y: number): number {
-  const PAD = 14;
+// The element under a finger, the one on top first - judged in the
+// element's own frame, so a turned one is hit where it is drawn.
+function elementAt(elements: SketchElement[], p: Point): number {
+  const PAD = 12;
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
-    if (!isSelectable(el)) continue;
+    const local = el.rot ? rotatePoint(p, pivotOf(el), -el.rot) : p;
     const b = boundsOf(el);
-    if (x >= b.minX - PAD && x <= b.maxX + PAD && y >= b.minY - PAD && y <= b.maxY + PAD) return i;
+    if (local.x >= b.minX - PAD && local.x <= b.maxX + PAD && local.y >= b.minY - PAD && local.y <= b.maxY + PAD) return i;
   }
   return -1;
+}
+
+function intersects(a: Box, b: Box): boolean {
+  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}
+
+// A turned stroke, with its turn written into its points - what the
+// eraser needs, since it rubs out where the stroke IS on the page.
+function bakeTurn(el: SketchElement): SketchElement {
+  if (!el.rot || el.kind === 'text') return el;
+  const pivot = pivotOf(el);
+  const runs = el.d
+    .split(/(?=M)/)
+    .filter(Boolean)
+    .map((run) => parsePathPoints(run).map((p) => rotatePoint(p, pivot, el.rot ?? 0)));
+  return { kind: 'path', d: runs.map((r) => pointsToPath(r)).join(' '), color: el.color, width: el.width };
 }
 
 // Rubs out just the points the eraser passed over: what's left of a stroke
@@ -175,16 +169,19 @@ function selectableIndexAt(elements: SketchElement[], x: number, y: number): num
 // rectangle/circle) and carries on as a plain path.
 function eraseFromElement(el: SketchElement, x: number, y: number): SketchElement[] {
   if (el.kind === 'text') {
+    const local = el.rot ? rotatePoint({ x, y }, pivotOf(el), -el.rot) : { x, y };
     const b = boundsOf(el);
-    const hit = x >= b.minX - 8 && x <= b.maxX + 8 && y >= b.minY - 8 && y <= b.maxY + 8;
+    const hit = local.x >= b.minX - 8 && local.x <= b.maxX + 8 && local.y >= b.minY - 8 && local.y <= b.maxY + 8;
     return hit ? [] : [el];
   }
   const points = parsePathPoints(el.d);
-  if (!points.some((p) => Math.hypot(p.x - x, p.y - y) < ERASE_RADIUS)) return [el];
+  const near = (p: Point) => Math.hypot(p.x - x, p.y - y) < ERASE_RADIUS;
+  const flat = el.rot ? parsePathPoints((bakeTurn(el) as SketchPathElement).d) : points;
+  if (!flat.some(near)) return [el];
   const runs: Point[][] = [];
   let run: Point[] = [];
-  for (const p of points) {
-    if (Math.hypot(p.x - x, p.y - y) < ERASE_RADIUS) {
+  for (const p of flat) {
+    if (near(p)) {
       if (run.length > 1) runs.push(run);
       run = [];
     } else {
@@ -194,6 +191,15 @@ function eraseFromElement(el: SketchElement, x: number, y: number): SketchElemen
   if (run.length > 1) runs.push(run);
   return runs.map((r) => ({ kind: 'path', d: pointsToPath(r), color: el.color, width: el.width }));
 }
+
+// What a finger is doing with the selection, from where it started - each
+// move is worked out from the elements as they were at the start, so
+// nothing drifts however long the finger keeps going.
+type Op =
+  | { kind: 'move'; start: Point; base: SketchElement[]; ids: number[] }
+  | { kind: 'scale'; grip: Grip; frame: Frame; base: SketchElement[]; ids: number[] }
+  | { kind: 'rotate'; startAngle: number; frame: Frame; base: SketchElement[]; ids: number[] }
+  | { kind: 'marquee'; start: Point; current: Point };
 
 export default function SketchEditor({ visible, initialElements, background, paper, onSave, onClose }: Props) {
   const S = useSoft();
@@ -212,10 +218,12 @@ export default function SketchEditor({ visible, initialElements, background, pap
   // away from its own TextInput (the keyboard opened and closed again).
   const [pendingText, setPendingText] = useState<Point | null>(null);
   const [textValue, setTextValue] = useState('');
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [drag, setDrag] = useState<
-    { kind: 'move'; index: number; lastX: number; lastY: number } | { kind: 'handle'; index: number; handle: number } | null
-  >(null);
+  // What is chosen (select tool), and what a finger is doing with it.
+  const [selection, setSelection] = useState<number[]>([]);
+  const op = useRef<Op | null>(null);
+  const [marquee, setMarquee] = useState<Box | null>(null);
+  // Every change, undoable: the elements as they were before it.
+  const history = useRef<SketchElement[][]>([]);
   const [color, setColor] = useState(COLORS[0]);
   const [strokeWidth, setStrokeWidth] = useState(WIDTHS[0]);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -309,8 +317,10 @@ export default function SketchEditor({ visible, initialElements, background, pap
       setShapeCurrent(null);
       setPendingText(null);
       setTextValue('');
-      setSelectedIndex(null);
-      setDrag(null);
+      setSelection([]);
+      op.current = null;
+      setMarquee(null);
+      history.current = [];
       setTool('pen');
     }
     wasVisibleRef.current = visible;
@@ -320,54 +330,148 @@ export default function SketchEditor({ visible, initialElements, background, pap
     setCanvasSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height });
   }
 
+  // Before a change: what to go back to.
+  function remember(before: SketchElement[] = elements) {
+    history.current.push(before);
+    if (history.current.length > 100) history.current.shift();
+  }
+
+  // The eraser is one change per stroke of the finger, not per point.
+  const erasing = useRef(false);
   function eraseAt(x: number, y: number) {
+    if (!erasing.current) {
+      erasing.current = true;
+      remember();
+    }
     setElements((prev) => prev.flatMap((el) => eraseFromElement(el, x, y)));
-    setSelectedIndex(null);
+    setSelection([]);
   }
 
-  function updateElement(index: number, next: SketchElement) {
-    setElements((prev) => prev.map((el, i) => (i === index ? next : el)));
-  }
+  // ---- the select tool -------------------------------------------------------
 
-  function handleSelectStart(x: number, y: number) {
-    // A grip on the already-selected shape wins over picking something
-    // else up, so resizing still works when shapes overlap.
-    if (selectedIndex !== null) {
-      const el = elements[selectedIndex];
-      if (el && el.kind === 'path' && el.shape) {
-        const handles = shapeHandles(el.shape);
-        const handle = handles.findIndex((h) => Math.hypot(h.x - x, h.y - y) < HANDLE_TOUCH_RADIUS);
-        if (handle !== -1) {
-          setDrag({ kind: 'handle', index: selectedIndex, handle });
-          return;
-        }
+  function selectStart(p: Point) {
+    const frame = frameOf(elements, selection);
+    if (frame) {
+      const local = rotatePoint(p, frame.pivot, -frame.rot);
+      const b = frame.box;
+      const mx = (b.minX + b.maxX) / 2;
+      // The turning grip, above the box's top middle.
+      if (Math.hypot(local.x - mx, local.y - (b.minY - ROTATE_ARM)) < HANDLE_TOUCH_RADIUS) {
+        op.current = {
+          kind: 'rotate',
+          startAngle: Math.atan2(p.y - frame.pivot.y, p.x - frame.pivot.x),
+          frame,
+          base: elements,
+          ids: selection,
+        };
+        return;
+      }
+      const grip = gripsOf(b).find((g) => Math.hypot(local.x - g.x, local.y - g.y) < HANDLE_TOUCH_RADIUS);
+      if (grip) {
+        op.current = { kind: 'scale', grip, frame, base: elements, ids: selection };
+        return;
+      }
+      if (local.x >= b.minX && local.x <= b.maxX && local.y >= b.minY && local.y <= b.maxY) {
+        op.current = { kind: 'move', start: p, base: elements, ids: selection };
+        return;
       }
     }
-    const index = selectableIndexAt(elements, x, y);
-    setSelectedIndex(index === -1 ? null : index);
-    if (index !== -1) setDrag({ kind: 'move', index, lastX: x, lastY: y });
-  }
-
-  function handleSelectMove(x: number, y: number) {
-    if (!drag) return;
-    const el = elements[drag.index];
-    if (!el) return;
-    if (drag.kind === 'handle') {
-      if (el.kind === 'path' && el.shape) {
-        const shape = resizeShape(el.shape, drag.handle, { x, y });
-        updateElement(drag.index, shapeElement(shape, el.color, el.width));
-      }
+    const hit = elementAt(elements, p);
+    if (hit !== -1) {
+      setSelection([hit]);
+      op.current = { kind: 'move', start: p, base: elements, ids: [hit] };
       return;
     }
-    const dx = x - drag.lastX;
-    const dy = y - drag.lastY;
-    if (el.kind === 'text') {
-      updateElement(drag.index, { ...el, x: el.x + dx, y: el.y + dy });
-    } else if (el.shape) {
-      updateElement(drag.index, shapeElement(moveShape(el.shape, dx, dy), el.color, el.width));
-    }
-    setDrag({ ...drag, lastX: x, lastY: y });
+    // Empty paper: a frame drawn round what is to be chosen.
+    setSelection([]);
+    op.current = { kind: 'marquee', start: p, current: p };
+    setMarquee({ minX: p.x, minY: p.y, maxX: p.x, maxY: p.y });
   }
+
+  function selectMove(p: Point) {
+    const o = op.current;
+    if (!o) return;
+    if (o.kind === 'marquee') {
+      o.current = p;
+      setMarquee({
+        minX: Math.min(o.start.x, p.x),
+        minY: Math.min(o.start.y, p.y),
+        maxX: Math.max(o.start.x, p.x),
+        maxY: Math.max(o.start.y, p.y),
+      });
+      return;
+    }
+    const ids = new Set(o.ids);
+    if (o.kind === 'move') {
+      const dx = p.x - o.start.x;
+      const dy = p.y - o.start.y;
+      setElements(o.base.map((el, i) => (ids.has(i) ? translateElement(el, dx, dy) : el)));
+      return;
+    }
+    if (o.kind === 'rotate') {
+      const angle = Math.atan2(p.y - o.frame.pivot.y, p.x - o.frame.pivot.x);
+      let delta = ((angle - o.startAngle) * 180) / Math.PI;
+      // Settles onto a straight angle when close to one.
+      const target = normalizeDeg(o.frame.rot + delta);
+      const nearest = Math.round(target / 45) * 45;
+      if (Math.abs(target - nearest) < 4) delta += nearest - target;
+      setElements(o.base.map((el, i) => (ids.has(i) ? rotateElementAbout(el, delta, o.frame.pivot) : el)));
+      return;
+    }
+    // Scaling: the grip follows the finger, the opposite side stays put.
+    const { grip, frame } = o;
+    const b = frame.box;
+    const local = rotatePoint(p, frame.pivot, -frame.rot);
+    const anchor = {
+      x: grip.ax === 0 ? (b.minX + b.maxX) / 2 : grip.ax < 0 ? b.maxX : b.minX,
+      y: grip.ay === 0 ? (b.minY + b.maxY) / 2 : grip.ay < 0 ? b.maxY : b.minY,
+    };
+    const span = (from: number, to: number, now: number) => {
+      const whole = to - from;
+      if (Math.abs(whole) < 1) return 1;
+      return Math.max(0.05, (now - from) / whole);
+    };
+    let sx = grip.ax === 0 ? 1 : span(anchor.x, grip.x, local.x);
+    let sy = grip.ay === 0 ? 1 : span(anchor.y, grip.y, local.y);
+    if (o.ids.length > 1) {
+      // Several at once grow and shrink together, keeping their shapes:
+      // a stretch would have to skew the turned ones among them.
+      const k = grip.ax === 0 ? sy : grip.ay === 0 ? sx : Math.max(sx, sy);
+      sx = k;
+      sy = k;
+    }
+    const worldAnchor = rotatePoint(anchor, frame.pivot, frame.rot);
+    setElements(
+      o.base.map((el, i) => {
+        if (!ids.has(i)) return el;
+        if (o.ids.length === 1) return scaleElement(el, sx, sy, anchor);
+        const own = el.rot ? rotatePoint(worldAnchor, pivotOf(el), -el.rot) : worldAnchor;
+        return scaleElement(el, sx, sy, own);
+      })
+    );
+  }
+
+  function selectEnd() {
+    const o = op.current;
+    op.current = null;
+    if (!o) return;
+    if (o.kind === 'marquee') {
+      setMarquee(null);
+      const box = {
+        minX: Math.min(o.start.x, o.current.x),
+        minY: Math.min(o.start.y, o.current.y),
+        maxX: Math.max(o.start.x, o.current.x),
+        maxY: Math.max(o.start.y, o.current.y),
+      };
+      if (box.maxX - box.minX < 6 && box.maxY - box.minY < 6) return;
+      setSelection(elements.map((el, i) => (intersects(worldBoundsOf(el), box) ? i : -1)).filter((i) => i !== -1));
+      return;
+    }
+    // Something changed: one step back undoes the whole gesture.
+    if (o.base !== elements) remember(o.base);
+  }
+
+  // ---- the canvas ----------------------------------------------------------------
 
   function handleStart(e: GestureResponderEvent) {
     const { locationX, locationY } = e.nativeEvent;
@@ -376,7 +480,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
       return;
     }
     if (tool === 'select') {
-      handleSelectStart(locationX, locationY);
+      selectStart({ x: locationX, y: locationY });
       return;
     }
     if (tool === 'text') {
@@ -399,7 +503,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
       return;
     }
     if (tool === 'select') {
-      handleSelectMove(locationX, locationY);
+      selectMove({ x: locationX, y: locationY });
       return;
     }
     if (tool === 'text') return;
@@ -411,7 +515,11 @@ export default function SketchEditor({ visible, initialElements, background, pap
   }
 
   function handleEnd() {
-    setDrag(null);
+    erasing.current = false;
+    if (tool === 'select') {
+      selectEnd();
+      return;
+    }
     if (isShapeTool(tool)) {
       if (shapeStart && shapeCurrent && (shapeStart.x !== shapeCurrent.x || shapeStart.y !== shapeCurrent.y)) {
         const shape: SketchShape = {
@@ -421,23 +529,25 @@ export default function SketchEditor({ visible, initialElements, background, pap
           x2: shapeCurrent.x,
           y2: shapeCurrent.y,
         };
+        remember();
         setElements((prev) => [...prev, shapeElement(shape, color, strokeWidth)]);
       }
       setShapeStart(null);
       setShapeCurrent(null);
       return;
     }
-    setCurrentPoints((prev) => {
-      if (prev.length > 1) {
-        setElements((els) => [...els, { kind: 'path', d: pointsToPath(prev), color, width: strokeWidth }]);
-      }
-      return [];
-    });
+    if (currentPoints.length > 1) {
+      remember();
+      const d = pointsToPath(currentPoints);
+      setElements((els) => [...els, { kind: 'path', d, color, width: strokeWidth }]);
+    }
+    setCurrentPoints([]);
   }
 
   function commitText() {
     const value = textValue.trim();
     if (pendingText && value) {
+      remember();
       setElements((els) => [
         ...els,
         { kind: 'text', x: pendingText.x, y: pendingText.y, text: value, color, fontSize: TEXT_FONT_SIZE },
@@ -447,28 +557,38 @@ export default function SketchEditor({ visible, initialElements, background, pap
     setTextValue('');
   }
 
+  // One step back, whatever the step was.
   function undo() {
-    setSelectedIndex(null);
-    setElements((els) => els.slice(0, -1));
+    const before = history.current.pop();
+    if (!before) return;
+    setSelection([]);
+    setElements(before);
   }
 
-  function clear() {
-    setSelectedIndex(null);
-    setElements([]);
+  // With something chosen, the bin takes just that; otherwise everything.
+  function removeChosenOrAll() {
+    if (elements.length === 0) return;
+    remember();
+    if (selection.length) {
+      const gone = new Set(selection);
+      setElements(elements.filter((_, i) => !gone.has(i)));
+    } else setElements([]);
+    setSelection([]);
   }
 
   function selectTool(t: Tool) {
-    if (t !== 'select') setSelectedIndex(null);
+    if (t !== 'select') setSelection([]);
     setTool(t);
   }
 
   function selectColor(c: string) {
     setColor(c);
-    // Recolour whatever is selected, so the palette also works as "change
+    // Recolour whatever is chosen, so the palette also works as "change
     // this one's colour" rather than only affecting the next thing drawn.
-    if (selectedIndex !== null) {
-      const el = elements[selectedIndex];
-      if (el) updateElement(selectedIndex, { ...el, color: c });
+    if (selection.length) {
+      remember();
+      const chosen = new Set(selection);
+      setElements(elements.map((el, i) => (chosen.has(i) ? { ...el, color: c } : el)));
     }
   }
 
@@ -476,9 +596,8 @@ export default function SketchEditor({ visible, initialElements, background, pap
     isShapeTool(tool) && shapeStart && shapeCurrent
       ? { kind: tool, x1: shapeStart.x, y1: shapeStart.y, x2: shapeCurrent.x, y2: shapeCurrent.y }
       : null;
-  const selected = selectedIndex !== null ? elements[selectedIndex] : undefined;
-  const selectedBounds = selected ? boundsOf(selected) : null;
-  const selectedHandles = selected && selected.kind === 'path' && selected.shape ? shapeHandles(selected.shape) : [];
+  // The chosen ones' box, only while the select tool is in hand.
+  const frame = tool === 'select' ? frameOf(elements, selection) : null;
   const danger = S.dark ? '#FF7A6E' : '#C8452F';
   const shown = (c: string) => inkOn(c, paperInk);
   const round = { backgroundColor: S.card, boxShadow: S.shadow };
@@ -501,23 +620,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
           >
             {!!background && <Image source={{ uri: background.uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
             <Svg style={StyleSheet.absoluteFill}>
-              {elements.map((el, i) =>
-                el.kind === 'text' ? (
-                  <SvgText key={i} x={el.x} y={el.y} fill={shown(el.color)} fontSize={el.fontSize}>
-                    {el.text}
-                  </SvgText>
-                ) : (
-                  <Path
-                    key={i}
-                    d={el.d}
-                    stroke={shown(el.color)}
-                    strokeWidth={el.width}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                )
-              )}
+              <SketchLayer elements={elements} ink={paperInk} />
               {currentPoints.length > 1 && (
                 <Path
                   d={pointsToPath(currentPoints)}
@@ -538,21 +641,85 @@ export default function SketchEditor({ visible, initialElements, background, pap
                   strokeLinejoin="round"
                 />
               )}
-              {selectedBounds && (
+              {/* Several chosen: each one's own outline, faint, inside the
+                  box that holds them all. */}
+              {frame &&
+                selection.length > 1 &&
+                selection.map((i) => {
+                  const el = elements[i];
+                  if (!el) return null;
+                  const ob = boundsOf(el);
+                  const op2 = pivotOf(el);
+                  return (
+                    <G key={`o${i}`} transform={el.rot ? `rotate(${el.rot} ${op2.x} ${op2.y})` : undefined}>
+                      <Rect
+                        x={ob.minX - 3}
+                        y={ob.minY - 3}
+                        width={ob.maxX - ob.minX + 6}
+                        height={ob.maxY - ob.minY + 6}
+                        stroke={S.accent}
+                        strokeOpacity={0.45}
+                        strokeWidth={1}
+                        fill="none"
+                        rx={4}
+                      />
+                    </G>
+                  );
+                })}
+              {frame && (
+                <G transform={frame.rot ? `rotate(${frame.rot} ${frame.pivot.x} ${frame.pivot.y})` : undefined}>
+                  <Rect
+                    x={frame.box.minX}
+                    y={frame.box.minY}
+                    width={frame.box.maxX - frame.box.minX}
+                    height={frame.box.maxY - frame.box.minY}
+                    stroke={S.accent}
+                    strokeWidth={1.5}
+                    fill="none"
+                  />
+                  {/* The turning grip, on a short arm above the top. */}
+                  <Path
+                    d={`M${(frame.box.minX + frame.box.maxX) / 2} ${frame.box.minY} L${(frame.box.minX + frame.box.maxX) / 2} ${frame.box.minY - ROTATE_ARM + 9}`}
+                    stroke={S.accent}
+                    strokeWidth={1.5}
+                  />
+                  <Circle
+                    cx={(frame.box.minX + frame.box.maxX) / 2}
+                    cy={frame.box.minY - ROTATE_ARM}
+                    r={9}
+                    fill={S.card}
+                    stroke={S.accent}
+                    strokeWidth={2}
+                  />
+                  {gripsOf(frame.box).map((g, i) => (
+                    <Rect
+                      key={`g${i}`}
+                      x={g.x - HANDLE / 2}
+                      y={g.y - HANDLE / 2}
+                      width={HANDLE}
+                      height={HANDLE}
+                      rx={3}
+                      fill={S.card}
+                      stroke={S.accent}
+                      strokeWidth={2}
+                    />
+                  ))}
+                </G>
+              )}
+              {marquee && (
                 <Rect
-                  x={selectedBounds.minX - 6}
-                  y={selectedBounds.minY - 6}
-                  width={selectedBounds.maxX - selectedBounds.minX + 12}
-                  height={selectedBounds.maxY - selectedBounds.minY + 12}
+                  x={marquee.minX}
+                  y={marquee.minY}
+                  width={marquee.maxX - marquee.minX}
+                  height={marquee.maxY - marquee.minY}
                   stroke={S.accent}
-                  strokeWidth={1.5}
-                  fill="none"
-                  rx={6}
+                  strokeWidth={1}
+                  strokeDasharray="5 4"
+                  fill={S.accent}
+                  fillOpacity={0.08}
+                  rx={4}
                 />
               )}
-              {selectedHandles.map((h, i) => (
-                <Circle key={`h${i}`} cx={h.x} cy={h.y} r={HANDLE_RADIUS} fill={S.card} stroke={S.accent} strokeWidth={2} />
-              ))}
             </Svg>
           </View>
         </View>
@@ -565,11 +732,12 @@ export default function SketchEditor({ visible, initialElements, background, pap
             <Ionicons name={'lc:x' as never} size={20} color={S.ink} />
           </Pressable>
           <View style={[styles.capsule, round]}>
-            <Pressable hitSlop={6} onPress={undo} disabled={elements.length === 0} style={styles.capsuleButton}>
-              <Ionicons name={'lc:undo-2' as never} size={19} color={elements.length ? S.ink : S.ink3} />
+            <Pressable hitSlop={6} onPress={undo} disabled={history.current.length === 0} style={styles.capsuleButton}>
+              <Ionicons name={'lc:undo-2' as never} size={19} color={history.current.length ? S.ink : S.ink3} />
             </Pressable>
             <View style={[styles.capsuleDivider, { backgroundColor: S.line }]} />
-            <Pressable hitSlop={6} onPress={clear} disabled={elements.length === 0} style={styles.capsuleButton}>
+            {/* With something chosen, it takes just that. */}
+            <Pressable hitSlop={6} onPress={removeChosenOrAll} disabled={elements.length === 0} style={styles.capsuleButton}>
               <Ionicons name={'lc:trash' as never} size={19} color={elements.length ? danger : S.ink3} />
             </Pressable>
           </View>

@@ -1,4 +1,5 @@
 import { SketchElement } from '../types';
+import { transformOf } from './sketchGeometry';
 
 // A drawing, as SVG markup.
 //
@@ -42,11 +43,14 @@ export function sketchToSvg(
   const h = height && height > 0 ? height : boundsOf(elements).h;
   const body = elements
     .map((el) =>
-      el.kind === 'text'
+      // A turned element carries its turn (sketchGeometry.transformOf).
+      (el.rot ? `<g transform="${transformOf(el)}">` : '') +
+      (el.kind === 'text'
         ? `<text x="${el.x}" y="${el.y}" fill="${el.color}" font-size="${el.fontSize}" ` +
           `font-family="sans-serif">${escapeXml(el.text)}</text>`
         : `<path d="${escapeXml(el.d)}" stroke="${el.color}" stroke-width="${el.width}" fill="none" ` +
-          `stroke-linecap="round" stroke-linejoin="round"/>`
+          `stroke-linecap="round" stroke-linejoin="round"/>`) +
+      (el.rot ? '</g>' : '')
     )
     .join('');
   const style = overlay

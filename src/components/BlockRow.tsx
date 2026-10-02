@@ -1,5 +1,6 @@
 import FlashcardBlockCard from './FlashcardBlockCard';
-import { drawingViewBox, inkOn } from '../utils/sketchGeometry';
+import SketchLayer from './SketchLayer';
+import { INK, drawingViewBox } from '../utils/sketchGeometry';
 import { ComponentProps, ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -370,23 +371,7 @@ export default function BlockRow({
               preserveAspectRatio="none"
               pointerEvents="none"
             >
-              {item.sketchElements.map((el, i) =>
-                el.kind === 'text' ? (
-                  <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-                    {el.text}
-                  </SvgText>
-                ) : (
-                  <Path
-                    key={i}
-                    d={el.d}
-                    stroke={el.color}
-                    strokeWidth={el.width}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                )
-              )}
+              <SketchLayer elements={item.sketchElements} ink={INK} />
             </Svg>
           )}
         </Pressable>
@@ -434,23 +419,7 @@ export default function BlockRow({
       >
         {box ? (
           <Svg width="100%" height="100%" viewBox={box.viewBox}>
-            {elements.map((el, i) =>
-              el.kind === 'text' ? (
-                <SvgText key={i} x={el.x} y={el.y} fill={inkOn(el.color, sketchInk)} fontSize={el.fontSize}>
-                  {el.text}
-                </SvgText>
-              ) : (
-                <Path
-                  key={i}
-                  d={el.d}
-                  stroke={inkOn(el.color, sketchInk)}
-                  strokeWidth={el.width}
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )
-            )}
+            <SketchLayer elements={elements} ink={sketchInk} />
           </Svg>
         ) : (
           <Text style={styles.blockPlaceholder}>Порожній малюнок</Text>

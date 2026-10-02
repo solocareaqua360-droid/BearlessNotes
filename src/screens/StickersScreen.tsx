@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { INK } from '../utils/sketchGeometry';
+import SketchLayer from '../components/SketchLayer';
 import { softCardFrame, softenStyles, softRecordColours, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
@@ -197,23 +199,7 @@ export default function StickersScreen({
             <AttachmentImage uri={item.imageUri} driveFileId={item.driveFileId} style={styles.cardImage} />
           ) : item.type === 'sketch' && (item.sketchElements?.length ?? 0) > 0 ? (
             <Svg width="100%" height="100%" viewBox={`0 0 ${item.sketchWidth || 1} ${item.sketchHeight || 1}`}>
-              {(item.sketchElements ?? []).map((el, i) =>
-                el.kind === 'text' ? (
-                  <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-                    {el.text}
-                  </SvgText>
-                ) : (
-                  <Path
-                    key={i}
-                    d={el.d}
-                    stroke={el.color}
-                    strokeWidth={el.width}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                )
-              )}
+              <SketchLayer elements={(item.sketchElements ?? [])} ink={INK} />
             </Svg>
           ) : item.type === 'sketch' ? (
             <View style={styles.cardIconWrap}>

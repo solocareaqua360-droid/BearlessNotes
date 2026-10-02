@@ -1,4 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { INK } from '../utils/sketchGeometry';
+import SketchLayer from './SketchLayer';
 import { Ionicons } from './icons/Ionicons';
 import AttachmentImage from './AttachmentImage';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -165,23 +167,7 @@ export default function ZoomableImageViewer({
               viewBox={`0 0 ${sketchWidth || 1} ${sketchHeight || 1}`}
               pointerEvents="none"
             >
-              {sketchElements.map((el, i) =>
-                el.kind === 'text' ? (
-                  <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-                    {el.text}
-                  </SvgText>
-                ) : (
-                  <Path
-                    key={i}
-                    d={el.d}
-                    stroke={el.color}
-                    strokeWidth={el.width}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                )
-              )}
+              <SketchLayer elements={sketchElements} ink={INK} />
             </Svg>
           )}
         </Animated.View>

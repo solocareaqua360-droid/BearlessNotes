@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { INK } from '../utils/sketchGeometry';
+import SketchLayer from '../components/SketchLayer';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '../components/icons/Ionicons';
@@ -160,15 +162,7 @@ export default function StickerWidgetConfigScreen({ widgetInfo, renderWidget, se
                 <Image source={{ uri: item.imageUri }} style={styles.cardImage} resizeMode="cover" />
               ) : item.type === 'sketch' && (item.sketchElements?.length ?? 0) > 0 ? (
                 <Svg width="100%" height="100%" viewBox={`0 0 ${item.sketchWidth || 1} ${item.sketchHeight || 1}`}>
-                  {(item.sketchElements ?? []).map((el, i) =>
-                    el.kind === 'text' ? (
-                      <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-                        {el.text}
-                      </SvgText>
-                    ) : (
-                      <Path key={i} d={el.d} stroke={el.color} strokeWidth={el.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                    )
-                  )}
+                  <SketchLayer elements={(item.sketchElements ?? [])} ink={INK} />
                 </Svg>
               ) : (
                 <Text style={styles.cardText} numberOfLines={5}>
@@ -202,15 +196,7 @@ export default function StickerWidgetConfigScreen({ widgetInfo, renderWidget, se
               height="100%"
               viewBox={`0 0 ${sketchToCapture.sketchWidth || 1} ${sketchToCapture.sketchHeight || 1}`}
             >
-              {(sketchToCapture.sketchElements ?? []).map((el, i) =>
-                el.kind === 'text' ? (
-                  <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-                    {el.text}
-                  </SvgText>
-                ) : (
-                  <Path key={i} d={el.d} stroke={el.color} strokeWidth={el.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                )
-              )}
+              <SketchLayer elements={(sketchToCapture.sketchElements ?? [])} ink={INK} />
             </Svg>
           </View>
         </View>
