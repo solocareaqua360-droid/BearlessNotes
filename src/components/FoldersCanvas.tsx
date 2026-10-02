@@ -54,7 +54,15 @@ const TILE_OF_KIND: Record<string, string> = {
 const TILES = [...WIDE_TILES, ...GRID_TILES];
 const randomColor = () => TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
 
-export default function FoldersCanvas({ topPad, linksOpen }: { topPad: number; linksOpen: boolean }) {
+export default function FoldersCanvas({
+  topPad,
+  linksOpen,
+  resetFolders,
+}: {
+  topPad: number;
+  linksOpen: boolean;
+  resetFolders?: number;
+}) {
   const S = useSoft();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { tags, attachTag, detachTag, createFolderTag, renameTag, updateTag } = useTags();
@@ -269,6 +277,7 @@ export default function FoldersCanvas({ topPad, linksOpen }: { topPad: number; l
       onOpenPhoto={open}
       onPhotoMenu={open}
       topPad={topPad}
+      resetFolders={resetFolders}
       overlay={(api) => (
         <FolderBaseLinks
           open={linksOpen}

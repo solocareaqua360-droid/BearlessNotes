@@ -134,6 +134,7 @@ export default function FolderCanvas({
   onPhotoMenu,
   topPad,
   overlay,
+  resetFolders,
 }: {
   // Where the table's arrangement is kept: settings/<layoutKey>.
   layoutKey: string;
@@ -161,6 +162,10 @@ export default function FolderCanvas({
   topPad: number;
   // Drawn over the table, in screen units (see CanvasOverlayApi).
   overlay?: (api: CanvasOverlayApi) => React.ReactNode;
+  // «Упорядкувати»: each new value forgets where every folder was put, so
+  // they all stand in their column again - "навіть якщо я натворив
+  // хаосу" (a folder lost under another was the reason, 2026-10-02).
+  resetFolders?: number;
 }) {
   const S = useSoft();
   const { width: screenW } = useWindowDimensions();
@@ -209,6 +214,12 @@ export default function FolderCanvas({
     }));
     setDoc(canvasDoc, patch, { merge: true }).catch(() => {});
   };
+  useEffect(() => {
+    if (!resetFolders) return;
+    setLayout((prev) => ({ ...prev, folders: {} }));
+    setDoc(canvasDoc, { folders: deleteField() }, { merge: true }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetFolders]);
   // Piles changed - each to its new record, or (null) gone.
   const savePiles = (changes: Record<string, PileRec | null>) => {
     setLayout((prev) => {

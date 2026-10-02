@@ -12,7 +12,7 @@ import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
-import { useChromeStyle, useDockBeads, useDockLeave, useTopBack, useTopSearch } from '../navigation/navDock';
+import { useChromeStyle, useDockBeads, useDockLeave, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Tag } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -81,6 +81,15 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   // On the canvas the left bead is the databases' own: their circles rise
   // out of it with the lines to their folders (FolderBaseLinks).
   const [linksOpen, setLinksOpen] = useState(false);
+  // The bar's "⋯": put every folder back in its column.
+  const [resetFolders, setResetFolders] = useState(0);
+  useTopExtras(
+    view === 'canvas'
+      ? [{ label: 'Упорядкувати папки', icon: 'reorder-four-outline', onPress: () => setResetFolders((n) => n + 1) }]
+      : null,
+    null,
+    isFocused
+  );
   useDockBeads(
     isFocused && view === 'list'
       ? { icon: searching ? 'close-outline' : 'search-outline', active: searching, onPress: () => (searching ? closeSearch() : setSearching(true)) }
@@ -146,7 +155,11 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
       <ScreenGround color={S.bg} />
       {isFocused && topNavOn && <TopNavBar title={{ icon: 'folder-outline', label: 'Папки' }} />}
       {view === 'canvas' ? (
-        <FoldersCanvas topPad={insets.top + (topNavOn ? TOP_NAV_SPACE : 12)} linksOpen={linksOpen} />
+        <FoldersCanvas
+          topPad={insets.top + (topNavOn ? TOP_NAV_SPACE : 12)}
+          linksOpen={linksOpen}
+          resetFolders={resetFolders}
+        />
       ) : (
       <ContentColumn>
       <View style={{ height: insets.top + (topNavOn ? TOP_NAV_SPACE : 12) }} />
