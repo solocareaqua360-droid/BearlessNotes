@@ -2,6 +2,7 @@ import { ReactNode, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import GlassLayer from '../GlassLayer';
+import type { FlipFrom } from '../../utils/flipOpen';
 import { useStyles, useTheme } from '../../theme/ThemeProvider';
 import EdgeFade from '../EdgeFade';
 import type { Theme } from '../../theme/tokens';
@@ -44,10 +45,13 @@ export default function Sheet({
   scroll,
   maxHeight,
   fadeEdges,
+  flipFrom,
   children,
 }: {
   visible: boolean;
   onClose: () => void;
+  // Opened from a card: the sheet comes round from its back (utils/flipOpen).
+  flipFrom?: FlipFrom | null;
   title?: string;
   subtitle?: string;
   // The little grab bar at the top. On by default: it is what says
@@ -135,7 +139,7 @@ export default function Sheet({
   );
 
   return (
-    <GlassLayer visible={visible} onClose={onClose}>
+    <GlassLayer visible={visible} onClose={onClose} flipFrom={flipFrom}>
       <View style={[styles.frame, { paddingBottom: keyboardHeight }]} pointerEvents="box-none">
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={[styles.window, maxHeight !== undefined && !scroll && { maxHeight }]}>

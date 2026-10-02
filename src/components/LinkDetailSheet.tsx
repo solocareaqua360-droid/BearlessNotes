@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { FlipFrom } from '../utils/flipOpen';
 import { ActivityIndicator, Image, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
@@ -75,7 +76,10 @@ export default function LinkDetailSheet({
   onFragmentsToNote,
   folders = [],
   onPickFolder,
+  flipFrom,
 }: {
+  // Opened from the link's card: the sheet comes round from its back.
+  flipFrom?: FlipFrom | null;
   link: DetailLink | null;
   onClose: () => void;
   // The category's own way in: the page, the player, or Google Maps.
@@ -208,7 +212,7 @@ export default function LinkDetailSheet({
 
   return (
     <>
-      <Sheet visible={link !== null} onClose={close} header={header} scroll fadeEdges maxHeight="78%">
+      <Sheet visible={link !== null} onClose={close} header={header} scroll fadeEdges maxHeight="78%" flipFrom={flipFrom}>
         {shown && (
           <View style={styles.body}>
             {!!(shown.createdAt ?? shown.updatedAt) && (

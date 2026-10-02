@@ -1,4 +1,5 @@
 import { FlatList, StyleSheet, View, useWindowDimensions } from 'react-native';
+import type { FlipFrom } from '../utils/flipOpen';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GlassLayer from './GlassLayer';
 import FlashcardView from './FlashcardView';
@@ -19,6 +20,7 @@ export default function FlashcardReader({
   onEdit,
   onOpenImage,
   onClose,
+  flipFrom,
 }: {
   // The stack as it was when the card was opened, read live by the caller
   // so an edit shows at once. null = closed.
@@ -29,6 +31,8 @@ export default function FlashcardReader({
   onEdit: (card: Flashcard) => void;
   onOpenImage: (card: Flashcard, index: number) => void;
   onClose: () => void;
+  // Opened from a card in the list: the reader comes round from its back.
+  flipFrom?: FlipFrom | null;
 }) {
   const { width: windowW, height: windowH } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -37,7 +41,7 @@ export default function FlashcardReader({
   const visible = !!cards && cards.length > 0;
 
   return (
-    <GlassLayer visible={visible} onClose={onClose}>
+    <GlassLayer visible={visible} onClose={onClose} flipFrom={flipFrom}>
       {visible && (
         <View style={[styles.strip, { height: cardH }]} pointerEvents="box-none">
           <FlatList

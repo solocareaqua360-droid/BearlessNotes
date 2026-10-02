@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import { useRecordLinkIds } from '../hooks/useRecordLinkIds';
 import { useTechnicalDocIds } from '../hooks/useTechnicalDocs';
 import { isTechnicalItem, mainNoteId, makeOrdinary } from '../utils/recordNotes';
@@ -20,8 +21,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View,
-} from 'react-native';
+  View, type GestureResponderEvent } from 'react-native';
 import { Ionicons } from '../components/icons/Ionicons';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -225,6 +225,17 @@ export default function LinksScreen({
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
   const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
+  // The card the link's sheet was opened from (utils/flipOpen), dropped
+  // once the sheet has turned back into it.
+  const [linkFlip, setLinkFlip] = useState<FlipFrom | null>(null);
+  useEffect(() => {
+    if (detailLinkId !== null) return;
+    const spent = setTimeout(() => {
+      setLinkFlip(null);
+      endFlip();
+    }, 700);
+    return () => clearTimeout(spent);
+  }, [detailLinkId]);
   const [attachPickerVisible, setAttachPickerVisible] = useState(false);
   const [readerLinkId, setReaderLinkId] = useState<string | null>(null);
   // Fragments on their way from a link's card into a note - one, or all.
@@ -552,8 +563,12 @@ export default function LinksScreen({
   // comment, photos, reading and fragments (2026-09-25; it was the geo
   // point's alone before). Leaving the app is a button inside it, or the
   // small "open" icon on the list card for a link that is just a link.
-  function openLinkCard(item: LinkItem) {
-    setDetailLinkId(item.id);
+  // From its card it turns over into its own (utils/flipOpen).
+  function openLinkCard(item: LinkItem, event?: GestureResponderEvent) {
+    prepareFlip(item.id, event).then((flip) => {
+      setLinkFlip(flip);
+      setDetailLinkId(item.id);
+    });
   }
 
   // What a tap used to do: the page, the video in its own card, or
@@ -858,7 +873,7 @@ export default function LinksScreen({
         key={item.id}
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
-        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkCard(item))}
+        onPress={(e) => (isSelectMode ? toggleSelected(item.id) : openLinkCard(item, e))}
         onOpen={() => openLinkDirect(item)}
         onLongPress={carried ? undefined : () => setCardMenuLinkId(item.id)}
         onMenu={() => setCardMenuLinkId(item.id)}
@@ -892,7 +907,7 @@ export default function LinksScreen({
         columns={columns}
         link={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
-        onPress={() => (isSelectMode ? toggleSelected(item.id) : openLinkCard(item))}
+        onPress={(e) => (isSelectMode ? toggleSelected(item.id) : openLinkCard(item, e))}
         onOpen={() => openLinkDirect(item)}
         onLongPress={carried ? undefined : () => setCardMenuLinkId(item.id)}
         onMenu={() => setCardMenuLinkId(item.id)}
@@ -1130,6 +1145,7 @@ export default function LinksScreen({
           />
 
           <LinkDetailSheet
+            flipFrom={linkFlip}
             link={detailLink ? { ...detailLink, category: categoryOf(detailLink) } : null}
             folders={detailLink ? tags.filter((tag) => (detailLink.tagIds ?? []).includes(tag.id)) : []}
             // The same picker a card's folder button opens, over the card.

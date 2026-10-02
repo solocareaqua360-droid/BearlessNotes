@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import TurningPressable from '../components/TurningPressable';
+import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import { softCardFrame, softenStyles, softRecordColours, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import {
@@ -8,8 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View,
-} from 'react-native';
+  View, type GestureResponderEvent } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
@@ -80,6 +81,15 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
   // list as it stood at that tap, by id, so marking a card learned (and
   // so hiding it) does not pull the stack out from under the reader.
   const [reading, setReading] = useState<{ ids: string[]; index: number } | null>(null);
+  const [readerFlip, setReaderFlip] = useState<FlipFrom | null>(null);
+  useEffect(() => {
+    if (reading !== null) return;
+    const spent = setTimeout(() => {
+      setReaderFlip(null);
+      endFlip();
+    }, 700);
+    return () => clearTimeout(spent);
+  }, [reading]);
 
   useEffect(
     () =>
@@ -129,9 +139,14 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
     ? reading.ids.map((id) => cards.find((c) => c.id === id)).filter((c): c is Flashcard => !!c)
     : null;
 
-  function openReader(card: Flashcard) {
+  // From its card in the list it turns over into the reader
+  // (utils/flipOpen).
+  function openReader(card: Flashcard, event?: GestureResponderEvent) {
     const ids = shown.map((c) => c.id);
-    setReading({ ids, index: Math.max(0, ids.indexOf(card.id)) });
+    prepareFlip(card.id, event).then((flip) => {
+      setReaderFlip(flip);
+      setReading({ ids, index: Math.max(0, ids.indexOf(card.id)) });
+    });
   }
 
   function setKnown(card: Flashcard, known: boolean) {
@@ -288,10 +303,11 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
     const selected = list.selectedIds.has(card.id);
     const first = card.images[0];
     return (
-      <Pressable
+      <TurningPressable
         key={card.id}
+        cardKey={card.id}
         style={[styles.row, { backgroundColor: background }, selected && { borderColor: theme.accent, borderWidth: 2 }]}
-        onPress={() => (list.isSelectMode ? list.toggle(card.id) : openReader(card))}
+        onPress={(e) => (list.isSelectMode ? list.toggle(card.id) : openReader(card, e))}
         onLongPress={() => list.enterWith(card.id)}
       >
         {list.isSelectMode && (
@@ -327,7 +343,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
             )}
           </View>
         </View>
-      </Pressable>
+      </TurningPressable>
     );
   }
 
@@ -341,10 +357,11 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
     const selected = list.selectedIds.has(card.id);
     const first = card.images[0];
     return (
-      <Pressable
+      <TurningPressable
         key={card.id}
+        cardKey={card.id}
         style={[styles.cell, { backgroundColor: background }, selected && { borderColor: theme.accent, borderWidth: 2 }]}
-        onPress={() => (list.isSelectMode ? list.toggle(card.id) : openReader(card))}
+        onPress={(e) => (list.isSelectMode ? list.toggle(card.id) : openReader(card, e))}
         onLongPress={() => list.enterWith(card.id)}
       >
         {first && (
@@ -376,7 +393,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
             <Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={text} />
           </View>
         )}
-      </Pressable>
+      </TurningPressable>
     );
   }
 
@@ -428,6 +445,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
             onClose={() => setBulkTagPickerVisible(false)}
           />
           <FlashcardReader
+            flipFrom={readerFlip}
             cards={readerCards}
             startIndex={reading?.index ?? 0}
             isLearning={isLearning}

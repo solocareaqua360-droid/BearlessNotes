@@ -14,17 +14,22 @@ const DOWN = 0.97;
 const EASE = Easing.bezier(0.22, 1, 0.36, 1);
 const PERSPECTIVE = 1100;
 
-export function usePressSettle(cardKey?: string) {
+// `dimmed`: the card is being carried (its own 0.4 fade) - folded in here,
+// since this style's opacity would otherwise override the card's.
+export function usePressSettle(cardKey?: string, dimmed = false) {
   const scale = useSharedValue(1);
   const style = useAnimatedStyle(() => {
-    const mine = cardKey !== undefined && flipKey.value === cardKey;
+    // A card that never turns (a note's - it is paper) keeps the press
+    // alone, and its own opacity.
+    if (cardKey === undefined) return { transform: [{ scale: scale.value }] };
+    const mine = flipKey.value === cardKey;
     const p = mine ? flipProgress.value : 0;
     const k = Math.min(1, p * 2);
     return {
-      opacity: mine && p >= 0.5 ? 0 : 1,
+      opacity: (dimmed ? 0.4 : 1) * (mine && p >= 0.5 ? 0 : 1),
       transform: [{ perspective: PERSPECTIVE }, { rotateY: `${k * 90}deg` }, { scale: scale.value * (1 + 0.06 * k) }],
     };
-  });
+  }, [cardKey, dimmed]);
   const handlers = {
     onPressIn: () => {
       scale.value = withTiming(DOWN, { duration: 90, easing: EASE });

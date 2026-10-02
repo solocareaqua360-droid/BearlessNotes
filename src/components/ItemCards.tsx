@@ -1,6 +1,10 @@
 import { lift } from '../utils/lift';
 import { cardRadius } from '../theme/scale';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import { useCallback, useRef } from 'react';
+import Animated from 'react-native-reanimated';
+import { usePressSettle } from '../hooks/usePressSettle';
+import { withFlipTarget } from '../utils/flipOpen';
 import { rightClick } from '../utils/rightClick';
 import { softCardFrame, useSoftSurface, type SoftTokens } from '../theme/soft';
 import { SOFT_SEMIBOLD } from '../utils/fonts';
@@ -62,7 +66,9 @@ type Common = {
   // Being carried right now - the card stays where it is and fades, the
   // ghost under the finger is the thing in hand.
   dimmed?: boolean;
-  onPress: () => void;
+  // The press event goes through: a card that opens by turning over
+  // (utils/flipOpen) is measured from it.
+  onPress: (event?: GestureResponderEvent) => void;
   onLongPress?: () => void;
   // Links only: straight to the site (or the player, or Google Maps),
   // skipping the card a tap now opens - for a link that is just a link.
@@ -195,20 +201,40 @@ function Trailing({
   );
 }
 
+// A CARD THAT TURNS OVER when it opens (utils/flipOpen): settles under
+// the finger, and the whole card - its own root, which the carry gesture
+// also needs (cardRef) - is what turns.
+function useTurningCard(key: string, rest: Pick<Common, 'cardRef' | 'dimmed' | 'onPress'>) {
+  const settle = usePressSettle(key, !!rest.dimmed);
+  const own = useRef<View | null>(null);
+  const carryRef = rest.cardRef;
+  const ref = useCallback(
+    (node: View | null) => {
+      own.current = node;
+      carryRef?.(node);
+    },
+    [carryRef]
+  );
+  const onPress = rest.onPress;
+  const press = useCallback((e: GestureResponderEvent) => onPress(withFlipTarget(e, own.current)), [onPress]);
+  return { ref, style: settle.style, handlers: settle.handlers, press };
+}
+
 export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
   const recordColour = useRecordColour();
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
   const soft = useSoftSurface();
   const { background, text, textMuted } = softColours(soft, recordColour(link.id));
+  const turning = useTurningCard(link.id, rest);
   return (
-    <View
-      ref={rest.cardRef}
+    <Animated.View
+      ref={turning.ref}
       {...lift()}
       collapsable={false}
-      style={[styles.row, soft && softCardFrame(soft), rest.playing && styles.rowPlaying, { backgroundColor: background }, rest.dimmed && styles.dimmed]}
+      style={[styles.row, soft && softCardFrame(soft), rest.playing && styles.rowPlaying, { backgroundColor: background }, turning.style]}
     >
       <View style={styles.rowLine}>
-      <Pressable style={styles.rowTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
+      <Pressable style={styles.rowTap} {...turning.handlers} onPress={turning.press} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {link.imageUrl ? (
           <Image source={{ uri: link.imageUrl }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
         ) : (
@@ -259,7 +285,7 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
           <PlayerControls onStop={rest.onStopPlaying} onFullscreen={rest.onOpenFullscreen} />
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -283,17 +309,17 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
   const info = LINK_CATEGORY_INFO[categoryFromSiteName(link.siteName)];
   const soft = useSoftSurface();
   const { background, text, textMuted } = softColours(soft, recordColour(link.id));
+  const turning = useTurningCard(link.id, rest);
   return (
-    <View
-      ref={rest.cardRef}
+    <Animated.View
+      ref={turning.ref}
       {...lift()}
       collapsable={false}
       style={[
         styles.gridCard,
         soft && softCardFrame(soft),
         { backgroundColor: background, flexBasis: gridBasis(columns) },
-      ,
-        rest.dimmed && styles.dimmed,
+        turning.style,
       ]}
     >
       {rest.playing && (
@@ -304,7 +330,7 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
           <PlayerControls onStop={rest.onStopPlaying} onFullscreen={rest.onOpenFullscreen} />
         </View>
       )}
-      <Pressable style={styles.gridTap} onPress={rest.onPress} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
+      <Pressable style={styles.gridTap} {...turning.handlers} onPress={turning.press} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
         {rest.playing ? null : link.imageUrl ? (
           <Image source={{ uri: link.imageUrl }} style={styles.gridThumb} resizeMode="cover" resizeMethod="resize" />
         ) : (
@@ -341,7 +367,7 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
       <View style={styles.gridTrailing}>
         <Trailing {...rest} text={text} textMuted={textMuted} />
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
