@@ -351,12 +351,9 @@ export default function DatabaseChrome<T extends { id: string }>({
           icon: addIcon ?? 'add-outline',
           badge: 'add-circle-outline',
           onPress: onAdd,
-          // Folders are made far less often than records - the user's
-          // own reckoning - so making one rides the SAME bead as making
-          // a record, held rather than tapped, instead of taking a fifth
-          // slot on the actions card (four is the most that ever fits
-          // beside the way out).
-          onLongPress: explorer?.active ? explorer.onNewFolder : undefined,
+          // Held: the chat (ContextDock's chat-on-hold) - "чатом я
+          // користуюся набагато частіше, ніж створюю папки" (2026-10-02).
+          // A new folder is the "⋯" menu's «Нова папка».
         }
       : null
   );

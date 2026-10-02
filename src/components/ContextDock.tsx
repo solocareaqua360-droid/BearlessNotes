@@ -775,7 +775,7 @@ export default function ContextDock() {
   // reference, a Samsung lock screen, and the shape it keeps: the back
   // one shows only an EDGE, both are the same size in the same place,
   // and whatever stands beside the stack does not move at all.
-  const actionsPublished = useNavDockActions();
+  const actionsPublished = withChatHoldAll(useNavDockActions());
   const actions = suppress ? null : actionsPublished;
   // HOW MANY ACTIONS THE SPLIT IS SIZED FOR, frozen through a
   // desk-switch swipe - the value is used far below, but the hook
@@ -799,7 +799,11 @@ export default function ContextDock() {
   // What never changes stands beside the stack and does not move: search
   // on the left, creating on the right. The user's own arrangement, and
   // Samsung's own reasoning - a pile of cards is for what changes.
-  const beads = useNavDockBeads();
+  // Held, a "+" or a pencil opens the chat (CaptureWindow) unless it has a
+  // hold of its own - "чатом я користуюся набагато частіше, ніж створюю
+  // папки" (2026-10-02): the dock's own hold used to open it, and then
+  // nothing did. Making a folder moved to the "⋯" menus.
+  const beads = withChatHold(useNavDockBeads());
   // Declared, not inferred - see useDockWide's own comment. A screen that
   // publishes neither bead while asking for this reads as "give the
   // middle the room those slots would have held", whether or not it also
@@ -3235,3 +3239,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+// A "+" or a pencil: making or starting to write something.
+const CREATE_ICONS = new Set(['add', 'add-outline', 'create-outline', 'pencil-outline']);
+function chatOnHold<T extends { icon: string; badge?: string; onLongPress?: () => void }>(b: T | null): T | null {
+  if (!b || b.onLongPress) return b;
+  if (!CREATE_ICONS.has(b.icon) && b.badge !== 'add-circle-outline') return b;
+  return { ...b, onLongPress: openCapture };
+}
+function withChatHold<T extends { left: B | null; right: B | null }, B extends { icon: string; badge?: string; onLongPress?: () => void }>(beads: T): T {
+  const left = chatOnHold(beads.left);
+  const right = chatOnHold(beads.right);
+  return left === beads.left && right === beads.right ? beads : { ...beads, left, right };
+}
+function withChatHoldAll<A extends { icon: string; badge?: string; onLongPress?: () => void }>(actions: A[] | null): A[] | null {
+  if (!actions) return actions;
+  let changed = false;
+  const next = actions.map((a) => {
+    const b = chatOnHold(a);
+    if (b !== a) changed = true;
+    return b as A;
+  });
+  return changed ? next : actions;
+}

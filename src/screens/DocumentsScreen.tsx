@@ -1,4 +1,5 @@
 import { lift } from '../utils/lift';
+import { openCapture } from '../components/CaptureWindow';
 import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useFolderHold } from '../components/FolderHoldMenu';
 import RecentFolderStrip from '../components/RecentFolderStrip';
@@ -710,9 +711,10 @@ export default function DocumentsScreen({
           // as making a record instead of a fifth slot on the actions
           // card (four is the most that fits beside the way out). The two
           // are never both on offer at once, so nothing is actually lost.
-          onLongPress: explorer.active
-            ? () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path })
-            : openStickerComposer,
+          // Since 2026-10-02 the chat, while browsing folders: "чатом я
+          // користуюся набагато частіше, ніж створюю папки" - a new
+          // folder is a row in the "⋯" menu now.
+          onLongPress: explorer.active ? openCapture : openStickerComposer,
         }
       : null
   );
@@ -892,6 +894,11 @@ export default function DocumentsScreen({
       })),
       { kind: 'rule' },
       { label: 'Смартпапки', icon: 'pricetag-outline', checked: !!activeFilter, onPress: () => drawerRef.current?.open() },
+      // Here since the pencil's hold opens the chat (2026-10-02) - the
+      // same row the other databases' "⋯" has.
+      ...(explorer.active
+        ? [{ label: 'Нова папка', icon: 'folder-open-outline' as const, onPress: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }) }]
+        : []),
       ...(paneDocOpen && !paneFullscreen
         ? [
             { label: 'Нотатку на весь екран', icon: 'expand-outline' as const, onPress: () => setPaneFullscreen(true) },
