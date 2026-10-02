@@ -28,6 +28,7 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type GestureResponderEvent,
 } from 'react-native';
 // gesture-handler's own ScrollView (not the core RN one) for the row-editor
 // sheet: a drag that starts on one of its TextInput/Pressable fields never
@@ -102,6 +103,7 @@ import {
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
+import { captureCard, type FlipFrom } from '../utils/flipOpen';
 import { useTechnicalDocs } from '../hooks/useTechnicalDocs';
 import InlineVideoPlayer from '../components/InlineVideoPlayer';
 import VideoPlayerModal from '../components/VideoPlayerModal';
@@ -422,6 +424,24 @@ export default function CustomDatabaseScreen({
   // this one record - and editing is a deliberate step from there, rather
   // than every tap dropping straight into a form.
   const [rowPageId, setRowPageId] = useState<string | null>(null);
+  // The card the page was opened from, photographed - the page turns it
+  // over and grows out of its back (utils/flipOpen, GlassLayer).
+  const [rowPageFlip, setRowPageFlip] = useState<FlipFrom | null>(null);
+  // Once a page has turned back into its card, the photograph is spent: a
+  // page opened next some other way (a calendar event, a table row) must
+  // not fly out of a card it was never in.
+  useEffect(() => {
+    if (rowPageId !== null) return;
+    const spent = setTimeout(() => setRowPageFlip(null), 700);
+    return () => clearTimeout(spent);
+  }, [rowPageId]);
+  // A record's card pressed: turned over into its page.
+  const openRowFromCard = (rowId: string, event?: GestureResponderEvent) => {
+    captureCard(event).then((flip) => {
+      setRowPageFlip(flip);
+      setRowPageId(rowId);
+    });
+  };
   // A note opened FROM a record's page (its «Розбір», a lesson's note):
   // the page is a layer drawn over the whole app, so it would stand over
   // the editor. It closes on the way out and opens again on the way back -
@@ -431,6 +451,7 @@ export default function CustomDatabaseScreen({
     () =>
       navigation.addListener('focus', () => {
         if (!pageToReopenRef.current) return;
+        setRowPageFlip(null);
         setRowPageId(pageToReopenRef.current);
         pageToReopenRef.current = null;
       }),
@@ -2038,7 +2059,7 @@ export default function CustomDatabaseScreen({
         display={rowDisplayFor(item)}
         tags={tags.filter((t) => (item.tagIds ?? []).includes(t.id))}
         documentCount={documentIdsOf(item).length}
-        onPress={() => (isSelectMode ? toggleSelected(item.id) : setRowPageId(item.id))}
+        onPress={(e) => (isSelectMode ? toggleSelected(item.id) : openRowFromCard(item.id, e))}
         onLongPress={() => setRowMenuId(item.id)}
         right={
           isSelectMode ? (
@@ -2208,7 +2229,7 @@ export default function CustomDatabaseScreen({
             width={gridTileWidth}
             display={rowDisplayFor(row)}
             documentCount={documentIdsOf(row).length}
-            onPress={() => (isSelectMode ? toggleSelected(row.id) : setRowPageId(row.id))}
+            onPress={(e) => (isSelectMode ? toggleSelected(row.id) : openRowFromCard(row.id, e))}
             onLongPress={() => setRowMenuId(row.id)}
             right={
               isSelectMode ? (
@@ -2461,6 +2482,8 @@ export default function CustomDatabaseScreen({
   function openNoteFromPage(rowId: string, documentId: string) {
     pageToReopenRef.current = rowId;
     setPlayingLessonId(null);
+    // Not turned back into the card: the editor is opening over it.
+    setRowPageFlip(null);
     setRowPageId(null);
     navigation.navigate('Editor', { documentId });
   }
@@ -2603,7 +2626,7 @@ export default function CustomDatabaseScreen({
             width={width}
             display={rowDisplayFor(row)}
             documentCount={documentIdsOf(row).length}
-            onPress={() => (isSelectMode ? toggleSelected(row.id) : setRowPageId(row.id))}
+            onPress={(e) => (isSelectMode ? toggleSelected(row.id) : openRowFromCard(row.id, e))}
             onLongPress={() => setRowMenuId(row.id)}
             right={
               isSelectMode ? (
@@ -4032,8 +4055,10 @@ export default function CustomDatabaseScreen({
       )}
 
       <VideoPlayerModal url={fullscreenLessonUrl} onClose={() => setFullscreenLessonUrl(null)} />
-      {rowPageRow !== null && (
-        <GlassLayer visible onClose={() => setRowPageId(null)}>
+      {/* Always there, shown by `visible`: a page closing has to stay
+          mounted to turn back into its card (GlassLayer's flip). */}
+      {(
+        <GlassLayer visible={rowPageRow !== null} onClose={() => setRowPageId(null)} flipFrom={rowPageFlip}>
           <View style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setRowPageId(null)} />
           <View style={styles.pageContainer}>

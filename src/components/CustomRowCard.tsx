@@ -4,7 +4,7 @@ import { rightClick } from '../utils/rightClick';
 import { softCardFrame, softRecordColours, useSoftSurface } from '../theme/soft';
 import { SOFT_SEMIBOLD } from '../utils/fonts';
 import { useRecordColour } from '../theme/ThemeProvider';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { Tag } from '../types';
 import { RowDisplay } from '../utils/customRowDisplay';
@@ -72,7 +72,9 @@ type Props = {
   rowId: string;
   display: RowDisplay;
   tags: Tag[];
-  onPress?: () => void;
+  // The press event goes through: a card that opens by turning over
+  // (utils/flipOpen) is photographed from it.
+  onPress?: (event?: GestureResponderEvent) => void;
   onLongPress?: () => void;
   onTagPress?: () => void;
   // How many documents embed this row as a card. Shown as a chip so it's
@@ -248,7 +250,9 @@ export function CustomRowGridCard({
 }: {
   rowId: string;
   display: RowDisplay;
-  onPress?: () => void;
+  // The press event goes through: a card that opens by turning over
+  // (utils/flipOpen) is photographed from it.
+  onPress?: (event?: GestureResponderEvent) => void;
   onLongPress?: () => void;
   documentCount?: number;
   right?: ReactNode;

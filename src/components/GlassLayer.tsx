@@ -1,7 +1,8 @@
 import { MOTION } from '../theme/desktopTheme';
 import { useLeaving } from '../hooks/useLeaving';
 import { ReactNode, useEffect, useRef } from 'react';
-import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
+import { BackHandler, Image, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import type { FlipFrom } from '../utils/flipOpen';
 import { BlurView } from 'expo-blur';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useBlurTarget } from './GlassTarget';
@@ -23,11 +24,16 @@ export default function GlassLayer({
   onClose,
   children,
   intensity = 50,
+  flipFrom,
 }: {
   visible: boolean;
   onClose: () => void;
   children: ReactNode;
   intensity?: number;
+  // Opened from a card (utils/flipOpen): the window turns that card over
+  // and grows out of its back, and goes back into it the same way. The
+  // phone only.
+  flipFrom?: FlipFrom | null;
 }) {
   // Without this ref expo-blur falls back to a plain translucent view on
   // Android - which is what made the first two attempts look like a dim.
@@ -56,7 +62,8 @@ export default function GlassLayer({
   // A window grows in and plays its way out, drawing what it showed last -
   // the caller's own content may already be gone. At a pointer by CSS, on
   // the phone by GrowIn below (the soft motion, 2026-10-02).
-  const { mounted, leaving } = useLeaving(visible, MOTION.out);
+  const flip = !pointer && flipFrom ? flipFrom : null;
+  const { mounted, leaving } = useLeaving(visible, flip ? FLIP_MS : MOTION.out);
   const lastChildren = useRef(children);
   if (visible) lastChildren.current = children;
   if (!mounted) return null;
@@ -91,7 +98,11 @@ export default function GlassLayer({
           {leaving ? lastChildren.current : children}
         </View>
       ) : (
-        <GrowIn leaving={leaving}>{leaving ? lastChildren.current : children}</GrowIn>
+        flip ? (
+          <FlipIn leaving={leaving} from={flip}>{leaving ? lastChildren.current : children}</FlipIn>
+        ) : (
+          <GrowIn leaving={leaving}>{leaving ? lastChildren.current : children}</GrowIn>
+        )
       )}
     </View>
     </GlassPortal>
@@ -119,6 +130,64 @@ function GrowIn({ leaving, children }: { leaving: boolean; children: ReactNode }
     <Animated.View style={[styles.content, style]} pointerEvents={leaving ? 'none' : 'box-none'}>
       {children}
     </Animated.View>
+  );
+}
+
+// THE CARD TURNING OVER INTO ITS WINDOW (utils/flipOpen). One clock, two
+// halves: first the card's photograph turns edge-on where it stands,
+// lifting a little; then the window comes round from edge-on on its back,
+// growing from the card's size and place to its own. Edge-on, neither is
+// seen - that is where one hands over to the other. Closing plays it
+// backwards into the same card.
+const FLIP_MS = 460;
+const PERSPECTIVE = 1100;
+function FlipIn({ leaving, from, children }: { leaving: boolean; from: FlipFrom; children: ReactNode }) {
+  const p = useSharedValue(0);
+  const window = useWindowDimensions();
+  // Plain numbers for the worklets - never the objects they came in.
+  const rx = from.rect.x;
+  const ry = from.rect.y;
+  const rw = from.rect.width;
+  const rh = from.rect.height;
+  const ww = window.width;
+  const wh = window.height;
+  useEffect(() => {
+    p.value = withTiming(leaving ? 0 : 1, { duration: FLIP_MS, easing: Easing.inOut(Easing.cubic) });
+  }, [leaving, p]);
+  const front = useAnimatedStyle(() => {
+    const k = Math.min(1, p.value * 2);
+    return {
+      opacity: p.value < 0.5 ? 1 : 0,
+      transform: [{ perspective: PERSPECTIVE }, { rotateY: `${k * 90}deg` }, { scale: 1 + 0.06 * k }],
+    };
+  });
+  const back = useAnimatedStyle(() => {
+    const q = Math.max(0, (p.value - 0.5) * 2);
+    const s0 = ww > 0 ? rw / ww : 1;
+    const s = s0 + (1 - s0) * q;
+    return {
+      opacity: p.value < 0.5 ? 0 : 1,
+      transform: [
+        { perspective: PERSPECTIVE },
+        { translateX: (rx + rw / 2 - ww / 2) * (1 - q) },
+        { translateY: (ry + rh / 2 - wh / 2) * (1 - q) },
+        { rotateY: `${-90 * (1 - q)}deg` },
+        { scale: s },
+      ],
+    };
+  });
+  return (
+    <>
+      <Animated.View
+        pointerEvents="none"
+        style={[{ position: 'absolute', left: rx, top: ry, width: rw, height: rh }, front]}
+      >
+        <Image source={{ uri: from.uri }} style={StyleSheet.absoluteFill} />
+      </Animated.View>
+      <Animated.View style={[styles.content, back]} pointerEvents={leaving ? 'none' : 'box-none'}>
+        {children}
+      </Animated.View>
+    </>
   );
 }
 
