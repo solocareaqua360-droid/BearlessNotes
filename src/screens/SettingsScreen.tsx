@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supportsWallpaper, supportsWindowBlur } from '../utils/mindevaNative';
+import { setWindowBlur, supportsWallpaper, supportsWindowBlur } from '../utils/mindevaNative';
 import BackupCard from '../components/BackupCard';
 import { useTheme, useStyles, useWallpaperVeil } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -10,6 +10,7 @@ import { backupFileToDrive } from '../utils/googleDrive';
 import StockPhotoPicker from '../components/StockPhotoPicker';
 import {
   ActivityIndicator,
+  Platform,
   Image,
   Dimensions,
   PixelRatio,
@@ -1043,6 +1044,17 @@ export default function SettingsScreen() {
                       )
                     }
                   />
+                  {/* What the phone itself answers when asked to blur -
+                      there is no other way to tell "the system has window
+                      blur off" from "the blur does not reach the
+                      wallpaper" without the phone in hand. */}
+                  <Text style={[styles.cardHint, { marginTop: 6 }]}>
+                    {`Android ${Platform.Version}: ${
+                      setWindowBlur(((backdropSettings.override.blur ?? 0) / 100) * 160)
+                        ? 'розмиття вікон увімкнене в системі'
+                        : 'система відповідає, що розмиття вікон вимкнене (енергозбереження, «зменшення прозорості й розмиття» або налаштування розробника)'
+                    }`}
+                  </Text>
                 </>
               )}
             </>
