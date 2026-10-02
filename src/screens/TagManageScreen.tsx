@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSoft, softCardFrame } from '../theme/soft';
+import ScreenGround from '../components/ScreenGround';
+import ContentColumn from '../components/ContentColumn';
+import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import { useDockClearance } from '../navigation/dockGeometry';
 import type { Theme } from '../theme/tokens';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
-import { useDockLeave } from '../navigation/navDock';
+import { useChromeStyle, useDockBeads, useDockLeave, useTopBack, useTopSearch } from '../navigation/navDock';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Tag } from '../types';
 import { RootStackParamList } from '../navigation';
@@ -12,7 +18,6 @@ import { useTags } from '../hooks/useTags';
 import TagEditSheet from '../components/TagEditSheet';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { TAG_KIND_LABELS as KIND_LABELS } from '../constants/tagKinds';
-import PlainScreenShell, { shellClear } from '../components/PlainScreenShell';
 import { confirm } from '../components/surfaces/Ask';
 
 const DANGER = '#EF4444';
@@ -31,7 +36,33 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   const { tags, isLoading, updateTag, deleteTagCompletely } = useTags();
   const railSide = inPane ? ('left' as const) : ('right' as const);
   const isFocused = useIsFocused();
-  useDockLeave('pricetag-outline', () => navigation.goBack(), isFocused);
+  useDockLeave('folder-outline', () => navigation.goBack(), isFocused);
+  // THE SOFT CHROME (2026-10-02: the folders "не переживали змін вже
+  // давно" - an old dark list under an empty dock plaque). The bar with
+  // the way back and the name, the dock's left bead searching the
+  // folders, the soft ground under all of it - as every other screen.
+  const S = useSoft();
+  const insets = useSafeAreaInsets();
+  const topNavOn = useTopNavOn();
+  const dockClear = useDockClearance();
+  useChromeStyle('soft', isFocused);
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState('');
+  const closeSearch = () => {
+    setQuery('');
+    setSearching(false);
+  };
+  useTopBack(searching ? closeSearch : () => navigation.goBack(), isFocused);
+  useTopSearch(
+    searching ? { placeholder: 'Пошук папок', initialQuery: query, onChangeQuery: setQuery, onClose: closeSearch } : null,
+    isFocused
+  );
+  useDockBeads(
+    isFocused
+      ? { icon: searching ? 'close-outline' : 'search-outline', active: searching, onPress: () => (searching ? closeSearch() : setSearching(true)) }
+      : null,
+    null
+  );
   // A tag's path IS the tree - "робота/оренда" is the folder "робота"
   // holding "оренда" - and this screen drew them as a flat list of full
   // paths, which threw the whole structure away. Rows are laid out in
@@ -51,6 +82,9 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
       hasChildren: sorted.some((other) => other.path.startsWith(`${row.tag.path}/`)),
     }))
     .filter((row) => {
+      // Searching: every folder whose name matches, wherever it is in
+      // the tree, folds or not.
+      if (query.trim()) return row.name.toLowerCase().includes(query.trim().toLowerCase());
       for (const shut of folded) {
         if (row.tag.path.startsWith(`${shut}/`)) return false;
       }
@@ -80,23 +114,30 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   }
 
   return (
-    <PlainScreenShell id="tagsBg">
-      <Text style={[styles.subtitle, shellClear(railSide, 4)]}>
-        Керування вже існуючими папками. Нова папка з'являється разом із першим елементом у ній.
+    <View style={styles.container}>
+      <ScreenGround color={S.bg} />
+      {isFocused && topNavOn && <TopNavBar title={{ icon: 'folder-outline', label: 'Папки' }} />}
+      <ContentColumn>
+      <View style={{ height: insets.top + (topNavOn ? TOP_NAV_SPACE : 12) }} />
+      <Text style={[styles.subtitle, { color: S.ink3 }]}>
+        Нова папка з'являється разом із першим елементом у ній.
       </Text>
 
         {!isLoading && tags.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
-              <Ionicons name="pricetag-outline" size={32} color="#3B82F6" />
+              <Ionicons name="folder-outline" size={32} color="#3B82F6" />
             </View>
             <Text style={styles.emptyLabel}>Ще немає папок</Text>
             <Text style={styles.emptyHint}>Додайте першу папку через меню папок на будь-якому елементі</Text>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={[styles.list, shellClear(railSide, 4)]}>
+          <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + 24 }]}>
             {rows.map(({ tag, depth, name, hasChildren }) => (
-              <View key={tag.id} style={[styles.row, { marginLeft: depth * 18 }]}>
+              <View
+                key={tag.id}
+                style={[styles.row, softCardFrame(S), { backgroundColor: S.card, marginLeft: depth * 18 }]}
+              >
                 {/* The twist that folds a branch. A leaf keeps the space,
                     so every row's icon starts on the same line. */}
                 <Pressable
@@ -109,7 +150,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
                     <Ionicons
                       name={folded.has(tag.path) ? 'chevron-forward' : 'chevron-down'}
                       size={14}
-                      color={theme.ink.muted}
+                      color={S.ink3}
                     />
                   )}
                 </Pressable>
@@ -117,26 +158,26 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
                   style={styles.rowTap}
                   onPress={() => navigation.navigate('TagItems', { tagId: tag.id })}
                 >
-                  <View style={[styles.rowIcon, { backgroundColor: `${tag.color}22` }]}>
-                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={16} color={tag.color} />
+                  <View style={[styles.rowIcon, { backgroundColor: S.fill }]}>
+                    <Ionicons name={tag.icon as keyof typeof Ionicons.glyphMap} size={20} color={tag.color} />
                   </View>
                   <View style={styles.rowBody}>
                     {/* The tag's OWN name, not its whole path - the path is
                         what the indent says. */}
-                    <Text style={styles.rowLabel} numberOfLines={1}>
+                    <Text style={[styles.rowLabel, { color: S.ink }]} numberOfLines={1}>
                       {name}
                     </Text>
-                    <Text style={styles.rowMeta} numberOfLines={1}>
+                    <Text style={[styles.rowMeta, { color: S.ink2 }]} numberOfLines={1}>
                       {Object.keys(tag.usedIn).length} {Object.keys(tag.usedIn).length === 1 ? 'елемент' : 'елементів'} ·{' '}
                       {tag.types.map((t) => KIND_LABELS[t] ?? 'База').join(', ')}
                     </Text>
                   </View>
                 </Pressable>
                 <Pressable hitSlop={8} style={styles.rowAction} onPress={() => setEditingTag(tag)}>
-                  <Ionicons name="pencil-outline" size={15} color={theme.ink.muted} />
+                  <Ionicons name="pencil-outline" size={18} color={S.ink2} />
                 </Pressable>
                 <Pressable hitSlop={8} style={styles.rowAction} onPress={() => confirmDelete(tag)}>
-                  <Ionicons name="trash-outline" size={15} color={DANGER} />
+                  <Ionicons name="trash-outline" size={18} color={DANGER} />
                 </Pressable>
               </View>
             ))}
@@ -152,12 +193,16 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
             setEditingTag(null);
           }}
         />
-    </PlainScreenShell>
+      </ContentColumn>
+    </View>
   );
 }
 
 const makeStyles = (t: Theme) =>
   StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   // The twist that folds a branch; a leaf keeps the space so every
   // row's icon starts on the same line.
   twist: {
@@ -165,11 +210,11 @@ const makeStyles = (t: Theme) =>
     alignItems: 'center',
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: t.ink.faint,
-    paddingTop: 4,
-    paddingBottom: 12,
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 14,
   },
   emptyState: {
     flex: 1,
@@ -200,21 +245,19 @@ const makeStyles = (t: Theme) =>
     textAlign: 'center',
   },
   list: {
-    paddingBottom: 120,
-    gap: 8,
+    paddingHorizontal: 20,
+    gap: 10,
   },
   // A card, like every other row in the app. Bare text over the drifting
   // backdrop could not be read - the rows were written for white.
+  // A card as a folder is one in the documents' own list: white, round,
+  // lifted by its shadow alone (softCardFrame).
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: t.scrim,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    gap: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
   },
   rowTap: {
     flex: 1,
@@ -223,9 +266,9 @@ const makeStyles = (t: Theme) =>
     gap: 12,
   },
   rowIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -234,18 +277,17 @@ const makeStyles = (t: Theme) =>
     minWidth: 0,
   },
   rowLabel: {
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '600',
     fontFamily: FONT_SEMIBOLD,
     color: t.ink.primary,
   },
   rowMeta: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: FONT_REGULAR,
-    color: t.ink.muted,
-    marginTop: 1,
+    marginTop: 2,
   },
   rowAction: {
-    padding: 6,
+    padding: 8,
   },
   });
