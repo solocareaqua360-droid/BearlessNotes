@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import WallpaperBlur from './src/components/WallpaperBlur';
+import BackdropLayer from './src/components/BackdropLayer';
 import { View } from 'react-native';
 import {
   useFonts,
@@ -29,7 +29,7 @@ import ChromeMorph from './src/components/ChromeMorph';
 import { AskHost } from './src/components/surfaces/Ask';
 import CaptureWindow from './src/components/CaptureWindow';
 import BoardPreviewCaptureHost from './src/components/BoardMiniature';
-import { ThemeProvider, ThemedStatusBar, useActiveBackdropOverride, useTheme } from './src/theme/ThemeProvider';
+import { ThemeProvider, ThemedStatusBar, useSeeThroughBackdrop, useTheme } from './src/theme/ThemeProvider';
 import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
 import ContextDock from './src/components/ContextDock';
@@ -58,7 +58,7 @@ function ThemedNavigationContainer({ children }: { children: React.ReactNode }) 
   const theme = useTheme();
   // Under the phone's wallpaper the navigator's card must not cover it -
   // the screen's own backdrop lays the veil instead (ScreenBackdrop).
-  const wallpaper = useActiveBackdropOverride()?.type === 'wallpaper';
+  const wallpaper = useSeeThroughBackdrop();
   const navTheme: NavTheme = {
     ...DefaultTheme,
     dark: theme.scheme === 'dark',
@@ -71,7 +71,7 @@ function ThemedNavigationContainer({ children }: { children: React.ReactNode }) 
   };
   return (
     <NavigationContainer ref={navigationRef} theme={navTheme}>
-      <WallpaperBlur />
+      <BackdropLayer />
       {children}
     </NavigationContainer>
   );

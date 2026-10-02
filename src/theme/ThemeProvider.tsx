@@ -103,6 +103,9 @@ export type BackdropOverride =
       // kept as a plain percentage here since that is what the slider
       // in Settings actually shows.
       blur: number;
+      // 0-100, how much of the theme's ground lies over the picture in the
+      // soft style (see useWallpaperVeil); absent = 45.
+      veil?: number;
     };
 
 export type BackdropSettings = {
@@ -321,7 +324,18 @@ export function useActiveBackdropOverride(): BackdropOverride | null {
 // wallpaper and the ground is solid as always.
 export function useWallpaperVeil(): number | null {
   const override = useActiveBackdropOverride();
-  return override?.type === 'wallpaper' ? override.veil / 100 : null;
+  if (override?.type === 'wallpaper') return override.veil / 100;
+  // A picture of the user's own (BackdropLayer draws it under the whole
+  // app) shows through the same way.
+  if (override?.type === 'image') return (override.veil ?? 45) / 100;
+  return null;
+}
+
+// Whether the app's screens stand over something of the backdrop's own -
+// the phone's wallpaper or the user's picture - rather than a ground.
+export function useSeeThroughBackdrop(): boolean {
+  const type = useActiveBackdropOverride()?.type;
+  return type === 'wallpaper' || type === 'image';
 }
 
 // The interface scheme - Settings' own read/write pair. Everything

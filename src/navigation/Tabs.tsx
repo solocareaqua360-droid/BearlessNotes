@@ -4,7 +4,7 @@ import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { useActiveBackdropOverride } from '../theme/ThemeProvider';
+import { useSeeThroughBackdrop } from '../theme/ThemeProvider';
 import FloatingIslandTabBar from '../components/FloatingIslandTabBar';
 import CalendarDrawer, { DatabasesLayer, SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
 import { SideDrawersProvider, useSideDrawers } from './sideDrawers';
@@ -76,7 +76,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
   // Under the phone's wallpaper the desk FADES AWAY as the calendar or the
   // databases come in (option Б, see wallpaperBoost): the layer's own blur
   // of the desk is off there, and a sharp desk would show through it.
-  const wallpaper = useActiveBackdropOverride()?.type === 'wallpaper';
+  const wallpaper = useSeeThroughBackdrop();
   const noProgress = useSharedValue(0);
   const calendarShown = calendarProgress ?? noProgress;
   const databasesShown = databasesProgress ?? noProgress;

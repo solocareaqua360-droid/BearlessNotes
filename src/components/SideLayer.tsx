@@ -1,5 +1,5 @@
 import { ReactNode, useContext, useEffect, useMemo, useState } from 'react';
-import { useActiveBackdropOverride } from '../theme/ThemeProvider';
+import { useSeeThroughBackdrop } from '../theme/ThemeProvider';
 import { setWallpaperBoost } from '../utils/wallpaperBoost';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { NavigationContext, NavigationRouteContext, useIsFocused } from '@react-navigation/native';
@@ -102,7 +102,7 @@ export default function SideLayer({
   usePauseFrost(open && tabsFocused);
   // Under the phone's wallpaper: the window's blur deepens while this is
   // out (see wallpaperBoost).
-  const wallpaper = useActiveBackdropOverride()?.type === 'wallpaper';
+  const wallpaper = useSeeThroughBackdrop();
   useEffect(() => {
     setWallpaperBoost(side, wallpaper && (open || dragging) && tabsFocused);
     return () => setWallpaperBoost(side, false);

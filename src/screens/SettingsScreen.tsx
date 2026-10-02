@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { setWindowBlur, supportsWallpaper, supportsWindowBlur } from '../utils/mindevaNative';
+import { supportsWallpaper } from '../utils/mindevaNative';
 import BackupCard from '../components/BackupCard';
 import { useTheme, useStyles, useWallpaperVeil } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -10,7 +10,6 @@ import { backupFileToDrive } from '../utils/googleDrive';
 import StockPhotoPicker from '../components/StockPhotoPicker';
 import {
   ActivityIndicator,
-  Platform,
   Image,
   Dimensions,
   PixelRatio,
@@ -300,19 +299,21 @@ export default function SettingsScreen() {
 
   // The phone's own wallpaper under the app (an APK that can - see
   // supportsWallpaper).
-  function chooseWallpaper(
-    veil = backdropSettings.override?.type === 'wallpaper' ? backdropSettings.override.veil : 45,
-    blur = backdropSettings.override?.type === 'wallpaper' ? (backdropSettings.override.blur ?? 0) : 0
-  ) {
+  function chooseWallpaper(veil = backdropSettings.override?.type === 'wallpaper' ? backdropSettings.override.veil : 45) {
     setBackdropSettings({
       ...backdropSettings,
-      override: { type: 'wallpaper', veil, blur },
+      override: { type: 'wallpaper', veil },
       // The theme in use is always ticked - a wallpaper chosen while some
       // other theme's tick was left from an old gradient did nothing.
       appliesTo: backdropSettings.appliesTo.includes(theme.key)
         ? backdropSettings.appliesTo
         : [...backdropSettings.appliesTo, theme.key],
     });
+  }
+
+  function updateBackdropVeil(veil: number) {
+    if (backdropSettings.override?.type !== 'image') return;
+    setBackdropSettings({ ...backdropSettings, override: { ...backdropSettings.override, veil } });
   }
 
   function updateBackdropBlur(blur: number) {
@@ -1031,32 +1032,7 @@ export default function SettingsScreen() {
                 stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
                 onChange={(v) => chooseWallpaper(Math.round(v * 100))}
               />
-              {supportsWindowBlur && (
-                <>
-                  <Text style={[styles.cardHint, { marginTop: 8 }]}>Розмиття</Text>
-                  <GradientSlider
-                    value={(backdropSettings.override.blur ?? 0) / 100}
-                    stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
-                    onChange={(v) =>
-                      chooseWallpaper(
-                        backdropSettings.override?.type === 'wallpaper' ? backdropSettings.override.veil : 45,
-                        Math.round(v * 100)
-                      )
-                    }
-                  />
-                  {/* What the phone itself answers when asked to blur -
-                      there is no other way to tell "the system has window
-                      blur off" from "the blur does not reach the
-                      wallpaper" without the phone in hand. */}
-                  <Text style={[styles.cardHint, { marginTop: 6 }]}>
-                    {`Android ${Platform.Version}: ${
-                      setWindowBlur(((backdropSettings.override.blur ?? 0) / 100) * 160)
-                        ? 'розмиття вікон увімкнене в системі'
-                        : 'система відповідає, що розмиття вікон вимкнене (енергозбереження, «зменшення прозорості й розмиття» або налаштування розробника)'
-                    }`}
-                  </Text>
-                </>
-              )}
+
             </>
           )}
 
@@ -1074,6 +1050,12 @@ export default function SettingsScreen() {
                     value={backdropSettings.override.blur / 100}
                     stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
                     onChange={(v) => updateBackdropBlur(Math.round(v * 100))}
+                  />
+                  <Text style={[styles.cardHint, { marginTop: 8 }]}>Затемнення</Text>
+                  <GradientSlider
+                    value={(backdropSettings.override.veil ?? 45) / 100}
+                    stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
+                    onChange={(v) => updateBackdropVeil(Math.round(v * 100))}
                   />
                   <Pressable
                     style={styles.checkButton}
