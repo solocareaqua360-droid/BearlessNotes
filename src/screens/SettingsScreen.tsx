@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { supportsWallpaper } from '../utils/mindevaNative';
 import BackupCard from '../components/BackupCard';
 import { useTheme, useStyles, useWallpaperVeil } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -166,8 +165,12 @@ export default function SettingsScreen() {
 
   const { backdropSettings, setBackdropSettings } = useBackdropSettings();
   const wallpaperVeil = useWallpaperVeil();
-  const [backdropMode, setBackdropMode] = useState<'default' | 'gradient' | 'image' | 'wallpaper'>(
-    backdropSettings.override?.type ?? 'default'
+  // A 'wallpaper' left in the account from the removed «Шпалери
+  // телефона» reads as the standard backdrop (useActiveBackdropOverride).
+  const modeOf = (type: string | undefined) =>
+    type === 'gradient' || type === 'image' ? type : ('default' as const);
+  const [backdropMode, setBackdropMode] = useState<'default' | 'gradient' | 'image'>(
+    modeOf(backdropSettings.override?.type)
   );
   const [gradientColors, setGradientColors] = useState<string[]>(
     backdropSettings.override?.type === 'gradient' ? backdropSettings.override.colors : ['#705648', '#69736E']
@@ -204,7 +207,7 @@ export default function SettingsScreen() {
   // Kept in sync with whatever's already saved, so re-opening Settings
   // shows the real picture rather than the mode's own placeholder.
   useEffect(() => {
-    setBackdropMode(backdropSettings.override?.type ?? 'default');
+    setBackdropMode(modeOf(backdropSettings.override?.type));
     if (backdropSettings.override?.type === 'gradient') {
       setGradientColors(backdropSettings.override.colors);
       setGradientBlur(backdropSettings.override.blur);
@@ -295,20 +298,6 @@ export default function SettingsScreen() {
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     await setBackdropImage(asset.uri, asset.width, asset.height);
-  }
-
-  // The phone's own wallpaper under the app (an APK that can - see
-  // supportsWallpaper).
-  function chooseWallpaper(veil = backdropSettings.override?.type === 'wallpaper' ? backdropSettings.override.veil : 45) {
-    setBackdropSettings({
-      ...backdropSettings,
-      override: { type: 'wallpaper', veil },
-      // The theme in use is always ticked - a wallpaper chosen while some
-      // other theme's tick was left from an old gradient did nothing.
-      appliesTo: backdropSettings.appliesTo.includes(theme.key)
-        ? backdropSettings.appliesTo
-        : [...backdropSettings.appliesTo, theme.key],
-    });
   }
 
   function updateBackdropVeil(veil: number) {
@@ -492,9 +481,9 @@ export default function SettingsScreen() {
           a database and has no colour of its own, so it borrows the one
           the app's plain screens already share rather than inventing a
           third. */}
-{/* Under the phone's wallpaper this screen's old fixed gradient
-          (a leftover - the screen still has its dark glass cards, not
-          the soft style yet) gives way to the wallpaper itself, under a
+{/* Over the user's own picture (BackdropLayer) this screen's old
+          fixed gradient (a leftover - the screen still has its dark glass
+          cards, not the soft style yet) gives way to the picture, under a
           DARK veil so the light text on the cards stays readable. */}
       {wallpaperVeil !== null ? (
         <View
@@ -961,7 +950,6 @@ export default function SettingsScreen() {
                 { id: 'default', label: 'Стандартний' },
                 { id: 'gradient', label: 'Градієнт' },
                 { id: 'image', label: 'Зображення' },
-                ...(supportsWallpaper ? [{ id: 'wallpaper', label: 'Шпалери телефона' } as const] : []),
               ] as const
             ).map((opt) => (
               <Pressable
@@ -973,8 +961,6 @@ export default function SettingsScreen() {
                     setBackdropSettings({ ...backdropSettings, override: null });
                   } else if (opt.id === 'gradient' && backdropSettings.override?.type !== 'gradient') {
                     saveGradient(gradientColors);
-                  } else if (opt.id === 'wallpaper' && backdropSettings.override?.type !== 'wallpaper') {
-                    chooseWallpaper();
                   }
                 }}
               >
@@ -1018,21 +1004,6 @@ export default function SettingsScreen() {
                 stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
                 onChange={(v) => updateGradientBlur(Math.round(v * 100))}
               />
-            </>
-          )}
-
-          {backdropMode === 'wallpaper' && backdropSettings.override?.type === 'wallpaper' && (
-            <>
-              <Text style={[styles.cardHint, { marginTop: 14 }]}>
-                Під застосунком - шпалери самого телефона. Повзунок - наскільки їх приглушити, щоб текст добре читався.
-              </Text>
-              <Text style={[styles.cardHint, { marginTop: 8 }]}>Затемнення</Text>
-              <GradientSlider
-                value={backdropSettings.override.veil / 100}
-                stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
-                onChange={(v) => chooseWallpaper(Math.round(v * 100))}
-              />
-
             </>
           )}
 
@@ -1096,10 +1067,6 @@ export default function SettingsScreen() {
               >
                 <Text style={styles.disconnectLabel}>Повернути стандартний фон</Text>
               </Pressable>
-              {/* The wallpaper is the window's, not a theme's - it shows in
-                  every theme, so it has no ticks. */}
-              {backdropMode !== 'wallpaper' && (
-              <>
               <Text style={[styles.cardHint, { marginTop: 14 }]}>Застосувати цей фон у темах:</Text>
               <View style={{ gap: 8, marginTop: 6 }}>
                 {THEME_ORDER.map((key) => (
@@ -1117,8 +1084,6 @@ export default function SettingsScreen() {
                   </Pressable>
                 ))}
               </View>
-              </>
-              )}
             </>
           )}
         </View>

@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { supportsWallpaper } from '../utils/mindevaNative';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { doc, onSnapshot } from '../firestore';
@@ -310,32 +309,26 @@ export function useBackdropSettings() {
 export function useActiveBackdropOverride(): BackdropOverride | null {
   const { theme, backdropSettings } = useContext(ThemeContext);
   if (!backdropSettings.override) return null;
-  // The wallpaper only where the window can show one - not in the
-  // browser, not on an APK built before it.
-  // In EVERY theme: it is the window's, not a theme's look, and a
-  // wallpaper left off by a theme tick from an old gradient seemed to
-  // do nothing at all (2026-10-02).
-  if (backdropSettings.override.type === 'wallpaper') return supportsWallpaper ? backdropSettings.override : null;
+  // «Шпалери телефона» was removed (2026-10-02: the wallpaper blinked
+  // through whenever the picture redrew). One left in the account is the
+  // standard backdrop.
+  if (backdropSettings.override.type === 'wallpaper') return null;
   return backdropSettings.appliesTo.includes(theme.key) ? backdropSettings.override : null;
 }
 
-// How opaque a screen's own ground is over the phone's wallpaper (the
-// 'wallpaper' backdrop): the veil, 0-1 - or null when there is no
-// wallpaper and the ground is solid as always.
+// How opaque a screen's own ground is over the user's own picture
+// (BackdropLayer draws it under the whole app): the veil, 0-1 - or null
+// when there is none and the ground is solid as always.
 export function useWallpaperVeil(): number | null {
   const override = useActiveBackdropOverride();
-  if (override?.type === 'wallpaper') return override.veil / 100;
-  // A picture of the user's own (BackdropLayer draws it under the whole
-  // app) shows through the same way.
   if (override?.type === 'image') return (override.veil ?? 45) / 100;
   return null;
 }
 
-// Whether the app's screens stand over something of the backdrop's own -
-// the phone's wallpaper or the user's picture - rather than a ground.
+// Whether the app's screens stand over the user's own picture rather
+// than a ground.
 export function useSeeThroughBackdrop(): boolean {
-  const type = useActiveBackdropOverride()?.type;
-  return type === 'wallpaper' || type === 'image';
+  return useActiveBackdropOverride()?.type === 'image';
 }
 
 // The interface scheme - Settings' own read/write pair. Everything
