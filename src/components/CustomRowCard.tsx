@@ -109,7 +109,7 @@ export default function CustomRowCard({
   const { background, text, textMuted } = softRecordColours(soft, recordColour(rowId));
   // Settles under the finger, as a note's card does (usePressSettle); the
   // whole card is what turns over when it opens (utils/flipOpen).
-  const settle = usePressSettle();
+  const settle = usePressSettle(rowId);
   const cardRef = useRef<View>(null);
   return (
     <Animated.View ref={cardRef} {...lift()} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, settle.style]}>
@@ -275,7 +275,7 @@ export function CustomRowGridCard({
   const soft = useSoftSurface();
   const { background, text, textMuted } = softRecordColours(soft, recordColour(rowId));
   const hasCover = display.cover !== undefined;
-  const settle = usePressSettle();
+  const settle = usePressSettle(rowId);
   const cardRef = useRef<View>(null);
   return (
     <Animated.View

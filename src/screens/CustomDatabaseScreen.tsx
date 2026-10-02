@@ -103,7 +103,7 @@ import {
 import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
-import { captureCard, type FlipFrom } from '../utils/flipOpen';
+import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import { useTechnicalDocs } from '../hooks/useTechnicalDocs';
 import InlineVideoPlayer from '../components/InlineVideoPlayer';
 import VideoPlayerModal from '../components/VideoPlayerModal';
@@ -432,12 +432,15 @@ export default function CustomDatabaseScreen({
   // not fly out of a card it was never in.
   useEffect(() => {
     if (rowPageId !== null) return;
-    const spent = setTimeout(() => setRowPageFlip(null), 700);
+    const spent = setTimeout(() => {
+      setRowPageFlip(null);
+      endFlip();
+    }, 700);
     return () => clearTimeout(spent);
   }, [rowPageId]);
   // A record's card pressed: turned over into its page.
   const openRowFromCard = (rowId: string, event?: GestureResponderEvent) => {
-    captureCard(event).then((flip) => {
+    prepareFlip(rowId, event).then((flip) => {
       setRowPageFlip(flip);
       setRowPageId(rowId);
     });
@@ -2482,8 +2485,10 @@ export default function CustomDatabaseScreen({
   function openNoteFromPage(rowId: string, documentId: string) {
     pageToReopenRef.current = rowId;
     setPlayingLessonId(null);
-    // Not turned back into the card: the editor is opening over it.
+    // Not turned back into the card: the editor is opening over it - and
+    // the card, turned away, is let back at once.
     setRowPageFlip(null);
+    endFlip();
     setRowPageId(null);
     navigation.navigate('Editor', { documentId });
   }

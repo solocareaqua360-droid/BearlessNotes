@@ -1,8 +1,8 @@
 import { MOTION } from '../theme/desktopTheme';
 import { useLeaving } from '../hooks/useLeaving';
 import { ReactNode, useEffect, useRef } from 'react';
-import { BackHandler, Image, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import type { FlipFrom } from '../utils/flipOpen';
+import { BackHandler, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { flipProgress, type FlipFrom } from '../utils/flipOpen';
 import { BlurView } from 'expo-blur';
 import Animated, { Easing, SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useBlurTarget } from './GlassTarget';
@@ -67,7 +67,7 @@ export default function GlassLayer({
   // The card's turn, 0 in the card .. 1 open - and the dim and the blur
   // behind follow the same clock: they came on at once ("ніби світло
   // вимкнули") and went off only after the card had settled.
-  const flipT = useSharedValue(0);
+  const flipT = flipProgress;
   const backdropStyle = useAnimatedStyle(() => ({ opacity: flipT.value }));
   const lastChildren = useRef(children);
   if (visible) lastChildren.current = children;
@@ -141,8 +141,9 @@ function GrowIn({ leaving, children }: { leaving: boolean; children: ReactNode }
 }
 
 // THE CARD TURNING OVER INTO ITS WINDOW (utils/flipOpen). One clock, two
-// halves: first the card's photograph turns edge-on where it stands,
-// lifting a little; then the window comes round from edge-on on its back,
+// halves: first the real card turns edge-on where it stands, lifting a
+// little (it reads the same clock - usePressSettle); then the window
+// comes round from edge-on on its back,
 // growing from the card's size and place to its own. Edge-on, neither is
 // seen - that is where one hands over to the other. Closing plays it
 // backwards into the same card.
@@ -170,13 +171,6 @@ function FlipIn({
   useEffect(() => {
     p.value = withTiming(leaving ? 0 : 1, { duration: FLIP_MS, easing: Easing.inOut(Easing.cubic) });
   }, [leaving, p]);
-  const front = useAnimatedStyle(() => {
-    const k = Math.min(1, p.value * 2);
-    return {
-      opacity: p.value < 0.5 ? 1 : 0,
-      transform: [{ perspective: PERSPECTIVE }, { rotateY: `${k * 90}deg` }, { scale: 1 + 0.06 * k }],
-    };
-  });
   const back = useAnimatedStyle(() => {
     const q = Math.max(0, (p.value - 0.5) * 2);
     const s0 = ww > 0 ? rw / ww : 1;
@@ -193,17 +187,9 @@ function FlipIn({
     };
   });
   return (
-    <>
-      <Animated.View
-        pointerEvents="none"
-        style={[{ position: 'absolute', left: rx, top: ry, width: rw, height: rh }, front]}
-      >
-        <Image source={{ uri: from.uri }} style={StyleSheet.absoluteFill} />
-      </Animated.View>
-      <Animated.View style={[styles.content, back]} pointerEvents={leaving ? 'none' : 'box-none'}>
-        {children}
-      </Animated.View>
-    </>
+    <Animated.View style={[styles.content, back]} pointerEvents={leaving ? 'none' : 'box-none'}>
+      {children}
+    </Animated.View>
   );
 }
 
