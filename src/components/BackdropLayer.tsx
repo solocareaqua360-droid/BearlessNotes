@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
+import Animated, { SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useActiveBackdropOverride, useTheme } from '../theme/ThemeProvider';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { listenWallpaperBoost, wallpaperBoosted } from '../utils/wallpaperBoost';
@@ -9,18 +10,41 @@ import { listenWallpaperBoost, wallpaperBoosted } from '../utils/wallpaperBoost'
 // under the navigator - the soft style's screens only lay their veil
 // over it (ScreenGround).
 //
-// Two things keep it from blinking while the slider moves (2026-10-02:
-// "при руху повзунка періодично блимає фон телефона"):
-// - the theme's own ground lies under it, so nothing behind the app
-//   (the window still shows the phone's wallpaper, from the APK that
-//   tried it) can ever show through;
-// - a new blur is drawn OVER the last one and the last one stays until
-//   the new one has loaded, so there is never a frame with no picture.
+// SMOOTH BLUR (2026-10-02: "немає плавності розмиття, інколи блимає"):
+// blurring the picture again for every step of the slider can never be
+// smooth - each step decodes and blurs anew, and the frame in between
+// shows. So the picture is blurred at a few fixed LEVELS, each one once,
+// and the blur in between is two neighbouring levels crossfaded: moving
+// the slider only changes opacities. A level is mounted a step before it
+// is needed (at opacity 0), so it has loaded by the time it shows; one
+// still loading shows the level under it, never a hole. The theme's
+// ground lies under everything, so nothing behind the app shows through.
 //
 // While the calendar or the databases are out (wallpaperBoost) the blur
-// is twice as deep, never under a soft one - option Б.
+// goes twice as deep, never under a soft one - option Б - and glides
+// there through the same levels.
+const LEVELS = [0, 3, 6, 10, 14, 19, 25, 32, 40, 50, 60];
 const MAX_BLUR = 30;
 const BOOST_MIN = 12;
+
+// A radius as a position between levels: 12 -> 3.5.
+function indexOf(radius: number): number {
+  for (let i = 1; i < LEVELS.length; i++) {
+    if (radius <= LEVELS[i]) return i - 1 + (radius - LEVELS[i - 1]) / (LEVELS[i] - LEVELS[i - 1]);
+  }
+  return LEVELS.length - 1;
+}
+
+function Level({ i, level, uri }: { i: number; level: SharedValue<number>; uri: string }) {
+  // Opaque at and below where the blur stands (the ones below are hidden
+  // by it), the next one up crossfading in, the rest clear.
+  const style = useAnimatedStyle(() => ({ opacity: Math.min(1, Math.max(0, 1 - (i - level.value))) }), [i]);
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, style]}>
+      <Image source={{ uri }} blurRadius={LEVELS[i]} resizeMode="cover" style={StyleSheet.absoluteFill} />
+    </Animated.View>
+  );
+}
 
 export default function BackdropLayer() {
   const theme = useTheme();
@@ -30,26 +54,31 @@ export default function BackdropLayer() {
   const [boosted, setBoosted] = useState(wallpaperBoosted);
   useEffect(() => listenWallpaperBoost(setBoosted), []);
   const base = image ? (image.blur / 100) * MAX_BLUR : 0;
-  const wanted = Math.round(boosted ? Math.min(MAX_BLUR * 2, Math.max(base * 2, BOOST_MIN)) : base);
-  // The blur on screen, and the one loading over it.
-  const [shown, setShown] = useState<number | null>(null);
-  const uri = image?.uri;
-  useEffect(() => setShown(null), [uri]);
+  const target = indexOf(boosted ? Math.min(LEVELS[LEVELS.length - 1], Math.max(base * 2, BOOST_MIN)) : base);
+
+  const level = useSharedValue(target);
+  // Which levels to keep mounted: around where the blur was and where it
+  // is going, one step either side - so a glide (a drawer's boost) has
+  // its levels loaded along the way.
+  const previous = useRef(target);
+  const [range, setRange] = useState<[number, number]>([Math.floor(target) - 1, Math.ceil(target) + 1]);
+  useEffect(() => {
+    const from = previous.current;
+    previous.current = target;
+    setRange([Math.floor(Math.min(from, target)) - 1, Math.ceil(Math.max(from, target)) + 1]);
+    level.value = withTiming(target, { duration: Math.abs(target - from) > 1.5 ? 260 : 120 });
+    // Once there, only the neighbours of where it stands stay mounted.
+    const settle = setTimeout(() => setRange([Math.floor(target) - 1, Math.ceil(target) + 1]), 400);
+    return () => clearTimeout(settle);
+  }, [target, level]);
+
   if (!image || status !== 'ready') return null;
+  const indices: number[] = [];
+  for (let i = Math.max(0, range[0]); i <= Math.min(LEVELS.length - 1, range[1]); i++) indices.push(i);
   return (
     <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.ground }]} pointerEvents="none">
-      {/* Keyed by the blur itself, the same key whether it is the one
-          loading or the one shown - so the loaded one is never mounted
-          again (a fresh mount would decode again, and blink). */}
-      {(shown === null || shown === wanted ? [wanted] : [shown, wanted]).map((radius) => (
-        <Image
-          key={`blur-${radius}`}
-          source={{ uri: image.uri }}
-          blurRadius={radius}
-          resizeMode="cover"
-          style={StyleSheet.absoluteFill}
-          onLoad={radius === wanted ? () => setShown(radius) : undefined}
-        />
+      {indices.map((i) => (
+        <Level key={`${image.uri}-${i}`} i={i} level={level} uri={image.uri} />
       ))}
     </View>
   );

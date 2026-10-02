@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { doc, onSnapshot } from '../firestore';
@@ -160,6 +160,7 @@ function isBackdropSettings(value: unknown): value is BackdropSettings {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themeKey, setKey] = useState<ThemeKey>(DEFAULT_THEME_KEY);
   const [backdropSettings, setBackdropState] = useState<BackdropSettings>(DEFAULT_BACKDROP_SETTINGS);
+  const backdropWriteRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [fontScale, setFontScaleState] = useState<FontScaleSettings>(DEFAULT_FONT_SCALE);
   const [colourScheme, setSchemeState] = useState<ColourScheme | null>(null);
 
@@ -209,7 +210,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             AsyncStorage.setItem(CACHE_KEY, stored).catch(() => undefined);
           }
           const backdrop = snapshot.data()?.backdrop;
-          if (isBackdropSettings(backdrop)) {
+          // Not while a change of our own is still waiting to be written:
+          // the account holds the value from before it.
+          if (isBackdropSettings(backdrop) && !backdropWriteRef.current) {
             setBackdropState(backdrop);
             AsyncStorage.setItem(BACKDROP_CACHE_KEY, JSON.stringify(backdrop)).catch(() => undefined);
           }
@@ -256,8 +259,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       backdropSettings,
       setBackdropSettings: (next: BackdropSettings) => {
         setBackdropState(next);
-        AsyncStorage.setItem(BACKDROP_CACHE_KEY, JSON.stringify(next)).catch(() => undefined);
-        setDoc(doc(db, 'settings', PREFS_DOC), { backdrop: next }, { merge: true }).catch(() => undefined);
+        // Kept on screen at once, written once the hand has stopped: a
+        // slider calls this on every move, and every write came back from
+        // the account as a snapshot of an older value - the backdrop
+        // jumped back and forth under the finger.
+        if (backdropWriteRef.current) clearTimeout(backdropWriteRef.current);
+        backdropWriteRef.current = setTimeout(() => {
+          backdropWriteRef.current = null;
+          AsyncStorage.setItem(BACKDROP_CACHE_KEY, JSON.stringify(next)).catch(() => undefined);
+          setDoc(doc(db, 'settings', PREFS_DOC), { backdrop: next }, { merge: true }).catch(() => undefined);
+        }, 500);
       },
       fontScale,
       setFontScale: (next: FontScaleSettings) => {
