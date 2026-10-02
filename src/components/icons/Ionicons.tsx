@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons as VectorIonicons } from '@expo/vector-icons';
-import Svg, { Circle, Line, Path, Polygon, Rect } from 'react-native-svg';
+import Svg, { Circle, Ellipse, Line, Path, Polygon, Polyline, Rect } from 'react-native-svg';
 import { FROM_IONICONS, LUCIDE, SOLID_IONICONS, type IconElement } from './lucideIcons';
 
 // THE APP'S ICONS, in the soft style (see theme/soft and SoftIcon) - the
@@ -33,6 +33,10 @@ function renderElement([kind, attrs]: IconElement, key: number, stroke: string, 
       return <Line key={key} x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2} {...common} />;
     case 'polygon':
       return <Polygon key={key} points={a.points} {...common} />;
+    case 'polyline':
+      return <Polyline key={key} points={a.points} {...common} />;
+    case 'ellipse':
+      return <Ellipse key={key} cx={a.cx} cy={a.cy} rx={a.rx} ry={a.ry} {...common} />;
     default:
       return null;
   }
@@ -41,9 +45,12 @@ function renderElement([kind, attrs]: IconElement, key: number, stroke: string, 
 function IoniconsSoft(props: Props) {
   const { name, size = 12, color = '#000', style, onPress, accessibilityLabel, testID } = props;
   const key = typeof name === 'string' && name.endsWith('-outline') ? name.slice(0, -8) : String(name);
-  const lucide = FROM_IONICONS[key];
+  // 'lc:<name>': a Lucide icon chosen by its own name in the icon picker
+  // (constants/iconCatalog) - no Ionicons name stands behind it.
+  const direct = key.startsWith('lc:');
+  const lucide = direct ? key.slice(3) : FROM_IONICONS[key];
   const elements = lucide ? LUCIDE[lucide] : undefined;
-  if (!elements) return <VectorIonicons {...props} />;
+  if (!elements) return direct ? <Svg width={size} height={size} /> : <VectorIonicons {...props} />;
 
   const ink = typeof color === 'string' ? color : '#000';
   // Filled Ionicons that mean a state keep a solid form; '-outline'

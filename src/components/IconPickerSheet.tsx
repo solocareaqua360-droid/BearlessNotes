@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import Sheet from './surfaces/Sheet';
-import { TAG_ICONS } from '../constants/tags';
+import IconCatalogGrid from './IconCatalogGrid';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { FONT_REGULAR } from '../utils/fonts';
@@ -30,8 +30,6 @@ export default function IconPickerSheet({
   useEffect(() => {
     if (visible) setQuery('');
   }, [visible]);
-  const needle = query.trim().toLowerCase();
-  const icons = needle ? TAG_ICONS.filter((name) => name.includes(needle)) : TAG_ICONS;
 
   return (
     <Sheet
@@ -53,8 +51,11 @@ export default function IconPickerSheet({
         </View>
       }
     >
-      <View style={styles.grid}>
-        {icons.map((name) => {
+      <IconCatalogGrid
+        query={query}
+        gridStyle={styles.grid}
+        labelColor={theme.ink.muted}
+        renderCell={(name) => {
           const active = selected === name;
           return (
             <Pressable key={name} onPress={() => onPick(name)} style={[styles.cell, active && styles.cellActive]}>
@@ -65,8 +66,8 @@ export default function IconPickerSheet({
               />
             </Pressable>
           );
-        })}
-      </View>
+        }}
+      />
     </Sheet>
   );
 }

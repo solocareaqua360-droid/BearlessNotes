@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { CustomDatabase } from '../types';
-import { defaultColorFor, tileColorsDoc } from '../constants/databaseTiles';
+import { defaultColorFor, tileColorsDoc, tileIconsDoc } from '../constants/databaseTiles';
 import { listenError } from '../utils/listenError';
 
 // What both drawings of the database menu need: the colours the user has
@@ -11,6 +11,12 @@ import { listenError } from '../utils/listenError';
 // never show a different set.
 export function useDatabaseTiles() {
   const [tileColors, setTileColors] = useState<Record<string, string>>({});
+  const [tileIcons, setTileIcons] = useState<Record<string, string>>({});
+  useEffect(() => {
+    return onSnapshot(tileIconsDoc, (snapshot) => {
+      setTileIcons((snapshot.data() as Record<string, string> | undefined) ?? {});
+    }, listenError('useDatabaseTiles:icons'));
+  }, []);
   const [customDatabases, setCustomDatabases] = useState<CustomDatabase[]>([]);
 
   useEffect(() => {
@@ -44,5 +50,10 @@ export function useDatabaseTiles() {
     return tileColors[key] ?? defaultColorFor(key);
   }
 
-  return { colorFor, customDatabases };
+  // A built-in database's icon - the user's pick, or the tile's own.
+  function iconFor(key: string, fallback: string): string {
+    return tileIcons[key] ?? fallback;
+  }
+
+  return { colorFor, iconFor, customDatabases };
 }

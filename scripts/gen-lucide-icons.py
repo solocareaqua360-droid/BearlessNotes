@@ -9,7 +9,7 @@ lm = __import__('lucide-map')
 pkg = sys.argv[1]
 n = json.load(open(os.path.join(pkg, 'icon-nodes.json')))
 lic = open(os.path.join(pkg, 'LICENSE')).read().strip()
-used = sorted(set(lm.M.values()))
+used = sorted(set(lm.M.values()) | set(getattr(lm, 'EXTRA', [])))
 missing = [v for v in used if v not in n]
 if missing:
     sys.exit('not in lucide: ' + ', '.join(missing))
@@ -25,7 +25,7 @@ def fmt(attrs):
     return '{' + ','.join(parts) + '}'
 out = ["// GENERATED from lucide-static's icon-nodes.json - only the icons this app\n// uses (see FROM_IONICONS). Regenerate rather than hand-edit.\n//\n// Lucide - https://lucide.dev\n",
        "/*\n" + lic + "\n*/\n",
-       "export type IconElement = ['path' | 'circle' | 'rect' | 'line' | 'polygon', Record<string, string | number>];\n",
+       "export type IconElement = ['path' | 'circle' | 'rect' | 'line' | 'polygon' | 'polyline' | 'ellipse', Record<string, string | number>];\n",
        "export const LUCIDE: Record<string, IconElement[]> = {"]
 for u in used:
     out.append(f"  {json.dumps(u)}: [" + ','.join(f"['{t}',{fmt(a)}]" for t, a in n[u]) + "],")

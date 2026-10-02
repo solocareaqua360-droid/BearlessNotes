@@ -1,4 +1,5 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import IconCatalogGrid from './IconCatalogGrid';
 import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -287,9 +288,11 @@ export default function TagPicker({
                 />
               </View>
               <ScrollView style={styles.iconGridScroll} keyboardShouldPersistTaps="handled">
-                <View style={styles.iconGrid}>
-                  {filteredIcons.map((name) => (
-                    <Pressable
+                <IconCatalogGrid
+                  query={iconQuery}
+                  gridStyle={styles.iconGrid}
+                  labelColor={theme.ink.faint}
+                  renderCell={(name) => (<Pressable
                       key={name}
                       style={[styles.iconCell, selectedIcon === name && { backgroundColor: selectedColor }]}
                       onPress={() => setSelectedIcon(name)}
@@ -300,8 +303,8 @@ export default function TagPicker({
                         color={selectedIcon === name ? '#fff' : theme.ink.muted}
                       />
                     </Pressable>
-                  ))}
-                </View>
+                  )}
+                />
               </ScrollView>
 
               <Text style={styles.sectionLabel}>ТИП</Text>

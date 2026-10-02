@@ -70,6 +70,10 @@ export const GRID_TILES: Tile[] = [
 ];
 
 export const tileColorsDoc = doc(db, 'settings', 'databaseTileColors');
+// The icons the user chose for the BUILT-IN databases (a database of their
+// own keeps its icon on its own record) - 2026-10-02: "кожній базі, навіть
+// стандартним, присвоїти можливість піктограму".
+export const tileIconsDoc = doc(db, 'settings', 'databaseTileIcons');
 
 // Deterministic starting color per tile (harmonious palette, cycled by
 // position) - only used until the user picks their own via the tile's

@@ -1,4 +1,5 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import IconCatalogGrid from './IconCatalogGrid';
 import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -154,9 +155,11 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
             />
           </View>
           <ScrollView style={styles.iconGridScroll}>
-            <View style={styles.iconGrid}>
-              {filteredIcons.map((name) => (
-                <Pressable
+            <IconCatalogGrid
+              query={iconQuery}
+              gridStyle={styles.iconGrid}
+              labelColor={theme.ink.faint}
+              renderCell={(name) => (<Pressable
                   key={name}
                   style={[styles.iconCell, selectedIcon === name && { backgroundColor: selectedColor }]}
                   onPress={() => setSelectedIcon(name)}
@@ -167,8 +170,8 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
                     color={selectedIcon === name ? '#fff' : theme.ink.muted}
                   />
                 </Pressable>
-              ))}
-            </View>
+              )}
+            />
           </ScrollView>
         </View>
       </View>

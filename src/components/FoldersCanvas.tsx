@@ -67,7 +67,7 @@ export default function FoldersCanvas({
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { tags, attachTag, detachTag, createFolderTag, renameTag, updateTag } = useTags();
   const items = useAllFolderItems(tags);
-  const { customDatabases, colorFor } = useDatabaseTiles();
+  const { customDatabases, colorFor, iconFor } = useDatabaseTiles();
   const recordColour = useRecordColour();
   // The databases, as circles - in the icons and colours of their own
   // tiles on the Бази board: the built-in ones, then the user's own.
@@ -78,7 +78,7 @@ export default function FoldersCanvas({
       return {
         kind: c.kind,
         label: c.label,
-        icon: tile?.icon ?? 'grid-outline',
+        icon: tile ? iconFor(tile.key, tile.icon) : 'grid-outline',
         color: tileKey ? colorFor(tileKey) : S.ink2,
       };
     }),

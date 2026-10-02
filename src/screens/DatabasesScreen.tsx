@@ -16,8 +16,7 @@ import {
   Tile,
   WIDE_TILES,
   openDatabaseTile,
-  tileColorsDoc,
-} from '../constants/databaseTiles';
+  tileColorsDoc, tileIconsDoc } from '../constants/databaseTiles';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { PinnableItem, useDatabaseContents } from '../hooks/useDatabaseCounts';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
@@ -283,7 +282,7 @@ export default function DatabasesScreen() {
   // What the left pane is showing, on a wide screen: a database opened
   // from a tile. On a phone the same tap navigates, as it always did.
   const [openInPane, setOpenInPane] = useState<PaneTarget | null>(null);
-  const { colorFor, customDatabases } = useDatabaseTiles();
+  const { colorFor, iconFor, customDatabases } = useDatabaseTiles();
   // What is inside each database, for the tiles to show - see
   // useDatabaseContents.
   const { counts, pinnableGroups, pinnableTags } = useDatabaseContents();
@@ -337,6 +336,11 @@ export default function DatabasesScreen() {
   const [folders, setFolders] = useState<Record<string, TileFolder>>({});
   // The database whose icon is being chosen.
   const [iconPickerFor, setIconPickerFor] = useState<string | null>(null);
+  // A built-in database's own icon (null: not a built-in tile), and the
+  // icon any database wears now.
+  const builtinIcon = (key: string) => [...WIDE_TILES, ...GRID_TILES].find((t) => t.key === key)?.icon ?? null;
+  const currentIcon = (key: string): string | undefined =>
+    customDatabases.find((d) => d.id === key)?.icon ?? (builtinIcon(key) ? iconFor(key, builtinIcon(key) as string) : undefined);
   // A tile being carried OUT of its folder: while it is in the hand it is a
   // tile of the board, not of the folder.
   const [extracting, setExtracting] = useState<string | null>(null);
@@ -757,8 +761,9 @@ export default function DatabasesScreen() {
     .filter((item): item is BoardItem => !!item);
 
   const looseItems: BoardItem[] = [
-    ...WIDE_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile })),
-    ...GRID_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile })),
+    // The icon the user chose for it, where they did.
+    ...WIDE_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile: { ...tile, icon: iconFor(tile.key, tile.icon) as Tile['icon'] } })),
+    ...GRID_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile: { ...tile, icon: iconFor(tile.key, tile.icon) as Tile['icon'] } })),
     ...customDatabases.map((database) => ({ key: database.id, kind: 'custom' as const, database })),
     ...pinnedTiles,
     { key: NEW_TILE_KEY, kind: 'action' as const },
@@ -1716,9 +1721,9 @@ export default function DatabasesScreen() {
               )}
               {/* Only a database the user made can be deleted, and only
                   from here - the built-in ones are the app itself. */}
-              {/* A database the user made chooses its own icon - they all
-                  stood under the same grid glyph. */}
-              {colorMenuKey && customDatabases.some((d) => d.id === colorMenuKey) && (
+              {/* Every database chooses its icon - the user's own and, since
+                  2026-10-02, the built-in ones too. */}
+              {colorMenuKey && (customDatabases.some((d) => d.id === colorMenuKey) || builtinIcon(colorMenuKey)) && (
                 <Pressable
                   style={styles.sheetRow}
                   onPress={() => {
@@ -1727,7 +1732,7 @@ export default function DatabasesScreen() {
                   }}
                 >
                   <Ionicons
-                    name={(customDatabases.find((d) => d.id === colorMenuKey)?.icon as keyof typeof Ionicons.glyphMap) ?? 'grid-outline'}
+                    name={(currentIcon(colorMenuKey) as keyof typeof Ionicons.glyphMap) ?? 'grid-outline'}
                     size={17}
                     color={theme.ink.primary}
                   />
@@ -2045,9 +2050,13 @@ export default function DatabasesScreen() {
       <IconPickerSheet
         visible={iconPickerFor !== null}
         title="Іконка бази"
-        selected={customDatabases.find((d) => d.id === iconPickerFor)?.icon}
+        selected={iconPickerFor ? currentIcon(iconPickerFor) : undefined}
         onPick={(icon) => {
-          if (iconPickerFor) setDoc(doc(db, 'customDatabases', iconPickerFor), { icon }, { merge: true });
+          if (iconPickerFor && customDatabases.some((d) => d.id === iconPickerFor)) {
+            setDoc(doc(db, 'customDatabases', iconPickerFor), { icon }, { merge: true });
+          } else if (iconPickerFor && builtinIcon(iconPickerFor)) {
+            setDoc(tileIconsDoc, { [iconPickerFor]: icon }, { merge: true });
+          }
           setIconPickerFor(null);
         }}
         onClose={() => setIconPickerFor(null)}
