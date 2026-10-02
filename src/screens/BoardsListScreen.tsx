@@ -593,6 +593,7 @@ export default function BoardsListScreen({
       }}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
+        onTagTo: bulkAttachTag,
         onGroup: () => setBulkGroupPickerVisible(true),
         onDelete: confirmDeleteSelected,
       }}

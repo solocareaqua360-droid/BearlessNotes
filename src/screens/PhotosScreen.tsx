@@ -876,6 +876,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       }}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
+        onTagTo: bulkAttachTag,
         onGroup: () => setBulkGroupPickerVisible(true),
         onCopy: () => setBulkCopyModalVisible(true),
         onCopyObject: copySelectedToClipboard,

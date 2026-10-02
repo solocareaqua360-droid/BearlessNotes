@@ -417,6 +417,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       }}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
+        onTagTo: bulkAttachTag,
         onGroup: () => setBulkGroupPickerVisible(true),
         onBoard: () => setBulkBoardVisible(true),
         onCopy: () => setBulkNoteVisible(true),

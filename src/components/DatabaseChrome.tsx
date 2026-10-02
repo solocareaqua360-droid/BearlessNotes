@@ -1,4 +1,6 @@
 import { ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { Tag } from '../types';
+import RecentFolderStrip from './RecentFolderStrip';
 import ScreenGround from './ScreenGround';
 import { useInnerBack } from '../navigation/innerBack';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
@@ -125,6 +127,9 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   bulk?: {
     // Absent on a database with no tags (flashcards).
     onTag?: () => void;
+    // Files the whole selection in one folder at once - the strip of
+    // recent folders over the dock (RecentFolderStrip).
+    onTagTo?: (tag: Tag) => void;
     onGroup: () => void;
     onCopy?: () => void;
     // The selection onto a board (flashcards so far).
@@ -736,6 +741,12 @@ export default function DatabaseChrome<T extends { id: string }>({
       )}
 
       {overlay}
+
+      {/* The recent folders over the dock while something is selected -
+          one tap files the selection (the folders rework, step 2). */}
+      {isFocused && edgesFade && list.isSelectMode && list.selectedIds.size > 0 && bulk?.onTagTo && bulk.onTag && (
+        <RecentFolderStrip tags={list.tags} onPick={bulk.onTagTo} onOther={bulk.onTag} />
+      )}
 
       {/* In the explorer the "+" is a capsule of two: this database's own
           record, and a folder beside it - the same pair, drawn the same

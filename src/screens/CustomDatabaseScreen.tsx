@@ -1,4 +1,5 @@
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
+import RecentFolderStrip from '../components/RecentFolderStrip';
 import ScreenGround from '../components/ScreenGround';
 import { saveLinkFromUrl } from '../utils/linkRecord';
 import { fieldWithRole, formatMoney, formatSubscription, linksField, subscriptionOf, subscriptionTotals } from '../utils/appsTemplate';
@@ -28,8 +29,7 @@ import {
   TextInput,
   useWindowDimensions,
   View,
-  type GestureResponderEvent,
-} from 'react-native';
+  type GestureResponderEvent, Platform } from 'react-native';
 // gesture-handler's own ScrollView (not the core RN one) for the row-editor
 // sheet: a drag that starts on one of its TextInput/Pressable fields never
 // reaches an RN ScrollView's scroll recognition on Android, so that form
@@ -4486,6 +4486,12 @@ export default function CustomDatabaseScreen({
         onRenameTag={renameTag}
         onClose={() => setTagPickerVisible(false)}
       />
+
+      {/* The recent folders over the dock while something is selected -
+          one tap files the selection (the folders rework, step 2). */}
+      {isFocused && isSelectMode && selectedIds.size > 0 && Platform.OS !== 'web' && (
+        <RecentFolderStrip tags={tags} onPick={bulkAttachTag} onOther={() => setBulkTagPickerVisible(true)} />
+      )}
 
       <TagPicker
         visible={bulkTagPickerVisible}

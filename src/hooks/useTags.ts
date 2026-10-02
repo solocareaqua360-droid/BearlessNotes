@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { noteFolderUsed } from '../utils/recentFolders';
 import {
   arrayRemove,
   arrayUnion,
@@ -138,6 +139,7 @@ export function useTags() {
       { tagIds: arrayRemove(tag.id), ownerId: auth.currentUser?.uid ?? null },
       { merge: true }
     );
+    noteFolderUsed(tag.id);
     await batch.commit();
   }
 
@@ -165,6 +167,7 @@ export function useTags() {
     });
     batch.update(doc(db, itemsCollection, itemId), { tagIds: arrayUnion(tagRef.id) });
     await batch.commit();
+    noteFolderUsed(tagRef.id);
     return tagRef.id;
   }
 
@@ -205,6 +208,7 @@ export function useTags() {
       batch.update(doc(db, itemsCollection, itemId), { tagIds: arrayUnion(tagRef.id) });
     }
     await batch.commit();
+    noteFolderUsed(tagRef.id);
     return tagRef.id;
   }
 

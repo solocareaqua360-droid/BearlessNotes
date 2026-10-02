@@ -1,4 +1,5 @@
 import { lift } from '../utils/lift';
+import RecentFolderStrip from '../components/RecentFolderStrip';
 import ScreenGround from '../components/ScreenGround';
 import FolderCanvas from '../components/FolderCanvas';
 import { NoteCanvasTile } from '../components/CanvasTiles';
@@ -27,8 +28,7 @@ import {
   Text,
   TextInput,
   useWindowDimensions,
-  View,
-} from 'react-native';
+  View, Platform } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '../components/icons/Ionicons';
 import AttachmentImage from '../components/AttachmentImage';
@@ -2288,6 +2288,12 @@ export default function DocumentsScreen({
           list.updateTag(target, { path: target.path, icon, color, types }).then(() => explorer.renameFolder(target.path, path.trim()));
         }}
       />
+
+      {/* The recent folders over the dock while something is selected -
+          one tap files the selection (the folders rework, step 2). */}
+      {isFocused && isSelectMode && selectedIds.size > 0 && Platform.OS !== 'web' && (
+        <RecentFolderStrip tags={tags} onPick={bulkAttachTag} onOther={() => setBulkTagPickerVisible(true)} />
+      )}
 
       <TagPicker
         visible={bulkTagPickerVisible}
