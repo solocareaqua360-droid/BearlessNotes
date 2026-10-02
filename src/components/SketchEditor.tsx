@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import {
   Animated as RNAnimated,
   GestureResponderEvent,
@@ -20,7 +22,6 @@ import { SketchElement, SketchImageElement, SketchPathElement, SketchShape } fro
 import * as ImagePicker from 'expo-image-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { backupFileToDrive } from '../utils/googleDrive';
-import { ask } from './surfaces/Ask';
 import AddExistingItemModal from './AddExistingItemModal';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft } from '../theme/soft';
@@ -354,6 +355,9 @@ export default function SketchEditor({ visible, initialElements, background, pap
       history.current = [];
       setView({ tx: 0, ty: 0, s: 1 });
       setGuides(null);
+      pinch.current = null;
+      twoActive.current = 0;
+      setPictureMenuOpen(false);
       setTool('pen');
       // A drawing that has grown past the screen opens whole, not with
       // its top-left corner showing.
@@ -557,8 +561,12 @@ export default function SketchEditor({ visible, initialElements, background, pap
     return { x: (n.locationX - view.tx) / view.s, y: (n.locationY - view.ty) / view.s };
   }
   // Two fingers: the paper moves and zooms under them, and whatever one
-  // finger had started is let go of.
-  const pinch = useRef<{ c: Point; d: number; view: typeof view } | null>(null);
+  // finger had started is let go of. Gesture-handler's pinch and two-finger
+  // pan, not the responder's own touches: on Android those never told the
+  // canvas a second finger was there, and the paper did not move
+  // (2026-10-02). The responder keeps the one-finger drawing.
+  const pinch = useRef<{ c: Point; view: typeof view; scale: number; dx: number; dy: number } | null>(null);
+  const twoActive = useRef(0);
   function dropUnfinished() {
     setCurrentPoints([]);
     setShapeStart(null);
@@ -569,28 +577,75 @@ export default function SketchEditor({ visible, initialElements, background, pap
     setMarquee(null);
     setGuides(null);
   }
-  function pinchMove(e: GestureResponderEvent): boolean {
-    const touches = e.nativeEvent.touches;
-    if (background || touches.length < 2) return false;
-    const a = { x: touches[0].pageX - origin.current.x, y: touches[0].pageY - origin.current.y };
-    const b = { x: touches[1].pageX - origin.current.x, y: touches[1].pageY - origin.current.y };
-    const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
-    if (!pinch.current) {
-      dropUnfinished();
-      pinch.current = { c, d, view };
-      return true;
+  function twoFingers(kind: 'start' | 'scale' | 'pan' | 'end', a: number, b: number) {
+    if (kind === 'start') {
+      twoActive.current += 1;
+      if (!pinch.current) {
+        dropUnfinished();
+        pinch.current = { c: { x: a, y: b }, view, scale: 1, dx: 0, dy: 0 };
+      }
+      return;
     }
-    const start = pinch.current;
-    const nextS = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, start.view.s * (d / start.d)));
-    // The paper point that was under the fingers' middle stays under it.
-    const wx = (start.c.x - start.view.tx) / start.view.s;
-    const wy = (start.c.y - start.view.ty) / start.view.s;
-    setView({ s: nextS, tx: c.x - wx * nextS, ty: c.y - wy * nextS });
-    return true;
+    const p = pinch.current;
+    if (!p) return;
+    if (kind === 'end') {
+      // Pinch and pan end separately; the paper is let go of when both have.
+      twoActive.current = Math.max(0, twoActive.current - 1);
+      if (twoActive.current === 0) pinch.current = null;
+      return;
+    }
+    if (kind === 'scale') p.scale = a;
+    else {
+      p.dx = a;
+      p.dy = b;
+    }
+    const s = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, p.view.s * p.scale));
+    // The paper point that was under the fingers at the start stays under
+    // them, wherever they have carried it.
+    const wx = (p.c.x - p.view.tx) / p.view.s;
+    const wy = (p.c.y - p.view.ty) / p.view.s;
+    setView({ s, tx: p.c.x + p.dx - wx * s, ty: p.c.y + p.dy - wy * s });
   }
+  const twoRef = useRef(twoFingers);
+  twoRef.current = twoFingers;
+  const onTwo = useCallback((kind: 'start' | 'scale' | 'pan' | 'end', a: number, b: number) => twoRef.current(kind, a, b), []);
+  const twoFingerGesture = useMemo(() => {
+    // onStart/onEnd - when a gesture is ACTIVE - never onBegin: those run
+    // on the first finger already, and would stop every stroke drawing.
+    const pinchG = Gesture.Pinch()
+      .enabled(!background)
+      .onStart((e) => {
+        runOnJS(onTwo)('start', e.focalX, e.focalY);
+      })
+      .onUpdate((e) => {
+        runOnJS(onTwo)('scale', e.scale, 0);
+      })
+      .onEnd(() => {
+        runOnJS(onTwo)('end', 0, 0);
+      });
+    const panG = Gesture.Pan()
+      .enabled(!background)
+      .minPointers(2)
+      .maxPointers(2)
+      .onStart((e) => {
+        // Where the fingers were when they began, so the paper does not
+        // jump by the distance it took the pan to wake.
+        runOnJS(onTwo)('start', e.x - e.translationX, e.y - e.translationY);
+        runOnJS(onTwo)('pan', e.translationX, e.translationY);
+      })
+      .onUpdate((e) => {
+        runOnJS(onTwo)('pan', e.translationX, e.translationY);
+      })
+      .onEnd(() => {
+        runOnJS(onTwo)('end', 0, 0);
+      });
+    return Gesture.Simultaneous(pinchG, panG);
+  }, [onTwo, background]);
 
   function handleStart(e: GestureResponderEvent) {
+    // A new single touch after the fingers are off: never stay stuck.
+    if (pinch.current && twoActive.current === 0) pinch.current = null;
+    if (pinch.current) return;
     const { x: locationX, y: locationY } = paperPoint(e);
     if (tool === 'eraser') {
       eraseAt(locationX, locationY);
@@ -614,7 +669,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
   }
 
   function handleMove(e: GestureResponderEvent) {
-    if (pinchMove(e) || pinch.current) return;
+    if (pinch.current) return;
     const { x: locationX, y: locationY } = paperPoint(e);
     if (tool === 'eraser') {
       eraseAt(locationX, locationY);
@@ -634,10 +689,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
 
   function handleEnd() {
     erasing.current = false;
-    if (pinch.current) {
-      pinch.current = null;
-      return;
-    }
+    if (pinch.current) return;
     if (tool === 'select') {
       selectEnd();
       return;
@@ -788,19 +840,17 @@ export default function SketchEditor({ visible, initialElements, background, pap
     return new Promise((resolve) => Image.getSize(uri, (w, h) => resolve(w > 0 && h > 0 ? w / h : 4 / 3), () => resolve(4 / 3)));
   }
 
-  async function addPicture() {
-    const from = await ask({
-      title: 'Зображення',
-      actions: [
-        { id: 'gallery', label: 'З галереї телефону', icon: 'images-outline' },
-        { id: 'photos', label: 'Із «Зображень»', icon: 'image-outline' },
-      ],
-    });
+  // Where a picture comes from - asked in a small panel over the tools, IN
+  // this window: the app's own question window stands under the editor
+  // (a Modal of its own), so it went unseen and came out, once per press,
+  // after the editor closed (2026-10-02).
+  const [pictureMenuOpen, setPictureMenuOpen] = useState(false);
+  async function addPicture(from: 'gallery' | 'photos') {
+    setPictureMenuOpen(false);
     if (from === 'photos') {
       setPhotoPickerOpen(true);
       return;
     }
-    if (from !== 'gallery') return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return;
     const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
@@ -902,12 +952,15 @@ export default function SketchEditor({ visible, initialElements, background, pap
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: background ? '#111' : paperFill }]}>
+      {/* Gesture-handler needs a root of its own inside a Modal. */}
+      <GestureHandlerRootView style={[styles.container, { backgroundColor: background ? '#111' : paperFill }]}>
         <View
           style={background ? styles.canvasStage : styles.canvasFill}
           onLayout={(e) => setStage({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
         >
+          <GestureDetector gesture={twoFingerGesture}>
           <View
+            collapsable={false}
             style={[styles.canvas, background && { flex: 0, width: fitted.width, height: fitted.height }]}
             onLayout={handleCanvasLayout}
             onStartShouldSetResponder={() => true}
@@ -915,6 +968,9 @@ export default function SketchEditor({ visible, initialElements, background, pap
             onResponderGrant={handleStart}
             onResponderMove={handleMove}
             onResponderRelease={handleEnd}
+            // Two fingers took over (the paper moves): what one finger had
+            // started is dropped, not finished.
+            onResponderTerminate={dropUnfinished}
           >
             {!!background && <Image source={{ uri: background.uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
             <Svg style={StyleSheet.absoluteFill}>
@@ -1039,6 +1095,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
               </G>
             </Svg>
           </View>
+          </GestureDetector>
         </View>
 
         {/* THE TOP: three soft pieces floating over the paper - the way
@@ -1114,6 +1171,23 @@ export default function SketchEditor({ visible, initialElements, background, pap
                 </Pressable>
               ))}
             </View>
+          </RNAnimated.View>
+        )}
+        {pictureMenuOpen && (
+          <RNAnimated.View
+            style={[
+              styles.palette,
+              { bottom: insets.bottom + 84, backgroundColor: S.card, boxShadow: S.popShadow, transform: barPan.getTranslateTransform() },
+            ]}
+          >
+            <Pressable onPress={() => addPicture('gallery')} style={[styles.pictureRow, { backgroundColor: S.fill }]}>
+              <Ionicons name={'images-outline' as never} size={18} color={S.ink2} />
+              <Text style={[styles.shapeToggleLabel, { color: S.ink }]}>З галереї телефону</Text>
+            </Pressable>
+            <Pressable onPress={() => addPicture('photos')} style={[styles.pictureRow, { backgroundColor: S.fill }]}>
+              <Ionicons name={'image-outline' as never} size={18} color={S.ink2} />
+              <Text style={[styles.shapeToggleLabel, { color: S.ink }]}>Із «Зображень»</Text>
+            </Pressable>
           </RNAnimated.View>
         )}
         {shapePanelOpen && shapePanelShown && (
@@ -1198,7 +1272,15 @@ export default function SketchEditor({ visible, initialElements, background, pap
             {/* A picture: from the gallery, or from «Зображення». Not on a
                 photograph, which already is one. */}
             {!background && (
-              <Pressable hitSlop={4} style={styles.tool} onPress={addPicture}>
+              <Pressable
+                hitSlop={4}
+                style={[styles.tool, pictureMenuOpen && { backgroundColor: S.fill }]}
+                onPress={() => {
+                  setPaletteOpen(false);
+                  setShapePanelOpen(false);
+                  setPictureMenuOpen((open) => !open);
+                }}
+              >
                 <Ionicons name={'lc:image-plus' as never} size={19} color={S.ink2} />
               </Pressable>
             )}
@@ -1208,6 +1290,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
             hitSlop={6}
             onPress={() => {
               setShapePanelOpen(false);
+              setPictureMenuOpen(false);
               setPaletteOpen((open) => !open);
             }}
             style={styles.tool}
@@ -1221,6 +1304,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
               hitSlop={6}
               onPress={() => {
                 setPaletteOpen(false);
+                setPictureMenuOpen(false);
                 setShapePanelOpen((open) => !open);
               }}
               style={[styles.tool, shapePanelOpen && { backgroundColor: S.fill }]}
@@ -1277,7 +1361,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
             </View>
           </View>
         )}
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -1413,6 +1497,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pictureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 44,
+    paddingHorizontal: 16,
+    borderRadius: 22,
   },
   shapeToggle: {
     flexDirection: 'row',
