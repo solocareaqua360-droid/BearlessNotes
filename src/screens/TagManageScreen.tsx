@@ -102,7 +102,11 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
       : isFocused
         ? // Not `active`: an active left bead is the soft dock's open search
           // field - it read «Закрити пошук» (2026-10-02).
-          { icon: linksOpen ? 'close' : 'git-network-outline', onPress: () => setLinksOpen((v) => !v) }
+          {
+            icon: linksOpen ? 'close' : 'git-network-outline',
+            label: linksOpen ? 'Сховати бази' : 'Бази й зв\'язки',
+            onPress: () => setLinksOpen((v) => !v),
+          }
         : null,
     isFocused ? { icon: view === 'canvas' ? 'reorder-four-outline' : 'easel-outline', onPress: switchView } : null
   );

@@ -185,6 +185,9 @@ export type DockBead = {
   // Standing in its place but with nowhere to go - the way back on the
   // first desk's own root. The anchor stays put; it only goes quiet.
   dimmed?: boolean;
+  // What the soft dock's wide LEFT field says, when it is not a search
+  // (it read «Пошук» on the folders' databases button, 2026-10-02).
+  label?: string;
 };
 
 type Value = {
@@ -298,7 +301,8 @@ function actionSignature(list: DockAction[] | null): string {
 }
 
 function beadSignature(beads: { left: DockBead | null; right: DockBead | null }): string {
-  const one = (b: DockBead | null) => (b ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}:${b.dimmed ? 1 : 0}` : '-');
+  const one = (b: DockBead | null) =>
+    b ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}:${b.dimmed ? 1 : 0}:${b.label ?? ''}` : '-';
   return `${one(beads.left)}/${one(beads.right)}`;
 }
 

@@ -2249,7 +2249,7 @@ export default function ContextDock() {
               onPress={left.onPress}
               onLongPress={left.onLongPress}
               disabled={left.dimmed}
-              accessibilityLabel={left.active ? 'Закрити пошук' : 'Пошук'}
+              accessibilityLabel={left.label ?? (left.active ? 'Закрити пошук' : 'Пошук')}
               style={[styles.softField, surface]}
             >
               {leftIcon ? (
@@ -2258,7 +2258,7 @@ export default function ContextDock() {
                 <Ionicons name={left.icon as keyof typeof Ionicons.glyphMap} size={19} color={soft.ink2} />
               )}
               <Text style={[styles.softFieldText, { color: soft.ink3 }]} numberOfLines={1}>
-                {left.active ? 'Закрити пошук' : 'Пошук'}
+                {left.label ?? (left.active ? 'Закрити пошук' : 'Пошук')}
               </Text>
             </Pressable>
           ) : (
