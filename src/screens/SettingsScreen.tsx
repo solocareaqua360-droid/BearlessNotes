@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supportsWallpaper } from '../utils/mindevaNative';
 import BackupCard from '../components/BackupCard';
-import { useTheme, useStyles } from '../theme/ThemeProvider';
+import { useTheme, useStyles, useWallpaperVeil } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
@@ -165,6 +165,7 @@ export default function SettingsScreen() {
     Math.round((range[0] + (pct / 100) * (range[1] - range[0])) * 100) / 100;
 
   const { backdropSettings, setBackdropSettings } = useBackdropSettings();
+  const wallpaperVeil = useWallpaperVeil();
   const [backdropMode, setBackdropMode] = useState<'default' | 'gradient' | 'image' | 'wallpaper'>(
     backdropSettings.override?.type ?? 'default'
   );
@@ -486,7 +487,17 @@ export default function SettingsScreen() {
           a database and has no colour of its own, so it borrows the one
           the app's plain screens already share rather than inventing a
           third. */}
-      <Svg
+{/* Under the phone's wallpaper this screen's old fixed gradient
+          (a leftover - the screen still has its dark glass cards, not
+          the soft style yet) gives way to the wallpaper itself, under a
+          DARK veil so the light text on the cards stays readable. */}
+      {wallpaperVeil !== null ? (
+        <View
+          style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: wallpaperVeil }]}
+          pointerEvents="none"
+        />
+      ) : (
+            <Svg
         width={windowWidth + 2}
         height={windowHeight + 2}
         style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
@@ -501,6 +512,7 @@ export default function SettingsScreen() {
         </Defs>
         <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#settingsBg)" />
       </Svg>
+      )}
       <ContentColumn>
         {/* Scrolls: on a narrow screen the three cards are taller than the
             window, and without this the last of them - and every button on
