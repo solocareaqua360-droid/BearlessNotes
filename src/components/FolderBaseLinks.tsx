@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
+import { StyleSheet, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -14,11 +14,13 @@ import Animated, {
 import Svg, { Path } from 'react-native-svg';
 import { Ionicons } from './icons/Ionicons';
 import { useSoft } from '../theme/soft';
-import { dockClearance } from '../navigation/dockGeometry';
+import { DOCK_BOTTOM, dockBodyHeight, dockCardHeight, dockRowLeft } from '../navigation/dockGeometry';
 import { WORLD_HALF, type CanvasOverlayApi, type FolderRect } from './FolderCanvas';
 
 // THE DATABASES AND THEIR FOLDERS, AS LINES (the user's design, 2026-10-02):
-// a round button at the bottom left of the folders' canvas; pressed, the
+// the dock's LEFT bead on the folders' canvas (level with the view bead on
+// the right - the user's correction; the screen owns it and says `open`);
+// pressed, the
 // databases rise out of it as circles, one above another, and then lines
 // draw themselves like snakes from each database to the folders it shows.
 // Pressed again, the lines wind back first and then the circles sink into
@@ -35,10 +37,10 @@ export type LinkBase = { kind: string; label: string; icon: string; color: strin
 export type BaseLink = { kind: string; path: string; count: number };
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
-const BUTTON = 52;
 const CIRCLE = 44;
 const STEP = CIRCLE + 10;
-const SIDE = 16;
+// The closest two circles may stand when there are many databases.
+const MIN_STEP = CIRCLE + 2;
 const APPEAR_MS = 320;
 const DRAW_MS = 480;
 
@@ -55,12 +57,17 @@ function rectFor(rects: Record<string, FolderRect>, path: string): FolderRect | 
 }
 
 export default function FolderBaseLinks({
+  open,
+  topLimit,
   api,
   bases,
   links,
   onBind,
   onUnbind,
 }: {
+  open: boolean;
+  // Where the column may reach up to (under the bar at the top).
+  topLimit: number;
   api: CanvasOverlayApi;
   bases: LinkBase[];
   links: BaseLink[];
@@ -71,7 +78,6 @@ export default function FolderBaseLinks({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [height, setHeight] = useState(0);
-  const [open, setOpen] = useState(false);
   // Drawn while opening, open, or closing.
   const [shown, setShown] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);
@@ -79,12 +85,18 @@ export default function FolderBaseLinks({
   const draw = useSharedValue(0);
   const drag = useSharedValue({ on: 0, x0: 0, y0: 0, x1: 0, y1: 0 });
 
-  const bottom = insets.bottom + dockClearance(width, 10);
-  const buttonX = SIDE + BUTTON / 2;
-  const buttonY = height - bottom - BUTTON / 2;
-  const circleY = (i: number) => buttonY - BUTTON / 2 - 8 - CIRCLE / 2 - i * STEP;
+  // The bead the circles rise out of: the dock's left one.
+  const bead = dockCardHeight(width);
+  const buttonX = dockRowLeft(width) + bead / 2;
+  const buttonY = height - insets.bottom - DOCK_BOTTOM - dockBodyHeight(width) / 2;
+  const firstY = buttonY - bead / 2 - 10 - CIRCLE / 2;
+  // Closer together when there are many, so the column stays under the bar.
+  const room = firstY - (topLimit + CIRCLE / 2 + 8);
+  const step = bases.length > 1 ? Math.max(MIN_STEP, Math.min(STEP, room / (bases.length - 1))) : STEP;
+  const circleY = (i: number) => firstY - i * step;
 
   useEffect(() => {
+    if (!open) setFocus(null);
     if (open) {
       setShown(true);
       appear.value = withTiming(1, { duration: APPEAR_MS, easing: Easing.out(Easing.cubic) }, (done) => {
@@ -151,6 +163,7 @@ export default function FolderBaseLinks({
             base={base}
             index={i}
             count={bases.length}
+            step={step}
             cx={buttonX}
             cy={circleY(i)}
             appear={appear}
@@ -160,20 +173,6 @@ export default function FolderBaseLinks({
             onDrop={dropAt}
           />
         ))}
-      {height > 0 && (
-        <Pressable
-          onPress={() => {
-            setFocus(null);
-            setOpen((v) => !v);
-          }}
-          style={[
-            styles.button,
-            { left: SIDE, top: buttonY - BUTTON / 2, backgroundColor: open ? S.ink : S.card, boxShadow: S.shadow },
-          ]}
-        >
-          <Ionicons name={open ? 'close' : 'git-network-outline'} size={22} color={open ? S.card : S.ink} />
-        </Pressable>
-      )}
     </View>
   );
 }
@@ -249,6 +248,7 @@ function BaseCircle({
   base,
   index,
   count,
+  step,
   cx,
   cy,
   appear,
@@ -260,6 +260,7 @@ function BaseCircle({
   base: LinkBase;
   index: number;
   count: number;
+  step: number;
   cx: number;
   cy: number;
   appear: SharedValue<number>;
@@ -272,7 +273,7 @@ function BaseCircle({
   const kind = base.kind;
   // Rising one after another out of the button, the nearest first.
   const lag = Math.min(0.12, 0.6 / Math.max(1, count));
-  const rise = (index + 1) * STEP;
+  const rise = (index + 1) * step;
   const style = useAnimatedStyle(() => {
     const k = Math.min(1, Math.max(0, appear.value * (1 + index * lag) - index * lag));
     return { opacity: k, transform: [{ translateY: (1 - k) * rise }, { scale: 0.6 + 0.4 * k }] };
@@ -319,14 +320,6 @@ function BaseCircle({
 }
 
 const styles = StyleSheet.create({
-  button: {
-    position: 'absolute',
-    width: BUTTON,
-    height: BUTTON,
-    borderRadius: BUTTON / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   circle: {
     position: 'absolute',
     width: CIRCLE,

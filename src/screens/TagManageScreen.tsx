@@ -74,13 +74,19 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   const switchView = () => {
     const next = view === 'canvas' ? 'list' : 'canvas';
     setView(next);
+    setLinksOpen(false);
     closeSearch();
     AsyncStorage.setItem('foldersView', next).catch(() => {});
   };
+  // On the canvas the left bead is the databases' own: their circles rise
+  // out of it with the lines to their folders (FolderBaseLinks).
+  const [linksOpen, setLinksOpen] = useState(false);
   useDockBeads(
     isFocused && view === 'list'
       ? { icon: searching ? 'close-outline' : 'search-outline', active: searching, onPress: () => (searching ? closeSearch() : setSearching(true)) }
-      : null,
+      : isFocused
+        ? { icon: linksOpen ? 'close' : 'git-network-outline', active: linksOpen, onPress: () => setLinksOpen((v) => !v) }
+        : null,
     isFocused ? { icon: view === 'canvas' ? 'reorder-four-outline' : 'easel-outline', onPress: switchView } : null
   );
   // A tag's path IS the tree - "робота/оренда" is the folder "робота"
@@ -138,7 +144,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
       <ScreenGround color={S.bg} />
       {isFocused && topNavOn && <TopNavBar title={{ icon: 'folder-outline', label: 'Папки' }} />}
       {view === 'canvas' ? (
-        <FoldersCanvas topPad={insets.top + (topNavOn ? TOP_NAV_SPACE : 12)} />
+        <FoldersCanvas topPad={insets.top + (topNavOn ? TOP_NAV_SPACE : 12)} linksOpen={linksOpen} />
       ) : (
       <ContentColumn>
       <View style={{ height: insets.top + (topNavOn ? TOP_NAV_SPACE : 12) }} />

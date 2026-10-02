@@ -50,7 +50,7 @@ const BASE_LOOK: Record<string, { icon: string; color: string }> = {
 };
 const randomColor = () => TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
 
-export default function FoldersCanvas({ topPad }: { topPad: number }) {
+export default function FoldersCanvas({ topPad, linksOpen }: { topPad: number; linksOpen: boolean }) {
   const S = useSoft();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { tags, attachTag, detachTag, createFolderTag, renameTag, updateTag } = useTags();
@@ -255,7 +255,15 @@ export default function FoldersCanvas({ topPad }: { topPad: number }) {
       onPhotoMenu={open}
       topPad={topPad}
       overlay={(api) => (
-        <FolderBaseLinks api={api} bases={bases} links={links} onBind={bind} onUnbind={unbind} />
+        <FolderBaseLinks
+          open={linksOpen}
+          topLimit={topPad}
+          api={api}
+          bases={bases}
+          links={links}
+          onBind={bind}
+          onUnbind={unbind}
+        />
       )}
     />
   );
