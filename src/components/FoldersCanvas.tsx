@@ -69,7 +69,9 @@ export default function FoldersCanvas({
       .map((kind) => ({
         kind,
         path: tag.path,
-        count: Object.keys(tag.usedIn).filter((key) => key.startsWith(`${kind}:`)).length,
+        // What is really there - a folder's own record can remember things
+        // long gone (a solid line to an empty folder, 2026-10-02).
+        count: items.filter((item) => item.tagKind === kind && item.tagIds.includes(tag.id)).length,
       }))
   );
   const withTypes = (tag: Tag, types: string[]) =>

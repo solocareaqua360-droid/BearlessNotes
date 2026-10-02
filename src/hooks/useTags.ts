@@ -293,15 +293,23 @@ export function useTags() {
   // that currently carries it (not just one), then removes the tag doc
   // itself. Distinct from detachTag, which only ever removes one usage and
   // deletes the tag as a side effect of that usage being the last one.
+  //
+  // Each item on its own, not in one batch with the delete: a folder can
+  // still remember an item that is gone (deleted, purged from a bin), and
+  // an update to a document that is not there failed the WHOLE batch - the
+  // folder vanished for a moment and came straight back (2026-10-02,
+  // «Тест», empty, undeletable).
   async function deleteTagCompletely(tag: Tag) {
-    const batch = writeBatch(db);
-    Object.keys(tag.usedIn).forEach((key) => {
-      const { kind, itemId } = parseUsedInKey(key);
-      const itemsCollection = itemsCollectionForKind(kind);
-      if (itemsCollection) batch.update(doc(db, itemsCollection, itemId), { tagIds: arrayRemove(tag.id) });
-    });
-    batch.delete(doc(db, 'tags', tag.id));
-    await batch.commit();
+    await Promise.all(
+      Object.keys(tag.usedIn).map((key) => {
+        const { kind, itemId } = parseUsedInKey(key);
+        const itemsCollection = itemsCollectionForKind(kind);
+        return itemsCollection
+          ? updateDoc(doc(db, itemsCollection, itemId), { tagIds: arrayRemove(tag.id) }).catch(() => undefined)
+          : Promise.resolve();
+      })
+    );
+    await deleteDoc(doc(db, 'tags', tag.id));
   }
 
   return {

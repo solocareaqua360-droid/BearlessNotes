@@ -62,6 +62,8 @@ export type CanvasOverlayApi = {
   // A folder's LIVE place while a finger carries it (world units, its top
   // left corner) - registered as `folder:<path>`; a line follows it there.
   live: (path: string) => { px: SharedValue<number>; py: SharedValue<number> } | undefined;
+  // Changes while a finger carries anything - read it to follow `live`.
+  tick: SharedValue<number>;
 };
 export type Move = { photo: CanvasPhoto; from: string | null };
 
@@ -250,6 +252,10 @@ export default function FolderCanvas({
   // ---- the table's own pan and zoom --------------------------------------
   // screen = (world + WORLD_HALF) * scale + translate
   const scale = useSharedValue(1);
+  // Bumped on every frame a finger carries something on the table - what a
+  // layer over the table (the folders' lines) listens to, since a folder's
+  // live place sits inside a registry its mapper cannot see change.
+  const tick = useSharedValue(0);
   const tx = useSharedValue(-WORLD_HALF + 20);
   const ty = useSharedValue(-WORLD_HALF + topPad + 16);
   const start = useSharedValue({ tx: 0, ty: 0, scale: 1, fx: 0, fy: 0 });
@@ -811,7 +817,7 @@ export default function FolderCanvas({
   };
   const toggle = (path: string) => save({ open: { [path]: !layout.open[path] } });
 
-  const canvas = { scale, canvasPan, pinch, tableTap, marqueePan, hoverAt, group, registry: registry.current };
+  const canvas = { scale, canvasPan, pinch, tableTap, marqueePan, hoverAt, group, tick, registry: registry.current };
   // Every folder that can be seen: a top-level node, or a sub-folder's
   // line inside an open island.
   const folderRects: Record<string, FolderRect> = {};
@@ -1122,13 +1128,14 @@ export default function FolderCanvas({
         />
       </View>
     </GestureDetector>
-    {overlay?.({ tx, ty, scale, rects: folderRects, live: (path) => registry.current.get(`folder:${path}`) })}
+    {overlay?.({ tx, ty, scale, rects: folderRects, live: (path) => registry.current.get(`folder:${path}`), tick })}
     </View>
   );
 }
 
 type Canvas = {
   scale: SharedValue<number>;
+  tick: SharedValue<number>;
   canvasPan: GestureType;
   pinch: GestureType;
   tableTap: GestureType;
@@ -1204,6 +1211,7 @@ function Dragged({
   const tableMarquee = canvas.marqueePan;
   const group = canvas.group;
   const registry = canvas.registry;
+  const tick = canvas.tick;
   const me = id ?? '';
   const chosen = selected;
   // Known to the canvas by its position values, so a dropped selection can
@@ -1242,6 +1250,7 @@ function Dragged({
       .onUpdate((e) => {
         px.value = from.value.x + e.translationX / canvasScale.value;
         py.value = from.value.y + e.translationY / canvasScale.value;
+        tick.value = tick.value + 1;
         if (chosen) group.value = { dx: px.value - from.value.x, dy: py.value - from.value.y, by: me };
         if (Math.abs(px.value - from.value.hx) + Math.abs(py.value - from.value.hy) > HOVER_STEP) {
           from.value = { ...from.value, hx: px.value, hy: py.value };

@@ -188,6 +188,9 @@ export type DockBead = {
   // What the soft dock's wide LEFT field says, when it is not a search
   // (it read «Пошук» on the folders' databases button, 2026-10-02).
   label?: string;
+  // Drawn round, as the right bead is, not as the wide field - a left
+  // bead that is a BUTTON, not a search (the folders' databases).
+  round?: boolean;
 };
 
 type Value = {
@@ -302,7 +305,7 @@ function actionSignature(list: DockAction[] | null): string {
 
 function beadSignature(beads: { left: DockBead | null; right: DockBead | null }): string {
   const one = (b: DockBead | null) =>
-    b ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}:${b.dimmed ? 1 : 0}:${b.label ?? ''}` : '-';
+    b ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}:${b.dimmed ? 1 : 0}:${b.label ?? ''}:${b.round ? 1 : 0}` : '-';
   return `${one(beads.left)}/${one(beads.right)}`;
 }
 

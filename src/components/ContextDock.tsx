@@ -2244,6 +2244,21 @@ export default function ContextDock() {
         >
           {dockSearch ? (
             <SoftSearchField key={dockSearch.placeholder} search={dockSearch} soft={soft} height={TWO_BEAD} />
+          ) : left?.round ? (
+            // A left bead that is a button, round as the right one, with
+            // the room between them left empty.
+            <>
+              <Pressable
+                onPress={left.onPress}
+                onLongPress={left.onLongPress}
+                disabled={left.dimmed}
+                accessibilityLabel={left.label}
+                style={[styles.softButton, surface, { width: TWO_BEAD }, left.active && { backgroundColor: soft.ink }]}
+              >
+                <Ionicons name={left.icon as keyof typeof Ionicons.glyphMap} size={21} color={left.active ? soft.card : soft.ink} />
+              </Pressable>
+              <View style={{ flex: 1 }} />
+            </>
           ) : left ? (
             <Pressable
               onPress={left.onPress}

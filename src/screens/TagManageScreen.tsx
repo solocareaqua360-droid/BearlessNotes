@@ -16,7 +16,8 @@ import { useChromeStyle, useDockBeads, useDockLeave, useTopBack, useTopExtras, u
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Tag } from '../types';
 import { RootStackParamList } from '../navigation';
-import { itemsCollectionForKind, parseUsedInKey, useTags } from '../hooks/useTags';
+import { useTags } from '../hooks/useTags';
+import { useAllFolderItems } from '../hooks/useAllFolderItems';
 import { useFolderBases } from '../hooks/useFolderBases';
 import FolderTree, { type FolderRect } from '../components/FolderTree';
 import HoldMenu, { type HoldAction } from '../components/HoldMenu';
@@ -42,6 +43,9 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { tags, isLoading, updateTag, deleteTagCompletely, renameTag } = useTags();
   const bases = useFolderBases();
+  // What is really in each folder - a folder's own record can remember
+  // things long gone, and a delete must not ask about them.
+  const folderItems = useAllFolderItems(tags);
   const railSide = inPane ? ('left' as const) : ('right' as const);
   const isFocused = useIsFocused();
   useDockLeave('folder-outline', () => navigation.goBack(), isFocused);
@@ -105,6 +109,8 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
           {
             icon: linksOpen ? 'close' : 'git-network-outline',
             label: linksOpen ? 'Сховати бази' : 'Бази й зв\'язки',
+            round: true,
+            active: linksOpen,
             onPress: () => setLinksOpen((v) => !v),
           }
         : null,
@@ -163,10 +169,14 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
         return renameTag(t, parent ? `${parent}/${rest}` : rest);
       })
     );
-    await deleteTagCompletely(tag);
+    // Every folder of this same path - two with one name stood as one, and
+    // deleting one left the other in its place.
+    await Promise.all(tags.filter((t) => t.path === tag.path).map((t) => deleteTagCompletely(t)));
   }
   async function deleteFolder(tag: Tag) {
-    const inside = Object.keys(tag.usedIn);
+    const sameIds = new Set(tags.filter((t) => t.path === tag.path).map((t) => t.id));
+    const real = folderItems.filter((item) => item.tagIds.some((id) => sameIds.has(id)));
+    const inside = real.map((item) => item.id);
     const name = tag.path.split('/').pop();
     if (inside.length === 0) {
       const yes = await confirm({ title: `Видалити папку «${name}»?`, confirmLabel: 'Видалити' });
@@ -184,13 +194,11 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
     if (choice === 'trash') {
       const now = Date.now();
       await Promise.all(
-        inside.map((key) => {
-          const { kind, itemId } = parseUsedInKey(key);
-          const collection = itemsCollectionForKind(kind);
-          return collection && BIN_COLLECTIONS.includes(collection)
-            ? updateDoc(doc(db, collection, itemId), { deletedAt: now }).catch(() => {})
-            : Promise.resolve();
-        })
+        real.map((item) =>
+          BIN_COLLECTIONS.includes(item.collection)
+            ? updateDoc(doc(db, item.collection, item.docId), { deletedAt: now }).catch(() => {})
+            : Promise.resolve()
+        )
       );
       await removeFolder(tag);
     } else if (choice === 'root') {
@@ -224,7 +232,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
           page: {
             title: 'Бази',
             options: bases.map((b) => {
-              const count = Object.keys(menuTag.usedIn).filter((k) => k.startsWith(`${b.kind}:`)).length;
+              const count = folderItems.filter((item) => item.tagKind === b.kind && item.tagIds.includes(menuTag.id)).length;
               return {
                 key: b.kind,
                 label: b.label,

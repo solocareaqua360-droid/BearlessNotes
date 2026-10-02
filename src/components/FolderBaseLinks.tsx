@@ -281,8 +281,12 @@ function GroupLines({
   const tx = api.tx;
   const ty = api.ty;
   const scale = api.scale;
+  const tick = api.tick;
   const list = entries;
   const props = useAnimatedProps(() => {
+    // Read so a carried folder redraws its line every frame (its own
+    // live place is inside `list`, where this mapper cannot see it move).
+    void tick.value;
     const t = Math.max(0.001, draw.value);
     let d = '';
     for (let i = 0; i < list.length; i++) {
