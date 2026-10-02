@@ -1,5 +1,5 @@
 import { SketchElement } from '../types';
-import { transformOf } from './sketchGeometry';
+import { FILL_OPACITY, LABEL_SIZE, pivotOf, transformOf } from './sketchGeometry';
 
 // A drawing, as SVG markup.
 //
@@ -48,8 +48,13 @@ export function sketchToSvg(
       (el.kind === 'text'
         ? `<text x="${el.x}" y="${el.y}" fill="${el.color}" font-size="${el.fontSize}" ` +
           `font-family="sans-serif">${escapeXml(el.text)}</text>`
-        : `<path d="${escapeXml(el.d)}" stroke="${el.color}" stroke-width="${el.width}" fill="none" ` +
-          `stroke-linecap="round" stroke-linejoin="round"/>`) +
+        : `<path d="${escapeXml(el.d)}" stroke="${el.noStroke ? 'none' : el.color}" stroke-width="${el.width}" ` +
+          `fill="${el.fill ?? 'none'}" fill-opacity="${FILL_OPACITY}" ` +
+          `stroke-linecap="round" stroke-linejoin="round"/>` +
+          (el.label
+            ? `<text x="${pivotOf(el).x}" y="${pivotOf(el).y + LABEL_SIZE * 0.35}" fill="${el.color}" ` +
+              `font-size="${LABEL_SIZE}" text-anchor="middle" font-family="sans-serif">${escapeXml(el.label)}</text>`
+            : '')) +
       (el.rot ? '</g>' : '')
     )
     .join('');

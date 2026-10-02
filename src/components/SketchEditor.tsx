@@ -24,6 +24,7 @@ import {
   INK,
   boundsOf,
   inkOn,
+  isClosedShape,
   normalizeDeg,
   parsePathPoints,
   pivotOf,
@@ -242,6 +243,15 @@ export default function SketchEditor({ visible, initialElements, background, pap
   // The palette hides behind one dot on the floating bar - open only
   // while it is being used.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // THE SHAPE'S OWN SETTINGS (2026-10-02): an inside filled with a colour,
+  // the outline on or off, words in the middle. Defaults for the next
+  // rectangle or circle, and - with shapes chosen - changes to those.
+  const [shapePanelOpen, setShapePanelOpen] = useState(false);
+  const [shapeFill, setShapeFill] = useState<string | null>(null);
+  const [shapeStroke, setShapeStroke] = useState(true);
+  const [shapeWithText, setShapeWithText] = useState(false);
+  // The shape whose words are being written (the same field as a label).
+  const [labelFor, setLabelFor] = useState<number | null>(null);
   // The bar goes where the hand puts it.
   //
   // Wherever it rests it covers SOMETHING - the picture is the whole
@@ -316,6 +326,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
       setShapeStart(null);
       setShapeCurrent(null);
       setPendingText(null);
+      setLabelFor(null);
       setTextValue('');
       setSelection([]);
       op.current = null;
@@ -530,7 +541,18 @@ export default function SketchEditor({ visible, initialElements, background, pap
           y2: shapeCurrent.y,
         };
         remember();
-        setElements((prev) => [...prev, shapeElement(shape, color, strokeWidth)]);
+        const closed = shape.kind === 'rect' || shape.kind === 'circle';
+        const made: SketchElement = {
+          ...shapeElement(shape, color, strokeWidth),
+          ...(closed && shapeFill ? { fill: shapeFill } : {}),
+          ...(closed && !shapeStroke ? { noStroke: true } : {}),
+        };
+        setElements((prev) => [...prev, made]);
+        // A shape with words: the field opens for them straight away.
+        if (closed && shapeWithText) {
+          setTextValue('');
+          setLabelFor(elements.length);
+        }
       }
       setShapeStart(null);
       setShapeCurrent(null);
@@ -546,6 +568,20 @@ export default function SketchEditor({ visible, initialElements, background, pap
 
   function commitText() {
     const value = textValue.trim();
+    if (labelFor !== null) {
+      const index = labelFor;
+      const el = elements[index];
+      if (el && el.kind === 'path' && (el.label ?? '') !== value) {
+        remember();
+        const next = { ...el } as SketchPathElement;
+        if (value) next.label = value;
+        else delete next.label;
+        setElements(elements.map((e, i) => (i === index ? next : e)));
+      }
+      setLabelFor(null);
+      setTextValue('');
+      return;
+    }
     if (pendingText && value) {
       remember();
       setElements((els) => [
@@ -590,6 +626,59 @@ export default function SketchEditor({ visible, initialElements, background, pap
       const chosen = new Set(selection);
       setElements(elements.map((el, i) => (chosen.has(i) ? { ...el, color: c } : el)));
     }
+  }
+
+  // The closed shapes among the chosen ones.
+  const chosenShapes = selection.filter((i) => elements[i] && isClosedShape(elements[i]));
+  const shapePanelShown = tool === 'rect' || tool === 'circle' || chosenShapes.length > 0;
+  // One shape chosen: the panel shows ITS fill and outline.
+  const oneShape = chosenShapes.length === 1 ? elements[chosenShapes[0]] : null;
+  const oneFill = oneShape && oneShape.kind === 'path' ? oneShape.fill ?? null : undefined;
+  const oneStroke = oneShape && oneShape.kind === 'path' ? !oneShape.noStroke : undefined;
+  useEffect(() => {
+    if (oneFill !== undefined) setShapeFill(oneFill);
+    if (oneStroke !== undefined) setShapeStroke(oneStroke);
+  }, [oneFill, oneStroke]);
+  function changeChosenShapes(change: (el: SketchPathElement) => SketchPathElement) {
+    if (chosenShapes.length === 0) return;
+    remember();
+    const set = new Set(chosenShapes);
+    setElements(elements.map((el, i) => (set.has(i) && el.kind === 'path' ? change(el) : el)));
+  }
+  function chooseFill(c: string | null) {
+    setShapeFill(c);
+    changeChosenShapes((el) => {
+      const next = { ...el };
+      if (c) next.fill = c;
+      else {
+        delete next.fill;
+        // Neither outline nor inside would be nothing at all.
+        delete next.noStroke;
+      }
+      return next;
+    });
+  }
+  function toggleStroke() {
+    const on = !shapeStroke;
+    setShapeStroke(on);
+    if (!on && !shapeFill) setShapeFill(color);
+    changeChosenShapes((el) => {
+      const next = { ...el };
+      if (on) delete next.noStroke;
+      else {
+        next.noStroke = true;
+        if (!next.fill) next.fill = el.color;
+      }
+      return next;
+    });
+  }
+  function writeLabel() {
+    if (chosenShapes.length === 1) {
+      const el = elements[chosenShapes[0]];
+      setTextValue(el.kind === 'path' ? el.label ?? '' : '');
+      setLabelFor(chosenShapes[0]);
+      setShapePanelOpen(false);
+    } else setShapeWithText((v) => !v);
   }
 
   const previewShape: SketchShape | null =
@@ -789,6 +878,67 @@ export default function SketchEditor({ visible, initialElements, background, pap
             </View>
           </RNAnimated.View>
         )}
+        {shapePanelOpen && shapePanelShown && (
+          <RNAnimated.View
+            style={[
+              styles.palette,
+              { bottom: insets.bottom + 84, backgroundColor: S.card, boxShadow: S.popShadow, transform: barPan.getTranslateTransform() },
+            ]}
+          >
+            {/* The inside: none, or one of the colours as a soft tint. */}
+            <View style={styles.paletteRow}>
+              <Pressable
+                hitSlop={4}
+                onPress={() => chooseFill(null)}
+                style={[styles.swatchRing, shapeFill === null && { borderColor: S.ink2 }]}
+              >
+                <View style={[styles.swatch, styles.swatchEmpty, { borderColor: S.line }]}>
+                  <Ionicons name={'lc:x' as never} size={14} color={S.ink3} />
+                </View>
+              </Pressable>
+              {COLORS.map((c) => (
+                <Pressable
+                  key={c}
+                  hitSlop={4}
+                  onPress={() => chooseFill(c)}
+                  style={[styles.swatchRing, shapeFill === c && { borderColor: S.ink2 }]}
+                >
+                  <View style={[styles.swatch, { backgroundColor: shown(c), opacity: 0.45 }]} />
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.paletteRow}>
+              <Pressable
+                onPress={toggleStroke}
+                style={[styles.shapeToggle, { backgroundColor: shapeStroke ? S.ink : S.fill }]}
+              >
+                <Ionicons name={'lc:square' as never} size={16} color={shapeStroke ? S.card : S.ink2} />
+                <Text style={[styles.shapeToggleLabel, { color: shapeStroke ? S.card : S.ink2 }]}>Рамка</Text>
+              </Pressable>
+              <Pressable
+                onPress={writeLabel}
+                style={[
+                  styles.shapeToggle,
+                  { backgroundColor: chosenShapes.length !== 1 && shapeWithText ? S.ink : S.fill },
+                ]}
+              >
+                <Ionicons
+                  name={'lc:type' as never}
+                  size={16}
+                  color={chosenShapes.length !== 1 && shapeWithText ? S.card : S.ink2}
+                />
+                <Text
+                  style={[
+                    styles.shapeToggleLabel,
+                    { color: chosenShapes.length !== 1 && shapeWithText ? S.card : S.ink2 },
+                  ]}
+                >
+                  {chosenShapes.length === 1 ? 'Текст у фігурі' : 'З текстом'}
+                </Text>
+              </Pressable>
+            </View>
+          </RNAnimated.View>
+        )}
         <RNAnimated.View
           style={[
             styles.toolbar,
@@ -809,15 +959,36 @@ export default function SketchEditor({ visible, initialElements, background, pap
             ))}
           </ScrollView>
           <View style={[styles.toolbarDivider, { backgroundColor: S.line }]} />
-          <Pressable hitSlop={6} onPress={() => setPaletteOpen((open) => !open)} style={styles.tool}>
+          <Pressable
+            hitSlop={6}
+            onPress={() => {
+              setShapePanelOpen(false);
+              setPaletteOpen((open) => !open);
+            }}
+            style={styles.tool}
+          >
             <View style={[styles.colorDot, { backgroundColor: shown(color), borderColor: S.line }]} />
           </Pressable>
+          {/* The shape's own settings - only while a rectangle or circle
+              is in hand, or one is chosen. */}
+          {shapePanelShown && (
+            <Pressable
+              hitSlop={6}
+              onPress={() => {
+                setPaletteOpen(false);
+                setShapePanelOpen((open) => !open);
+              }}
+              style={[styles.tool, shapePanelOpen && { backgroundColor: S.fill }]}
+            >
+              <Ionicons name={'lc:paint-bucket' as never} size={19} color={S.ink2} />
+            </Pressable>
+          )}
         </RNAnimated.View>
 
-        {pendingText && (
+        {(pendingText || labelFor !== null) && (
           <View style={styles.textBackdrop}>
             <View style={[styles.textCard, { backgroundColor: S.card, boxShadow: S.popShadow }]}>
-              <Text style={[styles.textTitle, { color: S.ink }]}>Текст</Text>
+              <Text style={[styles.textTitle, { color: S.ink }]}>{labelFor !== null ? 'Текст у фігурі' : 'Текст'}</Text>
               <TextInput
                 autoFocus
                 value={textValue}
@@ -832,14 +1003,15 @@ export default function SketchEditor({ visible, initialElements, background, pap
                   style={styles.textCancel}
                   onPress={() => {
                     setPendingText(null);
+                    setLabelFor(null);
                     setTextValue('');
                   }}
                 >
                   <Text style={[styles.textCancelLabel, { color: S.ink2 }]}>Скасувати</Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.textSave, { backgroundColor: S.ink }, !textValue.trim() && { opacity: 0.35 }]}
-                  disabled={!textValue.trim()}
+                  style={[styles.textSave, { backgroundColor: S.ink }, !textValue.trim() && labelFor === null && { opacity: 0.35 }]}
+                  disabled={!textValue.trim() && labelFor === null}
                   onPress={commitText}
                 >
                   <Text style={[styles.textSaveLabel, { color: S.card }]}>Додати</Text>
@@ -966,6 +1138,24 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
+  },
+  swatchEmpty: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shapeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+  },
+  shapeToggleLabel: {
+    fontSize: 14,
+    fontFamily: SOFT_MEDIUM,
   },
   widthButton: {
     width: 40,

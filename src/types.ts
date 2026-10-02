@@ -85,6 +85,13 @@ export interface SketchPathElement {
   // Turned, in degrees, about the centre of its own box (sketchGeometry's
   // pivotOf). Absent: not turned.
   rot?: number;
+  // A closed shape's inside (rect, circle, ellipse): its colour, laid as a
+  // soft tint (SketchLayer's FILL_OPACITY). Absent: empty inside.
+  fill?: string;
+  // The outline switched off - a shape that is only its fill.
+  noStroke?: boolean;
+  // Words inside the shape, in its middle, turning with it.
+  label?: string;
 }
 
 // A text label placed on a 'sketch' block's canvas.

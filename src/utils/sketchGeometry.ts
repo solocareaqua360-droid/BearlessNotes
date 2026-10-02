@@ -165,7 +165,8 @@ export function translateElement(el: SketchElement, dx: number, dy: number): Ske
   if (el.kind === 'text') return { ...el, x: el.x + dx, y: el.y + dy };
   if (el.shape) {
     const s = el.shape;
-    return shapeElement({ ...s, x1: s.x1 + dx, y1: s.y1 + dy, x2: s.x2 + dx, y2: s.y2 + dy }, el.color, el.width, el.rot);
+    // Spread over the old one: its fill, outline and words go with it.
+    return { ...el, ...shapeElement({ ...s, x1: s.x1 + dx, y1: s.y1 + dy, x2: s.x2 + dx, y2: s.y2 + dy }, el.color, el.width, el.rot) };
   }
   const runs = parsePathRuns(el.d).map((run) => run.map((p) => ({ x: p.x + dx, y: p.y + dy })));
   return { ...el, d: runsToPath(runs) };
@@ -194,7 +195,7 @@ export function scaleElement(el: SketchElement, sx: number, sy: number, anchor: 
       a = scale({ x: s.x1 - r, y: s.y1 - r });
       b = scale({ x: s.x1 + r, y: s.y1 + r });
     }
-    next = shapeElement({ kind, x1: a.x, y1: a.y, x2: b.x, y2: b.y }, el.color, el.width, el.rot);
+    next = { ...el, ...shapeElement({ kind, x1: a.x, y1: a.y, x2: b.x, y2: b.y }, el.color, el.width, el.rot) };
   } else {
     const runs = parsePathRuns(el.d).map((run) => run.map(scale));
     next = { ...el, d: runsToPath(runs) };
@@ -231,6 +232,16 @@ export function transformOf(el: SketchElement): string | undefined {
   const p = pivotOf(el);
   return `rotate(${el.rot.toFixed(2)} ${p.x.toFixed(1)} ${p.y.toFixed(1)})`;
 }
+
+// A shape with an inside - one that can be filled and hold words.
+export function isClosedShape(el: SketchElement): boolean {
+  return el.kind === 'path' && !!el.shape && (el.shape.kind === 'rect' || el.shape.kind === 'circle' || el.shape.kind === 'ellipse');
+}
+
+// How strong a shape's fill is laid: a tint, the app's soft way with
+// colour, so an outline and words on it still read.
+export const FILL_OPACITY = 0.28;
+export const LABEL_SIZE = 20;
 
 // ---- ink ----------------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 import { G, Path, Text as SvgText } from 'react-native-svg';
 import type { SketchElement } from '../types';
-import { inkOn, transformOf } from '../utils/sketchGeometry';
+import { FILL_OPACITY, LABEL_SIZE, inkOn, pivotOf, transformOf } from '../utils/sketchGeometry';
 
 // A drawing's elements, inside an <Svg> the caller sizes - one way to draw
 // them everywhere a drawing is shown (the note, a sticker, a photo with a
@@ -17,14 +17,28 @@ export default function SketchLayer({ elements, ink }: { elements: SketchElement
               {el.text}
             </SvgText>
           ) : (
-            <Path
-              d={el.d}
-              stroke={inkOn(el.color, ink)}
-              strokeWidth={el.width}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <>
+              <Path
+                d={el.d}
+                stroke={el.noStroke ? 'none' : inkOn(el.color, ink)}
+                strokeWidth={el.width}
+                fill={el.fill ? inkOn(el.fill, ink) : 'none'}
+                fillOpacity={FILL_OPACITY}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {!!el.label && (
+                <SvgText
+                  x={pivotOf(el).x}
+                  y={pivotOf(el).y + LABEL_SIZE * 0.35}
+                  fill={inkOn(el.color, ink)}
+                  fontSize={LABEL_SIZE}
+                  textAnchor="middle"
+                >
+                  {el.label}
+                </SvgText>
+              )}
+            </>
           );
         return (
           <G key={i} transform={transform}>
