@@ -48,6 +48,18 @@ import { bindRightClick } from '../utils/rightClick';
 // Any record with an id - what a tile shows is the database's own
 // (renderTile). Named "photo" inside, where it was first written for.
 export type CanvasPhoto = { id: string };
+
+// What a layer drawn OVER the table needs to point at its folders (the
+// folders' links to their databases, FolderBaseLinks): the table's own
+// pan and zoom, and where each folder that can be seen stands, in world
+// units - screen = (world + WORLD_HALF) * scale + translate.
+export type FolderRect = { x: number; y: number; w: number; h: number };
+export type CanvasOverlayApi = {
+  tx: SharedValue<number>;
+  ty: SharedValue<number>;
+  scale: SharedValue<number>;
+  rects: Record<string, FolderRect>;
+};
 export type Move = { photo: CanvasPhoto; from: string | null };
 
 // ONE PHOTO ON THE TABLE, in one place: loose, or in one folder's island.
@@ -72,7 +84,7 @@ const newPileId = () => `p${Date.now().toString(36)}${Math.random().toString(36)
 // The world: a square this big around the origin, so everything on it
 // stays inside its parent's bounds - on Android a child outside them is
 // drawn but never touched (see the android overlay touch memory).
-const WORLD_HALF = 4000;
+export const WORLD_HALF = 4000;
 const TILE = 88;
 // A tile's side, for the databases drawing their own faces.
 export const CANVAS_TILE = TILE;
@@ -121,6 +133,7 @@ export default function FolderCanvas({
   onOpenPhoto,
   onPhotoMenu,
   topPad,
+  overlay,
 }: {
   // Where the table's arrangement is kept: settings/<layoutKey>.
   layoutKey: string;
@@ -146,6 +159,8 @@ export default function FolderCanvas({
   onOpenPhoto: (photo: CanvasPhoto) => void;
   onPhotoMenu: (photo: CanvasPhoto) => void;
   topPad: number;
+  // Drawn over the table, in screen units (see CanvasOverlayApi).
+  overlay?: (api: CanvasOverlayApi) => React.ReactNode;
 }) {
   const S = useSoft();
   const { width: screenW } = useWindowDimensions();
@@ -776,9 +791,21 @@ export default function FolderCanvas({
   const toggle = (path: string) => save({ open: { [path]: !layout.open[path] } });
 
   const canvas = { scale, canvasPan, pinch, tableTap, marqueePan, hoverAt, group, registry: registry.current };
+  // Every folder that can be seen: a top-level node, or a sub-folder's
+  // line inside an open island.
+  const folderRects: Record<string, FolderRect> = {};
+  nodes.forEach((node) => {
+    folderRects[node.path] = { x: node.x, y: node.y, w: NODE_W, h: NODE_H };
+  });
+  islands.forEach((island) =>
+    island.chips.forEach((chip) => {
+      folderRects[chip.path] = { x: chip.x, y: chip.y, w: chip.w, h: CHIP_H };
+    })
+  );
   const accentTint = withAlpha(S.accent, 0.14);
 
   return (
+    <View style={styles.viewport}>
     <GestureDetector gesture={tableGesture}>
       <View ref={viewportRef} style={styles.viewport} collapsable={false}>
         <Animated.View style={[styles.surface, surfaceStyle]}>
@@ -1031,6 +1058,8 @@ export default function FolderCanvas({
         />
       </View>
     </GestureDetector>
+    {overlay?.({ tx, ty, scale, rects: folderRects })}
+    </View>
   );
 }
 

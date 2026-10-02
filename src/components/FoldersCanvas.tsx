@@ -2,6 +2,10 @@ import { StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FolderCanvas, { CANVAS_TILE, type CanvasPhoto, type Move } from './FolderCanvas';
+import FolderBaseLinks, { type BaseLink, type LinkBase } from './FolderBaseLinks';
+import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
+import { TAG_KIND_CHOICES } from '../constants/tagKinds';
+import { ask } from './surfaces/Ask';
 import { FileCanvasTile, LinkCanvasTile, NoteCanvasTile } from './CanvasTiles';
 import AttachmentImage from './AttachmentImage';
 import { Ionicons } from './icons/Ionicons';
@@ -32,13 +36,95 @@ const KIND_ICON: Record<FolderItem['kind'], string> = {
 };
 
 const nameOf = (path: string) => path.split('/').pop() ?? path;
+
+// How each database looks among the circles of FolderBaseLinks.
+const BASE_LOOK: Record<string, { icon: string; color: string }> = {
+  document: { icon: 'document-text-outline', color: '#3B82F6' },
+  photo: { icon: 'image-outline', color: '#EC4899' },
+  file: { icon: 'document-outline', color: '#F59E0B' },
+  'link-other': { icon: 'link-outline', color: '#14B8A6' },
+  'link-video': { icon: 'videocam-outline', color: '#EF4444' },
+  'link-geo': { icon: 'location-outline', color: '#22C55E' },
+  board: { icon: 'easel-outline', color: '#8B5CF6' },
+  flashcard: { icon: 'albums-outline', color: '#6366F1' },
+};
 const randomColor = () => TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
 
 export default function FoldersCanvas({ topPad }: { topPad: number }) {
   const S = useSoft();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { tags, attachTag, detachTag, createFolderTag, renameTag } = useTags();
+  const { tags, attachTag, detachTag, createFolderTag, renameTag, updateTag } = useTags();
   const items = useAllFolderItems(tags);
+  const { customDatabases } = useDatabaseTiles();
+  // The databases, as circles: the built-in ones, then the user's own.
+  const bases: LinkBase[] = [
+    ...TAG_KIND_CHOICES.map((c) => ({ kind: c.kind, label: c.label, ...(BASE_LOOK[c.kind] ?? { icon: 'grid-outline', color: S.ink2 }) })),
+    ...customDatabases.map((d, i) => ({
+      kind: `customRow:${d.id}`,
+      label: d.name || 'База',
+      icon: 'grid-outline',
+      color: TAG_COLORS[i % TAG_COLORS.length],
+    })),
+  ];
+  const baseLabel = (kind: string) => bases.find((b) => b.kind === kind)?.label ?? 'База';
+  // A line for every database a folder shows in; how much of it is inside
+  // decides solid or dashed.
+  const links: BaseLink[] = tags.flatMap((tag) =>
+    tag.types
+      .filter((kind) => bases.some((b) => b.kind === kind))
+      .map((kind) => ({
+        kind,
+        path: tag.path,
+        count: Object.keys(tag.usedIn).filter((key) => key.startsWith(`${kind}:`)).length,
+      }))
+  );
+  const withTypes = (tag: Tag, types: string[]) =>
+    updateTag(tag, { path: tag.path, icon: tag.icon, color: tag.color, types }).catch(() => {});
+  const bind = async (kind: string, path: string) => {
+    const tag = byPath.get(path);
+    if (tag) {
+      if (!tag.types.includes(kind)) await withTypes(tag, [...tag.types, kind]);
+    } else {
+      await createFolderTag(path, kind, randomColor());
+    }
+  };
+  // Never hides what is inside: a dashed line just goes; a solid one asks
+  // where its contents go - out of the folder, or into another one.
+  const unbind = async (link: BaseLink) => {
+    const tag = byPath.get(link.path);
+    if (!tag) return;
+    const dropType = () => withTypes(tag, tag.types.filter((k) => k !== link.kind));
+    if (link.count === 0) {
+      await dropType();
+      return;
+    }
+    const inside = items.filter((item) => item.tagKind === link.kind && item.tagIds.includes(tag.id));
+    const choice = await ask({
+      title: `«${nameOf(link.path)}» · ${baseLabel(link.kind)}`,
+      message: `У папці ${link.count} з цієї бази. Вони нікуди не зникнуть - вибери, куди їх.`,
+      actions: [
+        { id: 'out', label: `Вийняти з папки (${link.count})`, icon: 'remove-circle-outline' },
+        { id: 'move', label: 'Перенести в іншу папку…', icon: 'folder-open-outline' },
+      ],
+    });
+    if (choice === 'out') {
+      for (const item of inside) await detachTag(tag, item.tagKind, item.docId, item.collection);
+      await dropType();
+    } else if (choice === 'move') {
+      const target = await ask({
+        title: 'Куди перенести?',
+        actions: folderPaths
+          .filter((p) => p !== link.path)
+          .map((p) => ({ id: p, label: p.split('/').join(' › '), icon: 'folder-outline' as const })),
+      });
+      if (!target || target === 'cancel' || !folderPaths.includes(target)) return;
+      for (const item of inside) {
+        await detachTag(tag, item.tagKind, item.docId, item.collection);
+        await putIn(item, target);
+      }
+      await dropType();
+    }
+  };
   const byPath = new Map(tags.map((t) => [t.path, t]));
   const folderPaths = Array.from(
     new Set(
@@ -168,6 +254,9 @@ export default function FoldersCanvas({ topPad }: { topPad: number }) {
       onOpenPhoto={open}
       onPhotoMenu={open}
       topPad={topPad}
+      overlay={(api) => (
+        <FolderBaseLinks api={api} bases={bases} links={links} onBind={bind} onUnbind={unbind} />
+      )}
     />
   );
 }
