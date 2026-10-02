@@ -23,6 +23,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import {
   INK,
   boundsOf,
+  drawingViewBox,
   inkOn,
   isClosedShape,
   normalizeDeg,
@@ -44,7 +45,8 @@ import SketchLayer from './SketchLayer';
 
 // The first is the paper's own ink (see sketchGeometry's INK).
 const COLORS = [INK, '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
-const WIDTHS = [3, 6, 10];
+// 1.5 the finest - "додай ще меншу товщину лінії" (2026-10-02).
+const WIDTHS = [1.5, 3, 6, 10];
 const TEXT_FONT_SIZE = 22;
 // How close a touch has to land to a stroke's points to rub them out. The
 // eraser removes just the points it passes over (splitting what's left
@@ -55,6 +57,15 @@ const HANDLE = 12;
 const HANDLE_TOUCH_RADIUS = 24;
 // How far above the box the turning grip stands.
 const ROTATE_ARM = 34;
+// THE PAPER IS BIGGER THAN THE SCREEN (2026-10-02): two fingers move it and
+// zoom it, one finger draws. Everything that is a size on the SCREEN - a
+// grip, the turning arm, how close a touch must land - is divided by the
+// zoom where it is used, so it stays the same size under the finger.
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 4;
+// The alignment guides, as the boards draw them (BoardScreen's GUIDE_*).
+const GUIDE_COLOR = '#FF3D9A';
+const GUIDE_SNAP_DISTANCE = 6;
 // The selection box stands this far off what it holds.
 const FRAME_PAD = 8;
 
@@ -136,8 +147,8 @@ function gripsOf(box: Box): Grip[] {
 
 // The element under a finger, the one on top first - judged in the
 // element's own frame, so a turned one is hit where it is drawn.
-function elementAt(elements: SketchElement[], p: Point): number {
-  const PAD = 12;
+function elementAt(elements: SketchElement[], p: Point, zoom = 1): number {
+  const PAD = 12 / zoom;
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
     const local = el.rot ? rotatePoint(p, pivotOf(el), -el.rot) : p;
@@ -168,7 +179,7 @@ function bakeTurn(el: SketchElement): SketchElement {
 // its two ends behind instead of deleting the whole thing. A shape that
 // gets partly rubbed out loses its shape data (it's no longer a clean
 // rectangle/circle) and carries on as a plain path.
-function eraseFromElement(el: SketchElement, x: number, y: number): SketchElement[] {
+function eraseFromElement(el: SketchElement, x: number, y: number, radius = ERASE_RADIUS): SketchElement[] {
   if (el.kind === 'text') {
     const local = el.rot ? rotatePoint({ x, y }, pivotOf(el), -el.rot) : { x, y };
     const b = boundsOf(el);
@@ -176,7 +187,7 @@ function eraseFromElement(el: SketchElement, x: number, y: number): SketchElemen
     return hit ? [] : [el];
   }
   const points = parsePathPoints(el.d);
-  const near = (p: Point) => Math.hypot(p.x - x, p.y - y) < ERASE_RADIUS;
+  const near = (p: Point) => Math.hypot(p.x - x, p.y - y) < radius;
   const flat = el.rot ? parsePathPoints((bakeTurn(el) as SketchPathElement).d) : points;
   if (!flat.some(near)) return [el];
   const runs: Point[][] = [];
@@ -223,6 +234,9 @@ export default function SketchEditor({ visible, initialElements, background, pap
   const [selection, setSelection] = useState<number[]>([]);
   const op = useRef<Op | null>(null);
   const [marquee, setMarquee] = useState<Box | null>(null);
+  // How the paper lies on the screen: moved by (tx, ty), zoomed by s.
+  const [view, setView] = useState({ tx: 0, ty: 0, s: 1 });
+  const [guides, setGuides] = useState<{ x: number | null; y: number | null } | null>(null);
   // Every change, undoable: the elements as they were before it.
   const history = useRef<SketchElement[][]>([]);
   const [color, setColor] = useState(COLORS[0]);
@@ -332,7 +346,15 @@ export default function SketchEditor({ visible, initialElements, background, pap
       op.current = null;
       setMarquee(null);
       history.current = [];
+      setView({ tx: 0, ty: 0, s: 1 });
+      setGuides(null);
       setTool('pen');
+      // A drawing that has grown past the screen opens whole, not with
+      // its top-left corner showing.
+      const box = background ? null : drawingViewBox(initialElements, 0);
+      if (box && canvasSize.width > 0 && (box.x < 0 || box.y < 0 || box.x + box.width > canvasSize.width || box.y + box.height > canvasSize.height)) {
+        fitView(initialElements);
+      }
     }
     wasVisibleRef.current = visible;
   }, [visible, initialElements]);
@@ -354,7 +376,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
       erasing.current = true;
       remember();
     }
-    setElements((prev) => prev.flatMap((el) => eraseFromElement(el, x, y)));
+    setElements((prev) => prev.flatMap((el) => eraseFromElement(el, x, y, ERASE_RADIUS / view.s)));
     setSelection([]);
   }
 
@@ -367,7 +389,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
       const b = frame.box;
       const mx = (b.minX + b.maxX) / 2;
       // The turning grip, above the box's top middle.
-      if (Math.hypot(local.x - mx, local.y - (b.minY - ROTATE_ARM)) < HANDLE_TOUCH_RADIUS) {
+      if (Math.hypot(local.x - mx, local.y - (b.minY - ROTATE_ARM / view.s)) < HANDLE_TOUCH_RADIUS / view.s) {
         op.current = {
           kind: 'rotate',
           startAngle: Math.atan2(p.y - frame.pivot.y, p.x - frame.pivot.x),
@@ -377,7 +399,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
         };
         return;
       }
-      const grip = gripsOf(b).find((g) => Math.hypot(local.x - g.x, local.y - g.y) < HANDLE_TOUCH_RADIUS);
+      const grip = gripsOf(b).find((g) => Math.hypot(local.x - g.x, local.y - g.y) < HANDLE_TOUCH_RADIUS / view.s);
       if (grip) {
         op.current = { kind: 'scale', grip, frame, base: elements, ids: selection };
         return;
@@ -387,7 +409,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
         return;
       }
     }
-    const hit = elementAt(elements, p);
+    const hit = elementAt(elements, p, view.s);
     if (hit !== -1) {
       setSelection([hit]);
       op.current = { kind: 'move', start: p, base: elements, ids: [hit] };
@@ -414,8 +436,42 @@ export default function SketchEditor({ visible, initialElements, background, pap
     }
     const ids = new Set(o.ids);
     if (o.kind === 'move') {
-      const dx = p.x - o.start.x;
-      const dy = p.y - o.start.y;
+      let dx = p.x - o.start.x;
+      let dy = p.y - o.start.y;
+      // Alignment guides, as on the boards: an edge or the middle of what
+      // is carried settles onto another element's edge or middle when it
+      // comes within a few points of it, and a pink line says so.
+      const moving = unionBox(o.ids.map((i) => worldBoundsOf(o.base[i])));
+      const others = o.base.filter((_, i) => !ids.has(i)).map(worldBoundsOf);
+      let guideX: number | null = null;
+      let guideY: number | null = null;
+      if (moving && others.length) {
+        const reach = GUIDE_SNAP_DISTANCE / view.s;
+        const snap = (mine: number[], theirs: number[]) => {
+          let best: { diff: number; at: number } | null = null;
+          for (const m of mine)
+            for (const t of theirs) {
+              const diff = t - m;
+              if (Math.abs(diff) < reach && (!best || Math.abs(diff) < Math.abs(best.diff))) best = { diff, at: t };
+            }
+          return best;
+        };
+        const mx = [moving.minX + dx, (moving.minX + moving.maxX) / 2 + dx, moving.maxX + dx];
+        const my = [moving.minY + dy, (moving.minY + moving.maxY) / 2 + dy, moving.maxY + dy];
+        const tx = others.flatMap((b) => [b.minX, (b.minX + b.maxX) / 2, b.maxX]);
+        const ty = others.flatMap((b) => [b.minY, (b.minY + b.maxY) / 2, b.maxY]);
+        const sx = snap(mx, tx);
+        const sy = snap(my, ty);
+        if (sx) {
+          dx += sx.diff;
+          guideX = sx.at;
+        }
+        if (sy) {
+          dy += sy.diff;
+          guideY = sy.at;
+        }
+      }
+      setGuides(guideX === null && guideY === null ? null : { x: guideX, y: guideY });
       setElements(o.base.map((el, i) => (ids.has(i) ? translateElement(el, dx, dy) : el)));
       return;
     }
@@ -465,6 +521,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
   function selectEnd() {
     const o = op.current;
     op.current = null;
+    setGuides(null);
     if (!o) return;
     if (o.kind === 'marquee') {
       setMarquee(null);
@@ -484,8 +541,51 @@ export default function SketchEditor({ visible, initialElements, background, pap
 
   // ---- the canvas ----------------------------------------------------------------
 
+  // A touch, as a point on the paper (the view's pan and zoom undone).
+  // The canvas's own place on the screen is read off the same touch:
+  // pageX minus locationX - every finger of a pinch is measured from it.
+  const origin = useRef({ x: 0, y: 0 });
+  function paperPoint(e: GestureResponderEvent): Point {
+    const n = e.nativeEvent;
+    origin.current = { x: n.pageX - n.locationX, y: n.pageY - n.locationY };
+    return { x: (n.locationX - view.tx) / view.s, y: (n.locationY - view.ty) / view.s };
+  }
+  // Two fingers: the paper moves and zooms under them, and whatever one
+  // finger had started is let go of.
+  const pinch = useRef<{ c: Point; d: number; view: typeof view } | null>(null);
+  function dropUnfinished() {
+    setCurrentPoints([]);
+    setShapeStart(null);
+    setShapeCurrent(null);
+    const o = op.current;
+    if (o && o.kind !== 'marquee') setElements(o.base);
+    op.current = null;
+    setMarquee(null);
+    setGuides(null);
+  }
+  function pinchMove(e: GestureResponderEvent): boolean {
+    const touches = e.nativeEvent.touches;
+    if (background || touches.length < 2) return false;
+    const a = { x: touches[0].pageX - origin.current.x, y: touches[0].pageY - origin.current.y };
+    const b = { x: touches[1].pageX - origin.current.x, y: touches[1].pageY - origin.current.y };
+    const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+    if (!pinch.current) {
+      dropUnfinished();
+      pinch.current = { c, d, view };
+      return true;
+    }
+    const start = pinch.current;
+    const nextS = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, start.view.s * (d / start.d)));
+    // The paper point that was under the fingers' middle stays under it.
+    const wx = (start.c.x - start.view.tx) / start.view.s;
+    const wy = (start.c.y - start.view.ty) / start.view.s;
+    setView({ s: nextS, tx: c.x - wx * nextS, ty: c.y - wy * nextS });
+    return true;
+  }
+
   function handleStart(e: GestureResponderEvent) {
-    const { locationX, locationY } = e.nativeEvent;
+    const { x: locationX, y: locationY } = paperPoint(e);
     if (tool === 'eraser') {
       eraseAt(locationX, locationY);
       return;
@@ -508,7 +608,8 @@ export default function SketchEditor({ visible, initialElements, background, pap
   }
 
   function handleMove(e: GestureResponderEvent) {
-    const { locationX, locationY } = e.nativeEvent;
+    if (pinchMove(e) || pinch.current) return;
+    const { x: locationX, y: locationY } = paperPoint(e);
     if (tool === 'eraser') {
       eraseAt(locationX, locationY);
       return;
@@ -527,6 +628,10 @@ export default function SketchEditor({ visible, initialElements, background, pap
 
   function handleEnd() {
     erasing.current = false;
+    if (pinch.current) {
+      pinch.current = null;
+      return;
+    }
     if (tool === 'select') {
       selectEnd();
       return;
@@ -591,6 +696,25 @@ export default function SketchEditor({ visible, initialElements, background, pap
     }
     setPendingText(null);
     setTextValue('');
+  }
+
+  // The whole drawing on the screen, clear of the bars above and below -
+  // or, with nothing drawn, the paper as it first lay.
+  function fitView(els: SketchElement[] = elements) {
+    const box = drawingViewBox(els, 24);
+    if (!box || canvasSize.width === 0) {
+      setView({ tx: 0, ty: 0, s: 1 });
+      return;
+    }
+    const top = insets.top + 72;
+    const bottom = insets.bottom + 90;
+    const roomH = Math.max(1, canvasSize.height - top - bottom);
+    const s = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(1, canvasSize.width / box.width, roomH / box.height)));
+    setView({
+      s,
+      tx: (canvasSize.width - box.width * s) / 2 - box.x * s,
+      ty: top + (roomH - box.height * s) / 2 - box.y * s,
+    });
   }
 
   // One step back, whatever the step was.
@@ -685,6 +809,8 @@ export default function SketchEditor({ visible, initialElements, background, pap
     isShapeTool(tool) && shapeStart && shapeCurrent
       ? { kind: tool, x1: shapeStart.x, y1: shapeStart.y, x2: shapeCurrent.x, y2: shapeCurrent.y }
       : null;
+  // One screen point, on the paper (see MIN_ZOOM).
+  const k = 1 / view.s;
   // The chosen ones' box, only while the select tool is in hand.
   const frame = tool === 'select' ? frameOf(elements, selection) : null;
   const danger = S.dark ? '#FF7A6E' : '#C8452F';
@@ -709,106 +835,125 @@ export default function SketchEditor({ visible, initialElements, background, pap
           >
             {!!background && <Image source={{ uri: background.uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
             <Svg style={StyleSheet.absoluteFill}>
-              <SketchLayer elements={elements} ink={paperInk} />
-              {currentPoints.length > 1 && (
-                <Path
-                  d={pointsToPath(currentPoints)}
-                  stroke={shown(color)}
-                  strokeWidth={strokeWidth}
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )}
-              {previewShape && (
-                <Path
-                  d={shapeToPath(previewShape, strokeWidth)}
-                  stroke={shown(color)}
-                  strokeWidth={strokeWidth}
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )}
-              {/* Several chosen: each one's own outline, faint, inside the
-                  box that holds them all. */}
-              {frame &&
-                selection.length > 1 &&
-                selection.map((i) => {
-                  const el = elements[i];
-                  if (!el) return null;
-                  const ob = boundsOf(el);
-                  const op2 = pivotOf(el);
-                  return (
-                    <G key={`o${i}`} transform={el.rot ? `rotate(${el.rot} ${op2.x} ${op2.y})` : undefined}>
-                      <Rect
-                        x={ob.minX - 3}
-                        y={ob.minY - 3}
-                        width={ob.maxX - ob.minX + 6}
-                        height={ob.maxY - ob.minY + 6}
-                        stroke={S.accent}
-                        strokeOpacity={0.45}
-                        strokeWidth={1}
-                        fill="none"
-                        rx={4}
-                      />
-                    </G>
-                  );
-                })}
-              {frame && (
-                <G transform={frame.rot ? `rotate(${frame.rot} ${frame.pivot.x} ${frame.pivot.y})` : undefined}>
-                  <Rect
-                    x={frame.box.minX}
-                    y={frame.box.minY}
-                    width={frame.box.maxX - frame.box.minX}
-                    height={frame.box.maxY - frame.box.minY}
-                    stroke={S.accent}
-                    strokeWidth={1.5}
-                    fill="none"
-                  />
-                  {/* The turning grip, on a short arm above the top. */}
+              <G transform={`translate(${view.tx} ${view.ty}) scale(${view.s})`}>
+                <SketchLayer elements={elements} ink={paperInk} />
+                {currentPoints.length > 1 && (
                   <Path
-                    d={`M${(frame.box.minX + frame.box.maxX) / 2} ${frame.box.minY} L${(frame.box.minX + frame.box.maxX) / 2} ${frame.box.minY - ROTATE_ARM + 9}`}
-                    stroke={S.accent}
-                    strokeWidth={1.5}
+                    d={pointsToPath(currentPoints)}
+                    stroke={shown(color)}
+                    strokeWidth={strokeWidth}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
-                  <Circle
-                    cx={(frame.box.minX + frame.box.maxX) / 2}
-                    cy={frame.box.minY - ROTATE_ARM}
-                    r={9}
-                    fill={S.card}
-                    stroke={S.accent}
-                    strokeWidth={2}
+                )}
+                {previewShape && (
+                  <Path
+                    d={shapeToPath(previewShape, strokeWidth)}
+                    stroke={shown(color)}
+                    strokeWidth={strokeWidth}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
-                  {gripsOf(frame.box).map((g, i) => (
+                )}
+                {/* Several chosen: each one's own outline, faint, inside the
+                    box that holds them all. */}
+                {frame &&
+                  selection.length > 1 &&
+                  selection.map((i) => {
+                    const el = elements[i];
+                    if (!el) return null;
+                    const ob = boundsOf(el);
+                    const op2 = pivotOf(el);
+                    return (
+                      <G key={`o${i}`} transform={el.rot ? `rotate(${el.rot} ${op2.x} ${op2.y})` : undefined}>
+                        <Rect
+                          x={ob.minX - 3}
+                          y={ob.minY - 3}
+                          width={ob.maxX - ob.minX + 6}
+                          height={ob.maxY - ob.minY + 6}
+                          stroke={S.accent}
+                          strokeOpacity={0.45}
+                          strokeWidth={1 * k}
+                          fill="none"
+                          rx={4}
+                        />
+                      </G>
+                    );
+                  })}
+                {frame && (
+                  <G transform={frame.rot ? `rotate(${frame.rot} ${frame.pivot.x} ${frame.pivot.y})` : undefined}>
                     <Rect
-                      key={`g${i}`}
-                      x={g.x - HANDLE / 2}
-                      y={g.y - HANDLE / 2}
-                      width={HANDLE}
-                      height={HANDLE}
-                      rx={3}
+                      x={frame.box.minX}
+                      y={frame.box.minY}
+                      width={frame.box.maxX - frame.box.minX}
+                      height={frame.box.maxY - frame.box.minY}
+                      stroke={S.accent}
+                      strokeWidth={1.5 * k}
+                      fill="none"
+                    />
+                    {/* The turning grip, on a short arm above the top. */}
+                    <Path
+                      d={`M${(frame.box.minX + frame.box.maxX) / 2} ${frame.box.minY} L${(frame.box.minX + frame.box.maxX) / 2} ${frame.box.minY - (ROTATE_ARM - 9) * k}`}
+                      stroke={S.accent}
+                      strokeWidth={1.5 * k}
+                    />
+                    <Circle
+                      cx={(frame.box.minX + frame.box.maxX) / 2}
+                      cy={frame.box.minY - ROTATE_ARM * k}
+                      r={9 * k}
                       fill={S.card}
                       stroke={S.accent}
-                      strokeWidth={2}
+                      strokeWidth={2 * k}
                     />
-                  ))}
-                </G>
-              )}
-              {marquee && (
-                <Rect
-                  x={marquee.minX}
-                  y={marquee.minY}
-                  width={marquee.maxX - marquee.minX}
-                  height={marquee.maxY - marquee.minY}
-                  stroke={S.accent}
-                  strokeWidth={1}
-                  strokeDasharray="5 4"
-                  fill={S.accent}
-                  fillOpacity={0.08}
-                  rx={4}
-                />
-              )}
+                    {gripsOf(frame.box).map((g, i) => (
+                      <Rect
+                        key={`g${i}`}
+                        x={g.x - (HANDLE * k) / 2}
+                        y={g.y - (HANDLE * k) / 2}
+                        width={HANDLE * k}
+                        height={HANDLE * k}
+                        rx={3 * k}
+                        fill={S.card}
+                        stroke={S.accent}
+                        strokeWidth={2 * k}
+                      />
+                    ))}
+                  </G>
+                )}
+                {marquee && (
+                  <Rect
+                    x={marquee.minX}
+                    y={marquee.minY}
+                    width={marquee.maxX - marquee.minX}
+                    height={marquee.maxY - marquee.minY}
+                    stroke={S.accent}
+                    strokeWidth={1 * k}
+                    strokeDasharray={`${5 * k} ${4 * k}`}
+                    fill={S.accent}
+                    fillOpacity={0.08}
+                    rx={4}
+                  />
+                )}
+                {/* The alignment guides, across the whole visible paper. */}
+                {guides?.x != null && (
+                  <Path
+                    d={`M${guides.x} ${-view.ty / view.s} L${guides.x} ${(canvasSize.height - view.ty) / view.s}`}
+                    stroke={GUIDE_COLOR}
+                    strokeWidth={1 * k}
+                    strokeDasharray={`${6 * k} ${4 * k}`}
+                  />
+                )}
+                {guides?.y != null && (
+                  <Path
+                    d={`M${-view.tx / view.s} ${guides.y} L${(canvasSize.width - view.tx) / view.s} ${guides.y}`}
+                    stroke={GUIDE_COLOR}
+                    strokeWidth={1 * k}
+                    strokeDasharray={`${6 * k} ${4 * k}`}
+                  />
+                )}
+              </G>
             </Svg>
           </View>
         </View>
@@ -825,6 +970,16 @@ export default function SketchEditor({ visible, initialElements, background, pap
               <Ionicons name={'lc:undo-2' as never} size={19} color={history.current.length ? S.ink : S.ink3} />
             </Pressable>
             <View style={[styles.capsuleDivider, { backgroundColor: S.line }]} />
+            {/* Moved or zoomed: how far, and a tap brings the whole
+                drawing back into view. */}
+            {(view.s !== 1 || view.tx !== 0 || view.ty !== 0) && (
+              <>
+                <Pressable hitSlop={6} onPress={() => fitView()} style={styles.zoomButton}>
+                  <Text style={[styles.zoomLabel, { color: S.ink2 }]}>{Math.round(view.s * 100)}%</Text>
+                </Pressable>
+                <View style={[styles.capsuleDivider, { backgroundColor: S.line }]} />
+              </>
+            )}
             {/* With something chosen, it takes just that. */}
             <Pressable hitSlop={6} onPress={removeChosenOrAll} disabled={elements.length === 0} style={styles.capsuleButton}>
               <Ionicons name={'lc:trash' as never} size={19} color={elements.length ? danger : S.ink3} />
@@ -1073,6 +1228,18 @@ const styles = StyleSheet.create({
     height: ROUND,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  zoomButton: {
+    minWidth: 52,
+    height: 46,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomLabel: {
+    fontSize: 13,
+    fontFamily: SOFT_MEDIUM,
+    fontVariant: ['tabular-nums'],
   },
   capsuleDivider: {
     width: StyleSheet.hairlineWidth,
