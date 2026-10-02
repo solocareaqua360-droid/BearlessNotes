@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import BinRestoreRows from '../components/BinRestoreRows';
 import { useOpenRequest } from '../utils/openRequest';
 import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import { useRecordLinkIds } from '../hooks/useRecordLinkIds';
@@ -1019,9 +1020,10 @@ export default function LinksScreen({
       onAdd={handleAddPress}
       // Only when there is something to show or hide (see recordLinkIds).
       menuRows={
-        recordLinkCount > 0 || showRecordLinks
+        recordLinkCount > 0 || showRecordLinks || bin.trashed.length > 0
           ? (close) => (
-              <Pressable
+              <>
+              {(recordLinkCount > 0 || showRecordLinks) && (<Pressable
                 style={menuStyles.menuRow}
                 onPress={() => {
                   close();
@@ -1032,7 +1034,16 @@ export default function LinksScreen({
                 <Text style={menuStyles.menuRowLabel}>
                   {showRecordLinks ? 'Сховати вкладення записів' : `Показати вкладення записів (${recordLinkCount})`}
                 </Text>
-              </Pressable>
+              </Pressable>)}
+              <BinRestoreRows
+                lastCount={bin.lastBatch.length}
+                allCount={bin.trashed.length}
+                onRestoreLast={() => bin.restoreMany(bin.lastBatch)}
+                onRestoreAll={() => bin.restoreMany(bin.trashed)}
+                close={close}
+                ink={theme.ink.primary}
+              />
+              </>
             )
           : undefined
       }

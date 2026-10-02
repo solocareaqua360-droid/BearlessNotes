@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import BinRestoreRows from '../components/BinRestoreRows';
 import { useOpenRequest } from '../utils/openRequest';
 import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import FolderCanvas from '../components/FolderCanvas';
@@ -850,9 +851,10 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       onAdd={addFileDirectly}
       // Only when there is something to show or hide (see technicalFileIds).
       menuRows={
-        technicalFileIds.size > 0 || showRecordFiles
+        technicalFileIds.size > 0 || showRecordFiles || bin.trashed.length > 0
           ? (close) => (
-              <Pressable
+              <>
+              {(technicalFileIds.size > 0 || showRecordFiles) && (<Pressable
                 style={menuStyles.menuRow}
                 onPress={() => {
                   close();
@@ -863,7 +865,16 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
                 <Text style={menuStyles.menuRowLabel}>
                   {showRecordFiles ? 'Сховати вкладення записів' : `Показати вкладення записів (${technicalFileIds.size})`}
                 </Text>
-              </Pressable>
+              </Pressable>)}
+              <BinRestoreRows
+                lastCount={bin.lastBatch.length}
+                allCount={bin.trashed.length}
+                onRestoreLast={() => bin.restoreMany(bin.lastBatch)}
+                onRestoreAll={() => bin.restoreMany(bin.trashed)}
+                close={close}
+                ink={theme.ink.primary}
+              />
+              </>
             )
           : undefined
       }
