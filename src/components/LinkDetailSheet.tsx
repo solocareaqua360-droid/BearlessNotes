@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { FlipFrom } from '../utils/flipOpen';
-import { ActivityIndicator, Image, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -316,7 +316,29 @@ export default function LinkDetailSheet({
                     )}
                   </>
                 ) : (
-                  <Button icon={primary.icon} label={primary.label} onPress={onOpen} kind="primary" styles={styles} theme={theme} />
+                  // Two halves again: the player here, or the video's own
+                  // app - "інколи я можу хотіти подивитися відео в самому
+                  // YouTube або в TikTok". openURL on a youtube/tiktok
+                  // address is what Android hands to the installed app.
+                  <View style={styles.splitButton}>
+                    <Pressable
+                      style={({ pressed }) => [styles.splitHalf, pressed && styles.pressed]}
+                      onPress={onOpen}
+                    >
+                      <Ionicons name="play-outline" size={20} color={theme.onAccent} />
+                      <Text style={styles.splitLabel}>Відтворити</Text>
+                    </Pressable>
+                    <View style={styles.splitDivider} />
+                    <Pressable
+                      style={({ pressed }) => [styles.splitHalf, pressed && styles.pressed]}
+                      onPress={() => {
+                        Linking.openURL(shown.url).catch(() => notify('Не вдалося відкрити посилання'));
+                      }}
+                    >
+                      <Ionicons name="open-outline" size={20} color={theme.onAccent} />
+                      <Text style={styles.splitLabel}>В застосунку</Text>
+                    </Pressable>
+                  </View>
                 )}
               </Panel>
             )}

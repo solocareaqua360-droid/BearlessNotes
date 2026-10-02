@@ -45,12 +45,16 @@ const MIN_STEP = CIRCLE + 2;
 const APPEAR_MS = 320;
 const DRAW_MS = 480;
 
-// A folder's rect, or its nearest ancestor's that can be seen (a closed
-// island hides what is inside it).
-function rectFor(rects: Record<string, FolderRect>, path: string): FolderRect | null {
+// The folder a line ends at: the folder itself, or its nearest ancestor
+// that can be seen (a closed island hides what is inside it). The PATH
+// comes back too - the line must follow the folder it is drawn to, and a
+// hidden sub-folder has no place of its own to follow: the lines to
+// mindEva's sub-folders stayed behind when mindEva was carried
+// (2026-10-02, measured on the running app, not read off the code).
+function shownFolder(rects: Record<string, FolderRect>, path: string): { path: string; rect: FolderRect } | null {
   let p: string | null = path;
   while (p) {
-    if (rects[p]) return rects[p];
+    if (rects[p]) return { path: p, rect: rects[p] };
     const cut = p.lastIndexOf('/');
     p = cut > 0 ? p.slice(0, cut) : null;
   }
@@ -165,14 +169,21 @@ export default function FolderBaseLinks({
   type Entry = { bx: number; by: number; rx: number; ry: number; half: number; lx: SharedValue<number> | null; ly: SharedValue<number> | null };
   const groupMap = new Map<string, { key: string; kind: string; color: string; solid: boolean; entries: Entry[] }>();
   const hits: { key: string; d: string; onPress: () => void }[] = [];
+  // One line per database and folder it ends at: three sub-folders of one
+  // closed folder are one line to that folder, not three on top of each other.
+  const drawn = new Set<string>();
   links.forEach((link) => {
     const index = bases.findIndex((b) => b.kind === link.kind);
-    const rect = rectFor(api.rects, link.path);
-    if (index < 0 || !rect) return;
+    const shown = shownFolder(api.rects, link.path);
+    if (index < 0 || !shown) return;
+    const rect = shown.rect;
     const solid = link.count > 0;
     const key = `${link.kind}|${solid ? 's' : 'd'}`;
     if (!groupMap.has(key)) groupMap.set(key, { key, kind: link.kind, color: bases[index].color, solid, entries: [] });
-    const live = api.live(link.path);
+    const once = `${key}|${shown.path}`;
+    if (drawn.has(once)) return;
+    drawn.add(once);
+    const live = api.live(shown.path);
     const entry: Entry = {
       bx: buttonX + CIRCLE / 2,
       by: circleY(index),
@@ -284,8 +295,9 @@ function GroupLines({
   const tick = api.tick;
   const list = entries;
   const props = useAnimatedProps(() => {
-    // Read so a carried folder redraws its line every frame (its own
-    // live place is inside `list`, where this mapper cannot see it move).
+    // Read so a carried folder redraws its line every frame. (Reanimated
+    // does find the shared values inside `list` as well; what kept lines
+    // behind was a line following a hidden sub-folder - see shownFolder.)
     void tick.value;
     const t = Math.max(0.001, draw.value);
     let d = '';
