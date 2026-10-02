@@ -88,6 +88,9 @@ export type BackdropOverride =
       // stays readable on any picture.
       type: 'wallpaper';
       veil: number;
+      // 0-100, how much the wallpaper itself is blurred (an APK with
+      // setWindowBlur - see utils/mindevaNative); absent = sharp.
+      blur?: number;
     }
   | {
       type: 'image';

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import WallpaperBlur from './src/components/WallpaperBlur';
 import { View } from 'react-native';
 import {
   useFonts,
@@ -70,6 +71,7 @@ function ThemedNavigationContainer({ children }: { children: React.ReactNode }) 
   };
   return (
     <NavigationContainer ref={navigationRef} theme={navTheme}>
+      <WallpaperBlur />
       {children}
     </NavigationContainer>
   );

@@ -7,6 +7,7 @@ import { requireOptionalNativeModule } from 'expo';
 type MindevaNative = {
   wallpaperWindow?: boolean;
   ensureAlarmChannel(id: string, name: string, description: string): boolean;
+  setWindowBlur?(radius: number): boolean;
 };
 
 const native = requireOptionalNativeModule<MindevaNative>('MindevaNative');
@@ -19,6 +20,18 @@ export const supportsWallpaper = !!native?.wallpaperWindow;
 export function ensureNativeAlarmChannel(id: string, name: string, description: string): boolean {
   try {
     return !!native?.ensureAlarmChannel(id, name, description);
+  } catch {
+    return false;
+  }
+}
+
+// The wallpaper's blur, in px - false where this APK or this phone
+// cannot draw it (see the native side).
+export const supportsWindowBlur = typeof native?.setWindowBlur === 'function';
+
+export function setWindowBlur(radius: number): boolean {
+  try {
+    return !!native?.setWindowBlur?.(Math.round(radius));
   } catch {
     return false;
   }

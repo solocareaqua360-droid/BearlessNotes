@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supportsWallpaper } from '../utils/mindevaNative';
+import { supportsWallpaper, supportsWindowBlur } from '../utils/mindevaNative';
 import BackupCard from '../components/BackupCard';
 import { useTheme, useStyles, useWallpaperVeil } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -299,10 +299,13 @@ export default function SettingsScreen() {
 
   // The phone's own wallpaper under the app (an APK that can - see
   // supportsWallpaper).
-  function chooseWallpaper(veil = backdropSettings.override?.type === 'wallpaper' ? backdropSettings.override.veil : 45) {
+  function chooseWallpaper(
+    veil = backdropSettings.override?.type === 'wallpaper' ? backdropSettings.override.veil : 45,
+    blur = backdropSettings.override?.type === 'wallpaper' ? (backdropSettings.override.blur ?? 0) : 0
+  ) {
     setBackdropSettings({
       ...backdropSettings,
-      override: { type: 'wallpaper', veil },
+      override: { type: 'wallpaper', veil, blur },
       // The theme in use is always ticked - a wallpaper chosen while some
       // other theme's tick was left from an old gradient did nothing.
       appliesTo: backdropSettings.appliesTo.includes(theme.key)
@@ -1021,11 +1024,27 @@ export default function SettingsScreen() {
               <Text style={[styles.cardHint, { marginTop: 14 }]}>
                 Під застосунком - шпалери самого телефона. Повзунок - наскільки їх приглушити, щоб текст добре читався.
               </Text>
+              <Text style={[styles.cardHint, { marginTop: 8 }]}>Затемнення</Text>
               <GradientSlider
                 value={backdropSettings.override.veil / 100}
                 stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
                 onChange={(v) => chooseWallpaper(Math.round(v * 100))}
               />
+              {supportsWindowBlur && (
+                <>
+                  <Text style={[styles.cardHint, { marginTop: 8 }]}>Розмиття</Text>
+                  <GradientSlider
+                    value={(backdropSettings.override.blur ?? 0) / 100}
+                    stops={['rgba(255,255,255,0.12)', theme.ink.primary]}
+                    onChange={(v) =>
+                      chooseWallpaper(
+                        backdropSettings.override?.type === 'wallpaper' ? backdropSettings.override.veil : 45,
+                        Math.round(v * 100)
+                      )
+                    }
+                  />
+                </>
+              )}
             </>
           )}
 
