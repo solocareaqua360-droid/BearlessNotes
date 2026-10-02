@@ -1,9 +1,9 @@
 import { lift } from '../utils/lift';
 import { cardRadius } from '../theme/scale';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { ExplorerFolder } from '../hooks/useExplorer';
 import { FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
@@ -34,7 +34,7 @@ export default function ExplorerHead({
   path: string;
   folders: ExplorerFolder[];
   onGo: (path: string) => void;
-  onFolderMenu: (folder: ExplorerFolder, e?: GestureResponderEvent) => void;
+  onFolderMenu: (folder: ExplorerFolder, node?: View | null) => void;
   itemIcon: keyof typeof Ionicons.glyphMap;
   trash?: { count: number; onOpen: () => void };
   // How many folders stand across a line. One on a phone; two or three
@@ -61,6 +61,9 @@ export default function ExplorerHead({
   const soft = useSoftSurface();
   const styles = softenStyles(useStyles(makeStyles), soft, softExplorer);
   const [width, setWidth] = useState(0);
+  // Each row's own node, for a held folder's menu to rise exactly where
+  // it stands (see FolderHoldMenu).
+  const rowNodes = useRef(new Map<string, View>());
   const cols = Math.max(soft ? 2 : 1, columns ?? 1);
   // A point short of the exact share: two halves and the gap came to the
   // row's width EXACTLY, and a fraction of a point of rounding sent the
@@ -80,7 +83,11 @@ export default function ExplorerHead({
             {...lift()}
             style={[styles.folderRow, rowWidth !== undefined && { width: rowWidth }]}
             onPress={() => onGo(folder.fullPath)}
-            onLongPress={(e) => onFolderMenu(folder, e)}
+            ref={(node) => {
+              if (node) rowNodes.current.set(folder.fullPath, node);
+              else rowNodes.current.delete(folder.fullPath);
+            }}
+            onLongPress={() => onFolderMenu(folder, rowNodes.current.get(folder.fullPath))}
           >
             <View style={[styles.folderThumb, !soft && { borderColor: folder.tag?.color ?? theme.ink.faint }]}>
               <Ionicons

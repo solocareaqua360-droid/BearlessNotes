@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from 'react';
-import { StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from 'react-native';
+import { useRef, useState, type ReactNode } from 'react';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import SoftIcon from './SoftIcon';
 import HoldMenu, { type HoldAction } from './HoldMenu';
 import { useSoft } from '../theme/soft';
+import { hapticPickUp } from '../utils/haptics';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import type { ExplorerFolder, useExplorer } from '../hooks/useExplorer';
 
@@ -36,14 +37,21 @@ export function useFolderHold({
   const { width: windowW } = useWindowDimensions();
   const [held, setHeld] = useState<{ folder: ExplorerFolder; rect: Rect } | null>(null);
 
-  // Where the held row stands on screen. A right click brings no event
-  // to measure - the folder is then lifted near the top.
-  const open = (folder: ExplorerFolder, e?: GestureResponderEvent) => {
+  // Where the held row stands on screen - measured on the row's OWN node.
+  // The press event's currentTarget was measured first, and by the time a
+  // long press fires that is no longer the row: the folder rose at the
+  // left edge, wider than itself, from a tile in the right column
+  // (2026-10-02). A right click brings no node - lifted near the top.
+  const nodes = useRef(new Map<string, View>());
+  const refFor = (path: string) => (node: View | null) => {
+    if (node) nodes.current.set(path, node);
+    else nodes.current.delete(path);
+  };
+  const open = (folder: ExplorerFolder, node?: View | null) => {
+    hapticPickUp();
     const fallback = { x: 16, y: 120, width: Math.min(windowW - 32, 360), height: 64 };
-    const target = e?.currentTarget as unknown as
-      | { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void }
-      | undefined;
-    if (target?.measureInWindow) {
+    const target = node ?? nodes.current.get(folder.fullPath);
+    if (target) {
       target.measureInWindow((x, y, width, height) =>
         setHeld({ folder, rect: width > 0 ? { x, y, width, height } : fallback })
       );
@@ -90,7 +98,7 @@ export function useFolderHold({
       onClose={() => setHeld(null)}
     />
   );
-  return { open, menu };
+  return { open, refFor, menu };
 }
 
 // The folder as it stands in the list, drawn again over the blur.

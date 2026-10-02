@@ -1773,7 +1773,8 @@ export default function DocumentsScreen({
                             setSearchOpen(false);
                           }
                         }}
-                        onLongPress={(e) => folderHold.open(folder, e)}
+                        ref={folderHold.refFor(folder.fullPath)}
+                        onLongPress={() => folderHold.open(folder)}
                         {...rightClick(() => folderHold.open(folder))}
                       {...lift()}
                       >
@@ -1864,7 +1865,8 @@ export default function DocumentsScreen({
                           setSearchOpen(false);
                         }
                       }}
-                      onLongPress={(e) => folderHold.open(folder, e)}
+                      ref={folderHold.refFor(folder.fullPath)}
+                        onLongPress={() => folderHold.open(folder)}
                       {...rightClick(() => folderHold.open(folder))}
                       {...lift()}
                     >
