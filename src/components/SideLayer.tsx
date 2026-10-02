@@ -1,4 +1,6 @@
 import { ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import { useActiveBackdropOverride } from '../theme/ThemeProvider';
+import { setWallpaperBoost } from '../utils/wallpaperBoost';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { NavigationContext, NavigationRouteContext, useIsFocused } from '@react-navigation/native';
 import { BackHandler, InteractionManager, StyleSheet, View, useWindowDimensions } from 'react-native';
@@ -98,6 +100,13 @@ export default function SideLayer({
   // blurs nobody could see. While the layer is up they stand down to flat
   // glass (frostPause); the layer's own blur is not paused.
   usePauseFrost(open && tabsFocused);
+  // Under the phone's wallpaper: the window's blur deepens while this is
+  // out (see wallpaperBoost).
+  const wallpaper = useActiveBackdropOverride()?.type === 'wallpaper';
+  useEffect(() => {
+    setWallpaperBoost(side, wallpaper && (open || dragging) && tabsFocused);
+    return () => setWallpaperBoost(side, false);
+  }, [side, wallpaper, open, dragging, tabsFocused]);
 
   // Opened or shut from anywhere but a swipe (back, the bar's arrow): the
   // layer finishes the way there on its own. A swipe has already put it
@@ -148,7 +157,11 @@ export default function SideLayer({
   return (
     <>
       {/* The desk, out of focus: a still blur that fades in, over a dim
-          that carries it while the blur is not there. */}
+          that carries it while the blur is not there. Not under the
+          phone's wallpaper: there the desk fades away instead (Tabs) and
+          the window's own blur deepens (wallpaperBoost) - this blur cannot
+          see the wallpaper, and its dim would stack on the screen's veil. */}
+      {!wallpaper && (
       <GlassPortal priority={-2}>
         <Animated.View style={[StyleSheet.absoluteFill, styles.dim, groundStyle]} pointerEvents="none">
           {blurShown && blurTarget && (
@@ -163,6 +176,7 @@ export default function SideLayer({
           )}
         </Animated.View>
       </GlassPortal>
+      )}
       {/* The screen itself: over its blur, under the dock and the bars
           (faded out while it is open) and under every sheet it opens. */}
       <GlassPortal priority={-1}>

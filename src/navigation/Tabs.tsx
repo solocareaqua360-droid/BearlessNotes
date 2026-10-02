@@ -3,7 +3,8 @@ import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Easing, runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useActiveBackdropOverride } from '../theme/ThemeProvider';
 import FloatingIslandTabBar from '../components/FloatingIslandTabBar';
 import CalendarDrawer, { DatabasesLayer, SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
 import { SideDrawersProvider, useSideDrawers } from './sideDrawers';
@@ -72,6 +73,17 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
   // Which way this swipe goes, once it is known: 1 the calendar (to the
   // right), -1 the databases (to the left).
   const way = useSharedValue(0);
+  // Under the phone's wallpaper the desk FADES AWAY as the calendar or the
+  // databases come in (option Б, see wallpaperBoost): the layer's own blur
+  // of the desk is off there, and a sharp desk would show through it.
+  const wallpaper = useActiveBackdropOverride()?.type === 'wallpaper';
+  const noProgress = useSharedValue(0);
+  const calendarShown = calendarProgress ?? noProgress;
+  const databasesShown = databasesProgress ?? noProgress;
+  const deskFade = useAnimatedStyle(
+    () => ({ opacity: wallpaper ? 1 - Math.max(calendarShown.value, databasesShown.value) : 1 }),
+    [wallpaper]
+  );
   // The desks are swiped between, so each layer's swipe is the one PAST
   // the end of them - iOS's own arrangement: a rightward swipe on the
   // first home page is the widgets page, a leftward one on the last is the
@@ -178,7 +190,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
   return (
     <View style={styles.fill}>
       <GestureDetector gesture={swipe}>
-        <View style={styles.fill}>
+        <Animated.View style={[styles.fill, deskFade]}>
           <Tab.Navigator
             tabBar={(props) => <FloatingIslandTabBar {...props} />}
             screenOptions={{
@@ -218,7 +230,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
               );
             })}
           </Tab.Navigator>
-        </View>
+        </Animated.View>
       </GestureDetector>
       <CalendarDrawer />
       <DatabasesLayer />
