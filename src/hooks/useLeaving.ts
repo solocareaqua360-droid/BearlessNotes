@@ -18,5 +18,10 @@ export function useLeaving(visible: boolean, ms: number): { mounted: boolean; le
     const timer = setTimeout(() => setLingering(false), ms);
     return () => clearTimeout(timer);
   }, [visible, ms]);
-  return { mounted: visible || lingering, leaving: !visible && lingering };
+  // Leaving starts in the very render `visible` turns false. Waiting for
+  // the effect above left one render with nothing mounted: what was
+  // leaving vanished and was mounted again from scratch - so it never
+  // played its way out (the record page's flip back, 2026-10-02).
+  const justLeft = !visible && wasVisible.current && ms > 0;
+  return { mounted: visible || lingering || justLeft, leaving: !visible && (lingering || justLeft) };
 }

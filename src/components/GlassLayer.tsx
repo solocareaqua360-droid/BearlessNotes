@@ -4,7 +4,7 @@ import { ReactNode, useEffect, useRef } from 'react';
 import { BackHandler, Image, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { FlipFrom } from '../utils/flipOpen';
 import { BlurView } from 'expo-blur';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
 import { GLASS_BACKDROP } from '../constants/glass';
@@ -64,6 +64,11 @@ export default function GlassLayer({
   // the phone by GrowIn below (the soft motion, 2026-10-02).
   const flip = !pointer && flipFrom ? flipFrom : null;
   const { mounted, leaving } = useLeaving(visible, flip ? FLIP_MS : MOTION.out);
+  // The card's turn, 0 in the card .. 1 open - and the dim and the blur
+  // behind follow the same clock: they came on at once ("ніби світло
+  // вимкнули") and went off only after the card had settled.
+  const flipT = useSharedValue(0);
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: flipT.value }));
   const lastChildren = useRef(children);
   if (visible) lastChildren.current = children;
   if (!mounted) return null;
@@ -74,6 +79,7 @@ export default function GlassLayer({
       {/* The blur covers the whole screen, not just the sheet: what is
           beside a sheet is as much "behind the glass" as what is under it,
           and blurring only the sheet's own rectangle looks like a cut-out. */}
+      <Animated.View style={[StyleSheet.absoluteFill, flip ? backdropStyle : null]} pointerEvents="box-none">
       {!pointer && (
       <BlurView
         intensity={intensity}
@@ -89,6 +95,7 @@ export default function GlassLayer({
           that didn't land on a deeper child, which is what used to keep
           these lists from scrolling. */}
       <Pressable style={[StyleSheet.absoluteFill, pointer ? styles.dimLight : styles.dim]} onPress={onClose} />
+      </Animated.View>
       {pointer ? (
         <View
           {...({ dataSet: leaving ? { fadeOut: '1', origin: 'center' } : { fadeIn: '1', origin: 'center' } } as object)}
@@ -99,7 +106,7 @@ export default function GlassLayer({
         </View>
       ) : (
         flip ? (
-          <FlipIn leaving={leaving} from={flip}>{leaving ? lastChildren.current : children}</FlipIn>
+          <FlipIn leaving={leaving} from={flip} p={flipT}>{leaving ? lastChildren.current : children}</FlipIn>
         ) : (
           <GrowIn leaving={leaving}>{leaving ? lastChildren.current : children}</GrowIn>
         )
@@ -141,8 +148,17 @@ function GrowIn({ leaving, children }: { leaving: boolean; children: ReactNode }
 // backwards into the same card.
 const FLIP_MS = 460;
 const PERSPECTIVE = 1100;
-function FlipIn({ leaving, from, children }: { leaving: boolean; from: FlipFrom; children: ReactNode }) {
-  const p = useSharedValue(0);
+function FlipIn({
+  leaving,
+  from,
+  p,
+  children,
+}: {
+  leaving: boolean;
+  from: FlipFrom;
+  p: SharedValue<number>;
+  children: ReactNode;
+}) {
   const window = useWindowDimensions();
   // Plain numbers for the worklets - never the objects they came in.
   const rx = from.rect.x;
