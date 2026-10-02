@@ -1,8 +1,9 @@
 import { lift } from '../utils/lift';
+import { markHeld } from '../utils/heldNode';
 import Animated from 'react-native-reanimated';
 import { usePressSettle } from '../hooks/usePressSettle';
 import { cardRadius } from '../theme/scale';
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { flipId } from '../utils/flipId';
 import { dataSets, morphKey } from '../utils/morph';
 import { IS_POINTER } from '../utils/pointer';
@@ -546,6 +547,22 @@ export default function DocumentCard({
   const recordColour = useRecordColour();
   // A tile settles under the finger (the phone's; the laptop's is CSS).
   const settle = usePressSettle();
+  // Held: the card says so first, so a menu it opens lifts THIS card over
+  // the blur (heldNode / holdAsk). The morph's own ref still gets the node.
+  const tapNode = useRef<View | null>(null);
+  const tapRef = useCallback(
+    (node: View | null) => {
+      tapNode.current = node;
+      morphRef?.(node);
+    },
+    [morphRef]
+  );
+  const hold = onLongPress
+    ? () => {
+        markHeld(tapNode.current);
+        onLongPress();
+      }
+    : undefined;
   // Said outright, or heard from a soft surface around the card (a
   // database's chrome - the diary's cards, see SoftSurfaceContext).
   const softSurface = useSoftSurface();
@@ -701,7 +718,7 @@ export default function DocumentCard({
         ]}
       >
         {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-        <Pressable ref={morphRef} style={styles.wideTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)} {...settle.handlers}>
+        <Pressable ref={tapRef} style={styles.wideTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={hold} {...rightClick(onLongPress)} {...settle.handlers}>
           {page ? (
             /* The same picture, in a wider window: twice a tile's width
                means the page is drawn nearly at its own size, so this is
@@ -776,7 +793,7 @@ export default function DocumentCard({
         ]}
       >
         {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-        <Pressable ref={morphRef} style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)} {...settle.handlers}>
+        <Pressable ref={tapRef} style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={hold} {...rightClick(onLongPress)} {...settle.handlers}>
           {page ? (
             <PageBody
               id={id}
@@ -863,7 +880,7 @@ export default function DocumentCard({
       ]}
     >
       {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-      <Pressable ref={morphRef} style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={onLongPress} {...rightClick(onLongPress)}>
+      <Pressable ref={tapRef} style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={hold} {...rightClick(onLongPress)}>
         {/* A ROW IS A LINE OF TEXT BESIDE A THUMBNAIL, and it stays one:
             a strip of the page across the whole width was the title and
             nothing else, at a size nobody asked for - "виглядає погано і

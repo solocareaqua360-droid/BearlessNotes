@@ -9,6 +9,8 @@ import { useDensity } from '../../hooks/useDensity';
 import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../../constants/glass';
 import { FONT_REGULAR, SOFT_MEDIUM } from '../../utils/fonts';
 import { takeRecentClickPoint, takeRecentContextPoint, type ContextPoint } from '../../utils/contextPoint';
+import { takeHeldNode } from '../../utils/heldNode';
+import { holdAsk } from './HoldAsk';
 
 // THE MENU OF A CARD ("...", a hold, a right click). One thing, two shapes:
 // on a phone the white sheet with its grab bar that a card's menu has
@@ -42,6 +44,27 @@ export default function CardMenu({
   const [anchor, setAnchor] = useState<ContextPoint | null>(null);
   useLayoutEffect(() => {
     if (visible && pointer) setAnchor(takeRecentContextPoint() ?? takeRecentClickPoint());
+  }, [visible, pointer]);
+  // Opened by a HOLD on a phone: the chat's gesture instead of the sheet -
+  // the held card lifted over a blur, the rows beside it (holdAsk). The
+  // sheet stays for a "..." button, which holds nothing.
+  const [held, setHeld] = useState(false);
+  useLayoutEffect(() => {
+    if (!visible || pointer) return;
+    const node = takeHeldNode();
+    if (!node) return;
+    setHeld(true);
+    const shown = rows;
+    holdAsk(
+      { title: '', actions: shown.map((row, i) => ({ id: String(i), label: row.label, icon: row.icon as never, tone: row.danger ? 'danger' : 'normal' })) },
+      node
+    ).then((id) => {
+      setHeld(false);
+      onClose();
+      if (id !== 'cancel') shown[Number(id)]?.onPress();
+    });
+    // Once per opening - the rows are read at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, pointer]);
   // At a pointer it plays its way out, showing the rows it had - the
   // caller's are already gone by then.
@@ -88,7 +111,7 @@ export default function CardMenu({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible && !held} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={[SHEET_BACKDROP, { backgroundColor: theme.scrim }]} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />

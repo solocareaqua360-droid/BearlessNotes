@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { markHeld } from '../utils/heldNode';
+import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useFolderHold } from '../components/FolderHoldMenu';
 import { rightClick } from '../utils/rightClick';
 import { softCardFrame, softenStyles, softRecordColours, useSoftDatabase, type SoftTokens } from '../theme/soft';
@@ -336,8 +338,10 @@ export default function BoardsListScreen({
   // What to do with one board, asked by its own name - the sheet this
   // replaces was a white slab against the bottom edge, in nothing like
   // the app's own colours.
+  // Each row's own node, for its hold menu to lift it (heldNode).
+  const boardNodes = useRef(new Map<string, View>());
   function askBoardActions(board: BoardItem) {
-    ask({
+    holdAsk({
       title: board.title || 'Без назви',
       actions: [
         // The laptop's: the board in a tab of its own, whose arrows step
@@ -384,7 +388,11 @@ export default function BoardsListScreen({
     const row = (
       <Pressable
         key={item.id}
-        ref={carriedProps?.cardRef}
+        ref={(node: View | null) => {
+          if (node) boardNodes.current.set(item.id, node);
+          else boardNodes.current.delete(item.id);
+          carriedProps?.cardRef?.(node);
+        }}
         collapsable={false}
         style={[
           styles.row,
@@ -393,7 +401,10 @@ export default function BoardsListScreen({
           carriedProps?.dimmed && styles.carried,
         ]}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openBoard(item))}
-        onLongPress={carried || isSelectMode ? undefined : () => askBoardActions(item)}
+        onLongPress={carried || isSelectMode ? undefined : () => {
+          markHeld(boardNodes.current.get(item.id));
+          askBoardActions(item);
+        }}
         {...rightClick(carried || isSelectMode ? undefined : () => askBoardActions(item))}
       >
         {/* The board's own layout in miniature, drawn from its cards -
@@ -473,7 +484,11 @@ export default function BoardsListScreen({
     const tile = (
       <Pressable
         key={item.id}
-        ref={carriedProps?.cardRef}
+        ref={(node: View | null) => {
+          if (node) boardNodes.current.set(item.id, node);
+          else boardNodes.current.delete(item.id);
+          carriedProps?.cardRef?.(node);
+        }}
         collapsable={false}
         style={[
           styles.tile,
@@ -481,7 +496,10 @@ export default function BoardsListScreen({
           carriedProps?.dimmed && styles.carried,
         ]}
         onPress={() => (isSelectMode ? toggleSelected(item.id) : openBoard(item))}
-        onLongPress={carried || isSelectMode ? undefined : () => askBoardActions(item)}
+        onLongPress={carried || isSelectMode ? undefined : () => {
+          markHeld(boardNodes.current.get(item.id));
+          askBoardActions(item);
+        }}
         {...rightClick(carried || isSelectMode ? undefined : () => askBoardActions(item))}
       >
         <View style={[styles.tileMap, { height: mapHeight }]}>

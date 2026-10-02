@@ -1,4 +1,5 @@
 import { lift } from '../utils/lift';
+import { markHeld } from '../utils/heldNode';
 import { ReactNode, useRef } from 'react';
 import Animated from 'react-native-reanimated';
 import { usePressSettle } from '../hooks/usePressSettle';
@@ -117,7 +118,10 @@ export default function CustomRowCard({
         style={styles.rowTap}
         {...settle.handlers}
         onPress={onPress ? (e) => onPress(withFlipTarget(e, cardRef.current)) : undefined}
-        onLongPress={onLongPress}
+        onLongPress={onLongPress ? () => {
+          markHeld(cardRef.current);
+          onLongPress();
+        } : undefined}
         {...rightClick(onLongPress)}
         disabled={!onPress && !onLongPress}
       >
@@ -286,7 +290,10 @@ export function CustomRowGridCard({
     <Pressable
       {...settle.handlers}
       onPress={onPress ? (e) => onPress(withFlipTarget(e, cardRef.current)) : undefined}
-      onLongPress={onLongPress}
+      onLongPress={onLongPress ? () => {
+          markHeld(cardRef.current);
+          onLongPress();
+        } : undefined}
       {...rightClick(onLongPress)}
       disabled={!onPress && !onLongPress}
     >

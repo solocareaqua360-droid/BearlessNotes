@@ -1,4 +1,6 @@
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
+import { holdAsk } from '../components/surfaces/HoldAsk';
+import HoldPressable from '../components/HoldPressable';
 import RecentFolderStrip from '../components/RecentFolderStrip';
 import ScreenGround from '../components/ScreenGround';
 import { saveLinkFromUrl } from '../utils/linkRecord';
@@ -2509,16 +2511,18 @@ export default function CustomDatabaseScreen({
       openNoteFromPage(row.id, id);
     };
     const noteMenu = async (id: string) => {
-      const choice = await ask({
+      // A hold's menu (holdAsk): the row says where the note goes, since
+      // the lifted card has no room for the window's message.
+      const choice = await holdAsk({
         title: 'Нотатка',
         message: 'Звичайна нотатка переходить у «Документи» разом з усім, що в ній.',
-        actions: [{ id: 'ordinary', label: 'Зробити звичайною' }],
+        actions: [{ id: 'ordinary', label: 'Перенести в «Документи»', icon: 'document-text-outline' }],
       });
       if (choice !== 'ordinary') return;
       await makeOrdinary(id);
     };
     const card = (key: string, title: string, lines: string, onPress: () => void, onLongPress?: () => void) => (
-      <Pressable
+      <HoldPressable
         key={key}
         onPress={onPress}
         onLongPress={onLongPress}
@@ -2530,7 +2534,7 @@ export default function CustomDatabaseScreen({
         <Text style={{ color: softInk2, fontSize: 13, lineHeight: 18 }} numberOfLines={3}>
           {lines || 'Ще порожньо'}
         </Text>
-      </Pressable>
+      </HoldPressable>
     );
     const firstLines = (blocks: { text?: string }[]) =>
       blocks

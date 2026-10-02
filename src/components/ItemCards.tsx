@@ -1,4 +1,5 @@
 import { lift } from '../utils/lift';
+import { markHeld } from '../utils/heldNode';
 import { cardRadius } from '../theme/scale';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { useCallback, useRef } from 'react';
@@ -205,7 +206,7 @@ function Trailing({
 // A CARD THAT TURNS OVER when it opens (utils/flipOpen): settles under
 // the finger, and the whole card - its own root, which the carry gesture
 // also needs (cardRef) - is what turns.
-function useTurningCard(key: string, rest: Pick<Common, 'cardRef' | 'dimmed' | 'onPress'>) {
+function useTurningCard(key: string, rest: Pick<Common, 'cardRef' | 'dimmed' | 'onPress' | 'onLongPress'>) {
   const settle = usePressSettle(key, !!rest.dimmed);
   const own = useRef<View | null>(null);
   const carryRef = rest.cardRef;
@@ -218,7 +219,16 @@ function useTurningCard(key: string, rest: Pick<Common, 'cardRef' | 'dimmed' | '
   );
   const onPress = rest.onPress;
   const press = useCallback((e: GestureResponderEvent) => onPress(withFlipTarget(e, own.current)), [onPress]);
-  return { ref, style: settle.style, handlers: settle.handlers, press };
+  // Held: the card says so first, so the menu it opens lifts THIS card
+  // over the blur (heldNode / holdAsk).
+  const longPress = rest.onLongPress;
+  const hold = longPress
+    ? () => {
+        markHeld(own.current);
+        longPress();
+      }
+    : undefined;
+  return { ref, style: settle.style, handlers: settle.handlers, press, hold };
 }
 
 export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
@@ -235,7 +245,7 @@ export function LinkRow({ link, ...rest }: { link: LinkCardItem } & Common) {
       style={[styles.row, soft && softCardFrame(soft), rest.playing && styles.rowPlaying, { backgroundColor: background }, turning.style]}
     >
       <View style={styles.rowLine}>
-      <Pressable style={styles.rowTap} {...turning.handlers} onPress={turning.press} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
+      <Pressable style={styles.rowTap} {...turning.handlers} onPress={turning.press} onLongPress={turning.hold} {...rightClick(rest.onLongPress)}>
         {link.imageUrl ? (
           <Image source={{ uri: link.imageUrl }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
         ) : (
@@ -331,7 +341,7 @@ export function LinkGridCell({ link, columns = 2, ...rest }: { link: LinkCardIte
           <PlayerControls onStop={rest.onStopPlaying} onFullscreen={rest.onOpenFullscreen} />
         </View>
       )}
-      <Pressable style={styles.gridTap} {...turning.handlers} onPress={turning.press} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
+      <Pressable style={styles.gridTap} {...turning.handlers} onPress={turning.press} onLongPress={turning.hold} {...rightClick(rest.onLongPress)}>
         {rest.playing ? null : link.imageUrl ? (
           <Image source={{ uri: link.imageUrl }} style={styles.gridThumb} resizeMode="cover" resizeMethod="resize" />
         ) : (
@@ -384,7 +394,7 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
   return (
     <Animated.View ref={turning.ref}
       {...lift()} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, turning.style]}>
-      <Pressable style={styles.rowTap} {...turning.handlers} onPress={turning.press} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
+      <Pressable style={styles.rowTap} {...turning.handlers} onPress={turning.press} onLongPress={turning.hold} {...rightClick(rest.onLongPress)}>
         {/* The page picture at a video thumbnail's size - wide enough to
             recognise the document by its shape, small enough to leave the
             name room. Blown up to the full width it was still not
@@ -456,7 +466,7 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
         turning.style,
       ]}
     >
-      <Pressable style={styles.gridTap} {...turning.handlers} onPress={turning.press} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
+      <Pressable style={styles.gridTap} {...turning.handlers} onPress={turning.press} onLongPress={turning.hold} {...rightClick(rest.onLongPress)}>
         {preview?.thumbUri ? (
           <Image source={{ uri: preview.thumbUri }} style={styles.gridThumb} resizeMode="cover" resizeMethod="resize" />
         ) : preview?.text ? (
@@ -525,7 +535,7 @@ export function PhotoRow({ photo, ...rest }: { photo: PhotoCardItem } & Common) 
   return (
     <Animated.View ref={turning.ref}
       {...lift()} collapsable={false} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, turning.style]}>
-      <Pressable style={styles.rowTap} {...turning.handlers} onPress={turning.press} onLongPress={rest.onLongPress} {...rightClick(rest.onLongPress)}>
+      <Pressable style={styles.rowTap} {...turning.handlers} onPress={turning.press} onLongPress={turning.hold} {...rightClick(rest.onLongPress)}>
         {status === 'ready' ? (
           <Image source={{ uri: source ?? photo.imageUri }} style={styles.rowThumbWide} resizeMode="cover" resizeMethod="resize" />
         ) : (
@@ -577,18 +587,29 @@ export function PhotoCell({ photo, columns = 2, ...rest }: { photo: PhotoCardIte
   // A thumbnail in the grid is not someone looking at the photo.
   const docCount = photo.documentIds.length;
   const soft = useSoftSurface();
+  const cellNode = useRef<View | null>(null);
   return (
     <TurningPressable
       cardKey={photo.id}
       dimmed={rest.dimmed}
-      ref={rest.cardRef as never}
+      ref={((node: View | null) => {
+        cellNode.current = node;
+        rest.cardRef?.(node);
+      }) as never}
       {...lift()}
       collapsable={false}
       // Its share of the row from the row's own count - a fixed 46% made
       // three across 138% wide, and the third ran off the window.
       style={[styles.cell, { flexBasis: gridBasis(columns) }, soft && softCardFrame(soft)]}
       onPress={rest.onPress}
-      onLongPress={rest.onLongPress}
+      onLongPress={
+        rest.onLongPress
+          ? () => {
+              markHeld(cellNode.current);
+              rest.onLongPress?.();
+            }
+          : undefined
+      }
       {...rightClick(rest.onLongPress)}
     >
       {/* The grid was the last place in the Photos database still

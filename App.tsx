@@ -27,6 +27,7 @@ import { GlassPortalHost } from './src/components/GlassPortal';
 import MorphHost from './src/components/MorphHost';
 import ChromeMorph from './src/components/ChromeMorph';
 import { AskHost } from './src/components/surfaces/Ask';
+import { HoldAskHost } from './src/components/surfaces/HoldAsk';
 import CaptureWindow from './src/components/CaptureWindow';
 import BoardPreviewCaptureHost from './src/components/BoardMiniature';
 import { ThemeProvider, ThemedStatusBar, useSeeThroughBackdrop, useTheme } from './src/theme/ThemeProvider';
@@ -165,6 +166,9 @@ export default function App() {
                 blur target: what it blurs is the screens, and from outside
                 them expo-blur quietly falls back to a flat dim. */}
             <AskHost />
+            {/* A hold's menu, as the chat's: the held thing lifted over
+                a blur (holdAsk, CardMenu). Inside the blur target too. */}
+            <HoldAskHost />
             {/* «Загальний чат» - the window the dock's long press
                 opens, already listening. Inside the blur target,
                 like every other sheet. */}

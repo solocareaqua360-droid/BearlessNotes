@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { holdAsk } from '../components/surfaces/HoldAsk';
 import { deleteField, doc, updateDoc } from '../firestore';
 import { db } from '../firebase';
 import { ask, confirm } from '../components/surfaces/Ask';
@@ -50,7 +51,7 @@ export function useBin<T extends { id: string; deletedAt?: number }>(
   // Held down in the bin: back, or away for good - same two choices
   // everywhere this hook is used.
   async function openTrashMenu(item: T, title: string) {
-    const choice = await ask({
+    const choice = await holdAsk({
       title,
       actions: [
         { id: 'restore', label: 'Відновити', icon: 'arrow-undo-outline', tone: 'primary' },

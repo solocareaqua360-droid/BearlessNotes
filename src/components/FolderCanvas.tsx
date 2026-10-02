@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { markHeld } from '../utils/heldNode';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from 'react-native-reanimated';
@@ -1224,6 +1225,19 @@ function Dragged({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+  // Held: the tile says so first, so the menu it opens lifts THIS tile
+  // over the blur (heldNode / holdAsk).
+  const node = useRef<View | null>(null);
+  const held = useMemo(
+    () =>
+      onLongPress
+        ? () => {
+            markHeld(node.current);
+            onLongPress();
+          }
+        : undefined,
+    [onLongPress]
+  );
   const gesture = useMemo(() => {
     const tap = Gesture.Tap()
       .blocksExternalGesture(tableTap, tableMarquee)
@@ -1237,7 +1251,7 @@ function Dragged({
       // instead (2026-10-02).
       .blocksExternalGesture(tableMarquee, tablePan, tableTap)
       .onStart(() => {
-        if (onLongPress) runOnJS(onLongPress)();
+        if (held) runOnJS(held)();
       });
     if (!movable) return Gesture.Race(tap);
     const pan = Gesture.Pan()
@@ -1267,7 +1281,7 @@ function Dragged({
     // The callbacks change every render; the gesture reads them through
     // runOnJS at the moment it fires, which is what it wants.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [x, y, movable, carries, chosen, onTap, onLongPress, onDrop]);
+  }, [x, y, movable, carries, chosen, onTap, held, onDrop]);
 
   const style = useAnimatedStyle(() => {
     // Another chosen photo being carried: this one goes along.
@@ -1282,7 +1296,7 @@ function Dragged({
 
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.item, { width: w, height: h }, style]}>
+      <Animated.View ref={node as never} collapsable={false} style={[styles.item, { width: w, height: h }, style]}>
         {/* A right click is a hold (the laptop's - nothing on a phone). */}
         <View ref={(node) => bindRightClick(node, onLongPress)} style={styles.fill}>
           {children}

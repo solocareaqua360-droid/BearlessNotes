@@ -1,4 +1,5 @@
 import { lift } from '../utils/lift';
+import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useFolderHold } from '../components/FolderHoldMenu';
 import RecentFolderStrip from '../components/RecentFolderStrip';
 import ScreenGround from '../components/ScreenGround';
@@ -1254,7 +1255,7 @@ export default function DocumentsScreen({
 
   // Held down in the bin: back, or away for good.
   async function openTrashMenu(item: DocumentItem) {
-    const choice = await ask({
+    const choice = await holdAsk({
       title: item.title || 'Без назви',
       actions: [
         { id: 'restore', label: 'Відновити', icon: 'arrow-undo-outline', tone: 'primary' },

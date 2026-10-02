@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useFolderHold } from '../components/FolderHoldMenu';
 import { useOpenRequest } from '../utils/openRequest';
 import FlipModal from '../components/FlipModal';
@@ -577,7 +578,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   // only comes up on the "away for good" branch, and only when there is
   // a Drive copy to ask about.
   async function openPhotoTrashMenu(photo: PhotoItem) {
-    const choice = await ask({
+    const choice = await holdAsk({
       title: photo.title || 'Без назви',
       actions: [
         { id: 'restore', label: 'Відновити', icon: 'arrow-undo-outline', tone: 'primary' },
@@ -700,7 +701,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   // фотографіями, як нотатками"). Reached the two ways every other card
   // is reached: the "..." on the card, and a short hold on it.
   async function openPhotoMenu(photo: PhotoItem) {
-    const choice = await ask({
+    const choice = await holdAsk({
       title: photo.title || 'Без назви',
       actions: [
         { id: 'move', label: 'Перемістити в папку', icon: 'folder-outline' },

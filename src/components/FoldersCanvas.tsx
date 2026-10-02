@@ -1,4 +1,5 @@
 import { StyleSheet, View } from 'react-native';
+import { holdAsk } from './surfaces/HoldAsk';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FolderCanvas, { CANVAS_TILE, type CanvasPhoto, type Move } from './FolderCanvas';
@@ -195,7 +196,7 @@ export default function FoldersCanvas({
   const itemMenu = async (c: CanvasPhoto, folder: string | null) => {
     const item = asItem(c);
     const canBin = BIN_COLLECTIONS.includes(item.collection);
-    const choice = await ask({
+    const choice = await holdAsk({
       title: item.title,
       actions: [
         { id: 'open', label: 'Відкрити', icon: 'open-outline' as const },

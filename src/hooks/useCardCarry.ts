@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { markHeld } from '../utils/heldNode';
 import { bindRightClick } from '../utils/rightClick';
 import { View } from 'react-native';
 import { hapticDrop, hapticPickUp, hapticWarning } from '../utils/haptics';
@@ -228,7 +229,12 @@ export function useCardCarry<T extends { id: string }>({
 
   // The long press did NOT land - a shorter hold, which is the menu.
   const menuAt = useCallback((x: number, y: number) => {
-    cardAt(x, y, (hit) => hit.onMenu());
+    // The card says it is the one held, so its menu lifts it over the
+    // blur (heldNode / holdAsk).
+    cardAt(x, y, (hit) => {
+      markHeld(hit.node);
+      hit.onMenu();
+    });
   }, []);
 
   const beginCarry = useCallback((items: T[], path: string, node: View, touchX: number, touchY: number) => {
