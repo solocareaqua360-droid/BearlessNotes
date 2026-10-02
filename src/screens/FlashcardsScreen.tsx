@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useOpenRequest } from '../utils/openRequest';
 import TurningPressable from '../components/TurningPressable';
 import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import { softCardFrame, softenStyles, softRecordColours, useSoftDatabase, type SoftTokens } from '../theme/soft';
@@ -81,6 +82,11 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
   // list as it stood at that tap, by id, so marking a card learned (and
   // so hiding it) does not pull the stack out from under the reader.
   const [reading, setReading] = useState<{ ids: string[]; index: number } | null>(null);
+  // Sent here to open one card (utils/openRequest - the folders' canvas).
+  useOpenRequest('flashcards', cards.map((c) => c.id), (id) => {
+    const card = cards.find((c) => c.id === id);
+    if (card) openReader(card);
+  });
   const [readerFlip, setReaderFlip] = useState<FlipFrom | null>(null);
   useEffect(() => {
     if (reading !== null) return;

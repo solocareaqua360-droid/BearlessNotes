@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useOpenRequest } from '../utils/openRequest';
 import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import FolderCanvas from '../components/FolderCanvas';
 import { FileCanvasTile } from '../components/CanvasTiles';
@@ -131,6 +132,11 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   const isTwoPane = useResponsiveLayout().isTwoPane && !inPane;
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [files, setFiles] = useState<FileItem[]>([]);
+  // Sent here to open one file (utils/openRequest - the folders' canvas).
+  useOpenRequest('files', files.map((f) => f.id), (id) => {
+    const file = files.find((f) => f.id === id);
+    if (file) openFile(file);
+  });
   const [trashedFiles, setTrashedFiles] = useState<FileItem[]>([]);
   const [trashOpen, setTrashOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);

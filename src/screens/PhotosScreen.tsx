@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useOpenRequest } from '../utils/openRequest';
 import FlipModal from '../components/FlipModal';
 import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import { withAlpha } from '../utils/color';
@@ -125,6 +126,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   const [trashOpen, setTrashOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
+  // Sent here to open one photo (utils/openRequest - the folders' canvas).
+  useOpenRequest('photos', photos.map((p) => p.id), (id) => setViewerPhotoId(id));
   // The card the viewer was opened from (utils/flipOpen): it turns over
   // into the viewer and back. Moving to the next photo drops it - the way
   // back is then a plain fade, not into a card that is not this photo's.

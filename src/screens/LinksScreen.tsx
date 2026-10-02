@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useOpenRequest } from '../utils/openRequest';
 import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import { useRecordLinkIds } from '../hooks/useRecordLinkIds';
 import { useTechnicalDocIds } from '../hooks/useTechnicalDocs';
@@ -225,6 +226,9 @@ export default function LinksScreen({
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
   const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
+  // Sent here to open one link's card (utils/openRequest - the folders'
+  // canvas).
+  useOpenRequest('links', links.map((l) => l.id), (id) => setDetailLinkId(id));
   // The card the link's sheet was opened from (utils/flipOpen), dropped
   // once the sheet has turned back into it.
   const [linkFlip, setLinkFlip] = useState<FlipFrom | null>(null);

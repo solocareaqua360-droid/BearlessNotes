@@ -5,6 +5,7 @@ import FolderCanvas, { CANVAS_TILE, type CanvasPhoto, type Move } from './Folder
 import FolderBaseLinks, { type BaseLink, type LinkBase } from './FolderBaseLinks';
 import { useFolderBases } from '../hooks/useFolderBases';
 import { ask, confirm } from './surfaces/Ask';
+import { requestOpen } from '../utils/openRequest';
 import { doc, updateDoc } from '../firestore';
 import { db } from '../firebase';
 import { FileCanvasTile, LinkCanvasTile, NoteCanvasTile } from './CanvasTiles';
@@ -165,16 +166,21 @@ export default function FoldersCanvas({
       case 'board':
         (navigation as unknown as { navigate: (name: string, params?: object) => void }).navigate('Board', { boardId: item.docId });
         return;
+      // Its database, asked to open this very one as it arrives.
       case 'photo':
+        requestOpen('photos', item.docId);
         navigation.navigate('Photos');
         return;
       case 'file':
+        requestOpen('files', item.docId);
         navigation.navigate('Files');
         return;
       case 'link':
+        requestOpen('links', item.docId);
         navigation.navigate('Links', { category: item.linkCategory ?? 'other' });
         return;
       case 'flashcard':
+        requestOpen('flashcards', item.docId);
         navigation.navigate('Flashcards');
         return;
     }
