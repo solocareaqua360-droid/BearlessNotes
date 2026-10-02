@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,6 +6,7 @@ import Animated, {
   Easing,
   runOnJS,
   useAnimatedProps,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -84,6 +85,31 @@ export default function FolderBaseLinks({
   const appear = useSharedValue(0);
   const draw = useSharedValue(0);
   const drag = useSharedValue({ on: 0, x0: 0, y0: 0, x1: 0, y1: 0 });
+  // Where the table rests: the tap targets are drawn there, and only while
+  // it is still (useAnimatedReaction marks every move; a beat after the
+  // last one it is resting again).
+  const [resting, setResting] = useState({ tx: api.tx.value, ty: api.ty.value, scale: api.scale.value });
+  const [settled, setSettled] = useState(true);
+  const restTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const moved = () => {
+    setSettled((s) => (s ? false : s));
+    if (restTimer.current) clearTimeout(restTimer.current);
+    restTimer.current = setTimeout(() => {
+      setResting({ tx: api.tx.value, ty: api.ty.value, scale: api.scale.value });
+      setSettled(true);
+    }, 180);
+  };
+  const ptx = api.tx;
+  const pty = api.ty;
+  const pscale = api.scale;
+  // Only while the lines are out - the canvas moves all day without them.
+  const watching = useSharedValue(0);
+  useAnimatedReaction(
+    () => ptx.value + pty.value * 7 + pscale.value * 1000,
+    (now, before) => {
+      if (watching.value && before !== null && now !== before) runOnJS(moved)();
+    }
+  );
 
   // The bead the circles rise out of: the dock's left one.
   const bead = dockCardHeight(width);
@@ -95,6 +121,11 @@ export default function FolderBaseLinks({
   const step = bases.length > 1 ? Math.max(MIN_STEP, Math.min(STEP, room / (bases.length - 1))) : STEP;
   const circleY = (i: number) => firstY - i * step;
 
+  useEffect(() => {
+    watching.value = shown ? 1 : 0;
+    if (shown) setResting({ tx: api.tx.value, ty: api.ty.value, scale: api.scale.value });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown]);
   useEffect(() => {
     if (!open) setFocus(null);
     if (open) {
@@ -130,30 +161,59 @@ export default function FolderBaseLinks({
     return { d: `M${d.x0},${d.y0} C${mx},${d.y0} ${mx},${d.y1} ${d.x1},${d.y1}` };
   });
 
+  // Lines gathered by database and style; each entry where its folder is.
+  type Entry = { bx: number; by: number; rx: number; ry: number; half: number; lx: SharedValue<number> | null; ly: SharedValue<number> | null };
+  const groupMap = new Map<string, { key: string; kind: string; color: string; solid: boolean; entries: Entry[] }>();
+  const hits: { key: string; d: string; onPress: () => void }[] = [];
+  links.forEach((link) => {
+    const index = bases.findIndex((b) => b.kind === link.kind);
+    const rect = rectFor(api.rects, link.path);
+    if (index < 0 || !rect) return;
+    const solid = link.count > 0;
+    const key = `${link.kind}|${solid ? 's' : 'd'}`;
+    if (!groupMap.has(key)) groupMap.set(key, { key, kind: link.kind, color: bases[index].color, solid, entries: [] });
+    const live = api.live(link.path);
+    const entry: Entry = {
+      bx: buttonX + CIRCLE / 2,
+      by: circleY(index),
+      rx: rect.x,
+      ry: rect.y + rect.h / 2,
+      half: rect.h / 2,
+      lx: live?.px ?? null,
+      ly: live?.py ?? null,
+    };
+    groupMap.get(key)!.entries.push(entry);
+    const ex = (entry.rx + WORLD_HALF) * resting.scale + resting.tx;
+    const ey = (entry.ry + WORLD_HALF) * resting.scale + resting.ty;
+    hits.push({ key: `${link.kind}|${link.path}`, d: curve(entry.bx, entry.by, ex, ey, 1), onPress: () => onUnbind(link) });
+  });
+  const groups = [...groupMap.values()];
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none" onLayout={(e: LayoutChangeEvent) => setHeight(e.nativeEvent.layout.height)}>
       {shown && height > 0 && (
         <Svg style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          {links.map((link) => {
-            const index = bases.findIndex((b) => b.kind === link.kind);
-            const rect = rectFor(api.rects, link.path);
-            if (index < 0 || !rect) return null;
-            const base = bases[index];
-            return (
-              <LinkLine
-                key={`${link.kind}|${link.path}`}
-                link={link}
-                rect={rect}
-                bx={buttonX + CIRCLE / 2}
-                by={circleY(index)}
-                color={base.color}
-                dimmed={focus !== null && focus !== link.kind}
-                api={api}
-                draw={draw}
-                onPress={() => onUnbind(link)}
-              />
-            );
-          })}
+          {/* ONE path per database and line style - not one per line: every
+              animated path is its own update each frame, and thirty of them
+              could not keep up with the table under the finger (the lines
+              trailed off their folders, 2026-10-02). */}
+          {groups.map((group) => (
+            <GroupLines
+              key={group.key}
+              entries={group.entries}
+              color={group.color}
+              solid={group.solid}
+              dimmed={focus !== null && focus !== group.kind}
+              api={api}
+              draw={draw}
+            />
+          ))}
+          {/* What a finger taps, one per line - plain paths at the table's
+              last resting place, gone while it moves. */}
+          {settled &&
+            hits.map((hit) => (
+              <Path key={hit.key} d={hit.d} stroke="#000" strokeOpacity={0.01} strokeWidth={18} fill="none" onPress={hit.onPress} />
+            ))}
           {drawing && (
             <AnimatedPath animatedProps={dragProps} stroke={S.ink2} strokeWidth={2} strokeDasharray="6 5" fill="none" />
           )}
@@ -182,78 +242,70 @@ export default function FolderBaseLinks({
   );
 }
 
-function LinkLine({
-  link,
-  rect,
-  bx,
-  by,
+// The cubic from a database's circle to a folder's left edge, cut at t
+// (de Casteljau) - the snake drawing itself, t growing.
+function curve(bx: number, by: number, ex: number, ey: number, t: number): string {
+  'worklet';
+  const c1x = bx + Math.max(40, (ex - bx) * 0.5);
+  const c2x = ex - Math.max(40, (ex - bx) * 0.5);
+  const ax = bx + (c1x - bx) * t;
+  const bxm = c1x + (c2x - c1x) * t;
+  const bym = by + (ey - by) * t;
+  const cx = c2x + (ex - c2x) * t;
+  const abx = ax + (bxm - ax) * t;
+  const aby = by + (bym - by) * t;
+  const bcx = bxm + (cx - bxm) * t;
+  const bcy = bym + (ey - bym) * t;
+  const px = abx + (bcx - abx) * t;
+  const py = aby + (bcy - aby) * t;
+  return `M${bx},${by} C${ax},${by} ${abx},${aby} ${px},${py}`;
+}
+
+function GroupLines({
+  entries,
   color,
+  solid,
   dimmed,
   api,
   draw,
-  onPress,
 }: {
-  link: BaseLink;
-  rect: FolderRect;
-  bx: number;
-  by: number;
+  entries: { bx: number; by: number; rx: number; ry: number; half: number; lx: SharedValue<number> | null; ly: SharedValue<number> | null }[];
   color: string;
+  solid: boolean;
   dimmed: boolean;
   api: CanvasOverlayApi;
   draw: SharedValue<number>;
-  onPress: () => void;
 }) {
   // Plain numbers and shared values for the worklet - never the objects
   // they came in (see the worklet-closure memory).
-  const rx = rect.x;
-  const ry = rect.y + rect.h / 2;
-  const half = rect.h / 2;
   const tx = api.tx;
   const ty = api.ty;
   const scale = api.scale;
-  // While a finger carries the folder, its live place - not where it was
-  // last put (the line stood still under a carried folder, 2026-10-02).
-  const live = api.live(link.path);
-  const lx = live?.px ?? null;
-  const ly = live?.py ?? null;
+  const list = entries;
   const props = useAnimatedProps(() => {
-    const wx = lx ? lx.value : rx;
-    const wy = ly ? ly.value + half : ry;
-    const ex = (wx + WORLD_HALF) * scale.value + tx.value;
-    const ey = (wy + WORLD_HALF) * scale.value + ty.value;
-    const c1x = bx + Math.max(40, (ex - bx) * 0.5);
-    const c2x = ex - Math.max(40, (ex - bx) * 0.5);
-    // The snake: the same curve cut at t (de Casteljau), t growing.
     const t = Math.max(0.001, draw.value);
-    const ax = bx + (c1x - bx) * t;
-    const ay = by;
-    const bxm = c1x + (c2x - c1x) * t;
-    const bym = by + (ey - by) * t;
-    const cx = c2x + (ex - c2x) * t;
-    const cy = ey;
-    const abx = ax + (bxm - ax) * t;
-    const aby = ay + (bym - ay) * t;
-    const bcx = bxm + (cx - bxm) * t;
-    const bcy = bym + (cy - bym) * t;
-    const px = abx + (bcx - abx) * t;
-    const py = aby + (bcy - aby) * t;
-    return { d: `M${bx},${by} C${ax},${ay} ${abx},${aby} ${px},${py}` };
+    let d = '';
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      // A folder a finger carries is followed where it is now.
+      const wx = e.lx ? e.lx.value : e.rx;
+      const wy = e.ly ? e.ly.value + e.half : e.ry;
+      const ex = (wx + WORLD_HALF) * scale.value + tx.value;
+      const ey = (wy + WORLD_HALF) * scale.value + ty.value;
+      d += curve(e.bx, e.by, ex, ey, t) + ' ';
+    }
+    return { d: d || 'M0,0' };
   });
-  const solid = link.count > 0;
   return (
-    <>
-      <AnimatedPath
-        animatedProps={props}
-        stroke={color}
-        strokeWidth={solid ? 2.5 : 2}
-        strokeDasharray={solid ? undefined : '6 5'}
-        strokeLinecap="round"
-        fill="none"
-        opacity={dimmed ? 0.15 : 0.9}
-      />
-      {/* A wide, all-but-invisible twin: a 2px line is too thin to hit. */}
-      <AnimatedPath animatedProps={props} stroke={color} strokeOpacity={0.01} strokeWidth={18} fill="none" onPress={onPress} />
-    </>
+    <AnimatedPath
+      animatedProps={props}
+      stroke={color}
+      strokeWidth={solid ? 2.5 : 2}
+      strokeDasharray={solid ? undefined : '6 5'}
+      strokeLinecap="round"
+      fill="none"
+      opacity={dimmed ? 0.15 : 0.9}
+    />
   );
 }
 
