@@ -64,7 +64,9 @@ export function deskKeyForCustom(databaseId: string): string {
 // What a desk looks like on the bar: its name and icon.
 export function deskFace(
   key: string,
-  customDatabases: CustomDatabase[]
+  customDatabases: CustomDatabase[],
+  // The icon the user chose for a built-in database (useDatabaseTiles).
+  iconFor?: (tileKey: string, fallback: string) => string
 ): { label: string; icon: keyof typeof Ionicons.glyphMap } {
   if (key === PERMANENT_DESK) return { label: 'Документи', icon: 'document-text-outline' };
   if (key === BOARDS_DESK) return { label: 'Дошки', icon: 'easel-outline' };
@@ -76,7 +78,9 @@ export function deskFace(
     };
   }
   const tile = [...WIDE_TILES, ...GRID_TILES].find((t) => `db:${t.key}` === key);
-  return tile ? { label: tile.label, icon: tile.icon } : { label: 'База', icon: 'grid-outline' };
+  return tile
+    ? { label: tile.label, icon: (iconFor ? iconFor(tile.key, tile.icon) : tile.icon) as keyof typeof Ionicons.glyphMap }
+    : { label: 'База', icon: 'grid-outline' };
 }
 
 // Told to a database drawn as a desk: it is not a screen pushed over

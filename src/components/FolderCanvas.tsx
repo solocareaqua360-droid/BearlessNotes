@@ -163,7 +163,8 @@ export default function FolderCanvas({
   // A new top-level folder, with these photos put into it.
   onCreateFolder: (name: string, moves: Move[]) => Promise<void>;
   onOpenPhoto: (photo: CanvasPhoto) => void;
-  onPhotoMenu: (photo: CanvasPhoto) => void;
+  // `folder`: the island it was held in (null: loose on the table).
+  onPhotoMenu: (photo: CanvasPhoto, folder: string | null) => void;
   topPad: number;
   // Drawn over the table, in screen units (see CanvasOverlayApi).
   overlay?: (api: CanvasOverlayApi) => React.ReactNode;
@@ -699,7 +700,7 @@ export default function FolderCanvas({
         { id: 'more', label: 'Інші дії', icon: 'ellipsis-horizontal' },
       ],
     });
-    if (answer === 'more') onPhotoMenu(inst.photo);
+    if (answer === 'more') onPhotoMenu(inst.photo, inst.folder);
     if (answer !== 'add') return;
     const photosToAdd = selected.has(inst.key) ? uniquePhotos(chosenInstances()) : [inst.photo];
     setGhost((prev) => ({ photos: photosToAdd, x: inst.x + 18, y: inst.y + 18, seq: (prev?.seq ?? 0) + 1, landed: false }));

@@ -4,7 +4,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FolderCanvas, { CANVAS_TILE, type CanvasPhoto, type Move } from './FolderCanvas';
 import FolderBaseLinks, { type BaseLink, type LinkBase } from './FolderBaseLinks';
 import { useFolderBases } from '../hooks/useFolderBases';
-import { ask } from './surfaces/Ask';
+import { ask, confirm } from './surfaces/Ask';
+import { doc, updateDoc } from '../firestore';
+import { db } from '../firebase';
 import { FileCanvasTile, LinkCanvasTile, NoteCanvasTile } from './CanvasTiles';
 import AttachmentImage from './AttachmentImage';
 import { Ionicons } from './icons/Ionicons';
@@ -178,6 +180,29 @@ export default function FoldersCanvas({
     }
   };
 
+  // A tile's own menu (held, «Інші дії»): open it, take it out of the
+  // folder it was held in, or delete it - into its database's bin, where
+  // that database has one (the user's: "видалити файли" from here too).
+  const BIN_COLLECTIONS = ['documents', 'photos', 'files', 'links'];
+  const itemMenu = async (c: CanvasPhoto, folder: string | null) => {
+    const item = asItem(c);
+    const canBin = BIN_COLLECTIONS.includes(item.collection);
+    const choice = await ask({
+      title: item.title,
+      actions: [
+        { id: 'open', label: 'Відкрити', icon: 'open-outline' as const },
+        ...(folder ? [{ id: 'out', label: `Вийняти з «${nameOf(folder)}»`, icon: 'arrow-undo-outline' as const }] : []),
+        ...(canBin ? [{ id: 'delete', label: 'Видалити', icon: 'trash-outline' as const, tone: 'danger' as const }] : []),
+      ],
+    });
+    if (choice === 'open') open(c);
+    else if (choice === 'out' && folder) await takeOut(item, folder);
+    else if (choice === 'delete' && canBin) {
+      const yes = await confirm({ title: `Видалити «${item.title}»?`, message: 'Воно піде в кошик своєї бази.', confirmLabel: 'Видалити' });
+      if (yes) await updateDoc(doc(db, item.collection, item.docId), { deletedAt: Date.now() }).catch(() => {});
+    }
+  };
+
   const face = (item: FolderItem) => {
     switch (item.kind) {
       case 'photo':
@@ -243,7 +268,7 @@ export default function FoldersCanvas({
         await Promise.all(affected.map((t) => renameTag(t, next + t.path.slice(path.length))));
       }}
       onOpenPhoto={open}
-      onPhotoMenu={open}
+      onPhotoMenu={itemMenu}
       topPad={topPad}
       resetFolders={resetFolders}
       onFolderMenu={onFolderMenu}

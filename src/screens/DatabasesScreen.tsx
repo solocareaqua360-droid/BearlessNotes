@@ -1434,7 +1434,7 @@ export default function DatabasesScreen() {
               ? deskKeyForCustom(item.database.id)
               : null;
         if (!key || !canBeDesk(key)) return null;
-        const face = deskFace(key, customDatabases);
+        const face = deskFace(key, customDatabases, iconFor);
         const tint =
           item.kind === 'custom'
             ? item.database.color ?? recordColour(item.database.id).background

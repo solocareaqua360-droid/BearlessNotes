@@ -96,10 +96,10 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
 
   // The desks are the user's databases now (see navigation/desks) - their
   // names and icons come from what they are, not from a fixed list.
-  const { customDatabases } = useDatabaseTiles();
+  const { customDatabases, iconFor } = useDatabaseTiles();
   const deskControl = useContext(DesksControlContext);
   const faceOf = (name: string) =>
-    ICON_BY_ROUTE[name] && !deskControl ? { label: name, icon: ICON_BY_ROUTE[name] } : deskFace(name, customDatabases);
+    ICON_BY_ROUTE[name] && !deskControl ? { label: name, icon: ICON_BY_ROUTE[name] } : deskFace(name, customDatabases, iconFor);
   const desks = useMemo(
     () =>
       state.routes.map((route, index) => ({
@@ -122,7 +122,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         },
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.routes, state.index, liveIndex, navigation, setDockHidden, customDatabases, deskControl]
+    [state.routes, state.index, liveIndex, navigation, setDockHidden, customDatabases, deskControl, iconFor]
   );
 
   // THE DESKS MOVED TO THE TOP on the four desks' own screens (see
