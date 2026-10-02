@@ -13,14 +13,17 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Ionicons } from './icons/Ionicons';
 import Svg, { Circle, Path, Rect, Text as SvgText } from 'react-native-svg';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SketchElement, SketchPathElement, SketchShape } from '../types';
-import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import { useSoft } from '../theme/soft';
+import { useTheme } from '../theme/ThemeProvider';
+import { INK, boundsOf, inkOn, parsePathPoints } from '../utils/sketchGeometry';
 
-const COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
+// The first is the paper's own ink (see sketchGeometry's INK).
+const COLORS = [INK, '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
 const WIDTHS = [3, 6, 10];
 const TEXT_FONT_SIZE = 22;
 // How close a touch has to land to a stroke's points to rub them out. The
@@ -35,15 +38,16 @@ type Point = { x: number; y: number };
 type Tool = 'pen' | 'line' | 'arrow' | 'rect' | 'circle' | 'text' | 'select' | 'eraser';
 type ShapeTool = SketchShape['kind'];
 
-const TOOLS: { tool: Tool; family: 'ion' | 'mci'; icon: string }[] = [
-  { tool: 'pen', family: 'ion', icon: 'pencil-outline' },
-  { tool: 'line', family: 'ion', icon: 'remove-outline' },
-  { tool: 'arrow', family: 'ion', icon: 'arrow-forward-outline' },
-  { tool: 'rect', family: 'ion', icon: 'square-outline' },
-  { tool: 'circle', family: 'ion', icon: 'ellipse-outline' },
-  { tool: 'text', family: 'ion', icon: 'text-outline' },
-  { tool: 'select', family: 'mci', icon: 'cursor-move' },
-  { tool: 'eraser', family: 'mci', icon: 'eraser' },
+// Lucide's own glyphs, drawn directly ('lc:' - see the Ionicons shim).
+const TOOLS: { tool: Tool; icon: string }[] = [
+  { tool: 'pen', icon: 'lc:pencil' },
+  { tool: 'line', icon: 'lc:minus' },
+  { tool: 'arrow', icon: 'lc:move-up-right' },
+  { tool: 'rect', icon: 'lc:square' },
+  { tool: 'circle', icon: 'lc:circle' },
+  { tool: 'text', icon: 'lc:type' },
+  { tool: 'select', icon: 'lc:mouse-pointer-2' },
+  { tool: 'eraser', icon: 'lc:eraser' },
 ];
 
 const SHAPE_TOOLS: ShapeTool[] = ['line', 'arrow', 'rect', 'circle'];
@@ -62,25 +66,15 @@ interface Props {
   // drawing is a layer beside it, which is what lets "show the original"
   // be a switch rather than a second file.
   background?: { uri: string; aspectRatio?: number };
+  // The note's paper, when it wears a colour of its own - the drawing is
+  // made on the paper it will lie on. The theme's paper otherwise.
+  paper?: string;
   onSave: (elements: SketchElement[], width: number, height: number) => void;
   onClose: () => void;
 }
 
 function pointsToPath(points: Point[]): string {
   return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-}
-
-// Every element's `d` is built from plain M/L segments only (no arcs, no
-// curves) - that keeps one parser good for every hit test the editor does:
-// erasing, selecting, and bounding boxes.
-function parsePathPoints(d: string): Point[] {
-  return d
-    .split(/(?=[ML])/)
-    .filter(Boolean)
-    .map((segment) => {
-      const [x, y] = segment.slice(1).trim().split(' ').map(Number);
-      return { x, y };
-    });
 }
 
 // A shape is stored by its two defining points (plus its kind) rather than
@@ -157,17 +151,6 @@ function moveShape(shape: SketchShape, dx: number, dy: number): SketchShape {
   return { ...shape, x1: shape.x1 + dx, y1: shape.y1 + dy, x2: shape.x2 + dx, y2: shape.y2 + dy };
 }
 
-function boundsOf(el: SketchElement): { minX: number; minY: number; maxX: number; maxY: number } {
-  if (el.kind === 'text') {
-    const approxWidth = Math.max(el.text.length * el.fontSize * 0.55, 20);
-    return { minX: el.x, minY: el.y - el.fontSize, maxX: el.x + approxWidth, maxY: el.y };
-  }
-  const points = parsePathPoints(el.d);
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
-}
-
 // Only shapes and text can be picked up - a freehand pen stroke stays
 // where it was drawn (moving those was explicitly not wanted).
 function isSelectable(el: SketchElement): boolean {
@@ -212,7 +195,14 @@ function eraseFromElement(el: SketchElement, x: number, y: number): SketchElemen
   return runs.map((r) => ({ kind: 'path', d: pointsToPath(r), color: el.color, width: el.width }));
 }
 
-export default function SketchEditor({ visible, initialElements, background, onSave, onClose }: Props) {
+export default function SketchEditor({ visible, initialElements, background, paper, onSave, onClose }: Props) {
+  const S = useSoft();
+  const theme = useTheme();
+  // No canvas of its own: the drawing is made on the note's paper -
+  // "все повинно виглядати так ніби малюнок зроблений на самому аркуші
+  // нотатки" (2026-10-02).
+  const paperFill = paper ?? theme.paper.fill;
+  const paperInk = theme.paper.ink;
   const [elements, setElements] = useState<SketchElement[]>(initialElements);
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [shapeStart, setShapeStart] = useState<Point | null>(null);
@@ -486,397 +476,224 @@ export default function SketchEditor({ visible, initialElements, background, onS
     isShapeTool(tool) && shapeStart && shapeCurrent
       ? { kind: tool, x1: shapeStart.x, y1: shapeStart.y, x2: shapeCurrent.x, y2: shapeCurrent.y }
       : null;
-  // Over a photograph the bar is dark glass, so its own marks are light.
-  const ink = background ? '#fff' : '#111827';
-  const inkOff = background ? 'rgba(255,255,255,0.35)' : '#D1D5DB';
   const selected = selectedIndex !== null ? elements[selectedIndex] : undefined;
   const selectedBounds = selected ? boundsOf(selected) : null;
   const selectedHandles = selected && selected.kind === 'path' && selected.shape ? shapeHandles(selected.shape) : [];
+  const danger = S.dark ? '#FF7A6E' : '#C8452F';
+  const shown = (c: string) => inkOn(c, paperInk);
+  const round = { backgroundColor: S.card, boxShadow: S.shadow };
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView
-        style={[styles.container, background && styles.containerDark]}
-        edges={background ? [] : ['top', 'bottom']}
-      >
-        {/* Drawing on a photograph, the bars float OVER it rather than
-            standing above and below: a picture squeezed between two
-            solid bars is a picture you cannot see, which is what the
-            user met. On a blank canvas they stay where they were. */}
-        <View style={[styles.header, background && [styles.headerFloating, { paddingTop: insets.top + 8 }]]}>
-          <Pressable hitSlop={10} onPress={onClose}>
-            <Ionicons name="close" size={24} color={ink} />
-          </Pressable>
-          <View style={styles.headerActions}>
-            <Pressable hitSlop={10} onPress={undo} disabled={elements.length === 0}>
-              <Ionicons name="arrow-undo-outline" size={22} color={elements.length ? ink : inkOff} />
-            </Pressable>
-            <Pressable hitSlop={10} onPress={clear} disabled={elements.length === 0}>
-              <Ionicons name="trash-outline" size={22} color={elements.length ? ink : inkOff} />
-            </Pressable>
-          </View>
-          <Pressable
-            style={styles.doneButton}
-            onPress={() => onSave(elements, canvasSize.width, canvasSize.height)}
-          >
-            <Text style={styles.doneLabel}>Готово</Text>
-          </Pressable>
-        </View>
-
+      <View style={[styles.container, { backgroundColor: background ? '#111' : paperFill }]}>
         <View
           style={background ? styles.canvasStage : styles.canvasFill}
           onLayout={(e) => setStage({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
         >
-        <View
-          style={[styles.canvas, background && { flex: 0, width: fitted.width, height: fitted.height }]}
-          onLayout={handleCanvasLayout}
-          onStartShouldSetResponder={() => true}
-          onMoveShouldSetResponder={() => true}
-          onResponderGrant={handleStart}
-          onResponderMove={handleMove}
-          onResponderRelease={handleEnd}
-        >
-          {!!background && (
-            <Image
-              source={{ uri: background.uri }}
-              style={StyleSheet.absoluteFill}
-              resizeMode="cover"
-            />
-          )}
-          <Svg style={StyleSheet.absoluteFill}>
-            {elements.map((el, i) =>
-              el.kind === 'text' ? (
-                <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
-                  {el.text}
-                </SvgText>
-              ) : (
+          <View
+            style={[styles.canvas, background && { flex: 0, width: fitted.width, height: fitted.height }]}
+            onLayout={handleCanvasLayout}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderGrant={handleStart}
+            onResponderMove={handleMove}
+            onResponderRelease={handleEnd}
+          >
+            {!!background && <Image source={{ uri: background.uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
+            <Svg style={StyleSheet.absoluteFill}>
+              {elements.map((el, i) =>
+                el.kind === 'text' ? (
+                  <SvgText key={i} x={el.x} y={el.y} fill={shown(el.color)} fontSize={el.fontSize}>
+                    {el.text}
+                  </SvgText>
+                ) : (
+                  <Path
+                    key={i}
+                    d={el.d}
+                    stroke={shown(el.color)}
+                    strokeWidth={el.width}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )
+              )}
+              {currentPoints.length > 1 && (
                 <Path
-                  key={i}
-                  d={el.d}
-                  stroke={el.color}
-                  strokeWidth={el.width}
+                  d={pointsToPath(currentPoints)}
+                  stroke={shown(color)}
+                  strokeWidth={strokeWidth}
                   fill="none"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
-              )
-            )}
-            {currentPoints.length > 1 && (
-              <Path
-                d={pointsToPath(currentPoints)}
-                stroke={color}
-                strokeWidth={strokeWidth}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-            {previewShape && (
-              <Path
-                d={shapeToPath(previewShape, strokeWidth)}
-                stroke={color}
-                strokeWidth={strokeWidth}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-            {selectedBounds && (
-              <Rect
-                x={selectedBounds.minX - 6}
-                y={selectedBounds.minY - 6}
-                width={selectedBounds.maxX - selectedBounds.minX + 12}
-                height={selectedBounds.maxY - selectedBounds.minY + 12}
-                stroke="#3B82F6"
-                strokeWidth={1}
-                strokeDasharray="6 4"
-                fill="none"
-              />
-            )}
-            {selectedHandles.map((h, i) => (
-              <Circle key={`h${i}`} cx={h.x} cy={h.y} r={HANDLE_RADIUS} fill="#fff" stroke="#3B82F6" strokeWidth={2} />
-            ))}
-          </Svg>
-        </View>
+              )}
+              {previewShape && (
+                <Path
+                  d={shapeToPath(previewShape, strokeWidth)}
+                  stroke={shown(color)}
+                  strokeWidth={strokeWidth}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+              {selectedBounds && (
+                <Rect
+                  x={selectedBounds.minX - 6}
+                  y={selectedBounds.minY - 6}
+                  width={selectedBounds.maxX - selectedBounds.minX + 12}
+                  height={selectedBounds.maxY - selectedBounds.minY + 12}
+                  stroke={S.accent}
+                  strokeWidth={1.5}
+                  fill="none"
+                  rx={6}
+                />
+              )}
+              {selectedHandles.map((h, i) => (
+                <Circle key={`h${i}`} cx={h.x} cy={h.y} r={HANDLE_RADIUS} fill={S.card} stroke={S.accent} strokeWidth={2} />
+              ))}
+            </Svg>
+          </View>
         </View>
 
-        {background ? (
-          // One pill, floating clear of every edge: the tools in a row,
-          // then the colour as a single dot that opens the palette above
-          // it. Three stacked rows across the whole foot of the screen
-          // was a quarter of the picture spent on controls.
-          <>
-            {paletteOpen && (
-              <RNAnimated.View
-                style={[
-                  styles.palettePop,
-                  { bottom: insets.bottom + 68, transform: barPan.getTranslateTransform() },
-                ]}
-              >
-                {COLORS.map((c) => (
-                  <Pressable
-                    key={c}
-                    hitSlop={4}
-                    onPress={() => {
-                      selectColor(c);
-                      setPaletteOpen(false);
-                    }}
-                    style={[styles.colorSwatch, { backgroundColor: c }, color === c && styles.colorSwatchActive]}
-                  />
-                ))}
-                <View style={styles.pillDivider} />
-                {WIDTHS.map((w) => (
-                  <Pressable
-                    key={w}
-                    hitSlop={4}
-                    onPress={() => setStrokeWidth(w)}
-                    style={[styles.widthButton, strokeWidth === w && styles.widthButtonActive]}
-                  >
-                    <View style={[styles.widthDot, { width: w * 2, height: w * 2, borderRadius: w }]} />
-                  </Pressable>
-                ))}
-              </RNAnimated.View>
-            )}
-            <RNAnimated.View
-              style={[
-                styles.toolbarFloating,
-                { bottom: insets.bottom + 10, transform: barPan.getTranslateTransform() },
-              ]}
-              {...barDrag.panHandlers}
-            >
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.pillTools}
-              >
-                {TOOLS.map(({ tool: t, family, icon }) => (
-                  <Pressable
-                    key={t}
-                    hitSlop={4}
-                    style={[styles.pillTool, tool === t && styles.pillToolActive]}
-                    onPress={() => selectTool(t)}
-                  >
-                    {family === 'ion' ? (
-                      <Ionicons name={icon as never} size={17} color={tool === t ? '#111827' : '#fff'} />
-                    ) : (
-                      <MaterialCommunityIcons name={icon as never} size={17} color={tool === t ? '#111827' : '#fff'} />
-                    )}
-                  </Pressable>
-                ))}
-              </ScrollView>
-              <View style={styles.pillDivider} />
-              <Pressable hitSlop={6} onPress={() => setPaletteOpen((open) => !open)} style={styles.pillColor}>
-                <View style={[styles.pillColorDot, { backgroundColor: color }]} />
-              </Pressable>
-            </RNAnimated.View>
-          </>
-        ) : (
-          <View style={styles.toolbar}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolRow}>
-            {TOOLS.map(({ tool: t, family, icon }) => (
+        {/* THE TOP: three soft pieces floating over the paper - the way
+            out, what undoes, and «Готово» - instead of a white strip with
+            a hairline under it. */}
+        <View style={[styles.top, { top: insets.top + 10 }]} pointerEvents="box-none">
+          <Pressable hitSlop={6} onPress={onClose} style={[styles.roundButton, round]}>
+            <Ionicons name={'lc:x' as never} size={20} color={S.ink} />
+          </Pressable>
+          <View style={[styles.capsule, round]}>
+            <Pressable hitSlop={6} onPress={undo} disabled={elements.length === 0} style={styles.capsuleButton}>
+              <Ionicons name={'lc:undo-2' as never} size={19} color={elements.length ? S.ink : S.ink3} />
+            </Pressable>
+            <View style={[styles.capsuleDivider, { backgroundColor: S.line }]} />
+            <Pressable hitSlop={6} onPress={clear} disabled={elements.length === 0} style={styles.capsuleButton}>
+              <Ionicons name={'lc:trash' as never} size={19} color={elements.length ? danger : S.ink3} />
+            </Pressable>
+          </View>
+          <Pressable
+            hitSlop={6}
+            onPress={() => onSave(elements, canvasSize.width, canvasSize.height)}
+            style={[styles.roundButton, { backgroundColor: S.ink, boxShadow: S.shadow }]}
+          >
+            <Ionicons name={'lc:check' as never} size={21} color={S.card} />
+          </Pressable>
+        </View>
+
+        {/* THE TOOLS: one soft pill that floats and goes where the hand
+            puts it; the colour is a single dot that opens the palette
+            above it. */}
+        {paletteOpen && (
+          <RNAnimated.View
+            style={[
+              styles.palette,
+              { bottom: insets.bottom + 84, backgroundColor: S.card, boxShadow: S.popShadow, transform: barPan.getTranslateTransform() },
+            ]}
+          >
+            <View style={styles.paletteRow}>
+              {COLORS.map((c) => (
                 <Pressable
+                  key={c}
+                  hitSlop={4}
+                  onPress={() => {
+                    selectColor(c);
+                    setPaletteOpen(false);
+                  }}
+                  style={[styles.swatchRing, color === c && { borderColor: S.ink2 }]}
+                >
+                  <View style={[styles.swatch, { backgroundColor: shown(c) }, shown(c) === S.card && { borderWidth: 1, borderColor: S.line }]} />
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.paletteRow}>
+              {WIDTHS.map((w) => (
+                <Pressable
+                  key={w}
+                  hitSlop={4}
+                  onPress={() => setStrokeWidth(w)}
+                  style={[styles.widthButton, strokeWidth === w && { backgroundColor: S.fill }]}
+                >
+                  <View style={{ width: w * 2, height: w * 2, borderRadius: w, backgroundColor: S.ink }} />
+                </Pressable>
+              ))}
+            </View>
+          </RNAnimated.View>
+        )}
+        <RNAnimated.View
+          style={[
+            styles.toolbar,
+            { bottom: insets.bottom + 14, backgroundColor: S.card, boxShadow: S.popShadow, transform: barPan.getTranslateTransform() },
+          ]}
+          {...barDrag.panHandlers}
+        >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tools}>
+            {TOOLS.map(({ tool: t, icon }) => (
+              <Pressable
                 key={t}
                 hitSlop={4}
-                style={[styles.toolButton, tool === t && styles.toolButtonActive]}
+                style={[styles.tool, tool === t && { backgroundColor: S.ink }]}
                 onPress={() => selectTool(t)}
               >
-                {family === 'ion' ? (
-                    <Ionicons name={icon as never} size={20} color={tool === t ? '#fff' : '#111827'} />
-                ) : (
-                    <MaterialCommunityIcons name={icon as never} size={20} color={tool === t ? '#fff' : '#111827'} />
-                )}
-                </Pressable>
+                <Ionicons name={icon as never} size={19} color={tool === t ? S.card : S.ink2} />
+              </Pressable>
             ))}
-            </ScrollView>
-            <View style={styles.colorRow}>
-            {COLORS.map((c) => (
-                <Pressable
-                key={c}
-                hitSlop={4}
-                onPress={() => selectColor(c)}
-                style={[styles.colorSwatch, { backgroundColor: c }, color === c && styles.colorSwatchActive]}
-              />
-            ))}
-            </View>
-            <View style={styles.widthRow}>
-            {WIDTHS.map((w) => (
-                <Pressable
-                key={w}
-                hitSlop={4}
-                onPress={() => setStrokeWidth(w)}
-                style={[styles.widthButton, strokeWidth === w && styles.widthButtonActive]}
-              >
-                  <View style={[styles.widthDot, { width: w * 2, height: w * 2, borderRadius: w }]} />
-                </Pressable>
-            ))}
-            </View>
-          </View>
-        )}
+          </ScrollView>
+          <View style={[styles.toolbarDivider, { backgroundColor: S.line }]} />
+          <Pressable hitSlop={6} onPress={() => setPaletteOpen((open) => !open)} style={styles.tool}>
+            <View style={[styles.colorDot, { backgroundColor: shown(color), borderColor: S.line }]} />
+          </Pressable>
+        </RNAnimated.View>
 
         {pendingText && (
-          <View style={styles.textPromptBackdrop}>
-            <View style={styles.textPromptCard}>
-              <Text style={styles.textPromptTitle}>Текст</Text>
+          <View style={styles.textBackdrop}>
+            <View style={[styles.textCard, { backgroundColor: S.card, boxShadow: S.popShadow }]}>
+              <Text style={[styles.textTitle, { color: S.ink }]}>Текст</Text>
               <TextInput
                 autoFocus
                 value={textValue}
                 onChangeText={setTextValue}
                 onSubmitEditing={commitText}
                 placeholder="Текст…"
-                placeholderTextColor="rgba(255,255,255,0.3)"
-                style={styles.textPromptInput}
+                placeholderTextColor={S.ink3}
+                style={[styles.textInput, { color: S.ink, backgroundColor: S.fill }]}
               />
-              <View style={styles.textPromptButtons}>
+              <View style={styles.textButtons}>
                 <Pressable
-                  style={styles.textPromptCancel}
+                  style={styles.textCancel}
                   onPress={() => {
                     setPendingText(null);
                     setTextValue('');
                   }}
                 >
-                  <Text style={styles.textPromptCancelLabel}>Скасувати</Text>
+                  <Text style={[styles.textCancelLabel, { color: S.ink2 }]}>Скасувати</Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.textPromptSave, !textValue.trim() && styles.textPromptSaveDisabled]}
+                  style={[styles.textSave, { backgroundColor: S.ink }, !textValue.trim() && { opacity: 0.35 }]}
                   disabled={!textValue.trim()}
                   onPress={commitText}
                 >
-                  <Text style={styles.textPromptSaveLabel}>Додати</Text>
+                  <Text style={[styles.textSaveLabel, { color: S.card }]}>Додати</Text>
                 </Pressable>
               </View>
             </View>
           </View>
         )}
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
 
+const ROUND = 46;
+const TOOL = 40;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-  },
-  containerDark: {
-    backgroundColor: '#111',
-  },
-  // Floating: over the picture, out of the layout, on its own glass.
-  headerFloating: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    zIndex: 10,
-    borderBottomWidth: 0,
-    backgroundColor: 'rgba(17,17,17,0.55)',
-  },
-  // The floating bar: ONE pill, centred, clear of every edge - the
-  // shape Apple's own markup uses, and the reference the user drew.
-  toolbarFloating: {
-    position: 'absolute',
-    alignSelf: 'center',
-    // Not the width of the screen: the tools scroll inside the bar when
-    // they do not fit, and a bar that stops well short of both edges
-    // reads as something lying ON the picture rather than a strip of
-    // furniture across the bottom of it.
-    maxWidth: '76%',
-    zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-    borderRadius: 24,
-    backgroundColor: 'rgba(28,28,30,0.94)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.18)',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-  pillTools: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  pillTool: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pillToolActive: {
-    backgroundColor: '#fff',
-  },
-  pillDivider: {
-    width: StyleSheet.hairlineWidth,
-    alignSelf: 'stretch',
-    marginVertical: 6,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-  pillColor: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pillColorDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.85)',
-  },
-  // The palette, only while it is open, on its own pill above the bar.
-  palettePop: {
-    position: 'absolute',
-    alignSelf: 'center',
-    maxWidth: '94%',
-    zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 22,
-    backgroundColor: 'rgba(28,28,30,0.94)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E7EB',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 20,
-  },
-  doneButton: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  doneLabel: {
-    color: '#fff',
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
   },
   canvas: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   // Drawing on a photograph, the canvas is the PICTURE's box - centred
   // in what is left of the screen, with the dark around it so the edges
@@ -885,127 +702,160 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#111',
   },
   canvasFill: {
     flex: 1,
   },
-  toolbar: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E7EB',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  toolRow: {
+  top: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  toolButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
+  roundButton: {
+    width: ROUND,
+    height: ROUND,
+    borderRadius: ROUND / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F3F4F6',
   },
-  toolButtonActive: {
-    backgroundColor: '#3B82F6',
-  },
-  colorRow: {
+  capsule: {
+    height: ROUND,
+    borderRadius: ROUND / 2,
     flexDirection: 'row',
-    gap: 14,
+    alignItems: 'center',
+    paddingHorizontal: 6,
   },
-  colorSwatch: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  capsuleButton: {
+    width: 44,
+    height: ROUND,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  colorSwatchActive: {
-    borderWidth: 3,
-    borderColor: '#9CA3AF',
+  capsuleDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 20,
   },
-  widthRow: {
+  toolbar: {
+    position: 'absolute',
+    alignSelf: 'center',
+    maxWidth: '92%',
     flexDirection: 'row',
-    gap: 14,
+    alignItems: 'center',
+    gap: 2,
+    padding: 6,
+    borderRadius: 28,
+  },
+  tools: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  tool: {
+    width: TOOL,
+    height: TOOL,
+    borderRadius: TOOL / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolbarDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 22,
+    marginHorizontal: 4,
+  },
+  colorDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+  },
+  palette: {
+    position: 'absolute',
+    alignSelf: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  paletteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  swatchRing: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatch: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
   },
   widthButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F3F4F6',
   },
-  widthButtonActive: {
-    backgroundColor: '#DBEAFE',
-  },
-  widthDot: {
-    backgroundColor: '#111827',
-  },
-  textPromptBackdrop: {
+  textBackdrop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
   },
-  textPromptCard: {
+  textCard: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    borderRadius: 24,
     padding: 20,
-    gap: 12,
+    gap: 14,
   },
-  textPromptTitle: {
+  textTitle: {
     fontSize: 17,
-    fontWeight: '700',
-    fontFamily: FONT_BOLD,
-    color: '#111827',
+    fontFamily: SOFT_SEMIBOLD,
   },
-  textPromptInput: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  textInput: {
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: '#111827',
+    fontFamily: SOFT_REGULAR,
   },
-  textPromptButtons: {
+  textButtons: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 12,
-    marginTop: 4,
+    alignItems: 'center',
+    gap: 10,
   },
-  textPromptCancel: {
+  textCancel: {
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
-  textPromptCancelLabel: {
+  textCancelLabel: {
     fontSize: 15,
-    fontFamily: FONT_REGULAR,
-    color: '#6B7280',
+    fontFamily: SOFT_MEDIUM,
   },
-  textPromptSave: {
-    backgroundColor: '#3B82F6',
-    borderRadius: 10,
+  textSave: {
+    borderRadius: 20,
     paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
   },
-  textPromptSaveDisabled: {
-    backgroundColor: '#BFDBFE',
-  },
-  textPromptSaveLabel: {
+  textSaveLabel: {
     fontSize: 15,
-    fontWeight: '600',
-    fontFamily: FONT_SEMIBOLD,
-    color: '#fff',
+    fontFamily: SOFT_SEMIBOLD,
   },
 });

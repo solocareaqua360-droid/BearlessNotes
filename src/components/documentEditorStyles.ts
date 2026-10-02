@@ -838,6 +838,11 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  // A drawing in a note: no frame, no tint - the paper itself - and as
+  // tall as the drawing (its aspect comes from what is drawn).
+  sketchWrap: {
+    flex: 1,
+  },
   blockImageTap: {
     flex: 1,
   },

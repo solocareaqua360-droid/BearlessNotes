@@ -1,4 +1,5 @@
 import FlashcardBlockCard from './FlashcardBlockCard';
+import { drawingViewBox, inkOn } from '../utils/sketchGeometry';
 import { ComponentProps, ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -419,30 +420,30 @@ export default function BlockRow({
       </View>
     );
   } else if (type === 'sketch') {
-    // viewBox reuses the exact canvas size the elements were captured
-    // against (see SketchEditor) so the drawing scales correctly here
-    // regardless of how much smaller this preview box is.
+    // On the note's own paper, no well of its own, and CROPPED to what is
+    // drawn plus a small margin: the block is as tall as the drawing, not
+    // as the screen it was drawn on (sketchGeometry's drawingViewBox).
     const elements = item.sketchElements ?? [];
-    const vbWidth = item.sketchWidth || 1;
-    const vbHeight = item.sketchHeight || 1;
+    const box = drawingViewBox(elements);
+    const sketchInk = item.isSticker ? STICKER_INK : (rowPaperColor?.text ?? theme.paper.ink);
     content = (
       <Pressable
         disabled={isSelectMode}
         onPress={() => onOpenSketch(item.id)}
-        style={styles.blockImageWrap}
+        style={box ? [styles.sketchWrap, { aspectRatio: box.aspect }] : styles.blockImageWrap}
       >
-        {elements.length > 0 ? (
-          <Svg width="100%" height="100%" viewBox={`0 0 ${vbWidth} ${vbHeight}`}>
+        {box ? (
+          <Svg width="100%" height="100%" viewBox={box.viewBox}>
             {elements.map((el, i) =>
               el.kind === 'text' ? (
-                <SvgText key={i} x={el.x} y={el.y} fill={el.color} fontSize={el.fontSize}>
+                <SvgText key={i} x={el.x} y={el.y} fill={inkOn(el.color, sketchInk)} fontSize={el.fontSize}>
                   {el.text}
                 </SvgText>
               ) : (
                 <Path
                   key={i}
                   d={el.d}
-                  stroke={el.color}
+                  stroke={inkOn(el.color, sketchInk)}
                   strokeWidth={el.width}
                   fill="none"
                   strokeLinecap="round"

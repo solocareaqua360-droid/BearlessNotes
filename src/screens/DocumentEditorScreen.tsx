@@ -6136,6 +6136,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // same place in the note and in an export. Opened on a sketch
         // block there is no picture, and it is the blank canvas it was.
         background={sketchBackground}
+        paper={paperColor?.background}
         onSave={saveSketchElements}
         onClose={closeSketchEditor}
       />
