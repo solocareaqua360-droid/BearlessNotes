@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import FoldersCanvas from '../components/FoldersCanvas';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSoft, softCardFrame } from '../theme/soft';
@@ -57,11 +59,29 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
     searching ? { placeholder: 'Пошук папок', initialQuery: query, onChangeQuery: setQuery, onClose: closeSearch } : null,
     isFocused
   );
+  // THE TABLE OR THE LIST (the folders rework, step 1): the folders as
+  // one canvas of everything in them, from every database - the way in by
+  // default - or the tree as a list, for renaming and deleting. The
+  // dock's right bead switches; the choice is remembered.
+  const [view, setView] = useState<'canvas' | 'list'>('canvas');
+  useEffect(() => {
+    AsyncStorage.getItem('foldersView')
+      .then((stored) => {
+        if (stored === 'list' || stored === 'canvas') setView(stored);
+      })
+      .catch(() => {});
+  }, []);
+  const switchView = () => {
+    const next = view === 'canvas' ? 'list' : 'canvas';
+    setView(next);
+    closeSearch();
+    AsyncStorage.setItem('foldersView', next).catch(() => {});
+  };
   useDockBeads(
-    isFocused
+    isFocused && view === 'list'
       ? { icon: searching ? 'close-outline' : 'search-outline', active: searching, onPress: () => (searching ? closeSearch() : setSearching(true)) }
       : null,
-    null
+    isFocused ? { icon: view === 'canvas' ? 'reorder-four-outline' : 'easel-outline', onPress: switchView } : null
   );
   // A tag's path IS the tree - "робота/оренда" is the folder "робота"
   // holding "оренда" - and this screen drew them as a flat list of full
@@ -117,6 +137,9 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
     <View style={styles.container}>
       <ScreenGround color={S.bg} />
       {isFocused && topNavOn && <TopNavBar title={{ icon: 'folder-outline', label: 'Папки' }} />}
+      {view === 'canvas' ? (
+        <FoldersCanvas topPad={insets.top + (topNavOn ? TOP_NAV_SPACE : 12)} />
+      ) : (
       <ContentColumn>
       <View style={{ height: insets.top + (topNavOn ? TOP_NAV_SPACE : 12) }} />
       <Text style={[styles.subtitle, { color: S.ink3 }]}>
@@ -194,6 +217,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
           }}
         />
       </ContentColumn>
+      )}
     </View>
   );
 }
