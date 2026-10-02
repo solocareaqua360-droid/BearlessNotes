@@ -5,6 +5,8 @@ import FolderCanvas, { CANVAS_TILE, type CanvasPhoto, type Move } from './Folder
 import FolderBaseLinks, { type BaseLink, type LinkBase } from './FolderBaseLinks';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { TAG_KIND_CHOICES } from '../constants/tagKinds';
+import { GRID_TILES, WIDE_TILES } from '../constants/databaseTiles';
+import { useRecordColour } from '../theme/ThemeProvider';
 import { ask } from './surfaces/Ask';
 import { FileCanvasTile, LinkCanvasTile, NoteCanvasTile } from './CanvasTiles';
 import AttachmentImage from './AttachmentImage';
@@ -37,17 +39,19 @@ const KIND_ICON: Record<FolderItem['kind'], string> = {
 
 const nameOf = (path: string) => path.split('/').pop() ?? path;
 
-// How each database looks among the circles of FolderBaseLinks.
-const BASE_LOOK: Record<string, { icon: string; color: string }> = {
-  document: { icon: 'document-text-outline', color: '#3B82F6' },
-  photo: { icon: 'image-outline', color: '#EC4899' },
-  file: { icon: 'document-outline', color: '#F59E0B' },
-  'link-other': { icon: 'link-outline', color: '#14B8A6' },
-  'link-video': { icon: 'videocam-outline', color: '#EF4444' },
-  'link-geo': { icon: 'location-outline', color: '#22C55E' },
-  board: { icon: 'easel-outline', color: '#8B5CF6' },
-  flashcard: { icon: 'albums-outline', color: '#6366F1' },
+// Which tile on the Бази board each folder kind is - the circles of
+// FolderBaseLinks wear that tile's own icon and colour.
+const TILE_OF_KIND: Record<string, string> = {
+  document: 'documents',
+  photo: 'photos',
+  file: 'files',
+  'link-other': 'links',
+  'link-video': 'video',
+  'link-geo': 'geo',
+  board: 'board',
+  flashcard: 'flashcards',
 };
+const TILES = [...WIDE_TILES, ...GRID_TILES];
 const randomColor = () => TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
 
 export default function FoldersCanvas({ topPad, linksOpen }: { topPad: number; linksOpen: boolean }) {
@@ -55,15 +59,26 @@ export default function FoldersCanvas({ topPad, linksOpen }: { topPad: number; l
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { tags, attachTag, detachTag, createFolderTag, renameTag, updateTag } = useTags();
   const items = useAllFolderItems(tags);
-  const { customDatabases } = useDatabaseTiles();
-  // The databases, as circles: the built-in ones, then the user's own.
+  const { customDatabases, colorFor } = useDatabaseTiles();
+  const recordColour = useRecordColour();
+  // The databases, as circles - in the icons and colours of their own
+  // tiles on the Бази board: the built-in ones, then the user's own.
   const bases: LinkBase[] = [
-    ...TAG_KIND_CHOICES.map((c) => ({ kind: c.kind, label: c.label, ...(BASE_LOOK[c.kind] ?? { icon: 'grid-outline', color: S.ink2 }) })),
-    ...customDatabases.map((d, i) => ({
+    ...TAG_KIND_CHOICES.map((c) => {
+      const tileKey = TILE_OF_KIND[c.kind];
+      const tile = TILES.find((t) => t.key === tileKey);
+      return {
+        kind: c.kind,
+        label: c.label,
+        icon: tile?.icon ?? 'grid-outline',
+        color: tileKey ? colorFor(tileKey) : S.ink2,
+      };
+    }),
+    ...customDatabases.map((d) => ({
       kind: `customRow:${d.id}`,
       label: d.name || 'База',
-      icon: 'grid-outline',
-      color: TAG_COLORS[i % TAG_COLORS.length],
+      icon: d.icon ?? 'grid-outline',
+      color: d.color ?? recordColour(d.id).background,
     })),
   ];
   const baseLabel = (kind: string) => bases.find((b) => b.kind === kind)?.label ?? 'База';
