@@ -306,7 +306,10 @@ export function useActiveBackdropOverride(): BackdropOverride | null {
   if (!backdropSettings.override) return null;
   // The wallpaper only where the window can show one - not in the
   // browser, not on an APK built before it.
-  if (backdropSettings.override.type === 'wallpaper' && !supportsWallpaper) return null;
+  // In EVERY theme: it is the window's, not a theme's look, and a
+  // wallpaper left off by a theme tick from an old gradient seemed to
+  // do nothing at all (2026-10-02).
+  if (backdropSettings.override.type === 'wallpaper') return supportsWallpaper ? backdropSettings.override : null;
   return backdropSettings.appliesTo.includes(theme.key) ? backdropSettings.override : null;
 }
 

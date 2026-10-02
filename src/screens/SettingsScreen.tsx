@@ -1083,6 +1083,10 @@ export default function SettingsScreen() {
               >
                 <Text style={styles.disconnectLabel}>Повернути стандартний фон</Text>
               </Pressable>
+              {/* The wallpaper is the window's, not a theme's - it shows in
+                  every theme, so it has no ticks. */}
+              {backdropMode !== 'wallpaper' && (
+              <>
               <Text style={[styles.cardHint, { marginTop: 14 }]}>Застосувати цей фон у темах:</Text>
               <View style={{ gap: 8, marginTop: 6 }}>
                 {THEME_ORDER.map((key) => (
@@ -1100,6 +1104,8 @@ export default function SettingsScreen() {
                   </Pressable>
                 ))}
               </View>
+              </>
+              )}
             </>
           )}
         </View>
