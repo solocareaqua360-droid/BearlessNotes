@@ -61,6 +61,17 @@ export function useBin<T extends { id: string; deletedAt?: number }>(
     if (choice === 'purge') await purgeItem(item);
   }
 
+  // THE LAST DELETION, whole: everything that went into the bin within a
+  // few seconds of the newest - one mass delete, undone in one go (2026-10-02:
+  // every photo went to the bin at once, and restoring was one by one).
+  const lastBatch = (() => {
+    const newest = trashed.reduce((max, item) => Math.max(max, item.deletedAt ?? 0), 0);
+    return newest ? trashed.filter((item) => (item.deletedAt ?? 0) >= newest - 10_000) : [];
+  })();
+  async function restoreMany(items: T[]) {
+    await Promise.all(items.map((item) => restore(item.id).catch(() => undefined)));
+  }
+
   async function emptyBin(labelGenitive: string) {
     if (trashed.length === 0) return;
     const yes = await confirm({
@@ -72,5 +83,5 @@ export function useBin<T extends { id: string; deletedAt?: number }>(
     await Promise.all(trashed.map((item) => purgeItem(item)));
   }
 
-  return { trashed, moveToBin, restore, openTrashMenu, emptyBin };
+  return { trashed, moveToBin, restore, openTrashMenu, emptyBin, lastBatch, restoreMany };
 }

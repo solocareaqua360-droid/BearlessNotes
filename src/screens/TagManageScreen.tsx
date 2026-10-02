@@ -192,6 +192,14 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
       ],
     });
     if (choice === 'trash') {
+      // Asked once more, with the count in words - a whole folder's
+      // contents going to the bins must never be one tap away.
+      const sure = await confirm({
+        title: `Перемістити в кошик ${inside.length} ${inside.length === 1 ? 'елемент' : 'елементів'}?`,
+        message: 'Нотатки, фото, файли й посилання з цієї папки підуть у кошики своїх баз.',
+        confirmLabel: 'У кошик',
+      });
+      if (!sure) return;
       const now = Date.now();
       await Promise.all(
         real.map((item) =>

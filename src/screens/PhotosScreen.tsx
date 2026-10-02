@@ -831,8 +831,10 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       // Only when there is something to show or hide - a "Ще" that opens
       // an empty menu is worse than no "Ще".
       menuRows={
-        recordPhotoCount > 0 || showRecordPhotos
+        recordPhotoCount > 0 || showRecordPhotos || bin.trashed.length > 0
           ? (close) => (
+          <>
+          {(recordPhotoCount > 0 || showRecordPhotos) && (
           <Pressable
             style={menuStyles.menuRow}
             onPress={() => {
@@ -845,6 +847,33 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               {showRecordPhotos ? 'Сховати вкладення записів' : `Показати вкладення записів (${recordPhotoCount})`}
             </Text>
           </Pressable>
+          )}
+          {/* Undoing a deletion in one go - the last one, or the whole bin. */}
+          {bin.lastBatch.length > 0 && (
+            <Pressable
+              style={menuStyles.menuRow}
+              onPress={() => {
+                close();
+                bin.restoreMany(bin.lastBatch);
+              }}
+            >
+              <Ionicons name="arrow-undo-outline" size={17} color={theme.ink.primary} />
+              <Text style={menuStyles.menuRowLabel}>{`Відновити останнє видалення (${bin.lastBatch.length})`}</Text>
+            </Pressable>
+          )}
+          {bin.trashed.length > bin.lastBatch.length && (
+            <Pressable
+              style={menuStyles.menuRow}
+              onPress={() => {
+                close();
+                bin.restoreMany(bin.trashed);
+              }}
+            >
+              <Ionicons name="arrow-undo-outline" size={17} color={theme.ink.primary} />
+              <Text style={menuStyles.menuRowLabel}>{`Відновити все з кошика (${bin.trashed.length})`}</Text>
+            </Pressable>
+          )}
+          </>
             )
           : undefined
       }
