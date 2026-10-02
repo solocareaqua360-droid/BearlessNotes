@@ -1,4 +1,5 @@
 import { WINDOW_INNER_RADIUS } from '../../theme/scale';
+import { useDatabaseTiles } from '../../hooks/useDatabaseTiles';
 import { deskGlass } from '../../theme/desktopTheme';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -30,16 +31,18 @@ function usePanelTitle(panel: Panel): { icon: string; title: string } {
   // What the panel shows now: where a click took it, else its own thing.
   const shown = panel.stack?.length ? panel.stack[panel.stack.length - 1] : panel.target;
   const databaseId = shown?.kind === 'custom' ? shown.databaseId : null;
+  const { iconFor, customDatabases } = useDatabaseTiles();
   useEffect(() => {
     if (!databaseId) return;
     return onSnapshot(doc(db, 'customDatabases', databaseId), (snapshot) => {
       setName((snapshot.data()?.name as string | undefined) ?? null);
     });
   }, [databaseId]);
-  if (panel.stack?.length && shown) return targetInfo(shown, name);
+  const looks = { iconFor, customIcon: customDatabases.find((d) => d.id === databaseId)?.icon };
+  if (panel.stack?.length && shown) return targetInfo(shown, name, looks);
   if (panel.kind === 'chat') return { icon: 'chatbubbles-outline', title: 'Чат' };
   if (panel.kind === 'databases' || !shown) return { icon: 'apps-outline', title: 'Бази' };
-  return targetInfo(shown, name);
+  return targetInfo(shown, name, looks);
 }
 
 // What a panel shows, moved into a tab of the main pane: the panel closes,

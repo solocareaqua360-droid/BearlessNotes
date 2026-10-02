@@ -6,7 +6,13 @@ import { navigationRef } from '../navigationRef';
 // source, so a panel's header says what the tile it came from said. A
 // personal database's own name is not known here (it lives in Firestore):
 // `name` stands in for it once the caller has it.
-export function targetInfo(target: PaneTarget, name?: string | null): { icon: string; title: string } {
+export function targetInfo(
+  target: PaneTarget,
+  name?: string | null,
+  // The icons the user chose: a built-in database's (useDatabaseTiles'
+  // iconFor) and a database of their own (its record's).
+  looks?: { iconFor?: (tileKey: string, fallback: string) => string; customIcon?: string }
+): { icon: string; title: string } {
   const tiles = [...WIDE_TILES, ...GRID_TILES];
   const tile =
     target.kind === 'links'
@@ -18,9 +24,10 @@ export function targetInfo(target: PaneTarget, name?: string | null): { icon: st
           : target.kind === 'route'
             ? tiles.find((t) => t.route === target.route)
             : undefined;
-  if (target.kind === 'custom') return { icon: 'grid-outline', title: name || 'База' };
+  if (target.kind === 'custom') return { icon: looks?.customIcon ?? 'grid-outline', title: name || 'База' };
   if (target.kind === 'boards') return { icon: 'easel-outline', title: 'Дошки' };
-  return { icon: tile?.icon ?? 'apps-outline', title: tile?.label ?? 'База' };
+  const icon = tile ? (looks?.iconFor ? looks.iconFor(tile.key, tile.icon) : tile.icon) : 'apps-outline';
+  return { icon, title: tile?.label ?? 'База' };
 }
 
 // Where the main pane goes for a target - what a NEW WINDOW opens on, since

@@ -1,4 +1,5 @@
 import { withTransition } from '../utils/viewTransition';
+import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { CONTROL, RADIUS, TYPE, useDeskColors } from '../theme/desktopTheme';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -160,6 +161,7 @@ function goNow(tab: Tab | null) {
 // A tab's name and icon: a note's title from the index, a board's or a
 // database's from its own document, a section's from the list above.
 function useTabLabel(tab: Tab): { title: string; icon: string } {
+  const { iconFor, customDatabases } = useDatabaseTiles();
   const index = useDocumentIndex();
   const [name, setName] = useState<string | null>(null);
   useEffect(() => {
@@ -177,7 +179,9 @@ function useTabLabel(tab: Tab): { title: string; icon: string } {
   if (tab.kind === 'start') return { title: 'Нова вкладка', icon: 'sparkles-outline' };
   if (tab.kind === 'target') {
     try {
-      return targetInfo(JSON.parse(tab.ref) as PaneTarget);
+      const target = JSON.parse(tab.ref) as PaneTarget;
+      const customIcon = target.kind === 'custom' ? customDatabases.find((d) => d.id === target.databaseId)?.icon : undefined;
+      return targetInfo(target, undefined, { iconFor, customIcon });
     } catch {
       return { title: 'База', icon: 'grid-outline' };
     }
