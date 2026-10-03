@@ -95,9 +95,7 @@
     "background": "var(--popup-surface)",
     "foreground": "var(--on-surface)",
     "font-size": "32sp",
-    "shape": "rounded-corner(8dp, 8dp, 8dp, 8dp)",
-    "shadow-elevation": "4dp",
-    "shadow-color": "var(--key-shadow)"
+    "shape": "rounded-corner(12dp, 12dp, 12dp, 12dp)"
   },
   "key-popup-element:focus": {
     "background": "var(--focused-popup-surface)",
@@ -463,6 +461,9 @@
     "text-overflow": "ellipsis"
   },
   "smartbar-action-key-icon": {
+    "font-size": "24sp"
+  },
+  "key-popup-element": {
     "font-size": "24sp"
   }
 }

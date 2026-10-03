@@ -44,6 +44,14 @@ import dev.patrickgold.florisboard.ime.text.keyboard.TextKey
 import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyData
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.lib.FlorisRect
+import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
+import dev.patrickgold.florisboard.ime.eva.EvaKeyPreviewShape
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 import dev.patrickgold.florisboard.lib.toIntOffset
 
 @Composable
@@ -458,7 +466,9 @@ class PopupUiController(
             FlorisImeUi.Attr.Mode to evaluator.keyboard.mode.toString(),
             FlorisImeUi.Attr.ShiftState to evaluator.state.inputShiftState.toString(),
         )
-        baseRenderInfo?.let { renderInfo ->
+        // evaBoard: while the long-press menu is open, it and the pressed key are one shape (below),
+        // so the small press preview is not drawn on top of it
+        baseRenderInfo?.takeIf { extRenderInfo == null }?.let { renderInfo ->
             PopupBaseBox(
                 modifier = Modifier
                     .requiredSize(renderInfo.bounds.size.toDpSize())
@@ -473,6 +483,33 @@ class PopupUiController(
             val baseBounds = renderInfo.baseBounds
             val elemWidth = baseBounds.width
             val elemHeight = baseBounds.height * 0.4f
+            // evaBoard: the menu grows out of the pressed key - one shape from the menu down to the
+            // key, drawn behind the menu (whose own box has the same colour and corners, no shadow)
+            val key = baseRenderInfo?.key
+            if (key != null) {
+                val menu = renderInfo.bounds
+                val shapeTop = menu.top
+                val shapeBottom = key.visibleBounds.bottom
+                val previewShape = remember(key, menu) {
+                    EvaKeyPreviewShape(
+                        keyLeft = key.visibleBounds.left - menu.left,
+                        keyWidth = key.visibleBounds.width,
+                        keyHeight = key.visibleBounds.height,
+                        headHeight = menu.height,
+                        headRadius = 12.dp.toPx(),
+                        keyRadius = 6.dp.toPx(),
+                        shoulder = key.visibleBounds.width * 0.3f,
+                    )
+                }
+                val style = rememberSnyggThemeQuery(FlorisImeUi.KeyPopupBox.elementName, attributes)
+                Box(
+                    modifier = Modifier
+                        .requiredSize(menu.width.toDp(), (shapeBottom - shapeTop).toDp())
+                        .absoluteOffset { IntOffset(menu.left.toInt(), shapeTop.toInt()) }
+                        .shadow(3.dp, previewShape, clip = false)
+                        .background(style.background(Color.White), previewShape),
+                )
+            }
             PopupExtBox(
                 modifier = Modifier
                     .requiredSize(renderInfo.bounds.size.toDpSize())
