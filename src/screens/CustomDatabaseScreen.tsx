@@ -4267,6 +4267,28 @@ export default function CustomDatabaseScreen({
                     </View>
                   </View>
                 )}
+
+                {/* At the foot of the page, out of the way of everything
+                    else, and asked once more before it goes - naming the
+                    record, so the wrong one is not removed (2026-10-03). */}
+                <Pressable
+                  style={({ pressed }) => [styles.pageDeleteButton, pressed && { opacity: 0.7 }]}
+                  onPress={() => {
+                    const row = rowPageRow;
+                    confirm({
+                      title: `Видалити «${titleOf(row) || 'Без назви'}»?`,
+                      message: 'Запис буде видалено назавжди, його нотатки стануть звичайними.',
+                      confirmLabel: 'Видалити',
+                    }).then((yes) => {
+                      if (!yes) return;
+                      setRowPageId(null);
+                      deleteRow(row);
+                    });
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={18} color={DELETE_RED} />
+                  <Text style={styles.pageDeleteLabel}>Видалити запис</Text>
+                </Pressable>
               </GestureScrollView>
             )}
           </View>
@@ -5091,6 +5113,9 @@ function RelationPickerSheet({
     </GlassLayer>
   );
 }
+
+// The page's delete - the soft danger red used across the app's menus.
+const DELETE_RED = '#C8452F';
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -6274,6 +6299,22 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   pageContinueButton: {
     marginRight: 8,
+  },
+  pageDeleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 24,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(200,69,47,0.35)',
+  },
+  pageDeleteLabel: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: DELETE_RED,
   },
   pageEditLabel: {
     fontSize: 13,

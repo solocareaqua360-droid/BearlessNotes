@@ -1,5 +1,6 @@
 import { MOTION } from '../../theme/desktopTheme';
 import { NO_WINDOW_DRAG } from '../../utils/windowDrag';
+import { GlassPortal } from '../GlassPortal';
 import { useLift } from '../../theme/ThemeProvider';
 import { useEffect, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -168,6 +169,9 @@ export function AskHost() {
   // menu at the cursor.
   if (current.anchor && !(pointer && isConfirmation)) {
     return (
+      // Over every window: a question asked from inside one (a record's
+      // page) stood UNDER it on the laptop and could not be seen.
+      <GlassPortal priority={100}>
       <AskPopover
         title={current.title}
         message={current.message}
@@ -177,12 +181,16 @@ export function AskHost() {
         leaving={leaving}
         tokens={softTokens}
       />
+      </GlassPortal>
     );
   }
   // At a pointer, a question with a list of answers is a menu too: beside
   // the click that asked it, or, asked by nothing on screen, in the middle.
   if (pointer && !isConfirmation) {
     return (
+      // Over every window: a question asked from inside one (a record's
+      // page) stood UNDER it on the laptop and could not be seen.
+      <GlassPortal priority={100}>
       <AskPopover
         title={current.title}
         message={current.message}
@@ -192,6 +200,7 @@ export function AskHost() {
         leaving={leaving}
         tokens={softTokens}
       />
+      </GlassPortal>
     );
   }
   const cancelLabel = current.cancelLabel === undefined ? 'Скасувати' : current.cancelLabel;
@@ -199,6 +208,9 @@ export function AskHost() {
   // hints - is a Mac's alert, not a phone's sheet.
   if (pointer && isConfirmation) {
     return (
+      // Over every window: a question asked from inside one (a record's
+      // page) stood UNDER it on the laptop and could not be seen.
+      <GlassPortal priority={100}>
       <MacAlert
         title={current.title}
         message={current.message}
@@ -208,6 +220,7 @@ export function AskHost() {
         leaving={leaving}
         tokens={softTokens}
       />
+      </GlassPortal>
     );
   }
 
