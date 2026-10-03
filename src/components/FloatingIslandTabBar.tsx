@@ -8,6 +8,7 @@ import { DesksControlContext, START_DESK, deskFace } from '../navigation/desks';
 import { captureDesk, forgetDesk, useDeskShots } from '../navigation/deskShots';
 import DeskSwitcher from './DeskSwitcher';
 import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
+import { deskPullEnabled } from '../navigation/deskPull';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
 
@@ -188,7 +189,11 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   useEffect(() => {
     if (!switcherReachable) return;
     registerDeskSwitcher(() => openSwitcherRef.current());
-    return () => registerDeskSwitcher(null);
+    deskPullEnabled.value = true;
+    return () => {
+      registerDeskSwitcher(null);
+      deskPullEnabled.value = false;
+    };
   }, [switcherReachable]);
   if (!barUp) return null;
   return (
@@ -220,10 +225,8 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         ...faceOf(route.name),
         active: liveIndex === index,
         shot: shots[route.name],
-        onPick: () => {
-          setSwitcherOpen(false);
-          desks[index].onPress();
-        },
+        // Goes there; the panel stays until it is dismissed.
+        onGo: () => desks[index].onPress(),
         onClose: deskControl && route.name !== START_DESK ? () => closeDesk(index) : undefined,
       }))}
     />
