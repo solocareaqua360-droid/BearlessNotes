@@ -15,6 +15,16 @@
  */
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+// evaBoard release signing: the keystore and its passwords live outside the
+// repo, in ~/.evaboard/keystore.properties (storeFile, storePassword,
+// keyAlias, keyPassword). Losing that keystore means the phone can no longer
+// take updates without uninstalling.
+val evaKeystoreProps = Properties().apply {
+    val f = File(System.getProperty("user.home"), ".evaboard/keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
 
 plugins {
     alias(libs.plugins.agp.application)
@@ -53,7 +63,6 @@ android {
     namespace = "dev.patrickgold.florisboard"
     compileSdk = projectCompileSdk.toInt()
     buildToolsVersion = tools.versions.buildTools.get()
-    ndkVersion = tools.versions.ndk.get()
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -67,7 +76,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "dev.patrickgold.florisboard"
+        // evaBoard: own package id, never FlorisBoard's or mindEva's
+        applicationId = "com.bearlessnotes.evaboard"
         minSdk = projectMinSdk.toInt()
         targetSdk = projectTargetSdk.toInt()
         versionCode = projectVersionCode.toInt()
@@ -105,6 +115,17 @@ android {
         compose = true
     }
 
+    signingConfigs {
+        if (evaKeystoreProps.isNotEmpty()) {
+            create("evaRelease") {
+                storeFile = File(evaKeystoreProps.getProperty("storeFile"))
+                storePassword = evaKeystoreProps.getProperty("storePassword")
+                keyAlias = evaKeystoreProps.getProperty("keyAlias")
+                keyPassword = evaKeystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         named("debug") {
             applicationIdSuffix = ".debug"
@@ -140,9 +161,13 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
 
-            resValue("mipmap", "floris_app_icon", "@mipmap/ic_app_icon_stable")
-            resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_app_icon_stable_round")
-            resValue("drawable", "floris_app_icon_foreground", "@drawable/ic_app_icon_stable_foreground")
+            if (evaKeystoreProps.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("evaRelease")
+            }
+
+            resValue("mipmap", "floris_app_icon", "@mipmap/ic_app_icon_eva")
+            resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_app_icon_eva")
+            resValue("drawable", "floris_app_icon_foreground", "@drawable/ic_app_icon_eva_foreground")
             resValue("string", "floris_app_name", "@string/app_name")
         }
 
@@ -217,7 +242,6 @@ dependencies {
     implementation(projects.lib.color)
     implementation(projects.lib.compose)
     implementation(projects.lib.kotlin)
-    implementation(projects.lib.native)
     implementation(projects.lib.snygg)
 
     testImplementation(libs.kotlin.test.junit5)

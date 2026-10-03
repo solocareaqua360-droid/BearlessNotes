@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-rootProject.name = "FlorisBoard"
+rootProject.name = "evaBoard"
 
 pluginManagement {
     repositories {
@@ -48,5 +48,7 @@ include(":lib:android")
 include(":lib:color")
 include(":lib:compose")
 include(":lib:kotlin")
-include(":lib:native")
+// evaBoard: lib:native is FlorisBoard's placeholder Rust library (it only adds
+// two numbers for a log line); left out so building needs no Rust toolchain.
+//include(":lib:native")
 include(":lib:snygg")
