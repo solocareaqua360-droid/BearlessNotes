@@ -15,4 +15,3 @@ export function noteDeskTouched(_key: string) {}
 export function registerDeskContent(_key: string, _node: View): () => void {
   return () => {};
 }
-export const captureNotes = new Map<string, string>();

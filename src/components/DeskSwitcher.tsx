@@ -41,8 +41,6 @@ export type SwitcherDesk = {
   icon: string;
   active: boolean;
   shot?: string;
-  // TEMPORARY: what the last capture said (deskShots' captureNotes).
-  note?: string;
   // Goes to the desk (does not close the panel).
   onGo: () => void;
   onClose?: () => void;
@@ -152,6 +150,7 @@ export default function DeskSwitcher({
     shown.current = true;
     focus.value = startIndex;
     lastGone.current = startIndex;
+    chosen.current = startIndex;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engaged, visible]);
   // Held open or asked for: the panel finishes opening, from wherever the
@@ -167,7 +166,27 @@ export default function DeskSwitcher({
     if (n > 0 && focus.value > n - 1) focus.value = n - 1;
   }, [n, focus]);
 
+  // OPTION А (2026-10-04): nothing changes behind the panel while it is
+  // out. Every desk the panel settled on used to be opened at once behind
+  // it - built, the bar redrawn, the panel handed new desks - all on the
+  // thread the panel's own swipe runs on, and a quick swipe stuttered. Now
+  // the panel only remembers where it stands; that desk is opened once, as
+  // the panel goes (under the frozen blur, so the switch is not seen).
+  const desksRef = useRef(desks);
+  desksRef.current = desks;
+  const chosen = useRef(startIndex);
+  const goTo = (index: number) => {
+    chosen.current = index;
+  };
+  const commit = () => {
+    const index = chosen.current;
+    if (index === lastGone.current) return;
+    lastGone.current = index;
+    desksRef.current[index]?.onGo();
+  };
+
   const close = () => {
+    commit();
     cancelAnimation(openM);
     openM.value = withTiming(0, { duration: 260, easing: Easing.in(Easing.cubic) }, (done) => {
       if (done) runOnJS(onDismiss)();
@@ -184,15 +203,6 @@ export default function DeskSwitcher({
     });
     return () => sub.remove();
   }, [visible]);
-
-  // Going to a desk, once per settle.
-  const desksRef = useRef(desks);
-  desksRef.current = desks;
-  const goTo = (index: number) => {
-    if (index === lastGone.current) return;
-    lastGone.current = index;
-    desksRef.current[index]?.onGo();
-  };
 
   const scrub = useMemo(
     () =>
@@ -382,13 +392,6 @@ function Card({
             <Ionicons name={desk.icon as never} size={20} color="#fff" />
           </Animated.View>
         </View>
-        {!!desk.note && (
-          <Animated.View style={[styles.note, faceStyle]} pointerEvents="none">
-            <Text style={styles.noteText} numberOfLines={4}>
-              {desk.note}
-            </Text>
-          </Animated.View>
-        )}
         <Animated.View style={[styles.name, { width: bodyHeight - 24 }, nameStyle]} pointerEvents="none">
           <Text style={styles.nameText} numberOfLines={1}>
             {desk.label}
@@ -462,8 +465,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
   },
   closeSpot: { position: 'absolute', right: 8, top: 5 },
-  note: { position: 'absolute', left: 8, right: 8, top: 44, padding: 6, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.6)' },
-  noteText: { color: '#fff', fontSize: 11 },
   close: {
     width: 30,
     height: 30,
