@@ -5,7 +5,8 @@
  * keyboard; on the user's phone that keyboard started and stopped again 4-5
  * times before it stayed. Here evaBoard listens itself through Android's own
  * speech recognizer (SpeechRecognizer), in the language of the active
- * layout, and types the result into the field.
+ * layout, and types each phrase into the field. Like the iPhone it keeps
+ * listening through pauses until the microphone is pressed again.
  */
 
 package dev.patrickgold.florisboard.ime.eva
@@ -18,6 +19,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -32,9 +34,14 @@ object EvaVoice {
         data object Idle : State
         /** Listening; [partial] is what has been heard so far (shown in the strip, not typed yet). */
         data class Listening(val partial: String) : State
-        /** A short note shown in the strip for a moment (nothing heard, no permission, ...). */
+        /** A short note shown in the strip for a moment (no permission, no network, ...). */
         data class Note(val text: String) : State
     }
+
+    /** Like the iPhone: listening stops on its own only after this long without speech. */
+    private const val SILENCE_LIMIT_MS = 30_000L
+    /** Restarts that fail in a row before giving up, so a broken recognizer cannot loop. */
+    private const val MAX_FAILED_RESTARTS = 3
 
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
@@ -43,9 +50,18 @@ object EvaVoice {
     private var recognizer: SpeechRecognizer? = null
     private val clearNote = Runnable { if (_state.value is State.Note) _state.value = State.Idle }
 
-    /** The microphone button: starts listening, or stops early if already listening. */
+    /** One press of the microphone: lasts until the second press, the silence limit, or the keyboard hiding. */
+    private class Session(val context: Context, val language: String) {
+        var lastHeardAt = SystemClock.elapsedRealtime()
+        var stopping = false
+        var failedRestarts = 0
+    }
+    private var session: Session? = null
+
+    /** The microphone button: starts listening, or stops if already listening (the phrase being said still lands). */
     fun toggle(context: Context) {
-        if (recognizer != null) {
+        session?.let {
+            it.stopping = true
             recognizer?.stopListening()
             return
         }
@@ -61,21 +77,14 @@ object EvaVoice {
             return
         }
         val language = context.subtypeManager().value.activeSubtype.primaryLocale.languageTag()
-        val sr = SpeechRecognizer.createSpeechRecognizer(context)
-        recognizer = sr
-        sr.setRecognitionListener(Listener(context))
+        session = Session(context, language)
         _state.value = State.Listening("")
-        sr.startListening(
-            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
-                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-        )
+        listen()
     }
 
     /** Drops whatever is being listened to - the keyboard went away. */
     fun cancel() {
+        session = null
         recognizer?.let {
             it.cancel()
             it.destroy()
@@ -84,9 +93,46 @@ object EvaVoice {
         if (_state.value is State.Listening) _state.value = State.Idle
     }
 
-    private fun finish() {
+    private fun listen() {
+        val s = session ?: return
+        // Pressed again between two phrases: nothing is being said, just stop.
+        if (s.stopping) {
+            end()
+            return
+        }
+        val sr = recognizer ?: SpeechRecognizer.createSpeechRecognizer(s.context).also {
+            it.setRecognitionListener(Listener)
+            recognizer = it
+        }
+        sr.startListening(
+            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, s.language)
+                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, s.context.packageName)
+        )
+    }
+
+    /** Android ends recognition after every phrase; while the session lasts, quietly start the next one. */
+    private fun next() {
+        val s = session ?: return
+        if (s.stopping) {
+            end()
+            return
+        }
+        if (SystemClock.elapsedRealtime() - s.lastHeardAt > SILENCE_LIMIT_MS) {
+            end("Мікрофон вимкнено після тиші")
+            return
+        }
+        _state.value = State.Listening("")
+        main.postDelayed({ if (session === s) listen() }, 100)
+    }
+
+    private fun end(noteText: String? = null) {
+        session = null
         recognizer?.destroy()
         recognizer = null
+        if (noteText != null) note(noteText) else _state.value = State.Idle
     }
 
     private fun note(text: String) {
@@ -102,41 +148,55 @@ object EvaVoice {
         editor.commitText(text)
     }
 
-    private class Listener(private val context: Context) : RecognitionListener {
-        override fun onPartialResults(partialResults: Bundle?) {
-            val heard = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-            if (!heard.isNullOrBlank()) _state.value = State.Listening(heard)
-        }
-
-        override fun onResults(results: Bundle?) {
-            val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-            finish()
-            if (heard.isNullOrBlank()) {
-                note("Нічого не розпізнано")
-            } else {
-                _state.value = State.Idle
-                type(context, heard)
+    private object Listener : RecognitionListener {
+        private fun heard() {
+            session?.let {
+                it.lastHeardAt = SystemClock.elapsedRealtime()
+                it.failedRestarts = 0
             }
         }
 
+        override fun onBeginningOfSpeech() = heard()
+
+        override fun onPartialResults(partialResults: Bundle?) {
+            val text = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+            if (!text.isNullOrBlank() && session != null) {
+                heard()
+                _state.value = State.Listening(text)
+            }
+        }
+
+        override fun onResults(results: Bundle?) {
+            val s = session ?: return
+            val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+            if (!text.isNullOrBlank()) {
+                heard()
+                type(s.context, text)
+            }
+            next()
+        }
+
         override fun onError(error: Int) {
-            finish()
-            note(
-                when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Нічого не розпізнано"
-                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
-                        "Немає інтернету для розпізнавання"
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Немає дозволу на мікрофон"
-                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
-                        "Ця мова не розпізнається"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Розпізнавання зайняте, спробуйте ще раз"
-                    else -> "Не вдалося розпізнати (код $error)"
+            val s = session ?: return
+            when (error) {
+                // Silence: keep listening until the silence limit.
+                SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> next()
+                // The recognizer tripped over its own restart: start over with a fresh one.
+                SpeechRecognizer.ERROR_RECOGNIZER_BUSY, SpeechRecognizer.ERROR_CLIENT -> {
+                    recognizer?.destroy()
+                    recognizer = null
+                    if (++s.failedRestarts > MAX_FAILED_RESTARTS) end("Не вдалося розпізнати") else next()
                 }
-            )
+                SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+                    end("Немає інтернету для розпізнавання")
+                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> end("Немає дозволу на мікрофон")
+                SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
+                    end("Ця мова не розпізнається")
+                else -> end("Не вдалося розпізнати (код $error)")
+            }
         }
 
         override fun onReadyForSpeech(params: Bundle?) = Unit
-        override fun onBeginningOfSpeech() = Unit
         override fun onRmsChanged(rmsdB: Float) = Unit
         override fun onBufferReceived(buffer: ByteArray?) = Unit
         override fun onEndOfSpeech() = Unit
