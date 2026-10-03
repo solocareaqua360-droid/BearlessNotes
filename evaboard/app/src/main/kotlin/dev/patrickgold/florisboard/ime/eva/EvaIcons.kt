@@ -27,8 +27,8 @@ object EvaIcons {
      */
     private const val FRAME_FILL = 0.76f
 
-    /** The Lucide icon [name] as a 24x24 outline ImageVector (tinted by whoever draws it). */
-    fun lucide(name: String): ImageVector = cache.getOrPut(name) {
+    /** The Lucide icon [name] as a 24x24 ImageVector (tinted by whoever draws it); [filled] also fills the shapes. */
+    fun lucide(name: String, filled: Boolean = false): ImageVector = cache.getOrPut(if (filled) "$name/filled" else name) {
         val builder = ImageVector.Builder(
             name = name,
             defaultWidth = 24.dp,
@@ -40,6 +40,7 @@ object EvaIcons {
         for (d in LUCIDE_PATHS.getValue(name)) {
             builder.addPath(
                 pathData = PathParser().parsePathString(d).toNodes(),
+                fill = if (filled) SolidColor(Color.Black) else null,
                 stroke = SolidColor(Color.Black),
                 strokeLineWidth = 2f,
                 strokeLineCap = StrokeCap.Round,
@@ -69,7 +70,12 @@ object EvaIcons {
             KeyCode.IME_UI_MODE_CLIPBOARD -> "clipboard"
             KeyCode.LANGUAGE_SWITCH -> "globe"
             KeyCode.SETTINGS -> "settings"
-            KeyCode.SHIFT -> if (shift != InputShiftState.UNSHIFTED) "arrow-big-up-dash" else "arrow-big-up"
+            // shift: outline at rest, filled while shifted, filled with the dash in caps lock - like the iPhone
+            KeyCode.SHIFT -> return when (shift) {
+                InputShiftState.UNSHIFTED -> lucide("arrow-big-up")
+                InputShiftState.CAPS_LOCK -> lucide("arrow-big-up-dash", filled = true)
+                else -> lucide("arrow-big-up", filled = true)
+            }
             KeyCode.UNDO -> "undo-2"
             KeyCode.REDO -> "redo-2"
             KeyCode.TOGGLE_ACTIONS_OVERFLOW -> "ellipsis"

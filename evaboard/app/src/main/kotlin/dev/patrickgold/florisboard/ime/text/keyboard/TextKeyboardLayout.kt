@@ -53,6 +53,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import dev.patrickgold.florisboard.FlorisImeService
@@ -72,6 +73,8 @@ import dev.patrickgold.florisboard.ime.popup.rememberPopupUiController
 import dev.patrickgold.florisboard.ime.text.gestures.GlideTypingGesture
 import dev.patrickgold.florisboard.ime.text.gestures.SwipeAction
 import dev.patrickgold.florisboard.ime.text.gestures.SwipeGesture
+import dev.patrickgold.florisboard.ime.editor.ImeOptions
+import dev.patrickgold.florisboard.ime.eva.evaShortLanguage
 import dev.patrickgold.florisboard.ime.text.key.KeyCode
 import dev.patrickgold.florisboard.ime.text.key.KeyType
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
@@ -314,11 +317,18 @@ private fun TextKeyButton(
     desiredKey: TextKey,
     debugShowTouchBoundaries: Boolean,
 ) = with(LocalDensity.current) {
-    val attributes = mapOf(
-        FlorisImeUi.Attr.Code to key.computedData.code,
-        FlorisImeUi.Attr.Mode to evaluator.keyboard.mode.toString(),
-        FlorisImeUi.Attr.ShiftState to evaluator.state.inputShiftState.toString(),
-    )
+    val attributes = buildMap<String, Any> {
+        put(FlorisImeUi.Attr.Code, key.computedData.code)
+        put(FlorisImeUi.Attr.Mode, evaluator.keyboard.mode.toString())
+        put(FlorisImeUi.Attr.ShiftState, evaluator.state.inputShiftState.toString())
+        // evaBoard: the theme colours Enter only when it performs an action (search, send, go...)
+        if (key.computedData.code == KeyCode.ENTER) {
+            val imeOptions = evaluator.editorInfo.imeOptions
+            val newline = imeOptions.flagNoEnterAction || evaluator.editorInfo.inputAttributes.flagTextMultiLine ||
+                imeOptions.action == ImeOptions.Action.NONE || imeOptions.action == ImeOptions.Action.UNSPECIFIED
+            put("enter", if (newline) "newline" else "action")
+        }
+    }
     val selector = when {
         !key.isEnabled -> SnyggSelector.DISABLED
         key.isPressed -> SnyggSelector.PRESSED
@@ -338,19 +348,31 @@ private fun TextKeyButton(
         val isTelPadKey = key.computedData.type == KeyType.NUMERIC && evaluator.keyboard.mode == KeyboardMode.PHONE
         key.label?.let { label ->
             var customLabel = label
+            // evaBoard: the language sits small in the space bar's bottom-right corner, like the iPhone
+            var cornerLabel = false
             if (key.computedData.code == KeyCode.SPACE) {
                 val prefs by FlorisPreferenceStore
                 val spaceBarMode by prefs.keyboard.spaceBarMode.observeAsState()
                 when (spaceBarMode) {
                     SpaceBarMode.NOTHING -> return@let
-                    SpaceBarMode.CURRENT_LANGUAGE -> {}
+                    SpaceBarMode.CURRENT_LANGUAGE -> {
+                        customLabel = evaShortLanguage(evaluator.subtype.primaryLocale)
+                        cornerLabel = true
+                    }
                     SpaceBarMode.SPACE_BAR_KEY -> customLabel = "␣"
                 }
             }
             SnyggText(
                 modifier = Modifier
                     .wrapContentSize()
-                    .align(if (isTelPadKey) BiasAlignment(-0.5f, 0f) else Alignment.Center),
+                    .align(
+                        when {
+                            cornerLabel -> Alignment.BottomEnd
+                            isTelPadKey -> BiasAlignment(-0.5f, 0f)
+                            else -> Alignment.Center
+                        }
+                    )
+                    .then(if (cornerLabel) Modifier.padding(end = 7.dp, bottom = 3.dp) else Modifier),
                 text = customLabel,
             )
         }

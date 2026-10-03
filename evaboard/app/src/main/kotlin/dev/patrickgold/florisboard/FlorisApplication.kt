@@ -27,6 +27,7 @@ import android.util.Log
 import androidx.core.os.UserManagerCompat
 import dev.patrickgold.florisboard.app.FlorisPreferenceModel
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
+import dev.patrickgold.florisboard.ime.theme.extCoreTheme
 import dev.patrickgold.florisboard.ime.clipboard.ClipboardManager
 import dev.patrickgold.florisboard.ime.core.SubtypeManager
 import dev.patrickgold.florisboard.ime.dictionary.DictionaryManager
@@ -109,6 +110,14 @@ class FlorisApplication : Application() {
                 datastoreName = FlorisPreferenceModel.NAME,
             )
             Log.i("PREFS", result.toString())
+            // evaBoard: phones that installed before the evaBoard themes existed keep FlorisBoard's
+            // defaults in their store; switch them over once.
+            val prefs by FlorisPreferenceStore
+            if (!prefs.internal.evaThemeApplied.get()) {
+                prefs.theme.dayThemeId.set(extCoreTheme("eva_day"))
+                prefs.theme.nightThemeId.set(extCoreTheme("eva_night"))
+                prefs.internal.evaThemeApplied.set(true)
+            }
             preferenceStoreLoaded.value = true
         }
         extensionManager.value.init()

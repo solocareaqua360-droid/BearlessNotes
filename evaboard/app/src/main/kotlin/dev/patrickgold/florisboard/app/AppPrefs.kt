@@ -445,6 +445,11 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
 
     val internal = Internal()
     inner class Internal {
+        // evaBoard: set once the evaBoard themes were made the active ones (see FlorisApplication.init)
+        val evaThemeApplied = boolean(
+            key = "internal__eva_theme_applied",
+            default = false,
+        )
         val homeIsBetaToolboxCollapsed = boolean(
             key = "internal__home_is_beta_toolbox_collapsed_040a01",
             default = false,
@@ -770,12 +775,12 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
         val dayThemeId = custom(
             key = "theme__day_theme_id",
-            default = extCoreTheme("floris_day"),
+            default = extCoreTheme("eva_day"),
             serializer = ExtensionComponentName.Serializer,
         )
         val nightThemeId = custom(
             key = "theme__night_theme_id",
-            default = extCoreTheme("floris_night"),
+            default = extCoreTheme("eva_night"),
             serializer = ExtensionComponentName.Serializer,
         )
         val accentColor = custom(
