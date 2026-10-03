@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useDeskContent } from '../navigation/useDeskContent';
 import { openDeskSwitcher } from '../navigation/deskSwitcherBus';
 import type { Tag } from '../types';
 import RecentFolderStrip from './RecentFolderStrip';
@@ -272,6 +273,9 @@ export default function DatabaseChrome<T extends { id: string }>({
   // Drawn as one of the desks: the desks' bar is up (not this database's
   // own), and its way back is the desk before it.
   const desk = useContext(DeskContext);
+  // The list is what its desk's picture shows (a desk that is a navigator
+  // photographs black through its wrapper - see deskShots).
+  const deskContentRef = useDeskContent();
   const topNav = (!!topNavWanted || !!navTitle || !!desk) && topNavOn;
   const backTarget = desk ? desk.back : onBack;
   const chromeTop = insets.top + CHROME_TOP + (topNav ? TOP_NAV_SPACE : 0);
@@ -708,7 +712,7 @@ export default function DatabaseChrome<T extends { id: string }>({
 
   return (
     <SoftSurfaceContext.Provider value={soft}>
-    <View style={styles.container}>
+    <View ref={deskContentRef} collapsable={false} style={styles.container}>
       {/* The same fixed gradient every screen stands on. 1px bled past
           every edge - windowWidth/Height can round to a hair less than the
           real screen, leaving a sliver of white at an edge otherwise. */}

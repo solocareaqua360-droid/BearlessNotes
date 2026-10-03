@@ -49,8 +49,29 @@ export function registerDeskNode(key: string, node: View | null) {
   else nodes.delete(key);
 }
 
+// A desk that is a navigator of its own (the boards: the list, then a
+// board) photographs BLACK through its wrapper - react-native-screens draws
+// its stack in a way a software snapshot does not see (2026-10-04). Such a
+// desk's screens say which of their views is the picture instead; the one
+// registered last (the screen in front) wins, and when it goes the one
+// under it is used again.
+const content = new Map<string, View[]>();
+export function registerDeskContent(key: string, node: View): () => void {
+  const list = content.get(key) ?? [];
+  content.set(key, [...list.filter((n) => n !== node), node]);
+  return () => {
+    const left = (content.get(key) ?? []).filter((n) => n !== node);
+    if (left.length) content.set(key, left);
+    else content.delete(key);
+  };
+}
+function nodeFor(key: string): View | undefined {
+  const list = content.get(key);
+  return (list && list[list.length - 1]) ?? nodes.get(key);
+}
+
 export async function captureDesk(key: string): Promise<void> {
-  const node = nodes.get(key);
+  const node = nodeFor(key);
   if (!node || busy.has(key)) return;
   busy.add(key);
   try {

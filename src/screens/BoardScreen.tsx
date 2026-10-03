@@ -1,4 +1,5 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { useDeskContent } from '../navigation/useDeskContent';
 import { useNoteOpened } from '../navigation/recentPlaces';
 import { BoardFieldsContext } from '../components/boardFieldsContext';
 import { rowTitleOf } from '../utils/customRowDisplay';
@@ -2037,6 +2038,8 @@ export default function BoardScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList & BoardsStackParamList>>();
   const { params } = useRoute<Props['route']>();
   const { boardId, openDocumentId, focusCardIds } = params;
+  // The board is what the boards desk's picture shows while it is open.
+  const deskContentRef = useDeskContent();
   // In front: the start desk's recents.
   useNoteOpened('board', boardId, useIsFocused());
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -6037,7 +6040,7 @@ export default function BoardScreen() {
 
   return (
     <BoardFieldsContext.Provider value={boardFields}>
-    <View style={styles.splitRoot}>
+    <View ref={deskContentRef} collapsable={false} style={styles.splitRoot}>
       {/* The board keeps every pixel it had until a document is opened
           beside it, and all of them again when that document goes full
           screen - hidden rather than unmounted, so the canvas comes back

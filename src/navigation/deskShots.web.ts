@@ -12,3 +12,6 @@ export async function captureAllDesks(): Promise<void> {}
 export function setCurrentDesk(_key: string | null) {}
 export function setDeskCapturePaused(_on: boolean) {}
 export function noteDeskTouched(_key: string) {}
+export function registerDeskContent(_key: string, _node: View): () => void {
+  return () => {};
+}

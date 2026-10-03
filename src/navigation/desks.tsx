@@ -100,7 +100,7 @@ export function deskFace(
 // Told to a database drawn as a desk: it is not a screen pushed over
 // anything, so it draws no bar of its own (the desks' bar is up) and its
 // way back is the desk before it - or nowhere, on the first.
-export const DeskContext = createContext<{ back: (() => void) | null } | null>(null);
+export const DeskContext = createContext<{ back: (() => void) | null; key?: string } | null>(null);
 
 // Which databases can stand as a desk, and what draws them. The
 // registries (tags, projects, the chat) are not lists of records and stay

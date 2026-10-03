@@ -52,7 +52,7 @@ function DeskHost({
   props?: Record<string, unknown>;
   back: (() => void) | null;
 }) {
-  const value = useMemo(() => ({ back }), [back]);
+  const value = useMemo(() => ({ back, key: deskKey }), [back, deskKey]);
   return (
     <DeskContext.Provider value={value}>
       <View
