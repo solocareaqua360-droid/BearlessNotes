@@ -171,7 +171,7 @@ private fun DigitKey(digit: Char) {
 }
 
 /** Toolbar icons in the top row: drawn larger than in FlorisBoard's toolbar, one per key. */
-private val ActionIconSize = 28.dp
+private val ActionIconSize = 26.dp
 
 /**
  * The toolbar icons, each on a key of its own above its own letter column. There is one icon
