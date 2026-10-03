@@ -4,7 +4,7 @@ import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
-import { DesksControlContext, PERMANENT_DESK, deskFace } from '../navigation/desks';
+import { DesksControlContext, PERMANENT_DESK, START_DESK, deskFace } from '../navigation/desks';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
 
@@ -162,7 +162,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         // to the left takes its place first, so nothing vanishes from
         // under the finger.
         onClose:
-          deskControl && route.name !== PERMANENT_DESK && liveIndex === index
+          deskControl && route.name !== PERMANENT_DESK && route.name !== START_DESK && liveIndex === index
             ? () => {
                 const previous = state.routes[index - 1]?.name;
                 if (previous) navigation.navigate(previous);

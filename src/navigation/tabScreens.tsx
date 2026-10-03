@@ -14,7 +14,8 @@ import FlashcardsScreen from '../screens/FlashcardsScreen';
 import DiaryScreen from '../screens/DiaryScreen';
 import LinksScreen from '../screens/LinksScreen';
 import CustomDatabaseScreen from '../screens/CustomDatabaseScreen';
-import { BOARDS_DESK, DeskScreen, PERMANENT_DESK } from './desks';
+import StartScreen from '../screens/StartScreen';
+import { BOARDS_DESK, DeskScreen, PERMANENT_DESK, START_DESK } from './desks';
 
 // The four tabs, as a list - shared by the two tab navigators (Tabs.tsx
 // and Tabs.web.tsx), which differ only in the navigator that carries
@@ -49,6 +50,7 @@ export const TAB_SCREENS: { name: string; component: ComponentType<any> }[] = [
 // it stands as a desk; null for the ones that cannot (the registries).
 // The browser keeps TAB_SCREENS above until it gets desks of its own.
 export function deskScreenFor(key: string): DeskScreen | null {
+  if (key === START_DESK) return { component: StartScreen };
   if (key === PERMANENT_DESK) return { component: DocumentsScreen };
   if (key === BOARDS_DESK) return { component: BoardsStack };
   if (key.startsWith('db:custom:')) {

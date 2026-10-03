@@ -65,7 +65,7 @@ import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { DatabasesLayerContext } from '../navigation/sideDrawers';
-import { DesksControlContext, MAX_DESKS, PERMANENT_DESK, canBeDesk, deskFace, deskKeyForCustom, deskKeyForTile } from '../navigation/desks';
+import { DesksControlContext, MAX_DESKS, PERMANENT_DESK, START_DESK, canBeDesk, deskFace, deskKeyForCustom, deskKeyForTile } from '../navigation/desks';
 import InlineDock from '../components/InlineDock';
 import IconPickerSheet from '../components/IconPickerSheet';
 import type { MenuEntry } from '../components/surfaces/Menu';
@@ -438,7 +438,8 @@ export default function DatabasesScreen() {
       goTo();
       return;
     }
-    if (desksControl.desks.length < MAX_DESKS) {
+    // The start desk is not one of the four.
+    if (desksControl.desks.filter((k) => k !== START_DESK).length < MAX_DESKS) {
       desksControl.setDesks([...desksControl.desks, key]);
       goTo();
       return;
@@ -447,7 +448,7 @@ export default function DatabasesScreen() {
       title: `Уже ${MAX_DESKS} столи`,
       message: 'Замінити один із них?',
       actions: desksControl.desks
-        .filter((k) => k !== PERMANENT_DESK)
+        .filter((k) => k !== PERMANENT_DESK && k !== START_DESK)
         .map((k) => ({ id: k, label: deskFace(k, customDatabases).label })),
     });
     if (!desksControl.desks.includes(choice)) return;

@@ -28,6 +28,7 @@ import MorphHost from './src/components/MorphHost';
 import ChromeMorph from './src/components/ChromeMorph';
 import { AskHost } from './src/components/surfaces/Ask';
 import { HoldAskHost } from './src/components/surfaces/HoldAsk';
+import { CreateWatcher } from './src/navigation/startCreate';
 import CaptureWindow from './src/components/CaptureWindow';
 import BoardPreviewCaptureHost from './src/components/BoardMiniature';
 import { ThemeProvider, ThemedStatusBar, useSeeThroughBackdrop, useTheme } from './src/theme/ThemeProvider';
@@ -169,6 +170,9 @@ export default function App() {
             {/* A hold's menu, as the chat's: the held thing lifted over
                 a blur (holdAsk, CardMenu). Inside the blur target too. */}
             <HoldAskHost />
+            {/* «Створити» on the start desk: goes to a list and presses its own
+                «+» once it has arrived (navigation/startCreate). */}
+            <CreateWatcher />
             {/* «Загальний чат» - the window the dock's long press
                 opens, already listening. Inside the blur target,
                 like every other sheet. */}
