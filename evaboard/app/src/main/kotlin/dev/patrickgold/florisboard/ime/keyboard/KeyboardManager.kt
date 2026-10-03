@@ -139,6 +139,12 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             prefs.keyboard.hintedNumberRowEnabled.asFlow().collectLatestIn(scope) {
                 updateActiveEvaluators()
             }
+            // evaBoard: the letters' digit hints come and go with evaBoard's digit row
+            dev.patrickgold.florisboard.ime.eva.EvaTopRow.showIcons.collectLatestIn(scope) {
+                updateActiveEvaluators {
+                    keyboardCache.clear(KeyboardMode.CHARACTERS)
+                }
+            }
             prefs.keyboard.hintedSymbolsEnabled.asFlow().collectLatestIn(scope) {
                 updateActiveEvaluators()
             }

@@ -4,7 +4,10 @@
  * It replaces FlorisBoard's Smartbar row and shows one of two things in the
  * same place, so the keyboard never grows: digits 1-0 as ordinary keys, or
  * the toolbar icons on one long plate. The round button in the first slot
- * switches between them; the keyboard always opens on the digits.
+ * switches between them; the keyboard always opens on the digits, the
+ * symbols bring up the icons (they have digits of their own) and going back
+ * to the letters brings the digits back. While the digits show, the letter
+ * keys carry no digit hints.
  *
  * The row is cut into 11 equal slots - the Ukrainian top row - so every
  * digit and every icon stands above its own letter column (in English, with
@@ -31,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -46,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.FlorisImeService
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.keyboard.FlorisImeSizing
+import dev.patrickgold.florisboard.ime.keyboard.KeyboardMode
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickAction
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionButton
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.ToggleOverflowPanelAction
@@ -84,6 +89,15 @@ fun EvaTopRowUi() {
     val context = LocalContext.current
     val keyboardManager by context.keyboardManager()
     val showIcons by EvaTopRow.showIcons.collectAsState()
+    val state by keyboardManager.activeState.collectAsState()
+    // Symbols have digits of their own, so they bring the icons up; back on the letters, the digits return.
+    LaunchedEffect(state.keyboardMode) {
+        when (state.keyboardMode) {
+            KeyboardMode.SYMBOLS, KeyboardMode.SYMBOLS2 -> EvaTopRow.showIcons.value = true
+            KeyboardMode.CHARACTERS -> EvaTopRow.showIcons.value = false
+            else -> Unit
+        }
+    }
     val prefs by FlorisPreferenceStore
     val keyMarginH by prefs.keyboard.keySpacingHorizontal.observeAsState()
     val keyMarginV by prefs.keyboard.keySpacingVertical.observeAsState()

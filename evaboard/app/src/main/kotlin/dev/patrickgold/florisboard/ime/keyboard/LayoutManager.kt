@@ -267,7 +267,9 @@ class LayoutManager(context: Context) {
         if (keyboardMode == KeyboardMode.CHARACTERS && computedArrangement.isNotEmpty()) {
             val symbolsComputedArrangement = computeKeyboardAsync(KeyboardMode.SYMBOLS, subtype).await().arrangement
             // number row hint always happens on first row
-            if (prefs.keyboard.hintedNumberRowEnabled.get() && symbolsComputedArrangement.isNotEmpty()) {
+            // evaBoard: no digit hints on the letters while evaBoard's top row shows the digits
+            val evaDigitsShown = !dev.patrickgold.florisboard.ime.eva.EvaTopRow.showIcons.value
+            if (prefs.keyboard.hintedNumberRowEnabled.get() && !evaDigitsShown && symbolsComputedArrangement.isNotEmpty()) {
                 val row = computedArrangement[0]
                 val symbolRow = symbolsComputedArrangement[0]
                 addRowHints(row, symbolRow, KeyType.NUMERIC)
