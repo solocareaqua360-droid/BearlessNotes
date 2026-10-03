@@ -178,6 +178,20 @@ class FlorisImeService : LifecycleInputMethodService() {
             }
         }
 
+        /** evaBoard: hides the IME and opens one settings screen by its deeplink path. */
+        fun launchSettingsRoute(path: String) {
+            val ims = FlorisImeServiceReference.get() ?: return
+            ims.requestHideSelf(0)
+            ims.launchActivity(FlorisAppActivity::class) {
+                it.action = Intent.ACTION_VIEW
+                it.addCategory(Intent.CATEGORY_BROWSABLE)
+                it.data = android.net.Uri.parse("ui://florisboard/$path")
+                it.flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+        }
+
         fun showUi() {
             val ims = FlorisImeServiceReference.get() ?: return
             if (AndroidVersion.ATLEAST_API28_P) {

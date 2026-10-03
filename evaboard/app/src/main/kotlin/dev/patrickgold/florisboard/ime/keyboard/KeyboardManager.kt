@@ -481,10 +481,12 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      * FlorisBoard internal or system-wide.
      */
     private fun handleLanguageSwitch() {
-        when (prefs.keyboard.utilityKeyAction.get()) {
-            UtilityKeyAction.DYNAMIC_SWITCH_LANGUAGE_EMOJIS,
-            UtilityKeyAction.SWITCH_LANGUAGE -> subtypeManager.switchToNextSubtype()
-            else -> FlorisImeService.switchToNextInputMethod()
+        // evaBoard: the globe always cycles evaBoard's own languages, never other keyboard apps.
+        // With a single language set up there is nothing to cycle, so it opens the languages screen.
+        if (subtypeManager.subtypes.size > 1) {
+            subtypeManager.switchToNextSubtype()
+        } else {
+            FlorisImeService.launchSettingsRoute("settings/localization")
         }
     }
 
@@ -1003,9 +1005,8 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                     IncognitoMode.FORCE_OFF, IncognitoMode.FORCE_ON -> false
                     IncognitoMode.DYNAMIC_ON_OFF -> !editorInfo.imeOptions.flagNoPersonalizedLearning
                 }
-                KeyCode.LANGUAGE_SWITCH -> {
-                    subtypeManager.subtypes.size > 1
-                }
+                // evaBoard: the globe is always live (with one language it opens the languages screen)
+                KeyCode.LANGUAGE_SWITCH -> true
                 else -> true
             }
         }

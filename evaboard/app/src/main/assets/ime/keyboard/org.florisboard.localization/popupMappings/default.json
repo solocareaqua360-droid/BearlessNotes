@@ -7,6 +7,9 @@
         { "code": -213, "label": "ime_ui_mode_clipboard", "type": "system_gui"}
       ]
     },
+    "language_switch": {
+      "main": { "code": -228, "label": "show_subtype_picker", "type": "system_gui" }
+    },
     "~left": {
       "main": { "code": -212, "label": "ime_ui_mode_media", "type": "system_gui" },
       "relevant": [
