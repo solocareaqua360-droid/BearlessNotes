@@ -16,7 +16,10 @@
 
 package dev.patrickgold.florisboard.ime.popup
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredHeight
@@ -25,6 +28,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import dev.patrickgold.florisboard.ime.eva.EvaKeyPreviewShape
+import dev.patrickgold.florisboard.lib.FlorisRect
+import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -48,6 +58,7 @@ fun PopupBaseBox(
     modifier: Modifier = Modifier,
     attributes: SnyggQueryAttributes,
     key: Key,
+    bounds: FlorisRect,
     shouldIndicateExtendedPopups: Boolean,
 ): Unit = with(LocalDensity.current) {
     DisposableEffect(key) {
@@ -57,21 +68,39 @@ fun PopupBaseBox(
         }
     }
 
-    SnyggBox(
-        elementName = FlorisImeUi.KeyPopupBox.elementName,
-        attributes = attributes,
-        modifier = modifier,
+    // evaBoard: one iPhone-style shape - a wide head narrowing down into the key itself.
+    // The theme's key-popup-box still gives the colours; the shape is drawn here.
+    val style = rememberSnyggThemeQuery(FlorisImeUi.KeyPopupBox.elementName, attributes)
+    val headHeight = key.visibleBounds.height * 1.05f
+    val previewShape = remember(key, bounds) {
+        EvaKeyPreviewShape(
+            keyLeft = key.visibleBounds.left - bounds.left,
+            keyWidth = key.visibleBounds.width,
+            keyHeight = key.visibleBounds.height,
+            headHeight = headHeight,
+            headRadius = 12.dp.toPx(),
+            keyRadius = 6.dp.toPx(),
+        )
+    }
+    Box(
+        modifier = modifier
+            .shadow(3.dp, previewShape, clip = false)
+            .background(style.background(Color.White), previewShape),
     ) {
         key.label?.let { label ->
-            SnyggBox(
+            // Plain text in the theme's colour and size: a Snygg box here would paint the
+            // theme's rectangle over the shape.
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(key.visibleBounds.height.toDp())
+                    .height(headHeight.toDp())
                     .align(Alignment.TopCenter),
+                contentAlignment = Alignment.Center,
             ) {
-                SnyggText(
-                    modifier = Modifier.align(Alignment.Center),
+                Text(
                     text = label,
+                    color = style.foreground(Color.Black),
+                    fontSize = style.fontSize(),
                 )
             }
         }

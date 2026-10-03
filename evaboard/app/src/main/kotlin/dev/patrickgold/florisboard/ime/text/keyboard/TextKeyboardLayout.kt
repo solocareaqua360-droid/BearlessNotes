@@ -256,13 +256,16 @@ fun TextKeyboardLayout(
                         keyPopupHeight = desiredKey.visibleBounds.height * 3.0f
                     }
                     else -> {
-                        keyPopupWidth = desiredKey.visibleBounds.width * 1.1f
-                        keyPopupHeight = desiredKey.visibleBounds.height * 2.5f
+                        // evaBoard: the iPhone's preview head is about half again as wide as the key
+                        keyPopupWidth = desiredKey.visibleBounds.width * 1.5f
+                        keyPopupHeight = desiredKey.visibleBounds.height * 2.45f
                     }
                 }
                 val keyPopupDiffX = (key.visibleBounds.width - keyPopupWidth) / 2.0f
                 FlorisRect.new().apply {
-                    left = key.visibleBounds.left + keyPopupDiffX
+                    // evaBoard: kept inside the keyboard at its edges (the neck then leans to the key)
+                    left = (key.visibleBounds.left + keyPopupDiffX)
+                        .coerceIn(0f, (keyboardWidth - keyPopupWidth).coerceAtLeast(0f))
                     top = key.visibleBounds.bottom - keyPopupHeight
                     right = left + keyPopupWidth
                     bottom = top + keyPopupHeight

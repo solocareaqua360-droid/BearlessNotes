@@ -459,6 +459,7 @@ class PopupUiController(
                     .absoluteOffset { renderInfo.bounds.topLeft.toIntOffset() },
                 attributes = attributes,
                 key = renderInfo.key,
+                bounds = renderInfo.bounds,
                 shouldIndicateExtendedPopups = renderInfo.shouldIndicateExtendedPopups && extRenderInfo == null,
             )
         }
