@@ -7,7 +7,10 @@ import { useEffect, useState } from 'react';
 //
 // MULTITASK_BEAD switches the whole experiment off - the user wants to try
 // a round button left of the search field and may want it back as it was.
-export const MULTITASK_BEAD = true;
+// OFF since the second experiment (2026-10-03): the bottom-left corner was
+// a stretch on a wide phone, so the open desks hang on a pull-and-hold
+// instead (usePullToSearch). Set it true to bring the bead back.
+export const MULTITASK_BEAD = false;
 
 let opener: (() => void) | null = null;
 const listeners = new Set<() => void>();
@@ -17,8 +20,11 @@ export function registerDeskSwitcher(open: (() => void) | null) {
   listeners.forEach((l) => l());
 }
 
-export function openDeskSwitcher() {
-  opener?.();
+// True if there was a switcher to open (the desks are in front).
+export function openDeskSwitcher(): boolean {
+  if (!opener) return false;
+  opener();
+  return true;
 }
 
 export function useDeskSwitcherAvailable(): boolean {

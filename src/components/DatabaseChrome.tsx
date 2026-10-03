@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { openDeskSwitcher } from '../navigation/deskSwitcherBus';
 import type { Tag } from '../types';
 import RecentFolderStrip from './RecentFolderStrip';
 import ScreenGround from './ScreenGround';
@@ -33,7 +34,7 @@ import { DeskContext } from '../navigation/desks';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter } from './TagsDrawer';
 import { usePublishRailTree } from '../navigation/navRail';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { pullHaptic, SearchVoid, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
+import { SearchVoid, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { CHROME_TOP } from '../constants/rail';
 
@@ -496,10 +497,12 @@ export default function DatabaseChrome<T extends { id: string }>({
   );
 
   // Pulled down from the top of the list, the search comes out.
-  const pull = usePullToSearch(() => {
-    pullHaptic();
-    list.setIsSearching(true);
-  }, !fullWidth);
+  const pull = usePullToSearch(
+    () => list.setIsSearching(true),
+    !fullWidth,
+    // Held at the line: the open desks (an experiment - see the hook).
+    openDeskSwitcher
+  );
   // The sideways swipe no longer opens the smartfolders: they are a
   // window from "⋯" now, and that swipe belongs to the calendar's drawer.
   const listGesture = pull.gesture;

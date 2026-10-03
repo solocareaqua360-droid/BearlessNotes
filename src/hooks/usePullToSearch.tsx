@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, NativeScrollEvent, NativeSyntheticEvent, StyleProp, View, ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -28,6 +28,15 @@ import { hapticButtonDown } from '../utils/haptics';
 // search opens.
 // 280 was liked, then trimmed by a fifth ("трохи меншу ... на 20%").
 const PULL_TO_OPEN = 225;
+// PULL, THEN HOLD (an experiment, 2026-10-03): the buzz at PULL_TO_OPEN now
+// ARMS the search instead of opening it. Let go and the search opens; keep
+// the finger where it is for HOLD_MS and the open desks come out instead
+// (a second buzz, onHold) - one pull, two meanings, told apart by whether
+// the finger stays. Pulling back above the line cancels both.
+const HOLD_MS = 550;
+// How far the finger may drift and still be "holding"; further than that
+// it is pulling on, and the wait starts again.
+const HOLD_DRIFT = 28;
 
 // The list's own travel for a pull of `t`: close behind the finger, with
 // only a light give towards the end - a rubber band, never a stop. It was
@@ -42,7 +51,13 @@ function rubberBand(t: number): number {
 
 // `enabled` false: the screen is a surface of its own (a map) that is
 // dragged, not a list pulled down past its top.
-export function usePullToSearch(onPull: () => void, enabled = true) {
+export function usePullToSearch(
+  onPull: () => void,
+  enabled = true,
+  // Held at the line: true if something opened (false: nothing here to
+  // open, and release still means search).
+  onHold?: () => boolean | void
+) {
   // Shared values, not refs: these are read inside gesture callbacks,
   // which run on the UI thread, where a ref's .current is a copy that
   // neither sees writes from JS nor keeps its own.
@@ -50,6 +65,30 @@ export function usePullToSearch(onPull: () => void, enabled = true) {
   const armed = useSharedValue(false);
   const fired = useSharedValue(false);
   const pulled = useSharedValue(0);
+  // Past the line, waiting to see whether the finger lets go or stays.
+  const waiting = useSharedValue(false);
+  const waitedAt = useSharedValue(0);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdRef = useRef(onHold);
+  holdRef.current = onHold;
+  const stopHold = useCallback(() => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+  }, []);
+  const startHold = useCallback(() => {
+    stopHold();
+    if (!holdRef.current) return;
+    holdTimer.current = setTimeout(() => {
+      holdTimer.current = null;
+      if (!waiting.value || fired.value) return;
+      if (holdRef.current?.() === false) return;
+      fired.value = true;
+      waiting.value = false;
+      pulled.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
+      pullHaptic();
+    }, HOLD_MS);
+  }, [stopHold, waiting, fired, pulled]);
+  useEffect(() => stopHold, [stopHold]);
 
   const gesture = useMemo(() => {
     const list = Gesture.Native();
@@ -68,28 +107,50 @@ export function usePullToSearch(onPull: () => void, enabled = true) {
       .onBegin(() => {
         armed.value = atTop.value;
         fired.value = false;
+        waiting.value = false;
       })
       .onUpdate((e) => {
         if (!armed.value || fired.value) return;
         pulled.value = rubberBand(e.translationY);
-        // Down, far enough that the stretch has already played out, and
-        // not a sideways swipe between tabs that sagged a little.
-        if (e.translationY > PULL_TO_OPEN && Math.abs(e.translationX) < 80) {
-          fired.value = true;
-          // Home straight away: opening search swaps the list out from
-          // under this gesture, and a detector that is gone never gets
-          // its finalize - the list came back still pulled down, the
-          // tiles stuck below their place.
-          pulled.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
-          runOnJS(onPull)();
+        if (!waiting.value) {
+          // Down, far enough that the stretch has already played out, and
+          // not a sideways swipe between tabs that sagged a little.
+          if (e.translationY > PULL_TO_OPEN && Math.abs(e.translationX) < 80) {
+            waiting.value = true;
+            waitedAt.value = e.translationY;
+            runOnJS(pullHaptic)();
+            runOnJS(startHold)();
+          }
+        } else if (e.translationY < PULL_TO_OPEN - 60) {
+          // Pulled back up: neither.
+          waiting.value = false;
+          runOnJS(stopHold)();
+        } else if (Math.abs(e.translationY - waitedAt.value) > HOLD_DRIFT) {
+          // Still pulling on: not a hold yet.
+          waitedAt.value = e.translationY;
+          runOnJS(startHold)();
         }
+      })
+      .onEnd(() => {
+        if (!waiting.value || fired.value) return;
+        waiting.value = false;
+        fired.value = true;
+        runOnJS(stopHold)();
+        // Home straight away: opening search swaps the list out from
+        // under this gesture, and a detector that is gone never gets
+        // its finalize - the list came back still pulled down, the
+        // tiles stuck below their place.
+        pulled.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
+        runOnJS(onPull)();
       })
       .onFinalize(() => {
         armed.value = false;
+        waiting.value = false;
+        runOnJS(stopHold)();
         pulled.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
       });
     return Gesture.Simultaneous(list, pull);
-  }, [onPull, enabled]);
+  }, [onPull, enabled, startHold, stopHold]);
 
   // Put on a view AROUND the list's gesture detector (not on the list
   // itself - the detector has to sit directly on the list).

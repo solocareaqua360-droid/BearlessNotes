@@ -1,4 +1,5 @@
 import { lift } from '../utils/lift';
+import { openDeskSwitcher } from '../navigation/deskSwitcherBus';
 import { INK } from '../utils/sketchGeometry';
 import SketchLayer from '../components/SketchLayer';
 import { openCapture } from '../components/CaptureWindow';
@@ -67,7 +68,7 @@ import { detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/use
 import { useDatabaseList } from '../hooks/useDatabaseList';
 import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
 import Animated from 'react-native-reanimated';
-import { pullHaptic, SearchVoid, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
+import { SearchVoid, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
@@ -1128,10 +1129,7 @@ export default function DocumentsScreen({
   }, [listMode]);
   // Pulled down from the top of the list, the search comes out - see
   // usePullToSearch.
-  const pull = usePullToSearch(() => {
-    pullHaptic();
-    setSearchOpen(true);
-  });
+  const pull = usePullToSearch(() => setSearchOpen(true), true, openDeskSwitcher);
   carrying.scrollYRef.current = pull.scrollY;
   useSearchDismissal({
     isSearching: searchOpen,

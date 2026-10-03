@@ -2,6 +2,10 @@ import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } 
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Animated from 'react-native-reanimated';
+import { usePullToSearch } from '../hooks/usePullToSearch';
+import { openDeskSwitcher } from '../navigation/deskSwitcherBus';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '../components/icons/Ionicons';
 import ScreenGround from '../components/ScreenGround';
@@ -73,6 +77,9 @@ export default function StartScreen() {
   // The soft style, as every database's chrome wears it (DatabaseChrome).
   useChromeStyle('soft', true);
 
+  // Pulled down from the top: let go and the search; hold and the open
+  // desks (usePullToSearch) - the same as on every list.
+  const pull = usePullToSearch(() => go('Search'), true, openDeskSwitcher);
   const recent = useRecentPlaces();
   const index = useDocumentIndex();
   const { setEdgeZone } = useSideDrawers();
@@ -205,11 +212,14 @@ export default function StartScreen() {
         })}
       >
         <ScreenGround color={S.bg} />
+        <Animated.View style={[styles.container, pull.pullStyle]}>
+        <GestureDetector gesture={pull.gesture}>
         <ScrollView
+          {...pull.listProps}
           contentContainerStyle={{ paddingTop: top, paddingBottom: dockClear + insets.bottom + 24 }}
           showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
           onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+            pull.listProps.onScroll(e);
             scrolled.current = e.nativeEvent.contentOffset.y;
             publishZone();
           }}
@@ -272,6 +282,8 @@ export default function StartScreen() {
             ))}
           </View>
         </ScrollView>
+        </GestureDetector>
+        </Animated.View>
         <EdgeFade edge="top" color={S.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} />
         <EdgeFade edge="bottom" color={S.bg} height={Math.round((dockClear + insets.bottom) * 0.85)} />
       </View>
