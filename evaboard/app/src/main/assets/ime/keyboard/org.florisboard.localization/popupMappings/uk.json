@@ -1,21 +1,25 @@
 {
   "all": {
     "г": {
+      "main": { "$": "auto_text_key", "code": 1075, "label": "г" },
       "relevant": [
         { "$": "auto_text_key", "code":  1169, "label": "ґ" }
       ]
     },
     "і": {
+      "main": { "$": "auto_text_key", "code": 1110, "label": "і" },
       "relevant": [
         { "$": "auto_text_key", "code":  1111, "label": "ї" }
       ]
     },
     "є": {
+      "main": { "$": "auto_text_key", "code": 1108, "label": "є" },
       "relevant": [
         { "$": "auto_text_key", "code":  8212, "label": "—" }
       ]
     },
     "ь": {
+      "main": { "$": "auto_text_key", "code": 1100, "label": "ь" },
       "relevant": [
         { "$": "auto_text_key", "code":  700, "label": "ʼ" },
         { "$": "auto_text_key", "code":  39, "label": "'" }

@@ -101,8 +101,8 @@
   },
   "key-popup-element:focus": {
     "background": "var(--focused-popup-surface)",
-    "foreground": "var(--on-primary)",
-    "shape": "var(--shape)"
+    "foreground": "#FFFFFF",
+    "shape": "rounded-corner(8dp, 8dp, 8dp, 8dp)"
   },
   "key-popup-element[code=-255]": {
     "font-size": "18sp",
@@ -466,7 +466,8 @@
     "font-size": "24sp"
   },
   "key-popup-element": {
-    "font-size": "24sp"
+    "font-size": "24sp",
+    "margin": "4dp 3dp"
   },
   "key[code=-213]": {
     "background": "var(--surface)",
