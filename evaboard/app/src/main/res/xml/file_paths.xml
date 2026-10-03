@@ -3,4 +3,8 @@
     <cache-path
         name="backup"
         path="backup-and-restore/"/>
+    <!-- evaBoard dev updater (TEMPORARY): the downloaded APK -->
+    <cache-path
+        name="eva_update"
+        path="eva-update/"/>
 </paths>

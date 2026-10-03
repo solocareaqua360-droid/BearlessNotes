@@ -1,0 +1,205 @@
+/*
+ * evaBoard: TEMPORARY development updater - remove before evaBoard is finished.
+ *
+ * Shows an «Оновити evaBoard» card at the top of the settings home screen. It
+ * looks up the newest GitHub release tagged `evaboard-vX.Y.Z` on the
+ * BearlessNotes repo, downloads its APK into the cache and hands it to
+ * Android's installer, which asks the user once to confirm the update.
+ *
+ * It is the only reason evaBoard holds the INTERNET and
+ * REQUEST_INSTALL_PACKAGES permissions. To remove it: delete this folder, the
+ * EvaDevUpdateCard() call in HomeScreen.kt, the two permissions and the
+ * `eva_update` path in res/xml/file_paths.xml (all marked "dev updater").
+ */
+
+package dev.patrickgold.florisboard.ime.eva.devupdate
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
+import dev.patrickgold.florisboard.BuildConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+
+private const val RELEASES_URL =
+    "https://api.github.com/repos/solocareaqua360-droid/BearlessNotes/releases?per_page=30"
+private const val TAG_PREFIX = "evaboard-v"
+
+private data class EvaRelease(val version: String, val apkUrl: String)
+
+private sealed interface UpdateState {
+    data object Idle : UpdateState
+    data object Checking : UpdateState
+    data object UpToDate : UpdateState
+    data class Available(val release: EvaRelease) : UpdateState
+    data class Downloading(val percent: Int) : UpdateState
+    data class Failed(val message: String) : UpdateState
+}
+
+@Composable
+fun EvaDevUpdateCard(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var state by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
+    val current = BuildConfig.VERSION_NAME.substringBefore("-")
+
+    Card(modifier = modifier) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Оновити evaBoard",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = when (val s = state) {
+                    UpdateState.Idle -> "Зараз стоїть версія $current"
+                    UpdateState.Checking -> "Перевіряю…"
+                    UpdateState.UpToDate -> "Стоїть найновіша версія $current"
+                    is UpdateState.Available -> "Є нова версія ${s.release.version} (зараз $current)"
+                    is UpdateState.Downloading -> "Завантажую… ${s.percent}%"
+                    is UpdateState.Failed -> s.message
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            val s = state
+            when {
+                s is UpdateState.Available -> Button(onClick = {
+                    if (!context.packageManager.canRequestPackageInstalls()) {
+                        state = UpdateState.Failed(
+                            "Дозвольте evaBoard встановлювати програми і натисніть «Перевірити» ще раз"
+                        )
+                        context.startActivity(
+                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                                .setData(Uri.parse("package:${context.packageName}"))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                        return@Button
+                    }
+                    scope.launch {
+                        try {
+                            val apk = download(context, s.release) { state = UpdateState.Downloading(it) }
+                            state = UpdateState.Idle
+                            install(context, apk)
+                        } catch (e: Exception) {
+                            state = UpdateState.Failed("Не вдалося завантажити: ${e.message}")
+                        }
+                    }
+                }) { Text("Оновити до ${s.release.version}") }
+
+                s is UpdateState.Checking || s is UpdateState.Downloading -> Unit
+
+                else -> Button(onClick = {
+                    state = UpdateState.Checking
+                    scope.launch {
+                        state = try {
+                            val newest = findNewest()
+                            if (newest != null && isNewer(newest.version, current)) {
+                                UpdateState.Available(newest)
+                            } else {
+                                UpdateState.UpToDate
+                            }
+                        } catch (e: Exception) {
+                            UpdateState.Failed("Не вдалося перевірити: ${e.message}")
+                        }
+                    }
+                }) { Text("Перевірити") }
+            }
+        }
+    }
+}
+
+private suspend fun findNewest(): EvaRelease? = withContext(Dispatchers.IO) {
+    val conn = URL(RELEASES_URL).openConnection() as HttpURLConnection
+    conn.setRequestProperty("Accept", "application/vnd.github+json")
+    val body = conn.inputStream.bufferedReader().use { it.readText() }
+    Json.parseToJsonElement(body).jsonArray.mapNotNull { el ->
+        val release = el.jsonObject
+        val tag = release["tag_name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+        if (!tag.startsWith(TAG_PREFIX)) return@mapNotNull null
+        val apk = release["assets"]?.jsonArray
+            ?.map { it.jsonObject }
+            ?.firstOrNull { it["name"]?.jsonPrimitive?.content?.endsWith(".apk") == true }
+            ?: return@mapNotNull null
+        val url = apk["browser_download_url"]?.jsonPrimitive?.content ?: return@mapNotNull null
+        EvaRelease(tag.removePrefix(TAG_PREFIX), url)
+    }.reduceOrNull { a, b -> if (isNewer(b.version, a.version)) b else a }
+}
+
+private fun isNewer(candidate: String, current: String): Boolean {
+    val a = candidate.split(".").map { it.toIntOrNull() ?: 0 }
+    val b = current.split(".").map { it.toIntOrNull() ?: 0 }
+    for (i in 0 until maxOf(a.size, b.size)) {
+        val x = a.getOrElse(i) { 0 }
+        val y = b.getOrElse(i) { 0 }
+        if (x != y) return x > y
+    }
+    return false
+}
+
+private suspend fun download(context: Context, release: EvaRelease, onProgress: (Int) -> Unit): File {
+    val dir = File(context.cacheDir, "eva-update").apply { mkdirs() }
+    dir.listFiles()?.forEach { it.delete() }
+    val file = File(dir, "evaboard-${release.version}.apk")
+    withContext(Dispatchers.IO) {
+        val conn = URL(release.apkUrl).openConnection() as HttpURLConnection
+        conn.instanceFollowRedirects = true
+        val total = conn.contentLengthLong
+        conn.inputStream.use { input ->
+            file.outputStream().use { output ->
+                val buffer = ByteArray(64 * 1024)
+                var done = 0L
+                var lastPercent = -1
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    output.write(buffer, 0, n)
+                    done += n
+                    if (total > 0) {
+                        val percent = (done * 100 / total).toInt()
+                        if (percent != lastPercent) {
+                            lastPercent = percent
+                            withContext(Dispatchers.Main) { onProgress(percent) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return file
+}
+
+private fun install(context: Context, apk: File) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider.file", apk)
+    context.startActivity(
+        Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    )
+}

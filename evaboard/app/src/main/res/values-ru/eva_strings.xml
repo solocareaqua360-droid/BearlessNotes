@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="eva__nav_left_use_mic">Микрофон вместо переключателя клавиатур</string>
+    <string name="eva__nav_left_use_switcher">Переключатель клавиатур вместо микрофона</string>
+</resources>

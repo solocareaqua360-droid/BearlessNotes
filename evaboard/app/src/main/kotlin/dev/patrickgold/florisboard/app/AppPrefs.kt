@@ -477,6 +477,12 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__number_row",
             default = false,
         )
+        // evaBoard: the left button of evaBoard's own bottom strip (ime/eva/EvaNavStrip.kt) -
+        // false = switch keyboard, true = microphone. Swapped by holding the button.
+        val evaNavLeftMic = boolean(
+            key = "keyboard__eva_nav_left_mic",
+            default = false,
+        )
         val hintedNumberRowEnabled = boolean(
             key = "keyboard__hinted_number_row_enabled",
             default = true,

@@ -1,0 +1,164 @@
+/*
+ * evaBoard: the bottom strip under the keys, drawn by the keyboard itself.
+ *
+ * On gesture navigation Android draws its own strip under every keyboard,
+ * with a switch-keyboard button on the left and a hide button on the right.
+ * From Android 16 a keyboard may hide that strip and draw its own instead
+ * (FlorisImeService requests it). This is that strip: the left button is
+ * either the keyboard switcher or a microphone, chosen by holding it; the
+ * right button hides the keyboard.
+ */
+
+package dev.patrickgold.florisboard.ime.eva
+
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import dev.patrickgold.florisboard.FlorisImeService
+import dev.patrickgold.florisboard.R
+import dev.patrickgold.florisboard.app.FlorisPreferenceStore
+import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyData
+import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
+import dev.patrickgold.jetpref.datastore.model.observeAsState
+import org.florisboard.lib.android.systemServiceOrNull
+import org.florisboard.lib.compose.rippleClickable
+import org.florisboard.lib.compose.stringRes
+import org.florisboard.lib.snygg.ui.SnyggBox
+import org.florisboard.lib.snygg.ui.SnyggColumn
+import org.florisboard.lib.snygg.ui.SnyggIcon
+import org.florisboard.lib.snygg.ui.SnyggRow
+import org.florisboard.lib.snygg.ui.SnyggText
+import android.view.inputmethod.InputMethodManager
+import kotlinx.coroutines.launch
+
+/**
+ * Draws the strip at the bottom of the keyboard window, [stripHeight] tall,
+ * plus the hold menu that swaps the left button. Must be called last inside
+ * the keyboard's Box so it lies on top of the keys.
+ */
+@Composable
+fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
+    val prefs by FlorisPreferenceStore
+    val leftIsMic by prefs.keyboard.evaNavLeftMic.observeAsState()
+    var menuOpen by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    if (menuOpen) {
+        // A tap anywhere outside the menu closes it.
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .pointerInput(Unit) { detectTapGestures { menuOpen = false } },
+        )
+        SnyggColumn(
+            elementName = FlorisImeUi.ClipboardItemActions.elementName,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 8.dp, bottom = stripHeight + 4.dp)
+                .widthIn(max = 320.dp),
+        ) {
+            val (icon, text) = if (leftIsMic) {
+                Icons.Outlined.Keyboard to R.string.eva__nav_left_use_switcher
+            } else {
+                Icons.Outlined.Mic to R.string.eva__nav_left_use_mic
+            }
+            SnyggRow(
+                elementName = FlorisImeUi.ClipboardItemAction.elementName,
+                modifier = Modifier.rippleClickable {
+                    scope.launch { prefs.keyboard.evaNavLeftMic.set(!leftIsMic) }
+                    menuOpen = false
+                },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SnyggIcon(FlorisImeUi.ClipboardItemActionIcon.elementName, imageVector = icon)
+                SnyggText(FlorisImeUi.ClipboardItemActionText.elementName, text = stringRes(text))
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .height(stripHeight),
+    ) {
+        StripButton(
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
+            icon = if (leftIsMic) Icons.Outlined.Mic else Icons.Outlined.Keyboard,
+            onTap = {
+                if (leftIsMic) {
+                    FlorisImeService.switchToVoiceInputMethod()
+                } else {
+                    context.systemServiceOrNull(InputMethodManager::class)?.showInputMethodPicker()
+                }
+            },
+            onHold = { menuOpen = true },
+        )
+        StripButton(
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
+            icon = Icons.Outlined.KeyboardArrowDown,
+            onTap = { FlorisImeService.hideUi() },
+            onHold = null,
+        )
+    }
+}
+
+@Composable
+private fun StripButton(
+    modifier: Modifier,
+    icon: ImageVector,
+    onTap: () -> Unit,
+    onHold: (() -> Unit)?,
+) {
+    val haptic = LocalHapticFeedback.current
+    val inputFeedbackController = FlorisImeService.inputFeedbackController()
+    SnyggBox(
+        elementName = "${FlorisImeUi.SmartbarActionKey.elementName}-icon",
+        modifier = modifier
+            .size(44.dp)
+            .pointerInput(onHold) {
+                detectTapGestures(
+                    onTap = {
+                        inputFeedbackController?.keyPress(TextKeyData.UNSPECIFIED)
+                        onTap()
+                    },
+                    onLongPress = if (onHold != null) {
+                        {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onHold()
+                        }
+                    } else {
+                        null
+                    },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        SnyggIcon(imageVector = icon)
+    }
+}

@@ -47,7 +47,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.captionBar
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -66,10 +73,13 @@ import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
+import dev.patrickgold.florisboard.ime.eva.EvaNavStripLayer
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -253,6 +263,10 @@ class FlorisImeService : LifecycleInputMethodService() {
         }
     }
 
+    // evaBoard: true once this keyboard has asked Android to hide its own strip under the
+    // keys (gesture navigation, Android 16+), so that EvaNavStripLayer draws ours instead.
+    private var evaNavHideRequested by mutableStateOf(false)
+
     private val prefs by FlorisPreferenceStore
     private val editorInstance by editorInstance()
     private val keyboardManager by keyboardManager()
@@ -357,6 +371,7 @@ class FlorisImeService : LifecycleInputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         flogInfo { "restarting=$restarting info=${info?.debugSummarize()}" }
         super.onStartInputView(info, restarting)
+        requestEvaNavStrip()
         if (info == null) return
         val editorInfo = FlorisEditorInfo.wrap(info)
         activeState.batchEdit {
@@ -366,6 +381,29 @@ class FlorisImeService : LifecycleInputMethodService() {
             activeState.isSelectionMode = editorInfo.initialSelection.isSelectionMode
             editorInstance.handleStartInputView(editorInfo, isRestart = restarting)
         }
+    }
+
+    /**
+     * evaBoard: on gesture navigation Android draws a strip under the keyboard with its own
+     * switch-keyboard and hide buttons, and reports it to the keyboard as captionBar insets.
+     * From Android 16 a keyboard may hide it and draw its own buttons there; if Android
+     * refuses, the captionBar insets stay and the keyboard keeps the system strip.
+     */
+    private fun requestEvaNavStrip() {
+        if (Build.VERSION.SDK_INT < 36 || !isGesturalNavigation()) return
+        window.window?.insetsController?.hide(android.view.WindowInsets.Type.captionBar())
+        evaNavHideRequested = true
+    }
+
+    private fun isGesturalNavigation(): Boolean {
+        @Suppress("DiscouragedApi")
+        val id = resources.getIdentifier("config_navBarInteractionMode", "integer", "android")
+        return id != 0 && resources.getInteger(id) == 2
+    }
+
+    override fun onCustomImeSwitcherButtonRequestedVisible(visible: Boolean) {
+        // evaBoard draws its own switcher whenever its strip is up, so nothing to track here.
+        flogInfo(LogTopic.IMS_EVENTS) { "custom IME switcher button requested visible=$visible" }
     }
 
     override fun onEvaluateInputViewShown(): Boolean {
@@ -648,12 +686,30 @@ class FlorisImeService : LifecycleInputMethodService() {
                 } else {
                     prefs.keyboard.bottomOffsetLandscape
                 }.observeAsTransformingState { it.dp }
+                // evaBoard: our own bottom strip replaces the system one only when it was asked
+                // for and Android actually took its strip away (no captionBar insets left).
+                val density = LocalDensity.current
+                val systemStripBottom = WindowInsets.captionBar.getBottom(density)
+                val evaStripActive = evaNavHideRequested && systemStripBottom == 0
+                val evaStripHeight = with(density) {
+                    max(WindowInsets.navigationBars.getBottom(density).toDp(), 44.dp)
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .wrapContentHeight()
                         // Apply system bars padding here (we already drew our keyboard background)
-                        .safeDrawingPadding()
+                        .then(
+                            if (evaStripActive) {
+                                Modifier
+                                    .windowInsetsPadding(
+                                        WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
+                                    )
+                                    .padding(bottom = evaStripHeight)
+                            } else {
+                                Modifier.safeDrawingPadding()
+                            }
+                        )
                         .padding(bottom = bottomOffset),
                 ) {
                     val oneHandedMode by prefs.keyboard.oneHandedMode.observeAsState()
@@ -688,6 +744,9 @@ class FlorisImeService : LifecycleInputMethodService() {
                             weight = 1f - keyboardWeight,
                         )
                     }
+                }
+                if (evaStripActive) {
+                    EvaNavStripLayer(stripHeight = evaStripHeight)
                 }
             }
         }

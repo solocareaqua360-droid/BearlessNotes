@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.LocalNavController
 import dev.patrickgold.florisboard.app.Routes
+import dev.patrickgold.florisboard.ime.eva.devupdate.EvaDevUpdateCard
 import dev.patrickgold.florisboard.lib.compose.FlorisScreen
 import dev.patrickgold.florisboard.lib.util.InputMethodUtils
 import dev.patrickgold.jetpref.datastore.model.observeAsState
@@ -74,6 +75,9 @@ fun HomeScreen() = FlorisScreen {
                 onClick = { InputMethodUtils.showImePicker(context) },
             )
         }
+
+        // evaBoard dev updater (TEMPORARY) - remove with ime/eva/devupdate
+        EvaDevUpdateCard(modifier = Modifier.padding(8.dp))
 
         /*Card(modifier = Modifier.padding(8.dp)) {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
