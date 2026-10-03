@@ -322,7 +322,7 @@ class FlorisImeService : LifecycleInputMethodService() {
         val w = window.window ?: return
         val windowHeight = inputWindowView?.height ?: 0
         val top = (windowHeight - inputViewSize.height).coerceAtLeast(0)
-        if (EvaBlur.enabled.value && inputViewSize.height > 0) {
+        if (EvaBlur.enabled.value && prefs.keyboard.evaBlur.get() && inputViewSize.height > 0) {
             // Almost transparent: the drawable only shapes the blur region, the theme paints the colour.
             val backdrop = android.graphics.drawable.InsetDrawable(
                 android.graphics.drawable.ColorDrawable(0x01000000), 0, top, 0, 0,
@@ -715,7 +715,9 @@ class FlorisImeService : LifecycleInputMethodService() {
         }
         // evaBoard: the theme's ground is translucent for the blur behind the keyboard; while Android
         // is not blurring, the same colour is painted solid underneath so the app does not show through.
-        val blurOn by EvaBlur.enabled.collectAsState()
+        val blurAvailable by EvaBlur.enabled.collectAsState()
+        val blurWanted by prefs.keyboard.evaBlur.observeAsState()
+        val blurOn = blurAvailable && blurWanted
         LaunchedEffect(inputViewSize, blurOn) { updateEvaBlur() }
         val windowStyle = rememberSnyggThemeQuery(FlorisImeUi.Window.elementName, attributes)
         val solidGround = windowStyle.background().takeIf { it.isSpecified }?.copy(alpha = 1f)

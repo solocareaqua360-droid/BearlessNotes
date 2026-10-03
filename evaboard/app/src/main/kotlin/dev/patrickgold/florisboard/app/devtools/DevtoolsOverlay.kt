@@ -90,7 +90,8 @@ fun DevtoolsOverlay(modifier: Modifier = Modifier) {
             if (devtoolsEnabled && showInputStateOverlay) {
                 DevtoolsInputStateOverlay()
             }
-            if (debugLayoutResult?.allLayoutsSuccess() == false) {
+            // evaBoard: a debugging aid, not something to show over every app
+            if (devtoolsEnabled && debugLayoutResult?.allLayoutsSuccess() == false) {
                 DevtoolsLastLayoutComputationOverlay(debugLayoutResult)
             }
             if (devtoolsEnabled && showSpellingOverlay) {

@@ -71,6 +71,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -140,9 +142,12 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 updateActiveEvaluators()
             }
             // evaBoard: the letters' digit hints come and go with evaBoard's digit row
-            dev.patrickgold.florisboard.ime.eva.EvaTopRow.showIcons.collectLatestIn(scope) {
-                updateActiveEvaluators {
-                    keyboardCache.clear(KeyboardMode.CHARACTERS)
+            // (drop(1): the initial value needs no recompute, and at start-up the layouts are not indexed yet)
+            scope.launch {
+                dev.patrickgold.florisboard.ime.eva.EvaTopRow.showIcons.drop(1).collectLatest {
+                    updateActiveEvaluators {
+                        keyboardCache.clear(KeyboardMode.CHARACTERS)
+                    }
                 }
             }
             prefs.keyboard.hintedSymbolsEnabled.asFlow().collectLatestIn(scope) {
