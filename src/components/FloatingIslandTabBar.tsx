@@ -5,7 +5,7 @@ import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/na
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
 import { DesksControlContext, START_DESK, deskFace } from '../navigation/desks';
-import { captureAllDesks, captureDesk, forgetDesk, useDeskShots } from '../navigation/deskShots';
+import { captureAllDesks, captureDesk, forgetDesk, setCurrentDesk, setDeskCapturePaused, useDeskShots } from '../navigation/deskShots';
 import DeskSwitcher from './DeskSwitcher';
 import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
 import { deskPull, deskPullEnabled } from '../navigation/deskPull';
@@ -109,6 +109,14 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const shots = useDeskShots();
   const currentDesk = state.routes[state.index]?.name;
+  // Told to the quiet captures (deskShots): which desk is in front, and
+  // whether the panel is out.
+  useEffect(() => {
+    setCurrentDesk(tabsFocused ? currentDesk ?? null : null);
+  }, [currentDesk, tabsFocused]);
+  useEffect(() => {
+    setDeskCapturePaused(switcherOpen);
+  }, [switcherOpen]);
   useEffect(() => {
     // Not while the panel is out: the desks it steps through are being
     // shown in it, and photographing each as it passes only churns them.

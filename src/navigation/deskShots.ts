@@ -3,6 +3,7 @@ import type { View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { captureRef } from 'react-native-view-shot';
+import { deskPull } from './deskPull';
 
 // THE DESKS' PICTURES, for the panel of open desks (components/DeskSwitcher):
 // what each open desk last looked like, as a small photograph.
@@ -104,3 +105,41 @@ export function useDeskShots(): Record<string, string> {
   }, []);
   return Object.fromEntries(shots);
 }
+
+// KEPT FRESH, QUIETLY (option 2, 2026-10-04): the desk in front is
+// photographed again a moment after it was last touched and has come to
+// rest (a scroll's coast included), and every so often while it stands
+// untouched (a list that changed on its own - a sync from the other
+// device). Never while the panel is out or a pull is under way, and never
+// a desk that is not in front.
+let current: string | null = null;
+let paused = false;
+let quietTimer: ReturnType<typeof setTimeout> | null = null;
+let lastTouch = 0;
+const QUIET_MS = 1500;
+const IDLE_EVERY_MS = 45000;
+
+export function setCurrentDesk(key: string | null) {
+  current = key;
+}
+export function setDeskCapturePaused(on: boolean) {
+  paused = on;
+}
+function canCapture(key: string) {
+  return key === current && !paused && deskPull.value < 0.02;
+}
+
+// Told by a desk's wrapper each time a touch on it ends.
+export function noteDeskTouched(key: string) {
+  lastTouch = Date.now();
+  if (quietTimer) clearTimeout(quietTimer);
+  quietTimer = setTimeout(() => {
+    quietTimer = null;
+    if (canCapture(key)) captureDesk(key);
+  }, QUIET_MS);
+}
+
+setInterval(() => {
+  if (!current || Date.now() - lastTouch < QUIET_MS * 2) return;
+  if (canCapture(current)) captureDesk(current);
+}, IDLE_EVERY_MS);

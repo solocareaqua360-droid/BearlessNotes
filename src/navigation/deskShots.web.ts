@@ -9,3 +9,6 @@ export function useDeskShots(): Record<string, string> {
   return {};
 }
 export async function captureAllDesks(): Promise<void> {}
+export function setCurrentDesk(_key: string | null) {}
+export function setDeskCapturePaused(_on: boolean) {}
+export function noteDeskTouched(_key: string) {}

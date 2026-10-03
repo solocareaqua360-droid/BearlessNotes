@@ -9,7 +9,7 @@ import FloatingIslandTabBar from '../components/FloatingIslandTabBar';
 import CalendarDrawer, { DatabasesLayer, SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
 import { SideDrawersProvider, useSideDrawers } from './sideDrawers';
 import { deskScreenFor } from './tabScreens';
-import { registerDeskNode } from './deskShots';
+import { noteDeskTouched, registerDeskNode } from './deskShots';
 import { DeskContext, DesksControlContext, registerDesks, useDesks } from './desks';
 
 // Material top tabs, not bottom tabs: the navigator the desks were built
@@ -55,7 +55,13 @@ function DeskHost({
   const value = useMemo(() => ({ back }), [back]);
   return (
     <DeskContext.Provider value={value}>
-      <View ref={(node) => registerDeskNode(deskKey, node)} collapsable={false} style={styles.fill}>
+      <View
+        ref={(node) => registerDeskNode(deskKey, node)}
+        collapsable={false}
+        style={styles.fill}
+        // Any touch on the desk ending: its picture is retaken once it rests.
+        onTouchEnd={() => noteDeskTouched(deskKey)}
+      >
         <Component {...props} />
       </View>
     </DeskContext.Provider>
