@@ -118,6 +118,12 @@ class FlorisApplication : Application() {
                 prefs.theme.nightThemeId.set(extCoreTheme("eva_night"))
                 prefs.internal.evaThemeApplied.set(true)
             }
+            if (!prefs.internal.evaTickApplied.get()) {
+                prefs.inputFeedback.hapticVibrationMode.set(
+                    dev.patrickgold.florisboard.ime.input.HapticVibrationMode.EVA_TICK
+                )
+                prefs.internal.evaTickApplied.set(true)
+            }
             preferenceStoreLoaded.value = true
         }
         extensionManager.value.init()

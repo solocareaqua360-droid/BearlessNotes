@@ -4,4 +4,6 @@
     <string name="eva__nav_left_use_switcher">Переключатель клавиатур вместо микрофона</string>
     <string name="eva__pref_suggestions_row__label">Подсказки слов над клавиатурой</string>
     <string name="eva__pref_suggestions_row__summary">Отдельный ряд над цифрами; клавиатура становится выше</string>
+    <string name="eva__haptic_tick">Короткий щелчок (как на iPhone)</string>
+    <string name="eva__haptic_tick__description">Один короткий чёткий лёгкий щелчок на каждое нажатие; сила задаёт, насколько он ощутим</string>
 </resources>

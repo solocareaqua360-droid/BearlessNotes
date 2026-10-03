@@ -147,14 +147,21 @@ fun InputFeedbackScreen() = FlorisScreen {
                 max = 100,
                 stepIncrement = 1,
                 onPreviewSelectedValue = { strength ->
-                    val duration = prefs.inputFeedback.hapticVibrationDuration.get()
-                    vibrator?.vibrate(duration, strength)
+                    // evaBoard: preview the tick itself when the tick is the vibration in use
+                    if (prefs.inputFeedback.hapticVibrationMode.get() == HapticVibrationMode.EVA_TICK) {
+                        vibrator?.let { dev.patrickgold.florisboard.ime.eva.EvaHaptics.tick(it, strength) }
+                    } else {
+                        val duration = prefs.inputFeedback.hapticVibrationDuration.get()
+                        vibrator?.vibrate(duration, strength)
+                    }
                 },
                 enabledIf = {
-                    prefs.inputFeedback.hapticEnabled isEqualTo true &&
+                    prefs.inputFeedback.hapticEnabled isEqualTo true && (
+                        prefs.inputFeedback.hapticVibrationMode isEqualTo HapticVibrationMode.EVA_TICK ||
                         prefs.inputFeedback.hapticVibrationMode isEqualTo HapticVibrationMode.USE_VIBRATOR_DIRECTLY &&
                         vibrator != null && vibrator.hasVibrator() &&
                         vibrator.hasAmplitudeControl()
+                    )
                 },
             )
             SwitchPreference(

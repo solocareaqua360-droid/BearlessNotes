@@ -4,4 +4,6 @@
     <string name="eva__nav_left_use_switcher">Перемикач клавіатур замість мікрофона</string>
     <string name="eva__pref_suggestions_row__label">Підказки слів над клавіатурою</string>
     <string name="eva__pref_suggestions_row__summary">Окремий ряд над цифрами; клавіатура стає вищою</string>
+    <string name="eva__haptic_tick">Короткий клац (як на iPhone)</string>
+    <string name="eva__haptic_tick__description">Один короткий чіткий легкий клац на кожне натискання; «Сила вібрації» задає, наскільки він відчутний</string>
 </resources>

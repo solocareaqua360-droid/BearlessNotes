@@ -119,6 +119,12 @@ class InputFeedbackController private constructor(private val ims: InputMethodSe
             InputFeedbackActivationMode.RESPECT_SYSTEM_SETTINGS && !systemHapticEnabled) return
 
         scope.launch {
+            if (prefs.inputFeedback.hapticVibrationMode.get() == HapticVibrationMode.EVA_TICK) {
+                dev.patrickgold.florisboard.ime.eva.EvaHaptics.tick(
+                    vibrator, prefs.inputFeedback.hapticVibrationStrength.get(), factor,
+                )
+                return@launch
+            }
             if (prefs.inputFeedback.hapticVibrationMode.get() == HapticVibrationMode.USE_HAPTIC_FEEDBACK_INTERFACE) {
                 val view = ims.window?.window?.decorView ?: return@launch
                 val hfc = if (factor < 1.0 && AndroidVersion.ATLEAST_API27_O_MR1) {

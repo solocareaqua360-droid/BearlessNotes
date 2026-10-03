@@ -4,4 +4,6 @@
     <string name="eva__nav_left_use_switcher">Keyboard switcher instead of microphone</string>
     <string name="eva__pref_suggestions_row__label">Word suggestions above the keyboard</string>
     <string name="eva__pref_suggestions_row__summary">A separate row above the digits; the keyboard gets taller</string>
+    <string name="eva__haptic_tick">Short tick (like the iPhone)</string>
+    <string name="eva__haptic_tick__description">One short, crisp, light tick per key press; strength sets how firm it is</string>
 </resources>

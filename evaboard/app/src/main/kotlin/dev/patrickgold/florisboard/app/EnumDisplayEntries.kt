@@ -298,6 +298,12 @@ private val ENUM_DISPLAY_ENTRIES = mapOf<Pair<KClass<*>, String>, @Composable ()
     HapticVibrationMode::class to DEFAULT to {
         listPrefEntries {
             entry(
+                key = HapticVibrationMode.EVA_TICK,
+                label = stringRes(R.string.eva__haptic_tick),
+                description = stringRes(R.string.eva__haptic_tick__description),
+                showDescriptionOnlyIfSelected = true,
+            )
+            entry(
                 key = HapticVibrationMode.USE_VIBRATOR_DIRECTLY,
                 label = stringRes(R.string.enum__haptic_vibration_mode__use_vibrator_directly),
                 description = stringRes(R.string.enum__haptic_vibration_mode__use_vibrator_directly__description),

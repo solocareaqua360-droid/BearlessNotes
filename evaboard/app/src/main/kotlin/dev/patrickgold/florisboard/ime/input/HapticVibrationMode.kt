@@ -17,6 +17,8 @@
 package dev.patrickgold.florisboard.ime.input
 
 enum class HapticVibrationMode  {
+    /** evaBoard: a short crisp tick, like the iPhone keyboard (the default) */
+    EVA_TICK,
     USE_VIBRATOR_DIRECTLY,
     USE_HAPTIC_FEEDBACK_INTERFACE;
 }

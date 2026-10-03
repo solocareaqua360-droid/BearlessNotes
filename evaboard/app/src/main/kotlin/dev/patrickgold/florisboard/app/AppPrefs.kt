@@ -411,7 +411,7 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
         val hapticVibrationMode = enum(
             key = "input_feedback__haptic_vibration_mode",
-            default = HapticVibrationMode.USE_VIBRATOR_DIRECTLY,
+            default = HapticVibrationMode.EVA_TICK,
         )
         val hapticVibrationDuration = int(
             key = "input_feedback__haptic_vibration_duration",
@@ -446,6 +446,11 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
     val internal = Internal()
     inner class Internal {
         // evaBoard: set once the evaBoard themes were made the active ones (see FlorisApplication.init)
+        // evaBoard: set once the iPhone-like tick was made the active vibration (FlorisApplication.init)
+        val evaTickApplied = boolean(
+            key = "internal__eva_tick_applied",
+            default = false,
+        )
         val evaThemeApplied = boolean(
             key = "internal__eva_theme_applied",
             default = false,
