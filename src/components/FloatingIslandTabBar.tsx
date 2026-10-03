@@ -187,8 +187,10 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         key: route.key,
         ...faceOf(route.name),
         active: liveIndex === index,
-        // Any desk: the open desks, as cards - a card is what goes there.
-        onPress: deskControl ? openSwitcher : desks[index].onPress,
+        // The desk in front opens the open desks as cards; any other
+        // desk simply goes there ("на вкладки, які не відкриті, просто
+        // перейду").
+        onPress: deskControl && liveIndex === index ? openSwitcher : desks[index].onPress,
         // "хрестик на вкладці" - the desk in front can be closed, the
         // documents too now (only the start desk stays).
         onClose:
