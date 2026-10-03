@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import dev.patrickgold.florisboard.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -45,6 +46,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -135,9 +137,27 @@ fun EvaDevUpdateCard(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Opens [url], retrying a few times while GitHub answers with a 5xx: its download servers
+ * hand out short runs of 503 even when everything is "operational".
+ */
+private suspend fun openWithRetry(url: String, accept: String? = null): HttpURLConnection {
+    var lastCode = 0
+    repeat(5) { attempt ->
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.instanceFollowRedirects = true
+        accept?.let { conn.setRequestProperty("Accept", it) }
+        lastCode = conn.responseCode
+        if (lastCode in 200..299) return conn
+        conn.disconnect()
+        if (lastCode < 500) throw IOException("GitHub відповів $lastCode")
+        delay(1500L * (attempt + 1))
+    }
+    throw IOException("GitHub тимчасово не відповідає ($lastCode), спробуйте ще раз")
+}
+
 private suspend fun findNewest(): EvaRelease? = withContext(Dispatchers.IO) {
-    val conn = URL(RELEASES_URL).openConnection() as HttpURLConnection
-    conn.setRequestProperty("Accept", "application/vnd.github+json")
+    val conn = openWithRetry(RELEASES_URL, accept = "application/vnd.github+json")
     val body = conn.inputStream.bufferedReader().use { it.readText() }
     Json.parseToJsonElement(body).jsonArray.mapNotNull { el ->
         val release = el.jsonObject
@@ -168,8 +188,7 @@ private suspend fun download(context: Context, release: EvaRelease, onProgress: 
     dir.listFiles()?.forEach { it.delete() }
     val file = File(dir, "evaboard-${release.version}.apk")
     withContext(Dispatchers.IO) {
-        val conn = URL(release.apkUrl).openConnection() as HttpURLConnection
-        conn.instanceFollowRedirects = true
+        val conn = openWithRetry(release.apkUrl)
         val total = conn.contentLengthLong
         conn.inputStream.use { input ->
             file.outputStream().use { output ->
