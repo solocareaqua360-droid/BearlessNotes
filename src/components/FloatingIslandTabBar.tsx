@@ -4,7 +4,9 @@ import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
-import { DesksControlContext, PERMANENT_DESK, START_DESK, deskFace } from '../navigation/desks';
+import { DesksControlContext, START_DESK, deskFace } from '../navigation/desks';
+import { captureDesk, forgetDesk, useDeskShots } from '../navigation/deskShots';
+import DeskSwitcher from './DeskSwitcher';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
 
@@ -98,6 +100,18 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   // names and icons come from what they are, not from a fixed list.
   const { customDatabases, iconFor } = useDatabaseTiles();
   const deskControl = useContext(DesksControlContext);
+  // THE TAB SWITCHER (2026-10-03): a tap on any desk of the bar opens the
+  // open desks as cards with their pictures (DeskSwitcher). Each desk is
+  // photographed a moment after it settles in front, and again as the
+  // switcher opens.
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const shots = useDeskShots();
+  const currentDesk = state.routes[state.index]?.name;
+  useEffect(() => {
+    if (!deskControl || !currentDesk) return;
+    const timer = setTimeout(() => captureDesk(currentDesk), 900);
+    return () => clearTimeout(timer);
+  }, [deskControl, currentDesk]);
   const faceOf = (name: string) =>
     ICON_BY_ROUTE[name] && !deskControl ? { label: name, icon: ICON_BY_ROUTE[name] } : deskFace(name, customDatabases, iconFor);
   const desks = useMemo(
@@ -129,6 +143,22 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   // TopNavBar). An open board is inside the boards tab but is not one of
   // those screens: it has its own bar (its name, not the desks), and the
   // dock under it no longer carries the desks' dots either.
+  const openSwitcher = () => {
+    if (currentDesk) captureDesk(currentDesk);
+    setSwitcherOpen(true);
+  };
+  // The desk in front closes onto its neighbour to the left, so nothing
+  // vanishes from under the finger; any other just goes.
+  const closeDesk = (index: number) => {
+    const route = state.routes[index];
+    if (!deskControl || !route || route.name === START_DESK) return;
+    if (liveIndex === index) {
+      const previous = state.routes[index - 1]?.name;
+      if (previous) navigation.navigate(previous);
+    }
+    deskControl.setDesks(deskControl.desks.filter((key) => key !== route.name));
+    forgetDesk(route.name);
+  };
   const topNavOn = useTopNavOn();
   const onBoard =
     state.routes[state.index]?.name === 'Дошки' &&
@@ -151,29 +181,39 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   const barUp = tabsFocused && !onBoard && topNavOn;
   if (!barUp) return null;
   return (
+    <>
     <TopNavBar
       desks={state.routes.map((route, index) => ({
         key: route.key,
         ...faceOf(route.name),
         active: liveIndex === index,
-        onPress: desks[index].onPress,
-        // "хрестик на вкладці тільки тій яка зараз на весь екран" - the
-        // desk in front can be closed, never the documents. Its neighbour
-        // to the left takes its place first, so nothing vanishes from
-        // under the finger.
+        // Any desk: the open desks, as cards - a card is what goes there.
+        onPress: deskControl ? openSwitcher : desks[index].onPress,
+        // "хрестик на вкладці" - the desk in front can be closed, the
+        // documents too now (only the start desk stays).
         onClose:
-          deskControl && route.name !== PERMANENT_DESK && route.name !== START_DESK && liveIndex === index
-            ? () => {
-                const previous = state.routes[index - 1]?.name;
-                if (previous) navigation.navigate(previous);
-                deskControl.setDesks(deskControl.desks.filter((key) => key !== route.name));
-              }
-            : undefined,
+          deskControl && route.name !== START_DESK && liveIndex === index ? () => closeDesk(index) : undefined,
       }))}
       onLongPress={openCapture}
       // The calendar's drawer carries its own bar; this one steps back
       // as it comes in.
       fadeWithDrawer
     />
+    <DeskSwitcher
+      visible={switcherOpen}
+      onDismiss={() => setSwitcherOpen(false)}
+      desks={state.routes.map((route, index) => ({
+        key: route.key,
+        ...faceOf(route.name),
+        active: liveIndex === index,
+        shot: shots[route.name],
+        onPick: () => {
+          setSwitcherOpen(false);
+          desks[index].onPress();
+        },
+        onClose: deskControl && route.name !== START_DESK ? () => closeDesk(index) : undefined,
+      }))}
+    />
+    </>
   );
 }

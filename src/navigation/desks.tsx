@@ -27,8 +27,9 @@ export const BOARDS_DESK = 'Дошки';
 // reads the same stored keys.
 export const START_DESK = 'Старт';
 export const DEFAULT_DESKS = [START_DESK, PERMANENT_DESK, BOARDS_DESK];
-// How many desks of databases (the documents included) there can be.
-export const MAX_DESKS = 4;
+// There used to be four ("до чотирьох"); the user lifted it (2026-10-03,
+// «зняти обмеження»): the bar scrolls, and the tab switcher shows them all.
+export const MAX_DESKS = Infinity;
 
 const desksDoc = doc(db, 'settings', 'desks');
 
@@ -42,16 +43,19 @@ export function useDesks() {
         desksDoc,
         (snapshot) => {
           const stored = snapshot.data()?.keys as string[] | undefined;
-          if (!stored || stored.length === 0) return;
-          // The start desk, then the documents, whatever was stored.
-          setDesksState([START_DESK, PERMANENT_DESK, ...stored.filter((k) => k !== PERMANENT_DESK && k !== START_DESK)].slice(0, MAX_DESKS + 1));
+          // Nothing stored yet: the defaults. An EMPTY list is a choice
+          // (every desk closed but the start).
+          if (!stored) return;
+          // The start desk first; the rest as stored - the documents are a
+          // desk like the others now and may have been closed.
+          setDesksState([START_DESK, ...stored.filter((k) => k !== START_DESK)]);
         },
         listenError('useDesks:desks')
       ),
     []
   );
   const setDesks = useCallback((next: string[]) => {
-    const clean = [PERMANENT_DESK, ...next.filter((k) => k !== PERMANENT_DESK && k !== START_DESK)].slice(0, MAX_DESKS);
+    const clean = next.filter((k) => k !== START_DESK);
     setDesksState([START_DESK, ...clean]);
     // Stored without the start desk (see START_DESK).
     setDoc(desksDoc, { keys: clean }, { merge: true });
@@ -132,3 +136,5 @@ const DESKABLE = new Set([
 export function canBeDesk(key: string): boolean {
   return DESKABLE.has(key) || key.startsWith('db:custom:');
 }
+
+export { ensureDesk, registerDesks, whenDeskIsThere } from './deskRegistry';

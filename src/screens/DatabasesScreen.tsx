@@ -65,7 +65,8 @@ import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { DatabasesLayerContext } from '../navigation/sideDrawers';
-import { DesksControlContext, MAX_DESKS, PERMANENT_DESK, START_DESK, canBeDesk, deskFace, deskKeyForCustom, deskKeyForTile } from '../navigation/desks';
+import { whenDeskIsThere } from '../navigation/deskRegistry';
+import { DesksControlContext, canBeDesk, deskFace, deskKeyForCustom, deskKeyForTile } from '../navigation/desks';
 import InlineDock from '../components/InlineDock';
 import IconPickerSheet from '../components/IconPickerSheet';
 import type { MenuEntry } from '../components/surfaces/Menu';
@@ -438,21 +439,9 @@ export default function DatabasesScreen() {
       goTo();
       return;
     }
-    // The start desk is not one of the four.
-    if (desksControl.desks.filter((k) => k !== START_DESK).length < MAX_DESKS) {
-      desksControl.setDesks([...desksControl.desks, key]);
-      goTo();
-      return;
-    }
-    const choice = await ask({
-      title: `Уже ${MAX_DESKS} столи`,
-      message: 'Замінити один із них?',
-      actions: desksControl.desks
-        .filter((k) => k !== PERMANENT_DESK && k !== START_DESK)
-        .map((k) => ({ id: k, label: deskFace(k, customDatabases).label })),
-    });
-    if (!desksControl.desks.includes(choice)) return;
-    desksControl.setDesks(desksControl.desks.map((k) => (k === choice ? key : k)));
+    // No limit any more: the bar scrolls and the tab switcher shows every
+    // desk. (It was four, and then offered to replace one.)
+    desksControl.setDesks([...desksControl.desks, key]);
     goTo();
   }
 
@@ -1361,10 +1350,12 @@ export default function DatabasesScreen() {
         // The documents are a desk under this layer: the
         // layer has to get out of the way to show them.
         databasesLayer?.close();
-        navigation.navigate('Tabs', {
-          screen: 'Документи',
-          params: { groupId: item.pin.id },
-        });
+        whenDeskIsThere('Документи', () =>
+          navigation.navigate('Tabs', {
+            screen: 'Документи',
+            params: { groupId: item.pin.id },
+          })
+        );
       } else navigation.navigate('TagItems', { tagId: item.pin.id });
     } else if (item.key === NEW_TILE_KEY) startNewDatabase();
     else if (item.key === PIN_TILE_KEY) setPinSheetVisible(true);

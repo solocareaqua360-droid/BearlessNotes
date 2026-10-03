@@ -1,4 +1,5 @@
 import { Ionicons } from '../components/icons/Ionicons';
+import { whenDeskIsThere } from '../navigation/deskRegistry';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { doc } from '../firestore';
 import { db } from '../firebase';
@@ -90,7 +91,7 @@ export function openDatabaseTile(
   tile: Tile
 ) {
   if (tile.opensDocumentsTab) {
-    navigation.navigate('Tabs', { screen: 'Документи' });
+    whenDeskIsThere('Документи', () => navigation.navigate('Tabs', { screen: 'Документи' }));
   } else if (tile.linkCategory) {
     navigation.navigate('Links', { category: tile.linkCategory });
   } else if (tile.opensBoardsTab) {

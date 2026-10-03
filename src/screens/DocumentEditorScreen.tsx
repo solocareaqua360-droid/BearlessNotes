@@ -1,4 +1,5 @@
 import { RADIUS } from '../theme/scale';
+import { whenDeskIsThere } from '../navigation/deskRegistry';
 import { useNoteOpened } from '../navigation/recentPlaces';
 import ScreenGround from '../components/ScreenGround';
 import { IN_SHELL } from '../utils/shell';
@@ -5228,10 +5229,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   return {
                     label,
                     onPress: () =>
-                      (navigation as unknown as { navigate: (name: string, params: object) => void }).navigate('Tabs', {
-                        screen: 'Документи',
-                        params: { folder: path },
-                      }),
+                      whenDeskIsThere('Документи', () =>
+                        (navigation as unknown as { navigate: (name: string, params: object) => void }).navigate('Tabs', {
+                          screen: 'Документи',
+                          params: { folder: path },
+                        })
+                      ),
                   };
                 });
               })(),

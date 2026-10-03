@@ -16,6 +16,7 @@ import { useDockClearance } from '../navigation/dockGeometry';
 import { useChromeStyle, useDockBeads, useTopBack } from '../navigation/navDock';
 import { useSideDrawers } from '../navigation/sideDrawers';
 import { BOARDS_DESK, DesksControlContext, PERMANENT_DESK } from '../navigation/desks';
+import { whenDeskIsThere } from '../navigation/deskRegistry';
 import { requestCreate } from '../navigation/startCreate';
 import { navigationRef } from '../navigationRef';
 import { doc, onSnapshot } from '../firestore';
@@ -111,6 +112,11 @@ export default function StartScreen() {
       requestCreate('BoardsCopy', undefined, 'BoardsCopy');
       return;
     }
+    // A closed documents desk is put back first.
+    if (item.key === 'doc') {
+      whenDeskIsThere(PERMANENT_DESK, () => requestCreate(item.route, item.params, item.wanted));
+      return;
+    }
     requestCreate(item.route, item.params, item.wanted);
   };
 
@@ -141,6 +147,11 @@ export default function StartScreen() {
   };
 
   const goToDesk = (key: string, copyRoute: string) => {
+    if (key === PERMANENT_DESK) {
+      // The documents are put back if they were closed.
+      whenDeskIsThere(key, () => go('Tabs', { screen: key }));
+      return;
+    }
     if (desksControl?.desks.includes(key)) go('Tabs', { screen: key });
     else go(copyRoute);
   };

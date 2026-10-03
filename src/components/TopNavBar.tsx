@@ -199,9 +199,11 @@ export default function TopNavBar({
   // and one desk grows by exactly what the other gives up.
   const deskCount = desks?.length ?? 0;
   const openWidth = innerWidth - CUT * (deskCount - 1) - PILL_W * (deskCount - 1);
-  // The name only where it fits whole: on a narrow screen the open desk
-  // is its highlighted icon alone rather than a name cut in half.
-  const nameFits = (label: string) => openWidth - 20 - 8 - 16 >= label.length * 8.4;
+  // The open desk's name, as the room allows (2026-10-03): whole; then cut
+  // short with «…»; then, with many desks open, only its icon (and the
+  // cross). When even the squares do not fit, the row scrolls.
+  const activeDesk = desks?.find((d) => d.active);
+  const deskLayout = deskPillLayout(activeDesk?.label ?? '', !!activeDesk?.onClose, openWidth);
 
   // The path, kept drawn from the last one while the plate rolls back to
   // the desks, so it does not empty in the middle of its way out.
@@ -348,19 +350,18 @@ export default function TopNavBar({
                       </Surface>
                     </Pressable>
                   )}
-                  {desks?.map((desk) => (
-                    <DeskPill
-                      key={desk.key}
+                  {!!desks?.length && (
+                    <DesksRow
+                      desks={desks}
                       radius={pieceRadius}
-                      showName={nameFits(desk.label)}
-                      desk={desk}
-                      openWidth={openWidth}
+                      layout={deskLayout}
+                      innerWidth={innerWidth}
                       onLongPress={onLongPress}
                       ink={ink}
                       inkMuted={inkMuted}
                       soft={soft ? S : null}
                     />
-                  ))}
+                  )}
                 </Animated.View>
                 {shownPath && (
                   <Animated.View style={[styles.layer, pathStyle]} pointerEvents={path ? 'box-none' : 'none'}>
@@ -575,20 +576,101 @@ function SearchRow({
 // ONE desk, sized by one number that eases between closed and open - so
 // the one closing gives up exactly what the one opening takes, and the
 // name opens with the room it is given rather than all at once.
+// HOW THE OPEN DESK IS DRAWN, from the room it has: its name whole, cut
+// short with «…», or not at all. `width` is what it takes.
+type DeskPillLayout = { mode: 'full' | 'cut' | 'icon'; width: number; labelRoom: number };
+const CROSS_ROOM = 28;
+const CHAR_W = 8.6;
+function deskPillLayout(label: string, closable: boolean, room: number): DeskPillLayout {
+  const cross = closable ? CROSS_ROOM : 0;
+  // Icon, the gap before the name, a little air at either end.
+  const chrome = 20 + 8 + 16 + cross;
+  const natural = chrome + label.length * CHAR_W;
+  // The shortest name worth showing: three letters and the dots.
+  const shortest = chrome + 4 * CHAR_W;
+  if (room >= natural) return { mode: 'full', width: room, labelRoom: Math.max(0, room - chrome) };
+  if (room >= shortest) return { mode: 'cut', width: room, labelRoom: Math.max(0, room - chrome) };
+  // Icon alone: as wide as the icon and its cross need.
+  return { mode: 'icon', width: 20 + 16 + cross, labelRoom: 0 };
+}
+
+// The desks of the bar, in a row that scrolls when there are more than fit,
+// the open one kept in view.
+function DesksRow({
+  desks,
+  radius,
+  layout,
+  innerWidth,
+  onLongPress,
+  ink,
+  inkMuted,
+  soft,
+}: {
+  desks: TopDesk[];
+  radius: number;
+  layout: DeskPillLayout;
+  innerWidth: number;
+  onLongPress?: () => void;
+  ink: string;
+  inkMuted: string;
+  soft: SoftTokens | null;
+}) {
+  const scroll = useRef<ScrollView>(null);
+  const activeIndex = Math.max(0, desks.findIndex((d) => d.active));
+  const total = (desks.length - 1) * (PILL_W + CUT) + layout.width;
+  const overflows = total > innerWidth + 1;
+  // The closed desks before it are all squares, so where it starts is
+  // known without measuring.
+  const activeAt = activeIndex * (PILL_W + CUT);
+  useEffect(() => {
+    if (!overflows) {
+      scroll.current?.scrollTo({ x: 0, animated: false });
+      return;
+    }
+    // After the desk has opened out (its width animates).
+    const timer = setTimeout(
+      () => scroll.current?.scrollTo({ x: Math.max(0, activeAt - (innerWidth - layout.width) / 2), animated: true }),
+      280
+    );
+    return () => clearTimeout(timer);
+  }, [overflows, activeAt, innerWidth, layout.width]);
+  return (
+    <ScrollView
+      ref={scroll}
+      horizontal
+      scrollEnabled={overflows}
+      showsHorizontalScrollIndicator={false}
+      style={styles.desksScroll}
+      contentContainerStyle={styles.desksRow}
+    >
+      {desks.map((desk) => (
+        <DeskPill
+          key={desk.key}
+          radius={radius}
+          layout={layout}
+          desk={desk}
+          onLongPress={onLongPress}
+          ink={ink}
+          inkMuted={inkMuted}
+          soft={soft}
+        />
+      ))}
+    </ScrollView>
+  );
+}
+
 function DeskPill({
   radius,
-  showName,
+  layout,
   desk,
-  openWidth,
   onLongPress,
   ink,
   inkMuted,
   soft,
 }: {
   radius: number;
-  showName: boolean;
+  layout: DeskPillLayout;
   desk: TopDesk;
-  openWidth: number;
   onLongPress?: () => void;
   ink: string;
   inkMuted: string;
@@ -596,19 +678,22 @@ function DeskPill({
   // closed ones nothing at all - no glass piece for each.
   soft: SoftTokens | null;
 }) {
-  const target = desk.active ? openWidth : PILL_W;
+  const target = desk.active ? layout.width : PILL_W;
   const width = useSharedValue(target);
   useEffect(() => {
     width.value = withTiming(target, { duration: 260, easing: Easing.inOut(Easing.cubic) });
   }, [target, width]);
   const pillStyle = useAnimatedStyle(() => ({ width: width.value }));
   // How open, 0..1 - the label's room and how visible it is.
+  const showName = layout.mode !== 'icon';
+  const labelRoom = layout.labelRoom;
+  const openTo = layout.width;
   const labelStyle = useAnimatedStyle(() => {
-    const open = showName ? interpolate(width.value, [PILL_W, openWidth], [0, 1], Extrapolation.CLAMP) : 0;
+    const open = showName ? interpolate(width.value, [PILL_W, Math.max(PILL_W + 1, openTo)], [0, 1], Extrapolation.CLAMP) : 0;
     return {
       // The room left beside the icon once fully open (icon, the gap,
-      // a little air each side), handed out as the desk opens.
-      maxWidth: open * Math.max(0, openWidth - 21 - 8 - 16),
+      // a little air each side and the cross), handed out as it opens.
+      maxWidth: open * labelRoom,
       marginLeft: 8 * open,
       opacity: open,
     };
@@ -635,7 +720,7 @@ function DeskPill({
             />
           )}
           <Animated.View style={[styles.labelBox, labelStyle]}>
-            <Text numberOfLines={1} ellipsizeMode="clip" style={[styles.label, { color: ink }, soft && styles.softLabel]}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.label, { color: ink }, soft && styles.softLabel]}>
               {desk.label}
             </Text>
           </Animated.View>
@@ -825,6 +910,15 @@ const styles = StyleSheet.create({
   },
   clip: {
     overflow: 'hidden',
+  },
+  // The desks' row inside the plate: a scroll, so many desks never push
+  // anything out; its pieces stand CUT apart as they always did.
+  desksScroll: {
+    flex: 1,
+  },
+  desksRow: {
+    gap: CUT,
+    height: PIECE_H,
   },
   labelBox: {
     overflow: 'hidden',

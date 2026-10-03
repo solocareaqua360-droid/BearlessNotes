@@ -1,4 +1,4 @@
-import { ComponentType, useMemo, useState } from 'react';
+import { ComponentType, useEffect, useMemo, useState } from 'react';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
@@ -9,7 +9,8 @@ import FloatingIslandTabBar from '../components/FloatingIslandTabBar';
 import CalendarDrawer, { DatabasesLayer, SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
 import { SideDrawersProvider, useSideDrawers } from './sideDrawers';
 import { deskScreenFor } from './tabScreens';
-import { DeskContext, DesksControlContext, useDesks } from './desks';
+import { registerDeskNode } from './deskShots';
+import { DeskContext, DesksControlContext, registerDesks, useDesks } from './desks';
 
 // Material top tabs, not bottom tabs: the navigator the desks were built
 // on when they were swiped between. Its "top" is nominal here; the tab
@@ -24,6 +25,11 @@ const Tab = createMaterialTopTabNavigator();
 export default function Tabs() {
   const { desks, setDesks } = useDesks();
   const control = useMemo(() => ({ desks, setDesks }), [desks, setDesks]);
+  // Told to the rest of the app, which sends people to desks by name.
+  useEffect(() => {
+    registerDesks(control);
+    return () => registerDesks(null);
+  }, [control]);
   return (
     <DesksControlContext.Provider value={control}>
       <SideDrawersProvider>
@@ -34,11 +40,14 @@ export default function Tabs() {
 }
 
 // One desk: its database, told it is a desk and where its way back goes.
+// Its wrapper is what the tab switcher photographs (navigation/deskShots).
 function DeskHost({
+  deskKey,
   component: Component,
   props,
   back,
 }: {
+  deskKey: string;
   component: ComponentType<any>;
   props?: Record<string, unknown>;
   back: (() => void) | null;
@@ -46,7 +55,9 @@ function DeskHost({
   const value = useMemo(() => ({ back }), [back]);
   return (
     <DeskContext.Provider value={value}>
-      <Component {...props} />
+      <View ref={(node) => registerDeskNode(deskKey, node)} collapsable={false} style={styles.fill}>
+        <Component {...props} />
+      </View>
     </DeskContext.Provider>
   );
 }
@@ -233,6 +244,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
                 >
                   {({ navigation }) => (
                     <DeskHost
+                      deskKey={name}
                       component={screen.component}
                       props={screen.props}
                       back={previous ? () => navigation.navigate(previous) : null}
