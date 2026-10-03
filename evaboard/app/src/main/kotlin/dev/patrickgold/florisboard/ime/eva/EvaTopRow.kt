@@ -21,10 +21,11 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -105,41 +106,47 @@ fun EvaTopRowUi() {
 
     val visible by prefs.keyboard.evaTopRowVisible.observeAsState()
     if (!visible) return
+    val gapFraction = evaSplitGapFraction()
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        // On a wide screen the row splits like the letters below (EvaSplit): the slots are laid out
+        // over the width minus the gap, and the gap opens before the first slot right of the middle.
+        val gap = maxWidth * gapFraction
+        val slotWidth = (maxWidth - gap) / EvaTopRow.SLOTS
         // A digit key is as tall as a letter key is wide: the slot width minus the side margins,
         // plus the top and bottom margins around it.
-        val rowHeight = (maxWidth / EvaTopRow.SLOTS) - (keyMarginH * 2).dp + (keyMarginV * 2).dp
+        val rowHeight = slotWidth - (keyMarginH * 2).dp + (keyMarginV * 2).dp
         SideEffect { EvaTopRow.rowHeight.value = rowHeight }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(rowHeight),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Slot {
+        val slots: List<@Composable () -> Unit> = buildList {
+            add {
                 SwitchKey(showIcons) {
                     if (showIcons) keyboardManager.activeState.isActionsOverflowVisible = false
                     EvaTopRow.showIcons.value = !showIcons
                 }
             }
             if (showIcons) {
-                IconKeys()
+                addAll(iconKeySlots())
             } else {
-                for (digit in "1234567890") {
-                    Slot { DigitKey(digit) }
+                for (digit in "1234567890") add { DigitKey(digit) }
+            }
+        }
+        // slots whose centre lies left of the middle stay left of the gap
+        val leftCount = (0 until EvaTopRow.SLOTS).count { (it + 0.5f) < EvaTopRow.SLOTS / 2f }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(rowHeight),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            slots.forEachIndexed { index, slot ->
+                if (gap > 0.dp && index == leftCount) Spacer(modifier = Modifier.width(gap))
+                Box(
+                    modifier = Modifier.width(slotWidth).fillMaxHeight(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    slot()
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun RowScope.Slot(content: @Composable () -> Unit) {
-    Box(
-        modifier = Modifier.weight(1f).fillMaxHeight(),
-        contentAlignment = Alignment.Center,
-    ) {
-        content()
     }
 }
 
@@ -177,8 +184,12 @@ private val ActionIconSize = 26.dp
  * The toolbar icons, each on a key of its own above its own letter column. There is one icon
  * fewer than places, so the last key stays empty.
  */
+/**
+ * The toolbar icons, each on a key of its own above its own letter column. There is one icon
+ * fewer than places, so the last key stays empty.
+ */
 @Composable
-private fun RowScope.IconKeys() {
+private fun iconKeySlots(): List<@Composable () -> Unit> {
     val context = LocalContext.current
     val keyboardManager by context.keyboardManager()
     val prefs by FlorisPreferenceStore
@@ -192,15 +203,14 @@ private fun RowScope.IconKeys() {
             .filter { (it as? QuickAction.InsertKey)?.data?.code != KeyCode.VOICE_INPUT }
             .take(places - 2) + ToggleOverflowPanelAction
     }
-    for (index in 0 until places) {
-        Slot {
-            val action = actions.getOrNull(index)
-            if (action == null) {
-                EvaKey(code = KeyCode.UNSPECIFIED) {}
-            } else {
-                ActionKey(action, evaluator)
-            }
+    return (0 until places).map { index ->
+        val action = actions.getOrNull(index)
+        val slot: @Composable () -> Unit = if (action == null) {
+            { EvaKey(code = KeyCode.UNSPECIFIED) {} }
+        } else {
+            { ActionKey(action, evaluator) }
         }
+        slot
     }
 }
 

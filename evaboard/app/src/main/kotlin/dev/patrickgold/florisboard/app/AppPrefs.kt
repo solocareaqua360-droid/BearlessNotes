@@ -505,6 +505,11 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__eva_screenshots_to_clipboard",
             default = false,
         )
+        // evaBoard: split keyboard on wide screens (the Fold's inner screen), ime/eva/EvaSplit.kt
+        val evaSplit = boolean(
+            key = "keyboard__eva_split",
+            default = true,
+        )
         val evaNavLeftMic = boolean(
             key = "keyboard__eva_nav_left_mic",
             default = false,
