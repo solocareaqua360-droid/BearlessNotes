@@ -25,7 +25,7 @@ object EvaIcons {
      * at the same size, Lucide looks about a tenth to a seventh bigger, so every icon is shrunk
      * inside its frame by this factor: "26dp" then looks the way 26dp looked before Lucide.
      */
-    private const val FRAME_FILL = 0.86f
+    private const val FRAME_FILL = 0.76f
 
     /** The Lucide icon [name] as a 24x24 outline ImageVector (tinted by whoever draws it). */
     fun lucide(name: String): ImageVector = cache.getOrPut(name) {
