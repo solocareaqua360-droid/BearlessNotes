@@ -7,6 +7,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Ionicons } from './icons/Ionicons';
 import { openCapture } from './CaptureWindow';
+import { openDeskSwitcher, useDeskSwitcherAvailable } from '../navigation/deskSwitcherBus';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Rect } from 'react-native-svg';
 import { GlassPortal } from './GlassPortal';
@@ -804,6 +805,8 @@ export default function ContextDock() {
   // папки" (2026-10-02): the dock's own hold used to open it, and then
   // nothing did. Making a folder moved to the "⋯" menus.
   const beads = withChatHold(useNavDockBeads());
+  // The experiment: a round button for the open desks, left of the search.
+  const switcherAvailable = useDeskSwitcherAvailable();
   // Declared, not inferred - see useDockWide's own comment. A screen that
   // publishes neither bead while asking for this reads as "give the
   // middle the room those slots would have held", whether or not it also
@@ -2246,6 +2249,19 @@ export default function ContextDock() {
             softRide,
           ]}
         >
+          {/* THE OPEN DESKS (an experiment, user 2026-10-03): the same round
+              bead as the one on the right, left of the search - wherever
+              nothing else stands there (not while searching, not where
+              the left is a round button of its own). */}
+          {switcherAvailable && !dockSearch && !left?.round && (
+            <Pressable
+              onPress={openDeskSwitcher}
+              accessibilityLabel="Відкриті вкладки"
+              style={[styles.softButton, surface, { width: TWO_BEAD }]}
+            >
+              <Ionicons name="copy-outline" size={21} color={soft.ink} />
+            </Pressable>
+          )}
           {dockSearch ? (
             <SoftSearchField key={dockSearch.placeholder} search={dockSearch} soft={soft} height={TWO_BEAD} />
           ) : left?.round ? (

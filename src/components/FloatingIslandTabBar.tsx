@@ -7,6 +7,7 @@ import { openCapture } from './CaptureWindow';
 import { DesksControlContext, START_DESK, deskFace } from '../navigation/desks';
 import { captureDesk, forgetDesk, useDeskShots } from '../navigation/deskShots';
 import DeskSwitcher from './DeskSwitcher';
+import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
 
@@ -179,6 +180,16 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   );
 
   const barUp = tabsFocused && !onBoard && topNavOn;
+  // The dock's round button opens the same switcher (deskSwitcherBus) while
+  // the desks are what is in front.
+  const openSwitcherRef = useRef(openSwitcher);
+  openSwitcherRef.current = openSwitcher;
+  const switcherReachable = barUp && !!deskControl;
+  useEffect(() => {
+    if (!switcherReachable) return;
+    registerDeskSwitcher(() => openSwitcherRef.current());
+    return () => registerDeskSwitcher(null);
+  }, [switcherReachable]);
   if (!barUp) return null;
   return (
     <>
