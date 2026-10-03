@@ -83,6 +83,7 @@ fun SnyggBox(
             modifier = modifier
                 .snyggMargin(style)
                 .snyggShadow(style)
+                .snyggEdge(style)
                 .snyggBorder(style)
                 .snyggBackground(style, allowClip = allowClip)
                 .then(clickAndSemanticsModifier)

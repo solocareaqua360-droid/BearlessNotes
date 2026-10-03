@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,6 +74,7 @@ import dev.patrickgold.florisboard.ime.popup.rememberPopupUiController
 import dev.patrickgold.florisboard.ime.text.gestures.GlideTypingGesture
 import dev.patrickgold.florisboard.ime.text.gestures.SwipeAction
 import dev.patrickgold.florisboard.ime.text.gestures.SwipeGesture
+import dev.patrickgold.florisboard.editorInstance
 import dev.patrickgold.florisboard.ime.editor.ImeOptions
 import dev.patrickgold.florisboard.ime.eva.evaShortLanguage
 import dev.patrickgold.florisboard.ime.text.key.KeyCode
@@ -317,6 +319,14 @@ private fun TextKeyButton(
     desiredKey: TextKey,
     debugShowTouchBoundaries: Boolean,
 ) = with(LocalDensity.current) {
+    // evaBoard: like the iPhone, Enter is coloured only once the field has text
+    val editorInstance by LocalContext.current.editorInstance()
+    val fieldHasText = if (key.computedData.code == KeyCode.ENTER) {
+        val content by editorInstance.activeContentFlow.collectAsState()
+        content.text.isNotEmpty()
+    } else {
+        false
+    }
     val attributes = buildMap<String, Any> {
         put(FlorisImeUi.Attr.Code, key.computedData.code)
         put(FlorisImeUi.Attr.Mode, evaluator.keyboard.mode.toString())
@@ -326,7 +336,7 @@ private fun TextKeyButton(
             val imeOptions = evaluator.editorInfo.imeOptions
             val newline = imeOptions.flagNoEnterAction || evaluator.editorInfo.inputAttributes.flagTextMultiLine ||
                 imeOptions.action == ImeOptions.Action.NONE || imeOptions.action == ImeOptions.Action.UNSPECIFIED
-            put("enter", if (newline) "newline" else "action")
+            put("enter", if (newline || !fieldHasText) "newline" else "action")
         }
     }
     val selector = when {

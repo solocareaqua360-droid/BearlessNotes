@@ -552,7 +552,7 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
         val heightFactorPortrait = int(
             key = "keyboard__height_factor_portrait",
-            default = 100,
+            default = 112, // evaBoard: keys taller than wide, like the iPhone's
         )
         val heightFactorLandscape = int(
             key = "keyboard__height_factor_landscape",
@@ -564,7 +564,7 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
         val keySpacingHorizontal = float(
             key = "keyboard__key_spacing_horizontal",
-            default = 2.0f,
+            default = 3.0f, // evaBoard: more air between keys, like the iPhone's
         )
         val bottomOffsetPortrait = int(
             key = "keyboard__bottom_offset_portrait",

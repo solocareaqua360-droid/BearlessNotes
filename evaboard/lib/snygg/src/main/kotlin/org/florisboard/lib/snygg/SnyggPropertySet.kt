@@ -125,6 +125,7 @@ data class SnyggSinglePropertySet internal constructor(
 
     val shadowColor = properties[Snygg.ShadowColor] ?: SnyggUndefinedValue
     val shadowElevation = properties[Snygg.ShadowElevation] ?: SnyggUndefinedValue
+    val edgeColor = properties[Snygg.EdgeColor] ?: SnyggUndefinedValue
 
     val shape = properties[Snygg.Shape] ?: SnyggUndefinedValue
     val clip = properties[Snygg.Clip] ?: SnyggUndefinedValue

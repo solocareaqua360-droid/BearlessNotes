@@ -79,7 +79,11 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
+import dev.patrickgold.florisboard.ime.eva.EvaBlur
 import dev.patrickgold.florisboard.ime.eva.EvaNavStripLayer
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.isSpecified
+import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -135,7 +139,6 @@ import org.florisboard.lib.kotlin.collectIn
 import org.florisboard.lib.snygg.ui.SnyggBox
 import org.florisboard.lib.snygg.ui.SnyggButton
 import org.florisboard.lib.snygg.ui.SnyggRow
-import org.florisboard.lib.snygg.ui.SnyggSurfaceView
 import org.florisboard.lib.snygg.ui.SnyggText
 import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
 
@@ -303,10 +306,45 @@ class FlorisImeService : LifecycleInputMethodService() {
         setTheme(R.style.FlorisImeTheme)
     }
 
+    // evaBoard: Android tells us when blur behind windows is available (Android 12+)
+    private val evaBlurListener = java.util.function.Consumer<Boolean> { enabled ->
+        EvaBlur.enabled.value = enabled
+        updateEvaBlur()
+    }
+
+    /**
+     * evaBoard: asks Android to blur what lies behind the keyboard - only behind the keyboard,
+     * not the whole (full-height) IME window: the blur follows the window background's
+     * outline, so the background is a drawable inset to the keyboard's own area.
+     */
+    private fun updateEvaBlur() {
+        if (!AndroidVersion.ATLEAST_API31_S) return
+        val w = window.window ?: return
+        val windowHeight = inputWindowView?.height ?: 0
+        val top = (windowHeight - inputViewSize.height).coerceAtLeast(0)
+        if (EvaBlur.enabled.value && inputViewSize.height > 0) {
+            // Almost transparent: the drawable only shapes the blur region, the theme paints the colour.
+            val backdrop = android.graphics.drawable.InsetDrawable(
+                android.graphics.drawable.ColorDrawable(0x01000000), 0, top, 0, 0,
+            )
+            w.setBackgroundDrawable(backdrop)
+            w.setBackgroundBlurRadius((24 * resources.displayMetrics.density).toInt())
+        } else {
+            w.setBackgroundBlurRadius(0)
+            w.setBackgroundDrawable(null)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         FlorisImeServiceReference = WeakReference(this)
         WindowCompat.setDecorFitsSystemWindows(window.window!!, false)
+        if (AndroidVersion.ATLEAST_API31_S) {
+            systemServiceOrNull(WindowManager::class)?.let { wm ->
+                EvaBlur.enabled.value = wm.isCrossWindowBlurEnabled
+                wm.addCrossWindowBlurEnabledListener(mainExecutor, evaBlurListener)
+            }
+        }
         subtypeManager.activeSubtypeFlow.collectIn(lifecycleScope) { subtype ->
             val config = Configuration(resources.configuration)
             if (prefs.localization.displayKeyboardLabelsInSubtypeLanguage.get()) {
@@ -369,6 +407,9 @@ class FlorisImeService : LifecycleInputMethodService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (AndroidVersion.ATLEAST_API31_S) {
+            systemServiceOrNull(WindowManager::class)?.removeCrossWindowBlurEnabledListener(evaBlurListener)
+        }
         unregisterReceiver(wallpaperChangeReceiver)
         FlorisImeServiceReference = WeakReference(null)
         inputWindowView = null
@@ -672,7 +713,17 @@ class FlorisImeService : LifecycleInputMethodService() {
         LaunchedEffect(layoutDirection) {
             keyboardManager.activeState.layoutDirection = layoutDirection
         }
+        // evaBoard: the theme's ground is translucent for the blur behind the keyboard; while Android
+        // is not blurring, the same colour is painted solid underneath so the app does not show through.
+        val blurOn by EvaBlur.enabled.collectAsState()
+        LaunchedEffect(inputViewSize, blurOn) { updateEvaBlur() }
+        val windowStyle = rememberSnyggThemeQuery(FlorisImeUi.Window.elementName, attributes)
+        val solidGround = windowStyle.background().takeIf { it.isSpecified }?.copy(alpha = 1f)
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Box(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
+            if (!blurOn && solidGround != null) {
+                Box(modifier = Modifier.matchParentSize().background(solidGround))
+            }
             SnyggBox(
                 elementName = FlorisImeUi.Window.elementName,
                 attributes = attributes,
@@ -683,19 +734,11 @@ class FlorisImeService : LifecycleInputMethodService() {
                 clickAndSemanticsModifier = Modifier
                     // Do not remove below line or touch input may get stuck
                     .pointerInteropFilter { false },
-                supportsBackgroundImage = !AndroidVersion.ATLEAST_API30_R,
+                // evaBoard: no SurfaceView here any more (it painted the ground a second time, which a
+                // translucent ground cannot afford); inline-autofill chips are not shown by evaBoard.
+                supportsBackgroundImage = true,
                 allowClip = false,
             ) {
-                // The SurfaceView is used to render the background image under inline-autofill chips. These are only
-                // available on Android >=11, and SurfaceView causes trouble on Android 8/9, thus we render the image
-                // in the SurfaceView for Android >=11, and in the Compose View Tree for Android <=10.
-                if (AndroidVersion.ATLEAST_API30_R) {
-                    SnyggSurfaceView(
-                        elementName = FlorisImeUi.Window.elementName,
-                        attributes = attributes,
-                        modifier = Modifier.matchParentSize(),
-                    )
-                }
                 val configuration = LocalConfiguration.current
                 val bottomOffset by if (configuration.isOrientationPortrait()) {
                     prefs.keyboard.bottomOffsetPortrait
@@ -764,6 +807,7 @@ class FlorisImeService : LifecycleInputMethodService() {
                 if (evaStripActive) {
                     EvaNavStripLayer(stripHeight = evaStripHeight)
                 }
+            }
             }
         }
     }

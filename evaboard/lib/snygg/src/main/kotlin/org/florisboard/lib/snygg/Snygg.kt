@@ -72,6 +72,8 @@ object Snygg {
 
     const val ShadowColor = "shadow-color"
     const val ShadowElevation = "shadow-elevation"
+    /** evaBoard: colour of a crisp 1dp line drawn under the box (the iPhone key's "shadow"). */
+    const val EdgeColor = "edge-color"
 
     const val Shape = "shape"
     const val Clip = "clip"
@@ -184,6 +186,11 @@ object SnyggSpec : SnyggSpecDecl({
         }
         Snygg.ShadowElevation {
             add(SnyggDpSizeValue)
+        }
+        Snygg.EdgeColor {
+            add(SnyggStaticColorValue)
+            add(SnyggDynamicLightColorValue)
+            add(SnyggDynamicDarkColorValue)
         }
 
         Snygg.Shape {

@@ -31,7 +31,11 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.DefaultShadowColor
@@ -335,6 +339,23 @@ internal fun Modifier.snyggPadding(
         is SnyggPaddingValue -> this.padding(style.padding.values)
         else if (default != null) -> this.padding(default)
         else -> return this
+    }
+}
+
+/** evaBoard: a crisp 1dp line under the box in the style's edge-color, following the box's corners. */
+internal fun Modifier.snyggEdge(
+    style: SnyggSinglePropertySet,
+    shape: Shape = style.shape(),
+): Modifier {
+    val color = (style.edgeColor as? SnyggStaticColorValue)?.color ?: return this
+    return this.drawBehind {
+        val radius = (shape as? RoundedCornerShape)?.topStart?.toPx(size, this) ?: 0f
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(0f, 1.dp.toPx()),
+            size = size,
+            cornerRadius = CornerRadius(radius, radius),
+        )
     }
 }
 

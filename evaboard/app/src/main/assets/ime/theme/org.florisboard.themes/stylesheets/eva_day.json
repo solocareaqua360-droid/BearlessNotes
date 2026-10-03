@@ -5,7 +5,7 @@
     "--primary-variant": "#0062CC",
     "--secondary": "#007AFF",
     "--secondary-variant": "#0062CC",
-    "--background": "#D1D3D9",
+    "--background": "rgba(209, 211, 217, 0.82)",
     "--background-variant": "#C4C7CE",
     "--surface": "#FFFFFF",
     "--surface-variant": "#EBEBF0",
@@ -26,7 +26,8 @@
     "--key-shadow": "rgba(0,0,0,0.35)",
     "--shape": "rounded-corner(6dp, 6dp, 6dp, 6dp)",
     "--shape-variant": "rounded-corner(12dp, 12dp, 12dp, 12dp)",
-    "--shape-chip": "rounded-corner(50%, 50%, 50%, 50%)"
+    "--shape-chip": "rounded-corner(50%, 50%, 50%, 50%)",
+    "--key-edge": "rgba(0, 0, 0, 0.30)"
   },
   "window": {
     "background": "var(--background)",
@@ -35,11 +36,10 @@
   "key": {
     "background": "var(--surface)",
     "foreground": "var(--on-surface)",
-    "font-size": "22sp",
+    "font-size": "24sp",
     "shape": "var(--shape)",
-    "shadow-elevation": "1dp",
-    "shadow-color": "var(--key-shadow)",
-    "text-max-lines": "1"
+    "text-max-lines": "1",
+    "edge-color": "var(--key-edge)"
   },
   "key:pressed": {
     "background": "var(--surface-variant)",
