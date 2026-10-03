@@ -18,6 +18,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.FlorisImeService
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
@@ -64,6 +67,13 @@ object EvaTopRow {
     /** false = digits, true = icons. Back to digits every time the keyboard opens. */
     val showIcons = MutableStateFlow(false)
 
+    /**
+     * The row's height as last laid out (null before the first layout). Digit keys are square -
+     * as tall as a letter key is wide - so the height follows the keyboard width; the clipboard
+     * and emoji panels read it through FlorisImeSizing.smartbarUiHeight() to keep the same height.
+     */
+    val rowHeight = MutableStateFlow<Dp?>(null)
+
     fun resetToDigits() {
         showIcons.value = false
     }
@@ -74,24 +84,33 @@ fun EvaTopRowUi() {
     val context = LocalContext.current
     val keyboardManager by context.keyboardManager()
     val showIcons by EvaTopRow.showIcons.collectAsState()
+    val prefs by FlorisPreferenceStore
+    val keyMarginH by prefs.keyboard.keySpacingHorizontal.observeAsState()
+    val keyMarginV by prefs.keyboard.keySpacingVertical.observeAsState()
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(FlorisImeSizing.smartbarHeight),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Slot {
-            SwitchButton(showIcons) {
-                if (showIcons) keyboardManager.activeState.isActionsOverflowVisible = false
-                EvaTopRow.showIcons.value = !showIcons
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        // A digit key is as tall as a letter key is wide: the slot width minus the side margins,
+        // plus the top and bottom margins around it.
+        val rowHeight = (maxWidth / EvaTopRow.SLOTS) - (keyMarginH * 2).dp + (keyMarginV * 2).dp
+        SideEffect { EvaTopRow.rowHeight.value = rowHeight }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(rowHeight),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Slot {
+                SwitchButton(showIcons) {
+                    if (showIcons) keyboardManager.activeState.isActionsOverflowVisible = false
+                    EvaTopRow.showIcons.value = !showIcons
+                }
             }
-        }
-        if (showIcons) {
-            IconsPlate(modifier = Modifier.weight((EvaTopRow.SLOTS - 1).toFloat()))
-        } else {
-            for (digit in "1234567890") {
-                Slot { DigitKey(digit) }
+            if (showIcons) {
+                IconsPlate(modifier = Modifier.weight((EvaTopRow.SLOTS - 1).toFloat()))
+            } else {
+                for (digit in "1234567890") {
+                    Slot { DigitKey(digit) }
+                }
             }
         }
     }
