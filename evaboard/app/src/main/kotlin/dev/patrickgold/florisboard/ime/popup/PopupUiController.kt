@@ -308,6 +308,7 @@ class PopupUiController(
         )
 
         extRenderInfo = ExtRenderInfo(
+            key = key,
             elements = elements,
             baseBounds = baseBounds,
             bounds = extBounds,
@@ -485,8 +486,8 @@ class PopupUiController(
             val elemHeight = baseBounds.height * 0.4f
             // evaBoard: the menu grows out of the pressed key - one shape from the menu down to the
             // key, drawn behind the menu (whose own box has the same colour and corners, no shadow)
-            val key = baseRenderInfo?.key
-            if (key != null) {
+            val key = renderInfo.key
+            run {
                 val menu = renderInfo.bounds
                 val shapeTop = menu.top
                 val shapeBottom = key.visibleBounds.bottom
@@ -535,6 +536,7 @@ class PopupUiController(
     )
 
     data class ExtRenderInfo(
+        val key: Key,
         val elements: List<List<Element>>,
         val baseBounds: FlorisRect,
         val bounds: FlorisRect,

@@ -66,6 +66,7 @@ import dev.patrickgold.florisboard.ime.editor.OperationUnit
 import dev.patrickgold.florisboard.ime.input.InputEventDispatcher
 import dev.patrickgold.florisboard.ime.keyboard.ComputingEvaluator
 import dev.patrickgold.florisboard.ime.keyboard.FlorisImeSizing
+import dev.patrickgold.florisboard.ime.keyboard.KeyData
 import dev.patrickgold.florisboard.ime.keyboard.KeyboardMode
 import dev.patrickgold.florisboard.ime.keyboard.SpaceBarMode
 import dev.patrickgold.florisboard.ime.popup.ExceptionsForKeyCodes
@@ -278,7 +279,11 @@ fun TextKeyboardLayout(
                     val numeric = keyboard.mode == KeyboardMode.NUMERIC ||
                         keyboard.mode == KeyboardMode.PHONE || keyboard.mode == KeyboardMode.PHONE2 ||
                         keyboard.mode == KeyboardMode.NUMERIC_ADVANCED && keyType == KeyType.NUMERIC
-                    keyCode > KeyCode.SPACE && keyCode != KeyCode.CJK_SPACE && !numeric
+                    // evaBoard: the period key (the bottom row's "~right" key) opens its symbol menu
+                    // straight away on hold, with no enlarged preview first
+                    val periodKey = key.computedData.groupId == KeyData.GROUP_RIGHT &&
+                        keyboard.mode == KeyboardMode.CHARACTERS
+                    keyCode > KeyCode.SPACE && keyCode != KeyCode.CJK_SPACE && !numeric && !periodKey
                 } else {
                     true
                 }
@@ -613,7 +618,8 @@ private class TextKeyboardLayoutController(
                             false
                         }
                         KeyCode.LANGUAGE_SWITCH -> {
-                            inputEventDispatcher.sendDownUp(TextKeyData.SYSTEM_INPUT_METHOD_PICKER)
+                            // evaBoard: holding the globe picks one of evaBoard's languages, not another keyboard app
+                            inputEventDispatcher.sendDownUp(TextKeyData.SHOW_SUBTYPE_PICKER)
                             true
                         }
                         else -> {
