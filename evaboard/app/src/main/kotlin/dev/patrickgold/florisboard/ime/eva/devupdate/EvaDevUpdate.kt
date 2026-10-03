@@ -43,6 +43,9 @@ import androidx.core.content.FileProvider
 import dev.patrickgold.florisboard.BuildConfig
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.eva.EvaBlur
+import dev.patrickgold.florisboard.ime.eva.EvaScreenshots
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import dev.patrickgold.jetpref.datastore.model.observeAsState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -70,6 +73,47 @@ private sealed interface UpdateState {
     data class Available(val release: EvaRelease) : UpdateState
     data class Downloading(val percent: Int) : UpdateState
     data class Failed(val message: String) : UpdateState
+}
+
+/** evaBoard: the screenshots-to-clipboard switch; turning it on asks for the photos permission. */
+@Composable
+fun EvaScreenshotsCard(modifier: Modifier = Modifier) {
+    val prefs by FlorisPreferenceStore
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val wanted by prefs.keyboard.evaScreenshotsToClipboard.observeAsState()
+    var granted by remember { mutableStateOf(EvaScreenshots.hasPermission(context)) }
+    val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        granted = ok
+        if (ok) scope.launch { prefs.keyboard.evaScreenshotsToClipboard.set(true) }
+    }
+    Card(modifier = modifier) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Скріншоти в буфер обміну", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = when {
+                        wanted && !granted -> "Немає дозволу на фото - увімкніть ще раз"
+                        else -> "Кожен новий знімок екрана і його відредагована версія"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Switch(
+                checked = wanted && granted,
+                onCheckedChange = { on ->
+                    if (on && !EvaScreenshots.hasPermission(context)) {
+                        askPermission.launch(EvaScreenshots.permission)
+                    } else {
+                        scope.launch { prefs.keyboard.evaScreenshotsToClipboard.set(on) }
+                    }
+                },
+            )
+        }
+    }
 }
 
 /** evaBoard: the see-through ground switch, saying whether Android will also blur behind it. */

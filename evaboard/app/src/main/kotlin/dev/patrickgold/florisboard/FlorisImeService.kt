@@ -348,6 +348,7 @@ class FlorisImeService : LifecycleInputMethodService() {
         super.onCreate()
         FlorisImeServiceReference = WeakReference(this)
         WindowCompat.setDecorFitsSystemWindows(window.window!!, false)
+        dev.patrickgold.florisboard.ime.eva.EvaScreenshots.start(this)
         if (AndroidVersion.ATLEAST_API31_S) {
             systemServiceOrNull(WindowManager::class)?.let { wm ->
                 EvaBlur.enabled.value = wm.isCrossWindowBlurEnabled
@@ -416,6 +417,7 @@ class FlorisImeService : LifecycleInputMethodService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        dev.patrickgold.florisboard.ime.eva.EvaScreenshots.stop(this)
         if (AndroidVersion.ATLEAST_API31_S) {
             systemServiceOrNull(WindowManager::class)?.removeCrossWindowBlurEnabledListener(evaBlurListener)
         }

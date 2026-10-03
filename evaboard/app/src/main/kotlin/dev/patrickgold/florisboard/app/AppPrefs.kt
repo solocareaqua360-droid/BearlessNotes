@@ -495,6 +495,11 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__eva_top_row_visible",
             default = true,
         )
+        // evaBoard: every new screenshot (and its edited save) is put on the clipboard
+        val evaScreenshotsToClipboard = boolean(
+            key = "keyboard__eva_screenshots_to_clipboard",
+            default = false,
+        )
         val evaNavLeftMic = boolean(
             key = "keyboard__eva_nav_left_mic",
             default = false,

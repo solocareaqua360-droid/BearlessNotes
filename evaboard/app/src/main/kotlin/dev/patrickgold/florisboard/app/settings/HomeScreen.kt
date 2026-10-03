@@ -38,6 +38,7 @@ import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.LocalNavController
 import dev.patrickgold.florisboard.app.Routes
 import dev.patrickgold.florisboard.ime.eva.devupdate.EvaBlurCard
+import dev.patrickgold.florisboard.ime.eva.devupdate.EvaScreenshotsCard
 import dev.patrickgold.florisboard.ime.eva.devupdate.EvaDevUpdateCard
 import dev.patrickgold.florisboard.lib.compose.FlorisScreen
 import dev.patrickgold.florisboard.lib.util.InputMethodUtils
@@ -80,6 +81,7 @@ fun HomeScreen() = FlorisScreen {
         // evaBoard dev updater (TEMPORARY) - remove with ime/eva/devupdate
         EvaDevUpdateCard(modifier = Modifier.padding(8.dp))
         EvaBlurCard(modifier = Modifier.padding(8.dp))
+        EvaScreenshotsCard(modifier = Modifier.padding(8.dp))
 
         /*Card(modifier = Modifier.padding(8.dp)) {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
