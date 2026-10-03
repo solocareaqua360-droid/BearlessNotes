@@ -57,8 +57,7 @@
   },
   "key[code=10]": {
     "background": "var(--enter)",
-    "foreground": "#FFFFFF",
-    "shape": "rounded-corner(6dp, 6dp, 24dp, 6dp)"
+    "foreground": "#FFFFFF"
   },
   "key[code=10]:pressed": {
     "background": "var(--enter-pressed)",
@@ -66,8 +65,7 @@
   },
   "key[code=10][enter=`action`]": {
     "background": "var(--enter)",
-    "foreground": "#FFFFFF",
-    "shape": "rounded-corner(6dp, 6dp, 24dp, 6dp)"
+    "foreground": "#FFFFFF"
   },
   "key[code=10][enter=`action`]:pressed": {
     "background": "var(--enter-pressed)",
@@ -485,8 +483,5 @@
   "key[code=46,44,64,47]:pressed": {
     "background": "var(--special-pressed)",
     "foreground": "var(--on-surface)"
-  },
-  "key[code=-202]": {
-    "shape": "rounded-corner(6dp, 6dp, 6dp, 24dp)"
   }
 }

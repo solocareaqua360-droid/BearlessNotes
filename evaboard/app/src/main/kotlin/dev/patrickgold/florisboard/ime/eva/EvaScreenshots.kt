@@ -9,11 +9,13 @@
  * removed or limited before any public release.
  *
  * Edited screenshots replace their original: the user wants the edited version, and the
- * original only when it was never edited. When a screenshot arrives that is the same one as an
- * earlier arrival - the same media-store entry saved again, or a file whose name carries the
- * same "Screenshot_<date>_<time>" stamp - the earlier one's entry is taken out of evaBoard's
- * clipboard history. The last few file names are kept for the settings card, so a naming
- * scheme this does not recognise can be seen and added.
+ * original only when it was never edited. On the user's Samsung a screenshot is saved by
+ * com.android.systemui, and an edited one - under a new name with its own save time - by the
+ * screenshot editor, com.samsung.android.app.smartcapture. So a file saved by the editor takes
+ * the place of the last screenshot put on the clipboard (the original, or an earlier edit), if
+ * that came within EDIT_WINDOW_MS; the same media-store entry saved again replaces itself too.
+ * Two plain screenshots in a row are both kept. The last few files (name, saver, size) are
+ * listed on the settings card for checking.
  */
 
 package dev.patrickgold.florisboard.ime.eva
@@ -48,25 +50,19 @@ object EvaScreenshots {
     /** How long to wait for evaBoard's clipboard history to record a clip we just set. */
     private const val HISTORY_SETTLE_MS = 1500L
 
-    /** Screenshot identity (media id, and the name's stamp) -> its entry in the clipboard history. */
+    /** Samsung's screenshot editor: a file it saves is an edited screenshot. */
+    private const val EDITOR_PACKAGE = "com.samsung.android.app.smartcapture"
+    /** An edit replaces the previous screenshot only if that came this recently. */
+    private const val EDIT_WINDOW_MS = 10 * 60 * 1000L
+
+    /** Media id -> its entry in the clipboard history. */
     private val historyEntryById = HashMap<Long, Long>()
-    private val historyEntryByStamp = HashMap<String, Long>()
+    /** The clipboard-history entry of the last screenshot put on the clipboard, and when. */
+    private var lastEntry: Long? = null
+    private var lastEntryAt = 0L
 
     /** The last few screenshot file names seen, newest first - shown on the settings card. */
     val recentNames = MutableStateFlow<List<String>>(emptyList())
-
-    /**
-     * "Screenshot_20261003_220455_Telegram_edit.jpg" -> "Screenshot_20261003_220455": the part an
-     * edited copy keeps from its original. Null when the name does not follow that scheme.
-     */
-    internal fun stampOf(name: String): String? {
-        val parts = name.substringBeforeLast('.').split('_')
-        if (parts.size < 3) return null
-        val date = parts[1]
-        val time = parts[2].takeWhile { it.isDigit() }
-        if (date.length != 8 || !date.all { it.isDigit() } || time.length != 6) return null
-        return "${parts[0]}_${date}_$time"
-    }
 
     val permission: String
         get() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES
@@ -122,19 +118,20 @@ object EvaScreenshots {
                 // Diagnostics for the settings card: who saved the file and its size - Samsung names an
                 // edited screenshot with its own save time, so the name cannot link it to its original.
                 val info = "${cursor.getString(2) ?: ""} · ${cursor.getString(3) ?: "?"} · ${cursor.getInt(4)}x${cursor.getInt(5)}"
-                Triple(cursor.getLong(0), cursor.getLong(1), (cursor.getString(2) ?: "") to info)
+                Triple(cursor.getLong(0), cursor.getLong(1), (cursor.getString(3) ?: "") to info)
             }
         }.getOrNull() ?: return
-        val (id, modified, nameAndInfo) = found
-        val (name, info) = nameAndInfo
+        val (id, modified, ownerAndInfo) = found
+        val (owner, info) = ownerAndInfo
         val key = "$id:$modified"
         if (key == lastHandled) return
         lastHandled = key
         recentNames.value = (listOf(info) + recentNames.value.filter { it != info }).take(3)
 
         // An edit of a screenshot already on the clipboard: its original leaves the history.
-        val stamp = stampOf(name)
-        val earlierEntry = historyEntryById.remove(id) ?: stamp?.let { historyEntryByStamp.remove(it) }
+        val isEdit = owner == EDITOR_PACKAGE
+        val earlierEntry = historyEntryById.remove(id)
+            ?: lastEntry.takeIf { isEdit && System.currentTimeMillis() - lastEntryAt < EDIT_WINDOW_MS }
         if (earlierEntry != null) {
             val history = context.clipboardManager().value
             history.currentHistory.all.firstOrNull { it.id == earlierEntry }?.let {
@@ -156,7 +153,8 @@ object EvaScreenshots {
                 .maxByOrNull { it.creationTimestampMs }
                 ?: return@postDelayed
             historyEntryById[id] = entry.id
-            if (stamp != null) historyEntryByStamp[stamp] = entry.id
+            lastEntry = entry.id
+            lastEntryAt = System.currentTimeMillis()
         }, HISTORY_SETTLE_MS)
     }
 }
