@@ -723,14 +723,15 @@ class FlorisImeService : LifecycleInputMethodService() {
         // evaBoard: the theme's ground is translucent for the blur behind the keyboard; while Android
         // is not blurring, the same colour is painted solid underneath so the app does not show through.
         val blurAvailable by EvaBlur.enabled.collectAsState()
-        val blurWanted by prefs.keyboard.evaBlur.observeAsState()
-        val blurOn = blurAvailable && blurWanted
+        // The switch means "see-through ground"; blur behind is added only where Android allows it.
+        val seeThrough by prefs.keyboard.evaBlur.observeAsState()
+        val blurOn = blurAvailable && seeThrough
         LaunchedEffect(inputViewSize, blurOn) { updateEvaBlur() }
         val windowStyle = rememberSnyggThemeQuery(FlorisImeUi.Window.elementName, attributes)
         val solidGround = windowStyle.background().takeIf { it.isSpecified }?.copy(alpha = 1f)
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Box(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
-            if (!blurOn && solidGround != null) {
+            if (!seeThrough && solidGround != null) {
                 Box(modifier = Modifier.matchParentSize().background(solidGround))
             }
             SnyggBox(

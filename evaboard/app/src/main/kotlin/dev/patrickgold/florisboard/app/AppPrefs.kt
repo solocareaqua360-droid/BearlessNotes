@@ -484,8 +484,8 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
         // evaBoard: the left button of evaBoard's own bottom strip (ime/eva/EvaNavStrip.kt) -
         // false = switch keyboard, true = microphone. Swapped by holding the button.
-        // evaBoard: translucent ground with Android's blur behind it. Off by default: on the user's
-        // Samsung, Android reported blur as available yet painted everything above the keys black.
+        // evaBoard: see-through keyboard ground (the theme's translucent window colour, nothing solid
+        // under it), with Android's blur behind it where the phone allows cross-window blur.
         val evaBlur = boolean(
             key = "keyboard__eva_blur",
             default = false,

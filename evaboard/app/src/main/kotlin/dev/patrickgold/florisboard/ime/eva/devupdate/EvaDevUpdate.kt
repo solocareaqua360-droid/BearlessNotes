@@ -72,7 +72,7 @@ private sealed interface UpdateState {
     data class Failed(val message: String) : UpdateState
 }
 
-/** evaBoard: the blur-behind switch with what Android says about blur on this phone. */
+/** evaBoard: the see-through ground switch, saying whether Android will also blur behind it. */
 @Composable
 fun EvaBlurCard(modifier: Modifier = Modifier) {
     val prefs by FlorisPreferenceStore
@@ -85,9 +85,13 @@ fun EvaBlurCard(modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "Розмиття за клавіатурою", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Прозора підкладка", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = if (available) "Android дозволяє розмиття на цьому телефоні" else "Android не дозволяє розмиття на цьому телефоні",
+                    text = if (available) {
+                        "Крізь клавіатуру видно застосунок, розмито"
+                    } else {
+                        "Крізь клавіатуру видно застосунок (розмиття Android тут не дозволяє)"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
