@@ -215,9 +215,15 @@ export default function DeskSwitcher({
     [n, step, visible]
   );
 
+  // As it grows it comes down towards the middle of the screen, where a
+  // thumb can reach it - swiping along a panel up at the top edge was a
+  // stretch (2026-10-04). Its middle settles a little below the screen's.
+  const settledTop = Math.max(barTop, Math.round((height - panelH) / 2 + height * 0.04));
+  const descent = settledTop - barTop;
   const panelStyle = useAnimatedStyle(() => ({
     height: TOP_NAV_H + (panelH - TOP_NAV_H) * morph.value,
     borderRadius: TOP_NAV_H / 2 + (30 - TOP_NAV_H / 2) * morph.value,
+    transform: [{ translateY: descent * morph.value }],
   }));
   const backdropStyle = useAnimatedStyle(() => ({ opacity: morph.value }));
   // At rest the whole layer is there but not drawn (not even the bar-shaped
