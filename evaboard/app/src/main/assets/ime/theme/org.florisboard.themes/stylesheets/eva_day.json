@@ -5,7 +5,7 @@
     "--primary-variant": "#0062CC",
     "--secondary": "#007AFF",
     "--secondary-variant": "#0062CC",
-    "--background": "rgba(209, 211, 217, 0.82)",
+    "--background": "rgba(235, 235, 245, 0.8)",
     "--background-variant": "#C4C7CE",
     "--surface": "#FFFFFF",
     "--surface-variant": "#EBEBF0",

@@ -80,7 +80,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import dev.patrickgold.florisboard.ime.eva.EvaBlur
-import dev.patrickgold.florisboard.ime.eva.EvaFrost
+import dev.patrickgold.florisboard.ime.eva.evaGlass
 import androidx.compose.ui.graphics.luminance
 import dev.patrickgold.florisboard.ime.eva.EvaNavStripLayer
 import androidx.compose.foundation.background
@@ -732,7 +732,14 @@ class FlorisImeService : LifecycleInputMethodService() {
         val windowStyle = rememberSnyggThemeQuery(FlorisImeUi.Window.elementName, attributes)
         val solidGround = windowStyle.background().takeIf { it.isSpecified }?.copy(alpha = 1f)
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            Box(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
+            val dark = (solidGround?.luminance() ?: 1f) < 0.5f
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight()
+                    // evaBoard: the see-through ground is glass - rounded top corners and a faint rim
+                    .then(if (seeThrough) Modifier.evaGlass(dark) else Modifier),
+            ) {
             if (!seeThrough && solidGround != null) {
                 Box(modifier = Modifier.matchParentSize().background(solidGround))
             }
@@ -751,10 +758,6 @@ class FlorisImeService : LifecycleInputMethodService() {
                 supportsBackgroundImage = true,
                 allowClip = false,
             ) {
-                // evaBoard: no real blur on this phone, so the see-through ground gets frosted glass instead
-                if (seeThrough && !blurOn) {
-                    EvaFrost(dark = (solidGround?.luminance() ?: 1f) < 0.5f)
-                }
                 val configuration = LocalConfiguration.current
                 val bottomOffset by if (configuration.isOrientationPortrait()) {
                     prefs.keyboard.bottomOffsetPortrait
