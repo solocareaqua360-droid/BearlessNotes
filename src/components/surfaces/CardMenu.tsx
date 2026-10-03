@@ -1,4 +1,5 @@
 import { MOTION } from '../../theme/desktopTheme';
+import { NO_WINDOW_DRAG } from '../../utils/windowDrag';
 import { useLeaving } from '../../hooks/useLeaving';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -81,7 +82,7 @@ export default function CardMenu({
     return (
       <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
         <Pressable
-          style={[styles.scrim, !anchor && { backgroundColor: 'rgba(0,0,0,0.12)' }]}
+          style={[styles.scrim, !anchor && { backgroundColor: 'rgba(0,0,0,0.12)' }, NO_WINDOW_DRAG]}
           onPress={onClose}
           {...({ onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}
         >

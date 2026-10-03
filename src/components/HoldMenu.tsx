@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { NO_WINDOW_DRAG } from '../utils/windowDrag';
 import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, SlideInLeft, SlideInRight, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -203,7 +204,7 @@ export default function HoldMenu({
 
   return (
     <GlassPortal>
-      <View style={styles.layer}>
+      <View style={[styles.layer, NO_WINDOW_DRAG]}>
         <Animated.View style={[StyleSheet.absoluteFill, dimMotion]} pointerEvents="none">
           <BlurView
             intensity={40}

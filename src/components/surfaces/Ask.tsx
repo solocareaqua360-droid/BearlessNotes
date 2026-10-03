@@ -1,4 +1,5 @@
 import { MOTION } from '../../theme/desktopTheme';
+import { NO_WINDOW_DRAG } from '../../utils/windowDrag';
 import { useLift } from '../../theme/ThemeProvider';
 import { useEffect, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -379,7 +380,7 @@ function MacAlert({
     );
   };
   return (
-    <View style={styles.alertFrame} pointerEvents="box-none">
+    <View style={[styles.alertFrame, NO_WINDOW_DRAG]} pointerEvents="box-none">
       <View style={styles.alertDim} />
       <View
         {...({ dataSet: leaving ? { fadeOut: '1', origin: 'center' } : { fadeIn: '1', origin: 'center' } } as object)}
@@ -437,7 +438,7 @@ function AskPopover({
   const left = at ? Math.max(8, Math.min(at.x, width - MENU_W - 8)) : Math.max(8, (width - MENU_W) / 2);
   const top = at ? Math.max(8, Math.min(at.y, height - estimate - 8)) : Math.max(8, (height - estimate) / 2);
   return (
-    <View style={styles.popoverFrame} pointerEvents="box-none">
+    <View style={[styles.popoverFrame, NO_WINDOW_DRAG]} pointerEvents="box-none">
       {/* A sheet that catches the click away - and the second right click,
           which closes this menu instead of opening the browser's. */}
       <Pressable

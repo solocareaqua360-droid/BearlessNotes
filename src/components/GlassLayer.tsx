@@ -1,4 +1,5 @@
 import { MOTION } from '../theme/desktopTheme';
+import { NO_WINDOW_DRAG } from '../utils/windowDrag';
 import { useLeaving } from '../hooks/useLeaving';
 import { ReactNode, useEffect, useRef } from 'react';
 import { BackHandler, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
@@ -75,7 +76,7 @@ export default function GlassLayer({
 
   return (
     <GlassPortal>
-    <View style={styles.layer}>
+    <View style={[styles.layer, NO_WINDOW_DRAG]}>
       {/* The blur covers the whole screen, not just the sheet: what is
           beside a sheet is as much "behind the glass" as what is under it,
           and blurring only the sheet's own rectangle looks like a cut-out. */}
