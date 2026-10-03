@@ -55,6 +55,8 @@ const PILL_W = TOP_NAV_H - 12;
 const PILL_OPEN_W = 96;
 const START_LEFT = 56;
 const OPEN_MS = 320;
+// The name's line: what it takes across the card once turned up.
+const NAME_H = 18;
 
 function widthOf(i: number, focus: number, wide: number, narrow: number): number {
   'worklet';
@@ -298,7 +300,18 @@ function Card({
   // it shuts - one angle, from how near the card is to the open one.
   const nameStyle = useAnimatedStyle(() => {
     const t = Math.max(0, 1 - Math.abs(focus.value - index));
-    return { transform: [{ rotate: `${-90 * (1 - t)}deg` }], opacity: morph.value };
+    // The card's own width now, as the card is drawn.
+    const w = startWidth + (widthOf(index, focus.value, wide, narrow) - startWidth) * morph.value;
+    // Turned up (a quarter turn about its bottom-left corner), the name
+    // stands to the LEFT of that corner by its own height: so where the
+    // corner is put decides where it stands - 12 from the edge when the
+    // card is open, and in the middle of the card when it is shut.
+    const shut = (w + NAME_H) / 2;
+    return {
+      left: 12 + (1 - t) * (shut - 12),
+      transform: [{ rotate: `${-90 * (1 - t)}deg` }],
+      opacity: morph.value,
+    };
   });
   const shadeStyle = useAnimatedStyle(() => {
     const t = Math.max(0, 1 - Math.abs(focus.value - index));
@@ -312,7 +325,7 @@ function Card({
     <Animated.View style={[styles.card, { backgroundColor: S.ink }, cardStyle]}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onTap} accessibilityLabel={desk.label}>
         {/* A fixed-width picture, centred: a narrow card is a slit onto it. */}
-        <Animated.View style={[styles.picture, { width: wide }, faceStyle]} pointerEvents="none">
+        <Animated.View style={[styles.picture, { width: wide, marginLeft: -wide / 2 }, faceStyle]} pointerEvents="none">
           {desk.shot ? (
             <Image source={{ uri: desk.shot }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : (
@@ -332,7 +345,7 @@ function Card({
             <Ionicons name={desk.icon as never} size={20} color="#fff" />
           </Animated.View>
         </View>
-        <Animated.View style={[styles.name, nameStyle]} pointerEvents="none">
+        <Animated.View style={[styles.name, { width: bodyHeight - 24 }, nameStyle]} pointerEvents="none">
           <Text style={styles.nameText} numberOfLines={1}>
             {desk.label}
           </Text>
@@ -362,10 +375,13 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center' },
   // Anchored at the bottom-left corner: turned up, the name runs up the
   // card's edge from there.
+  // A long box of its own (the card's height): a name turned up must not be
+  // cut to the card's WIDTH before it is turned.
   name: { position: 'absolute', left: 12, bottom: 12, transformOrigin: 'left bottom' } as never,
   nameText: {
     color: '#fff',
     fontSize: 15,
+    lineHeight: NAME_H,
     fontFamily: SOFT_SEMIBOLD,
     textShadowColor: 'rgba(0,0,0,0.4)',
     textShadowRadius: 4,
