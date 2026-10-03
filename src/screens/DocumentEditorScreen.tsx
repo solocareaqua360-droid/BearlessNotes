@@ -1161,9 +1161,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // versions from the server count: a snapshot carrying this device's
   // own pending write is an echo, and one from the cache is what we
   // already loaded.
+  //
+  // With the metadata changes too (2026-10-03): a write made on THIS phone
+  // by another screen - a task made from the start desk, «Сьогодні» from a
+  // save sheet - reaches this listener first as a pending write (ignored
+  // below) and then as the server's confirmation, which carries the same
+  // data and so, without this option, is never delivered at all. The open
+  // day page of the calendar then went on showing the day without it, and
+  // its next autosave would have written over it.
   useEffect(() => {
     if (!isLoaded) return;
-    return onSnapshot(doc(db, 'documents', documentId), (snapshot) => {
+    return onSnapshot(doc(db, 'documents', documentId), { includeMetadataChanges: true }, (snapshot) => {
       if (snapshot.metadata.hasPendingWrites || snapshot.metadata.fromCache) return;
       const data = snapshot.data();
       if (!data) return;
