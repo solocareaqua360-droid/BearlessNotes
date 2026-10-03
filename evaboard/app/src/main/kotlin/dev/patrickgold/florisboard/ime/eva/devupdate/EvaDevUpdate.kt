@@ -97,10 +97,18 @@ fun EvaScreenshotsCard(modifier: Modifier = Modifier) {
                 Text(
                     text = when {
                         wanted && !granted -> "Немає дозволу на фото - увімкніть ще раз"
-                        else -> "Кожен новий знімок екрана і його відредагована версія"
+                        else -> "Кожен новий знімок; відредагований замінює свій оригінал"
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                // The last file names seen - shows which naming an edited save uses.
+                val recent by EvaScreenshots.recentNames.collectAsState()
+                if (wanted && recent.isNotEmpty()) {
+                    Text(
+                        text = "Останні: " + recent.joinToString(", "),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
             Switch(
                 checked = wanted && granted,
