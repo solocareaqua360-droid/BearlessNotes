@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTileOpened } from '../navigation/recentPlaces';
 import { useInnerBack } from '../navigation/innerBack';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -41,6 +42,8 @@ type Sheet = DocumentItem & { calendarDate?: string };
 // test the "filled days" dots use). No tags and no projects: calendar
 // days deliberately carry neither.
 export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
+  // In front: the start desk's recents.
+  useTileOpened('diary');
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();

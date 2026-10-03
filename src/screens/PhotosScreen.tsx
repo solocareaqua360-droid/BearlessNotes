@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTileOpened } from '../navigation/recentPlaces';
 import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useFolderHold } from '../components/FolderHoldMenu';
 import { useOpenRequest } from '../utils/openRequest';
@@ -115,6 +116,8 @@ type PhotoItem = {
 };
 
 export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
+  // In front: the start desk's recents.
+  useTileOpened('photos');
   const { width: windowWidth } = useWindowDimensions();
   // The laptop's folders stand two across, not one under another.
   const pointerFolders = useDensity() === 'pointer' ? 2 : undefined;

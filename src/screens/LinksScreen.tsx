@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTileOpened } from '../navigation/recentPlaces';
 import { useFolderHold } from '../components/FolderHoldMenu';
 import BinRestoreRows from '../components/BinRestoreRows';
 import { useOpenRequest } from '../utils/openRequest';
@@ -186,6 +187,8 @@ export default function LinksScreen({
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const category = categoryProp ?? route?.params.category ?? 'other';
+  // In front: the start desk's recents (geo, YouTube / TikTok, links).
+  useTileOpened(category === 'geo' ? 'geo' : category === 'video' ? 'video' : 'links');
   // Neither grid nor list here left room for the dock at the bottom of
   // their own scroll content - "прокрутки застрягає на останніх картках
   // за доком", the same gap Boards/Chat/Databases already closed with

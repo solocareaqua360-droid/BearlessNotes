@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // WHAT WAS OPENED LATELY, on this device only: a document, a board, a file,
@@ -53,4 +54,13 @@ export function useNoteOpened(kind: RecentKind, ref: string | undefined, enabled
   useEffect(() => {
     if (enabled && ref) noteOpened(kind, ref);
   }, [kind, ref, enabled]);
+}
+
+// A built-in database (tasks, photos, files, stickers, flashcards, the
+// diary, the three kinds of link) is open while its screen is in front.
+// Kept as `tile:<key>` so it can never be taken for a database of the
+// user's own, whose ref is its id.
+export function useTileOpened(tileKey: string) {
+  const focused = useIsFocused();
+  useNoteOpened('database', `tile:${tileKey}`, focused);
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTileOpened } from '../navigation/recentPlaces';
 import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useFolderHold } from '../components/FolderHoldMenu';
 import BinRestoreRows from '../components/BinRestoreRows';
@@ -115,6 +116,8 @@ type FileItem = {
 // since the two versions have nothing else in common.
 
 export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
+  // In front: the start desk's recents.
+  useTileOpened('files');
   const theme = useTheme();
   const accent = theme.sections.files;
   const accentGlass = withAlpha(accent, 0.55);

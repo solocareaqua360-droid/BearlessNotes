@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTileOpened } from '../navigation/recentPlaces';
 import { INK } from '../utils/sketchGeometry';
 import SketchLayer from '../components/SketchLayer';
 import { softCardFrame, softenStyles, softRecordColours, useSoftDatabase, type SoftTokens } from '../theme/soft';
@@ -64,6 +65,8 @@ export default function StickersScreen({
   route,
   inPane,
 }: Partial<Props> & { inPane?: boolean } = {}) {
+  // In front: the start desk's recents.
+  useTileOpened('stickers');
   const theme = useTheme();
   // Soft on a phone, as the database chrome around it is (theme/soft).
   const softDb = useSoftDatabase();

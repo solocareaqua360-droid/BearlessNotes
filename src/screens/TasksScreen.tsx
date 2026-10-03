@@ -1,4 +1,5 @@
 import { DeskContext } from '../navigation/desks';
+import { useTileOpened } from '../navigation/recentPlaces';
 import ScreenGround from '../components/ScreenGround';
 import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
@@ -160,6 +161,8 @@ function kanbanColumnWidthFor(screenWidth: number): number {
 }
 
 export default function TasksScreen() {
+  // In front: the start desk's recents.
+  useTileOpened('tasks');
   const theme = useTheme();
   const accent = theme.sections.tasks;
   // Soft on a phone, as the database chrome around it is (theme/soft).

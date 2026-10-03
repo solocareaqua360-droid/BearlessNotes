@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTileOpened } from '../navigation/recentPlaces';
 import { useOpenRequest } from '../utils/openRequest';
 import TurningPressable from '../components/TurningPressable';
 import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
@@ -60,6 +61,8 @@ import { formatUpdatedAt } from '../utils/documentPreview';
 // the learned ones can be left out of the stack. It is a switch on the
 // deck, not on the database: "як опція для певної групи карток".
 export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) {
+  // In front: the start desk's recents.
+  useTileOpened('flashcards');
   const theme = useTheme();
   // Soft on a phone, as the database chrome around it is (theme/soft).
   const softDb = useSoftDatabase();

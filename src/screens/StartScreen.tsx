@@ -15,7 +15,9 @@ import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useChromeStyle, useDockBeads, useTopBack } from '../navigation/navDock';
 import { useSideDrawers } from '../navigation/sideDrawers';
-import { BOARDS_DESK, DesksControlContext, PERMANENT_DESK } from '../navigation/desks';
+import { BOARDS_DESK, DesksControlContext, PERMANENT_DESK, deskFace } from '../navigation/desks';
+import { GRID_TILES, WIDE_TILES, openDatabaseTile } from '../constants/databaseTiles';
+import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { whenDeskIsThere } from '../navigation/deskRegistry';
 import { requestCreate } from '../navigation/startCreate';
 import { navigationRef } from '../navigationRef';
@@ -170,6 +172,13 @@ export default function StartScreen() {
     else if (place.kind === 'file') {
       requestOpen('files', place.ref);
       go('Files');
+    } else if (place.ref.startsWith('tile:')) {
+      // A built-in database: its desk when it is one, else its own screen.
+      const tileKey = place.ref.slice('tile:'.length);
+      const key = `db:${tileKey}`;
+      const tile = [...WIDE_TILES, ...GRID_TILES].find((t) => t.key === tileKey);
+      if (desksControl?.desks.includes(key)) go('Tabs', { screen: key });
+      else if (tile && navigationRef.isReady()) openDatabaseTile(navigationRef as never, tile);
     } else {
       const key = `db:custom:${place.ref}`;
       if (desksControl?.desks.includes(key)) go('Tabs', { screen: key });
@@ -225,6 +234,7 @@ export default function StartScreen() {
                   if (place.kind === 'document') return <RecentDocument key={`d:${place.ref}`} id={place.ref} onPress={press} />;
                   if (place.kind === 'board') return <RecentBoard key={`b:${place.ref}`} id={place.ref} onPress={press} />;
                   if (place.kind === 'file') return <RecentFile key={`f:${place.ref}`} id={place.ref} onPress={press} />;
+                  if (place.ref.startsWith('tile:')) return <RecentTile key={`x:${place.ref}`} tileKey={place.ref.slice(5)} onPress={press} />;
                   return <RecentDatabase key={`x:${place.ref}`} id={place.ref} onPress={press} />;
                 })}
               </ScrollView>
@@ -355,6 +365,20 @@ function RecentFile({ id, onPress }: { id: string; onPress: () => void }) {
     <RecentFrame onPress={onPress} label={name} icon="document-outline">
       <View style={styles.cardCenter}>
         <Ionicons name={fileIconFor(data.fileName ?? name) as never} size={42} color={fileIconColorFor(data.fileName ?? name)} />
+      </View>
+    </RecentFrame>
+  );
+}
+
+// A built-in database: its own name and icon, as the desks' bar has them.
+function RecentTile({ tileKey, onPress }: { tileKey: string; onPress: () => void }) {
+  const S = useSoft();
+  const { customDatabases, iconFor } = useDatabaseTiles();
+  const face = deskFace(`db:${tileKey}`, customDatabases, iconFor);
+  return (
+    <RecentFrame onPress={onPress} label={face.label} icon={face.icon}>
+      <View style={styles.cardCenter}>
+        <Ionicons name={face.icon as never} size={40} color={S.ink2} />
       </View>
     </RecentFrame>
   );
