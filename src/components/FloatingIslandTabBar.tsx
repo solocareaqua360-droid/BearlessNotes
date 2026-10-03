@@ -5,7 +5,7 @@ import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/na
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
 import { DesksControlContext, START_DESK, deskFace } from '../navigation/desks';
-import { captureAllDesks, captureDesk, forgetDesk, setCurrentDesk, setDeskCapturePaused, useDeskShots } from '../navigation/deskShots';
+import { captureAllDesks, captureDesk, captureNotes, forgetDesk, setCurrentDesk, setDeskCapturePaused, useDeskShots } from '../navigation/deskShots';
 import DeskSwitcher from './DeskSwitcher';
 import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
 import { deskPull, deskPullEnabled } from '../navigation/deskPull';
@@ -260,6 +260,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         ...faceOf(route.name),
         active: liveIndex === index,
         shot: shots[route.name],
+        note: captureNotes.get(route.name),
         // Goes there; the panel stays until it is dismissed.
         onGo: () => desks[index].onPress(),
         onClose: deskControl && route.name !== START_DESK ? () => closeDesk(index) : undefined,

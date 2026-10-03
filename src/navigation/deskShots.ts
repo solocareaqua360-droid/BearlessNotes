@@ -25,9 +25,16 @@ const shots = new Map<string, string>();
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
-const INDEX_KEY = 'mindeva.deskShots';
+// v2: the pictures kept before the boards fix were dropped - a black one
+// would otherwise have stayed on its card for ever (2026-10-04).
+const INDEX_KEY = 'mindeva.deskShots.v2';
 const DIR = LegacyFileSystem.documentDirectory ? `${LegacyFileSystem.documentDirectory}deskShots/` : null;
 const busy = new Set<string>();
+// TEMPORARY DIAGNOSTIC (2026-10-04, the boards desk photographing black):
+// what happened on each desk's last capture - which view was used and
+// whether it failed - shown small on the panel's card so a screenshot from
+// the phone says which it is. Remove once the boards desk is solved.
+export const captureNotes = new Map<string, string>();
 
 // The pictures kept from the last run.
 AsyncStorage.getItem(INDEX_KEY)
@@ -72,8 +79,12 @@ function nodeFor(key: string): View | undefined {
 
 export async function captureDesk(key: string): Promise<void> {
   const node = nodeFor(key);
-  if (!node || busy.has(key)) return;
+  if (!node || busy.has(key)) {
+    if (!node) captureNotes.set(key, 'немає вузла');
+    return;
+  }
   busy.add(key);
+  const via = content.get(key)?.length ? `вміст(${content.get(key)!.length})` : 'обгортка';
   try {
     const tmp = await captureRef(node, { format: 'jpg', quality: 0.6, result: 'tmpfile', width: 420 });
     let uri = tmp;
@@ -85,13 +96,16 @@ export async function captureDesk(key: string): Promise<void> {
       uri = `${DIR}${safe}-${Date.now()}.jpg`;
       await LegacyFileSystem.moveAsync({ from: tmp, to: uri });
     }
+    captureNotes.set(key, `ок · ${via} · ${new Date().toLocaleTimeString().slice(0, 8)}`);
     const old = shots.get(key);
     shots.set(key, uri);
     saveIndex();
     notify();
     if (old && old !== uri && DIR && old.startsWith(DIR)) LegacyFileSystem.deleteAsync(old, { idempotent: true }).catch(() => {});
-  } catch {
+  } catch (e) {
     // Keeps the last picture it had.
+    captureNotes.set(key, `помилка · ${via} · ${String((e as Error)?.message ?? e).slice(0, 80)}`);
+    notify();
   } finally {
     busy.delete(key);
   }

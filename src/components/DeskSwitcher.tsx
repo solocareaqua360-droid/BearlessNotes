@@ -41,6 +41,8 @@ export type SwitcherDesk = {
   icon: string;
   active: boolean;
   shot?: string;
+  // TEMPORARY: what the last capture said (deskShots' captureNotes).
+  note?: string;
   // Goes to the desk (does not close the panel).
   onGo: () => void;
   onClose?: () => void;
@@ -380,6 +382,13 @@ function Card({
             <Ionicons name={desk.icon as never} size={20} color="#fff" />
           </Animated.View>
         </View>
+        {!!desk.note && (
+          <Animated.View style={[styles.note, faceStyle]} pointerEvents="none">
+            <Text style={styles.noteText} numberOfLines={4}>
+              {desk.note}
+            </Text>
+          </Animated.View>
+        )}
         <Animated.View style={[styles.name, { width: bodyHeight - 24 }, nameStyle]} pointerEvents="none">
           <Text style={styles.nameText} numberOfLines={1}>
             {desk.label}
@@ -453,6 +462,8 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
   },
   closeSpot: { position: 'absolute', right: 8, top: 5 },
+  note: { position: 'absolute', left: 8, right: 8, top: 44, padding: 6, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.6)' },
+  noteText: { color: '#fff', fontSize: 11 },
   close: {
     width: 30,
     height: 30,
