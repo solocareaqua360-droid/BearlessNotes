@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,6 +52,7 @@ import org.florisboard.lib.snygg.ui.SnyggBox
 import org.florisboard.lib.snygg.ui.SnyggColumn
 import org.florisboard.lib.snygg.ui.SnyggIcon
 import org.florisboard.lib.snygg.ui.SnyggRow
+import org.florisboard.lib.snygg.SnyggSelector
 import org.florisboard.lib.snygg.ui.SnyggText
 import android.view.inputmethod.InputMethodManager
 import kotlinx.coroutines.launch
@@ -67,6 +69,7 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
     var menuOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val voice by EvaVoice.state.collectAsState()
 
     if (menuOpen) {
         // A tap anywhere outside the menu closes it.
@@ -110,9 +113,10 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
         StripButton(
             modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
             icon = if (leftIsMic) Icons.Outlined.Mic else Icons.Outlined.Keyboard,
+            active = leftIsMic && voice is EvaVoice.State.Listening,
             onTap = {
                 if (leftIsMic) {
-                    FlorisImeService.switchToVoiceInputMethod()
+                    EvaVoice.toggle(context)
                 } else {
                     context.systemServiceOrNull(InputMethodManager::class)?.showInputMethodPicker()
                 }
@@ -125,6 +129,20 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
             onTap = { FlorisImeService.hideUi() },
             onHold = null,
         )
+        // What the voice input is doing, between the two buttons.
+        val voiceText = when (val v = voice) {
+            is EvaVoice.State.Listening -> v.partial.ifEmpty { "Слухаю…" }
+            is EvaVoice.State.Note -> v.text
+            EvaVoice.State.Idle -> null
+        }
+        if (voiceText != null) {
+            SnyggText(
+                elementName = FlorisImeUi.ClipboardItemActionText.elementName,
+                modifier = Modifier.align(Alignment.Center).padding(horizontal = 64.dp),
+                // SnyggText has no line limit; keep the tail so it fits on one line.
+                text = if (voiceText.length > 40) "…" + voiceText.takeLast(40) else voiceText,
+            )
+        }
     }
 }
 
@@ -132,6 +150,7 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
 private fun StripButton(
     modifier: Modifier,
     icon: ImageVector,
+    active: Boolean = false,
     onTap: () -> Unit,
     onHold: (() -> Unit)?,
 ) {
@@ -139,6 +158,7 @@ private fun StripButton(
     val inputFeedbackController = FlorisImeService.inputFeedbackController()
     SnyggBox(
         elementName = "${FlorisImeUi.SmartbarActionKey.elementName}-icon",
+        selector = if (active) SnyggSelector.PRESSED else null,
         modifier = modifier
             .size(44.dp)
             .pointerInput(onHold) {
@@ -159,6 +179,6 @@ private fun StripButton(
             },
         contentAlignment = Alignment.Center,
     ) {
-        SnyggIcon(imageVector = icon)
+        SnyggIcon(imageVector = icon, selector = if (active) SnyggSelector.PRESSED else null)
     }
 }

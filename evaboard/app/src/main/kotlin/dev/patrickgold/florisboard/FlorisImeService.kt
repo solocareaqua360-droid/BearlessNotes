@@ -467,6 +467,7 @@ class FlorisImeService : LifecycleInputMethodService() {
             flogInfo(LogTopic.IMS_EVENTS)
         }
         isWindowShown = false
+        dev.patrickgold.florisboard.ime.eva.EvaVoice.cancel()
         activeState.batchEdit {
             activeState.imeUiMode = ImeUiMode.TEXT
             activeState.isActionsOverflowVisible = false

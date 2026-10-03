@@ -4,6 +4,13 @@
 
     <!-- Permission needed to vibrate if the user has key press vibration enabled -->
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- evaBoard voice input (ime/eva/EvaVoice.kt): the keyboard listens itself -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
+    </queries>
     <!-- evaBoard dev updater (TEMPORARY, ime/eva/devupdate): fetch new versions from GitHub
          and hand them to Android's installer. Remove both with the updater. -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -132,6 +139,15 @@
                 <data android:mimeType="image/*"/>
             </intent-filter>
         </activity>
+
+        <!-- evaBoard: asks for the microphone once on behalf of the keyboard -->
+        <activity
+            android:name="dev.patrickgold.florisboard.ime.eva.EvaMicPermissionActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
 
         <!-- Clipboard Media File Provider -->
         <provider
