@@ -113,7 +113,7 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
         StripButton(
             modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
             icon = if (leftIsMic) Icons.Outlined.Mic else Icons.Outlined.Keyboard,
-            iconSize = if (leftIsMic) StripIconLarge else StripIconDefault,
+            iconSize = StripIconDefault,
             active = leftIsMic && voice is EvaVoice.State.Listening,
             onTap = {
                 if (leftIsMic) {
@@ -148,9 +148,9 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
     }
 }
 
-/** The keyboard-switcher glyph, as it was. */
+/** Keyboard switcher and microphone: the toolbar's icon size (30dp was too big for the mic). */
 private val StripIconDefault = 24.dp
-/** Microphone and hide: enlarged to match the icons in the toolbar above the keys. */
+/** Hide: its chevron glyph is small, so it is drawn larger to match the toolbar icons. */
 private val StripIconLarge = 30.dp
 
 @Composable
