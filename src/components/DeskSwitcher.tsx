@@ -119,6 +119,10 @@ export default function DeskSwitcher({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engaged]);
+  // The pictures as they were when the panel began to come: held for as
+  // long as it is out, so none is swapped while it is being looked at.
+  const heldShots = useRef<Record<string, string | undefined>>({});
+  if (!engaged && !visible) heldShots.current = Object.fromEntries(desks.map((d) => [d.key, d.shot]));
   // Which desk is open, fractional while a finger is on it.
   const focus = useSharedValue(startIndex);
   const focusAtStart = useSharedValue(startIndex);
@@ -265,7 +269,7 @@ export default function DeskSwitcher({
                   <Card
                     key={desk.key}
                     index={i}
-                    desk={desk}
+                    desk={{ ...desk, shot: heldShots.current[desk.key] ?? desk.shot }}
                     focus={focus}
                     morph={morph}
                     wide={wide}

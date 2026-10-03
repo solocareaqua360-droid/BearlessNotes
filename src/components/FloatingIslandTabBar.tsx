@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from './icons/Ionicons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
@@ -9,7 +9,6 @@ import { captureAllDesks, captureDesk, forgetDesk, useDeskShots } from '../navig
 import DeskSwitcher from './DeskSwitcher';
 import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
 import { deskPull, deskPullEnabled } from '../navigation/deskPull';
-import { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
 
@@ -127,19 +126,24 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!deskControl, state.routes.length]);
-  // The moment a pull begins, the desk in front is photographed afresh;
-  // the panel opens on the last picture meanwhile.
-  const captureCurrentRef = useRef(() => {});
-  captureCurrentRef.current = () => {
-    if (currentDesk) captureDesk(currentDesk);
-  };
-  const captureCurrent = useCallback(() => captureCurrentRef.current(), []);
-  useAnimatedReaction(
-    () => deskPull.value > 0.02,
-    (now, before) => {
-      if (now && !before) runOnJS(captureCurrent)();
+  // NOT at the start of a pull: by then the list is already being pulled
+  // down, so the picture showed it displaced, and it replaced the last one
+  // in the middle of the gesture (2026-10-04). Instead the desk in front is
+  // photographed once the panel has gone again and it is at rest - the
+  // picture for next time.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (switcherOpen) {
+      wasOpen.current = true;
+      return;
     }
-  );
+    if (!wasOpen.current || !currentDesk) return;
+    wasOpen.current = false;
+    const timer = setTimeout(() => {
+      if (deskPull.value < 0.02) captureDesk(currentDesk);
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [switcherOpen, currentDesk]);
   const faceOf = (name: string) =>
     ICON_BY_ROUTE[name] && !deskControl ? { label: name, icon: ICON_BY_ROUTE[name] } : deskFace(name, customDatabases, iconFor);
   const desks = useMemo(
@@ -171,10 +175,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   // TopNavBar). An open board is inside the boards tab but is not one of
   // those screens: it has its own bar (its name, not the desks), and the
   // dock under it no longer carries the desks' dots either.
-  const openSwitcher = () => {
-    if (currentDesk) captureDesk(currentDesk);
-    setSwitcherOpen(true);
-  };
+  const openSwitcher = () => setSwitcherOpen(true);
   // The desk in front closes onto its neighbour to the left, so nothing
   // vanishes from under the finger; any other just goes.
   const closeDesk = (index: number) => {
