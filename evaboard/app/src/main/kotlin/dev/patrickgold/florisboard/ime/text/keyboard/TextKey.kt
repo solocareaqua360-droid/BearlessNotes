@@ -126,6 +126,9 @@ class TextKey(override val data: AbstractKeyData) : Key(data) {
                 KeyboardMode.NUMERIC_ADVANCED,
                 KeyboardMode.PHONE,
                 KeyboardMode.PHONE2 -> 1.0f
+                // evaBoard: on the letters, shift and backspace are letter-sized, like the iPhone's,
+                // so the third row lines up with the rows above
+                KeyboardMode.CHARACTERS if computed.code == KeyCode.SHIFT || computed.code == KeyCode.DELETE -> 1.0f
                 else -> when (computed.code) {
                     KeyCode.SHIFT,
                     KeyCode.DELETE -> 1.5f
@@ -158,6 +161,7 @@ class TextKey(override val data: AbstractKeyData) : Key(data) {
                     KeyCode.VIEW_SYMBOLS, 61 -> 1.26f
                     else -> 1.56f
                 }
+                KeyboardMode.CHARACTERS if computed.code == KeyCode.SHIFT || computed.code == KeyCode.DELETE -> 1.00f
                 else -> when (computed.code) {
                     KeyCode.SHIFT,
                     KeyCode.DELETE -> 1.56f
