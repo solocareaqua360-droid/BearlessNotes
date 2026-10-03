@@ -5,12 +5,12 @@
     "--primary-variant": "#0062CC",
     "--secondary": "#007AFF",
     "--secondary-variant": "#0062CC",
-    "--background": "rgba(235, 235, 245, 0.8)",
-    "--background-variant": "#C4C7CE",
+    "--background": "rgba(232, 232, 232, 0.85)",
+    "--background-variant": "#DADADA",
     "--surface": "#FFFFFF",
-    "--surface-variant": "#EBEBF0",
-    "--special": "#FFFFFF",
-    "--special-pressed": "#EBEBF0",
+    "--surface-variant": "#EDEDED",
+    "--special": "#CFCFCF",
+    "--special-pressed": "#BDBDBD",
     "--popup-surface": "#FFFFFF",
     "--focused-popup-surface": "#007AFF",
     "--drag-marker": "rgb(255,0,0)",
@@ -27,7 +27,9 @@
     "--shape": "rounded-corner(6dp, 6dp, 6dp, 6dp)",
     "--shape-variant": "rounded-corner(12dp, 12dp, 12dp, 12dp)",
     "--shape-chip": "rounded-corner(50%, 50%, 50%, 50%)",
-    "--key-edge": "rgba(0, 0, 0, 0.30)"
+    "--key-edge": "rgba(0, 0, 0, 0.16)",
+    "--enter": "#676767",
+    "--enter-pressed": "#555555"
   },
   "window": {
     "background": "var(--background)",
@@ -54,20 +56,22 @@
     "foreground": "var(--on-surface)"
   },
   "key[code=10]": {
-    "background": "var(--special)",
-    "foreground": "var(--on-surface)"
+    "background": "var(--enter)",
+    "foreground": "#FFFFFF",
+    "shape": "rounded-corner(6dp, 6dp, 24dp, 6dp)"
   },
   "key[code=10]:pressed": {
-    "background": "var(--special-pressed)",
-    "foreground": "var(--on-surface)"
+    "background": "var(--enter-pressed)",
+    "foreground": "#FFFFFF"
   },
   "key[code=10][enter=`action`]": {
-    "background": "var(--primary)",
-    "foreground": "var(--on-primary)"
+    "background": "var(--enter)",
+    "foreground": "#FFFFFF",
+    "shape": "rounded-corner(6dp, 6dp, 24dp, 6dp)"
   },
   "key[code=10][enter=`action`]:pressed": {
-    "background": "var(--primary-variant)",
-    "foreground": "var(--on-primary)"
+    "background": "var(--enter-pressed)",
+    "foreground": "#FFFFFF"
   },
   "key[code=32]": {
     "background": "var(--surface)",
@@ -465,5 +469,24 @@
   },
   "key-popup-element": {
     "font-size": "24sp"
+  },
+  "key[code=-213]": {
+    "background": "var(--surface)",
+    "foreground": "var(--on-surface)"
+  },
+  "key[code=-213]:pressed": {
+    "background": "var(--surface-variant)",
+    "foreground": "var(--on-surface)"
+  },
+  "key[code=46,44,64,47]": {
+    "background": "var(--special)",
+    "foreground": "var(--on-surface)"
+  },
+  "key[code=46,44,64,47]:pressed": {
+    "background": "var(--special-pressed)",
+    "foreground": "var(--on-surface)"
+  },
+  "key[code=-202]": {
+    "shape": "rounded-corner(6dp, 6dp, 6dp, 24dp)"
   }
 }

@@ -105,6 +105,9 @@ object EvaScreenshots {
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DATE_MODIFIED,
             MediaStore.Images.Media.DISPLAY_NAME,
+            MediaStore.Images.Media.OWNER_PACKAGE_NAME,
+            MediaStore.Images.Media.WIDTH,
+            MediaStore.Images.Media.HEIGHT,
         )
         val selection = "${MediaStore.Images.Media.DATE_MODIFIED} >= ? AND " +
             "${MediaStore.Images.Media.IS_PENDING} = 0 AND " +
@@ -116,14 +119,18 @@ object EvaScreenshots {
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, args, order,
             )?.use { cursor ->
                 if (!cursor.moveToFirst()) return@use null
-                Triple(cursor.getLong(0), cursor.getLong(1), cursor.getString(2) ?: "")
+                // Diagnostics for the settings card: who saved the file and its size - Samsung names an
+                // edited screenshot with its own save time, so the name cannot link it to its original.
+                val info = "${cursor.getString(2) ?: ""} · ${cursor.getString(3) ?: "?"} · ${cursor.getInt(4)}x${cursor.getInt(5)}"
+                Triple(cursor.getLong(0), cursor.getLong(1), (cursor.getString(2) ?: "") to info)
             }
         }.getOrNull() ?: return
-        val (id, modified, name) = found
+        val (id, modified, nameAndInfo) = found
+        val (name, info) = nameAndInfo
         val key = "$id:$modified"
         if (key == lastHandled) return
         lastHandled = key
-        recentNames.value = (listOf(name) + recentNames.value.filter { it != name }).take(3)
+        recentNames.value = (listOf(info) + recentNames.value.filter { it != info }).take(3)
 
         // An edit of a screenshot already on the clipboard: its original leaves the history.
         val stamp = stampOf(name)

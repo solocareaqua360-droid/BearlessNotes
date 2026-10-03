@@ -105,7 +105,7 @@ fun EvaScreenshotsCard(modifier: Modifier = Modifier) {
                 val recent by EvaScreenshots.recentNames.collectAsState()
                 if (wanted && recent.isNotEmpty()) {
                     Text(
-                        text = "Останні: " + recent.joinToString(", "),
+                        text = "Останні:\n" + recent.joinToString("\n"),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }

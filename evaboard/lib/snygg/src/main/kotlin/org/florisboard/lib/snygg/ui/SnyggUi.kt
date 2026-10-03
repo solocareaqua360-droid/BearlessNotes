@@ -34,8 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.DefaultShadowColor
@@ -349,13 +349,10 @@ internal fun Modifier.snyggEdge(
 ): Modifier {
     val color = (style.edgeColor as? SnyggStaticColorValue)?.color ?: return this
     return this.drawBehind {
-        val radius = (shape as? RoundedCornerShape)?.topStart?.toPx(size, this) ?: 0f
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(0f, 1.dp.toPx()),
-            size = size,
-            cornerRadius = CornerRadius(radius, radius),
-        )
+        val outline = shape.createOutline(size, layoutDirection, this)
+        translate(top = 1.5.dp.toPx()) {
+            drawOutline(outline, color)
+        }
     }
 }
 
