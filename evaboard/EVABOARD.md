@@ -26,8 +26,22 @@ export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 ./gradlew :app:assembleRelease
 ```
 
-The APK lands in `app/build/outputs/apk/release/`. Hand it to the phone
-over the LAN from the scratchpad, never from the repo.
+The APK lands in `app/build/outputs/apk/release/`.
+
+## Getting it onto the phone
+
+While evaBoard is being built, the phone updates itself: the settings home
+screen has an «Оновити evaBoard» card (TEMPORARY dev updater,
+`ime/eva/devupdate`) that installs the newest GitHub release tagged
+`evaboard-vX.Y.Z`. To publish one: bump `projectVersionCode` and
+`projectVersionName` in `gradle.properties`, commit, push, then
+
+```
+sh evaboard/release.sh "what changed"
+```
+
+It needs `gh` logged in on this Mac. Remove the updater (and its INTERNET
+and REQUEST_INSTALL_PACKAGES permissions) before evaBoard is finished.
 
 ## Signing key
 
