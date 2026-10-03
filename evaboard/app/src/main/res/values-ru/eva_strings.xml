@@ -2,4 +2,6 @@
 <resources>
     <string name="eva__nav_left_use_mic">Микрофон вместо переключателя клавиатур</string>
     <string name="eva__nav_left_use_switcher">Переключатель клавиатур вместо микрофона</string>
+    <string name="eva__pref_suggestions_row__label">Подсказки слов над клавиатурой</string>
+    <string name="eva__pref_suggestions_row__summary">Отдельный ряд над цифрами; клавиатура становится выше</string>
 </resources>

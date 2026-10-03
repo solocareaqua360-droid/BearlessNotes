@@ -80,22 +80,9 @@ object FlorisImeSizing {
     @Composable
     fun smartbarUiHeight(): Dp {
         val prefs by FlorisPreferenceStore
-        val smartbarEnabled by prefs.smartbar.enabled.observeAsState()
-        val smartbarLayout by prefs.smartbar.layout.observeAsState()
-        val extendedActionsExpanded by prefs.smartbar.extendedActionsExpanded.observeAsState()
-        val extendedActionsPlacement by prefs.smartbar.extendedActionsPlacement.observeAsState()
-        val height =
-            if (smartbarEnabled) {
-                if (smartbarLayout == SmartbarLayout.SUGGESTIONS_ACTIONS_EXTENDED && extendedActionsExpanded &&
-                    extendedActionsPlacement != ExtendedActionsPlacement.OVERLAY_APP_UI) {
-                    smartbarHeight * 2
-                } else {
-                    smartbarHeight
-                }
-            } else {
-                0.dp
-            }
-        return height
+        // evaBoard: the Smartbar is replaced by evaBoard's top row, plus the optional suggestions row
+        val evaSuggestionsRow by prefs.keyboard.evaSuggestionsRow.observeAsState()
+        return if (evaSuggestionsRow) smartbarHeight * 2 else smartbarHeight
     }
 
     @Composable

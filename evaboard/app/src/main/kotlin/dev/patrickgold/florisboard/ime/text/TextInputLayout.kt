@@ -19,6 +19,7 @@ package dev.patrickgold.florisboard.ime.text
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -34,7 +35,9 @@ import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.smartbar.IncognitoDisplayMode
 import dev.patrickgold.florisboard.ime.smartbar.InlineSuggestionsStyleCache
-import dev.patrickgold.florisboard.ime.smartbar.Smartbar
+import dev.patrickgold.florisboard.ime.eva.EvaTopRowUi
+import dev.patrickgold.florisboard.ime.keyboard.FlorisImeSizing
+import dev.patrickgold.florisboard.ime.smartbar.CandidatesRow
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionsOverflowPanel
 import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyboardLayout
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
@@ -62,7 +65,15 @@ fun TextInputLayout(
                 .fillMaxWidth()
                 .wrapContentHeight(),
         ) {
-            Smartbar()
+            // evaBoard: its own top row (digits or icons) replaces FlorisBoard's Smartbar; word
+            // suggestions only come back as an extra row when switched on in the settings.
+            val evaSuggestionsRow by prefs.keyboard.evaSuggestionsRow.observeAsState()
+            if (evaSuggestionsRow) {
+                Box(modifier = Modifier.fillMaxWidth().height(FlorisImeSizing.smartbarHeight)) {
+                    CandidatesRow()
+                }
+            }
+            EvaTopRowUi()
             if (state.isActionsOverflowVisible) {
                 QuickActionsOverflowPanel()
             } else {

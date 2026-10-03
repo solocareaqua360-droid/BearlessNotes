@@ -455,6 +455,7 @@ class FlorisImeService : LifecycleInputMethodService() {
             flogInfo(LogTopic.IMS_EVENTS)
         }
         isWindowShown = true
+        dev.patrickgold.florisboard.ime.eva.EvaTopRow.resetToDigits()
         inputFeedbackController.updateSystemPrefsState()
     }
 

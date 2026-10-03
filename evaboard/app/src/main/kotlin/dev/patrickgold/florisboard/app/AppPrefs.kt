@@ -483,6 +483,12 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__eva_nav_left_mic",
             default = false,
         )
+        // evaBoard: word suggestions as their own row above evaBoard's top row (ime/eva/EvaTopRow.kt);
+        // off by default, and turning it on makes the keyboard one row taller.
+        val evaSuggestionsRow = boolean(
+            key = "keyboard__eva_suggestions_row",
+            default = false,
+        )
         val hintedNumberRowEnabled = boolean(
             key = "keyboard__hinted_number_row_enabled",
             default = true,

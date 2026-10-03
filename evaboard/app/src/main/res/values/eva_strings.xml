@@ -2,4 +2,6 @@
 <resources>
     <string name="eva__nav_left_use_mic">Microphone instead of keyboard switcher</string>
     <string name="eva__nav_left_use_switcher">Keyboard switcher instead of microphone</string>
+    <string name="eva__pref_suggestions_row__label">Word suggestions above the keyboard</string>
+    <string name="eva__pref_suggestions_row__summary">A separate row above the digits; the keyboard gets taller</string>
 </resources>
