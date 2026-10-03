@@ -347,15 +347,15 @@ function Card({
     return { opacity: t * morph.value };
   });
   return (
-    <Animated.View style={[styles.card, { backgroundColor: S.ink }, cardStyle]}>
+    <Animated.View style={[styles.card, { backgroundColor: S.fillSolid }, cardStyle]}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onTap} accessibilityLabel={desk.label}>
         {/* A fixed-width picture, centred: a narrow card is a slit onto it. */}
         <Animated.View style={[styles.picture, { width: wide, marginLeft: -wide / 2 }, faceStyle]} pointerEvents="none">
           {desk.shot ? (
-            <Image source={{ uri: desk.shot }} style={StyleSheet.absoluteFill} resizeMode="cover" fadeDuration={0} />
+            <Shot uri={desk.shot} />
           ) : (
             <View style={[StyleSheet.absoluteFill, styles.noShot]}>
-              <Ionicons name={desk.icon as never} size={56} color="rgba(255,255,255,0.18)" />
+              <Ionicons name={desk.icon as never} size={56} color={S.ink3} />
             </View>
           )}
         </Animated.View>
@@ -384,6 +384,36 @@ function Card({
         </Animated.View>
       )}
     </Animated.View>
+  );
+}
+
+// A desk's picture, swapped WITHOUT a gap: a new picture is laid over the
+// one on show and the old one goes only once the new has loaded. Swapped
+// outright, the card's own ground showed for a frame between the two - the
+// black flashes on the cards while swiping between desks (2026-10-04),
+// each one a desk being photographed afresh.
+function Shot({ uri }: { uri: string }) {
+  const [shown, setShown] = useState(uri);
+  const [next, setNext] = useState<string | null>(null);
+  useEffect(() => {
+    if (uri !== shown) setNext(uri);
+  }, [uri, shown]);
+  return (
+    <>
+      <Image source={{ uri: shown }} style={StyleSheet.absoluteFill} resizeMode="cover" fadeDuration={0} />
+      {next && (
+        <Image
+          source={{ uri: next }}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+          fadeDuration={0}
+          onLoad={() => {
+            setShown(next);
+            setNext(null);
+          }}
+        />
+      )}
+    </>
   );
 }
 

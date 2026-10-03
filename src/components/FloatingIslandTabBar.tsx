@@ -111,10 +111,14 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   const shots = useDeskShots();
   const currentDesk = state.routes[state.index]?.name;
   useEffect(() => {
-    if (!deskControl || !currentDesk) return;
-    const timer = setTimeout(() => captureDesk(currentDesk), 900);
+    // Not while the panel is out: the desks it steps through are being
+    // shown in it, and photographing each as it passes only churns them.
+    if (!deskControl || !currentDesk || switcherOpen) return;
+    const timer = setTimeout(() => {
+      if (deskPull.value < 0.02) captureDesk(currentDesk);
+    }, 900);
     return () => clearTimeout(timer);
-  }, [deskControl, currentDesk]);
+  }, [deskControl, currentDesk, switcherOpen]);
   // Every desk, a few seconds after the app has come up - so the panel
   // never opens on a desk it has no picture of (deskShots).
   useEffect(() => {
