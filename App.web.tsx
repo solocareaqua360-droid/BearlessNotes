@@ -269,7 +269,12 @@ if (typeof document !== 'undefined') {
         ' [data-lift]:not([style*="transform"]):hover { transform: translateY(-2px); }' +
         ` [data-lift]:not([style*="transform"]):active { transform: translateY(0) scale(0.985); transition-duration: ${MOTION.fast}ms; }` +
         ` [tabindex="0"]:not([data-lift]):not([style*="transform"]) { transition: transform ${MOTION.fast}ms ${MOTION.ease}, background-color 180ms ease, box-shadow 220ms ease, color 160ms ease, opacity 180ms ease; }` +
-        ' [tabindex="0"]:not([data-lift]):not([style*="transform"]):active { transform: scale(0.96); }' +
+        // Only a button that holds no other button: a WINDOW is a pressable
+        // too (its card catches the click so the backdrop does not close
+        // it), and :active is true of every ancestor of what is pressed -
+        // so a click on a day shrank the whole date picker, backdrop and
+        // all (2026-10-03).
+        ' [tabindex="0"]:not([data-lift]):not([style*="transform"]):not(:has([tabindex="0"])):active { transform: scale(0.96); }' +
         ` @keyframes mindevaFadeIn { from { opacity: 0; transform: scale(0.96) translateY(-3px); } to { opacity: 1; transform: none; } }` +
         ` @keyframes mindevaFadeOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.97) translateY(-2px); } }` +
         ` [data-fade-in] { animation: mindevaFadeIn ${MOTION.base}ms ${MOTION.ease}; transform-origin: top left; }` +
