@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRecordColour } from '../theme/ThemeProvider';
+import { useSoft } from '../theme/soft';
+import type { GroupItem } from '../hooks/useGroupItems';
 import { Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -43,6 +45,20 @@ const ORDER = [
   'file',
 ] as const;
 
+// The projects screen's own order (2026-10-04, the user's list): what a
+// project is made of first, the things filed into it after.
+const PROJECT_ORDER = [
+  'board',
+  'document',
+  'flashcard',
+  'task',
+  'photo',
+  'file',
+  'link-video',
+  'link-other',
+  'link-geo',
+] as const;
+
 const FACE: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
   document: { label: 'Документи', icon: 'document-text-outline', color: '#3B82F6' },
   board: { label: 'Дошки', icon: 'apps-outline', color: '#8B5CF6' },
@@ -51,7 +67,12 @@ const FACE: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap
   'link-video': { label: 'YouTube / TikTok', icon: 'videocam-outline', color: '#EF4444' },
   photo: { label: 'Зображення', icon: 'image-outline', color: '#EC4899' },
   file: { label: 'Файли', icon: 'document-outline', color: '#8B5CF6' },
+  task: { label: 'Справи', icon: 'checkbox-outline', color: '#F59E0B' },
+  flashcard: { label: 'Картки', icon: 'albums-outline', color: '#0EA5E9' },
 };
+
+// In the bin - out of every list but the bin's own.
+const binned = (r: Row) => !!r.deletedAt || r.trashed === true;
 
 function useCollection(name: string, enabled: boolean): Row[] {
   const [rows, setRows] = useState<Row[]>([]);
@@ -76,6 +97,8 @@ export default function GroupSections({
   tags,
   sidePadding = 0,
   onOpen,
+  items,
+  databases,
 }: {
   // The group in view, or null when none is (everything below is skipped).
   groupId: string | null;
@@ -91,10 +114,17 @@ export default function GroupSections({
   // of the way first, since it would otherwise stay standing over the
   // screen it just sent the user to.
   onOpen?: () => void;
+  // Handed in by a screen that already holds every project's contents
+  // (the projects screen, through useGroupItems): drawn from these, with
+  // no listeners of its own - that screen draws one of these per project.
+  items?: GroupItem[];
+  databases?: CustomDatabase[];
 }) {
   const recordColour = useRecordColour();
+  const S = useSoft();
+  const given = !!items;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const enabled = !!groupId;
+  const enabled = !!groupId && !given;
   // Every open goes through here, so the sheet above gets its chance to
   // close before the screen underneath changes.
   const open = (go: () => void) => {
@@ -110,7 +140,7 @@ export default function GroupSections({
   const customDatabases = useCollection('customDatabases', enabled);
   // Records as they are now, for the document cards' pictures - see
   // DocumentsScreen's same line.
-  const liveRecords = useLiveRecords(enabled);
+  const liveRecords = useLiveRecords(!!groupId && (!given || items.some((i) => i.kind === 'document')));
   // A link card here draws the record's own imageUrl, so a cover past its
   // deadline is refetched from here too - see linkPreviewRefresh.
   useEffect(() => {
@@ -123,13 +153,27 @@ export default function GroupSections({
 
   if (!groupId) return null;
 
-  const inGroup = (rows: Row[]) => rows.filter((r) => r.groupId === groupId);
+  const inGroup = (rows: Row[]) => rows.filter((r) => r.groupId === groupId && !binned(r));
   const tagsFor = (row: Row) => {
     const ids = (row.tagIds as string[] | undefined) ?? [];
     return tags.filter((t) => ids.includes(t.id));
   };
 
-  const byKind: Record<string, Row[]> = {
+  const givenRows = (items ?? []).map((i) => ({ ...i.data, id: i.id, kind: i.kind }) as Row).filter((r) => !binned(r));
+  const givenOf = (kind: string) => givenRows.filter((r) => r.kind === kind);
+  const byKind: Record<string, Row[]> = given
+    ? {
+        document: givenOf('document'),
+        board: givenOf('board'),
+        photo: givenOf('photo'),
+        file: givenOf('file'),
+        task: givenOf('task'),
+        flashcard: givenOf('flashcard'),
+        'link-geo': givenOf('link-geo'),
+        'link-other': givenOf('link-other'),
+        'link-video': givenOf('link-video'),
+      }
+    : {
     document: inGroup(documents).filter((d) => !d.calendarDate),
     board: inGroup(boards).filter((b) => b.trashed !== true),
     photo: inGroup(photos),
@@ -137,31 +181,37 @@ export default function GroupSections({
     'link-geo': [],
     'link-other': [],
     'link-video': [],
+    task: [],
+    flashcard: [],
   };
-  for (const link of inGroup(links)) {
-    byKind[`link-${categoryFromSiteName(link.siteName as string | undefined)}`].push(link);
+  if (!given) {
+    for (const link of inGroup(links)) {
+      byKind[`link-${categoryFromSiteName(link.siteName as string | undefined)}`].push(link);
+    }
   }
 
   // Every custom database is a section of its own, named and coloured as
   // its tile is - a row's own database decides what it is called.
-  const customSections = customDatabases
+  const customSections = ((given ? databases ?? [] : customDatabases) as Row[])
     .map((database) => {
-      const rows = inGroup(customRows).filter((r) => r.databaseId === database.id);
+      const rows = given
+        ? givenRows.filter((r) => r.kind === `customRow:${database.id}`)
+        : inGroup(customRows).filter((r) => r.databaseId === database.id);
       return { database: database as unknown as CustomDatabase, rows };
     })
     .filter(({ database, rows }) => rows.length > 0 && `customRow:${database.id}` !== currentKind);
 
-  const sections = ORDER.filter((kind) => kind !== currentKind && byKind[kind].length > 0);
+  const sections = ((given ? PROJECT_ORDER : ORDER) as readonly string[]).filter((kind) => kind !== currentKind && byKind[kind].length > 0);
   if (sections.length === 0 && customSections.length === 0) return null;
 
   function Divider({ label, icon, color, count }: { label: string; icon: keyof typeof Ionicons.glyphMap; color: string; count: number }) {
     return (
       <View style={styles.divider}>
-        <View style={styles.dividerRule} />
+        <View style={[styles.dividerRule, given && { backgroundColor: S.line }]} />
         <Ionicons name={icon} size={14} color={color} />
         <Text style={[styles.dividerLabel, { color }]}>{label}</Text>
-        <Text style={styles.dividerCount}>{count}</Text>
-        <View style={styles.dividerRule} />
+        <Text style={[styles.dividerCount, given && { color: S.ink3 }]}>{count}</Text>
+        <View style={[styles.dividerRule, given && { backgroundColor: S.line }]} />
       </View>
     );
   }
@@ -222,11 +272,41 @@ export default function GroupSections({
                       />
                     );
                   }
+                  if (kind === 'task' || kind === 'flashcard') {
+                    const done = kind === 'task' && row.checked === true;
+                    const label = kind === 'task' ? (row.text as string) : (row.term as string);
+                    return (
+                      <Pressable
+                        key={row.id}
+                        style={[styles.boardRow, given && { backgroundColor: S.card, borderWidth: 0, boxShadow: S.shadow }]}
+                        onPress={() =>
+                          open(() => {
+                            const documentId = row.documentId as string | undefined;
+                            if (kind === 'flashcard') navigation.navigate('Flashcards');
+                            else if (documentId) navigation.navigate('Editor', { documentId });
+                            else navigation.navigate('Tasks', { focusTaskId: row.id });
+                          })
+                        }
+                      >
+                        <Ionicons
+                          name={kind === 'task' ? (done ? 'checkbox' : 'square-outline') : 'albums-outline'}
+                          size={18}
+                          color={FACE[kind].color}
+                        />
+                        <Text
+                          style={[styles.boardRowLabel, given && { color: S.ink }, done && styles.doneLabel]}
+                          numberOfLines={1}
+                        >
+                          {label || 'Без назви'}
+                        </Text>
+                      </Pressable>
+                    );
+                  }
                   if (kind === 'board') {
                     return (
                       <Pressable
                         key={row.id}
-                        style={styles.boardRow}
+                        style={[styles.boardRow, given && { backgroundColor: S.card, borderWidth: 0, boxShadow: S.shadow }]}
                         onPress={() =>
                           open(() =>
                             navigation.navigate('BoardCopy', { boardId: row.id })
@@ -234,7 +314,7 @@ export default function GroupSections({
                         }
                       >
                         <Ionicons name="apps-outline" size={18} color={FACE.board.color} />
-                        <Text style={styles.boardRowLabel} numberOfLines={1}>
+                        <Text style={[styles.boardRowLabel, given && { color: S.ink }]} numberOfLines={1}>
                           {(row.title as string) || 'Без назви'}
                         </Text>
                       </Pressable>
@@ -356,6 +436,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: FONT_SEMIBOLD,
     color: GLASS_TEXT,
+  },
+  doneLabel: {
+    textDecorationLine: 'line-through',
+    opacity: 0.55,
   },
   section: {
     width: '100%',
