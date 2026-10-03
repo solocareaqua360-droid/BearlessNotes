@@ -120,6 +120,15 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
             },
             onHold = { menuOpen = true },
         )
+        // Shows / hides the top row of digits, right beside the left button.
+        val topRowVisible by prefs.keyboard.evaTopRowVisible.observeAsState()
+        StripButton(
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp + 44.dp + 8.dp),
+            icon = EvaIcons.lucide(if (topRowVisible) "panel-top-close" else "panel-top-open"),
+            iconSize = StripIconDefault,
+            onTap = { scope.launch { prefs.keyboard.evaTopRowVisible.set(!topRowVisible) } },
+            onHold = null,
+        )
         StripButton(
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
             icon = EvaIcons.lucide("chevron-down"),
@@ -136,7 +145,7 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
         if (voiceText != null) {
             SnyggText(
                 elementName = FlorisImeUi.ClipboardItemActionText.elementName,
-                modifier = Modifier.align(Alignment.Center).padding(horizontal = 64.dp),
+                modifier = Modifier.align(Alignment.Center).padding(horizontal = 116.dp),
                 // SnyggText has no line limit; keep the tail so it fits on one line.
                 text = if (voiceText.length > 40) "…" + voiceText.takeLast(40) else voiceText,
             )

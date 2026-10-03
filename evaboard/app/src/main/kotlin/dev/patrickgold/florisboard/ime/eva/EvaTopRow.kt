@@ -103,6 +103,8 @@ fun EvaTopRowUi() {
     val keyMarginH by prefs.keyboard.keySpacingHorizontal.observeAsState()
     val keyMarginV by prefs.keyboard.keySpacingVertical.observeAsState()
 
+    val visible by prefs.keyboard.evaTopRowVisible.observeAsState()
+    if (!visible) return
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         // A digit key is as tall as a letter key is wide: the slot width minus the side margins,
         // plus the top and bottom margins around it.

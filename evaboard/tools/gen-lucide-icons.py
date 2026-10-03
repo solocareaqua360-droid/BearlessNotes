@@ -7,7 +7,7 @@ import json, os, sys
 ICONS = """arrow-left arrow-right arrow-up arrow-down copy scissors clipboard-paste lasso-select eraser
 delete corner-down-left check search send arrow-big-up arrow-big-up-dash face-slightly-smiling clipboard
 globe settings undo-2 redo-2 ellipsis venetian-mask eye spell-check smartphone mic chevron-down keyboard
-layout-grid""".split()
+layout-grid panel-top-close panel-top-open""".split()
 
 pkg = sys.argv[1]
 nodes = json.load(open(os.path.join(pkg, 'icon-nodes.json')))

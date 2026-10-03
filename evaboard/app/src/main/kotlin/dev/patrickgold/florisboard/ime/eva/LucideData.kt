@@ -159,6 +159,16 @@ internal val LUCIDE_PATHS: Map<String, List<String>> = mapOf(
         "M19 10v2a7 7 0 0 1-14 0v-2",
         "M12 2h0a3 3 0 0 1 3 3v7a3 3 0 0 1 -3 3h0a3 3 0 0 1 -3 -3v-7a3 3 0 0 1 3 -3z",
     ),
+    "panel-top-close" to listOf(
+        "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z",
+        "M3 9h18",
+        "m9 16 3-3 3 3",
+    ),
+    "panel-top-open" to listOf(
+        "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z",
+        "M3 9h18",
+        "m15 14-3 3-3-3",
+    ),
     "redo-2" to listOf(
         "m15 14 5-5-5-5",
         "M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13",

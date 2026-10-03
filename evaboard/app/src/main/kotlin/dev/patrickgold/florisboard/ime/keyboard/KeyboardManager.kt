@@ -142,6 +142,11 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 updateActiveEvaluators()
             }
             // evaBoard: the letters' digit hints come and go with evaBoard's digit row
+            prefs.keyboard.evaTopRowVisible.asFlow().collectLatestIn(scope) {
+                updateActiveEvaluators {
+                    keyboardCache.clear(KeyboardMode.CHARACTERS)
+                }
+            }
             // (drop(1): the initial value needs no recompute, and at start-up the layouts are not indexed yet)
             scope.launch {
                 dev.patrickgold.florisboard.ime.eva.EvaTopRow.showIcons.drop(1).collectLatest {

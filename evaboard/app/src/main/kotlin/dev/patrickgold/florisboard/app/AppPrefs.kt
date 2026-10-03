@@ -490,6 +490,11 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__eva_blur",
             default = false,
         )
+        // evaBoard: whether evaBoard's top row (digits / icons) is shown; toggled from the bottom strip
+        val evaTopRowVisible = boolean(
+            key = "keyboard__eva_top_row_visible",
+            default = true,
+        )
         val evaNavLeftMic = boolean(
             key = "keyboard__eva_nav_left_mic",
             default = false,
