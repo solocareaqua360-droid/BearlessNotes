@@ -8,3 +8,4 @@ export function forgetDesk(_key: string) {}
 export function useDeskShots(): Record<string, string> {
   return {};
 }
+export async function captureAllDesks(): Promise<void> {}

@@ -192,6 +192,9 @@ export default function DeskSwitcher({
     borderRadius: TOP_NAV_H / 2 + (30 - TOP_NAV_H / 2) * morph.value,
   }));
   const backdropStyle = useAnimatedStyle(() => ({ opacity: morph.value }));
+  // At rest the whole layer is there but not drawn (not even the bar-shaped
+  // panel, which would cover the real bar).
+  const restStyle = useAnimatedStyle(() => ({ opacity: morph.value > 0.001 ? 1 : 0 }));
   // Where the cards stand: moved along when there are more than fit, so the
   // open one stays in view.
   const rowStyle = useAnimatedStyle(() => {
@@ -211,11 +214,14 @@ export default function DeskSwitcher({
     };
   });
 
-  if (!visible && !engaged) return null;
+  // Mounted all the time, hidden at rest: the pictures are decoded before
+  // the panel is ever pulled (deskShots). Only the blur waits for it - a
+  // live blur costs every frame even when nothing shows it.
   return (
     <GlassPortal priority={50}>
-      <View style={styles.layer} pointerEvents={visible ? 'box-none' : 'none'}>
+      <Animated.View style={[styles.layer, restStyle]} pointerEvents={visible ? 'box-none' : 'none'}>
         <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]} pointerEvents="none">
+          {engaged && (
           <BlurView
             intensity={40}
             tint={S.dark ? 'dark' : 'light'}
@@ -223,6 +229,7 @@ export default function DeskSwitcher({
             blurTarget={blurTarget ?? undefined}
             style={StyleSheet.absoluteFill}
           />
+          )}
           <View style={[StyleSheet.absoluteFill, { backgroundColor: S.dark ? 'rgba(0,0,0,0.4)' : 'rgba(30,30,28,0.16)' }]} />
         </Animated.View>
         {visible && <Pressable style={StyleSheet.absoluteFill} onPress={() => closeRef.current()} />}
@@ -258,7 +265,7 @@ export default function DeskSwitcher({
             </View>
           </GestureDetector>
         </Animated.View>
-      </View>
+      </Animated.View>
     </GlassPortal>
   );
 }
@@ -327,7 +334,7 @@ function Card({
         {/* A fixed-width picture, centred: a narrow card is a slit onto it. */}
         <Animated.View style={[styles.picture, { width: wide, marginLeft: -wide / 2 }, faceStyle]} pointerEvents="none">
           {desk.shot ? (
-            <Image source={{ uri: desk.shot }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            <Image source={{ uri: desk.shot }} style={StyleSheet.absoluteFill} resizeMode="cover" fadeDuration={0} />
           ) : (
             <View style={[StyleSheet.absoluteFill, styles.noShot]}>
               <Ionicons name={desk.icon as never} size={56} color="rgba(255,255,255,0.18)" />

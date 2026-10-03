@@ -1,14 +1,15 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from './icons/Ionicons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
 import { DesksControlContext, START_DESK, deskFace } from '../navigation/desks';
-import { captureDesk, forgetDesk, useDeskShots } from '../navigation/deskShots';
+import { captureAllDesks, captureDesk, forgetDesk, useDeskShots } from '../navigation/deskShots';
 import DeskSwitcher from './DeskSwitcher';
 import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
-import { deskPullEnabled } from '../navigation/deskPull';
+import { deskPull, deskPullEnabled } from '../navigation/deskPull';
+import { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
 
@@ -114,6 +115,27 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
     const timer = setTimeout(() => captureDesk(currentDesk), 900);
     return () => clearTimeout(timer);
   }, [deskControl, currentDesk]);
+  // Every desk, a few seconds after the app has come up - so the panel
+  // never opens on a desk it has no picture of (deskShots).
+  useEffect(() => {
+    if (!deskControl) return;
+    const timer = setTimeout(() => captureAllDesks(), 3500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!deskControl, state.routes.length]);
+  // The moment a pull begins, the desk in front is photographed afresh;
+  // the panel opens on the last picture meanwhile.
+  const captureCurrentRef = useRef(() => {});
+  captureCurrentRef.current = () => {
+    if (currentDesk) captureDesk(currentDesk);
+  };
+  const captureCurrent = useCallback(() => captureCurrentRef.current(), []);
+  useAnimatedReaction(
+    () => deskPull.value > 0.02,
+    (now, before) => {
+      if (now && !before) runOnJS(captureCurrent)();
+    }
+  );
   const faceOf = (name: string) =>
     ICON_BY_ROUTE[name] && !deskControl ? { label: name, icon: ICON_BY_ROUTE[name] } : deskFace(name, customDatabases, iconFor);
   const desks = useMemo(
