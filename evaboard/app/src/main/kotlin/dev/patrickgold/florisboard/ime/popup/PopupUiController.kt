@@ -139,7 +139,13 @@ class PopupUiController(
     fun extend(key: Key, size: Size) {
         if (!isSuitableForExtendedPopup(key)) return
 
-        val baseBounds = baseRenderInfo?.bounds ?: boundsProvider(key)
+        // evaBoard: the press preview's head is half again as wide as the key; the menu's cells stay
+        // key-wide, so a 7-symbol row is 7 keys wide rather than 10.5
+        val previewBounds = baseRenderInfo?.bounds ?: boundsProvider(key)
+        val baseBounds = FlorisRect.new(
+            left = key.visibleBounds.left, top = previewBounds.top,
+            right = key.visibleBounds.right, bottom = previewBounds.bottom,
+        )
         val keyPopupDiffX = (key.visibleBounds.width - baseBounds.width) / 2.0f
 
         // Anchor left if keyView is in left half of keyboardView, else anchor right

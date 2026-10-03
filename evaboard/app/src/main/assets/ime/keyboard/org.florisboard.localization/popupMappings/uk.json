@@ -22,17 +22,20 @@
       ]
     },
     "~right": {
-      "main": { "code":   44, "label": "," },
       "relevant": [
-        { "code": 38, "label": "&" },
-        { "code": 94, "label": "^" },
-        { "code": 37, "label": "%" },
-        { "code": 36, "label": "$" },
-        { "code": 35, "label": "#" },
-        { "code": 8230, "label": "…" },
+        { "code": 40, "label": "(" },
+        { "code": 41, "label": ")" },
+        { "code": 43, "label": "+" },
+        { "code": 45, "label": "-" },
+        { "code": 215, "label": "×" },
+        { "code": 247, "label": "÷" },
+        { "code": 47, "label": "/" },
+        { "code": 8470, "label": "№" },
         { "code": 64, "label": "@" },
-        { "code": 39, "label": "'" },
+        { "code": 59, "label": ";" },
+        { "code": 58, "label": ":" },
         { "code": 33, "label": "!" },
+        { "code": 44, "label": "," },
         { "code": 63, "label": "?" }
       ]
     }
