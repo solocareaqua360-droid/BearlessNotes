@@ -30,8 +30,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.GridView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -150,7 +148,7 @@ private fun SwitchKey(showIcons: Boolean, onClick: () -> Unit) {
         if (showIcons) {
             SnyggText(text = "123")
         } else {
-            SnyggIcon(modifier = Modifier.size(ActionIconSize), imageVector = Icons.Default.GridView)
+            SnyggIcon(modifier = Modifier.size(ActionIconSize), imageVector = EvaIcons.lucide("layout-grid"))
         }
     }
 }

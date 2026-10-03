@@ -19,10 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Keyboard
-import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -86,9 +82,9 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
                 .widthIn(max = 320.dp),
         ) {
             val (icon, text) = if (leftIsMic) {
-                Icons.Outlined.Keyboard to R.string.eva__nav_left_use_switcher
+                EvaIcons.lucide("keyboard") to R.string.eva__nav_left_use_switcher
             } else {
-                Icons.Outlined.Mic to R.string.eva__nav_left_use_mic
+                EvaIcons.lucide("mic") to R.string.eva__nav_left_use_mic
             }
             SnyggRow(
                 elementName = FlorisImeUi.ClipboardItemAction.elementName,
@@ -112,7 +108,7 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
     ) {
         StripButton(
             modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
-            icon = if (leftIsMic) Icons.Outlined.Mic else Icons.Outlined.Keyboard,
+            icon = EvaIcons.lucide(if (leftIsMic) "mic" else "keyboard"),
             iconSize = StripIconDefault,
             active = leftIsMic && voice is EvaVoice.State.Listening,
             onTap = {
@@ -126,7 +122,7 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
         )
         StripButton(
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
-            icon = Icons.Outlined.KeyboardArrowDown,
+            icon = EvaIcons.lucide("chevron-down"),
             iconSize = StripIconLarge,
             onTap = { FlorisImeService.hideUi() },
             onHold = null,

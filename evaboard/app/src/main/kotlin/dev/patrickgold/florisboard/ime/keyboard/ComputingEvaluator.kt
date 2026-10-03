@@ -179,6 +179,15 @@ fun ComputingEvaluator.computeLabel(data: KeyData): String? {
 
 fun ComputingEvaluator.computeImageVector(data: KeyData): ImageVector? {
     val evaluator = this
+    // evaBoard: Lucide icons, the set mindEva uses; the stock icons below stay for what Lucide does not cover
+    if (data.code == KeyCode.ENTER) {
+        val imeOptions = evaluator.editorInfo.imeOptions
+        val multiLine = imeOptions.flagNoEnterAction || evaluator.editorInfo.inputAttributes.flagTextMultiLine
+        return dev.patrickgold.florisboard.ime.eva.EvaIcons.forEnter(if (multiLine) "NONE" else imeOptions.action.name)
+    }
+    dev.patrickgold.florisboard.ime.eva.EvaIcons.forKey(
+        data.code, evaluator.state.inputShiftState, evaluator.state.isIncognitoMode,
+    )?.let { return it }
     return when (data.code) {
         KeyCode.ARROW_LEFT -> {
             Icons.AutoMirrored.Filled.KeyboardArrowLeft

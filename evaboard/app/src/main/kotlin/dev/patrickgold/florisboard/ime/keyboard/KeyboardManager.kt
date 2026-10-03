@@ -1012,12 +1012,9 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
 
         override fun evaluateVisible(data: KeyData): Boolean {
             return when (data.code) {
-                // evaBoard: the bottom row's emoji key became a clipboard key (charactersMod/default.json),
-                // so on the keyboard it shows exactly when the emoji key would; in the toolbar it always shows.
-                KeyCode.IME_UI_MODE_CLIPBOARD -> {
-                    keyboard === SmartbarQuickActionsKeyboard ||
-                        evaluateVisible(TextKeyData.IME_UI_MODE_MEDIA)
-                }
+                // evaBoard: the bottom row's clipboard key and language key are always there, side by
+                // side (FlorisBoard shows only one of "language" and "emoji" at a time)
+                KeyCode.IME_UI_MODE_CLIPBOARD -> true
                 KeyCode.IME_UI_MODE_TEXT,
                 KeyCode.IME_UI_MODE_MEDIA -> {
                     val tempUtilityKeyAction = when {
@@ -1032,19 +1029,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                         UtilityKeyAction.DYNAMIC_SWITCH_LANGUAGE_EMOJIS -> !shouldShowLanguageSwitch()
                     }
                 }
-                KeyCode.LANGUAGE_SWITCH -> {
-                    val tempUtilityKeyAction = when {
-                        prefs.keyboard.utilityKeyEnabled.get() -> prefs.keyboard.utilityKeyAction.get()
-                        else -> UtilityKeyAction.DISABLED
-                    }
-                    when (tempUtilityKeyAction) {
-                        UtilityKeyAction.DISABLED,
-                        UtilityKeyAction.SWITCH_TO_EMOJIS -> false
-                        UtilityKeyAction.SWITCH_LANGUAGE,
-                        UtilityKeyAction.SWITCH_KEYBOARD_APP -> true
-                        UtilityKeyAction.DYNAMIC_SWITCH_LANGUAGE_EMOJIS -> shouldShowLanguageSwitch()
-                    }
-                }
+                KeyCode.LANGUAGE_SWITCH -> true
                 else -> true
             }
         }

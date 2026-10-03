@@ -10,7 +10,7 @@
     { "code": -213, "label": "ime_ui_mode_clipboard", "type": "system_gui" },
     { "code":   32, "label": "space" },
     { "$": "variation_selector",
-      "default":  { "code":   44, "label": ",", "groupId": 2 },
+      "default":  { "code":   46, "label": ".", "groupId": 2 },
       "email":    { "code":   64, "label": "@", "groupId": 2 },
       "uri":      { "code":   47, "label": "/", "groupId": 2 }
     },

@@ -18,6 +18,11 @@ Changes so far:
   build requirement
 - release builds are signed with the evaBoard key (below)
 
+Icons are Lucide (ISC licence, https://lucide.dev) - the same set mindEva uses -
+generated into `ime/eva/LucideData.kt` by `tools/gen-lucide-icons.py`
+(the licence text is in that file's header); `ime/eva/EvaIcons.kt` says
+which icon belongs to which key.
+
 ## Building
 
 ```

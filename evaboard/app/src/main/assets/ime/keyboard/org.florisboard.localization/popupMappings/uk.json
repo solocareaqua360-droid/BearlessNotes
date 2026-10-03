@@ -22,8 +22,19 @@
       ]
     },
     "~right": {
-      "main": { "code":   46, "label": "." },
-      "relevant": []
+      "main": { "code":   44, "label": "," },
+      "relevant": [
+        { "code": 38, "label": "&" },
+        { "code": 94, "label": "^" },
+        { "code": 37, "label": "%" },
+        { "code": 36, "label": "$" },
+        { "code": 35, "label": "#" },
+        { "code": 8230, "label": "…" },
+        { "code": 64, "label": "@" },
+        { "code": 39, "label": "'" },
+        { "code": 33, "label": "!" },
+        { "code": 63, "label": "?" }
+      ]
     }
   },
   "uri": {
