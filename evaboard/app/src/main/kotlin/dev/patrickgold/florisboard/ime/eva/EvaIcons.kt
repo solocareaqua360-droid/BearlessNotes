@@ -19,6 +19,14 @@ import dev.patrickgold.florisboard.ime.text.key.KeyCode
 object EvaIcons {
     private val cache = HashMap<String, ImageVector>()
 
+    /**
+     * Lucide fills its 24x24 frame almost edge to edge, where Material (what the sizes in this
+     * keyboard were chosen against) keeps about 2 units of empty margin around the glyph. Drawn
+     * at the same size, Lucide looks about a tenth to a seventh bigger, so every icon is shrunk
+     * inside its frame by this factor: "26dp" then looks the way 26dp looked before Lucide.
+     */
+    private const val FRAME_FILL = 0.86f
+
     /** The Lucide icon [name] as a 24x24 outline ImageVector (tinted by whoever draws it). */
     fun lucide(name: String): ImageVector = cache.getOrPut(name) {
         val builder = ImageVector.Builder(
@@ -28,6 +36,7 @@ object EvaIcons {
             viewportWidth = 24f,
             viewportHeight = 24f,
         )
+        builder.addGroup(pivotX = 12f, pivotY = 12f, scaleX = FRAME_FILL, scaleY = FRAME_FILL)
         for (d in LUCIDE_PATHS.getValue(name)) {
             builder.addPath(
                 pathData = PathParser().parsePathString(d).toNodes(),
