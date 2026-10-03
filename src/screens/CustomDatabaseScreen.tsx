@@ -1146,9 +1146,41 @@ export default function CustomDatabaseScreen({
   const rowMenuRow = rowMenuId ? rows.find((r) => r.id === rowMenuId) ?? null : null;
   // The rows of a record's menu, for CardMenu - the same things, in the same
   // order, as the glass sheet's.
+  // CONTINUING A RECORD (2026-10-03, the road sheets): a copy that picks up
+  // where this one ends, for the same length of time - a sheet from
+  // 26.09 09:00 to 06.10 09:00 goes on from 06.10 09:00 to 16.10 09:00.
+  // Everything else (the car, the driver...) comes along; the name says
+  // «Задати номер», since a new sheet needs a number of its own.
+  // The date is the first date field holding a period (or, failing that,
+  // any date at all).
+  function continueDateFieldOf(row: CustomDatabaseRow) {
+    const dated = (database?.fields ?? []).filter((f) => f.type === 'date' && dateRangeOf(row.values[f.id]));
+    return dated.find((f) => dateRangeOf(row.values[f.id])?.end) ?? dated[0] ?? null;
+  }
+  async function continueRow(row: CustomDatabaseRow) {
+    setRowMenuId(null);
+    const dateField = continueDateFieldOf(row);
+    const range = dateField ? dateRangeOf(row.values[dateField.id]) : null;
+    if (!dateField || !range) return;
+    const titleFieldId = database?.fields[0]?.id;
+    const values = { ...row.values, [dateField.id]: continuedRange(range) };
+    if (titleFieldId && titleFieldId !== dateField.id) values[titleFieldId] = 'Задати номер';
+    const id = generateId();
+    const now = Date.now();
+    const copy: Record<string, unknown> = { databaseId, values, tagIds: row.tagIds ?? [], createdAt: now, updatedAt: now };
+    if (row.groupId) copy.groupId = row.groupId;
+    await setDoc(doc(db, 'customDatabaseRows', id), copy);
+    hapticSuccess();
+    // The new sheet's page, as soon as it arrives - to give it its number.
+    setRowPageId(id);
+  }
+
   function rowMenuRows(row: (typeof rows)[number]): CardMenuRow[] {
     return [
       { icon: 'pencil-outline', label: 'Редагувати', onPress: () => openEditRow(row) },
+      ...(continueDateFieldOf(row)
+        ? [{ icon: 'play-skip-forward-outline', label: 'Продовжити', onPress: () => continueRow(row) }]
+        : []),
       ...(documentIdsOf(row).length > 0
         ? [{ icon: 'document-text-outline', label: `Документи (${documentIdsOf(row).length})`, onPress: () => openRowDocuments(row) }]
         : []),
@@ -4078,6 +4110,15 @@ export default function CustomDatabaseScreen({
               <Text style={styles.pageHeaderTitle} numberOfLines={1}>
                 {rowPageRow ? titleOf(rowPageRow) : ''}
               </Text>
+              {rowPageRow && continueDateFieldOf(rowPageRow) && (
+                <Pressable
+                  style={[styles.pageEditButton, styles.pageContinueButton]}
+                  onPress={() => continueRow(rowPageRow)}
+                >
+                  <Ionicons name="play-skip-forward-outline" size={16} color="#fff" />
+                  <Text style={styles.pageEditLabel}>Продовжити</Text>
+                </Pressable>
+              )}
               <Pressable
                 style={styles.pageEditButton}
                 onPress={() => {
@@ -5053,6 +5094,45 @@ function RelationPickerSheet({
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
+}
+
+// The period that follows this one, as long as it (see continueRow). With
+// times, it starts the minute this one ends; with dates only, the day
+// after it ends, for as many days. Counted in calendar days and minutes,
+// not milliseconds, so a clock change in between moves nothing.
+function continuedRange(range: DateRangeValue): DateRangeValue {
+  const dayIndex = (key: string) => {
+    const d = parseDateKey(key);
+    return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+  };
+  const keyOf = (index: number) => {
+    const d = new Date(index * 86400000);
+    return dateKey(new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  };
+  const minutes = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const clock = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+  const startDay = dayIndex(range.start);
+  const endDay = dayIndex(range.end ?? range.start);
+  if (range.startTime && range.endTime) {
+    const s = startDay * 1440 + minutes(range.startTime);
+    let e = endDay * 1440 + minutes(range.endTime);
+    if (e <= s) e += 1440;
+    const ns = e;
+    const ne = e + (e - s);
+    const out: DateRangeValue = { start: keyOf(Math.floor(ns / 1440)), startTime: clock(ns % 1440), endTime: clock(ne % 1440) };
+    if (Math.floor(ne / 1440) !== Math.floor(ns / 1440)) out.end = keyOf(Math.floor(ne / 1440));
+    return out;
+  }
+  const length = endDay - startDay;
+  const ns = endDay + 1;
+  const out: DateRangeValue = { start: keyOf(ns) };
+  if (length > 0) out.end = keyOf(ns + length);
+  if (range.startTime) out.startTime = range.startTime;
+  if (range.endTime) out.endTime = range.endTime;
+  return out;
 }
 
 // Standard Ukrainian noun pluralisation for "день" - 1 день, 2-4 дні
@@ -6191,6 +6271,9 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 8,
     paddingHorizontal: 14,
+  },
+  pageContinueButton: {
+    marginRight: 8,
   },
   pageEditLabel: {
     fontSize: 13,

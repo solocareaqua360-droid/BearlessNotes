@@ -13,7 +13,7 @@ M = {
 'chevron-back':'chevron-left','chevron-down':'chevron-down','chevron-forward':'chevron-right','chevron-up':'chevron-up',
 'chevron-down-circle':'circle-chevron-down','clipboard':'clipboard','close':'x','code':'code','code-slash':'code',
 'color-fill':'paint-bucket','color-palette':'palette','compass':'compass','construct':'construction','contract':'minimize-2',
-'copy':'copy','browsers':'columns-2','newspaper':'columns-3','calendar-number':'calendar-range','duplicate':'copy-plus','create':'square-pen','crop':'crop','cube':'box','cut':'scissors','desktop':'monitor','diamond':'gem',
+'copy':'copy','browsers':'columns-2','newspaper':'columns-3','calendar-number':'calendar-range','duplicate':'copy-plus','play-skip-forward':'skip-forward','create':'square-pen','crop':'crop','cube':'box','cut':'scissors','desktop':'monitor','diamond':'gem',
 'dice':'dice-5','document':'file','documents':'files','document-text':'file-text','download':'download','earth':'earth',
 'easel':'presentation','egg':'egg','ellipse':'circle','ellipsis-horizontal':'ellipsis','expand':'maximize-2',
 'extension-puzzle':'puzzle','eye-off':'eye-off','eye':'eye','fast-food':'hamburger','film':'film','filter':'list-filter',
