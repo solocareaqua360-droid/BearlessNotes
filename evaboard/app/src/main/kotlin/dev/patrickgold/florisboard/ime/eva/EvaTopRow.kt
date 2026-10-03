@@ -106,12 +106,13 @@ fun EvaTopRowUi() {
 
     val visible by prefs.keyboard.evaTopRowVisible.observeAsState()
     if (!visible) return
-    val gapFraction = evaSplitGapFraction()
+    val split = evaIsSplit()
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        // On a wide screen the row splits like the letters below (EvaSplit): the slots are laid out
-        // over the width minus the gap, and the gap opens before the first slot right of the middle.
-        val gap = maxWidth * gapFraction
-        val slotWidth = (maxWidth - gap) / EvaTopRow.SLOTS
+        // On a wide screen the row splits like the letters below (EvaSplit): side margins, and the
+        // gap opens before the first slot right of the middle.
+        val margin = if (split) maxWidth * EvaSplit.MARGIN_FRACTION else 0.dp
+        val gap = if (split) maxWidth * EvaSplit.GAP_FRACTION else 0.dp
+        val slotWidth = (maxWidth - gap - margin * 2) / EvaTopRow.SLOTS
         // A digit key is as tall as a letter key is wide: the slot width minus the side margins,
         // plus the top and bottom margins around it.
         val rowHeight = slotWidth - (keyMarginH * 2).dp + (keyMarginV * 2).dp
@@ -137,6 +138,7 @@ fun EvaTopRowUi() {
                 .height(rowHeight),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
             slots.forEachIndexed { index, slot ->
                 if (gap > 0.dp && index == leftCount) Spacer(modifier = Modifier.width(gap))
                 Box(

@@ -79,7 +79,7 @@ import dev.patrickgold.florisboard.editorInstance
 import dev.patrickgold.florisboard.ime.editor.ImeOptions
 import dev.patrickgold.florisboard.ime.eva.EvaSplit
 import dev.patrickgold.florisboard.ime.eva.evaShortLanguage
-import dev.patrickgold.florisboard.ime.eva.evaSplitGapFraction
+import dev.patrickgold.florisboard.ime.eva.evaIsSplit
 import dev.patrickgold.florisboard.ime.text.key.KeyCode
 import dev.patrickgold.florisboard.ime.text.key.KeyType
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
@@ -223,9 +223,11 @@ fun TextKeyboardLayout(
         val keyMarginH by prefs.keyboard.keySpacingHorizontal.observeAsTransformingState { it.dp.toPx() }
         val keyMarginV by prefs.keyboard.keySpacingVertical.observeAsTransformingState { it.dp.toPx() }
         val keyboardRowBaseHeight = FlorisImeSizing.keyboardRowBaseHeight
-        // evaBoard: on a wide screen the rows are laid out for the width minus a central gap
-        val splitGap = keyboardWidth * evaSplitGapFraction()
-        val layoutWidth = keyboardWidth - splitGap
+        // evaBoard: on a wide screen the rows are laid out for the width minus side margins and a gap
+        val split = evaIsSplit()
+        val splitMargin = if (split) keyboardWidth * EvaSplit.MARGIN_FRACTION else 0f
+        val splitGap = if (split) keyboardWidth * EvaSplit.GAP_FRACTION else 0f
+        val layoutWidth = keyboardWidth - splitGap - 2 * splitMargin
 
         val desiredKey = remember(
             keyboard, keyboardWidth, keyboardHeight, keyMarginH, keyMarginV,
@@ -246,8 +248,9 @@ fun TextKeyboardLayout(
                     }
                 }
                 desiredKey.visibleBounds.applyFrom(desiredKey.touchBounds).deflateBy(keyMarginH, keyMarginV)
+                EvaSplit.removeAddedKeys(keyboard)
                 keyboard.layout(layoutWidth, keyboardHeight, desiredKey, true)
-                if (splitGap > 0f) EvaSplit.apply(keyboard, layoutWidth, splitGap)
+                if (split) EvaSplit.apply(keyboard, layoutWidth, splitMargin, splitGap, evaluator)
             }
         }
 
