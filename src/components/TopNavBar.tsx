@@ -579,7 +579,10 @@ function SearchRow({
 // HOW THE OPEN DESK IS DRAWN, from the room it has: its name whole, cut
 // short with «…», or not at all. `width` is what it takes.
 type DeskPillLayout = { mode: 'full' | 'cut' | 'icon'; width: number; labelRoom: number };
-const CROSS_ROOM = 28;
+// The cross: a roomy target (34) standing 14 clear of the icon - at 22 and
+// 6 they stood so close that a thumb aimed at one hit the other
+// (2026-10-03).
+const CROSS_ROOM = 48;
 const CHAR_W = 8.6;
 function deskPillLayout(label: string, closable: boolean, room: number): DeskPillLayout {
   const cross = closable ? CROSS_ROOM : 0;
@@ -590,8 +593,10 @@ function deskPillLayout(label: string, closable: boolean, room: number): DeskPil
   const shortest = chrome + 4 * CHAR_W;
   if (room >= natural) return { mode: 'full', width: room, labelRoom: Math.max(0, room - chrome) };
   if (room >= shortest) return { mode: 'cut', width: room, labelRoom: Math.max(0, room - chrome) };
-  // Icon alone: as wide as the icon and its cross need.
-  return { mode: 'icon', width: 20 + 16 + cross, labelRoom: 0 };
+  // Icon alone: the icon and its cross with air round both - wider than
+  // the closed desks, which makes the row scroll sooner, as a browser's
+  // does.
+  return { mode: 'icon', width: 20 + 24 + cross, labelRoom: 0 };
 }
 
 // The desks of the bar, in a row that scrolls when there are more than fit,
@@ -995,9 +1000,9 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   deskClose: {
-    marginLeft: 6,
-    width: 22,
-    height: 22,
+    marginLeft: 14,
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
   },
