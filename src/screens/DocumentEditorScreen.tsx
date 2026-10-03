@@ -1,4 +1,5 @@
 import { RADIUS } from '../theme/scale';
+import { useNoteOpened } from '../navigation/recentPlaces';
 import ScreenGround from '../components/ScreenGround';
 import { IN_SHELL } from '../utils/shell';
 import { morphKey, morphLanded } from '../utils/morph';
@@ -652,6 +653,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [isLoaded, setIsLoaded] = useState(false);
+  // Opened (not just embedded in another screen): the start desk's recents.
+  useNoteOpened('document', documentId, isLoaded && !('embedded' in props));
 
   // THE CARD THAT BECOMES THIS PAGE (utils/morph): once the note is drawn,
   // the page may grow out of its card (MorphFrame, around this screen, does

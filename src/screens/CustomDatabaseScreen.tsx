@@ -1,4 +1,5 @@
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
+import { useNoteOpened } from '../navigation/recentPlaces';
 import { holdAsk } from '../components/surfaces/HoldAsk';
 import HoldPressable from '../components/HoldPressable';
 import RecentFolderStrip from '../components/RecentFolderStrip';
@@ -297,6 +298,8 @@ export default function CustomDatabaseScreen({
   const { openRowId, openViewId } = params;
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
+  // In front: the start desk's recents.
+  useNoteOpened('database', databaseId, useIsFocused());
   const customRowKind = `customRow:${databaseId}`;
   const prefsKey = `customDb_${databaseId}`;
   const prefsDoc = doc(db, 'settings', prefsKey);

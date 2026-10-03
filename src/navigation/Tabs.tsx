@@ -63,6 +63,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
     setDatabasesDragging,
     swipeBlocked,
     swipeEdgeOnly,
+    edgeZone,
   } = useSideDrawers();
   const { width } = useWindowDimensions();
   const screenWidth = width;
@@ -96,6 +97,11 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
   // edge: EDGE_BAND wide on the side it goes to, and it takes over at once
   // (the scroll's own slop would otherwise win the race).
   const edgeBand = swipeEdgeOnly ? EDGE_BAND : 0;
+  // The band in force for THIS touch: the whole screen's when a screen
+  // asked for it, or just the zone's (see edgeZone) when the finger landed
+  // inside it.
+  const touchBand = useSharedValue(0);
+  const zone = edgeZone;
 
   // Manual, so it fails before it activates on anything that is not
   // clearly one of the two - up or down is a list scrolling, and a finger
@@ -115,9 +121,13 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
             state.fail();
             return;
           }
-          if (edgeBand > 0) {
-            const nearLeft = touch.absoluteX <= edgeBand;
-            const nearRight = touch.absoluteX >= screenWidth - edgeBand;
+          const z = zone ? zone.value : null;
+          const inZone = !!z && z.bottom > z.top && touch.absoluteY >= z.top && touch.absoluteY <= z.bottom;
+          const band = edgeBand > 0 ? edgeBand : inZone ? EDGE_BAND : 0;
+          touchBand.value = band;
+          if (band > 0) {
+            const nearLeft = touch.absoluteX <= band;
+            const nearRight = touch.absoluteX >= screenWidth - band;
             if (!((canCalendar && nearLeft) || (canDatabases && nearRight))) {
               state.fail();
               return;
@@ -137,7 +147,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
             state.fail();
             return;
           }
-          if (Math.abs(dx) > (edgeBand > 0 ? 4 : 14)) {
+          if (Math.abs(dx) > (touchBand.value > 0 ? 4 : 14)) {
             if (Date.now() - startAt.value > 350) {
               state.fail();
               return;
@@ -170,6 +180,8 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
         }),
     [
       edgeBand,
+      touchBand,
+      zone,
       screenWidth,
       canCalendar,
       canDatabases,

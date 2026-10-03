@@ -39,6 +39,13 @@ type SideDrawers = {
   // screen's EDGE, where the scroll is not, instead of anywhere.
   swipeEdgeOnly: boolean;
   holdEdgeOnly: () => () => void;
+  // A BAND of the screen (window y, top to bottom) where a sideways drag
+  // belongs to what stands there - the start desk's row of recents - so
+  // the drawers' swipe begins there only from the screen's very edge.
+  // Anywhere else the swipe is free. Read by Tabs at the moment a finger
+  // lands; null where there is no provider.
+  edgeZone: SharedValue<{ top: number; bottom: number }> | null;
+  setEdgeZone: (top: number, bottom: number) => void;
 };
 
 const NONE: SideDrawers = {
@@ -59,6 +66,8 @@ const NONE: SideDrawers = {
   blockSwipe: () => () => {},
   swipeEdgeOnly: false,
   holdEdgeOnly: () => () => {},
+  edgeZone: null,
+  setEdgeZone: () => {},
 };
 
 // Exported so the layers - drawn through the glass portal, outside this
@@ -83,6 +92,13 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
   );
   // The dock's own copies when there is a dock (there always is): the bar
   // and the dock fade by the same numbers the layers slide by.
+  const edgeZone = useSharedValue({ top: -1, bottom: -1 });
+  const setEdgeZone = useCallback(
+    (top: number, bottom: number) => {
+      edgeZone.value = { top, bottom };
+    },
+    [edgeZone]
+  );
   const fallbackLeft = useSharedValue(0);
   const fallbackRight = useSharedValue(0);
   const dockProgress = useNavDrawerProgress();
@@ -137,6 +153,8 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
       blockSwipe,
       swipeEdgeOnly: edgeOnly > 0,
       holdEdgeOnly,
+      edgeZone,
+      setEdgeZone,
     }),
     [
       calendarProgress,
@@ -154,6 +172,8 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
       blockSwipe,
       edgeOnly,
       holdEdgeOnly,
+      edgeZone,
+      setEdgeZone,
     ]
   );
   return <SideDrawersContext.Provider value={value}>{children}</SideDrawersContext.Provider>;

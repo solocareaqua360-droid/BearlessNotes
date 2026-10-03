@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { noteOpened } from '../navigation/recentPlaces';
 import * as Sharing from 'expo-sharing';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { ensureLocalFile } from './googleDrive';
@@ -50,12 +51,16 @@ export async function ensureFileIsHere(file: { fileUri: string; driveFileId?: st
 }
 
 export async function openFileExternally(file: {
+  // The file's own record, when the caller has it: opening it is what the
+  // start desk's recents remember.
+  id?: string;
   fileUri: string;
   fileName: string;
   mimeType?: string;
   driveFileId?: string;
 }) {
   if (!(await ensureFileIsHere(file))) return;
+  if (file.id) noteOpened('file', file.id);
 
   const launcher = intentLauncher();
   if (launcher) {

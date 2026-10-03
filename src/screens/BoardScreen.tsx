@@ -1,4 +1,5 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { useNoteOpened } from '../navigation/recentPlaces';
 import { BoardFieldsContext } from '../components/boardFieldsContext';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import type { BoardDbWindow, CustomDatabase, CustomDatabaseRow } from '../types';
@@ -2036,6 +2037,8 @@ export default function BoardScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList & BoardsStackParamList>>();
   const { params } = useRoute<Props['route']>();
   const { boardId, openDocumentId, focusCardIds } = params;
+  // In front: the start desk's recents.
+  useNoteOpened('board', boardId, useIsFocused());
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { isTwoPane } = useResponsiveLayout();
   // A document card opened beside the board instead of over it: the board
