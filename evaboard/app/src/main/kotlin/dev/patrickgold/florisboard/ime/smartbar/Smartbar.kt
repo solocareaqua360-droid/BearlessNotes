@@ -57,9 +57,11 @@ import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.keyboard.FlorisImeSizing
 import dev.patrickgold.florisboard.ime.nlp.NlpInlineAutofill
+import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickAction
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionButton
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionsRow
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.ToggleOverflowPanelAction
+import dev.patrickgold.florisboard.ime.text.key.KeyCode
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.florisboard.nlpManager
@@ -294,7 +296,10 @@ private fun SmartbarMainRow(modifier: Modifier = Modifier) {
             else -> null
         }
 
-        if (action != null) {
+        // evaBoard: the microphone moved to the bottom strip (ime/eva/EvaNavStrip.kt); its place here
+        // stays empty so the other icons do not shift.
+        val isVoice = (action as? QuickAction.InsertKey)?.data?.code == KeyCode.VOICE_INPUT
+        if (action != null && !isVoice) {
             QuickActionButton(
                 modifier = Modifier.padding(horizontal = 4.dp),
                 action = action,

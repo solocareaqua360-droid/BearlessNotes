@@ -1006,6 +1006,12 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
 
         override fun evaluateVisible(data: KeyData): Boolean {
             return when (data.code) {
+                // evaBoard: the bottom row's emoji key became a clipboard key (charactersMod/default.json),
+                // so on the keyboard it shows exactly when the emoji key would; in the toolbar it always shows.
+                KeyCode.IME_UI_MODE_CLIPBOARD -> {
+                    keyboard === SmartbarQuickActionsKeyboard ||
+                        evaluateVisible(TextKeyData.IME_UI_MODE_MEDIA)
+                }
                 KeyCode.IME_UI_MODE_TEXT,
                 KeyCode.IME_UI_MODE_MEDIA -> {
                     val tempUtilityKeyAction = when {

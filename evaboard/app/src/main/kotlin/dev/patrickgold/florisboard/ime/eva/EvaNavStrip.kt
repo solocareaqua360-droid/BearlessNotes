@@ -113,6 +113,7 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
         StripButton(
             modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
             icon = if (leftIsMic) Icons.Outlined.Mic else Icons.Outlined.Keyboard,
+            iconSize = if (leftIsMic) StripIconLarge else StripIconDefault,
             active = leftIsMic && voice is EvaVoice.State.Listening,
             onTap = {
                 if (leftIsMic) {
@@ -126,6 +127,7 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
         StripButton(
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
             icon = Icons.Outlined.KeyboardArrowDown,
+            iconSize = StripIconLarge,
             onTap = { FlorisImeService.hideUi() },
             onHold = null,
         )
@@ -146,10 +148,16 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
     }
 }
 
+/** The keyboard-switcher glyph, as it was. */
+private val StripIconDefault = 24.dp
+/** Microphone and hide: enlarged to match the icons in the toolbar above the keys. */
+private val StripIconLarge = 30.dp
+
 @Composable
 private fun StripButton(
     modifier: Modifier,
     icon: ImageVector,
+    iconSize: Dp,
     active: Boolean = false,
     onTap: () -> Unit,
     onHold: (() -> Unit)?,
@@ -179,6 +187,10 @@ private fun StripButton(
             },
         contentAlignment = Alignment.Center,
     ) {
-        SnyggIcon(imageVector = icon, selector = if (active) SnyggSelector.PRESSED else null)
+        SnyggIcon(
+            modifier = Modifier.size(iconSize),
+            imageVector = icon,
+            selector = if (active) SnyggSelector.PRESSED else null,
+        )
     }
 }
