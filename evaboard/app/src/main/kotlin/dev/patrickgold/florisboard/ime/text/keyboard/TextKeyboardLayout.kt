@@ -80,6 +80,7 @@ import dev.patrickgold.florisboard.ime.editor.ImeOptions
 import dev.patrickgold.florisboard.ime.eva.EvaSplit
 import dev.patrickgold.florisboard.ime.eva.evaShortLanguage
 import dev.patrickgold.florisboard.ime.eva.evaIsSplit
+import dev.patrickgold.florisboard.ime.eva.evaKeySpacing
 import dev.patrickgold.florisboard.ime.text.key.KeyCode
 import dev.patrickgold.florisboard.ime.text.key.KeyType
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
@@ -220,8 +221,10 @@ fun TextKeyboardLayout(
     ) {
         val keyboardWidth = constraints.maxWidth.toFloat()
         val keyboardHeight = constraints.maxHeight.toFloat()
-        val keyMarginH by prefs.keyboard.keySpacingHorizontal.observeAsTransformingState { it.dp.toPx() }
-        val keyMarginV by prefs.keyboard.keySpacingVertical.observeAsTransformingState { it.dp.toPx() }
+        // evaBoard: Samsung's key spacing on the split screen, else the user's setting
+        val (evaSpacingH, evaSpacingV) = evaKeySpacing()
+        val keyMarginH = evaSpacingH.dp.toPx()
+        val keyMarginV = evaSpacingV.dp.toPx()
         val keyboardRowBaseHeight = FlorisImeSizing.keyboardRowBaseHeight
         // evaBoard: on a wide screen the rows are laid out for the width minus side margins and a gap
         val split = evaIsSplit()

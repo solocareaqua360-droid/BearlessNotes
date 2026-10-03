@@ -101,8 +101,7 @@ fun EvaTopRowUi() {
         }
     }
     val prefs by FlorisPreferenceStore
-    val keyMarginH by prefs.keyboard.keySpacingHorizontal.observeAsState()
-    val keyMarginV by prefs.keyboard.keySpacingVertical.observeAsState()
+    val (keyMarginH, keyMarginV) = evaKeySpacing()
 
     val visible by prefs.keyboard.evaTopRowVisible.observeAsState()
     if (!visible) return
@@ -254,8 +253,7 @@ private fun EvaKey(
     content: @Composable () -> Unit,
 ) {
     val prefs by FlorisPreferenceStore
-    val keyMarginH by prefs.keyboard.keySpacingHorizontal.observeAsState()
-    val keyMarginV by prefs.keyboard.keySpacingVertical.observeAsState()
+    val (keyMarginH, keyMarginV) = evaKeySpacing()
     val inputFeedbackController = FlorisImeService.inputFeedbackController()
     var pressed by remember { mutableStateOf(false) }
 
