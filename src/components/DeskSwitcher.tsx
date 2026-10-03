@@ -12,7 +12,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
+import { captureRef } from 'react-native-view-shot';
 import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
 import { Ionicons } from './icons/Ionicons';
@@ -95,6 +95,30 @@ export default function DeskSwitcher({
       if (now !== before) runOnJS(setEngaged)(now);
     }
   );
+  // THE FROZEN BLUR (option Б, 2026-10-04): a live blur re-did the whole
+  // screen every frame, and with desks changing behind it on a quick swipe
+  // the panel dropped frames. The screen is photographed ONCE as the panel
+  // starts to come, small, and that picture is drawn blurred - a picture
+  // costs nothing to keep on screen. Until it is ready, the dim alone.
+  const [frozen, setFrozen] = useState<string | null>(null);
+  useEffect(() => {
+    if (!engaged) {
+      setFrozen(null);
+      return;
+    }
+    const node = blurTarget?.current;
+    if (!node) return;
+    let alive = true;
+    captureRef(node, { format: 'jpg', quality: 0.5, result: 'tmpfile', width: Math.round(width / 3) })
+      .then((uri) => {
+        if (alive) setFrozen(uri);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engaged]);
   // Which desk is open, fractional while a finger is on it.
   const focus = useSharedValue(startIndex);
   const focusAtStart = useSharedValue(startIndex);
@@ -221,14 +245,8 @@ export default function DeskSwitcher({
     <GlassPortal priority={50}>
       <Animated.View style={[styles.layer, restStyle]} pointerEvents={visible ? 'box-none' : 'none'}>
         <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]} pointerEvents="none">
-          {engaged && (
-          <BlurView
-            intensity={40}
-            tint={S.dark ? 'dark' : 'light'}
-            blurMethod="dimezisBlurView"
-            blurTarget={blurTarget ?? undefined}
-            style={StyleSheet.absoluteFill}
-          />
+          {frozen && (
+            <Image source={{ uri: frozen }} style={StyleSheet.absoluteFill} resizeMode="cover" blurRadius={14} fadeDuration={120} />
           )}
           <View style={[StyleSheet.absoluteFill, { backgroundColor: S.dark ? 'rgba(0,0,0,0.4)' : 'rgba(30,30,28,0.16)' }]} />
         </Animated.View>
