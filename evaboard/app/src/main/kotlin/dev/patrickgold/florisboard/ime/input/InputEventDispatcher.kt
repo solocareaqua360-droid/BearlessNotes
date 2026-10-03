@@ -63,9 +63,11 @@ class InputEventDispatcher private constructor(private val repeatableKeyCodes: I
 
     private fun determineLongPressDelay(data: KeyData): Long {
         val delayMillis = prefs.keyboard.longPressDelay.get().toLong()
-        val factor = when (data.code) {
-            KeyCode.SPACE, KeyCode.CJK_SPACE, KeyCode.SHIFT -> 2.5f
-            KeyCode.LANGUAGE_SWITCH -> 2.0f
+        val factor = when {
+            data.code == KeyCode.SPACE || data.code == KeyCode.CJK_SPACE || data.code == KeyCode.SHIFT -> 2.5f
+            data.code == KeyCode.LANGUAGE_SWITCH -> 2.0f
+            // evaBoard: the period key's symbol menu comes up in half the usual time (a tap still types ".")
+            data.groupId == KeyData.GROUP_RIGHT -> 0.5f
             else -> 1.0f
         }
         return (delayMillis * factor).toLong()
