@@ -317,6 +317,9 @@ class FlorisImeService : LifecycleInputMethodService() {
      * not the whole (full-height) IME window: the blur follows the window background's
      * outline, so the background is a drawable inset to the keyboard's own area.
      */
+    // evaBoard: whether updateEvaBlur() changed the window, so it is only ever undone, never touched otherwise
+    private var evaBlurApplied = false
+
     private fun updateEvaBlur() {
         if (!AndroidVersion.ATLEAST_API31_S) return
         val w = window.window ?: return
@@ -329,9 +332,13 @@ class FlorisImeService : LifecycleInputMethodService() {
             )
             w.setBackgroundDrawable(backdrop)
             w.setBackgroundBlurRadius((24 * resources.displayMetrics.density).toInt())
-        } else {
+            evaBlurApplied = true
+        } else if (evaBlurApplied) {
+            // Back to the theme's own background: TRANSPARENT, never null - a window with no
+            // background is painted black, and this one covers the whole screen above the keys.
             w.setBackgroundBlurRadius(0)
-            w.setBackgroundDrawable(null)
+            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            evaBlurApplied = false
         }
     }
 
