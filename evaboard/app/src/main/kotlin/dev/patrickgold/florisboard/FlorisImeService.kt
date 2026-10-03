@@ -80,6 +80,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import dev.patrickgold.florisboard.ime.eva.EvaBlur
+import dev.patrickgold.florisboard.ime.eva.EvaFrost
+import androidx.compose.ui.graphics.luminance
 import dev.patrickgold.florisboard.ime.eva.EvaNavStripLayer
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.isSpecified
@@ -749,6 +751,10 @@ class FlorisImeService : LifecycleInputMethodService() {
                 supportsBackgroundImage = true,
                 allowClip = false,
             ) {
+                // evaBoard: no real blur on this phone, so the see-through ground gets frosted glass instead
+                if (seeThrough && !blurOn) {
+                    EvaFrost(dark = (solidGround?.luminance() ?: 1f) < 0.5f)
+                }
                 val configuration = LocalConfiguration.current
                 val bottomOffset by if (configuration.isOrientationPortrait()) {
                     prefs.keyboard.bottomOffsetPortrait
