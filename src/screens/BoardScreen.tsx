@@ -2185,6 +2185,9 @@ export default function BoardScreen() {
   // every player is a live WebView, and a board of video cards all
   // playing at once is a board that stops responding.
   const [playingCardId, setPlayingCardId] = useState<string | null>(null);
+  // The card whose video is open full screen - frames taken there are laid
+  // beside it.
+  const fullscreenCardId = useRef<string | null>(null);
   // Where the playing video is (seconds), and how many frames each video
   // has given this session - the next one is laid under the last.
   const videoTime = useRef(0);
@@ -2192,8 +2195,8 @@ export default function BoardScreen() {
   // The screen capture lasts while a video plays on the board, no longer.
   useEffect(() => {
     videoTime.current = 0;
-    if (playingCardId === null) stopScreenCapture();
-  }, [playingCardId]);
+    if (playingCardId === null && playingVideoUrl === null) stopScreenCapture();
+  }, [playingCardId, playingVideoUrl]);
   useEffect(() => () => stopScreenCapture(), []);
   // 'move' - single-finger drag pans the canvas (the original Stage 1
   // behaviour). 'select' - single-finger drag instead draws a marquee
@@ -6585,6 +6588,7 @@ export default function BoardScreen() {
                     onStopPlaying={() => setPlayingCardId(null)}
                     onOpenFullscreen={() => {
                       setPlayingCardId(null);
+                      fullscreenCardId.current = card.id;
                       setPlayingVideoUrl(card.linkUrl ?? null);
                     }}
                     onFrame={addVideoFrame}
@@ -7172,7 +7176,16 @@ export default function BoardScreen() {
           onClose={() => setBoardPickerOpen(false)}
         />
 
-        <VideoPlayerModal url={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />
+        <VideoPlayerModal
+          url={playingVideoUrl}
+          onClose={() => setPlayingVideoUrl(null)}
+          onFrame={(shot, seconds) => {
+            const video = cards.find((c) => c.id === fullscreenCardId.current);
+            if (!video) return;
+            videoTime.current = seconds;
+            addVideoFrame(video, shot);
+          }}
+        />
 
         <RenamePrompt
           visible={renamingTitle}

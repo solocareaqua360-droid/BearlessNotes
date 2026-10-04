@@ -7,7 +7,17 @@ import { GLASS_BACKDROP, GLASS_TEXT } from '../constants/glass';
 // native screen needs a WebView (a native module with no web build at
 // all), where here the same embed is an iframe the page already knows how
 // to show.
-export default function VideoPlayerModal({ url, onClose }: { url: string | null; onClose: () => void }) {
+// No frames in a browser (no screen capture): `onFrame` is accepted, never used.
+export type VideoFrameShot = { uri: string; width: number; height: number };
+
+export default function VideoPlayerModal({
+  url,
+  onClose,
+}: {
+  url: string | null;
+  onClose: () => void;
+  onFrame?: (shot: VideoFrameShot, seconds: number) => void;
+}) {
   const embed = useEmbedUrl(url);
   if (!url || !embed) return null;
   return (
