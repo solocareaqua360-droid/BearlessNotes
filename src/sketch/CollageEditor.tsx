@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
-import Svg, { Rect } from 'react-native-svg';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from './icons/Ionicons';
 import type { SketchCollageCell, SketchCollageElement } from './format';
 import { MAX_PHOTOS, layoutsFor, placement, solve } from './collage';
 import SketchLayer from './SketchLayer';
-import { SOFT_MEDIUM, SOFT_SEMIBOLD } from './fonts';
+import { SOFT_SEMIBOLD } from './fonts';
 
 // The collage's own window (like Samsung's Photo Collage): the pictures sit
 // in a layout; a tap picks a cell, a finger moves the picture inside it and
@@ -172,61 +172,81 @@ export default function CollageEditor({
   };
   const currentRatio = RATIOS.find(([a, b]) => Math.abs(el.w / el.h - (portrait ? a / b : b / a)) < 0.01);
 
-  const dim = 'rgba(128,128,128,0.18)';
+  // Anything done in the panels lets go of the chosen picture: its frame
+  // and buttons are for that picture only.
+  const letGo = () => setSel(null);
+  const showTab = (t: Tab) => {
+    letGo();
+    setTab(t);
+  };
+
+  const previewLeft = (area.w - pw) / 2;
+  const previewTop = (area.h - ph) / 2;
+  const chosen = sel !== null ? cells[sel] : undefined;
+  const PILL_W = 3 * 48 + 12;
+  const pill = chosen
+    ? (() => {
+        const below = previewTop + (chosen.y + chosen.h - el.y) * fit + 10;
+        const top = below + 48 <= area.h ? below : Math.max(0, previewTop + (chosen.y - el.y) * fit - 58);
+        const left = clamp(previewLeft + (chosen.x + chosen.w / 2 - el.x) * fit - PILL_W / 2, 8, area.w - PILL_W - 8);
+        return { top, left };
+      })()
+    : null;
+  const ratioLabel = currentRatio ? (portrait ? `${currentRatio[0]}:${currentRatio[1]}` : `${currentRatio[1]}:${currentRatio[0]}`) : '—';
+
   return (
-    <View style={[styles.root, { backgroundColor: paper }]}>
+    <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.top, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={onCancel} hitSlop={10} style={styles.topBtn} accessibilityLabel="Закрити">
-          <Ionicons name="close" size={26} color={ink} />
+          <Ionicons name="close" size={24} color={C.text} />
         </Pressable>
-        <Pressable onPress={addPhotos} hitSlop={10} style={[styles.topBtn, n >= MAX_PHOTOS && { opacity: 0.35 }]} accessibilityLabel="Додати фото">
-          <Ionicons name="add" size={28} color={ink} />
+        <Pressable onPress={addPhotos} hitSlop={10} style={[styles.topBtn, n >= MAX_PHOTOS && { opacity: 0.3 }]} accessibilityLabel="Додати фото">
+          <Ionicons name="add" size={26} color={C.text} />
         </Pressable>
-        <Text style={[styles.title, { color: ink }]}>Склейка</Text>
-        <Pressable onPress={() => onDone({ ...el, rot: initial.rot })} hitSlop={10}>
-          <Text style={[styles.done, { color: accent }]}>Готово</Text>
+        <View style={{ flex: 1 }} />
+        <Pressable onPress={() => onDone({ ...el, rot: initial.rot })} hitSlop={10} style={styles.doneBtn}>
+          <Text style={[styles.done, { color: C.text }]}>Готово</Text>
         </Pressable>
       </View>
 
       <View style={styles.area} onLayout={(e: LayoutChangeEvent) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
+        {/* a tap on the empty dark around the collage lets go too */}
+        <Pressable style={StyleSheet.absoluteFill} onPress={letGo} />
         {area.w > 0 && (
           <GestureDetector gesture={gesture}>
-            <View style={{ position: 'absolute', left: (area.w - pw) / 2, top: (area.h - ph) / 2, width: pw, height: ph }}>
+            <View style={{ position: 'absolute', left: previewLeft, top: previewTop, width: pw, height: ph }}>
               <Svg width={pw} height={ph} viewBox={`${el.x} ${el.y} ${el.w} ${el.h}`}>
-                <SketchLayer elements={[el]} ink={ink} />
+                <SketchLayer elements={[el]} ink={C.text} />
               </Svg>
-              {sel !== null && cells[sel] && (
+              {chosen && (
                 <View
                   pointerEvents="none"
                   style={{
                     position: 'absolute',
-                    left: (cells[sel].x - el.x) * fit,
-                    top: (cells[sel].y - el.y) * fit,
-                    width: cells[sel].w * fit,
-                    height: cells[sel].h * fit,
-                    borderWidth: 2.5,
-                    borderColor: accent,
-                    borderRadius: Math.min(el.radius ?? 0, cells[sel].w / 2, cells[sel].h / 2) * fit,
+                    left: (chosen.x - el.x) * fit,
+                    top: (chosen.y - el.y) * fit,
+                    width: chosen.w * fit,
+                    height: chosen.h * fit,
+                    borderWidth: 2,
+                    borderColor: C.hi,
+                    borderRadius: Math.min(el.radius ?? 0, chosen.w / 2, chosen.h / 2) * fit,
                   }}
                 />
               )}
             </View>
           </GestureDetector>
         )}
-      </View>
-
-      {/* the chosen picture: replace, take out, put back in the middle */}
-      <View style={styles.cellBar}>
-        {sel !== null && (
-          <View style={[styles.pill, { backgroundColor: dim }]}>
-            <Pressable onPress={replacePhoto} hitSlop={8} style={styles.pillBtn} accessibilityLabel="Замінити фото">
-              <Ionicons name="images" size={20} color={ink} />
+        {/* the chosen picture's own buttons, right under it (Samsung's way) */}
+        {pill && sel !== null && (
+          <View style={[styles.pill, { top: pill.top, left: pill.left, width: PILL_W, backgroundColor: C.surface2 }]}>
+            <Pressable onPress={replacePhoto} hitSlop={6} style={styles.pillBtn} accessibilityLabel="Замінити фото">
+              <Ionicons name="images" size={21} color={C.text} />
             </Pressable>
-            <Pressable onPress={() => setCell(sel, { fx: undefined, fy: undefined, zoom: undefined })} hitSlop={8} style={styles.pillBtn} accessibilityLabel="Скинути положення">
-              <Ionicons name="refresh" size={20} color={ink} />
+            <Pressable onPress={() => setCell(sel, { fx: undefined, fy: undefined, zoom: undefined })} hitSlop={6} style={styles.pillBtn} accessibilityLabel="Скинути положення">
+              <Ionicons name="refresh" size={21} color={C.text} />
             </Pressable>
-            <Pressable onPress={removePhoto} hitSlop={8} style={[styles.pillBtn, n <= 1 && { opacity: 0.3 }]} accessibilityLabel="Прибрати фото">
-              <Ionicons name="trash" size={20} color={ink} />
+            <Pressable onPress={removePhoto} hitSlop={6} style={[styles.pillBtn, n <= 1 && { opacity: 0.3 }]} accessibilityLabel="Прибрати фото">
+              <Ionicons name="trash" size={21} color={C.text} />
             </Pressable>
           </View>
         )}
@@ -236,13 +256,30 @@ export default function CollageEditor({
         {tab === 'layout' && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
             {layoutsFor(n).map((l) => {
-              const thumb = solve({ kind: 'collage', x: 0, y: 0, w: 48, h: 48, layout: l.id, gap: 3, cells: Array.from({ length: n }, () => ({})) });
+              const thumb = solve({ kind: 'collage', x: 0, y: 0, w: 40, h: 40, layout: l.id, gap: 2.5, cells: Array.from({ length: n }, () => ({})) });
               const on = el.layout === l.id;
               return (
-                <Pressable key={l.id} onPress={() => setEl((e) => ({ ...e, layout: l.id, splits: undefined }))} style={[styles.tile, { backgroundColor: dim, borderColor: on ? accent : 'transparent' }]}>
-                  <Svg width={48} height={48} viewBox="0 0 48 48">
+                <Pressable
+                  key={l.id}
+                  onPress={() => {
+                    letGo();
+                    setEl((e) => ({ ...e, layout: l.id, splits: undefined }));
+                  }}
+                  style={[styles.tile, { backgroundColor: C.surface, borderColor: on ? C.text : 'transparent' }]}
+                >
+                  <Svg width={40} height={40} viewBox="-1 -1 42 42">
                     {thumb.cells.map((r, i) => (
-                      <Rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} rx={2} fill={on ? accent : ink} opacity={on ? 1 : 0.55} />
+                      <Rect
+                        key={i}
+                        x={r.x}
+                        y={r.y}
+                        width={r.w}
+                        height={r.h}
+                        rx={2.5}
+                        fill={on ? C.muted : 'none'}
+                        stroke={on ? C.muted : C.line}
+                        strokeWidth={1.5}
+                      />
                     ))}
                   </Svg>
                 </Pressable>
@@ -251,38 +288,71 @@ export default function CollageEditor({
           </ScrollView>
         )}
         {tab === 'bg' && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
-            <Pressable onPress={() => setEl((e) => ({ ...e, bg: undefined }))} style={[styles.swatch, { borderColor: !el.bg ? accent : dim }]}>
-              <Ionicons name="close" size={18} color={ink} />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.strip, { justifyContent: 'center', flexGrow: 1 }]}>
+            <Pressable
+              onPress={() => {
+                letGo();
+                setEl((e) => ({ ...e, bg: undefined }));
+              }}
+              style={[styles.swatch, { backgroundColor: C.surface, borderColor: !el.bg ? C.text : C.surface }]}
+              accessibilityLabel="Без фону"
+            >
+              <Svg width={20} height={20} viewBox="0 0 20 20">
+                <Rect x={9} y={-2} width={2} height={24} fill={C.muted} transform="rotate(45 10 10)" />
+              </Svg>
             </Pressable>
             {COLORS.map((c) => (
-              <Pressable key={c} onPress={() => setEl((e) => ({ ...e, bg: c }))} style={[styles.swatch, { backgroundColor: c, borderColor: el.bg === c ? accent : dim }]} />
+              <Pressable
+                key={c}
+                onPress={() => {
+                  letGo();
+                  setEl((e) => ({ ...e, bg: c }));
+                }}
+                style={[styles.swatch, { backgroundColor: c, borderColor: el.bg === c ? C.text : 'transparent' }]}
+              >
+                {el.bg === c && <Ionicons name="checkmark" size={16} color={c === '#FFFFFF' || c === '#F3E9D2' || c === '#F7C948' || c === '#7BE0C8' ? '#000000' : '#FFFFFF'} />}
+              </Pressable>
             ))}
           </ScrollView>
         )}
         {tab === 'frame' && (
           <View style={styles.sliders}>
-            <SliderRow label="Заокруглення" value={(el.radius ?? 0) / (unit * 0.15)} onChange={(f) => setEl((e) => ({ ...e, radius: f * 0.15 * unit }))} ink={ink} accent={accent} />
-            <SliderRow label="Проміжок" value={el.gap / (unit * 0.08)} onChange={(f) => setEl((e) => ({ ...e, gap: f * 0.08 * unit }))} ink={ink} accent={accent} />
-            <SliderRow label="Рамка" value={(el.outer ?? 0) / (unit * 0.08)} onChange={(f) => setEl((e) => ({ ...e, outer: f * 0.08 * unit }))} ink={ink} accent={accent} />
+            <SliderRow icon="radius" value={(el.radius ?? 0) / (unit * 0.15)} onChange={(f) => { letGo(); setEl((e) => ({ ...e, radius: f * 0.15 * unit })); }} />
+            <SliderRow icon="gap" value={el.gap / (unit * 0.08)} onChange={(f) => { letGo(); setEl((e) => ({ ...e, gap: f * 0.08 * unit })); }} />
+            <SliderRow icon="border" value={(el.outer ?? 0) / (unit * 0.08)} onChange={(f) => { letGo(); setEl((e) => ({ ...e, outer: f * 0.08 * unit })); }} />
           </View>
         )}
         {tab === 'ratio' && (
-          <View style={{ gap: 12 }}>
+          <View style={[styles.ratioCard, { backgroundColor: C.surface }]}>
             <View style={styles.orient}>
-              <Pressable onPress={() => currentRatio && setRatio(currentRatio[0], currentRatio[1], true)} style={[styles.orientBtn, { backgroundColor: portrait ? accent : dim }]}>
-                <Text style={[styles.chipText, { color: portrait ? '#FFFFFF' : ink }]}>Вертикально</Text>
-              </Pressable>
-              <Pressable onPress={() => currentRatio && setRatio(currentRatio[0], currentRatio[1], false)} style={[styles.orientBtn, { backgroundColor: !portrait ? accent : dim }]}>
-                <Text style={[styles.chipText, { color: !portrait ? '#FFFFFF' : ink }]}>Горизонтально</Text>
-              </Pressable>
+              {[true, false].map((tall) => {
+                const on = portrait === tall;
+                return (
+                  <Pressable
+                    key={String(tall)}
+                    onPress={() => {
+                      letGo();
+                      if (currentRatio) setRatio(currentRatio[0], currentRatio[1], tall);
+                    }}
+                    hitSlop={8}
+                    style={[tall ? styles.orientTall : styles.orientWide, { borderColor: on ? C.text : C.muted, backgroundColor: on ? C.text : 'transparent' }]}
+                  />
+                );
+              })}
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ratios}>
               {RATIOS.map(([a, b]) => {
                 const on = currentRatio?.[0] === a && currentRatio?.[1] === b;
                 return (
-                  <Pressable key={`${a}:${b}`} onPress={() => setRatio(a, b, portrait)} style={[styles.chip, { backgroundColor: on ? accent : dim }]}>
-                    <Text style={[styles.chipText, { color: on ? '#FFFFFF' : ink }]}>{`${a}:${b}`}</Text>
+                  <Pressable
+                    key={`${a}:${b}`}
+                    onPress={() => {
+                      letGo();
+                      setRatio(a, b, portrait);
+                    }}
+                    hitSlop={6}
+                  >
+                    <Text style={[styles.ratioText, { color: on ? C.text : C.muted }]}>{portrait ? `${a}:${b}` : `${b}:${a}`}</Text>
                   </Pressable>
                 );
               })}
@@ -291,23 +361,59 @@ export default function CollageEditor({
         )}
       </View>
 
-      <View style={[styles.tabs, { paddingBottom: insets.bottom + 12 }]}>
-        {([
-          ['layout', 'grid'],
-          ['bg', 'color-palette'],
-          ['frame', 'square'],
-          ['ratio', 'resize'],
-        ] as [Tab, string][]).map(([key, icon]) => (
-          <Pressable key={key} onPress={() => setTab(key)} hitSlop={8} style={styles.tabBtn}>
-            <Ionicons name={icon as never} size={26} color={tab === key ? accent : ink} />
-          </Pressable>
-        ))}
+      <View style={[styles.tabs, { paddingBottom: insets.bottom + 10 }]}>
+        <Pressable onPress={() => showTab('layout')} hitSlop={8} style={styles.tabBtn} accessibilityLabel="Макет">
+          <Ionicons name="grid" size={24} color={tab === 'layout' ? C.hi : C.text} />
+        </Pressable>
+        <Pressable onPress={() => showTab('bg')} hitSlop={8} style={styles.tabBtn} accessibilityLabel="Фон">
+          <Ionicons name="color-palette" size={24} color={tab === 'bg' ? C.hi : C.text} />
+        </Pressable>
+        <Pressable onPress={() => showTab('frame')} hitSlop={8} style={styles.tabBtn} accessibilityLabel="Рамка">
+          <FrameIcon kind="border" color={tab === 'frame' ? C.hi : C.text} size={24} />
+        </Pressable>
+        <Pressable onPress={() => showTab('ratio')} hitSlop={8} style={styles.tabBtn} accessibilityLabel="Пропорції">
+          <View style={[styles.ratioBadge, { borderColor: tab === 'ratio' ? C.hi : C.text }]}>
+            <Text style={[styles.ratioBadgeText, { color: tab === 'ratio' ? C.hi : C.text }]}>{ratioLabel}</Text>
+          </View>
+        </Pressable>
       </View>
     </View>
   );
 }
 
-function SliderRow({ label, value, onChange, ink, accent }: { label: string; value: number; onChange: (v: number) => void; ink: string; accent: string }) {
+// The window's own look - dark, like a photo editor, whatever the app's theme.
+const C = {
+  bg: '#000000',
+  surface: '#1C1C1E',
+  surface2: '#2C2C2E',
+  text: '#FFFFFF',
+  muted: '#8E8E93',
+  line: '#5A5A5F',
+  hi: '#F5C842',
+};
+
+// Small drawn signs for the frame sliders (no fitting icons in the set).
+function FrameIcon({ kind, color, size = 22 }: { kind: 'radius' | 'gap' | 'border'; color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      {kind === 'radius' && <Path d="M5 20V13a8 8 0 0 1 8-8h6" stroke={color} strokeWidth={2} strokeLinecap="round" />}
+      {kind === 'gap' && (
+        <>
+          <Rect x={3} y={4} width={7} height={16} rx={1.5} stroke={color} strokeWidth={2} />
+          <Rect x={14} y={4} width={7} height={16} rx={1.5} stroke={color} strokeWidth={2} />
+        </>
+      )}
+      {kind === 'border' && (
+        <>
+          <Rect x={3} y={3} width={18} height={18} rx={3} stroke={color} strokeWidth={2} />
+          <Rect x={8} y={8} width={8} height={8} rx={1} stroke={color} strokeWidth={2} />
+        </>
+      )}
+    </Svg>
+  );
+}
+
+function SliderRow({ icon, value, onChange }: { icon: 'radius' | 'gap' | 'border'; value: number; onChange: (v: number) => void }) {
   const [w, setW] = useState(0);
   const latest = useRef(onChange);
   latest.current = onChange;
@@ -333,12 +439,12 @@ function SliderRow({ label, value, onChange, ink, accent }: { label: string; val
   const v = clamp(value, 0, 1);
   return (
     <View style={styles.sliderRow}>
-      <Text style={[styles.sliderLabel, { color: ink }]}>{label}</Text>
+      <FrameIcon kind={icon} color={C.text} />
       <GestureDetector gesture={gesture}>
         <View style={styles.track} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
-          <View style={[styles.rail, { backgroundColor: 'rgba(128,128,128,0.3)' }]} />
-          <View style={[styles.rail, { width: v * w, backgroundColor: accent }]} />
-          <View style={[styles.knob, { left: v * w - 11, backgroundColor: '#FFFFFF' }]} />
+          <View style={[styles.rail, { width: '100%', backgroundColor: C.surface2 }]} />
+          <View style={[styles.rail, { width: v * w, backgroundColor: C.text }]} />
+          <View style={[styles.knob, { left: v * w - 10 }]} />
         </View>
       </GestureDetector>
     </View>
@@ -347,29 +453,30 @@ function SliderRow({ label, value, onChange, ink, accent }: { label: string; val
 
 const styles = StyleSheet.create({
   root: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 60, elevation: 60 },
-  top: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8, gap: 6 },
-  topBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  title: { flex: 1, textAlign: 'center', fontSize: 17, fontFamily: SOFT_SEMIBOLD },
+  top: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 6, gap: 4 },
+  topBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  doneBtn: { height: 44, paddingHorizontal: 12, justifyContent: 'center' },
   done: { fontSize: 17, fontFamily: SOFT_SEMIBOLD },
   area: { flex: 1 },
-  dot: { position: 'absolute', width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#FFFFFF' },
-  cellBar: { height: 52, alignItems: 'center', justifyContent: 'center' },
-  pill: { flexDirection: 'row', borderRadius: 26, paddingHorizontal: 8, gap: 4 },
-  pillBtn: { width: 48, height: 44, alignItems: 'center', justifyContent: 'center' },
-  panel: { minHeight: 110, paddingHorizontal: 16, justifyContent: 'center' },
-  strip: { gap: 10, alignItems: 'center', paddingRight: 8 },
-  tile: { width: 62, height: 62, borderRadius: 14, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
-  swatch: { width: 44, height: 44, borderRadius: 22, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
-  chip: { height: 40, paddingHorizontal: 18, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  chipText: { fontSize: 15, fontFamily: SOFT_MEDIUM },
-  orient: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
-  orientBtn: { height: 38, paddingHorizontal: 16, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  sliders: { gap: 6, paddingHorizontal: 20 },
-  sliderRow: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 36 },
-  sliderLabel: { width: 112, fontSize: 14, fontFamily: SOFT_MEDIUM },
-  track: { flex: 1, height: 36, justifyContent: 'center', marginHorizontal: 12 },
-  rail: { position: 'absolute', left: 0, height: 4, borderRadius: 2, right: undefined, width: '100%' },
-  knob: { position: 'absolute', width: 22, height: 22, borderRadius: 11, top: 7, boxShadow: '0px 1px 4px rgba(0,0,0,0.35)' },
-  tabs: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 12, paddingHorizontal: 24 },
-  tabBtn: { width: 48, height: 40, alignItems: 'center', justifyContent: 'center' },
+  pill: { position: 'absolute', height: 48, borderRadius: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  pillBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  panel: { height: 124, paddingHorizontal: 16, justifyContent: 'center' },
+  strip: { gap: 10, alignItems: 'center', paddingHorizontal: 4 },
+  tile: { width: 60, height: 60, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  sliders: { gap: 4, paddingHorizontal: 28 },
+  sliderRow: { flexDirection: 'row', alignItems: 'center', gap: 18, height: 38 },
+  track: { flex: 1, height: 38, justifyContent: 'center', marginRight: 8 },
+  rail: { position: 'absolute', left: 0, height: 3, borderRadius: 1.5 },
+  knob: { position: 'absolute', width: 20, height: 20, borderRadius: 10, top: 9, backgroundColor: '#FFFFFF' },
+  ratioCard: { borderRadius: 18, paddingVertical: 12, marginHorizontal: 12, gap: 10 },
+  orient: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 22 },
+  orientTall: { width: 18, height: 26, borderRadius: 4, borderWidth: 2 },
+  orientWide: { width: 30, height: 20, borderRadius: 4, borderWidth: 2 },
+  ratios: { gap: 22, paddingHorizontal: 20 },
+  ratioText: { fontSize: 16, fontFamily: SOFT_SEMIBOLD },
+  tabs: { flexDirection: 'row', justifyContent: 'center', gap: 36, paddingTop: 10 },
+  tabBtn: { width: 44, height: 40, alignItems: 'center', justifyContent: 'center' },
+  ratioBadge: { minWidth: 30, height: 24, borderRadius: 6, borderWidth: 1.8, paddingHorizontal: 3, alignItems: 'center', justifyContent: 'center' },
+  ratioBadgeText: { fontSize: 11, fontFamily: SOFT_SEMIBOLD },
 });
