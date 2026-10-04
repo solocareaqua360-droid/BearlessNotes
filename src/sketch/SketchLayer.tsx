@@ -60,7 +60,10 @@ export default function SketchLayer({ elements, ink }: { elements: SketchElement
 // install, a purged cache) - brought back from Drive the way every
 // attachment is, with a faint frame where it will be until then.
 function SketchPicture({ el }: { el: SketchImageElement }) {
-  const clipId = `crop${useId().replace(/[^a-zA-Z0-9]/g, '_')}`;
+  // The clip's id carries its geometry: react-native-svg keeps a clip it has
+  // drawn once and does not follow its rectangle when that changes, so a
+  // moved or resized box would be cut by its OLD place. A new id = a new clip.
+  const clipId = `crop${useId().replace(/[^a-zA-Z0-9]/g, '_')}_${Math.round(el.x)}_${Math.round(el.y)}_${Math.round(el.w)}_${Math.round(el.h)}`;
   const c = el.crop;
   if (!c) {
     return (
@@ -99,11 +102,15 @@ function SketchCollage({ el }: { el: SketchCollageElement }) {
   const base = `col${useId().replace(/[^a-zA-Z0-9]/g, '_')}`;
   const rects = cellRects(el);
   const rx = (r: { w: number; h: number }) => Math.max(0, Math.min(el.radius ?? 0, r.w / 2, r.h / 2));
+  // Same as for a cropped picture: the clip's id carries its rectangle, or a
+  // changed layout would be cut by the old one.
+  const idOf = (r: { x: number; y: number; w: number; h: number }, i: number) =>
+    `${base}_${i}_${Math.round(r.x)}_${Math.round(r.y)}_${Math.round(r.w)}_${Math.round(r.h)}_${Math.round(rx(r))}`;
   return (
     <>
       <Defs>
         {rects.map((r, i) => (
-          <ClipPath key={i} id={`${base}_${i}`}>
+          <ClipPath key={idOf(r, i)} id={idOf(r, i)}>
             <Rect x={r.x} y={r.y} width={r.w} height={r.h} rx={rx(r)} ry={rx(r)} />
           </ClipPath>
         ))}
@@ -116,7 +123,7 @@ function SketchCollage({ el }: { el: SketchCollageElement }) {
         }
         const p = placement(cell, r);
         return (
-          <G key={i} clipPath={`url(#${base}_${i})`}>
+          <G key={i} clipPath={`url(#${idOf(r, i)})`}>
             <SvgImage href={{ uri: cell.uri }} x={p.x} y={p.y} width={p.w} height={p.h} preserveAspectRatio="none" />
           </G>
         );
