@@ -1,3 +1,4 @@
+import type { MenuEntry } from '../components/surfaces/Menu';
 import { usePaneBar } from '../navigation/paneBar';
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
 import { useNoteOpened } from '../navigation/recentPlaces';
@@ -957,6 +958,25 @@ export default function CustomDatabaseScreen({
       : null,
     bar
   );
+  // The rare, per-database housekeeping - «Параметри»: the dock's menu
+  // without a bar, the bar's "⋯" with one.
+  const databaseMenuEntries: MenuEntry[] = [
+          // What the list shows and how it is ordered live on the dock,
+          // not here: they're changed constantly while working, and a
+          // menu can't show which one is active without being opened.
+          // What's left is the rare, per-database housekeeping. Choosing
+          // is on the dock too now - "дві кнопки одна функція це невірно".
+          { label: 'Перейменувати базу', icon: 'pencil-outline', onPress: () => setRenamingDatabase(true) },
+          { label: 'Поля', icon: 'options-outline', onPress: () => setEditingFields(true) },
+          // A faster way in than opening a saved view's own editor first
+          // just to hide a field before saving a new one - the same
+          // hiddenFieldIds every capsule already carries (see
+          // toggleHiddenField's own comment).
+          { label: 'Показати, приховати властивості', icon: 'eye-off-outline', onPress: () => setQuickHiddenSheetVisible(true) },
+          { label: 'Налаштування виглядів', icon: 'bookmark-outline', onPress: () => setViewsManagerVisible(true) },
+          { label: 'Імпортувати таблицю', icon: 'download-outline', onPress: () => setImporting(true) },
+          { label: 'Видалити базу', icon: 'trash-outline', tone: 'danger', onPress: askToDeleteDatabase },
+  ];
   useDockBeads(
     isFocused
       ? bar
@@ -978,11 +998,27 @@ export default function CustomDatabaseScreen({
         : { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
       : null,
     isFocused && !isSelectMode
-      ? { icon: 'albums-outline', badge: 'add-circle-outline', onPress: openNewRow }
+      ? {
+          icon: 'albums-outline',
+          badge: 'add-circle-outline',
+          onPress: openNewRow,
+          // UNDER A BAR (2026-10-04, the user's layout): «Подача» is a
+          // circle in the search field beside "+", «Параметри» went up to
+          // the bar's "⋯" and «Зберегти» into Подача's «Представлення» -
+          // the dock no longer carries a strip of its own.
+          extra: bar
+            ? {
+                icon: 'funnel-outline',
+                label: 'Подача',
+                active: openParam === 'params' || activeParamCount > 0,
+                onPress: () => openParamList('params'),
+              }
+            : undefined,
+        }
       : null
   );
   useDockActions(
-    isFocused
+    isFocused && (isSelectMode || !bar)
       ? isSelectMode
         ? [
             {
@@ -1039,7 +1075,8 @@ export default function CustomDatabaseScreen({
       : null
   );
   // Choosing at the bar's edge, as on every screen with a bar.
-  useTopExtras(null, { active: isSelectMode, onPress: () => toggleSelectMode() }, bar && isFocused);
+  // «Параметри» under a bar: its housekeeping list is the bar's "⋯".
+  useTopExtras(bar ? databaseMenuEntries : null, { active: isSelectMode, onPress: () => toggleSelectMode() }, bar && isFocused);
 
   if (!database) {
     return (
@@ -3410,23 +3447,7 @@ export default function CustomDatabaseScreen({
         onClose={() => setMenuOpen(false)}
         // Above the dock, where the button that opens it lives.
         style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
-        entries={[
-          // What the list shows and how it is ordered live on the dock,
-          // not here: they're changed constantly while working, and a
-          // menu can't show which one is active without being opened.
-          // What's left is the rare, per-database housekeeping. Choosing
-          // is on the dock too now - "дві кнопки одна функція це невірно".
-          { label: 'Перейменувати базу', icon: 'pencil-outline', onPress: () => setRenamingDatabase(true) },
-          { label: 'Поля', icon: 'options-outline', onPress: () => setEditingFields(true) },
-          // A faster way in than opening a saved view's own editor first
-          // just to hide a field before saving a new one - the same
-          // hiddenFieldIds every capsule already carries (see
-          // toggleHiddenField's own comment).
-          { label: 'Показати, приховати властивості', icon: 'eye-off-outline', onPress: () => setQuickHiddenSheetVisible(true) },
-          { label: 'Налаштування виглядів', icon: 'bookmark-outline', onPress: () => setViewsManagerVisible(true) },
-          { label: 'Імпортувати таблицю', icon: 'download-outline', onPress: () => setImporting(true) },
-          { label: 'Видалити базу', icon: 'trash-outline', tone: 'danger', onPress: askToDeleteDatabase },
-        ]}
+        entries={databaseMenuEntries}
       />
 
       {/* Sorting, filtering, grouping and representation, in one window
@@ -3698,6 +3719,19 @@ export default function CustomDatabaseScreen({
                       {VIEW_LABELS.schedule}
                     </Text>
                     {viewMode === 'schedule' && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
+                  </Pressable>
+                  {/* «Зберегти» lives here now (2026-10-04): what is in
+                      force, kept as a new view - a button of its own under
+                      the representations, with a "+". */}
+                  <Pressable
+                    style={[styles.paramOption, styles.saveViewOption]}
+                    onPress={() => {
+                      closeParamList();
+                      confirmSaveNewView();
+                    }}
+                  >
+                    <Ionicons name="add-circle-outline" size={16} color={sInk('#fff')} />
+                    <Text style={[styles.paramOptionLabel, styles.paramOptionLabelActive]}>Зберегти як новий вигляд</Text>
                   </Pressable>
                 </>
               )}
@@ -6513,6 +6547,9 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   },
   paramExpandedEditBtn: {
     paddingLeft: 8,
+  },
+  saveViewOption: {
+    marginTop: 6,
   },
   paramOption: {
     flexDirection: 'row',

@@ -191,6 +191,11 @@ export type DockBead = {
   // Drawn round, as the right bead is, not as the wide field - a left
   // bead that is a BUTTON, not a search (the folders' databases).
   round?: boolean;
+  // RIGHT bead only: a second button that goes with it - drawn as another
+  // small circle in the soft dock's search field, ahead of "+" (a personal
+  // database's «Подача», 2026-10-04), or as a round button beside it where
+  // there is no field to hold it.
+  extra?: { icon: string; label: string; active?: boolean; onPress: () => void };
 };
 
 type Value = {
@@ -305,7 +310,11 @@ function actionSignature(list: DockAction[] | null): string {
 
 function beadSignature(beads: { left: DockBead | null; right: DockBead | null }): string {
   const one = (b: DockBead | null) =>
-    b ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}:${b.dimmed ? 1 : 0}:${b.label ?? ''}:${b.round ? 1 : 0}` : '-';
+    b
+      ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}:${b.dimmed ? 1 : 0}:${b.label ?? ''}:${b.round ? 1 : 0}:${
+          b.extra ? `${b.extra.icon}${b.extra.active ? 1 : 0}` : ''
+        }`
+      : '-';
   return `${one(beads.left)}/${one(beads.right)}`;
 }
 
@@ -932,7 +941,11 @@ export function useDockBeads(left: DockBead | null, right: DockBead | null) {
   ref.current = { left, right };
   const wrap = useRef({
     left: { onPress: () => ref.current.left?.onPress(), onLongPress: () => ref.current.left?.onLongPress?.() },
-    right: { onPress: () => ref.current.right?.onPress(), onLongPress: () => ref.current.right?.onLongPress?.() },
+    right: {
+      onPress: () => ref.current.right?.onPress(),
+      onLongPress: () => ref.current.right?.onLongPress?.(),
+      extra: () => ref.current.right?.extra?.onPress(),
+    },
   });
   const signature = beadSignature({ left, right });
   useEffect(() => {
@@ -940,7 +953,14 @@ export function useDockBeads(left: DockBead | null, right: DockBead | null) {
     const { left: l, right: r } = ref.current;
     publish(id, {
       left: l ? { ...l, onPress: wrap.current.left.onPress, onLongPress: l.onLongPress ? wrap.current.left.onLongPress : undefined } : null,
-      right: r ? { ...r, onPress: wrap.current.right.onPress, onLongPress: r.onLongPress ? wrap.current.right.onLongPress : undefined } : null,
+      right: r
+        ? {
+            ...r,
+            onPress: wrap.current.right.onPress,
+            onLongPress: r.onLongPress ? wrap.current.right.onLongPress : undefined,
+            extra: r.extra ? { ...r.extra, onPress: wrap.current.right.extra } : undefined,
+          }
+        : null,
     }, layer);
     return () => publish(id, null);
   }, [publish, focused, signature, id, layer]);

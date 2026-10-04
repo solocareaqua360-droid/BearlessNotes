@@ -2301,6 +2301,30 @@ export default function ContextDock() {
                     {left.label ?? (left.active ? 'Закрити пошук' : 'Пошук')}
                   </Text>
                 </Pressable>
+                {/* A second circle that goes with "+" (a personal
+                    database's «Подача») - see DockBead.extra. */}
+                {right?.extra && (
+                  <Pressable
+                    onPress={right.extra.onPress}
+                    accessibilityLabel={right.extra.label}
+                    style={({ pressed }) => [
+                      styles.softFieldCreate,
+                      {
+                        width: TWO_BEAD - FIELD_INSET * 2,
+                        height: TWO_BEAD - FIELD_INSET * 2,
+                        borderRadius: TWO_BEAD / 2 - FIELD_INSET,
+                        marginRight: FIELD_INSET,
+                        backgroundColor: right.extra?.active ? soft.ink : pressed ? soft.line : soft.fillSolid,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={right.extra.icon as keyof typeof Ionicons.glyphMap}
+                      size={20}
+                      color={right.extra.active ? soft.card : soft.ink}
+                    />
+                  </Pressable>
+                )}
                 {/* The round "+" button itself, a little smaller, set into
                     the field's right end (the user's, 2026-10-04). */}
                 {right && (
@@ -2383,6 +2407,19 @@ export default function ContextDock() {
             </Pressable>
           ) : (
             <View style={{ flex: 1 }} />
+          )}
+          {right?.extra && !merged && (
+            <Pressable
+              onPress={right.extra.onPress}
+              accessibilityLabel={right.extra.label}
+              style={[styles.softButton, surface, { width: TWO_BEAD }, right.extra.active && { backgroundColor: soft.ink }]}
+            >
+              <Ionicons
+                name={right.extra.icon as keyof typeof Ionicons.glyphMap}
+                size={21}
+                color={right.extra.active ? soft.card : soft.ink}
+              />
+            </Pressable>
           )}
           {right && !merged && (
             <Pressable

@@ -114,6 +114,15 @@ export default function InlineDock({
         ) : (
           <View style={{ flex: 1 }} />
         )}
+        {right?.extra && (
+          <Pressable
+            onPress={right.extra.onPress}
+            accessibilityLabel={right.extra.label}
+            style={[styles.softButton, surface, { width: TWO_BEAD }, right.extra.active && { backgroundColor: soft.ink }]}
+          >
+            <Ionicons name={right.extra.icon as never} size={21} color={right.extra.active ? soft.card : soft.ink} />
+          </Pressable>
+        )}
         {right && (
           <Pressable
             onPress={right.onPress}
