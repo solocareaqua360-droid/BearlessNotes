@@ -1,11 +1,15 @@
 package expo.modules.mindevanative
 
+import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -17,6 +21,9 @@ class MindevaNativeModule : Module() {
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
 
+  // The screen capture's consent, waiting for the system dialog's answer.
+  private var capturePromise: Promise? = null
+
   override fun definition() = ModuleDefinition {
     Name("MindevaNative")
 
@@ -24,6 +31,55 @@ class MindevaNativeModule : Module() {
     // plugins/withWallpaperWindow) - JS only offers "Шпалери телефона"
     // where this is true.
     Constant("wallpaperWindow") { true }
+
+    // FRAMES FROM A PLAYING VIDEO (see ScreenCapture.kt). Starting asks the
+    // phone (its own dialog) and resolves true once the session is up;
+    // a frame is then taken as often as wanted until it is stopped.
+    Constant("screenCapture") { true }
+
+    AsyncFunction("startScreenCapture") { promise: Promise ->
+      if (ScreenCapture.isActive()) {
+        promise.resolve(true)
+        return@AsyncFunction
+      }
+      val activity = appContext.currentActivity
+      if (activity == null) {
+        promise.resolve(false)
+        return@AsyncFunction
+      }
+      val manager = context.getSystemService(MediaProjectionManager::class.java)
+      capturePromise?.resolve(false)
+      capturePromise = promise
+      activity.startActivityForResult(manager.createScreenCaptureIntent(), CAPTURE_REQUEST)
+    }
+
+    OnActivityResult { _, payload ->
+      if (payload.requestCode != CAPTURE_REQUEST) return@OnActivityResult
+      val promise = capturePromise ?: return@OnActivityResult
+      capturePromise = null
+      if (payload.resultCode != Activity.RESULT_OK || payload.data == null) {
+        promise.resolve(false)
+        return@OnActivityResult
+      }
+      ScreenCapture.onReady = { ok -> promise.resolve(ok) }
+      val intent = Intent(context, ScreenCaptureService::class.java)
+        .putExtra(ScreenCaptureService.EXTRA_CODE, payload.resultCode)
+        .putExtra(ScreenCaptureService.EXTRA_DATA, payload.data)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+      else context.startService(intent)
+    }
+
+    AsyncFunction("grabScreenFrame") { x: Int, y: Int, w: Int, h: Int ->
+      ScreenCapture.grab(context, x, y, w, h)
+    }
+
+    Function("isScreenCapturing") { ScreenCapture.isActive() }
+
+    Function("stopScreenCapture") {
+      context.stopService(Intent(context, ScreenCaptureService::class.java))
+      ScreenCapture.release()
+      true
+    }
 
     // BLUR OF THE WALLPAPER (the user's, 2026-10-02: "окрім затемнення ще
     // і блюру"). Android 12+ blurs whatever lies under a window's
@@ -66,5 +122,9 @@ class MindevaNativeModule : Module() {
       manager.createNotificationChannel(channel)
       true
     }
+  }
+
+  companion object {
+    private const val CAPTURE_REQUEST = 47110
   }
 }

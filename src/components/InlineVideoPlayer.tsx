@@ -14,8 +14,25 @@ export type VideoSeek = { t: number; n: number };
 // local HTML page (an actual <iframe>, not a direct navigation) gives it a
 // real page context to check against and is the standard fix for this
 // exact React Native + YouTube WebView failure.
+// The player's own time, reported out: once the iframe has loaded, the page
+// tells it "listening" (the IFrame API's handshake) and it answers with
+// infoDelivery messages carrying currentTime, which are passed on to the
+// app - what a frame taken from the video is stamped with.
+const TIME_BRIDGE = `<script>
+(function(){
+  var f=document.querySelector('iframe');
+  function listen(){try{f.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*');}catch(e){}}
+  f.addEventListener('load',function(){listen();setTimeout(listen,800);setTimeout(listen,2000);});
+  window.addEventListener('message',function(e){
+    try{var d=typeof e.data==='string'?JSON.parse(e.data):e.data;
+      if(d&&d.info&&typeof d.info.currentTime==='number'&&window.ReactNativeWebView){
+        window.ReactNativeWebView.postMessage(JSON.stringify({t:d.info.currentTime}));}}catch(err){}
+  });
+})();
+</script>`;
+
 function htmlForYouTube(embedUrl: string): string {
-  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" /><style>html,body{margin:0;padding:0;background:#000;height:100%;}iframe{position:fixed;top:0;left:0;width:100%;height:100%;border:0;}</style></head><body><iframe src="${embedUrl}" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe></body></html>`;
+  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" /><style>html,body{margin:0;padding:0;background:#000;height:100%;}iframe{position:fixed;top:0;left:0;width:100%;height:100%;border:0;}</style></head><body><iframe src="${embedUrl}" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>${TIME_BRIDGE}</body></html>`;
 }
 
 // The player itself, with no window around it: it fills whatever box it
@@ -27,7 +44,18 @@ function htmlForYouTube(embedUrl: string): string {
 // a live WebView with a player in it, and a list that mounted one per
 // card would be running as many video players as there are rows. The
 // screens that use it hold a single "which card is playing" id.
-export default function InlineVideoPlayer({ url, start, seek }: { url: string; start?: number; seek?: VideoSeek }) {
+export default function InlineVideoPlayer({
+  url,
+  start,
+  seek,
+  onTime,
+}: {
+  url: string;
+  start?: number;
+  seek?: VideoSeek;
+  // Where the video is now, in seconds (YouTube only) - as it plays.
+  onTime?: (seconds: number) => void;
+}) {
   const info = getVideoEmbedInfo(url);
   const webRef = useRef<WebView>(null);
   // The first seek is the `start` the player was mounted with; every later
@@ -67,6 +95,15 @@ export default function InlineVideoPlayer({ url, start, seek }: { url: string; s
       // embed page instead of trying (and failing) to hand off to an
       // app - exactly what "play it in this app" is supposed to mean.
       onShouldStartLoadWithRequest={(request) => /^https?:\/\//i.test(request.url)}
+      onMessage={(event) => {
+        if (!onTime) return;
+        try {
+          const data = JSON.parse(event.nativeEvent.data) as { t?: number };
+          if (typeof data.t === 'number') onTime(data.t);
+        } catch {
+          // Not ours.
+        }
+      }}
       allowsFullscreenVideo
       mediaPlaybackRequiresUserAction={false}
       renderLoading={() => (

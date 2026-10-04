@@ -1,3 +1,4 @@
+import { grabScreenFrame, startScreenCapture, stopScreenCapture, supportsScreenCapture } from '../utils/mindevaNative';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import { useDeskContent } from '../navigation/useDeskContent';
 import { useNoteOpened } from '../navigation/recentPlaces';
@@ -15,6 +16,7 @@ import {
   Image,
   Linking,
   Modal,
+  PixelRatio,
   Platform,
   Pressable,
   StyleSheet,
@@ -1274,6 +1276,10 @@ type DraggableCardProps = {
   playing?: boolean;
   onStopPlaying?: () => void;
   onOpenFullscreen?: () => void;
+  // A frame of the playing video, taken off the screen (where this APK
+  // can): handed up as a JPEG to be laid beside the card.
+  onFrame?: (card: BoardCard, shot: { uri: string; width: number; height: number }) => void;
+  onVideoTime?: (seconds: number) => void;
   onResize: (id: string, width: number) => void;
   // The canvas's own "hold to reach for the marquee". A card's hold has
   // to beat it - see the card's longPressGesture.
@@ -1342,8 +1348,42 @@ function DraggableCard({
   playing,
   onStopPlaying,
   onOpenFullscreen,
+  onFrame,
+  onVideoTime,
   canvasHoldGesture,
 }: DraggableCardProps) {
+  // FRAMES FROM THE PLAYER (the user's, 2026-10-04): the phone's screen
+  // capture (asked for once per session), the newest frame cut to the
+  // player's own box. The box is read off two dots at its corners - they
+  // are measured where the board's zoom has put them, which the box's own
+  // size is not.
+  const frameTL = useRef<View>(null);
+  const frameBR = useRef<View>(null);
+  const [framing, setFraming] = useState(false);
+  const corner = (node: View | null) =>
+    new Promise<{ x: number; y: number } | null>((resolve) => {
+      if (!node) return resolve(null);
+      node.measureInWindow((x, y) => resolve({ x, y }));
+    });
+  async function takeFrame() {
+    if (!onFrame || framing) return;
+    if (!(await startScreenCapture())) return;
+    // The buttons off the picture first, and a moment for the screen to
+    // show it without them (and without the system's dialog).
+    setFraming(true);
+    await new Promise((r) => setTimeout(r, 350));
+    const [tl, br] = await Promise.all([corner(frameTL.current), corner(frameBR.current)]);
+    const ratio = PixelRatio.get();
+    const shot =
+      tl && br
+        ? await grabScreenFrame({ x: tl.x * ratio, y: tl.y * ratio, w: (br.x - tl.x) * ratio, h: (br.y - tl.y) * ratio })
+        : null;
+    setFraming(false);
+    if (shot) {
+      hapticSuccess();
+      onFrame(card, shot);
+    }
+  }
   const theme = useTheme();
   const styles = useBoardStyles();
   // The last position this card itself put into the parent's state. Used
@@ -1744,8 +1784,16 @@ function DraggableCard({
               // controls sit on the player: close, and full screen for
               // when the card is too small to watch in.
               <View style={styles.refThumb}>
-                <InlineVideoPlayer url={card.linkUrl ?? ''} />
+                <InlineVideoPlayer url={card.linkUrl ?? ''} onTime={onVideoTime} />
+                <View ref={frameTL} collapsable={false} pointerEvents="none" style={styles.frameDotTL} />
+                <View ref={frameBR} collapsable={false} pointerEvents="none" style={styles.frameDotBR} />
+                {!framing && (
                 <View style={styles.playerControls} pointerEvents="box-none">
+                  {supportsScreenCapture && onFrame && (
+                    <Pressable hitSlop={8} style={styles.playerButton} onPress={takeFrame} accessibilityLabel="Кадр">
+                      <Ionicons name="camera-outline" size={14} color="#fff" />
+                    </Pressable>
+                  )}
                   <Pressable hitSlop={8} style={styles.playerButton} onPress={onOpenFullscreen}>
                     <Ionicons name="expand-outline" size={14} color="#fff" />
                   </Pressable>
@@ -1753,6 +1801,7 @@ function DraggableCard({
                     <Ionicons name="close" size={14} color="#fff" />
                   </Pressable>
                 </View>
+                )}
               </View>
             ) : card.linkImageUrl ? (
               <Image source={{ uri: card.linkImageUrl }} style={styles.refThumb} resizeMode="cover" resizeMethod="resize" />
@@ -2108,6 +2157,16 @@ export default function BoardScreen() {
   // every player is a live WebView, and a board of video cards all
   // playing at once is a board that stops responding.
   const [playingCardId, setPlayingCardId] = useState<string | null>(null);
+  // Where the playing video is (seconds), and how many frames each video
+  // has given this session - the next one is laid under the last.
+  const videoTime = useRef(0);
+  const framesTaken = useRef<Record<string, number>>({});
+  // The screen capture lasts while a video plays on the board, no longer.
+  useEffect(() => {
+    videoTime.current = 0;
+    if (playingCardId === null) stopScreenCapture();
+  }, [playingCardId]);
+  useEffect(() => () => stopScreenCapture(), []);
   // 'move' - single-finger drag pans the canvas (the original Stage 1
   // behaviour). 'select' - single-finger drag instead draws a marquee
   // rectangle over the world, selecting every card it overlaps, so several
@@ -3552,6 +3611,42 @@ export default function BoardScreen() {
     // laid on the board, and only then the next - so two pictures cannot
     // land on the same spot.
     for (const asset of result.assets) await addPhotoCard(asset);
+  }
+
+  // A frame of a playing video: a photo of its own («Зображення», backed up
+  // like any), titled with the moment it shows, laid to the right of the
+  // video's card - the next one under it.
+  async function addVideoFrame(video: BoardCard, shot: { uri: string; width: number; height: number }) {
+    const t = Math.max(0, Math.floor(videoTime.current));
+    const stamp = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    const title = `Кадр ${stamp}${video.linkTitle ? ` · ${video.linkTitle}` : ''}`;
+    const imageUri = await compressPickedImage(shot.uri, shot.width, shot.height);
+    const id = generateId();
+    const now = Date.now();
+    await setDoc(
+      doc(db, 'photos', id),
+      { imageUri, imageFit: 'contain', title, createdAt: now, updatedAt: now, usedInDocuments: {}, sourceUrl: video.linkUrl ?? null, sourceTime: t },
+      { merge: true }
+    );
+    backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
+      if (!uploaded) return;
+      updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+      setCards((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, driveFileId: uploaded.fileId, driveBytes: uploaded.bytes } : c))
+      );
+    });
+    const nth = framesTaken.current[video.id] ?? 0;
+    framesTaken.current[video.id] = nth + 1;
+    const width = video.width ?? DEFAULT_CARD_WIDTH;
+    setCards((prev) => [
+      ...prev,
+      {
+        ...blockFromPhoto({ id, imageUri, imageFit: 'contain', title, createdAt: now }),
+        x: video.x + width + 24,
+        y: video.y + nth * (Math.round((width * shot.height) / Math.max(1, shot.width)) + 24),
+        width,
+      },
+    ]);
   }
 
   async function addPhotoCard(asset: ImagePicker.ImagePickerAsset) {
@@ -6464,6 +6559,10 @@ export default function BoardScreen() {
                       setPlayingCardId(null);
                       setPlayingVideoUrl(card.linkUrl ?? null);
                     }}
+                    onFrame={addVideoFrame}
+                    onVideoTime={(t) => {
+                      videoTime.current = t;
+                    }}
                     onLongPress={handleCardLongPress}
                     onResize={commitCardResize}
                     canvasHoldGesture={holdToSelectGesture}
@@ -7609,6 +7708,10 @@ const makeStyles = (theme: Theme) =>
       borderRadius: 6,
       overflow: 'hidden',
     },
+    // The player's two corners, measured for a frame (DraggableCard's
+    // takeFrame).
+    frameDotTL: { position: 'absolute', left: 0, top: 0, width: 1, height: 1 },
+    frameDotBR: { position: 'absolute', right: 0, bottom: 0, width: 1, height: 1 },
     // On the player, in its top-right corner.
     playerControls: {
       position: 'absolute',
