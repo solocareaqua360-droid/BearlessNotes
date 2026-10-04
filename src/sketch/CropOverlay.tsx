@@ -31,6 +31,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 export default function CropOverlay({
   uri,
   boxAspect,
+  lockAspect,
   crop,
   paper,
   ink,
@@ -40,6 +41,7 @@ export default function CropOverlay({
 }: {
   uri: string;
   boxAspect: number; // the box's width / height now, for a picture with no crop yet
+  lockAspect?: number; // a collage cell: the frame keeps the cell's shape, no choice
   crop: SketchCrop | undefined;
   paper: string;
   ink: string;
@@ -51,7 +53,7 @@ export default function CropOverlay({
   const [src, setSrc] = useState<number | null>(null); // the picture's own width / height
   const [area, setArea] = useState({ w: 0, h: 0 });
   const [rect, setRect] = useState<Box | null>(null);
-  const [lock, setLock] = useState<number | null>(null);
+  const [lock, setLock] = useState<number | null>(lockAspect ?? null);
 
   useEffect(() => {
     Image.getSize(
@@ -254,6 +256,7 @@ export default function CropOverlay({
       </GestureDetector>
 
       <View style={[styles.bar, { paddingBottom: insets.bottom + 14 }]}>
+        {!lockAspect && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           <Chip label="Вільно" on={lock === null} onPress={() => applyRatio(null)} ink={ink} accent={accent} />
           <Chip label="Оригінал" on={false} onPress={whole} ink={ink} accent={accent} />
@@ -261,6 +264,7 @@ export default function CropOverlay({
             <Chip key={r.label} label={r.label} on={lock !== null && Math.abs(lock - r.value) < 0.001} onPress={() => applyRatio(r.value)} ink={ink} accent={accent} />
           ))}
         </ScrollView>
+        )}
         <View style={styles.buttons}>
           <Pressable onPress={onCancel} style={[styles.btn, { backgroundColor: 'rgba(128,128,128,0.18)' }]}>
             <Text style={[styles.btnText, { color: ink }]}>Скасувати</Text>

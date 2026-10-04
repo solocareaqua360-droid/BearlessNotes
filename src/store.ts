@@ -15,6 +15,16 @@ async function ensureDirs() {
   await LegacyFileSystem.makeDirectoryAsync(IMAGES, { intermediates: true }).catch(() => {});
 }
 
+// Every picture file a drawing uses: single pictures and collage cells.
+function pictureUris(elements: SketchElement[]): string[] {
+  const out: string[] = [];
+  for (const el of elements) {
+    if (el.kind === 'image') out.push(el.uri);
+    else if (el.kind === 'collage') for (const c of el.cells) if (c.uri) out.push(c.uri);
+  }
+  return out;
+}
+
 export function newSketch(): SketchFile {
   const now = Date.now();
   return {
@@ -65,10 +75,10 @@ export async function deleteSketch(id: string): Promise<void> {
 // first of all.
 export async function exportSketch(file: SketchFile): Promise<void> {
   const images: Record<string, string> = {};
-  for (const el of file.elements) {
-    if (el.kind !== 'image' || images[el.uri]) continue;
+  for (const uri of pictureUris(file.elements)) {
+    if (images[uri]) continue;
     try {
-      images[el.uri] = await LegacyFileSystem.readAsStringAsync(el.uri, { encoding: LegacyFileSystem.EncodingType.Base64 });
+      images[uri] = await LegacyFileSystem.readAsStringAsync(uri, { encoding: LegacyFileSystem.EncodingType.Base64 });
     } catch {
       // A picture that is no longer there is left out; its frame stays.
     }
@@ -97,9 +107,13 @@ export async function importSketch(): Promise<SketchFile | null> {
     await LegacyFileSystem.writeAsStringAsync(uri, data, { encoding: LegacyFileSystem.EncodingType.Base64 });
     moved[oldUri] = uri;
   }
-  const elements = (raw.elements as SketchElement[]).map((el) =>
-    el.kind === 'image' && moved[el.uri] ? { ...el, uri: moved[el.uri] } : el
-  );
+  const elements = (raw.elements as SketchElement[]).map((el): SketchElement => {
+    if (el.kind === 'image' && moved[el.uri]) return { ...el, uri: moved[el.uri] };
+    if (el.kind === 'collage') {
+      return { ...el, cells: el.cells.map((c) => (c.uri && moved[c.uri] ? { ...c, uri: moved[c.uri] } : c)) };
+    }
+    return el;
+  });
   const base = newSketch();
   const file: SketchFile = {
     ...base,

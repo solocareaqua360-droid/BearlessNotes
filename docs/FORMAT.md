@@ -6,7 +6,7 @@ The contract between sketchEva and mindEva. Defined in code in
 ```jsonc
 {
   "format": "sketchEva",      // always this
-  "version": 2,               // SKETCH_VERSION when it was written
+  "version": 3,               // SKETCH_VERSION when it was written
   "id": "…", "title": "…",
   "createdAt": 0, "updatedAt": 0,
   "width": 0, "height": 0,    // the canvas the elements were drawn against
@@ -34,6 +34,19 @@ the element's box (`x y w h`) is the window. A reader draws the full picture
 sized `w/crop.w` by `h/crop.h`, placed so the crop falls in the box, clipped
 to the box. A reader that ignores `crop` shows the picture filling the box
 (centred, slightly different) and must save `crop` back untouched.
+
+## Version 3: collage
+
+A new element kind, `collage`: one block holding several pictures in a ready
+layout. Fields: `x y w h` (the block's box), `rot?`, `layout` (id: `h2`, `v2`,
+`h3`, `v3`, `big2`, `grid4`), `gap` (even space between cells, canvas units),
+`cells[]` (one per cell of the layout, in its order; empty cell = `{}`).
+A cell: `uri?`, `aspect?` (the picture's width / height), `fx?`/`fy?` (0..1,
+the point of the picture kept in the cell's middle, default 0.5) and `zoom?`
+(>= 1, default 1). A picture fills its cell ("cover"); layouts are listed in
+`src/sketch/collage.ts` (cell rectangles as fractions of the box). A reader
+that does not know `collage` keeps the element untouched; the export's
+`images` holds every cell's picture by its `uri`.
 
 ## Rules for changing it
 

@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { ClipPath, Defs, G, Image as SvgImage, Path, Rect, Text as SvgText } from 'react-native-svg';
-import type { SketchElement, SketchImageElement } from './format';
+import type { SketchCollageElement, SketchElement, SketchImageElement } from './format';
+import { cellRects, placement } from './collage';
 import { FILL_OPACITY, LABEL_SIZE, inkOn, pivotOf, transformOf } from './sketchGeometry';
 
 // A drawing's elements, inside an <Svg> the caller sizes - one way to draw
@@ -15,6 +16,8 @@ export default function SketchLayer({ elements, ink }: { elements: SketchElement
         const body =
           el.kind === 'image' ? (
             <SketchPicture el={el} />
+          ) : el.kind === 'collage' ? (
+            <SketchCollage el={el} />
           ) : el.kind === 'text' ? (
             <SvgText x={el.x} y={el.y} fill={inkOn(el.color, ink)} fontSize={el.fontSize}>
               {el.text}
@@ -86,6 +89,36 @@ function SketchPicture({ el }: { el: SketchImageElement }) {
           preserveAspectRatio="none"
         />
       </G>
+    </>
+  );
+}
+
+// A collage: every cell clips its picture to its own rectangle; an empty
+// cell is a faint tile, so the layout reads before it is filled.
+function SketchCollage({ el }: { el: SketchCollageElement }) {
+  const base = `col${useId().replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const rects = cellRects(el);
+  return (
+    <>
+      <Defs>
+        {rects.map((r, i) => (
+          <ClipPath key={i} id={`${base}_${i}`}>
+            <Rect x={r.x} y={r.y} width={r.w} height={r.h} />
+          </ClipPath>
+        ))}
+      </Defs>
+      {rects.map((r, i) => {
+        const cell = el.cells[i];
+        if (!cell?.uri) {
+          return <Rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill="rgba(128,128,128,0.16)" />;
+        }
+        const p = placement(cell, r);
+        return (
+          <G key={i} clipPath={`url(#${base}_${i})`}>
+            <SvgImage href={{ uri: cell.uri }} x={p.x} y={p.y} width={p.w} height={p.h} preserveAspectRatio="none" />
+          </G>
+        );
+      })}
     </>
   );
 }

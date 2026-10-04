@@ -18,12 +18,13 @@ import {
 import { Ionicons } from './icons/Ionicons';
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SketchElement, SketchImageElement, SketchPathElement, SketchShape } from './format';
+import { SketchCollageCell, SketchCollageElement, SketchElement, SketchImageElement, SketchPathElement, SketchShape } from './format';
 import * as ImagePicker from 'expo-image-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from './fonts';
 import { useSoft, useTheme } from './theme';
 import CropOverlay from './CropOverlay';
+import { LAYOUTS, cellCrop, cellFromCrop, cellIndexAt, cellRects } from './collage';
 import {
   INK,
   recropImage,
@@ -394,12 +395,15 @@ export default function SketchEditor({ visible, initialElements, background, pap
   // HOLD A PICTURE = CROP IT: a finger kept still on a picture for half a
   // second opens the cropping window for it. Moving, or lifting, first
   // makes it an ordinary move or tap.
-  const [cropFor, setCropFor] = useState<number | null>(null);
+  const [cropFor, setCropFor] = useState<{ index: number; cell?: number } | null>(null);
+  const [cellMenu, setCellMenu] = useState<{ index: number; cell: number } | null>(null);
+  const [collageMenuOpen, setCollageMenuOpen] = useState(false);
   const holdRef = useRef<{ timer: ReturnType<typeof setTimeout>; start: Point } | null>(null);
   function cancelHold() {
     if (holdRef.current) clearTimeout(holdRef.current.timer);
     holdRef.current = null;
   }
+  const isPictureBlock = (el: SketchElement | undefined) => !!el && (el.kind === 'image' || el.kind === 'collage');
   function armHold(index: number, p: Point) {
     cancelHold();
     holdRef.current = {
@@ -411,7 +415,15 @@ export default function SketchEditor({ visible, initialElements, background, pap
         op.current = null;
         setGuides(null);
         setSelection([index]);
-        setCropFor(index);
+        const el = elements[index];
+        if (el?.kind === 'collage') {
+          // Which cell is under the finger (in the block's own frame).
+          const local = el.rot ? rotatePoint(p, pivotOf(el), -el.rot) : p;
+          const cell = cellIndexAt(el, local);
+          if (cell !== -1) setCellMenu({ index, cell });
+        } else {
+          setCropFor({ index });
+        }
       }, 500),
     };
   }
@@ -441,7 +453,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
       }
       if (local.x >= b.minX && local.x <= b.maxX && local.y >= b.minY && local.y <= b.maxY) {
         op.current = { kind: 'move', start: p, base: elements, ids: selection };
-        if (selection.length === 1 && elements[selection[0]]?.kind === 'image') armHold(selection[0], p);
+        if (selection.length === 1 && isPictureBlock(elements[selection[0]])) armHold(selection[0], p);
         return;
       }
     }
@@ -449,7 +461,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
     if (hit !== -1) {
       setSelection([hit]);
       op.current = { kind: 'move', start: p, base: elements, ids: [hit] };
-      if (elements[hit].kind === 'image') armHold(hit, p);
+      if (isPictureBlock(elements[hit])) armHold(hit, p);
       return;
     }
     // Empty paper: a frame drawn round what is to be chosen.
@@ -837,7 +849,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
     if (selection.length) {
       remember();
       const chosen = new Set(selection);
-      setElements(elements.map((el, i) => (chosen.has(i) && el.kind !== 'image' ? { ...el, color: c } : el)));
+      setElements(elements.map((el, i) => (chosen.has(i) && (el.kind === 'path' || el.kind === 'text') ? { ...el, color: c } : el)));
     }
   }
 
@@ -886,17 +898,75 @@ export default function SketchEditor({ visible, initialElements, background, pap
     if (!permission.granted) return;
     const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
     if (picked.canceled || picked.assets.length === 0) return;
-    const asset = picked.assets[0];
-    // A copy of the drawing's own, in the app's folder (the picker's
-    // address can be taken back by the app that gave it). No cloud here:
-    // the picture travels inside the drawing's file when it is exported.
+    const { uri, aspect } = await importAsset(picked.assets[0]);
+    placePicture(uri, undefined, aspect);
+  }
+
+  // A copy of the drawing's own, in the app's folder (the picker's address
+  // can be taken back by the app that gave it). No cloud here: the picture
+  // travels inside the drawing's file when it is exported.
+  async function importAsset(asset: ImagePicker.ImagePickerAsset): Promise<{ uri: string; aspect: number }> {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const dir = LegacyFileSystem.documentDirectory ? `${LegacyFileSystem.documentDirectory}sketch-images/` : null;
     if (dir) await LegacyFileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
     const uri = dir ? `${dir}${id}.jpg` : asset.uri;
     if (uri !== asset.uri) await LegacyFileSystem.copyAsync({ from: asset.uri, to: uri });
     const aspect = asset.width && asset.height ? asset.width / asset.height : await sizeOf(uri);
-    placePicture(uri, undefined, aspect);
+    return { uri, aspect };
+  }
+
+  // ---- collage ------------------------------------------------------------------
+
+  // A layout chosen: the pictures are picked at once (as many as the layout
+  // has cells, in the order they are chosen) and laid in; anything not
+  // picked stays an empty cell to fill later.
+  async function addCollage(layoutId: string) {
+    setCollageMenuOpen(false);
+    setPictureMenuOpen(false);
+    const layout = LAYOUTS.find((l) => l.id === layoutId);
+    if (!layout) return;
+    const cells: SketchCollageCell[] = layout.cells.map(() => ({}));
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.granted) {
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.85,
+        allowsMultipleSelection: true,
+        selectionLimit: layout.cells.length,
+      });
+      if (!picked.canceled) {
+        const got = await Promise.all(picked.assets.slice(0, layout.cells.length).map(importAsset));
+        got.forEach((g, i) => {
+          cells[i] = { uri: g.uri, aspect: g.aspect };
+        });
+      }
+    }
+    const w = Math.min(canvasSize.width * 0.85, 420) / view.s;
+    const h = w / layout.aspect;
+    const cx = (canvasSize.width / 2 - view.tx) / view.s;
+    const cy = (canvasSize.height / 2 - view.ty) / view.s;
+    const block: SketchCollageElement = { kind: 'collage', x: cx - w / 2, y: cy - h / 2, w, h, layout: layout.id, gap: Math.max(4, Math.round(w * 0.02)), cells };
+    remember();
+    setElements((prev) => {
+      setSelection([prev.length]);
+      return [...prev, block];
+    });
+    setTool('select');
+  }
+
+  function changeCell(index: number, cell: number, next: (c: SketchCollageCell) => SketchCollageCell) {
+    remember();
+    setElements((prev) =>
+      prev.map((el, i) => (i === index && el.kind === 'collage' ? { ...el, cells: el.cells.map((c, j) => (j === cell ? next(c) : c)) } : el))
+    );
+  }
+  async function pickForCell(index: number, cell: number) {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+    if (picked.canceled || picked.assets.length === 0) return;
+    const { uri, aspect } = await importAsset(picked.assets[0]);
+    changeCell(index, cell, () => ({ uri, aspect }));
   }
 
   async function finish() {
@@ -1205,8 +1275,88 @@ export default function SketchEditor({ visible, initialElements, background, pap
               <Ionicons name={'images-outline' as never} size={18} color={S.ink2} />
               <Text style={[styles.shapeToggleLabel, { color: S.ink }]}>З галереї телефону</Text>
             </Pressable>
+            <Pressable
+              onPress={() => {
+                setPictureMenuOpen(false);
+                setCollageMenuOpen(true);
+              }}
+              style={[styles.pictureRow, { backgroundColor: S.fill }]}
+            >
+              <Ionicons name={'grid-outline' as never} size={18} color={S.ink2} />
+              <Text style={[styles.shapeToggleLabel, { color: S.ink }]}>Склейка</Text>
+            </Pressable>
           </RNAnimated.View>
         )}
+        {collageMenuOpen && (
+          <RNAnimated.View
+            style={[
+              styles.palette,
+              { bottom: insets.bottom + 84, backgroundColor: S.card, boxShadow: S.popShadow, transform: barPan.getTranslateTransform() },
+            ]}
+          >
+            <Text style={[styles.shapeToggleLabel, { color: S.ink2, marginBottom: 8 }]}>Склейка: обери макет</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {LAYOUTS.map((l) => {
+                const box = 40;
+                const fit = l.aspect >= 1 ? { w: box, h: box / l.aspect } : { w: box * l.aspect, h: box };
+                return (
+                  <Pressable key={l.id} onPress={() => addCollage(l.id)} style={[styles.layoutTile, { backgroundColor: S.fill }]} accessibilityLabel={l.label}>
+                    <Svg width={box} height={box} viewBox={`0 0 ${box} ${box}`}>
+                      {l.cells.map(([x, y, w, h], i) => (
+                        <Rect
+                          key={i}
+                          x={(box - fit.w) / 2 + x * fit.w + 1}
+                          y={(box - fit.h) / 2 + y * fit.h + 1}
+                          width={w * fit.w - 2}
+                          height={h * fit.h - 2}
+                          rx={2}
+                          fill={S.ink2}
+                        />
+                      ))}
+                    </Svg>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Pressable onPress={() => setCollageMenuOpen(false)} style={[styles.pictureRow, { backgroundColor: S.fill, marginTop: 10 }]}>
+              <Text style={[styles.shapeToggleLabel, { color: S.ink }]}>Скасувати</Text>
+            </Pressable>
+          </RNAnimated.View>
+        )}
+        {cellMenu && (() => {
+          const block = elements[cellMenu.index];
+          const cell = block?.kind === 'collage' ? block.cells[cellMenu.cell] : undefined;
+          if (!cell) return null;
+          const close = () => setCellMenu(null);
+          const row = (icon: string, label: string, run: () => void) => (
+            <Pressable
+              key={label}
+              onPress={() => {
+                close();
+                run();
+              }}
+              style={[styles.pictureRow, { backgroundColor: S.fill, marginBottom: 6 }]}
+            >
+              <Ionicons name={icon as never} size={18} color={S.ink2} />
+              <Text style={[styles.shapeToggleLabel, { color: S.ink }]}>{label}</Text>
+            </Pressable>
+          );
+          return (
+            <>
+              <Pressable style={StyleSheet.absoluteFill} onPress={close} />
+              <RNAnimated.View
+                style={[
+                  styles.palette,
+                  { bottom: insets.bottom + 84, backgroundColor: S.card, boxShadow: S.popShadow, transform: barPan.getTranslateTransform() },
+                ]}
+              >
+                {row('images-outline', cell.uri ? 'Замінити фото' : 'Додати фото', () => pickForCell(cellMenu.index, cellMenu.cell))}
+                {cell.uri && row('crop-outline', 'Кадрувати', () => setCropFor({ index: cellMenu.index, cell: cellMenu.cell }))}
+                {cell.uri && row('trash-outline', 'Прибрати фото', () => changeCell(cellMenu.index, cellMenu.cell, () => ({})))}
+              </RNAnimated.View>
+            </>
+          );
+        })()}
         {shapePanelOpen && shapePanelShown && (
           <RNAnimated.View
             style={[
@@ -1367,23 +1517,47 @@ export default function SketchEditor({ visible, initialElements, background, pap
             </View>
           </View>
         )}
-        {cropFor !== null && elements[cropFor]?.kind === 'image' && (
+        {cropFor !== null && cropFor.cell === undefined && elements[cropFor.index]?.kind === 'image' && (
           <CropOverlay
-            uri={(elements[cropFor] as SketchImageElement).uri}
-            boxAspect={(elements[cropFor] as SketchImageElement).w / (elements[cropFor] as SketchImageElement).h}
-            crop={(elements[cropFor] as SketchImageElement).crop}
+            uri={(elements[cropFor.index] as SketchImageElement).uri}
+            boxAspect={(elements[cropFor.index] as SketchImageElement).w / (elements[cropFor.index] as SketchImageElement).h}
+            crop={(elements[cropFor.index] as SketchImageElement).crop}
             paper={paperFill}
             ink={theme.paper.ink}
             accent={S.accent}
             onCancel={() => setCropFor(null)}
             onDone={(crop, srcAspect) => {
-              const index = cropFor;
+              const index = cropFor.index;
               remember();
               setElements((prev) => prev.map((el, i) => (i === index && el.kind === 'image' ? recropImage(el, crop, srcAspect) : el)));
               setCropFor(null);
             }}
           />
         )}
+        {cropFor !== null && cropFor.cell !== undefined && (() => {
+          const block = elements[cropFor.index];
+          if (!block || block.kind !== 'collage') return null;
+          const cell = block.cells[cropFor.cell];
+          const rect = cellRects(block)[cropFor.cell];
+          if (!cell?.uri || !rect) return null;
+          const { index, cell: cellIndex } = cropFor;
+          return (
+            <CropOverlay
+              uri={cell.uri}
+              boxAspect={rect.w / rect.h}
+              lockAspect={rect.w / rect.h}
+              crop={cellCrop(cell, rect)}
+              paper={paperFill}
+              ink={theme.paper.ink}
+              accent={S.accent}
+              onCancel={() => setCropFor(null)}
+              onDone={(crop) => {
+                changeCell(index, cellIndex, (c) => cellFromCrop(c, crop, rect));
+                setCropFor(null);
+              }}
+            />
+          );
+        })()}
       </GestureHandlerRootView>
     </Modal>
   );
@@ -1521,6 +1695,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  layoutTile: { width: 56, height: 56, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   pictureRow: {
     flexDirection: 'row',
     alignItems: 'center',

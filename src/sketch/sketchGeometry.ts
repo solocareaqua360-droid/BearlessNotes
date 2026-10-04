@@ -75,7 +75,7 @@ export function shapeElement(shape: SketchShape, color: string, width: number, r
 
 // The element's own box, as drawn before any turn.
 export function boundsOf(el: SketchElement): Box {
-  if (el.kind === 'image') return { minX: el.x, minY: el.y, maxX: el.x + el.w, maxY: el.y + el.h };
+  if (el.kind === 'image' || el.kind === 'collage') return { minX: el.x, minY: el.y, maxX: el.x + el.w, maxY: el.y + el.h };
   if (el.kind === 'text') {
     const approxWidth = Math.max(el.text.length * el.fontSize * 0.55, 20);
     return { minX: el.x, minY: el.y - el.fontSize, maxX: el.x + approxWidth, maxY: el.y + el.fontSize * 0.25 };
@@ -163,7 +163,7 @@ export function drawingViewBox(elements: SketchElement[], margin = DRAWING_MARGI
 // ---- changing an element --------------------------------------------------
 
 export function translateElement(el: SketchElement, dx: number, dy: number): SketchElement {
-  if (el.kind === 'text' || el.kind === 'image') return { ...el, x: el.x + dx, y: el.y + dy };
+  if (el.kind === 'text' || el.kind === 'image' || el.kind === 'collage') return { ...el, x: el.x + dx, y: el.y + dy };
   if (el.shape) {
     const s = el.shape;
     // Spread over the old one: its fill, outline and words go with it.
@@ -180,7 +180,7 @@ export function translateElement(el: SketchElement, dx: number, dy: number): Ske
 export function scaleElement(el: SketchElement, sx: number, sy: number, anchor: Point): SketchElement {
   const scale = (p: Point) => ({ x: anchor.x + (p.x - anchor.x) * sx, y: anchor.y + (p.y - anchor.y) * sy });
   let next: SketchElement;
-  if (el.kind === 'image') {
+  if (el.kind === 'image' || el.kind === 'collage') {
     const a = scale({ x: el.x, y: el.y });
     const b = scale({ x: el.x + el.w, y: el.y + el.h });
     next = { ...el, x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.max(4, Math.abs(b.x - a.x)), h: Math.max(4, Math.abs(b.y - a.y)) };

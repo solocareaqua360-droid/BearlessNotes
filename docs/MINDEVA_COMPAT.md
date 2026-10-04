@@ -15,6 +15,7 @@ Verdicts: **так** - the same in mindEva, by moving code over (OTA);
 | In-app update button («Оновити»: check, download, restart; expo-updates) | none | ні (not needed) | App-only, lives in `src/updates.ts` outside `src/sketch/`; mindEva already ships over the air its own way. |
 | Library screen: flat folders, 3-column grid with last-edit stamp, sort, search, rename, move, settings sheet | none (folders live in app-only `library.json`, not in the drawing file) | ні | App-only; mindEva has its own lists and folders. A drawing exports without its folder. |
 | Picture crop (hold a picture; frame with free / 1:1 / 4:3 / 3:4 / 16:9 / 9:16; re-croppable any time, picture never cut) | v2: optional `crop` on `image` | так | One optional field, a clip in `SketchLayer` (`SketchPicture`) and `CropOverlay.tsx`. Until mindEva has the clip, a cropped picture shows there filling its box and keeps `crop` on the round trip. |
+| Collage block («Склейка»: 6 layouts, 2-4 pictures with an even gap, moves/turns/sizes as one; hold a cell: add / replace / crop / remove) | v3: new element kind `collage` | ні | Stays here for now: mindEva cannot draw the kind yet. It survives a round trip there untouched (pictures travel in `images`). To port: `collage.ts`, `SketchCollage` in `SketchLayer.tsx`, the layout picker and cell menu. |
 
 ## How the code goes back
 

@@ -87,14 +87,39 @@ export interface SketchImageElement {
   crop?: SketchCrop; // version 2
 }
 
-export type SketchElement = SketchPathElement | SketchTextElement | SketchImageElement;
+// version 3: a block of several pictures in a ready layout (see
+// collage.ts). `cells` has one entry per cell of the layout, in its order;
+// an empty cell is `{}`. A picture fills its cell; `fx`/`fy` (0..1, the
+// point of the picture kept in the cell's middle) and `zoom` (>=1) move and
+// enlarge it inside the cell. `aspect` is the picture's own width / height.
+export interface SketchCollageCell {
+  uri?: string;
+  aspect?: number;
+  fx?: number;
+  fy?: number;
+  zoom?: number;
+}
+
+export interface SketchCollageElement {
+  kind: 'collage';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  layout: string;
+  gap: number;
+  cells: SketchCollageCell[];
+  rot?: number;
+}
+
+export type SketchElement = SketchPathElement | SketchTextElement | SketchImageElement | SketchCollageElement;
 
 // A drawing as a file of its own (`*.sketch.json`) - what is saved here and
 // what is exported to mindEva. `version` goes up with every change to the
 // element types; a reader that meets a newer version still draws what it
 // knows and keeps the rest untouched.
 export const SKETCH_FORMAT = 'sketchEva';
-export const SKETCH_VERSION = 2;
+export const SKETCH_VERSION = 3;
 
 export type SketchFile = {
   format: typeof SKETCH_FORMAT;
