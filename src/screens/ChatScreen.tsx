@@ -33,7 +33,9 @@ import type { Group } from '../types';
 import { askGemini } from '../utils/gemini';
 import { getGeminiKey } from '../utils/geminiKey';
 import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockShowContext, useTopBack, useTopExtras } from '../navigation/navDock';
-import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import EdgeFade from '../components/EdgeFade';
+import { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { ChatMessage, deleteChatMessage, groupChatMessages, markChatMessageTask, markChatMessagesUsed, sendGeminiReply, watchChat, setChatMessagesInProject, setChatProjectContext } from '../utils/chat';
@@ -311,6 +313,12 @@ export default function ChatScreen() {
   // oldest messages. Reversed data keeps the day headings above their
   // messages once the list flips.
   const listRows = useMemo(() => [...rows].reverse(), [rows]);
+  // How tall the floating head is (bar's room, projects, search) - the
+  // list keeps its first message clear of it.
+  const [headerH, setHeaderH] = useState(insets.top + CHROME_TOP + 8 + TOP_NAV_SPACE + 52);
+  // The ground the fades melt into: the soft one, or none on the old
+  // drifting backdrop (a fade of one colour over clouds would be a band).
+  const ground = softChat ? softChat.bg : null;
   const listRef = useRef<FlatList<Row>>(null);
 
   useDockLeave('chatbubbles-outline', () => navigation.goBack());
@@ -834,7 +842,66 @@ export default function ChatScreen() {
         />
       )}
       <ContentColumn>
-        <View style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
+        {messages.length === 0 ? (
+          <View style={[styles.empty, { paddingTop: headerH }]}>
+            <Ionicons name="chatbubbles-outline" size={32} color={theme.ink.faint} />
+            <Text style={styles.emptyLabel}>Поки порожньо</Text>
+            <Text style={styles.emptyHint}>
+              Затисніть док будь-де в застосунку і скажіть, що думаєте
+            </Text>
+          </View>
+        ) : rows.length === 0 ? (
+          <View style={[styles.empty, { paddingTop: headerH }]}>
+            <Ionicons name="search-outline" size={32} color={theme.ink.faint} />
+            <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
+            {filterKind !== null && (
+              <Pressable onPress={() => setFilterKind(null)}>
+                <Text style={[styles.emptyHint, { color: theme.accent }]}>Скинути фільтр</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            inverted
+            data={listRows}
+            keyExtractor={(row) => row.key}
+            // Inverted, so top and bottom swap: paddingTop is the visual
+            // bottom (clear of the dock), paddingBottom the visual top.
+            // The list runs edge to edge, under the bar and the projects'
+            // row at the top and the dock below; what passes under them
+            // melts into the ground (EdgeFade), as on every other list.
+            contentContainerStyle={[styles.list, { paddingTop: dockClear + insets.bottom, paddingBottom: headerH + 8 }]}
+            onScrollToIndexFailed={() => {}}
+            renderItem={({ item }) => {
+              if (item.kind === 'day') {
+                return (
+                  <View style={styles.dayRow}>
+                    <Text style={styles.dayLabel}>{item.label}</Text>
+                  </View>
+                );
+              }
+              return renderMessageBubble(item.message, false);
+            }}
+          />
+        )}
+      </ContentColumn>
+
+      {ground && (
+        <>
+          <EdgeFade edge="top" color={ground} height={Math.max(insets.top + CHROME_TOP + TOP_NAV_H, headerH)} />
+          <EdgeFade edge="bottom" color={ground} height={Math.round((dockClear + insets.bottom) * 0.85)} />
+        </>
+      )}
+      {/* The bar's room, the projects' row and the search field, floating
+          over the top of the list. */}
+      <View style={styles.headerLayer} pointerEvents="box-none">
+        <View
+          style={styles.headerColumn}
+          pointerEvents="box-none"
+          onLayout={(e) => setHeaderH(Math.round(e.nativeEvent.layout.height))}
+        >
+        <View pointerEvents="none" style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
         {isFocused && bar && !paneBar && <TopNavBar title={{ icon: 'chatbubbles-outline', label: 'Чат' }} />}
         {chatProjects.length > 0 && (
           <ProjectTabsRow
@@ -859,47 +926,8 @@ export default function ChatScreen() {
           />
         )}
 
-        {messages.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="chatbubbles-outline" size={32} color={theme.ink.faint} />
-            <Text style={styles.emptyLabel}>Поки порожньо</Text>
-            <Text style={styles.emptyHint}>
-              Затисніть док будь-де в застосунку і скажіть, що думаєте
-            </Text>
-          </View>
-        ) : rows.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="search-outline" size={32} color={theme.ink.faint} />
-            <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
-            {filterKind !== null && (
-              <Pressable onPress={() => setFilterKind(null)}>
-                <Text style={[styles.emptyHint, { color: theme.accent }]}>Скинути фільтр</Text>
-              </Pressable>
-            )}
-          </View>
-        ) : (
-          <FlatList
-            ref={listRef}
-            inverted
-            data={listRows}
-            keyExtractor={(row) => row.key}
-            // Inverted, so top and bottom swap: paddingTop is the visual
-            // bottom (clear of the dock), paddingBottom the visual top.
-            contentContainerStyle={[styles.list, { paddingTop: dockClear + insets.bottom, paddingBottom: 8 }]}
-            onScrollToIndexFailed={() => {}}
-            renderItem={({ item }) => {
-              if (item.kind === 'day') {
-                return (
-                  <View style={styles.dayRow}>
-                    <Text style={styles.dayLabel}>{item.label}</Text>
-                  </View>
-                );
-              }
-              return renderMessageBubble(item.message, false);
-            }}
-          />
-        )}
-      </ContentColumn>
+        </View>
+      </View>
 
       {/* Above the dock, where the button that opens it lives - the same
           spot every other database's own menus stand in. */}
@@ -1015,6 +1043,17 @@ const makeStyles = (t: Theme) =>
     list: {
       paddingHorizontal: 20,
       gap: 8,
+    },
+    headerLayer: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+    },
+    headerColumn: {
+      width: '100%',
+      maxWidth: MAX_CONTENT_WIDTH,
+      alignSelf: 'center',
     },
     searchRow: {
       marginHorizontal: 20,
