@@ -65,6 +65,16 @@ export interface SketchTextElement {
 // the «Зображення» database. One from the gallery is a copy of the drawing's
 // own - kept in the cache and backed up to Drive like any attachment, but
 // NOT made a record in «Зображення» ("зберігати в базі його не треба").
+// Which part of the picture shows in its box, as fractions (0..1) of the
+// WHOLE picture. The picture itself is never cut: widening the crop later
+// brings the rest back. Missing = the whole picture (version 1 files).
+export interface SketchCrop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface SketchImageElement {
   kind: 'image';
   x: number;
@@ -74,6 +84,7 @@ export interface SketchImageElement {
   uri: string;
   driveFileId?: string;
   rot?: number;
+  crop?: SketchCrop; // version 2
 }
 
 export type SketchElement = SketchPathElement | SketchTextElement | SketchImageElement;
@@ -83,7 +94,7 @@ export type SketchElement = SketchPathElement | SketchTextElement | SketchImageE
 // element types; a reader that meets a newer version still draws what it
 // knows and keeps the rest untouched.
 export const SKETCH_FORMAT = 'sketchEva';
-export const SKETCH_VERSION = 1;
+export const SKETCH_VERSION = 2;
 
 export type SketchFile = {
   format: typeof SKETCH_FORMAT;

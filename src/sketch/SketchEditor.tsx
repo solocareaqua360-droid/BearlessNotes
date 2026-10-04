@@ -23,8 +23,10 @@ import * as ImagePicker from 'expo-image-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from './fonts';
 import { useSoft, useTheme } from './theme';
+import CropOverlay from './CropOverlay';
 import {
   INK,
+  recropImage,
   boundsOf,
   drawingViewBox,
   inkOn,
@@ -389,7 +391,33 @@ export default function SketchEditor({ visible, initialElements, background, pap
 
   // ---- the select tool -------------------------------------------------------
 
+  // HOLD A PICTURE = CROP IT: a finger kept still on a picture for half a
+  // second opens the cropping window for it. Moving, or lifting, first
+  // makes it an ordinary move or tap.
+  const [cropFor, setCropFor] = useState<number | null>(null);
+  const holdRef = useRef<{ timer: ReturnType<typeof setTimeout>; start: Point } | null>(null);
+  function cancelHold() {
+    if (holdRef.current) clearTimeout(holdRef.current.timer);
+    holdRef.current = null;
+  }
+  function armHold(index: number, p: Point) {
+    cancelHold();
+    holdRef.current = {
+      start: p,
+      timer: setTimeout(() => {
+        holdRef.current = null;
+        const o = op.current;
+        if (o && o.kind === 'move') setElements(o.base);
+        op.current = null;
+        setGuides(null);
+        setSelection([index]);
+        setCropFor(index);
+      }, 500),
+    };
+  }
+
   function selectStart(p: Point) {
+    cancelHold();
     const frame = frameOf(elements, selection);
     if (frame) {
       const local = rotatePoint(p, frame.pivot, -frame.rot);
@@ -413,6 +441,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
       }
       if (local.x >= b.minX && local.x <= b.maxX && local.y >= b.minY && local.y <= b.maxY) {
         op.current = { kind: 'move', start: p, base: elements, ids: selection };
+        if (selection.length === 1 && elements[selection[0]]?.kind === 'image') armHold(selection[0], p);
         return;
       }
     }
@@ -420,6 +449,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
     if (hit !== -1) {
       setSelection([hit]);
       op.current = { kind: 'move', start: p, base: elements, ids: [hit] };
+      if (elements[hit].kind === 'image') armHold(hit, p);
       return;
     }
     // Empty paper: a frame drawn round what is to be chosen.
@@ -429,6 +459,8 @@ export default function SketchEditor({ visible, initialElements, background, pap
   }
 
   function selectMove(p: Point) {
+    const h = holdRef.current;
+    if (h && Math.hypot(p.x - h.start.x, p.y - h.start.y) * view.s > 10) cancelHold();
     const o = op.current;
     if (!o) return;
     if (o.kind === 'marquee') {
@@ -526,6 +558,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
   }
 
   function selectEnd() {
+    cancelHold();
     const o = op.current;
     op.current = null;
     setGuides(null);
@@ -565,6 +598,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
   const pinch = useRef<{ c: Point; view: typeof view; scale: number; dx: number; dy: number } | null>(null);
   const twoActive = useRef(0);
   function dropUnfinished() {
+    cancelHold();
     setCurrentPoints([]);
     setShapeStart(null);
     setShapeCurrent(null);
@@ -1332,6 +1366,23 @@ export default function SketchEditor({ visible, initialElements, background, pap
               </View>
             </View>
           </View>
+        )}
+        {cropFor !== null && elements[cropFor]?.kind === 'image' && (
+          <CropOverlay
+            uri={(elements[cropFor] as SketchImageElement).uri}
+            boxAspect={(elements[cropFor] as SketchImageElement).w / (elements[cropFor] as SketchImageElement).h}
+            crop={(elements[cropFor] as SketchImageElement).crop}
+            paper={paperFill}
+            ink={theme.paper.ink}
+            accent={S.accent}
+            onCancel={() => setCropFor(null)}
+            onDone={(crop, srcAspect) => {
+              const index = cropFor;
+              remember();
+              setElements((prev) => prev.map((el, i) => (i === index && el.kind === 'image' ? recropImage(el, crop, srcAspect) : el)));
+              setCropFor(null);
+            }}
+          />
         )}
       </GestureHandlerRootView>
     </Modal>

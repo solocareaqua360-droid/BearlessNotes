@@ -1,4 +1,5 @@
-import { G, Image as SvgImage, Path, Rect, Text as SvgText } from 'react-native-svg';
+import { useId } from 'react';
+import { ClipPath, Defs, G, Image as SvgImage, Path, Rect, Text as SvgText } from 'react-native-svg';
 import type { SketchElement, SketchImageElement } from './format';
 import { FILL_OPACITY, LABEL_SIZE, inkOn, pivotOf, transformOf } from './sketchGeometry';
 
@@ -56,14 +57,35 @@ export default function SketchLayer({ elements, ink }: { elements: SketchElement
 // install, a purged cache) - brought back from Drive the way every
 // attachment is, with a faint frame where it will be until then.
 function SketchPicture({ el }: { el: SketchImageElement }) {
+  const clipId = `crop${useId().replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const c = el.crop;
+  if (!c) {
+    return (
+      <SvgImage href={{ uri: el.uri }} x={el.x} y={el.y} width={el.w} height={el.h} preserveAspectRatio="xMidYMid slice" />
+    );
+  }
+  // Cropped: the WHOLE picture is laid out so that the cropped part falls
+  // exactly in the box, and the box clips the rest away. Nothing is cut
+  // from the file - widening the crop brings it back.
+  const fullW = el.w / c.w;
+  const fullH = el.h / c.h;
   return (
-    <SvgImage
-      href={{ uri: el.uri }}
-      x={el.x}
-      y={el.y}
-      width={el.w}
-      height={el.h}
-      preserveAspectRatio="xMidYMid slice"
-    />
+    <>
+      <Defs>
+        <ClipPath id={clipId}>
+          <Rect x={el.x} y={el.y} width={el.w} height={el.h} />
+        </ClipPath>
+      </Defs>
+      <G clipPath={`url(#${clipId})`}>
+        <SvgImage
+          href={{ uri: el.uri }}
+          x={el.x - c.x * fullW}
+          y={el.y - c.y * fullH}
+          width={fullW}
+          height={fullH}
+          preserveAspectRatio="none"
+        />
+      </G>
+    </>
   );
 }

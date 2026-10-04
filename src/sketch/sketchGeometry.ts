@@ -1,4 +1,4 @@
-import type { SketchElement, SketchPathElement, SketchShape } from './format';
+import type { SketchCrop, SketchElement, SketchImageElement, SketchPathElement, SketchShape } from './format';
 
 // The geometry a drawing is measured and changed with - shared by the
 // editor and every place that shows a drawing, so "where the drawing is"
@@ -257,4 +257,46 @@ export const LABEL_SIZE = 20;
 export const INK = '#111827';
 export function inkOn(color: string, paperInk: string): string {
   return color === INK ? paperInk : color;
+}
+
+// ---- cropping a picture --------------------------------------------------------
+
+// What a picture shows right now, as a crop. With no crop of its own it is
+// drawn "slice" into its box, so a box of another shape than the picture
+// already hides a strip of it - that strip is the starting crop.
+export function visibleCrop(el: SketchImageElement, srcAspect: number): SketchCrop {
+  if (el.crop) return el.crop;
+  const box = el.w / el.h;
+  if (box > srcAspect) {
+    const h = srcAspect / box;
+    return { x: 0, y: (1 - h) / 2, w: 1, h };
+  }
+  const w = box / srcAspect;
+  return { x: (1 - w) / 2, y: 0, w, h: 1 };
+}
+
+// The picture with a new crop. The picture stays where it is on the page
+// (only the window onto it moves), also when the element is turned: the
+// turn is about the box's middle, and the box has changed.
+export function recropImage(el: SketchImageElement, next: SketchCrop, srcAspect: number): SketchImageElement {
+  const prev = visibleCrop(el, srcAspect);
+  const fullW = el.w / prev.w;
+  const fullH = el.h / prev.h;
+  const x0 = el.x - prev.x * fullW;
+  const y0 = el.y - prev.y * fullH;
+  const out: SketchImageElement = {
+    ...el,
+    x: x0 + next.x * fullW,
+    y: y0 + next.y * fullH,
+    w: Math.max(4, next.w * fullW),
+    h: Math.max(4, next.h * fullH),
+  };
+  const whole = next.x < 0.002 && next.y < 0.002 && next.w > 0.996 && next.h > 0.996;
+  if (whole) delete out.crop;
+  else out.crop = next;
+  if (!el.rot) return out;
+  const point = { x: out.x, y: out.y };
+  const before = rotatePoint(point, pivotOf(el), el.rot);
+  const after = rotatePoint(point, pivotOf(out), el.rot);
+  return translateElement(out, before.x - after.x, before.y - after.y) as SketchImageElement;
 }
