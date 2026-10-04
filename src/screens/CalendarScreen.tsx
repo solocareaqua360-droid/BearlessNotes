@@ -2207,6 +2207,7 @@ export default function CalendarScreen() {
             }}
             actions={noteSelectMode ? publishedActions : null}
             soft={S}
+            back={calendarDrawer.close}
           />
         </>
       )}

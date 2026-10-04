@@ -16,6 +16,9 @@ import { useLift, useTheme } from '../theme/ThemeProvider';
 const TWO_BEAD = 56;
 const STRIP_BUTTON_W = 84;
 const WRAP_PAD = 6;
+// How far a circle set into the search field sits in from its edges - as
+// in ContextDock.
+const FIELD_INSET = 5;
 
 // THE DOCK, DRAWN INSIDE A DRAWER - the calendar's: its two beads (search,
 // the pencil) or, while the day's blocks are being chosen, the strip of
@@ -28,7 +31,13 @@ export default function InlineDock({
   beads,
   actions,
   soft,
+  back,
 }: {
+  // THE SAME DOCK AS THE WINDOW'S, the experiment of 2026-10-04 (see
+  // ContextDock's `merged`): given a way back, the soft dock is the search
+  // field holding "+" (or the pencil) as a small circle, and the way back
+  // is the round button on the right.
+  back?: () => void;
   width: number;
   beads: { left: DockBead | null; right: DockBead | null };
   actions: DockAction[] | null;
@@ -92,6 +101,68 @@ export default function InlineDock({
     const right = beads.right;
     const leftIcon = left ? SOFT_DOCK_GLYPHS[left.icon] : undefined;
     const rightIcon = right ? SOFT_DOCK_GLYPHS[right.icon] : undefined;
+    if (back && left && !left.active) {
+      const circle = TWO_BEAD - FIELD_INSET * 2;
+      const inset = (filled: boolean, pressed: boolean) => [
+        styles.softButton,
+        {
+          width: circle,
+          height: circle,
+          borderRadius: circle / 2,
+          marginRight: FIELD_INSET,
+          backgroundColor: filled ? soft.ink : pressed ? soft.line : soft.fillSolid,
+        },
+      ];
+      return (
+        <View pointerEvents="box-none" style={[styles.row, { bottom, left: frame.left, width: frame.width, gap: 10 }]}>
+          <View style={[styles.softField, surface, { paddingLeft: 0, paddingRight: 0, gap: 0 }]}>
+            <Pressable
+              onPress={left.onPress}
+              onLongPress={left.onLongPress}
+              disabled={left.dimmed}
+              accessibilityLabel="Пошук"
+              style={styles.softFieldPart}
+            >
+              {leftIcon ? (
+                <SoftIcon name={leftIcon} size={20} color={soft.ink2} />
+              ) : (
+                <Ionicons name={left.icon as never} size={19} color={soft.ink2} />
+              )}
+              <Text style={[styles.softFieldText, { color: soft.ink3 }]} numberOfLines={1}>
+                Пошук
+              </Text>
+            </Pressable>
+            {right?.extra && (
+              <Pressable
+                onPress={right.extra.onPress}
+                accessibilityLabel={right.extra.label}
+                style={({ pressed }) => inset(!!right.extra?.active, pressed)}
+              >
+                <Ionicons name={right.extra.icon as never} size={20} color={right.extra.active ? soft.card : soft.ink} />
+              </Pressable>
+            )}
+            {right && (
+              <Pressable
+                onPress={right.onPress}
+                onLongPress={right.onLongPress}
+                disabled={right.dimmed}
+                accessibilityLabel="Створити"
+                style={({ pressed }) => [inset(false, pressed), right.dimmed && { opacity: 0.5 }]}
+              >
+                {rightIcon ? (
+                  <SoftIcon name={rightIcon} size={22} color={soft.ink} />
+                ) : (
+                  <Ionicons name={right.icon as never} size={21} color={soft.ink} />
+                )}
+              </Pressable>
+            )}
+          </View>
+          <Pressable onPress={back} accessibilityLabel="Назад" style={[styles.softButton, surface, { width: TWO_BEAD }]}>
+            <Ionicons name="chevron-back" size={22} color={soft.ink} />
+          </Pressable>
+        </View>
+      );
+    }
     return (
       <View pointerEvents="box-none" style={[styles.row, { bottom, left: frame.left, width: frame.width, gap: 10 }]}>
         {left ? (
@@ -169,6 +240,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 18,
+  },
+  softFieldPart: {
+    flex: 1,
+    height: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingLeft: 18,
   },
   softFieldText: {
     flex: 1,

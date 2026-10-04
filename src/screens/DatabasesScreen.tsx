@@ -2169,7 +2169,13 @@ export default function DatabasesScreen() {
                 : null,
             }}
           />
-          <InlineDock width={windowWidth} beads={{ left: searchBead, right: newDatabaseBead }} actions={null} soft={S} />
+          <InlineDock
+            width={windowWidth}
+            beads={{ left: searchBead, right: newDatabaseBead }}
+            actions={null}
+            soft={S}
+            back={databasesLayer.close}
+          />
         </>
       )}
       {/* A database opened in the drawer: over the board, with its own bar
@@ -2662,7 +2668,7 @@ function DrawerPaneChrome({
           ],
         }}
       />
-      <InlineDock width={width} beads={beads} actions={actions} soft={soft} />
+      <InlineDock width={width} beads={beads} actions={actions} soft={soft} back={onBack} />
     </>
   );
 }
