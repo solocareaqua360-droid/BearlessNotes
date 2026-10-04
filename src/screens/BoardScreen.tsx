@@ -1357,6 +1357,14 @@ function DraggableCard({
   // player's own box. The box is read off two dots at its corners - they
   // are measured where the board's zoom has put them, which the box's own
   // size is not.
+  // A video card's window keeps the video's own shape as the card is
+  // stretched (the user's, 2026-10-04: it only grew wider and stayed a
+  // 90-high slit): wide for YouTube, tall for TikTok. Any other link keeps
+  // its fixed thumbnail.
+  const videoInfo = card.type === 'link' && card.linkUrl ? getVideoEmbedInfo(card.linkUrl) : null;
+  const videoShape = videoInfo
+    ? { height: undefined, aspectRatio: videoInfo.provider === 'youtube' ? 16 / 9 : 9 / 16 }
+    : undefined;
   const frameTL = useRef<View>(null);
   const frameBR = useRef<View>(null);
   const [framing, setFraming] = useState(false);
@@ -1801,7 +1809,7 @@ function DraggableCard({
               // the board stays where it is behind it, and its two
               // controls sit on the player: close, and full screen for
               // when the card is too small to watch in.
-              <View style={styles.refThumb}>
+              <View style={[styles.refThumb, videoShape]}>
                 <InlineVideoPlayer url={card.linkUrl ?? ''} onTime={onVideoTime} />
                 <View ref={frameTL} collapsable={false} pointerEvents="none" style={styles.frameDotTL} />
                 <View ref={frameBR} collapsable={false} pointerEvents="none" style={styles.frameDotBR} />
@@ -1832,9 +1840,9 @@ function DraggableCard({
                 )}
               </View>
             ) : card.linkImageUrl ? (
-              <Image source={{ uri: card.linkImageUrl }} style={styles.refThumb} resizeMode="cover" resizeMethod="resize" />
+              <Image source={{ uri: card.linkImageUrl }} style={[styles.refThumb, videoShape]} resizeMode="cover" resizeMethod="resize" />
             ) : (
-              <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+              <View style={[styles.refThumb, styles.refThumbPlaceholder, videoShape]}>
                 <Ionicons name="link-outline" size={22} color="#9CA3AF" />
               </View>
             )}
