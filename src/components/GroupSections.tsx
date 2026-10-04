@@ -14,6 +14,7 @@ import { ownedQuery } from '../utils/owned';
 import { Block, CustomDatabase, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import DocumentCard from './DocumentCard';
+import CustomDatabaseViewBlockCard from './CustomDatabaseViewBlockCard';
 import ZoomableImageViewer from './ZoomableImageViewer';
 import { FileRow, LinkRow, PhotoCell, PhotoCardItem, gridBasis, gridFillerCount } from './ItemCards';
 import { extractPreview } from '../utils/documentPreview';
@@ -101,6 +102,7 @@ export default function GroupSections({
   onOpen,
   items,
   databases,
+  views,
 }: {
   // The group in view, or null when none is (everything below is skipped).
   groupId: string | null;
@@ -121,6 +123,11 @@ export default function GroupSections({
   // no listeners of its own - that screen draws one of these per project.
   items?: GroupItem[];
   databases?: CustomDatabase[];
+  // Saved views of personal databases put in this project (their own
+  // «Проект»): each a block of its own, holding the view live - the same
+  // card a view embedded in a note is (option 1, 2026-10-04: the view shows
+  // what its own filter says, nothing is added for the project).
+  views?: { id: string; databaseId: string; name: string; icon?: string }[];
 }) {
   const recordColour = useRecordColour();
   const S = useSoft();
@@ -224,11 +231,13 @@ export default function GroupSections({
     .filter(({ database, rows }) => rows.length > 0 && `customRow:${database.id}` !== currentKind);
 
   const sections = ((given ? PROJECT_ORDER : ORDER) as readonly string[]).filter((kind) => kind !== currentKind && byKind[kind].length > 0);
-  if (sections.length === 0 && customSections.length === 0) return null;
+  if (sections.length === 0 && customSections.length === 0 && !(given && (views?.length ?? 0) > 0)) return null;
 
+  const shownViews = given ? views ?? [] : [];
   const blockIds = [
     ...sections.map((kind) => ({ id: kind, count: byKind[kind].length })),
     ...customSections.map(({ database, rows }) => ({ id: `custom:${database.id}`, count: rows.length })),
+    ...shownViews.map((v) => ({ id: `view:${v.id}`, count: 0 })),
   ];
   const biggest = [...blockIds].sort((a, b) => b.count - a.count)[0]?.id;
   const openNow = new Set(storedOpen ?? (storedOpen === null && biggest ? [biggest] : []));
@@ -242,11 +251,11 @@ export default function GroupSections({
   };
   // One category: a divider over its cards, or on the projects screen a
   // block whose head opens it.
-  const shell = (id: string, label: string, icon: keyof typeof Ionicons.glyphMap, color: string, count: number, content: ReactNode) => {
+  const shell = (id: string, label: string, icon: keyof typeof Ionicons.glyphMap, color: string, count: number | null, content: ReactNode) => {
     if (!given) {
       return (
         <View key={id} style={styles.section}>
-          <Divider label={label} icon={icon} color={color} count={count} />
+          <Divider label={label} icon={icon} color={color} count={count ?? 0} />
           {content}
         </View>
       );
@@ -273,7 +282,7 @@ export default function GroupSections({
           <Text style={[styles.blockLabel, { color: S.ink }]} numberOfLines={1}>
             {label}
           </Text>
-          <Text style={[styles.blockCount, { color: S.ink3 }]}>{count}</Text>
+          {count !== null && <Text style={[styles.blockCount, { color: S.ink3 }]}>{count}</Text>}
           <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={S.ink3} />
         </Pressable>
         {isOpen && (
@@ -488,6 +497,27 @@ export default function GroupSections({
           </View>
         )
       )}
+
+      {shownViews.map((view) => {
+        const database = ((given ? databases ?? [] : customDatabases) as unknown as CustomDatabase[]).find(
+          (d) => d.id === view.databaseId
+        );
+        return shell(
+          `view:${view.id}`,
+          view.name || 'Вигляд',
+          ((view.icon || database?.icon) as keyof typeof Ionicons.glyphMap) ?? 'bookmark-outline',
+          database?.color ?? '#F97316',
+          null,
+          <CustomDatabaseViewBlockCard
+            databaseId={view.databaseId}
+            viewId={view.id}
+            fallbackTitle={view.name}
+            tags={tags}
+            onOpenRow={(databaseId, rowId) => open(() => navigation.navigate('CustomDatabase', { databaseId, openRowId: rowId }))}
+            onOpenView={(databaseId, viewId) => open(() => navigation.navigate('CustomDatabase', { databaseId, openViewId: viewId }))}
+          />
+        );
+      })}
 
       {viewerPhoto && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setViewerPhoto(null)}>

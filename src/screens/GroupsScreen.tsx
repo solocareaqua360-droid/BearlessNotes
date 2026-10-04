@@ -1,3 +1,5 @@
+import { ownedQuery } from '../utils/owned';
+import { listenError } from '../utils/listenError';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -193,6 +195,25 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   const insets = useSafeAreaInsets();
   const dockClear = useDockClearance();
   const shownGroups = showArchived ? archivedGroups : activeGroups;
+  // Saved views of personal databases, by the project they were put in.
+  const [viewsByGroup, setViewsByGroup] = useState<Record<string, { id: string; databaseId: string; name: string; icon?: string }[]>>({});
+  useEffect(
+    () =>
+      onSnapshot(
+        ownedQuery('customDatabaseViews'),
+        (snapshot) => {
+          const next: Record<string, { id: string; databaseId: string; name: string; icon?: string }[]> = {};
+          snapshot.docs.forEach((d) => {
+            const v = d.data() as { groupId?: string; databaseId?: string; name?: string; icon?: string };
+            if (!v.groupId || !v.databaseId) return;
+            (next[v.groupId] ??= []).push({ id: d.id, databaseId: v.databaseId, name: v.name ?? '', icon: v.icon });
+          });
+          setViewsByGroup(next);
+        },
+        listenError('GroupsScreen:views')
+      ),
+    []
+  );
   const n = shownGroups.length;
   // Its OWN width (a pane is half a window) - from a frame that never
   // moves, so it is read once, not every swipe.
@@ -353,7 +374,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
                         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: dockClear + insets.bottom + 24 }}
                         showsVerticalScrollIndicator={false}
                       >
-                        {(itemsByGroup[group.id] ?? []).length === 0 ? (
+                        {(itemsByGroup[group.id] ?? []).length === 0 && !(viewsByGroup[group.id] ?? []).length ? (
                           <Text style={[styles.pageEmpty, { color: S.ink3 }]}>У цьому проєкті ще нічого немає.</Text>
                         ) : (
                           <GroupSections
@@ -363,6 +384,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
                             tags={tags}
                             items={itemsByGroup[group.id] ?? []}
                             databases={customDatabases}
+                            views={viewsByGroup[group.id]}
                           />
                         )}
                       </ScrollView>
