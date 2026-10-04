@@ -31,22 +31,28 @@ object EvaSplit {
     /** Screens at least this wide (dp) get the split keyboard: the Fold's inner screen, not its cover. */
     const val MIN_WIDTH_DP = 600
 
-    /** The side margins and the central gap, as shares of the width. */
-    const val MARGIN_FRACTION = 0.035f
-    const val GAP_FRACTION = 0.17f
-    /** Space at each side of a key and above / below it (dp): Samsung's 20 px and 30 px gaps. */
-    const val KEY_SPACING_H_DP = 4.6f
-    const val KEY_SPACING_V_DP = 7f
+    /**
+     * Proportions of the split: the side margins and the central gap (shares of the width), and the space
+     * at each side of a key and above / below it (dp). Upright, they follow Samsung's split keyboard; on
+     * the wide landscape screen Samsung's has far wider margins (7%), a wider gap (22%) and tighter rows,
+     * which keeps its keyboard to 46% of the screen height where plain proportions gave 58%.
+     */
+    class Metrics(val margin: Float, val gap: Float, val spacingH: Float, val spacingV: Float)
+
+    private val UPRIGHT = Metrics(margin = 0.035f, gap = 0.17f, spacingH = 4.6f, spacingV = 7f)
+    private val LANDSCAPE = Metrics(margin = 0.07f, gap = 0.22f, spacingH = 4.6f, spacingV = 3.5f)
+
+    fun metrics(landscape: Boolean) = if (landscape) LANDSCAPE else UPRIGHT
     /** A key's height over its width (Samsung: 95 / 87). */
     const val KEY_ASPECT = 1.09f
     /** Columns in a row: the Ukrainian 11. */
     const val COLUMNS = 11
 
     /** The keyboard's row height (px) on a split screen of [screenWidthPx], [density] px per dp. */
-    fun rowHeightPx(screenWidthPx: Float, density: Float): Float {
-        val pitch = screenWidthPx * (1f - GAP_FRACTION - 2 * MARGIN_FRACTION) / COLUMNS
-        val keyWidth = pitch - 2 * KEY_SPACING_H_DP * density
-        return keyWidth * KEY_ASPECT + 2 * KEY_SPACING_V_DP * density
+    fun rowHeightPx(screenWidthPx: Float, density: Float, m: Metrics): Float {
+        val pitch = screenWidthPx * (1f - m.gap - 2 * m.margin) / COLUMNS
+        val keyWidth = pitch - 2 * m.spacingH * density
+        return keyWidth * KEY_ASPECT + 2 * m.spacingV * density
     }
 
     /** The second space bars added for the right half, so they can be taken out again. */
@@ -117,7 +123,16 @@ fun evaKeySpacing(): Pair<Float, Float> {
     val prefs by FlorisPreferenceStore
     val h by prefs.keyboard.keySpacingHorizontal.observeAsState()
     val v by prefs.keyboard.keySpacingVertical.observeAsState()
-    return if (evaIsSplit()) EvaSplit.KEY_SPACING_H_DP to EvaSplit.KEY_SPACING_V_DP else h to v
+    val m = evaSplitMetrics()
+    return if (m != null) m.spacingH to m.spacingV else h to v
+}
+
+/** The split's proportions for the current screen and orientation, or null when the keyboard is not split. */
+@Composable
+fun evaSplitMetrics(): EvaSplit.Metrics? {
+    if (!evaIsSplit()) return null
+    val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    return EvaSplit.metrics(landscape)
 }
 
 /** Whether the keyboard is split on the current screen: a wide screen, with the split switched on. */

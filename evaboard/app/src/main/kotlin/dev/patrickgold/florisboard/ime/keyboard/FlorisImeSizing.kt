@@ -118,14 +118,14 @@ fun ProvideKeyboardRowBaseHeight(content: @Composable () -> Unit) {
         0
     }
     // evaBoard: split on the Fold's inner screen - the row height follows the (narrower) key width
-    val evaSplit = dev.patrickgold.florisboard.ime.eva.evaIsSplit()
+    val evaSplit = dev.patrickgold.florisboard.ime.eva.evaSplitMetrics()
     val baseRowHeight = remember(
         configuration, resources, heightFactorPortrait, heightFactorLandscape,
         oneHandedMode, oneHandedModeScaleFactor, systemBarHeights, evaSplit,
     ) {
-        if (evaSplit) {
+        if (evaSplit != null) {
             return@remember dev.patrickgold.florisboard.ime.eva.EvaSplit.rowHeightPx(
-                resources.displayMetrics.widthPixels.toFloat(), resources.displayMetrics.density,
+                resources.displayMetrics.widthPixels.toFloat(), resources.displayMetrics.density, evaSplit,
             )
         }
         calcInputViewHeight(resources, systemBarHeights) * when {

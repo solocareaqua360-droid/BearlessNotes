@@ -79,7 +79,7 @@ import dev.patrickgold.florisboard.editorInstance
 import dev.patrickgold.florisboard.ime.editor.ImeOptions
 import dev.patrickgold.florisboard.ime.eva.EvaSplit
 import dev.patrickgold.florisboard.ime.eva.evaShortLanguage
-import dev.patrickgold.florisboard.ime.eva.evaIsSplit
+import dev.patrickgold.florisboard.ime.eva.evaSplitMetrics
 import dev.patrickgold.florisboard.ime.eva.evaKeySpacing
 import dev.patrickgold.florisboard.ime.text.key.KeyCode
 import dev.patrickgold.florisboard.ime.text.key.KeyType
@@ -227,9 +227,10 @@ fun TextKeyboardLayout(
         val keyMarginV = evaSpacingV.dp.toPx()
         val keyboardRowBaseHeight = FlorisImeSizing.keyboardRowBaseHeight
         // evaBoard: on a wide screen the rows are laid out for the width minus side margins and a gap
-        val split = evaIsSplit()
-        val splitMargin = if (split) keyboardWidth * EvaSplit.MARGIN_FRACTION else 0f
-        val splitGap = if (split) keyboardWidth * EvaSplit.GAP_FRACTION else 0f
+        val splitMetrics = evaSplitMetrics()
+        val split = splitMetrics != null
+        val splitMargin = if (splitMetrics != null) keyboardWidth * splitMetrics.margin else 0f
+        val splitGap = if (splitMetrics != null) keyboardWidth * splitMetrics.gap else 0f
         val layoutWidth = keyboardWidth - splitGap - 2 * splitMargin
 
         val desiredKey = remember(
