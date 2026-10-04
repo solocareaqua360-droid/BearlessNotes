@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { useSoft } from '../theme/soft';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SoftSearchField } from '../components/ContextDock';
+import { useKeyboardRide } from '../hooks/useKeyboardRide';
+import { DOCK_BOTTOM } from '../navigation/dockGeometry';
 import ScreenGround from '../components/ScreenGround';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
@@ -20,6 +24,12 @@ export default function SearchScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const [needle, setNeedle] = useState('');
+  // Where the dock rests on other desks, and how far the keyboard lifts it.
+  const restBottom = DOCK_BOTTOM + insets.bottom + 6;
+  const keyboard = useKeyboardRide();
+  const ride = useAnimatedStyle(() => ({
+    transform: [{ translateY: Math.min(0, keyboard.height.value - 10 + restBottom) }],
+  }));
   const hits = useGlobalSearch(needle);
   const groups = groupHits(hits);
   // Documents are the priority: a search for a common word turns up a
@@ -63,27 +73,10 @@ export default function SearchScreen() {
       <ScreenGround color={S.bg} />
 
       <ContentColumn>
-        <View style={[styles.field, { marginTop: insets.top + 12, backgroundColor: S.chrome, boxShadow: S.shadow }]}>
-          <Pressable hitSlop={10} onPress={() => navigation.goBack()} accessibilityLabel="Назад">
-            <Ionicons name="chevron-back" size={24} color={S.ink} />
-          </Pressable>
-          <TextInput
-            autoFocus
-            value={needle}
-            onChangeText={setNeedle}
-            placeholder="Пошук по всіх базах"
-            placeholderTextColor={S.ink3}
-            style={[styles.input, { color: S.ink }]}
-            returnKeyType="search"
-          />
-          {needle.length > 0 && (
-            <Pressable hitSlop={10} onPress={() => setNeedle('')} accessibilityLabel="Очистити">
-              <Ionicons name="close-circle" size={20} color={S.ink3} />
-            </Pressable>
-          )}
-        </View>
-
-        <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[styles.list, { paddingTop: insets.top + 16, paddingBottom: restBottom + FIELD_H + 40 }]}
+          keyboardShouldPersistTaps="handled"
+        >
           {needle.trim().length > 0 && groups.length === 0 && (
             <Text style={[styles.empty, { color: S.ink3 }]}>Нічого не знайдено</Text>
           )}
@@ -102,6 +95,30 @@ export default function SearchScreen() {
           {othersOpen && renderGroups(otherGroups)}
         </ScrollView>
       </ContentColumn>
+
+      {/* THE FIELD LIVES AT THE BOTTOM, where search is on every other desk
+          (the user's, 2026-10-04): the dock's own capsule, riding up with
+          the keyboard frame by frame, and the way back as the round button
+          at its end. */}
+      <Animated.View pointerEvents="box-none" style={[styles.dock, { bottom: restBottom }, ride]}>
+        <SoftSearchField
+          search={{
+            placeholder: 'Пошук по всіх базах',
+            initialQuery: '',
+            onChangeQuery: setNeedle,
+            onClose: () => navigation.goBack(),
+          }}
+          soft={S}
+          height={FIELD_H}
+        />
+        <Pressable
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Назад"
+          style={[styles.back, { backgroundColor: S.chrome, boxShadow: S.shadow }]}
+        >
+          <Ionicons name="chevron-back" size={22} color={S.ink} />
+        </Pressable>
+      </Animated.View>
     </View>
   );
 
@@ -146,26 +163,26 @@ function Highlighted({ match, ink, muted }: { match: TextMatch; ink: string; mut
   );
 }
 
+// The dock's own height (ContextDock's TWO_BEAD).
+const FIELD_H = 56;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  field: {
+  dock: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    height: 56,
-    marginHorizontal: 16,
-    marginBottom: 14,
-    paddingHorizontal: 16,
-    borderRadius: 28,
+    gap: 10,
   },
-  input: {
-    flex: 1,
-    height: '100%',
-    paddingVertical: 0,
-    fontSize: 16,
-    fontFamily: SOFT_REGULAR,
+  back: {
+    width: FIELD_H,
+    height: FIELD_H,
+    borderRadius: FIELD_H / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   list: {
     paddingHorizontal: 16,
