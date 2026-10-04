@@ -24,6 +24,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View, type GestureResponderEvent } from 'react-native';
@@ -450,6 +451,16 @@ export default function LinksScreen({
         onPress: () => {
           setRenamingLink(link);
           close();
+        },
+      },
+      // The address into the phone's share sheet, with the title above it
+      // when there is one - a place on a map, a video, a page alike.
+      {
+        icon: 'share-social-outline',
+        label: 'Поділитись',
+        onPress: () => {
+          close();
+          Share.share({ message: link.title ? `${link.title}\n${link.url}` : link.url }).catch(() => {});
         },
       },
       // Where the drag-and-drop lands a card, for anyone who would rather

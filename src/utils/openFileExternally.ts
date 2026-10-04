@@ -50,6 +50,22 @@ export async function ensureFileIsHere(file: { fileUri: string; driveFileId?: st
   return restored;
 }
 
+// «Поділитись»: the file itself into the phone's share sheet - fetched back
+// from Drive first when this device does not hold it.
+export async function shareFile(file: {
+  fileUri: string;
+  fileName: string;
+  mimeType?: string;
+  driveFileId?: string;
+}) {
+  if (!(await ensureFileIsHere(file))) return;
+  if (!(await Sharing.isAvailableAsync())) {
+    notify('Немає чим поділитись', 'На цьому пристрої не знайшлось застосунку для цього.');
+    return;
+  }
+  await Sharing.shareAsync(file.fileUri, { mimeType: file.mimeType, dialogTitle: file.fileName });
+}
+
 export async function openFileExternally(file: {
   // The file's own record, when the caller has it: opening it is what the
   // start desk's recents remember.

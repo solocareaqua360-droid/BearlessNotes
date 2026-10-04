@@ -713,11 +713,13 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
         { id: 'move', label: 'Перемістити в папку', icon: 'folder-outline' },
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
         { id: 'tags', label: 'Папки', icon: 'pricetag-outline' },
+        { id: 'share', label: 'Поділитись', icon: 'share-social-outline' },
         { id: 'draw', label: 'Малювати', icon: 'brush-outline' },
         { id: 'bin', label: 'У кошик', icon: 'trash-outline', tone: 'danger' },
       ],
     });
-    if (choice === 'move') {
+    if (choice === 'share') shareImage(photo);
+    else if (choice === 'move') {
       const destination = await explorer.pickDestination(`Перемістити «${photo.title || 'Без назви'}» в…`);
       if (destination === 'cancel') return;
       await explorer.moveItem(photo, destination);

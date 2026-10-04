@@ -51,3 +51,15 @@ export async function openFileExternally(file: {
   // Revoked late: revoking straight away can beat the new tab to it.
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
+
+// «Поділитись» in a browser: the same hand-off as opening - the file is
+// fetched from Drive and put in a tab, from where the browser's own share
+// and save reach it.
+export async function shareFile(file: {
+  fileUri: string;
+  fileName: string;
+  mimeType?: string;
+  driveFileId?: string;
+}) {
+  await openFileExternally(file);
+}

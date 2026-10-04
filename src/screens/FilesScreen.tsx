@@ -64,7 +64,7 @@ import SaveDestinationSheet from '../components/SaveDestinationSheet';
 import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
+import { ensureFileIsHere, openFileExternally, shareFile } from '../utils/openFileExternally';
 import { openTabWithSequence } from '../navigation/desktopTabs';
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
 import { go } from '../components/DesktopTabs';
@@ -449,6 +449,14 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           const destination = await explorer.pickDestination(`Перемістити «${file.title || file.fileName}» в…`);
           if (destination === 'cancel') return;
           await explorer.moveItem(file, destination);
+        },
+      },
+      {
+        icon: 'share-social-outline',
+        label: 'Поділитись',
+        onPress: () => {
+          close();
+          shareFile(file).catch(() => {});
         },
       },
       // Saved where the phone keeps everything else, into the folder picked
