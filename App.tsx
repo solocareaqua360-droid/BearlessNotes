@@ -1,234 +1,133 @@
-import { useEffect, useState } from 'react';
-import BackdropLayer from './src/components/BackdropLayer';
-import { View } from 'react-native';
-import {
-  useFonts,
-  Nunito_400Regular,
-  Nunito_500Medium,
-  Nunito_600SemiBold,
-  Nunito_700Bold,
-  Nunito_800ExtraBold,
-} from '@expo-google-fonts/nunito';
-import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { ShareIntentProvider } from 'expo-share-intent';
-import { DefaultTheme, NavigationContainer, Theme as NavTheme } from '@react-navigation/native';
-import { ensureSignedIn } from './src/firebase';
-import RootNavigator from './src/AppNavigator';
-import ShareIntentHandler from './src/components/ShareIntentHandler';
-import * as SplashScreen from 'expo-splash-screen';
-import { sweepIfDue } from './src/utils/attachmentCache';
-import { migrateBoardShapes } from './src/utils/boardMigration';
-import { navigationRef } from './src/navigationRef';
-import { GlassTargetProvider } from './src/components/GlassTarget';
-import { GlassPortalHost } from './src/components/GlassPortal';
-import MorphHost from './src/components/MorphHost';
-import ChromeMorph from './src/components/ChromeMorph';
-import { AskHost } from './src/components/surfaces/Ask';
-import { HoldAskHost } from './src/components/surfaces/HoldAsk';
-import { CreateWatcher } from './src/navigation/startCreate';
-import CaptureWindow from './src/components/CaptureWindow';
-import BoardPreviewCaptureHost from './src/components/BoardMiniature';
-import { ThemeProvider, ThemedStatusBar, useSeeThroughBackdrop, useTheme } from './src/theme/ThemeProvider';
-import CrashBoundary from './src/components/CrashBoundary';
-import FatalErrorOverlay from './src/components/FatalErrorOverlay';
-import ContextDock from './src/components/ContextDock';
-import { NavDockProvider } from './src/navigation/navDock';
-import AlarmRingOverlay from './src/components/AlarmRingOverlay';
-import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import Svg from 'react-native-svg';
+import SketchEditor from './src/sketch/SketchEditor';
+import SketchLayer from './src/sketch/SketchLayer';
+import { Ionicons } from './src/sketch/icons/Ionicons';
+import { useSoft, useTheme } from './src/sketch/theme';
+import { SOFT_MEDIUM, SOFT_SEMIBOLD } from './src/sketch/fonts';
+import type { SketchFile } from './src/sketch/format';
+import { deleteSketch, exportSketch, importSketch, listSketches, newSketch, saveSketch } from './src/store';
 
-// The screens themselves - every route, and the tab navigator they sit
-// behind - live in src/AppNavigator, shared with the browser build. What
-// this file owns is the phone's own wrapping: the splash, the fonts, the
-// keyboard provider, the share-intent handler.
-
-// Android dismisses the splash as soon as the app draws its first frame,
-// and this app's first frame is a stand-in view that appears almost at
-// once - so the icon-to-app morph was cut off just as it began. Held here
-// instead, and let go below once the fonts and the sign-in have resolved,
-// which is when there is really something to show.
-SplashScreen.preventAutoHideAsync().catch(() => {});
-
-// The navigator paints its own card behind every screen, and its default
-// theme's is WHITE - which is what showed through as small white patches
-// while the screens re-measured themselves on a rotation. It has to be
-// the app's own ground instead, and from inside ThemeProvider so it
-// follows the theme like everything else.
-function ThemedNavigationContainer({ children }: { children: React.ReactNode }) {
-  const theme = useTheme();
-  // Under the phone's wallpaper the navigator's card must not cover it -
-  // the screen's own backdrop lays the veil instead (ScreenBackdrop).
-  const wallpaper = useSeeThroughBackdrop();
-  const navTheme: NavTheme = {
-    ...DefaultTheme,
-    dark: theme.scheme === 'dark',
-    colors: {
-      ...DefaultTheme.colors,
-      background: wallpaper ? 'transparent' : theme.ground,
-      card: theme.surface,
-      text: theme.ink.primary,
-    },
-  };
-  return (
-    <NavigationContainer ref={navigationRef} theme={navTheme}>
-      <BackdropLayer />
-      {children}
-    </NavigationContainer>
-  );
-}
-
+// SKETCHEVA: mindEva's drawing editor as an app of its own, to grow it
+// freely and bring back to mindEva what proves itself (see CLAUDE.md and
+// docs/MINDEVA_COMPAT.md). One screen for now: the drawings, newest first;
+// a tap opens one in the editor, a hold offers export and delete.
 export default function App() {
-  // A tap on the sticker widget opens straight into that sticker - see
-  // the hook itself for why this needs both a cold-start and a
-  // while-running case.
-  useStickerDeepLink();
-  // Only the redesigned surfaces (Documents/Calendar and the components
-  // they share) reference these family names in their own styles - the
-  // rest of the app keeps the system font, matching how this whole visual
-  // pass has stayed scoped rather than becoming an app-wide reskin.
-  const [fontsLoaded] = useFonts({
-    Nunito_400Regular,
-    Nunito_500Medium,
-    Nunito_600SemiBold,
-    Nunito_700Bold,
-    Nunito_800ExtraBold,
-    // The soft style's face (see theme/soft), tried on the Documents
-    // desk first.
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-  });
-  const [signedIn, setSignedIn] = useState(false);
-  useEffect(() => {
-    ensureSignedIn().then(() => setSignedIn(true));
-  }, []);
-  const ready = fontsLoaded && signedIn;
-  useEffect(() => {
-    if (ready) SplashScreen.hideAsync().catch(() => {});
-    // The bytes of files nobody has opened in three months go, quietly,
-    // once a day - their records stay, and they come back from Drive on
-    // the next open. See attachmentCache.
-    if (ready) sweepIfDue();
-    // One pass, once, and then never a write again - see
-    // migrateBoardShapes. Deliberately not awaited and deliberately
-    // silent: nothing on screen depends on it, and a board it cannot
-    // reach today it converts on the next launch.
-    if (ready) migrateBoardShapes().catch(() => {});
-  }, [ready]);
-
-  // ShareIntentProvider wraps BOTH branches below as one stable instance
-  // (rather than each branch mounting its own) - a share can arrive while
-  // the app is still on the splash view, and the provider needs to keep
-  // holding it across the splash -> ready transition, not capture it once
-  // and then get remounted from scratch right as ShareIntentHandler
-  // (which only renders once signedIn, since it writes to Firestore)
-  // would otherwise need to read it.
+  const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
+  if (!fontsLoaded) return null;
   return (
-    // Outside everything that draws: the theme is read from the local
-    // cache on the first frame, so the app opens already in the right
-    // one rather than repainting itself a moment later.
-    <ThemeProvider>
-    <ShareIntentProvider>
-      {!ready ? (
-        // The splash's own colour, not white and no longer the gradient's
-        // brown: the splash is still up while this stands behind it, and
-        // two different grounds handing over to each other is exactly the
-        // flash this is meant to avoid.
-        <View style={{ flex: 1, backgroundColor: '#0F1839' }} />
-      ) : (
-        <GestureHandlerRootView style={{ flex: 1 }}>
-        {/* At the root, so the pieces mounted here - the question
-            window below - can read the insets too. Every screen gets
-            its own from the navigator; nothing above it did. */}
-        <SafeAreaProvider>
-          {/* Feeds the document editor per-frame keyboard progress (see
-              DocumentEditorScreen's useKeyboardHandler), so the block being
-              edited can ride up in the same motion as the keyboard instead of
-              jumping after it has finished. */}
-          <KeyboardProvider>
-          <ThemedNavigationContainer>
-          {/* The glass, in two halves that must stay in this order. The
-              portal host is where every sheet is actually drawn - inside
-              NavigationContainer, so a sheet that navigates still can, and
-              OUTSIDE the blur target below, because a blur inside the
-              picture it blurs tries to draw itself. The target wraps only
-              the screens: that is what a sheet blurs. */}
-          {/* Wraps BOTH the portal host and the screens: one side
-              publishes where it is, the other draws it. */}
-          <NavDockProvider>
-          <GlassPortalHost>
-            <ThemedStatusBar />
-            <GlassTargetProvider>
-            {/* «Питання» - every confirmation in the app, drawn once here
-                so that asking is a function call anywhere else. INSIDE the
-                blur target: what it blurs is the screens, and from outside
-                them expo-blur quietly falls back to a flat dim. */}
-            <AskHost />
-            {/* A hold's menu, as the chat's: the held thing lifted over
-                a blur (holdAsk, CardMenu). Inside the blur target too. */}
-            <HoldAskHost />
-            {/* «Створити» on the start desk: goes to a list and presses its own
-                «+» once it has arrived (navigation/startCreate). */}
-            <CreateWatcher />
-            {/* «Загальний чат» - the window the dock's long press
-                opens, already listening. Inside the blur target,
-                like every other sheet. */}
-            <CaptureWindow
-              onOpenChat={() => {
-                if (navigationRef.isReady()) navigationRef.navigate('Chat');
-              }}
-            />
-            {/* A ringing alarm is its own Modal too, for the same reason -
-                see AlarmRingOverlay. */}
-            <AlarmRingOverlay />
-            {/* Inside the target too: it raises the naming dialog. */}
-            <ShareIntentHandler />
-            {/* The board-preview capture rig - mounted ONCE, here, so it
-                never unmounts while a board that asked for a capture is
-                being left (see BoardMiniature's own long comment on
-                why that used to lose the race). Nothing to blur - it
-                draws off-screen only - so it does not need the target
-                either, but living beside the other app-root hosts is
-                where the next person looking for it will check first. */}
-            <BoardPreviewCaptureHost />
-            {/* A render that throws used to take the whole app down on the
-                phone - "вилітає" is the only report anyone can make, and
-                it is the same report for every possible cause. The
-                browser build has had this since the day it went white;
-                the phone should have had it too. */}
-            <CrashBoundary>
-              <RootNavigator />
-            </CrashBoundary>
-            {/* The dock - see components/ContextDock. Declared INSIDE the
-                blur target, like the tags drawer and every sheet, and
-                drawn outside it by its own GlassPortal. Declared outside,
-                it found no target to blur and expo-blur quietly fell back
-                to a flat translucent rectangle: the light, unblurred dock
-                the user set beside the drawer and asked whether the two
-                could possibly be the same material. */}
-            <ContextDock />
-            </GlassTargetProvider>
-          </GlassPortalHost>
-          {/* The sheet a note's card grows into its page with (utils/morph):
-              after everything else, so it draws over the dock too. */}
-          <MorphHost />
-          {/* The dock and the top bar while a page grows out of its card
-              (utils/chromeMorph): over everything, the dock included. */}
-          <ChromeMorph />
-          </NavDockProvider>
-          {/* Above the portal host, and outside every boundary:
-              what it reports is the error class that leaves NOTHING
-              on the screen - see src/utils/fatalErrors.ts. */}
-          <FatalErrorOverlay />
-          </ThemedNavigationContainer>
-          </KeyboardProvider>
-        </SafeAreaProvider>
-        </GestureHandlerRootView>
-      )}
-    </ShareIntentProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <Home />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
+
+function Home() {
+  const S = useSoft();
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const [sketches, setSketches] = useState<SketchFile[]>([]);
+  const [open, setOpen] = useState<SketchFile | null>(null);
+
+  const reload = useCallback(() => {
+    listSketches().then(setSketches).catch(() => setSketches([]));
+  }, []);
+  useEffect(reload, [reload]);
+
+  const holdMenu = (file: SketchFile) =>
+    Alert.alert(file.title, undefined, [
+      { text: 'Експортувати', onPress: () => exportSketch(file).catch((e) => Alert.alert('Не вийшло', String(e))) },
+      {
+        text: 'Видалити',
+        style: 'destructive',
+        onPress: () =>
+          Alert.alert('Видалити малюнок?', `«${file.title}» зникне з цього телефона.`, [
+            { text: 'Скасувати', style: 'cancel' },
+            { text: 'Видалити', style: 'destructive', onPress: () => deleteSketch(file.id).then(reload) },
+          ]),
+      },
+      { text: 'Скасувати', style: 'cancel' },
+    ]);
+
+  const importOne = () =>
+    importSketch()
+      .then((file) => file && reload())
+      .catch((e) => Alert.alert('Не вийшло імпортувати', e instanceof Error ? e.message : String(e)));
+
+  return (
+    <View style={[styles.fill, { backgroundColor: S.bg }]}>
+      <StatusBar style={S.dark ? 'light' : 'dark'} />
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 16, paddingBottom: insets.bottom + 110, paddingHorizontal: 16 }}>
+        <Text style={[styles.title, { color: S.ink }]}>sketchEva</Text>
+        {sketches.length === 0 && (
+          <Text style={[styles.empty, { color: S.ink3 }]}>Ще немає малюнків. Натисни «+», щоб почати.</Text>
+        )}
+        <View style={styles.grid}>
+          {sketches.map((file) => (
+            <Pressable
+              key={file.id}
+              onPress={() => setOpen(file)}
+              onLongPress={() => holdMenu(file)}
+              style={[styles.card, { backgroundColor: S.card, boxShadow: S.shadow }]}
+            >
+              <View style={[styles.preview, { backgroundColor: theme.paper.fill }]}>
+                {file.width > 0 && (
+                  <Svg width="100%" height="100%" viewBox={`0 0 ${file.width} ${file.height}`} preserveAspectRatio="xMidYMid meet">
+                    <SketchLayer elements={file.elements} ink={theme.paper.ink} />
+                  </Svg>
+                )}
+              </View>
+              <Text style={[styles.cardTitle, { color: S.ink }]} numberOfLines={1}>
+                {file.title}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+
+      <View style={[styles.dock, { bottom: insets.bottom + 16 }]}>
+        <Pressable onPress={importOne} style={[styles.round, { backgroundColor: S.chrome, boxShadow: S.shadow }]} accessibilityLabel="Імпортувати">
+          <Ionicons name="download-outline" size={22} color={S.ink} />
+        </Pressable>
+        <Pressable
+          onPress={() => setOpen(newSketch())}
+          style={[styles.round, { backgroundColor: S.ink }]}
+          accessibilityLabel="Новий малюнок"
+        >
+          <Ionicons name="add" size={26} color={S.chrome} />
+        </Pressable>
+      </View>
+
+      <SketchEditor
+        visible={open !== null}
+        initialElements={open?.elements ?? []}
+        onClose={() => setOpen(null)}
+        onSave={(elements, width, height) => {
+          if (!open) return;
+          const file = { ...open, elements, width, height, updatedAt: Date.now() };
+          setOpen(null);
+          saveSketch(file).then(reload);
+        }}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+  title: { fontSize: 30, fontFamily: SOFT_SEMIBOLD, marginBottom: 16, marginLeft: 4 },
+  empty: { fontSize: 15, fontFamily: SOFT_MEDIUM, marginTop: 40, textAlign: 'center' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  card: { flexBasis: '46%', flexGrow: 1, borderRadius: 20, overflow: 'hidden' },
+  preview: { aspectRatio: 0.75 },
+  cardTitle: { fontSize: 14, fontFamily: SOFT_MEDIUM, paddingHorizontal: 12, paddingVertical: 10 },
+  dock: { position: 'absolute', right: 16, flexDirection: 'row', gap: 12 },
+  round: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+});

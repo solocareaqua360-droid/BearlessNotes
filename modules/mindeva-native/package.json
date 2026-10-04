@@ -1,6 +1,0 @@
-{
-  "name": "mindeva-native",
-  "version": "1.0.0",
-  "private": true,
-  "description": "The app's own small native pieces: the alarm's audio channel and the wallpaper window flag."
-}
