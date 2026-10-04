@@ -425,11 +425,8 @@ fun ClipboardInputLayout(
                             text = stringRes(R.string.eva__clip_filter_images),
                             itemType = ItemType.IMAGE,
                         )
-                        FilterChip(
-                            imageVector = EvaIcons.lucide("film"),
-                            text = stringRes(R.string.eva__clip_filter_videos),
-                            itemType = ItemType.VIDEO,
-                        )
+                        // evaBoard: no "Videos" chip - the phone's gallery cannot copy a video to the clipboard,
+                        // so there is nothing to filter (a video that does arrive still shows under all items)
                     }
                 }
                 SnyggBox(FlorisImeUi.ClipboardGrid.elementName,
