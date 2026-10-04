@@ -2244,13 +2244,17 @@ export default function ContextDock() {
     const rightIcon = right ? SOFT_DOCK_GLYPHS[right.icon] : undefined;
     // The switcher on the right, "+" inside the field (deskSwitcherBus's
     // MULTITASK_RIGHT) - only with the field and "+" both there to merge.
-    const multitask = switcherRight && !dockSearch && !!left && !left.round && !!right;
+    // Inside a folder (the bar shows its path) the way out is back, one
+    // folder up - not the desks: "ми ж теж провалюємося в папку і єдиний
+    // спосіб з неї вийти - це клацати назад" (2026-10-04).
+    const inFolder = ownPublished?.kind === 'path' && !!topBack && !topBack.dimmed;
+    const multitask = switcherRight && !inFolder && !dockSearch && !!left && !left.round && !!right;
     // AWAY FROM THE DESKS (the next step of the same experiment, 2026-10-04:
     // "коли ми входимо всередину баз, то у нас немає доступу до
     // багатозадачності"): the round button on the right is the way back -
     // the same as the bar's, top left, for now - and "+" goes into the
     // field all the same.
-    const backHere = !switcherRight && !!topBack && !topBack.dimmed && !dockSearch && !!left && !left.round;
+    const backHere = (!switcherRight || inFolder) && !!topBack && !topBack.dimmed && !dockSearch && !!left && !left.round;
     const merged = multitask || backHere;
     return (
       <DockPortal>
