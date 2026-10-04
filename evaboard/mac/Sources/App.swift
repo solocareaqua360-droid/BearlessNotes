@@ -205,6 +205,7 @@ struct ContentView: View {
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var link: Link
     @State private var showCode = false
+    @State private var listHeight: CGFloat = 0
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -228,16 +229,22 @@ struct ContentView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
             } else {
+                // A scroll view in a menu-bar window has no height of its own and shrinks to nothing:
+                // it gets the height of its rows, up to a limit, measured from the rows themselves.
                 ScrollView {
-                    LazyVStack(spacing: 6) {
+                    VStack(spacing: 6) {
                         ForEach(store.sorted) { item in
                             ItemRow(item: item)
                         }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
+                    .background(GeometryReader { geometry in
+                        Color.clear.preference(key: ListHeight.self, value: geometry.size.height)
+                    })
                 }
-                .frame(maxHeight: 440)
+                .frame(height: min(max(listHeight, 60), 480))
+                .onPreferenceChange(ListHeight.self) { listHeight = $0 }
             }
 
             Divider().padding(.top, 8)
@@ -393,4 +400,9 @@ struct Thumbnail: View {
         Thumbnail.cache.setObject(image, forKey: id as NSString)
         return image
     }
+}
+
+private struct ListHeight: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
