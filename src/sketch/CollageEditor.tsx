@@ -6,13 +6,13 @@ import Svg, { Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from './icons/Ionicons';
 import type { SketchCollageCell, SketchCollageElement } from './format';
-import { LAYOUTS, MAX_PHOTOS, currentSplits, layoutsFor, placement, solve } from './collage';
+import { MAX_PHOTOS, layoutsFor, placement, solve } from './collage';
 import SketchLayer from './SketchLayer';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from './fonts';
 
 // The collage's own window (like Samsung's Photo Collage): the pictures sit
 // in a layout; a tap picks a cell, a finger moves the picture inside it and
-// two fingers enlarge it; dividers are dragged (and settle onto each other);
+// two fingers enlarge it;
 // below: layouts, background, frame (corners, gap, border) and proportions.
 // Draws over the editor, in the same window. Nothing here touches the
 // canvas until «Готово».
@@ -20,8 +20,6 @@ type Photo = { uri: string; aspect: number };
 type Tab = 'layout' | 'bg' | 'frame' | 'ratio';
 
 const PAD = 16;
-const GRAB = 22; // px: how near a divider's dot a finger grabs it
-const SNAP = 8; // px: how near another divider's line a divider settles
 const MAX_ZOOM = 6;
 const RATIOS: [number, number][] = [[1, 1], [3, 4], [9, 16], [2, 3], [3, 5], [4, 5], [5, 7]];
 const COLORS = ['#FFFFFF', '#F3E9D2', '#F7C948', '#7BE0C8', '#4F9BFF', '#2B44FF', '#E0524A', '#1E1E1C'];
@@ -45,25 +43,20 @@ export default function CollageEditor({
   onDone: (el: SketchCollageElement) => void;
 }) {
   const insets = useSafeAreaInsets();
-  const [el, setEl] = useState<SketchCollageElement>(() => ({ ...initial, rot: undefined }));
+  const [el, setEl] = useState<SketchCollageElement>(() => ({ ...initial, rot: undefined, splits: undefined }));
   const [sel, setSel] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>('layout');
   const [area, setArea] = useState({ w: 0, h: 0 });
-  const [guide, setGuide] = useState<{ dir: 'v' | 'h'; pos: number } | null>(null);
   const [portrait, setPortrait] = useState(initial.h >= initial.w);
 
   const fit = area.w > 0 ? Math.min((area.w - PAD * 2) / el.w, (area.h - PAD * 2) / el.h) : 1;
   const pw = el.w * fit;
   const ph = el.h * fit;
-  const { cells, dividers } = useMemo(() => solve(el), [el]);
+  const { cells } = useMemo(() => solve(el), [el]);
 
-  const live = useRef({ el, fit, sel, cells, dividers });
-  live.current = { el, fit, sel, cells, dividers };
-  const drag = useRef<
-    | { kind: 'divider'; index: number }
-    | { kind: 'cell'; index: number; base: SketchCollageCell }
-    | null
-  >(null);
+  const live = useRef({ el, fit, sel, cells });
+  live.current = { el, fit, sel, cells };
+  const drag = useRef<{ index: number; base: SketchCollageCell } | null>(null);
   const pinch = useRef<{ index: number; base: number } | null>(null);
 
   const cellAt = (bx: number, by: number) =>
@@ -74,60 +67,27 @@ export default function CollageEditor({
 
   const call = useMemo(
     () => (name: string, a = 0, b = 0) => {
-      const { el: cur, fit: f, dividers: divs, cells: rects } = live.current;
+      const { el: cur, fit: f, cells: rects } = live.current;
       const bx = cur.x + a / f;
       const by = cur.y + b / f;
       if (name === 'begin') {
-        // A divider is taken ONLY by its dot. Anywhere else a finger moves the
-        // picture under it - so moving a picture never pushes a divider.
-        let best: { i: number; dist: number } | null = null;
-        for (const d of divs) {
-          const dist = Math.hypot(bx - (d.x1 + d.x2) / 2, by - (d.y1 + d.y2) / 2) * f;
-          if (dist < GRAB && (!best || dist < best.dist)) best = { i: d.index, dist };
-        }
-        if (best) {
-          drag.current = { kind: 'divider', index: best.i };
-          return;
-        }
         const c = cellAt(bx, by);
         if (c !== -1 && cur.cells[c]?.uri) {
           setSel(c);
-          drag.current = { kind: 'cell', index: c, base: cur.cells[c] };
+          drag.current = { index: c, base: cur.cells[c] };
         } else drag.current = null;
       } else if (name === 'move') {
+        // One finger: the picture under it moves inside its frame, and only it.
         const d = drag.current;
         if (!d) return;
-        if (d.kind === 'divider') {
-          const div = divs.find((x) => x.index === d.index);
-          if (!div) return;
-          const vertical = div.dir === 'v';
-          let coord = (vertical ? div.x1 : div.y1) + (vertical ? a : b) / f;
-          const r = div.rect;
-          const start = vertical ? r.x : r.y;
-          const size = vertical ? r.w : r.h;
-          const marks = [start + size / 2, start + size / 3, start + (size * 2) / 3];
-          for (const o of divs) if (o.index !== div.index && o.dir === div.dir) marks.push(vertical ? o.x1 : o.y1);
-          let snapped: number | null = null;
-          for (const m of marks) if (Math.abs(m - coord) < SNAP / f && (snapped === null || Math.abs(m - coord) < Math.abs(snapped - coord))) snapped = m;
-          if (snapped !== null) coord = snapped;
-          setGuide(snapped !== null ? { dir: div.dir, pos: snapped } : null);
-          const ratio = clamp((coord - start) / size, 0.12, 0.88);
-          setEl((e) => {
-            const next = [...currentSplits(e)];
-            next[div.index] = ratio;
-            return { ...e, splits: next };
-          });
-        } else {
-          const rect = rects[d.index];
-          if (!rect) return;
-          const pl = placement(d.base, rect);
-          const fx = clamp((d.base.fx ?? 0.5) - a / f / pl.w, rect.w / 2 / pl.w, 1 - rect.w / 2 / pl.w);
-          const fy = clamp((d.base.fy ?? 0.5) - b / f / pl.h, rect.h / 2 / pl.h, 1 - rect.h / 2 / pl.h);
-          setCell(d.index, { fx, fy });
-        }
+        const rect = rects[d.index];
+        if (!rect) return;
+        const pl = placement(d.base, rect);
+        const fx = clamp((d.base.fx ?? 0.5) - a / f / pl.w, rect.w / 2 / pl.w, 1 - rect.w / 2 / pl.w);
+        const fy = clamp((d.base.fy ?? 0.5) - b / f / pl.h, rect.h / 2 / pl.h, 1 - rect.h / 2 / pl.h);
+        setCell(d.index, { fx, fy });
       } else if (name === 'end') {
         drag.current = null;
-        setGuide(null);
       } else if (name === 'tap') {
         const c = cellAt(bx, by);
         setSel(c === -1 ? null : c);
@@ -248,23 +208,6 @@ export default function CollageEditor({
                     borderColor: accent,
                     borderRadius: Math.min(el.radius ?? 0, cells[sel].w / 2, cells[sel].h / 2) * fit,
                   }}
-                />
-              )}
-              {dividers.map((d) => (
-                <View
-                  key={d.index}
-                  pointerEvents="none"
-                  style={[styles.dot, { backgroundColor: accent, left: ((d.x1 + d.x2) / 2 - el.x) * fit - 9, top: ((d.y1 + d.y2) / 2 - el.y) * fit - 9 }]}
-                />
-              ))}
-              {guide && (
-                <View
-                  pointerEvents="none"
-                  style={
-                    guide.dir === 'v'
-                      ? { position: 'absolute', top: 0, bottom: 0, width: 1.5, left: (guide.pos - el.x) * fit - 0.75, backgroundColor: '#FF4FA3' }
-                      : { position: 'absolute', left: 0, right: 0, height: 1.5, top: (guide.pos - el.y) * fit - 0.75, backgroundColor: '#FF4FA3' }
-                  }
                 />
               )}
             </View>
