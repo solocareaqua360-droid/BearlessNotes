@@ -505,6 +505,15 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__eva_screenshots_to_clipboard",
             default = false,
         )
+        // evaBoard: the clipboard history mirrored with the Mac (ime/eva/macsync) and the pairing code the Mac shows
+        val evaMacSync = boolean(
+            key = "keyboard__eva_mac_sync",
+            default = false,
+        )
+        val evaMacSyncCode = string(
+            key = "keyboard__eva_mac_sync_code",
+            default = "",
+        )
         // evaBoard: split keyboard on wide screens (the Fold's inner screen), ime/eva/EvaSplit.kt
         val evaSplit = boolean(
             key = "keyboard__eva_split",

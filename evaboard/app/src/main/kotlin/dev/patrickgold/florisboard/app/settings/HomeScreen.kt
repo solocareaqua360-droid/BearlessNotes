@@ -83,6 +83,7 @@ fun HomeScreen() = FlorisScreen {
         EvaDevUpdateCard(modifier = Modifier.padding(8.dp))
         EvaBlurCard(modifier = Modifier.padding(8.dp))
         EvaScreenshotsCard(modifier = Modifier.padding(8.dp))
+        dev.patrickgold.florisboard.ime.eva.macsync.EvaMacSyncCard(modifier = Modifier.padding(8.dp))
         EvaLinkPreviewsCard(modifier = Modifier.padding(8.dp))
 
         /*Card(modifier = Modifier.padding(8.dp)) {

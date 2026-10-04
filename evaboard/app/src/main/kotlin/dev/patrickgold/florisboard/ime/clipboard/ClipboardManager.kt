@@ -361,6 +361,13 @@ class ClipboardManager(
         }
     }
 
+    // evaBoard: the Mac link (ime/eva/macsync) changes a row's time and pin as one write
+    fun evaUpdateClip(item: ClipboardItem) {
+        ioScope.launch {
+            clipHistoryDao?.update(item)
+        }
+    }
+
     fun pinClip(item: ClipboardItem) {
         ioScope.launch {
             clipHistoryDao?.update(item.copy(isPinned = true))

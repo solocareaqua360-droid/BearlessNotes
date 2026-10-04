@@ -129,6 +129,8 @@ class FlorisApplication : Application() {
         extensionManager.value.init()
         clipboardManager.value.initializeForContext(this)
         DictionaryManager.init(this)
+        // evaBoard: the clipboard history mirrored with the Mac, when switched on in settings
+        dev.patrickgold.florisboard.ime.eva.macsync.EvaMacSync.start(this)
     }
 
     private inner class BootComplete : BroadcastReceiver() {

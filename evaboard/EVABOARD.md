@@ -55,3 +55,18 @@ and REQUEST_INSTALL_PACKAGES permissions) before evaBoard is finished.
 must be signed with this same key; losing it means uninstalling the
 keyboard before the next version can go on, and it is also the key a
 future Play Store upload would need. Back it up.
+
+## The Mac side (`mac/`)
+
+A menu-bar app that keeps the same clipboard history as the keyboard, over the
+home Wi-Fi (`ime/eva/macsync` on the phone, `mac/Sources` on the Mac; the wire
+format is described at the top of `MacSyncProtocol.kt`). Build, install into
+`~/Applications` and start it with
+
+```
+sh evaboard/mac/build.sh
+```
+
+It needs only the Xcode command-line tools. On first start it makes a 16-letter
+pairing code (kept in `~/Library/Application Support/evaBoard/`), which goes into
+evaBoard's settings card «Буфер обміну на Mac».

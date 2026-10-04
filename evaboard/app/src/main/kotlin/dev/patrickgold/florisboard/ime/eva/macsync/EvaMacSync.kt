@@ -1,0 +1,419 @@
+/*
+ * evaBoard: the clipboard history, mirrored with the Mac over the home Wi-Fi.
+ *
+ * The whole visible history travels, not only the last copy: what is copied on either side shows up
+ * in both lists, and a deletion, a clear or a pin on either side is repeated on the other. When the
+ * two meet again after a while apart (another network, the phone asleep), they swap their full lists
+ * and merge them. Items the phone marks as sensitive (passwords) never leave it.
+ *
+ * Mac copies land in the keyboard's history only - they never replace what the phone's own clipboard
+ * holds. The other way round, a fresh phone copy is put on the Mac's clipboard (Cmd+V works at once).
+ *
+ * The phone side is a client: it looks for the Mac over Bonjour (MAC_SYNC_SERVICE_TYPE), remembers
+ * the last address that worked and tries that first. The wire format is in MacSyncProtocol.kt; the
+ * Mac app is evaboard/mac.
+ *
+ * Everything that touches the list runs on one thread ([serial]); the socket reads and writes have
+ * their own coroutines.
+ */
+
+package dev.patrickgold.florisboard.ime.eva.macsync
+
+import android.content.Context
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
+import android.os.Build
+import android.provider.Settings
+import dev.patrickgold.florisboard.app.FlorisPreferenceStore
+import dev.patrickgold.florisboard.clipboardManager
+import dev.patrickgold.florisboard.ime.clipboard.ClipboardHistory
+import dev.patrickgold.florisboard.ime.clipboard.provider.ClipboardItem
+import dev.patrickgold.florisboard.ime.clipboard.provider.ItemType
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.File
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
+import kotlin.coroutines.resume
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+object EvaMacSync {
+    private const val FRESH_MS = 15_000L
+    private const val GONE_KEEP_MS = 30L * 24 * 60 * 60 * 1000
+    private const val MAX_FRAME = 32 * 1024 * 1024
+
+    private val _status = MutableStateFlow("Вимкнено")
+    /** One line for the settings card. */
+    val status = _status.asStateFlow()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val serial = Dispatchers.IO.limitedParallelism(1)
+    private val scope = CoroutineScope(SupervisorJob() + serial)
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true }
+
+    private lateinit var app: Context
+    private var started = false
+
+    // the list as last agreed with the Mac, by item id
+    private val known = HashMap<String, SyncItem>()
+    // deletions: item id -> when
+    private val gone = HashMap<String, Long>()
+    // the keyboard's own history rows, by item id (to update or delete them)
+    private val rows = HashMap<String, ClipboardItem>()
+    private var historyLoaded = false
+    private var lastHost: String? = null
+    private var outgoing: Channel<SyncMessage>? = null
+    private var linkJob: Job? = null
+    private var saveJob: Job? = null
+
+    @Serializable
+    private data class Saved(val known: List<SyncItem> = emptyList(), val gone: Map<String, Long> = emptyMap(), val host: String? = null)
+
+    private val stateFile get() = File(app.filesDir, "eva-macsync.json")
+
+    @OptIn(FlowPreview::class)
+    fun start(context: Context) {
+        if (started) return
+        started = true
+        app = context.applicationContext
+        scope.launch {
+            load()
+            val clipboard by app.clipboardManager()
+            launch {
+                // A re-copy is a delete and an insert in a row: wait for both before comparing.
+                clipboard.historyFlow.debounce(400).collect { onHistory(it) }
+            }
+            val prefs by FlorisPreferenceStore
+            combine(prefs.keyboard.evaMacSync.asFlow(), prefs.keyboard.evaMacSyncCode.asFlow()) { on, code ->
+                on to MacSyncCipher.normalize(code)
+            }.distinctUntilChanged().collect { (on, code) ->
+                linkJob?.cancel()
+                linkJob = null
+                when {
+                    !on -> _status.value = "Вимкнено"
+                    code.length < 16 -> _status.value = "Введіть код, який показує Mac"
+                    else -> linkJob = CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { runLink(code) }
+                }
+            }
+        }
+    }
+
+    // ---- the list -------------------------------------------------------------------------------
+
+    private fun onHistory(history: ClipboardHistory) {
+        if (history === ClipboardHistory.EMPTY) return // before the database has loaded
+        historyLoaded = true
+        val now = System.currentTimeMillis()
+        val current = HashMap<String, ClipboardItem>()
+        for (item in history.all) {
+            if (item.type != ItemType.TEXT || item.isSensitive) continue
+            val text = item.text?.takeIf { it.isNotEmpty() } ?: continue
+            val id = MacSyncIds.forText(text)
+            val other = current[id]
+            if (other == null || item.creationTimestampMs > other.creationTimestampMs) current[id] = item
+        }
+        rows.clear()
+        rows.putAll(current)
+
+        for ((id, item) in current) {
+            val ts = item.creationTimestampMs
+            val was = known[id]
+            if (was == null) {
+                // still here although deleted after it was copied: that deletion is on its way
+                if ((gone[id] ?: Long.MIN_VALUE) >= ts) continue
+                gone.remove(id)
+                val added = SyncItem(id = id, text = item.text!!, ts = ts, pinned = item.isPinned, mod = ts)
+                known[id] = added
+                send(SyncMessage(type = "upsert", item = added, fresh = now - ts < FRESH_MS))
+            } else if (was.ts != ts || was.pinned != item.isPinned) {
+                val changed = was.copy(ts = ts, pinned = item.isPinned, mod = maxOf(now, was.mod + 1))
+                known[id] = changed
+                send(SyncMessage(type = "upsert", item = changed, fresh = ts > was.ts && now - ts < FRESH_MS))
+            }
+        }
+        val removed = known.keys - current.keys
+        if (removed.isNotEmpty()) {
+            val marks = removed.associateWith { now }
+            for (id in removed) known.remove(id)
+            gone.putAll(marks)
+            send(SyncMessage(type = "gone", gone = marks))
+        }
+        scheduleSave()
+    }
+
+    private fun applyUpsert(incoming: SyncItem) {
+        if (incoming.kind != "text") return
+        val keep = MacSyncMerge.upsert(known[incoming.id], gone[incoming.id], incoming) ?: return
+        gone.remove(incoming.id)
+        known[incoming.id] = keep
+        val clipboard by app.clipboardManager()
+        val row = rows[incoming.id]
+        if (row == null) {
+            clipboard.insertClip(
+                ClipboardItem(
+                    type = ItemType.TEXT,
+                    text = keep.text,
+                    uri = null,
+                    creationTimestampMs = keep.ts,
+                    isPinned = keep.pinned,
+                    mimeTypes = listOf("text/plain"),
+                )
+            )
+        } else {
+            clipboard.evaUpdateClip(row.copy(creationTimestampMs = keep.ts, isPinned = keep.pinned))
+        }
+        scheduleSave()
+    }
+
+    private fun applyGone(marks: Map<String, Long>) {
+        val clipboard by app.clipboardManager()
+        for ((id, at) in marks) {
+            gone[id] = maxOf(gone[id] ?: Long.MIN_VALUE, at)
+            val local = known[id] ?: continue
+            if (MacSyncMerge.removes(local, at)) {
+                known.remove(id)
+                rows.remove(id)?.let { clipboard.deleteClip(it, onlyIfUnpinned = false) }
+            }
+        }
+        scheduleSave()
+    }
+
+    private fun handle(message: SyncMessage, onHello: (String) -> Unit) {
+        when (message.type) {
+            "hello" -> onHello(message.device ?: "Mac")
+            "snapshot" -> {
+                message.gone?.let { applyGone(it) }
+                message.items?.forEach { applyUpsert(it) }
+            }
+            "upsert" -> message.item?.let { applyUpsert(it) }
+            "gone" -> message.gone?.let { applyGone(it) }
+        }
+    }
+
+    private fun send(message: SyncMessage) {
+        outgoing?.trySend(message)
+    }
+
+    // ---- saving ---------------------------------------------------------------------------------
+
+    private fun load() {
+        try {
+            if (!stateFile.exists()) return
+            val saved = json.decodeFromString(Saved.serializer(), stateFile.readText())
+            saved.known.forEach { known[it.id] = it }
+            gone.putAll(saved.gone)
+            lastHost = saved.host
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun scheduleSave() {
+        saveJob?.cancel()
+        saveJob = scope.launch {
+            delay(1000)
+            val cutoff = System.currentTimeMillis() - GONE_KEEP_MS
+            gone.entries.removeAll { it.value < cutoff }
+            try {
+                val temp = File(stateFile.path + ".tmp")
+                temp.writeText(json.encodeToString(Saved.serializer(), Saved(known.values.toList(), HashMap(gone), lastHost)))
+                temp.renameTo(stateFile)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    // ---- the link -------------------------------------------------------------------------------
+
+    private suspend fun runLink(code: String) {
+        val cipher = MacSyncCipher(code)
+        var wait = 2_000L
+        while (currentCoroutineContext().isActive) {
+            if (!withContext(serial) { historyLoaded }) {
+                _status.value = "Чекаю на буфер обміну…"
+                delay(1000)
+                continue
+            }
+            _status.value = "Шукаю Mac у мережі…"
+            val remembered = withContext(serial) { lastHost }
+            var socket = remembered?.let { connect(it) }
+            if (socket == null) socket = discover()?.let { connect(it) }
+            if (socket == null) {
+                _status.value = "Mac не знайдено - він у цій самій мережі Wi-Fi?"
+                delay(wait)
+                wait = minOf(wait * 2, 60_000L)
+                continue
+            }
+            val outcome = runSession(socket, cipher)
+            try { socket.close() } catch (_: Exception) {}
+            if (outcome == Outcome.WRONG_CODE) {
+                _status.value = "Код не підходить - перевірте його на Mac"
+                delay(60_000L)
+            } else {
+                wait = 2_000L
+                _status.value = "Звʼязок перервано, підключаюсь знову…"
+                delay(wait)
+            }
+        }
+    }
+
+    private enum class Outcome { CLOSED, WRONG_CODE }
+
+    private fun connect(host: String): Socket? {
+        val port = host.substringAfterLast('|').toIntOrNull() ?: return null
+        val address = host.substringBeforeLast('|')
+        return try {
+            Socket().apply {
+                connect(InetSocketAddress(InetAddress.getByName(address), port), 4000)
+                tcpNoDelay = true
+                soTimeout = 45_000
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Looks for the Mac over Bonjour for a few seconds: "address|port", or null. */
+    @Suppress("DEPRECATION")
+    private suspend fun discover(): String? {
+        val nsd = app.getSystemService(NsdManager::class.java) ?: return null
+        var listener: NsdManager.DiscoveryListener? = null
+        try {
+            return withTimeoutOrNull(12_000L) {
+                suspendCancellableCoroutine { cont ->
+                    var resolving = false
+                    val found = object : NsdManager.DiscoveryListener {
+                        override fun onDiscoveryStarted(serviceType: String) {}
+                        override fun onDiscoveryStopped(serviceType: String) {}
+                        override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                            if (cont.isActive) cont.resume(null)
+                        }
+                        override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
+                        override fun onServiceLost(serviceInfo: NsdServiceInfo) {}
+                        override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                            // one resolve at a time: Android refuses a second while one runs
+                            if (resolving) return
+                            resolving = true
+                            nsd.resolveService(serviceInfo, object : NsdManager.ResolveListener {
+                                override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                                    resolving = false
+                                }
+                                override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+                                    val host = serviceInfo.host?.hostAddress
+                                    if (host != null && cont.isActive) cont.resume("$host|${serviceInfo.port}")
+                                    else resolving = false
+                                }
+                            })
+                        }
+                    }
+                    listener = found
+                    try {
+                        nsd.discoverServices(MAC_SYNC_SERVICE_TYPE.trimEnd('.'), NsdManager.PROTOCOL_DNS_SD, found)
+                    } catch (_: Exception) {
+                        listener = null
+                        if (cont.isActive) cont.resume(null)
+                    }
+                }
+            }
+        } finally {
+            listener?.let { try { nsd.stopServiceDiscovery(it) } catch (_: Exception) {} }
+        }
+    }
+
+    private suspend fun runSession(socket: Socket, cipher: MacSyncCipher): Outcome = coroutineScope {
+        val input = DataInputStream(BufferedInputStream(socket.getInputStream()))
+        val output = DataOutputStream(BufferedOutputStream(socket.getOutputStream()))
+        val channel = Channel<SyncMessage>(Channel.UNLIMITED)
+        val host = "${socket.inetAddress.hostAddress}|${socket.port}"
+
+        val writer = launch(Dispatchers.IO) {
+            try {
+                for (message in channel) {
+                    val sealed = cipher.seal(json.encodeToString(SyncMessage.serializer(), message).toByteArray())
+                    output.writeInt(sealed.size)
+                    output.write(sealed)
+                    output.flush()
+                }
+            } catch (_: Exception) {
+                try { socket.close() } catch (_: Exception) {}
+            }
+        }
+        // our hello and our whole list go first; from then on every change follows on its own
+        withContext(serial) {
+            outgoing = channel
+            channel.trySend(SyncMessage(type = "hello", device = deviceName(), v = MAC_SYNC_PROTOCOL_VERSION))
+            channel.trySend(SyncMessage(type = "snapshot", items = known.values.toList(), gone = HashMap(gone)))
+        }
+        val pinger = launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(15_000L)
+                channel.trySend(SyncMessage(type = "ping"))
+            }
+        }
+
+        var outcome = Outcome.CLOSED
+        var trusted = false
+        try {
+            while (true) {
+                val size = input.readInt()
+                if (size <= 0 || size > MAX_FRAME) break
+                val sealed = ByteArray(size)
+                input.readFully(sealed)
+                val plain = cipher.open(sealed)
+                if (plain == null) {
+                    if (!trusted) outcome = Outcome.WRONG_CODE
+                    break
+                }
+                trusted = true
+                val message = try {
+                    json.decodeFromString(SyncMessage.serializer(), plain.decodeToString())
+                } catch (_: Exception) {
+                    continue
+                }
+                withContext(serial) {
+                    handle(message) { device ->
+                        _status.value = "Підключено до $device"
+                        lastHost = host
+                        scheduleSave()
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        } finally {
+            withContext(kotlinx.coroutines.NonCancellable + serial) {
+                if (outgoing === channel) outgoing = null
+            }
+            channel.close()
+            pinger.cancel()
+            writer.cancel()
+        }
+        outcome
+    }
+
+    private fun deviceName(): String =
+        Settings.Global.getString(app.contentResolver, Settings.Global.DEVICE_NAME)?.takeIf { it.isNotBlank() }
+            ?: Build.MODEL
+}
