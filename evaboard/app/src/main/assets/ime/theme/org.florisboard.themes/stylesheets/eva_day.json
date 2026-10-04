@@ -243,45 +243,55 @@
   },
   "clipboard-header": {
     "foreground": "var(--on-background)",
-    "font-size": "16sp"
+    "font-size": "20sp",
+    "padding": "6dp 6dp 2dp 6dp"
   },
   "clipboard-header-button": {
-    "margin": "4dp",
-    "shape": "circle()"
+    "background": "var(--surface)",
+    "foreground": "var(--on-surface)",
+    "margin": "3dp",
+    "shape": "var(--shape)",
+    "edge-color": "var(--key-edge)"
   },
   "clipboard-header-button:disabled": {
+    "background": "var(--surface)",
     "foreground": "var(--on-background-disabled)"
   },
   "clipboard-header-text": {
+    "font-size": "22sp",
+    "font-weight": "bold",
     "text-max-lines": "1",
-    "text-overflow": "ellipsis"
+    "text-overflow": "ellipsis",
+    "padding": "0dp 8dp"
   },
   "clipboard-subheader": {
-    "font-size": "14sp",
-    "margin": "6dp 10dp 6dp 6dp"
+    "font-size": "15sp",
+    "font-weight": "bold",
+    "foreground": "var(--on-surface-variant)",
+    "margin": "10dp 12dp 4dp 10dp"
   },
   "clipboard-content": {
     "padding": "10dp 0dp"
   },
   "clipboard-filter-row": {
-    "background": "var(--background-variant)",
-    "foreground": "var(--on-background)",
-    "padding": "0dp 0dp 4dp 0dp",
-    "shape": "var(--shape-variant)"
+    "background": "transparent",
+    "padding": "2dp 4dp 6dp 4dp"
   },
   "clipboard-filter-chip": {
     "background": "var(--surface)",
     "foreground": "var(--on-surface)",
-    "margin": "4dp 4dp 0dp 4dp",
-    "padding": "8dp 4dp",
-    "shape": "var(--shape-chip)"
+    "margin": "3dp 4dp",
+    "padding": "12dp 6dp",
+    "shape": "var(--shape)",
+    "edge-color": "var(--key-edge)"
   },
   "clipboard-filter-chip[state=`active`]": {
     "background": "var(--primary)",
     "foreground": "var(--on-primary)"
   },
   "clipboard-filter-chip-text": {
-    "margin": "4dp 0dp 0dp 0dp"
+    "font-size": "17sp",
+    "margin": "0dp 0dp 0dp 6dp"
   },
   "clipboard-grid": {
     "shape": "var(--shape-variant)"
@@ -289,15 +299,15 @@
   "clipboard-item": {
     "background": "var(--surface)",
     "foreground": "var(--on-surface)",
-    "font-size": "14sp",
-    "margin": "4dp",
+    "font-size": "18sp",
+    "margin": "5dp",
     "shape": "var(--shape-variant)",
-    "shadow-elevation": "2dp",
-    "text-max-lines": "10",
+    "edge-color": "var(--key-edge)",
+    "text-max-lines": "8",
     "text-overflow": "ellipsis"
   },
   "clipboard-item[type=`text`]": {
-    "padding": "12dp 8dp"
+    "padding": "14dp 12dp"
   },
   "clipboard-item-description": {
     "font-size": "12sp",
@@ -306,13 +316,13 @@
   "clipboard-item-popup": {
     "background": "var(--surface)",
     "foreground": "var(--on-surface)",
-    "font-size": "14sp",
-    "margin": "4dp",
+    "font-size": "18sp",
+    "margin": "5dp",
     "shape": "var(--shape-variant)",
-    "shadow-elevation": "2dp"
+    "edge-color": "var(--key-edge)"
   },
   "clipboard-item-popup[type=`text`]": {
-    "padding": "12dp 8dp"
+    "padding": "14dp 12dp"
   },
   "clipboard-item-timestamp": {
     "font-size": "11sp",
@@ -321,33 +331,36 @@
   "clipboard-item-actions": {
     "background": "var(--surface)",
     "foreground": "var(--on-surface)",
-    "margin": "4dp",
+    "margin": "5dp",
     "shape": "var(--shape-variant)",
-    "shadow-elevation": "2dp"
+    "edge-color": "var(--key-edge)"
   },
   "clipboard-item-action": {
-    "font-size": "16sp",
-    "padding": "12dp"
+    "font-size": "19sp",
+    "padding": "15dp 14dp"
   },
   "clipboard-item-action-text": {
-    "margin": "4dp 0dp 0dp 0dp"
+    "margin": "0dp 0dp 0dp 12dp"
   },
   "clipboard-clear-all-dialog": {
     "background": "var(--surface)",
     "foreground": "var(--on-surface)",
     "shape": "var(--shape-variant)",
-    "shadow-elevation": "1dp"
+    "edge-color": "var(--key-edge)"
   },
   "clipboard-clear-all-dialog-message": {
-    "padding": "16dp"
+    "padding": "18dp",
+    "font-size": "18sp"
   },
   "clipboard-clear-all-dialog-buttons": {
     "padding": "4dp"
   },
   "clipboard-clear-all-dialog-button": {
     "background": "transparent",
-    "foreground": "var(--on-surface)",
-    "shape": "var(--shape-variant)"
+    "foreground": "var(--primary)",
+    "font-size": "19sp",
+    "padding": "12dp 16dp",
+    "shape": "var(--shape)"
   },
   "clipboard-history-disabled-title": {
     "font-weight": "bold"
@@ -484,5 +497,11 @@
   "key[code=46,44,64,47]:pressed": {
     "background": "var(--special-pressed)",
     "foreground": "var(--on-surface)"
+  },
+  "clipboard-filter-chip-icon": {
+    "font-size": "22sp"
+  },
+  "clipboard-item-action-icon": {
+    "font-size": "24sp"
   }
 }

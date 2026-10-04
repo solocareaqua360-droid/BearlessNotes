@@ -72,6 +72,7 @@ fun SnyggIconButton(
                 //TODO: We need to apply a size and a clip here
                 // otherwise the indication is wrong (see: OnHandedPanel buttons)
                 .snyggShadow(style)
+                .snyggEdge(style)
                 .snyggBorder(style)
                 .snyggBackground(style)
                 .then(modifier)

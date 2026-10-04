@@ -6,4 +6,7 @@
     <string name="eva__pref_suggestions_row__summary">Окремий ряд над цифрами; клавіатура стає вищою</string>
     <string name="eva__haptic_tick">Короткий клац (як на iPhone)</string>
     <string name="eva__haptic_tick__description">Один короткий чіткий легкий клац на кожне натискання; «Сила вібрації» задає, наскільки він відчутний</string>
+    <string name="eva__clip_filter_text">Текст</string>
+    <string name="eva__clip_filter_images">Зображення</string>
+    <string name="eva__clip_filter_videos">Відео</string>
 </resources>

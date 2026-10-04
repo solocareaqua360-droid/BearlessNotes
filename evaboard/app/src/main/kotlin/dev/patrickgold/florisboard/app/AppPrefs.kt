@@ -662,7 +662,9 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
         val displayKeyboardLabelsInSubtypeLanguage = boolean(
             key = "localization__display_keyboard_labels_in_subtype_language",
-            default = false,
+            // evaBoard: the keyboard's own panels (clipboard...) speak the typing language; the system
+            // language of a service ignores the per-app language the settings screen follows
+            default = true,
         )
         val activeSubtypeId = long(
             key = "localization__active_subtype_id",

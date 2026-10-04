@@ -69,6 +69,7 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import dev.patrickgold.florisboard.ime.eva.EvaIcons
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -148,7 +149,7 @@ fun ClipboardInputLayout(
     val deviceLocked = androidKeyguardManager.let { it.isDeviceLocked || it.isKeyguardLocked }
     val historyEnabled by prefs.clipboard.historyEnabled.observeAsState()
 
-    var isFilterRowShown by remember { mutableStateOf(false) }
+    val isFilterRowShown = true // evaBoard: the type chips are always there
     val activeFilterTypes = remember { mutableStateSetOf<ItemType>() }
 
     val unfilteredHistory by clipboardManager.historyFlow.collectAsState()
@@ -168,13 +169,6 @@ fun ClipboardInputLayout(
 
     fun isPopupSurfaceActive() = popupItem != null || showClearAllHistory
 
-    LaunchedEffect(isFilterRowShown) {
-        delay(AnimationDuration.toLong())
-        if (!isFilterRowShown) {
-            activeFilterTypes.clear()
-        }
-    }
-
     LaunchedEffect(activeFilterTypes.toSet()) {
         gridState.scrollToItem(0)
     }
@@ -184,11 +178,11 @@ fun ClipboardInputLayout(
         SnyggRow(FlorisImeUi.ClipboardHeader.elementName,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(FlorisImeSizing.smartbarHeight),
+                .height(maxOf(FlorisImeSizing.smartbarHeight, 54.dp)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val sizeModifier = Modifier
-                .sizeIn(maxHeight = FlorisImeSizing.smartbarHeight)
+                .sizeIn(maxHeight = maxOf(FlorisImeSizing.smartbarHeight, 54.dp))
                 .aspectRatio(1f)
             SnyggIconButton(
                 elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
@@ -196,7 +190,7 @@ fun ClipboardInputLayout(
                 modifier = sizeModifier,
             ) {
                 SnyggIcon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    imageVector = EvaIcons.lucide("arrow-left"),
                 )
             }
             SnyggText(
@@ -211,11 +205,7 @@ fun ClipboardInputLayout(
                 enabled = !deviceLocked && !isPopupSurfaceActive(),
             ) {
                 SnyggIcon(
-                    imageVector = if (historyEnabled) {
-                        Icons.Default.ToggleOn
-                    } else {
-                        Icons.Default.ToggleOff
-                    },
+                    imageVector = EvaIcons.lucide(if (historyEnabled) "toggle-right" else "toggle-left"),
                 )
             }
             SnyggIconButton(
@@ -225,21 +215,7 @@ fun ClipboardInputLayout(
                 enabled = !deviceLocked && historyEnabled && filteredHistory.all.isNotEmpty() && !isPopupSurfaceActive(),
             ) {
                 SnyggIcon(
-                    imageVector = Icons.Default.DeleteSweep,
-                )
-            }
-            SnyggIconButton(
-                elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
-                onClick = { isFilterRowShown = !isFilterRowShown },
-                modifier = sizeModifier,
-                enabled = !deviceLocked && historyEnabled && unfilteredHistory.all.isNotEmpty() && !isPopupSurfaceActive(),
-            ) {
-                SnyggIcon(
-                    imageVector = if (!isFilterRowShown) {
-                        Icons.Default.FilterList
-                    } else {
-                        Icons.Default.FilterListOff
-                    },
+                    imageVector = EvaIcons.lucide("trash"),
                 )
             }
             KeyboardLikeButton(
@@ -248,7 +224,7 @@ fun ClipboardInputLayout(
                 keyData = TextKeyData.DELETE,
                 elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
             ) {
-                SnyggIcon(imageVector = Icons.AutoMirrored.Outlined.Backspace)
+                SnyggIcon(imageVector = EvaIcons.lucide("delete"))
             }
         }
     }
@@ -335,7 +311,7 @@ fun ClipboardInputLayout(
                             .align(Alignment.BottomStart)
                             .padding(start = 4.dp, bottom = 4.dp)
                             .background(Color.White, CircleShape),
-                        imageVector = Icons.Default.Videocam,
+                        imageVector = EvaIcons.lucide("video"),
                         contentDescription = null,
                         tint = Color.Black,
                     )
@@ -440,18 +416,18 @@ fun ClipboardInputLayout(
                         }
 
                         FilterChip(
-                            imageVector = Icons.Default.TextFields,
-                            text = "Text",
+                            imageVector = EvaIcons.lucide("type"),
+                            text = stringRes(R.string.eva__clip_filter_text),
                             itemType = ItemType.TEXT,
                         )
                         FilterChip(
-                            imageVector = Icons.Default.Image,
-                            text = "Images",
+                            imageVector = EvaIcons.lucide("image"),
+                            text = stringRes(R.string.eva__clip_filter_images),
                             itemType = ItemType.IMAGE,
                         )
                         FilterChip(
-                            imageVector = Icons.Default.Movie,
-                            text = "Videos",
+                            imageVector = EvaIcons.lucide("film"),
+                            text = stringRes(R.string.eva__clip_filter_videos),
                             itemType = ItemType.VIDEO,
                         )
                     }
@@ -515,7 +491,7 @@ fun ClipboardInputLayout(
                     SnyggColumn(modifier = Modifier.weight(0.5f)) {
                         SnyggColumn(FlorisImeUi.ClipboardItemActions.elementName) {
                             PopupAction(
-                                icon = Icons.Outlined.PushPin,
+                                icon = EvaIcons.lucide(if (popupItem!!.isPinned) "pin-off" else "pin"),
                                 text = stringRes(if (popupItem!!.isPinned) {
                                     R.string.clip__unpin_item
                                 } else {
@@ -530,14 +506,14 @@ fun ClipboardInputLayout(
                                 popupItem = null
                             }
                             PopupAction(
-                                icon = Icons.Default.Delete,
+                                icon = EvaIcons.lucide("trash"),
                                 text = stringRes(R.string.clip__delete_item),
                             ) {
                                 clipboardManager.deleteClip(popupItem!!, onlyIfUnpinned = false)
                                 popupItem = null
                             }
                             PopupAction(
-                                icon = Icons.Outlined.ContentPasteGo,
+                                icon = EvaIcons.lucide("clipboard-paste"),
                                 text = stringRes(R.string.clip__paste_item),
                             ) {
                                 clipboardManager.pasteItem(popupItem!!)
@@ -695,7 +671,7 @@ private fun ClipCategoryTitle(
 ) {
     SnyggText(FlorisImeUi.ClipboardSubheader.elementName,
         modifier = modifier.fillMaxWidth(),
-        text = text.uppercase(),
+        text = text,
     )
 }
 

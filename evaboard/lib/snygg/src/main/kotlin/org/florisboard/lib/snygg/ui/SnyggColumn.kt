@@ -62,6 +62,7 @@ fun SnyggColumn(
             modifier = modifier
                 .snyggMargin(style)
                 .snyggShadow(style)
+                .snyggEdge(style)
                 .snyggBorder(style)
                 .snyggBackground(style)
                 .snyggPadding(style),

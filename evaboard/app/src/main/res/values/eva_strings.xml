@@ -6,4 +6,7 @@
     <string name="eva__pref_suggestions_row__summary">A separate row above the digits; the keyboard gets taller</string>
     <string name="eva__haptic_tick">Short tick (like the iPhone)</string>
     <string name="eva__haptic_tick__description">One short, crisp, light tick per key press; strength sets how firm it is</string>
+    <string name="eva__clip_filter_text">Text</string>
+    <string name="eva__clip_filter_images">Images</string>
+    <string name="eva__clip_filter_videos">Videos</string>
 </resources>

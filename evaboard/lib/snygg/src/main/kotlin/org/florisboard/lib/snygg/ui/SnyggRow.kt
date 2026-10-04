@@ -64,6 +64,7 @@ fun SnyggRow(
             modifier = modifier
                 .snyggMargin(style)
                 .snyggShadow(style)
+                .snyggEdge(style)
                 .snyggBorder(style)
                 .snyggBackground(style)
                 .then(clickAndSemanticsModifier)
