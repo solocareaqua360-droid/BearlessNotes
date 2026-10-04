@@ -640,6 +640,9 @@ const DESK_HINT_H = 16;
 const DESK_HINT_BOTTOM = 3;
 const DESK_HINT_TRAVEL = 18;
 
+// How far the round "+" sits in from the search field's edges.
+const FIELD_INSET = 5;
+
 export default function ContextDock() {
   const theme = useTheme();
   // The soft chrome (see useChromeStyle) - asked for by the screen in
@@ -2285,13 +2288,24 @@ export default function ContextDock() {
                     {left.label ?? (left.active ? 'Закрити пошук' : 'Пошук')}
                   </Text>
                 </Pressable>
-                <View style={[styles.softFieldRule, { backgroundColor: soft.line }]} />
+                {/* The round "+" button itself, a little smaller, set into
+                    the field's right end (the user's, 2026-10-04). */}
                 <Pressable
                   onPress={right.onPress}
                   onLongPress={right.onLongPress}
                   disabled={right.dimmed}
                   accessibilityLabel="Створити"
-                  style={[styles.softFieldCreate, { opacity: right.dimmed ? 0.5 : 1 }]}
+                  style={({ pressed }) => [
+                    styles.softFieldCreate,
+                    {
+                      width: TWO_BEAD - FIELD_INSET * 2,
+                      height: TWO_BEAD - FIELD_INSET * 2,
+                      borderRadius: TWO_BEAD / 2 - FIELD_INSET,
+                      marginRight: FIELD_INSET,
+                      backgroundColor: pressed ? soft.line : soft.fillSolid,
+                      opacity: right.dimmed ? 0.5 : 1,
+                    },
+                  ]}
                 >
                   {rightIcon ? (
                     <SoftIcon name={rightIcon} size={22} color={soft.ink} />
@@ -2925,7 +2939,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   // The search field with "+" inside it (MULTITASK_RIGHT): the search
-  // part, a hairline, and "+" at the field's right end.
+  // part, and "+" as a smaller round button set into its right end.
   softFieldPart: {
     flex: 1,
     height: '100%',
@@ -2934,13 +2948,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingLeft: 18,
   },
-  softFieldRule: {
-    width: StyleSheet.hairlineWidth,
-    height: '46%',
-  },
   softFieldCreate: {
-    width: 52,
-    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
