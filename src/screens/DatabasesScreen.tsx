@@ -4,7 +4,7 @@ import { APPS_TEMPLATE_NAME, APPS_TEMPLATE_RATES, appsTemplateFields } from '../
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import { mutedForTheme, type Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { BackHandler, Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
@@ -87,7 +87,18 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
-import { useChromeStyle, useDockActions, useDockBeads, useTopBack, useTopExtras } from '../navigation/navDock';
+import {
+  NavDockProvider,
+  useChromeStyle,
+  useDockActions,
+  useDockBeads,
+  useNavDockActions,
+  useNavDockBeads,
+  useNavTopExtras,
+  useTopBack,
+  useTopExtras,
+} from '../navigation/navDock';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
 import { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { useDockClearance } from '../navigation/dockGeometry';
@@ -215,6 +226,9 @@ function paneTargetFor(tile: Tile): PaneTarget | null {
   return null;
 }
 
+// Tiles or a list, in the phone's drawer - kept per device.
+const DRAWER_LIST_KEY = 'mindeva.databasesDrawerList';
+
 export default function DatabasesScreen() {
   const theme = useTheme();
   const accent = theme.sections.databases;
@@ -226,6 +240,22 @@ export default function DatabasesScreen() {
   // is published for the window's, which fade out as it comes in.
   const databasesLayer = useContext(DatabasesLayerContext);
   const layerShut = !!databasesLayer && !databasesLayer.open;
+  // A DRAWER at the side of a wide screen (see databasesDrawerWidth): a
+  // database tapped in it opens inside it, as on the laptop, and it can
+  // show the board as tiles or as a list.
+  const inDrawer = !!databasesLayer?.narrow;
+  const [drawerList, setDrawerList] = useState(false);
+  useEffect(() => {
+    AsyncStorage.getItem(DRAWER_LIST_KEY)
+      .then((v) => setDrawerList(v === '1'))
+      .catch(() => {});
+  }, []);
+  const toggleDrawerList = () => {
+    setDrawerList((was) => {
+      AsyncStorage.setItem(DRAWER_LIST_KEY, was ? '0' : '1').catch(() => {});
+      return !was;
+    });
+  };
   // «БАЗИ» IN THE SOFT STYLE (theme/soft) - the user's pick after the
   // calendar. On a phone, as a screen and as the layer right of the desks
   // (where it is usually met): the layer draws its own bar and dock, so it
@@ -283,6 +313,21 @@ export default function DatabasesScreen() {
   // What the left pane is showing, on a wide screen: a database opened
   // from a tile. On a phone the same tap navigates, as it always did.
   const [openInPane, setOpenInPane] = useState<PaneTarget | null>(null);
+  // The opened database's name on the drawer's bar, and the tile it came
+  // from - for "На весь екран", which opens it the ordinary way.
+  const [drawerPaneTitle, setDrawerPaneTitle] = useState<{ icon: string; label: string } | null>(null);
+  const drawerPaneItem = useRef<BoardItem | null>(null);
+  // Back, with a database open in the drawer, is back to the board - the
+  // drawer itself shuts only after (registered later, so asked first).
+  const drawerPaneOpen = !!databasesLayer?.narrow && !!databasesLayer.open && !!openInPane;
+  useEffect(() => {
+    if (!drawerPaneOpen) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setOpenInPane(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [drawerPaneOpen]);
   const { colorFor, iconFor, customDatabases } = useDatabaseTiles();
   // What is inside each database, for the tiles to show - see
   // useDatabaseContents.
@@ -1324,7 +1369,7 @@ export default function DatabasesScreen() {
     else if (answer === 'window') window.open(windowUrlFor(target), '_blank');
   };
 
-  const openItem = (item: BoardItem) => {
+  const openItem = (item: BoardItem, full = false) => {
     // On a wide screen a database opens BESIDE the board,
     // in the left pane, rather than replacing it.
     const pane =
@@ -1335,6 +1380,15 @@ export default function DatabasesScreen() {
           : null;
     if (isTwoPane && pane) {
       setColorMenuKey(null);
+      setOpenInPane(pane);
+      return;
+    }
+    // In the drawer, inside it - the documents and the boards are desks,
+    // and go there as before.
+    if (inDrawer && pane && pane.kind !== 'documents' && pane.kind !== 'boards' && !full) {
+      const row = rowOf(item);
+      setDrawerPaneTitle({ icon: row.icon, label: row.label });
+      drawerPaneItem.current = item;
       setOpenInPane(pane);
       return;
     }
@@ -1488,8 +1542,22 @@ export default function DatabasesScreen() {
           : colorFor(item.key);
     return { label, icon: icon as string, color, count: item.kind === 'pin' ? item.pin.count : counts[item.key] };
   };
-  const listView = inPanel ? (
-    <ScrollView contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 8 }}>
+  // The board as a list: always in a laptop's side panel, and in the
+  // phone's drawer when asked for - there with rows sized for a finger,
+  // clear of the drawer's own bar and dock.
+  const showList = inPanel || (inDrawer && drawerList);
+  const listView = showList ? (
+    <ScrollView
+      contentContainerStyle={
+        inPanel
+          ? { paddingVertical: 8, paddingHorizontal: 8 }
+          : {
+              paddingTop: databasesInsets.top + CHROME_TOP + 8 + navSpace,
+              paddingBottom: dockClear + databasesInsets.bottom + 24,
+              paddingHorizontal: 12,
+            }
+      }
+    >
       {(() => {
         const out: ReactNode[] = [];
         let next = 0;
@@ -1499,7 +1567,7 @@ export default function DatabasesScreen() {
           .forEach((tile) => {
             while (next < sortedDividers.length && sortedDividers[next].y <= tile.y) {
               const d = sortedDividers[next++];
-              if (d.label) out.push(<PanelListTitle key={`d-${d.id}`} label={d.label} />);
+              if (d.label) out.push(<PanelListTitle key={`d-${d.id}`} label={d.label} touch={!inPanel} />);
             }
             (tile.item.kind === 'folder' ? tile.item.members : [tile.item]).forEach((item) => {
               const row = rowOf(item);
@@ -1511,6 +1579,7 @@ export default function DatabasesScreen() {
                   color={softTokensAll ? softIconColour(row.color || '', softTokensAll) : row.color}
                   count={item.kind === 'action' ? undefined : row.count}
                   dashed={item.kind === 'action'}
+                  touch={!inPanel}
                   onPress={() => openItem(item)}
                   onContext={targetOf(item) ? () => openElsewhere(item) : undefined}
                   lit={!!flashTarget && !!targetOf(item) && sameTarget(targetOf(item) as PaneTarget, flashTarget)}
@@ -1846,10 +1915,10 @@ export default function DatabasesScreen() {
               the board a screenful. The tiles run all the way up and
               scroll off the top edge, the way the cards do everywhere
               else. */}
-          {inPanel ? listView : boardScroll}
+          {showList ? listView : boardScroll}
           {/* What runs off the top and the bottom melts into the ground
               under the bar and the dock (the user's, 2026-10-02). */}
-          {!inPanel && panelDensity !== 'pointer' && S && (
+          {!inPanel && panelDensity !== 'pointer' && S && !(inDrawer && openInPane) && (
             <>
               <EdgeFade edge="top" color={S.bg} height={databasesInsets.top + CHROME_TOP + TOP_NAV_H} />
               <EdgeFade edge="bottom" color={S.bg} height={Math.round((dockClear + databasesInsets.bottom) * 0.85)} />
@@ -2076,17 +2145,60 @@ export default function DatabasesScreen() {
       )}
 
       {/* In the layer: its own bar and dock, inside it and moving with it. */}
-      {databasesLayer && (
+      {databasesLayer && !(inDrawer && openInPane) && (
         <>
           <TopNavBar
             inline={{ width: windowWidth }}
             softInline={!!S}
             title={{ icon: 'apps-outline', label: 'Бази' }}
             backOverride={{ onPress: databasesLayer.close, dimmed: false }}
-            extrasOverride={{ menu: databasesMenu, select: null }}
+            extrasOverride={{
+              menu: databasesMenu,
+              select: null,
+              tools: inDrawer
+                ? [
+                    {
+                      key: 'view',
+                      icon: drawerList ? 'grid-outline' : 'list-outline',
+                      label: drawerList ? 'Плитки' : 'Список',
+                      onPress: toggleDrawerList,
+                    },
+                  ]
+                : null,
+            }}
           />
           <InlineDock width={windowWidth} beads={{ left: searchBead, right: newDatabaseBead }} actions={null} soft={S} />
         </>
+      )}
+      {/* A database opened in the drawer: over the board, with its own bar
+          and dock (its own NavDockProvider - what it publishes lands here,
+          not on the window's chrome, which the drawer covers). */}
+      {inDrawer && openInPane && (
+        <View style={StyleSheet.absoluteFill}>
+          <ScreenGround color={S ? S.bg : theme.surface} />
+          <NavDockProvider>
+            <GlassPortalHost>
+              <GlassTargetProvider>
+                <NavigationContext.Provider value={paneNavigation}>
+                  <View style={StyleSheet.absoluteFill}>
+                    <PaneTargetScreen key={JSON.stringify(openInPane)} target={openInPane} />
+                  </View>
+                  <DrawerPaneChrome
+                    width={windowWidth}
+                    soft={S}
+                    title={drawerPaneTitle ?? { icon: 'apps-outline', label: 'Бази' }}
+                    onBack={() => setOpenInPane(null)}
+                    onExpand={() => {
+                      const item = drawerPaneItem.current;
+                      setOpenInPane(null);
+                      if (item) openItem(item, true);
+                    }}
+                  />
+                </NavigationContext.Provider>
+              </GlassTargetProvider>
+            </GlassPortalHost>
+          </NavDockProvider>
+        </View>
       )}
     </View>
     </SoftDatabasesContext.Provider>
@@ -2463,6 +2575,7 @@ function PanelListRow({
   color,
   count,
   dashed,
+  touch,
   onPress,
   onContext,
   lit,
@@ -2472,6 +2585,8 @@ function PanelListRow({
   color: string;
   count?: number;
   dashed?: boolean;
+  // On the phone's drawer: a row sized for a finger.
+  touch?: boolean;
   onPress: () => void;
   onContext?: () => void;
   // The database just left in the main pane - see databaseFlash.
@@ -2484,22 +2599,66 @@ function PanelListRow({
       {...rightClick(onContext)}
       style={(state) => [
         panelListStyles.row,
-        (state as { hovered?: boolean }).hovered && { backgroundColor: S.fill },
+        touch && panelListStyles.rowTouch,
+        ((state as { hovered?: boolean }).hovered || (touch && state.pressed)) && { backgroundColor: S.fill },
         lit && { backgroundColor: withAlpha(color || S.ink, 0.2) },
       ]}
     >
-      <Ionicons name={icon as never} size={16} color={dashed ? S.ink3 : color} />
-      <Text style={[panelListStyles.label, { color: dashed ? S.ink2 : S.ink }]} numberOfLines={1}>
+      <Ionicons name={icon as never} size={touch ? 20 : 16} color={dashed ? S.ink3 : color} />
+      <Text style={[panelListStyles.label, touch && panelListStyles.labelTouch, { color: dashed ? S.ink2 : S.ink }]} numberOfLines={1}>
         {label}
       </Text>
-      {count !== undefined && count > 0 && <Text style={[panelListStyles.count, { color: S.ink3 }]}>{count}</Text>}
+      {count !== undefined && count > 0 && (
+        <Text style={[panelListStyles.count, touch && panelListStyles.countTouch, { color: S.ink3 }]}>{count}</Text>
+      )}
     </Pressable>
   );
 }
 
-function PanelListTitle({ label }: { label: string }) {
+function PanelListTitle({ label, touch }: { label: string; touch?: boolean }) {
   const S = useSoft();
-  return <Text style={[panelListStyles.title, { color: S.ink3 }]}>{label}</Text>;
+  return <Text style={[panelListStyles.title, touch && panelListStyles.titleTouch, { color: S.ink3 }]}>{label}</Text>;
+}
+
+// The bar and the dock of a database opened in the phone's drawer: what
+// the database publishes (its "⋯", its beads and actions), read from the
+// drawer's own NavDockProvider, plus the way back to the board and "На
+// весь екран".
+function DrawerPaneChrome({
+  width,
+  soft,
+  title,
+  onBack,
+  onExpand,
+}: {
+  width: number;
+  soft: SoftTokens | null;
+  title: { icon: string; label: string };
+  onBack: () => void;
+  onExpand: () => void;
+}) {
+  const extras = useNavTopExtras();
+  const beads = useNavDockBeads();
+  const actions = useNavDockActions();
+  return (
+    <>
+      <TopNavBar
+        inline={{ width }}
+        softInline={!!soft}
+        title={{ icon: title.icon as never, label: title.label }}
+        backOverride={{ onPress: onBack, dimmed: false }}
+        extrasOverride={{
+          menu: extras?.menu ?? null,
+          select: extras?.select ?? null,
+          tools: [
+            ...(extras?.tools ?? []),
+            { key: 'expand', icon: 'expand-outline', label: 'На весь екран', onPress: onExpand },
+          ],
+        }}
+      />
+      <InlineDock width={width} beads={beads} actions={actions} soft={soft} />
+    </>
+  );
 }
 
 const panelListStyles = StyleSheet.create({
@@ -2517,6 +2676,10 @@ const panelListStyles = StyleSheet.create({
   label: { flex: 1, fontSize: 13.5, fontFamily: SOFT_MEDIUM },
   count: { fontSize: 12, fontFamily: SOFT_MEDIUM },
   title: { fontSize: 11.5, fontFamily: SOFT_MEDIUM, paddingHorizontal: 10, paddingTop: 14, paddingBottom: 4 },
+  rowTouch: { height: 50, gap: 14, paddingHorizontal: 14, borderRadius: 14 },
+  labelTouch: { fontSize: 16 },
+  countTouch: { fontSize: 14 },
+  titleTouch: { fontSize: 13, paddingHorizontal: 14, paddingTop: 18, paddingBottom: 6 },
 });
 
 // A FOLDER'S OUTLINE: the shell its tiles stand in, a little wider than

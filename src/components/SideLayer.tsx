@@ -3,7 +3,7 @@ import { useSeeThroughBackdrop } from '../theme/ThemeProvider';
 import { setWallpaperBoost } from '../utils/wallpaperBoost';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { NavigationContext, NavigationRouteContext, useIsFocused } from '@react-navigation/native';
-import { BackHandler, InteractionManager, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { BackHandler, InteractionManager, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import Animated, { Easing, runOnJS, SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SideDrawersContext } from '../navigation/sideDrawers';
@@ -37,6 +37,7 @@ export default function SideLayer({
   close,
   progress: progressValue,
   dragging,
+  panelWidth,
   children,
 }: {
   side: 'left' | 'right';
@@ -44,9 +45,14 @@ export default function SideLayer({
   close: () => void;
   progress: SharedValue<number> | null;
   dragging: boolean;
+  // Narrower than the window: a drawer at its side, with the blurred desk
+  // beside it - a tap there shuts it. The whole window when not given.
+  panelWidth?: number;
   children: ReactNode;
 }) {
-  const { width, height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const width = Math.min(windowWidth, panelWidth ?? windowWidth);
+  const drawer = width < windowWidth;
   const blurTarget = useBlurTarget();
   const navigation = useContext(NavigationContext);
   const route = useContext(NavigationRouteContext);
@@ -128,8 +134,8 @@ export default function SideLayer({
   // From the left edge it comes in from -width, from the right from +width.
   const direction = side === 'left' ? -1 : 1;
   const panelStyle = useAnimatedStyle(
-    () => ({ transform: [{ translateX: (1 - progress.value) * width * direction }] }),
-    [width, direction]
+    () => ({ transform: [{ translateX: (1 - progress.value) * (width + (drawer ? 24 : 0)) * direction }] }),
+    [width, direction, drawer]
   );
   const groundStyle = useAnimatedStyle(() => ({ opacity: progress.value * presence.value }));
   const presenceStyle = useAnimatedStyle(() => ({ opacity: presence.value }));
@@ -188,8 +194,24 @@ export default function SideLayer({
                 style={[StyleSheet.absoluteFill, presenceStyle]}
                 pointerEvents={open && tabsFocused ? 'box-none' : 'none'}
               >
+                {drawer && open && (
+                  <Pressable
+                    style={[styles.beside, side === 'right' ? { left: 0, right: width } : { right: 0, left: width }]}
+                    onPress={close}
+                    accessibilityLabel="Закрити"
+                  />
+                )}
                 <GestureDetector gesture={closeSwipe}>
-                  <Animated.View style={[styles.panel, { width }, panelStyle]} pointerEvents={open ? 'auto' : 'none'}>
+                  <Animated.View
+                    style={[
+                      styles.panel,
+                      { width },
+                      drawer && (side === 'right' ? { left: windowWidth - width } : null),
+                      drawer && (side === 'right' ? styles.drawerRight : styles.drawerLeft),
+                      panelStyle,
+                    ]}
+                    pointerEvents={open ? 'auto' : 'none'}
+                  >
                     <LayoutFrameContext.Provider value={frame}>
                       <DockLayerContext.Provider value={1}>{children}</DockLayerContext.Provider>
                     </LayoutFrameContext.Provider>
@@ -215,4 +237,23 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
+  beside: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+  },
+  // A drawer is a sheet laid against the edge: its inner corners round,
+  // a soft shadow onto the desk.
+  drawerRight: {
+    overflow: 'hidden',
+    borderTopLeftRadius: 28,
+    borderBottomLeftRadius: 28,
+    boxShadow: '0px 0px 40px rgba(0,0,0,0.22)',
+  } as never,
+  drawerLeft: {
+    overflow: 'hidden',
+    borderTopRightRadius: 28,
+    borderBottomRightRadius: 28,
+    boxShadow: '0px 0px 40px rgba(0,0,0,0.22)',
+  } as never,
 });

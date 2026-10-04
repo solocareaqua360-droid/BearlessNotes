@@ -7,7 +7,7 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming
 import { useSeeThroughBackdrop } from '../theme/ThemeProvider';
 import FloatingIslandTabBar from '../components/FloatingIslandTabBar';
 import CalendarDrawer, { DatabasesLayer, SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
-import { SideDrawersProvider, useSideDrawers } from './sideDrawers';
+import { SideDrawersProvider, databasesDrawerWidth, useSideDrawers } from './sideDrawers';
 import { deskScreenFor } from './tabScreens';
 import { noteDeskTouched, registerDeskNode } from './deskShots';
 import { DeskContext, DesksControlContext, registerDesks, useDesks } from './desks';
@@ -85,6 +85,10 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
   const { width } = useWindowDimensions();
   const screenWidth = width;
   const drawerWidth = Math.round(width * SIDE_DRAWER_FRACTION);
+  // The databases are a narrower drawer on a wide screen - the finger
+  // pulls it out over its own width, not the window's.
+  const databasesWidth = databasesDrawerWidth(width);
+  const databasesNarrow = databasesWidth < width;
   const startX = useSharedValue(0);
   const startY = useSharedValue(0);
   const startAt = useSharedValue(0);
@@ -99,8 +103,14 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
   const calendarShown = calendarProgress ?? noProgress;
   const databasesShown = databasesProgress ?? noProgress;
   const deskFade = useAnimatedStyle(
-    () => ({ opacity: wallpaper ? 1 - Math.max(calendarShown.value, databasesShown.value) : 1 }),
-    [wallpaper]
+    // A databases DRAWER leaves the desk in sight beside it, so the desk
+    // only dims behind it rather than going.
+    () => ({
+      opacity: wallpaper
+        ? 1 - Math.max(calendarShown.value, databasesShown.value * (databasesNarrow ? 0.5 : 1))
+        : 1,
+    }),
+    [wallpaper, databasesNarrow]
   );
   // The desks are swiped between, so each layer's swipe is the one PAST
   // the end of them - iOS's own arrangement: a rightward swipe on the
@@ -182,12 +192,14 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
         .onUpdate((e) => {
           const target = way.value > 0 ? calendarProgress : databasesProgress;
           if (!target) return;
-          target.value = Math.min(1, Math.max(0, (e.translationX * way.value) / drawerWidth));
+          const span = way.value > 0 ? drawerWidth : databasesWidth;
+          target.value = Math.min(1, Math.max(0, (e.translationX * way.value) / span));
         })
         .onEnd((e) => {
           const target = way.value > 0 ? calendarProgress : databasesProgress;
           if (!target) return;
-          const open = e.translationX * way.value > drawerWidth * 0.3 || e.velocityX * way.value > 500;
+          const span = way.value > 0 ? drawerWidth : databasesWidth;
+          const open = e.translationX * way.value > span * 0.3 || e.velocityX * way.value > 500;
           target.value = withTiming(open ? 1 : 0, { duration: 180, easing: Easing.out(Easing.cubic) });
           if (open) runOnJS(way.value > 0 ? openCalendar : openDatabases)();
         })
@@ -211,6 +223,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
       calendarProgress,
       databasesProgress,
       drawerWidth,
+      databasesWidth,
       setCalendarDragging,
       setDatabasesDragging,
     ]

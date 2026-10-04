@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import CalendarScreen from '../screens/CalendarScreen';
 import DatabasesScreen from '../screens/DatabasesScreen';
-import { CalendarDrawerContext, DatabasesLayerContext, useSideDrawers } from '../navigation/sideDrawers';
+import { useWindowDimensions } from 'react-native';
+import { CalendarDrawerContext, DatabasesLayerContext, databasesDrawerWidth, useSideDrawers } from '../navigation/sideDrawers';
 import SideLayer from './SideLayer';
 
 // The whole window: the two screens beside the desks are screens, not
@@ -30,12 +31,26 @@ export default function CalendarDrawer() {
 
 // THE DATABASES, right of the last desk - the app library. «Більше» as it
 // is, over the blurred desk; a tap on a tile opens that database full
-// screen, and the layer steps aside for it.
+// screen, and the layer steps aside for it. On a wide screen it is a
+// drawer instead (databasesDrawerWidth), and a database opens inside it.
 export function DatabasesLayer() {
   const { databasesOpen, closeDatabases, databasesProgress, databasesDragging } = useSideDrawers();
-  const layer = useMemo(() => ({ open: databasesOpen, close: closeDatabases }), [databasesOpen, closeDatabases]);
+  const { width } = useWindowDimensions();
+  const panelWidth = databasesDrawerWidth(width);
+  const narrow = panelWidth < width;
+  const layer = useMemo(
+    () => ({ open: databasesOpen, close: closeDatabases, narrow }),
+    [databasesOpen, closeDatabases, narrow]
+  );
   return (
-    <SideLayer side="right" open={databasesOpen} close={closeDatabases} progress={databasesProgress} dragging={databasesDragging}>
+    <SideLayer
+      side="right"
+      open={databasesOpen}
+      close={closeDatabases}
+      progress={databasesProgress}
+      dragging={databasesDragging}
+      panelWidth={panelWidth}
+    >
       <DatabasesLayerContext.Provider value={layer}>
         <DatabasesScreen />
       </DatabasesLayerContext.Provider>

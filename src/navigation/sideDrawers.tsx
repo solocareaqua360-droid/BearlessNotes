@@ -208,4 +208,14 @@ export const CalendarDrawerContext = createContext<{
 } | null>(null);
 
 // The same, for the databases («Більше») drawn inside theirs.
-export const DatabasesLayerContext = createContext<{ open: boolean; close: () => void } | null>(null);
+export const DatabasesLayerContext = createContext<{ open: boolean; close: () => void; narrow?: boolean } | null>(null);
+
+// THE DATABASES AS A SIDE DRAWER on a wide screen - the unfolded phone, a
+// tablet, DeX (the user's, 2026-10-04: "на розкритому ... та й на
+// планшетах ми можемо собі дозволити висовну шторку баз даних, як це
+// реалізовано на Маку"). As wide as the folded phone, so the tiles in it
+// are the phone's own board, arranged once; the desk stays in sight,
+// blurred, beside it. On the folded phone it is the whole window, as it was.
+export function databasesDrawerWidth(windowWidth: number): number {
+  return windowWidth >= 600 ? Math.min(440, Math.round(windowWidth * 0.62)) : windowWidth;
+}
