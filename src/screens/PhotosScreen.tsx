@@ -1,3 +1,4 @@
+import { useFolderArrival } from '../navigation/folderArrival';
 import { useEffect, useMemo, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
 import { holdAsk } from '../components/surfaces/HoldAsk';
@@ -318,6 +319,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     attachTag: list.attachTag,
     detachTag: list.detachTag,
   });
+  // Sent here standing in a folder (the start desk's «Робочі столи»).
+  useFolderArrival('photo', list.explorerMode, list.setListMode, explorer.setPath);
   const itemsHere = explorer.visibleItems;
 
   // Carrying a photo into a folder - see useExplorerCarry. This screen is

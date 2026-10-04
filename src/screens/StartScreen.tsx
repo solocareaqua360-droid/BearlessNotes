@@ -3,7 +3,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import { GestureDetector } from 'react-native-gesture-handler';
-import Animated from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import { useTags } from '../hooks/useTags';
+import { requestFolder } from '../navigation/folderArrival';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { openDeskSwitcher } from '../navigation/deskSwitcherBus';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +13,6 @@ import { Ionicons } from '../components/icons/Ionicons';
 import ScreenGround from '../components/ScreenGround';
 import EdgeFade from '../components/EdgeFade';
 import { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
-import { openCapture } from '../components/CaptureWindow';
 import { ask } from '../components/surfaces/Ask';
 import { CHROME_TOP } from '../constants/rail';
 import { SoftSurfaceContext, useSoft } from '../theme/soft';
@@ -19,7 +20,7 @@ import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useChromeStyle, useDockBeads, useTopBack } from '../navigation/navDock';
 import { useSideDrawers } from '../navigation/sideDrawers';
-import { BOARDS_DESK, DesksControlContext, PERMANENT_DESK, deskFace } from '../navigation/desks';
+import { BOARDS_DESK, DesksControlContext, PERMANENT_DESK, deskFace, deskKeyForCustom } from '../navigation/desks';
 import { GRID_TILES, WIDE_TILES, openDatabaseTile } from '../constants/databaseTiles';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { whenDeskIsThere } from '../navigation/deskRegistry';
@@ -155,15 +156,6 @@ export default function StartScreen() {
     requestCreate('CustomDatabase', { databaseId: id }, 'CustomDatabase');
   };
 
-  const goToDesk = (key: string, copyRoute: string) => {
-    if (key === PERMANENT_DESK) {
-      // The documents are put back if they were closed.
-      whenDeskIsThere(key, () => go('Tabs', { screen: key }));
-      return;
-    }
-    if (desksControl?.desks.includes(key)) go('Tabs', { screen: key });
-    else go(copyRoute);
-  };
 
   // The dock: search on the left (the app's search over everything), and
   // on the right a pencil - a new document; held, the chat (the dock does
@@ -194,11 +186,97 @@ export default function StartScreen() {
   };
 
   const top = insets.top + CHROME_TOP + (topNavOn ? TOP_NAV_SPACE : 0);
-  const tileGap = 8;
-  const rows: { label: string; icon: string; onPress: () => void }[] = [
-    ...CREATE.map((item) => ({ label: item.label, icon: item.icon, onPress: () => create(item) })),
-    { label: 'Запис у базі…', icon: 'grid-outline', onPress: createRecord },
-    { label: 'Повідомлення в чат', icon: 'chatbubbles-outline', onPress: () => openCapture() },
+  // «РОБОЧІ СТОЛИ» (the user's, 2026-10-04): «Перейти до столу» is gone,
+  // and «Створити» became the way to every database. A row opens (it does
+  // not go anywhere on a tap): inside, making one, opening the database as
+  // a desk of its own («в новому вікні»), going to it, and then its root
+  // folders - a tap on one lands in the database standing in it. A
+  // database with no folders (the tasks, the stickers, the diary, the
+  // chat) has nothing to open: its row goes straight there.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const { tags } = useTags();
+  const { customDatabases } = useDatabaseTiles();
+  const isDesk = (key: string) => !!desksControl?.desks.includes(key);
+  const goToBase = (deskKey: string, route: string, params?: Record<string, unknown>) => {
+    if (isDesk(deskKey)) go('Tabs', { screen: deskKey });
+    else go(route, params);
+  };
+  const rootFolders = (kind: string) => {
+    const seen = new Map<string, string | undefined>();
+    for (const tag of tags) {
+      if (!tag.types.includes(kind as never)) continue;
+      const root = tag.path.split('/')[0];
+      if (!root) continue;
+      if (!seen.has(root) || tag.path === root) seen.set(root, tag.path === root ? tag.color : seen.get(root));
+    }
+    return Array.from(seen.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([name, color]) => ({ name, color }));
+  };
+  const base = (
+    key: string,
+    label: string,
+    icon: string,
+    folderKind: string,
+    createLabel: string,
+    createItem: Create,
+    deskKey: string,
+    route: string,
+    params?: Record<string, unknown>
+  ): DeskRow => ({
+    key,
+    label,
+    icon,
+    items: [
+      { key: 'create', label: createLabel, icon: 'add-circle-outline', onPress: () => create(createItem) },
+      // Already one of the desks: a second window of it is not a thing.
+      ...(isDesk(deskKey)
+        ? []
+        : [{ key: 'window', label: 'Відкрити в новому вікні', icon: 'copy-outline', onPress: () => whenDeskIsThere(deskKey, () => go('Tabs', { screen: deskKey })) }]),
+      { key: 'go', label: 'Перейти до бази', icon: 'arrow-forward-outline', onPress: () => goToBase(deskKey, route, params) },
+      ...rootFolders(folderKind).map((folder) => ({
+        key: `f:${folder.name}`,
+        label: folder.name,
+        icon: 'folder-outline',
+        color: folder.color,
+        folder: true,
+        onPress: () => {
+          const onDesk = isDesk(deskKey);
+          requestFolder(folderKind, folder.name, onDesk ? 'desk' : 'screen');
+          goToBase(deskKey, route, params);
+        },
+      })),
+    ],
+  });
+  const createOf = (key: string) => CREATE.find((c) => c.key === key) as Create;
+  const deskRows: DeskRow[] = [
+    base('doc', 'Документи', 'document-text-outline', 'document', 'Створити документ', createOf('doc'), PERMANENT_DESK, 'DocumentsCopy'),
+    base('board', 'Дошки', 'easel-outline', 'board', 'Створити дошку', createOf('board'), BOARDS_DESK, 'BoardsCopy'),
+    { key: 'task', label: 'Справи', icon: 'checkbox-outline', direct: () => goToBase('db:tasks', 'Tasks') },
+    { key: 'sticker', label: 'Стікери', icon: 'reader-outline', direct: () => goToBase('db:stickers', 'Stickers') },
+    base('card', 'Картки', 'albums-outline', 'flashcard', 'Створити картку', createOf('card'), 'db:flashcards', 'Flashcards'),
+    base('link', 'Посилання', 'link-outline', 'link-other', 'Додати посилання', createOf('link'), 'db:links', 'Links', { category: 'other' }),
+    base('photo', 'Зображення', 'image-outline', 'photo', 'Додати зображення', createOf('photo'), 'db:photos', 'Photos'),
+    base('file', 'Файли', 'document-outline', 'file', 'Додати файл', createOf('file'), 'db:files', 'Files'),
+    { key: 'diary', label: 'Щоденник', icon: 'book-outline', direct: openCalendar },
+    {
+      key: 'bases',
+      label: 'Бази даних',
+      icon: 'apps-outline',
+      items: [
+        { key: 'create', label: 'Створити запис у базі…', icon: 'add-circle-outline', onPress: createRecord },
+        { key: 'go', label: 'Перейти до баз', icon: 'arrow-forward-outline', onPress: openDatabases },
+        ...[...customDatabases]
+          .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
+          .map((d) => ({
+            key: `db:${d.id}`,
+            label: d.name || 'Без назви',
+            icon: (d.icon as string) ?? 'grid-outline',
+            onPress: () => goToBase(deskKeyForCustom(d.id), 'CustomDatabase', { databaseId: d.id }),
+          })),
+      ],
+    },
+    { key: 'chat', label: 'Чат', icon: 'chatbubbles-outline', direct: () => go('Chat') },
   ];
 
   return (
@@ -251,36 +329,25 @@ export default function StartScreen() {
             </View>
           )}
 
-          <Text style={[styles.heading, { color: S.ink3 }]}>Перейти до столу</Text>
-          <View style={[styles.tiles, { gap: tileGap }]}>
-            <Tile label="Документи" icon="document-text-outline" onPress={() => goToDesk(PERMANENT_DESK, 'DocumentsCopy')} />
-            <Tile label="Дошки" icon="easel-outline" onPress={() => goToDesk(BOARDS_DESK, 'BoardsCopy')} />
-            <Tile label="Щоденник" icon="book-outline" pip="left" onPress={openCalendar} />
-            <Tile label="Бази даних" icon="apps-outline" pip="right" onPress={openDatabases} />
-          </View>
-
-          <Text style={[styles.heading, { color: S.ink3, marginTop: 26 }]}>Створити</Text>
-          <View style={[styles.list, { backgroundColor: S.card, boxShadow: S.shadow }]}>
-            {rows.map((row, i) => (
-              <Pressable
-                key={row.label}
-                onPress={row.onPress}
-                style={({ pressed }) => [
-                  styles.row,
-                  i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: S.line },
-                  pressed && { backgroundColor: S.fill },
-                ]}
-              >
-                <View style={[styles.seat, { backgroundColor: S.fill }]}>
-                  <Ionicons name={row.icon as never} size={18} color={S.ink2} />
-                </View>
-                <Text style={[styles.rowLabel, { color: S.ink }]} numberOfLines={1}>
-                  {row.label}
-                </Text>
-                <Ionicons name="add" size={18} color={S.ink3} />
-              </Pressable>
+          <Text style={[styles.heading, { color: S.ink3 }]}>Робочі столи</Text>
+          <Animated.View layout={LinearTransition.duration(220)} style={[styles.list, { backgroundColor: S.card, boxShadow: S.shadow }]}>
+            {deskRows.map((row, i) => (
+              <DeskRowView
+                key={row.key}
+                row={row}
+                first={i === 0}
+                open={expanded.has(row.key)}
+                onToggle={() =>
+                  setExpanded((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(row.key)) next.delete(row.key);
+                    else next.add(row.key);
+                    return next;
+                  })
+                }
+              />
             ))}
-          </View>
+          </Animated.View>
         </ScrollView>
         </GestureDetector>
         </Animated.View>
@@ -411,25 +478,55 @@ function RecentDatabase({ id, onPress }: { id: string; onPress: () => void }) {
 
 // One of the four big buttons. A small chevron in the corner it leaves
 // toward says which drawer it pulls out.
-function Tile({ label, icon, onPress, pip }: { label: string; icon: string; onPress: () => void; pip?: 'left' | 'right' }) {
+type DeskItem = { key: string; label: string; icon: string; color?: string; folder?: boolean; onPress: () => void };
+type DeskRow = { key: string; label: string; icon: string; items?: DeskItem[]; direct?: () => void };
+
+// One row of «Робочі столи»: a database, opened in place to show what can
+// be done with it and its root folders - or, with nothing inside, a way
+// straight there.
+function DeskRowView({ row, first, open, onToggle }: { row: DeskRow; first: boolean; open: boolean; onToggle: () => void }) {
   const S = useSoft();
+  const expandable = !!row.items;
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.tile, { backgroundColor: S.card, boxShadow: S.shadow }, pressed && { opacity: 0.7 }]}
-    >
-      {pip && (
-        <View style={[styles.pip, pip === 'left' ? { left: 4 } : { right: 4 }]}>
-          <Ionicons name={pip === 'left' ? 'chevron-back' : 'chevron-forward'} size={14} color={S.ink3} />
+    <Animated.View layout={LinearTransition.duration(220)}>
+      <Pressable
+        onPress={expandable ? onToggle : row.direct}
+        style={({ pressed }) => [
+          styles.row,
+          !first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: S.line },
+          pressed && { backgroundColor: S.fill },
+        ]}
+      >
+        <View style={[styles.seat, { backgroundColor: S.fill }]}>
+          <Ionicons name={row.icon as never} size={18} color={S.ink2} />
         </View>
+        <Text style={[styles.rowLabel, { color: S.ink }]} numberOfLines={1}>
+          {row.label}
+        </Text>
+        <Ionicons name={expandable ? (open ? 'chevron-up' : 'chevron-down') : 'chevron-forward'} size={18} color={S.ink3} />
+      </Pressable>
+      {open && row.items && (
+        <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={styles.inside}>
+          {row.items.map((item, i) => (
+            <Pressable
+              key={item.key}
+              onPress={item.onPress}
+              style={({ pressed }) => [
+                styles.insideRow,
+                // The folders under the three actions, set apart by a rule.
+                item.folder && i > 0 && !row.items?.[i - 1].folder && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: S.line, marginTop: 4 },
+                pressed && { backgroundColor: S.fill },
+              ]}
+            >
+              <Ionicons name={item.icon as never} size={17} color={item.folder ? item.color || S.ink2 : S.ink2} />
+              <Text style={[styles.insideLabel, { color: item.folder ? S.ink : S.ink2 }]} numberOfLines={1}>
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
+        </Animated.View>
       )}
-      <View style={[styles.tileSeat, { backgroundColor: S.fill }]}>
-        <Ionicons name={icon as never} size={19} color={S.ink2} />
-      </View>
-      <Text style={[styles.tileLabel, { color: S.ink }]} numberOfLines={2}>
-        {label}
-      </Text>
-    </Pressable>
+    </Animated.View>
   );
 }
 
@@ -453,4 +550,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, height: 54 },
   seat: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   rowLabel: { flex: 1, fontSize: 15, fontFamily: SOFT_MEDIUM },
+  inside: { paddingLeft: 60, paddingRight: 14, paddingBottom: 6 },
+  insideRow: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 44, borderRadius: 10, paddingHorizontal: 6 },
+  insideLabel: { flex: 1, fontSize: 14.5, fontFamily: SOFT_MEDIUM },
 });

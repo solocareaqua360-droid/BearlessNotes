@@ -1,3 +1,4 @@
+import { useFolderArrival } from '../navigation/folderArrival';
 import { useEffect, useRef, useState } from 'react';
 import { markHeld } from '../utils/heldNode';
 import { holdAsk } from '../components/surfaces/HoldAsk';
@@ -200,6 +201,8 @@ export default function BoardsListScreen({
     attachTag: list.attachTag,
     detachTag: list.detachTag,
   });
+  // Sent here standing in a folder (the start desk's «Робочі столи»).
+  useFolderArrival('board', list.explorerMode, list.setListMode, explorer.setPath);
 
   // What a held folder can do, the same three things it can do in the
   // documents explorer.

@@ -1,3 +1,4 @@
+import { useFolderArrival } from '../navigation/folderArrival';
 import { lift } from '../utils/lift';
 import { openDeskSwitcher } from '../navigation/deskSwitcherBus';
 import { INK } from '../utils/sketchGeometry';
@@ -305,6 +306,8 @@ export default function DocumentsScreen({
     attachTag,
     detachTag,
   });
+  // Sent here standing in a folder (the start desk's «Робочі столи»).
+  useFolderArrival('document', listMode === 'explorer', setListMode, explorer.setPath);
   const [folderEdit, setFolderEdit] = useState<Tag | null>(null);
   const [docRename, setDocRename] = useState<DocumentItem | null>(null);
 

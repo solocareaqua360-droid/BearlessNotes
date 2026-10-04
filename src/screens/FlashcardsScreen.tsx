@@ -1,3 +1,8 @@
+import { useFolderArrival } from '../navigation/folderArrival';
+import { useExplorer, nameOf } from '../hooks/useExplorer';
+import ExplorerHead from '../components/ExplorerHead';
+import RenamePrompt from '../components/RenamePrompt';
+import { useFolderHold } from '../components/FolderHoldMenu';
 import { useEffect, useMemo, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
 import { useOpenRequest } from '../utils/openRequest';
@@ -135,6 +140,30 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
     searchTextOf: (c) => `${c.term}\n${c.explanation}`,
   });
 
+  // FOLDERS, as every other database has them (2026-10-04: a card could be
+  // put in a folder from the selection, and the folder was never seen) -
+  // read off the tag tree, see useExplorer.
+  const explorer = useExplorer<Flashcard>({
+    kind: 'flashcard',
+    collection: 'flashcards',
+    items: cards,
+    displayed: list.displayed,
+    tagIdsOf: (c) => c.tagIds ?? [],
+    tags: list.tags,
+    drawerTags: list.drawerTags,
+    explorerMode: list.explorerMode,
+    searching: list.needle !== '',
+    needle: list.needle,
+    createFolderTag: list.createFolderTag,
+    deleteTagCompletely: list.deleteTagCompletely,
+    renameTag: list.renameTag,
+    attachTag: list.attachTag,
+    detachTag: list.detachTag,
+  });
+  // Sent here standing in a folder (the start desk's «Робочі столи»).
+  useFolderArrival('flashcard', list.explorerMode, list.setListMode, explorer.setPath);
+  const folderHold = useFolderHold({ explorer, itemIcon: 'albums-outline' });
+
   // Every deck being learned, not only the one in front: in «Всі» a
   // learned card still says so.
   const learningGroupIds = useMemo(
@@ -143,7 +172,24 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
   );
   const isLearning = (card: Flashcard) => !!card.groupId && learningGroupIds.has(card.groupId);
   const activeGroup = list.groups.find((g) => g.id === list.selectedGroupId) ?? null;
-  const shown = hideKnown ? list.displayed.filter((c) => !(isLearning(c) && c.known)) : list.displayed;
+  const here = explorer.visibleItems;
+  const shown = hideKnown ? here.filter((c) => !(isLearning(c) && c.known)) : here;
+  // Where you are and the folders here - only in the explorer mode.
+  const explorerHead = list.explorerMode ? (
+    <ExplorerHead
+      path={explorer.path}
+      folders={explorer.folders}
+      itemIcon="albums-outline"
+      onGo={(next) => {
+        explorer.setPath(next);
+        if (list.needle !== '') {
+          list.setSearchQuery('');
+          list.setIsSearching(false);
+        }
+      }}
+      onFolderMenu={folderHold.open}
+    />
+  ) : null;
   const readerCards = reading
     ? reading.ids.map((id) => cards.find((c) => c.id === id)).filter((c): c is Flashcard => !!c)
     : null;
@@ -420,6 +466,20 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       searchPlaceholder="Пошук по картках"
       onAdd={() => setEditor({ card: null })}
       menuRows={menuRows}
+      explorer={{
+        mode: list.listMode,
+        onChangeMode: list.setListMode,
+        active: explorer.active,
+        onNewFolder: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }),
+        paths: explorer.allFolderPaths,
+        path: explorer.path,
+        onGo: explorer.setPath,
+        onNewFolderIn: (parent) => explorer.setFolderPrompt({ mode: 'new', parent }),
+        onBack: explorer.back,
+        onForward: explorer.forward,
+        canBack: explorer.historyState.canBack,
+        canForward: explorer.historyState.canForward,
+      }}
       shape={{
         icon: list.viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
         onToggle: () => list.changeViewMode(list.viewMode === 'grid' ? 'list' : 'grid'),
@@ -434,6 +494,14 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
       }}
       overlay={
         <>
+          {folderHold.menu}
+          <RenamePrompt
+            visible={explorer.folderPrompt !== null}
+            title={explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}
+            initialValue={explorer.folderPrompt?.mode === 'rename' ? nameOf(explorer.folderPrompt.path) : ''}
+            onCancel={() => explorer.setFolderPrompt(null)}
+            onSave={(name) => explorer.saveFolderName(name)}
+          />
           {list.toast && <UndoToast message={list.toast.message} onUndo={() => list.toast && list.undo(list.toast.id)} />}
           <FlashcardEditor
             visible={editor !== null}
@@ -514,7 +582,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
             <View style={styles.emptyState}>
               <ActivityIndicator color={theme.ink.muted} />
             </View>
-          ) : shown.length === 0 ? (
+          ) : shown.length === 0 && !(list.explorerMode && explorer.folders.length > 0) ? (
             <View style={styles.emptyState}>
               <Ionicons name="albums-outline" size={40} color={theme.ink.muted} />
               <Text style={styles.emptyLabel}>
@@ -529,6 +597,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
               {...listProps}
               contentContainerStyle={[styles.list, railClear(inPane ? 'left' : 'right', 20), { paddingTop: listTopPad }]}
             >
+              {explorerHead}
               {Array.from({ length: Math.ceil(shown.length / 2) }, (_, row) => (
                 <View key={shown[row * 2].id} style={styles.pair}>
                   {renderCell(shown[row * 2])}
@@ -541,6 +610,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
               {...listProps}
               contentContainerStyle={[styles.list, railClear(inPane ? 'left' : 'right', 20), { paddingTop: listTopPad }]}
             >
+              {explorerHead}
               {shown.map(renderRow)}
             </ScrollView>
           )

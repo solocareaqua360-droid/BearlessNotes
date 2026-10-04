@@ -1,3 +1,4 @@
+import { useFolderArrival } from '../navigation/folderArrival';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
 import { holdAsk } from '../components/surfaces/HoldAsk';
@@ -291,6 +292,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     attachTag: list.attachTag,
     detachTag: list.detachTag,
   });
+  // Sent here standing in a folder (the start desk's «Робочі столи»).
+  useFolderArrival('file', list.explorerMode, list.setListMode, explorer.setPath);
   const filesHere = explorer.visibleItems;
   const pointer = useDensity() === 'pointer';
 

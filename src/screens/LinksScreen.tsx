@@ -1,3 +1,4 @@
+import { useFolderArrival } from '../navigation/folderArrival';
 import { useEffect, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
 import { useFolderHold } from '../components/FolderHoldMenu';
@@ -381,6 +382,8 @@ export default function LinksScreen({
     attachTag: list.attachTag,
     detachTag: list.detachTag,
   });
+  // Sent here standing in a folder (the start desk's «Робочі столи»).
+  useFolderArrival(tagKind, list.explorerMode, list.setListMode, explorer.setPath);
   const linksHere = explorer.visibleItems;
   // The map draws exactly this list, filtered to what it can actually
   // place - search, tags, group and folder all already narrowed
