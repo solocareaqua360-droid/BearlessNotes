@@ -1374,10 +1374,15 @@ function DraggableCard({
     await new Promise((r) => setTimeout(r, 350));
     const [tl, br] = await Promise.all([corner(frameTL.current), corner(frameBR.current)]);
     const ratio = PixelRatio.get();
-    const shot =
-      tl && br
-        ? await grabScreenFrame({ x: tl.x * ratio, y: tl.y * ratio, w: (br.x - tl.x) * ratio, h: (br.y - tl.y) * ratio })
-        : null;
+    // A session that has only just begun has no image yet - the screen
+    // sends one when it changes - so ask a few times.
+    let shot: { uri: string; width: number; height: number } | null = null;
+    if (tl && br) {
+      for (let attempt = 0; attempt < 8 && !shot; attempt++) {
+        shot = await grabScreenFrame({ x: tl.x * ratio, y: tl.y * ratio, w: (br.x - tl.x) * ratio, h: (br.y - tl.y) * ratio });
+        if (!shot) await new Promise((r) => setTimeout(r, 250));
+      }
+    }
     setFraming(false);
     if (shot) {
       hapticSuccess();
@@ -1555,8 +1560,21 @@ function DraggableCard({
       }
     });
 
+  // A press on one of the player's own buttons is also a tap on the card
+  // under it (gesture-handler sees both), and a tap on a playing card
+  // toggles the playback: pressing «Кадр» stopped the very video it was
+  // meant to photograph (2026-10-04). The buttons stamp the moment, the
+  // card's tap ignores what follows within it.
+  const controlAt = useRef(0);
+  const markControl = () => {
+    controlAt.current = Date.now();
+  };
+  const cardTapped = () => {
+    if (Date.now() - controlAt.current < 600) return;
+    onTap(card);
+  };
   const tapGesture = Gesture.Tap().onEnd(() => {
-    runOnJS(onTap)(card);
+    runOnJS(cardTapped)();
   });
 
   // Holding a card picks THAT card - which is what raises the bar of
@@ -1788,19 +1806,29 @@ function DraggableCard({
                 <View ref={frameTL} collapsable={false} pointerEvents="none" style={styles.frameDotTL} />
                 <View ref={frameBR} collapsable={false} pointerEvents="none" style={styles.frameDotBR} />
                 {!framing && (
-                <View style={styles.playerControls} pointerEvents="box-none">
-                  {supportsScreenCapture && onFrame && (
-                    <Pressable hitSlop={8} style={styles.playerButton} onPress={takeFrame} accessibilityLabel="Кадр">
-                      <Ionicons name="camera-outline" size={14} color="#fff" />
-                    </Pressable>
-                  )}
-                  <Pressable hitSlop={8} style={styles.playerButton} onPress={onOpenFullscreen}>
-                    <Ionicons name="expand-outline" size={14} color="#fff" />
-                  </Pressable>
-                  <Pressable hitSlop={8} style={styles.playerButton} onPress={onStopPlaying}>
-                    <Ionicons name="close" size={14} color="#fff" />
-                  </Pressable>
-                </View>
+                  <>
+                    {supportsScreenCapture && onFrame && (
+                      <View style={styles.playerControlsLeft} pointerEvents="box-none">
+                        <Pressable
+                          hitSlop={4}
+                          style={styles.playerButton}
+                          onPressIn={markControl}
+                          onPress={takeFrame}
+                          accessibilityLabel="Кадр"
+                        >
+                          <Ionicons name="camera-outline" size={15} color="#fff" />
+                        </Pressable>
+                      </View>
+                    )}
+                    <View style={styles.playerControls} pointerEvents="box-none">
+                      <Pressable hitSlop={4} style={styles.playerButton} onPressIn={markControl} onPress={onOpenFullscreen}>
+                        <Ionicons name="expand-outline" size={15} color="#fff" />
+                      </Pressable>
+                      <Pressable hitSlop={4} style={styles.playerButton} onPressIn={markControl} onPress={onStopPlaying}>
+                        <Ionicons name="close" size={15} color="#fff" />
+                      </Pressable>
+                    </View>
+                  </>
                 )}
               </View>
             ) : card.linkImageUrl ? (
@@ -7712,18 +7740,25 @@ const makeStyles = (theme: Theme) =>
     // takeFrame).
     frameDotTL: { position: 'absolute', left: 0, top: 0, width: 1, height: 1 },
     frameDotBR: { position: 'absolute', right: 0, bottom: 0, width: 1, height: 1 },
-    // On the player, in its top-right corner.
+    // On the player: the frame button in its top-left corner, the other two
+    // in the top-right - apart, so a small card's buttons do not lie on one
+    // another.
+    playerControlsLeft: {
+      position: 'absolute',
+      top: 4,
+      left: 4,
+    },
     playerControls: {
       position: 'absolute',
       top: 4,
       right: 4,
       flexDirection: 'row',
-      gap: 4,
+      gap: 8,
     },
     playerButton: {
-      width: 22,
-      height: 22,
-      borderRadius: 11,
+      width: 26,
+      height: 26,
+      borderRadius: 13,
       backgroundColor: 'rgba(0,0,0,0.55)',
       alignItems: 'center',
       justifyContent: 'center',

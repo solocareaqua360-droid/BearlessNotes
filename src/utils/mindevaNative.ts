@@ -51,7 +51,12 @@ export const supportsScreenCapture = !!native?.screenCapture;
 export async function startScreenCapture(): Promise<boolean> {
   try {
     if (native?.isScreenCapturing?.()) return true;
-    return !!(await native?.startScreenCapture?.());
+    // Never waits for ever: the phone's dialog may be dismissed without an
+    // answer reaching us.
+    return !!(await Promise.race([
+      native?.startScreenCapture?.(),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 30000)),
+    ]));
   } catch {
     return false;
   }
