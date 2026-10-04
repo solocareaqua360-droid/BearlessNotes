@@ -70,6 +70,9 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.produceState
 import dev.patrickgold.florisboard.ime.eva.EvaIcons
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -264,15 +267,14 @@ fun ClipboardInputLayout(
             if (item.type == ItemType.IMAGE) {
                 val id = ContentUris.parseId(item.uri!!)
                 val file = ClipboardFileStorage.getFileForId(context, id)
-                val bitmap = remember(id) {
-                    runCatching {
-                        check(file.exists()) { "Unable to resolve image at ${file.absolutePath}" }
-                        val rawBitmap = BitmapFactory.decodeFile(file.absolutePath)
-                        checkNotNull(rawBitmap) { "Unable to decode image at ${file.absolutePath}" }
-                        rawBitmap.asImageBitmap()
-                    }
+                // evaBoard: decoded off the main thread, scaled to the card, cached (ClipThumbnails)
+                val loaded by produceState<Result<ImageBitmap>?>(null, id, contentScrollInsteadOfClip) {
+                    value = ClipThumbnails.image(file, if (contentScrollInsteadOfClip) 1100 else 480)
                 }
-                if (bitmap.isSuccess) {
+                val bitmap = loaded
+                if (bitmap == null) {
+                    Box(Modifier.fillMaxSize()) // the card stays empty for the moment the picture is being prepared
+                } else if (bitmap.isSuccess) {
                     Image(
                         modifier = if (contentScrollInsteadOfClip) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
                         bitmap = bitmap.getOrThrow(),
@@ -288,29 +290,18 @@ fun ClipboardInputLayout(
             } else if (item.type == ItemType.VIDEO) {
                 val id = ContentUris.parseId(item.uri!!)
                 val file = ClipboardFileStorage.getFileForId(context, id)
-                val bitmap = remember(id) {
-                    runCatching {
-                        check(file.exists()) { "Unable to resolve video at ${file.absolutePath}" }
-                        val rawBitmap = if (AndroidVersion.ATLEAST_API29_Q) {
-                            val dataRetriever = MediaMetadataRetriever()
-                            dataRetriever.setDataSource(file.absolutePath)
-                            val width = dataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
-                            val height = dataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-                            ThumbnailUtils.createVideoThumbnail(file, Size(width!!.toInt(), height!!.toInt()), null)
-                        } else {
-                            @Suppress("DEPRECATION")
-                            ThumbnailUtils.createVideoThumbnail(file.absolutePath, MediaStore.Video.Thumbnails.MINI_KIND)
-                        }
-                        checkNotNull(rawBitmap) { "Unable to decode video at ${file.absolutePath}" }
-                        rawBitmap.asImageBitmap()
-                    }
+                val loaded by produceState<Result<ImageBitmap>?>(null, id) {
+                    value = ClipThumbnails.video(file, 480)
                 }
-                if (bitmap.isSuccess) {
+                val bitmap = loaded
+                if (bitmap == null) {
+                    Box(Modifier.fillMaxSize())
+                } else if (bitmap.isSuccess) {
                     Image(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = if (contentScrollInsteadOfClip) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
                         bitmap = bitmap.getOrThrow(),
                         contentDescription = null,
-                        contentScale = ContentScale.FillWidth,
+                        contentScale = if (contentScrollInsteadOfClip) ContentScale.FillWidth else ContentScale.Crop,
                     )
                     Icon(
                         modifier = Modifier
