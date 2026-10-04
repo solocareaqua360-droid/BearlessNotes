@@ -2352,7 +2352,7 @@ export default function ContextDock() {
                       (2026-10-04: "повинно читатися однаково"); only the calendar's
                       pencil, which writes in the day rather than making a thing, keeps
                       its own. */}
-                  {right.icon !== 'pencil-outline' ? (
+                  {right.icon !== 'pencil-outline' && right.icon !== 'mic-outline' ? (
                     <Ionicons name="add" size={25} color={soft.chrome} />
                   ) : rightIcon ? (
                     <SoftIcon name={rightIcon} size={22} color={soft.chrome} />

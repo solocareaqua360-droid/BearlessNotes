@@ -1,3 +1,4 @@
+import { usePaneBar } from '../navigation/paneBar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { IS_POINTER } from '../utils/pointer';
 import { rightClick } from '../utils/rightClick';
@@ -31,7 +32,8 @@ import { onSnapshot } from '../firestore';
 import type { Group } from '../types';
 import { askGemini } from '../utils/gemini';
 import { getGeminiKey } from '../utils/geminiKey';
-import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockShowContext } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockShowContext, useTopBack, useTopExtras } from '../navigation/navDock';
+import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { ChatMessage, deleteChatMessage, groupChatMessages, markChatMessageTask, markChatMessagesUsed, sendGeminiReply, watchChat, setChatMessagesInProject, setChatProjectContext } from '../utils/chat';
@@ -312,8 +314,42 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList<Row>>(null);
 
   useDockLeave('chatbubbles-outline', () => navigation.goBack());
+  // A BAR LIKE EVERY DESK'S (the user's, 2026-10-04): «Чат» at the top with
+  // the way back and choosing at its edge; the dock below is the search
+  // field holding «Фільтр» and the microphone, with back on the right.
+  const bar = useTopNavOn();
+  // Inside the databases' drawer the drawer draws the bar - see paneBar.
+  const paneBar = usePaneBar();
+  useTopBack(() => navigation.goBack(), bar);
+  useTopExtras(
+    null,
+    {
+      active: isSelectMode,
+      onPress: () => {
+        setSelected(new Set());
+        setIsSelectMode((prev) => !prev);
+        if (isSelectMode) showContext();
+      },
+    },
+    bar && isFocused
+  );
   useDockBeads(
-    isFocused
+    isFocused && bar
+      ? {
+          icon: isSelectMode ? 'close-outline' : isSearching ? 'close-outline' : 'search-outline',
+          active: isSearching,
+          onPress: () => {
+            if (isSelectMode) {
+              setSelected(new Set());
+              setIsSelectMode(false);
+              showContext();
+              return;
+            }
+            if (isSearching) setSearchQuery('');
+            setIsSearching((v) => !v);
+          },
+        }
+      : isFocused
       ? {
           icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
           active: isSelectMode,
@@ -324,7 +360,15 @@ export default function ChatScreen() {
           },
         }
       : null,
-    isFocused ? { icon: 'mic-outline', onPress: openCapture } : null
+    isFocused
+      ? {
+          icon: 'mic-outline',
+          onPress: openCapture,
+          extra: bar
+            ? { icon: 'funnel-outline', label: 'Фільтр', active: filterKind !== null, onPress: () => setFilterMenuOpen((v) => !v) }
+            : undefined,
+        }
+      : null
   );
   useDockActions(
     !isFocused
@@ -369,7 +413,9 @@ export default function ChatScreen() {
               },
             ]
           : null
-        : [
+        : bar
+          ? null
+          : [
             {
               key: 'search',
               icon: isSearching ? 'close-outline' : 'search-outline',
@@ -788,7 +834,8 @@ export default function ChatScreen() {
         />
       )}
       <ContentColumn>
-        <View style={{ height: insets.top + CHROME_TOP + 8 }} />
+        <View style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
+        {isFocused && bar && !paneBar && <TopNavBar title={{ icon: 'chatbubbles-outline', label: 'Чат' }} />}
         {chatProjects.length > 0 && (
           <ProjectTabsRow
             items={chatProjects}
