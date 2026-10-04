@@ -510,6 +510,12 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__eva_split",
             default = true,
         )
+        // evaBoard: link previews on clipboard cards (ime/clipboard/ClipLinkPreview.kt). Off until switched
+        // on: it opens the links the user copied, which tells those sites about them.
+        val evaLinkPreviews = boolean(
+            key = "keyboard__eva_link_previews",
+            default = false,
+        )
         val evaNavLeftMic = boolean(
             key = "keyboard__eva_nav_left_mic",
             default = false,

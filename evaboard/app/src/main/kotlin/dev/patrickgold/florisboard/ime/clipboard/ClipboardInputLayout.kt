@@ -174,6 +174,7 @@ fun ClipboardInputLayout(
     val gridState = rememberLazyStaggeredGridState()
     var popupItem by remember(filteredHistory) { mutableStateOf<ClipboardItem?>(null) }
     var showClearAllHistory by remember { mutableStateOf(false) }
+    val previewsOn by prefs.keyboard.evaLinkPreviews.observeAsState()
 
     fun isPopupSurfaceActive() = popupItem != null || showClearAllHistory
 
@@ -318,6 +319,9 @@ fun ClipboardInputLayout(
                         text = bitmap.exceptionOrNull()?.message ?: "Unknown error",
                     )
                 }
+            } else if (!contentScrollInsteadOfClip && previewsOn && EvaLinkPreviews.singleUrl(item.text) != null) {
+                // evaBoard: a copied link shows the page's picture and title (ClipLinkPreview.kt)
+                LinkPreviewCard(EvaLinkPreviews.singleUrl(item.text)!!)
             } else {
                 val text = item.stringRepresentation()
                 Column {

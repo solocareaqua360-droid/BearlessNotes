@@ -75,6 +75,29 @@ private sealed interface UpdateState {
     data class Failed(val message: String) : UpdateState
 }
 
+/** evaBoard: the link-previews switch, with what it costs said plainly. */
+@Composable
+fun EvaLinkPreviewsCard(modifier: Modifier = Modifier) {
+    val prefs by FlorisPreferenceStore
+    val scope = rememberCoroutineScope()
+    val wanted by prefs.keyboard.evaLinkPreviews.observeAsState()
+    Card(modifier = modifier) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Прев'ю посилань у буфері", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Картинка й назва беруться з інтернету: скопійовані посилання відкриваються на їхніх сайтах",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Switch(checked = wanted, onCheckedChange = { scope.launch { prefs.keyboard.evaLinkPreviews.set(it) } })
+        }
+    }
+}
+
 /** evaBoard: the screenshots-to-clipboard switch; turning it on asks for the photos permission. */
 @Composable
 fun EvaScreenshotsCard(modifier: Modifier = Modifier) {
