@@ -318,8 +318,9 @@ export default function CollageEditor({
         {tab === 'frame' && (
           <View style={styles.sliders}>
             <SliderRow icon="radius" value={(el.radius ?? 0) / (unit * 0.15)} onChange={(f) => { letGo(); setEl((e) => ({ ...e, radius: f * 0.15 * unit })); }} />
-            <SliderRow icon="gap" value={el.gap / (unit * 0.08)} onChange={(f) => { letGo(); setEl((e) => ({ ...e, gap: f * 0.08 * unit })); }} />
-            <SliderRow icon="border" value={(el.outer ?? 0) / (unit * 0.08)} onChange={(f) => { letGo(); setEl((e) => ({ ...e, outer: f * 0.08 * unit })); }} />
+            {/* One slider for the frame: the gap between pictures and the border
+                round them are the same width (the user's call). */}
+            <SliderRow icon="border" value={el.gap / (unit * 0.08)} onChange={(f) => { letGo(); setEl((e) => ({ ...e, gap: f * 0.08 * unit, outer: f * 0.08 * unit })); }} />
           </View>
         )}
         {tab === 'ratio' && (
