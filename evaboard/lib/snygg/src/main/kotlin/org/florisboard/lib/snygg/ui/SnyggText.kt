@@ -55,6 +55,8 @@ fun SnyggText(
     selector: SnyggSelector? = null,
     modifier: Modifier = Modifier,
     text: String,
+    // evaBoard: a face of our own for this text, used where the stylesheet names no font family
+    defaultFontFamily: FontFamily? = null,
 ) {
     ProvideSnyggStyle(elementName, attributes, selector) { style ->
         Text(
@@ -69,7 +71,7 @@ fun SnyggText(
             fontSize = style.fontSize(),
             fontStyle = style.fontStyle(),
             fontWeight = style.fontWeight(),
-            fontFamily = style.fontFamily(LocalSnyggPreloadedCustomFontFamilies.current),
+            fontFamily = style.fontFamily(LocalSnyggPreloadedCustomFontFamilies.current, defaultFontFamily),
             letterSpacing = style.letterSpacing(),
             lineHeight = style.lineHeight(),
             textAlign = style.textAlign(),

@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
+import dev.patrickgold.florisboard.ime.eva.EvaFont
 import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
@@ -205,6 +206,7 @@ private fun CandidateItem(
                 attributes = attributes,
                 selector = selector,
                 text = candidate.text.toString(),
+                defaultFontFamily = EvaFont.inter,
             )
             if (candidate.secondaryText != null) {
                 SnyggText(
