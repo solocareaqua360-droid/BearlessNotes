@@ -21,6 +21,8 @@ final class Model: ObservableObject {
     private(set) var link: Link!
     @Published private(set) var code: String
     @Published var copiedId: String?
+    /** One line about something that did not work (a file that could not be read), for a few seconds. */
+    @Published private(set) var notice: String?
 
     private let folder: URL
     var folderURL: URL { folder }
@@ -154,8 +156,13 @@ final class Model: ObservableObject {
             dropInbound(id)
             return
         }
+        do {
+            try job.handle.write(contentsOf: data)
+        } catch {
+            dropInbound(id)
+            return
+        }
         job.hasher.update(data: data)
-        job.handle.write(data)
         job.next += 1
         guard message.last == true else { return }
         inbound[id] = nil
@@ -200,12 +207,14 @@ final class Model: ObservableObject {
 
     /** Sends a file in parts, each after the one before has gone out. */
     private func stream(_ id: String, from url: URL, to peer: Peer) {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return }
+        guard let handle = try? FileHandle(forReadingFrom: url), var current = Model.read(handle, Model.part) else { return }
         var seq = 0
-        var current = handle.readData(ofLength: Model.part)
         func step() {
             // one part read ahead, so the last part can say it is the last
-            let next = current.count == Model.part ? handle.readData(ofLength: Model.part) : Data()
+            guard let next = current.count == Model.part ? Model.read(handle, Model.part) : Data() else {
+                try? handle.close()
+                return
+            }
             let last = next.isEmpty
             peer.send(SyncMessage(t: "part", id: id, data: current.base64EncodedString(), seq: seq, last: last)) {
                 if last {
@@ -218,6 +227,25 @@ final class Model: ObservableObject {
             }
         }
         step()
+    }
+
+    func tell(_ text: String) {
+        notice = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            if self?.notice == text { self?.notice = nil }
+        }
+    }
+
+    /**
+     * Up to [count] bytes; empty at the end; nil when the file cannot be read. The old readData(ofLength:)
+     * raises an Objective-C exception instead, which Swift cannot catch - it took the whole app down.
+     */
+    static func read(_ handle: FileHandle, _ count: Int) -> Data? {
+        do {
+            return try handle.read(upToCount: count) ?? Data()
+        } catch {
+            return nil
+        }
     }
 
     private func fileKey(_ url: URL) -> String {
@@ -241,15 +269,18 @@ final class Model: ObservableObject {
             if let id = fileIds[key] {
                 finish(id)
             } else {
-                DispatchQueue.global(qos: .userInitiated).async {
-                    guard let handle = try? FileHandle(forReadingFrom: url) else { return }
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    let fail = { DispatchQueue.main.async { self?.tell("Mac не дав прочитати «\(url.lastPathComponent)» - спробуйте файл з іншої папки") } }
+                    guard let handle = try? FileHandle(forReadingFrom: url) else { fail(); return }
+                    defer { try? handle.close() }
                     var hasher = SHA256()
                     while true {
-                        let chunk = handle.readData(ofLength: 1024 * 1024)
+                        // a file the Mac will not let us read (a protected folder, an iCloud file not on
+                        // this disk) is left out, not a crash
+                        guard let chunk = Model.read(handle, 1024 * 1024) else { fail(); return }
                         if chunk.isEmpty { break }
                         hasher.update(data: chunk)
                     }
-                    try? handle.close()
                     let id = "f" + String(hasher.finalize().map { String(format: "%02x", $0) }.joined().prefix(32))
                     DispatchQueue.main.async { finish(id) }
                 }
@@ -380,6 +411,15 @@ struct ContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
                 .padding(.bottom, 10)
+
+            if let notice = model.notice {
+                Text(notice)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
 
             if link.phones.isEmpty || showCode {
                 codePanel
