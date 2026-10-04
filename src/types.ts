@@ -1036,6 +1036,9 @@ export interface FieldDef {
 export interface CustomDatabase {
   id: string;
   name: string;
+  // Shown on the start desk's «Робочі столи» as a row of its own (its «⋯»
+  // switches it) - 2026-10-04.
+  onStart?: boolean;
   icon?: string; // an Ionicons glyph name, shown on its DatabasesScreen tile
   color?: string;
   fields: FieldDef[];

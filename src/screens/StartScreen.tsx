@@ -37,7 +37,8 @@ import { requestOpen } from '../utils/openRequest';
 import { fileIconColorFor, fileIconFor } from '../utils/fileIcons';
 import { ownedQuery } from '../utils/owned';
 import { listenError } from '../utils/listenError';
-import type { Block, CustomDatabase } from '../types';
+import type { Block, CustomDatabase, CustomDatabaseRow } from '../types';
+import { rowTitleOf } from '../utils/customRowDisplay';
 
 // THE START DESK (2026-10-03, the user's own design, mocked up first):
 // the phone's first desk. Under the desks' bar, a row of four big buttons
@@ -59,6 +60,8 @@ const CREATE: Create[] = [
   { key: 'sticker', label: 'Стікер', icon: 'reader-outline', route: 'Stickers', wanted: 'Stickers' },
   { key: 'card', label: 'Картка', icon: 'albums-outline', route: 'Flashcards', wanted: 'Flashcards' },
   { key: 'link', label: 'Посилання', icon: 'link-outline', route: 'Links', params: { category: 'other' }, wanted: 'Links' },
+  { key: 'geo', label: 'Геоточка', icon: 'location-outline', route: 'Links', params: { category: 'geo' }, wanted: 'Links' },
+  { key: 'video', label: 'Відео', icon: 'videocam-outline', route: 'Links', params: { category: 'video' }, wanted: 'Links' },
   { key: 'photo', label: 'Зображення', icon: 'image-outline', route: 'Photos', wanted: 'Photos' },
   { key: 'file', label: 'Файл', icon: 'document-outline', route: 'Files', wanted: 'Files' },
 ];
@@ -293,6 +296,21 @@ export default function StartScreen() {
       icon: 'link-outline',
       onOpen: openIn('links', 'db:links', 'Links', { category: 'other' }),
     }),
+    // The three kinds of link are three databases, each its own row.
+    base('geo', 'Геоточки', 'location-outline', 'link-geo', 'Додати геоточку', createOf('geo'), 'db:geo', 'Links', { category: 'geo' }, {
+      collection: 'links',
+      belongs: (r) => categoryFromSiteName(r.siteName as string | undefined) === 'geo',
+      titleOf: (r) => str(r.title) || str(r.url),
+      icon: 'location-outline',
+      onOpen: openIn('links', 'db:geo', 'Links', { category: 'geo' }),
+    }),
+    base('video', 'YouTube / TikTok', 'videocam-outline', 'link-video', 'Додати відео', createOf('video'), 'db:video', 'Links', { category: 'video' }, {
+      collection: 'links',
+      belongs: (r) => categoryFromSiteName(r.siteName as string | undefined) === 'video',
+      titleOf: (r) => str(r.title) || str(r.url),
+      icon: 'videocam-outline',
+      onOpen: openIn('links', 'db:video', 'Links', { category: 'video' }),
+    }),
     base('photo', 'Зображення', 'image-outline', 'photo', 'Додати зображення', createOf('photo'), 'db:photos', 'Photos', undefined, {
       collection: 'photos',
       titleOf: (r) => str(r.title) || 'Зображення',
@@ -324,18 +342,44 @@ export default function StartScreen() {
       ],
     },
     { key: 'chat', label: 'Чат', icon: 'chatbubbles-outline', direct: () => go('Chat') },
+    // The personal databases switched on for the start («⋯» → «Показувати
+    // на старті»): a row each, its records at the root (they have no
+    // folders of their own).
+    ...customDatabases
+      .filter((d) => d.onStart)
+      .map((d) =>
+        base(
+          `custom:${d.id}`,
+          d.name || 'База',
+          (d.icon as string) ?? 'grid-outline',
+          '',
+          'Створити запис',
+          { key: `custom:${d.id}`, label: d.name, icon: 'grid-outline', route: 'CustomDatabase', params: { databaseId: d.id }, wanted: 'CustomDatabase' },
+          deskKeyForCustom(d.id),
+          'CustomDatabase',
+          { databaseId: d.id },
+          {
+            collection: 'customDatabaseRows',
+            belongs: (r) => r.databaseId === d.id,
+            titleOf: (r) => rowTitleOf(d, r as unknown as CustomDatabaseRow),
+            icon: (d.icon as string) ?? 'grid-outline',
+            onOpen: (rowId) => go('CustomDatabase', { databaseId: d.id, openRowId: rowId }),
+          }
+        )
+      ),
   ];
   // The rows in the board's own blocks: each folder of the Бази board one
   // block, each database standing alone its own, in the board's order;
   // whatever the board does not hold (the databases' row) after them.
-  const boardBlocks = useBoardBlocks();
+  const shownOwn = customDatabases.filter((d) => d.onStart);
+  const boardBlocks = useBoardBlocks(shownOwn.map((d) => d.id));
   const deskBlocks: DeskRow[][] = (() => {
     const byKey = new Map(deskRows.map((r) => [r.key, r]));
     const used = new Set<string>();
     const blocks: DeskRow[][] = [];
     for (const keys of boardBlocks) {
       const rows = keys
-        .map((tileKey) => ROW_OF_TILE[tileKey])
+        .map((tileKey) => ROW_OF_TILE[tileKey] ?? `custom:${tileKey}`)
         .filter((key): key is string => !!key && byKey.has(key) && !used.has(key))
         .map((key) => {
           used.add(key);
@@ -571,6 +615,8 @@ const ROW_OF_TILE: Record<string, string> = {
   files: 'file',
   diary: 'diary',
   chat: 'chat',
+  geo: 'geo',
+  video: 'video',
 };
 
 // THE БАЗИ BOARD'S BLOCKS, in its order: every folder one block (its
@@ -579,7 +625,7 @@ const ROW_OF_TILE: Record<string, string> = {
 // section (under a divider) after the one above it. A tile with no place of
 // its own yet comes after the placed ones of its section, in the board's
 // stored order.
-function useBoardBlocks(): string[][] {
+function useBoardBlocks(ownKeys: string[]): string[][] {
   const [layout, setLayout] = useState<{
     positions?: Record<string, string>;
     sections?: Record<string, string>;
@@ -618,7 +664,7 @@ function useBoardBlocks(): string[][] {
     members.forEach((m) => inFolder.add(m));
     items.push({ key: `folder:${id}`, members });
   }
-  for (const key of Object.keys(ROW_OF_TILE)) if (!inFolder.has(key)) items.push({ key, members: [key] });
+  for (const key of [...Object.keys(ROW_OF_TILE), ...ownKeys]) if (!inFolder.has(key)) items.push({ key, members: [key] });
   const rank = (key: string) => {
     const sectionId = layout.sections?.[key];
     const section = sectionId && layout.dividers?.[sectionId] ? dividerIds.indexOf(sectionId) + 1 : 0;

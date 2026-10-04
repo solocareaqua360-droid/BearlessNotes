@@ -967,6 +967,15 @@ export default function CustomDatabaseScreen({
           // What's left is the rare, per-database housekeeping. Choosing
           // is on the dock too now - "дві кнопки одна функція це невірно".
           { label: 'Перейменувати базу', icon: 'pencil-outline', onPress: () => setRenamingDatabase(true) },
+          // A row of its own on the start desk's «Робочі столи».
+          {
+            label: 'Показувати на старті',
+            icon: 'home-outline',
+            checked: !!database?.onStart,
+            onPress: () => {
+              if (database) updateDoc(doc(db, 'customDatabases', database.id), { onStart: !database.onStart });
+            },
+          },
           { label: 'Поля', icon: 'options-outline', onPress: () => setEditingFields(true) },
           // A faster way in than opening a saved view's own editor first
           // just to hide a field before saving a new one - the same
