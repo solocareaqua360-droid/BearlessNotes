@@ -1,7 +1,7 @@
 import { useMemo, useRef, type ReactNode } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 
 // App-only. One card that can be tapped, held (a menu opens over it) and,
 // if `draggable`, held and then dragged (it follows the finger and is
@@ -22,14 +22,18 @@ export default function HoldTarget({
   children,
   style,
   draggable = false,
+  dimmed = false,
   tx,
   ty,
   ...handlers
-}: Handlers & { children: ReactNode; style?: StyleProp<ViewStyle>; draggable?: boolean; tx: SharedValue<number>; ty: SharedValue<number> }) {
+}: Handlers & { children: ReactNode; style?: StyleProp<ViewStyle>; draggable?: boolean; dimmed?: boolean; tx: SharedValue<number>; ty: SharedValue<number> }) {
   const ref = useRef<View>(null);
   const latest = useRef<Handlers>(handlers);
   latest.current = handlers;
   const dragging = useSharedValue(false);
+  // A press settles the card a little (0.97) and lets it back.
+  const press = useSharedValue(1);
+  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: press.value }] }));
 
   const gesture = useMemo(() => {
     // The handlers are read through the ref, so the gesture is built once
@@ -43,7 +47,10 @@ export default function HoldTarget({
       else if (name === 'dragEnd') h.onDragEnd?.();
     };
     const pan = Gesture.Pan()
-      .activateAfterLongPress(300)
+      .activateAfterLongPress(450)
+      .onBegin(() => {
+        press.value = withTiming(0.97, { duration: 90 });
+      })
       .onStart(() => {
         dragging.value = false;
         tx.value = 0;
@@ -63,6 +70,7 @@ export default function HoldTarget({
         }
       })
       .onFinalize(() => {
+        press.value = withTiming(1, { duration: 160 });
         if (dragging.value) {
           dragging.value = false;
           runOnJS(call)('dragEnd');
@@ -78,9 +86,9 @@ export default function HoldTarget({
 
   return (
     <GestureDetector gesture={gesture}>
-      <View ref={ref} collapsable={false} style={style}>
+      <Animated.View ref={ref as never} collapsable={false} style={[style, pressStyle, dimmed && { opacity: 0.4 }]}>
         {children}
-      </View>
+      </Animated.View>
     </GestureDetector>
   );
 }

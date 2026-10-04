@@ -1,6 +1,7 @@
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
+import { FOLDER_COLORS, cleanName, emptyLibrary, type Library } from './library';
 import { SKETCH_FORMAT, SKETCH_VERSION, type SketchElement, type SketchFile } from './sketch/format';
 
 // WHERE THE DRAWINGS LIVE: one `<id>.sketch.json` each in the app's own
@@ -64,7 +65,7 @@ export async function saveSketch(file: SketchFile): Promise<void> {
   await LegacyFileSystem.writeAsStringAsync(`${DIR}${file.id}.sketch.json`, JSON.stringify(kept));
 }
 
-// Gone from this phone. The pictures it alone used stay in sketch-images/
+// Gone from this phone for good (the bin is library.ts' `trash`). The pictures it alone used stay in sketch-images/
 // for now (a later clean-up can sweep what no drawing refers to).
 export async function deleteSketch(id: string): Promise<void> {
   await LegacyFileSystem.deleteAsync(`${DIR}${id}.sketch.json`, { idempotent: true });
@@ -127,27 +128,41 @@ export async function importSketch(): Promise<SketchFile | null> {
   return file;
 }
 
-// THE LIBRARY: flat folders and which drawing sits in which. Kept in one
-// file of its own (app-only, NOT in the drawing file: a drawing leaves the
-// phone without its folder). A drawing is in at most one folder; none = the
-// top level. No nesting.
-export type SortKey = 'title' | 'created' | 'updated';
-export type Folder = { id: string; name: string };
-export type Library = { folders: Folder[]; assign: Record<string, string>; sort: SortKey };
-
+// THE LIBRARY: see library.ts. Kept in one file of its own, next to the
+// drawings (a drawing leaves the phone without its folder).
 const LIBRARY = `${LegacyFileSystem.documentDirectory}library.json`;
 
 export async function loadLibrary(): Promise<Library> {
+  let raw: any;
   try {
-    const raw = JSON.parse(await LegacyFileSystem.readAsStringAsync(LIBRARY)) as Partial<Library>;
-    return { folders: raw.folders ?? [], assign: raw.assign ?? {}, sort: raw.sort ?? 'updated' };
+    raw = JSON.parse(await LegacyFileSystem.readAsStringAsync(LIBRARY));
   } catch {
-    return { folders: [], assign: {}, sort: 'updated' };
+    return emptyLibrary();
   }
+  if (raw?.v === 2) return { ...emptyLibrary(), ...raw };
+  // Version 1 (flat folders by id): each folder becomes a top-level path.
+  const lib = emptyLibrary();
+  const byId: Record<string, string> = {};
+  for (const f of raw?.folders ?? []) {
+    const name = cleanName(String(f.name ?? '')) || 'Папка';
+    byId[f.id] = name;
+    if (!lib.folders.some((x) => x.path === name)) lib.folders.push({ path: name, color: FOLDER_COLORS[lib.folders.length % FOLDER_COLORS.length] });
+  }
+  for (const [id, fid] of Object.entries(raw?.assign ?? {})) if (byId[fid as string]) lib.assign[id] = byId[fid as string];
+  if (raw?.sort === 'title') lib.sort = { key: 'title', dir: 'asc' };
+  else if (raw?.sort === 'created') lib.sort = { key: 'created', dir: 'desc' };
+  return lib;
 }
 
 export async function saveLibrary(lib: Library): Promise<void> {
   await LegacyFileSystem.writeAsStringAsync(LIBRARY, JSON.stringify(lib));
 }
 
-export const newFolderId = () => `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+// A copy under a new id; the pictures are shared files, never deleted with
+// a drawing, so the copy can point at the same ones.
+export async function duplicateSketch(file: SketchFile): Promise<SketchFile> {
+  const base = newSketch();
+  const copy: SketchFile = { ...file, id: base.id, title: `${file.title} (копія)`, createdAt: base.createdAt, updatedAt: base.updatedAt };
+  await saveSketch(copy);
+  return copy;
+}
