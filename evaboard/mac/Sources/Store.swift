@@ -13,6 +13,8 @@ struct SyncItem: Codable, Identifiable, Equatable {
     var text: String
     // pictures: their type ("image/png"); the bytes travel separately ("need" -> "blob")
     var mime: String? = nil
+    // files: their size in bytes; text holds the name
+    var size: Int64? = nil
     var ts: Int64
     var pinned: Bool = false
     var mod: Int64
@@ -29,8 +31,11 @@ struct SyncMessage: Codable {
     var gone: [String: Int64]? = nil
     var ids: [String]? = nil
     var id: String? = nil
-    // base64 bytes of a picture
+    // base64 bytes of a picture, or of one part of a file
     var data: String? = nil
+    // a file travels in parts: their number, and whether this is the last
+    var seq: Int? = nil
+    var last: Bool? = nil
 }
 
 func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
@@ -49,6 +54,8 @@ func textId(_ text: String) -> String {
 final class Store: ObservableObject {
     @Published private(set) var items: [String: SyncItem] = [:]
     private(set) var gone: [String: Int64] = [:]
+    // where each file's content is on this Mac (its own file, or the download from the phone)
+    @Published private(set) var paths: [String: String] = [:]
 
     private static let goneKeepMs: Int64 = 30 * 24 * 60 * 60 * 1000
     private let file: URL
@@ -117,6 +124,28 @@ final class Store: ObservableObject {
         return item
     }
 
+    func copiedHere(file url: URL, id: String, size: Int64, mime: String) -> SyncItem {
+        let now = nowMs()
+        var item = items[id] ?? SyncItem(id: id, kind: "file", text: url.lastPathComponent, mime: mime, size: size, ts: now, mod: now)
+        item.ts = now
+        item.mod = now
+        items[id] = item
+        gone[id] = nil
+        paths[id] = url.path
+        save()
+        return item
+    }
+
+    func fileURL(_ id: String) -> URL? {
+        guard let path = paths[id], FileManager.default.fileExists(atPath: path) else { return nil }
+        return URL(fileURLWithPath: path)
+    }
+
+    func setPath(_ id: String, _ url: URL) {
+        paths[id] = url.path
+        save()
+    }
+
     func togglePin(_ id: String) -> SyncItem? {
         guard var item = items[id] else { return nil }
         item.pinned.toggle()
@@ -149,7 +178,7 @@ final class Store: ObservableObject {
     /** True when the list changed. */
     @discardableResult
     func apply(upsert incoming: SyncItem) -> Bool {
-        guard incoming.kind == "text" || incoming.kind == "image" else { return false }
+        guard ["text", "image", "file"].contains(incoming.kind) else { return false }
         if let at = gone[incoming.id], at >= incoming.ts { return false }
         if let local = items[incoming.id] {
             let newer = incoming.ts > local.ts || (incoming.ts == local.ts && incoming.mod > local.mod)
@@ -177,6 +206,7 @@ final class Store: ObservableObject {
     private struct Saved: Codable {
         var items: [SyncItem]
         var gone: [String: Int64]
+        var paths: [String: String]? = nil
     }
 
     private func load() {
@@ -184,6 +214,7 @@ final class Store: ObservableObject {
               let saved = try? JSONDecoder().decode(Saved.self, from: data) else { return }
         items = Dictionary(saved.items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         gone = saved.gone
+        paths = saved.paths ?? [:]
     }
 
     private func save() {
@@ -192,7 +223,8 @@ final class Store: ObservableObject {
             guard let self else { return }
             let cutoff = nowMs() - Store.goneKeepMs
             self.gone = self.gone.filter { $0.value >= cutoff }
-            let saved = Saved(items: Array(self.items.values), gone: self.gone)
+            self.paths = self.paths.filter { self.items[$0.key] != nil }
+            let saved = Saved(items: Array(self.items.values), gone: self.gone, paths: self.paths)
             if let data = try? JSONEncoder().encode(saved) {
                 try? data.write(to: self.file, options: .atomic)
             }

@@ -36,6 +36,8 @@ data class SyncItem(
     val text: String,
     // pictures: their type ("image/png"); the bytes travel separately ("need" -> "blob")
     val mime: String? = null,
+    // files: their size in bytes; [text] holds the name
+    val size: Long? = null,
     val ts: Long,
     val pinned: Boolean = false,
     val mod: Long = ts,
@@ -52,8 +54,11 @@ data class SyncMessage(
     val gone: Map<String, Long>? = null,
     val ids: List<String>? = null,
     val id: String? = null,
-    // base64 bytes of a picture
+    // base64 bytes of a picture, or of one part of a file
     val data: String? = null,
+    // a file travels in parts: their number, and whether this is the last
+    val seq: Int? = null,
+    val last: Boolean? = null,
 )
 
 object MacSyncIds {
@@ -61,6 +66,18 @@ object MacSyncIds {
     fun forText(text: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
         return "t" + digest.joinToString("") { "%02x".format(it) }.take(32)
+    }
+
+    /** A file's id: the hash of its content, read as it streams. */
+    fun forStream(input: java.io.InputStream): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(256 * 1024)
+        while (true) {
+            val n = input.read(buffer)
+            if (n < 0) break
+            digest.update(buffer, 0, n)
+        }
+        return "f" + digest.digest().joinToString("") { "%02x".format(it) }.take(32)
     }
 
     /** A picture's id: the hash of its bytes, which travel unchanged. */

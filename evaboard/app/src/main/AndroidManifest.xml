@@ -146,6 +146,27 @@
         </activity>
 
         <!-- evaBoard: asks for the microphone once on behalf of the keyboard -->
+        <!-- evaBoard: «На Mac» in the Share sheet - sends files and text to the Mac (ime/eva/macsync) -->
+        <activity
+            android:name="dev.patrickgold.florisboard.ime.eva.macsync.EvaShareToMacActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:icon="@mipmap/floris_app_icon"
+            android:label="На Mac"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="*/*"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="*/*"/>
+            </intent-filter>
+        </activity>
+
         <activity
             android:name="dev.patrickgold.florisboard.ime.eva.EvaMicPermissionActivity"
             android:exported="false"

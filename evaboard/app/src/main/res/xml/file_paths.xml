@@ -7,4 +7,11 @@
     <cache-path
         name="eva_update"
         path="eva-update/"/>
+    <!-- evaBoard: files sent to the Mac (copies kept until their card goes) and, before Android 10, files from it -->
+    <files-path
+        name="eva_files"
+        path="eva-files/"/>
+    <external-files-path
+        name="eva_downloads"
+        path="Download/"/>
 </paths>

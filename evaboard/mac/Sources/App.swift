@@ -9,6 +9,8 @@
 // Built by mac/build.sh (no Xcode project): swiftc, an Info.plist, an ad-hoc signature.
 
 import AppKit
+import CryptoKit
+import UniformTypeIdentifiers
 import ServiceManagement
 import SwiftUI
 
@@ -21,11 +23,34 @@ final class Model: ObservableObject {
     @Published var copiedId: String?
 
     private let folder: URL
+    var folderURL: URL { folder }
     private var lastChange = NSPasteboard.general.changeCount
     private var ownChange = -1
     private var watcher: Timer?
     // pictures copied on the phone just now whose bytes are still on their way
     private var freshPictures: Set<String> = []
+    // files from the phone on their way in, part by part
+    private final class Inbound {
+        let item: SyncItem
+        let fresh: Bool
+        let temp: URL
+        let handle: FileHandle
+        var hasher = SHA256()
+        var next = 0
+        init?(item: SyncItem, fresh: Bool, folder: URL) {
+            self.item = item
+            self.fresh = fresh
+            temp = folder.appendingPathComponent(item.id)
+            FileManager.default.createFile(atPath: temp.path, contents: nil)
+            guard let handle = try? FileHandle(forWritingTo: temp) else { return nil }
+            self.handle = handle
+        }
+    }
+    private var inbound: [String: Inbound] = [:]
+    // a file's id is the hash of its content: worked out once per file version
+    private var fileIds: [String: String] = [:]
+    private static let part = 512 * 1024
+    private static let maxFile: Int64 = 2 * 1024 * 1024 * 1024
 
     static let maxPicture = 20 * 1024 * 1024
     static let jpeg = NSPasteboard.PasteboardType("public.jpeg")
@@ -54,6 +79,7 @@ final class Model: ObservableObject {
         }, onMessage: { [unowned self] message, peer in
             self.handle(message, from: peer)
         })
+        link.onPeerGone = { [unowned self] in self.peerGone() }
         link.start()
         watcher = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [unowned self] _ in self.checkPasteboard() }
     }
@@ -68,13 +94,17 @@ final class Model: ObservableObject {
             for item in message.items ?? [] where store.apply(upsert: item) {
                 link.broadcast(SyncMessage(t: "upsert", item: item, fresh: false), except: peer)
                 if item.kind == "image" && !store.hasBlob(item.id) { needed.append(item.id) }
+                if item.kind == "file" && store.fileURL(item.id) == nil && startInbound(item, fresh: false) { needed.append(item.id) }
             }
             if !needed.isEmpty { peer.send(SyncMessage(t: "need", ids: needed)) }
         case "upsert":
             guard let item = message.item, store.apply(upsert: item) else { return }
             link.broadcast(SyncMessage(t: "upsert", item: item, fresh: message.fresh), except: peer)
             let fresh = message.fresh == true && item.ts > nowMs() - 60_000
-            if item.kind == "image" && !store.hasBlob(item.id) {
+            if item.kind == "file" && store.fileURL(item.id) == nil {
+                // the file's content follows in parts; it lands in Downloads and, if fresh, on the clipboard
+                if startInbound(item, fresh: fresh) { peer.send(SyncMessage(t: "need", ids: [item.id])) }
+            } else if item.kind == "image" && !store.hasBlob(item.id) {
                 // the picture's bytes follow on request; it goes on the clipboard once they are here
                 if fresh { freshPictures.insert(item.id) }
                 peer.send(SyncMessage(t: "need", ids: [item.id]))
@@ -88,14 +118,142 @@ final class Model: ObservableObject {
             link.broadcast(SyncMessage(t: "gone", gone: marks), except: peer)
         case "need":
             for id in message.ids ?? [] {
-                if let data = store.blob(id) { peer.send(SyncMessage(t: "blob", id: id, data: data.base64EncodedString())) }
+                if let url = store.fileURL(id) {
+                    stream(id, from: url, to: peer)
+                } else if let data = store.blob(id) {
+                    peer.send(SyncMessage(t: "blob", id: id, data: data.base64EncodedString()))
+                }
             }
+        case "part":
+            receivePart(message)
         case "blob":
             guard let id = message.id, let encoded = message.data, let data = Data(base64Encoded: encoded),
                   store.items[id] != nil, store.saveBlob(id, data) else { return }
             if freshPictures.remove(id) != nil, let item = store.items[id] { put(item, own: true) }
         default:
             break
+        }
+    }
+
+    // MARK: files
+
+    private func startInbound(_ item: SyncItem, fresh: Bool) -> Bool {
+        if inbound[item.id] != nil { return false }
+        if let size = item.size, size > Model.maxFile { return false }
+        let folder = folderURL.appendingPathComponent("incoming", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        guard let job = Inbound(item: item, fresh: fresh, folder: folder) else { return false }
+        inbound[item.id] = job
+        return true
+    }
+
+    private func receivePart(_ message: SyncMessage) {
+        guard let id = message.id, let job = inbound[id] else { return }
+        guard message.seq == job.next, let data = Data(base64Encoded: message.data ?? "") else {
+            // a part went missing: drop it, the next connection asks again
+            dropInbound(id)
+            return
+        }
+        job.hasher.update(data: data)
+        job.handle.write(data)
+        job.next += 1
+        guard message.last == true else { return }
+        inbound[id] = nil
+        try? job.handle.close()
+        let hash = "f" + String(job.hasher.finalize().map { String(format: "%02x", $0) }.joined().prefix(32))
+        guard hash == id, store.items[id] != nil else { try? FileManager.default.removeItem(at: job.temp); return }
+        let target = uniqueDownload(job.item.text.isEmpty ? "file" : job.item.text)
+        do {
+            try FileManager.default.moveItem(at: job.temp, to: target)
+        } catch {
+            try? FileManager.default.removeItem(at: job.temp)
+            return
+        }
+        fileIds[fileKey(target)] = id
+        store.setPath(id, target)
+        if job.fresh, let item = store.items[id] { put(item, own: true) }
+    }
+
+    private func dropInbound(_ id: String) {
+        guard let job = inbound.removeValue(forKey: id) else { return }
+        try? job.handle.close()
+        try? FileManager.default.removeItem(at: job.temp)
+    }
+
+    func peerGone() {
+        for id in Array(inbound.keys) { dropInbound(id) }
+    }
+
+    private func uniqueDownload(_ name: String) -> URL {
+        let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+        let safe = name.replacingOccurrences(of: "/", with: "_")
+        var url = downloads.appendingPathComponent(safe)
+        let base = (safe as NSString).deletingPathExtension
+        let ext = (safe as NSString).pathExtension
+        var n = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = downloads.appendingPathComponent(ext.isEmpty ? "\(base) (\(n))" : "\(base) (\(n)).\(ext)")
+            n += 1
+        }
+        return url
+    }
+
+    /** Sends a file in parts, each after the one before has gone out. */
+    private func stream(_ id: String, from url: URL, to peer: Peer) {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return }
+        var seq = 0
+        var current = handle.readData(ofLength: Model.part)
+        func step() {
+            // one part read ahead, so the last part can say it is the last
+            let next = current.count == Model.part ? handle.readData(ofLength: Model.part) : Data()
+            let last = next.isEmpty
+            peer.send(SyncMessage(t: "part", id: id, data: current.base64EncodedString(), seq: seq, last: last)) {
+                if last {
+                    try? handle.close()
+                } else {
+                    current = next
+                    seq += 1
+                    step()
+                }
+            }
+        }
+        step()
+    }
+
+    private func fileKey(_ url: URL) -> String {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        return "\(url.path)|\(values?.fileSize ?? -1)|\(values?.contentModificationDate?.timeIntervalSince1970 ?? 0)"
+    }
+
+    /** Files copied in Finder: each regular file joins the list once its hash is known. */
+    private func copiedFiles(_ urls: [URL]) {
+        for url in urls {
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard values?.isRegularFile == true, let size = values?.fileSize, Int64(size) <= Model.maxFile else { continue }
+            let key = fileKey(url)
+            let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+            let finish: (String) -> Void = { [weak self] id in
+                guard let self else { return }
+                self.fileIds[key] = id
+                let item = self.store.copiedHere(file: url, id: id, size: Int64(size), mime: mime)
+                self.link.broadcast(SyncMessage(t: "upsert", item: item, fresh: true))
+            }
+            if let id = fileIds[key] {
+                finish(id)
+            } else {
+                DispatchQueue.global(qos: .userInitiated).async {
+                    guard let handle = try? FileHandle(forReadingFrom: url) else { return }
+                    var hasher = SHA256()
+                    while true {
+                        let chunk = handle.readData(ofLength: 1024 * 1024)
+                        if chunk.isEmpty { break }
+                        hasher.update(data: chunk)
+                    }
+                    try? handle.close()
+                    let id = "f" + String(hasher.finalize().map { String(format: "%02x", $0) }.joined().prefix(32))
+                    DispatchQueue.main.async { finish(id) }
+                }
+            }
         }
     }
 
@@ -109,8 +267,12 @@ final class Model: ObservableObject {
         if change == ownChange { return }
         let types = Set((pasteboard.types ?? []).map(\.rawValue))
         if !types.isDisjoint(with: Model.skippedTypes) { return }
-        // a file copied in Finder also carries its name as text and its icon as a picture - not ours (yet)
-        if types.contains(NSPasteboard.PasteboardType.fileURL.rawValue) { return }
+        // a file copied in Finder also carries its name as text and its icon as a picture: take the file
+        if types.contains(NSPasteboard.PasteboardType.fileURL.rawValue) {
+            let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+            copiedFiles(urls)
+            return
+        }
         if let text = pasteboard.string(forType: .string), !text.isEmpty {
             guard text.utf8.count <= 4_000_000 else { return }
             let item = store.copiedHere(text)
@@ -135,7 +297,11 @@ final class Model: ObservableObject {
     private func put(_ item: SyncItem, own: Bool) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        if item.kind == "image" {
+        if item.kind == "file" {
+            // the file itself: Cmd+V in Finder copies it, a chat app attaches it
+            guard let url = store.fileURL(item.id) else { return }
+            pasteboard.writeObjects([url as NSURL])
+        } else if item.kind == "image" {
             guard let data = store.blob(item.id) else { return }
             let type: NSPasteboard.PasteboardType = item.mime == "image/jpeg" ? Model.jpeg : .png
             pasteboard.setData(data, forType: type)
@@ -333,6 +499,8 @@ struct ItemRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 if item.kind == "image" {
                     Thumbnail(id: item.id)
+                } else if item.kind == "file" {
+                    FileLine(item: item)
                 } else {
                     Text(item.text.trimmingCharacters(in: .whitespacesAndNewlines))
                         .font(.system(size: 13))
@@ -405,4 +573,35 @@ struct Thumbnail: View {
 private struct ListHeight: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/** A file in the list: its icon, name and size, and a way to it in Finder. */
+struct FileLine: View {
+    let item: SyncItem
+    @EnvironmentObject private var store: Store
+
+    var body: some View {
+        let url = store.fileURL(item.id)
+        HStack(spacing: 10) {
+            Image(nsImage: url.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSWorkspace.shared.icon(for: .data))
+                .resizable()
+                .frame(width: 32, height: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.text).font(.system(size: 13)).lineLimit(2)
+                Text(url == nil ? "Ще йде з телефону…" : sizeText)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            if let url {
+                Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: { Image(systemName: "folder") }
+                    .buttonStyle(.borderless)
+                    .help("Показати у Finder")
+            }
+        }
+    }
+
+    private var sizeText: String {
+        ByteCountFormatter.string(fromByteCount: item.size ?? 0, countStyle: .file)
+    }
 }

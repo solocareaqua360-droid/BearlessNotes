@@ -14,8 +14,8 @@
  * the last address that worked and tries that first. The wire format is in MacSyncProtocol.kt; the
  * Mac app is evaboard/mac.
  *
- * Text and pictures travel; a picture's bytes go in a message of their own ("need" / "blob"), so a
- * full list stays small. Videos stay on the phone.
+ * Text, pictures and files travel; a picture's bytes go in a message of their own ("need" / "blob"),
+ * a file's in parts ("need" / "part"), so a full list stays small. Videos stay on the phone.
  *
  * Everything that touches the list runs on one thread ([serial]); the socket reads and writes have
  * their own coroutines.
@@ -60,6 +60,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
@@ -77,6 +78,8 @@ object EvaMacSync {
     private const val GONE_KEEP_MS = 30L * 24 * 60 * 60 * 1000
     private const val MAX_FRAME = 32 * 1024 * 1024
     private const val MAX_IMAGE = 20 * 1024 * 1024
+    private const val MAX_FILE = 2L * 1024 * 1024 * 1024
+    private const val PART = 512 * 1024
 
     private val _status = MutableStateFlow("Вимкнено")
     /** One line for the settings card. */
@@ -102,6 +105,15 @@ object EvaMacSync {
     private val waiting = HashMap<String, Pair<SyncItem, Boolean>>()
     // items from the Mac written a moment ago, before they show up in the history: id -> when
     private val arriving = HashMap<String, Long>()
+    // files from the Mac on their way in, part by part
+    private class Incoming(val item: SyncItem, val fresh: Boolean, val temp: File) {
+        val digest: java.security.MessageDigest = java.security.MessageDigest.getInstance("SHA-256")
+        var next = 0
+    }
+    private val inbound = HashMap<String, Incoming>()
+    // file parts going out: a small queue, so a big file is read only as fast as it is sent
+    private var bulk: Channel<SyncMessage>? = null
+    private var sessionScope: CoroutineScope? = null
     private var historyLoaded = false
     private var lastHost: String? = null
     private var outgoing: Channel<SyncMessage>? = null
@@ -206,6 +218,18 @@ object EvaMacSync {
                 val mime = item.mimeTypes.firstOrNull { it.startsWith("image/") } ?: "image/png"
                 SyncItem(id = id, kind = "image", text = "", mime = mime, ts = ts, pinned = item.isPinned, mod = ts)
             }
+            ItemType.FILE -> {
+                val uri = item.uri ?: return null
+                val id = imageIds.getOrPut(uri.toString()) {
+                    EvaFiles.open(app, uri)?.use { MacSyncIds.forStream(it) } ?: return null
+                }
+                val info = EvaFiles.info(app, uri, item.text ?: "file")
+                if (info.size > MAX_FILE) return null
+                SyncItem(
+                    id = id, kind = "file", text = item.text ?: info.name, mime = item.mimeTypes.firstOrNull() ?: info.mime,
+                    size = info.size.takeIf { it >= 0 }, ts = ts, pinned = item.isPinned, mod = ts,
+                )
+            }
             else -> null
         }
     }
@@ -222,7 +246,7 @@ object EvaMacSync {
     }
 
     private fun applyUpsert(incoming: SyncItem, fresh: Boolean = false) {
-        if (incoming.kind != "text" && incoming.kind != "image") return
+        if (incoming.kind != "text" && incoming.kind != "image" && incoming.kind != "file") return
         val keep = MacSyncMerge.upsert(known[incoming.id], gone[incoming.id], incoming) ?: return
         gone.remove(incoming.id)
         val clipboard by app.clipboardManager()
@@ -244,9 +268,13 @@ object EvaMacSync {
             )
             clipboard.insertClip(item)
             if (fresh) makePrimary(item, keep)
-        } else {
+        } else if (keep.kind == "image") {
             // a picture: its bytes come separately, asked for here and written when they arrive
             waiting[keep.id] = keep to fresh
+            send(SyncMessage(type = "need", ids = listOf(keep.id)))
+        } else if (!inbound.containsKey(keep.id) && (keep.size ?: 0) <= MAX_FILE) {
+            // a file: its content comes in parts (applyPart)
+            inbound[keep.id] = Incoming(keep, fresh, File(app.cacheDir, "eva-macsync-in-${keep.id}").apply { delete() })
             send(SyncMessage(type = "need", ids = listOf(keep.id)))
         }
         scheduleSave()
@@ -300,6 +328,10 @@ object EvaMacSync {
     private fun sendBlobs(ids: List<String>) {
         for (id in ids) {
             val row = rows[id] ?: continue
+            if (row.type == ItemType.FILE) {
+                sendFile(id, row)
+                continue
+            }
             if (row.type != ItemType.IMAGE) continue
             val bytes = imageBytes(row) ?: continue
             if (bytes.size > MAX_IMAGE) continue
@@ -307,11 +339,88 @@ object EvaMacSync {
         }
     }
 
+    /** Streams a file in parts on the bulk queue, off the list's thread. */
+    private fun sendFile(id: String, row: ClipboardItem) {
+        val out = bulk ?: return
+        val uri = row.uri ?: return
+        sessionScope?.launch(Dispatchers.IO) {
+            try {
+                EvaFiles.open(app, uri)?.use { input ->
+                    var current = readPart(input)
+                    var seq = 0
+                    while (true) {
+                        // one part read ahead, so the last part can say it is the last
+                        val next = if (current.size == PART) readPart(input) else ByteArray(0)
+                        val last = next.isEmpty()
+                        out.send(SyncMessage(type = "part", id = id, seq = seq, last = last, data = Base64.encodeToString(current, Base64.NO_WRAP)))
+                        if (last) break
+                        current = next
+                        seq++
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /** Up to one part's worth of bytes; fewer only at the end of the file. */
+    private fun readPart(input: java.io.InputStream): ByteArray {
+        val buffer = ByteArray(PART)
+        var filled = 0
+        while (filled < PART) {
+            val n = input.read(buffer, filled, PART - filled)
+            if (n < 0) break
+            filled += n
+        }
+        return if (filled == PART) buffer else buffer.copyOf(filled)
+    }
+
+    private fun applyPart(message: SyncMessage) {
+        val id = message.id ?: return
+        val job = inbound[id] ?: return
+        if (message.seq != job.next) { // a part went missing: start again next time
+            inbound.remove(id)?.temp?.delete()
+            return
+        }
+        val bytes = try { Base64.decode(message.data ?: "", Base64.NO_WRAP) } catch (_: Exception) { return }
+        job.digest.update(bytes)
+        job.temp.appendBytes(bytes)
+        job.next++
+        if (message.last != true) return
+        inbound.remove(id)
+        val hash = "f" + job.digest.digest().joinToString("") { "%02x".format(it) }.take(32)
+        val keep = job.item
+        val uri = if (hash == id) EvaFiles.saveDownload(app, job.temp, keep.text.ifBlank { "file" }, keep.mime ?: EvaFiles.mimeFor(keep.text)) else null
+        job.temp.delete()
+        if (uri == null) return
+        imageIds[uri.toString()] = id
+        known[id] = keep
+        arriving[id] = System.currentTimeMillis()
+        val clipboard by app.clipboardManager()
+        clipboard.insertClip(
+            ClipboardItem(
+                type = ItemType.FILE,
+                text = keep.text,
+                uri = uri,
+                creationTimestampMs = keep.ts,
+                isPinned = keep.pinned,
+                mimeTypes = listOf(keep.mime ?: EvaFiles.mimeFor(keep.text)),
+            )
+        )
+        if (job.fresh) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(app, "Файл з Mac у «Завантаженнях»: ${keep.text}", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+        scheduleSave()
+    }
+
     private fun applyGone(marks: Map<String, Long>) {
         val clipboard by app.clipboardManager()
         for ((id, at) in marks) {
             gone[id] = maxOf(gone[id] ?: Long.MIN_VALUE, at)
             waiting.remove(id)
+            inbound.remove(id)?.temp?.delete()
             val local = known[id] ?: continue
             if (MacSyncMerge.removes(local, at)) {
                 known.remove(id)
@@ -332,6 +441,7 @@ object EvaMacSync {
             "gone" -> message.gone?.let { applyGone(it) }
             "need" -> message.ids?.let { sendBlobs(it) }
             "blob" -> if (message.id != null && message.data != null) applyBlob(message.id, message.data)
+            "part" -> applyPart(message)
         }
     }
 
@@ -468,11 +578,17 @@ object EvaMacSync {
         val input = DataInputStream(BufferedInputStream(socket.getInputStream()))
         val output = DataOutputStream(BufferedOutputStream(socket.getOutputStream()))
         val channel = Channel<SyncMessage>(Channel.UNLIMITED)
+        val parts = Channel<SyncMessage>(4)
         val host = "${socket.inetAddress.hostAddress}|${socket.port}"
 
         val writer = launch(Dispatchers.IO) {
             try {
-                for (message in channel) {
+                while (true) {
+                    // list changes go before file parts: select prefers its first clause
+                    val message = select<SyncMessage?> {
+                        channel.onReceiveCatching { it.getOrNull() }
+                        parts.onReceiveCatching { it.getOrNull() }
+                    } ?: break
                     val sealed = cipher.seal(json.encodeToString(SyncMessage.serializer(), message).toByteArray())
                     output.writeInt(sealed.size)
                     output.write(sealed)
@@ -485,6 +601,8 @@ object EvaMacSync {
         // our hello and our whole list go first; from then on every change follows on its own
         withContext(serial) {
             outgoing = channel
+            bulk = parts
+            sessionScope = this@coroutineScope
             channel.trySend(SyncMessage(type = "hello", device = deviceName(), v = MAC_SYNC_PROTOCOL_VERSION))
             channel.trySend(SyncMessage(type = "snapshot", items = known.values.toList(), gone = HashMap(gone)))
         }
@@ -526,8 +644,17 @@ object EvaMacSync {
         } finally {
             withContext(kotlinx.coroutines.NonCancellable + serial) {
                 if (outgoing === channel) outgoing = null
+                if (bulk === parts) {
+                    bulk = null
+                    sessionScope = null
+                }
+                // files half-received start again on the next connection
+                inbound.values.forEach { it.temp.delete() }
+                inbound.clear()
+                waiting.clear()
             }
             channel.close()
+            parts.close()
             pinger.cancel()
             writer.cancel()
         }

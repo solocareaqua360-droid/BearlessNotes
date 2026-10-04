@@ -63,7 +63,9 @@ private const val CLIPBOARD_FILES_TABLE = "clipboard_files"
 enum class ItemType(val value: Int) {
     TEXT(1),
     IMAGE(2),
-    VIDEO(3);
+    VIDEO(3),
+    // evaBoard: a file sent between the phone and the Mac (ime/eva/macsync/EvaFiles.kt); text = its name
+    FILE(4);
 
     companion object {
         fun fromInt(value : Int) : ItemType {
@@ -177,7 +179,7 @@ data class ClipboardItem @OptIn(ExperimentalSerializationApi::class) constructor
             val text = dataItem.text?.toString()
             val mimeTypes = when (type) {
                 ItemType.TEXT -> TEXT_PLAIN
-                ItemType.IMAGE, ItemType.VIDEO -> {
+                ItemType.IMAGE, ItemType.VIDEO, ItemType.FILE -> {
                     List(data.description.mimeTypeCount) { data.description.getMimeType(it) }
                 }
             }
@@ -204,7 +206,7 @@ data class ClipboardItem @OptIn(ExperimentalSerializationApi::class) constructor
         if (other == null) return false
         return when (type) {
             ItemType.TEXT -> text == other.getItemAt(0).text
-            ItemType.IMAGE, ItemType.VIDEO -> uri == other.getItemAt(0).uri
+            ItemType.IMAGE, ItemType.VIDEO, ItemType.FILE -> uri == other.getItemAt(0).uri
         }
     }
 
@@ -216,7 +218,7 @@ data class ClipboardItem @OptIn(ExperimentalSerializationApi::class) constructor
             ItemType.TEXT -> {
                 ClipData.newPlainText(FLORIS_CLIP_LABEL, text)
             }
-            ItemType.IMAGE, ItemType.VIDEO -> {
+            ItemType.IMAGE, ItemType.VIDEO, ItemType.FILE -> {
                 ClipData.newUri(context.contentResolver, FLORIS_CLIP_LABEL, uri)
             }
         }
@@ -228,6 +230,8 @@ data class ClipboardItem @OptIn(ExperimentalSerializationApi::class) constructor
     fun close(context: Context) {
         if (type == ItemType.IMAGE) {
             tryOrNull { context.contentResolver.delete(this.uri!!, null, null) }
+        } else if (type == ItemType.FILE) {
+            dev.patrickgold.florisboard.ime.eva.macsync.EvaFiles.release(context, uri)
         }
     }
 

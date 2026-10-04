@@ -81,6 +81,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.produceState
 import dev.patrickgold.florisboard.ime.eva.EvaIcons
+import dev.patrickgold.florisboard.ime.eva.macsync.EvaFiles
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -147,10 +148,11 @@ private val DialogWidth = 240.dp
 const val CLIPBOARD_HISTORY_NUM_GRID_COLUMNS_AUTO: Int = 0
 
 /** evaBoard: what a card is, as the user tells them apart: text, a link, or a picture (videos count as pictures). */
-private enum class ClipKind { TEXT, LINK, IMAGE }
+private enum class ClipKind { TEXT, LINK, IMAGE, FILE }
 
 private fun clipKind(item: ClipboardItem): ClipKind = when {
     item.type == ItemType.IMAGE || item.type == ItemType.VIDEO -> ClipKind.IMAGE
+    item.type == ItemType.FILE -> ClipKind.FILE
     EvaLinkPreviews.singleUrl(item.text) != null -> ClipKind.LINK
     else -> ClipKind.TEXT
 }
@@ -343,6 +345,19 @@ fun ClipboardInputLayout(
                         text = bitmap.exceptionOrNull()?.message ?: "Unknown error",
                     )
                 }
+            } else if (item.type == ItemType.FILE) {
+                // evaBoard: a file (from the Mac, or sent to it): its name under a file icon
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 12.dp, top = 38.dp, end = 12.dp, bottom = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    SnyggIcon(modifier = Modifier.size(34.dp), imageVector = EvaIcons.lucide("file"))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SnyggText(text = item.text ?: "Файл")
+                }
             } else if (!contentScrollInsteadOfClip && clipKind(item) == ClipKind.LINK) {
                 // evaBoard: a copied link; with previews on, the page's picture and title (ClipLinkPreview.kt)
                 LinkPreviewCard(EvaLinkPreviews.singleUrl(item.text)!!, preview = previewsOn)
@@ -370,7 +385,11 @@ fun ClipboardInputLayout(
             }
             if (!contentScrollInsteadOfClip && clipKind(item) != ClipKind.LINK) {
                 ClipKindBadge(
-                    icon = if (clipKind(item) == ClipKind.IMAGE) "image" else "type",
+                    icon = when (clipKind(item)) {
+                        ClipKind.IMAGE -> "image"
+                        ClipKind.FILE -> "file"
+                        else -> "type"
+                    },
                     overPicture = clipKind(item) == ClipKind.IMAGE,
                     modifier = Modifier.align(Alignment.TopStart),
                 )
@@ -508,12 +527,24 @@ fun ClipboardInputLayout(
                                 clipboardManager.deleteClip(popupItem!!, onlyIfUnpinned = false)
                                 popupItem = null
                             }
-                            PopupAction(
-                                icon = EvaIcons.lucide("clipboard-paste"),
-                                text = stringRes(R.string.clip__paste_item),
-                            ) {
-                                clipboardManager.pasteItem(popupItem!!)
-                                popupItem = null
+                            if (popupItem!!.type == ItemType.FILE) {
+                                // evaBoard: a file has nowhere to be pasted on Android - it is shared or opened
+                                PopupAction(icon = EvaIcons.lucide("share-2"), text = "Поділитися") {
+                                    EvaFiles.share(context, popupItem!!)
+                                    popupItem = null
+                                }
+                                PopupAction(icon = EvaIcons.lucide("external-link"), text = "Відкрити") {
+                                    EvaFiles.view(context, popupItem!!)
+                                    popupItem = null
+                                }
+                            } else {
+                                PopupAction(
+                                    icon = EvaIcons.lucide("clipboard-paste"),
+                                    text = stringRes(R.string.clip__paste_item),
+                                ) {
+                                    clipboardManager.pasteItem(popupItem!!)
+                                    popupItem = null
+                                }
                             }
                         }
                     }

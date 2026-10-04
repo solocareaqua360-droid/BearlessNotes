@@ -53,14 +53,15 @@ final class Peer {
         readLength()
     }
 
-    func send(_ message: SyncMessage) {
+    /** [then] runs once the frame has gone out - file parts wait for it, so a big file is not read all at once. */
+    func send(_ message: SyncMessage, then: (() -> Void)? = nil) {
         guard !closed, let plain = try? JSONEncoder().encode(message),
               let sealed = try? AES.GCM.seal(plain, using: key).combined else { return }
         var length = UInt32(sealed.count).bigEndian
         var frame = Data(bytes: &length, count: 4)
         frame.append(sealed)
         connection.send(content: frame, completion: .contentProcessed { [weak self] error in
-            if error != nil { self?.close() }
+            if error != nil { self?.close() } else { then?() }
         })
     }
 
@@ -107,6 +108,8 @@ final class Link: ObservableObject {
     private let onMessage: (SyncMessage, Peer) -> Void
     private let snapshot: () -> SyncMessage
     private var pinger: Timer?
+    /** A phone went away: half-received files start again next time. */
+    var onPeerGone: (() -> Void)?
 
     init(code: String, snapshot: @escaping () -> SyncMessage, onMessage: @escaping (SyncMessage, Peer) -> Void) {
         key = PairingCode.key(for: code)
@@ -168,6 +171,7 @@ final class Link: ObservableObject {
         }, onClose: { [weak self] peer in
             self?.peers.removeAll { $0 === peer }
             self?.refreshNames()
+            self?.onPeerGone?()
         })
         peers.append(peer)
         peer.start()

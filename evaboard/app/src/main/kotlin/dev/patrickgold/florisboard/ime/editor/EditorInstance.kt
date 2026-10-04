@@ -339,6 +339,24 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
                 val flags = InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION
                 InputConnectionCompat.commitContent(ic, activeInfo.base, inputContentInfo, flags, null)
             }
+            // evaBoard: a file pastes only where the field takes its type; anywhere else it opens Share
+            ItemType.FILE -> {
+                val uri = item.uri ?: return false
+                val accepted = activeInfo.contentMimeTypes.any { editorType ->
+                    mimeTypes.any { dev.patrickgold.florisboard.ime.clipboard.ClipboardManager.compareMimeTypes(it, editorType) }
+                }
+                val ic = currentInputConnection()
+                if (accepted && ic != null) {
+                    ic.finishComposingText()
+                    val info = InputContentInfoCompat(uri, ClipDescription(item.text ?: "file", mimeTypes.toTypedArray()), null)
+                    InputConnectionCompat.commitContent(
+                        ic, activeInfo.base, info, InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION, null,
+                    )
+                } else {
+                    dev.patrickgold.florisboard.ime.eva.macsync.EvaFiles.share(appContext, item)
+                    true
+                }
+            }
         }.also {
             if (prefs.clipboard.historyHideOnPaste.get()) {
                 keyboardManager.activeState.imeUiMode = ImeUiMode.TEXT

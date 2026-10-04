@@ -145,6 +145,7 @@ data class ClipboardSuggestionCandidate(
         }
         ItemType.IMAGE -> Icons.Default.Image
         ItemType.VIDEO -> Icons.Default.Videocam
+        ItemType.FILE -> dev.patrickgold.florisboard.ime.eva.EvaIcons.lucide("file")
     }
 }
 

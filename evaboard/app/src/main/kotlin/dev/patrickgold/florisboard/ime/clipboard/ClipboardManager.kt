@@ -352,7 +352,10 @@ class ClipboardManager(
             } else {
                 clipHistoryDao?.delete(item.id)
             }
-            tryOrNull {
+            // evaBoard: a file card's download stays in Downloads; only its private copy goes
+            if (item.type == ItemType.FILE) {
+                dev.patrickgold.florisboard.ime.eva.macsync.EvaFiles.release(appContext, item.uri)
+            } else tryOrNull {
                 val uri = item.uri
                 if (uri != null) {
                     appContext.contentResolver.delete(uri, null, null)
