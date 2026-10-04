@@ -12,6 +12,13 @@ import { useEffect, useState } from 'react';
 // instead (usePullToSearch). Set it true to bring the bead back.
 export const MULTITASK_BEAD = false;
 
+// THE THIRD EXPERIMENT (2026-10-04): the switcher takes the round button on
+// the RIGHT of the soft dock, and "+" moves inside the search field, at its
+// right end - "замість кнопки створення у нас буде кнопка багатозадачності".
+// Only where the switcher can open (the desks in front); elsewhere the dock
+// is as it was. Set it false to bring "+" back to the round button.
+export const MULTITASK_RIGHT = true;
+
 let opener: (() => void) | null = null;
 const listeners = new Set<() => void>();
 
@@ -38,4 +45,18 @@ export function useDeskSwitcherAvailable(): boolean {
     };
   }, []);
   return MULTITASK_BEAD && available;
+}
+
+// Whether the switcher can be opened from the dock's right button.
+export function useDeskSwitcherRight(): boolean {
+  const [available, setAvailable] = useState(!!opener);
+  useEffect(() => {
+    const listener = () => setAvailable(!!opener);
+    listeners.add(listener);
+    listener();
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
+  return MULTITASK_RIGHT && available;
 }

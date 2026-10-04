@@ -7,7 +7,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Ionicons } from './icons/Ionicons';
 import { openCapture } from './CaptureWindow';
-import { openDeskSwitcher, useDeskSwitcherAvailable } from '../navigation/deskSwitcherBus';
+import { openDeskSwitcher, useDeskSwitcherAvailable, useDeskSwitcherRight } from '../navigation/deskSwitcherBus';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Rect } from 'react-native-svg';
 import { GlassPortal } from './GlassPortal';
@@ -807,6 +807,7 @@ export default function ContextDock() {
   const beads = withChatHold(useNavDockBeads());
   // The experiment: a round button for the open desks, left of the search.
   const switcherAvailable = useDeskSwitcherAvailable();
+  const switcherRight = useDeskSwitcherRight();
   // Declared, not inferred - see useDockWide's own comment. A screen that
   // publishes neither bead while asking for this reads as "give the
   // middle the room those slots would have held", whether or not it also
@@ -2236,6 +2237,9 @@ export default function ContextDock() {
     const right = beads.right;
     const leftIcon = left ? SOFT_DOCK_GLYPHS[left.icon] : undefined;
     const rightIcon = right ? SOFT_DOCK_GLYPHS[right.icon] : undefined;
+    // The switcher on the right, "+" inside the field (deskSwitcherBus's
+    // MULTITASK_RIGHT) - only with the field and "+" both there to merge.
+    const multitask = switcherRight && !dockSearch && !!left && !left.round && !!right;
     return (
       <DockPortal>
         <Animated.View
@@ -2262,7 +2266,49 @@ export default function ContextDock() {
               <Ionicons name="copy-outline" size={21} color={soft.ink} />
             </Pressable>
           )}
-          {dockSearch ? (
+          {multitask && left && right ? (
+            <>
+              <View style={[styles.softField, surface, { paddingLeft: 0, paddingRight: 0, gap: 0 }]}>
+                <Pressable
+                  onPress={left.onPress}
+                  onLongPress={left.onLongPress}
+                  disabled={left.dimmed}
+                  accessibilityLabel={left.label ?? (left.active ? 'Закрити пошук' : 'Пошук')}
+                  style={styles.softFieldPart}
+                >
+                  {leftIcon ? (
+                    <SoftIcon name={leftIcon} size={20} color={soft.ink2} />
+                  ) : (
+                    <Ionicons name={left.icon as keyof typeof Ionicons.glyphMap} size={19} color={soft.ink2} />
+                  )}
+                  <Text style={[styles.softFieldText, { color: soft.ink3 }]} numberOfLines={1}>
+                    {left.label ?? (left.active ? 'Закрити пошук' : 'Пошук')}
+                  </Text>
+                </Pressable>
+                <View style={[styles.softFieldRule, { backgroundColor: soft.line }]} />
+                <Pressable
+                  onPress={right.onPress}
+                  onLongPress={right.onLongPress}
+                  disabled={right.dimmed}
+                  accessibilityLabel="Створити"
+                  style={[styles.softFieldCreate, { opacity: right.dimmed ? 0.5 : 1 }]}
+                >
+                  {rightIcon ? (
+                    <SoftIcon name={rightIcon} size={22} color={soft.ink} />
+                  ) : (
+                    <Ionicons name={right.icon as keyof typeof Ionicons.glyphMap} size={21} color={soft.ink} />
+                  )}
+                </Pressable>
+              </View>
+              <Pressable
+                onPress={openDeskSwitcher}
+                accessibilityLabel="Відкриті вкладки"
+                style={[styles.softButton, surface, { width: TWO_BEAD }]}
+              >
+                <Ionicons name="copy-outline" size={21} color={soft.ink} />
+              </Pressable>
+            </>
+          ) : dockSearch ? (
             <SoftSearchField key={dockSearch.placeholder} search={dockSearch} soft={soft} height={TWO_BEAD} />
           ) : left?.round ? (
             // A left bead that is a button, round as the right one, with
@@ -2299,7 +2345,7 @@ export default function ContextDock() {
           ) : (
             <View style={{ flex: 1 }} />
           )}
-          {right && (
+          {right && !multitask && (
             <Pressable
               onPress={right.onPress}
               onLongPress={right.onLongPress}
@@ -2877,6 +2923,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 18,
+  },
+  // The search field with "+" inside it (MULTITASK_RIGHT): the search
+  // part, a hairline, and "+" at the field's right end.
+  softFieldPart: {
+    flex: 1,
+    height: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingLeft: 18,
+  },
+  softFieldRule: {
+    width: StyleSheet.hairlineWidth,
+    height: '46%',
+  },
+  softFieldCreate: {
+    width: 52,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   softFieldText: {
     flex: 1,
