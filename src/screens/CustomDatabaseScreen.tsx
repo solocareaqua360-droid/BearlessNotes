@@ -1,3 +1,5 @@
+import { appendToLessonNote, captureVideoFrame, formatStamp, frameBlocks, timecodeBlocks } from '../utils/videoFrames';
+import { stopScreenCapture, supportsScreenCapture } from '../utils/mindevaNative';
 import type { MenuEntry } from '../components/surfaces/Menu';
 import { usePaneBar } from '../navigation/paneBar';
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
@@ -470,6 +472,43 @@ export default function CustomDatabaseScreen({
   // Which lesson plays in its own card (one at a time - see
   // InlineVideoPlayer), and which one is open on the whole screen.
   const [playingLessonId, setPlayingLessonId] = useState<string | null>(null);
+  // The playing lesson's moment, and the corners of its player (for a
+  // frame) - and what was just put in its note, said for a moment.
+  const lessonTime = useRef(0);
+  const lessonTL = useRef<View>(null);
+  const lessonBR = useRef<View>(null);
+  const [lessonFlash, setLessonFlash] = useState<string | null>(null);
+  useEffect(() => {
+    if (playingLessonId === null) {
+      stopScreenCapture();
+      lessonTime.current = 0;
+    }
+  }, [playingLessonId]);
+  useEffect(() => () => stopScreenCapture(), []);
+  const flash = (text: string) => {
+    setLessonFlash(text);
+    setTimeout(() => setLessonFlash((now) => (now === text ? null : now)), 2500);
+  };
+  async function stampLesson(lesson: { id: string; title?: string; url: string }) {
+    const t = lessonTime.current;
+    await appendToLessonNote({ id: lesson.id, title: lesson.title || hostOf(lesson.url) }, timecodeBlocks(t));
+    hapticSuccess();
+    flash(`Таймкод ${formatStamp(t)} - у нотатці`);
+  }
+  async function frameLesson(lesson: { id: string; title?: string; url: string }) {
+    const t = lessonTime.current;
+    const shot = await captureVideoFrame(lessonTL.current, lessonBR.current);
+    if (!shot) {
+      flash('Кадр не вийшов');
+      return;
+    }
+    await appendToLessonNote(
+      { id: lesson.id, title: lesson.title || hostOf(lesson.url) },
+      await frameBlocks(shot, getVideoEmbedInfo(lesson.url)?.provider === 'youtube' ? t : null)
+    );
+    hapticSuccess();
+    flash('Кадр - у нотатці');
+  }
   const [fullscreenLessonUrl, setFullscreenLessonUrl] = useState<string | null>(null);
   // A page closed (or another opened) stops its video.
   useEffect(() => setPlayingLessonId(null), [rowPageId]);
@@ -2506,7 +2545,14 @@ export default function CustomDatabaseScreen({
       <View key={lesson.id} style={{ borderRadius: 18, overflow: 'hidden', backgroundColor: softCard }}>
         {playing ? (
           <View style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' }}>
-            <InlineVideoPlayer url={lesson.url} />
+            <InlineVideoPlayer
+              url={lesson.url}
+              onTime={(t) => {
+                lessonTime.current = t;
+              }}
+            />
+            <View ref={lessonTL} collapsable={false} pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1 }} />
+            <View ref={lessonBR} collapsable={false} pointerEvents="none" style={{ position: 'absolute', right: 0, bottom: 0, width: 1, height: 1 }} />
           </View>
         ) : (
           <Pressable
@@ -2527,6 +2573,29 @@ export default function CustomDatabaseScreen({
           </Text>
           {playing && (
             <View style={{ flexDirection: 'row', gap: 8 }}>
+              {/* The moment the video is at, into the lesson's note: its
+                  time (a tap on it in the note seeks the video there), or
+                  a frame with the time under it. */}
+              {getVideoEmbedInfo(lesson.url)?.provider === 'youtube' && (
+                <Pressable
+                  onPress={() => stampLesson(lesson)}
+                  accessibilityLabel="Таймкод у нотатку"
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 14, backgroundColor: withAlpha(softInk, 0.06) }}
+                >
+                  <Ionicons name="time-outline" size={16} color={softInk} />
+                  <Text style={{ color: softInk, fontSize: 14 }}>Таймкод</Text>
+                </Pressable>
+              )}
+              {supportsScreenCapture && (
+                <Pressable
+                  onPress={() => frameLesson(lesson)}
+                  accessibilityLabel="Кадр у нотатку"
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 14, backgroundColor: withAlpha(softInk, 0.06) }}
+                >
+                  <Ionicons name="camera-outline" size={16} color={softInk} />
+                  <Text style={{ color: softInk, fontSize: 14 }}>Кадр</Text>
+                </Pressable>
+              )}
               <Pressable
                 onPress={() => {
                   setPlayingLessonId(null);
@@ -2545,6 +2614,9 @@ export default function CustomDatabaseScreen({
                 <Text style={{ color: softInk, fontSize: 14 }}>Зупинити</Text>
               </Pressable>
             </View>
+          )}
+          {playing && !!lessonFlash && (
+            <Text style={{ color: accent, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{lessonFlash}</Text>
           )}
           <Pressable
             onPress={openNote}

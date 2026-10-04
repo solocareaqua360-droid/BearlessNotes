@@ -1,3 +1,4 @@
+import { frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { RADIUS } from '../theme/scale';
 import { whenDeskIsThere } from '../navigation/deskRegistry';
 import { useNoteOpened } from '../navigation/recentPlaces';
@@ -124,7 +125,7 @@ import ReferencePanel from '../components/ReferencePanel';
 import CrashBoundary from '../components/CrashBoundary';
 import { assembleWithDivider } from '../utils/canvasOrder';
 import { stableStringify } from '../utils/stableStringify';
-import { hapticToggle } from '../utils/haptics';
+import { hapticSuccess, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { type VideoSeek } from '../components/InlineVideoPlayer';
@@ -3582,6 +3583,20 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     );
   }
 
+  // The moment the player is at, put into the note: after the block with
+  // the caret, or at the end when there is none (utils/videoFrames).
+  function insertVideoBlocks(created: Block[]) {
+    snapshotBeforeChange();
+    const afterId = focusedBlockIdRef.current;
+    setBlocks((prev) => {
+      const next = [...prev];
+      const at = afterId ? next.findIndex((b) => b.id === afterId) : -1;
+      next.splice(at === -1 ? next.length : at + 1, 0, ...created);
+      return next;
+    });
+    hapticSuccess();
+  }
+
   function openTimecode(blockId: string, seconds: number) {
     const url = videoForBlock(blockId);
     if (url) playNoteVideo(url, seconds);
@@ -6061,6 +6076,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             setNoteVideo(null);
           }}
           onClose={() => setNoteVideo(null)}
+          onTimecode={(seconds) => insertVideoBlocks(timecodeBlocks(seconds))}
+          onFrame={async (shot, seconds) => insertVideoBlocks(await frameBlocks(shot, seconds))}
         />
       ) : ownerVideoUrl ? (
         <Pressable

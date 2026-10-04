@@ -1,7 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import InlineVideoPlayer, { type VideoSeek } from './InlineVideoPlayer';
+import { getVideoEmbedInfo } from '../utils/videoEmbed';
+import { captureVideoFrame, type VideoShot } from '../utils/videoFrames';
+import { stopScreenCapture, supportsScreenCapture } from '../utils/mindevaNative';
 
 // THE NOTE'S OWN PLAYER (DocumentEditorScreen's noteVideo), pinned in a
 // corner of the page - RESIZABLE and MOVABLE the way YouTube's mini
@@ -14,7 +17,7 @@ import InlineVideoPlayer, { type VideoSeek } from './InlineVideoPlayer';
 // Its own component so a drag re-renders this panel, not the whole
 // editor. Size and corner are kept for the session: the next video opens
 // where and how big the last one was left.
-const MIN_WIDTH = 160;
+const MIN_WIDTH = 230;
 const SIDE = 12;
 type Corner = { right: boolean; bottom: boolean };
 let lastWidth: number | null = null;
@@ -35,6 +38,8 @@ export default function NoteVideoPanel({
   styles,
   onFullscreen,
   onClose,
+  onTimecode,
+  onFrame,
 }: {
   url: string;
   start: number;
@@ -50,7 +55,22 @@ export default function NoteVideoPanel({
   styles: Styles;
   onFullscreen: () => void;
   onClose: () => void;
+  // The moment the video is at, put into the note: its time (YouTube
+  // only), or a frame taken off the screen (where the APK can) with the
+  // time, or null when the video does not report one.
+  onTimecode?: (seconds: number) => void;
+  onFrame?: (shot: VideoShot, seconds: number | null) => void;
 }) {
+  const youtube = getVideoEmbedInfo(url)?.provider === 'youtube';
+  const time = useRef(0);
+  const frameTL = useRef<View>(null);
+  const frameBR = useRef<View>(null);
+  // The screen capture lasts as long as this player does.
+  useEffect(() => () => stopScreenCapture(), []);
+  async function takeFrame() {
+    const shot = await captureVideoFrame(frameTL.current, frameBR.current);
+    if (shot && onFrame) onFrame(shot, youtube ? time.current : null);
+  }
   const maxWidth = windowWidth - SIDE * 2;
   const clamp = (w: number) => Math.max(MIN_WIDTH, Math.min(maxWidth, w));
   const [width, setWidth] = useState(() => clamp(lastWidth ?? Math.min(maxWidth, 420)));
@@ -150,12 +170,34 @@ export default function NoteVideoPanel({
       ]}
     >
       <View style={styles.noteVideoFrame}>
-        <InlineVideoPlayer key={url} url={url} start={start} seek={seek} />
+        <InlineVideoPlayer
+          key={url}
+          url={url}
+          start={start}
+          seek={seek}
+          onTime={(t) => {
+            time.current = t;
+          }}
+        />
+        <View ref={frameTL} collapsable={false} pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1 }} />
+        <View ref={frameBR} collapsable={false} pointerEvents="none" style={{ position: 'absolute', right: 0, bottom: 0, width: 1, height: 1 }} />
       </View>
       <View style={styles.noteVideoActions}>
         {/* The resize grip on the free side - away from the pinned edge. */}
         {corner.right && resizeGrip}
         {moveGrip}
+        {youtube && onTimecode && (
+          <Pressable style={styles.noteVideoButton} onPress={() => onTimecode(time.current)} accessibilityLabel="Таймкод у нотатку">
+            <Ionicons name="time-outline" size={16} color={ink} />
+            {!compact && <Text style={[styles.noteVideoLabel, { color: ink }]}>Таймкод</Text>}
+          </Pressable>
+        )}
+        {supportsScreenCapture && onFrame && (
+          <Pressable style={styles.noteVideoButton} onPress={takeFrame} accessibilityLabel="Кадр у нотатку">
+            <Ionicons name="camera-outline" size={16} color={ink} />
+            {!compact && <Text style={[styles.noteVideoLabel, { color: ink }]}>Кадр</Text>}
+          </Pressable>
+        )}
         <Pressable style={styles.noteVideoButton} onPress={onFullscreen}>
           <Ionicons name="expand-outline" size={16} color={ink} />
           {!compact && <Text style={[styles.noteVideoLabel, { color: ink }]}>На весь екран</Text>}
