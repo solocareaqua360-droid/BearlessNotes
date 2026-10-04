@@ -6,8 +6,9 @@
  * two meet again after a while apart (another network, the phone asleep), they swap their full lists
  * and merge them. Items the phone marks as sensitive (passwords) never leave it.
  *
- * Mac copies land in the keyboard's history only - they never replace what the phone's own clipboard
- * holds. The other way round, a fresh phone copy is put on the Mac's clipboard (Cmd+V works at once).
+ * A fresh copy on either side also becomes the other side's own clipboard: Cmd+V on the Mac pastes
+ * what was just copied on the phone, and Paste in any phone app takes what was just copied on the Mac.
+ * Items that only arrive with the full list (after time apart) join the history and nothing more.
  *
  * The phone side is a client: it looks for the Mac over Bonjour (MAC_SYNC_SERVICE_TYPE), remembers
  * the last address that worked and tries that first. The wire format is in MacSyncProtocol.kt; the
@@ -165,7 +166,7 @@ object EvaMacSync {
         scheduleSave()
     }
 
-    private fun applyUpsert(incoming: SyncItem) {
+    private fun applyUpsert(incoming: SyncItem, fresh: Boolean = false) {
         if (incoming.kind != "text") return
         val keep = MacSyncMerge.upsert(known[incoming.id], gone[incoming.id], incoming) ?: return
         gone.remove(incoming.id)
@@ -185,6 +186,21 @@ object EvaMacSync {
             )
         } else {
             clipboard.evaUpdateClip(row.copy(creationTimestampMs = keep.ts, isPinned = keep.pinned))
+        }
+        // copied on the Mac just now: also the phone's own clipboard, so any app's Paste takes it.
+        // Set as the keyboard's primary clip first, so the system's change callback sees nothing new
+        // and does not add it to the history a second time.
+        if (fresh && System.currentTimeMillis() - keep.ts < 60_000L) {
+            clipboard.updatePrimaryClip(
+                ClipboardItem(
+                    type = ItemType.TEXT,
+                    text = keep.text,
+                    uri = null,
+                    creationTimestampMs = keep.ts,
+                    isPinned = keep.pinned,
+                    mimeTypes = listOf("text/plain"),
+                )
+            )
         }
         scheduleSave()
     }
@@ -209,7 +225,7 @@ object EvaMacSync {
                 message.gone?.let { applyGone(it) }
                 message.items?.forEach { applyUpsert(it) }
             }
-            "upsert" -> message.item?.let { applyUpsert(it) }
+            "upsert" -> message.item?.let { applyUpsert(it, fresh = message.fresh == true) }
             "gone" -> message.gone?.let { applyGone(it) }
         }
     }
