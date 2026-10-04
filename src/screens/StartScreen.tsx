@@ -236,12 +236,12 @@ export default function StartScreen() {
       onMore: () => goToBase(deskKey, route, params),
     },
     items: [
-      { key: 'create', label: createLabel, icon: 'add-circle-outline', onPress: () => create(createItem) },
+      { key: 'create', label: createLabel, short: 'Створити', icon: 'add-outline', onPress: () => create(createItem) },
       // Already one of the desks: a second window of it is not a thing.
       ...(isDesk(deskKey)
         ? []
-        : [{ key: 'window', label: 'Відкрити в новому вікні', icon: 'copy-outline', onPress: () => whenDeskIsThere(deskKey, () => go('Tabs', { screen: deskKey })) }]),
-      { key: 'go', label: 'Перейти до бази', icon: 'arrow-forward-outline', onPress: () => goToBase(deskKey, route, params) },
+        : [{ key: 'window', label: 'Відкрити в новому вікні', short: 'Нове вікно', icon: 'copy-outline', onPress: () => whenDeskIsThere(deskKey, () => go('Tabs', { screen: deskKey })) }]),
+      { key: 'go', label: 'Перейти до бази', short: 'Перейти', icon: 'arrow-forward-outline', onPress: () => goToBase(deskKey, route, params) },
       ...rootFolders(folderKind).map((folder) => ({
         key: `f:${folder.name}`,
         label: folder.name,
@@ -311,8 +311,8 @@ export default function StartScreen() {
       label: 'Бази даних',
       icon: 'apps-outline',
       items: [
-        { key: 'create', label: 'Створити запис у базі…', icon: 'add-circle-outline', onPress: createRecord },
-        { key: 'go', label: 'Перейти до баз', icon: 'arrow-forward-outline', onPress: openDatabases },
+        { key: 'create', label: 'Створити запис у базі…', short: 'Новий запис', icon: 'add-outline', onPress: createRecord },
+        { key: 'go', label: 'Перейти до баз', short: 'Перейти', icon: 'arrow-forward-outline', onPress: openDatabases },
         ...[...customDatabases]
           .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
           .map((d) => ({
@@ -525,7 +525,9 @@ function RecentDatabase({ id, onPress }: { id: string; onPress: () => void }) {
 
 // One of the four big buttons. A small chevron in the corner it leaves
 // toward says which drawer it pulls out.
-type DeskItem = { key: string; label: string; icon: string; color?: string; folder?: boolean; onPress: () => void };
+// `short`: one of the actions at the top of an open row, drawn as a button
+// with this word - the rest (folders, records) are the list under them.
+type DeskItem = { key: string; label: string; icon: string; color?: string; folder?: boolean; short?: string; onPress: () => void };
 type DeskRoot = {
   collection: string;
   // The folders' tag kind - a record in none of them is at the root.
@@ -572,7 +574,7 @@ function RootItems({ root }: { root: DeskRoot }) {
         <Pressable
           key={r.id as string}
           onPress={() => root.onOpen(r.id as string)}
-          style={({ pressed }) => [styles.insideRow, pressed && { backgroundColor: S.fill }]}
+          style={({ pressed }) => [styles.insideRow, { borderTopColor: S.line }, pressed && { backgroundColor: S.fill }]}
         >
           <Ionicons name={root.icon as never} size={17} color={S.ink3} />
           <Text style={[styles.insideLabel, { color: S.ink }]} numberOfLines={1}>
@@ -583,7 +585,7 @@ function RootItems({ root }: { root: DeskRoot }) {
       {here.length > ROOT_LIMIT && (
         <Pressable
           onPress={root.onMore}
-          style={({ pressed }) => [styles.insideRow, pressed && { backgroundColor: S.fill }]}
+          style={({ pressed }) => [styles.insideRow, { borderTopColor: S.line }, pressed && { backgroundColor: S.fill }]}
         >
           <Text style={[styles.insideLabel, { color: S.ink2 }]} numberOfLines={1}>
             Подивитись решту в базі ({here.length - ROOT_LIMIT})
@@ -621,23 +623,41 @@ function DeskRowView({ row, first, open, onToggle }: { row: DeskRow; first: bool
       </Pressable>
       {open && row.items && (
         <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={styles.inside}>
-          {row.items.map((item, i) => (
-            <Pressable
-              key={item.key}
-              onPress={item.onPress}
-              style={({ pressed }) => [
-                styles.insideRow,
-                // The folders under the three actions, set apart by a rule.
-                item.folder && i > 0 && !row.items?.[i - 1].folder && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: S.line, marginTop: 4 },
-                pressed && { backgroundColor: S.fill },
-              ]}
-            >
-              <Ionicons name={item.icon as never} size={17} color={item.folder ? item.color || S.ink2 : S.ink2} />
-              <Text style={[styles.insideLabel, { color: item.folder ? S.ink : S.ink2 }]} numberOfLines={1}>
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
+          {/* What can be done with it: real buttons, a row of them - not
+              lines of text one could miss (the user's worry, 2026-10-04). */}
+          <View style={styles.actions}>
+            {row.items
+              .filter((item) => item.short)
+              .map((item) => (
+                <Pressable
+                  key={item.key}
+                  onPress={item.onPress}
+                  accessibilityLabel={item.label}
+                  style={({ pressed }) => [styles.action, { backgroundColor: pressed ? S.line : S.fill }]}
+                >
+                  <Ionicons name={item.icon as never} size={17} color={S.ink} />
+                  <Text style={[styles.actionLabel, { color: S.ink }]} numberOfLines={1}>
+                    {item.short}
+                  </Text>
+                </Pressable>
+              ))}
+          </View>
+          {/* What is in it: a plain list, each line the whole width between
+              hairlines, so where one ends is seen. */}
+          {row.items
+            .filter((item) => !item.short)
+            .map((item) => (
+              <Pressable
+                key={item.key}
+                onPress={item.onPress}
+                style={({ pressed }) => [styles.insideRow, { borderTopColor: S.line }, pressed && { backgroundColor: S.fill }]}
+              >
+                <Ionicons name={item.icon as never} size={17} color={item.color || S.ink2} />
+                <Text style={[styles.insideLabel, { color: S.ink }]} numberOfLines={1}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
           {row.root && <RootItems root={row.root} />}
         </Animated.View>
       )}
@@ -665,7 +685,10 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, height: 54 },
   seat: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   rowLabel: { flex: 1, fontSize: 15, fontFamily: SOFT_MEDIUM },
-  inside: { paddingLeft: 60, paddingRight: 14, paddingBottom: 6 },
-  insideRow: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 44, borderRadius: 10, paddingHorizontal: 6 },
+  inside: { paddingLeft: 60, paddingRight: 14, paddingBottom: 8 },
+  actions: { flexDirection: 'row', gap: 8, paddingTop: 2, paddingBottom: 10 },
+  action: { flex: 1, minWidth: 0, height: 40, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
+  actionLabel: { fontSize: 13.5, fontFamily: SOFT_SEMIBOLD, flexShrink: 1 },
+  insideRow: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 48, paddingHorizontal: 6, borderTopWidth: StyleSheet.hairlineWidth },
   insideLabel: { flex: 1, fontSize: 14.5, fontFamily: SOFT_MEDIUM },
 });
