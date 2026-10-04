@@ -145,7 +145,14 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
   useSpeechRecognitionEvent('result', (event) => {
     const heard = event.results?.[0]?.transcript ?? '';
     const before = committed.current;
-    setText(before ? `${before} ${heard}`.replace(/\s+/g, ' ') : heard);
+    const merged = before ? `${before} ${heard}`.replace(/\s+/g, ' ') : heard;
+    setText(merged);
+    // A SEGMENT THAT CLOSED is part of the text now (2026-10-04: "старі
+    // слова заміняються новими"): the recogniser starts every segment after
+    // a pause from nothing, so what followed the words heard before the
+    // pause replaced them - only the last line survived. Closed, a segment
+    // is taken into what the next one is added to.
+    if (event.isFinal) committed.current = merged;
   });
   useSpeechRecognitionEvent('end', () => setListening(false));
   useSpeechRecognitionEvent('error', (event) => {
