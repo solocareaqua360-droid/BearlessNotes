@@ -304,7 +304,7 @@
     "text-overflow": "ellipsis"
   },
   "clipboard-item[type=`text`]": {
-    "padding": "38dp 12dp 12dp 12dp"
+    "padding": "0dp"
   },
   "clipboard-item-description": {
     "font-size": "12sp",

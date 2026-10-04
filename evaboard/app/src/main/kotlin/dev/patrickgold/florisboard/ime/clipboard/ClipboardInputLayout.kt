@@ -337,7 +337,13 @@ fun ClipboardInputLayout(
                 LinkPreviewCard(EvaLinkPreviews.singleUrl(item.text)!!, preview = previewsOn)
             } else {
                 val text = item.stringRepresentation()
-                Column {
+                // evaBoard: the card has no padding of its own (so the kind badge can sit in its corner);
+                // the text leaves room for the badge row at the top
+                Column(
+                    modifier = if (contentScrollInsteadOfClip) Modifier else {
+                        Modifier.padding(start = 12.dp, top = 38.dp, end = 12.dp, bottom = 12.dp)
+                    },
+                ) {
                     ClipTextItemDescription(
                         elementName = FlorisImeUi.ClipboardItemDescription.elementName,
                         attributes = attributes,
