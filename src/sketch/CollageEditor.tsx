@@ -311,18 +311,22 @@ function SliderRow({ label, value, onChange, ink, accent }: { label: string; val
   const [w, setW] = useState(0);
   const latest = useRef(onChange);
   latest.current = onChange;
-  const set = useMemo(() => (x: number, width: number) => latest.current(clamp(x / Math.max(1, width), 0, 1)), []);
   const widthRef = useRef(0);
   widthRef.current = w;
+  // The width is read HERE, on the JS side. Passed in from the gesture it was
+  // the width at the moment the gesture was built - 0 - so every touch sent
+  // the knob to the end (a worklet copies what it captures).
+  const set = useMemo(() => (x: number) => latest.current(clamp(x / Math.max(1, widthRef.current), 0, 1)), []);
   const gesture = useMemo(
     () =>
       Gesture.Pan()
         .minDistance(0)
+        .hitSlop({ top: 12, bottom: 12 })
         .onBegin((e) => {
-          runOnJS(set)(e.x, widthRef.current);
+          runOnJS(set)(e.x);
         })
         .onUpdate((e) => {
-          runOnJS(set)(e.x, widthRef.current);
+          runOnJS(set)(e.x);
         }),
     [set]
   );
@@ -360,10 +364,10 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 15, fontFamily: SOFT_MEDIUM },
   orient: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
   orientBtn: { height: 38, paddingHorizontal: 16, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  sliders: { gap: 6 },
+  sliders: { gap: 6, paddingHorizontal: 20 },
   sliderRow: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 36 },
-  sliderLabel: { width: 108, fontSize: 14, fontFamily: SOFT_MEDIUM },
-  track: { flex: 1, height: 36, justifyContent: 'center' },
+  sliderLabel: { width: 112, fontSize: 14, fontFamily: SOFT_MEDIUM },
+  track: { flex: 1, height: 36, justifyContent: 'center', marginHorizontal: 12 },
   rail: { position: 'absolute', left: 0, height: 4, borderRadius: 2, right: undefined, width: '100%' },
   knob: { position: 'absolute', width: 22, height: 22, borderRadius: 11, top: 7, boxShadow: '0px 1px 4px rgba(0,0,0,0.35)' },
   tabs: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 12, paddingHorizontal: 24 },
