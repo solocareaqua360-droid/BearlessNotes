@@ -34,6 +34,7 @@ import {
   useNavTopNavUp,
   useNavDrawerCover,
   useNavTopExtras,
+  useNavTopBack,
   useNavDockHidden,
   useNavDockLeave,
   useNavDockOwnContext,
@@ -774,6 +775,7 @@ export default function ContextDock() {
   // database, the way back to the databases was the small arrow in the
   // top-right corner of the rail, and it belongs under the thumb.
   const leave = useNavDockLeave();
+  const topBack = useNavTopBack();
   // The other card in the stack: what this screen can DO. Two capsules,
   // one behind the other, swapped with a light swipe - the user's own
   // reference, a Samsung lock screen, and the shape it keeps: the back
@@ -2243,6 +2245,13 @@ export default function ContextDock() {
     // The switcher on the right, "+" inside the field (deskSwitcherBus's
     // MULTITASK_RIGHT) - only with the field and "+" both there to merge.
     const multitask = switcherRight && !dockSearch && !!left && !left.round && !!right;
+    // AWAY FROM THE DESKS (the next step of the same experiment, 2026-10-04:
+    // "коли ми входимо всередину баз, то у нас немає доступу до
+    // багатозадачності"): the round button on the right is the way back -
+    // the same as the bar's, top left, for now - and "+" goes into the
+    // field all the same.
+    const backHere = !switcherRight && !!topBack && !topBack.dimmed && !dockSearch && !!left && !left.round;
+    const merged = multitask || backHere;
     return (
       <DockPortal>
         <Animated.View
@@ -2269,7 +2278,7 @@ export default function ContextDock() {
               <Ionicons name="copy-outline" size={21} color={soft.ink} />
             </Pressable>
           )}
-          {multitask && left && right ? (
+          {merged && left ? (
             <>
               <View style={[styles.softField, surface, { paddingLeft: 0, paddingRight: 0, gap: 0 }]}>
                 <Pressable
@@ -2290,6 +2299,7 @@ export default function ContextDock() {
                 </Pressable>
                 {/* The round "+" button itself, a little smaller, set into
                     the field's right end (the user's, 2026-10-04). */}
+                {right && (
                 <Pressable
                   onPress={right.onPress}
                   onLongPress={right.onLongPress}
@@ -2313,14 +2323,25 @@ export default function ContextDock() {
                     <Ionicons name={right.icon as keyof typeof Ionicons.glyphMap} size={21} color={soft.ink} />
                   )}
                 </Pressable>
+                )}
               </View>
-              <Pressable
-                onPress={openDeskSwitcher}
-                accessibilityLabel="Відкриті вкладки"
-                style={[styles.softButton, surface, { width: TWO_BEAD }]}
-              >
-                <Ionicons name="copy-outline" size={21} color={soft.ink} />
-              </Pressable>
+              {multitask ? (
+                <Pressable
+                  onPress={openDeskSwitcher}
+                  accessibilityLabel="Відкриті вкладки"
+                  style={[styles.softButton, surface, { width: TWO_BEAD }]}
+                >
+                  <Ionicons name="copy-outline" size={21} color={soft.ink} />
+                </Pressable>
+              ) : topBack ? (
+                <Pressable
+                  onPress={topBack.onPress}
+                  accessibilityLabel="Назад"
+                  style={[styles.softButton, surface, { width: TWO_BEAD }]}
+                >
+                  <Ionicons name={(topBack.icon ?? 'chevron-back') as keyof typeof Ionicons.glyphMap} size={22} color={soft.ink} />
+                </Pressable>
+              ) : null}
             </>
           ) : dockSearch ? (
             <SoftSearchField key={dockSearch.placeholder} search={dockSearch} soft={soft} height={TWO_BEAD} />
@@ -2359,7 +2380,7 @@ export default function ContextDock() {
           ) : (
             <View style={{ flex: 1 }} />
           )}
-          {right && !multitask && (
+          {right && !merged && (
             <Pressable
               onPress={right.onPress}
               onLongPress={right.onLongPress}
