@@ -15,7 +15,7 @@ import { Block, CustomDatabase, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import DocumentCard from './DocumentCard';
 import ZoomableImageViewer from './ZoomableImageViewer';
-import { FileRow, LinkRow, PhotoCell, PhotoCardItem } from './ItemCards';
+import { FileRow, LinkRow, PhotoCell, PhotoCardItem, gridBasis, gridFillerCount } from './ItemCards';
 import { extractPreview } from '../utils/documentPreview';
 import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
 import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
@@ -253,7 +253,13 @@ export default function GroupSections({
     }
     const isOpen = openNow.has(id);
     return (
-      <Animated.View key={id} layout={LinearTransition.duration(220)} style={styles.block}>
+      <Animated.View
+        key={id}
+        layout={LinearTransition.duration(220)}
+        // Open, the block is a plate the head and its cards lie on - not
+        // cards hanging in the air (the user's, 2026-10-04).
+        style={[styles.block, isOpen && [styles.blockPlate, { backgroundColor: S.fill }]]}
+      >
         <Pressable
           onPress={() => toggleOpen(id)}
           style={({ pressed }) => [
@@ -299,7 +305,7 @@ export default function GroupSections({
         return shell(kind, face.label, face.icon, face.color, rows.length, (
           <>
             {kind === 'photo' ? (
-              <View style={styles.photoGrid}>
+              <View style={[styles.photoGrid, given && styles.photoGridSmall]}>
                 {rows.map((row) => {
                   const photo: PhotoCardItem = {
                     id: row.id,
@@ -311,12 +317,19 @@ export default function GroupSections({
                   return (
                     <PhotoCell
                       key={row.id}
+                      // Three across on the projects screen - a grid to
+                      // glance over, each one opened from there.
+                      columns={given ? 3 : 2}
                       photo={photo}
                       tags={tagsFor(row)}
                       onPress={() => open(() => setViewerPhoto({ uri: photo.imageUri, driveFileId: photo.driveFileId }))}
                     />
                   );
                 })}
+                {/* A lone last photo keeps a cell's size - see gridFillerCount. */}
+                {Array.from({ length: gridFillerCount(rows.length, given ? 3 : 2) }, (_, i) => (
+                  <View key={`filler-${i}`} style={{ flexBasis: gridBasis(given ? 3 : 2), flexGrow: 1 }} />
+                ))}
               </View>
             ) : (
               <View style={styles.column}>
@@ -544,6 +557,13 @@ const styles = StyleSheet.create({
   blockCount: {
     fontSize: 14,
     fontFamily: FONT_SEMIBOLD,
+  },
+  blockPlate: {
+    padding: 8,
+    borderRadius: 28,
+  },
+  photoGridSmall: {
+    gap: 8,
   },
   blockBody: {
     paddingTop: 10,
