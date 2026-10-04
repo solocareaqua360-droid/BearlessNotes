@@ -114,7 +114,7 @@ import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import { useTechnicalDocs } from '../hooks/useTechnicalDocs';
 import InlineVideoPlayer from '../components/InlineVideoPlayer';
 import VideoPlayerModal from '../components/VideoPlayerModal';
-import { getVideoEmbedInfo } from '../utils/videoEmbed';
+import { TIMECODE_PATTERN, getVideoEmbedInfo, parseTimecode } from '../utils/videoEmbed';
 import { stripFormatting } from '../utils/documentPreview';
 import { createOwnedNote, ensureMainNote, makeOrdinary, type DocOwner } from '../utils/recordNotes';
 import FieldsEditorSheet, { FIELD_TYPE_ICON, FIELD_TYPE_LABEL } from '../components/FieldsEditorSheet';
@@ -474,6 +474,9 @@ export default function CustomDatabaseScreen({
   const [playingLessonId, setPlayingLessonId] = useState<string | null>(null);
   // The playing lesson's moment, and the corners of its player (for a
   // frame) - and what was just put in its note, said for a moment.
+  // Where a tap on a moment in a lesson's note sent its video: the lesson,
+  // the second, and a counter so the same one seeks again.
+  const [lessonSeek, setLessonSeek] = useState<{ id: string; t: number; n: number } | null>(null);
   const lessonTime = useRef(0);
   const lessonTL = useRef<View>(null);
   const lessonBR = useRef<View>(null);
@@ -2536,6 +2539,26 @@ export default function CustomDatabaseScreen({
           .slice(0, 3)
           .join('\n')
       : '';
+    // THE MOMENTS in the note - every time written in it (4:32, 1:04:32)
+    // with the words after it - each a chip that plays the video from there,
+    // right in this card: started if it is not playing, moved if it is.
+    // YouTube only: TikTok cannot be told where to go.
+    const moments: { t: number; label: string }[] = [];
+    if (note && getVideoEmbedInfo(lesson.url)?.provider === 'youtube') {
+      for (const b of note.blocks) {
+        const text = stripFormatting(b.text ?? '').trim();
+        for (const m of text.matchAll(TIMECODE_PATTERN)) {
+          const t = parseTimecode(m[0]);
+          if (t === null) continue;
+          const after = text.slice((m.index ?? 0) + m[0].length).replace(/^[\s\-–—:·]+/, '').split(/\d{1,2}:\d{2}/)[0].trim();
+          moments.push({ t, label: after });
+        }
+      }
+    }
+    const goToMoment = (t: number) => {
+      setLessonSeek((prev) => ({ id: lesson.id, t, n: (prev?.n ?? 0) + 1 }));
+      setPlayingLessonId(lesson.id);
+    };
     const openNote = async () => {
       const id = await ensureMainNote({ kind: 'link', id: lesson.id }, `${lesson.title || hostOf(lesson.url)} - нотатка`);
       openNoteFromPage(row.id, id);
@@ -2547,6 +2570,8 @@ export default function CustomDatabaseScreen({
           <View style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' }}>
             <InlineVideoPlayer
               url={lesson.url}
+              start={lessonSeek?.id === lesson.id ? lessonSeek.t : undefined}
+              seek={lessonSeek?.id === lesson.id ? { t: lessonSeek.t, n: lessonSeek.n } : undefined}
               onTime={(t) => {
                 lessonTime.current = t;
               }}
@@ -2614,6 +2639,25 @@ export default function CustomDatabaseScreen({
                 <Text style={{ color: softInk, fontSize: 14 }}>Зупинити</Text>
               </Pressable>
             </View>
+          )}
+          {moments.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {moments.map((m, i) => (
+                <Pressable
+                  key={`${m.t}-${i}`}
+                  onPress={() => goToMoment(m.t)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: 220, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: withAlpha(softInk, 0.06) }}
+                >
+                  <Ionicons name="play" size={12} color={accent} />
+                  <Text style={{ color: softInk, fontSize: 13, fontWeight: '600' }}>{formatStamp(m.t)}</Text>
+                  {!!m.label && (
+                    <Text style={{ color: softInk2, fontSize: 13, flexShrink: 1 }} numberOfLines={1}>
+                      {m.label}
+                    </Text>
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
           )}
           {playing && !!lessonFlash && (
             <Text style={{ color: accent, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{lessonFlash}</Text>
