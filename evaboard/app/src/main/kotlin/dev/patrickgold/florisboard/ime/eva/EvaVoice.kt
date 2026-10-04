@@ -38,8 +38,13 @@ object EvaVoice {
         data class Note(val text: String) : State
     }
 
-    /** Like the iPhone: listening stops on its own only after this long without speech. */
-    private const val SILENCE_LIMIT_MS = 30_000L
+    /**
+     * Listening stops on its own after this long without speech. Short, because the recognizer
+     * restarts after every phrase and every silence, and each restart plays its start tone.
+     */
+    private const val SILENCE_LIMIT_MS = 10_000L
+    /** One typed letter per tick: ~35 letters a second, a visible typewriter beat. */
+    private const val TYPE_TICK_MS = 28L
     /** Restarts that fail in a row before giving up, so a broken recognizer cannot loop. */
     private const val MAX_FAILED_RESTARTS = 3
 
@@ -52,13 +57,32 @@ object EvaVoice {
 
     /** One press of the microphone: lasts until the second press, the silence limit, or the keyboard hiding. */
     private class Session(val context: Context, val language: String) {
-        /** What the current phrase has put into the field so far (partial results), so the next update can replace it. */
-        var typed = ""
+        /** Phrases waiting to be typed, oldest first; the typing ticker works on the first. */
+        val phrases = ArrayDeque<Phrase>()
         var lastHeardAt = SystemClock.elapsedRealtime()
         var stopping = false
         var failedRestarts = 0
     }
     private var session: Session? = null
+
+    /**
+     * One recognised phrase. [target] is the best text so far (it changes as the recognizer refines
+     * it), [typed] is what is in the field (including [prefix]); the ticker moves [typed] to
+     * prefix + [target] a letter at a time. [closed]: the recognizer finished this phrase.
+     */
+    private class Phrase {
+        var target = ""
+        var typed = ""
+        var prefix: String? = null
+        var closed = false
+    }
+
+    private val typingTick = object : Runnable {
+        override fun run() {
+            val s = session ?: return
+            if (typeStep(s)) main.postDelayed(this, TYPE_TICK_MS)
+        }
+    }
 
     /** The microphone button: starts listening, or stops if already listening (the phrase being said still lands). */
     fun toggle(context: Context) {
@@ -86,6 +110,11 @@ object EvaVoice {
 
     /** Drops whatever is being listened to - the keyboard went away. */
     fun cancel() {
+        session?.let { s ->
+            // type out whatever is still queued, at once - it was heard
+            main.removeCallbacks(typingTick)
+            while (typeStep(s)) Unit
+        }
         session = null
         recognizer?.let {
             it.cancel()
@@ -118,7 +147,7 @@ object EvaVoice {
     /** Android ends recognition after every phrase; while the session lasts, quietly start the next one. */
     private fun next() {
         val s = session ?: return
-        s.typed = "" // this phrase is done: what it typed stays in the field as ordinary text
+        s.phrases.lastOrNull()?.closed = true // the recognizer is done with this phrase
         if (s.stopping) {
             end()
             return
@@ -132,6 +161,10 @@ object EvaVoice {
     }
 
     private fun end(noteText: String? = null) {
+        session?.let { s ->
+            main.removeCallbacks(typingTick)
+            while (typeStep(s)) Unit
+        }
         session = null
         recognizer?.destroy()
         recognizer = null
@@ -144,27 +177,67 @@ object EvaVoice {
         main.postDelayed(clearNote, 2500)
     }
 
+    /** The recognizer's latest text for the phrase being said; typed out by the ticker. */
+    private fun hear(s: Session, text: String, final: Boolean) {
+        var phrase = s.phrases.lastOrNull()
+        if (phrase == null || phrase.closed) {
+            phrase = Phrase()
+            s.phrases.addLast(phrase)
+        }
+        phrase.target = text
+        if (final) phrase.closed = true
+        main.removeCallbacks(typingTick)
+        main.post(typingTick)
+    }
+
     /**
-     * Puts [heard] into the field in place of what this phrase typed so far, so the words appear as
-     * they are spoken and are corrected in place. Nothing of the user's own is touched: if the text
-     * before the cursor is no longer what was typed (the cursor moved, the field changed), the phrase
-     * starts afresh at the cursor instead of deleting anything.
+     * One beat of the typewriter: moves the field one step towards the first phrase's text. Adds the
+     * next letter(s), or - when the recognizer revised words already typed - first backs up over the
+     * part that changed (only that tail, so the rest does not flicker). Returns whether more is to do.
+     * Nothing of the user's own is ever deleted: before backing up, the text before the cursor must
+     * still be what was typed, else the phrase starts afresh at the cursor.
      */
-    private fun typeHeard(s: Session, heard: String) {
-        val ic = FlorisImeService.currentInputConnection() ?: return
+    private fun typeStep(s: Session): Boolean {
+        val phrase = s.phrases.firstOrNull() ?: return false
+        val ic = FlorisImeService.currentInputConnection() ?: return false
         ic.beginBatchEdit()
         try {
             // FlorisBoard keeps the last word of the field "composing"; finish that first, as its own typing does
             ic.finishComposingText()
-            if (s.typed.isNotEmpty()) {
-                val before = ic.getTextBeforeCursor(s.typed.length, 0)?.toString()
-                if (before == s.typed) ic.deleteSurroundingText(s.typed.length, 0)
-                s.typed = ""
+            if (phrase.typed.isEmpty() && phrase.prefix == null) {
+                val prev = ic.getTextBeforeCursor(1, 0)
+                phrase.prefix = if (!prev.isNullOrEmpty() && !prev.last().isWhitespace()) " " else ""
             }
-            val prev = ic.getTextBeforeCursor(1, 0)
-            val text = if (!prev.isNullOrEmpty() && !prev.last().isWhitespace()) " $heard" else heard
-            ic.commitText(text, 1)
-            s.typed = text
+            val goal = (phrase.prefix ?: "") + phrase.target
+            if (!goal.startsWith(phrase.typed)) {
+                var common = 0
+                while (common < phrase.typed.length && common < goal.length && phrase.typed[common] == goal[common]) common++
+                val back = phrase.typed.length - common
+                val before = ic.getTextBeforeCursor(phrase.typed.length, 0)?.toString()
+                if (before == phrase.typed) {
+                    ic.deleteSurroundingText(back, 0)
+                    phrase.typed = phrase.typed.substring(0, common)
+                } else {
+                    // the field is no longer as typed: leave it alone, start this phrase afresh here
+                    phrase.typed = ""
+                    phrase.prefix = null
+                }
+                return true
+            }
+            if (phrase.typed.length < goal.length) {
+                val backlog = goal.length - phrase.typed.length
+                val n = (backlog / 8).coerceAtLeast(1) // lagging behind: take bigger steps
+                val chunk = goal.substring(phrase.typed.length, phrase.typed.length + n)
+                ic.commitText(chunk, 1)
+                phrase.typed += chunk
+                return true
+            }
+            // fully typed: a finished phrase leaves the queue, an open one waits for the recognizer
+            if (phrase.closed) {
+                s.phrases.removeFirst()
+                return s.phrases.isNotEmpty()
+            }
+            return false
         } finally {
             ic.endBatchEdit()
         }
@@ -185,7 +258,7 @@ object EvaVoice {
             val s = session
             if (!text.isNullOrBlank() && s != null) {
                 heard()
-                typeHeard(s, text)
+                hear(s, text, final = false)
             }
         }
 
@@ -194,7 +267,7 @@ object EvaVoice {
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
             if (!text.isNullOrBlank()) {
                 heard()
-                typeHeard(s, text)
+                hear(s, text, final = true)
             }
             next()
         }
