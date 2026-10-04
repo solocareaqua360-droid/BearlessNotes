@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
@@ -152,13 +153,17 @@ fun ClipboardInputLayout(
     val isFilterRowShown = true // evaBoard: the type chips are always there
     val activeFilterTypes = remember { mutableStateSetOf<ItemType>() }
 
+    // evaBoard: the header's pin button shows only the pinned items
+    var pinnedOnly by remember { mutableStateOf(false) }
+
     val unfilteredHistory by clipboardManager.historyFlow.collectAsState()
-    val filteredHistory = remember(unfilteredHistory, activeFilterTypes.toSet()) {
-        if (activeFilterTypes.isEmpty()) {
+    val filteredHistory = remember(unfilteredHistory, activeFilterTypes.toSet(), pinnedOnly) {
+        if (activeFilterTypes.isEmpty() && !pinnedOnly) {
             unfilteredHistory
         } else {
             unfilteredHistory.all
-                .filter { activeFilterTypes.contains(it.type) }
+                .filter { activeFilterTypes.isEmpty() || activeFilterTypes.contains(it.type) }
+                .filter { !pinnedOnly || it.isPinned }
                 .let { ClipboardHistory(it) }
         }
     }
@@ -175,56 +180,54 @@ fun ClipboardInputLayout(
 
     @Composable
     fun HeaderRow() {
+        // evaBoard: Samsung's arrangement - back-to-keys icon, the title, then icon toggles (text,
+        // images, pinned) and clear; plain icons on a 52dp row so each is an easy target
+        val rowHeight = 52.dp
         SnyggRow(FlorisImeUi.ClipboardHeader.elementName,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(maxOf(FlorisImeSizing.smartbarHeight, 54.dp)),
+                .height(rowHeight),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val sizeModifier = Modifier
-                .sizeIn(maxHeight = maxOf(FlorisImeSizing.smartbarHeight, 54.dp))
-                .aspectRatio(1f)
+            val sizeModifier = Modifier.size(rowHeight).autoMirrorForRtl()
             SnyggIconButton(
                 elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
                 onClick = { keyboardManager.activeState.imeUiMode = ImeUiMode.TEXT },
                 modifier = sizeModifier,
             ) {
-                SnyggIcon(
-                    imageVector = EvaIcons.lucide("arrow-left"),
-                )
+                SnyggIcon(imageVector = EvaIcons.lucide("keyboard"))
             }
             SnyggText(
                 elementName = FlorisImeUi.ClipboardHeaderText.elementName,
                 modifier = Modifier.weight(1f),
                 text = stringRes(R.string.clipboard__header_title),
             )
-            SnyggIconButton(
-                elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
-                onClick = { scope.launch { prefs.clipboard.historyEnabled.set(!historyEnabled) } },
-                modifier = sizeModifier.autoMirrorForRtl(),
-                enabled = !deviceLocked && !isPopupSurfaceActive(),
-            ) {
-                SnyggIcon(
-                    imageVector = EvaIcons.lucide(if (historyEnabled) "toggle-right" else "toggle-left"),
-                )
+            @Composable
+            fun ToggleButton(icon: String, active: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+                SnyggIconButton(
+                    elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
+                    attributes = mapOf("state" to if (active) "active" else "inactive"),
+                    onClick = onClick,
+                    modifier = sizeModifier,
+                    enabled = enabled && !deviceLocked && historyEnabled && !isPopupSurfaceActive(),
+                ) {
+                    SnyggIcon(imageVector = EvaIcons.lucide(icon))
+                }
             }
+            ToggleButton("type", ItemType.TEXT in activeFilterTypes) {
+                if (!activeFilterTypes.add(ItemType.TEXT)) activeFilterTypes.remove(ItemType.TEXT)
+            }
+            ToggleButton("image", ItemType.IMAGE in activeFilterTypes) {
+                if (!activeFilterTypes.add(ItemType.IMAGE)) activeFilterTypes.remove(ItemType.IMAGE)
+            }
+            ToggleButton("pin", pinnedOnly) { pinnedOnly = !pinnedOnly }
             SnyggIconButton(
                 elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
                 onClick = { showClearAllHistory = true },
-                modifier = sizeModifier.autoMirrorForRtl(),
-                enabled = !deviceLocked && historyEnabled && filteredHistory.all.isNotEmpty() && !isPopupSurfaceActive(),
-            ) {
-                SnyggIcon(
-                    imageVector = EvaIcons.lucide("trash"),
-                )
-            }
-            KeyboardLikeButton(
                 modifier = sizeModifier,
-                inputEventDispatcher = keyboardManager.inputEventDispatcher,
-                keyData = TextKeyData.DELETE,
-                elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
+                enabled = !deviceLocked && historyEnabled && filteredHistory.unpinned.isNotEmpty() && !isPopupSurfaceActive(),
             ) {
-                SnyggIcon(imageVector = EvaIcons.lucide("delete"))
+                SnyggIcon(imageVector = EvaIcons.lucide("trash"))
             }
         }
     }
@@ -242,7 +245,10 @@ fun ClipboardInputLayout(
         SnyggBox(
             elementName = elementName,
             attributes = attributes,
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier
+                .fillMaxWidth()
+                // evaBoard: Samsung-like even cards in the grid; the long-press view keeps its natural size
+                .then(if (contentScrollInsteadOfClip) Modifier else Modifier.aspectRatio(0.92f)),
             clickAndSemanticsModifier = Modifier.combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = ripple(),
@@ -268,10 +274,10 @@ fun ClipboardInputLayout(
                 }
                 if (bitmap.isSuccess) {
                     Image(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = if (contentScrollInsteadOfClip) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
                         bitmap = bitmap.getOrThrow(),
                         contentDescription = null,
-                        contentScale = ContentScale.FillWidth,
+                        contentScale = if (contentScrollInsteadOfClip) ContentScale.FillWidth else ContentScale.Crop,
                     )
                 } else {
                     SnyggText(
@@ -337,6 +343,17 @@ fun ClipboardInputLayout(
                     )
                 }
             }
+            if (item.isPinned && !contentScrollInsteadOfClip) {
+                SnyggIcon(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(18.dp)
+                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                        .padding(3.dp),
+                    imageVector = EvaIcons.lucide("pin"),
+                )
+            }
         }
     }
 
@@ -349,7 +366,7 @@ fun ClipboardInputLayout(
             val staggeredGridCells by prefs.clipboard.historyNumGridColumns()
                 .observeAsTransformingState { numGridColumns ->
                     if (numGridColumns == CLIPBOARD_HISTORY_NUM_GRID_COLUMNS_AUTO) {
-                        StaggeredGridCells.Adaptive(160.dp)
+                        StaggeredGridCells.Adaptive(132.dp)
                     } else {
                         StaggeredGridCells.Fixed(numGridColumns)
                     }
@@ -361,9 +378,7 @@ fun ClipboardInputLayout(
                 @StringRes title: Int,
             ) {
                 if (items.isNotEmpty()) {
-                    item(key, span = StaggeredGridItemSpan.FullLine) {
-                        ClipCategoryTitle(text = stringRes(title))
-                    }
+                    // evaBoard: no group titles - the window is small; pinned come first, then the rest
                     items(items) { item ->
                         ClipItemView(
                             elementName = FlorisImeUi.ClipboardItem.elementName,
@@ -379,56 +394,6 @@ fun ClipboardInputLayout(
                     .matchParentSize()
                     .alpha(historyAlpha),
             ) {
-                AnimatedVisibility(
-                    visible = isFilterRowShown,
-                    enter = VerticalEnterTransition,
-                    exit = VerticalExitTransition,
-                ) {
-                    SnyggRow(
-                        elementName = FlorisImeUi.ClipboardFilterRow.elementName,
-                        modifier = Modifier.fillMaxWidth(),
-                        clickAndSemanticsModifier = Modifier.florisHorizontalScroll(),
-                    ) {
-                        @Composable
-                        fun FilterChip(
-                            imageVector: ImageVector,
-                            text: String,
-                            itemType: ItemType,
-                        ) {
-                            val active = activeFilterTypes.contains(itemType)
-                            val attributes = remember(active) {
-                                mapOf(
-                                    "state" to if (active) "active" else "inactive",
-                                    "type" to itemType.toString().lowercase(),
-                                )
-                            }
-                            SnyggChip(
-                                elementName = FlorisImeUi.ClipboardFilterChip.elementName,
-                                attributes = attributes,
-                                onClick = {
-                                    if (!activeFilterTypes.add(itemType)) {
-                                        activeFilterTypes.remove(itemType)
-                                    }
-                                },
-                                imageVector = imageVector,
-                                text = text,
-                            )
-                        }
-
-                        FilterChip(
-                            imageVector = EvaIcons.lucide("type"),
-                            text = stringRes(R.string.eva__clip_filter_text),
-                            itemType = ItemType.TEXT,
-                        )
-                        FilterChip(
-                            imageVector = EvaIcons.lucide("image"),
-                            text = stringRes(R.string.eva__clip_filter_images),
-                            itemType = ItemType.IMAGE,
-                        )
-                        // evaBoard: no "Videos" chip - the phone's gallery cannot copy a video to the clipboard,
-                        // so there is nothing to filter (a video that does arrive still shows under all items)
-                    }
-                }
                 SnyggBox(FlorisImeUi.ClipboardGrid.elementName,
                     modifier = Modifier
                         .fillMaxWidth()

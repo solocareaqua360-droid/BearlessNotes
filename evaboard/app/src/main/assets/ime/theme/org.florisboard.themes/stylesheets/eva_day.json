@@ -244,25 +244,23 @@
   "clipboard-header": {
     "foreground": "var(--on-background)",
     "font-size": "20sp",
-    "padding": "6dp 6dp 2dp 6dp"
+    "padding": "0dp 4dp"
   },
   "clipboard-header-button": {
-    "background": "var(--surface)",
-    "foreground": "var(--on-surface)",
-    "margin": "3dp",
-    "shape": "var(--shape)",
-    "edge-color": "var(--key-edge)"
+    "background": "transparent",
+    "foreground": "var(--on-background)",
+    "margin": "0dp",
+    "shape": "circle()"
   },
   "clipboard-header-button:disabled": {
-    "background": "var(--surface)",
     "foreground": "var(--on-background-disabled)"
   },
   "clipboard-header-text": {
-    "font-size": "22sp",
+    "font-size": "20sp",
     "font-weight": "bold",
     "text-max-lines": "1",
     "text-overflow": "ellipsis",
-    "padding": "0dp 8dp"
+    "padding": "0dp 10dp"
   },
   "clipboard-subheader": {
     "font-size": "15sp",
@@ -294,31 +292,32 @@
     "margin": "0dp 0dp 0dp 6dp"
   },
   "clipboard-grid": {
-    "shape": "var(--shape-variant)"
+    "shape": "rounded-corner(0dp, 0dp, 0dp, 0dp)",
+    "padding": "0dp 4dp"
   },
   "clipboard-item": {
-    "background": "var(--surface)",
+    "background": "#FFFFFF",
     "foreground": "var(--on-surface)",
-    "font-size": "18sp",
-    "margin": "5dp",
-    "shape": "var(--shape-variant)",
+    "font-size": "17sp",
+    "margin": "4dp",
+    "shape": "rounded-corner(18dp, 18dp, 18dp, 18dp)",
     "edge-color": "var(--key-edge)",
     "text-max-lines": "8",
     "text-overflow": "ellipsis"
   },
   "clipboard-item[type=`text`]": {
-    "padding": "14dp 12dp"
+    "padding": "12dp 12dp"
   },
   "clipboard-item-description": {
     "font-size": "12sp",
     "font-style": "italic"
   },
   "clipboard-item-popup": {
-    "background": "var(--surface)",
+    "background": "#FFFFFF",
     "foreground": "var(--on-surface)",
-    "font-size": "18sp",
-    "margin": "5dp",
-    "shape": "var(--shape-variant)",
+    "font-size": "17sp",
+    "margin": "4dp",
+    "shape": "rounded-corner(18dp, 18dp, 18dp, 18dp)",
     "edge-color": "var(--key-edge)"
   },
   "clipboard-item-popup[type=`text`]": {
@@ -503,5 +502,10 @@
   },
   "clipboard-item-action-icon": {
     "font-size": "24sp"
+  },
+  "clipboard-header-button[state=`active`]": {
+    "background": "var(--primary)",
+    "foreground": "var(--on-primary)",
+    "margin": "6dp"
   }
 }
