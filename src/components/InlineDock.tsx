@@ -149,7 +149,13 @@ export default function InlineDock({
                 accessibilityLabel="Створити"
                 style={({ pressed }) => [inset(false, pressed), right.dimmed && { opacity: 0.5 }]}
               >
-                {rightIcon ? (
+                {/* One sign for making anything - "+" - whatever the database
+                    (2026-10-04: "повинно читатися однаково"); only the calendar's
+                    pencil, which writes in the day rather than making a thing, keeps
+                    its own. */}
+                {right.icon !== 'pencil-outline' ? (
+                  <Ionicons name="add" size={25} color={soft.ink} />
+                ) : rightIcon ? (
                   <SoftIcon name={rightIcon} size={22} color={soft.ink} />
                 ) : (
                   <Ionicons name={right.icon as never} size={21} color={soft.ink} />
