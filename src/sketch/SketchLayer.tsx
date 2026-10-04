@@ -93,24 +93,26 @@ function SketchPicture({ el }: { el: SketchImageElement }) {
   );
 }
 
-// A collage: every cell clips its picture to its own rectangle; an empty
-// cell is a faint tile, so the layout reads before it is filled.
+// A collage: a background, then every cell clips its picture to its own
+// (rounded) rectangle; an empty cell is a faint tile, so the layout reads.
 function SketchCollage({ el }: { el: SketchCollageElement }) {
   const base = `col${useId().replace(/[^a-zA-Z0-9]/g, '_')}`;
   const rects = cellRects(el);
+  const rx = (r: { w: number; h: number }) => Math.max(0, Math.min(el.radius ?? 0, r.w / 2, r.h / 2));
   return (
     <>
       <Defs>
         {rects.map((r, i) => (
           <ClipPath key={i} id={`${base}_${i}`}>
-            <Rect x={r.x} y={r.y} width={r.w} height={r.h} />
+            <Rect x={r.x} y={r.y} width={r.w} height={r.h} rx={rx(r)} ry={rx(r)} />
           </ClipPath>
         ))}
       </Defs>
+      {!!el.bg && <Rect x={el.x} y={el.y} width={el.w} height={el.h} fill={el.bg} />}
       {rects.map((r, i) => {
         const cell = el.cells[i];
         if (!cell?.uri) {
-          return <Rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill="rgba(128,128,128,0.16)" />;
+          return <Rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} rx={rx(r)} ry={rx(r)} fill="rgba(128,128,128,0.16)" />;
         }
         const p = placement(cell, r);
         return (

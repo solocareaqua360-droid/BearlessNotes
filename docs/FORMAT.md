@@ -6,7 +6,7 @@ The contract between sketchEva and mindEva. Defined in code in
 ```jsonc
 {
   "format": "sketchEva",      // always this
-  "version": 3,               // SKETCH_VERSION when it was written
+  "version": 4,               // SKETCH_VERSION when it was written
   "id": "…", "title": "…",
   "createdAt": 0, "updatedAt": 0,
   "width": 0, "height": 0,    // the canvas the elements were drawn against
@@ -47,6 +47,17 @@ the point of the picture kept in the cell's middle, default 0.5) and `zoom?`
 `src/sketch/collage.ts` (cell rectangles as fractions of the box). A reader
 that does not know `collage` keeps the element untouched; the export's
 `images` holds every cell's picture by its `uri`.
+
+## Version 4: collage in its own window
+
+A `collage` now also carries `outer?` (clear space between the cells and the
+block's edge), `radius?` (corner rounding of every cell), `bg?` (colour behind
+the cells and in the gaps; none = see-through) and `splits?` (where the
+layout's dividers sit, 0..1 of their space, in the layout's order; none = the
+layout's own). Layouts are trees of dividers (see `collage.ts`); the ids
+`h2 v2 h3 v3 big2 grid4` of version 3 mean the same layouts, and there are
+more (`one h2w v2t big2r big2t big2b h4 big3 big3t g23 g32 g6 g6b`). A reader
+that does not know a layout id draws the cells in an equal row.
 
 ## Rules for changing it
 

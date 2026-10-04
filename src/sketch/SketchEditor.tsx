@@ -24,7 +24,8 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from './fonts';
 import { useSoft, useTheme } from './theme';
 import CropOverlay from './CropOverlay';
-import { LAYOUTS, cellCrop, cellFromCrop, cellIndexAt, cellRects } from './collage';
+import CollageEditor from './CollageEditor';
+import { MAX_PHOTOS, layoutsFor } from './collage';
 import {
   INK,
   recropImage,
@@ -396,8 +397,8 @@ export default function SketchEditor({ visible, initialElements, background, pap
   // second opens the cropping window for it. Moving, or lifting, first
   // makes it an ordinary move or tap.
   const [cropFor, setCropFor] = useState<{ index: number; cell?: number } | null>(null);
-  const [cellMenu, setCellMenu] = useState<{ index: number; cell: number } | null>(null);
-  const [collageMenuOpen, setCollageMenuOpen] = useState(false);
+  // The collage's window: a new one (index null) or one already on the canvas.
+  const [collageEdit, setCollageEdit] = useState<{ index: number | null; element: SketchCollageElement } | null>(null);
   const holdRef = useRef<{ timer: ReturnType<typeof setTimeout>; start: Point } | null>(null);
   function cancelHold() {
     if (holdRef.current) clearTimeout(holdRef.current.timer);
@@ -417,10 +418,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
         setSelection([index]);
         const el = elements[index];
         if (el?.kind === 'collage') {
-          // Which cell is under the finger (in the block's own frame).
-          const local = el.rot ? rotatePoint(p, pivotOf(el), -el.rot) : p;
-          const cell = cellIndexAt(el, local);
-          if (cell !== -1) setCellMenu({ index, cell });
+          setCollageEdit({ index, element: el });
         } else {
           setCropFor({ index });
         }
@@ -917,56 +915,73 @@ export default function SketchEditor({ visible, initialElements, background, pap
 
   // ---- collage ------------------------------------------------------------------
 
-  // A layout chosen: the pictures are picked at once (as many as the layout
-  // has cells, in the order they are chosen) and laid in; anything not
-  // picked stays an empty cell to fill later.
-  async function addCollage(layoutId: string) {
-    setCollageMenuOpen(false);
-    setPictureMenuOpen(false);
-    const layout = LAYOUTS.find((l) => l.id === layoutId);
-    if (!layout) return;
-    const cells: SketchCollageCell[] = layout.cells.map(() => ({}));
+  // Pictures from the phone's gallery, several at once, copied into the app.
+  async function pickPhotos(limit: number): Promise<{ uri: string; aspect: number }[]> {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permission.granted) {
-      const picked = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        quality: 0.85,
-        allowsMultipleSelection: true,
-        selectionLimit: layout.cells.length,
-      });
-      if (!picked.canceled) {
-        const got = await Promise.all(picked.assets.slice(0, layout.cells.length).map(importAsset));
-        got.forEach((g, i) => {
-          cells[i] = { uri: g.uri, aspect: g.aspect };
-        });
-      }
-    }
-    const w = Math.min(canvasSize.width * 0.85, 420) / view.s;
-    const h = w / layout.aspect;
-    const cx = (canvasSize.width / 2 - view.tx) / view.s;
-    const cy = (canvasSize.height / 2 - view.ty) / view.s;
-    const block: SketchCollageElement = { kind: 'collage', x: cx - w / 2, y: cy - h / 2, w, h, layout: layout.id, gap: Math.max(4, Math.round(w * 0.02)), cells };
-    remember();
-    setElements((prev) => {
-      setSelection([prev.length]);
-      return [...prev, block];
+    if (!permission.granted) return [];
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.85,
+      allowsMultipleSelection: limit > 1,
+      selectionLimit: limit,
     });
-    setTool('select');
+    if (picked.canceled) return [];
+    return Promise.all(picked.assets.slice(0, limit).map(importAsset));
   }
 
-  function changeCell(index: number, cell: number, next: (c: SketchCollageCell) => SketchCollageCell) {
-    remember();
-    setElements((prev) =>
-      prev.map((el, i) => (i === index && el.kind === 'collage' ? { ...el, cells: el.cells.map((c, j) => (j === cell ? next(c) : c)) } : el))
-    );
+  // «Склейка»: the pictures are chosen first (up to six), then the window
+  // opens with them already in a layout.
+  async function startCollage() {
+    setPictureMenuOpen(false);
+    const photos = await pickPhotos(MAX_PHOTOS);
+    if (photos.length === 0) return;
+    const w = Math.min(canvasSize.width * 0.85, 420) / view.s;
+    const h = (w * 4) / 3;
+    const cx = (canvasSize.width / 2 - view.tx) / view.s;
+    const cy = (canvasSize.height / 2 - view.ty) / view.s;
+    const unit = Math.min(w, h);
+    setCollageEdit({
+      index: null,
+      element: {
+        kind: 'collage',
+        x: cx - w / 2,
+        y: cy - h / 2,
+        w,
+        h,
+        layout: layoutsFor(photos.length)[0]?.id ?? 'one',
+        gap: unit * 0.02,
+        outer: unit * 0.02,
+        radius: unit * 0.015,
+        bg: '#FFFFFF',
+        cells: photos.map((p) => ({ uri: p.uri, aspect: p.aspect })),
+      },
+    });
   }
-  async function pickForCell(index: number, cell: number) {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return;
-    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
-    if (picked.canceled || picked.assets.length === 0) return;
-    const { uri, aspect } = await importAsset(picked.assets[0]);
-    changeCell(index, cell, () => ({ uri, aspect }));
+
+  // The window is done: the block is laid on the canvas, or the one that was
+  // there changes - kept about its own middle, so a turned block does not jump.
+  function finishCollage(next: SketchCollageElement) {
+    const edit = collageEdit;
+    setCollageEdit(null);
+    if (!edit) return;
+    remember();
+    if (edit.index === null) {
+      setElements((prev) => {
+        setSelection([prev.length]);
+        return [...prev, next];
+      });
+      setTool('select');
+      return;
+    }
+    const index = edit.index;
+    setElements((prev) =>
+      prev.map((el, i) => {
+        if (i !== index || el.kind !== 'collage') return el;
+        const cx = el.x + el.w / 2;
+        const cy = el.y + el.h / 2;
+        return { ...next, x: cx - next.w / 2, y: cy - next.h / 2 };
+      })
+    );
   }
 
   async function finish() {
@@ -1275,88 +1290,12 @@ export default function SketchEditor({ visible, initialElements, background, pap
               <Ionicons name={'images-outline' as never} size={18} color={S.ink2} />
               <Text style={[styles.shapeToggleLabel, { color: S.ink }]}>З галереї телефону</Text>
             </Pressable>
-            <Pressable
-              onPress={() => {
-                setPictureMenuOpen(false);
-                setCollageMenuOpen(true);
-              }}
-              style={[styles.pictureRow, { backgroundColor: S.fill }]}
-            >
+            <Pressable onPress={startCollage} style={[styles.pictureRow, { backgroundColor: S.fill }]}>
               <Ionicons name={'grid-outline' as never} size={18} color={S.ink2} />
               <Text style={[styles.shapeToggleLabel, { color: S.ink }]}>Склейка</Text>
             </Pressable>
           </RNAnimated.View>
         )}
-        {collageMenuOpen && (
-          <RNAnimated.View
-            style={[
-              styles.palette,
-              { bottom: insets.bottom + 84, backgroundColor: S.card, boxShadow: S.popShadow, transform: barPan.getTranslateTransform() },
-            ]}
-          >
-            <Text style={[styles.shapeToggleLabel, { color: S.ink2, marginBottom: 8 }]}>Склейка: обери макет</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              {LAYOUTS.map((l) => {
-                const box = 40;
-                const fit = l.aspect >= 1 ? { w: box, h: box / l.aspect } : { w: box * l.aspect, h: box };
-                return (
-                  <Pressable key={l.id} onPress={() => addCollage(l.id)} style={[styles.layoutTile, { backgroundColor: S.fill }]} accessibilityLabel={l.label}>
-                    <Svg width={box} height={box} viewBox={`0 0 ${box} ${box}`}>
-                      {l.cells.map(([x, y, w, h], i) => (
-                        <Rect
-                          key={i}
-                          x={(box - fit.w) / 2 + x * fit.w + 1}
-                          y={(box - fit.h) / 2 + y * fit.h + 1}
-                          width={w * fit.w - 2}
-                          height={h * fit.h - 2}
-                          rx={2}
-                          fill={S.ink2}
-                        />
-                      ))}
-                    </Svg>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Pressable onPress={() => setCollageMenuOpen(false)} style={[styles.pictureRow, { backgroundColor: S.fill, marginTop: 10 }]}>
-              <Text style={[styles.shapeToggleLabel, { color: S.ink }]}>Скасувати</Text>
-            </Pressable>
-          </RNAnimated.View>
-        )}
-        {cellMenu && (() => {
-          const block = elements[cellMenu.index];
-          const cell = block?.kind === 'collage' ? block.cells[cellMenu.cell] : undefined;
-          if (!cell) return null;
-          const close = () => setCellMenu(null);
-          const row = (icon: string, label: string, run: () => void) => (
-            <Pressable
-              key={label}
-              onPress={() => {
-                close();
-                run();
-              }}
-              style={[styles.pictureRow, { backgroundColor: S.fill, marginBottom: 6 }]}
-            >
-              <Ionicons name={icon as never} size={18} color={S.ink2} />
-              <Text style={[styles.shapeToggleLabel, { color: S.ink }]}>{label}</Text>
-            </Pressable>
-          );
-          return (
-            <>
-              <Pressable style={StyleSheet.absoluteFill} onPress={close} />
-              <RNAnimated.View
-                style={[
-                  styles.palette,
-                  { bottom: insets.bottom + 84, backgroundColor: S.card, boxShadow: S.popShadow, transform: barPan.getTranslateTransform() },
-                ]}
-              >
-                {row('images-outline', cell.uri ? 'Замінити фото' : 'Додати фото', () => pickForCell(cellMenu.index, cellMenu.cell))}
-                {cell.uri && row('crop-outline', 'Кадрувати', () => setCropFor({ index: cellMenu.index, cell: cellMenu.cell }))}
-                {cell.uri && row('trash-outline', 'Прибрати фото', () => changeCell(cellMenu.index, cellMenu.cell, () => ({})))}
-              </RNAnimated.View>
-            </>
-          );
-        })()}
         {shapePanelOpen && shapePanelShown && (
           <RNAnimated.View
             style={[
@@ -1534,30 +1473,17 @@ export default function SketchEditor({ visible, initialElements, background, pap
             }}
           />
         )}
-        {cropFor !== null && cropFor.cell !== undefined && (() => {
-          const block = elements[cropFor.index];
-          if (!block || block.kind !== 'collage') return null;
-          const cell = block.cells[cropFor.cell];
-          const rect = cellRects(block)[cropFor.cell];
-          if (!cell?.uri || !rect) return null;
-          const { index, cell: cellIndex } = cropFor;
-          return (
-            <CropOverlay
-              uri={cell.uri}
-              boxAspect={rect.w / rect.h}
-              lockAspect={rect.w / rect.h}
-              crop={cellCrop(cell, rect)}
-              paper={paperFill}
-              ink={theme.paper.ink}
-              accent={S.accent}
-              onCancel={() => setCropFor(null)}
-              onDone={(crop) => {
-                changeCell(index, cellIndex, (c) => cellFromCrop(c, crop, rect));
-                setCropFor(null);
-              }}
-            />
-          );
-        })()}
+        {collageEdit && (
+          <CollageEditor
+            initial={collageEdit.element}
+            pickPhotos={pickPhotos}
+            paper={paperFill}
+            ink={theme.paper.ink}
+            accent={S.accent}
+            onCancel={() => setCollageEdit(null)}
+            onDone={finishCollage}
+          />
+        )}
       </GestureHandlerRootView>
     </Modal>
   );
@@ -1695,7 +1621,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  layoutTile: { width: 56, height: 56, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   pictureRow: {
     flexDirection: 'row',
     alignItems: 'center',

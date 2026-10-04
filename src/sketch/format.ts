@@ -107,9 +107,14 @@ export interface SketchCollageElement {
   w: number;
   h: number;
   layout: string;
-  gap: number;
+  gap: number; // between cells, canvas units
   cells: SketchCollageCell[];
   rot?: number;
+  // version 4:
+  outer?: number; // space between the cells and the block's edge
+  radius?: number; // corner rounding of every cell
+  bg?: string; // colour behind the cells (and in the gaps); none = see-through
+  splits?: number[]; // where the layout's dividers sit (0..1 of their space, in the layout's order); none = the layout's own
 }
 
 export type SketchElement = SketchPathElement | SketchTextElement | SketchImageElement | SketchCollageElement;
@@ -119,7 +124,7 @@ export type SketchElement = SketchPathElement | SketchTextElement | SketchImageE
 // element types; a reader that meets a newer version still draws what it
 // knows and keeps the rest untouched.
 export const SKETCH_FORMAT = 'sketchEva';
-export const SKETCH_VERSION = 3;
+export const SKETCH_VERSION = 4;
 
 export type SketchFile = {
   format: typeof SKETCH_FORMAT;
