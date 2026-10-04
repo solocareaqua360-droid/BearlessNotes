@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -12,6 +13,7 @@ import { useSoft, useTheme } from './src/sketch/theme';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from './src/sketch/fonts';
 import type { SketchFile } from './src/sketch/format';
 import SettingsSheet from './src/SettingsSheet';
+import HoldTarget, { type Rect } from './src/HoldTarget';
 import { formatStamp } from './src/updates';
 import { ActionSheet, NameDialog, type SheetAction } from './src/Sheets';
 import {
@@ -47,6 +49,23 @@ function Home() {
   const [open, setOpen] = useState<SketchFile | null>(null);
   const [settings, setSettings] = useState(false);
   const [sheet, setSheet] = useState<{ title?: string; actions: SheetAction[] } | null>(null);
+  const { width: screenW } = useWindowDimensions();
+  const rootRef = useRef<View>(null);
+  const folderRefs = useRef<Record<string, View | null>>({});
+  const folderRects = useRef<Record<string, Rect>>({});
+  const tx = useSharedValue(0);
+  const ty = useSharedValue(0);
+  // What is held right now: its place on screen, what to draw as the lifted
+  // copy, the menu, and whether it is being dragged to a folder.
+  const [held, setHeld] = useState<{
+    rect: Rect; // in this screen's coordinates
+    ghost: ReactNode;
+    actions: SheetAction[];
+    dragFile: SketchFile | null;
+    dragging: boolean;
+  } | null>(null);
+  const [hover, setHover] = useState<{ id: string; rect: Rect } | null>(null);
+  const hoverId = useRef<string | null>(null);
   const [dialog, setDialog] = useState<{ title: string; initial: string; confirm: string; onSubmit: (name: string) => void } | null>(null);
 
   const reload = useCallback(() => {
@@ -150,43 +169,84 @@ function Home() {
       ],
     });
 
-  const holdSketch = (file: SketchFile) =>
-    setSheet({
-      title: file.title,
-      actions: [
-        { label: 'Перейменувати', icon: 'pencil', onPress: () => renameSketch(file) },
-        { label: 'Перемістити в папку', icon: 'folder-open', onPress: () => setTimeout(() => moveSheet(file), 250) },
-        { label: 'Експортувати', icon: 'share', onPress: () => exportSketch(file).catch((e) => Alert.alert('Не вийшло', String(e))) },
-        {
-          label: 'Видалити',
-          icon: 'trash',
-          destructive: true,
-          onPress: () =>
-            Alert.alert('Видалити малюнок?', `«${file.title}» зникне з цього телефона.`, [
-              { text: 'Скасувати', style: 'cancel' },
-              {
-                text: 'Видалити',
-                style: 'destructive',
-                onPress: () => {
-                  const assign = { ...lib.assign };
-                  delete assign[file.id];
-                  change({ ...lib, assign });
-                  deleteSketch(file.id).then(reload);
-                },
-              },
-            ]),
-        },
-      ],
-    });
+  const sketchActions = (file: SketchFile): SheetAction[] => [
+    { label: 'Перемістити в папку', icon: 'folder', onPress: () => moveSheet(file) },
+    { label: 'Перейменувати', icon: 'pencil', onPress: () => renameSketch(file) },
+    { label: 'Експортувати', icon: 'share', onPress: () => exportSketch(file).catch((e) => Alert.alert('Не вийшло', String(e))) },
+    {
+      label: 'Видалити',
+      icon: 'trash',
+      destructive: true,
+      onPress: () =>
+        Alert.alert('Видалити малюнок?', `«${file.title}» зникне з цього телефона.`, [
+          { text: 'Скасувати', style: 'cancel' },
+          {
+            text: 'Видалити',
+            style: 'destructive',
+            onPress: () => {
+              const assign = { ...lib.assign };
+              delete assign[file.id];
+              change({ ...lib, assign });
+              deleteSketch(file.id).then(reload);
+            },
+          },
+        ]),
+    },
+  ];
 
-  const holdFolder = (f: Folder) =>
-    setSheet({
-      title: f.name,
-      actions: [
-        { label: 'Перейменувати', icon: 'pencil', onPress: () => renameFolder(f) },
-        { label: 'Видалити', icon: 'trash', destructive: true, onPress: () => deleteFolder(f) },
-      ],
+  const folderActions = (f: Folder): SheetAction[] => [
+    { label: 'Перейменувати', icon: 'pencil', onPress: () => renameFolder(f) },
+    { label: 'Видалити', icon: 'trash', destructive: true, onPress: () => deleteFolder(f) },
+  ];
+
+  // The held card's place in this screen's own coordinates (the window may
+  // start above it, under the status bar).
+  const hold = (windowRect: Rect, ghost: ReactNode, actions: SheetAction[], dragFile: SketchFile | null) => {
+    rootRef.current?.measureInWindow((ox, oy) => {
+      setHover(null);
+      hoverId.current = null;
+      setHeld({ rect: { x: windowRect.x - ox, y: windowRect.y - oy, w: windowRect.w, h: windowRect.h }, ghost, actions, dragFile, dragging: false });
     });
+  };
+  const closeHold = () => {
+    setHeld(null);
+    setHover(null);
+    hoverId.current = null;
+  };
+
+  // Dragging a drawing onto a folder: the folders are measured once when the
+  // drag starts, then the finger is matched against them as it moves.
+  const dragStart = () => {
+    setHeld((h) => (h ? { ...h, dragging: true } : h));
+    rootRef.current?.measureInWindow((ox, oy) => {
+      for (const f of lib.folders) {
+        folderRefs.current[f.id]?.measureInWindow((x, y, w, h) => {
+          folderRects.current[f.id] = { x: x - ox, y: y - oy, w, h };
+          folderRects.current['w:' + f.id] = { x, y, w, h };
+        });
+      }
+    });
+  };
+  const dragMove = (ax: number, ay: number) => {
+    let found: string | null = null;
+    for (const f of folders) {
+      const r = folderRects.current['w:' + f.id];
+      if (r && ax >= r.x && ax <= r.x + r.w && ay >= r.y && ay <= r.y + r.h) found = f.id;
+    }
+    if (found === hoverId.current) return;
+    hoverId.current = found;
+    setHover(found ? { id: found, rect: folderRects.current[found] } : null);
+  };
+  const dragEnd = () => {
+    const file = held?.dragFile;
+    const id = hoverId.current;
+    if (file && id) moveTo(file, id);
+    closeHold();
+  };
+
+  const ghostStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: 1.04 }],
+  }));
 
   const importOne = () =>
     importSketch()
@@ -216,10 +276,47 @@ function Home() {
     setSheet({ actions });
   };
 
+  const sketchCard = (file: SketchFile) => (
+    <View style={[styles.card, { backgroundColor: S.card, boxShadow: S.shadow }]}>
+      <View style={[styles.preview, { backgroundColor: theme.paper.fill }]}>
+        {file.width > 0 && (
+          <Svg width="100%" height="100%" viewBox={`0 0 ${file.width} ${file.height}`} preserveAspectRatio="xMidYMid meet">
+            <SketchLayer elements={file.elements} ink={theme.paper.ink} />
+          </Svg>
+        )}
+        <View style={[styles.stamp, { backgroundColor: theme.paper.fill }]}>
+          <Text style={[styles.stampText, { color: S.ink2 }]}>{formatStamp(file.updatedAt)}</Text>
+        </View>
+      </View>
+      <Text style={[styles.cardTitle, { color: S.ink }]} numberOfLines={1}>
+        {file.title}
+      </Text>
+    </View>
+  );
+
+  const folderPill = (f: Folder) => (
+    <View style={[styles.folder, { backgroundColor: S.card, boxShadow: S.shadow }]}>
+      <View style={[styles.folderIcon, { backgroundColor: S.fill }]}>
+        <Ionicons name="folder" size={22} color={S.ink2} />
+      </View>
+      <View style={styles.folderText}>
+        <Text style={[styles.folderName, { color: S.ink }]} numberOfLines={1}>
+          {f.name}
+        </Text>
+        <Text style={[styles.folderCount, { color: S.ink3 }]}>{countIn(f.id)}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={S.ink3} />
+    </View>
+  );
+
+  const menuW = Math.min(280, screenW - 32);
+  const menuH = (held?.actions.length ?? 0) * 54 + 16;
+  const above = held ? held.rect.y - insets.top - 16 > menuH : true;
+
   const empty = shown.length === 0 && folders.length === 0;
 
   return (
-    <View style={[styles.fill, { backgroundColor: S.bg }]}>
+    <View ref={rootRef} collapsable={false} style={[styles.fill, { backgroundColor: S.bg }]}>
       <StatusBar style={S.dark ? 'light' : 'dark'} />
 
       <View style={[styles.header, { top: insets.top + 8, backgroundColor: S.chrome, boxShadow: S.shadow }]}>
@@ -231,9 +328,22 @@ function Home() {
         >
           {folder ? <Ionicons name="chevron-back" size={24} color={S.ink} /> : null}
         </Pressable>
-        <Text style={[styles.headerTitle, { color: S.ink }]} numberOfLines={1}>
-          {folder ? folder.name : 'Малюнки'}
-        </Text>
+        {folder ? (
+          // The path: «Малюнки › папка». Folders are flat, so it is two steps.
+          <View style={styles.crumbs}>
+            <Pressable onPress={() => setFolderId(null)} hitSlop={8}>
+              <Text style={[styles.crumb, { color: S.ink3 }]}>Малюнки</Text>
+            </Pressable>
+            <Ionicons name="chevron-forward" size={16} color={S.ink3} />
+            <Text style={[styles.crumb, { color: S.ink, flexShrink: 1 }]} numberOfLines={1}>
+              {folder.name}
+            </Text>
+          </View>
+        ) : (
+          <Text style={[styles.headerTitle, { color: S.ink }]} numberOfLines={1}>
+            Малюнки
+          </Text>
+        )}
         <Pressable onPress={menu} style={styles.headerBtn} accessibilityLabel="Меню">
           <Ionicons name="ellipsis-horizontal" size={22} color={S.accent} />
         </Pressable>
@@ -246,26 +356,20 @@ function Home() {
         {folders.length > 0 && (
           <View style={styles.folders}>
             {folders.map((f) => (
-              <Pressable
-                key={f.id}
-                onPress={() => {
-                  setQuery('');
-                  setFolderId(f.id);
-                }}
-                onLongPress={() => holdFolder(f)}
-                style={[styles.folder, { backgroundColor: S.card, boxShadow: S.shadow }]}
-              >
-                <View style={[styles.folderIcon, { backgroundColor: S.fill }]}>
-                  <Ionicons name="folder" size={22} color={S.ink2} />
-                </View>
-                <View style={styles.folderText}>
-                  <Text style={[styles.folderName, { color: S.ink }]} numberOfLines={1}>
-                    {f.name}
-                  </Text>
-                  <Text style={[styles.folderCount, { color: S.ink3 }]}>{countIn(f.id)}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={S.ink3} />
-              </Pressable>
+              <View key={f.id} ref={(r) => { folderRefs.current[f.id] = r; }} collapsable={false} style={styles.folderSlot}>
+                <HoldTarget
+                  tx={tx}
+                  ty={ty}
+                  style={styles.folderFill}
+                  onTap={() => {
+                    setQuery('');
+                    setFolderId(f.id);
+                  }}
+                  onHold={(r) => hold(r, folderPill(f), folderActions(f), null)}
+                >
+                  {folderPill(f)}
+                </HoldTarget>
+              </View>
             ))}
           </View>
         )}
@@ -278,26 +382,20 @@ function Home() {
 
         <View style={styles.grid}>
           {shown.map((file) => (
-            <Pressable
+            <HoldTarget
               key={file.id}
-              onPress={() => setOpen(file)}
-              onLongPress={() => holdSketch(file)}
-              style={[styles.card, { backgroundColor: S.card, boxShadow: S.shadow }]}
+              draggable
+              tx={tx}
+              ty={ty}
+              style={styles.cardSlot}
+              onTap={() => setOpen(file)}
+              onHold={(r) => hold(r, sketchCard(file), sketchActions(file), file)}
+              onDragStart={dragStart}
+              onDragMove={dragMove}
+              onDragEnd={dragEnd}
             >
-              <View style={[styles.preview, { backgroundColor: theme.paper.fill }]}>
-                {file.width > 0 && (
-                  <Svg width="100%" height="100%" viewBox={`0 0 ${file.width} ${file.height}`} preserveAspectRatio="xMidYMid meet">
-                    <SketchLayer elements={file.elements} ink={theme.paper.ink} />
-                  </Svg>
-                )}
-                <View style={[styles.stamp, { backgroundColor: theme.paper.fill }]}>
-                  <Text style={[styles.stampText, { color: S.ink2 }]}>{formatStamp(file.updatedAt)}</Text>
-                </View>
-              </View>
-              <Text style={[styles.cardTitle, { color: S.ink }]} numberOfLines={1}>
-                {file.title}
-              </Text>
-            </Pressable>
+              {sketchCard(file)}
+            </HoldTarget>
           ))}
         </View>
       </ScrollView>
@@ -329,6 +427,55 @@ function Home() {
           <Ionicons name="settings-outline" size={22} color={S.ink} />
         </Pressable>
       </View>
+
+      {held && (
+        <View style={styles.overlay} pointerEvents="box-none">
+          <Pressable
+            onPress={closeHold}
+            style={[StyleSheet.absoluteFill, { backgroundColor: held.dragging ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.55)' }]}
+          />
+          {hover && (
+            <View
+              pointerEvents="none"
+              style={{ position: 'absolute', left: hover.rect.x - 3, top: hover.rect.y - 3, width: hover.rect.w + 6, height: hover.rect.h + 6, borderRadius: 23, borderWidth: 2.5, borderColor: S.accent }}
+            />
+          )}
+          <Animated.View
+            pointerEvents="none"
+            style={[{ position: 'absolute', left: held.rect.x, top: held.rect.y, width: held.rect.w, height: held.rect.h }, ghostStyle]}
+          >
+            {held.ghost}
+          </Animated.View>
+          {!held.dragging && (
+            <View
+              style={[
+                styles.menu,
+                {
+                  width: menuW,
+                  backgroundColor: S.chrome,
+                  boxShadow: S.popShadow,
+                  left: Math.max(16, Math.min(screenW - 16 - menuW, held.rect.x + held.rect.w - menuW)),
+                  top: above ? held.rect.y - menuH - 10 : held.rect.y + held.rect.h + 10,
+                },
+              ]}
+            >
+              {held.actions.map((a, i) => (
+                <Pressable
+                  key={i}
+                  onPress={() => {
+                    closeHold();
+                    a.onPress?.();
+                  }}
+                  style={styles.menuItem}
+                >
+                  <Ionicons name={a.icon as never} size={22} color={a.destructive ? '#E0705F' : S.ink2} />
+                  <Text style={[styles.menuText, { color: a.destructive ? '#E0705F' : S.ink }]}>{a.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
 
       <SettingsSheet visible={settings} onClose={() => setSettings(false)} />
       <ActionSheet title={sheet?.title} actions={sheet?.actions ?? null} onClose={() => setSheet(null)} />
@@ -364,16 +511,25 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   header: { position: 'absolute', left: 16, right: 16, height: 56, borderRadius: 28, flexDirection: 'row', alignItems: 'center', zIndex: 2 },
   headerBtn: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
+  crumbs: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  crumb: { fontSize: 18, fontFamily: SOFT_SEMIBOLD },
   headerTitle: { flex: 1, fontSize: 20, fontFamily: SOFT_SEMIBOLD, textAlign: 'center' },
   empty: { fontSize: 15, fontFamily: SOFT_MEDIUM, marginTop: 40, textAlign: 'center' },
   folders: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  folder: { width: '48.8%', height: 64, borderRadius: 20, flexDirection: 'row', alignItems: 'center', paddingLeft: 10, paddingRight: 10, gap: 10 },
+  folderSlot: { width: '48.8%', height: 64 },
+  folderFill: { flex: 1 },
+  cardSlot: { width: '31.5%' },
+  overlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 20, elevation: 20 },
+  menu: { position: 'absolute', borderRadius: 28, paddingVertical: 8 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 16, height: 54, paddingHorizontal: 22 },
+  menuText: { fontSize: 17, fontFamily: SOFT_MEDIUM },
+  folder: { flex: 1, borderRadius: 20, flexDirection: 'row', alignItems: 'center', paddingLeft: 10, paddingRight: 10, gap: 10 },
   folderIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   folderText: { flex: 1 },
   folderName: { fontSize: 15, fontFamily: SOFT_SEMIBOLD },
   folderCount: { fontSize: 13, fontFamily: SOFT_MEDIUM, marginTop: 1 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  card: { width: '31.5%', borderRadius: 14, overflow: 'hidden' },
+  card: { borderRadius: 14, overflow: 'hidden' },
   preview: { aspectRatio: 0.75 },
   cardTitle: { fontSize: 12, fontFamily: SOFT_MEDIUM, paddingHorizontal: 8, paddingVertical: 7 },
   stamp: { position: 'absolute', right: 4, bottom: 4, borderRadius: 6, paddingHorizontal: 4, paddingVertical: 1 },
