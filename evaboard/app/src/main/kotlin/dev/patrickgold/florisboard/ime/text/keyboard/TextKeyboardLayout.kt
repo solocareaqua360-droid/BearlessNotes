@@ -630,11 +630,6 @@ private class TextKeyboardLayoutController(
                             // We always return false here to prevent blockade for the up touch event
                             false
                         }
-                        KeyCode.LANGUAGE_SWITCH -> {
-                            // evaBoard: holding the globe picks one of evaBoard's languages, not another keyboard app
-                            inputEventDispatcher.sendDownUp(TextKeyData.SHOW_SUBTYPE_PICKER)
-                            true
-                        }
                         else -> {
                             if (popupUiController.isSuitableForPopups(key) && key.computedPopups.getPopupKeys(
                                     keyHintConfiguration

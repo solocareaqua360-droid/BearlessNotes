@@ -495,10 +495,10 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__eva_blur",
             default = false,
         )
-        // evaBoard: whether evaBoard's top row (digits / icons) is shown; toggled from the bottom strip
-        val evaTopRowVisible = boolean(
-            key = "keyboard__eva_top_row_visible",
-            default = true,
+        // evaBoard: what the row above the keys shows (ime/eva/EvaTopRowState.kt), stepped by the strip button
+        val evaTopRowState = enum(
+            key = "keyboard__eva_top_row_state",
+            default = dev.patrickgold.florisboard.ime.eva.EvaTopRowState.NUMBERS,
         )
         // evaBoard: every new screenshot (and its edited save) is put on the clipboard
         val evaScreenshotsToClipboard = boolean(
@@ -518,12 +518,6 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
         val evaNavLeftMic = boolean(
             key = "keyboard__eva_nav_left_mic",
-            default = false,
-        )
-        // evaBoard: word suggestions as their own row above evaBoard's top row (ime/eva/EvaTopRow.kt);
-        // off by default, and turning it on makes the keyboard one row taller.
-        val evaSuggestionsRow = boolean(
-            key = "keyboard__eva_suggestions_row",
             default = false,
         )
         val hintedNumberRowEnabled = boolean(

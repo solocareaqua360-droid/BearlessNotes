@@ -142,21 +142,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 updateActiveEvaluators()
             }
             // evaBoard: the letters' digit hints come and go with evaBoard's digit row
-            prefs.keyboard.evaTopRowVisible.asFlow().collectLatestIn(scope) {
+            prefs.keyboard.evaTopRowState.asFlow().collectLatestIn(scope) {
                 updateActiveEvaluators {
                     keyboardCache.clear(KeyboardMode.CHARACTERS)
                 }
-            }
-            // (drop(1): the initial value needs no recompute, and at start-up the layouts are not indexed yet)
-            scope.launch {
-                dev.patrickgold.florisboard.ime.eva.EvaTopRow.showIcons.drop(1).collectLatest {
-                    updateActiveEvaluators {
-                        keyboardCache.clear(KeyboardMode.CHARACTERS)
-                    }
-                }
-            }
-            prefs.keyboard.hintedSymbolsEnabled.asFlow().collectLatestIn(scope) {
-                updateActiveEvaluators()
             }
             prefs.keyboard.utilityKeyEnabled.asFlow().collectLatestIn(scope) {
                 updateActiveEvaluators()
@@ -758,6 +747,11 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             KeyCode.FORWARD_DELETE_WORD -> handleForwardDelete(OperationUnit.WORDS)
             KeyCode.IME_SHOW_UI -> FlorisImeService.showUi()
             KeyCode.IME_HIDE_UI -> FlorisImeService.hideUi()
+            // evaBoard: a language chosen from the globe's hold menu (ime/eva/EvaLanguageMenu.kt)
+            in dev.patrickgold.florisboard.ime.eva.EvaLanguageMenu.CODES -> {
+                subtypeManager.subtypes.getOrNull(dev.patrickgold.florisboard.ime.eva.EvaLanguageMenu.indexOf(data.code))
+                    ?.let { subtypeManager.switchToSubtypeById(it.id) }
+            }
             KeyCode.IME_PREV_SUBTYPE -> subtypeManager.switchToPrevSubtype()
             KeyCode.IME_NEXT_SUBTYPE -> subtypeManager.switchToNextSubtype()
             KeyCode.IME_UI_MODE_TEXT -> activeState.imeUiMode = ImeUiMode.TEXT

@@ -17,6 +17,7 @@
 package dev.patrickgold.florisboard.ime.text.keyboard
 
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
+import dev.patrickgold.florisboard.ime.eva.EvaLanguageMenu
 import dev.patrickgold.florisboard.ime.keyboard.AbstractKeyData
 import dev.patrickgold.florisboard.ime.keyboard.ComputingEvaluator
 import dev.patrickgold.florisboard.ime.keyboard.Key
@@ -113,6 +114,10 @@ class TextKey(override val data: AbstractKeyData) : Key(data) {
                 computedPopups.apply {
                     keySpecificPopupSet?.let { merge(it, evaluator) }
                     popupSet?.let { merge(it, evaluator) }
+                    // evaBoard: holding the globe offers the languages and the emoji panel
+                    if (computed.code == KeyCode.LANGUAGE_SWITCH) {
+                        EvaLanguageMenu.popups(evaluator)?.let { merge(it, evaluator) }
+                    }
                 }
                 if (computed.type == KeyType.CHARACTER) {
                     addComputedHints(computed.code, evaluator, extendedPopups, extendedPopupsDefault)

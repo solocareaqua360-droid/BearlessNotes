@@ -65,14 +65,8 @@ fun TextInputLayout(
                 .fillMaxWidth()
                 .wrapContentHeight(),
         ) {
-            // evaBoard: its own top row (digits or icons) replaces FlorisBoard's Smartbar; word
-            // suggestions only come back as an extra row when switched on in the settings.
-            val evaSuggestionsRow by prefs.keyboard.evaSuggestionsRow.observeAsState()
-            if (evaSuggestionsRow) {
-                Box(modifier = Modifier.fillMaxWidth().height(FlorisImeSizing.smartbarHeight)) {
-                    CandidatesRow()
-                }
-            }
+            // evaBoard: its own top row (digits, undo / redo / suggestions, or the tools) replaces
+            // FlorisBoard's Smartbar
             EvaTopRowUi()
             if (state.isActionsOverflowVisible) {
                 QuickActionsOverflowPanel()

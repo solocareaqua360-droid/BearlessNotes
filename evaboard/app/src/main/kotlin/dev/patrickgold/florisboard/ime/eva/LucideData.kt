@@ -68,9 +68,19 @@ internal val LUCIDE_PATHS: Map<String, List<String>> = mapOf(
         "m12 19-7-7 7-7",
         "M19 12H5",
     ),
+    "arrow-left-to-line" to listOf(
+        "M3 19V5",
+        "m13 6-6 6 6 6",
+        "M7 12h14",
+    ),
     "arrow-right" to listOf(
         "M5 12h14",
         "m12 5 7 7-7 7",
+    ),
+    "arrow-right-to-line" to listOf(
+        "M17 12H3",
+        "m11 18 6-6-6-6",
+        "M21 5v14",
     ),
     "arrow-up" to listOf(
         "m5 12 7-7 7 7",
@@ -139,6 +149,12 @@ internal val LUCIDE_PATHS: Map<String, List<String>> = mapOf(
         "M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0z",
         "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20",
         "M2 12h20",
+    ),
+    "hash" to listOf(
+        "M4 9L20 9",
+        "M4 15L20 15",
+        "M10 3L8 21",
+        "M16 3L14 21",
     ),
     "image" to listOf(
         "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z",
@@ -262,5 +278,8 @@ internal val LUCIDE_PATHS: Map<String, List<String>> = mapOf(
     "video" to listOf(
         "m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5",
         "M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-8a2 2 0 0 1 2 -2z",
+    ),
+    "wrench" to listOf(
+        "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z",
     ),
 )

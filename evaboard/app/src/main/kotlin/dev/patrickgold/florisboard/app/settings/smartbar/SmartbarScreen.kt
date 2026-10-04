@@ -35,12 +35,6 @@ fun SmartbarScreen() = FlorisScreen {
     previewFieldVisible = true
 
     content {
-        // evaBoard: the only suggestions switch that matters with evaBoard's own top row
-        SwitchPreference(
-            prefs.keyboard.evaSuggestionsRow,
-            title = stringRes(R.string.eva__pref_suggestions_row__label),
-            summary = stringRes(R.string.eva__pref_suggestions_row__summary),
-        )
         SwitchPreference(
             prefs.smartbar.enabled,
             title = stringRes(R.string.pref__smartbar__enabled__label),

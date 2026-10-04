@@ -33,10 +33,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,6 +53,7 @@ import dev.patrickgold.florisboard.ime.keyboard.KeyData
 import dev.patrickgold.florisboard.ime.keyboard.computeImageVector
 import dev.patrickgold.florisboard.ime.keyboard.computeLabel
 import dev.patrickgold.florisboard.ime.keyboard.KeyboardMode
+import dev.patrickgold.florisboard.ime.smartbar.CandidatesRow
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickAction
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.ToggleOverflowPanelAction
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.keyData
@@ -61,18 +62,14 @@ import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyData
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.jetpref.datastore.model.observeAsState
-import kotlinx.coroutines.flow.MutableStateFlow
 import org.florisboard.lib.snygg.SnyggSelector
 import org.florisboard.lib.snygg.ui.SnyggBox
 import org.florisboard.lib.snygg.ui.SnyggIcon
 import org.florisboard.lib.snygg.ui.SnyggText
 
 object EvaTopRow {
-    /** Slots in the row: the switch button plus ten digits, as wide as the Ukrainian letter keys. */
+    /** Slots in the row, as wide as the Ukrainian letter keys: eleven. */
     const val SLOTS = 11
-
-    /** false = digits, true = icons. Back to digits every time the keyboard opens. */
-    val showIcons = MutableStateFlow(false)
 
     /**
      * The row's height as last laid out (null before the first layout). Digit keys are square -
@@ -80,33 +77,23 @@ object EvaTopRow {
      * and emoji panels read it through FlorisImeSizing.smartbarUiHeight() to keep the same height.
      */
     val rowHeight = MutableStateFlow<Dp?>(null)
-
-    fun resetToDigits() {
-        showIcons.value = false
-    }
 }
 
 @Composable
 fun EvaTopRowUi() {
     val context = LocalContext.current
     val keyboardManager by context.keyboardManager()
-    val showIcons by EvaTopRow.showIcons.collectAsState()
     val state by keyboardManager.activeState.collectAsState()
-    // Symbols have digits of their own, so they bring the icons up; back on the letters, the digits return.
-    LaunchedEffect(state.keyboardMode) {
-        when (state.keyboardMode) {
-            KeyboardMode.SYMBOLS, KeyboardMode.SYMBOLS2 -> EvaTopRow.showIcons.value = true
-            KeyboardMode.CHARACTERS -> EvaTopRow.showIcons.value = false
-            else -> Unit
-        }
-    }
     val prefs by FlorisPreferenceStore
+    val chosen by prefs.keyboard.evaTopRowState.observeAsState()
+    // The symbols have digits of their own, so there the digit row gives way to undo / redo / suggestions.
+    val shown = if (chosen == EvaTopRowState.NUMBERS &&
+        (state.keyboardMode == KeyboardMode.SYMBOLS || state.keyboardMode == KeyboardMode.SYMBOLS2)
+    ) EvaTopRowState.EDIT else chosen
+    if (shown == EvaTopRowState.HIDDEN) return
     val (keyMarginH, keyMarginV) = evaKeySpacing()
 
-    val visible by prefs.keyboard.evaTopRowVisible.observeAsState()
-    if (!visible) return
     val splitMetrics = evaSplitMetrics()
-    val split = splitMetrics != null
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         // On a wide screen the row splits like the letters below (EvaSplit): side margins, and the
         // gap opens before the first slot right of the middle.
@@ -117,49 +104,40 @@ fun EvaTopRowUi() {
         // plus the top and bottom margins around it.
         val rowHeight = slotWidth - (keyMarginH * 2).dp + (keyMarginV * 2).dp
         SideEffect { EvaTopRow.rowHeight.value = rowHeight }
-        val slots: List<@Composable () -> Unit> = buildList {
-            add {
-                SwitchKey(showIcons) {
-                    if (showIcons) keyboardManager.activeState.isActionsOverflowVisible = false
-                    EvaTopRow.showIcons.value = !showIcons
-                }
-            }
-            if (showIcons) {
-                addAll(iconKeySlots())
-            } else {
-                for (digit in "1234567890") add { DigitKey(digit) }
-            }
-        }
-        // slots whose centre lies left of the middle stay left of the gap
-        val leftCount = (0 until EvaTopRow.SLOTS).count { (it + 0.5f) < EvaTopRow.SLOTS / 2f }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(rowHeight),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
-            slots.forEachIndexed { index, slot ->
-                if (gap > 0.dp && index == leftCount) Spacer(modifier = Modifier.width(gap))
-                Box(
-                    modifier = Modifier.width(slotWidth).fillMaxHeight(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    slot()
-                }
-            }
-        }
-    }
-}
+        val rowModifier = Modifier.fillMaxWidth().height(rowHeight)
 
-/** The switch, a key like the others: "123" while the icons show, a grid while the digits show. */
-@Composable
-private fun SwitchKey(showIcons: Boolean, onClick: () -> Unit) {
-    EvaKey(code = KeyCode.UNSPECIFIED, onRelease = onClick) {
-        if (showIcons) {
-            SnyggText(text = "123")
+        if (shown == EvaTopRowState.EDIT) {
+            // undo, redo, then the suggestions across the rest of the row (no gap: it is one row)
+            val evaluator by keyboardManager.activeSmartbarEvaluator.collectAsState()
+            Row(modifier = rowModifier, verticalAlignment = Alignment.CenterVertically) {
+                if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
+                for (action in listOf(TextKeyData.UNDO, TextKeyData.REDO)) {
+                    Box(Modifier.width(slotWidth).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        ActionKey(QuickAction.InsertKey(action), evaluator)
+                    }
+                }
+                Box(Modifier.weight(1f).fillMaxHeight()) { CandidatesRow(Modifier.fillMaxSize()) }
+                if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
+            }
         } else {
-            SnyggIcon(modifier = Modifier.size(ActionIconSize), imageVector = EvaIcons.lucide("layout-grid"))
+            val slots: List<@Composable () -> Unit> = if (shown == EvaTopRowState.TOOLS) {
+                iconKeySlots()
+            } else {
+                // the digits stand over the first ten letter columns, й…з; the eleventh slot stays empty
+                buildList<@Composable () -> Unit> {
+                    for (digit in "1234567890") add { DigitKey(digit) }
+                    add { }
+                }
+            }
+            // slots whose centre lies left of the middle stay left of the gap
+            val leftCount = (0 until EvaTopRow.SLOTS).count { (it + 0.5f) < EvaTopRow.SLOTS / 2f }
+            Row(modifier = rowModifier, verticalAlignment = Alignment.CenterVertically) {
+                if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
+                slots.forEachIndexed { index, slot ->
+                    if (gap > 0.dp && index == leftCount) Spacer(modifier = Modifier.width(gap))
+                    Box(Modifier.width(slotWidth).fillMaxHeight(), contentAlignment = Alignment.Center) { slot() }
+                }
+            }
         }
     }
 }
@@ -198,7 +176,7 @@ private fun iconKeySlots(): List<@Composable () -> Unit> {
     val actionArrangement by prefs.smartbar.actionArrangement.observeAsState()
     val evaluator by keyboardManager.activeSmartbarEvaluator.collectAsState()
 
-    val places = EvaTopRow.SLOTS - 1
+    val places = EvaTopRow.SLOTS
     // The microphone lives in the bottom strip; the overflow button always takes the last icon place.
     val actions = remember(actionArrangement) {
         actionArrangement.dynamicActions

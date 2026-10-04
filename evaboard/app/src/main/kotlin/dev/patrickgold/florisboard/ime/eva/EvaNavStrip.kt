@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.FlorisImeService
+import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyData
@@ -120,14 +121,27 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
             },
             onHold = { menuOpen = true },
         )
-        // Shows / hides the top row of digits, right beside the left button.
-        val topRowVisible by prefs.keyboard.evaTopRowVisible.observeAsState()
+        // The up / down button, right beside the left one: steps the row above the keys through
+        // hidden -> digits -> undo / redo / suggestions; holding it shows the tools row, and back.
+        val topRowState by prefs.keyboard.evaTopRowState.observeAsState()
+        val keyboardManager by context.keyboardManager()
+        fun setTopRow(next: EvaTopRowState) {
+            keyboardManager.activeState.isActionsOverflowVisible = false
+            scope.launch { prefs.keyboard.evaTopRowState.set(next) }
+        }
         StripButton(
             modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp + 44.dp + 8.dp),
-            icon = EvaIcons.lucide(if (topRowVisible) "panel-top-close" else "panel-top-open"),
+            icon = EvaIcons.lucide(
+                when (topRowState) {
+                    EvaTopRowState.HIDDEN -> "panel-top-open"
+                    EvaTopRowState.NUMBERS -> "hash"
+                    EvaTopRowState.EDIT -> "undo-2"
+                    EvaTopRowState.TOOLS -> "wrench"
+                }
+            ),
             iconSize = StripIconDefault,
-            onTap = { scope.launch { prefs.keyboard.evaTopRowVisible.set(!topRowVisible) } },
-            onHold = null,
+            onTap = { setTopRow(topRowState.next()) },
+            onHold = { setTopRow(if (topRowState == EvaTopRowState.TOOLS) EvaTopRowState.NUMBERS else EvaTopRowState.TOOLS) },
         )
         StripButton(
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
