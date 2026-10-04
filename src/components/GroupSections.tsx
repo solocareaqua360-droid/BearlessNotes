@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { useSoft } from '../theme/soft';
 import type { GroupItem } from '../hooks/useGroupItems';
@@ -151,6 +153,26 @@ export default function GroupSections({
   // The uri and its Drive copy together - see AttachmentImage.
   const [viewerPhoto, setViewerPhoto] = useState<{ uri: string; driveFileId?: string } | null>(null);
 
+  // ON THE PROJECTS SCREEN each category is a block that opens (the start
+  // desk's «Робочі столи», the user's, 2026-10-04) - the big cards inside
+  // it as before. Which are open is kept per project; the first time, the
+  // biggest one.
+  const openKey = `mindeva.projectOpen.${groupId ?? ''}`;
+  const [storedOpen, setStoredOpen] = useState<string[] | null | undefined>(undefined);
+  useEffect(() => {
+    if (!given || !groupId) return;
+    let alive = true;
+    setStoredOpen(undefined);
+    AsyncStorage.getItem(openKey)
+      .then((v) => {
+        if (alive) setStoredOpen(v ? (JSON.parse(v) as string[]) : null);
+      })
+      .catch(() => alive && setStoredOpen(null));
+    return () => {
+      alive = false;
+    };
+  }, [given, groupId, openKey]);
+
   if (!groupId) return null;
 
   const inGroup = (rows: Row[]) => rows.filter((r) => r.groupId === groupId && !binned(r));
@@ -204,6 +226,59 @@ export default function GroupSections({
   const sections = ((given ? PROJECT_ORDER : ORDER) as readonly string[]).filter((kind) => kind !== currentKind && byKind[kind].length > 0);
   if (sections.length === 0 && customSections.length === 0) return null;
 
+  const blockIds = [
+    ...sections.map((kind) => ({ id: kind, count: byKind[kind].length })),
+    ...customSections.map(({ database, rows }) => ({ id: `custom:${database.id}`, count: rows.length })),
+  ];
+  const biggest = [...blockIds].sort((a, b) => b.count - a.count)[0]?.id;
+  const openNow = new Set(storedOpen ?? (storedOpen === null && biggest ? [biggest] : []));
+  const toggleOpen = (id: string) => {
+    const next = new Set(openNow);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    const list = Array.from(next);
+    setStoredOpen(list);
+    AsyncStorage.setItem(openKey, JSON.stringify(list)).catch(() => {});
+  };
+  // One category: a divider over its cards, or on the projects screen a
+  // block whose head opens it.
+  const shell = (id: string, label: string, icon: keyof typeof Ionicons.glyphMap, color: string, count: number, content: ReactNode) => {
+    if (!given) {
+      return (
+        <View key={id} style={styles.section}>
+          <Divider label={label} icon={icon} color={color} count={count} />
+          {content}
+        </View>
+      );
+    }
+    const isOpen = openNow.has(id);
+    return (
+      <Animated.View key={id} layout={LinearTransition.duration(220)} style={styles.block}>
+        <Pressable
+          onPress={() => toggleOpen(id)}
+          style={({ pressed }) => [
+            styles.blockHead,
+            { backgroundColor: pressed ? S.fill : S.card, boxShadow: S.shadow },
+          ]}
+        >
+          <View style={[styles.blockSeat, { backgroundColor: S.fill }]}>
+            <Ionicons name={icon} size={18} color={color} />
+          </View>
+          <Text style={[styles.blockLabel, { color: S.ink }]} numberOfLines={1}>
+            {label}
+          </Text>
+          <Text style={[styles.blockCount, { color: S.ink3 }]}>{count}</Text>
+          <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={S.ink3} />
+        </Pressable>
+        {isOpen && (
+          <Animated.View entering={FadeIn.duration(180)} style={styles.blockBody}>
+            {content}
+          </Animated.View>
+        )}
+      </Animated.View>
+    );
+  };
+
   function Divider({ label, icon, color, count }: { label: string; icon: keyof typeof Ionicons.glyphMap; color: string; count: number }) {
     return (
       <View style={styles.divider}>
@@ -221,9 +296,8 @@ export default function GroupSections({
       {sections.map((kind) => {
         const face = FACE[kind];
         const rows = byKind[kind];
-        return (
-          <View key={kind} style={styles.section}>
-            <Divider label={face.label} icon={face.icon} color={face.color} count={rows.length} />
+        return shell(kind, face.label, face.icon, face.color, rows.length, (
+          <>
             {kind === 'photo' ? (
               <View style={styles.photoGrid}>
                 {rows.map((row) => {
@@ -360,18 +434,17 @@ export default function GroupSections({
                 })}
               </View>
             )}
-          </View>
-        );
+          </>
+        ));
       })}
 
-      {customSections.map(({ database, rows }) => (
-        <View key={database.id} style={styles.section}>
-          <Divider
-            label={database.name}
-            icon={(database.icon as keyof typeof Ionicons.glyphMap) ?? 'grid-outline'}
-            color={database.color ?? '#F97316'}
-            count={rows.length}
-          />
+      {customSections.map(({ database, rows }) =>
+        shell(
+          `custom:${database.id}`,
+          database.name,
+          (database.icon as keyof typeof Ionicons.glyphMap) ?? 'grid-outline',
+          database.color ?? '#F97316',
+          rows.length,
           <View style={styles.column}>
             {rows.map((row) => {
               const values = (row.values as Record<string, unknown>) ?? {};
@@ -400,8 +473,8 @@ export default function GroupSections({
               );
             })}
           </View>
-        </View>
-      ))}
+        )
+      )}
 
       {viewerPhoto && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setViewerPhoto(null)}>
@@ -443,6 +516,38 @@ const styles = StyleSheet.create({
   },
   section: {
     width: '100%',
+  },
+  block: {
+    width: '100%',
+    marginTop: 10,
+  },
+  blockHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    height: 56,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+  },
+  blockSeat: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  blockLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+  },
+  blockCount: {
+    fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
+  },
+  blockBody: {
+    paddingTop: 10,
+    paddingBottom: 4,
   },
   divider: {
     flexDirection: 'row',
