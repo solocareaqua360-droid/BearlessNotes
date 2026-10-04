@@ -3,7 +3,7 @@ import { Keyboard, NativeScrollEvent, NativeSyntheticEvent, StyleProp, View, Vie
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { hapticButtonDown } from '../utils/haptics';
-import { PULL_MORPH_AT, deskPull, deskPullEnabled } from '../navigation/deskPull';
+import { PULL_MORPH_AT, PULL_OPENS_DESKS, deskPull, deskPullEnabled } from '../navigation/deskPull';
 
 // Pull the list down from its top and the search field comes out - but
 // only after the cards have stretched first, the way they do when a list
@@ -78,7 +78,7 @@ export function usePullToSearch(
   }, []);
   const startHold = useCallback(() => {
     stopHold();
-    if (!holdRef.current) return;
+    if (!PULL_OPENS_DESKS || !holdRef.current) return;
     holdTimer.current = setTimeout(() => {
       holdTimer.current = null;
       if (!waiting.value || fired.value) return;
@@ -114,7 +114,7 @@ export function usePullToSearch(
         if (!armed.value || fired.value) return;
         pulled.value = rubberBand(e.translationY);
         // The bar becomes the panel of open desks as the list comes down.
-        if (deskPullEnabled.value) deskPull.value = Math.min(1, pulled.value / PULL_MORPH_AT);
+        if (PULL_OPENS_DESKS && deskPullEnabled.value) deskPull.value = Math.min(1, pulled.value / PULL_MORPH_AT);
         if (!waiting.value) {
           // Down, far enough that the stretch has already played out, and
           // not a sideways swipe between tabs that sagged a little.
