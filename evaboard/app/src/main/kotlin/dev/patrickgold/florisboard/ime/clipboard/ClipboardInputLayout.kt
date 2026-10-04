@@ -70,6 +70,12 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.unit.Dp
+import dev.patrickgold.florisboard.ime.eva.EvaStrip
+import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
 import dev.patrickgold.florisboard.ime.eva.ClipKindBadge
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.foundation.layout.Box
@@ -192,11 +198,16 @@ fun ClipboardInputLayout(
         gridState.scrollToItem(0)
     }
 
+    // evaBoard: the cards scroll under the header and under the bottom strip, which fade out over them
+    val headerHeight = 52.dp
+    val fadeLength = 30.dp
+    val stripHeight by EvaStrip.height.collectAsState()
+
     @Composable
     fun HeaderRow() {
         // evaBoard: Samsung's arrangement - back-to-keys icon, the title, then icon toggles (text,
         // images, pinned) and clear; plain icons on a 52dp row so each is an easy target
-        val rowHeight = 52.dp
+        val rowHeight = headerHeight
         SnyggRow(FlorisImeUi.ClipboardHeader.elementName,
             modifier = Modifier
                 .fillMaxWidth()
@@ -424,6 +435,8 @@ fun ClipboardInputLayout(
                         modifier = Modifier.fillMaxSize(),
                         state = gridState,
                         columns = staggeredGridCells,
+                        // start below the header and end above the strip; scrolling goes under both
+                        contentPadding = PaddingValues(top = headerHeight, bottom = stripHeight + 12.dp),
                     ) {
                         clipboardItems(
                             items = filteredHistory.pinned,
@@ -625,25 +638,55 @@ fun ClipboardInputLayout(
         }
     }
 
-    SnyggColumn(
+    val ground = rememberSnyggThemeQuery(FlorisImeUi.Window.elementName).background()
+        .takeIf { it.isSpecified }?.copy(alpha = 1f) ?: Color.Transparent
+    // an eased (smoothstep) fade: strong at the edge, gone smoothly - not a straight line
+    val easedAlpha = listOf(1f, 0.94f, 0.78f, 0.575f, 0.35f, 0.16f, 0.03f, 0f)
+    fun fadeBrush(solid: Dp, fade: Dp, top: Boolean): Brush {
+        val solidFraction = solid / (solid + fade)
+        val stops = buildList {
+            easedAlpha.forEachIndexed { i, alpha ->
+                val t = i / (easedAlpha.size - 1f)
+                add((solidFraction + (1f - solidFraction) * t) to ground.copy(alpha = alpha))
+            }
+        }
+        return if (top) {
+            Brush.verticalGradient(colorStops = arrayOf(0f to ground, solidFraction to ground, *stops.toTypedArray()))
+        } else {
+            // mirrored: the fade first, then the solid part at the bottom
+            val mirrored = stops.map { (1f - it.first) to it.second }.reversed()
+            Brush.verticalGradient(colorStops = arrayOf(*mirrored.toTypedArray(), (1f - solidFraction) to ground, 1f to ground))
+        }
+    }
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(FlorisImeSizing.imeUiHeight()),
+            .height(FlorisImeSizing.imeUiHeight() + stripHeight),
     ) {
-        HeaderRow()
         if (deviceLocked) {
-            HistoryLockedView()
+            Box(Modifier.fillMaxSize().padding(top = headerHeight, bottom = stripHeight)) { HistoryLockedView() }
         } else {
             if (historyEnabled) {
                 if (filteredHistory.all.isNotEmpty() || !activeFilterTypes.isEmpty()) {
                     HistoryMainView()
                 } else {
-                    HistoryEmptyView()
+                    Box(Modifier.fillMaxSize().padding(top = headerHeight, bottom = stripHeight)) { HistoryEmptyView() }
                 }
             } else {
-                HistoryDisabledView()
+                Box(Modifier.fillMaxSize().padding(top = headerHeight, bottom = stripHeight)) { HistoryDisabledView() }
             }
         }
+        // the plates: solid over the header and the strip, then fading into the cards
+        Box(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(headerHeight + fadeLength)
+                .background(fadeBrush(headerHeight, fadeLength, top = true))
+        )
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(stripHeight + fadeLength)
+                .background(fadeBrush(stripHeight, fadeLength, top = false))
+        )
+        Box(Modifier.align(Alignment.TopStart)) { HeaderRow() }
     }
 }
 

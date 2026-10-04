@@ -153,6 +153,11 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
     }
 }
 
+/** The height of evaBoard's bottom strip while it is up (0 otherwise); the clipboard lets its cards run under it. */
+object EvaStrip {
+    val height = kotlinx.coroutines.flow.MutableStateFlow(0.dp)
+}
+
 /** Keyboard switcher and microphone: the toolbar's icon size (30dp was too big for the mic). */
 private val StripIconDefault = 24.dp
 /** Hide: its chevron glyph is small, so it is drawn larger to match the toolbar icons. */

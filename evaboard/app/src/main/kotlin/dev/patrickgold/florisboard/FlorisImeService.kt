@@ -57,6 +57,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -80,6 +81,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import dev.patrickgold.florisboard.ime.eva.EvaBlur
+import dev.patrickgold.florisboard.ime.eva.EvaStrip
 import dev.patrickgold.florisboard.ime.eva.evaGlass
 import androidx.compose.ui.graphics.luminance
 import dev.patrickgold.florisboard.ime.eva.EvaNavStripLayer
@@ -775,6 +777,7 @@ class FlorisImeService : LifecycleInputMethodService() {
                 val evaStripHeight = with(density) {
                     max(WindowInsets.navigationBars.getBottom(density).toDp(), 44.dp)
                 }
+                SideEffect { EvaStrip.height.value = if (evaStripActive) evaStripHeight else 0.dp }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -786,7 +789,8 @@ class FlorisImeService : LifecycleInputMethodService() {
                                     .windowInsetsPadding(
                                         WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
                                     )
-                                    .padding(bottom = evaStripHeight)
+                                    // the clipboard runs its cards under the strip, so no gap below it there
+                                    .padding(bottom = if (state.imeUiMode == ImeUiMode.CLIPBOARD) 0.dp else evaStripHeight)
                             } else {
                                 Modifier.safeDrawingPadding()
                             }
