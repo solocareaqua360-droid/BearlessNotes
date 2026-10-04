@@ -112,3 +112,28 @@ export async function importSketch(): Promise<SketchFile | null> {
   await saveSketch(file);
   return file;
 }
+
+// THE LIBRARY: flat folders and which drawing sits in which. Kept in one
+// file of its own (app-only, NOT in the drawing file: a drawing leaves the
+// phone without its folder). A drawing is in at most one folder; none = the
+// top level. No nesting.
+export type SortKey = 'title' | 'created' | 'updated';
+export type Folder = { id: string; name: string };
+export type Library = { folders: Folder[]; assign: Record<string, string>; sort: SortKey };
+
+const LIBRARY = `${LegacyFileSystem.documentDirectory}library.json`;
+
+export async function loadLibrary(): Promise<Library> {
+  try {
+    const raw = JSON.parse(await LegacyFileSystem.readAsStringAsync(LIBRARY)) as Partial<Library>;
+    return { folders: raw.folders ?? [], assign: raw.assign ?? {}, sort: raw.sort ?? 'updated' };
+  } catch {
+    return { folders: [], assign: {}, sort: 'updated' };
+  }
+}
+
+export async function saveLibrary(lib: Library): Promise<void> {
+  await LegacyFileSystem.writeAsStringAsync(LIBRARY, JSON.stringify(lib));
+}
+
+export const newFolderId = () => `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
