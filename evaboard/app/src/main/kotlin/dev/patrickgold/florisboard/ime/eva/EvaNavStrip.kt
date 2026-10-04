@@ -98,6 +98,18 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
                 SnyggIcon(FlorisImeUi.ClipboardItemActionIcon.elementName, imageVector = icon)
                 SnyggText(FlorisImeUi.ClipboardItemActionText.elementName, text = stringRes(text))
             }
+            // the settings are always one hold and one tap away
+            SnyggRow(
+                elementName = FlorisImeUi.ClipboardItemAction.elementName,
+                modifier = Modifier.rippleClickable {
+                    menuOpen = false
+                    FlorisImeService.launchSettings()
+                },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SnyggIcon(FlorisImeUi.ClipboardItemActionIcon.elementName, imageVector = EvaIcons.lucide("settings"))
+                SnyggText(FlorisImeUi.ClipboardItemActionText.elementName, text = stringRes(R.string.eva__nav_settings))
+            }
         }
     }
 

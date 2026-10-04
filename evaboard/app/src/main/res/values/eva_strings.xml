@@ -9,4 +9,5 @@
     <string name="eva__clip_filter_text">Text</string>
     <string name="eva__clip_filter_images">Images</string>
     <string name="eva__clip_filter_videos">Videos</string>
+    <string name="eva__nav_settings">Settings</string>
 </resources>
