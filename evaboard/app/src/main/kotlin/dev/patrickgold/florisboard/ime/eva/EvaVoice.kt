@@ -16,6 +16,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -103,10 +104,51 @@ object EvaVoice {
             return
         }
         val language = context.subtypeManager().value.activeSubtype.primaryLocale.languageTag()
-        session = Session(context, language)
+        val s = Session(context, language)
+        session = s
         _state.value = State.Listening("")
-        listen()
+        // Our soft start sound first; then the recognizer's own tones are silenced and listening begins
+        EvaSounds.listening()
+        main.postDelayed({
+            if (session === s) {
+                muteTones(context)
+                listen()
+            }
+        }, EvaSounds.START_MS.toLong())
     }
+
+    /**
+     * The recognizer plays its own start / stop tones at every restart, and they are harsh. They come
+     * out on the media stream, so that stream is muted while dictating (and ours are played before
+     * the mute and after the unmute). Whether the keyboard muted it is recorded in the phone's
+     * storage, so if the keyboard dies mid-dictation the next start-up unmutes it again.
+     */
+    private fun muteTones(context: Context) {
+        val am = context.getSystemService(AudioManager::class.java) ?: return
+        if (am.isStreamMute(AudioManager.STREAM_MUSIC)) return // already silent: not ours to touch
+        runCatching {
+            am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
+            context.getSharedPreferences(STORE, Context.MODE_PRIVATE).edit().putBoolean(KEY_MUTED, true).commit()
+        }
+    }
+
+    private fun unmuteTones(context: Context) {
+        val store = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
+        if (!store.getBoolean(KEY_MUTED, false)) return
+        runCatching {
+            context.getSystemService(AudioManager::class.java)
+                ?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
+        }
+        store.edit().putBoolean(KEY_MUTED, false).commit()
+    }
+
+    /** Called when the keyboard starts: puts the media sound back if an earlier dictation never could. */
+    fun recoverMute(context: Context) {
+        if (session == null) unmuteTones(context)
+    }
+
+    private const val STORE = "eva_voice"
+    private const val KEY_MUTED = "media_muted_by_voice"
 
     /** Drops whatever is being listened to - the keyboard went away. */
     fun cancel() {
@@ -115,12 +157,14 @@ object EvaVoice {
             main.removeCallbacks(typingTick)
             while (typeStep(s)) Unit
         }
+        val context = session?.context
         session = null
         recognizer?.let {
             it.cancel()
             it.destroy()
         }
         recognizer = null
+        context?.let { unmuteTones(it) }
         if (_state.value is State.Listening) _state.value = State.Idle
     }
 
@@ -161,11 +205,17 @@ object EvaVoice {
     }
 
     private fun end(noteText: String? = null) {
+        val context = session?.context
         session?.let { s ->
             main.removeCallbacks(typingTick)
             while (typeStep(s)) Unit
         }
         session = null
+        // media sound back first, then our soft stop sound
+        if (context != null) {
+            unmuteTones(context)
+            EvaSounds.stopped()
+        }
         recognizer?.destroy()
         recognizer = null
         if (noteText != null) note(noteText) else _state.value = State.Idle

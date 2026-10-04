@@ -437,6 +437,7 @@ class FlorisImeService : LifecycleInputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         flogInfo { "restarting=$restarting info=${info?.debugSummarize()}" }
         super.onStartInputView(info, restarting)
+        dev.patrickgold.florisboard.ime.eva.EvaVoice.recoverMute(this)
         requestEvaNavStrip()
         if (info == null) return
         val editorInfo = FlorisEditorInfo.wrap(info)
