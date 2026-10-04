@@ -11,7 +11,8 @@ import { Ionicons } from './src/sketch/icons/Ionicons';
 import { useSoft, useTheme } from './src/sketch/theme';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from './src/sketch/fonts';
 import type { SketchFile } from './src/sketch/format';
-import { checkAndApplyUpdate } from './src/updates';
+import SettingsSheet from './src/SettingsSheet';
+import { formatStamp } from './src/updates';
 import { deleteSketch, exportSketch, importSketch, listSketches, newSketch, saveSketch } from './src/store';
 
 // SKETCHEVA: mindEva's drawing editor as an app of its own, to grow it
@@ -36,6 +37,7 @@ function Home() {
   const insets = useSafeAreaInsets();
   const [sketches, setSketches] = useState<SketchFile[]>([]);
   const [open, setOpen] = useState<SketchFile | null>(null);
+  const [settings, setSettings] = useState(false);
 
   const reload = useCallback(() => {
     listSketches().then(setSketches).catch(() => setSketches([]));
@@ -84,6 +86,9 @@ function Home() {
                     <SketchLayer elements={file.elements} ink={theme.paper.ink} />
                   </Svg>
                 )}
+                <View style={[styles.stamp, { backgroundColor: theme.paper.fill }]}>
+                  <Text style={[styles.stampText, { color: S.ink2 }]}>{formatStamp(file.updatedAt)}</Text>
+                </View>
               </View>
               <Text style={[styles.cardTitle, { color: S.ink }]} numberOfLines={1}>
                 {file.title}
@@ -94,8 +99,8 @@ function Home() {
       </ScrollView>
 
       <View style={[styles.dock, { bottom: insets.bottom + 16 }]}>
-        <Pressable onPress={checkAndApplyUpdate} style={[styles.round, { backgroundColor: S.chrome, boxShadow: S.shadow }]} accessibilityLabel="Оновити застосунок">
-          <Ionicons name="refresh" size={22} color={S.ink} />
+        <Pressable onPress={() => setSettings(true)} style={[styles.round, { backgroundColor: S.chrome, boxShadow: S.shadow }]} accessibilityLabel="Налаштування">
+          <Ionicons name="settings-outline" size={22} color={S.ink} />
         </Pressable>
         <Pressable onPress={importOne} style={[styles.round, { backgroundColor: S.chrome, boxShadow: S.shadow }]} accessibilityLabel="Імпортувати">
           <Ionicons name="download-outline" size={22} color={S.ink} />
@@ -108,6 +113,8 @@ function Home() {
           <Ionicons name="add" size={26} color={S.chrome} />
         </Pressable>
       </View>
+
+      <SettingsSheet visible={settings} onClose={() => setSettings(false)} />
 
       <SketchEditor
         visible={open !== null}
@@ -128,10 +135,12 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   title: { fontSize: 30, fontFamily: SOFT_SEMIBOLD, marginBottom: 16, marginLeft: 4 },
   empty: { fontSize: 15, fontFamily: SOFT_MEDIUM, marginTop: 40, textAlign: 'center' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  card: { flexBasis: '46%', flexGrow: 1, borderRadius: 20, overflow: 'hidden' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  card: { width: '31.5%', borderRadius: 14, overflow: 'hidden' },
   preview: { aspectRatio: 0.75 },
-  cardTitle: { fontSize: 14, fontFamily: SOFT_MEDIUM, paddingHorizontal: 12, paddingVertical: 10 },
+  cardTitle: { fontSize: 12, fontFamily: SOFT_MEDIUM, paddingHorizontal: 8, paddingVertical: 7 },
+  stamp: { position: 'absolute', right: 4, bottom: 4, borderRadius: 6, paddingHorizontal: 4, paddingVertical: 1 },
+  stampText: { fontSize: 9, fontFamily: SOFT_MEDIUM },
   dock: { position: 'absolute', right: 16, flexDirection: 'row', gap: 12 },
   round: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
 });
