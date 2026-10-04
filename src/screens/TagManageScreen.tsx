@@ -1,3 +1,4 @@
+import { usePaneBar } from '../navigation/paneBar';
 import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FoldersCanvas from '../components/FoldersCanvas';
@@ -56,6 +57,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const topNavOn = useTopNavOn();
+  const paneBar = usePaneBar();
   const dockClear = useDockClearance();
   useChromeStyle('soft', isFocused);
   const [searching, setSearching] = useState(false);
@@ -265,7 +267,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   return (
     <View style={styles.container}>
       <ScreenGround color={S.bg} />
-      {isFocused && topNavOn && <TopNavBar title={{ icon: 'folder-outline', label: 'Папки' }} />}
+      {isFocused && topNavOn && !paneBar && <TopNavBar title={{ icon: 'folder-outline', label: 'Папки' }} />}
       {view === 'canvas' ? (
         <FoldersCanvas
           topPad={insets.top + (topNavOn ? TOP_NAV_SPACE : 12)}

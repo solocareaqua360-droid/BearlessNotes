@@ -38,6 +38,7 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { SearchVoid, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { CHROME_TOP } from '../constants/rail';
+import { usePaneBar } from '../navigation/paneBar';
 
 // Everything a database screen puts AROUND its records: the gradient it
 // stands on, the capsule on the rail (search / "..." / the way out), the
@@ -276,7 +277,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   // The list is what its desk's picture shows (a desk that is a navigator
   // photographs black through its wrapper - see deskShots).
   const deskContentRef = useDeskContent();
-  const topNav = (!!topNavWanted || !!navTitle || !!desk) && topNavOn;
+  const paneBar = usePaneBar();
+  const topNav = (!!topNavWanted || !!navTitle || !!desk || paneBar) && topNavOn;
   const backTarget = desk ? desk.back : onBack;
   const chromeTop = insets.top + CHROME_TOP + (topNav ? TOP_NAV_SPACE : 0);
   const chromeBottom = chromeTop + chromeHeight + 8;

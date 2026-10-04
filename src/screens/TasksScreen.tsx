@@ -1,3 +1,4 @@
+import { usePaneBar } from '../navigation/paneBar';
 import { DeskContext } from '../navigation/desks';
 import { useTileOpened } from '../navigation/recentPlaces';
 import ScreenGround from '../components/ScreenGround';
@@ -217,6 +218,7 @@ export default function TasksScreen() {
   // On a phone the bar at the top holds the way back (TopNavBar, drawn in
   // the render with this screen's own name), and search is the left bead.
   const bar = useTopNavOn();
+  const paneBar = usePaneBar();
   useTopBack(back, bar);
   // Under the bar the search is its own name plate, opened out.
   useTopSearch(
@@ -1734,7 +1736,7 @@ export default function TasksScreen() {
         {/* The band the status bar and the rail's top capsule stand in.
             It was the header row's own top padding until the header went. */}
         <View pointerEvents="none" style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
-        {isFocused && bar && !desk && <TopNavBar title={{ icon: 'checkbox-outline', label: 'Справи' }} />}
+        {isFocused && bar && !desk && !paneBar && <TopNavBar title={{ icon: 'checkbox-outline', label: 'Справи' }} />}
         {/* No header row any more. Its title said the name of the screen
             you had just tapped to reach, and its three buttons were a
             light capsule of this screen's own invention - the one screen

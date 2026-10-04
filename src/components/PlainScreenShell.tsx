@@ -4,6 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ContentColumn from './ContentColumn';
 import ScreenBackdrop from './ScreenBackdrop';
 import { CHROME_TOP } from '../constants/rail';
+import { usePaneBar } from '../navigation/paneBar';
+import { TOP_NAV_SPACE } from './TopNavBar';
 
 // The frame the three registry screens share - the diary, the groups and
 // the tags.
@@ -24,6 +26,8 @@ export default function PlainScreenShell({
   children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  // Under the drawer's bar - see paneBar.
+  const paneBar = usePaneBar();
 
   return (
     <View style={styles.container}>
@@ -31,7 +35,7 @@ export default function PlainScreenShell({
       <ContentColumn>
         {/* The band the status bar stands in - the dock carries the way
             out now, at the foot of the screen, not a capsule up here. */}
-        <View style={{ height: insets.top + CHROME_TOP + 8 }} />
+        <View style={{ height: insets.top + CHROME_TOP + 8 + (paneBar ? TOP_NAV_SPACE : 0) }} />
         {children}
       </ContentColumn>
     </View>

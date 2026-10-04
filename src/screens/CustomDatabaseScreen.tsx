@@ -1,3 +1,4 @@
+import { usePaneBar } from '../navigation/paneBar';
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
 import { useNoteOpened } from '../navigation/recentPlaces';
 import { holdAsk } from '../components/surfaces/HoldAsk';
@@ -938,7 +939,8 @@ export default function CustomDatabaseScreen({
   // On a phone the bar at the top holds the way back (TopNavBar, drawn in
   // the render with this database's own name), and search is the left
   // bead. Not inside another screen's pane.
-  const bar = useTopNavOn() && !inPane;
+  const paneBar = usePaneBar();
+  const bar = useTopNavOn() && (!inPane || paneBar);
   useTopBack(back, bar);
   // Under the bar the search is its own name plate, opened out.
   useTopSearch(
@@ -3317,7 +3319,7 @@ export default function CustomDatabaseScreen({
         onLayout={floatHeader ? (e) => setHeaderHeight(Math.round(e.nativeEvent.layout.height)) : undefined}
       >
       <View pointerEvents="none" style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
-      {isFocused && bar && !desk && (
+      {isFocused && bar && !desk && !paneBar && (
         <TopNavBar title={{ icon: database?.icon ?? 'grid-outline', label: database?.name || 'База' }} />
       )}
       <SearchCorner

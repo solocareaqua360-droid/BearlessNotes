@@ -95,10 +95,12 @@ import {
   useNavDockActions,
   useNavDockBeads,
   useNavTopExtras,
+  useNavTopSearch,
   useTopBack,
   useTopExtras,
 } from '../navigation/navDock';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { PaneBarContext } from '../navigation/paneBar';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
 import { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { useDockClearance } from '../navigation/dockGeometry';
@@ -2180,9 +2182,11 @@ export default function DatabasesScreen() {
             <GlassPortalHost>
               <GlassTargetProvider>
                 <NavigationContext.Provider value={paneNavigation}>
-                  <View style={StyleSheet.absoluteFill}>
-                    <PaneTargetScreen key={JSON.stringify(openInPane)} target={openInPane} />
-                  </View>
+                  <PaneBarContext.Provider value>
+                    <View style={StyleSheet.absoluteFill}>
+                      <PaneTargetScreen key={JSON.stringify(openInPane)} target={openInPane} />
+                    </View>
+                  </PaneBarContext.Provider>
                   <DrawerPaneChrome
                     width={windowWidth}
                     soft={S}
@@ -2638,6 +2642,7 @@ function DrawerPaneChrome({
   onExpand: () => void;
 }) {
   const extras = useNavTopExtras();
+  const search = useNavTopSearch();
   const beads = useNavDockBeads();
   const actions = useNavDockActions();
   return (
@@ -2647,6 +2652,7 @@ function DrawerPaneChrome({
         softInline={!!soft}
         title={{ icon: title.icon as never, label: title.label }}
         backOverride={{ onPress: onBack, dimmed: false }}
+        searchOverride={search}
         extrasOverride={{
           menu: extras?.menu ?? null,
           select: extras?.select ?? null,

@@ -31,6 +31,8 @@ import { CHROME_TOP } from '../constants/rail';
 import { SoftSurfaceContext, useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDockClearance } from '../navigation/dockGeometry';
+import { usePaneBar } from '../navigation/paneBar';
+import { TOP_NAV_H, TOP_NAV_SPACE } from '../components/TopNavBar';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -279,7 +281,8 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   });
   const pagesStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -focus.value * W }] }));
 
-  const top = insets.top + CHROME_TOP + 8;
+  const paneBar = usePaneBar();
+  const top = insets.top + CHROME_TOP + 8 + (paneBar ? TOP_NAV_SPACE : 0);
   return (
     <SoftSurfaceContext.Provider value={S}>
       <View style={styles.container} onLayout={(e) => setW(Math.round(e.nativeEvent.layout.width))}>
@@ -371,7 +374,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
             <EdgeFade edge="bottom" color={S.bg} height={Math.round((dockClear + insets.bottom) * 0.85)} />
           </View>
         )}
-        <EdgeFade edge="top" color={S.bg} height={insets.top + CHROME_TOP} />
+        <EdgeFade edge="top" color={S.bg} height={insets.top + CHROME_TOP + (paneBar ? TOP_NAV_H : 0)} />
 
         <Modal visible={openGroup !== null} transparent animationType="fade" onRequestClose={() => setOpenGroupId(null)}>
           <View style={styles.backdrop}>
