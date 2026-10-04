@@ -24,6 +24,8 @@ import dev.patrickgold.florisboard.ime.nlp.SpellingProvider
 import dev.patrickgold.florisboard.ime.nlp.SpellingResult
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionProvider
+import dev.patrickgold.florisboard.ime.nlp.WordSuggestionCandidate
+import dev.patrickgold.florisboard.ime.eva.EvaWordEngine
 import dev.patrickgold.florisboard.lib.devtools.flogDebug
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -41,6 +43,9 @@ class LatinLanguageProvider(context: Context) : SpellingProvider, SuggestionProv
     }
 
     private val appContext by context.appContext()
+
+    // evaBoard: the word-suggestion engine (dictionary completion + learning), see EvaWordEngine
+    private val engine = EvaWordEngine(context)
 
     private val wordData = guardedByLock { mutableMapOf<String, Int>() }
     private val wordDataSerializer = MapSerializer(String.serializer(), Int.serializer())
@@ -67,6 +72,8 @@ class LatinLanguageProvider(context: Context) : SpellingProvider, SuggestionProv
 
         // The subtype we get here contains a lot of data, however we are only interested in subtype.primaryLocale and
         // subtype.secondaryLocales.
+
+        engine.preload(subtype.primaryLocale.base.language)
 
         wordData.withLock { wordData ->
             if (wordData.isEmpty()) {
@@ -105,26 +112,26 @@ class LatinLanguageProvider(context: Context) : SpellingProvider, SuggestionProv
         allowPossiblyOffensive: Boolean,
         isPrivateSession: Boolean,
     ): List<SuggestionCandidate> {
-        return emptyList()
-        /*val word = content.composingText.ifBlank { "next" }
-        val suggestions = buildList {
-            for (n in 0 until maxCandidateCount) {
-                add(WordSuggestionCandidate(
-                    text = "$word$n",
-                    secondaryText = if (n % 2 == 1) "secondary" else null,
-                    confidence = 0.5,
-                    isEligibleForAutoCommit = false,//n == 0 && word.startsWith("auto"),
-                    // We set ourselves as the source provider so we can get notify events for our candidate
-                    sourceProvider = this@LatinLanguageProvider,
-                ))
-            }
+        val words = engine.suggest(
+            code = subtype.primaryLocale.base.language,
+            composing = content.composingText,
+            before = content.textBeforeSelection,
+            private = isPrivateSession,
+            max = maxCandidateCount,
+        )
+        return words.mapIndexed { index, word ->
+            WordSuggestionCandidate(
+                text = word,
+                confidence = 1.0 - index * 0.05,
+                isEligibleForAutoCommit = false,
+                // we are the source provider, so accepting or removing the candidate reaches us
+                sourceProvider = this@LatinLanguageProvider,
+            )
         }
-        return suggestions*/
     }
 
     override suspend fun notifySuggestionAccepted(subtype: Subtype, candidate: SuggestionCandidate) {
-        // We can use flogDebug, flogInfo, flogWarning and flogError for debug logging, which is a wrapper for Logcat
-        flogDebug { candidate.toString() }
+        engine.accepted(subtype.primaryLocale.base.language, candidate.text.toString(), private = false)
     }
 
     override suspend fun notifySuggestionReverted(subtype: Subtype, candidate: SuggestionCandidate) {
@@ -132,8 +139,7 @@ class LatinLanguageProvider(context: Context) : SpellingProvider, SuggestionProv
     }
 
     override suspend fun removeSuggestion(subtype: Subtype, candidate: SuggestionCandidate): Boolean {
-        flogDebug { candidate.toString() }
-        return false
+        return engine.forget(subtype.primaryLocale.base.language, candidate.text.toString())
     }
 
     override suspend fun getListOfWords(subtype: Subtype): List<String> {

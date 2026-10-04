@@ -1,0 +1,9 @@
+evaBoard word lists (uk.txt, en.txt, ru.txt)
+
+Derived from "FrequencyWords" by Hermit Dave (https://github.com/hermitdave/FrequencyWords),
+built from OpenSubtitles 2018 data, licensed under Creative Commons Attribution-ShareAlike 4.0
+(https://creativecommons.org/licenses/by-sa/4.0/).
+
+Changes: each list was filtered to the language's own alphabet, apostrophes were normalised,
+the 40,000 most frequent words were kept, and (Ukrainian) words that are really Russian were removed.
+These changed lists are shared under the same licence (CC BY-SA 4.0). See tools/build-dictionaries.py.
