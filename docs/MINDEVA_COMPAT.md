@@ -14,6 +14,7 @@ Verdicts: **так** - the same in mindEva, by moving code over (OTA);
 | Drawings as files, export/import of `*.sketch.json` | file shape `SketchFile` | так (import) | mindEva needs: «Імпорт малюнка» → a new sketch block from the file's elements + width/height; pictures into its attachments. Not built yet. |
 | In-app update button («Оновити»: check, download, restart; expo-updates) | none | ні (not needed) | App-only, lives in `src/updates.ts` outside `src/sketch/`; mindEva already ships over the air its own way. |
 | Library screen: flat folders, 3-column grid with last-edit stamp, sort, search, rename, move, settings sheet | none (folders live in app-only `library.json`, not in the drawing file) | ні | App-only; mindEva has its own lists and folders. A drawing exports without its folder. |
+| Picture crop (hold a picture; frame with free / 1:1 / 4:3 / 3:4 / 16:9 / 9:16; re-croppable any time, picture never cut) | v2: optional `crop` on `image` | так | One optional field, a clip in `SketchLayer` (`SketchPicture`) and `CropOverlay.tsx`. Until mindEva has the clip, a cropped picture shows there filling its box and keeps `crop` on the round trip. |
 
 ## How the code goes back
 

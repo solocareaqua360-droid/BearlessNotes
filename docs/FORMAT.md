@@ -6,7 +6,7 @@ The contract between sketchEva and mindEva. Defined in code in
 ```jsonc
 {
   "format": "sketchEva",      // always this
-  "version": 1,               // SKETCH_VERSION when it was written
+  "version": 2,               // SKETCH_VERSION when it was written
   "id": "…", "title": "…",
   "createdAt": 0, "updatedAt": 0,
   "width": 0, "height": 0,    // the canvas the elements were drawn against
@@ -25,6 +25,15 @@ its defining points in `shape`, a closed one may carry `fill`, `noStroke`,
 `label`), `text`, `image` (a picture by `uri`, placed and turned like any
 element). Turning is `rot` about the element's own box centre. Exact fields:
 `src/sketch/format.ts`.
+
+## Version 2: picture crop
+
+An `image` element may carry `crop: {x, y, w, h}` - the part of the WHOLE
+picture shown in its box, as fractions 0..1. The picture itself is never cut;
+the element's box (`x y w h`) is the window. A reader draws the full picture
+sized `w/crop.w` by `h/crop.h`, placed so the crop falls in the box, clipped
+to the box. A reader that ignores `crop` shows the picture filling the box
+(centred, slightly different) and must save `crop` back untouched.
 
 ## Rules for changing it
 

@@ -283,7 +283,7 @@ function Chip({ label, on, onPress, ink, accent }: { label: string; on: boolean;
 }
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFillObject, zIndex: 50, elevation: 50 },
+  root: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 50, elevation: 50 },
   title: { fontSize: 18, fontFamily: SOFT_SEMIBOLD, textAlign: 'center' },
   area: { flex: 1 },
   dim: { position: 'absolute' },
