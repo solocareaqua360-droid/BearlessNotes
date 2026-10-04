@@ -1,3 +1,4 @@
+import { categoryFromSiteName } from '../utils/linkCategory';
 import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
@@ -222,11 +223,18 @@ export default function StartScreen() {
     createItem: Create,
     deskKey: string,
     route: string,
-    params?: Record<string, unknown>
+    params?: Record<string, unknown>,
+    root?: Omit<DeskRoot, 'kind' | 'folderTagIds' | 'onMore'>
   ): DeskRow => ({
     key,
     label,
     icon,
+    root: root && {
+      ...root,
+      kind: folderKind,
+      folderTagIds: new Set(tags.filter((t) => t.types.includes(folderKind as never)).map((t) => t.id)),
+      onMore: () => goToBase(deskKey, route, params),
+    },
     items: [
       { key: 'create', label: createLabel, icon: 'add-circle-outline', onPress: () => create(createItem) },
       // Already one of the desks: a second window of it is not a thing.
@@ -249,15 +257,54 @@ export default function StartScreen() {
     ],
   });
   const createOf = (key: string) => CREATE.find((c) => c.key === key) as Create;
+  // A record opened from its database - on its desk when it is one, or a
+  // pushed copy - the way the folders' canvas opens one (openRequest).
+  const openIn = (collection: string, deskKey: string, route: string, params?: Record<string, unknown>) => (id: string) => {
+    requestOpen(collection, id);
+    goToBase(deskKey, route, params);
+  };
+  const str = (v: unknown) => (typeof v === 'string' ? v : '');
   const deskRows: DeskRow[] = [
-    base('doc', 'Документи', 'document-text-outline', 'document', 'Створити документ', createOf('doc'), PERMANENT_DESK, 'DocumentsCopy'),
-    base('board', 'Дошки', 'easel-outline', 'board', 'Створити дошку', createOf('board'), BOARDS_DESK, 'BoardsCopy'),
+    base('doc', 'Документи', 'document-text-outline', 'document', 'Створити документ', createOf('doc'), PERMANENT_DESK, 'DocumentsCopy', undefined, {
+      collection: 'documents',
+      belongs: (r) => !r.calendarDate,
+      titleOf: (r) => str(r.title),
+      icon: 'document-text-outline',
+      onOpen: (id) => go('Editor', { documentId: id }),
+    }),
+    base('board', 'Дошки', 'easel-outline', 'board', 'Створити дошку', createOf('board'), BOARDS_DESK, 'BoardsCopy', undefined, {
+      collection: 'boards',
+      titleOf: (r) => str(r.title),
+      icon: 'easel-outline',
+      onOpen: (id) => go('BoardCopy', { boardId: id }),
+    }),
     { key: 'task', label: 'Справи', icon: 'checkbox-outline', direct: () => goToBase('db:tasks', 'Tasks') },
     { key: 'sticker', label: 'Стікери', icon: 'reader-outline', direct: () => goToBase('db:stickers', 'Stickers') },
-    base('card', 'Картки', 'albums-outline', 'flashcard', 'Створити картку', createOf('card'), 'db:flashcards', 'Flashcards'),
-    base('link', 'Посилання', 'link-outline', 'link-other', 'Додати посилання', createOf('link'), 'db:links', 'Links', { category: 'other' }),
-    base('photo', 'Зображення', 'image-outline', 'photo', 'Додати зображення', createOf('photo'), 'db:photos', 'Photos'),
-    base('file', 'Файли', 'document-outline', 'file', 'Додати файл', createOf('file'), 'db:files', 'Files'),
+    base('card', 'Картки', 'albums-outline', 'flashcard', 'Створити картку', createOf('card'), 'db:flashcards', 'Flashcards', undefined, {
+      collection: 'flashcards',
+      titleOf: (r) => str(r.term),
+      icon: 'albums-outline',
+      onOpen: openIn('flashcards', 'db:flashcards', 'Flashcards'),
+    }),
+    base('link', 'Посилання', 'link-outline', 'link-other', 'Додати посилання', createOf('link'), 'db:links', 'Links', { category: 'other' }, {
+      collection: 'links',
+      belongs: (r) => categoryFromSiteName(r.siteName as string | undefined) === 'other',
+      titleOf: (r) => str(r.title) || str(r.url),
+      icon: 'link-outline',
+      onOpen: openIn('links', 'db:links', 'Links', { category: 'other' }),
+    }),
+    base('photo', 'Зображення', 'image-outline', 'photo', 'Додати зображення', createOf('photo'), 'db:photos', 'Photos', undefined, {
+      collection: 'photos',
+      titleOf: (r) => str(r.title) || 'Зображення',
+      icon: 'image-outline',
+      onOpen: openIn('photos', 'db:photos', 'Photos'),
+    }),
+    base('file', 'Файли', 'document-outline', 'file', 'Додати файл', createOf('file'), 'db:files', 'Files', undefined, {
+      collection: 'files',
+      titleOf: (r) => str(r.title) || str(r.fileName),
+      icon: 'document-outline',
+      onOpen: openIn('files', 'db:files', 'Files'),
+    }),
     { key: 'diary', label: 'Щоденник', icon: 'book-outline', direct: openCalendar },
     {
       key: 'bases',
@@ -479,7 +526,74 @@ function RecentDatabase({ id, onPress }: { id: string; onPress: () => void }) {
 // One of the four big buttons. A small chevron in the corner it leaves
 // toward says which drawer it pulls out.
 type DeskItem = { key: string; label: string; icon: string; color?: string; folder?: boolean; onPress: () => void };
-type DeskRow = { key: string; label: string; icon: string; items?: DeskItem[]; direct?: () => void };
+type DeskRoot = {
+  collection: string;
+  // The folders' tag kind - a record in none of them is at the root.
+  kind: string;
+  folderTagIds: Set<string>;
+  // Which of the collection's records belong to this database at all.
+  belongs?: (row: Record<string, unknown>) => boolean;
+  titleOf: (row: Record<string, unknown>) => string;
+  icon: string;
+  onOpen: (id: string) => void;
+  onMore: () => void;
+};
+type DeskRow = { key: string; label: string; icon: string; items?: DeskItem[]; root?: DeskRoot; direct?: () => void };
+
+// How many of the root's own records a row shows before «Подивитись решту».
+const ROOT_LIMIT = 10;
+
+// What lies at a database's root, in no folder - newest first, the first
+// ROOT_LIMIT of them (the user's, 2026-10-04: "повинні також показуватися
+// файли"). Listened to only while its row is open.
+function RootItems({ root }: { root: DeskRoot }) {
+  const S = useSoft();
+  const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
+  useEffect(
+    () =>
+      onSnapshot(
+        ownedQuery(root.collection),
+        (snapshot) => setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }))),
+        listenError(`StartScreen:root:${root.collection}`)
+      ),
+    [root.collection]
+  );
+  if (!rows) return null;
+  const here = rows
+    .filter((r) => !r.deletedAt && r.trashed !== true && (root.belongs ? root.belongs(r) : true))
+    .filter((r) => !((r.tagIds as string[] | undefined) ?? []).some((id) => root.folderTagIds.has(id)))
+    .sort(
+      (a, b) =>
+        Number(b.updatedAt ?? b.createdAt ?? 0) - Number(a.updatedAt ?? a.createdAt ?? 0)
+    );
+  return (
+    <>
+      {here.slice(0, ROOT_LIMIT).map((r) => (
+        <Pressable
+          key={r.id as string}
+          onPress={() => root.onOpen(r.id as string)}
+          style={({ pressed }) => [styles.insideRow, pressed && { backgroundColor: S.fill }]}
+        >
+          <Ionicons name={root.icon as never} size={17} color={S.ink3} />
+          <Text style={[styles.insideLabel, { color: S.ink }]} numberOfLines={1}>
+            {root.titleOf(r) || 'Без назви'}
+          </Text>
+        </Pressable>
+      ))}
+      {here.length > ROOT_LIMIT && (
+        <Pressable
+          onPress={root.onMore}
+          style={({ pressed }) => [styles.insideRow, pressed && { backgroundColor: S.fill }]}
+        >
+          <Text style={[styles.insideLabel, { color: S.ink2 }]} numberOfLines={1}>
+            Подивитись решту в базі ({here.length - ROOT_LIMIT})
+          </Text>
+          <Ionicons name="arrow-forward-outline" size={17} color={S.ink2} />
+        </Pressable>
+      )}
+    </>
+  );
+}
 
 // One row of «Робочі столи»: a database, opened in place to show what can
 // be done with it and its root folders - or, with nothing inside, a way
@@ -524,6 +638,7 @@ function DeskRowView({ row, first, open, onToggle }: { row: DeskRow; first: bool
               </Text>
             </Pressable>
           ))}
+          {row.root && <RootItems root={row.root} />}
         </Animated.View>
       )}
     </Animated.View>
