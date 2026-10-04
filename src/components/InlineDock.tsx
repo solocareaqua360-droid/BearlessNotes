@@ -136,9 +136,10 @@ export default function InlineDock({
               <Pressable
                 onPress={right.extra.onPress}
                 accessibilityLabel={right.extra.label}
-                style={({ pressed }) => inset(!!right.extra?.active, pressed)}
+                style={({ pressed }) => inset(false, pressed)}
               >
-                <Ionicons name={right.extra.icon as never} size={20} color={right.extra.active ? soft.card : soft.ink} />
+                <Ionicons name={right.extra.icon as never} size={20} color={soft.ink} />
+                {right.extra.active && <View style={[styles.fieldDot, { backgroundColor: soft.accent, borderColor: soft.chrome }]} />}
               </Pressable>
             )}
             {right && (
@@ -147,18 +148,21 @@ export default function InlineDock({
                 onLongPress={right.onLongPress}
                 disabled={right.dimmed}
                 accessibilityLabel="Створити"
-                style={({ pressed }) => [inset(false, pressed), right.dimmed && { opacity: 0.5 }]}
+                style={({ pressed }) => [
+                  inset(true, false),
+                  { opacity: right.dimmed ? 0.5 : pressed ? 0.8 : 1 },
+                ]}
               >
                 {/* One sign for making anything - "+" - whatever the database
                     (2026-10-04: "повинно читатися однаково"); only the calendar's
                     pencil, which writes in the day rather than making a thing, keeps
                     its own. */}
                 {right.icon !== 'pencil-outline' ? (
-                  <Ionicons name="add" size={25} color={soft.ink} />
+                  <Ionicons name="add" size={25} color={soft.chrome} />
                 ) : rightIcon ? (
-                  <SoftIcon name={rightIcon} size={22} color={soft.ink} />
+                  <SoftIcon name={rightIcon} size={22} color={soft.chrome} />
                 ) : (
-                  <Ionicons name={right.icon as never} size={21} color={soft.ink} />
+                  <Ionicons name={right.icon as never} size={21} color={soft.chrome} />
                 )}
               </Pressable>
             )}
@@ -246,6 +250,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 18,
+  },
+  fieldDot: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
   },
   softFieldPart: {
     flex: 1,

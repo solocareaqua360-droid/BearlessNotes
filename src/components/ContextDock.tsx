@@ -2314,15 +2314,14 @@ export default function ContextDock() {
                         height: TWO_BEAD - FIELD_INSET * 2,
                         borderRadius: TWO_BEAD / 2 - FIELD_INSET,
                         marginRight: FIELD_INSET,
-                        backgroundColor: right.extra?.active ? soft.ink : pressed ? soft.line : soft.fillSolid,
+                        // Quiet always - only "+" is the strong one; a
+                        // filter or a sort in force is the accent dot.
+                        backgroundColor: pressed ? soft.line : soft.fillSolid,
                       },
                     ]}
                   >
-                    <Ionicons
-                      name={right.extra.icon as keyof typeof Ionicons.glyphMap}
-                      size={20}
-                      color={right.extra.active ? soft.card : soft.ink}
-                    />
+                    <Ionicons name={right.extra.icon as keyof typeof Ionicons.glyphMap} size={20} color={soft.ink} />
+                    {right.extra.active && <View style={[styles.fieldDot, { backgroundColor: soft.accent, borderColor: soft.chrome }]} />}
                   </Pressable>
                 )}
                 {/* The round "+" button itself, a little smaller, set into
@@ -2340,8 +2339,12 @@ export default function ContextDock() {
                       height: TWO_BEAD - FIELD_INSET * 2,
                       borderRadius: TWO_BEAD / 2 - FIELD_INSET,
                       marginRight: FIELD_INSET,
-                      backgroundColor: pressed ? soft.line : soft.fillSolid,
-                      opacity: right.dimmed ? 0.5 : 1,
+                      // THE strong one in the dock (2026-10-04): the
+                      // theme turned over - a light circle with a dark
+                      // sign on the black theme, dark with a light sign on
+                      // the white one.
+                      backgroundColor: soft.ink,
+                      opacity: right.dimmed ? 0.5 : pressed ? 0.8 : 1,
                     },
                   ]}
                 >
@@ -2350,11 +2353,11 @@ export default function ContextDock() {
                       pencil, which writes in the day rather than making a thing, keeps
                       its own. */}
                   {right.icon !== 'pencil-outline' ? (
-                    <Ionicons name="add" size={25} color={soft.ink} />
+                    <Ionicons name="add" size={25} color={soft.chrome} />
                   ) : rightIcon ? (
-                    <SoftIcon name={rightIcon} size={22} color={soft.ink} />
+                    <SoftIcon name={rightIcon} size={22} color={soft.chrome} />
                   ) : (
-                    <Ionicons name={right.icon as keyof typeof Ionicons.glyphMap} size={21} color={soft.ink} />
+                    <Ionicons name={right.icon as keyof typeof Ionicons.glyphMap} size={21} color={soft.chrome} />
                   )}
                 </Pressable>
                 )}
@@ -3019,6 +3022,16 @@ const styles = StyleSheet.create({
   softFieldCreate: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // A filter or a sort in force, on «Подача»'s circle.
+  fieldDot: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
   },
   softFieldText: {
     flex: 1,
