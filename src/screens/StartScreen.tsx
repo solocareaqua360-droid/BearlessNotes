@@ -325,6 +325,30 @@ export default function StartScreen() {
     },
     { key: 'chat', label: 'Чат', icon: 'chatbubbles-outline', direct: () => go('Chat') },
   ];
+  // The rows in the board's own blocks: each folder of the Бази board one
+  // block, each database standing alone its own, in the board's order;
+  // whatever the board does not hold (the databases' row) after them.
+  const boardBlocks = useBoardBlocks();
+  const deskBlocks: DeskRow[][] = (() => {
+    const byKey = new Map(deskRows.map((r) => [r.key, r]));
+    const used = new Set<string>();
+    const blocks: DeskRow[][] = [];
+    for (const keys of boardBlocks) {
+      const rows = keys
+        .map((tileKey) => ROW_OF_TILE[tileKey])
+        .filter((key): key is string => !!key && byKey.has(key) && !used.has(key))
+        .map((key) => {
+          used.add(key);
+          return byKey.get(key) as DeskRow;
+        });
+      if (rows.length) blocks.push(rows);
+    }
+    const rest = deskRows.filter((r) => !used.has(r.key) && r.key !== 'bases');
+    if (rest.length) blocks.push(rest);
+    const bases = byKey.get('bases');
+    if (bases) blocks.push([bases]);
+    return blocks;
+  })();
 
   return (
     <SoftSurfaceContext.Provider value={S}>
@@ -377,24 +401,34 @@ export default function StartScreen() {
           )}
 
           <Text style={[styles.heading, { color: S.ink3 }]}>Робочі столи</Text>
-          <Animated.View layout={LinearTransition.duration(220)} style={[styles.list, { backgroundColor: S.card, boxShadow: S.shadow }]}>
-            {deskRows.map((row, i) => (
-              <DeskRowView
-                key={row.key}
-                row={row}
-                first={i === 0}
-                open={expanded.has(row.key)}
-                onToggle={() =>
-                  setExpanded((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(row.key)) next.delete(row.key);
-                    else next.add(row.key);
-                    return next;
-                  })
-                }
-              />
+          {/* In blocks, as the databases lie in folders on the Бази board
+              (the user's, 2026-10-04) - no names, only the gaps between. */}
+          <View style={styles.blocks}>
+            {deskBlocks.map((block) => (
+              <Animated.View
+                key={block[0].key}
+                layout={LinearTransition.duration(220)}
+                style={[styles.list, { backgroundColor: S.card, boxShadow: S.shadow }]}
+              >
+                {block.map((row, i) => (
+                  <DeskRowView
+                    key={row.key}
+                    row={row}
+                    first={i === 0}
+                    open={expanded.has(row.key)}
+                    onToggle={() =>
+                      setExpanded((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(row.key)) next.delete(row.key);
+                        else next.add(row.key);
+                        return next;
+                      })
+                    }
+                  />
+                ))}
+              </Animated.View>
             ))}
-          </Animated.View>
+          </View>
         </ScrollView>
         </GestureDetector>
         </Animated.View>
@@ -525,6 +559,84 @@ function RecentDatabase({ id, onPress }: { id: string; onPress: () => void }) {
 
 // One of the four big buttons. A small chevron in the corner it leaves
 // toward says which drawer it pulls out.
+// Which «Робочі столи» row a tile of the Бази board stands for.
+const ROW_OF_TILE: Record<string, string> = {
+  documents: 'doc',
+  board: 'board',
+  tasks: 'task',
+  stickers: 'sticker',
+  flashcards: 'card',
+  links: 'link',
+  photos: 'photo',
+  files: 'file',
+  diary: 'diary',
+  chat: 'chat',
+};
+
+// THE БАЗИ BOARD'S BLOCKS, in its order: every folder one block (its
+// members in their order), every tile standing alone a block of its own -
+// read off the phone view's layout, left to right and top to bottom, a
+// section (under a divider) after the one above it. A tile with no place of
+// its own yet comes after the placed ones of its section, in the board's
+// stored order.
+function useBoardBlocks(): string[][] {
+  const [layout, setLayout] = useState<{
+    positions?: Record<string, string>;
+    sections?: Record<string, string>;
+    dividers?: Record<string, { y: number }>;
+  }>({});
+  const [folders, setFolders] = useState<Record<string, { members?: string[] }>>({});
+  const [order, setOrder] = useState<string[]>([]);
+  useEffect(() => {
+    const stops = [
+      onSnapshot(
+        doc(db, 'settings', 'databaseTileLayouts'),
+        (snap) => setLayout((snap.data()?.phone as typeof layout) ?? {}),
+        listenError('StartScreen:tileLayouts')
+      ),
+      onSnapshot(
+        doc(db, 'settings', 'databaseTileFolders'),
+        (snap) => setFolders((snap.data()?.folders as typeof folders) ?? {}),
+        listenError('StartScreen:tileFolders')
+      ),
+      onSnapshot(
+        doc(db, 'settings', 'databaseTileOrder'),
+        (snap) => setOrder(Array.isArray(snap.data()?.order) ? (snap.data()?.order as string[]) : []),
+        listenError('StartScreen:tileOrder')
+      ),
+    ];
+    return () => stops.forEach((stop) => stop());
+  }, []);
+  const dividerIds = Object.entries(layout.dividers ?? {})
+    .sort((a, b) => a[1].y - b[1].y || a[0].localeCompare(b[0]))
+    .map(([id]) => id);
+  const items: { key: string; members: string[] }[] = [];
+  const inFolder = new Set<string>();
+  for (const [id, folder] of Object.entries(folders)) {
+    const members = folder.members ?? [];
+    if (!members.length) continue;
+    members.forEach((m) => inFolder.add(m));
+    items.push({ key: `folder:${id}`, members });
+  }
+  for (const key of Object.keys(ROW_OF_TILE)) if (!inFolder.has(key)) items.push({ key, members: [key] });
+  const rank = (key: string) => {
+    const sectionId = layout.sections?.[key];
+    const section = sectionId && layout.dividers?.[sectionId] ? dividerIds.indexOf(sectionId) + 1 : 0;
+    const raw = layout.positions?.[key];
+    const [x, y] = typeof raw === 'string' ? raw.split(',').map((n) => Number.parseInt(n, 10)) : [NaN, NaN];
+    const placed = Number.isFinite(x) && Number.isFinite(y);
+    const fallback = order.indexOf(key);
+    return [section, placed ? 0 : 1, placed ? y : fallback < 0 ? 9999 : fallback, placed ? x : 0];
+  };
+  items.sort((a, b) => {
+    const ra = rank(a.key);
+    const rb = rank(b.key);
+    for (let i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return ra[i] - rb[i];
+    return 0;
+  });
+  return items.map((item) => item.members);
+}
+
 // `short`: one of the actions at the top of an open row, drawn as a button
 // with this word - the rest (folders, records) are the list under them.
 type DeskItem = { key: string; label: string; icon: string; color?: string; folder?: boolean; short?: string; onPress: () => void };
@@ -682,6 +794,7 @@ const styles = StyleSheet.create({
   cardFoot: { height: 40, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12 },
   cardLabel: { flex: 1, fontSize: 13, fontFamily: SOFT_MEDIUM },
   list: { marginHorizontal: SIDE, borderRadius: 22, overflow: 'hidden' },
+  blocks: { gap: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, height: 54 },
   seat: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   rowLabel: { flex: 1, fontSize: 15, fontFamily: SOFT_MEDIUM },
