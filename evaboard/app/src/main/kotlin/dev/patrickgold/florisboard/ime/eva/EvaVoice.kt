@@ -23,7 +23,7 @@ import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import dev.patrickgold.florisboard.editorInstance
+import dev.patrickgold.florisboard.FlorisImeService
 import dev.patrickgold.florisboard.subtypeManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,7 +32,7 @@ import kotlinx.coroutines.flow.asStateFlow
 object EvaVoice {
     sealed interface State {
         data object Idle : State
-        /** Listening; [partial] is what has been heard so far (shown in the strip, not typed yet). */
+        /** Listening; the words heard so far are typed into the field as they come. */
         data class Listening(val partial: String) : State
         /** A short note shown in the strip for a moment (no permission, no network, ...). */
         data class Note(val text: String) : State
@@ -52,6 +52,8 @@ object EvaVoice {
 
     /** One press of the microphone: lasts until the second press, the silence limit, or the keyboard hiding. */
     private class Session(val context: Context, val language: String) {
+        /** What the current phrase has put into the field so far (partial results), so the next update can replace it. */
+        var typed = ""
         var lastHeardAt = SystemClock.elapsedRealtime()
         var stopping = false
         var failedRestarts = 0
@@ -116,6 +118,7 @@ object EvaVoice {
     /** Android ends recognition after every phrase; while the session lasts, quietly start the next one. */
     private fun next() {
         val s = session ?: return
+        s.typed = "" // this phrase is done: what it typed stays in the field as ordinary text
         if (s.stopping) {
             end()
             return
@@ -141,11 +144,30 @@ object EvaVoice {
         main.postDelayed(clearNote, 2500)
     }
 
-    private fun type(context: Context, heard: String) {
-        val editor = context.editorInstance().value
-        val before = editor.activeContent.textBeforeSelection
-        val text = if (before.isNotEmpty() && !before.last().isWhitespace()) " $heard" else heard
-        editor.commitText(text)
+    /**
+     * Puts [heard] into the field in place of what this phrase typed so far, so the words appear as
+     * they are spoken and are corrected in place. Nothing of the user's own is touched: if the text
+     * before the cursor is no longer what was typed (the cursor moved, the field changed), the phrase
+     * starts afresh at the cursor instead of deleting anything.
+     */
+    private fun typeHeard(s: Session, heard: String) {
+        val ic = FlorisImeService.currentInputConnection() ?: return
+        ic.beginBatchEdit()
+        try {
+            // FlorisBoard keeps the last word of the field "composing"; finish that first, as its own typing does
+            ic.finishComposingText()
+            if (s.typed.isNotEmpty()) {
+                val before = ic.getTextBeforeCursor(s.typed.length, 0)?.toString()
+                if (before == s.typed) ic.deleteSurroundingText(s.typed.length, 0)
+                s.typed = ""
+            }
+            val prev = ic.getTextBeforeCursor(1, 0)
+            val text = if (!prev.isNullOrEmpty() && !prev.last().isWhitespace()) " $heard" else heard
+            ic.commitText(text, 1)
+            s.typed = text
+        } finally {
+            ic.endBatchEdit()
+        }
     }
 
     private object Listener : RecognitionListener {
@@ -160,9 +182,10 @@ object EvaVoice {
 
         override fun onPartialResults(partialResults: Bundle?) {
             val text = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-            if (!text.isNullOrBlank() && session != null) {
+            val s = session
+            if (!text.isNullOrBlank() && s != null) {
                 heard()
-                _state.value = State.Listening(text)
+                typeHeard(s, text)
             }
         }
 
@@ -171,7 +194,7 @@ object EvaVoice {
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
             if (!text.isNullOrBlank()) {
                 heard()
-                type(s.context, text)
+                typeHeard(s, text)
             }
             next()
         }
