@@ -20,7 +20,7 @@ type Photo = { uri: string; aspect: number };
 type Tab = 'layout' | 'bg' | 'frame' | 'ratio';
 
 const PAD = 16;
-const GRAB = 26; // px: how near a divider a finger grabs it
+const GRAB = 22; // px: how near a divider's dot a finger grabs it
 const SNAP = 8; // px: how near another divider's line a divider settles
 const MAX_ZOOM = 6;
 const RATIOS: [number, number][] = [[1, 1], [3, 4], [9, 16], [2, 3], [3, 5], [4, 5], [5, 7]];
@@ -78,14 +78,12 @@ export default function CollageEditor({
       const bx = cur.x + a / f;
       const by = cur.y + b / f;
       if (name === 'begin') {
-        const reach = GRAB / f;
+        // A divider is taken ONLY by its dot. Anywhere else a finger moves the
+        // picture under it - so moving a picture never pushes a divider.
         let best: { i: number; dist: number } | null = null;
         for (const d of divs) {
-          const dist =
-            d.dir === 'v'
-              ? by >= d.y1 - reach && by <= d.y2 + reach ? Math.abs(bx - d.x1) : Infinity
-              : bx >= d.x1 - reach && bx <= d.x2 + reach ? Math.abs(by - d.y1) : Infinity;
-          if (dist < reach && (!best || dist < best.dist)) best = { i: d.index, dist };
+          const dist = Math.hypot(bx - (d.x1 + d.x2) / 2, by - (d.y1 + d.y2) / 2) * f;
+          if (dist < GRAB && (!best || dist < best.dist)) best = { i: d.index, dist };
         }
         if (best) {
           drag.current = { kind: 'divider', index: best.i };
@@ -134,8 +132,10 @@ export default function CollageEditor({
         const c = cellAt(bx, by);
         setSel(c === -1 ? null : c);
       } else if (name === 'pinchStart') {
-        const c = live.current.sel ?? cellAt(bx, by);
-        pinch.current = c !== -1 && c !== null && cur.cells[c]?.uri ? { index: c, base: cur.cells[c].zoom ?? 1 } : null;
+        // Two fingers enlarge the picture they are on (else the chosen one).
+        let c: number | null = cellAt(bx, by);
+        if (c === -1) c = live.current.sel;
+        pinch.current = c !== null && c !== -1 && cur.cells[c]?.uri ? { index: c, base: cur.cells[c].zoom ?? 1 } : null;
         if (pinch.current) setSel(pinch.current.index);
       } else if (name === 'pinch') {
         const p = pinch.current;
