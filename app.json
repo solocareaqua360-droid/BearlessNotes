@@ -16,7 +16,10 @@
       },
       "resizeableActivity": true,
       "softwareKeyboardLayoutMode": "resize",
-      "package": "com.sketcheva.app"
+      "package": "com.sketcheva.app",
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "plugins": [
       "expo-dev-client",
@@ -28,6 +31,16 @@
           "imageWidth": 200
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8e98e142-c50b-47a5-b7fc-b86424271cc0"
+      }
+    },
+    "owner": "alexgoran",
+    "updates": {
+      "url": "https://u.expo.dev/8e98e142-c50b-47a5-b7fc-b86424271cc0"
+    },
+    "ios": {}
   }
 }

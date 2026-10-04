@@ -11,6 +11,7 @@ import { Ionicons } from './src/sketch/icons/Ionicons';
 import { useSoft, useTheme } from './src/sketch/theme';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from './src/sketch/fonts';
 import type { SketchFile } from './src/sketch/format';
+import { checkAndApplyUpdate } from './src/updates';
 import { deleteSketch, exportSketch, importSketch, listSketches, newSketch, saveSketch } from './src/store';
 
 // SKETCHEVA: mindEva's drawing editor as an app of its own, to grow it
@@ -93,6 +94,9 @@ function Home() {
       </ScrollView>
 
       <View style={[styles.dock, { bottom: insets.bottom + 16 }]}>
+        <Pressable onPress={checkAndApplyUpdate} style={[styles.round, { backgroundColor: S.chrome, boxShadow: S.shadow }]} accessibilityLabel="Оновити застосунок">
+          <Ionicons name="refresh" size={22} color={S.ink} />
+        </Pressable>
         <Pressable onPress={importOne} style={[styles.round, { backgroundColor: S.chrome, boxShadow: S.shadow }]} accessibilityLabel="Імпортувати">
           <Ionicons name="download-outline" size={22} color={S.ink} />
         </Pressable>

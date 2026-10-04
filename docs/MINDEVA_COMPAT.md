@@ -12,6 +12,7 @@ Verdicts: **так** - the same in mindEva, by moving code over (OTA);
 |---|---|---|---|
 | Everything mindEva's editor had on 2026-10-04 (pen, line, arrow, rectangle, ellipse, text, labels in shapes, fill, select/move/resize/rotate, marquee, partial eraser, big canvas with pan/zoom, guides, pictures) | none (v1) | так | The starting point - it IS mindEva's editor. |
 | Drawings as files, export/import of `*.sketch.json` | file shape `SketchFile` | так (import) | mindEva needs: «Імпорт малюнка» → a new sketch block from the file's elements + width/height; pictures into its attachments. Not built yet. |
+| In-app update button («Оновити»: check, download, restart; expo-updates) | none | ні (not needed) | App-only, lives in `src/updates.ts` outside `src/sketch/`; mindEva already ships over the air its own way. |
 
 ## How the code goes back
 
