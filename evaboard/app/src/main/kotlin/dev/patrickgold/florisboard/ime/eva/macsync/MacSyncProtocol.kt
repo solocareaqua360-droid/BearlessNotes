@@ -34,6 +34,8 @@ data class SyncItem(
     val id: String,
     val kind: String = "text",
     val text: String,
+    // pictures: their type ("image/png"); the bytes travel separately ("need" -> "blob")
+    val mime: String? = null,
     val ts: Long,
     val pinned: Boolean = false,
     val mod: Long = ts,
@@ -48,6 +50,10 @@ data class SyncMessage(
     val item: SyncItem? = null,
     val fresh: Boolean? = null,
     val gone: Map<String, Long>? = null,
+    val ids: List<String>? = null,
+    val id: String? = null,
+    // base64 bytes of a picture
+    val data: String? = null,
 )
 
 object MacSyncIds {
@@ -55,6 +61,12 @@ object MacSyncIds {
     fun forText(text: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
         return "t" + digest.joinToString("") { "%02x".format(it) }.take(32)
+    }
+
+    /** A picture's id: the hash of its bytes, which travel unchanged. */
+    fun forBytes(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+        return "i" + digest.joinToString("") { "%02x".format(it) }.take(32)
     }
 }
 

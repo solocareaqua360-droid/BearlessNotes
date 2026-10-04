@@ -14,13 +14,21 @@
  * the last address that worked and tries that first. The wire format is in MacSyncProtocol.kt; the
  * Mac app is evaboard/mac.
  *
+ * Text and pictures travel; a picture's bytes go in a message of their own ("need" / "blob"), so a
+ * full list stays small. Videos stay on the phone.
+ *
  * Everything that touches the list runs on one thread ([serial]); the socket reads and writes have
  * their own coroutines.
  */
 
 package dev.patrickgold.florisboard.ime.eva.macsync
 
+import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.Base64
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
@@ -28,7 +36,9 @@ import android.provider.Settings
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.clipboardManager
 import dev.patrickgold.florisboard.ime.clipboard.ClipboardHistory
+import dev.patrickgold.florisboard.ime.clipboard.provider.ClipboardFileStorage
 import dev.patrickgold.florisboard.ime.clipboard.provider.ClipboardItem
+import dev.patrickgold.florisboard.ime.clipboard.provider.ClipboardMediaProvider
 import dev.patrickgold.florisboard.ime.clipboard.provider.ItemType
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -66,6 +76,7 @@ object EvaMacSync {
     private const val FRESH_MS = 15_000L
     private const val GONE_KEEP_MS = 30L * 24 * 60 * 60 * 1000
     private const val MAX_FRAME = 32 * 1024 * 1024
+    private const val MAX_IMAGE = 20 * 1024 * 1024
 
     private val _status = MutableStateFlow("Вимкнено")
     /** One line for the settings card. */
@@ -85,6 +96,12 @@ object EvaMacSync {
     private val gone = HashMap<String, Long>()
     // the keyboard's own history rows, by item id (to update or delete them)
     private val rows = HashMap<String, ClipboardItem>()
+    // a picture's id is the hash of its bytes: worked out once per stored file
+    private val imageIds = HashMap<String, String>()
+    // pictures from the Mac whose bytes were asked for: id -> (item, was it a fresh copy)
+    private val waiting = HashMap<String, Pair<SyncItem, Boolean>>()
+    // items from the Mac written a moment ago, before they show up in the history: id -> when
+    private val arriving = HashMap<String, Long>()
     private var historyLoaded = false
     private var lastHost: String? = null
     private var outgoing: Channel<SyncMessage>? = null
@@ -130,15 +147,19 @@ object EvaMacSync {
         historyLoaded = true
         val now = System.currentTimeMillis()
         val current = HashMap<String, ClipboardItem>()
+        val shapes = HashMap<String, SyncItem>()
         for (item in history.all) {
-            if (item.type != ItemType.TEXT || item.isSensitive) continue
-            val text = item.text?.takeIf { it.isNotEmpty() } ?: continue
-            val id = MacSyncIds.forText(text)
-            val other = current[id]
-            if (other == null || item.creationTimestampMs > other.creationTimestampMs) current[id] = item
+            if (item.isSensitive) continue
+            val shape = shapeOf(item) ?: continue
+            val other = current[shape.id]
+            if (other == null || item.creationTimestampMs > other.creationTimestampMs) {
+                current[shape.id] = item
+                shapes[shape.id] = shape
+            }
         }
         rows.clear()
         rows.putAll(current)
+        arriving.keys.removeAll(current.keys)
 
         for ((id, item) in current) {
             val ts = item.creationTimestampMs
@@ -147,7 +168,7 @@ object EvaMacSync {
                 // still here although deleted after it was copied: that deletion is on its way
                 if ((gone[id] ?: Long.MIN_VALUE) >= ts) continue
                 gone.remove(id)
-                val added = SyncItem(id = id, text = item.text!!, ts = ts, pinned = item.isPinned, mod = ts)
+                val added = shapes[id]!!
                 known[id] = added
                 send(SyncMessage(type = "upsert", item = added, fresh = now - ts < FRESH_MS))
             } else if (was.ts != ts || was.pinned != item.isPinned) {
@@ -156,7 +177,8 @@ object EvaMacSync {
                 send(SyncMessage(type = "upsert", item = changed, fresh = ts > was.ts && now - ts < FRESH_MS))
             }
         }
-        val removed = known.keys - current.keys
+        // what came from the Mac a moment ago may not have reached the database yet: not a deletion
+        val removed = known.keys - current.keys - arriving.filterValues { now - it < 10_000L }.keys
         if (removed.isNotEmpty()) {
             val marks = removed.associateWith { now }
             for (id in removed) known.remove(id)
@@ -166,49 +188,130 @@ object EvaMacSync {
         scheduleSave()
     }
 
+    /** What a history row looks like on the wire; null for rows that do not travel (videos). */
+    private fun shapeOf(item: ClipboardItem): SyncItem? {
+        val ts = item.creationTimestampMs
+        return when (item.type) {
+            ItemType.TEXT -> {
+                val text = item.text?.takeIf { it.isNotEmpty() } ?: return null
+                SyncItem(id = MacSyncIds.forText(text), text = text, ts = ts, pinned = item.isPinned, mod = ts)
+            }
+            ItemType.IMAGE -> {
+                val uri = item.uri ?: return null
+                val id = imageIds.getOrPut(uri.toString()) {
+                    val bytes = imageBytes(item) ?: return null
+                    if (bytes.size > MAX_IMAGE) return null
+                    MacSyncIds.forBytes(bytes)
+                }
+                val mime = item.mimeTypes.firstOrNull { it.startsWith("image/") } ?: "image/png"
+                SyncItem(id = id, kind = "image", text = "", mime = mime, ts = ts, pinned = item.isPinned, mod = ts)
+            }
+            else -> null
+        }
+    }
+
+    private fun imageBytes(item: ClipboardItem): ByteArray? = try {
+        val uri = item.uri!!
+        if (uri.authority == ClipboardMediaProvider.AUTHORITY) {
+            ClipboardFileStorage.getFileForId(app, ContentUris.parseId(uri)).readBytes()
+        } else {
+            app.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }
+    } catch (_: Exception) {
+        null
+    }
+
     private fun applyUpsert(incoming: SyncItem, fresh: Boolean = false) {
-        if (incoming.kind != "text") return
+        if (incoming.kind != "text" && incoming.kind != "image") return
         val keep = MacSyncMerge.upsert(known[incoming.id], gone[incoming.id], incoming) ?: return
         gone.remove(incoming.id)
-        known[incoming.id] = keep
         val clipboard by app.clipboardManager()
         val row = rows[incoming.id]
-        if (row == null) {
-            clipboard.insertClip(
-                ClipboardItem(
-                    type = ItemType.TEXT,
-                    text = keep.text,
-                    uri = null,
-                    creationTimestampMs = keep.ts,
-                    isPinned = keep.pinned,
-                    mimeTypes = listOf("text/plain"),
-                )
-            )
-        } else {
+        if (row != null) {
+            known[incoming.id] = keep
             clipboard.evaUpdateClip(row.copy(creationTimestampMs = keep.ts, isPinned = keep.pinned))
-        }
-        // copied on the Mac just now: also the phone's own clipboard, so any app's Paste takes it.
-        // Set as the keyboard's primary clip first, so the system's change callback sees nothing new
-        // and does not add it to the history a second time.
-        if (fresh && System.currentTimeMillis() - keep.ts < 60_000L) {
-            clipboard.updatePrimaryClip(
-                ClipboardItem(
-                    type = ItemType.TEXT,
-                    text = keep.text,
-                    uri = null,
-                    creationTimestampMs = keep.ts,
-                    isPinned = keep.pinned,
-                    mimeTypes = listOf("text/plain"),
-                )
+            if (fresh) makePrimary(row.copy(creationTimestampMs = keep.ts, isPinned = keep.pinned), keep)
+        } else if (keep.kind == "text") {
+            known[incoming.id] = keep
+            arriving[keep.id] = System.currentTimeMillis()
+            val item = ClipboardItem(
+                type = ItemType.TEXT,
+                text = keep.text,
+                uri = null,
+                creationTimestampMs = keep.ts,
+                isPinned = keep.pinned,
+                mimeTypes = listOf("text/plain"),
             )
+            clipboard.insertClip(item)
+            if (fresh) makePrimary(item, keep)
+        } else {
+            // a picture: its bytes come separately, asked for here and written when they arrive
+            waiting[keep.id] = keep to fresh
+            send(SyncMessage(type = "need", ids = listOf(keep.id)))
         }
         scheduleSave()
+    }
+
+    private fun applyBlob(id: String, data: String) {
+        val (keep, fresh) = waiting.remove(id) ?: return
+        val bytes = try { Base64.decode(data, Base64.NO_WRAP) } catch (_: Exception) { return }
+        if (MacSyncIds.forBytes(bytes) != id) return
+        // the keyboard keeps pictures through its own media provider, which copies them in from a file
+        val temp = File(app.cacheDir, "eva-macsync-$id")
+        val uri = try {
+            temp.writeBytes(bytes)
+            val values = ContentValues(3).apply {
+                put(OpenableColumns.DISPLAY_NAME, "Mac")
+                put(ClipboardMediaProvider.Columns.MediaUri, Uri.fromFile(temp).toString())
+                put(ClipboardMediaProvider.Columns.MimeTypes, keep.mime ?: "image/png")
+            }
+            app.contentResolver.insert(ClipboardMediaProvider.IMAGE_CLIPS_URI, values)
+        } catch (_: Exception) {
+            null
+        } finally {
+            temp.delete()
+        } ?: return
+        imageIds[uri.toString()] = id
+        known[id] = keep
+        arriving[id] = System.currentTimeMillis()
+        val item = ClipboardItem(
+            type = ItemType.IMAGE,
+            text = null,
+            uri = uri,
+            creationTimestampMs = keep.ts,
+            isPinned = keep.pinned,
+            mimeTypes = listOf(keep.mime ?: "image/png"),
+        )
+        val clipboard by app.clipboardManager()
+        clipboard.insertClip(item)
+        if (fresh) makePrimary(item, keep)
+        scheduleSave()
+    }
+
+    // copied on the Mac just now: also the phone's own clipboard, so any app's Paste takes it.
+    // Set as the keyboard's primary clip first, so the system's change callback sees nothing new
+    // and does not add it to the history a second time.
+    private fun makePrimary(item: ClipboardItem, keep: SyncItem) {
+        if (System.currentTimeMillis() - keep.ts > 60_000L) return
+        val clipboard by app.clipboardManager()
+        clipboard.updatePrimaryClip(item)
+    }
+
+    private fun sendBlobs(ids: List<String>) {
+        for (id in ids) {
+            val row = rows[id] ?: continue
+            if (row.type != ItemType.IMAGE) continue
+            val bytes = imageBytes(row) ?: continue
+            if (bytes.size > MAX_IMAGE) continue
+            send(SyncMessage(type = "blob", id = id, data = Base64.encodeToString(bytes, Base64.NO_WRAP)))
+        }
     }
 
     private fun applyGone(marks: Map<String, Long>) {
         val clipboard by app.clipboardManager()
         for ((id, at) in marks) {
             gone[id] = maxOf(gone[id] ?: Long.MIN_VALUE, at)
+            waiting.remove(id)
             val local = known[id] ?: continue
             if (MacSyncMerge.removes(local, at)) {
                 known.remove(id)
@@ -227,6 +330,8 @@ object EvaMacSync {
             }
             "upsert" -> message.item?.let { applyUpsert(it, fresh = message.fresh == true) }
             "gone" -> message.gone?.let { applyGone(it) }
+            "need" -> message.ids?.let { sendBlobs(it) }
+            "blob" -> if (message.id != null && message.data != null) applyBlob(message.id, message.data)
         }
     }
 
