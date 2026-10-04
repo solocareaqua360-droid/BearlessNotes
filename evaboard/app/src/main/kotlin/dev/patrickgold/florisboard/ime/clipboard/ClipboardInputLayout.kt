@@ -70,6 +70,7 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import dev.patrickgold.florisboard.ime.eva.ClipKindBadge
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.produceState
@@ -139,6 +140,15 @@ private val DialogWidth = 240.dp
 
 const val CLIPBOARD_HISTORY_NUM_GRID_COLUMNS_AUTO: Int = 0
 
+/** evaBoard: what a card is, as the user tells them apart: text, a link, or a picture (videos count as pictures). */
+private enum class ClipKind { TEXT, LINK, IMAGE }
+
+private fun clipKind(item: ClipboardItem): ClipKind = when {
+    item.type == ItemType.IMAGE || item.type == ItemType.VIDEO -> ClipKind.IMAGE
+    EvaLinkPreviews.singleUrl(item.text) != null -> ClipKind.LINK
+    else -> ClipKind.TEXT
+}
+
 @Composable
 fun ClipboardInputLayout(
     modifier: Modifier = Modifier,
@@ -154,7 +164,7 @@ fun ClipboardInputLayout(
     val historyEnabled by prefs.clipboard.historyEnabled.observeAsState()
 
     val isFilterRowShown = true // evaBoard: the type chips are always there
-    val activeFilterTypes = remember { mutableStateSetOf<ItemType>() }
+    val activeFilterTypes = remember { mutableStateSetOf<ClipKind>() }
 
     // evaBoard: the header's pin button shows only the pinned items
     var pinnedOnly by remember { mutableStateOf(false) }
@@ -165,7 +175,7 @@ fun ClipboardInputLayout(
             unfilteredHistory
         } else {
             unfilteredHistory.all
-                .filter { activeFilterTypes.isEmpty() || activeFilterTypes.contains(it.type) }
+                .filter { activeFilterTypes.isEmpty() || activeFilterTypes.contains(clipKind(it)) }
                 .filter { !pinnedOnly || it.isPinned }
                 .let { ClipboardHistory(it) }
         }
@@ -218,11 +228,14 @@ fun ClipboardInputLayout(
                     SnyggIcon(imageVector = EvaIcons.lucide(icon))
                 }
             }
-            ToggleButton("type", ItemType.TEXT in activeFilterTypes) {
-                if (!activeFilterTypes.add(ItemType.TEXT)) activeFilterTypes.remove(ItemType.TEXT)
+            ToggleButton("type", ClipKind.TEXT in activeFilterTypes) {
+                if (!activeFilterTypes.add(ClipKind.TEXT)) activeFilterTypes.remove(ClipKind.TEXT)
             }
-            ToggleButton("image", ItemType.IMAGE in activeFilterTypes) {
-                if (!activeFilterTypes.add(ItemType.IMAGE)) activeFilterTypes.remove(ItemType.IMAGE)
+            ToggleButton("link", ClipKind.LINK in activeFilterTypes) {
+                if (!activeFilterTypes.add(ClipKind.LINK)) activeFilterTypes.remove(ClipKind.LINK)
+            }
+            ToggleButton("image", ClipKind.IMAGE in activeFilterTypes) {
+                if (!activeFilterTypes.add(ClipKind.IMAGE)) activeFilterTypes.remove(ClipKind.IMAGE)
             }
             ToggleButton("pin", pinnedOnly) { pinnedOnly = !pinnedOnly }
             SnyggIconButton(
@@ -244,7 +257,7 @@ fun ClipboardInputLayout(
         modifier: Modifier = Modifier,
     ) {
         val attributes = remember(item) {
-            mapOf("type" to item.type.toString().lowercase())
+            mapOf("type" to clipKind(item).toString().lowercase().let { if (it == "image") item.type.toString().lowercase() else it })
         }
         SnyggBox(
             elementName = elementName,
@@ -319,9 +332,9 @@ fun ClipboardInputLayout(
                         text = bitmap.exceptionOrNull()?.message ?: "Unknown error",
                     )
                 }
-            } else if (!contentScrollInsteadOfClip && previewsOn && EvaLinkPreviews.singleUrl(item.text) != null) {
-                // evaBoard: a copied link shows the page's picture and title (ClipLinkPreview.kt)
-                LinkPreviewCard(EvaLinkPreviews.singleUrl(item.text)!!)
+            } else if (!contentScrollInsteadOfClip && clipKind(item) == ClipKind.LINK) {
+                // evaBoard: a copied link; with previews on, the page's picture and title (ClipLinkPreview.kt)
+                LinkPreviewCard(EvaLinkPreviews.singleUrl(item.text)!!, preview = previewsOn)
             } else {
                 val text = item.stringRepresentation()
                 Column {
@@ -337,6 +350,13 @@ fun ClipboardInputLayout(
                         text = item.displayText(),
                     )
                 }
+            }
+            if (!contentScrollInsteadOfClip && clipKind(item) != ClipKind.LINK) {
+                ClipKindBadge(
+                    icon = if (clipKind(item) == ClipKind.IMAGE) "image" else "type",
+                    overPicture = clipKind(item) == ClipKind.IMAGE,
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
             }
             if (item.isPinned && !contentScrollInsteadOfClip) {
                 SnyggIcon(

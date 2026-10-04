@@ -15,19 +15,21 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import dev.patrickgold.florisboard.ime.eva.ClipKindBadge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -211,41 +213,50 @@ object EvaLinkPreviews {
         MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 }
 
-/** A card for a copied link: the page's picture with its title over the bottom, or the title, or the short link. */
+/**
+ * A card for a copied link. With [preview] on: the page's picture filling the whole card with its title over
+ * the bottom, or the title, or the short link. With it off: the short link. A small link icon sits top left.
+ */
 @Composable
-fun LinkPreviewCard(url: String) {
+fun LinkPreviewCard(url: String, preview: Boolean) {
     val context = LocalContext.current
-    val preview by produceState<LinkPreview?>(null, url) { value = EvaLinkPreviews.load(context, url) }
-    val shown = preview
+    val loaded by produceState<LinkPreview?>(null, url, preview) {
+        value = if (preview) EvaLinkPreviews.load(context, url) else null
+    }
+    val shown = loaded
     val short = EvaLinkPreviews.shortLink(url)
-    when {
-        shown?.image != null -> Box(Modifier.fillMaxSize().clipToBounds()) {
-            Image(
-                modifier = Modifier.fillMaxSize(),
-                bitmap = shown.image,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f))))
-                    .padding(start = 10.dp, end = 10.dp, top = 22.dp, bottom = 8.dp),
-            ) {
-                Text(
-                    text = shown.title ?: shown.host,
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+    val textInset = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 38.dp, bottom = 12.dp)
+    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp))) {
+        when {
+            shown?.image != null -> {
+                Image(
+                    modifier = Modifier.fillMaxSize(),
+                    bitmap = shown.image,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
                 )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f))))
+                        .padding(start = 12.dp, end = 12.dp, top = 26.dp, bottom = 10.dp),
+                ) {
+                    Text(
+                        text = shown.title ?: shown.host,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
+            shown?.title != null -> Column(textInset) {
+                SnyggText(modifier = Modifier.fillMaxWidth(), text = shown.title)
+                SnyggText(modifier = Modifier.fillMaxWidth(), text = shown.host)
+            }
+            else -> SnyggText(modifier = textInset, text = short)
         }
-        shown?.title != null -> Column {
-            SnyggText(modifier = Modifier.fillMaxWidth(), text = shown.title)
-            SnyggText(modifier = Modifier.fillMaxWidth(), text = shown.host)
-        }
-        else -> SnyggText(modifier = Modifier.fillMaxWidth(), text = short)
+        ClipKindBadge(icon = "link", overPicture = shown?.image != null, modifier = Modifier.align(Alignment.TopStart))
     }
 }
