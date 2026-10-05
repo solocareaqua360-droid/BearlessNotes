@@ -14,13 +14,22 @@ import type { Block } from '../types';
 // question about every other note, and this is the field that answers it
 // without reading them all.
 //
-// Text links (a selection turned into a link) will add their own source
-// here when they exist; this is deliberately the one place that knows
-// what counts as a link.
+// This is deliberately the one place that knows what counts as a link: a
+// card of a note ('docRef'), and a word in the text that links to one
+// ({n:<id>}label{/n} - see documentBlocks' NOTE_LINK_OPEN).
+const WORD_LINK = /\{n:([A-Za-z0-9_-]+)\}/g;
+
 export function documentLinksIn(blocks: Block[] | undefined): string[] {
   const ids = new Set<string>();
   for (const block of blocks ?? []) {
     if ((block.type ?? 'paragraph') === 'docRef' && block.docRefId) ids.add(block.docRefId);
+    for (const m of (block.text ?? '').matchAll(WORD_LINK)) ids.add(m[1]);
   }
   return Array.from(ids);
+}
+
+// Whether a block points at a note - as a card or by a word in it.
+export function blockLinksTo(block: Block, documentId: string): boolean {
+  if ((block.type ?? 'paragraph') === 'docRef') return block.docRefId === documentId;
+  return (block.text ?? '').includes(`{n:${documentId}}`);
 }

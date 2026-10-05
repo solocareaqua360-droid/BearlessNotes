@@ -172,7 +172,7 @@ import DocumentPickerModal from '../components/DocumentPickerModal';
 import RelatedDocuments from '../components/RelatedDocuments';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
-import { documentLinksIn } from '../utils/documentLinks';
+import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
 import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import {
@@ -687,7 +687,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   useEffect(() => {
     if (!isLoaded || !focusLinkTo) return;
     const target = blocks.find(
-      (b) => (b.type ?? 'paragraph') === 'docRef' && b.docRefId === focusLinkTo
+      (b) => blockLinksTo(b, focusLinkTo)
     );
     if (!target) return;
     let tries = 0;
