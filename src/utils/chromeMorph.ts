@@ -180,12 +180,32 @@ function releaseHeld() {
   listKept = {};
 }
 
+// UNDER A QUICK HAND THE PHOTOGRAPHS STEP ASIDE (the user's, 2026-10-06:
+// opening and closing two notes in a row, fast, built up a 0.8 s lag - "ніхто
+// так не робить, але одного разу досить, щоб зіпсувати враження"). Four
+// full-size photographs per round trip are the morph's polish, not its
+// substance: a move asked for while the last one is still on screen, or
+// just after it, goes without them - the page still grows and folds, the
+// chrome simply changes - so a fast hand never waits behind a queue.
+const QUIET_BEFORE_MS = 700;
+let lastSettled = 0;
+// Asked for at all, carried or not: a hand that keeps going fast keeps
+// skipping, rather than every other move paying in full.
+let lastAsked = 0;
+function tooSoon(): boolean {
+  const now = Date.now();
+  const soon = state.active || now - Math.max(lastSettled, lastAsked) < QUIET_BEFORE_MS;
+  lastAsked = now;
+  return soon;
+}
+
 // Bumped by chromeAbort: a beginning that finishes after it was given up
 // on (see morph's deadline) must not put its pictures up late.
 let generation = 0;
 
 export async function chromeOpenBegin(): Promise<boolean> {
   carrying = false;
+  if (tooSoon()) return false;
   const mine = ++generation;
   // Nothing is on screen between two moves, so whatever the last ones took
   // can go now.
@@ -218,6 +238,7 @@ export async function chromeOpenArrive(): Promise<void> {
 // photographed now, the list's comes from the way in.
 export async function chromeBackBegin(): Promise<boolean> {
   carrying = false;
+  if (tooSoon()) return false;
   if (!listKept.bar || !listKept.dock) return false;
   const [bar, dock] = await Promise.all([grab('bar', 'note'), grab('dock', 'note')]);
   if (!bar) return false;
@@ -260,11 +281,13 @@ export async function chromeEnd(waitFor?: Side): Promise<void> {
   chromeCover.value = 0;
   await frame();
   set({ active: false, shots: { bar: {}, dock: {} } });
+  lastSettled = Date.now();
 }
 
 // Something went wrong mid-way: the real chrome comes back at once.
 export function chromeAbort(): void {
   generation += 1;
+  lastSettled = Date.now();
   clearTimeout(watchdog);
   carrying = false;
   chromeCover.value = 0;
