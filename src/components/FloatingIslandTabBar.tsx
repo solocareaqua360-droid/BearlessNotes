@@ -11,7 +11,7 @@ import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
 import { deskPull, deskPullEnabled } from '../navigation/deskPull';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
-import { useRenderTimer } from '../utils/perfWatch';
+import { backMarkFocus, useRenderTimer } from '../utils/perfWatch';
 
 // Outline glyphs at 24, the same set and the same size as everything else
 // on this screen - what made these read as thinner and smaller before was
@@ -116,6 +116,10 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   useEffect(() => {
     setCurrentDesk(tabsFocused ? currentDesk ?? null : null);
   }, [currentDesk, tabsFocused]);
+  // Temporary diagnosis: the desks are in front again (perfWatch).
+  useEffect(() => {
+    if (tabsFocused) backMarkFocus();
+  }, [tabsFocused]);
   useEffect(() => {
     setDeskCapturePaused(switcherOpen);
   }, [switcherOpen]);

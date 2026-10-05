@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PAGE_SHEET_INSET } from './documentEditorStyles';
 import { TOP_NAV_SPACE } from './TopNavBar';
 import { openMark } from '../utils/openTiming';
+import { backMarkPop } from '../utils/perfWatch';
 import { chromeAbort, chromeBackBegin, chromeEnd, chromeOpenArrive, chromeT } from '../utils/chromeMorph';
 import { measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
 
@@ -139,6 +140,7 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
         const leave = () => {
           if (left) return;
           left = true;
+          backMarkPop();
           shown.value = 0;
           navigation.dispatch(e.data.action as never);
           if (carrying) chromeEnd('list');

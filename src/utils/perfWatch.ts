@@ -114,6 +114,47 @@ setInterval(() => {
   }
 }, BEAT_MS);
 
+// THE WAY BACK from a note, timed (2026-10-05): the second after a fold in
+// which nothing can be pressed. 'pop' when the note is let go, 'focus' when
+// the desks are in front again, then the first frame after.
+let backPop = 0;
+let backFocus = 0;
+export function backMarkPop(): void {
+  backPop = Date.now();
+  backFocus = 0;
+}
+export function backMarkFocus(): void {
+  if (!backPop || backFocus) return;
+  backFocus = Date.now();
+  const pop = backPop;
+  const focus = backFocus;
+  requestAnimationFrame(() => {
+    const frame = Date.now();
+    backPop = 0;
+    // The second half: whatever still holds the thread after the frame -
+    // ticks are queued until one comes back promptly (the thread is free).
+    let last = Date.now();
+    const idle = (then: () => void) => {
+      setTimeout(() => {
+        const now = Date.now();
+        const late = now - last;
+        last = now;
+        if (late < 30 || now - frame > 3000) then();
+        else idle(then);
+      }, 0);
+    };
+    idle(() => {
+      const settled = last;
+      const total = settled - pop;
+      if (total < 300 || !stallReporter) return;
+      stallReporter(
+        `Повернення тривало ${(total / 1000).toFixed(1)} с`,
+        `до столів ${focus - pop} мс · кадр ${frame - focus} мс · після кадру ${settled - frame} мс\n\n${perfSummary(pop - 200)}`
+      );
+    });
+  });
+}
+
 // What was going on from `since` until now, in one line.
 export function perfSummary(since: number): string {
   trim(runs);
