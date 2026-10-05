@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useRenderTimer } from '../utils/perfWatch';
@@ -16,7 +16,7 @@ import { useRenderTimer } from '../utils/perfWatch';
 // bottom edge mirrors the values, not the offsets.
 const STOPS = 8;
 
-export default function EdgeFade({ edge, color, height = 36 }: { edge: 'top' | 'bottom'; color: string; height?: number }) {
+function EdgeFade({ edge, color, height = 36 }: { edge: 'top' | 'bottom'; color: string; height?: number }) {
   useRenderTimer('Край, що тане');
   const [width, setWidth] = useState(0);
   const id = `fade${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
@@ -64,3 +64,6 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
 });
+
+// Plain props only, so it skips the renders of the screen around it.
+export default memo(EdgeFade);

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useWallpaperVeil } from '../theme/ThemeProvider';
 
@@ -6,7 +7,7 @@ import { useWallpaperVeil } from '../theme/ThemeProvider';
 // thinned to the chosen veil so the wallpaper shows through. Every soft
 // screen paints its ground through this, or that screen alone would hide
 // the wallpaper.
-export default function ScreenGround({ color }: { color: string }) {
+function ScreenGround({ color }: { color: string }) {
   const veil = useWallpaperVeil();
   return (
     <View
@@ -15,3 +16,6 @@ export default function ScreenGround({ color }: { color: string }) {
     />
   );
 }
+
+// Plain props only, so it skips the renders of the screen around it.
+export default memo(ScreenGround);
