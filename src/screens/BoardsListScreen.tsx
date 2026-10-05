@@ -59,6 +59,7 @@ import { openTabWithSequence } from '../navigation/desktopTabs';
 import { go } from '../components/DesktopTabs';
 import { useDensity } from '../hooks/useDensity';
 import { listenError } from '../utils/listenError';
+import BoardPreviewImage from '../components/BoardPreviewImage';
 
 // The "+" fill: the accent at half strength, since the blur behind it is
 // what separates it from the screen (see DatabaseChrome).
@@ -417,30 +418,26 @@ export default function BoardsListScreen({
             a note gets, by the board's id. The map used to sit on a flat
             grey square, where its cards read as grey dots on grey. */}
         <View style={styles.rowIcon}>
-          {item.previewImageUri ? (
-            // The real, once-captured picture (step 2) - see
-            // BoardMiniature. Falls back to the live map below only
-            // while a board has never been left with an edit yet.
-            <AttachmentImage
-              uri={item.previewImageUri}
-              driveFileId={item.previewDriveFileId}
-              style={StyleSheet.absoluteFill}
-              countsAsUse={false}
-            />
-          ) : (
-            <>
-              {/* Muted, not full strength - so it reads as the map's mat
-                  rather than the loud wash the boxes used to sit on
-                  ("вирізає всі елементи і підставляє їх на якийсь
-                  фон"). */}
-              <CoverGradientView gradient={defaultCoverFor(item.id)} style={[StyleSheet.absoluteFill, styles.coverMuted]} />
-              {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
-                <BoardMiniMap cards={item.cards} columns={item.columns} width={48} height={48} />
-              ) : (
-                <Ionicons name="apps-outline" size={20} color={text} />
-              )}
-            </>
-          )}
+          {/* The real, once-captured picture (BoardMiniature), kept where
+              it lasts (BoardPreviewImage); the cover and live map stand in
+              until it is there - never a spinner. Muted, the cover reads as
+              the map's mat ("вирізає всі елементи і підставляє їх на
+              якийсь фон"). */}
+          <BoardPreviewImage
+            boardId={item.id}
+            uri={item.previewImageUri}
+            driveFileId={item.previewDriveFileId}
+            fallback={
+              <>
+                <CoverGradientView gradient={defaultCoverFor(item.id)} style={[StyleSheet.absoluteFill, styles.coverMuted]} />
+                {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
+                  <BoardMiniMap cards={item.cards} columns={item.columns} width={48} height={48} />
+                ) : (
+                  <Ionicons name="apps-outline" size={20} color={text} />
+                )}
+              </>
+            }
+          />
         </View>
         <View style={styles.rowBody}>
           <Text style={[styles.rowTitle, { color: text }]} numberOfLines={2}>
@@ -506,14 +503,11 @@ export default function BoardsListScreen({
         {...rightClick(carried || isSelectMode ? undefined : () => askBoardActions(item))}
       >
         <View style={[styles.tileMap, { height: mapHeight }]}>
-          {item.previewImageUri ? (
-            <AttachmentImage
-              uri={item.previewImageUri}
-              driveFileId={item.previewDriveFileId}
-              style={StyleSheet.absoluteFill}
-              countsAsUse={false}
-            />
-          ) : (
+          <BoardPreviewImage
+            boardId={item.id}
+            uri={item.previewImageUri}
+            driveFileId={item.previewDriveFileId}
+            fallback={
             <>
               <CoverGradientView gradient={defaultCoverFor(item.id)} style={[StyleSheet.absoluteFill, styles.coverMuted]} />
               {item.cards.length > 0 || (item.columns?.length ?? 0) > 0 ? (
@@ -524,7 +518,8 @@ export default function BoardsListScreen({
                 </View>
               )}
             </>
-          )}
+            }
+          />
         </View>
         {isSelectMode && (
           <View style={styles.tileSelectBadge} pointerEvents="none">

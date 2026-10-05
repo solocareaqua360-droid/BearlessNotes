@@ -42,6 +42,7 @@ import { rowTitleOf } from '../utils/customRowDisplay';
 import { useRenderTimer } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
 import { FEATURES } from '../features';
+import BoardPreviewImage from '../components/BoardPreviewImage';
 
 // THE START DESK (2026-10-03, the user's own design, mocked up first):
 // the phone's first desk. Under the desks' bar, a row of four big buttons
@@ -566,18 +567,17 @@ function RecentBoard({ id, onPress }: { id: string; onPress: () => void }) {
   if (!data) return null;
   return (
     <RecentFrame onPress={onPress} label={data.title?.trim() || 'Дошка'} icon="easel-outline">
-      {data.previewImageUri ? (
-        <AttachmentImage
-          uri={data.previewImageUri}
-          driveFileId={data.previewDriveFileId}
-          style={StyleSheet.absoluteFill}
-          countsAsUse={false}
-        />
-      ) : (
-        <View style={styles.cardCenter}>
-          <Ionicons name="easel-outline" size={34} color={S.ink3} />
-        </View>
-      )}
+      {/* Kept where it lasts, no spinner (BoardPreviewImage). */}
+      <BoardPreviewImage
+        boardId={id}
+        uri={data.previewImageUri}
+        driveFileId={data.previewDriveFileId}
+        fallback={
+          <View style={styles.cardCenter}>
+            <Ionicons name="easel-outline" size={34} color={S.ink3} />
+          </View>
+        }
+      />
     </RecentFrame>
   );
 }
