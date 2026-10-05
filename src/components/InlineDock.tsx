@@ -8,7 +8,7 @@ import DockFrost, { FlatFrostContext } from './DockFrost';
 import { ActionButton, Bead, SOFT_DOCK_GLYPHS } from './ContextDock';
 import { topBarFrame } from './TopNavBar';
 import { DOCK_BOTTOM, DOCK_PIECE_RADIUS } from '../navigation/dockGeometry';
-import { DockAction, DockBead } from '../navigation/navDock';
+import { DockAction, DockBead, useNavDockActions } from '../navigation/navDock';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 
 // The same numbers as the dock's own two-bead row and short strip (see
@@ -29,7 +29,8 @@ const FIELD_INSET = 5;
 export default function InlineDock({
   width,
   beads,
-  actions,
+  actions: givenActions,
+  actionsFromDock,
   soft,
   back,
 }: {
@@ -40,12 +41,19 @@ export default function InlineDock({
   back?: () => void;
   width: number;
   beads: { left: DockBead | null; right: DockBead | null };
-  actions: DockAction[] | null;
+  actions?: DockAction[] | null;
+  // Read the window dock's own published actions here, rather than have
+  // the host screen read them: a screen that reads the dock's state renders
+  // again on every publish anywhere in the app (see navDock's publishing
+  // half) - the calendar did, on every note opened.
+  actionsFromDock?: boolean;
   // The soft style (theme/soft) - the same two pieces the window's dock
   // draws on a soft screen: a search field and a round write button, or
   // one quiet capsule of actions.
   soft?: SoftTokens | null;
 }) {
+  const published = useNavDockActions();
+  const actions = actionsFromDock ? published : givenActions ?? null;
   const theme = useTheme();
   const lift = useLift();
   const insets = useSafeAreaInsets();

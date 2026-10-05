@@ -300,6 +300,20 @@ type Value = {
 
 const NavDockContext = createContext<Value | null>(null);
 
+// THE PUBLISHING HALF ALONE (2026-10-05). Every screen that says what the
+// bar and the dock should hold (its way back, its menu, its actions, its
+// look) used to read the WHOLE value above to get at its publish function
+// - so every publish re-rendered every mounted screen: opening one note,
+// five or six publishes in a row redrew Документи, Старт, Календар, Бази
+// and every other desk each time (measured: most of a 0.9 s stall). The
+// functions never change, so this half never changes, and only what READS
+// the state (the bar, the dock) renders when it does.
+type Publishers = Pick<Value, 'publish' | 'publishTargets' | 'publishLeave' | 'publishTopBack' | 'claimTopNav' | 'publishTopExtras' | 'publishTopSearch' | 'publishChromeStyle' | 'publishDrawerCover' | 'drawerProgress' | 'publishActions' | 'publishBeads' | 'publishTabsInFlux' | 'publishTabsDrifting' | 'publishBase' | 'requestFlip' | 'publishPrefersActions' | 'publishWide' | 'setFace' | 'setHidden'>;
+const NavDockPublishContext = createContext<Publishers | null>(null);
+// The stack's front card on its own, for the screens that ask (it changes
+// rarely; the rest of the state changes on every publish).
+const NavDockFaceContext = createContext<DockFace>('context');
+
 function actionSignature(list: DockAction[] | null): string {
   return list
     ? list
@@ -645,7 +659,41 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
       publishWide,
     ]
   );
-  return <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>;
+  // Every member is a stable callback (or shared values), so this is
+  // built once.
+  const publishers = useMemo<Publishers>(
+    () => ({
+      publish,
+      publishTargets,
+      publishLeave,
+      publishTopBack,
+      claimTopNav,
+      publishTopExtras,
+      publishTopSearch,
+      publishChromeStyle,
+      publishDrawerCover,
+      drawerProgress,
+      publishActions,
+      publishBeads,
+      publishTabsInFlux,
+      publishTabsDrifting,
+      publishBase,
+      requestFlip,
+      publishPrefersActions,
+      publishWide,
+      setFace,
+      setHidden,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+  return (
+    <NavDockPublishContext.Provider value={publishers}>
+      <NavDockFaceContext.Provider value={face}>
+        <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>
+      </NavDockFaceContext.Provider>
+    </NavDockPublishContext.Provider>
+  );
 }
 
 // What the dock reads. Null where nothing has been wrapped.
@@ -692,7 +740,7 @@ export function useNavDockHidden(): [boolean, (hidden: boolean) => void] {
 // What a screen writes. Publishing null (or unmounting) hands the dock
 // back to the desks.
 export function useNavDockPublisher() {
-  return useContext(NavDockContext)?.publish;
+  return useContext(NavDockPublishContext)?.publish;
 }
 
 // What the dock's crumbs register themselves with, and what a carry
@@ -702,12 +750,12 @@ export function useNavDockTargets(): DockTargets | null {
 }
 
 export function useNavDockTargetPublisher() {
-  return useContext(NavDockContext)?.publishTargets;
+  return useContext(NavDockPublishContext)?.publishTargets;
 }
 
 // What a pushed screen publishes so the dock can carry its way out.
 export function useDockLeave(icon: string, onLeave: () => void, enabled = true) {
-  const publish = useContext(NavDockContext)?.publishLeave;
+  const publish = useContext(NavDockPublishContext)?.publishLeave;
   const focused = useIsFocused();
   const leaveRef = useRef(onLeave);
   leaveRef.current = onLeave;
@@ -725,7 +773,7 @@ export function useDockLeave(icon: string, onLeave: () => void, enabled = true) 
 // Same stable-wrapper rule as everything else here: the handler can
 // change every render, the published one does not.
 export function useTopBack(onPress: (() => void) | null, enabled = true, icon?: string) {
-  const publish = useContext(NavDockContext)?.publishTopBack;
+  const publish = useContext(NavDockPublishContext)?.publishTopBack;
   const layer = useContext(DockLayerContext);
   const focused = useIsFocused();
   const id = useId();
@@ -746,7 +794,7 @@ export function useNavTopNavUp(): boolean {
 
 // Held by a TopNavBar for as long as it is drawn.
 export function useTopNavClaim(enabled = true) {
-  const claim = useContext(NavDockContext)?.claimTopNav;
+  const claim = useContext(NavDockPublishContext)?.claimTopNav;
   useEffect(() => (claim && enabled ? claim() : undefined), [claim, enabled]);
 }
 
@@ -761,7 +809,7 @@ export function useTopExtras(
   pane?: { icon: string; onPress: () => void } | null,
   tools?: TopTool[] | null
 ) {
-  const publish = useContext(NavDockContext)?.publishTopExtras;
+  const publish = useContext(NavDockPublishContext)?.publishTopExtras;
   const layer = useContext(DockLayerContext);
   const focused = useIsFocused();
   const id = useId();
@@ -809,7 +857,7 @@ export function useTopSearch(search: Omit<TopSearch, 'onChangeQuery' | 'onClose'
   onChangeQuery: (query: string) => void;
   onClose: () => void;
 } | null, enabled = true) {
-  const publish = useContext(NavDockContext)?.publishTopSearch;
+  const publish = useContext(NavDockPublishContext)?.publishTopSearch;
   const layer = useContext(DockLayerContext);
   const focused = useIsFocused();
   const id = useId();
@@ -840,7 +888,7 @@ export function useTopSearch(search: Omit<TopSearch, 'onChangeQuery' | 'onClose'
 // rest ("другий варіант давай"). The screen in front says which look it
 // wants; the bar and the dock, shared by every screen, read it here.
 export function useChromeStyle(style: ChromeStyle | null, enabled = true) {
-  const publish = useContext(NavDockContext)?.publishChromeStyle;
+  const publish = useContext(NavDockPublishContext)?.publishChromeStyle;
   const layer = useContext(DockLayerContext);
   const focused = useIsFocused();
   const id = useId();
@@ -869,11 +917,11 @@ export function useNavDrawerCover() {
 }
 
 export function useDrawerCoverPublisher() {
-  return useContext(NavDockContext)?.publishDrawerCover;
+  return useContext(NavDockPublishContext)?.publishDrawerCover;
 }
 
 export function useNavDrawerProgress() {
-  return useContext(NavDockContext)?.drawerProgress ?? null;
+  return useContext(NavDockPublishContext)?.drawerProgress ?? null;
 }
 
 export function useNavTopBack(): TopBack | null {
@@ -894,7 +942,7 @@ export function useNavDockLeave(): DockLeave | null {
 // read which card was in front from a closure that was several renders
 // old, so its desks/days ring stopped after one step.
 export function useDockActions(actions: DockAction[] | null) {
-  const publish = useContext(NavDockContext)?.publishActions;
+  const publish = useContext(NavDockPublishContext)?.publishActions;
   const focused = useIsFocused();
   const layer = useContext(DockLayerContext);
   const id = useId();
@@ -933,7 +981,7 @@ export function useNavDockActions(): DockAction[] | null {
 // The two fixed beads either side of the stack - see DockBead. Same
 // stable-wrapper rule as the actions, for the same reason.
 export function useDockBeads(left: DockBead | null, right: DockBead | null) {
-  const publish = useContext(NavDockContext)?.publishBeads;
+  const publish = useContext(NavDockPublishContext)?.publishBeads;
   const focused = useIsFocused();
   const layer = useContext(DockLayerContext);
   const id = useId();
@@ -978,11 +1026,11 @@ export function useNavDockTabsInFlux(): boolean {
 }
 
 export function useDockTabsInFluxPublisher() {
-  return useContext(NavDockContext)?.publishTabsInFlux;
+  return useContext(NavDockPublishContext)?.publishTabsInFlux;
 }
 
 export function useDockTabsDriftPublisher() {
-  return useContext(NavDockContext)?.publishTabsDrifting;
+  return useContext(NavDockPublishContext)?.publishTabsDrifting;
 }
 
 export function useNavDockTabsDrifting(): boolean {
@@ -991,7 +1039,7 @@ export function useNavDockTabsDrifting(): boolean {
 
 // The desks, published by the tab bar - see DockDesk.
 export function useDockBase(base: DockContext | null) {
-  const publish = useContext(NavDockContext)?.publishBase;
+  const publish = useContext(NavDockPublishContext)?.publishBase;
   const ref = useRef(base);
   ref.current = base;
   const signature =
@@ -1013,19 +1061,20 @@ export function useNavDockFlipRequest(): { face: DockFace; at: number } | null {
 
 // What a SCREEN calls: turn the dock to that card, visibly.
 export function useNavDockFlip(): (face: DockFace) => void {
-  const request = useContext(NavDockContext)?.requestFlip;
+  const request = useContext(NavDockPublishContext)?.requestFlip;
   return useCallback((next: DockFace) => request?.(next), [request]);
 }
 
 export function useNavDockFace(): [DockFace, (face: DockFace) => void] {
-  const value = useContext(NavDockContext);
-  return [value?.face ?? 'context', value?.setFace ?? (() => {})];
+  const face = useContext(NavDockFaceContext);
+  const setFace = useContext(NavDockPublishContext)?.setFace;
+  return [face, setFace ?? (() => {})];
 }
 
 // See `prefersActions`. Published while focused, cleared on the way out,
 // so the preference never outlives the screen that holds it.
 export function useDockOpensOnActions(prefers: boolean) {
-  const publish = useContext(NavDockContext)?.publishPrefersActions;
+  const publish = useContext(NavDockPublishContext)?.publishPrefersActions;
   const focused = useIsFocused();
   useEffect(() => {
     if (!publish) return;
@@ -1041,7 +1090,7 @@ export function useNavDockPrefersActions(): boolean {
 // See `wide`. Published while focused and cleared on the way out, so a
 // screen left mid-selection does not hand the next one a stretched dock.
 export function useDockWide(wide: boolean) {
-  const publish = useContext(NavDockContext)?.publishWide;
+  const publish = useContext(NavDockPublishContext)?.publishWide;
   const focused = useIsFocused();
   useEffect(() => {
     if (!publish) return;
@@ -1059,6 +1108,6 @@ export function useNavDockWide(): boolean {
 // card of actions was opened for one thing; once that thing is done,
 // where-you-are is what belongs in front.
 export function useDockShowContext(): () => void {
-  const setFace = useContext(NavDockContext)?.setFace;
+  const setFace = useContext(NavDockPublishContext)?.setFace;
   return useCallback(() => setFace?.('context'), [setFace]);
 }

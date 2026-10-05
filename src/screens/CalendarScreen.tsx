@@ -56,7 +56,7 @@ import { usePublishRailPanel } from '../navigation/navRail';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft, type SoftTokens } from '../theme/soft';
-import { DockMark, useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockActions, useNavDockFace, useNavDockPublisher, useTopBack, useTopExtras } from '../navigation/navDock';
+import { DockMark, useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher, useTopBack, useTopExtras } from '../navigation/navDock';
 import InlineDock from '../components/InlineDock';
 import {
   MONTH_FULL,
@@ -898,7 +898,6 @@ export default function CalendarScreen() {
   useDockBeads(calendarDrawer ? null : shownSearchBead, calendarDrawer ? null : shownPencilBead);
   // What the day's note publishes while its blocks are chosen - read back
   // here so the drawer's own dock can carry it.
-  const publishedActions = useNavDockActions();
   useDockActions(null);
   // The same list, for the column head. A bead and an action differ only
   // in where the dock puts them, and this row has no such two places.
@@ -2208,7 +2207,7 @@ export default function CalendarScreen() {
               },
               right: notePanelOpen ? null : { icon: 'pencil-outline', onPress: () => { setHistoryExpanded(false); noteEditorRef.current?.startWriting(); } },
             }}
-            actions={noteSelectMode ? publishedActions : null}
+            actionsFromDock={noteSelectMode}
             soft={S}
             back={calendarDrawer.close}
           />
