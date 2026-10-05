@@ -1,5 +1,5 @@
 import { Text } from 'react-native';
-import type { TextSegment } from '../utils/documentBlocks';
+import { LINK_GLYPH, type TextSegment } from '../utils/documentBlocks';
 import { parseTimecode, TIMECODE_PATTERN } from '../utils/videoEmbed';
 
 // A segment's text cut around its timecodes ("04:32") - each one a run of
@@ -72,6 +72,10 @@ export default function FormattedText({
   search,
   onTimecode,
   timecodeColor,
+  onNoteLink,
+  onNoteLinkHold,
+  linkInk,
+  linkTint,
 }: {
   segments: TextSegment[];
   defaultColor: string;
@@ -80,6 +84,12 @@ export default function FormattedText({
   // a link that plays the video from there.
   onTimecode?: (seconds: number) => void;
   timecodeColor?: string;
+  // A word that links to a note: a chip in the line - tapped it opens the
+  // note, held its menu (see documentBlocks' NOTE_LINK_OPEN).
+  onNoteLink?: (documentId: string) => void;
+  onNoteLinkHold?: (documentId: string, label: string) => void;
+  linkInk?: string;
+  linkTint?: string;
 }) {
   const query = search?.trim().toLowerCase() ?? '';
   return (
@@ -95,6 +105,26 @@ export default function FormattedText({
           color: seg.color ?? defaultColor,
           backgroundColor: seg.highlight,
         };
+        if (seg.noteLink) {
+          const id = seg.noteLink;
+          const label = seg.text.slice(LINK_GLYPH.length);
+          return (
+            <Text
+              key={i}
+              onPress={onNoteLink ? () => onNoteLink(id) : undefined}
+              onLongPress={onNoteLinkHold ? () => onNoteLinkHold(id, label) : undefined}
+              suppressHighlighting
+              style={{
+                ...style,
+                color: linkInk ?? timecodeColor ?? style.color,
+                backgroundColor: linkTint,
+                fontWeight: '600',
+              }}
+            >
+              {`\u2009${label}\u2009`}
+            </Text>
+          );
+        }
         if (onTimecode && TIMECODE_PATTERN.test(seg.text)) {
           TIMECODE_PATTERN.lastIndex = 0;
           return (

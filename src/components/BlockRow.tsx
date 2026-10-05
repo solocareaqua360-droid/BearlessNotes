@@ -39,10 +39,13 @@ import {
   formatReminderBadge,
   parseFormattedText,
   plainTextOf,
+  noteLinkSpans,
   STICKER_INK,
   type TextLayoutLine,
 } from '../utils/documentBlocks';
 import FormattedText from './FormattedText';
+import { setSelection } from '../utils/setSelection';
+import { withAlpha } from '../utils/color';
 import TableBlockContent from './TableBlockContent';
 import CustomRowBlockCard from './CustomRowBlockCard';
 import DocumentRefBlockCard from './DocumentRefBlockCard';
@@ -105,6 +108,10 @@ type BlockRowProps = {
   onOpenLinkDatabase: (block: Block) => void;
   // A "04:32" in this block's text was tapped (see FormattedText).
   onTimecode?: (blockId: string, seconds: number) => void;
+  // A note link in the text: opened by a tap at rest, its menu on a hold -
+  // or on a tap while the block is being typed (the caret is put after it).
+  onNoteLink?: (documentId: string) => void;
+  onNoteLinkMenu?: (blockId: string, documentId: string, label: string) => void;
   onOpenSketch: (id: string) => void;
   // 'dbRow' blocks only - the full tag list (the card filters it by the
   // live row's own tagIds) and "open this row in its database".
@@ -156,6 +163,8 @@ export default function BlockRow({
   onOpenLink,
   onOpenLinkDatabase,
   onTimecode,
+  onNoteLink,
+  onNoteLinkMenu,
   onOpenSketch,
   allTags,
   onOpenCustomRow,
@@ -681,9 +690,20 @@ export default function BlockRow({
         onFocus={() => onFocus(item.id)}
         onBlur={() => onBlur(item.id)}
         {...softCursor(theme.scheme)}
-        onSelectionChange={({ nativeEvent }) =>
-          onSelectionChange(item.id, nativeEvent.selection.start, nativeEvent.selection.end)
-        }
+        onSelectionChange={({ nativeEvent }) => {
+          const { start, end } = nativeEvent.selection;
+          // The caret never stands inside a note link: landing there is a
+          // tap on it - its menu, and the caret put after it.
+          if (type !== 'code' && start === end && onNoteLinkMenu) {
+            const span = noteLinkSpans(item.text).find((s) => start > s.displayStart && start < s.displayEnd);
+            if (span) {
+              setSelection(localInputRef.current, span.displayEnd, span.displayEnd);
+              onNoteLinkMenu(item.id, span.documentId, span.label);
+              return;
+            }
+          }
+          onSelectionChange(item.id, start, end);
+        }}
         onKeyPress={({ nativeEvent }) => {
           if (nativeEvent.key === 'Backspace' && item.text === '') {
             onBackspaceEmpty(item.id);
@@ -731,6 +751,10 @@ export default function BlockRow({
               search={searchHighlight}
               onTimecode={onTimecode && !isSelectMode ? (seconds) => onTimecode(item.id, seconds) : undefined}
               timecodeColor={theme.accent}
+              onNoteLink={onNoteLink && !isSelectMode ? onNoteLink : undefined}
+              onNoteLinkHold={onNoteLinkMenu && !isSelectMode ? (documentId, label) => onNoteLinkMenu(item.id, documentId, label) : undefined}
+              linkInk={theme.accent}
+              linkTint={withAlpha(theme.accent, 0.14)}
             />
           ) : (
             <Text style={[styles.blockPlaceholder, rowPaperColor && { color: rowPaperColor.textMuted }]}>…</Text>

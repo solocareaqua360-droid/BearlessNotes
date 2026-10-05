@@ -1,3 +1,4 @@
+import NoteLinkPicker from '../components/NoteLinkPicker';
 import { frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { RADIUS } from '../theme/scale';
 import { whenDeskIsThere } from '../navigation/deskRegistry';
@@ -141,14 +142,18 @@ import {
   buildDocumentText,
   COLOR_CLOSE,
   COLOR_OPEN,
+  displayBoundaries,
   displayIndexForRawIndex,
   displayValueOf,
   downloadToDevice,
   generateId,
   HIGHLIGHT_CLOSE,
   HIGHLIGHT_OPEN,
+  LINK_GLYPH,
   LIST_TYPES,
   newBlock,
+  noteLinkMarkup,
+  noteLinkSpans,
   parseFormattedText,
   plainTextOf,
   rawIndexForDisplayIndex,
@@ -799,6 +804,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // or nothing) hides the bar entirely, since there's no block for its
   // buttons to apply to.
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
+  // WORDS THAT LINK TO NOTES (utils/documentBlocks' NOTE_LINK_OPEN): where
+  // the caret stands in the block being typed - what tells an «@» being
+  // typed (the picker opens) from anything else - and the link whose label
+  // is being changed.
+  const [caret, setCaret] = useState<{ blockId: string; pos: number } | null>(null);
+  const [noteLinkRename, setNoteLinkRename] = useState<{ blockId: string; documentId: string; label: string } | null>(null);
+  const atQuery = useMemo(() => {
+    if (!caret || caret.blockId !== focusedBlockId) return null;
+    const block = blocks.find((b) => b.id === caret.blockId);
+    if (!block || (block.type ?? 'paragraph') === 'code') return null;
+    const before = plainTextOf(block.text ?? '').slice(0, caret.pos);
+    // Only an «@» that starts a word: after a space, a line break or at the
+    // start - in «name@mail.com» it is just a letter.
+    const m = before.match(/(?:^|\s)@([^\s@]{0,40})$/);
+    if (!m) return null;
+    return { blockId: block.id, start: caret.pos - m[1].length - 1, end: caret.pos, q: m[1] };
+  }, [caret, focusedBlockId, blocks]);
   const [viewerImageId, setViewerImageId] = useState<string | null>(null);
   // Reading the text off a page - see TextRecognizer. `after` is the block
   // the result is put under, so a scan and its text stay together.
@@ -3033,6 +3055,75 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
   function handleBlockSelectionChange(id: string, start: number, end: number) {
     setActiveSelection(start === end ? null : { blockId: id, start, end });
+    setCaret(start === end ? { blockId: id, pos: start } : null);
+  }
+
+  // ---- words that link to notes ---------------------------------------
+  function openNoteLink(target: string) {
+    const known = documentIndex.get(target);
+    if (known?.deletedAt) {
+      notify('Нотатку видалено', 'Вона в кошику. Посилання лишилось у тексті.');
+      return;
+    }
+    navigation.push('Editor', { documentId: target });
+  }
+
+  // One link in a block's text, swapped for something else (a new label,
+  // or its plain words).
+  function replaceNoteLink(blockId: string, target: string, label: string, replacement: (span: { label: string }) => string) {
+    snapshotBeforeChange();
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b.id !== blockId) return b;
+        const raw = b.text ?? '';
+        const span = noteLinkSpans(raw).find((sp) => sp.documentId === target && sp.label === label);
+        if (!span) return b;
+        return { ...b, text: raw.slice(0, span.rawStart) + replacement(span) + raw.slice(span.rawEnd) };
+      })
+    );
+    bumpTextVersion(blockId);
+  }
+
+  async function noteLinkMenu(blockId: string, target: string, label: string) {
+    const choice = await ask({
+      title: label,
+      actions: [
+        { id: 'open', label: 'Відкрити нотатку', icon: 'document-text-outline' },
+        { id: 'rename', label: 'Змінити назву', icon: 'pencil-outline' },
+        { id: 'unlink', label: 'Прибрати посилання', icon: 'close-circle-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'open') openNoteLink(target);
+    else if (choice === 'rename') setNoteLinkRename({ blockId, documentId: target, label });
+    else if (choice === 'unlink') replaceNoteLink(blockId, target, label, (span) => span.label);
+  }
+
+  // The «@query» being typed, replaced by a word that links to the note.
+  function insertNoteLink(target: string, title: string) {
+    const at = atQuery;
+    if (!at) return;
+    const block = blocks.find((b) => b.id === at.blockId);
+    if (!block) return;
+    const raw = block.text ?? '';
+    const bounds = displayBoundaries(raw);
+    const markup = noteLinkMarkup(target, title);
+    const next = raw.slice(0, bounds[at.start]) + markup + ' ' + raw.slice(bounds[at.end]);
+    snapshotBeforeChange();
+    setBlocks((prev) => prev.map((b) => (b.id === at.blockId ? { ...b, text: next } : b)));
+    setCaret(null);
+    // After the link and its space.
+    const label = markup.slice(markup.indexOf('}') + 1, markup.length - '{/n}'.length);
+    const pos = at.start + LINK_GLYPH.length + label.length + 1;
+    setTimeout(() => setSelection(inputRefs.current[at.blockId], pos, pos), 40);
+  }
+
+  async function createNoteForLink(title: string) {
+    try {
+      const id = await clipBlocksToNote(title, []);
+      insertNoteLink(id, title);
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+    }
   }
 
   const UNDO_HISTORY_LIMIT = 50;
@@ -5799,6 +5890,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onOpenLinkDatabase={openLinkDatabase}
           // Only in a note that has a video to seek: anywhere else "о 12:30"
           // is just a time of day.
+          onNoteLink={openNoteLink}
+          onNoteLinkMenu={noteLinkMenu}
           onTimecode={
             ownerVideoUrl ||
             blocks.some((b) => (b.type ?? 'paragraph') === 'link' && !!getVideoEmbedInfo(b.linkUrl ?? b.text ?? ''))
@@ -6138,6 +6231,29 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           if (newRowTarget) createRowInDatabase(newRowTarget, name);
         }}
       />
+      <RenamePrompt
+        visible={noteLinkRename !== null}
+        title="Назва посилання"
+        initialValue={noteLinkRename?.label ?? ''}
+        placeholder="Слова, які видно в тексті"
+        onCancel={() => setNoteLinkRename(null)}
+        onSave={(name) => {
+          const r = noteLinkRename;
+          setNoteLinkRename(null);
+          if (r) replaceNoteLink(r.blockId, r.documentId, r.label, () => noteLinkMarkup(r.documentId, name));
+        }}
+      />
+      {atQuery && (
+        <NoteLinkPicker
+          query={atQuery.q}
+          index={documentIndex}
+          excludeId={documentId}
+          bottom={keyboardHeight > 0 ? keyboardHeight + 64 : editorInsets.bottom + 96}
+          soft={soft}
+          onPick={insertNoteLink}
+          onCreate={createNoteForLink}
+        />
+      )}
       <RenamePrompt
         visible={linkPrompt !== null}
         title="Посилання"

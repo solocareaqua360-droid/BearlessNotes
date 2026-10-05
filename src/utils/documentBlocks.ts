@@ -110,6 +110,24 @@ export const HIGHLIGHT_OPEN = /^\{h:(#[0-9A-Fa-f]{6})\}/;
 export const COLOR_CLOSE = '{/c}';
 export const HIGHLIGHT_CLOSE = '{/h}';
 
+// A WORD THAT LINKS TO ANOTHER NOTE (2026-10-05): `{n:<documentId>}label{/n}`
+// in the block's text. Unlike the markers above it is an ATOM - the user's
+// own idea, "блок всередині блока, який можна тільки стерти": in the field
+// being typed it shows as LINK_GLYPH + the label (a TextInput draws one
+// style only, so the glyph is what says "an object, not words"), the caret
+// never stands inside it, and an edit that touches it removes the whole
+// link (applyDisplayEdit). In a block at rest it is a chip (FormattedText).
+export const NOTE_LINK_OPEN = /^\{n:([A-Za-z0-9_-]+)\}/;
+export const NOTE_LINK_CLOSE = '{/n}';
+export const LINK_GLYPH = '↗\u2009';
+
+export function noteLinkMarkup(documentId: string, label: string): string {
+  // The label can hold no markers of its own: braces and the closing
+  // marker would end it early.
+  const clean = label.replace(/[{}]/g, '').trim() || 'Нотатка';
+  return `{n:${documentId}}${clean}${NOTE_LINK_CLOSE}`;
+}
+
 export type TextStyle = {
   bold?: boolean;
   italic?: boolean;
@@ -122,7 +140,15 @@ export type TextStyle = {
 // rawStart: where this segment's text begins in the raw (marker-bearing)
 // block text - what lets a position in the DISPLAYED text be mapped back
 // to a cursor position in the TextInput, see rawIndexForDisplayIndex.
-export type TextSegment = TextStyle & { text: string; rawStart: number };
+export type TextSegment = TextStyle & {
+  text: string;
+  rawStart: number;
+  // A note link (see NOTE_LINK_OPEN): the note it opens, and where its
+  // markup ends in the raw text - the segment is one atom from rawStart
+  // to rawEnd.
+  noteLink?: string;
+  rawEnd?: number;
+};
 
 export function parseFormattedText(text: string): TextSegment[] {
   const segments: TextSegment[] = [];
@@ -168,6 +194,20 @@ function parseFormattedInto(text: string, style: TextStyle, out: TextSegment[], 
         flushPlain(i);
         parseFormattedInto(rest.slice(1, close), { ...style, italic: true }, out, base + i + 1);
         consumed = close + 1;
+      }
+    } else if (NOTE_LINK_OPEN.test(rest)) {
+      const m = rest.match(NOTE_LINK_OPEN)!;
+      const close = rest.indexOf(NOTE_LINK_CLOSE, m[0].length);
+      if (close !== -1) {
+        flushPlain(i);
+        consumed = close + NOTE_LINK_CLOSE.length;
+        out.push({
+          ...style,
+          text: LINK_GLYPH + rest.slice(m[0].length, close),
+          rawStart: base + i,
+          noteLink: m[1],
+          rawEnd: base + i + consumed,
+        });
       }
     } else if (COLOR_OPEN.test(rest)) {
       const m = rest.match(COLOR_OPEN)!;
@@ -215,6 +255,9 @@ export function rawIndexForDisplayIndex(segments: TextSegment[], rawText: string
   let displayStart = 0;
   for (const seg of segments) {
     if (displayIndex <= displayStart + seg.text.length) {
+      // A link is one atom: its inside maps to its start, its end to the
+      // end of its markup.
+      if (seg.noteLink) return displayIndex - displayStart === seg.text.length ? (seg.rawEnd as number) : seg.rawStart;
       return seg.rawStart + (displayIndex - displayStart);
     }
     displayStart += seg.text.length;
@@ -232,7 +275,8 @@ export function displayBoundaries(rawText: string): number[] {
   const segments = parseFormattedText(rawText);
   const bounds: number[] = [];
   for (const seg of segments) {
-    for (let k = 0; k < seg.text.length; k++) bounds.push(seg.rawStart + k);
+    // Every gap inside a link is its start - nothing lands within its markup.
+    for (let k = 0; k < seg.text.length; k++) bounds.push(seg.noteLink ? seg.rawStart : seg.rawStart + k);
   }
   bounds.push(rawText.length);
   return bounds;
@@ -277,9 +321,49 @@ export function applyDisplayEdit(oldRawText: string, newDisplayText: string): st
   const removedEnd = oldDisplayText.length - suffix;
   const insertedText = newDisplayText.slice(prefix, newDisplayText.length - suffix);
   const bounds = displayBoundaries(oldRawText);
-  const rawStart = bounds[prefix];
-  const rawEnd = bounds[removedEnd];
+  let rawStart = bounds[prefix];
+  let rawEnd = bounds[removedEnd];
+  // A note link is never cut: an edit that removes any of it removes all of
+  // it, and text typed inside it goes after it.
+  for (const span of noteLinkSpans(oldRawText)) {
+    if (removedEnd > prefix && prefix < span.displayEnd && removedEnd > span.displayStart) {
+      rawStart = Math.min(rawStart, span.rawStart);
+      rawEnd = Math.max(rawEnd, span.rawEnd);
+    } else if (removedEnd === prefix && prefix > span.displayStart && prefix < span.displayEnd) {
+      rawStart = span.rawEnd;
+      rawEnd = span.rawEnd;
+    }
+  }
   return oldRawText.slice(0, rawStart) + insertedText + oldRawText.slice(rawEnd);
+}
+
+// Where each note link stands, in the displayed text and in the raw one.
+export type NoteLinkSpan = {
+  documentId: string;
+  label: string;
+  displayStart: number;
+  displayEnd: number;
+  rawStart: number;
+  rawEnd: number;
+};
+
+export function noteLinkSpans(rawText: string): NoteLinkSpan[] {
+  const spans: NoteLinkSpan[] = [];
+  let at = 0;
+  for (const seg of parseFormattedText(rawText)) {
+    if (seg.noteLink) {
+      spans.push({
+        documentId: seg.noteLink,
+        label: seg.text.slice(LINK_GLYPH.length),
+        displayStart: at,
+        displayEnd: at + seg.text.length,
+        rawStart: seg.rawStart,
+        rawEnd: seg.rawEnd as number,
+      });
+    }
+    at += seg.text.length;
+  }
+  return spans;
 }
 
 // Tap-to-cursor for a locked block. Android gives no way to ask "which

@@ -67,6 +67,8 @@ type SortableBlockRowProps = {
   onOpenLink: (url: string) => void;
   onOpenLinkDatabase: (block: Block) => void;
   onTimecode?: (blockId: string, seconds: number) => void;
+  onNoteLink?: (documentId: string) => void;
+  onNoteLinkMenu?: (blockId: string, documentId: string, label: string) => void;
   onOpenSketch: (id: string) => void;
   // 'dbRow' blocks only - the full tag list (the card filters it by the
   // live row's own tagIds) and "open this row in its database".
@@ -127,6 +129,8 @@ export default function SortableBlockRow({
   onOpenLink,
   onOpenLinkDatabase,
   onTimecode,
+  onNoteLink,
+  onNoteLinkMenu,
   onOpenSketch,
   allTags,
   onOpenCustomRow,
@@ -239,6 +243,8 @@ export default function SortableBlockRow({
             onOpenLink={onOpenLink}
             onOpenLinkDatabase={onOpenLinkDatabase}
             onTimecode={onTimecode}
+            onNoteLink={onNoteLink}
+            onNoteLinkMenu={onNoteLinkMenu}
             onOpenSketch={onOpenSketch}
             allTags={allTags}
             onOpenCustomRow={onOpenCustomRow}
