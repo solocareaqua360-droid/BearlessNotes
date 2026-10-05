@@ -45,56 +45,85 @@ const EMPTY: DocumentIndex = new Map();
 // what that read would have returned; the editor still hears the server
 // afterwards, as it always did.
 const rawDocuments = new Map<string, Record<string, unknown>>();
-// Kept only while some listener keeps it fresh: with none left, what it
-// holds could be older than the server, and the editor must read instead.
-let liveListeners = 0;
 
 export function peekDocument(id: string): Record<string, unknown> | undefined {
   return rawDocuments.get(id);
 }
 
+// ONE LISTENER FOR THE WHOLE APP (2026-10-05). Each user of this hook used
+// to open its own listener on every document in the account - the editor
+// among them, so every note opened began by reading every note there is,
+// blocks and all, while it was trying to draw. Now the first user starts
+// it, everyone after gets what it already holds at once, and it stops a
+// few seconds after the last one leaves (a note closed and the next one
+// opened should not pay for a fresh start).
+let shared: DocumentIndex = EMPTY;
+const subscribers = new Set<(index: DocumentIndex) => void>();
+let stopListening: (() => void) | null = null;
+let stopTimer: ReturnType<typeof setTimeout> | undefined;
+const LINGER_MS = 5000;
+
+function publish(next: DocumentIndex) {
+  shared = next;
+  subscribers.forEach((s) => s(next));
+}
+
+function startListening() {
+  stopListening = onSnapshot(
+    ownedQuery('documents'),
+    (snapshot) => {
+      const next: DocumentIndex = new Map();
+      rawDocuments.clear();
+      snapshot.docs.forEach((d) => {
+        const data = d.data();
+        rawDocuments.set(d.id, data);
+        // Daily notes belong to the calendar, not to this list - the
+        // same line DocumentsScreen draws.
+        if (data.calendarDate) return;
+        next.set(d.id, {
+          id: d.id,
+          title: (data.title as string) ?? '',
+          coverImageUri: data.coverImageUri as string | undefined,
+          coverDriveFileId: data.coverDriveFileId as string | undefined,
+          coverGradient: data.coverGradient as string | undefined,
+          updatedAt: data.updatedAt as number | undefined,
+          deletedAt: data.deletedAt as number | undefined,
+          linksTo: (data.linksTo as string[] | undefined) ?? undefined,
+          createdAt: data.createdAt as number | undefined,
+          parentId: data.owner?.kind === 'note' ? (data.owner.id as string) : undefined,
+        });
+      });
+      publish(next);
+    },
+    // Never without one: a refused read throws out of a listener that
+    // has no error handler and takes the screen with it.
+    () => {
+      rawDocuments.clear();
+      publish(EMPTY);
+    }
+  );
+}
+
 export function useDocumentIndex(): DocumentIndex {
-  const [index, setIndex] = useState<DocumentIndex>(EMPTY);
+  const [index, setIndex] = useState<DocumentIndex>(shared);
 
   useEffect(() => {
-    liveListeners += 1;
-    const unsubscribe = onSnapshot(
-      ownedQuery('documents'),
-      (snapshot) => {
-        const next: DocumentIndex = new Map();
-        rawDocuments.clear();
-        snapshot.docs.forEach((d) => {
-          const data = d.data();
-          rawDocuments.set(d.id, data);
-          // Daily notes belong to the calendar, not to this list - the
-          // same line DocumentsScreen draws.
-          if (data.calendarDate) return;
-          next.set(d.id, {
-            id: d.id,
-            title: (data.title as string) ?? '',
-            coverImageUri: data.coverImageUri as string | undefined,
-            coverDriveFileId: data.coverDriveFileId as string | undefined,
-            coverGradient: data.coverGradient as string | undefined,
-            updatedAt: data.updatedAt as number | undefined,
-            deletedAt: data.deletedAt as number | undefined,
-            linksTo: (data.linksTo as string[] | undefined) ?? undefined,
-            createdAt: data.createdAt as number | undefined,
-            parentId: data.owner?.kind === 'note' ? (data.owner.id as string) : undefined,
-          });
-        });
-        setIndex(next);
-      },
-      // Never without one: a refused read throws out of a listener that
-      // has no error handler and takes the screen with it.
-      () => {
-        rawDocuments.clear();
-        setIndex(EMPTY);
-      }
-    );
+    subscribers.add(setIndex);
+    clearTimeout(stopTimer);
+    if (!stopListening) startListening();
+    // What arrived between the first render and now.
+    else setIndex(shared);
     return () => {
-      unsubscribe();
-      liveListeners -= 1;
-      if (liveListeners === 0) rawDocuments.clear();
+      subscribers.delete(setIndex);
+      if (subscribers.size > 0) return;
+      stopTimer = setTimeout(() => {
+        if (subscribers.size > 0 || !stopListening) return;
+        stopListening();
+        stopListening = null;
+        // Kept only while a listener keeps it fresh.
+        shared = EMPTY;
+        rawDocuments.clear();
+      }, LINGER_MS);
     };
   }, []);
 

@@ -4,7 +4,7 @@
 // photographed (chromeMorph), the push, the note read (cache or server),
 // the first draw - and only measuring says which one it was. The editor
 // reports an opening slower than SLOW_MS, step by step.
-export const SLOW_OPEN_MS = 800;
+export const SLOW_OPEN_MS = 450;
 
 let marks: Record<string, number> = {};
 

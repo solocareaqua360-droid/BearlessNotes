@@ -5968,7 +5968,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // sheet runs past the window, and what stands at its foot
           // («Вкладені», «Пов'язані») is met by scrolling to the end, not
           // floating under the last line.
-          !onPullPastEnd && !embedded && scrollViewportH > 0 && { minHeight: scrollViewportH + NOTE_END_BEYOND },
+          // The window's height, known at the first render - measuring the
+          // scroll instead re-rendered the whole editor once it had shown,
+          // on every opening.
+          !onPullPastEnd && !embedded && { minHeight: windowHeight + NOTE_END_BEYOND },
           // Used to stop short of the rail the way a mail's text does
           // under its capsule - narrowing every block on the page, at
           // every scroll position, to clear a capsule that only ever
@@ -6004,7 +6007,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           scrollOffsetSV.value = y;
         }}
         scrollEventThrottle={16}
-        onLayout={(e) => setScrollViewportH(e.nativeEvent.layout.height)}
+        onLayout={onPullPastEnd ? (e) => setScrollViewportH(e.nativeEvent.layout.height) : undefined}
         // Let go with most of the pull zone in view: that was a pull, not
         // a scroll that happened to reach the end. Never while writing -
         // with the keyboard up the end of the page is where the caret is.
