@@ -1,5 +1,5 @@
 import { categoryFromSiteName } from '../utils/linkCategory';
-import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
@@ -76,6 +76,11 @@ function go(route: string, params?: Record<string, unknown>) {
 }
 
 export default function StartScreen() {
+  // See pressFor / toggleFor / directFor above the return.
+  const latestRef = useRef<{ openRecent: (place: RecentPlace) => void; rows: DeskRow[] }>({ openRecent: () => {}, rows: [] });
+  const pressCache = useRef(new Map<string, () => void>());
+  const toggleCache = useRef(new Map<string, () => void>());
+  const directCache = useRef(new Map<string, () => void>());
   // Temporary diagnosis - see utils/perfWatch.
   useRenderTimer('Старт');
   const S = useSoft();
@@ -405,6 +410,43 @@ export default function StartScreen() {
     return blocks;
   })();
 
+  // STABLE HANDLERS PER CARD AND PER ROW (2026-10-06): built inline, every
+  // recent card and every desk row took new functions on every render of
+  // this desk and redrew - pages and all. Each now gets one function for
+  // its lifetime, which calls whatever the latest one is.
+  latestRef.current = { openRecent, rows: deskRows };
+  const pressFor = (place: RecentPlace) => {
+    const key = `${place.kind}:${place.ref}`;
+    let fn = pressCache.current.get(key);
+    if (!fn) {
+      fn = () => latestRef.current.openRecent(place);
+      pressCache.current.set(key, fn);
+    }
+    return fn;
+  };
+  const toggleFor = (rowKey: string) => {
+    let fn = toggleCache.current.get(rowKey);
+    if (!fn) {
+      fn = () =>
+        setExpanded((prev) => {
+          const next = new Set(prev);
+          if (next.has(rowKey)) next.delete(rowKey);
+          else next.add(rowKey);
+          return next;
+        });
+      toggleCache.current.set(rowKey, fn);
+    }
+    return fn;
+  };
+  const directFor = (rowKey: string) => {
+    let fn = directCache.current.get(rowKey);
+    if (!fn) {
+      fn = () => latestRef.current.rows.find((r) => r.key === rowKey)?.direct?.();
+      directCache.current.set(rowKey, fn);
+    }
+    return fn;
+  };
+
   return (
     <SoftSurfaceContext.Provider value={S}>
       <View
@@ -444,7 +486,7 @@ export default function StartScreen() {
                 contentContainerStyle={styles.recentRow}
               >
                 {shown.map((place) => {
-                  const press = () => openRecent(place);
+                  const press = pressFor(place);
                   if (place.kind === 'document') return <RecentDocument key={`d:${place.ref}`} id={place.ref} onPress={press} />;
                   if (place.kind === 'board') return <RecentBoard key={`b:${place.ref}`} id={place.ref} onPress={press} />;
                   if (place.kind === 'file') return <RecentFile key={`f:${place.ref}`} id={place.ref} onPress={press} />;
@@ -471,14 +513,8 @@ export default function StartScreen() {
                     row={row}
                     first={i === 0}
                     open={expanded.has(row.key)}
-                    onToggle={() =>
-                      setExpanded((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(row.key)) next.delete(row.key);
-                        else next.add(row.key);
-                        return next;
-                      })
-                    }
+                    onToggle={toggleFor(row.key)}
+                    onDirect={directFor(row.key)}
                   />
                 ))}
               </Animated.View>
@@ -543,7 +579,7 @@ const NONE: Block[] = [];
 const NO_IDS: string[] = [];
 const NO_TAGS: Tag[] = [];
 
-function RecentDocument({ id, onPress }: { id: string; onPress: () => void }) {
+const RecentDocument = memo(function RecentDocument({ id, onPress }: { id: string; onPress: () => void }) {
   const data = useRecord<{ title?: string; blocks?: Block[] }>('documents', id);
   if (!data) return null;
   return (
@@ -559,9 +595,9 @@ function RecentDocument({ id, onPress }: { id: string; onPress: () => void }) {
       />
     </RecentFrame>
   );
-}
+});
 
-function RecentBoard({ id, onPress }: { id: string; onPress: () => void }) {
+const RecentBoard = memo(function RecentBoard({ id, onPress }: { id: string; onPress: () => void }) {
   const S = useSoft();
   const data = useRecord<{ title?: string; previewImageUri?: string; previewDriveFileId?: string }>('boards', id);
   if (!data) return null;
@@ -580,9 +616,9 @@ function RecentBoard({ id, onPress }: { id: string; onPress: () => void }) {
       />
     </RecentFrame>
   );
-}
+});
 
-function RecentFile({ id, onPress }: { id: string; onPress: () => void }) {
+const RecentFile = memo(function RecentFile({ id, onPress }: { id: string; onPress: () => void }) {
   const data = useRecord<{ title?: string; fileName?: string }>('files', id);
   if (!data) return null;
   const name = data.title || data.fileName || 'Файл';
@@ -593,10 +629,10 @@ function RecentFile({ id, onPress }: { id: string; onPress: () => void }) {
       </View>
     </RecentFrame>
   );
-}
+});
 
 // A built-in database: its own name and icon, as the desks' bar has them.
-function RecentTile({ tileKey, onPress }: { tileKey: string; onPress: () => void }) {
+const RecentTile = memo(function RecentTile({ tileKey, onPress }: { tileKey: string; onPress: () => void }) {
   const S = useSoft();
   const { customDatabases, iconFor } = useDatabaseTiles();
   const face = deskFace(`db:${tileKey}`, customDatabases, iconFor);
@@ -607,9 +643,9 @@ function RecentTile({ tileKey, onPress }: { tileKey: string; onPress: () => void
       </View>
     </RecentFrame>
   );
-}
+});
 
-function RecentDatabase({ id, onPress }: { id: string; onPress: () => void }) {
+const RecentDatabase = memo(function RecentDatabase({ id, onPress }: { id: string; onPress: () => void }) {
   const S = useSoft();
   const data = useRecord<{ name?: string; icon?: string; color?: string }>('customDatabases', id);
   if (!data) return null;
@@ -620,7 +656,7 @@ function RecentDatabase({ id, onPress }: { id: string; onPress: () => void }) {
       </View>
     </RecentFrame>
   );
-}
+});
 
 // One of the four big buttons. A small chevron in the corner it leaves
 // toward says which drawer it pulls out.
@@ -781,13 +817,33 @@ function RootItems({ root }: { root: DeskRoot }) {
 // One row of «Робочі столи»: a database, opened in place to show what can
 // be done with it and its root folders - or, with nothing inside, a way
 // straight there.
-function DeskRowView({ row, first, open, onToggle }: { row: DeskRow; first: boolean; open: boolean; onToggle: () => void }) {
+const DeskRowView = memo(DeskRowViewInner, (a, b) =>
+  // A shut row draws its name and icon only, and presses through stable
+  // functions - so it is the same row while those stand. An open one lists
+  // live things and always redraws.
+  !a.open && !b.open && a.first === b.first && a.row.key === b.row.key && a.row.label === b.row.label &&
+  a.row.icon === b.row.icon && !!a.row.items === !!b.row.items && a.onToggle === b.onToggle && a.onDirect === b.onDirect
+);
+
+function DeskRowViewInner({
+  row,
+  first,
+  open,
+  onToggle,
+  onDirect,
+}: {
+  row: DeskRow;
+  first: boolean;
+  open: boolean;
+  onToggle: () => void;
+  onDirect: () => void;
+}) {
   const S = useSoft();
   const expandable = !!row.items;
   return (
     <Animated.View layout={LinearTransition.duration(220)}>
       <Pressable
-        onPress={expandable ? onToggle : row.direct}
+        onPress={expandable ? onToggle : onDirect}
         style={({ pressed }) => [
           styles.row,
           !first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: S.line },
