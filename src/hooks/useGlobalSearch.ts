@@ -6,6 +6,7 @@ import { Block, CustomDatabase } from '../types';
 import { TextMatch, documentMatchesQuery, findBodyMatch, findTitleMatch } from '../utils/documentPreview';
 import { categoryFromSiteName } from '../utils/linkCategory';
 import { listenError } from '../utils/listenError';
+import { FEATURES } from '../features';
 
 // One search over every database. Firestore has no query that reaches
 // across collections, so this is what "search everything" means here: a
@@ -198,7 +199,7 @@ export function useGlobalSearch(rawQuery: string) {
       });
     }
 
-    for (const s of stickers) {
+    for (const s of FEATURES.stickers ? stickers : []) {
       if (s.trashed) continue;
       const text = asString(s.text) ?? '';
       const match = plainMatch(text, needle);

@@ -6,6 +6,7 @@ import { db } from '../firebase';
 import { GRID_TILES, WIDE_TILES } from '../constants/databaseTiles';
 import { CustomDatabase } from '../types';
 import { listenError } from '../utils/listenError';
+import { FEATURES } from '../features';
 
 // THE DESKS ARE DATABASES - the user's iOS model (2026-09-28): the app
 // starts on a desk, a desk is a database open full screen, and there are
@@ -48,7 +49,9 @@ export function useDesks() {
           if (!stored) return;
           // The start desk first; the rest as stored - the documents are a
           // desk like the others now and may have been closed.
-          setDesksState([START_DESK, ...stored.filter((k) => k !== START_DESK)]);
+          // A database put away for now (features.ts) is not a desk either
+          // (the next change of desks stores the list without it).
+          setDesksState([START_DESK, ...stored.filter((k) => k !== START_DESK && (FEATURES.stickers || k !== 'db:stickers'))]);
         },
         listenError('useDesks:desks')
       ),

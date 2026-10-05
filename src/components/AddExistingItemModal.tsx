@@ -39,6 +39,7 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT
 import { useSoft, type SoftTokens } from '../theme/soft';
 import { useDensity } from '../hooks/useDensity';
 import SoftIcon from './SoftIcon';
+import { FEATURES } from '../features';
 
 // Every listener gets one of these. A read the rules refuse does not come
 // back as an empty snapshot - it THROWS, and it throws asynchronously,
@@ -220,7 +221,7 @@ export default function AddExistingItemModal({
   const styles = soft ? soften(baseStyles, soft) : baseStyles;
   const accent = soft ? soft.ink2 : theme.accent;
   const keyboardHeight = useKeyboardHeight();
-  const tabAllowed = (t: Tab) => !allowedTabs || allowedTabs.includes(t);
+  const tabAllowed = (t: Tab) => (t !== 'sticker' || FEATURES.stickers) && (!allowedTabs || allowedTabs.includes(t));
   const [tab, setTab] = useState<Tab>(allowedTabs?.[0] ?? 'file');
   const [searchQuery, setSearchQuery] = useState('');
   const [files, setFiles] = useState<FileRow[]>([]);

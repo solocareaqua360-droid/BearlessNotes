@@ -1,4 +1,5 @@
 import { requireOptionalNativeModule } from 'expo';
+import { FEATURES } from '../features';
 
 // The app's own native module (modules/mindeva-native). Optional on
 // purpose: an APK built before it existed has no such module, and an
@@ -53,7 +54,8 @@ export function setWindowBlur(radius: number): boolean {
 
 // FRAMES FROM A PLAYING VIDEO (modules/mindeva-native's ScreenCapture.kt):
 // Android's own screen capture. Only in an APK that has it.
-export const supportsScreenCapture = !!native?.screenCapture;
+// Put away for now (features.ts): every «Кадр» button reads this.
+export const supportsScreenCapture = FEATURES.videoFrames && !!native?.screenCapture;
 
 // Asks the phone (its own dialog) the first time; true once frames can be
 // taken. Resolves false if declined or impossible.

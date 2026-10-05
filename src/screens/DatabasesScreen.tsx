@@ -108,6 +108,7 @@ import { useBlurTarget } from '../components/GlassTarget';
 import { CHROME_TOP } from '../constants/rail';
 import { listenError } from '../utils/listenError';
 import { useRenderTimer } from '../utils/perfWatch';
+import { FEATURES } from '../features';
 
 const NEW_TILE_KEY = '__new__';
 const PIN_TILE_KEY = '__pin__';
@@ -803,7 +804,8 @@ export default function DatabasesScreen() {
   const looseItems: BoardItem[] = [
     // The icon the user chose for it, where they did.
     ...WIDE_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile: { ...tile, icon: iconFor(tile.key, tile.icon) as Tile['icon'] } })),
-    ...GRID_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile: { ...tile, icon: iconFor(tile.key, tile.icon) as Tile['icon'] } })),
+    // A database put away for now (features.ts) has no tile.
+    ...GRID_TILES.filter((tile) => FEATURES.stickers || tile.key !== 'stickers').map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile: { ...tile, icon: iconFor(tile.key, tile.icon) as Tile['icon'] } })),
     ...customDatabases.map((database) => ({ key: database.id, kind: 'custom' as const, database })),
     ...pinnedTiles,
     { key: NEW_TILE_KEY, kind: 'action' as const },

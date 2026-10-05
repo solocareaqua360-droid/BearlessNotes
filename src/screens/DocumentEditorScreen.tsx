@@ -211,6 +211,7 @@ import { useDensity } from '../hooks/useDensity';
 import { openTab } from '../navigation/desktopTabs';
 import { listenError } from '../utils/listenError';
 import { useRenderTimer } from '../utils/perfWatch';
+import { FEATURES } from '../features';
 
 // Below this, a note has no room to stand beside «Референси» and the
 // drawer lies over it instead - see referencesSplit. 300 is the drawer's
@@ -6539,7 +6540,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             setNoteVideo(null);
           }}
           onClose={() => setNoteVideo(null)}
-          onTimecode={(seconds) => insertVideoBlocks(timecodeBlocks(seconds))}
+          onTimecode={FEATURES.timecodes ? (seconds) => insertVideoBlocks(timecodeBlocks(seconds)) : undefined}
           onFrame={async (shot, seconds) => insertVideoBlocks(await frameBlocks(shot, seconds))}
         />
       ) : ownerVideoUrl ? (

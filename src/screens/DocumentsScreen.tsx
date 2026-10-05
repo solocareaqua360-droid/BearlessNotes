@@ -120,6 +120,7 @@ import TagEditSheet from '../components/TagEditSheet';
 import { listenError } from '../utils/listenError';
 import { useRenderTimer } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
+import { FEATURES } from '../features';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue accent wherever this screen used it.
@@ -752,7 +753,7 @@ export default function DocumentsScreen({
           // Since 2026-10-02 the chat, while browsing folders: "чатом я
           // користуюся набагато частіше, ніж створюю папки" - a new
           // folder is a row in the "⋯" menu now.
-          onLongPress: explorer.active ? openCapture : openStickerComposer,
+          onLongPress: explorer.active || !FEATURES.stickers ? openCapture : openStickerComposer,
         }
       : null
   );
@@ -1540,7 +1541,7 @@ export default function DocumentsScreen({
                 selected={groupFilter}
                 onSelect={setGroupFilter}
                 unassignedLabel="Без проекту"
-                pinnedTab={{ id: STICKERS_GROUP, label: 'Стікери' }}
+                pinnedTab={FEATURES.stickers ? { id: STICKERS_GROUP, label: 'Стікери' } : undefined}
                 dark
                 blurTarget={blurTarget}
                 soft={soft}
@@ -2271,11 +2272,15 @@ export default function DocumentsScreen({
         hideOpenButton={isSelectMode || searchingAlone}
         counts={drawerCounts}
         mode={{ value: listMode, onChange: setListMode }}
-        stickers={{
-          count: freeStickers.length,
-          active: groupFilter === STICKERS_GROUP,
-          onToggle: () => setGroupFilter(groupFilter === STICKERS_GROUP ? null : STICKERS_GROUP),
-        }}
+        stickers={
+          FEATURES.stickers
+            ? {
+                count: freeStickers.length,
+                active: groupFilter === STICKERS_GROUP,
+                onToggle: () => setGroupFilter(groupFilter === STICKERS_GROUP ? null : STICKERS_GROUP),
+              }
+            : undefined
+        }
         trash={{ count: trashed.length, onOpen: () => setTrashOpen(true) }}
         groupSection={{
           // The same list the tabs show, sentinels and all, so the two
@@ -2294,12 +2299,16 @@ export default function DocumentsScreen({
               color: theme.ink.muted,
               count: groupCounts.ungrouped,
             },
-            {
-              id: STICKERS_GROUP,
-              name: 'Стікери',
-              color: STICKER_YELLOW,
-              count: freeStickers.length,
-            },
+            ...(FEATURES.stickers
+              ? [
+                  {
+                    id: STICKERS_GROUP,
+                    name: 'Стікери',
+                    color: STICKER_YELLOW,
+                    count: freeStickers.length,
+                  },
+                ]
+              : []),
           ],
           selected: groupFilter,
           onSelect: setGroupFilter,

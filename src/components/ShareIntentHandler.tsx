@@ -25,6 +25,7 @@ import RenamePrompt from './RenamePrompt';
 import SaveDestinationSheet from './SaveDestinationSheet';
 import { notify } from './surfaces/Ask';
 import { categoryFromSiteName, LINK_CATEGORY_INFO } from '../utils/linkCategory';
+import { FEATURES } from '../features';
 
 // Identical to LinksScreen.tsx's/AddExistingItemModal.tsx's own copy of
 // this same small classifier - see those for why it isn't shared.
@@ -443,7 +444,9 @@ export default function ShareIntentHandler() {
       <SaveDestinationSheet
         visible={pendingShare !== null}
         title={pendingShare?.kind === 'link' ? 'Куди зберегти посилання?' : 'Куди зберегти текст?'}
-        defaultLabel={pendingShare?.kind === 'link' ? 'Зберегти в Посилання' : 'Зберегти як стікер'}
+        // Shared text no longer offers a sticker while they are put away
+        // (features.ts) - today's note, a note or a board instead.
+        defaultLabel={pendingShare?.kind === 'link' ? 'Зберегти в Посилання' : FEATURES.stickers ? 'Зберегти як стікер' : undefined}
         onPickDefault={finalizeShareStandalone}
         onPickToday={finalizeShareToday}
         onPickNew={finalizeShareAsNewDocument}

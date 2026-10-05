@@ -164,6 +164,7 @@ import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import Menu from '../components/surfaces/Menu';
 import { listenError } from '../utils/listenError';
+import { FEATURES } from '../features';
 
 // The foot the lists keep clear for the dock - DatabaseChrome's reckoning.
 // The same half-strength tint the documents screen's add button takes.
@@ -2601,7 +2602,7 @@ export default function CustomDatabaseScreen({
               {/* The moment the video is at, into the lesson's note: its
                   time (a tap on it in the note seeks the video there), or
                   a frame with the time under it. */}
-              {getVideoEmbedInfo(lesson.url)?.provider === 'youtube' && (
+              {FEATURES.timecodes && getVideoEmbedInfo(lesson.url)?.provider === 'youtube' && (
                 <Pressable
                   onPress={() => stampLesson(lesson)}
                   accessibilityLabel="Таймкод у нотатку"

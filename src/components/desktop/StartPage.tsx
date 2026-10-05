@@ -19,6 +19,7 @@ import { ask } from '../surfaces/Ask';
 import { useSoft } from '../../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
 import type { Block, CustomDatabase } from '../../types';
+import { FEATURES } from '../../features';
 
 // THE START PAGE - what a new tab opens on the laptop (the «+» in the tab
 // row). Three things, top to bottom, the order a hand reaches for them:
@@ -393,7 +394,7 @@ export default function StartPage() {
             <>
               <Text style={[styles.heading, { color: S.ink3 }]}>Створити</Text>
               <View style={styles.tiles}>
-                {CREATE.map((item) => (
+                {CREATE.filter((item) => FEATURES.stickers || item.key !== 'sticker').map((item) => (
                   <CreateTile key={item.key} label={item.label} icon={item.icon} onPress={() => create(item)} />
                 ))}
                 <CreateTile label="Запис у базі…" icon="grid-outline" onPress={createRecord} />

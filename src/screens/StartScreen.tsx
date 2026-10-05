@@ -41,6 +41,7 @@ import type { Block, CustomDatabase, CustomDatabaseRow, Tag } from '../types';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import { useRenderTimer } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
+import { FEATURES } from '../features';
 
 // THE START DESK (2026-10-03, the user's own design, mocked up first):
 // the phone's first desk. Under the desks' bar, a row of four big buttons
@@ -96,6 +97,8 @@ export default function StartScreen() {
   // judged (a list that blinked empty while loading would be worse).
   const shown = recent
     .filter((r) => r.kind !== 'document' || index.size === 0 || (index.has(r.ref) && !index.get(r.ref)?.deletedAt))
+    // A database put away for now (features.ts) is not offered either.
+    .filter((r) => FEATURES.stickers || r.ref !== 'tile:stickers')
     .slice(0, 12);
 
   // WHERE THE ROW STANDS ON THE SCREEN, told to the drawers' swipe: the
@@ -286,7 +289,10 @@ export default function StartScreen() {
       onOpen: (id) => go('BoardCopy', { boardId: id }),
     }),
     { key: 'task', label: 'Справи', icon: 'checkbox-outline', direct: () => goToBase('db:tasks', 'Tasks') },
-    { key: 'sticker', label: 'Стікери', icon: 'reader-outline', direct: () => goToBase('db:stickers', 'Stickers') },
+    // Put away for now (features.ts).
+    ...(FEATURES.stickers
+      ? [{ key: 'sticker', label: 'Стікери', icon: 'reader-outline', direct: () => goToBase('db:stickers', 'Stickers') }]
+      : []),
     base('card', 'Картки', 'albums-outline', 'flashcard', 'Створити картку', createOf('card'), 'db:flashcards', 'Flashcards', undefined, {
       collection: 'flashcards',
       titleOf: (r) => str(r.term),
