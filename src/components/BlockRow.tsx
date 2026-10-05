@@ -132,6 +132,10 @@ type BlockRowProps = {
   paperColor: ReturnType<typeof colorForDocument> | null;
 };
 
+// A word linking to a note, at rest: blue, as links are read everywhere.
+const LINK_BLUE = '#2563EB';
+const LINK_BLUE_DARK = '#60A5FA';
+
 export default function BlockRow({
   item,
   hideHandle,
@@ -753,8 +757,9 @@ export default function BlockRow({
               timecodeColor={theme.accent}
               onNoteLink={onNoteLink && !isSelectMode ? onNoteLink : undefined}
               onNoteLinkHold={onNoteLinkMenu && !isSelectMode ? (documentId, label) => onNoteLinkMenu(item.id, documentId, label) : undefined}
-              linkInk={theme.accent}
-              linkTint={withAlpha(theme.accent, 0.14)}
+              linkInk={theme.scheme === 'dark' ? LINK_BLUE_DARK : LINK_BLUE}
+              linkTint={withAlpha(theme.scheme === 'dark' ? LINK_BLUE_DARK : LINK_BLUE, 0.14)}
+              linkTextStyle={StyleSheet.flatten([styles.blockDisplayText, headingStyle, scaledTextStyle])}
             />
           ) : (
             <Text style={[styles.blockPlaceholder, rowPaperColor && { color: rowPaperColor.textMuted }]}>…</Text>

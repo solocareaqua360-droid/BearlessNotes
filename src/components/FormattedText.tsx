@@ -1,4 +1,4 @@
-import { Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
 import { LINK_GLYPH, type TextSegment } from '../utils/documentBlocks';
 import { parseTimecode, TIMECODE_PATTERN } from '../utils/videoEmbed';
 
@@ -76,6 +76,7 @@ export default function FormattedText({
   onNoteLinkHold,
   linkInk,
   linkTint,
+  linkTextStyle,
 }: {
   segments: TextSegment[];
   defaultColor: string;
@@ -90,6 +91,10 @@ export default function FormattedText({
   onNoteLinkHold?: (documentId: string, label: string) => void;
   linkInk?: string;
   linkTint?: string;
+  // The paragraph's own type (size, line, face): a chip is a view set into
+  // the line, and text inside a view inherits nothing from the line around
+  // it.
+  linkTextStyle?: TextStyle;
 }) {
   const query = search?.trim().toLowerCase() ?? '';
   return (
@@ -108,21 +113,31 @@ export default function FormattedText({
         if (seg.noteLink) {
           const id = seg.noteLink;
           const label = seg.text.slice(LINK_GLYPH.length);
+          // A CHIP SET INTO THE LINE (the user's, 2026-10-05: blue words,
+          // the diagonal arrow in front, rounded corners). A run of text
+          // cannot round its background on Android, so it is a small view
+          // inside the line - one piece, never broken across two lines.
+          const ink = linkInk ?? timecodeColor ?? style.color;
+          // A view in a line stands with its bottom on the baseline; the
+          // words inside it sit a descent above their neighbours unless it
+          // is let down by about that much.
+          const size = linkTextStyle?.fontSize ?? 16;
           return (
-            <Text
+            <View
               key={i}
-              onPress={onNoteLink ? () => onNoteLink(id) : undefined}
-              onLongPress={onNoteLinkHold ? () => onNoteLinkHold(id, label) : undefined}
-              suppressHighlighting
-              style={{
-                ...style,
-                color: linkInk ?? timecodeColor ?? style.color,
-                backgroundColor: linkTint,
-                fontWeight: '600',
-              }}
+              style={[chipStyles.chip, { backgroundColor: linkTint, transform: [{ translateY: Math.round(size * 0.22) }] }]}
             >
-              {`\u2009${label}\u2009`}
-            </Text>
+              <Pressable
+                onPress={onNoteLink ? () => onNoteLink(id) : undefined}
+                onLongPress={onNoteLinkHold ? () => onNoteLinkHold(id, label) : undefined}
+                hitSlop={4}
+              >
+                <Text style={[linkTextStyle, chipStyles.text, { color: ink, lineHeight: undefined }]} numberOfLines={1}>
+                  {LINK_GLYPH}
+                  {label}
+                </Text>
+              </Pressable>
+            </View>
           );
         }
         if (onTimecode && TIMECODE_PATTERN.test(seg.text)) {
@@ -169,3 +184,11 @@ export default function FormattedText({
     </>
   );
 }
+
+const chipStyles = StyleSheet.create({
+  chip: {
+    borderRadius: 7,
+    paddingHorizontal: 5,
+  },
+  text: { fontWeight: '600' },
+});
