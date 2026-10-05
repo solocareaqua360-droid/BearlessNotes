@@ -10,9 +10,10 @@ import { useCachedAttachment, CacheStatus } from './useCachedAttachment';
 export function useAttachmentSource(
   uri: string | undefined,
   driveFileId: string | undefined,
-  countsAsUse = true
+  countsAsUse = true,
+  enabled = true
 ): { status: CacheStatus; source: string | undefined } {
-  const status = useCachedAttachment(uri, driveFileId, countsAsUse);
+  const status = useCachedAttachment(uri, driveFileId, countsAsUse, enabled);
   // The path is the answer while it is being checked, too - not only
   // once the check has passed. Every picture on the phone was drawn from
   // its path directly, on the first frame, for the whole life of this

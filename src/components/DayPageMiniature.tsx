@@ -146,6 +146,8 @@ function DayPageMiniature({
               onOpenCustomRow={noop}
               onOpenCustomView={noop}
               inputRef={noop}
+              // Still and light - see BlockRow's preview.
+              preview
               paperColor={null}
             />
           );

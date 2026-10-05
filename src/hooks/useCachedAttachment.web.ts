@@ -22,7 +22,8 @@ export type CacheStatus = 'checking' | 'ready' | 'restoring' | 'missing';
 export function useCachedAttachment(
   uri: string | undefined,
   driveFileId: string | undefined,
-  _countsAsUse = true
+  _countsAsUse = true,
+  _enabled = true
 ): CacheStatus {
   if (!uri && !driveFileId) return 'missing';
   return driveFileId ? 'ready' : 'missing';

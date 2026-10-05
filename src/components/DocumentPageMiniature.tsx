@@ -114,7 +114,10 @@ function DocumentPageMiniature({
     if (item.type === 'toggle') indented = true;
   }
   const sliding = from > 0;
-  const shown = all.slice(from, from + MAX_ROWS);
+  // As many rows as the card can show at all - a short block is about 26
+  // of the page's points - rather than a flat 24 laid out and cut away.
+  const fits = Math.ceil((height / scale + offsetY) / 26);
+  const shown = all.slice(from, from + Math.min(MAX_ROWS, Math.max(4, fits)));
   return (
     <View
       style={[styles.sheet, { width, height, backgroundColor: paperColor?.background ?? theme.paper.fill }]}
@@ -208,6 +211,7 @@ function DocumentPageMiniature({
                   onOpenCustomView={noop}
                   inputRef={noop}
                   paperColor={paperColor}
+                  preview
                 />
               );
             })}

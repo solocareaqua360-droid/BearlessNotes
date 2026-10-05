@@ -20,11 +20,19 @@ export type CacheStatus = 'checking' | 'ready' | 'restoring' | 'missing';
 export function useCachedAttachment(
   uri: string | undefined,
   driveFileId: string | undefined,
-  countsAsUse = true
+  countsAsUse = true,
+  // Off for a page miniature (BlockRow's `preview`): nothing is checked or
+  // fetched, the stored path is simply trusted - a card is a picture, and
+  // a check per row was a second render of every row of every card.
+  enabled = true
 ): CacheStatus {
-  const [status, setStatus] = useState<CacheStatus>('checking');
+  // A block with no file at all (every text block asks too) starts as what
+  // it is: it used to start 'checking' and be told 'missing' a moment later,
+  // which rendered every row of every note twice on the way in.
+  const [status, setStatus] = useState<CacheStatus>(!uri ? 'missing' : enabled ? 'checking' : 'ready');
 
   useEffect(() => {
+    if (!enabled) return;
     if (!uri) {
       setStatus('missing');
       return;
@@ -54,7 +62,7 @@ export function useCachedAttachment(
     return () => {
       cancelled = true;
     };
-  }, [uri, driveFileId]);
+  }, [uri, driveFileId, enabled]);
 
   return status;
 }

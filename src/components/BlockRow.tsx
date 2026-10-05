@@ -131,6 +131,9 @@ type BlockRowProps = {
   // applied" (tapping the block's header, as opposed to one of its rows).
   onOpenCustomView: (databaseId: string, viewId: string) => void;
   inputRef: (ref: TextInput | null) => void;
+  // Drawn inside a page miniature: no attachment checks, no live cards
+  // (see the still plate below) - the same look for a fraction of the work.
+  preview?: boolean;
   softInputDisabled?: boolean;
   // null when "Колір паперу" is off, OR for a sticker block specifically -
   // a sticker keeps its own yellow/dark treatment regardless of the
@@ -183,6 +186,7 @@ export default function BlockRow({
   onOpenDocument,
   onOpenCustomView,
   inputRef,
+  preview,
   softInputDisabled,
   paperColor,
 }: BlockRowProps) {
@@ -240,7 +244,7 @@ export default function BlockRow({
   // from the Drive backup when there is one, so the badge below is an
   // honest confirmation rather than a decoration that's still green after
   // the file is actually gone.
-  const fileCacheStatus = useCachedAttachment(type === 'file' ? item.fileUri : undefined, item.driveFileId);
+  const fileCacheStatus = useCachedAttachment(type === 'file' ? item.fileUri : undefined, item.driveFileId, true, !preview);
   // Through useAttachmentSource, not useCachedAttachment, because the
   // picture needs an ADDRESS and not just a verdict. On the phone the two
   // are the same thing - the stored path is where the bytes are, once the
@@ -270,7 +274,9 @@ export default function BlockRow({
       : null;
   const { status: imageCacheStatus, source: imageSource } = useAttachmentSource(
     type === 'image' ? item.imageUri : undefined,
-    item.driveFileId
+    item.driveFileId,
+    true,
+    !preview
   );
 
   // Tap-to-cursor on the locked text (see displayIndexForTouch): the Text's
@@ -605,6 +611,31 @@ export default function BlockRow({
         </View>
       );
     }
+  } else if (preview && (type === 'dbRow' || type === 'flashcard' || type === 'docRef' || type === 'dbView')) {
+    // In a page miniature a card inside the page is a still plate with its
+    // name: the live ones each open listeners of their own, and a note
+    // card holding another note's card drew a miniature inside a
+    // miniature - without end, for two notes that show each other.
+    content = (
+      <View style={styles.dbRowBlock}>
+        <View style={[previewEmbedStyles.plate, { borderColor: theme.paper.edge, backgroundColor: theme.paper.tint }]}>
+          <Ionicons
+            name={type === 'docRef' ? 'document-text-outline' : type === 'flashcard' ? 'albums-outline' : 'server-outline'}
+            size={18}
+            color={theme.paper.inkMuted}
+          />
+          <Text style={[previewEmbedStyles.title, { color: theme.paper.ink }]} numberOfLines={1}>
+            {(type === 'docRef'
+              ? item.docRefTitle
+              : type === 'flashcard'
+                ? item.flashcardTerm
+                : type === 'dbRow'
+                  ? item.dbRowTitle
+                  : item.dbViewTitle) || '…'}
+          </Text>
+        </View>
+      </View>
+    );
   } else if (type === 'dbRow') {
     // A row of a user-created database, rendered LIVE from that database
     // (see CustomRowBlockCard) rather than from anything stored on the
@@ -980,3 +1011,16 @@ export default function BlockRow({
     </View>
   );
 }
+
+const previewEmbedStyles = StyleSheet.create({
+  plate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+  },
+  title: { flex: 1, fontSize: 15, fontWeight: '600' },
+});

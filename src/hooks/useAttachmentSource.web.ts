@@ -80,7 +80,9 @@ export function useAttachmentSource(
   // reads (see attachmentCache). There is no local copy to sweep here, so
   // there is nothing for it to mean - but the callers are shared, so the
   // parameter has to exist.
-  _countsAsUse = true
+  _countsAsUse = true,
+  // Accepted too; the browser fetches what it shows either way.
+  _enabled = true
 ): { status: CacheStatus; source: string | undefined } {
   const [state, setState] = useState<{ status: CacheStatus; source?: string }>({
     status: 'checking',
