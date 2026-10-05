@@ -17,7 +17,7 @@ import type { Block } from '../types';
 // This is deliberately the one place that knows what counts as a link: a
 // card of a note ('docRef'), and a word in the text that links to one
 // ({n:<id>}label{/n} - see documentBlocks' NOTE_LINK_OPEN).
-const WORD_LINK = /\{n:([A-Za-z0-9_-]+)\}/g;
+const WORD_LINK = /\{n:([A-Za-z0-9_-]+)(?:#[A-Za-z0-9_-]+)?\}/g;
 
 export function documentLinksIn(blocks: Block[] | undefined): string[] {
   const ids = new Set<string>();
@@ -31,5 +31,6 @@ export function documentLinksIn(blocks: Block[] | undefined): string[] {
 // Whether a block points at a note - as a card or by a word in it.
 export function blockLinksTo(block: Block, documentId: string): boolean {
   if ((block.type ?? 'paragraph') === 'docRef') return block.docRefId === documentId;
-  return (block.text ?? '').includes(`{n:${documentId}}`);
+  const text = block.text ?? '';
+  return text.includes(`{n:${documentId}}`) || text.includes(`{n:${documentId}#`);
 }

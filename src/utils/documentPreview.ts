@@ -14,7 +14,7 @@ export type TextMatch = { before: string; match: string; after: string };
 export function stripFormatting(text: string): string {
   return text
     // A note link reads as its label.
-    .replace(/\{n:[A-Za-z0-9_-]+\}(.*?)\{\/n\}/g, '$1')
+    .replace(/\{n:[A-Za-z0-9_-]+(?:#[A-Za-z0-9_-]+)?\}(.*?)\{\/n\}/g, '$1')
     .replace(/\{c:#[0-9A-Fa-f]{6}\}/g, '')
     .replace(/\{h:#[0-9A-Fa-f]{6}\}/g, '')
     .replace(/\{\/c\}/g, '')

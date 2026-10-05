@@ -117,16 +117,29 @@ export const HIGHLIGHT_CLOSE = '{/h}';
 // style only, so the glyph is what says "an object, not words"), the caret
 // never stands inside it, and an edit that touches it removes the whole
 // link (applyDisplayEdit). In a block at rest it is a chip (FormattedText).
-export const NOTE_LINK_OPEN = /^\{n:([A-Za-z0-9_-]+)\}/;
+//
+// The target can also be one BLOCK of that note: `{n:<documentId>#<blockId>}`
+// - a "ref" (noteRef / parseNoteRef). The links carry the ref whole, so a
+// rename or an unlink keeps the place it leads to without knowing of it.
+export const NOTE_LINK_OPEN = /^\{n:([A-Za-z0-9_-]+(?:#[A-Za-z0-9_-]+)?)\}/;
 export const NOTE_LINK_CLOSE = '{/n}';
 export const LINK_GLYPH = '↗\u2009';
 
 // A note's address on the clipboard («Копіювати посилання»): pasted into a
 // block it becomes a word linking to the note (DocumentEditorScreen's
 // handleBlockChange); pasted anywhere else it is plain text.
-export const NOTE_ADDRESS = /mindeva:\/\/note\/([A-Za-z0-9_-]+)/g;
-export function noteAddress(documentId: string): string {
-  return `mindeva://note/${documentId}`;
+export const NOTE_ADDRESS = /mindeva:\/\/note\/([A-Za-z0-9_-]+(?:#[A-Za-z0-9_-]+)?)/g;
+export function noteAddress(documentId: string, blockId?: string): string {
+  return `mindeva://note/${noteRef(documentId, blockId)}`;
+}
+
+export function noteRef(documentId: string, blockId?: string): string {
+  return blockId ? `${documentId}#${blockId}` : documentId;
+}
+
+export function parseNoteRef(ref: string): { documentId: string; blockId?: string } {
+  const hash = ref.indexOf('#');
+  return hash < 0 ? { documentId: ref } : { documentId: ref.slice(0, hash), blockId: ref.slice(hash + 1) || undefined };
 }
 
 export function noteLinkMarkup(documentId: string, label: string): string {
@@ -347,6 +360,7 @@ export function applyDisplayEdit(oldRawText: string, newDisplayText: string): st
 
 // Where each note link stands, in the displayed text and in the raw one.
 export type NoteLinkSpan = {
+  // The whole ref - a note, or a block of it (see NOTE_LINK_OPEN).
   documentId: string;
   label: string;
   displayStart: number;

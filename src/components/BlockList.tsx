@@ -17,6 +17,8 @@ type BlockListProps = {
   // Passed straight through to every row - see BlockRow's own hideHandle.
   hideHandle?: boolean;
   searchHighlight?: string;
+  // The block a link just landed on - see SortableBlockRow's flash.
+  flashBlockId?: string | null;
   blocks: Block[];
   onReorder: (blocks: Block[]) => void;
   // A hold that never went anywhere. The drag gesture already waits out
@@ -148,6 +150,7 @@ function BlockList({
   paperColor,
   hideHandle,
   searchHighlight,
+  flashBlockId,
 }: BlockListProps, ref: ForwardedRef<BlockListHandle>) {
   const styles = useStyles(makeStyles);
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -408,6 +411,7 @@ function BlockList({
           item={item}
           hideHandle={hideHandle}
           searchHighlight={searchHighlight}
+          flash={flashBlockId === item.id}
           indented={rowIndented}
           isSelected={selectedIds.has(item.id)}
           isSelectMode={isSelectMode}

@@ -157,6 +157,7 @@ import {
   noteLinkMarkup,
   noteLinkSpans,
   parseFormattedText,
+  parseNoteRef,
   plainTextOf,
   rawIndexForDisplayIndex,
   sanitizeFileName,
@@ -487,6 +488,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the block is found here, because only this screen has the blocks.
   const focusLinkTo =
     'embedded' in props || 'pane' in props ? undefined : props.route.params.focusLinkTo;
+  // Opened through a word that links to one block of this note (see
+  // NOTE_LINK_OPEN): the page lands on it and tints it for a moment.
+  const focusBlock =
+    'embedded' in props || 'pane' in props ? undefined : props.route.params.focusBlock;
+  const [flashBlockId, setFlashBlockId] = useState<string | null>(null);
   // Opened from a search result: the query that found it. The page lands
   // on the first block that matches and marks every match in yellow for a
   // few seconds - long enough to see where it is, gone before it is noise.
@@ -706,6 +712,34 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // The blocks are the event: once they are in, the block can be found.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, focusLinkTo, blocks.length]);
+
+  // A block a link leads to - the same retried measure, and a tint that
+  // goes after a couple of seconds. Also what a link to a block of the
+  // note already open does, without opening it again.
+  function landOnBlock(blockId: string) {
+    let tries = 0;
+    const attempt = () => {
+      const y = blockListRef.current?.offsetOf(blockId);
+      if (y === null || y === undefined) {
+        if (++tries < 6) setTimeout(attempt, 250);
+        return;
+      }
+      scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+      setFlashBlockId(blockId);
+      setTimeout(() => setFlashBlockId((cur) => (cur === blockId ? null : cur)), 2200);
+    };
+    setTimeout(attempt, 250);
+  }
+  useEffect(() => {
+    if (!isLoaded || !focusBlock) return;
+    if (!blocks.some((b) => b.id === focusBlock)) {
+      notify('Блоку вже немає', 'Його видалили з нотатки - відкрито її початок.');
+      return;
+    }
+    landOnBlock(focusBlock);
+    // Once, when the blocks are in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, focusBlock]);
 
   // The same landing for a search result - the same retried measure as
   // focusLinkTo above - onto the first block the search itself would
@@ -2846,6 +2880,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             label: 'Копія',
             onPress: copySelectedBlocks,
           },
+          // One block: an address to it, for a word in another note.
+          ...(selectedIds.size === 1
+            ? [{ key: 'link', icon: 'link-outline', label: 'Посилання', onPress: copyBlockAddress }]
+            : []),
           {
             key: 'clip',
             icon: 'document-text-outline',
@@ -3069,13 +3107,38 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     notify('Посилання скопійовано', 'Встав його в іншу нотатку - воно стане словом-посиланням на цю.');
   }
 
-  function openNoteLink(target: string) {
+  function openNoteLink(ref: string) {
+    const { documentId: target, blockId } = parseNoteRef(ref);
+    if (target === documentId && blockId) {
+      if (blocks.some((b) => b.id === blockId)) landOnBlock(blockId);
+      else notify('Блоку вже немає', 'Його видалили з цієї нотатки.');
+      return;
+    }
     const known = documentIndex.get(target);
     if (known?.deletedAt) {
       notify('Нотатку видалено', 'Вона в кошику. Посилання лишилось у тексті.');
       return;
     }
-    navigation.push('Editor', { documentId: target });
+    navigation.push('Editor', { documentId: target, focusBlock: blockId });
+  }
+
+  // «Посилання» on one chosen block: its address on the clipboard, which
+  // pasted into a note becomes a word leading to this very place.
+  async function copyBlockAddress() {
+    const id = Array.from(selectedIds)[0];
+    if (!id) return;
+    await Clipboard.setStringAsync(noteAddress(documentId, id));
+    toggleSelectMode();
+    showContext();
+    notify('Посилання на блок скопійовано', 'Встав його в нотатку - слово вестиме саме сюди.');
+  }
+
+  // What a link to a block is called: the block's own first words, or the
+  // note's title when it has none (a picture, a line).
+  function blockLinkLabel(block: Block | undefined, fallback: string): string {
+    const words = plainTextOf(block?.text ?? '').replace(/\s+/g, ' ').trim();
+    if (!words) return fallback;
+    return words.length > 40 ? `${words.slice(0, 40).trimEnd()}…` : words;
   }
 
   // One link in a block's text, swapped for something else (a new label,
@@ -3114,7 +3177,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the old note's title follows the new one; words of the writer's own
   // stay as they were.
   function retargetNoteLink(blockId: string, from: string, label: string, to: string) {
-    const oldTitle = (documentIndex.get(from)?.title || '').trim();
+    const oldTitle = (documentIndex.get(parseNoteRef(from).documentId)?.title || '').trim();
     const newTitle = (documentIndex.get(to)?.title || '').trim() || 'Без назви';
     const nextLabel = !oldTitle || label.trim() === oldTitle ? newTitle : label;
     replaceNoteLink(blockId, from, label, () => noteLinkMarkup(to, nextLabel));
@@ -3379,11 +3442,31 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (pastedType !== 'code' && NOTE_ADDRESS.test(rawText)) {
       NOTE_ADDRESS.lastIndex = 0;
       let lastEnd = -1;
-      text = rawText.replace(NOTE_ADDRESS, (_all, target: string, offset: number) => {
-        const markup = noteLinkMarkup(target, documentIndex.get(target)?.title || 'Нотатка');
+      const named: { ref: string; title: string; documentId: string; blockId: string }[] = [];
+      text = rawText.replace(NOTE_ADDRESS, (_all, ref: string, offset: number) => {
+        const { documentId: target, blockId } = parseNoteRef(ref);
+        const title = documentIndex.get(target)?.title || 'Нотатка';
+        // A block of this same note is named from its words at once; one
+        // of another note gets the title now and its words once that note
+        // is read (below).
+        const label =
+          blockId && target === documentId ? blockLinkLabel(blocks.find((b) => b.id === blockId), title) : title;
+        if (blockId && target !== documentId) named.push({ ref, title: title.replace(/[{}]/g, '').trim() || 'Нотатка', documentId: target, blockId });
+        const markup = noteLinkMarkup(ref, label);
         lastEnd = offset + markup.length;
         return markup;
       });
+      for (const n of named) {
+        const ref = doc(db, 'documents', n.documentId);
+        getDocFromCache(ref)
+          .catch(() => getDoc(ref))
+          .then((snap) => {
+            const target = ((snap.data()?.blocks ?? []) as Block[]).find((b) => b.id === n.blockId);
+            const label = blockLinkLabel(target, n.title);
+            if (label !== n.title) replaceNoteLink(id, n.ref, n.title, () => noteLinkMarkup(n.ref, label));
+          })
+          .catch(() => {});
+      }
       NOTE_ADDRESS.lastIndex = 0;
       if (lastEnd >= 0) {
         // Where the last link ended, measured in the new text (an earlier
@@ -5897,6 +5980,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <BlockList
           ref={blockListRef}
           searchHighlight={searchFlash}
+          flashBlockId={flashBlockId}
           // The daily note's sheet runs under the rail, so its rows draw
           // no handle column - see BlockRow's hideHandle.
           hideHandle={embedded}
@@ -6428,7 +6512,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         documents={Array.from(documentIndex.values())
           // Not itself, and nothing already thrown away - nor, for a link,
           // the note it already leads to.
-          .filter((d) => d.id !== documentId && !d.deletedAt && d.id !== noteLinkRetarget?.documentId)
+          .filter(
+            (d) =>
+              d.id !== documentId &&
+              !d.deletedAt &&
+              !(noteLinkRetarget && parseNoteRef(noteLinkRetarget.documentId).documentId === d.id && !parseNoteRef(noteLinkRetarget.documentId).blockId)
+          )
           .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
           .map((d) => ({ id: d.id, title: d.title?.trim() || 'Без назви' }))}
         onPick={(picked) => {

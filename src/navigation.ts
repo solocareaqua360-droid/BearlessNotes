@@ -40,13 +40,13 @@ export type RootStackParamList = {
   // clipping bar in DocumentEditorScreen.
   // A file looked at in a tab of its own - the laptop's (FileViewScreen).
   FileView: { fileId: string };
-  Editor: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean; focusLinkTo?: string; searchQuery?: string; morph?: boolean };
+  Editor: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean; focusLinkTo?: string; focusBlock?: string; searchQuery?: string; morph?: boolean };
   // Same DocumentEditorScreen as `Editor`, registered a second time purely
   // for its App.tsx presentation style (slide-up modal, swipe-down to
   // dismiss) - used when opening a document FROM the board, so editing it
   // feels like staying on the board rather than navigating away to a
   // separate screen.
-  EditorModal: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean; focusLinkTo?: string; searchQuery?: string };
+  EditorModal: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean; focusLinkTo?: string; focusBlock?: string; searchQuery?: string };
   // `focusTaskId` - arriving from a "Проект справ" board card: switches
   // to "Всі" so the task is guaranteed visible regardless of its own
   // project, leaves Kanban if it was on, and opens that task's row

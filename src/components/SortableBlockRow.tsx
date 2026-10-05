@@ -85,6 +85,9 @@ type SortableBlockRowProps = {
   // Attached to the one active row only, so the screen's keyboard handler
   // can measure it on the UI thread the instant the keyboard starts rising.
   paperColor: ReturnType<typeof colorForDocument> | null;
+  // Arrived at through a link to this very block: tinted for a moment, so
+  // the eye finds it after the scroll.
+  flash?: boolean;
 };
 
 // Long enough that a deliberate press-and-hold reads clearly apart from a
@@ -140,6 +143,7 @@ export default function SortableBlockRow({
   inputRef,
   softInputDisabled,
   paperColor,
+  flash,
 }: SortableBlockRowProps) {
   // At a pointer a block is moved by its handle (shown on hover) at once,
   // not by holding the row for half a second - which is also what a press
@@ -208,7 +212,11 @@ export default function SortableBlockRow({
   }));
 
   return (
-    <View onLayout={onLayout} {...({ dataSet: { blockId: item.id } } as object)}>
+    <View
+      onLayout={onLayout}
+      style={flash ? { backgroundColor: 'rgba(37,99,235,0.12)', borderRadius: 12 } : undefined}
+      {...({ dataSet: { blockId: item.id } } as object)}
+    >
       <GestureDetector gesture={gesture}>
         <Animated.View style={compressStyle}>
           <BlockRow
