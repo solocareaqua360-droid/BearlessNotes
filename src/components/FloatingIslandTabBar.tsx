@@ -222,6 +222,36 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   const barUp = tabsFocused && !onBoard && topNavOn;
   // The dock's round button opens the same switcher (deskSwitcherBus) while
   // the desks are what is in front.
+  // The bar's desks, the same array while nothing about them changes (the
+  // bar is memoised - a new array per render of this strip rebuilt it every
+  // time, three times over on every way back from a note). The handlers go
+  // through a ref, so they are always the current ones.
+  const barHandlers = useRef({ openSwitcher, closeDesk, desks });
+  barHandlers.current = { openSwitcher, closeDesk, desks };
+  const barDesks = useMemo(
+    () =>
+      state.routes.map((route, index) => ({
+        key: route.key,
+        ...faceOf(route.name),
+        active: liveIndex === index,
+        // The desk in front opens the open desks as cards; any other
+        // desk simply goes there ("на вкладки, які не відкриті, просто
+        // перейду").
+        onPress: () => {
+          const h = barHandlers.current;
+          if (deskControl && liveIndex === index) h.openSwitcher();
+          else h.desks[index]?.onPress();
+        },
+        // "хрестик на вкладці" - the desk in front can be closed, the
+        // documents too now (only the start desk stays).
+        onClose:
+          deskControl && route.name !== START_DESK && liveIndex === index
+            ? () => barHandlers.current.closeDesk(index)
+            : undefined,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.routes, liveIndex, !!deskControl, customDatabases, iconFor]
+  );
   const openSwitcherRef = useRef(openSwitcher);
   openSwitcherRef.current = openSwitcher;
   const switcherReachable = barUp && !!deskControl;
@@ -238,19 +268,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   return (
     <>
     <TopNavBar
-      desks={state.routes.map((route, index) => ({
-        key: route.key,
-        ...faceOf(route.name),
-        active: liveIndex === index,
-        // The desk in front opens the open desks as cards; any other
-        // desk simply goes there ("на вкладки, які не відкриті, просто
-        // перейду").
-        onPress: deskControl && liveIndex === index ? openSwitcher : desks[index].onPress,
-        // "хрестик на вкладці" - the desk in front can be closed, the
-        // documents too now (only the start desk stays).
-        onClose:
-          deskControl && route.name !== START_DESK && liveIndex === index ? () => closeDesk(index) : undefined,
-      }))}
+      desks={barDesks}
       onLongPress={openCapture}
       // The calendar's drawer carries its own bar; this one steps back
       // as it comes in.

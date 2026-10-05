@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { CustomDatabase } from '../types';
@@ -46,14 +46,13 @@ export function useDatabaseTiles() {
     }, listenError('useDatabaseTiles:customDatabases'));
   }, []);
 
-  function colorFor(key: string): string {
-    return tileColors[key] ?? defaultColorFor(key);
-  }
+  // Stable while the picks do not change: a fresh function each render
+  // undid every memo downstream that took it (the desks' bar, rebuilt on
+  // every render of the strip).
+  const colorFor = useCallback((key: string): string => tileColors[key] ?? defaultColorFor(key), [tileColors]);
 
   // A built-in database's icon - the user's pick, or the tile's own.
-  function iconFor(key: string, fallback: string): string {
-    return tileIcons[key] ?? fallback;
-  }
+  const iconFor = useCallback((key: string, fallback: string): string => tileIcons[key] ?? fallback, [tileIcons]);
 
   return { colorFor, iconFor, customDatabases };
 }

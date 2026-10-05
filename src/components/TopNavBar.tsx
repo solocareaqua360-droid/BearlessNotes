@@ -1,6 +1,6 @@
 import { Ionicons } from './icons/Ionicons';
 import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState, memo } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput, useWindowDimensions, View, ViewStyle } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -105,7 +105,7 @@ export type TopTitle = { icon: string; label: string; onPress?: () => void };
 // place you are.
 export type TopTrail = { icon: string; crumbs: { label: string; onPress?: () => void }[] };
 
-export default function TopNavBar({
+function TopNavBar({
   desks,
   title,
   trail,
@@ -1009,3 +1009,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+// Rendered only when its own props or the published bar change - see the
+// desks' bar in FloatingIslandTabBar, which keeps its props stable for it.
+export default memo(TopNavBar);
