@@ -77,6 +77,7 @@ export default function FormattedText({
   linkInk,
   linkTint,
   linkTextStyle,
+  linkMaxWidth,
 }: {
   segments: TextSegment[];
   defaultColor: string;
@@ -95,6 +96,9 @@ export default function FormattedText({
   // the line, and text inside a view inherits nothing from the line around
   // it.
   linkTextStyle?: TextStyle;
+  // The line's width: a chip longer than that ends in "…" instead of
+  // running off the page.
+  linkMaxWidth?: number;
 }) {
   const query = search?.trim().toLowerCase() ?? '';
   return (
@@ -132,7 +136,16 @@ export default function FormattedText({
                 onLongPress={onNoteLinkHold ? () => onNoteLinkHold(id, label) : undefined}
                 hitSlop={4}
               >
-                <Text style={[linkTextStyle, chipStyles.text, { color: ink, lineHeight: undefined }]} numberOfLines={1}>
+                <Text
+                  style={[
+                    linkTextStyle,
+                    chipStyles.text,
+                    { color: ink, lineHeight: undefined },
+                    linkMaxWidth ? { maxWidth: linkMaxWidth - CHIP_PAD * 2 - 2 } : null,
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
                   {LINK_GLYPH}
                   {label}
                 </Text>
@@ -185,10 +198,12 @@ export default function FormattedText({
   );
 }
 
+const CHIP_PAD = 5;
+
 const chipStyles = StyleSheet.create({
   chip: {
     borderRadius: 7,
-    paddingHorizontal: 5,
+    paddingHorizontal: CHIP_PAD,
   },
   text: { fontWeight: '600' },
 });

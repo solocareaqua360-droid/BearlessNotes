@@ -271,6 +271,9 @@ export default function BlockRow({
   // into coordinates inside it.
   const lockedTextRef = useRef<Text>(null);
   const lockedLinesRef = useRef<TextLayoutLine[]>([]);
+  // How wide a line of this block is - what a note link's chip may not
+  // outgrow (a view in a line cannot wrap; too long, it ran off the page).
+  const [lineWidth, setLineWidth] = useState(0);
   async function activateAtTouch(e: GestureResponderEvent) {
     const { pageX, pageY } = e.nativeEvent;
     const textNode = lockedTextRef.current;
@@ -743,6 +746,10 @@ export default function BlockRow({
       >
         <Text
           ref={lockedTextRef}
+          onLayout={(e) => {
+            const w = Math.round(e.nativeEvent.layout.width);
+            if (w !== lineWidth) setLineWidth(w);
+          }}
           onTextLayout={(e) => {
             lockedLinesRef.current = e.nativeEvent.lines;
           }}
@@ -760,6 +767,7 @@ export default function BlockRow({
               linkInk={theme.scheme === 'dark' ? LINK_BLUE_DARK : LINK_BLUE}
               linkTint={withAlpha(theme.scheme === 'dark' ? LINK_BLUE_DARK : LINK_BLUE, 0.14)}
               linkTextStyle={StyleSheet.flatten([styles.blockDisplayText, headingStyle, scaledTextStyle])}
+              linkMaxWidth={lineWidth || undefined}
             />
           ) : (
             <Text style={[styles.blockPlaceholder, rowPaperColor && { color: rowPaperColor.textMuted }]}>…</Text>
