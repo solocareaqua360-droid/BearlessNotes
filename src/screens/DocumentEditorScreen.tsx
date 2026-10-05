@@ -174,6 +174,7 @@ import RelatedDocuments from '../components/RelatedDocuments';
 import NestedDocuments from '../components/NestedDocuments';
 import { createOwnedNote, makeOrdinary } from '../utils/recordNotes';
 import { binNote } from '../utils/nestedNotes';
+import { SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTiming';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
@@ -1167,6 +1168,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const mergeRemoteRef = useRef(mergeRemote);
   mergeRemoteRef.current = mergeRemote;
 
+  // How this opening went, step by step - see utils/openTiming.
+  const openTimingRef = useRef<{ mount: number; read?: number; source?: string }>({ mount: Date.now() });
+
   useEffect(() => {
     (async () => {
       // Opening a note almost always follows just having seen it in a list
@@ -1178,12 +1182,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // never loaded), instead of a network read every single time.
       const docRef = doc(db, 'documents', documentId);
       let snapshot;
+      const readStart = Date.now();
       try {
         snapshot = await getDocFromCache(docRef);
         if (!snapshot.exists()) throw new Error('not cached');
+        openTimingRef.current.source = 'кеш';
       } catch {
         snapshot = await getDoc(docRef);
+        openTimingRef.current.source = 'сервер';
       }
+      openTimingRef.current.read = Date.now() - readStart;
       const data = snapshot.data();
       isNewDocumentRef.current = !snapshot.exists();
       setTitle(data?.title ?? '');
@@ -1226,6 +1234,31 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setIsLoaded(true);
     })();
   }, [documentId]);
+
+  // A slow opening says where its time went (temporary - utils/openTiming).
+  useEffect(() => {
+    // A day page inside the calendar opens as you swipe, not from a tap.
+    if (!isLoaded || embedded) return;
+    requestAnimationFrame(() => {
+      const drawn = Date.now();
+      const marks = takeOpenMarks();
+      const t = openTimingRef.current;
+      const start = marks.tap ?? t.mount;
+      const total = drawn - start;
+      if (total < SLOW_OPEN_MS) return;
+      const ms = (n: number) => `${Math.max(0, Math.round(n))} мс`;
+      const steps = [
+        marks.tap && marks.measured ? `картка ${ms(marks.measured - marks.tap)}` : null,
+        marks.measured && marks.chrome ? `фото смужок ${ms(marks.chrome - marks.measured)}` : null,
+        marks.chrome ? `перехід ${ms(t.mount - marks.chrome)}` : null,
+        t.read !== undefined ? `дані (${t.source}) ${ms(t.read)}` : null,
+        `малювання ${ms(drawn - t.mount - (t.read ?? 0))}`,
+      ].filter(Boolean);
+      notify(`Нотатка відкривалась ${(total / 1000).toFixed(1)} с`, steps.join(' · '));
+    });
+    // Once per opening.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded]);
 
   // While the note is open, it hears the server. An open editor used to
   // read once and never again, so a change made on the other device was

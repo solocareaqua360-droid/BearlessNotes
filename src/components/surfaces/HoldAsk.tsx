@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Image, Platform, View } from 'react-native';
-import { captureRef } from 'react-native-view-shot';
+import { captureRef, releaseCapture } from 'react-native-view-shot';
 import HoldMenu, { type HoldAction } from '../HoldMenu';
 import { ask, type AskOptions } from './Ask';
 import { takeHeldNode } from '../../utils/heldNode';
@@ -95,6 +95,11 @@ export function HoldAskHost() {
       actions={actions}
       onClose={() => {
         answer('cancel');
+        // The card's photograph is a file of its own; once the window has
+        // folded away it is nobody's, and left there they piled up (see
+        // chromeMorph's own release).
+        const shot = current?.uri;
+        if (shot) setTimeout(() => releaseCapture(shot), 1500);
         setCurrent(null);
         // The next one waiting, if a hold came while this was open.
         setTimeout(() => listener?.(), 0);

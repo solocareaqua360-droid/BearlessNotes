@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { View } from 'react-native';
 import { makeMutable } from 'react-native-reanimated';
-import { captureRef } from 'react-native-view-shot';
+import { captureRef, releaseCapture } from 'react-native-view-shot';
 import type { Rect } from './morph';
 
 // THE DOCK AND THE TOP BAR MOVING WITH THE PAGE (the phone's card-to-page
@@ -81,6 +81,7 @@ async function grab(part: Part, side: Side): Promise<Shot | null> {
     const rect = await measure(node);
     if (!rect) return null;
     const uri = await captureRef(node, { format: 'png', result: 'tmpfile' });
+    held.add(uri);
     return { uri, rect };
   } catch {
     return null;
@@ -158,14 +159,44 @@ function arm() {
 // The way in, at the tap, before the note is pushed: the list's chrome is
 // photographed and stood in for, so the push can change the real chrome
 // under it unseen. True when the stand-in is up.
+// Every photograph taken, until it is let go. They were never let go: four
+// full-size PNGs a round trip, a session's worth piling up in the cache with
+// what the image cache held of them - and the "fine after a restart, slow
+// later" openings of 2026-10-05 are what that looks like. A new way in lets
+// go of everything the moves before it took (the way back only ever needs
+// the pictures of its own way in, taken again below).
+const held = new Set<string>();
+function releaseHeld() {
+  held.forEach((uri) => {
+    try {
+      releaseCapture(uri);
+    } catch {
+      // Already gone - nothing to let go of.
+    }
+    loaded.delete(uri);
+  });
+  held.clear();
+  // Its pictures are among those just let go.
+  listKept = {};
+}
+
+// Bumped by chromeAbort: a beginning that finishes after it was given up
+// on (see morph's deadline) must not put its pictures up late.
+let generation = 0;
+
 export async function chromeOpenBegin(): Promise<boolean> {
   carrying = false;
+  const mine = ++generation;
+  // Nothing is on screen between two moves, so whatever the last ones took
+  // can go now.
+  if (!state.active) releaseHeld();
   const [bar, dock] = await Promise.all([grab('bar', 'list'), grab('dock', 'list')]);
-  if (!bar || !dock) return false;
+  if (mine !== generation || !bar || !dock) return false;
   listKept = { bar, dock };
   chromeT.value = 0;
   set({ active: true, shots: { bar: { list: bar }, dock: { list: dock } } });
   await whenLoaded([bar.uri, dock.uri]);
+  if (mine !== generation) return false;
   chromeCover.value = 1;
   carrying = true;
   arm();
@@ -231,6 +262,7 @@ export async function chromeEnd(waitFor?: Side): Promise<void> {
 
 // Something went wrong mid-way: the real chrome comes back at once.
 export function chromeAbort(): void {
+  generation += 1;
   clearTimeout(watchdog);
   carrying = false;
   chromeCover.value = 0;

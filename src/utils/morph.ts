@@ -1,5 +1,6 @@
 import type { View } from 'react-native';
-import { chromeOpenBegin } from './chromeMorph';
+import { chromeAbort, chromeOpenBegin } from './chromeMorph';
+import { openMark } from './openTiming';
 
 // THE CARD THAT BECOMES THE PAGE, on the phone (the laptop's is the .web
 // sibling, on view transitions).
@@ -113,17 +114,21 @@ export function takeMorphFrom(key: string): Rect | null {
 // `update(true)` means the move is on and the screen should open without its
 // own slide (a stack slide under a growing sheet is two moves fighting);
 // `update(false)`, that it simply opens the way it always did.
+const CHROME_DEADLINE_MS = 350;
+
 export function morph(
   key: string,
   update: (morphing: boolean) => void,
   opts?: { color?: string; radius?: number; into?: string }
 ): void {
   const run = driver;
+  openMark('tap');
   if (!run && opts?.into) {
     update(false);
     return;
   }
   measureCard(key).then((from) => {
+    openMark('measured');
     if (!from) {
       update(false);
       return;
@@ -135,7 +140,23 @@ export function morph(
       landedAt.delete(key);
       // The list's dock and bar are photographed and stood in for first
       // (utils/chromeMorph), so the push can change them unseen.
-      chromeOpenBegin().then(() => update(true));
+      // With a deadline: the photographs are usually a few frames, but
+      // now and then the phone is busy and they hang - and the note waited
+      // for them, up to two seconds (2026-10-05). Past the deadline the
+      // page still grows out of its card; only the chrome is not carried.
+      let settled = false;
+      const go = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(deadline);
+        openMark('chrome');
+        update(true);
+      };
+      const deadline = setTimeout(() => {
+        chromeAbort();
+        go();
+      }, CHROME_DEADLINE_MS);
+      chromeOpenBegin().then(go);
       return;
     }
     run!.open(from, opts?.radius ?? 22, opts?.color, key, () => update(true), opts?.into);
