@@ -46,6 +46,8 @@ type Shared = {
 };
 
 const shared = new Map<string, Shared>();
+const lateJoiners: (() => void)[] = [];
+let lateFlush: ReturnType<typeof setTimeout> | null = null;
 const LINGER_MS = 3000;
 
 function labelOf(target: unknown): string {
@@ -150,9 +152,20 @@ export const onSnapshot = ((target: unknown, ...args: unknown[]) => {
   // own first snapshot always arrives.
   if (joined.last !== undefined) {
     const last = joined.last;
-    setTimeout(() => {
+    lateJoiners.push(() => {
       if (joined.subscribers.has(mine) && joined.last === last) mine.next(last);
-    }, 0);
+    });
+    // All of them in ONE task: a screen mounting joins several listeners at
+    // once (tags, projects, records, the document index...), and each
+    // handing its snapshot over in a task of its own was one whole render
+    // of that screen per listener - React batches only within a task.
+    if (!lateFlush) {
+      lateFlush = setTimeout(() => {
+        lateFlush = null;
+        const waiting = lateJoiners.splice(0);
+        waiting.forEach((run) => run());
+      }, 0);
+    }
   }
 
   return () => {

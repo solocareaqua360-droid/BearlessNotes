@@ -37,7 +37,7 @@ import { requestOpen } from '../utils/openRequest';
 import { fileIconColorFor, fileIconFor } from '../utils/fileIcons';
 import { ownedQuery } from '../utils/owned';
 import { listenError } from '../utils/listenError';
-import type { Block, CustomDatabase, CustomDatabaseRow } from '../types';
+import type { Block, CustomDatabase, CustomDatabaseRow, Tag } from '../types';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import { useRenderTimer } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
@@ -529,6 +529,13 @@ function useRecord<T>(collection: string, id: string): T | null {
   return data;
 }
 
+// The same empty arrays every time: fresh ones on each render undid the
+// miniature's memo, and every render of this desk rebuilt every recent
+// page from scratch.
+const NONE: Block[] = [];
+const NO_IDS: string[] = [];
+const NO_TAGS: Tag[] = [];
+
 function RecentDocument({ id, onPress }: { id: string; onPress: () => void }) {
   const data = useRecord<{ title?: string; blocks?: Block[] }>('documents', id);
   if (!data) return null;
@@ -536,9 +543,9 @@ function RecentDocument({ id, onPress }: { id: string; onPress: () => void }) {
     <RecentFrame onPress={onPress} label={data.title?.trim() || 'Без назви'} icon="document-text-outline">
       <DocumentPageMiniature
         title={data.title ?? ''}
-        blocks={data.blocks ?? []}
-        tagIds={[]}
-        tags={[]}
+        blocks={data.blocks ?? NONE}
+        tagIds={NO_IDS}
+        tags={NO_TAGS}
         project={null}
         width={CARD_W}
         height={PIC_H}
