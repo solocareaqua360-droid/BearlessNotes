@@ -89,7 +89,7 @@ import TagPicker from '../components/TagPicker';
 import DocumentCard from '../components/DocumentCard';
 import EdgeFade from '../components/EdgeFade';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
-import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockSetFace, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import { useSoft, type SoftTokens } from '../theme/soft';
 import SoftIcon from '../components/SoftIcon';
 import UndoToast from '../components/UndoToast';
@@ -817,7 +817,7 @@ export default function DocumentsScreen({
             : null;
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const showContext = useDockShowContext();
-  const [, setDockFace] = useNavDockFace();
+  const setDockFace = useNavDockSetFace();
   // Search on the left, creating a note on the right: the two things
   // that never change, standing beside the stack and not moving with it.
   // The user's own arrangement, and Samsung's own reasoning - a pile of

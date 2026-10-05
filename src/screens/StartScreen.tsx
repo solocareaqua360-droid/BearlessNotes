@@ -20,7 +20,7 @@ import { SoftSurfaceContext, useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useChromeStyle, useDockBeads, useTopBack } from '../navigation/navDock';
-import { useSideDrawers } from '../navigation/sideDrawers';
+import { useSideDrawerActions } from '../navigation/sideDrawers';
 import { BOARDS_DESK, DesksControlContext, PERMANENT_DESK, deskFace, deskKeyForCustom } from '../navigation/desks';
 import { GRID_TILES, WIDE_TILES, openDatabaseTile } from '../constants/databaseTiles';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
@@ -83,7 +83,7 @@ export default function StartScreen() {
   const isFocused = useIsFocused();
   const topNavOn = useTopNavOn();
   const dockClear = useDockClearance();
-  const { openCalendar, openDatabases } = useSideDrawers();
+  const { openCalendar, openDatabases } = useSideDrawerActions();
   const desksControl = useContext(DesksControlContext);
   // The soft style, as every database's chrome wears it (DatabaseChrome).
   useChromeStyle('soft', true);
@@ -93,7 +93,7 @@ export default function StartScreen() {
   const pull = usePullToSearch(() => go('Search'), true, openDeskSwitcher);
   const recent = useRecentPlaces();
   const index = useDocumentIndex();
-  const { setEdgeZone } = useSideDrawers();
+  const { setEdgeZone } = useSideDrawerActions();
   // A note in the bin is not offered; until the index has arrived, none is
   // judged (a list that blinked empty while loading would be worse).
   const shown = recent

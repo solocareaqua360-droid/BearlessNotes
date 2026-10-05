@@ -10,7 +10,7 @@ import DeskSwitcher from './DeskSwitcher';
 import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
 import { deskPull, deskPullEnabled } from '../navigation/deskPull';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
-import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
+import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockSetHidden } from '../navigation/navDock';
 import { backMarkFocus, useRenderTimer } from '../utils/perfWatch';
 
 // Outline glyphs at 24, the same set and the same size as everything else
@@ -44,7 +44,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   // - a native stack keeps the screen under the top one mounted. It still
   // must: a note pushed over the tabs has its own dock.
   const tabsFocused = useIsFocused();
-  const [, setDockHidden] = useNavDockHidden();
+  const setDockHidden = useNavDockSetHidden();
   // WHICH DESK IS ACTUALLY ON SCREEN, read off the pager itself rather
   // than off react-navigation.
   //

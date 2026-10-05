@@ -186,7 +186,7 @@ import {
   useDockOpensOnActions,
   useDockShowContext,
   useNavDockFlip,
-  useNavDockFace,
+  useNavDockSetFace,
   useTopBack,
   useTopExtras,
   useChromeStyle,
@@ -2847,7 +2847,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // dock - read off the dock's own geometry, never guessed.
   const menuClearance = useDockClearance();
   const showContext = useDockShowContext();
-  const [, setDockFace] = useNavDockFace();
+  const setDockFace = useNavDockSetFace();
   // THE NOTE'S OWN TOP BAR (TopNavBar, rendered further down): back in
   // the corner, "⋯" and choosing (and, on a Fold pane, expand/collapse)
   // at the other - the user's redesign, replacing the old leave-bead and

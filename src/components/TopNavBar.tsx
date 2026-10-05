@@ -1,6 +1,6 @@
 import { Ionicons } from './icons/Ionicons';
 import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
-import { ReactNode, useEffect, useRef, useState, memo } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput, useWindowDimensions, View, ViewStyle } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -205,7 +205,11 @@ function TopNavBar({
   // short with «…»; then, with many desks open, only its icon (and the
   // cross). When even the squares do not fit, the row scrolls.
   const activeDesk = desks?.find((d) => d.active);
-  const deskLayout = deskPillLayout(activeDesk?.label ?? '', !!activeDesk?.onClose, openWidth);
+  // The same object while its three inputs stand - DesksRow is memoised
+  // on it (a fresh one per render redrew every pill on every publish).
+  const activeLabel = activeDesk?.label ?? '';
+  const activeClosable = !!activeDesk?.onClose;
+  const deskLayout = useMemo(() => deskPillLayout(activeLabel, activeClosable, openWidth), [activeLabel, activeClosable, openWidth]);
 
   // The path, kept drawn from the last one while the plate rolls back to
   // the desks, so it does not empty in the middle of its way out.
@@ -603,7 +607,7 @@ function deskPillLayout(label: string, closable: boolean, room: number): DeskPil
 
 // The desks of the bar, in a row that scrolls when there are more than fit,
 // the open one kept in view.
-function DesksRow({
+const DesksRow = memo(function DesksRow({
   desks,
   radius,
   layout,
@@ -664,7 +668,7 @@ function DesksRow({
       ))}
     </ScrollView>
   );
-}
+});
 
 function DeskPill({
   radius,

@@ -176,7 +176,18 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
       setEdgeZone,
     ]
   );
-  return <SideDrawersContext.Provider value={value}>{children}</SideDrawersContext.Provider>;
+  // The stable half on its own (2026-10-06): a screen that only OPENS a
+  // drawer or holds the swipe re-rendered whenever any drawer state moved -
+  // the start desk, on every note opened and closed.
+  const actions = useMemo(
+    () => ({ openCalendar, closeCalendar, openDatabases, closeDatabases, blockSwipe, holdEdgeOnly, setEdgeZone }),
+    [openCalendar, closeCalendar, openDatabases, closeDatabases, blockSwipe, holdEdgeOnly, setEdgeZone]
+  );
+  return (
+    <SideDrawerActionsContext.Provider value={actions}>
+      <SideDrawersContext.Provider value={value}>{children}</SideDrawersContext.Provider>
+    </SideDrawerActionsContext.Provider>
+  );
 }
 
 // Outside the provider (the browser's tabs, a pushed screen) there are no
@@ -185,16 +196,27 @@ export function useSideDrawers(): SideDrawers {
   return useContext(SideDrawersContext) ?? NONE;
 }
 
+type SideDrawerActions = Pick<
+  SideDrawers,
+  'openCalendar' | 'closeCalendar' | 'openDatabases' | 'closeDatabases' | 'blockSwipe' | 'holdEdgeOnly' | 'setEdgeZone'
+>;
+const SideDrawerActionsContext = createContext<SideDrawerActions | null>(null);
+
+// What a screen DOES to the drawers, without hearing every change of them.
+export function useSideDrawerActions(): SideDrawerActions {
+  return useContext(SideDrawerActionsContext) ?? NONE;
+}
+
 // Held by a screen that scrolls sideways itself: the swipe past the desks
 // then begins at the edge of the screen only (see Tabs).
 export function useEdgeOnlyDrawerSwipe(active: boolean) {
-  const { holdEdgeOnly } = useSideDrawers();
+  const { holdEdgeOnly } = useSideDrawerActions();
   useEffect(() => (active ? holdEdgeOnly() : undefined), [active, holdEdgeOnly]);
 }
 
 // Held by a screen whose own sideways drags would be taken by the swipe.
 export function useBlockDrawerSwipe(active: boolean) {
-  const { blockSwipe } = useSideDrawers();
+  const { blockSwipe } = useSideDrawerActions();
   useEffect(() => (active ? blockSwipe() : undefined), [active, blockSwipe]);
 }
 

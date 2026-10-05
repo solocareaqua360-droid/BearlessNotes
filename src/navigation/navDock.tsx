@@ -732,6 +732,13 @@ export function useNavDockHasContext(): boolean {
   return !!useContext(NavDockContext)?.context;
 }
 
+// The setter alone, for what only puts the context away or back - it does
+// not re-render on every publish the way reading `hidden` does.
+export function useNavDockSetHidden(): (hidden: boolean) => void {
+  return useContext(NavDockPublishContext)?.setHidden ?? noopSetHidden;
+}
+const noopSetHidden = () => {};
+
 export function useNavDockHidden(): [boolean, (hidden: boolean) => void] {
   const value = useContext(NavDockContext);
   return [value?.hidden ?? false, value?.setHidden ?? (() => {})];
@@ -1064,6 +1071,12 @@ export function useNavDockFlip(): (face: DockFace) => void {
   const request = useContext(NavDockPublishContext)?.requestFlip;
   return useCallback((next: DockFace) => request?.(next), [request]);
 }
+
+// The setter alone - see useNavDockSetHidden.
+export function useNavDockSetFace(): (face: DockFace) => void {
+  return useContext(NavDockPublishContext)?.setFace ?? noopSetFace;
+}
+const noopSetFace = () => {};
 
 export function useNavDockFace(): [DockFace, (face: DockFace) => void] {
   const face = useContext(NavDockFaceContext);
