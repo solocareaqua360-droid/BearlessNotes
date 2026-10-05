@@ -3,7 +3,7 @@ import { markHeld } from '../utils/heldNode';
 import Animated from 'react-native-reanimated';
 import { usePressSettle } from '../hooks/usePressSettle';
 import { cardRadius } from '../theme/scale';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { flipId } from '../utils/flipId';
 import { dataSets, morphKey } from '../utils/morph';
 import { IS_POINTER } from '../utils/pointer';
@@ -597,7 +597,9 @@ export default function DocumentCard({
   // and so does every card that IS that page. `recordColour` is the same
   // palette the editor asks, keyed the same way, so the two cannot
   // disagree.
-  const pagePaper = page?.paperColorEnabled ? recordColour(id) : null;
+  // Memoised: a fresh object each render undid the miniature's own memo.
+  const pagePaperOn = !!page?.paperColorEnabled;
+  const pagePaper = useMemo(() => (pagePaperOn ? recordColour(id) : null), [pagePaperOn, id, recordColour]);
   const pageFill = pagePaper?.background ?? theme.paper.fill;
   const pageInk = pagePaper?.textMuted ?? theme.paper.inkMuted;
   const expandedLines = pointer ? EXPANDED_TEXT_LINES_POINTER : EXPANDED_TEXT_LINES;

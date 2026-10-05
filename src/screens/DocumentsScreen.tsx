@@ -63,7 +63,7 @@ import { useDensity } from '../hooks/useDensity';
 import { usePublishRailTree } from '../navigation/navRail';
 import { BackHandler } from 'react-native';
 import { db } from '../firebase';
-import { DocumentItem, SketchElement, Tag } from '../types';
+import { Block, DocumentItem, SketchElement, Tag } from '../types';
 import RenamePrompt from '../components/RenamePrompt';
 import { TAG_COLORS } from '../constants/tags';
 import { hapticButtonDown, hapticButtonUp } from '../utils/haptics';
@@ -155,6 +155,8 @@ type StripSticker = {
   trashed?: boolean;
 };
 
+const NO_BLOCKS: Block[] = [];
+
 export default function DocumentsScreen({
   inPane,
   // A copy pushed over the tile board: it has a way back and no island.
@@ -216,6 +218,19 @@ export default function DocumentsScreen({
   );
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const liveRecords = useLiveRecords(documents.length > 0);
+  // One array per note for as long as neither the note nor the records
+  // change: the card's page miniature is memoised on it, and a fresh
+  // .map() on every render (every focus change - opening a note, coming
+  // back) redrew every visible miniature from scratch (2026-10-05).
+  const liveBlocksCache = useRef(new WeakMap<Block[], { live: typeof liveRecords; out: Block[] }>());
+  const liveBlocksOf = (blocks: Block[] | undefined): Block[] => {
+    if (!blocks) return NO_BLOCKS;
+    const hit = liveBlocksCache.current.get(blocks);
+    if (hit && hit.live === liveRecords) return hit.out;
+    const out = blocks.map((b) => applyLiveRecord(b, liveRecords));
+    liveBlocksCache.current.set(blocks, { live: liveRecords, out });
+    return out;
+  };
   const [isLoading, setIsLoading] = useState(true);
   // The machine every database screen shares - see useDatabaseList. This
   // screen keeps its own chrome (the two panes, the glass menu, the
@@ -1625,7 +1640,7 @@ export default function DocumentsScreen({
                   // does. The editor overlays the same way, and the Photos database reads
                   // the record directly, which is why a picture showed there and here
                   // stayed blank. See useLiveRecords.
-                  (item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)),
+                  liveBlocksOf(item.blocks),
                   item.coverImageUri,
                   drawnMode === 'list' ? undefined : EXPANDED_PREVIEW_LENGTH,
                   item.coverDriveFileId
@@ -1642,7 +1657,7 @@ export default function DocumentsScreen({
                     imageDriveFileIds={imageDriveFileIds}
                     previewText={previewText}
                     previewTail={previewTail}
-                    blocks={(item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords))}
+                    blocks={liveBlocksOf(item.blocks)}
                     checklistItems={checklistItems}
                     titleMatch={titleMatch}
                     bodyMatch={bodyMatch}
@@ -2012,7 +2027,7 @@ export default function DocumentsScreen({
                 // does. The editor overlays the same way, and the Photos database reads
                 // the record directly, which is why a picture showed there and here
                 // stayed blank. See useLiveRecords.
-                (item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords)),
+                liveBlocksOf(item.blocks),
                 item.coverImageUri,
                 // A wide card has MORE room than a tile, not less - it
                 // was taking the list row's own short preview and
@@ -2039,7 +2054,7 @@ export default function DocumentsScreen({
                   previewTail={previewTail}
                   // The card draws the page itself where it has the
                   // room - see CardPreview.
-                  blocks={(item.blocks ?? []).map((b) => applyLiveRecord(b, liveRecords))}
+                  blocks={liveBlocksOf(item.blocks)}
                   checklistItems={checklistItems}
                   morphRef={morphCardRef(`note:${item.id}`)}
                   onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}

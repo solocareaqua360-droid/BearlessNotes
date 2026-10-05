@@ -1,4 +1,4 @@
-import { ComponentType, useEffect, useMemo, useState } from 'react';
+import { ComponentType, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
@@ -68,7 +68,40 @@ function DeskHost({
   );
 }
 
+// A desk renders when ITS OWN things change, not whenever the pager over
+// it does - opening a note re-rendered the navigator, and with it every
+// mounted desk (measured: Старт, Календар, Бази and the rest, on every
+// note opened and closed, 2026-10-05). The props are compared by value;
+// `back` is kept stable below.
+function sameProps(a?: Record<string, unknown>, b?: Record<string, unknown>) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
+}
+const DeskHostMemo = memo(
+  DeskHost,
+  (a, b) => a.deskKey === b.deskKey && a.component === b.component && a.back === b.back && sameProps(a.props, b.props)
+);
+// The two drawers take no props: only their own state moves them.
+const CalendarDrawerMemo = memo(CalendarDrawer);
+const DatabasesLayerMemo = memo(DatabasesLayer);
+
 function TabsWithDrawers({ desks }: { desks: string[] }) {
+  // Each desk's way back to the one before it, one stable function per
+  // pair, reading the desk's latest navigation (see DeskHostMemo).
+  const navByDesk = useRef(new Map<string, { navigate: (name: string) => void }>());
+  const backFns = useRef(new Map<string, () => void>());
+  const backFor = (name: string, previous: string | null) => {
+    if (!previous) return null;
+    const key = `${name}>${previous}`;
+    let fn = backFns.current.get(key);
+    if (!fn) {
+      fn = () => navByDesk.current.get(name)?.navigate(previous);
+      backFns.current.set(key, fn);
+    }
+    return fn;
+  };
   const {
     openCalendar,
     calendarOpen,
@@ -261,22 +294,25 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
                       : undefined
                   }
                 >
-                  {({ navigation }) => (
-                    <DeskHost
-                      deskKey={name}
-                      component={screen.component}
-                      props={screen.props}
-                      back={previous ? () => navigation.navigate(previous) : null}
-                    />
-                  )}
+                  {({ navigation }) => {
+                    navByDesk.current.set(name, navigation as never);
+                    return (
+                      <DeskHostMemo
+                        deskKey={name}
+                        component={screen.component}
+                        props={screen.props}
+                        back={backFor(name, previous)}
+                      />
+                    );
+                  }}
                 </Tab.Screen>
               );
             })}
           </Tab.Navigator>
         </Animated.View>
       </GestureDetector>
-      <CalendarDrawer />
-      <DatabasesLayer />
+      <CalendarDrawerMemo />
+      <DatabasesLayerMemo />
     </View>
   );
 }

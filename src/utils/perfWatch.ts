@@ -67,6 +67,9 @@ setInterval(() => {
   const now = Date.now();
   const late = now - expected;
   expected = now + BEAT_MS;
+  // Minutes "late" is the app having been away (Android stops its timers
+  // in the background), not a stall.
+  if (late > 10000) return;
   if (late > 150) {
     stalls.push({ at: now, ms: late });
     trim(stalls);

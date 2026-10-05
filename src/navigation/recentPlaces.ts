@@ -33,8 +33,13 @@ export function noteOpened(kind: RecentKind, ref: string): void {
   if (recent[0]?.kind === kind && recent[0]?.ref === ref) return;
   recent = [{ kind, ref, at: Date.now() }, ...recent.filter((r) => !(r.kind === kind && r.ref === ref))].slice(0, MAX);
   AsyncStorage.setItem(KEY, JSON.stringify(recent)).catch(() => {});
-  listeners.forEach((l) => l());
+  // Told a moment later: the start desk redraws its «Нещодавні» on this,
+  // and doing it in the very frames a note is opening in was a tenth of a
+  // second of the opening (2026-10-05). The desk is behind the note then.
+  clearTimeout(notifyTimer);
+  notifyTimer = setTimeout(() => listeners.forEach((l) => l()), 1500);
 }
+let notifyTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function useRecentPlaces(): RecentPlace[] {
   const [value, setValue] = useState(recent);
