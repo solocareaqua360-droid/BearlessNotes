@@ -1,4 +1,4 @@
-import { ForwardedRef, forwardRef, useImperativeHandle, useRef, useState } from 'react';
+import { ForwardedRef, forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { LayoutAnimation, LayoutChangeEvent, TextInput, View } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { Block, Tag } from '../types';
@@ -396,6 +396,80 @@ function BlockList({
   // tell was to collapse the toggle and see what vanished.
   let indented = false;
 
+  // EVERY ROW RENDERS ONLY WHEN ITS OWN THINGS CHANGE (2026-10-06). The
+  // screen hands this list new handler functions on every one of its
+  // renders - each keystroke, each of the dozen renders of opening a note -
+  // and every row took them, so every row of the note re-rendered every
+  // time. The rows now get STABLE functions that call whatever the screen's
+  // latest handler is (so none of them is ever stale), per-row callbacks
+  // made once per block, and SortableBlockRow is memoised.
+  const live = useRef<Record<string, unknown>>({});
+  live.current = {
+    onActivate, onBlur, onToggleSelected, onToggleChecked, onOpenReminder, onUpdateBlock, onChangeText,
+    onBackspaceEmpty, onFocus, onSelectionChange, onOpenImage, onToggleImageFit, onDrawOverImage, onOpenFile,
+    onDownloadFile, onOpenFileDatabase, onOpenLink, onOpenLinkDatabase, onTimecode, onNoteLink, onNoteLinkMenu,
+    isNestedLink, onOpenSketch, onOpenCustomRow, onOpenDocument, onOpenCustomView, onInputRef, onHoldWithoutDrag,
+    handleRowLayout, handleDragStart, handleDragUpdate, handleDragEnd, dragGroupFor,
+  };
+  const call = (key: string) => (live.current[key] as ((...args: unknown[]) => unknown) | undefined);
+  const stable = useMemo(() => {
+    const via = (key: string) => (...args: unknown[]) => call(key)?.(...args);
+    return {
+      onActivate: via('onActivate'),
+      onBlur: via('onBlur'),
+      onToggleSelected: via('onToggleSelected'),
+      onToggleChecked: via('onToggleChecked'),
+      onOpenReminder: via('onOpenReminder'),
+      onUpdateBlock: via('onUpdateBlock'),
+      onChangeText: via('onChangeText'),
+      onBackspaceEmpty: via('onBackspaceEmpty'),
+      onFocus: via('onFocus'),
+      onSelectionChange: via('onSelectionChange'),
+      onOpenImage: via('onOpenImage'),
+      onToggleImageFit: via('onToggleImageFit'),
+      onDrawOverImage: via('onDrawOverImage'),
+      onOpenFile: via('onOpenFile'),
+      onDownloadFile: via('onDownloadFile'),
+      onOpenFileDatabase: via('onOpenFileDatabase'),
+      onOpenLink: via('onOpenLink'),
+      onOpenLinkDatabase: via('onOpenLinkDatabase'),
+      onTimecode: via('onTimecode'),
+      onNoteLink: via('onNoteLink'),
+      onNoteLinkMenu: via('onNoteLinkMenu'),
+      isNestedLink: (ref: string) => !!call('isNestedLink')?.(ref),
+      onOpenSketch: via('onOpenSketch'),
+      onOpenCustomRow: via('onOpenCustomRow'),
+      onOpenDocument: via('onOpenDocument'),
+      onOpenCustomView: via('onOpenCustomView'),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  type RowFns = {
+    onLayout: (e: LayoutChangeEvent) => void;
+    onDragStart: () => void;
+    onDragUpdate: (translationY: number) => void;
+    onDragEnd: () => void;
+    onHandleClick: () => void;
+    inputRef: (node: TextInput | null) => void;
+  };
+  const rowFnsCache = useRef(new Map<string, RowFns>());
+  const rowFns = (id: string): RowFns => {
+    let fns = rowFnsCache.current.get(id);
+    if (!fns) {
+      const group = () => (call('dragGroupFor')?.(id) as string[]);
+      fns = {
+        onLayout: (e) => call('handleRowLayout')?.(id, e),
+        onDragStart: () => call('handleDragStart')?.(id, group()),
+        onDragUpdate: (translationY) => call('handleDragUpdate')?.(id, group(), translationY),
+        onDragEnd: () => call('handleDragEnd')?.(id, group()),
+        onHandleClick: () => call('onHoldWithoutDrag')?.(id),
+        inputRef: (node) => call('onInputRef')?.(id, node),
+      };
+      rowFnsCache.current.set(id, fns);
+    }
+    return fns;
+  };
+
   return (
     <View ref={containerRef} collapsable={false} style={styles.blockListContainer}>
       {(renderCount !== undefined && renderCount < blocks.length ? blocks.slice(0, renderCount) : blocks).map((item, index) => {
@@ -424,48 +498,47 @@ function BlockList({
           isSelected={selectedIds.has(item.id)}
           isSelectMode={isSelectMode}
           isActive={focusedBlockId === item.id}
-          onActivate={onActivate}
-          onBlur={onBlur}
+          onActivate={stable.onActivate}
+          onBlur={stable.onBlur}
           isDragging={draggingIds?.includes(item.id) ?? false}
           isDragActive={draggingIds !== null}
           listNumber={item.type === 'numbered' ? runningNumber : undefined}
           textVersion={textVersions[item.id] ?? 0}
           compressTowardOffset={compressOffsetFor(item.id)}
-          onLayout={(e) => handleRowLayout(item.id, e)}
-          onDragStart={() => handleDragStart(item.id, dragGroupFor(item.id))}
-          onDragUpdate={(translationY) =>
-            handleDragUpdate(item.id, dragGroupFor(item.id), translationY)
-          }
-          onDragEnd={() => handleDragEnd(item.id, dragGroupFor(item.id))}
-          onHandleClick={() => onHoldWithoutDrag?.(item.id)}
-          onToggleSelected={onToggleSelected}
-          onToggleChecked={onToggleChecked}
-          onOpenReminder={onOpenReminder}
-          onUpdateBlock={onUpdateBlock}
-          onChangeText={onChangeText}
-          onBackspaceEmpty={onBackspaceEmpty}
-          onFocus={onFocus}
-          onSelectionChange={onSelectionChange}
-          onOpenImage={onOpenImage}
-          onToggleImageFit={onToggleImageFit}
-          onDrawOverImage={onDrawOverImage}
-          onOpenFile={onOpenFile}
-          onDownloadFile={onDownloadFile}
-          onOpenFileDatabase={onOpenFileDatabase}
-          onOpenLink={onOpenLink}
-          onOpenLinkDatabase={onOpenLinkDatabase}
-          onTimecode={onTimecode}
-          onNoteLink={onNoteLink}
-          onNoteLinkMenu={onNoteLinkMenu}
-          isNestedLink={isNestedLink}
-          onOpenSketch={onOpenSketch}
+          onLayout={rowFns(item.id).onLayout}
+          onDragStart={rowFns(item.id).onDragStart}
+          onDragUpdate={rowFns(item.id).onDragUpdate}
+          onDragEnd={rowFns(item.id).onDragEnd}
+          onHandleClick={rowFns(item.id).onHandleClick}
+          onToggleSelected={stable.onToggleSelected}
+          onToggleChecked={stable.onToggleChecked}
+          onOpenReminder={stable.onOpenReminder}
+          onUpdateBlock={stable.onUpdateBlock}
+          onChangeText={stable.onChangeText}
+          onBackspaceEmpty={stable.onBackspaceEmpty}
+          onFocus={stable.onFocus}
+          onSelectionChange={stable.onSelectionChange}
+          onOpenImage={stable.onOpenImage}
+          onToggleImageFit={stable.onToggleImageFit}
+          onDrawOverImage={stable.onDrawOverImage}
+          onOpenFile={stable.onOpenFile}
+          onDownloadFile={stable.onDownloadFile}
+          onOpenFileDatabase={stable.onOpenFileDatabase}
+          onOpenLink={stable.onOpenLink}
+          onOpenLinkDatabase={stable.onOpenLinkDatabase}
+          // Present or not as the screen says; stable while present.
+          onTimecode={onTimecode ? stable.onTimecode : undefined}
+          onNoteLink={onNoteLink ? stable.onNoteLink : undefined}
+          onNoteLinkMenu={onNoteLinkMenu ? stable.onNoteLinkMenu : undefined}
+          isNestedLink={isNestedLink ? stable.isNestedLink : undefined}
+          onOpenSketch={stable.onOpenSketch}
           allTags={allTags}
-          onOpenCustomRow={onOpenCustomRow}
+          onOpenCustomRow={stable.onOpenCustomRow}
           documentIndex={documentIndex}
-          onOpenDocument={onOpenDocument}
-          onOpenCustomView={onOpenCustomView}
+          onOpenDocument={onOpenDocument ? stable.onOpenDocument : undefined}
+          onOpenCustomView={stable.onOpenCustomView}
           softInputDisabled={softInputDisabled}
-          inputRef={(ref) => onInputRef(item.id, ref)}
+          inputRef={rowFns(item.id).inputRef}
           paperColor={paperColor}
         />
         );

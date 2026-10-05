@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { memo, useEffect } from 'react';
 import { useDensity } from '../hooks/useDensity';
 import { LayoutChangeEvent, StyleSheet, TextInput, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -97,7 +97,7 @@ type SortableBlockRowProps = {
 // can't be allowed to blur into each other.
 const DRAG_LONG_PRESS_MS = 500;
 
-export default function SortableBlockRow({
+function SortableBlockRow({
   item,
   isSelected,
   isSelectMode,
@@ -282,3 +282,7 @@ export default function SortableBlockRow({
 const styles = StyleSheet.create({
   glow: { backgroundColor: 'rgba(37,99,235,0.14)', borderRadius: 12 },
 });
+
+// Re-rendered only when its own props change - BlockList keeps every
+// handler it passes stable (see its `stable` and `rowFns`).
+export default memo(SortableBlockRow);

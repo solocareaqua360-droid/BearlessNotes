@@ -660,7 +660,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // separately-picked color, so a document always has exactly one color
   // identity across the whole app.
   const [paperColorEnabled, setPaperColorEnabled] = useState(false);
-  const paperColor = paperColorEnabled ? recordColour(documentId) : null;
+  // The same object while nothing about it changes: every block row takes
+  // it, and a fresh one per render re-rendered all of them (see BlockList).
+  const paperColor = useMemo(
+    () => (paperColorEnabled ? recordColour(documentId) : null),
+    [paperColorEnabled, recordColour, documentId]
+  );
   // Same `groups` collection DocumentsScreen's own group tabs/bulk-assign
   // use (kind 'document') - this is just a second place to set the same
   // field, so a document doesn't have to be re-selected from the list to
