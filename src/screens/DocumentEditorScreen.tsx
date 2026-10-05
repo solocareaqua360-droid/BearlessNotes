@@ -382,6 +382,8 @@ const KEYBOARD_ROOM = 80;
 // The strip past the end of a daily note that pulling into opens the
 // calendar's overview - see `onPullPastEnd`.
 const PULL_ZONE = 110;
+// How far past the window a note's sheet runs at the least.
+const NOTE_END_BEYOND = 120;
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   const theme = useTheme();
@@ -5914,6 +5916,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             },
           ],
           onPullPastEnd && scrollViewportH > 0 && { minHeight: scrollViewportH + PULL_ZONE },
+          // THE END OF THE NOTE IS BELOW THE SCREEN (the user's, 2026-10-05:
+          // "кінець повинен бути за екраном"): however short the note, the
+          // sheet runs past the window, and what stands at its foot
+          // («Вкладені», «Пов'язані») is met by scrolling to the end, not
+          // floating under the last line.
+          !onPullPastEnd && !embedded && scrollViewportH > 0 && { minHeight: scrollViewportH + NOTE_END_BEYOND },
           // Used to stop short of the rail the way a mail's text does
           // under its capsule - narrowing every block on the page, at
           // every scroll position, to clear a capsule that only ever
@@ -5949,7 +5957,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           scrollOffsetSV.value = y;
         }}
         scrollEventThrottle={16}
-        onLayout={onPullPastEnd ? (e) => setScrollViewportH(e.nativeEvent.layout.height) : undefined}
+        onLayout={(e) => setScrollViewportH(e.nativeEvent.layout.height)}
         // Let go with most of the pull zone in view: that was a pull, not
         // a scroll that happened to reach the end. Never while writing -
         // with the keyboard up the end of the page is where the caret is.
@@ -6149,16 +6157,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             )}
           </View>
         )}
+        {/* The note's foot sits at the END of the sheet, past the empty
+            paper - see NOTE_END_BEYOND. */}
+        {!embedded && !onPullPastEnd && <View style={{ flexGrow: 1 }} pointerEvents="none" />}
         {!embedded && (
-          <NestedDocuments documentId={documentId} index={documentIndex} tags={tags} onOpen={openReferencedDocument} />
-        )}
-        {!embedded && (
-          <RelatedDocuments
-            documentId={documentId}
-            index={documentIndex}
-            onOpen={openReferencedDocument}
-            onOpenAt={openReferencedDocumentAt}
-          />
+          <View style={styles.noteFoot}>
+            <NestedDocuments documentId={documentId} index={documentIndex} tags={tags} onOpen={openReferencedDocument} />
+            <RelatedDocuments
+              documentId={documentId}
+              index={documentIndex}
+              onOpen={openReferencedDocument}
+              onOpenAt={openReferencedDocumentAt}
+            />
+          </View>
         )}
         <Animated.View style={bottomSpacerStyle} />
         {onPullPastEnd && scrollViewportH > 0 && (

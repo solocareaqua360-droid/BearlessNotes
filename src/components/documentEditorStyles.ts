@@ -279,6 +279,10 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
   // хочеться писати навіть неважливі речі". Shared with the list's page
   // miniatures, which draw this same page, so the card and the note stay
   // one picture.
+  // «Вкладені» and «Пов'язані» at the sheet's end, on the title's edge.
+  noteFoot: {
+    paddingHorizontal: 20,
+  },
   // A nested note's way home (see NestedDocuments): the notes it is in,
   // root first, each a tap away.
   nestPath: {
