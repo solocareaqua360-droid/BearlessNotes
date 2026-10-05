@@ -27,7 +27,7 @@ import { GlassPortalHost } from './src/components/GlassPortal';
 import MorphHost from './src/components/MorphHost';
 import ChromeMorph from './src/components/ChromeMorph';
 import { AskHost, notify } from './src/components/surfaces/Ask';
-import { setStallReporter } from './src/utils/perfWatch';
+import { setStallReporter, touchArrived } from './src/utils/perfWatch';
 
 // Temporary diagnosis (utils/perfWatch): a long stall says what held the app.
 setStallReporter((title, body) => {
@@ -145,7 +145,7 @@ export default function App() {
         // flash this is meant to avoid.
         <View style={{ flex: 1, backgroundColor: '#0F1839' }} />
       ) : (
-        <GestureHandlerRootView style={{ flex: 1 }}>
+        <GestureHandlerRootView style={{ flex: 1 }} onTouchStart={(e) => touchArrived(e.nativeEvent.timestamp)}>
         {/* At the root, so the pieces mounted here - the question
             window below - can read the insets too. Every screen gets
             its own from the navigator; nothing above it did. */}

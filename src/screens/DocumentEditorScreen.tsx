@@ -175,7 +175,7 @@ import NestedDocuments from '../components/NestedDocuments';
 import { createOwnedNote, makeOrdinary } from '../utils/recordNotes';
 import { binNote } from '../utils/nestedNotes';
 import { SHOW_OPEN_REPORTS, SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTiming';
-import { markEditorGone, perfSummary } from '../utils/perfWatch';
+import { logReport, markEditorGone, perfSummary } from '../utils/perfWatch';
 import { peekDocument, useDocumentIndex } from '../hooks/useDocumentIndex';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
@@ -1328,8 +1328,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // Until the page starts to move, when it grows out of a card.
     const end = marks.moving ?? drawn;
     const total = end - start;
-    // Silent unless asked for (see perfWatch's REPORTS).
-    if (!SHOW_OPEN_REPORTS || total < SLOW_OPEN_MS) return;
+    if (total < SLOW_OPEN_MS) return;
     const ms = (n: number) => `${Math.max(0, Math.round(n))} мс`;
     const steps = [
       marks.tap && marks.measured ? `картка ${ms(marks.measured - marks.tap)}` : null,
@@ -1344,7 +1343,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       marks.landed && marks.moving ? `фото смужок нотатки ${ms(marks.moving - marks.landed)}` : null,
     ].filter(Boolean);
     // And what else held the phone around the tap (utils/perfWatch).
-    notify(`Нотатка відкривалась ${(total / 1000).toFixed(1)} с`, `${steps.join(' · ')}\n\n${perfSummary(start - 2000)}`);
+    const title = `Нотатка відкривалась ${(total / 1000).toFixed(1)} с`;
+    const body = `${steps.join(' · ')}\n\n${perfSummary(start - 2000)}`;
+    // Kept for «Діагностика»; shown only if asked for (see perfWatch).
+    if (SHOW_OPEN_REPORTS) notify(title, body);
+    else logReport(title, body);
   }
 
   // While the note is open, it hears the server. An open editor used to

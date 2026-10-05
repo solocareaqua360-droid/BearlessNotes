@@ -66,9 +66,9 @@ function noteRender(label: string, now: number) {
   times.push(now);
   while (times.length && times[0] < now - LOOP_WINDOW_MS) times.shift();
   renderTimes.set(label, times);
-  if (times.length > LOOP_RENDERS && stallReporter && now - lastLoopReport > 15000) {
+  if (times.length > LOOP_RENDERS && now - lastLoopReport > 15000) {
     lastLoopReport = now;
-    const report = stallReporter;
+    const report = logReport;
     const others = Array.from(renderTimes.entries())
       .map(([l, t]) => [l, t.filter((x) => x >= now - LOOP_WINDOW_MS).length] as const)
       .filter(([, n]) => n > 5)
@@ -90,6 +90,41 @@ function noteRender(label: string, now: number) {
 // звір"). Flip REPORTS on to hear them again; everything is still counted.
 const REPORTS = false;
 let stallReporter: ((title: string, body: string) => void) | null = null;
+
+// Every report is kept (the last few), shown or not - the Documents' "⋯"
+// «Діагностика» reads them back when asked.
+const kept: { at: number; title: string; body: string }[] = [];
+export function logReport(title: string, body: string): void {
+  kept.push({ at: Date.now(), title, body });
+  while (kept.length > 8) kept.shift();
+  if (REPORTS) stallReporter?.(title, body);
+}
+export function recentReports(): string {
+  if (kept.length === 0) return 'Нічого не записано.';
+  const now = Date.now();
+  return kept
+    .slice()
+    .reverse()
+    .map((r) => `${Math.round((now - r.at) / 1000)} с тому · ${r.title}\n${r.body}`)
+    .join('\n\n');
+}
+
+// HOW LONG A TOUCH WAITED for the JS thread (2026-10-06: "процес
+// невидимий, але він відбувається і заморожує дії"). A touch carries the
+// time the phone saw it; the gap to the moment JS hears it, minus the
+// smallest gap ever seen (the clocks' own offset), is how long it waited.
+let minGap = Infinity;
+let lastTouchReport = 0;
+export function touchArrived(nativeTimestamp: number): void {
+  if (!nativeTimestamp) return;
+  const gap = Date.now() - nativeTimestamp;
+  if (gap < minGap) minGap = gap;
+  const waited = gap - minGap;
+  if (waited > 150 && Date.now() - lastTouchReport > 3000) {
+    lastTouchReport = Date.now();
+    logReport(`Дотик чекав ${waited} мс`, perfSummary(Date.now() - waited - 1500));
+  }
+}
 let lastReport = 0;
 export function setStallReporter(report: (title: string, body: string) => void): void {
   stallReporter = REPORTS ? report : null;
@@ -111,9 +146,9 @@ setInterval(() => {
     stalls.push({ at: now, ms: late });
     trim(stalls);
   }
-  if (late > STALL_REPORT_MS && stallReporter && now - lastReport > 20000) {
+  if (late > STALL_REPORT_MS && now - lastReport > 20000) {
     lastReport = now;
-    const report = stallReporter;
+    const report = logReport;
     // After this tick, so the summary includes whatever finished in it.
     setTimeout(() => report(`Застосунок завис на ${(late / 1000).toFixed(1)} с`, perfSummary(now - late - 1500)), 0);
   }
@@ -162,8 +197,8 @@ export function backMarkFocus(): void {
     idle(() => {
       const settled = last;
       const total = settled - pop;
-      if (total < 300 || !stallReporter) return;
-      stallReporter(
+      if (total < 300) return;
+      logReport(
         `Повернення тривало ${(total / 1000).toFixed(1)} с`,
         `до столів ${focus - pop} мс · кадр ${frame - focus} мс · після кадру ${settled - frame} мс${
           goneStart >= pop && goneEnd ? ` · прибирання нотатки ${goneEnd - goneStart} мс` : ''

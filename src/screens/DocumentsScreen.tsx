@@ -121,6 +121,7 @@ import { listenError } from '../utils/listenError';
 import { useRenderTimer } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
 import { FEATURES } from '../features';
+import { recentReports } from '../utils/perfWatch';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue accent wherever this screen used it.
@@ -1065,6 +1066,9 @@ export default function DocumentsScreen({
       })),
       { kind: 'rule' },
       { label: 'Смартпапки', icon: 'pricetag-outline', checked: !!activeFilter, onPress: () => drawerRef.current?.open() },
+      // Temporary (2026-10-06): what the app measured lately - read back
+      // when asked, never popped up (see utils/perfWatch).
+      { label: 'Діагностика', icon: 'pulse-outline', onPress: () => notify('Діагностика', recentReports()) },
       // Here since the pencil's hold opens the chat (2026-10-02) - the
       // same row the other databases' "⋯" has.
       ...(explorer.active
