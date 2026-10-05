@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useDeskGate } from './deskVisibility';
 
 // WHAT WAS OPENED LATELY, on this device only: a document, a board, a file,
 // a database - newest first. The start desk's «Нещодавні». Kept in the
@@ -43,8 +44,9 @@ let notifyTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function useRecentPlaces(): RecentPlace[] {
   const [value, setValue] = useState(recent);
+  const gated = useDeskGate();
   useEffect(() => {
-    const listener = () => setValue(recent);
+    const listener = () => gated('recent', () => setValue(recent));
     listeners.add(listener);
     listener();
     return () => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
+import { useDeskGate } from '../navigation/deskVisibility';
 
 // Every document, reduced to what it takes to DRAW one somewhere else:
 // its name, its cover and whether it is in the bin. Not its blocks - a
@@ -106,15 +107,18 @@ function startListening() {
 
 export function useDocumentIndex(): DocumentIndex {
   const [index, setIndex] = useState<DocumentIndex>(shared);
+  // Out of sight (a frozen desk), the newest index waits - deskVisibility.
+  const gated = useDeskGate();
 
   useEffect(() => {
-    subscribers.add(setIndex);
+    const subscriber = (next: DocumentIndex) => gated('index', () => setIndex(next));
+    subscribers.add(subscriber);
     clearTimeout(stopTimer);
     if (!stopListening) startListening();
     // What arrived between the first render and now.
     else setIndex(shared);
     return () => {
-      subscribers.delete(setIndex);
+      subscribers.delete(subscriber);
       if (subscribers.size > 0) return;
       stopTimer = setTimeout(() => {
         if (subscribers.size > 0 || !stopListening) return;

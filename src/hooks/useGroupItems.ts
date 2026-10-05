@@ -6,6 +6,7 @@ import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import { listenError } from '../utils/listenError';
+import { useDeskGate } from '../navigation/deskVisibility';
 
 // Everything a group can gather, and where each kind actually lives.
 const SOURCES: { kind: string; collectionName: string }[] = [
@@ -61,6 +62,8 @@ const ICON_BY_KIND: Record<string, keyof typeof Ionicons.glyphMap> = {
 // the same client-side filtering every database screen here already does
 // instead of composite indexes.
 export function useGroupItems() {
+  // Out of sight, the newest data waits (navigation/deskVisibility).
+  const gated = useDeskGate();
   const [groups, setGroups] = useState<Group[]>([]);
   const [customDatabases, setCustomDatabases] = useState<CustomDatabase[]>([]);
   const [itemsByGroup, setItemsByGroup] = useState<Record<string, GroupItem[]>>({});
@@ -68,35 +71,35 @@ export function useGroupItems() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    return onSnapshot(ownedQuery('groups'), (snapshot) => {
+    return onSnapshot(ownedQuery('groups'), (snapshot) => gated('groups', () => {
       setGroups(
         snapshot.docs
           .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
           .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
       );
       setIsLoading(false);
-    }, listenError('useGroupItems:groups'));
+    }), listenError('useGroupItems:groups'));
   }, []);
 
   useEffect(() => {
-    return onSnapshot(ownedQuery('customDatabases'), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabases'), (snapshot) => gated('customDatabases', () => {
       setCustomDatabases(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabase, 'id'>) })));
-    }, listenError('useGroupItems:customDatabases'));
+    }), listenError('useGroupItems:customDatabases'));
   }, []);
 
   useEffect(() => {
-    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
+    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => gated('customDatabaseRows', () => {
       const map: Record<string, CustomDatabaseRow> = {};
       snapshot.docs.forEach((d) => {
         map[d.id] = { id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) };
       });
       setCustomRowsById(map);
-    }, listenError('useGroupItems:customDatabaseRows'));
+    }), listenError('useGroupItems:customDatabaseRows'));
   }, []);
 
   useEffect(() => {
     const unsubs = SOURCES.map((source) =>
-      onSnapshot(ownedQuery(source.collectionName), (snapshot) => {
+      onSnapshot(ownedQuery(source.collectionName), (snapshot) => gated(`src:${source.collectionName}`, () => {
         setItemsByGroup((prev) => {
           const next: Record<string, GroupItem[]> = {};
           // Rebuild only this source's contribution, keeping the others.
@@ -142,7 +145,7 @@ export function useGroupItems() {
           });
           return next;
         });
-      }, listenError('useGroupItems:useGroupItems'))
+      }), listenError('useGroupItems:useGroupItems'))
     );
     return () => unsubs.forEach((u) => u());
   }, []);

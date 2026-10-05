@@ -119,6 +119,7 @@ import { go } from '../components/DesktopTabs';
 import TagEditSheet from '../components/TagEditSheet';
 import { listenError } from '../utils/listenError';
 import { useRenderTimer } from '../utils/perfWatch';
+import { useDeskGate } from '../navigation/deskVisibility';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue accent wherever this screen used it.
@@ -223,6 +224,7 @@ export default function DocumentsScreen({
     null
   );
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const gated = useDeskGate();
   const liveRecords = useLiveRecords(documents.length > 0);
   // One array per note for as long as neither the note nor the records
   // change: the card's page miniature is memoised on it, and a fresh
@@ -995,7 +997,7 @@ export default function DocumentsScreen({
     // everywhere else in this app) - only stickers with nothing in
     // usedInDocuments and not trashed belong in this "free stash" strip.
     // The full "Стікери" database screen shows every sticker regardless.
-    return onSnapshot(ownedQuery('stickers'), (snapshot) => {
+    return onSnapshot(ownedQuery('stickers'), (snapshot) => gated('stickers', () => {
       setFreeStickers(
         // Newest first, read off the raw data - StripSticker itself carries
         // no updatedAt, and the query no longer sorts (see ownedQuery).
@@ -1004,7 +1006,7 @@ export default function DocumentsScreen({
           .map((d) => ({ id: d.id, ...(d.data() as Omit<StripSticker, 'id'>) }))
           .filter((s) => !s.trashed && Object.keys(s.usedInDocuments ?? {}).length === 0)
       );
-    }, listenError('DocumentsScreen:stickers'));
+    }), listenError('DocumentsScreen:stickers'));
   }, []);
 
   function openStickerComposer() {
@@ -1071,7 +1073,8 @@ export default function DocumentsScreen({
   const purgedRef = useRef(new Set<string>());
 
   useEffect(() => {
-    return onSnapshot(ownedQuery('documents'), (snapshot) => {
+    // Out of sight, only the newest collection is kept (deskVisibility).
+    return onSnapshot(ownedQuery('documents'), (snapshot) => gated('documents', () => {
       const stampOf = new Map(snapshot.docs.map((d) => [d.id, d.data().deletedAt as number | undefined]));
       // A note nested in another (recordNotes' DocOwner) lives in it - but
       // one binned ON ITS OWN shows in the bin, or it could never come
@@ -1117,7 +1120,7 @@ export default function DocumentsScreen({
         }
       });
       setIsLoading(false);
-    }, listenError('DocumentsScreen:documents'));
+    }), listenError('DocumentsScreen:documents'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

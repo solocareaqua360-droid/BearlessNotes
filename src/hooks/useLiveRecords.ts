@@ -5,6 +5,7 @@ import { Block } from '../types';
 import { linkDocId } from '../utils/linkId';
 import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import { listenError } from '../utils/listenError';
+import { useDeskGate } from '../navigation/deskVisibility';
 
 // A photo, file or link block showing what its record says NOW.
 //
@@ -52,6 +53,8 @@ export function applyLiveRecord<T extends Referencing>(block: T, records: LiveRe
 }
 
 export function useLiveRecords(enabled: boolean): LiveRecords {
+  // Out of sight, the newest data waits (navigation/deskVisibility).
+  const gated = useDeskGate();
   const [records, setRecords] = useState<LiveRecords>({});
 
   useEffect(() => {
@@ -61,7 +64,7 @@ export function useLiveRecords(enabled: boolean): LiveRecords {
     // of rows, already in the offline cache, and open only while a
     // document that actually references something is on screen.
     const unsubscribes = [
-      onSnapshot(ownedQuery('photos'), (snapshot) => {
+      onSnapshot(ownedQuery('photos'), (snapshot) => gated('photos', () => {
         setRecords((prev) => {
           const next = { ...prev };
           snapshot.docs.forEach((d) => {
@@ -75,8 +78,8 @@ export function useLiveRecords(enabled: boolean): LiveRecords {
           });
           return next;
         });
-      }, listenError('useLiveRecords:photos')),
-      onSnapshot(ownedQuery('files'), (snapshot) => {
+      }), listenError('useLiveRecords:photos')),
+      onSnapshot(ownedQuery('files'), (snapshot) => gated('files', () => {
         setRecords((prev) => {
           const next = { ...prev };
           snapshot.docs.forEach((d) => {
@@ -92,8 +95,8 @@ export function useLiveRecords(enabled: boolean): LiveRecords {
           });
           return next;
         });
-      }, listenError('useLiveRecords:files')),
-      onSnapshot(ownedQuery('links'), (snapshot) => {
+      }), listenError('useLiveRecords:files')),
+      onSnapshot(ownedQuery('links'), (snapshot) => gated('links', () => {
         // A cover past its deadline is fetched again and written to the
         // record; this listener then delivers the live one. Outside the
         // state updater on purpose - React may run an updater twice, and
@@ -116,7 +119,7 @@ export function useLiveRecords(enabled: boolean): LiveRecords {
           });
           return next;
         });
-      }, listenError('useLiveRecords:links')),
+      }), listenError('useLiveRecords:links')),
     ];
     return () => unsubscribes.forEach((u) => u());
   }, [enabled]);

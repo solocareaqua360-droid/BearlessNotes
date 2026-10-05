@@ -55,6 +55,7 @@ import { useTags } from '../hooks/useTags';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { confirm, notify } from '../components/surfaces/Ask';
 import { useRenderTimer } from '../utils/perfWatch';
+import { useDeskGate } from '../navigation/deskVisibility';
 
 const DANGER = '#EF4444';
 const SIDE = 12;
@@ -100,6 +101,8 @@ function lighten(hex: string, amount: number): string {
 export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   // Temporary diagnosis - see utils/perfWatch.
   useRenderTimer('Проєкти');
+  // Out of sight, the newest data waits (navigation/deskVisibility).
+  const gated = useDeskGate();
   const theme = useTheme();
   const accent = theme.sections.groups;
   const styles = useStyles(makeStyles);
@@ -204,7 +207,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
     () =>
       onSnapshot(
         ownedQuery('customDatabaseViews'),
-        (snapshot) => {
+        (snapshot) => gated('views', () => {
           const next: Record<string, { id: string; databaseId: string; name: string; icon?: string }[]> = {};
           snapshot.docs.forEach((d) => {
             const v = d.data() as { groupId?: string; databaseId?: string; name?: string; icon?: string };
@@ -212,7 +215,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
             (next[v.groupId] ??= []).push({ id: d.id, databaseId: v.databaseId, name: v.name ?? '', icon: v.icon });
           });
           setViewsByGroup(next);
-        },
+        }),
         listenError('GroupsScreen:views')
       ),
     []

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Freeze from './Freeze';
+import { DeskVisibilityContext, makeVisibilityBox, setBoxVisible, type VisibilityBox } from '../navigation/deskVisibility';
 import CalendarScreen from '../screens/CalendarScreen';
 import DatabasesScreen from '../screens/DatabasesScreen';
 import { useWindowDimensions } from 'react-native';
@@ -16,6 +17,15 @@ export const SIDE_DRAWER_FRACTION = 1;
 // rest of the app while out of sight. Thawed the moment it is opened or
 // dragged; frozen again only after it has finished sliding away.
 const FREEZE_AFTER_MS = 450;
+// The drawer's own visibility box (navigation/deskVisibility): shut, its
+// screen's data waits instead of re-rendering a frozen calendar.
+function useVisibilityBox(visible: boolean): VisibilityBox {
+  const box = useRef<VisibilityBox | null>(null);
+  if (!box.current) box.current = makeVisibilityBox(visible);
+  setBoxVisible(box.current, visible);
+  return box.current;
+}
+
 function useShutFreeze(visible: boolean): boolean {
   const [frozen, setFrozen] = useState(!visible);
   useEffect(() => {
@@ -42,12 +52,15 @@ export default function CalendarDrawer() {
     [calendarOpen, closeCalendar, calendarJump]
   );
   const frozen = useShutFreeze(calendarOpen || calendarDragging);
+  const box = useVisibilityBox(!frozen);
   return (
     <SideLayer side="left" open={calendarOpen} close={closeCalendar} progress={calendarProgress} dragging={calendarDragging}>
       <CalendarDrawerContext.Provider value={drawer}>
-        <Freeze freeze={frozen}>
-          <CalendarScreen />
-        </Freeze>
+        <DeskVisibilityContext.Provider value={box}>
+          <Freeze freeze={frozen}>
+            <CalendarScreen />
+          </Freeze>
+        </DeskVisibilityContext.Provider>
       </CalendarDrawerContext.Provider>
     </SideLayer>
   );
@@ -64,6 +77,7 @@ export function DatabasesLayer() {
   const panelWidth = databasesDrawerWidth(width);
   const narrow = panelWidth < width;
   const frozen = useShutFreeze(databasesOpen || databasesDragging);
+  const box = useVisibilityBox(!frozen);
   const layer = useMemo(
     () => ({ open: databasesOpen, close: closeDatabases, narrow }),
     [databasesOpen, closeDatabases, narrow]
@@ -78,9 +92,11 @@ export function DatabasesLayer() {
       panelWidth={panelWidth}
     >
       <DatabasesLayerContext.Provider value={layer}>
-        <Freeze freeze={frozen}>
-          <DatabasesScreen />
-        </Freeze>
+        <DeskVisibilityContext.Provider value={box}>
+          <Freeze freeze={frozen}>
+            <DatabasesScreen />
+          </Freeze>
+        </DeskVisibilityContext.Provider>
       </DatabasesLayerContext.Provider>
     </SideLayer>
   );

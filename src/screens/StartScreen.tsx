@@ -40,6 +40,7 @@ import { listenError } from '../utils/listenError';
 import type { Block, CustomDatabase, CustomDatabaseRow } from '../types';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import { useRenderTimer } from '../utils/perfWatch';
+import { useDeskGate } from '../navigation/deskVisibility';
 
 // THE START DESK (2026-10-03, the user's own design, mocked up first):
 // the phone's first desk. Under the desks' bar, a row of four big buttons
@@ -510,16 +511,20 @@ function RecentFrame({ label, icon, onPress, children }: { label: string; icon: 
 }
 
 // A record is read live; gone (deleted) it draws nothing at all.
+// Out of sight (deskVisibility), only the newest version waits: the note
+// being written is a recent one, and each of its autosaves redrew its card
+// here, page miniature and all.
 function useRecord<T>(collection: string, id: string): T | null {
   const [data, setData] = useState<T | null>(null);
+  const gated = useDeskGate();
   useEffect(
     () =>
       onSnapshot(
         doc(db, collection, id),
-        (snapshot) => setData(snapshot.exists() ? (snapshot.data() as T) : null),
+        (snapshot) => gated('record', () => setData(snapshot.exists() ? (snapshot.data() as T) : null)),
         () => setData(null)
       ),
-    [collection, id]
+    [collection, id, gated]
   );
   return data;
 }
@@ -712,14 +717,16 @@ const ROOT_LIMIT = 10;
 function RootItems({ root }: { root: DeskRoot }) {
   const S = useSoft();
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
+  const gated = useDeskGate();
   useEffect(
     () =>
       onSnapshot(
         ownedQuery(root.collection),
-        (snapshot) => setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }))),
+        (snapshot) =>
+          gated('rows', () => setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })))),
         listenError(`StartScreen:root:${root.collection}`)
       ),
-    [root.collection]
+    [root.collection, gated]
   );
   if (!rows) return null;
   const here = rows

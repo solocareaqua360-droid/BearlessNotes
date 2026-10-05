@@ -86,6 +86,7 @@ import { listenError } from '../utils/listenError';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
 import { useRenderTimer } from '../utils/perfWatch';
+import { useDeskGate } from '../navigation/deskVisibility';
 
 // calendarPlate carries its own marginHorizontal:16 on each side, so the
 // week strip's actual scrollable viewport is this much narrower than the
@@ -148,6 +149,8 @@ const FILLED_ROW_HEIGHT = ROW_HEIGHT + WEEKDAY_HEADER_HEIGHT;
 export default function CalendarScreen() {
   // Temporary diagnosis - see utils/perfWatch.
   useRenderTimer('Календар');
+  // Shut, the drawer's data waits for it (navigation/deskVisibility).
+  const gated = useDeskGate();
   const baseStyles = useStyles(makeStyles);
   const theme = useTheme();
   const accent = theme.sections.calendar;
@@ -321,7 +324,7 @@ export default function CalendarScreen() {
     // before the screen works.
     return onSnapshot(
       ownedQuery('documents'),
-      (snapshot) => {
+      (snapshot) => gated('dayFeed', () => {
         const items = snapshot.docs
           .map((d) => {
             const data = d.data();
@@ -339,7 +342,7 @@ export default function CalendarScreen() {
           .sort((a, b) => (a.key < b.key ? 1 : -1));
         setDayFeed(items);
         setDayFeedLoaded(true);
-      },
+      }),
       () => {
         setDayFeed([]);
         setDayFeedLoaded(true);
@@ -598,13 +601,13 @@ export default function CalendarScreen() {
   }, [foldedAway, visibleAmount]);
 
   useEffect(() => {
-    return onSnapshot(calendarPrefsDoc, (snapshot) => {
+    return onSnapshot(calendarPrefsDoc, (snapshot) => gated('prefs', () => {
       const data = snapshot.data();
       // Reads both the new field and the old plain boolean it replaces, so
       // whatever was saved before this update still means the same thing.
       const stored = data?.compactFilter as 'none' | 'filled' | 'history' | undefined;
       setCompactFilterState(stored ?? (data?.onlyFilledDays ? 'filled' : 'none'));
-    }, listenError('CalendarScreen:calendarPrefs'));
+    }), listenError('CalendarScreen:calendarPrefs'));
   }, []);
 
   useEffect(() => {
@@ -701,7 +704,7 @@ export default function CalendarScreen() {
     // firestore_silent_empty, this time sprung by an index rather than
     // by the rules.
     const filledQuery = ownedQuery('documents');
-    return onSnapshot(filledQuery, (snapshot) => {
+    return onSnapshot(filledQuery, (snapshot) => gated('filled', () => {
       const filled = new Set<string>();
       snapshot.docs.forEach((docSnapshot) => {
         const data = docSnapshot.data();
@@ -710,7 +713,7 @@ export default function CalendarScreen() {
         if (hasNoteContent(data.title ?? '', data.blocks ?? [])) filled.add(day);
       });
       setNoteFilledDates(filled);
-    },
+    }),
     // Every listener needs one of these. A refused read - the rules, an
     // expired session - arrives here; without a handler it is thrown, and
     // an unhandled throw from a listener takes the app down rather than
@@ -734,14 +737,14 @@ export default function CalendarScreen() {
       where('reminderDate', '>=', monthStartKey),
       where('reminderDate', '<=', monthEndKey)
     );
-    return onSnapshot(remindersQuery, (snapshot) => {
+    return onSnapshot(remindersQuery, (snapshot) => gated('reminders', () => {
       const filled = new Set<string>();
       snapshot.docs.forEach((docSnapshot) => {
         const reminderDate = docSnapshot.data().reminderDate;
         if (reminderDate) filled.add(reminderDate as string);
       });
       setReminderFilledDates(filled);
-    },
+    }),
     () => setReminderFilledDates(new Set()));
   }, [visibleMonth.year, visibleMonth.month, compactFilter]);
 
@@ -1516,7 +1519,7 @@ export default function CalendarScreen() {
   // reminder-dated to this one shows here, on the sheet for the day it's
   // actually due, rather than only being visible back where it was typed.
   useEffect(() => {
-    return onSnapshot(ownedQuery('tasks', where('reminderDate', '==', selectedKey)), (snapshot) => {
+    return onSnapshot(ownedQuery('tasks', where('reminderDate', '==', selectedKey)), (snapshot) => gated('due', () => {
       setDueReminders(
         snapshot.docs.map((docSnapshot) => ({
           id: docSnapshot.id,
@@ -1531,7 +1534,7 @@ export default function CalendarScreen() {
           recurrence: docSnapshot.data().recurrence,
         }))
       );
-    }, listenError('CalendarScreen:tasks'));
+    }), listenError('CalendarScreen:tasks'));
   }, [selectedKey]);
 
   // Excludes a task physically written in this same day's own note - that

@@ -17,6 +17,7 @@ import { auth, db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
 import { Tag, TaggableKind } from '../types';
 import { listenError } from '../utils/listenError';
+import { useDeskGate } from '../navigation/deskVisibility';
 
 const tagsCollection = collection(db, 'tags');
 
@@ -85,11 +86,13 @@ export function isTagAllowedForKind(tag: Tag, kind: TaggableKind): boolean {
 // detaching the last item deletes it outright rather than leaving an
 // orphaned, unattached tag doc around.
 export function useTags() {
+  // Out of sight, the newest data waits (navigation/deskVisibility).
+  const gated = useDeskGate();
   const [tags, setTags] = useState<Tag[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    return onSnapshot(ownedQuery('tags'), (snapshot) => {
+    return onSnapshot(ownedQuery('tags'), (snapshot) => gated('tags', () => {
       setTags(
         [...snapshot.docs]
           .sort((a, b) => String(a.data().path ?? '').localeCompare(String(b.data().path ?? '')))
@@ -107,7 +110,7 @@ export function useTags() {
         })
       );
       setIsLoading(false);
-    }, listenError('useTags:tags'));
+    }), listenError('useTags:tags'));
   }, []);
 
   // Autocomplete only kicks in from 2 letters, per the picker's own caption.

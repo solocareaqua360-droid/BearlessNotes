@@ -11,6 +11,7 @@ import { SideDrawersProvider, databasesDrawerWidth, useSideDrawers } from './sid
 import { deskScreenFor } from './tabScreens';
 import { noteDeskTouched, registerDeskNode } from './deskShots';
 import Freeze from '../components/Freeze';
+import { DeskVisibilityContext, makeVisibilityBox, setBoxVisible, type VisibilityBox } from './deskVisibility';
 import { DeskContext, DesksControlContext, registerDesks, useDesks } from './desks';
 import { useRenderTimer } from '../utils/perfWatch';
 
@@ -58,7 +59,13 @@ function DeskHost({
   frozen: boolean;
 }) {
   const value = useMemo(() => ({ back, key: deskKey }), [back, deskKey]);
+  // Flipped directly, during this host's own render - the desk below is
+  // frozen and will not render to hear a context change (deskVisibility).
+  const box = useRef<VisibilityBox | null>(null);
+  if (!box.current) box.current = makeVisibilityBox(!frozen);
+  setBoxVisible(box.current, !frozen);
   return (
+    <DeskVisibilityContext.Provider value={box.current}>
     <DeskContext.Provider value={value}>
       <View
         ref={(node) => registerDeskNode(deskKey, node)}
@@ -72,6 +79,7 @@ function DeskHost({
         </Freeze>
       </View>
     </DeskContext.Provider>
+    </DeskVisibilityContext.Provider>
   );
 }
 
