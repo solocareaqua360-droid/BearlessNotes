@@ -4,3 +4,6 @@
 // picks this file over its sibling for the web target on its own; nothing
 // imports it by name, and nothing should.
 export * from 'firebase/firestore';
+// Named as well, for the stub audit: the native side wraps it (see
+// firestore.ts); here it is the SDK's own.
+export { onSnapshot } from 'firebase/firestore';

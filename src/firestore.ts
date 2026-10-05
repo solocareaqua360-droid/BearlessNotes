@@ -16,4 +16,48 @@
 // this possible at all, and it is why nothing here wraps or renames
 // anything: the moment this file starts having opinions, the two sides
 // can drift.
+//
+// ONE EXCEPTION, TEMPORARY (2026-10-05): onSnapshot is counted and timed
+// (utils/perfWatch) to find what slows the phone down over a session.
+// Same signature, same behaviour; remove once that is answered.
+import { onSnapshot as rawOnSnapshot } from '@react-native-firebase/firestore';
+import { listenerStarted, listenerStopped, snapshotHandled } from './utils/perfWatch';
+
 export * from '@react-native-firebase/firestore';
+
+function labelOf(target: unknown): string {
+  const t = target as { path?: string; _collectionPath?: { relativeName?: string } };
+  try {
+    if (typeof t.path === 'string') return `doc:${t.path.split('/')[0]}`;
+    if (t._collectionPath?.relativeName) return t._collectionPath.relativeName;
+  } catch {
+    // An unknown shape is still a listener.
+  }
+  return '?';
+}
+
+export const onSnapshot = ((target: unknown, ...args: unknown[]) => {
+  const label = labelOf(target);
+  const timed = args.map((arg, i) => {
+    // The first function is the one that receives the snapshots.
+    if (typeof arg !== 'function' || args.findIndex((a) => typeof a === 'function') !== i) return arg;
+    return (...cbArgs: unknown[]) => {
+      const start = Date.now();
+      try {
+        return (arg as (...a: unknown[]) => unknown)(...cbArgs);
+      } finally {
+        snapshotHandled(label, Date.now() - start);
+      }
+    };
+  });
+  listenerStarted(label);
+  const unsubscribe = (rawOnSnapshot as (...a: unknown[]) => () => void)(target, ...timed);
+  let stopped = false;
+  return () => {
+    if (!stopped) {
+      stopped = true;
+      listenerStopped(label);
+    }
+    unsubscribe();
+  };
+}) as typeof rawOnSnapshot;

@@ -175,6 +175,7 @@ import NestedDocuments from '../components/NestedDocuments';
 import { createOwnedNote, makeOrdinary } from '../utils/recordNotes';
 import { binNote } from '../utils/nestedNotes';
 import { SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTiming';
+import { perfSummary } from '../utils/perfWatch';
 import { peekDocument, useDocumentIndex } from '../hooks/useDocumentIndex';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
@@ -1330,7 +1331,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       marks.landed ? `до анімації ${ms(marks.landed - drawn)}` : null,
       marks.landed && marks.moving ? `фото смужок нотатки ${ms(marks.moving - marks.landed)}` : null,
     ].filter(Boolean);
-    notify(`Нотатка відкривалась ${(total / 1000).toFixed(1)} с`, steps.join(' · '));
+    // And what else held the phone around the tap (utils/perfWatch).
+    notify(`Нотатка відкривалась ${(total / 1000).toFixed(1)} с`, `${steps.join(' · ')}\n\n${perfSummary(start - 2000)}`);
   }
 
   // While the note is open, it hears the server. An open editor used to
