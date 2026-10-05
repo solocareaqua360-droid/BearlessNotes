@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef } from 'react';
+import { useContext, useEffect, useRef, memo } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,7 +35,7 @@ export function searchCornerHeight(windowWidth: number): number {
   return Math.round(dockCardHeight(windowWidth) / 2);
 }
 
-export default function SearchCorner({
+function SearchCorner({
   visible = true,
   open = false,
   query = '',
@@ -222,3 +222,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+// Its screen keeps its props stable, so it skips the screen's renders.
+export default memo(SearchCorner);

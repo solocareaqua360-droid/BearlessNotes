@@ -1636,6 +1636,12 @@ export default function DocumentsScreen({
     }),
     [theme, documents.length, groups, groupCounts, freeStickers.length, groupFilter, setGroupFilter]
   );
+  // Stable, so the search corner (memoised) skips the list's renders.
+  const openSearchCorner = useCallback(() => setSearchOpen(true), [setSearchOpen]);
+  const closeSearchCorner = useCallback(() => {
+    setSearchText('');
+    setSearchOpen(false);
+  }, [setSearchText, setSearchOpen]);
   // The list cards' handlers as they are this render (see cardActions).
   cardActionsRef.current = {
     open: (item) => (trashOpen ? openTrashMenu(item) : openDocument(item.id)),
@@ -1715,18 +1721,23 @@ export default function DocumentsScreen({
           onChangeQuery={setSearchText}
           placeholder="Пошук документів"
           soft={!!soft}
-          onOpen={() => setSearchOpen(true)}
-          onClose={() => {
-            setSearchText('');
-            setSearchOpen(false);
-          }}
+          onOpen={openSearchCorner}
+          onClose={closeSearchCorner}
         />
-        {isFocused && !(isTwoPane && !!openDoc && paneFullscreen) && (
+        {/* KEPT, HIDDEN, while a note is open over the list (2026-10-06):
+            it used to be taken down on every note opened and built again -
+            project tabs, recent folders and all - on every way back. It is
+            in the portal over everything, so out of focus it is display:
+            none rather than gone; a hidden layout's 0 is not a height. */}
+        {!(isTwoPane && !!openDoc && paneFullscreen) && (
         <GlassPortal>
         <View
-          style={[styles.topChrome, { top: chromeTop }]}
+          style={[styles.topChrome, { top: chromeTop }, !isFocused && { display: 'none' }]}
           pointerEvents="box-none"
-          onLayout={(e) => setChromeHeight(e.nativeEvent.layout.height)}
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (h > 0) setChromeHeight(h);
+          }}
         >
           {searchOpen && !onDesk && (
             // The field is the corner's (SearchCorner, below); this only

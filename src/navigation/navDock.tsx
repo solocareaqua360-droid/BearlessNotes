@@ -1,7 +1,45 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { View } from 'react-native';
 import type { MenuEntry } from '../components/surfaces/Menu';
-import { useIsFocused } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+
+// WHILE THIS SCREEN IS IN FRONT, WITHOUT RE-RENDERING IT (2026-10-06). The
+// publishers below used useIsFocused, which re-renders its component on
+// every focus and blur - so every component that published anything to the
+// bar or the dock (a screen and several of its parts) re-rendered, all at
+// once, each time a note opened or closed, only to publish or withdraw. The
+// navigation's own focus/blur events now start and stop the publication
+// directly; `run` is the effect body while in front, its return the
+// withdrawal, and `deps` restart it as useEffect's would.
+function useWhileFocused(run: () => void | (() => void), deps: unknown[]): void {
+  const navigation = useNavigation();
+  const runRef = useRef(run);
+  runRef.current = run;
+  useEffect(() => {
+    let stop: (() => void) | null = null;
+    let active = false;
+    const start = () => {
+      if (active) return;
+      active = true;
+      stop = runRef.current() || null;
+    };
+    const end = () => {
+      if (!active) return;
+      active = false;
+      stop?.();
+      stop = null;
+    };
+    if (navigation.isFocused()) start();
+    const offFocus = navigation.addListener('focus', start);
+    const offBlur = navigation.addListener('blur', end);
+    return () => {
+      offFocus();
+      offBlur();
+      end();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation, ...deps]);
+}
 import { SharedValue, useSharedValue } from 'react-native-reanimated';
 
 // What the dock is showing instead of the desks.
@@ -763,17 +801,16 @@ export function useNavDockTargetPublisher() {
 // What a pushed screen publishes so the dock can carry its way out.
 export function useDockLeave(icon: string, onLeave: () => void, enabled = true) {
   const publish = useContext(NavDockPublishContext)?.publishLeave;
-  const focused = useIsFocused();
   const leaveRef = useRef(onLeave);
   leaveRef.current = onLeave;
   // Stable by construction - a fresh handler every render would publish
   // every render, and publishing is a setState above the whole app.
   const stable = useCallback(() => leaveRef.current(), []);
-  useEffect(() => {
-    if (!publish || !focused || !enabled) return;
+  useWhileFocused(() => {
+    if (!publish || !enabled) return;
     publish({ icon, onLeave: stable });
     return () => publish(null);
-  }, [publish, focused, enabled, icon, stable]);
+  }, [publish, enabled, icon, stable]);
 }
 
 // What one of the four desks publishes as its way back, for TopNavBar.
@@ -782,17 +819,16 @@ export function useDockLeave(icon: string, onLeave: () => void, enabled = true) 
 export function useTopBack(onPress: (() => void) | null, enabled = true, icon?: string) {
   const publish = useContext(NavDockPublishContext)?.publishTopBack;
   const layer = useContext(DockLayerContext);
-  const focused = useIsFocused();
   const id = useId();
   const ref = useRef(onPress);
   ref.current = onPress;
   const stable = useCallback(() => ref.current?.(), []);
   const dimmed = !onPress;
-  useEffect(() => {
-    if (!publish || !focused || !enabled) return;
+  useWhileFocused(() => {
+    if (!publish || !enabled) return;
     publish(id, { onPress: stable, dimmed, icon }, layer);
     return () => publish(id, null);
-  }, [publish, focused, enabled, stable, dimmed, icon, id, layer]);
+  }, [publish, enabled, stable, dimmed, icon, id, layer]);
 }
 
 export function useNavTopNavUp(): boolean {
@@ -818,7 +854,6 @@ export function useTopExtras(
 ) {
   const publish = useContext(NavDockPublishContext)?.publishTopExtras;
   const layer = useContext(DockLayerContext);
-  const focused = useIsFocused();
   const id = useId();
   const ref = useRef({ menu, select, pane, tools });
   ref.current = { menu, select, pane, tools };
@@ -828,8 +863,8 @@ export function useTopExtras(
     pane ? pane.icon : null,
     tools?.map((t) => [t.key, t.icon, !!t.dimmed]) ?? null,
   ]);
-  useEffect(() => {
-    if (!publish || !focused || !enabled) return;
+  useWhileFocused(() => {
+    if (!publish || !enabled) return;
     const live = ref.current;
     publish(id, {
       menu: live.menu
@@ -855,7 +890,7 @@ export function useTopExtras(
         : null,
     }, layer);
     return () => publish(id, null);
-  }, [publish, focused, enabled, signature, id, layer]);
+  }, [publish, enabled, signature, id, layer]);
 }
 
 // A screen searching through the bar: `search` while it is searching,
@@ -866,14 +901,13 @@ export function useTopSearch(search: Omit<TopSearch, 'onChangeQuery' | 'onClose'
 } | null, enabled = true) {
   const publish = useContext(NavDockPublishContext)?.publishTopSearch;
   const layer = useContext(DockLayerContext);
-  const focused = useIsFocused();
   const id = useId();
   const ref = useRef(search);
   ref.current = search;
   const active = !!search;
   const placeholder = search?.placeholder ?? '';
-  useEffect(() => {
-    if (!publish || !focused || !enabled || !active) return;
+  useWhileFocused(() => {
+    if (!publish || !enabled || !active) return;
     publish(
       id,
       {
@@ -885,7 +919,7 @@ export function useTopSearch(search: Omit<TopSearch, 'onChangeQuery' | 'onClose'
       layer
     );
     return () => publish(id, null);
-  }, [publish, focused, enabled, active, placeholder, id, layer]);
+  }, [publish, enabled, active, placeholder, id, layer]);
 }
 
 // THE SOFT CHROME EXPERIMENT (2026-09-28): the style agreed from the
@@ -897,13 +931,12 @@ export function useTopSearch(search: Omit<TopSearch, 'onChangeQuery' | 'onClose'
 export function useChromeStyle(style: ChromeStyle | null, enabled = true) {
   const publish = useContext(NavDockPublishContext)?.publishChromeStyle;
   const layer = useContext(DockLayerContext);
-  const focused = useIsFocused();
   const id = useId();
-  useEffect(() => {
-    if (!publish || !focused || !enabled || !style) return;
+  useWhileFocused(() => {
+    if (!publish || !enabled || !style) return;
     publish(id, style, layer);
     return () => publish(id, null);
-  }, [publish, focused, enabled, style, id, layer]);
+  }, [publish, enabled, style, id, layer]);
 }
 
 export function useNavChromeStyle(): ChromeStyle | null {
@@ -950,15 +983,14 @@ export function useNavDockLeave(): DockLeave | null {
 // old, so its desks/days ring stopped after one step.
 export function useDockActions(actions: DockAction[] | null) {
   const publish = useContext(NavDockPublishContext)?.publishActions;
-  const focused = useIsFocused();
   const layer = useContext(DockLayerContext);
   const id = useId();
   const ref = useRef(actions);
   ref.current = actions;
   const wrappers = useRef(new Map<string, { onPress: () => void; onLongPress: () => void }>());
   const signature = actionSignature(actions);
-  useEffect(() => {
-    if (!publish || !focused) return;
+  useWhileFocused(() => {
+    if (!publish) return;
     const live = ref.current;
     publish(
       id,
@@ -978,7 +1010,7 @@ export function useDockActions(actions: DockAction[] | null) {
       layer
     );
     return () => publish(id, null);
-  }, [publish, focused, signature, id, layer]);
+  }, [publish, signature, id, layer]);
 }
 
 export function useNavDockActions(): DockAction[] | null {
@@ -989,7 +1021,6 @@ export function useNavDockActions(): DockAction[] | null {
 // stable-wrapper rule as the actions, for the same reason.
 export function useDockBeads(left: DockBead | null, right: DockBead | null) {
   const publish = useContext(NavDockPublishContext)?.publishBeads;
-  const focused = useIsFocused();
   const layer = useContext(DockLayerContext);
   const id = useId();
   const ref = useRef({ left, right });
@@ -1003,8 +1034,8 @@ export function useDockBeads(left: DockBead | null, right: DockBead | null) {
     },
   });
   const signature = beadSignature({ left, right });
-  useEffect(() => {
-    if (!publish || !focused) return;
+  useWhileFocused(() => {
+    if (!publish) return;
     const { left: l, right: r } = ref.current;
     publish(id, {
       left: l ? { ...l, onPress: wrap.current.left.onPress, onLongPress: l.onLongPress ? wrap.current.left.onLongPress : undefined } : null,
@@ -1018,7 +1049,7 @@ export function useDockBeads(left: DockBead | null, right: DockBead | null) {
         : null,
     }, layer);
     return () => publish(id, null);
-  }, [publish, focused, signature, id, layer]);
+  }, [publish, signature, id, layer]);
 }
 
 export function useNavDockBeads() {
@@ -1088,12 +1119,11 @@ export function useNavDockFace(): [DockFace, (face: DockFace) => void] {
 // so the preference never outlives the screen that holds it.
 export function useDockOpensOnActions(prefers: boolean) {
   const publish = useContext(NavDockPublishContext)?.publishPrefersActions;
-  const focused = useIsFocused();
-  useEffect(() => {
+  useWhileFocused(() => {
     if (!publish) return;
-    publish(focused && prefers);
+    publish(prefers);
     return () => publish(false);
-  }, [publish, focused, prefers]);
+  }, [publish, prefers]);
 }
 
 export function useNavDockPrefersActions(): boolean {
@@ -1104,12 +1134,11 @@ export function useNavDockPrefersActions(): boolean {
 // screen left mid-selection does not hand the next one a stretched dock.
 export function useDockWide(wide: boolean) {
   const publish = useContext(NavDockPublishContext)?.publishWide;
-  const focused = useIsFocused();
-  useEffect(() => {
+  useWhileFocused(() => {
     if (!publish) return;
-    publish(focused && wide);
+    publish(wide);
     return () => publish(false);
-  }, [publish, focused, wide]);
+  }, [publish, wide]);
 }
 
 export function useNavDockWide(): boolean {

@@ -4,7 +4,7 @@ import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { auth } from '../firebase';
@@ -398,7 +398,6 @@ function TagsDrawerInner({
   // so without this, the tag row and the "#" button from a screen the
   // user has merely visited once kept floating over whichever tab they
   // actually navigated to next.
-  const isFocused = useIsFocused();
   const [isOpen, setIsOpen] = useState(false);
   // The backdrop+panel live inside a real Modal (a separate Android window,
   // always painted above the whole activity - including the floating
