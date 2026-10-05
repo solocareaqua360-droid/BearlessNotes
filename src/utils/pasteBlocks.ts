@@ -38,13 +38,29 @@ const MD_ROW = /^\s*\|.*\|\s*$/;
 // The line of dashes under a markdown table's head, which is not data.
 const MD_RULE = /^\s*\|[\s:|-]+\|\s*$/;
 
+// The inline marks of markdown (what a chat answer copied out of Claude,
+// ChatGPT or Notion carries) in this editor's own terms. `code` has no
+// mark of its own here, so its backticks simply go - in a pasted table
+// they stood around every second word ("documents", "title"...) and read
+// as litter. *italic* is this editor's _italic_; **bold** is already the
+// same mark. A <br> inside a table cell is the line break it stands for.
+export function inlineMarkdown(text: string): string {
+  return text
+    .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/(^|[^*\w])\*([^\s*](?:[^*\n]*[^\s*])?)\*(?!\*)/g, '$1_$2_')
+    .replace(/<br\s*\/?>/gi, '\n');
+}
+
 function mdCells(line: string): string[] {
+  // An escaped pipe is a pipe IN the cell, not a wall between two.
+  const PIPE = '\u0000';
   return line
     .trim()
+    .replace(/\\\|/g, PIPE)
     .replace(/^\|/, '')
     .replace(/\|$/, '')
     .split('|')
-    .map((cell) => cell.trim());
+    .map((cell) => inlineMarkdown(cell.trim().split(PIPE).join('|')));
 }
 
 function tableAt(lines: string[], start: number): { rows: TableRow[]; end: number } | null {
@@ -82,7 +98,7 @@ export function parsePastedText(raw: string): ParsedBlock[] {
 
   const flush = () => {
     if (paragraph.length === 0) return;
-    const text = paragraph.join('\n').replace(/\s+$/, '');
+    const text = inlineMarkdown(paragraph.join('\n').replace(/\s+$/, ''));
     if (text !== '') out.push({ type: 'paragraph', text });
     paragraph = [];
   };
@@ -125,25 +141,25 @@ export function parsePastedText(raw: string): ParsedBlock[] {
     const heading = line.match(HEADING);
     if (heading) {
       flush();
-      out.push({ type: 'heading', text: heading[2], headingLevel: heading[1].length });
+      out.push({ type: 'heading', text: inlineMarkdown(heading[2]), headingLevel: heading[1].length });
       continue;
     }
     const checkbox = line.match(CHECKBOX);
     if (checkbox) {
       flush();
-      out.push({ type: 'checkbox', text: checkbox[2], checked: checkbox[1].toLowerCase() === 'x' });
+      out.push({ type: 'checkbox', text: inlineMarkdown(checkbox[2]), checked: checkbox[1].toLowerCase() === 'x' });
       continue;
     }
     const numbered = line.match(NUMBERED);
     if (numbered) {
       flush();
-      out.push({ type: 'numbered', text: numbered[1] });
+      out.push({ type: 'numbered', text: inlineMarkdown(numbered[1]) });
       continue;
     }
     const bullet = line.match(BULLET);
     if (bullet) {
       flush();
-      out.push({ type: 'bulleted', text: bullet[1] });
+      out.push({ type: 'bulleted', text: inlineMarkdown(bullet[1]) });
       continue;
     }
     paragraph.push(line);
