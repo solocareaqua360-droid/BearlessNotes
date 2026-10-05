@@ -92,10 +92,13 @@ export function DatabasesLayer() {
       panelWidth={panelWidth}
     >
       <DatabasesLayerContext.Provider value={layer}>
+        {/* NOT frozen (2026-10-06): a tile dragged out of this drawer onto
+            the desks is still this screen's - its ghost, its drop - after
+            the drawer has shut, and freezing it there left the ghost
+            hanging in the middle and the drop undone. Its data is quiet
+            while shut anyway (the box, and useDatabaseContents). */}
         <DeskVisibilityContext.Provider value={box}>
-          <Freeze freeze={frozen}>
-            <DatabasesScreen />
-          </Freeze>
+          <DatabasesScreen />
         </DeskVisibilityContext.Provider>
       </DatabasesLayerContext.Provider>
     </SideLayer>
