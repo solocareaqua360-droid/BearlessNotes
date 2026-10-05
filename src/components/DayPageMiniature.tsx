@@ -8,6 +8,8 @@ import BlockRow from './BlockRow';
 import { visibleBlocks } from '../utils/toggleBlocks';
 import { useContext } from 'react';
 import { PreviewDepthContext } from './previewDepth';
+import PagePreviewRow, { isLightRow } from './PagePreviewRow';
+import { useTextScale } from '../theme/ThemeProvider';
 
 // A day's page, shrunk - what the calendar's overview on a phone is made
 // of.
@@ -60,6 +62,7 @@ function DayPageMiniature({
   // showed what its page hides would stop being the same picture.
   const shown = visibleBlocks(blocks).slice(0, MAX_ROWS);
   const depth = useContext(PreviewDepthContext);
+  const textScale = useTextScale();
   return (
     <PreviewDepthContext.Provider value={depth + 1}>
     <View
@@ -115,6 +118,22 @@ function DayPageMiniature({
           if (item.exitsToggle) indented = false;
           const rowIndented = indented;
           if (item.type === 'toggle') indented = true;
+          // Text rows drawn directly, the rest through BlockRow's preview -
+          // the same look either way (see PagePreviewRow).
+          if (isLightRow(item)) {
+            return (
+              <PagePreviewRow
+                key={item.id}
+                item={item}
+                indented={rowIndented}
+                listNumber={item.type === 'numbered' ? runningNumber : undefined}
+                paperColor={null}
+                styles={editorStyles}
+                theme={theme}
+                textScale={textScale}
+              />
+            );
+          }
           return (
             <BlockRow
               key={item.id}

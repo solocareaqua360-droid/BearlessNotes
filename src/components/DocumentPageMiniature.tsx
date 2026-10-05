@@ -13,6 +13,8 @@ import DocumentTagsBlock from './DocumentTagsBlock';
 import { PAGE_HEADER_TOP, PAGE_SHEET_INSET, makeStyles as makeEditorStyles } from './documentEditorStyles';
 import { useContext } from 'react';
 import { PreviewDepthContext } from './previewDepth';
+import PagePreviewRow, { isLightRow } from './PagePreviewRow';
+import { useTextScale } from '../theme/ThemeProvider';
 
 // A DOCUMENT'S OWN PAGE, made small - the card as a picture of the thing
 // rather than a design about it.
@@ -121,6 +123,7 @@ function DocumentPageMiniature({
   const fits = Math.ceil((height / scale + offsetY) / 26);
   const shown = all.slice(from, from + Math.min(MAX_ROWS, Math.max(4, fits)));
   const depth = useContext(PreviewDepthContext);
+  const textScale = useTextScale();
   return (
     <PreviewDepthContext.Provider value={depth + 1}>
     <View
@@ -178,6 +181,23 @@ function DocumentPageMiniature({
               if (item.exitsToggle) indented = false;
               const rowIndented = indented;
               if (item.type === 'toggle') indented = true;
+              // Text rows drawn directly, the rest through BlockRow's
+              // preview - the same look either way (see PagePreviewRow).
+              if (isLightRow(item)) {
+                return (
+                  <PagePreviewRow
+                    key={item.id}
+                    item={item}
+                    indented={rowIndented}
+                    listNumber={item.type === 'numbered' ? numbered : undefined}
+                    paperColor={paperColor}
+                    searchHighlight={highlight}
+                    styles={editorStyles}
+                    theme={theme}
+                    textScale={textScale}
+                  />
+                );
+              }
               return (
                 <BlockRow
                   key={item.id}

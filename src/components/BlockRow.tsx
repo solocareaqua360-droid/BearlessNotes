@@ -143,8 +143,8 @@ type BlockRowProps = {
 };
 
 // A word linking to a note, at rest: blue, as links are read everywhere.
-const LINK_BLUE = '#2563EB';
-const LINK_BLUE_DARK = '#60A5FA';
+export const LINK_BLUE = '#2563EB';
+export const LINK_BLUE_DARK = '#60A5FA';
 
 export default function BlockRow({
   item,
