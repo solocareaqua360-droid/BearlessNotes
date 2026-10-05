@@ -914,7 +914,21 @@ export default function BlockRow({
           hitSlop={8}
           disabled={!isSelectMode}
           onPress={() => onToggleSelected(item.id)}
-          style={[styles.dragHandle, !isSelectMode && styles.dragHandleFloating]}
+          style={[
+            styles.dragHandle,
+            !isSelectMode && styles.dragHandleFloating,
+            // CHOOSING DOES NOT REFLOW THE TEXT (2026-10-05: "при натисканні
+            // множинного вибору текст скаче ... на 1/3 екрана"): the checkbox
+            // used to join the row as a column, every block lost its width,
+            // long paragraphs wrapped into more lines and everything above
+            // the eye moved. It floats now, in the block's top-right corner,
+            // on the paper's own colour so a line's last word under it is
+            // covered, not tangled with it.
+            isSelectMode && [
+              styles.dragHandleFloating,
+              { opacity: 1, top: 2, right: -6, borderRadius: 10, backgroundColor: rowPaperColor?.background ?? theme.paper.fill },
+            ],
+          ]}
         >
           {isSelectMode ? (
             // The soft style's choosing mark (SoftCheck) - the same
