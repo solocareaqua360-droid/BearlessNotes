@@ -70,6 +70,8 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
   // Where the editor's sheet starts: below the status bar.
   const sheetY = useSharedValue(useSafeAreaInsets().top);
   const rootRef = useRef<View>(null);
+  // On the way out: the page no longer takes taps (see the fold below).
+  const [leaving, setLeaving] = useState(false);
   const box = useRef<Rect | null>(null);
   const landed = useRef(false);
   const started = useRef(false);
@@ -144,9 +146,19 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
         cy.value = card.y - frame.y;
         cw.value = card.width;
         ch.value = card.height;
+        // Folded, the page goes AT ONCE, on the UI thread: the list's own
+        // card is right under it, in the same place. It used to stay up
+        // until the pop had been committed - the editor taken down, the
+        // list redrawn - and for that half second the folded page (the
+        // note's own shade and edge fade) stood where the card is and then
+        // blinked into it, taking every tap meanwhile (2026-10-05).
         t.value = withTiming(0, { duration: BACK_MS, easing: EASE }, (finished) => {
-          if (finished) runOnJS(leave)();
+          if (finished) {
+            shown.value = 0;
+            runOnJS(leave)();
+          }
         });
+        setLeaving(true);
         if (carrying) chromeT.value = withTiming(0, { duration: BACK_MS, easing: EASE });
       });
     });
@@ -202,7 +214,7 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
 
   return (
     <View ref={rootRef} style={StyleSheet.absoluteFill} onLayout={onLayout} collapsable={false} pointerEvents="box-none">
-      <Animated.View style={[styles.clip, clip]}>
+      <Animated.View style={[styles.clip, clip]} pointerEvents={leaving ? 'none' : 'auto'}>
         <Animated.View style={[styles.page, page]}>{children}</Animated.View>
       </Animated.View>
     </View>
