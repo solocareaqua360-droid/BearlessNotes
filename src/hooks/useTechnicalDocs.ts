@@ -21,7 +21,8 @@ export function useTechnicalDocs(): TechnicalDoc[] {
           const next: TechnicalDoc[] = [];
           snapshot.docs.forEach((d) => {
             const data = d.data();
-            if (!data.owner || data.deletedAt) return;
+            // A note nested in another is not technical (see DocOwner).
+            if (!data.owner || data.deletedAt || data.owner.kind === 'note') return;
             next.push({
               id: d.id,
               title: (data.title as string) ?? '',

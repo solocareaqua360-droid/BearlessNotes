@@ -29,6 +29,9 @@ export type IndexedDocument = {
   // note must not offer one.
   deletedAt?: number;
   linksTo?: string[];
+  createdAt?: number;
+  // The note it is nested in (recordNotes' DocOwner kind 'note').
+  parentId?: string;
 };
 
 export type DocumentIndex = Map<string, IndexedDocument>;
@@ -57,6 +60,8 @@ export function useDocumentIndex(): DocumentIndex {
             updatedAt: data.updatedAt as number | undefined,
             deletedAt: data.deletedAt as number | undefined,
             linksTo: (data.linksTo as string[] | undefined) ?? undefined,
+            createdAt: data.createdAt as number | undefined,
+            parentId: data.owner?.kind === 'note' ? (data.owner.id as string) : undefined,
           });
         });
         setIndex(next);

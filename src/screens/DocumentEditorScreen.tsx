@@ -171,6 +171,8 @@ import StockPhotoPicker from '../components/StockPhotoPicker';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import DocumentPickerModal from '../components/DocumentPickerModal';
 import RelatedDocuments from '../components/RelatedDocuments';
+import NestedDocuments from '../components/NestedDocuments';
+import { createOwnedNote, makeOrdinary } from '../utils/recordNotes';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
@@ -2750,6 +2752,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             { label: 'Проект', icon: 'folder-outline', checked: !!groupId, onPress: () => setGroupPickerVisible(true) },
             { label: 'Експорт', icon: 'share-outline', onPress: askExport },
             { label: 'Копіювати посилання', icon: 'link-outline', onPress: copyNoteAddress },
+            // Nested in another note: out into the documents list, with
+            // its own nested ones still inside it.
+            ...(documentIndex.get(documentId)?.parentId
+              ? [{ label: 'Зробити самостійною', icon: 'open-outline' as const, onPress: makeStandalone }]
+              : []),
             { label: 'Створити картки', icon: 'albums-outline', onPress: () => makeFlashcards(blocks) },
             { kind: 'rule' },
             { label: 'Видалити', icon: 'trash-outline', tone: 'danger', onPress: confirmDeleteDocument },
@@ -3109,6 +3116,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     notify('Посилання скопійовано', 'Встав його в іншу нотатку - воно стане словом-посиланням на цю.');
   }
 
+  async function makeStandalone() {
+    try {
+      await makeOrdinary(documentId);
+      notify('Тепер самостійна', 'Нотатка в загальному списку, посилання на неї лишились.');
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+    }
+  }
+
   function openNoteLink(ref: string) {
     const { documentId: target, blockId } = parseNoteRef(ref);
     if (target === documentId && blockId) {
@@ -3204,9 +3220,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setTimeout(() => setSelection(inputRefs.current[at.blockId], pos, pos), 40);
   }
 
+  // «Нова нотатка» from the @ window: nested in this one (the user's) -
+  // its home is the «Вкладені» at this note's foot, the word only a way
+  // there.
   async function createNoteForLink(title: string) {
     try {
-      const id = await clipBlocksToNote(title, []);
+      const id = await createOwnedNote({ kind: 'note', id: documentId }, title);
       insertNoteLink(id, title);
     } catch (e) {
       notify('Не збереглося', (e as Error).message);
@@ -6057,6 +6076,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               </Pressable>
             )}
           </View>
+        )}
+        {!embedded && (
+          <NestedDocuments documentId={documentId} index={documentIndex} onOpen={openReferencedDocument} />
         )}
         {!embedded && (
           <RelatedDocuments

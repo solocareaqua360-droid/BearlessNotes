@@ -159,8 +159,11 @@ export async function backupToDrive(
   const ordinary = want('notes') ? documents.filter((d) => !(typeof d.calendarDate === 'string' && d.calendarDate)) : [];
   // Technical notes (an app's «Розбір» - recordNotes) apart from the
   // ordinary ones, as they are apart in the app.
-  const notes = ordinary.filter((d) => !d.owner);
-  const technical = ordinary.filter((d) => !!d.owner);
+  // A note nested in another one is an ordinary note (recordNotes' DocOwner).
+  const isTechnical = (d: (typeof ordinary)[number]) =>
+    !!d.owner && (d.owner as { kind?: string }).kind !== 'note';
+  const notes = ordinary.filter((d) => !isTechnical(d));
+  const technical = ordinary.filter(isTechnical);
   const notesFolder = notes.length ? await createDriveFolder('Нотатки', root) : null;
   const technicalFolder = technical.length ? await createDriveFolder('Технічні нотатки', root) : null;
   const daysFolder = days.length ? await createDriveFolder('Щоденник', root) : null;

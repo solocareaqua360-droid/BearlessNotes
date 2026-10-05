@@ -73,7 +73,8 @@ export function useDatabaseContents(): DatabaseContents {
 
   // Daily notes live in the documents collection but are the diary, not
   // the documents - the same split the documents list itself makes.
-  const notes = documents.filter((d) => !d.calendarDate);
+  // A note nested in another lives inside it, not among the documents.
+  const notes = documents.filter((d) => !d.calendarDate && (d.owner as { kind?: string } | undefined)?.kind !== 'note');
   const diary = documents.filter((d) => !!d.calendarDate);
   const byCategory = { geo: [] as Row[], other: [] as Row[], video: [] as Row[] };
   for (const link of links) {

@@ -10,7 +10,14 @@ import { addDoc, setDoc } from './owned';
 // What is put in one (a picture, a link, a file) is technical with it -
 // see useTechnicalDocs and the databases' "вкладення записів".
 
-export type DocOwner = { kind: 'row'; id: string; databaseId: string } | { kind: 'link'; id: string };
+// A NESTED NOTE (2026-10-05) is owned the same way, by another note: kept
+// out of the documents list, shown at the foot of its parent («Вкладені»),
+// binned with it. Unlike a record's notes it is an ordinary note in every
+// other respect - what is put in it is not technical (useTechnicalDocs).
+export type DocOwner =
+  | { kind: 'row'; id: string; databaseId: string }
+  | { kind: 'link'; id: string }
+  | { kind: 'note'; id: string };
 
 // The record's main note («Розбір») has an id of its own, the way a day's
 // note does (day_<date>): found without a query, never made twice.
