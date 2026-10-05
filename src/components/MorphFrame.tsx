@@ -126,11 +126,20 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
       if (type !== 'GO_BACK' && type !== 'POP') return;
       e.preventDefault();
       passing = true;
+      // A growth that had not started yet must not start under the fold.
+      started.current = true;
       const frame = box.current;
       Promise.all([measureCard(morphKey), chromeBackBegin()]).then(([card, carrying]) => {
         // The list's own chrome mounts with its focus, after the pop: the
         // stand-in waits for it before it goes.
+        // Once, whatever happens to the fold: an interrupted animation
+        // (finished false) used to leave the note on the stack, unseen,
+        // with the desks' bar waiting for it to go.
+        let left = false;
         const leave = () => {
+          if (left) return;
+          left = true;
+          shown.value = 0;
           navigation.dispatch(e.data.action as never);
           if (carrying) chromeEnd('list');
         };
@@ -153,11 +162,11 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
         // note's own shade and edge fade) stood where the card is and then
         // blinked into it, taking every tap meanwhile (2026-10-05).
         t.value = withTiming(0, { duration: BACK_MS, easing: EASE }, (finished) => {
-          if (finished) {
-            shown.value = 0;
-            runOnJS(leave)();
-          }
+          if (finished) shown.value = 0;
+          runOnJS(leave)();
         });
+        // And if the animation never reports at all.
+        setTimeout(leave, BACK_MS + 400);
         setLeaving(true);
         if (carrying) chromeT.value = withTiming(0, { duration: BACK_MS, easing: EASE });
       });

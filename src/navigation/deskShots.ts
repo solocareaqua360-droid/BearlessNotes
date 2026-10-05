@@ -154,16 +154,18 @@ function canCapture(key: string) {
 }
 
 // Told by a desk's wrapper each time a touch on it ends.
-export function noteDeskTouched(key: string) {
-  lastTouch = Date.now();
-  if (quietTimer) clearTimeout(quietTimer);
-  quietTimer = setTimeout(() => {
-    quietTimer = null;
-    if (canCapture(key)) captureDesk(key);
-  }, QUIET_MS);
+// NO MORE PICTURES ON EVERY TOUCH (2026-10-05). The desk used to be
+// photographed 1.5 s after any touch ended and every 45 s while idle. A
+// photograph of a whole desk is drawn on Android's UI thread - the one
+// that takes taps - and on a desk of blurred cards and page miniatures it
+// took long enough to be felt: the random half-second freezes a moment
+// after doing anything, which no JS measurement could see. A desk is now
+// photographed only when it is arrived at and when the switcher closes
+// (FloatingIslandTabBar). Kept as a no-op so the desk host need not change.
+export function noteDeskTouched(_key: string) {
+  void lastTouch;
+  void quietTimer;
+  void QUIET_MS;
+  void IDLE_EVERY_MS;
+  void canCapture;
 }
-
-setInterval(() => {
-  if (!current || Date.now() - lastTouch < QUIET_MS * 2) return;
-  if (canCapture(current)) captureDesk(current);
-}, IDLE_EVERY_MS);

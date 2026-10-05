@@ -130,12 +130,10 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   }, [deskControl, currentDesk, switcherOpen]);
   // Every desk, a few seconds after the app has come up - so the panel
   // never opens on a desk it has no picture of (deskShots).
-  useEffect(() => {
-    if (!deskControl) return;
-    const timer = setTimeout(() => captureAllDesks(), 3500);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!deskControl, state.routes.length]);
+  // NOT any more (2026-10-05): every desk, one after another, a few seconds
+  // after start and after any desk was added or closed - each a picture of
+  // a whole screen drawn on the thread that takes taps. A desk with no
+  // picture yet shows its icon in the switcher, and gets one when visited.
   // NOT at the start of a pull: by then the list is already being pulled
   // down, so the picture showed it displaced, and it replaced the last one
   // in the middle of the gesture (2026-10-04). Instead the desk in front is
