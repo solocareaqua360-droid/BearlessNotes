@@ -122,6 +122,7 @@ import { useRenderTimer } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
 import { FEATURES } from '../features';
 import { recentReports } from '../utils/perfWatch';
+import WhileOpen from '../components/WhileOpen';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue accent wherever this screen used it.
@@ -1562,6 +1563,79 @@ export default function DocumentsScreen({
     );
   }
 
+  // THE DRAWER'S PROPS, the same objects while their contents stand (the
+  // drawer is memoised - built inline, every one of them was new on every
+  // render, and the whole folder tree re-rendered with the list each time a
+  // note was opened or closed). Its one handler reads the latest state
+  // through a ref.
+  const drawerTagsShown = useMemo(
+    () => (explorerMode ? tags.filter((t) => t.types.includes('document') || drawerTags.some((d) => d.id === t.id)) : drawerTags),
+    [explorerMode, tags, drawerTags]
+  );
+  const selectFilterRef = useRef<(filter: typeof activeFilter) => void>(() => {});
+  selectFilterRef.current = (filter) => {
+    // With the folders in the list, a folder tapped in the drawer
+    // is a place to go, not a filter to add.
+    if (explorerMode && filter?.type === 'tags') {
+      const last = filter.tagIds[filter.tagIds.length - 1];
+      const tag = drawerTags.find((t) => t.id === last);
+      if (tag) explorer.setPath(tag.path);
+      return;
+    }
+    if (explorerMode && filter?.type === 'untagged') {
+      explorer.setPath('');
+      return;
+    }
+    setActiveFilter(filter);
+  };
+  const onDrawerSelectFilter = useCallback((filter: typeof activeFilter) => selectFilterRef.current(filter), []);
+  const drawerMode = useMemo(() => ({ value: listMode, onChange: setListMode }), [listMode, setListMode]);
+  const drawerStickers = useMemo(
+    () =>
+      FEATURES.stickers
+        ? {
+            count: freeStickers.length,
+            active: groupFilter === STICKERS_GROUP,
+            onToggle: () => setGroupFilter(groupFilter === STICKERS_GROUP ? null : STICKERS_GROUP),
+          }
+        : undefined,
+    [freeStickers.length, groupFilter, setGroupFilter]
+  );
+  const drawerTrash = useMemo(() => ({ count: trashed.length, onOpen: () => setTrashOpen(true) }), [trashed.length]);
+  const drawerGroupSection = useMemo(
+    () => ({
+      // The same list the tabs show, sentinels and all, so the two
+      // never disagree about what there is to pick.
+      items: [
+        { id: null, name: 'Всі', color: theme.ink.muted, count: documents.length },
+        ...groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          color: g.color,
+          count: groupCounts.byGroup[g.id] ?? 0,
+        })),
+        {
+          id: UNASSIGNED_ID,
+          name: 'Без проекту',
+          color: theme.ink.muted,
+          count: groupCounts.ungrouped,
+        },
+        ...(FEATURES.stickers
+          ? [
+              {
+                id: STICKERS_GROUP,
+                name: 'Стікери',
+                color: STICKER_YELLOW,
+                count: freeStickers.length,
+              },
+            ]
+          : []),
+      ],
+      selected: groupFilter,
+      onSelect: setGroupFilter,
+    }),
+    [theme, documents.length, groups, groupCounts, freeStickers.length, groupFilter, setGroupFilter]
+  );
   // The list cards' handlers as they are this render (see cardActions).
   cardActionsRef.current = {
     open: (item) => (trashOpen ? openTrashMenu(item) : openDocument(item.id)),
@@ -1712,6 +1786,7 @@ export default function DocumentsScreen({
         </GlassPortal>
         )}
 
+        <WhileOpen open={stickerComposerVisible}>
         <StickerComposer
           visible={stickerComposerVisible}
           editingTextSticker={editingTextSticker}
@@ -1720,6 +1795,7 @@ export default function DocumentsScreen({
             setEditingTextSticker(null);
           }}
         />
+        </WhileOpen>
 
         {viewerImageUri && (
           // Modal (its own native window on Android) rather than a plain
@@ -1737,12 +1813,14 @@ export default function DocumentsScreen({
           </Modal>
         )}
 
+        <WhileOpen open={sketchEditing !== null}>
         <SketchEditor
           visible={sketchEditing !== null}
           initialElements={sketchEditing?.sketchElements ?? []}
           onSave={saveSketchEdit}
           onClose={() => setSketchEditing(null)}
         />
+        </WhileOpen>
 
         {/* An empty search is a question, not a list: the screen stays
             bare until something is typed for, and everything comes back
@@ -2230,6 +2308,7 @@ export default function DocumentsScreen({
             choose in it. They were rows of the "..." menu, two taps away;
             the user asked for exactly these two on the rail and no more,
             grouped, so the rail does not turn into a wall of options. */}
+        <WhileOpen open={sortMenuOpen}>
         <Menu
           visible={sortMenuOpen}
           onClose={() => setSortMenuOpen(false)}
@@ -2251,6 +2330,7 @@ export default function DocumentsScreen({
           // Above the dock, where the button that opens it now lives.
           style={{ position: 'absolute', right: 16, bottom: listBottomPad + insets.bottom }}
         />
+        </WhileOpen>
         </View>
 
         {/* Only where there IS a document. An empty half saying "pick
@@ -2330,73 +2410,21 @@ export default function DocumentsScreen({
         ref={drawerRef}
         // The drawer's own tree view, in explorer mode, wants every
         // document tag - including one kept on purpose while still empty
-        // (Tag.keep), which drawerTags itself leaves out because an empty
-        // tag is not normally shown. That is the explorer's one exception
-        // to the drawer's usual rule.
-        tags={explorerMode ? tags.filter((t) => t.types.includes('document') || drawerTags.some((d) => d.id === t.id)) : drawerTags}
+        // (Tag.keep), which drawerTags itself leaves out. See the memoised
+        // props above the return.
+        tags={drawerTagsShown}
         activeFilter={activeFilter}
-        onSelectFilter={(filter) => {
-          // With the folders in the list, a folder tapped in the drawer
-          // is a place to go, not a filter to add.
-          if (explorerMode && filter?.type === 'tags') {
-            const last = filter.tagIds[filter.tagIds.length - 1];
-            const tag = drawerTags.find((t) => t.id === last);
-            if (tag) explorer.setPath(tag.path);
-            return;
-          }
-          if (explorerMode && filter?.type === 'untagged') {
-            explorer.setPath('');
-            return;
-          }
-          setActiveFilter(filter);
-        }}
+        onSelectFilter={onDrawerSelectFilter}
         hideOpenButton={isSelectMode || searchingAlone}
         counts={drawerCounts}
-        mode={{ value: listMode, onChange: setListMode }}
-        stickers={
-          FEATURES.stickers
-            ? {
-                count: freeStickers.length,
-                active: groupFilter === STICKERS_GROUP,
-                onToggle: () => setGroupFilter(groupFilter === STICKERS_GROUP ? null : STICKERS_GROUP),
-              }
-            : undefined
-        }
-        trash={{ count: trashed.length, onOpen: () => setTrashOpen(true) }}
-        groupSection={{
-          // The same list the tabs show, sentinels and all, so the two
-          // never disagree about what there is to pick.
-          items: [
-            { id: null, name: 'Всі', color: theme.ink.muted, count: documents.length },
-            ...groups.map((g) => ({
-              id: g.id,
-              name: g.name,
-              color: g.color,
-              count: groupCounts.byGroup[g.id] ?? 0,
-            })),
-            {
-              id: UNASSIGNED_ID,
-              name: 'Без проекту',
-              color: theme.ink.muted,
-              count: groupCounts.ungrouped,
-            },
-            ...(FEATURES.stickers
-              ? [
-                  {
-                    id: STICKERS_GROUP,
-                    name: 'Стікери',
-                    color: STICKER_YELLOW,
-                    count: freeStickers.length,
-                  },
-                ]
-              : []),
-          ],
-          selected: groupFilter,
-          onSelect: setGroupFilter,
-        }}
+        mode={drawerMode}
+        stickers={drawerStickers}
+        trash={drawerTrash}
+        groupSection={drawerGroupSection}
       />
 
       {folderHold.menu}
+      <WhileOpen open={explorer.folderPrompt !== null}>
       <RenamePrompt
         visible={explorer.folderPrompt !== null}
         title={
@@ -2411,7 +2439,9 @@ export default function DocumentsScreen({
         onCancel={() => explorer.setFolderPrompt(null)}
         onSave={explorer.saveFolderName}
       />
+      </WhileOpen>
 
+      <WhileOpen open={docRename !== null}>
       <RenamePrompt
         visible={docRename !== null}
         title="Назва нотатки"
@@ -2424,7 +2454,9 @@ export default function DocumentsScreen({
           if (target) updateDoc(doc(db, 'documents', target.id), { title: title.trim(), updatedAt: Date.now() });
         }}
       />
+      </WhileOpen>
 
+      <WhileOpen open={folderEdit !== null}>
       <TagEditSheet
         visible={folderEdit !== null}
         tag={folderEdit}
@@ -2438,6 +2470,7 @@ export default function DocumentsScreen({
           list.updateTag(target, { path: target.path, icon, color, types }).then(() => explorer.renameFolder(target.path, path.trim()));
         }}
       />
+      </WhileOpen>
 
       {/* The recent folders over the dock while something is selected -
           one tap files the selection (the folders rework, step 2). */}
@@ -2445,6 +2478,7 @@ export default function DocumentsScreen({
         <RecentFolderStrip tags={tags} onPick={bulkAttachTag} onOther={() => setBulkTagPickerVisible(true)} />
       )}
 
+      <WhileOpen open={bulkTagPickerVisible}>
       <TagPicker
         visible={bulkTagPickerVisible}
         kind="document"
@@ -2456,7 +2490,9 @@ export default function DocumentsScreen({
         onRenameTag={renameTag}
         onClose={() => setBulkTagPickerVisible(false)}
       />
+      </WhileOpen>
 
+      <WhileOpen open={bulkGroupPickerVisible}>
       <GroupPickerSheet
         visible={bulkGroupPickerVisible}
         kind="document"
@@ -2464,7 +2500,9 @@ export default function DocumentsScreen({
         onPick={bulkAssignGroup}
         onClose={() => setBulkGroupPickerVisible(false)}
       />
+      </WhileOpen>
 
+      <WhileOpen open={!!singleGroupTargetId}>
       <GroupPickerSheet
         visible={!!singleGroupTargetId}
         kind="document"
@@ -2472,6 +2510,7 @@ export default function DocumentsScreen({
         onPick={assignSingleGroup}
         onClose={() => setSingleGroupTargetId(null)}
       />
+      </WhileOpen>
 
     </View>
   );

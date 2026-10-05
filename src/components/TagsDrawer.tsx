@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState, memo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -1105,5 +1105,7 @@ const makeStyles = (t: Theme) =>
 
 // forwardRef, so the screen can open the drawer from its swipe - see
 // useDrawerSwipe.
-const TagsDrawer = forwardRef(TagsDrawerInner);
+// Memoised (2026-10-06): its screen keeps every prop stable, so it no
+// longer re-renders with every render of the list around it.
+const TagsDrawer = memo(forwardRef(TagsDrawerInner));
 export default TagsDrawer;
