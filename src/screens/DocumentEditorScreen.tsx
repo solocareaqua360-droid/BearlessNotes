@@ -175,7 +175,7 @@ import NestedDocuments from '../components/NestedDocuments';
 import { createOwnedNote, makeOrdinary } from '../utils/recordNotes';
 import { binNote } from '../utils/nestedNotes';
 import { SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTiming';
-import { useDocumentIndex } from '../hooks/useDocumentIndex';
+import { peekDocument, useDocumentIndex } from '../hooks/useDocumentIndex';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
 import { BlurView } from 'expo-blur';
@@ -1181,19 +1181,29 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // fetch on a cache miss (e.g. opened from a state where the list was
       // never loaded), instead of a network read every single time.
       const docRef = doc(db, 'documents', documentId);
-      let snapshot;
       const readStart = Date.now();
-      try {
-        snapshot = await getDocFromCache(docRef);
-        if (!snapshot.exists()) throw new Error('not cached');
-        openTimingRef.current.source = 'кеш';
-      } catch {
-        snapshot = await getDoc(docRef);
-        openTimingRef.current.source = 'сервер';
+      // First what the document index's listener already holds (see
+      // peekDocument) - no round trip at all; then the local store; then
+      // the server.
+      let data = peekDocument(documentId) as Record<string, any> | undefined;
+      let exists = !!data;
+      if (data) {
+        openTimingRef.current.source = "пам'ять";
+      } else {
+        let snapshot;
+        try {
+          snapshot = await getDocFromCache(docRef);
+          if (!snapshot.exists()) throw new Error('not cached');
+          openTimingRef.current.source = 'кеш';
+        } catch {
+          snapshot = await getDoc(docRef);
+          openTimingRef.current.source = 'сервер';
+        }
+        data = snapshot.data();
+        exists = snapshot.exists();
       }
       openTimingRef.current.read = Date.now() - readStart;
-      const data = snapshot.data();
-      isNewDocumentRef.current = !snapshot.exists();
+      isNewDocumentRef.current = !exists;
       setTitle(data?.title ?? '');
       setCalendarDate((data?.calendarDate as string | undefined) ?? null);
       setOwnerLinkId(data?.owner?.kind === 'link' ? (data.owner.id as string) : null);

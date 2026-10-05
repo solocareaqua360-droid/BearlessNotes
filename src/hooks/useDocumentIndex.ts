@@ -38,16 +38,34 @@ export type DocumentIndex = Map<string, IndexedDocument>;
 
 const EMPTY: DocumentIndex = new Map();
 
+// EVERY NOTE AS IT CAME, kept by the listener below for the editor to open
+// from (2026-10-05: the slow-opening report showed "дані (кеш) 435 мс" - the
+// editor asked Firestore's local store for a note this listener had already
+// handed over whole). The listener is live, so this is never older than
+// what that read would have returned; the editor still hears the server
+// afterwards, as it always did.
+const rawDocuments = new Map<string, Record<string, unknown>>();
+// Kept only while some listener keeps it fresh: with none left, what it
+// holds could be older than the server, and the editor must read instead.
+let liveListeners = 0;
+
+export function peekDocument(id: string): Record<string, unknown> | undefined {
+  return rawDocuments.get(id);
+}
+
 export function useDocumentIndex(): DocumentIndex {
   const [index, setIndex] = useState<DocumentIndex>(EMPTY);
 
   useEffect(() => {
-    return onSnapshot(
+    liveListeners += 1;
+    const unsubscribe = onSnapshot(
       ownedQuery('documents'),
       (snapshot) => {
         const next: DocumentIndex = new Map();
+        rawDocuments.clear();
         snapshot.docs.forEach((d) => {
           const data = d.data();
+          rawDocuments.set(d.id, data);
           // Daily notes belong to the calendar, not to this list - the
           // same line DocumentsScreen draws.
           if (data.calendarDate) return;
@@ -68,8 +86,16 @@ export function useDocumentIndex(): DocumentIndex {
       },
       // Never without one: a refused read throws out of a listener that
       // has no error handler and takes the screen with it.
-      () => setIndex(EMPTY)
+      () => {
+        rawDocuments.clear();
+        setIndex(EMPTY);
+      }
     );
+    return () => {
+      unsubscribe();
+      liveListeners -= 1;
+      if (liveListeners === 0) rawDocuments.clear();
+    };
   }, []);
 
   return index;
