@@ -82,16 +82,22 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
     if (started.current || !landed.current || !box.current) return;
     started.current = true;
     openMark('landed');
-    // The note's own dock and bar are photographed first (they stand
-    // hidden under the list's pictures), then page and chrome move on one
-    // clock (utils/chromeMorph).
+    // The page moves AT ONCE. It used to wait while the note's own dock and
+    // bar were photographed - 133 ms measured on the phone (2026-10-05), a
+    // still screen after the tap. The list's pictures stay over the chrome
+    // meanwhile, and the chrome catches up once its other end is there, in
+    // what is left of the page's own time.
+    openMark('moving');
+    shown.value = 1;
+    const began = Date.now();
+    t.value = withTiming(1, { duration: OUT_MS, easing: EASE });
+    // The chrome's move ends the stand-in, not the page's: it may finish
+    // a little later.
     chromeOpenArrive().then(() => {
-      openMark('moving');
-      shown.value = 1;
-      t.value = withTiming(1, { duration: OUT_MS, easing: EASE }, (finished) => {
+      const left = Math.max(120, OUT_MS - (Date.now() - began));
+      chromeT.value = withTiming(1, { duration: left, easing: EASE }, (finished) => {
         if (finished) runOnJS(endChrome)();
       });
-      chromeT.value = withTiming(1, { duration: OUT_MS, easing: EASE });
     });
   };
 

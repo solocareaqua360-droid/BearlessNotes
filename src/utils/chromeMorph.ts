@@ -208,6 +208,8 @@ export async function chromeOpenBegin(): Promise<boolean> {
 export async function chromeOpenArrive(): Promise<void> {
   if (!carrying) return;
   const [bar, dock] = await Promise.all([grab('bar', 'note'), grab('dock', 'note')]);
+  // Given up on while the pictures were taken: nothing goes back up.
+  if (!carrying) return;
   set({ active: true, shots: { bar: { ...state.shots.bar, note: bar ?? undefined }, dock: { ...state.shots.dock, note: dock ?? undefined } } });
   await whenLoaded([bar?.uri, dock?.uri].filter((u): u is string => !!u));
 }

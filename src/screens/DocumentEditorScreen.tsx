@@ -383,6 +383,9 @@ const KEYBOARD_ROOM = 80;
 // The strip past the end of a daily note that pulling into opens the
 // calendar's overview - see `onPullPastEnd`.
 const PULL_ZONE = 110;
+// See renderAll: how many rows a long note opens with, and when the rest come.
+const FIRST_RENDER_BLOCKS = 24;
+const RENDER_REST_AFTER_MS = 450;
 // How far past the window a note's sheet runs at the least.
 const NOTE_END_BEYOND = 120;
 
@@ -675,6 +678,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const { tags, attachTag, detachTag, createAndAttachTag, renameTag } = useTags();
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [isLoaded, setIsLoaded] = useState(false);
+  // A LONG NOTE OPENS IN TWO STEPS (2026-10-05): its first rows - more than
+  // a screen holds - are drawn with the opening, the rest once the page has
+  // grown out of its card. Drawing every block in the commit that opens the
+  // note was most of what the timing report called «блоки» and «кадр».
+  const [renderAll, setRenderAll] = useState(false);
   // Opened (not just embedded in another screen): the start desk's recents.
   useNoteOpened('document', documentId, isLoaded && !('embedded' in props));
 
@@ -1266,6 +1274,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // The commit that carries the blocks.
   useLayoutEffect(() => {
     if (isLoaded) openTimingRef.current.blocksCommitted = Date.now();
+  }, [isLoaded]);
+  // The rest of a long note, once the opening has moved (see renderAll).
+  useEffect(() => {
+    if (!isLoaded || renderAll) return;
+    if (blocks.length <= FIRST_RENDER_BLOCKS) {
+      setRenderAll(true);
+      return;
+    }
+    const timer = setTimeout(() => setRenderAll(true), RENDER_REST_AFTER_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded]);
   useEffect(() => {
     // A day page inside the calendar opens as you swipe, not from a tap.
@@ -6163,6 +6182,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           ref={blockListRef}
           searchHighlight={searchFlash}
           flashBlockId={flashBlockId}
+          // Landing on a place lower down needs it drawn from the start.
+          renderCount={renderAll || focusLinkTo || focusBlock || searchFlash ? undefined : FIRST_RENDER_BLOCKS}
           // The daily note's sheet runs under the rail, so its rows draw
           // no handle column - see BlockRow's hideHandle.
           hideHandle={embedded}

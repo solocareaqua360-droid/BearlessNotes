@@ -19,6 +19,10 @@ type BlockListProps = {
   searchHighlight?: string;
   // The block a link just landed on - see SortableBlockRow's flash.
   flashBlockId?: string | null;
+  // Only the first this-many rows are drawn - a long note's opening draws
+  // what the screen shows first and the rest a moment later (the editor's
+  // renderAll). Absent = all of them.
+  renderCount?: number;
   blocks: Block[];
   onReorder: (blocks: Block[]) => void;
   // A hold that never went anywhere. The drag gesture already waits out
@@ -154,6 +158,7 @@ function BlockList({
   hideHandle,
   searchHighlight,
   flashBlockId,
+  renderCount,
 }: BlockListProps, ref: ForwardedRef<BlockListHandle>) {
   const styles = useStyles(makeStyles);
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -393,7 +398,7 @@ function BlockList({
 
   return (
     <View ref={containerRef} collapsable={false} style={styles.blockListContainer}>
-      {blocks.map((item, index) => {
+      {(renderCount !== undefined && renderCount < blocks.length ? blocks.slice(0, renderCount) : blocks).map((item, index) => {
         if (item.type === 'numbered') {
           runningNumber = index > 0 && blocks[index - 1].type === 'numbered' ? runningNumber + 1 : 1;
         } else {
