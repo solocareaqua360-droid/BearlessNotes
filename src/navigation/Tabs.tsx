@@ -10,6 +10,7 @@ import CalendarDrawer, { DatabasesLayer, SIDE_DRAWER_FRACTION } from '../compone
 import { SideDrawersProvider, databasesDrawerWidth, useSideDrawers } from './sideDrawers';
 import { deskScreenFor } from './tabScreens';
 import { noteDeskTouched, registerDeskNode } from './deskShots';
+import Freeze from '../components/Freeze';
 import { DeskContext, DesksControlContext, registerDesks, useDesks } from './desks';
 import { useRenderTimer } from '../utils/perfWatch';
 
@@ -47,11 +48,14 @@ function DeskHost({
   component: Component,
   props,
   back,
+  frozen,
 }: {
   deskKey: string;
   component: ComponentType<any>;
   props?: Record<string, unknown>;
   back: (() => void) | null;
+  // Not on screen and not next to it: kept, not rendered (see Freeze).
+  frozen: boolean;
 }) {
   const value = useMemo(() => ({ back, key: deskKey }), [back, deskKey]);
   return (
@@ -63,7 +67,9 @@ function DeskHost({
         // Any touch on the desk ending: its picture is retaken once it rests.
         onTouchEnd={() => noteDeskTouched(deskKey)}
       >
-        <Component {...props} />
+        <Freeze freeze={frozen}>
+          <Component {...props} />
+        </Freeze>
       </View>
     </DeskContext.Provider>
   );
@@ -82,7 +88,12 @@ function sameProps(a?: Record<string, unknown>, b?: Record<string, unknown>) {
 }
 const DeskHostMemo = memo(
   DeskHost,
-  (a, b) => a.deskKey === b.deskKey && a.component === b.component && a.back === b.back && sameProps(a.props, b.props)
+  (a, b) =>
+    a.deskKey === b.deskKey &&
+    a.component === b.component &&
+    a.back === b.back &&
+    a.frozen === b.frozen &&
+    sameProps(a.props, b.props)
 );
 // The two drawers take no props: only their own state moves them.
 const CalendarDrawerMemo = memo(CalendarDrawer);
@@ -298,12 +309,17 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
                 >
                   {({ navigation }) => {
                     navByDesk.current.set(name, navigation as never);
+                    // THE DESKS NOBODY IS LOOKING AT ARE FROZEN (the preview
+                    // plan, stage 1): the one in front and its two
+                    // neighbours - what a swipe can show - stay live.
+                    const focusedIndex = Math.max(0, desks.indexOf(focusedTab));
                     return (
                       <DeskHostMemo
                         deskKey={name}
                         component={screen.component}
                         props={screen.props}
                         back={backFor(name, previous)}
+                        frozen={Math.abs(index - focusedIndex) > 1}
                       />
                     );
                   }}

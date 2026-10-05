@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Freeze from './Freeze';
 import CalendarScreen from '../screens/CalendarScreen';
 import DatabasesScreen from '../screens/DatabasesScreen';
 import { useWindowDimensions } from 'react-native';
@@ -9,6 +10,24 @@ import { useRenderTimer } from '../utils/perfWatch';
 // The whole window: the two screens beside the desks are screens, not
 // drawers - iOS's widgets page and app library.
 export const SIDE_DRAWER_FRACTION = 1;
+
+// A shut drawer is kept but not rendered (the preview plan, stage 1): the
+// whole calendar and the whole databases board used to re-render with the
+// rest of the app while out of sight. Thawed the moment it is opened or
+// dragged; frozen again only after it has finished sliding away.
+const FREEZE_AFTER_MS = 450;
+function useShutFreeze(visible: boolean): boolean {
+  const [frozen, setFrozen] = useState(!visible);
+  useEffect(() => {
+    if (visible) {
+      setFrozen(false);
+      return;
+    }
+    const timer = setTimeout(() => setFrozen(true), FREEZE_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [visible]);
+  return frozen && !visible;
+}
 
 // THE CALENDAR, left of the first desk - "календар повноцінний ... в
 // крайньому лівому екрані і блюром поверх робочого столу". The same
@@ -22,10 +41,13 @@ export default function CalendarDrawer() {
     () => ({ open: calendarOpen, close: closeCalendar, jump: calendarJump }),
     [calendarOpen, closeCalendar, calendarJump]
   );
+  const frozen = useShutFreeze(calendarOpen || calendarDragging);
   return (
     <SideLayer side="left" open={calendarOpen} close={closeCalendar} progress={calendarProgress} dragging={calendarDragging}>
       <CalendarDrawerContext.Provider value={drawer}>
-        <CalendarScreen />
+        <Freeze freeze={frozen}>
+          <CalendarScreen />
+        </Freeze>
       </CalendarDrawerContext.Provider>
     </SideLayer>
   );
@@ -41,6 +63,7 @@ export function DatabasesLayer() {
   const { width } = useWindowDimensions();
   const panelWidth = databasesDrawerWidth(width);
   const narrow = panelWidth < width;
+  const frozen = useShutFreeze(databasesOpen || databasesDragging);
   const layer = useMemo(
     () => ({ open: databasesOpen, close: closeDatabases, narrow }),
     [databasesOpen, closeDatabases, narrow]
@@ -55,7 +78,9 @@ export function DatabasesLayer() {
       panelWidth={panelWidth}
     >
       <DatabasesLayerContext.Provider value={layer}>
-        <DatabasesScreen />
+        <Freeze freeze={frozen}>
+          <DatabasesScreen />
+        </Freeze>
       </DatabasesLayerContext.Provider>
     </SideLayer>
   );

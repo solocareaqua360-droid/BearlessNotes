@@ -336,7 +336,7 @@ export default function DatabasesScreen() {
   const { colorFor, iconFor, customDatabases } = useDatabaseTiles();
   // What is inside each database, for the tiles to show - see
   // useDatabaseContents.
-  const { counts, pinnableGroups, pinnableTags } = useDatabaseContents();
+  const { counts, pinnableGroups, pinnableTags } = useDatabaseContents(databasesFocused);
   const [colorMenuKey, setColorMenuKey] = useState<string | null>(null);
   const [tileSizes, setTileSizes] = useState<Record<string, string>>({});
   const [tileLayouts, setTileLayouts] = useState<Partial<Record<TileView, TileViewData>>>({});

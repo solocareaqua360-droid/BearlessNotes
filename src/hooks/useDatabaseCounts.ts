@@ -36,15 +36,19 @@ export type DatabaseContents = {
 
 type Row = Record<string, unknown> & { id: string };
 
-function useCollection(name: string): Row[] {
+// Listened to only while the tiles are on screen (the preview plan, stage
+// 1): twelve whole collections, blocks and board cards and all, were held
+// open the whole session for a drawer that was mostly shut. Closed, the
+// last rows stay - the tiles show them at once on the way back in while
+// the listener catches up.
+function useCollection(name: string, enabled: boolean): Row[] {
   const [rows, setRows] = useState<Row[]>([]);
-  useEffect(
-    () =>
-      onSnapshot(ownedQuery(name), (snapshot) => {
-        setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
-      }, listenError(`useDatabaseCounts:${name}`)),
-    [name]
-  );
+  useEffect(() => {
+    if (!enabled) return;
+    return onSnapshot(ownedQuery(name), (snapshot) => {
+      setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
+    }, listenError(`useDatabaseCounts:${name}`));
+  }, [name, enabled]);
   return rows;
 }
 
@@ -57,19 +61,19 @@ function newest(rows: Row[], titleOf: (row: Row) => string | undefined): string 
   return (best && titleOf(best)) || '';
 }
 
-export function useDatabaseContents(): DatabaseContents {
-  const documents = useCollection('documents');
-  const tasks = useCollection('tasks');
-  const links = useCollection('links');
-  const photos = useCollection('photos');
-  const files = useCollection('files');
-  const stickers = useCollection('stickers');
-  const flashcards = useCollection('flashcards');
-  const boards = useCollection('boards');
-  const tags = useCollection('tags');
-  const groups = useCollection('groups');
-  const chat = useCollection('chat');
-  const customRows = useCollection('customDatabaseRows');
+export function useDatabaseContents(enabled = true): DatabaseContents {
+  const documents = useCollection('documents', enabled);
+  const tasks = useCollection('tasks', enabled);
+  const links = useCollection('links', enabled);
+  const photos = useCollection('photos', enabled);
+  const files = useCollection('files', enabled);
+  const stickers = useCollection('stickers', enabled);
+  const flashcards = useCollection('flashcards', enabled);
+  const boards = useCollection('boards', enabled);
+  const tags = useCollection('tags', enabled);
+  const groups = useCollection('groups', enabled);
+  const chat = useCollection('chat', enabled);
+  const customRows = useCollection('customDatabaseRows', enabled);
 
   // Daily notes live in the documents collection but are the diary, not
   // the documents - the same split the documents list itself makes.

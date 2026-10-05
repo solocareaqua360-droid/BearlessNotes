@@ -155,6 +155,12 @@ type StripSticker = {
   trashed?: boolean;
 };
 
+// HOW MUCH OF A LIST IS BUILT (the preview plan, stage 1): every card is a
+// page miniature, and FlatList's default keeps about ten screens of them
+// above and below. Two screens either way and small batches keep scrolling
+// covered without building pages nobody will see.
+const LIGHT_WINDOW = { windowSize: 5, initialNumToRender: 6, maxToRenderPerBatch: 6, updateCellsBatchingPeriod: 40 } as const;
+
 const NO_BLOCKS: Block[] = [];
 
 export default function DocumentsScreen({
@@ -286,6 +292,9 @@ export default function DocumentsScreen({
     selected: selectedDocuments,
     needle,
   } = list;
+  // One object per selection state, not a fresh array every render: a new
+  // extraData re-renders every mounted card on any render of this screen.
+  const selectionExtra = useMemo(() => [isSelectMode, selectedIds], [isSelectMode, selectedIds]);
   const searching = searchOpen && needle.length > 0;
   // The smartfolders are a window from "⋯" now; the sideways swipe that
   // used to open them belongs to the calendar's drawer. The detector
@@ -1622,6 +1631,7 @@ export default function DocumentsScreen({
             <GestureDetector gesture={pull.gesture}>
             <FlatList
               {...pull.listProps}
+              {...LIGHT_WINDOW}
               key={`search-${drawnMode}-${gridColumns}`}
               data={searchMatches}
               keyExtractor={(item) => item.id}
@@ -1764,6 +1774,7 @@ export default function DocumentsScreen({
           <FlatList
             ref={carrying.scrollRef as React.RefObject<FlatList<DocumentItem>>}
             {...pull.listProps}
+            {...LIGHT_WINDOW}
             // FlatList throws if numColumns changes on an already-mounted
             // instance - key forces a clean remount when switching views.
             key={`${drawnMode}-${gridColumns}-${trashOpen ? 'trash' : 'list'}`}
@@ -1973,7 +1984,7 @@ export default function DocumentsScreen({
             // props (tapping it still navigated instead of toggling a
             // checkbox) even though renderItem's own closure had the fresh
             // values.
-            extraData={[isSelectMode, selectedIds]}
+            extraData={selectionExtra}
             // What else is in this group - see GroupSections. Only under
             // the real list: a search or the stickers tab is not a group's
             // view of itself.
