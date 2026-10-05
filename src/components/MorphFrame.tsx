@@ -4,6 +4,7 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PAGE_SHEET_INSET } from './documentEditorStyles';
 import { TOP_NAV_SPACE } from './TopNavBar';
+import { openMark } from '../utils/openTiming';
 import { chromeAbort, chromeBackBegin, chromeEnd, chromeOpenArrive, chromeT } from '../utils/chromeMorph';
 import { measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
 
@@ -80,10 +81,12 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
   const start = () => {
     if (started.current || !landed.current || !box.current) return;
     started.current = true;
+    openMark('landed');
     // The note's own dock and bar are photographed first (they stand
     // hidden under the list's pictures), then page and chrome move on one
     // clock (utils/chromeMorph).
     chromeOpenArrive().then(() => {
+      openMark('moving');
       shown.value = 1;
       t.value = withTiming(1, { duration: OUT_MS, easing: EASE }, (finished) => {
         if (finished) runOnJS(endChrome)();

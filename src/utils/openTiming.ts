@@ -8,7 +8,7 @@ export const SLOW_OPEN_MS = 450;
 
 let marks: Record<string, number> = {};
 
-export function openMark(name: 'tap' | 'measured' | 'chrome' | 'push'): void {
+export function openMark(name: 'tap' | 'measured' | 'chrome' | 'push' | 'landed' | 'moving'): void {
   if (name === 'tap') marks = {};
   marks[name] = Date.now();
 }

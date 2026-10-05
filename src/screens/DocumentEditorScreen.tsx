@@ -7,7 +7,7 @@ import ScreenGround from '../components/ScreenGround';
 import { IN_SHELL } from '../utils/shell';
 import { morphKey, morphLanded } from '../utils/morph';
 import { dragSelectJustEnded } from '../hooks/useBlockMarquee';
-import { ForwardedRef, Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { ForwardedRef, Fragment, forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -1173,7 +1173,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   mergeRemoteRef.current = mergeRemote;
 
   // How this opening went, step by step - see utils/openTiming.
-  const openTimingRef = useRef<{ mount: number; read?: number; source?: string }>({ mount: Date.now() });
+  const openTimingRef = useRef<{
+    mount: number;
+    read?: number;
+    source?: string;
+    shell?: number;
+    blocksCommitted?: number;
+    loadedAt?: number;
+  }>({ mount: Date.now() });
+  // The editor's first commit, before any block is there: what the screen
+  // itself costs to put up.
+  useLayoutEffect(() => {
+    openTimingRef.current.shell = Date.now();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -1207,6 +1219,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         exists = snapshot.exists();
       }
       openTimingRef.current.read = Date.now() - readStart;
+      openTimingRef.current.loadedAt = Date.now();
       isNewDocumentRef.current = !exists;
       setTitle(data?.title ?? '');
       setCalendarDate((data?.calendarDate as string | undefined) ?? null);
@@ -1250,29 +1263,48 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }, [documentId]);
 
   // A slow opening says where its time went (temporary - utils/openTiming).
+  // The commit that carries the blocks.
+  useLayoutEffect(() => {
+    if (isLoaded) openTimingRef.current.blocksCommitted = Date.now();
+  }, [isLoaded]);
   useEffect(() => {
     // A day page inside the calendar opens as you swipe, not from a tap.
     if (!isLoaded || embedded) return;
+    // Drawn is not yet moving: the page's growth (MorphFrame) starts after
+    // it, so the report waits for that too before it reads the marks.
+    let reportTimer: ReturnType<typeof setTimeout> | undefined;
     requestAnimationFrame(() => {
       const drawn = Date.now();
-      const marks = takeOpenMarks();
-      const t = openTimingRef.current;
-      const start = marks.tap ?? t.mount;
-      const total = drawn - start;
-      if (total < SLOW_OPEN_MS) return;
-      const ms = (n: number) => `${Math.max(0, Math.round(n))} мс`;
-      const steps = [
-        marks.tap && marks.measured ? `картка ${ms(marks.measured - marks.tap)}` : null,
-        marks.measured && marks.chrome ? `фото смужок ${ms(marks.chrome - marks.measured)}` : null,
-        marks.chrome ? `перехід ${ms(t.mount - marks.chrome)}` : null,
-        t.read !== undefined ? `дані (${t.source}) ${ms(t.read)}` : null,
-        `малювання ${ms(drawn - t.mount - (t.read ?? 0))}`,
-      ].filter(Boolean);
-      notify(`Нотатка відкривалась ${(total / 1000).toFixed(1)} с`, steps.join(' · '));
+      reportTimer = setTimeout(() => reportOpening(drawn), 900);
     });
+    return () => clearTimeout(reportTimer);
     // Once per opening.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded]);
+
+  function reportOpening(drawn: number) {
+    const marks = takeOpenMarks();
+    const t = openTimingRef.current;
+    const start = marks.tap ?? t.mount;
+    // Until the page starts to move, when it grows out of a card.
+    const end = marks.moving ?? drawn;
+    const total = end - start;
+    if (total < SLOW_OPEN_MS) return;
+    const ms = (n: number) => `${Math.max(0, Math.round(n))} мс`;
+    const steps = [
+      marks.tap && marks.measured ? `картка ${ms(marks.measured - marks.tap)}` : null,
+      marks.measured && marks.chrome ? `фото смужок ${ms(marks.chrome - marks.measured)}` : null,
+      marks.chrome ? `перехід ${ms(t.mount - marks.chrome)}` : null,
+      t.shell ? `каркас ${ms(t.shell - t.mount)}` : null,
+      t.read !== undefined ? `дані (${t.source}) ${ms(t.read)}` : null,
+      t.loadedAt && t.shell ? `чекання ${ms(t.loadedAt - t.read! - t.shell)}` : null,
+      t.blocksCommitted && t.loadedAt ? `блоки ${ms(t.blocksCommitted - t.loadedAt)}` : null,
+      t.blocksCommitted ? `кадр ${ms(drawn - t.blocksCommitted)}` : null,
+      marks.landed ? `до анімації ${ms(marks.landed - drawn)}` : null,
+      marks.landed && marks.moving ? `фото смужок нотатки ${ms(marks.moving - marks.landed)}` : null,
+    ].filter(Boolean);
+    notify(`Нотатка відкривалась ${(total / 1000).toFixed(1)} с`, steps.join(' · '));
+  }
 
   // While the note is open, it hears the server. An open editor used to
   // read once and never again, so a change made on the other device was
