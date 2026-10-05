@@ -11,6 +11,7 @@ import { SideDrawersProvider, databasesDrawerWidth, useSideDrawers } from './sid
 import { deskScreenFor } from './tabScreens';
 import { noteDeskTouched, registerDeskNode } from './deskShots';
 import { DeskContext, DesksControlContext, registerDesks, useDesks } from './desks';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // Material top tabs, not bottom tabs: the navigator the desks were built
 // on when they were swiped between. Its "top" is nominal here; the tab
@@ -88,6 +89,7 @@ const CalendarDrawerMemo = memo(CalendarDrawer);
 const DatabasesLayerMemo = memo(DatabasesLayer);
 
 function TabsWithDrawers({ desks }: { desks: string[] }) {
+  useRenderTimer('Столи');
   // Each desk's way back to the one before it, one stable function per
   // pair, reading the desk's latest navigation (see DeskHostMemo).
   const navByDesk = useRef(new Map<string, { navigate: (name: string) => void }>());

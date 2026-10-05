@@ -11,6 +11,7 @@ import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
 import { deskPull, deskPullEnabled } from '../navigation/deskPull';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockHidden } from '../navigation/navDock';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // Outline glyphs at 24, the same set and the same size as everything else
 // on this screen - what made these read as thinner and smaller before was
@@ -31,6 +32,7 @@ const ICON_BY_ROUTE: Record<string, keyof typeof Ionicons.glyphMap> = {
 // them: "док досі не гортається на екрані документів". The desks are a
 // card in the same stack now, and the stack is one control again.
 export default function FloatingIslandTabBar({ state, navigation, position }: MaterialTopTabBarProps) {
+  useRenderTimer('Смуга столів');
   // The desks used to collapse to a row of dots on a long press. That
   // press opens the capture window now - the user gave the gesture up for
   // it: "якщо все-таки воно мені знадобиться, придумаємо якийсь інший

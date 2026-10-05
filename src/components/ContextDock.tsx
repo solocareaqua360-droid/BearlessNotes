@@ -48,6 +48,7 @@ import {
 } from '../navigation/navDock';
 import SoftIcon, { SoftIconName } from './SoftIcon';
 import { SoftTokens, useSoft } from '../theme/soft';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // The dock, when it is holding a CONTEXT rather than the four desks.
 //
@@ -645,6 +646,7 @@ const DESK_HINT_TRAVEL = 18;
 const FIELD_INSET = 5;
 
 export default function ContextDock() {
+  useRenderTimer('Док');
   const theme = useTheme();
   // The soft chrome (see useChromeStyle) - asked for by the screen in
   // front, the Documents desk for now.

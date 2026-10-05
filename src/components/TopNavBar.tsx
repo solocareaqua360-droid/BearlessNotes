@@ -16,6 +16,7 @@ import SoftIcon, { SoftIconName } from './SoftIcon';
 import { SoftTokens, useSoft } from '../theme/soft';
 import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // THE DESKS, AT THE TOP - the user's plan after looking at Notion: the
 // way back in the top-left corner, then the desks, the one you are on
@@ -140,6 +141,7 @@ export default function TopNavBar({
   // кнопки". Screens that never pass it simply never animate.
   saving?: boolean;
 }) {
+  useRenderTimer('Верхня смужка');
   // While this bar is drawn, the path is drawn in it (not over the dock).
   // A bar inside a drawer is not the window's bar: it says nothing about
   // where the window's path and days should stand.

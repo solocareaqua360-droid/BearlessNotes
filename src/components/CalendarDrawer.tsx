@@ -4,6 +4,7 @@ import DatabasesScreen from '../screens/DatabasesScreen';
 import { useWindowDimensions } from 'react-native';
 import { CalendarDrawerContext, DatabasesLayerContext, databasesDrawerWidth, useSideDrawers } from '../navigation/sideDrawers';
 import SideLayer from './SideLayer';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // The whole window: the two screens beside the desks are screens, not
 // drawers - iOS's widgets page and app library.
@@ -15,6 +16,7 @@ export const SIDE_DRAWER_FRACTION = 1;
 // own bar and dock inside the layer and publishes nothing for the
 // window's, which fade out as it comes in.
 export default function CalendarDrawer() {
+  useRenderTimer('Шторка календаря');
   const { calendarOpen, closeCalendar, calendarProgress, calendarDragging, calendarJump } = useSideDrawers();
   const drawer = useMemo(
     () => ({ open: calendarOpen, close: closeCalendar, jump: calendarJump }),
@@ -34,6 +36,7 @@ export default function CalendarDrawer() {
 // screen, and the layer steps aside for it. On a wide screen it is a
 // drawer instead (databasesDrawerWidth), and a database opens inside it.
 export function DatabasesLayer() {
+  useRenderTimer('Шторка баз');
   const { databasesOpen, closeDatabases, databasesProgress, databasesDragging } = useSideDrawers();
   const { width } = useWindowDimensions();
   const panelWidth = databasesDrawerWidth(width);

@@ -43,11 +43,43 @@ export function snapshotHandled(label: string, ms: number): void {
 export function useRenderTimer(label: string): void {
   const start = Date.now();
   useLayoutEffect(() => {
-    const ms = Date.now() - start;
+    const now = Date.now();
+    noteRender(label, now);
+    const ms = now - start;
     if (ms < 8) return;
-    renders.push({ at: Date.now(), label, ms });
+    renders.push({ at: now, label, ms });
     trim(renders);
   });
+}
+
+// A RENDER LOOP (two pieces setting each other's state, round and round)
+// does not stall the thread in one long piece the pulse below would see -
+// it keeps it busy in many short ones, and taps wait behind them for ever:
+// the start desk that "froze until a restart". Counted per screen here;
+// one that renders more than LOOP_RENDERS times in LOOP_WINDOW_MS is named.
+const LOOP_RENDERS = 40;
+const LOOP_WINDOW_MS = 2000;
+const renderTimes = new Map<string, number[]>();
+let lastLoopReport = 0;
+function noteRender(label: string, now: number) {
+  const times = renderTimes.get(label) ?? [];
+  times.push(now);
+  while (times.length && times[0] < now - LOOP_WINDOW_MS) times.shift();
+  renderTimes.set(label, times);
+  if (times.length > LOOP_RENDERS && stallReporter && now - lastLoopReport > 15000) {
+    lastLoopReport = now;
+    const report = stallReporter;
+    const others = Array.from(renderTimes.entries())
+      .map(([l, t]) => [l, t.filter((x) => x >= now - LOOP_WINDOW_MS).length] as const)
+      .filter(([, n]) => n > 5)
+      .sort((a, b) => b[1] - a[1])
+      .map(([l, n]) => `${l} ${n}`)
+      .join(', ');
+    setTimeout(
+      () => report(`«${label}» перемальовується без зупинки`, `${times.length} разів за 2 с\nразом із ним: ${others}\n\n${perfSummary(now - 3000)}`),
+      0
+    );
+  }
 }
 
 // Told about a long stall the moment it is over (the app root hands in its
