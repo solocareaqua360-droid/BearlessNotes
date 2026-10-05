@@ -52,7 +52,7 @@ import { setSelection } from '../utils/setSelection';
 import { withAlpha } from '../utils/color';
 import TableBlockContent from './TableBlockContent';
 import CustomRowBlockCard from './CustomRowBlockCard';
-import DocumentRefBlockCard from './DocumentRefBlockCard';
+import LiveDocumentCard from './LiveDocumentCard';
 import type { DocumentIndex } from '../hooks/useDocumentIndex';
 
 const EMPTY_DOCUMENT_INDEX: DocumentIndex = new Map();
@@ -636,10 +636,11 @@ export default function BlockRow({
     // instead of navigating away from it.
     content = (
       <View style={styles.dbRowBlock} pointerEvents={isSelectMode ? 'none' : 'auto'}>
-        <DocumentRefBlockCard
+        <LiveDocumentCard
           documentId={item.docRefId}
           fallbackTitle={item.docRefTitle}
           index={documentIndex ?? EMPTY_DOCUMENT_INDEX}
+          tags={allTags}
           onOpen={(id) => onOpenDocument?.(id)}
         />
       </View>

@@ -6150,7 +6150,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           </View>
         )}
         {!embedded && (
-          <NestedDocuments documentId={documentId} index={documentIndex} onOpen={openReferencedDocument} />
+          <NestedDocuments documentId={documentId} index={documentIndex} tags={tags} onOpen={openReferencedDocument} />
         )}
         {!embedded && (
           <RelatedDocuments
@@ -6644,6 +6644,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       <AddExistingItemModal
         visible={existingItemPickerBlockId !== null}
         includeCustomDatabases
+        // A note too - as a card in this one (the user could not find a
+        // way to put an EXISTING note here, only to make a new one).
+        includeDocuments
+        onPickDocument={(picked) => {
+          if (existingItemPickerBlockId)
+            insertExistingItemIntoBlock(existingItemPickerBlockId, blockFromDocument({ id: picked.id, title: picked.title }));
+        }}
         onPick={(item) => {
           if (existingItemPickerBlockId) insertExistingItemIntoBlock(existingItemPickerBlockId, item);
         }}
@@ -6667,6 +6674,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   b.isSticker
               )
               .map((b) => b.id)
+              // Not this note itself, among the notes.
+              .concat(documentId)
           )
         }
       />

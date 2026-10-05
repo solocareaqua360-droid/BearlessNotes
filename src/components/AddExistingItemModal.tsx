@@ -82,9 +82,8 @@ function labelForDocBlock(b: Block): string {
 // three different-feeling databases in the rest of the app, so lumping them
 // into one "Посилання" tab here would be the one place in the app where
 // that split doesn't hold. 'document' only ever shows up when the caller
-// opts in via `includeDocuments` (see Props) - DocumentEditorScreen's own
-// use of this modal never does, since a document can't nest as a block
-// inside another document.
+// opts in via `includeDocuments` (see Props) - the board, and since
+// 2026-10-05 the note editor too, where a note is put in as its card.
 type Tab = 'file' | 'photo' | 'video' | 'geo' | 'other' | 'document' | 'sticker' | 'customDb';
 
 type FileRow = {
@@ -363,7 +362,7 @@ export default function AddExistingItemModal({
   const filteredVideoLinks = searchedLinks.filter((l) => categoryOf(l) === 'video');
   const filteredGeoLinks = searchedLinks.filter((l) => categoryOf(l) === 'geo');
   const filteredOtherLinks = searchedLinks.filter((l) => categoryOf(l) === 'other');
-  const filteredDocuments = documents.filter((d) => d.title.toLowerCase().includes(needle));
+  const filteredDocuments = documents.filter((d) => !excludeIds?.has(d.id) && d.title.toLowerCase().includes(needle));
   // Same id-collision guard as files/photos - a sticker reuses its own
   // record's id (see blockFromSticker), so re-picking one already present
   // in this document would put two blocks on the same id.

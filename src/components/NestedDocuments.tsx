@@ -1,14 +1,16 @@
 import { StyleSheet, Text, View } from 'react-native';
-import DocumentRefBlockCard from './DocumentRefBlockCard';
+import LiveDocumentCard from './LiveDocumentCard';
 import { FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import type { DocumentIndex } from '../hooks/useDocumentIndex';
+import type { Tag } from '../types';
 
 type Props = {
   // The note this section sits at the foot of.
   documentId: string;
   index: DocumentIndex;
+  tags: Tag[];
   onOpen: (documentId: string) => void;
 };
 
@@ -18,7 +20,7 @@ type Props = {
 // is still here. Open, unlike «Пов'язані», because these are the note's
 // own contents, not a list of strangers that mention it. Hidden when there
 // are none; in the order they were made, like a table of contents.
-export default function NestedDocuments({ documentId, index, onOpen }: Props) {
+export default function NestedDocuments({ documentId, index, tags, onOpen }: Props) {
   const styles = useStyles(makeStyles);
 
   const nested = Array.from(index.values())
@@ -35,7 +37,7 @@ export default function NestedDocuments({ documentId, index, onOpen }: Props) {
         <Text style={styles.count}>{`  ${nested.length}`}</Text>
       </Text>
       {nested.map((d) => (
-        <DocumentRefBlockCard key={d.id} documentId={d.id} fallbackTitle={d.title} index={index} onOpen={onOpen} />
+        <LiveDocumentCard key={d.id} documentId={d.id} fallbackTitle={d.title} index={index} tags={tags} onOpen={onOpen} />
       ))}
     </View>
   );
