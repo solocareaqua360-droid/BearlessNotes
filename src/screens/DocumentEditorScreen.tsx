@@ -175,7 +175,7 @@ import NestedDocuments from '../components/NestedDocuments';
 import { createOwnedNote, makeOrdinary } from '../utils/recordNotes';
 import { binNote } from '../utils/nestedNotes';
 import { SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTiming';
-import { perfSummary } from '../utils/perfWatch';
+import { markEditorGone, perfSummary } from '../utils/perfWatch';
 import { peekDocument, useDocumentIndex } from '../hooks/useDocumentIndex';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
@@ -1203,6 +1203,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // itself costs to put up.
   useLayoutEffect(() => {
     openTimingRef.current.shell = Date.now();
+    // And the way out: how long taking this page down takes (perfWatch).
+    return () => markEditorGone();
   }, []);
 
   useEffect(() => {

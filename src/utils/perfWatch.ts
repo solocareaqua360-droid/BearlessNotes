@@ -119,6 +119,17 @@ setInterval(() => {
 // the desks are in front again, then the first frame after.
 let backPop = 0;
 let backFocus = 0;
+// The editor's own unmount: its first cleanup, and the first moment after
+// the commit that ran it (the whole tree is gone by then).
+let goneStart = 0;
+let goneEnd = 0;
+export function markEditorGone(): void {
+  goneStart = Date.now();
+  goneEnd = 0;
+  setTimeout(() => {
+    goneEnd = Date.now();
+  }, 0);
+}
 export function backMarkPop(): void {
   backPop = Date.now();
   backFocus = 0;
@@ -149,7 +160,9 @@ export function backMarkFocus(): void {
       if (total < 300 || !stallReporter) return;
       stallReporter(
         `Повернення тривало ${(total / 1000).toFixed(1)} с`,
-        `до столів ${focus - pop} мс · кадр ${frame - focus} мс · після кадру ${settled - frame} мс\n\n${perfSummary(pop - 200)}`
+        `до столів ${focus - pop} мс · кадр ${frame - focus} мс · після кадру ${settled - frame} мс${
+          goneStart >= pop && goneEnd ? ` · прибирання нотатки ${goneEnd - goneStart} мс` : ''
+        }\n\n${perfSummary(pop - 200)}`
       );
     });
   });
