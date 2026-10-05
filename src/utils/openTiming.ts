@@ -5,6 +5,8 @@
 // the first draw - and only measuring says which one it was. The editor
 // reports an opening slower than SLOW_MS, step by step.
 export const SLOW_OPEN_MS = 450;
+// Off since 2026-10-06 - the openings were measured; see perfWatch.
+export const SHOW_OPEN_REPORTS = false;
 
 let marks: Record<string, number> = {};
 

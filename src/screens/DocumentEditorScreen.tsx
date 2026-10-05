@@ -174,7 +174,7 @@ import RelatedDocuments from '../components/RelatedDocuments';
 import NestedDocuments from '../components/NestedDocuments';
 import { createOwnedNote, makeOrdinary } from '../utils/recordNotes';
 import { binNote } from '../utils/nestedNotes';
-import { SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTiming';
+import { SHOW_OPEN_REPORTS, SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTiming';
 import { markEditorGone, perfSummary } from '../utils/perfWatch';
 import { peekDocument, useDocumentIndex } from '../hooks/useDocumentIndex';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
@@ -1323,7 +1323,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // Until the page starts to move, when it grows out of a card.
     const end = marks.moving ?? drawn;
     const total = end - start;
-    if (total < SLOW_OPEN_MS) return;
+    // Silent unless asked for (see perfWatch's REPORTS).
+    if (!SHOW_OPEN_REPORTS || total < SLOW_OPEN_MS) return;
     const ms = (n: number) => `${Math.max(0, Math.round(n))} мс`;
     const steps = [
       marks.tap && marks.measured ? `картка ${ms(marks.measured - marks.tap)}` : null,

@@ -11,6 +11,8 @@ import { visibleBlocks } from '../utils/toggleBlocks';
 import { blockMatchesQuery } from '../utils/documentPreview';
 import DocumentTagsBlock from './DocumentTagsBlock';
 import { PAGE_HEADER_TOP, PAGE_SHEET_INSET, makeStyles as makeEditorStyles } from './documentEditorStyles';
+import { useContext } from 'react';
+import { PreviewDepthContext } from './previewDepth';
 
 // A DOCUMENT'S OWN PAGE, made small - the card as a picture of the thing
 // rather than a design about it.
@@ -118,7 +120,9 @@ function DocumentPageMiniature({
   // of the page's points - rather than a flat 24 laid out and cut away.
   const fits = Math.ceil((height / scale + offsetY) / 26);
   const shown = all.slice(from, from + Math.min(MAX_ROWS, Math.max(4, fits)));
+  const depth = useContext(PreviewDepthContext);
   return (
+    <PreviewDepthContext.Provider value={depth + 1}>
     <View
       style={[styles.sheet, { width, height, backgroundColor: paperColor?.background ?? theme.paper.fill }]}
       pointerEvents="none"
@@ -229,6 +233,7 @@ function DocumentPageMiniature({
       {/* The project badge is a card's own chrome, not the page's - see
           DocumentCard, which draws it over this. */}
     </View>
+    </PreviewDepthContext.Provider>
   );
 }
 

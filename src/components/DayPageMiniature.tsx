@@ -6,6 +6,8 @@ import { makeStyles as makeEditorStyles } from './documentEditorStyles';
 import type { Block } from '../types';
 import BlockRow from './BlockRow';
 import { visibleBlocks } from '../utils/toggleBlocks';
+import { useContext } from 'react';
+import { PreviewDepthContext } from './previewDepth';
 
 // A day's page, shrunk - what the calendar's overview on a phone is made
 // of.
@@ -57,7 +59,9 @@ function DayPageMiniature({
   // A folded section is folded here too - see visibleBlocks. A card that
   // showed what its page hides would stop being the same picture.
   const shown = visibleBlocks(blocks).slice(0, MAX_ROWS);
+  const depth = useContext(PreviewDepthContext);
   return (
+    <PreviewDepthContext.Provider value={depth + 1}>
     <View
       style={[styles.sheet, { width, height, borderRadius: radius, backgroundColor: theme.paper.fill }]}
       pointerEvents="none"
@@ -165,6 +169,7 @@ function DayPageMiniature({
         </ScrollView>
       </View>
     </View>
+    </PreviewDepthContext.Provider>
   );
 }
 

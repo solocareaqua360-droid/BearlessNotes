@@ -84,10 +84,15 @@ function noteRender(label: string, now: number) {
 
 // Told about a long stall the moment it is over (the app root hands in its
 // notify). Not more than once in a while: it is a diagnosis, not an alarm.
+//
+// SILENT BY DEFAULT since 2026-10-06: the causes were found, and windows
+// popping up over the app only made it feel broken ("як ранений хворий
+// звір"). Flip REPORTS on to hear them again; everything is still counted.
+const REPORTS = false;
 let stallReporter: ((title: string, body: string) => void) | null = null;
 let lastReport = 0;
 export function setStallReporter(report: (title: string, body: string) => void): void {
-  stallReporter = report;
+  stallReporter = REPORTS ? report : null;
 }
 const STALL_REPORT_MS = 600;
 

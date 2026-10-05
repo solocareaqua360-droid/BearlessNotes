@@ -1,7 +1,7 @@
 import FlashcardBlockCard from './FlashcardBlockCard';
 import SketchLayer from './SketchLayer';
 import { INK, drawingViewBox } from '../utils/sketchGeometry';
-import { ComponentProps, ReactNode, useEffect, useRef, useState } from 'react';
+import { ComponentProps, ReactNode, useContext, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   GestureResponderEvent,
@@ -57,6 +57,7 @@ import type { DocumentIndex } from '../hooks/useDocumentIndex';
 
 const EMPTY_DOCUMENT_INDEX: DocumentIndex = new Map();
 import CustomDatabaseViewBlockCard from './CustomDatabaseViewBlockCard';
+import { PreviewDepthContext } from './previewDepth';
 
 // Pulled out of DocumentEditorScreen.tsx (2026-09-19), which had grown to
 // 6883 lines. This is a plain, prop-only component - it never closed over
@@ -191,6 +192,7 @@ export default function BlockRow({
   paperColor,
 }: BlockRowProps) {
   const theme = useTheme();
+  const previewDepth = useContext(PreviewDepthContext);
   const styles = useStyles(makeStyles);
   // Outside edit mode (or while selecting), the text field is completely
   // inert to touch (pointerEvents: 'none') rather than merely
@@ -611,11 +613,9 @@ export default function BlockRow({
         </View>
       );
     }
-  } else if (preview && (type === 'dbRow' || type === 'flashcard' || type === 'docRef' || type === 'dbView')) {
-    // In a page miniature a card inside the page is a still plate with its
-    // name: the live ones each open listeners of their own, and a note
-    // card holding another note's card drew a miniature inside a
-    // miniature - without end, for two notes that show each other.
+  } else if (preview && previewDepth > 1 && (type === 'dbRow' || type === 'flashcard' || type === 'docRef' || type === 'dbView')) {
+    // A miniature inside a miniature: the card is a still plate with its
+    // name (see previewDepth). One level down, cards are themselves.
     content = (
       <View style={styles.dbRowBlock}>
         <View style={[previewEmbedStyles.plate, { borderColor: theme.paper.edge, backgroundColor: theme.paper.tint }]}>

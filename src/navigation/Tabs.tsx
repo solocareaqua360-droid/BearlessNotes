@@ -50,6 +50,7 @@ function DeskHost({
   props,
   back,
   frozen,
+  active,
 }: {
   deskKey: string;
   component: ComponentType<any>;
@@ -57,13 +58,18 @@ function DeskHost({
   back: (() => void) | null;
   // Not on screen and not next to it: kept, not rendered (see Freeze).
   frozen: boolean;
+  // The one in front. Only it hears its data as it comes; a neighbour - drawn,
+  // ready for a swipe, but not looked at - catches up the moment it is
+  // arrived at (deskVisibility). The start desk next to the documents used
+  // to redraw its «Нещодавні» on every note opened from them.
+  active: boolean;
 }) {
   const value = useMemo(() => ({ back, key: deskKey }), [back, deskKey]);
   // Flipped directly, during this host's own render - the desk below is
   // frozen and will not render to hear a context change (deskVisibility).
   const box = useRef<VisibilityBox | null>(null);
-  if (!box.current) box.current = makeVisibilityBox(!frozen);
-  setBoxVisible(box.current, !frozen);
+  if (!box.current) box.current = makeVisibilityBox(active);
+  setBoxVisible(box.current, active);
   return (
     <DeskVisibilityContext.Provider value={box.current}>
     <DeskContext.Provider value={value}>
@@ -101,6 +107,7 @@ const DeskHostMemo = memo(
     a.component === b.component &&
     a.back === b.back &&
     a.frozen === b.frozen &&
+    a.active === b.active &&
     sameProps(a.props, b.props)
 );
 // The two drawers take no props: only their own state moves them.
@@ -328,6 +335,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
                         props={screen.props}
                         back={backFor(name, previous)}
                         frozen={Math.abs(index - focusedIndex) > 1}
+                        active={index === focusedIndex}
                       />
                     );
                   }}
