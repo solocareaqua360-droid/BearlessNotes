@@ -121,6 +121,14 @@ export const NOTE_LINK_OPEN = /^\{n:([A-Za-z0-9_-]+)\}/;
 export const NOTE_LINK_CLOSE = '{/n}';
 export const LINK_GLYPH = '↗\u2009';
 
+// A note's address on the clipboard («Копіювати посилання»): pasted into a
+// block it becomes a word linking to the note (DocumentEditorScreen's
+// handleBlockChange); pasted anywhere else it is plain text.
+export const NOTE_ADDRESS = /mindeva:\/\/note\/([A-Za-z0-9_-]+)/g;
+export function noteAddress(documentId: string): string {
+  return `mindeva://note/${documentId}`;
+}
+
 export function noteLinkMarkup(documentId: string, label: string): string {
   // The label can hold no markers of its own: braces and the closing
   // marker would end it early.

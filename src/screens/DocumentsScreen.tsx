@@ -1,3 +1,5 @@
+import * as Clipboard from 'expo-clipboard';
+import { noteAddress } from '../utils/documentBlocks';
 import { useFolderArrival } from '../navigation/folderArrival';
 import { lift } from '../utils/lift';
 import { openDeskSwitcher } from '../navigation/deskSwitcherBus';
@@ -793,6 +795,20 @@ export default function DocumentsScreen({
                             showContext();
                             clearSelection();
                             setDocRename(item);
+                          },
+                        },
+                        {
+                          // The note's address, to paste into another note
+                          // as a word linking to this one.
+                          key: 'address',
+                          icon: 'link-outline' as const,
+                          label: 'Посилання',
+                          onPress: async () => {
+                            const item = selectedDocuments[0];
+                            await Clipboard.setStringAsync(noteAddress(item.id));
+                            showContext();
+                            clearSelection();
+                            notify('Посилання скопійовано', 'Встав його в іншу нотатку - воно стане словом-посиланням на цю.');
                           },
                         },
                       ]

@@ -152,6 +152,8 @@ import {
   LINK_GLYPH,
   LIST_TYPES,
   newBlock,
+  NOTE_ADDRESS,
+  noteAddress,
   noteLinkMarkup,
   noteLinkSpans,
   parseFormattedText,
@@ -2709,6 +2711,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             { label: 'Вигляд', icon: 'color-palette-outline', onPress: () => setExportMenuOpen(true) },
             { label: 'Проект', icon: 'folder-outline', checked: !!groupId, onPress: () => setGroupPickerVisible(true) },
             { label: 'Експорт', icon: 'share-outline', onPress: askExport },
+            { label: 'Копіювати посилання', icon: 'link-outline', onPress: copyNoteAddress },
             { label: 'Створити картки', icon: 'albums-outline', onPress: () => makeFlashcards(blocks) },
             { kind: 'rule' },
             { label: 'Видалити', icon: 'trash-outline', tone: 'danger', onPress: confirmDeleteDocument },
@@ -3059,6 +3062,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   // ---- words that link to notes ---------------------------------------
+  async function copyNoteAddress() {
+    await Clipboard.setStringAsync(noteAddress(documentId));
+    notify('Посилання скопійовано', 'Встав його в іншу нотатку - воно стане словом-посиланням на цю.');
+  }
+
   function openNoteLink(target: string) {
     const known = documentIndex.get(target);
     if (known?.deletedAt) {
@@ -3348,7 +3356,29 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     handleBlockAction(picked, id);
   }
 
-  function handleBlockChange(id: string, text: string) {
+  function handleBlockChange(id: string, rawText: string) {
+    // A note's address pasted in (from «Копіювати посилання») becomes a
+    // word linking to that note, named as the note is - and the caret goes
+    // after it.
+    let text = rawText;
+    const pastedType = blocks.find((b) => b.id === id)?.type ?? 'paragraph';
+    if (pastedType !== 'code' && NOTE_ADDRESS.test(rawText)) {
+      NOTE_ADDRESS.lastIndex = 0;
+      let lastEnd = -1;
+      text = rawText.replace(NOTE_ADDRESS, (_all, target: string, offset: number) => {
+        const markup = noteLinkMarkup(target, documentIndex.get(target)?.title || 'Нотатка');
+        lastEnd = offset + markup.length;
+        return markup;
+      });
+      NOTE_ADDRESS.lastIndex = 0;
+      if (lastEnd >= 0) {
+        // Where the last link ended, measured in the new text (an earlier
+        // replacement in the same paste shifts it).
+        const spans = noteLinkSpans(text);
+        const pos = spans.length ? spans[spans.length - 1].displayEnd : 0;
+        setTimeout(() => setSelection(inputRefs.current[id], pos, pos), 40);
+      }
+    }
     snapshotForTyping();
     keepCaretVisibleWhileTyping();
     const current = blocks.find((b) => b.id === id);
