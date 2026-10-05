@@ -812,6 +812,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // is being changed.
   const [caret, setCaret] = useState<{ blockId: string; pos: number } | null>(null);
   const [noteLinkRename, setNoteLinkRename] = useState<{ blockId: string; documentId: string; label: string } | null>(null);
+  // «Інша нотатка…»: the link whose target the document picker is choosing.
+  const [noteLinkRetarget, setNoteLinkRetarget] = useState<{ blockId: string; documentId: string; label: string } | null>(null);
   const atQuery = useMemo(() => {
     if (!caret || caret.blockId !== focusedBlockId) return null;
     const block = blocks.find((b) => b.id === caret.blockId);
@@ -3098,12 +3100,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       actions: [
         { id: 'open', label: 'Відкрити нотатку', icon: 'document-text-outline' },
         { id: 'rename', label: 'Змінити назву', icon: 'pencil-outline' },
+        { id: 'retarget', label: 'Інша нотатка…', icon: 'swap-horizontal-outline' },
         { id: 'unlink', label: 'Прибрати посилання', icon: 'close-circle-outline', tone: 'danger' },
       ],
     });
     if (choice === 'open') openNoteLink(target);
     else if (choice === 'rename') setNoteLinkRename({ blockId, documentId: target, label });
+    else if (choice === 'retarget') setNoteLinkRetarget({ blockId, documentId: target, label });
     else if (choice === 'unlink') replaceNoteLink(blockId, target, label, (span) => span.label);
+  }
+
+  // The same words, now leading to another note. A label that was simply
+  // the old note's title follows the new one; words of the writer's own
+  // stay as they were.
+  function retargetNoteLink(blockId: string, from: string, label: string, to: string) {
+    const oldTitle = (documentIndex.get(from)?.title || '').trim();
+    const newTitle = (documentIndex.get(to)?.title || '').trim() || 'Без назви';
+    const nextLabel = !oldTitle || label.trim() === oldTitle ? newTitle : label;
+    replaceNoteLink(blockId, from, label, () => noteLinkMarkup(to, nextLabel));
   }
 
   // The «@query» being typed, replaced by a word that links to the note.
@@ -6408,19 +6422,26 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         />
       )}
       <DocumentPickerModal
-        visible={documentPickerBlockId !== null}
-        title="Який документ?"
-        subtitle="Картка з'явиться в цьому документі"
+        visible={documentPickerBlockId !== null || noteLinkRetarget !== null}
+        title={noteLinkRetarget ? 'На яку нотатку?' : 'Який документ?'}
+        subtitle={noteLinkRetarget ? `«${noteLinkRetarget.label}» вестиме туди` : "Картка з'явиться в цьому документі"}
         documents={Array.from(documentIndex.values())
-          // Not itself, and nothing already thrown away.
-          .filter((d) => d.id !== documentId && !d.deletedAt)
+          // Not itself, and nothing already thrown away - nor, for a link,
+          // the note it already leads to.
+          .filter((d) => d.id !== documentId && !d.deletedAt && d.id !== noteLinkRetarget?.documentId)
           .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
           .map((d) => ({ id: d.id, title: d.title?.trim() || 'Без назви' }))}
         onPick={(picked) => {
-          if (documentPickerBlockId) insertDocumentReference(documentPickerBlockId, picked);
+          const r = noteLinkRetarget;
+          if (r) retargetNoteLink(r.blockId, r.documentId, r.label, picked);
+          else if (documentPickerBlockId) insertDocumentReference(documentPickerBlockId, picked);
+          setNoteLinkRetarget(null);
           setDocumentPickerBlockId(null);
         }}
-        onClose={() => setDocumentPickerBlockId(null)}
+        onClose={() => {
+          setNoteLinkRetarget(null);
+          setDocumentPickerBlockId(null);
+        }}
       />
 
       <AddExistingItemModal
