@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { BackHandler, Image, PixelRatio, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -21,6 +21,7 @@ import { CHROME_TOP } from '../constants/rail';
 import { useSoft } from '../theme/soft';
 import { SOFT_SEMIBOLD } from '../utils/fonts';
 import { deskPull } from '../navigation/deskPull';
+import { copyWindowRect, supportsWindowCopy } from '../utils/mindevaNative';
 
 type Live = Readonly<{ value: number }>;
 
@@ -107,11 +108,17 @@ export default function DeskSwitcher({
       return;
     }
     const node = blurTarget?.current;
-    if (!node) return;
     let alive = true;
-    captureRef(node, { format: 'jpg', quality: 0.5, result: 'tmpfile', width: Math.round(width / 3) })
+    // From the frame already on screen where the APK can (PixelCopy, off
+    // the UI thread); drawn again by view-shot only where it cannot.
+    const picture = supportsWindowCopy
+      ? copyWindowRect({ x: 0, y: 0, w: 0, h: 0 }, Math.round((width * PixelRatio.get()) / 3), 50).then((c) => c?.uri ?? null)
+      : node
+        ? captureRef(node, { format: 'jpg', quality: 0.5, result: 'tmpfile', width: Math.round(width / 3) })
+        : Promise.resolve(null);
+    picture
       .then((uri) => {
-        if (alive) setFrozen(uri);
+        if (alive && uri) setFrozen(uri);
       })
       .catch(() => {});
     return () => {

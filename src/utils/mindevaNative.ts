@@ -13,6 +13,15 @@ type MindevaNative = {
   grabScreenFrame?(x: number, y: number, w: number, h: number): Promise<{ uri: string; width: number; height: number } | null>;
   isScreenCapturing?(): boolean;
   stopScreenCapture?(): boolean;
+  windowCopy?: boolean;
+  copyWindowRect?(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    maxWidth: number,
+    quality: number
+  ): Promise<{ uri: string; width: number; height: number } | null>;
 };
 
 const native = requireOptionalNativeModule<MindevaNative>('MindevaNative');
@@ -78,5 +87,32 @@ export function stopScreenCapture() {
     native?.stopScreenCapture?.();
   } catch {
     // Nothing to stop.
+  }
+}
+
+// A PICTURE OF WHAT IS ALREADY ON SCREEN (MindevaNativeModule's
+// copyWindowRect): Android's PixelCopy, off the UI thread - the cheap way
+// to photograph a desk. Only in an APK that has it; callers fall back to
+// react-native-view-shot otherwise. The rectangle is in WINDOW PIXELS.
+export const supportsWindowCopy = !!native?.windowCopy && typeof native?.copyWindowRect === 'function';
+
+export async function copyWindowRect(
+  rect: { x: number; y: number; w: number; h: number },
+  maxWidth = 0,
+  quality = 70
+): Promise<{ uri: string; width: number; height: number } | null> {
+  try {
+    return (
+      (await native?.copyWindowRect?.(
+        Math.round(rect.x),
+        Math.round(rect.y),
+        Math.round(rect.w),
+        Math.round(rect.h),
+        Math.round(maxWidth),
+        Math.round(quality)
+      )) ?? null
+    );
+  } catch {
+    return null;
   }
 }

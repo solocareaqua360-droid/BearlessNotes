@@ -20,3 +20,13 @@ export async function grabScreenFrame(_rect?: { x: number; y: number; w: number;
   return null;
 }
 export function stopScreenCapture() {}
+
+// No window to copy in a browser.
+export const supportsWindowCopy = false;
+export async function copyWindowRect(
+  _rect: { x: number; y: number; w: number; h: number },
+  _maxWidth = 0,
+  _quality = 70
+): Promise<{ uri: string; width: number; height: number } | null> {
+  return null;
+}

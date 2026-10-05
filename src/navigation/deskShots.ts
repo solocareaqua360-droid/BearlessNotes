@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { View } from 'react-native';
+import { PixelRatio, type View } from 'react-native';
+import { copyWindowRect, supportsWindowCopy } from '../utils/mindevaNative';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { captureRef } from 'react-native-view-shot';
@@ -73,12 +74,34 @@ function nodeFor(key: string): View | undefined {
   return (list && list[list.length - 1]) ?? nodes.get(key);
 }
 
+// The desk as it is ON SCREEN, copied from the frame Android has already
+// drawn (PixelCopy, off the UI thread - see MindevaNativeModule), the way
+// the phone's own recent-apps screen keeps its pictures. An APK without it
+// draws the view again with react-native-view-shot, as before.
+async function pictureOf(node: View): Promise<string | null> {
+  if (supportsWindowCopy) {
+    const box = await new Promise<{ x: number; y: number; w: number; h: number } | null>((resolve) => {
+      try {
+        node.measureInWindow((x, y, w, h) => resolve(w > 0 && h > 0 ? { x, y, w, h } : null));
+      } catch {
+        resolve(null);
+      }
+    });
+    if (!box) return null;
+    const k = PixelRatio.get();
+    const copy = await copyWindowRect({ x: box.x * k, y: box.y * k, w: box.w * k, h: box.h * k }, 420, 60);
+    if (copy) return copy.uri;
+  }
+  return captureRef(node, { format: 'jpg', quality: 0.6, result: 'tmpfile', width: 420 });
+}
+
 export async function captureDesk(key: string): Promise<void> {
   const node = nodeFor(key);
   if (!node || busy.has(key)) return;
   busy.add(key);
   try {
-    const tmp = await captureRef(node, { format: 'jpg', quality: 0.6, result: 'tmpfile', width: 420 });
+    const tmp = await pictureOf(node);
+    if (!tmp) return;
     let uri = tmp;
     if (DIR) {
       await LegacyFileSystem.makeDirectoryAsync(DIR, { intermediates: true }).catch(() => {});

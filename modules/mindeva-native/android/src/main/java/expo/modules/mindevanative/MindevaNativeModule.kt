@@ -9,6 +9,14 @@ import android.media.projection.MediaProjectionManager
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
+import android.graphics.Bitmap
+import android.graphics.Rect
+import android.view.PixelCopy
+import java.io.File
+import java.io.FileOutputStream
+import java.util.concurrent.Executors
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
@@ -75,6 +83,74 @@ class MindevaNativeModule : Module() {
 
     Function("isScreenCapturing") { ScreenCapture.isActive() }
 
+    // A PICTURE OF WHAT IS ALREADY ON THE SCREEN (the preview plan, stage 1,
+    // 2026-10-06). react-native-view-shot draws a view tree again, in
+    // software, on the UI thread - the thread that takes taps - and a desk
+    // full of page miniatures and blur took long enough to be felt. Android
+    // already HAS the frame: PixelCopy copies a rectangle of the window's
+    // composited surface, off the UI thread, in a few milliseconds - the
+    // way the phone's own recent-apps screen keeps its pictures. Window
+    // pixels in; a JPEG in the cache out, at most maxWidth wide (0: as is).
+    Constant("windowCopy") { Build.VERSION.SDK_INT >= Build.VERSION_CODES.O }
+
+    AsyncFunction("copyWindowRect") { x: Int, y: Int, w: Int, h: Int, maxWidth: Int, quality: Int, promise: Promise ->
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+        promise.resolve(null)
+        return@AsyncFunction
+      }
+      val activity = appContext.currentActivity
+      val window = activity?.window
+      val decor = window?.peekDecorView()
+      if (window == null || decor == null || decor.width <= 0 || decor.height <= 0) {
+        promise.resolve(null)
+        return@AsyncFunction
+      }
+      val left = x.coerceIn(0, decor.width - 1)
+      val top = y.coerceIn(0, decor.height - 1)
+      val right = (if (w <= 0) decor.width else x + w).coerceIn(left + 1, decor.width)
+      val bottom = (if (h <= 0) decor.height else y + h).coerceIn(top + 1, decor.height)
+      val rect = Rect(left, top, right, bottom)
+      val bitmap = try {
+        Bitmap.createBitmap(rect.width(), rect.height(), Bitmap.Config.ARGB_8888)
+      } catch (e: Throwable) {
+        promise.resolve(null)
+        return@AsyncFunction
+      }
+      try {
+        PixelCopy.request(window, rect, bitmap, { result ->
+          if (result != PixelCopy.SUCCESS) {
+            bitmap.recycle()
+            promise.resolve(null)
+            return@request
+          }
+          writer.execute {
+            try {
+              val out = if (maxWidth > 0 && bitmap.width > maxWidth) {
+                val scaled = Bitmap.createScaledBitmap(bitmap, maxWidth, (bitmap.height.toLong() * maxWidth / bitmap.width).toInt().coerceAtLeast(1), true)
+                bitmap.recycle()
+                scaled
+              } else bitmap
+              val dir = File(context.cacheDir, "windowCopies").apply { mkdirs() }
+              // Copies are short-lived (moved away, or shown for a moment):
+              // whatever is older than ten minutes is nobody's any more.
+              val stale = System.currentTimeMillis() - 10 * 60 * 1000
+              dir.listFiles()?.forEach { if (it.lastModified() < stale) it.delete() }
+              val file = File(dir, "copy-${System.currentTimeMillis()}-${(Math.random() * 1e6).toInt()}.jpg")
+              FileOutputStream(file).use { out.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(30, 100), it) }
+              val result2 = mapOf("uri" to "file://${file.absolutePath}", "width" to out.width, "height" to out.height)
+              out.recycle()
+              promise.resolve(result2)
+            } catch (e: Throwable) {
+              promise.resolve(null)
+            }
+          }
+        }, copyHandler)
+      } catch (e: Throwable) {
+        bitmap.recycle()
+        promise.resolve(null)
+      }
+    }
+
     Function("stopScreenCapture") {
       context.stopService(Intent(context, ScreenCaptureService::class.java))
       ScreenCapture.release()
@@ -126,5 +202,12 @@ class MindevaNativeModule : Module() {
 
   companion object {
     private const val CAPTURE_REQUEST = 47110
+
+    // PixelCopy answers on this thread, and the JPEG is written on the
+    // writer - neither is the UI thread.
+    private val copyHandler: Handler by lazy {
+      Handler(HandlerThread("mindeva-pixelcopy").apply { start() }.looper)
+    }
+    private val writer = Executors.newSingleThreadExecutor()
   }
 }
