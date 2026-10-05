@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  memo,
 } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { BlurTargetBridge, useBlurTarget } from './GlassTarget';
@@ -83,15 +84,27 @@ export function GlassPortalHost({ children }: { children: ReactNode }) {
       {entries.length > 0 && (
         <View style={[styles.host, { height: windowHeight }]} pointerEvents="box-none">
           {entries.map(([id, entry]) => (
-            <View key={id} style={StyleSheet.absoluteFill} pointerEvents="box-none">
-              {entry.node}
-            </View>
+            <PortalEntry key={id} node={entry.node} />
           ))}
         </View>
       )}
     </PortalContext.Provider>
   );
 }
+
+// ONE ENTRY RENDERS WHEN ITS OWN CONTENT CHANGES (2026-10-06). Every owner
+// hands its node over again on each of its renders, which re-rendered the
+// host - and with it EVERY portalled thing: the top bars of every mounted
+// desk, the desk switcher, the open sheets - on any one of them changing
+// (measured: the top bar four times over on a way back from a note). An
+// entry left untouched keeps the same node, so memo skips it.
+const PortalEntry = memo(function PortalEntry({ node }: { node: ReactNode }) {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      {node}
+    </View>
+  );
+});
 
 let nextId = 0;
 
