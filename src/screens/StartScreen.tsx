@@ -39,6 +39,7 @@ import { ownedQuery } from '../utils/owned';
 import { listenError } from '../utils/listenError';
 import type { Block, CustomDatabase, CustomDatabaseRow } from '../types';
 import { rowTitleOf } from '../utils/customRowDisplay';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // THE START DESK (2026-10-03, the user's own design, mocked up first):
 // the phone's first desk. Under the desks' bar, a row of four big buttons
@@ -72,6 +73,8 @@ function go(route: string, params?: Record<string, unknown>) {
 }
 
 export default function StartScreen() {
+  // Temporary diagnosis - see utils/perfWatch.
+  useRenderTimer('Старт');
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();

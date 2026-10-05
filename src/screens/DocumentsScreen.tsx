@@ -118,6 +118,7 @@ import { openTabWithSequence } from '../navigation/desktopTabs';
 import { go } from '../components/DesktopTabs';
 import TagEditSheet from '../components/TagEditSheet';
 import { listenError } from '../utils/listenError';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue accent wherever this screen used it.
@@ -159,6 +160,8 @@ export default function DocumentsScreen({
   // A copy pushed over the tile board: it has a way back and no island.
   standalone,
 }: { inPane?: boolean; standalone?: boolean } = {}) {
+  // Temporary diagnosis - see utils/perfWatch.
+  useRenderTimer('Документи');
   const theme = useTheme();
   const accent = theme.sections.documents;
   const accentGlass = withAlpha(accent, 0.55);

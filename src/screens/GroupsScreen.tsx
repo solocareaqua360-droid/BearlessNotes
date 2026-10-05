@@ -54,6 +54,7 @@ import GroupSections from '../components/GroupSections';
 import { useTags } from '../hooks/useTags';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { confirm, notify } from '../components/surfaces/Ask';
+import { useRenderTimer } from '../utils/perfWatch';
 
 const DANGER = '#EF4444';
 const SIDE = 12;
@@ -97,6 +98,8 @@ function lighten(hex: string, amount: number): string {
 // holds, across every database at once - which no single database screen
 // can show.
 export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
+  // Temporary diagnosis - see utils/perfWatch.
+  useRenderTimer('Проєкти');
   const theme = useTheme();
   const accent = theme.sections.groups;
   const styles = useStyles(makeStyles);

@@ -107,6 +107,7 @@ import { useDockClearance } from '../navigation/dockGeometry';
 import { useBlurTarget } from '../components/GlassTarget';
 import { CHROME_TOP } from '../constants/rail';
 import { listenError } from '../utils/listenError';
+import { useRenderTimer } from '../utils/perfWatch';
 
 const NEW_TILE_KEY = '__new__';
 const PIN_TILE_KEY = '__pin__';
@@ -232,6 +233,8 @@ function paneTargetFor(tile: Tile): PaneTarget | null {
 const DRAWER_LIST_KEY = 'mindeva.databasesDrawerList';
 
 export default function DatabasesScreen() {
+  // Temporary diagnosis - see utils/perfWatch.
+  useRenderTimer('Бази');
   const theme = useTheme();
   const accent = theme.sections.databases;
   const baseStyles = useStyles(makeStyles);

@@ -210,6 +210,7 @@ import { DESKTOP_TOOLBAR_HEIGHT } from '../components/DesktopToolbar';
 import { useDensity } from '../hooks/useDensity';
 import { openTab } from '../navigation/desktopTabs';
 import { listenError } from '../utils/listenError';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // Below this, a note has no room to stand beside «Референси» and the
 // drawer lies over it instead - see referencesSplit. 300 is the drawer's
@@ -391,6 +392,8 @@ const RENDER_REST_AFTER_MS = 450;
 const NOTE_END_BEYOND = 120;
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
+  // Temporary diagnosis - see utils/perfWatch.
+  useRenderTimer('Нотатка');
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const embedded = 'embedded' in props;

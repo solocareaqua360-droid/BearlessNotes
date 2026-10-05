@@ -26,7 +26,13 @@ import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import MorphHost from './src/components/MorphHost';
 import ChromeMorph from './src/components/ChromeMorph';
-import { AskHost } from './src/components/surfaces/Ask';
+import { AskHost, notify } from './src/components/surfaces/Ask';
+import { setStallReporter } from './src/utils/perfWatch';
+
+// Temporary diagnosis (utils/perfWatch): a long stall says what held the app.
+setStallReporter((title, body) => {
+  notify(title, body);
+});
 import { HoldAskHost } from './src/components/surfaces/HoldAsk';
 import { CreateWatcher } from './src/navigation/startCreate';
 import CaptureWindow from './src/components/CaptureWindow';

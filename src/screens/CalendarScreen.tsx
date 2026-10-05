@@ -85,6 +85,7 @@ import Menu from '../components/surfaces/Menu';
 import { listenError } from '../utils/listenError';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // calendarPlate carries its own marginHorizontal:16 on each side, so the
 // week strip's actual scrollable viewport is this much narrower than the
@@ -145,6 +146,8 @@ const HEADER_GAP = 8;
 const FILLED_ROW_HEIGHT = ROW_HEIGHT + WEEKDAY_HEADER_HEIGHT;
 
 export default function CalendarScreen() {
+  // Temporary diagnosis - see utils/perfWatch.
+  useRenderTimer('Календар');
   const baseStyles = useStyles(makeStyles);
   const theme = useTheme();
   const accent = theme.sections.calendar;
