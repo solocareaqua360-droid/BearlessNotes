@@ -856,6 +856,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [caret, setCaret] = useState<{ blockId: string; pos: number } | null>(null);
   const [noteLinkRename, setNoteLinkRename] = useState<{ blockId: string; documentId: string; label: string } | null>(null);
   // «Інша нотатка…»: the link whose target the document picker is choosing.
+  // The note's foot: which of its two lists is unfolded, and the empty
+  // paper above it while both were folded (see the foot spacer).
+  const [footOpen, setFootOpen] = useState({ nested: false, related: false });
+  const footSlackRef = useRef(0);
   // ⋯ «Зробити вкладеною»: choosing the note this one moves into.
   const [nestPickerOpen, setNestPickerOpen] = useState(false);
   const [noteLinkRetarget, setNoteLinkRetarget] = useState<{ blockId: string; documentId: string; label: string } | null>(null);
@@ -6202,15 +6206,34 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         )}
         {/* The note's foot sits at the END of the sheet, past the empty
             paper - see NOTE_END_BEYOND. */}
-        {!embedded && !onPullPastEnd && <View style={{ flexGrow: 1 }} pointerEvents="none" />}
+        {/* Folded, it takes up the slack; unfolded, it keeps the height it
+            had, so the foot's header stays where it was and the list falls
+            DOWN from it, lengthening the sheet - not pushing the header up
+            (the user's). */}
+        {!embedded && !onPullPastEnd && (
+          <View
+            style={footOpen.nested || footOpen.related ? { height: footSlackRef.current } : { flexGrow: 1 }}
+            onLayout={(e) => {
+              if (!footOpen.nested && !footOpen.related) footSlackRef.current = e.nativeEvent.layout.height;
+            }}
+            pointerEvents="none"
+          />
+        )}
         {!embedded && (
           <View style={styles.noteFoot}>
-            <NestedDocuments documentId={documentId} index={documentIndex} tags={tags} onOpen={openReferencedDocument} />
+            <NestedDocuments
+              documentId={documentId}
+              index={documentIndex}
+              tags={tags}
+              onOpen={openReferencedDocument}
+              onToggle={(open) => setFootOpen((f) => ({ ...f, nested: open }))}
+            />
             <RelatedDocuments
               documentId={documentId}
               index={documentIndex}
               onOpen={openReferencedDocument}
               onOpenAt={openReferencedDocumentAt}
+              onToggle={(open) => setFootOpen((f) => ({ ...f, related: open }))}
             />
           </View>
         )}

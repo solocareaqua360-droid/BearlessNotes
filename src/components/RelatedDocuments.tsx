@@ -14,6 +14,7 @@ type Props = {
   onOpen: (documentId: string) => void;
   // Open that note at the place it mentions this one.
   onOpenAt: (documentId: string) => void;
+  onToggle?: (open: boolean) => void;
 };
 
 // What mentions this note, at the foot of it.
@@ -32,7 +33,7 @@ type Props = {
 // Hidden entirely when nothing points here. A heading followed by
 // nothing, at the foot of every note in the app, is a line of furniture
 // paid for by the notes that have no links - which is most of them.
-export default function RelatedDocuments({ documentId, index, onOpen, onOpenAt }: Props) {
+export default function RelatedDocuments({ documentId, index, onOpen, onOpenAt, onToggle }: Props) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [open, setOpen] = useState(false);
@@ -46,7 +47,13 @@ export default function RelatedDocuments({ documentId, index, onOpen, onOpenAt }
   return (
     <View style={styles.wrap}>
       <View style={styles.rule} />
-      <Pressable style={styles.header} onPress={() => setOpen((v) => !v)}>
+      <Pressable
+        style={styles.header}
+        onPress={() => {
+          onToggle?.(!open);
+          setOpen(!open);
+        }}
+      >
         <Text style={styles.label}>
           Пов&apos;язані з цим документом
           <Text style={styles.count}>{`  ${linking.length}`}</Text>

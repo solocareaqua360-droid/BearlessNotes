@@ -14,6 +14,9 @@ type Props = {
   index: DocumentIndex;
   tags: Tag[];
   onOpen: (documentId: string) => void;
+  // Told when it unfolds or folds - the sheet keeps its header still (see
+  // the editor's foot spacer).
+  onToggle?: (open: boolean) => void;
 };
 
 // The notes nested in this one (recordNotes' DocOwner kind 'note'), at the
@@ -23,7 +26,7 @@ type Props = {
 // would not close was in the way); the count on the fold says how many.
 // Hidden when there are none; in the order they were made, like a table
 // of contents.
-export default function NestedDocuments({ documentId, index, tags, onOpen }: Props) {
+export default function NestedDocuments({ documentId, index, tags, onOpen, onToggle }: Props) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [open, setOpen] = useState(false);
@@ -37,7 +40,13 @@ export default function NestedDocuments({ documentId, index, tags, onOpen }: Pro
   return (
     <View style={styles.wrap}>
       <View style={styles.rule} />
-      <Pressable style={styles.header} onPress={() => setOpen((v) => !v)}>
+      <Pressable
+        style={styles.header}
+        onPress={() => {
+          onToggle?.(!open);
+          setOpen(!open);
+        }}
+      >
         <Text style={styles.label}>
           Вкладені
           <Text style={styles.count}>{`  ${nested.length}`}</Text>
