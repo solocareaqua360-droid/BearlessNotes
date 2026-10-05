@@ -6,7 +6,7 @@ import DocumentRefBlockCard from './DocumentRefBlockCard';
 import { extractPreview } from '../utils/documentPreview';
 import { useSoft } from '../theme/soft';
 import type { Block, Tag } from '../types';
-import type { DocumentIndex } from '../hooks/useDocumentIndex';
+import { peekDocument, type DocumentIndex } from '../hooks/useDocumentIndex';
 
 type Props = {
   documentId: string | undefined;
@@ -15,6 +15,20 @@ type Props = {
   tags: Tag[];
   onOpen: (documentId: string) => void;
 };
+
+function faceOf(data: Record<string, unknown>): Face {
+  return {
+    title: (data.title as string) ?? '',
+    updatedAt: (data.updatedAt as number) ?? 0,
+    blocks: (data.blocks as Block[]) ?? [],
+    tagIds: (data.tagIds as string[]) ?? [],
+    coverImageUri: data.coverImageUri as string | undefined,
+    coverDriveFileId: data.coverDriveFileId as string | undefined,
+    coverGradient: data.coverGradient as string | undefined,
+    paperColorEnabled: data.paperColorEnabled as boolean | undefined,
+    deletedAt: data.deletedAt as number | undefined,
+  };
+}
 
 type Face = {
   title: string;
@@ -39,7 +53,13 @@ type Face = {
 // say so.
 export default function LiveDocumentCard({ documentId, fallbackTitle, index, tags, onOpen }: Props) {
   const soft = useSoft();
-  const [face, setFace] = useState<Face | null | undefined>(undefined);
+  // From the document index's own copy at once (peekDocument): waiting for
+  // this card's listener drew the old card for a frame first - the blink
+  // the user saw on unfolding «Вкладені».
+  const [face, setFace] = useState<Face | null | undefined>(() => {
+    const known = documentId ? peekDocument(documentId) : undefined;
+    return known ? faceOf(known) : undefined;
+  });
 
   useEffect(() => {
     if (!documentId) return;
@@ -51,23 +71,15 @@ export default function LiveDocumentCard({ documentId, fallbackTitle, index, tag
           setFace(null);
           return;
         }
-        setFace({
-          title: (data.title as string) ?? '',
-          updatedAt: (data.updatedAt as number) ?? 0,
-          blocks: (data.blocks as Block[]) ?? [],
-          tagIds: (data.tagIds as string[]) ?? [],
-          coverImageUri: data.coverImageUri as string | undefined,
-          coverDriveFileId: data.coverDriveFileId as string | undefined,
-          coverGradient: data.coverGradient as string | undefined,
-          paperColorEnabled: data.paperColorEnabled as boolean | undefined,
-          deletedAt: data.deletedAt as number | undefined,
-        });
+        setFace(faceOf(data));
       },
       // A refused read must not take the note down with it.
       () => setFace(null)
     );
   }, [documentId]);
 
+  // Not known yet: nothing rather than the old card for a moment.
+  if (documentId && face === undefined) return null;
   if (!documentId || !face || face.deletedAt) {
     return <DocumentRefBlockCard documentId={documentId} fallbackTitle={fallbackTitle} index={index} onOpen={onOpen} />;
   }
