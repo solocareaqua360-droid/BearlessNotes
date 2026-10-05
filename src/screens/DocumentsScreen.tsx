@@ -17,7 +17,7 @@ import { morph, morphBack, morphCardRef } from '../utils/morph';
 
 // The pane a note opens in beside the list, as the card-to-page move knows it.
 const PANE_MORPH_KEY = 'pane:documents';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInnerBack } from '../navigation/innerBack';
 import { rightClick } from '../utils/rightClick';
 import { useFlipLayout } from '../hooks/useFlipLayout';
@@ -90,7 +90,7 @@ import DocumentCard from '../components/DocumentCard';
 import EdgeFade from '../components/EdgeFade';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
 import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
-import { useSoft } from '../theme/soft';
+import { useSoft, type SoftTokens } from '../theme/soft';
 import SoftIcon from '../components/SoftIcon';
 import UndoToast from '../components/UndoToast';
 import CardCarryOverlay from '../components/CardCarryOverlay';
@@ -156,6 +156,111 @@ type StripSticker = {
   usedInDocuments?: Record<string, true>;
   trashed?: boolean;
 };
+
+// ONE CARD OF THE LIST, re-rendered only when its OWN things change
+// (2026-10-06). Built inline, every card got new handlers and a new `page`
+// object on every render of the screen - opening a note, coming back, any
+// state of the list at all - so every card and its page miniature rebuilt
+// each time. Here every prop is either the item's own data, a plain value,
+// or the screen's stable `actions`, and memo holds.
+type CardActions = {
+  open: (item: DocumentItem) => void;
+  hold: (item: DocumentItem) => void;
+  toggle: (id: string) => void;
+  project: (id: string) => void;
+  carryRef: (item: DocumentItem) => ((node: View | null) => void) | undefined;
+};
+
+const DocumentListCard = memo(function DocumentListCard({
+  item,
+  blocks,
+  tags,
+  project,
+  actions,
+  carried,
+  dimmed,
+  isSelectMode,
+  isSelected,
+  drawnMode,
+  listWidth,
+  gridCardWidth,
+  gridPageHeight,
+  soft,
+}: {
+  item: DocumentItem;
+  blocks: Block[];
+  tags: Tag[];
+  project: { name: string; color: string } | null;
+  actions: CardActions;
+  carried: boolean;
+  dimmed: boolean;
+  isSelectMode: boolean;
+  isSelected: boolean;
+  drawnMode: 'list' | 'grid' | 'wide';
+  listWidth: number;
+  gridCardWidth: number;
+  gridPageHeight: number;
+  soft: SoftTokens | null;
+}) {
+  const preview = useMemo(
+    () =>
+      extractPreview(
+        blocks,
+        item.coverImageUri,
+        // A wide card has MORE room than a tile, not less.
+        drawnMode === 'list' ? undefined : EXPANDED_PREVIEW_LENGTH,
+        item.coverDriveFileId
+      ),
+    [blocks, item.coverImageUri, item.coverDriveFileId, drawnMode]
+  );
+  const tagIds = item.tagIds ?? NO_TAG_IDS;
+  const page = useMemo(
+    () => ({
+      tagIds,
+      tags,
+      coverImageUri: item.coverImageUri,
+      coverDriveFileId: item.coverDriveFileId,
+      paperColorEnabled: !!item.paperColorEnabled,
+    }),
+    [tagIds, tags, item.coverImageUri, item.coverDriveFileId, item.paperColorEnabled]
+  );
+  return (
+    <DocumentCard
+      id={item.id}
+      title={item.title}
+      updatedAt={item.updatedAt}
+      imageUri={preview.imageUri}
+      coverGradient={item.coverGradient}
+      imageDriveFileId={preview.imageDriveFileId}
+      imageUris={preview.imageUris}
+      imageDriveFileIds={preview.imageDriveFileIds}
+      previewText={preview.previewText}
+      previewTail={preview.previewTail}
+      blocks={blocks}
+      checklistItems={preview.checklistItems}
+      morphRef={morphCardRef(`note:${item.id}`)}
+      onPress={() => actions.open(item)}
+      onLongPress={carried ? undefined : () => actions.hold(item)}
+      isSelectMode={isSelectMode}
+      isSelected={isSelected}
+      onToggleSelect={() => actions.toggle(item.id)}
+      layout={drawnMode === 'list' ? 'list' : 'grid'}
+      // In the wide COLUMN a card takes the row it is given; a wide card
+      // inside the TILE grid is told the row's width.
+      gridWidth={drawnMode === 'wide' ? undefined : item.wideCard ? listWidth : gridCardWidth}
+      wide={drawnMode === 'wide' || !!item.wideCard}
+      // EVERY CARD IS THE PAGE - see DocumentPageMiniature.
+      pageHeight={drawnMode === 'grid' ? gridPageHeight : undefined}
+      page={page}
+      project={project}
+      onProjectPress={() => actions.project(item.id)}
+      soft={soft}
+      {...(carried ? { cardRef: actions.carryRef(item), dimmed } : {})}
+    />
+  );
+});
+
+const NO_TAG_IDS: string[] = [];
 
 // HOW MUCH OF A LIST IS BUILT (the preview plan, stage 1): every card is a
 // page miniature, and FlatList's default keeps about ten screens of them
@@ -298,6 +403,19 @@ export default function DocumentsScreen({
   // One object per selection state, not a fresh array every render: a new
   // extraData re-renders every mounted card on any render of this screen.
   const selectionExtra = useMemo(() => [isSelectMode, selectedIds], [isSelectMode, selectedIds]);
+  // The cards' handlers, stable for the screen's life and reading the latest
+  // state through a ref - see DocumentListCard.
+  const cardActionsRef = useRef<CardActions | null>(null);
+  const cardActions = useMemo<CardActions>(
+    () => ({
+      open: (item) => cardActionsRef.current?.open(item),
+      hold: (item) => cardActionsRef.current?.hold(item),
+      toggle: (id) => cardActionsRef.current?.toggle(id),
+      project: (id) => cardActionsRef.current?.project(id),
+      carryRef: (item) => cardActionsRef.current?.carryRef(item),
+    }),
+    []
+  );
   const searching = searchOpen && needle.length > 0;
   // The smartfolders are a window from "⋯" now; the sideways swipe that
   // used to open them belongs to the calendar's drawer. The detector
@@ -1440,6 +1558,15 @@ export default function DocumentsScreen({
     );
   }
 
+  // The list cards' handlers as they are this render (see cardActions).
+  cardActionsRef.current = {
+    open: (item) => (trashOpen ? openTrashMenu(item) : openDocument(item.id)),
+    hold: (item) => (trashOpen ? openTrashMenu(item) : holdDocument(item)),
+    toggle: (id) => toggleSelected(id),
+    project: (id) => setSingleGroupTargetId(id),
+    carryRef: (item) => carrying.cardProps(item, () => holdDocument(item)).cardRef,
+  };
+
   return (
     <View style={styles.container}>
       {/* Page background: a fixed gradient (react-native-svg, already a
@@ -2036,76 +2163,26 @@ export default function DocumentsScreen({
               // document has no image (see DocumentCard's own noImage
               // handling) - list rows are unaffected, so they keep the
               // short default length.
-              const { imageUri, imageDriveFileId, imageUris, imageDriveFileIds, previewText, previewTail, checklistItems } = extractPreview(
-                // Through the records as they are NOW - a block inserted before the
-                // Drive backup existed carries no driveFileId of its own; the record
-                // does. The editor overlays the same way, and the Photos database reads
-                // the record directly, which is why a picture showed there and here
-                // stayed blank. See useLiveRecords.
-                liveBlocksOf(item.blocks),
-                item.coverImageUri,
-                // A wide card has MORE room than a tile, not less - it
-                // was taking the list row's own short preview and
-                // running out of text halfway down itself.
-                drawnMode === 'list' ? undefined : EXPANDED_PREVIEW_LENGTH,
-                item.coverDriveFileId
-              );
               // Only in the explorer, and never in the bin - carried, the
-              // card gives up its own onLongPress, since the list's drag
-              // gesture opens the menu itself, on its own timing, rather
-              // than racing it (see useExplorerCarry).
+              // card gives up its own onLongPress (see useExplorerCarry).
               const carried = !trashOpen && explorer.active;
               const card = (
-                <DocumentCard
-                  id={item.id}
-                  title={item.title}
-                  updatedAt={item.updatedAt}
-                  imageUri={imageUri}
-                  coverGradient={item.coverGradient}
-                  imageDriveFileId={imageDriveFileId}
-                  imageUris={imageUris}
-                  imageDriveFileIds={imageDriveFileIds}
-                  previewText={previewText}
-                  previewTail={previewTail}
-                  // The card draws the page itself where it has the
-                  // room - see CardPreview.
+                <DocumentListCard
+                  item={item}
+                  // Through the records as they are NOW - see useLiveRecords.
                   blocks={liveBlocksOf(item.blocks)}
-                  checklistItems={checklistItems}
-                  morphRef={morphCardRef(`note:${item.id}`)}
-                  onPress={() => (trashOpen ? openTrashMenu(item) : openDocument(item.id))}
-                  onLongPress={
-                    carried ? undefined : () => (trashOpen ? openTrashMenu(item) : holdDocument(item))
-                  }
+                  tags={tags}
+                  project={groups.find((g) => g.id === item.groupId) ?? null}
+                  actions={cardActions}
+                  carried={carried}
+                  dimmed={carried ? !!carrying.cardProps(item, () => holdDocument(item)).dimmed : false}
                   isSelectMode={isSelectMode}
                   isSelected={selectedIds.has(item.id)}
-                  onToggleSelect={() => toggleSelected(item.id)}
-                  layout={drawnMode === 'list' ? 'list' : 'grid'}
-                  // In the wide COLUMN a card takes the row it is given
-                  // (no measured number to disagree with the list's own
-                  // padding); a wide card inside the TILE grid has to be
-                  // told the row's width, since its own cell is one
-                  // column of it.
-                  gridWidth={
-                    drawnMode === 'wide' ? undefined : item.wideCard ? listWidth : gridCardWidth
-                  }
-                  wide={drawnMode === 'wide' || !!item.wideCard}
-                  // EVERY CARD IS THE PAGE now - see
-                  // DocumentPageMiniature. The three ways round are
-                  // three sizes of window onto the one picture: a tile
-                  // is the top of the page, a wide card a wider piece of
-                  // it, a row a strip started below the empty band.
-                  pageHeight={drawnMode === 'grid' ? gridPageHeight : undefined}
-                  page={{
-                    tagIds: item.tagIds ?? [],
-                    tags,
-                    coverImageUri: item.coverImageUri,
-                    coverDriveFileId: item.coverDriveFileId,
-                    paperColorEnabled: !!item.paperColorEnabled,
-                  }}
-                  project={groups.find((g) => g.id === item.groupId) ?? null}
-                  onProjectPress={() => setSingleGroupTargetId(item.id)}
+                  drawnMode={drawnMode}
+                  listWidth={listWidth}
+                  gridCardWidth={gridCardWidth}
+                  gridPageHeight={gridPageHeight}
                   soft={soft}
-                  {...(carried ? carrying.cardProps(item, () => holdDocument(item)) : {})}
                 />
               );
               // In the wide column the card brings the side margin

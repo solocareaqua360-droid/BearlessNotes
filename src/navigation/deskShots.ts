@@ -89,7 +89,10 @@ async function pictureOf(node: View): Promise<string | null> {
     });
     if (!box) return null;
     const k = PixelRatio.get();
-    const copy = await copyWindowRect({ x: box.x * k, y: box.y * k, w: box.w * k, h: box.h * k }, 420, 60);
+    // Sharp enough for the switcher's card at its size (420 came out as
+    // "піксель арт"): PixelCopy and the JPEG are off the UI thread, so the
+    // larger picture costs nothing a tap would feel.
+    const copy = await copyWindowRect({ x: box.x * k, y: box.y * k, w: box.w * k, h: box.h * k }, Math.round(box.w * k * 0.75), 85);
     if (copy) return copy.uri;
   }
   return captureRef(node, { format: 'jpg', quality: 0.6, result: 'tmpfile', width: 420 });
