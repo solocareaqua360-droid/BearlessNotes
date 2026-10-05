@@ -39,6 +39,10 @@ import {
   formatReminderBadge,
   parseFormattedText,
   plainTextOf,
+  displayWithLinkGlyphs,
+  displayWithNestedGlyphs,
+  LINK_GLYPH,
+  NESTED_GLYPH,
   noteLinkSpans,
   STICKER_INK,
   type TextLayoutLine,
@@ -112,6 +116,8 @@ type BlockRowProps = {
   // or on a tap while the block is being typed (the caret is put after it).
   onNoteLink?: (documentId: string) => void;
   onNoteLinkMenu?: (blockId: string, documentId: string, label: string) => void;
+  // A link to a note nested in this one - drawn with the arrow down.
+  isNestedLink?: (ref: string) => boolean;
   onOpenSketch: (id: string) => void;
   // 'dbRow' blocks only - the full tag list (the card filters it by the
   // live row's own tagIds) and "open this row in its database".
@@ -169,6 +175,7 @@ export default function BlockRow({
   onTimecode,
   onNoteLink,
   onNoteLinkMenu,
+  isNestedLink,
   onOpenSketch,
   allTags,
   onOpenCustomRow,
@@ -690,9 +697,18 @@ export default function BlockRow({
         // locked block has always shown (plainTextOf). A code block is
         // the one exception: nothing in it is ever parsed, so it keeps
         // showing its own raw text untouched.
-        value={type === 'code' ? item.text : plainTextOf(item.text)}
+        value={
+          type === 'code'
+            ? item.text
+            : isNestedLink
+              ? displayWithNestedGlyphs(item.text, plainTextOf(item.text), isNestedLink)
+              : plainTextOf(item.text)
+        }
         onChangeText={(displayText) =>
-          onChangeText(item.id, type === 'code' ? displayText : applyDisplayEdit(item.text, displayText))
+          onChangeText(
+            item.id,
+            type === 'code' ? displayText : applyDisplayEdit(item.text, displayWithLinkGlyphs(displayText))
+          )
         }
         onFocus={() => onFocus(item.id)}
         onBlur={() => onBlur(item.id)}
@@ -764,6 +780,7 @@ export default function BlockRow({
               timecodeColor={theme.accent}
               onNoteLink={onNoteLink && !isSelectMode ? onNoteLink : undefined}
               onNoteLinkHold={onNoteLinkMenu && !isSelectMode ? (documentId, label) => onNoteLinkMenu(item.id, documentId, label) : undefined}
+              linkGlyph={isNestedLink ? (ref) => (isNestedLink(ref) ? NESTED_GLYPH : LINK_GLYPH) : undefined}
               linkInk={theme.scheme === 'dark' ? LINK_BLUE_DARK : LINK_BLUE}
               linkTint={withAlpha(theme.scheme === 'dark' ? LINK_BLUE_DARK : LINK_BLUE, 0.14)}
               linkTextStyle={StyleSheet.flatten([styles.blockDisplayText, headingStyle, scaledTextStyle])}

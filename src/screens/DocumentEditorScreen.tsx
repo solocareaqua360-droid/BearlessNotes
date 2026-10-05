@@ -6106,6 +6106,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // is just a time of day.
           onNoteLink={openNoteLink}
           onNoteLinkMenu={noteLinkMenu}
+          isNestedLink={(ref) => documentIndex.get(parseNoteRef(ref).documentId)?.parentId === documentId}
           onTimecode={
             ownerVideoUrl ||
             blocks.some((b) => (b.type ?? 'paragraph') === 'link' && !!getVideoEmbedInfo(b.linkUrl ?? b.text ?? ''))

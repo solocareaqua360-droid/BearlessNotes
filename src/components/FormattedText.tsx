@@ -78,6 +78,7 @@ export default function FormattedText({
   linkTint,
   linkTextStyle,
   linkMaxWidth,
+  linkGlyph,
 }: {
   segments: TextSegment[];
   defaultColor: string;
@@ -99,6 +100,9 @@ export default function FormattedText({
   // The line's width: a chip longer than that ends in "…" instead of
   // running off the page.
   linkMaxWidth?: number;
+  // The arrow in front of a link's words, by its ref (a nested note's
+  // points down - see NESTED_GLYPH).
+  linkGlyph?: (ref: string) => string;
 }) {
   const query = search?.trim().toLowerCase() ?? '';
   return (
@@ -146,7 +150,7 @@ export default function FormattedText({
                   numberOfLines={1}
                   ellipsizeMode="tail"
                 >
-                  {LINK_GLYPH}
+                  {linkGlyph ? linkGlyph(id) : LINK_GLYPH}
                   {label}
                 </Text>
               </Pressable>

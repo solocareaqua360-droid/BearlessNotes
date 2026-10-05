@@ -124,6 +124,25 @@ export const HIGHLIGHT_CLOSE = '{/h}';
 export const NOTE_LINK_OPEN = /^\{n:([A-Za-z0-9_-]+(?:#[A-Za-z0-9_-]+)?)\}/;
 export const NOTE_LINK_CLOSE = '{/n}';
 export const LINK_GLYPH = '↗\u2009';
+// The same place for a note NESTED in this one (the user's: the arrow down
+// for nested, the diagonal one for a link). Exactly as long as LINK_GLYPH,
+// so it can be swapped in on the way to the screen without moving a single
+// display index - and swapped back (displayWithLinkGlyphs) before an edit
+// is read, which only ever knows LINK_GLYPH.
+export const NESTED_GLYPH = '↓\u2009';
+
+export function displayWithNestedGlyphs(raw: string, display: string, isNested: (ref: string) => boolean): string {
+  let out = display;
+  for (const span of noteLinkSpans(raw)) {
+    if (!isNested(span.documentId)) continue;
+    out = out.slice(0, span.displayStart) + NESTED_GLYPH + out.slice(span.displayStart + NESTED_GLYPH.length);
+  }
+  return out;
+}
+
+export function displayWithLinkGlyphs(display: string): string {
+  return display.split(NESTED_GLYPH).join(LINK_GLYPH);
+}
 
 // A note's address on the clipboard («Копіювати посилання»): pasted into a
 // block it becomes a word linking to the note (DocumentEditorScreen's

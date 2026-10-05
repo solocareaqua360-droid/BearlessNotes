@@ -69,6 +69,8 @@ type SortableBlockRowProps = {
   onTimecode?: (blockId: string, seconds: number) => void;
   onNoteLink?: (documentId: string) => void;
   onNoteLinkMenu?: (blockId: string, documentId: string, label: string) => void;
+  // A link to a note nested in this one - drawn with the arrow down.
+  isNestedLink?: (ref: string) => boolean;
   onOpenSketch: (id: string) => void;
   // 'dbRow' blocks only - the full tag list (the card filters it by the
   // live row's own tagIds) and "open this row in its database".
@@ -134,6 +136,7 @@ export default function SortableBlockRow({
   onTimecode,
   onNoteLink,
   onNoteLinkMenu,
+  isNestedLink,
   onOpenSketch,
   allTags,
   onOpenCustomRow,
@@ -260,6 +263,7 @@ export default function SortableBlockRow({
             onTimecode={onTimecode}
             onNoteLink={onNoteLink}
             onNoteLinkMenu={onNoteLinkMenu}
+            isNestedLink={isNestedLink}
             onOpenSketch={onOpenSketch}
             allTags={allTags}
             onOpenCustomRow={onOpenCustomRow}
