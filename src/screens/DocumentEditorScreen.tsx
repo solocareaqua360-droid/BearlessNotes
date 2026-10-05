@@ -1188,7 +1188,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     shell?: number;
     blocksCommitted?: number;
     loadedAt?: number;
+    rendersAtBlocks?: number;
   }>({ mount: Date.now() });
+  // How many times the editor rendered - the report counts those after
+  // the blocks arrived, each one the whole screen over again.
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
   // The editor's first commit, before any block is there: what the screen
   // itself costs to put up.
   useLayoutEffect(() => {
@@ -1273,15 +1278,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // A slow opening says where its time went (temporary - utils/openTiming).
   // The commit that carries the blocks.
   useLayoutEffect(() => {
-    if (isLoaded) openTimingRef.current.blocksCommitted = Date.now();
+    if (isLoaded) {
+      openTimingRef.current.blocksCommitted = Date.now();
+      openTimingRef.current.rendersAtBlocks = renderCountRef.current;
+    }
   }, [isLoaded]);
   // The rest of a long note, once the opening has moved (see renderAll).
   useEffect(() => {
     if (!isLoaded || renderAll) return;
-    if (blocks.length <= FIRST_RENDER_BLOCKS) {
-      setRenderAll(true);
-      return;
-    }
+    // A short note is drawn whole already; setting this would only render
+    // the editor once more for nothing.
+    if (blocks.length <= FIRST_RENDER_BLOCKS) return;
     const timer = setTimeout(() => setRenderAll(true), RENDER_REST_AFTER_MS);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1294,14 +1301,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     let reportTimer: ReturnType<typeof setTimeout> | undefined;
     requestAnimationFrame(() => {
       const drawn = Date.now();
-      reportTimer = setTimeout(() => reportOpening(drawn), 900);
+      const renders = renderCountRef.current - (openTimingRef.current.rendersAtBlocks ?? renderCountRef.current);
+      reportTimer = setTimeout(() => reportOpening(drawn, renders), 900);
     });
     return () => clearTimeout(reportTimer);
     // Once per opening.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded]);
 
-  function reportOpening(drawn: number) {
+  function reportOpening(drawn: number, renders: number) {
     const marks = takeOpenMarks();
     const t = openTimingRef.current;
     const start = marks.tap ?? t.mount;
@@ -1318,7 +1326,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       t.read !== undefined ? `дані (${t.source}) ${ms(t.read)}` : null,
       t.loadedAt && t.shell ? `чекання ${ms(t.loadedAt - t.read! - t.shell)}` : null,
       t.blocksCommitted && t.loadedAt ? `блоки ${ms(t.blocksCommitted - t.loadedAt)}` : null,
-      t.blocksCommitted ? `кадр ${ms(drawn - t.blocksCommitted)}` : null,
+      t.blocksCommitted ? `кадр ${ms(drawn - t.blocksCommitted)} (ще рендерів: ${renders})` : null,
       marks.landed ? `до анімації ${ms(marks.landed - drawn)}` : null,
       marks.landed && marks.moving ? `фото смужок нотатки ${ms(marks.moving - marks.landed)}` : null,
     ].filter(Boolean);
