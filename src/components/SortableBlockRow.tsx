@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { useDensity } from '../hooks/useDensity';
-import { LayoutChangeEvent, TextInput, View } from 'react-native';
+import { LayoutChangeEvent, StyleSheet, TextInput, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { Block, Tag } from '../types';
 import type { colorForDocument } from '../utils/documentColor';
 import BlockRow from './BlockRow';
@@ -211,12 +211,19 @@ export default function SortableBlockRow({
     ],
   }));
 
+  // The tint a link's landing leaves: lit at once, held for a second, then
+  // faded out slowly rather than switched off.
+  const glow = useSharedValue(0);
+  useEffect(() => {
+    if (!flash) return;
+    glow.value = 1;
+    glow.value = withDelay(1000, withTiming(0, { duration: 900 }));
+  }, [flash]);
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
+
   return (
-    <View
-      onLayout={onLayout}
-      style={flash ? { backgroundColor: 'rgba(37,99,235,0.12)', borderRadius: 12 } : undefined}
-      {...({ dataSet: { blockId: item.id } } as object)}
-    >
+    <View onLayout={onLayout} {...({ dataSet: { blockId: item.id } } as object)}>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.glow, glowStyle]} />
       <GestureDetector gesture={gesture}>
         <Animated.View style={compressStyle}>
           <BlockRow
@@ -267,3 +274,7 @@ export default function SortableBlockRow({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  glow: { backgroundColor: 'rgba(37,99,235,0.14)', borderRadius: 12 },
+});

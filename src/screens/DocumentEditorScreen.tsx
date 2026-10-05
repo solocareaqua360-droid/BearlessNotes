@@ -725,8 +725,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         return;
       }
       scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
-      setFlashBlockId(blockId);
-      setTimeout(() => setFlashBlockId((cur) => (cur === blockId ? null : cur)), 2200);
+      // Lit once the scroll has arrived, so the second of light is seen
+      // on the block rather than spent travelling (SortableBlockRow fades it).
+      setTimeout(() => setFlashBlockId(blockId), 350);
+      setTimeout(() => setFlashBlockId((cur) => (cur === blockId ? null : cur)), 2600);
     };
     setTimeout(attempt, 250);
   }
