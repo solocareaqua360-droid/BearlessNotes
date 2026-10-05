@@ -19,6 +19,7 @@ import { LINK_CATEGORY_INFO } from '../utils/linkCategory';
 import { TAG_COLORS } from '../constants/tags';
 import type { RootStackParamList } from '../navigation';
 import type { Tag } from '../types';
+import { binNote } from '../utils/nestedNotes';
 
 // THE FOLDERS AS ONE TABLE (the folders rework, step 1, 2026-10-02). The
 // same canvas each database has («Полотно», FolderCanvas) - islands for
@@ -208,7 +209,12 @@ export default function FoldersCanvas({
     else if (choice === 'out' && folder) await takeOut(item, folder);
     else if (choice === 'delete' && canBin) {
       const yes = await confirm({ title: `Видалити «${item.title}»?`, message: 'Воно піде в кошик своєї бази.', confirmLabel: 'Видалити' });
-      if (yes) await updateDoc(doc(db, item.collection, item.docId), { deletedAt: Date.now() }).catch(() => {});
+      // A note takes what is nested in it along (nestedNotes).
+      if (yes)
+        await (item.collection === 'documents'
+          ? binNote(item.docId)
+          : updateDoc(doc(db, item.collection, item.docId), { deletedAt: Date.now() })
+        ).catch(() => {});
     }
   };
 

@@ -57,6 +57,7 @@ import {
   writeBatch,
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
+import { binNote, purgeNote, restoreNote } from '../utils/nestedNotes';
 import { onDesktopCommand } from '../utils/desktopCommands';
 import { useDensity } from '../hooks/useDensity';
 import { usePublishRailTree } from '../navigation/navRail';
@@ -1044,11 +1045,20 @@ export default function DocumentsScreen({
 
   useEffect(() => {
     return onSnapshot(ownedQuery('documents'), (snapshot) => {
+      const stampOf = new Map(snapshot.docs.map((d) => [d.id, d.data().deletedAt as number | undefined]));
+      // A note nested in another (recordNotes' DocOwner) lives in it - but
+      // one binned ON ITS OWN shows in the bin, or it could never come
+      // back. One binned with its parent goes and returns with it.
+      const binnedAlone = (data: { owner?: { kind?: string; id?: string }; deletedAt?: number }) =>
+        data.owner?.kind === 'note' && !!data.deletedAt && stampOf.get(data.owner.id ?? '') !== data.deletedAt;
       const all = snapshot.docs
         // Daily notes (CalendarScreen) live in this same collection but
         // belong to the calendar, not this list; technical notes (an
         // app's «Розбір» - see recordNotes) belong to their record.
-        .filter((docSnapshot) => !docSnapshot.data().calendarDate && !docSnapshot.data().owner)
+        .filter(
+          (docSnapshot) =>
+            !docSnapshot.data().calendarDate && (!docSnapshot.data().owner || binnedAlone(docSnapshot.data()))
+        )
         .map((docSnapshot) => ({
           id: docSnapshot.id,
           title: docSnapshot.data().title,
@@ -1256,13 +1266,18 @@ export default function DocumentsScreen({
 
   // "Delete" puts a note in the bin. Everything it carries stays with it
   // - see DocumentItem.deletedAt.
+  // With what is nested in it, under one stamp (nestedNotes).
   async function confirmDeleteDocument(id: string) {
-    await updateDoc(doc(db, 'documents', id), { deletedAt: Date.now() });
+    await binNote(id);
+  }
+
+  async function purgeDocument(id: string) {
+    await purgeNote(id, purgeOneDocument);
   }
 
   // Gone for good: what deleting used to be. The tags it carried forget
   // it; the note itself is removed.
-  async function purgeDocument(id: string) {
+  async function purgeOneDocument(id: string) {
     const snapshot = await getDoc(doc(db, 'documents', id));
     if (!snapshot.exists()) return;
     const docTagIds: string[] = snapshot.data()?.tagIds ?? [];
@@ -1276,7 +1291,7 @@ export default function DocumentsScreen({
   }
 
   async function restoreDocument(id: string) {
-    await updateDoc(doc(db, 'documents', id), { deletedAt: deleteField() });
+    await restoreNote(id);
   }
 
   // Held down in the bin: back, or away for good.

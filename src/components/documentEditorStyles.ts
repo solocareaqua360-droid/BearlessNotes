@@ -279,6 +279,27 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
   // хочеться писати навіть неважливі речі". Shared with the list's page
   // miniatures, which draw this same page, so the card and the note stay
   // one picture.
+  // A nested note's way home (see NestedDocuments): the notes it is in,
+  // root first, each a tap away.
+  nestPath: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 20,
+    paddingBottom: 6,
+  },
+  nestPathStep: {
+    fontSize: 13,
+    fontFamily: SOFT_SEMIBOLD,
+    color: t.paper.inkMuted,
+    maxWidth: 180,
+  },
+  nestPathSeparator: {
+    fontSize: 13,
+    fontFamily: SOFT_REGULAR,
+    color: t.paper.inkFaint,
+  },
   titleInput: {
     // THE PAGE'S H1 (the user's, 2026-10-02: "заголовок нотатки повинен
     // бути h1"): one step above the body's own headings, which the panel

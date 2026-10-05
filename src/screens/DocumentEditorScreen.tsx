@@ -7,7 +7,7 @@ import ScreenGround from '../components/ScreenGround';
 import { IN_SHELL } from '../utils/shell';
 import { morphKey, morphLanded } from '../utils/morph';
 import { dragSelectJustEnded } from '../hooks/useBlockMarquee';
-import { ForwardedRef, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { ForwardedRef, Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -173,6 +173,7 @@ import DocumentPickerModal from '../components/DocumentPickerModal';
 import RelatedDocuments from '../components/RelatedDocuments';
 import NestedDocuments from '../components/NestedDocuments';
 import { createOwnedNote, makeOrdinary } from '../utils/recordNotes';
+import { binNote } from '../utils/nestedNotes';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
@@ -450,7 +451,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // Into the bin, not gone: the tags, mirrors and arrows stay as they
       // are so a restored note is the whole note. Throwing it away for
       // good is the bin's job - see the documents screen.
-      await setDoc(doc(db, 'documents', documentId), { deletedAt: Date.now() }, { merge: true });
+      // What is nested in it goes too, under the same stamp (nestedNotes).
+      await binNote(documentId);
       if (closePane) closePane();
       else navigation.goBack();
     });
@@ -851,6 +853,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [caret, setCaret] = useState<{ blockId: string; pos: number } | null>(null);
   const [noteLinkRename, setNoteLinkRename] = useState<{ blockId: string; documentId: string; label: string } | null>(null);
   // «Інша нотатка…»: the link whose target the document picker is choosing.
+  // ⋯ «Зробити вкладеною»: choosing the note this one moves into.
+  const [nestPickerOpen, setNestPickerOpen] = useState(false);
   const [noteLinkRetarget, setNoteLinkRetarget] = useState<{ blockId: string; documentId: string; label: string } | null>(null);
   const atQuery = useMemo(() => {
     if (!caret || caret.blockId !== focusedBlockId) return null;
@@ -2725,6 +2729,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // same condition as sheetPage below (computed here: hooks must stand
   // above the screen's early returns). The bar and the dock follow.
   const softPage = !embedded && !('pane' in props) && !pointerDensity;
+  // The notes this one is nested in, root first (NestedDocuments).
+  const nestPath: { id: string; title: string }[] = [];
+  for (let p = documentIndex.get(documentId)?.parentId; p && nestPath.length < 12; p = documentIndex.get(p)?.parentId) {
+    const parent = documentIndex.get(p);
+    if (!parent) break;
+    nestPath.unshift(parent);
+  }
   const soft = useSoft();
   useChromeStyle('soft', softPage);
   useTopBack(
@@ -2756,7 +2767,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             // its own nested ones still inside it.
             ...(documentIndex.get(documentId)?.parentId
               ? [{ label: 'Зробити самостійною', icon: 'open-outline' as const, onPress: makeStandalone }]
-              : []),
+              : dayName
+                ? []
+                : [{ label: 'Зробити вкладеною', icon: 'layers-outline' as const, onPress: () => setNestPickerOpen(true) }]),
             { label: 'Створити картки', icon: 'albums-outline', onPress: () => makeFlashcards(blocks) },
             { kind: 'rule' },
             { label: 'Видалити', icon: 'trash-outline', tone: 'danger', onPress: confirmDeleteDocument },
@@ -3114,6 +3127,41 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   async function copyNoteAddress() {
     await Clipboard.setStringAsync(noteAddress(documentId));
     notify('Посилання скопійовано', 'Встав його в іншу нотатку - воно стане словом-посиланням на цю.');
+  }
+
+  // Where this note can move into: not itself, not anything nested in it
+  // (that would make a circle), not the bin. The notes that link here
+  // first - the user's: having linked to a note is how one finds out it
+  // belongs inside the other.
+  function nestCandidates() {
+    const inside = new Set<string>([documentId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      documentIndex.forEach((d) => {
+        if (d.parentId && inside.has(d.parentId) && !inside.has(d.id)) {
+          inside.add(d.id);
+          grew = true;
+        }
+      });
+    }
+    return Array.from(documentIndex.values())
+      .filter((d) => !inside.has(d.id) && !d.deletedAt)
+      .sort((a, b) => {
+        const la = (a.linksTo ?? []).includes(documentId) ? 0 : 1;
+        const lb = (b.linksTo ?? []).includes(documentId) ? 0 : 1;
+        return la - lb || (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+      })
+      .map((d) => ({ id: d.id, title: d.title?.trim() || 'Без назви' }));
+  }
+
+  async function nestInto(parentId: string) {
+    try {
+      await updateDoc(doc(db, 'documents', documentId), { owner: { kind: 'note', id: parentId } });
+      notify('Тепер вкладена', `Вона всередині «${documentIndex.get(parentId)?.title || 'Без назви'}», внизу, у «Вкладених».`);
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+    }
   }
 
   async function makeStandalone() {
@@ -5936,6 +5984,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           </Pressable>
         )}
 
+        {!embedded && nestPath.length > 0 && (
+          <View style={styles.nestPath}>
+            {nestPath.map((step) => (
+              <Fragment key={step.id}>
+                <Pressable onPress={() => openReferencedDocument(step.id)} hitSlop={6}>
+                  <Text
+                    style={[styles.nestPathStep, paperColor && { color: paperColor.textMuted }]}
+                    numberOfLines={1}
+                  >
+                    {step.title || 'Без назви'}
+                  </Text>
+                </Pressable>
+                <Text style={[styles.nestPathSeparator, paperColor && { color: paperColor.textMuted }]}>›</Text>
+              </Fragment>
+            ))}
+          </View>
+        )}
         {!embedded && titleActive && (
         <TextInput
           autoFocus
@@ -6555,6 +6620,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           setNoteLinkRetarget(null);
           setDocumentPickerBlockId(null);
         }}
+      />
+
+      <DocumentPickerModal
+        visible={nestPickerOpen}
+        title="Вкласти в яку нотатку?"
+        subtitle="Спершу ті, що посилаються на цю"
+        documents={nestPickerOpen ? nestCandidates() : []}
+        onPick={(picked) => {
+          setNestPickerOpen(false);
+          nestInto(picked);
+        }}
+        onClose={() => setNestPickerOpen(false)}
       />
 
       <AddExistingItemModal

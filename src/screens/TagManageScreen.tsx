@@ -28,6 +28,7 @@ import TagEditSheet from '../components/TagEditSheet';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { TAG_KIND_LABELS as KIND_LABELS } from '../constants/tagKinds';
 import { ask, confirm } from '../components/surfaces/Ask';
+import { binNote } from '../utils/nestedNotes';
 
 const DANGER = '#EF4444';
 
@@ -205,9 +206,11 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
       const now = Date.now();
       await Promise.all(
         real.map((item) =>
-          BIN_COLLECTIONS.includes(item.collection)
-            ? updateDoc(doc(db, item.collection, item.docId), { deletedAt: now }).catch(() => {})
-            : Promise.resolve()
+          item.collection === 'documents'
+            ? binNote(item.docId).catch(() => {})
+            : BIN_COLLECTIONS.includes(item.collection)
+              ? updateDoc(doc(db, item.collection, item.docId), { deletedAt: now }).catch(() => {})
+              : Promise.resolve()
         )
       );
       await removeFolder(tag);
