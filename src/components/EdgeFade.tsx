@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // Content scrolling past an edge dissolves into the surface behind it
 // instead of being cut off - the user's own words for the hard edge it
@@ -16,6 +17,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 const STOPS = 8;
 
 export default function EdgeFade({ edge, color, height = 36 }: { edge: 'top' | 'bottom'; color: string; height?: number }) {
+  useRenderTimer('Край, що тане');
   const [width, setWidth] = useState(0);
   const id = `fade${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const stops = Array.from({ length: STOPS }, (_, i) => {

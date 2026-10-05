@@ -24,6 +24,7 @@ import ProjectBadge from './ProjectBadge';
 import { SoftCheck } from './SoftIcon';
 import DocumentPageMiniature from './DocumentPageMiniature';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // Fine grain laid over every card. Two things keep it reading as paper
 // tooth and not as dirt: the specks are half lighter and half darker than
@@ -544,6 +545,7 @@ export default function DocumentCard({
   wide,
   soft: softProp,
 }: Props) {
+  useRenderTimer('Картка нотатки');
   const recordColour = useRecordColour();
   // A tile settles under the finger (the phone's; the laptop's is CSS).
   const settle = usePressSettle();

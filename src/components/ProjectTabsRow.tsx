@@ -6,6 +6,7 @@ import { BlurView } from 'expo-blur';
 import { useFrostPaused } from './frostPause';
 import { FONT_SEMIBOLD, SOFT_MEDIUM } from '../utils/fonts';
 import { useSoftSurface, type SoftTokens } from '../theme/soft';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // Sentinel for "no group/project assigned" - an id string, since a real
 // document's id (a Firestore auto-id) can never collide with it. `null`
@@ -85,6 +86,7 @@ export default function ProjectTabsRow({
   soft: softProp,
   hideUnassigned,
 }: Props) {
+  useRenderTimer('Рядок проєктів');
   const styles = useStyles(makeStyles);
   // Said outright by the caller, or heard from a soft surface around it
   // (every database's chrome - see SoftSurfaceContext).

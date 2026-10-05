@@ -6,6 +6,7 @@ import { dockClearance } from '../navigation/dockGeometry';
 import { useRecentFolderIds } from '../utils/recentFolders';
 import { FONT_SEMIBOLD } from '../utils/fonts';
 import type { Tag } from '../types';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // FILING A SELECTION IN ONE TAP (the folders rework, step 2, 2026-10-02:
 // "механізм швидкого призначення папок... майже безшовно, щоб не
@@ -27,6 +28,7 @@ export default function RecentFolderStrip({
   onPick: (tag: Tag) => void;
   onOther: () => void;
 }) {
+  useRenderTimer('Недавні папки');
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();

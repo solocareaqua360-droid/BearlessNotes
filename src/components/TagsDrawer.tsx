@@ -19,6 +19,7 @@ import { RAIL_RIGHT } from '../constants/rail';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // Two thirds of the window, measured per render (useWindowDimensions) and
 // never captured once at module scope from Dimensions.get() - see
@@ -385,6 +386,7 @@ function TagsDrawerInner({
   trash,
   groupSection,
 }: Props, ref: React.Ref<TagsDrawerHandle>) {
+  useRenderTimer('Шторка папок');
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const showGroups = !mode || mode.value === 'groups';

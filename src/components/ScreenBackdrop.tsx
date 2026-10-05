@@ -5,6 +5,7 @@ import Animated, { SharedValue, useAnimatedStyle } from 'react-native-reanimated
 import Svg, { Defs, LinearGradient, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useActiveBackdropOverride, useTheme } from '../theme/ThemeProvider';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // What every screen stands on, and what the glass has to blur.
 //
@@ -51,6 +52,7 @@ export default function ScreenBackdrop({
   // still, and the screen is the gradient it always was.
   scrollY?: SharedValue<number>;
 }) {
+  useRenderTimer('Тло екрана');
   // Its OWN size, measured - not the window's. In a pane the screen is
   // half a window, and a backdrop drawn to the window's width put the
   // clouds where they would be on a whole screen and ran off the pane's

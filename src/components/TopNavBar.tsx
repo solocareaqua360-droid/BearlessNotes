@@ -542,6 +542,7 @@ function SearchRow({
   inkMuted: string;
   soft: SoftTokens | null;
 }) {
+  useRenderTimer('Смужка: пошук');
   const [text, setText] = useState(search.initialQuery);
   return (
     <Surface soft={!!soft} fill={soft?.fill} style={[styles.piece, styles.searchPiece]} radius={radius}>
@@ -626,6 +627,7 @@ const DesksRow = memo(function DesksRow({
   inkMuted: string;
   soft: SoftTokens | null;
 }) {
+  useRenderTimer('Смужка: столи');
   const scroll = useRef<ScrollView>(null);
   const activeIndex = Math.max(0, desks.findIndex((d) => d.active));
   const total = (desks.length - 1) * (PILL_W + CUT) + layout.width;
@@ -762,6 +764,7 @@ function TrailRow({
   inkMuted: string;
   soft?: boolean;
 }) {
+  useRenderTimer('Смужка: слід');
   const scroll = useRef<ScrollView>(null);
   return (
     <>
@@ -821,6 +824,7 @@ function PathRow({
   inkMuted: string;
   soft: SoftTokens | null;
 }) {
+  useRenderTimer('Смужка: шлях');
   const targets = useNavDockTargets();
   const scroll = useRef<ScrollView>(null);
   return (

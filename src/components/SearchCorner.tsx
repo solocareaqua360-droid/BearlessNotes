@@ -14,6 +14,7 @@ import { LayoutFrameContext } from '../hooks/useResponsiveLayout';
 import { DESKTOP_TABS_HEIGHT, DESKTOP_TOOLBAR_ROW, useDesktopRailWidth } from '../constants/desktop';
 import { DOCK_PIECE_RADIUS, dockCardHeight, dockRowLeft, dockRowWidth } from '../navigation/dockGeometry';
 import { FONT_REGULAR } from '../utils/fonts';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // SEARCH, IN THE TOP-LEFT CORNER - for now. The dock's left bead became
 // the way back ("кнопка назад є одним із головних якорів"), and search
@@ -55,6 +56,7 @@ export default function SearchCorner({
   // that wear it (theme/soft).
   soft?: boolean;
 }) {
+  useRenderTimer('Пошук у куті');
   const theme = useTheme();
   const lift = useLift();
   const S = useSoft();

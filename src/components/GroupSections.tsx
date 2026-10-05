@@ -25,6 +25,7 @@ import { categoryFromSiteName } from '../utils/linkCategory';
 import { FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_LINE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { listenError } from '../utils/listenError';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // What else is in this group. A group is the one thing in the app that
 // deliberately crosses databases (see the Group comment in types.ts), and
@@ -129,6 +130,7 @@ export default function GroupSections({
   // what its own filter says, nothing is added for the project).
   views?: { id: string; databaseId: string; name: string; icon?: string }[];
 }) {
+  useRenderTimer('Проєкт: розділи');
   const recordColour = useRecordColour();
   const S = useSoft();
   const given = !!items;
