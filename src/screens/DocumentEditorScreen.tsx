@@ -2001,6 +2001,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // close effect): the panel can go, and the bar is now standing on the
   // keyboard, so letting go of the panel's height moves nothing.
   function finishPanelClose() {
+    // A keyboard that arrives while the panel still STANDS is not the one
+    // ⌨ asked for - it is a sheet's own search field (AddExistingItemModal,
+    // the document picker) rising over the editor. Letting it take the
+    // panel's height left the panel drawn with the bar and the page's foot
+    // fallen under it, and no way to lower it (2026-10-05).
+    if (panelOpenRef.current) return;
     setPanelClosing(false);
     panelHeightSV.value = 0;
   }
