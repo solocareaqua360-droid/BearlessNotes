@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useIsFocused } from '@react-navigation/native';
+import { useWhileFocused } from './navDock';
 
 // ONE WAY BACK PER WINDOW (the laptop's). A window - the main pane, a side
 // panel - has one back arrow in one place, and it always goes one level UP
@@ -38,17 +38,18 @@ export function InnerBackProvider({ children }: { children: ReactNode }) {
 // is at its top.
 export function useInnerBack(run: (() => void) | null) {
   const ctx = useContext(InnerBackContext);
-  const focused = useIsFocused();
   const id = useId();
   const ref = useRef(run);
   ref.current = run;
-  const active = !!run && focused;
-  useEffect(() => {
-    if (!ctx) return;
-    ctx.publish(id, active ? () => ref.current?.() : null);
+  const has = !!run;
+  // While in front, from the navigation's own events - useIsFocused here
+  // redrew the whole screen that asked (the documents list) on every note
+  // opened and closed (2026-10-06).
+  useWhileFocused(() => {
+    if (!ctx || !has) return;
+    ctx.publish(id, () => ref.current?.());
     return () => ctx.publish(id, null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx?.publish, id, active]);
+  }, [ctx?.publish, id, has]);
 }
 
 export function useInnerBackNow(): (() => void) | null {

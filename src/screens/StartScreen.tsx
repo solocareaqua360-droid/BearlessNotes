@@ -2,7 +2,7 @@ import { categoryFromSiteName } from '../utils/linkCategory';
 import { memo, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { useTags } from '../hooks/useTags';
@@ -19,7 +19,7 @@ import { CHROME_TOP } from '../constants/rail';
 import { SoftSurfaceContext, useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useChromeStyle, useDockBeads, useTopBack } from '../navigation/navDock';
+import { useChromeStyle, useDockBeads, useTopBack, useWhileFocused } from '../navigation/navDock';
 import { useSideDrawerActions } from '../navigation/sideDrawers';
 import { BOARDS_DESK, DesksControlContext, PERMANENT_DESK, deskFace, deskKeyForCustom } from '../navigation/desks';
 import { GRID_TILES, WIDE_TILES, openDatabaseTile } from '../constants/databaseTiles';
@@ -85,7 +85,11 @@ export default function StartScreen() {
   useRenderTimer('Старт');
   const S = useSoft();
   const insets = useSafeAreaInsets();
-  const isFocused = useIsFocused();
+  // In front or not is ASKED (and heard from the navigation's events), not
+  // subscribed to: useIsFocused redrew this whole desk - under the page,
+  // mid-way through its growth - on every note opened and closed
+  // (2026-10-06, 45 ms on the phone).
+  const navigation = useNavigation();
   const topNavOn = useTopNavOn();
   const dockClear = useDockClearance();
   const { openCalendar, openDatabases } = useSideDrawerActions();
@@ -116,18 +120,23 @@ export default function StartScreen() {
   const scrolled = useRef(0);
   const publishZone = useCallback(() => {
     const row = rowAt.current;
-    if (!isFocused || !row) {
+    if (!navigation.isFocused() || !row) {
       setEdgeZone(-1, -1);
       return;
     }
     const top = containerTop.current + row.y - scrolled.current;
     setEdgeZone(top, top + row.h);
-  }, [isFocused, setEdgeZone]);
+  }, [navigation, setEdgeZone]);
   useEffect(() => {
     if (shown.length === 0) rowAt.current = null;
     publishZone();
     return () => setEdgeZone(-1, -1);
   }, [publishZone, shown.length, setEdgeZone]);
+  // And again as the desk comes to the front or goes behind.
+  useWhileFocused(() => {
+    publishZone();
+    return () => setEdgeZone(-1, -1);
+  }, [publishZone, setEdgeZone]);
 
   // The first desk: nowhere before it to go back to, so its way back
   // stands dimmed in its place.
@@ -177,9 +186,10 @@ export default function StartScreen() {
   // The dock: search on the left (the app's search over everything), and
   // on the right a pencil - a new document; held, the chat (the dock does
   // that for every pencil and plus).
+  // (Published only while the desk is in front - useDockBeads sees to it.)
   useDockBeads(
-    isFocused ? { icon: 'search-outline', onPress: () => go('Search') } : null,
-    isFocused ? { icon: 'create-outline', onPress: () => create(CREATE[0]) } : null
+    { icon: 'search-outline', onPress: () => go('Search') },
+    { icon: 'create-outline', onPress: () => create(CREATE[0]) }
   );
 
   const openRecent = (place: RecentPlace) => {

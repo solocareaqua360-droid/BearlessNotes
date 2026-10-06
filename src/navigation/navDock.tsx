@@ -876,6 +876,15 @@ export function useTopBack(onPress: (() => void) | null, enabled = true, icon?: 
   }, [publish, enabled, stable, dimmed, icon, id, layer]);
 }
 
+// Whether the folder path stands on the dock (a 'path' context, the bar not
+// up to carry it instead) - one yes/no, so a screen that only clears the
+// dock renders when THAT changes, not on every context the dock is handed
+// (opening a note hands it one: the list, the start desk and the bases all
+// redrew for it, mid-way through the page's growth, 2026-10-06).
+export function useNavDockPathOnDock(): boolean {
+  return useDockSlice((v) => v.context?.kind === 'path' && !v.topNavUp, false);
+}
+
 export function useNavTopNavUp(): boolean {
   return useDockSlice((v) => v.topNavUp, false);
 }

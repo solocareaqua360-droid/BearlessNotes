@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import ScreenGround from '../components/ScreenGround';
 import { APPS_TEMPLATE_NAME, APPS_TEMPLATE_RATES, appsTemplateFields } from '../utils/appsTemplate';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
@@ -84,7 +84,7 @@ import { navigateToTarget, windowUrlFor } from '../navigation/paneTargetInfo';
 import { addTab } from '../navigation/desktopTabs';
 import { rightClick } from '../utils/rightClick';
 import { BlurView } from 'expo-blur';
-import { useIsFocused } from '@react-navigation/native';
+import { useFocusStore } from '../hooks/useFocusStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
 import {
@@ -290,7 +290,11 @@ export default function DatabasesScreen() {
     icon: keyof typeof Ionicons.glyphMap;
     color: string;
   } | null>(null);
-  const databasesFocused = useIsFocused() && !layerShut;
+  // Read through a store, as the one yes/no it is: useIsFocused redrew this
+  // screen on every focus and blur even while its layer was shut and the
+  // answer stayed "no" - every note opened and closed (2026-10-06).
+  const focusStore = useFocusStore();
+  const databasesFocused = useSyncExternalStore(focusStore.subscribe, () => !layerShut && focusStore.get(), () => false);
   const databasesInsets = useSafeAreaInsets();
   const dockClear = useDockClearance();
   // "Більше" - a tab's own root: its way back steps to the desk before

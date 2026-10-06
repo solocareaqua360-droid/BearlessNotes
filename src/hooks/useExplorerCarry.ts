@@ -3,9 +3,8 @@ import { ScrollView } from 'react-native';
 import type { FlatList } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import type { SharedValue } from 'react-native-reanimated';
-import { useIsFocused } from '@react-navigation/native';
 import { useCardCarry } from './useCardCarry';
-import { useNavDockTargetPublisher } from '../navigation/navDock';
+import { useNavDockTargetPublisher, useWhileFocused } from '../navigation/navDock';
 
 // Longer than a plain short hold - the user's own two-hold-length rule:
 // a short one opens the card's menu, a longer one lifts it.
@@ -214,7 +213,8 @@ export function useExplorerCarry<T extends { id: string }>({
   // thing - the user's own reason, and a good one: the card in your hand
   // is big, and over a strip of small crumbs you cannot be sure which one
   // you are about to hit.
-  const carryFocused = useIsFocused();
+  // In front or not is heard from the navigation's events (useWhileFocused),
+  // not useIsFocused, which redrew the whole list on every note opened.
   const publishDockTargets = useNavDockTargetPublisher();
   // Published through a wrapper that never changes, reading the live
   // registrar out of a ref.
@@ -229,12 +229,12 @@ export function useExplorerCarry<T extends { id: string }>({
   const registrarRef = useRef(carry.registerStepTarget);
   registrarRef.current = carry.registerStepTarget;
   const dockRegistrar = useCallback((path: string) => registrarRef.current(path), []);
-  useEffect(() => {
+  useWhileFocused(() => {
     if (!publishDockTargets) return;
-    if (!carryFocused || !active) return;
+    if (!active) return;
     publishDockTargets(dockRegistrar);
     return () => publishDockTargets(null);
-  }, [publishDockTargets, carryFocused, active, dockRegistrar]);
+  }, [publishDockTargets, active, dockRegistrar]);
 
   return {
     carry,

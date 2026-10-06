@@ -1,7 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { SharedValue, useSharedValue } from 'react-native-reanimated';
-import { useIsFocused } from '@react-navigation/native';
-import { useDrawerCoverPublisher, useNavDrawerProgress } from './navDock';
+import { useDrawerCoverPublisher, useNavDrawerProgress, useWhileFocused } from './navDock';
 import { listenCalendarRequests } from './calendarRequest';
 
 // THE TWO SCREENS BESIDE THE DESKS - the user's iOS model (2026-09-28):
@@ -107,12 +106,13 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
   // Told to the dock: whether the desks are the screen in front (a note
   // opened from a layer is pushed OVER them, and must keep its own bar
   // and dock), and whether a layer is out.
-  const tabsFocused = useIsFocused();
+  // From the navigation's events, not useIsFocused (no render of its own).
   const publishCover = useDrawerCoverPublisher();
   const anyOpen = calendarOpen || databasesOpen;
-  useEffect(() => {
-    publishCover?.({ active: tabsFocused, open: anyOpen });
-  }, [publishCover, tabsFocused, anyOpen]);
+  useWhileFocused(() => {
+    publishCover?.({ active: true, open: anyOpen });
+    return () => publishCover?.({ active: false, open: anyOpen });
+  }, [publishCover, anyOpen]);
   useEffect(() => () => publishCover?.({ active: false, open: false }), [publishCover]);
   // One at a time: opening one side shuts the other.
   const openCalendar = useCallback(() => {

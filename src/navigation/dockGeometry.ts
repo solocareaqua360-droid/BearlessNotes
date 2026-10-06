@@ -1,6 +1,6 @@
 import { useWindowDimensions } from 'react-native';
 import { useDensity } from '../hooks/useDensity';
-import { useNavDockOwnContext, useNavTopNavUp } from './navDock';
+import { useNavDockPathOnDock } from './navDock';
 
 // The dock's own vertical geometry, read off ContextDock.tsx - which
 // imports these same numbers rather than keeping a second copy (see its
@@ -56,11 +56,10 @@ export function useDockClearance(gap?: number): number {
   // Inside a folder the path stands on top of the dock, and whatever has
   // to clear the dock has to clear it too. Only where the dock is drawn
   // at all - with a pointer the path lives in the toolbar.
-  const own = useNavDockOwnContext();
-  const density = useDensity();
   // ...unless the path rises under the desks bar at the top instead.
-  const topNavUp = useNavTopNavUp();
-  const pathUp = own?.kind === 'path' && density === 'touch' && !topNavUp;
+  const pathOnDock = useNavDockPathOnDock();
+  const density = useDensity();
+  const pathUp = pathOnDock && density === 'touch';
   return dockClearance(width, gap) + (pathUp ? DOCK_PATH_H + DOCK_PATH_GAP : 0);
 }
 

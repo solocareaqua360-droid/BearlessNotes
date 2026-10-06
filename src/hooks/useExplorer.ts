@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useIsFocused } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { Tag, TaggableKind } from '../types';
-import { useNavDockFlip, useNavDockPublisher } from '../navigation/navDock';
+import { useNavDockFlip, useNavDockPublisher, useWhileFocused } from '../navigation/navDock';
 import { TAG_COLORS } from '../constants/tags';
 import { ask, confirm } from '../components/surfaces/Ask';
 
@@ -350,7 +350,10 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
   // whichever rendered last rather than the one being looked at.
   const crumbs = path ? path.split('/') : [];
   const publishToDock = useNavDockPublisher();
-  const focused = useIsFocused();
+  // Asked, not subscribed to: useIsFocused here redrew the whole list it
+  // serves on every note opened and closed (2026-10-06, the phone's log:
+  // the documents list, 40-50 ms, before the note could even start).
+  const navigation = useNavigation();
   const crumbKey = path;
   const goToCrumb = useCallback((target: string) => setPath(target), []);
   // STEPPING INTO A FOLDER TURNS THE DOCK to what can be done in it -
@@ -364,15 +367,16 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
     const depth = path === '' ? 0 : path.split('/').length;
     const wasDeeper = depth > lastDepthRef.current;
     lastDepthRef.current = depth;
-    if (!focused || !active || !wasDeeper) return;
+    if (!navigation.isFocused() || !active || !wasDeeper) return;
     flipDock('actions');
-  }, [path, focused, active, flipDock]);
-  useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, active, flipDock]);
+  useWhileFocused(() => {
     if (!publishToDock) return;
-    if (!focused || !active || crumbKey === '') return;
+    if (!active || crumbKey === '') return;
     publishToDock({ kind: 'path', icon: DOCK_ICON[kind] ?? 'folder-outline', crumbs: crumbKey.split('/'), onGo: goToCrumb });
     return () => publishToDock(null);
-  }, [publishToDock, focused, active, crumbKey, goToCrumb]);
+  }, [publishToDock, active, crumbKey, goToCrumb]);
 
   return {
     active,
