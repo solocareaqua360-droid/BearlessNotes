@@ -129,12 +129,24 @@ export function recentReports(): string {
 // time the phone saw it; the gap to the moment JS hears it, minus the
 // smallest gap ever seen (the clocks' own offset), is how long it waited.
 let minGap = Infinity;
+// THE TOUCHES THAT COME WHILE A NOTE IS BEING LEFT (2026-10-06): "when the
+// note has closed I cannot reach the next one yet". Every touch from the
+// moment the page starts to fold until the way back is reported is kept,
+// with how long each waited for the JS thread - none at all in a stretch
+// where the user did tap would mean the touch never arrived.
+let foldStart = 0;
+let foldTouches: { at: number; waited: number }[] = [];
+export function backFoldBegin(): void {
+  foldStart = Date.now();
+  foldTouches = [];
+}
 let lastTouchReport = 0;
 export function touchArrived(nativeTimestamp: number): void {
   if (!nativeTimestamp) return;
   const gap = Date.now() - nativeTimestamp;
   if (gap < minGap) minGap = gap;
   const waited = gap - minGap;
+  if (foldStart && Date.now() - foldStart < 3000) foldTouches.push({ at: Date.now() - foldStart, waited: Math.round(waited) });
   if (waited > 150 && Date.now() - lastTouchReport > 3000) {
     lastTouchReport = Date.now();
     logReport(`Дотик чекав ${waited} мс`, perfSummary(Date.now() - waited - 1500));
@@ -227,12 +239,16 @@ export function backMarkFocus(): void {
     idle(() => {
       const settled = last;
       const total = settled - pop;
-      if (total < 300) return;
+      if (total < 100) return;
+      const fold = foldStart && foldStart <= pop ? pop - foldStart : 0;
+      const touches = foldTouches.length
+        ? foldTouches.map((t) => `${t.at} мс (чекав ${t.waited})`).join(', ')
+        : 'жодного';
       logReport(
         `Повернення тривало ${(total / 1000).toFixed(1)} с`,
-        `до столів ${focus - pop} мс · кадр ${frame - focus} мс · після кадру ${settled - frame} мс${
+        `складання ${fold} мс · до столів ${focus - pop} мс · кадр ${frame - focus} мс · після кадру ${settled - frame} мс${
           goneStart >= pop && goneEnd ? ` · прибирання нотатки ${goneEnd - goneStart} мс` : ''
-        }\n\n${perfSummary(pop - 200)}`
+        }\nдотики від початку складання: ${touches}\n\n${perfSummary(pop - 200)}`
       );
     });
   });

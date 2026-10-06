@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PAGE_SHEET_INSET } from './documentEditorStyles';
 import { TOP_NAV_SPACE } from './TopNavBar';
 import { openMark } from '../utils/openTiming';
-import { backMarkPop } from '../utils/perfWatch';
+import { backFoldBegin, backMarkPop } from '../utils/perfWatch';
 import { chromeAbort, chromeBackBegin, chromeEnd, chromeOpenArrive, chromeT } from '../utils/chromeMorph';
 import { measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
 
@@ -127,6 +127,7 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
       if (type !== 'GO_BACK' && type !== 'POP') return;
       e.preventDefault();
       passing = true;
+      backFoldBegin();
       // A growth that had not started yet must not start under the fold.
       started.current = true;
       const frame = box.current;
