@@ -145,7 +145,7 @@ export default function App() {
         // flash this is meant to avoid.
         <View style={{ flex: 1, backgroundColor: '#0F1839' }} />
       ) : (
-        <GestureHandlerRootView style={{ flex: 1 }} onTouchStart={(e) => touchArrived(e.nativeEvent.timestamp)} onTouchEnd={(e) => touchEnded(e.nativeEvent.timestamp)}>
+        <GestureHandlerRootView style={{ flex: 1 }} onTouchStartCapture={(e) => touchArrived(e.nativeEvent.timestamp)} onTouchEndCapture={(e) => touchEnded(e.nativeEvent.timestamp)}>
         {/* At the root, so the pieces mounted here - the question
             window below - can read the insets too. Every screen gets
             its own from the navigator; nothing above it did. */}
