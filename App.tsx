@@ -26,6 +26,7 @@ import { GlassTargetProvider } from './src/components/GlassTarget';
 import { GlassPortalHost } from './src/components/GlassPortal';
 import MorphHost from './src/components/MorphHost';
 import ChromeMorph from './src/components/ChromeMorph';
+import PageFoldHost from './src/components/PageFold';
 import { AskHost, notify } from './src/components/surfaces/Ask';
 import { setStallReporter, touchArrived } from './src/utils/perfWatch';
 
@@ -217,6 +218,10 @@ export default function App() {
             <CrashBoundary>
               <RootNavigator />
             </CrashBoundary>
+            {/* A note's page folding back into its card, as a picture -
+                over the screens, under the bar and the dock (see
+                components/PageFold). */}
+            <PageFoldHost />
             {/* The dock - see components/ContextDock. Declared INSIDE the
                 blur target, like the tags drawer and every sheet, and
                 drawn outside it by its own GlassPortal. Declared outside,

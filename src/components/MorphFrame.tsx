@@ -8,6 +8,8 @@ import { openMark } from '../utils/openTiming';
 import { backFoldBegin, backMarkPop } from '../utils/perfWatch';
 import { chromeAbort, chromeBackBegin, chromeEnd, chromeOpenArrive, chromeT } from '../utils/chromeMorph';
 import { measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
+import { captureRef, releaseCapture } from 'react-native-view-shot';
+import { startPageFold } from '../utils/pageFold';
 
 // THE PAGE THAT GROWS OUT OF ITS CARD (utils/morph tells the whole story).
 // Wraps a pushed note. Opened from a card, it lays the page out at its full
@@ -71,6 +73,8 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
   // Where the editor's sheet starts: below the status bar.
   const sheetY = useSharedValue(useSafeAreaInsets().top);
   const rootRef = useRef<View>(null);
+  // The page itself, photographed on the way back (components/PageFold).
+  const pageRef = useRef<View>(null);
   // On the way out: the page no longer takes taps (see the fold below).
   const [leaving, setLeaving] = useState(false);
   const box = useRef<Rect | null>(null);
@@ -131,7 +135,12 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
       // A growth that had not started yet must not start under the fold.
       started.current = true;
       const frame = box.current;
-      Promise.all([measureCard(morphKey), chromeBackBegin()]).then(([card, carrying]) => {
+      // The page as it stands, photographed alongside the bar and the dock
+      // (components/PageFold: the picture folds, the screen goes at once).
+      const pagePicture = pageRef.current
+        ? captureRef(pageRef.current, { format: 'jpg', quality: 0.92, result: 'tmpfile' }).catch(() => null)
+        : Promise.resolve(null);
+      Promise.all([measureCard(morphKey), chromeBackBegin(), pagePicture]).then(([card, carrying, picture]) => {
         // The list's own chrome mounts with its focus, after the pop: the
         // stand-in waits for it before it goes.
         // Once, whatever happens to the fold: an interrupted animation
@@ -147,6 +156,13 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
           if (carrying) chromeEnd('list');
         };
         if (!card || !frame) {
+          if (picture) {
+            try {
+              releaseCapture(picture);
+            } catch {
+              // Already gone.
+            }
+          }
           if (carrying) chromeAbort();
           const pop = () => navigation.dispatch(e.data.action as never);
           shown.value = withTiming(0, { duration: 160 }, (finished) => {
@@ -158,6 +174,28 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
         cy.value = card.y - frame.y;
         cw.value = card.width;
         ch.value = card.height;
+        // THE PICTURE FOLDS, THE SCREEN GOES NOW (components/PageFold). The
+        // note's screen used to stay over the list for the whole fold and a
+        // beat after it, taking the first tap meant for the list. Once the
+        // picture stands where the page is, the page hides and the screen is
+        // taken away under it; the list is live from the fold's first frame.
+        if (picture) {
+          setLeaving(true);
+          startPageFold({
+            uri: picture,
+            frame,
+            card: { x: card.x - frame.x, y: card.y - frame.y, width: card.width, height: card.height },
+            sheetY: sheetY.value,
+            // A frame after the picture has loaded: drawn, so hiding the page
+            // under it changes nothing anyone can see.
+            onShown: () => requestAnimationFrame(leave),
+          });
+          if (carrying) chromeT.value = withTiming(0, { duration: BACK_MS, easing: EASE });
+          // And if the picture never arrives at all.
+          setTimeout(leave, BACK_MS + 400);
+          return;
+        }
+        // No picture: the page folds as itself, as before.
         // Folded, the page goes AT ONCE, on the UI thread: the list's own
         // card is right under it, in the same place. It used to stay up
         // until the pop had been committed - the editor taken down, the
@@ -227,7 +265,9 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
   return (
     <View ref={rootRef} style={StyleSheet.absoluteFill} onLayout={onLayout} collapsable={false} pointerEvents="box-none" nativeID="рамка-нотатки">
       <Animated.View style={[styles.clip, clip]} pointerEvents={leaving ? 'none' : 'auto'} nativeID="рамка-обріз">
-        <Animated.View style={[styles.page, page]}>{children}</Animated.View>
+        <Animated.View ref={pageRef} collapsable={false} style={[styles.page, page]}>
+          {children}
+        </Animated.View>
       </Animated.View>
     </View>
   );
