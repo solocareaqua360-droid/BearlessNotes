@@ -389,6 +389,13 @@ const PULL_ZONE = 110;
 // See renderAll: how many rows a long note opens with, and when the rest come.
 const FIRST_RENDER_BLOCKS = 24;
 const RENDER_REST_AFTER_MS = 450;
+// The rest then comes in pieces, not in one commit: a long note's remaining
+// blocks drawn at once held the JS thread and the frames for most of a second
+// (the user's 4th note, 2026-10-06: «не реагувала»; a 915 ms stall and a
+// 1 s frame gap in the diagnostics). A piece is short enough for a touch or
+// a frame to get through between two of them.
+const RENDER_CHUNK = 12;
+const RENDER_CHUNK_GAP_MS = 70;
 // How far past the window a note's sheet runs at the least.
 const NOTE_END_BEYOND = 120;
 
@@ -693,6 +700,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // grown out of its card. Drawing every block in the commit that opens the
   // note was most of what the timing report called «блоки» and «кадр».
   const [renderAll, setRenderAll] = useState(false);
+  const [renderUpTo, setRenderUpTo] = useState(FIRST_RENDER_BLOCKS);
   // Opened (not just embedded in another screen): the start desk's recents.
   useNoteOpened('document', documentId, isLoaded && !('embedded' in props));
 
@@ -1301,10 +1309,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // A short note is drawn whole already; setting this would only render
     // the editor once more for nothing.
     if (blocks.length <= FIRST_RENDER_BLOCKS) return;
-    const timer = setTimeout(() => setRenderAll(true), RENDER_REST_AFTER_MS);
+    const timer = setTimeout(
+      () => {
+        if (renderUpTo + RENDER_CHUNK >= blocks.length) setRenderAll(true);
+        else setRenderUpTo(renderUpTo + RENDER_CHUNK);
+      },
+      renderUpTo === FIRST_RENDER_BLOCKS ? RENDER_REST_AFTER_MS : RENDER_CHUNK_GAP_MS
+    );
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded]);
+  }, [isLoaded, renderAll, renderUpTo]);
   useEffect(() => {
     // A day page inside the calendar opens as you swipe, not from a tap.
     if (!isLoaded || embedded) return;
@@ -6211,7 +6225,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           searchHighlight={searchFlash}
           flashBlockId={flashBlockId}
           // Landing on a place lower down needs it drawn from the start.
-          renderCount={renderAll || focusLinkTo || focusBlock || searchFlash ? undefined : FIRST_RENDER_BLOCKS}
+          renderCount={renderAll || focusLinkTo || focusBlock || searchFlash ? undefined : renderUpTo}
           // The daily note's sheet runs under the rail, so its rows draw
           // no handle column - see BlockRow's hideHandle.
           hideHandle={embedded}
