@@ -3,8 +3,7 @@ import { Image, StyleSheet, View } from 'react-native';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { releaseCapture } from 'react-native-view-shot';
 import { GlassPortal } from './GlassPortal';
-import { PAGE_SHEET_INSET } from './documentEditorStyles';
-import { TOP_NAV_SPACE } from './TopNavBar';
+import { foldTransforms } from './foldGeometry';
 import { currentPageFold, endPageFold, subscribePageFold, type Fold } from '../utils/pageFold';
 
 // THE PAGE FOLDING BACK INTO ITS CARD, AS A PICTURE (2026-10-06).
@@ -28,9 +27,6 @@ import { currentPageFold, endPageFold, subscribePageFold, type Fold } from '../u
 
 const EASE = Easing.bezier(0.22, 1, 0.36, 1);
 export const PAGE_FOLD_MS = 300;
-const CARD_RADIUS = 22;
-const SHEET_X = PAGE_SHEET_INSET;
-const PAGE_BAND_EXTRA = TOP_NAV_SPACE;
 
 function releaseQuietly(uri: string) {
   try {
@@ -91,32 +87,20 @@ function Folding({ fold }: { fold: Fold }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The same move as MorphFrame's, in transforms only (foldGeometry).
   const clip = useAnimatedStyle(() => {
-    const k = t.value;
-    return {
-      left: fx + cx * (1 - k),
-      top: fy + cy * (1 - k),
-      width: cw + (fw - cw) * k,
-      height: ch + (fh - ch) * k,
-      borderRadius: CARD_RADIUS * (1 - k),
-    };
+    const g = foldTransforms(t.value, fw, fh, cx, cy, cw, ch, sheetY);
+    return { transform: g.clip.transform, borderRadius: g.clip.borderRadius };
   });
   const page = useAnimatedStyle(() => {
-    const k = t.value;
-    const sheetW = fw - SHEET_X * 2;
-    const s0 = sheetW > 0 ? cw / sheetW : 1;
-    const s = s0 + (1 - s0) * k;
-    return {
-      left: -SHEET_X * s0 * (1 - k),
-      top: -(sheetY + PAGE_BAND_EXTRA) * s0 * (1 - k),
-      transform: [{ scale: s }],
-    };
+    const g = foldTransforms(t.value, fw, fh, cx, cy, cw, ch, sheetY);
+    return { transform: g.page.transform };
   });
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Animated.View style={[styles.clip, clip]}>
-        <Animated.View style={[styles.page, { width: fw, height: fh }, page]}>
+      <Animated.View style={[styles.clip, { left: fx, top: fy, width: fw, height: fh }, clip]}>
+        <Animated.View style={[styles.page, page]}>
           <Image source={{ uri: fold.uri }} style={{ width: fw, height: fh }} fadeDuration={0} onLoad={start} />
         </Animated.View>
       </Animated.View>
@@ -128,11 +112,14 @@ const styles = StyleSheet.create({
   clip: {
     position: 'absolute',
     overflow: 'hidden',
+    transformOrigin: 'left top',
   },
   page: {
     position: 'absolute',
     left: 0,
     top: 0,
+    right: 0,
+    bottom: 0,
     transformOrigin: 'left top',
   },
 });

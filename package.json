@@ -76,5 +76,10 @@
     "prebuild": "expo prebuild",
     "build:android:dev": "eas build --profile development --platform android"
   },
-  "private": true
+  "private": true,
+  "reanimated": {
+    "staticFeatureFlags": {
+      "ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true
+    }
+  }
 }

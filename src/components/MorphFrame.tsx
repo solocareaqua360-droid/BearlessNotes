@@ -2,12 +2,11 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PAGE_SHEET_INSET } from './documentEditorStyles';
-import { TOP_NAV_SPACE } from './TopNavBar';
 import { openMark } from '../utils/openTiming';
 import { backFoldBegin, backMarkPop } from '../utils/perfWatch';
 import { chromeAbort, chromeBackBegin, chromeEnd, chromeOpenArrive, chromeT } from '../utils/chromeMorph';
 import { measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
+import { foldTransforms } from './foldGeometry';
 import { captureRef, releaseCapture } from 'react-native-view-shot';
 import { startPageFold } from '../utils/pageFold';
 
@@ -23,19 +22,9 @@ import { startPageFold } from '../utils/pageFold';
 const EASE = Easing.bezier(0.22, 1, 0.36, 1);
 const OUT_MS = 360;
 const BACK_MS = 300;
-// The card's corner on the phone (DocumentCard's grid tile).
-const CARD_RADIUS = 22;
-// The editor's sheet's side inset on a phone.
-const SHEET_X = PAGE_SHEET_INSET;
-// What the page leaves above its title that the card's picture does not:
-// the room kept clear for the capsules over the page (the editor's sheet
-// pads PAGE_HEADER_TOP + TOP_NAV_SPACE + 12, DocumentPageMiniature's band
-// is PAGE_HEADER_TOP + 12). Aligned on the sheet's own top, the page
-// folding into its card still showed that empty band above the title, and
-// the card that replaced it had none - the title jumped up by it at the
-// last moment (2026-10-01). So the card's corner stands on the line the
-// card's picture starts on, and the band stays outside the clip.
-const PAGE_BAND_EXTRA = TOP_NAV_SPACE;
+// The card's corner, the sheet's inset and the band above the title the
+// card's picture does not have (the title used to jump up by it at the last
+// moment, 2026-10-01) are in components/foldGeometry, with the move itself.
 // The editor gets this long to draw the note before the page grows anyway.
 const LAND_WAIT_MS = 900;
 
@@ -230,16 +219,10 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
     });
   };
 
+  // The move itself, in transforms only - see components/foldGeometry.
   const clip = useAnimatedStyle(() => {
-    const k = t.value;
-    return {
-      left: cx.value * (1 - k),
-      top: cy.value * (1 - k),
-      width: cw.value + (bw.value - cw.value) * k,
-      height: ch.value + (bh.value - ch.value) * k,
-      borderRadius: CARD_RADIUS * (1 - k),
-      opacity: shown.value,
-    };
+    const g = foldTransforms(t.value, bw.value, bh.value, cx.value, cy.value, cw.value, ch.value, sheetY.value);
+    return { transform: g.clip.transform, borderRadius: g.clip.borderRadius, opacity: shown.value };
   });
   // The page at its full size, scaled to the clip's width from its top
   // left corner - so what the card showed is what the page's top is.
@@ -249,17 +232,8 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
   // card's corner and the sheet is the card's width; the ground around it
   // comes into view as the page grows.
   const page = useAnimatedStyle(() => {
-    const k = t.value;
-    const sheetW = bw.value - SHEET_X * 2;
-    const s0 = sheetW > 0 ? cw.value / sheetW : 1;
-    const s = s0 + (1 - s0) * k;
-    return {
-      width: bw.value,
-      height: bh.value,
-      left: -SHEET_X * s0 * (1 - k),
-      top: -(sheetY.value + PAGE_BAND_EXTRA) * s0 * (1 - k),
-      transform: [{ scale: s }],
-    };
+    const g = foldTransforms(t.value, bw.value, bh.value, cx.value, cy.value, cw.value, ch.value, sheetY.value);
+    return { transform: g.page.transform };
   });
 
   return (
@@ -274,14 +248,22 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
 }
 
 const styles = StyleSheet.create({
+  // Both fill the frame; the animated transforms do the rest.
   clip: {
     position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
     overflow: 'hidden',
+    transformOrigin: 'left top',
   },
   page: {
     position: 'absolute',
     left: 0,
     top: 0,
+    right: 0,
+    bottom: 0,
     transformOrigin: 'left top',
   },
 });
