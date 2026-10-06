@@ -162,6 +162,7 @@ export function backFoldBegin(): void {
   foldTouches = [];
   timeline = [];
   frameGaps = [];
+  gcAtFold = gcStats();
   noteHand(Keyboard.isVisible() ? 'клавіатура ВІДКРИТА на початку складання' : 'клавіатура закрита на початку складання');
   const mine = ++frameLoop;
   let last = Date.now();
@@ -179,7 +180,10 @@ export function backFoldBegin(): void {
     const hand = timeline.length
       ? timeline.map((t) => `${t.at} мс ${t.what}`).join('\n')
       : 'жодного дотику за 3 с';
-    logReport('Кадри й дотики після складання', `${frameGapsLine()}\nхронологія від початку складання:\n${hand}`);
+    const gcNow = gcStats();
+    const gcLine = gcAtFold && gcNow ? `\nзбирання сміття JS: ${gcNow.n - gcAtFold.n} разів, ${Math.round(gcNow.ms - gcAtFold.ms)} мс` : '';
+    const effLine = effectsStart >= foldStart && effectsEnd ? `\nочищення ефектів редактора: ${effectsEnd - effectsStart} мс (почалось на ${effectsStart - foldStart})` : '';
+    logReport('Кадри й дотики після складання', `${frameGapsLine()}${effLine}${gcLine}\nхронологія від початку складання:\n${hand}`);
   }, 3100);
 }
 export function frameGapsLine(): string {
@@ -310,6 +314,32 @@ let backFocus = 0;
 // the commit that ran it (the whole tree is gone by then).
 let goneStart = 0;
 let goneEnd = 0;
+// The editor's PASSIVE cleanups - every useEffect's return in the whole
+// page, which React runs after the frame, apart from the commit that took
+// the page down: unsubscribing, detaching gestures, stopping animations,
+// row by row. Begun from the editor's own first effect (a deleted tree's
+// effects run parent first) and ended by a timer queued then, which runs
+// once the whole flush is through.
+let effectsStart = 0;
+let effectsEnd = 0;
+export function markEditorEffectsGone(): void {
+  effectsStart = Date.now();
+  effectsEnd = 0;
+  setTimeout(() => {
+    effectsEnd = Date.now();
+  }, 0);
+}
+// The JS engine's own collections, when the engine says (Hermes).
+function gcStats(): { n: number; ms: number } | null {
+  try {
+    const s = (globalThis as any).HermesInternal?.getInstrumentedStats?.();
+    if (!s) return null;
+    return { n: Number(s.js_numGCs ?? 0), ms: Number(s.js_gcCPUTime ?? s.js_gcTime ?? 0) };
+  } catch {
+    return null;
+  }
+}
+let gcAtFold: { n: number; ms: number } | null = null;
 export function markEditorGone(): void {
   goneStart = Date.now();
   goneEnd = 0;
