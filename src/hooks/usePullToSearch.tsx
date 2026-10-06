@@ -72,6 +72,13 @@ export function usePullToSearch(
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdRef = useRef(onHold);
   holdRef.current = onHold;
+  // The caller's `onPull` is a fresh arrow on every render of its screen;
+  // as a dependency of the gesture it rebuilt the whole gesture - and the
+  // detector re-attached to the native view - on every one of them. The
+  // gesture holds this stable one, which calls the latest.
+  const onPullRef = useRef(onPull);
+  onPullRef.current = onPull;
+  const stablePull = useCallback(() => onPullRef.current(), []);
   const stopHold = useCallback(() => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
     holdTimer.current = null;
@@ -144,7 +151,7 @@ export function usePullToSearch(
         // its finalize - the list came back still pulled down, the
         // tiles stuck below their place.
         pulled.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
-        runOnJS(onPull)();
+        runOnJS(stablePull)();
       })
       .onFinalize(() => {
         armed.value = false;
@@ -156,7 +163,7 @@ export function usePullToSearch(
         deskPull.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
       });
     return Gesture.Simultaneous(list, pull);
-  }, [onPull, enabled, startHold, stopHold]);
+  }, [stablePull, enabled, startHold, stopHold]);
 
   // Put on a view AROUND the list's gesture detector (not on the list
   // itself - the detector has to sit directly on the list).
@@ -168,21 +175,24 @@ export function usePullToSearch(
   // is the same number, kept.
   const scrollY = useSharedValue(0);
 
-  const listProps = {
-    // A tap on anything that is not a card, and a drag of the list itself,
-    // both put the keyboard away - which is what closes an empty field
-    // (see useSearchDismissal). Taps on a card still reach the card.
-    keyboardShouldPersistTaps: 'handled' as const,
-    keyboardDismissMode: 'on-drag' as const,
-    scrollEventThrottle: 16,
-    onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const y = e.nativeEvent.contentOffset.y;
-      atTop.value = y <= 2;
-      scrollY.value = y;
-    },
-  };
+  const listProps = useMemo(
+    () => ({
+      // A tap on anything that is not a card, and a drag of the list itself,
+      // both put the keyboard away - which is what closes an empty field
+      // (see useSearchDismissal). Taps on a card still reach the card.
+      keyboardShouldPersistTaps: 'handled' as const,
+      keyboardDismissMode: 'on-drag' as const,
+      scrollEventThrottle: 16,
+      onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const y = e.nativeEvent.contentOffset.y;
+        atTop.value = y <= 2;
+        scrollY.value = y;
+      },
+    }),
+    [atTop, scrollY]
+  );
 
-  return { gesture, listProps, scrollY, pullStyle };
+  return useMemo(() => ({ gesture, listProps, scrollY, pullStyle }), [gesture, listProps, scrollY, pullStyle]);
 }
 
 // The empty screen under an open, still empty search: a tap or a swipe

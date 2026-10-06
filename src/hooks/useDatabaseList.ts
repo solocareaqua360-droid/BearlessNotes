@@ -176,7 +176,18 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
           : (searchTextOf ? searchTextOf(item) : titleOf(item)).toLowerCase().includes(needle)
       )
     : tagged;
-  const displayed = sortItems(found, sortPref, titleOf, createdAtOf, updatedAtOf);
+  const displayedNow = sortItems(found, sortPref, titleOf, createdAtOf, updatedAtOf);
+  // The same array while its members are the same ones (it is rebuilt on
+  // every render, and the documents screen's whole list, miniatures and
+  // memoised pieces hang on its identity: "displayedDocuments ×5").
+  const displayedKept = useRef(displayedNow);
+  if (
+    displayedKept.current.length !== displayedNow.length ||
+    displayedKept.current.some((x, i) => x !== displayedNow[i])
+  ) {
+    displayedKept.current = displayedNow;
+  }
+  const displayed = displayedKept.current;
 
   // Only tags actually assigned to something in this database - not the
   // whole app-wide list - so the drawer stays a short, relevant menu.
@@ -213,7 +224,15 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     },
   ];
 
-  const selected = items.filter((item) => select.selectedIds.has(item.id));
+  const selectedNow = items.filter((item) => select.selectedIds.has(item.id));
+  const selectedKept = useRef(selectedNow);
+  if (
+    selectedKept.current.length !== selectedNow.length ||
+    selectedKept.current.some((x, i) => x !== selectedNow[i])
+  ) {
+    selectedKept.current = selectedNow;
+  }
+  const selected = selectedKept.current;
 
   // A real group, as opposed to "Всі", "Без проекту" or one of the tabs
   // that is not a group at all (the documents screen's stickers). What the
