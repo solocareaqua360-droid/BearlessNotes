@@ -334,7 +334,7 @@ export default function CalendarScreen() {
               blocks: (data.blocks as Block[]) ?? [],
               coverImageUri: data.coverImageUri as string | undefined,
               coverGradient: data.coverGradient as string | undefined,
-              coverDriveFileId: data.coverDrive?.fileId as string | undefined,
+              coverDriveFileId: data.coverDriveFileId as string | undefined,
               updatedAt: (data.updatedAt as number) ?? 0,
             };
           })
