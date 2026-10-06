@@ -60,6 +60,21 @@ export function morphCardRef(key: string): ((node: View | null) => void) | undef
   return fn;
 }
 
+// THE CARD'S OWN LINE (2026-10-06): a grid tile draws its date and project
+// over the bottom of its page picture (DocumentCard's pageChrome). That line
+// belongs to the card, not to the page, so the page grows out of - and folds
+// back into - the part of the card ABOVE it, and the line stays in sight the
+// whole time. Folding into the whole card hid it, and it came back in the
+// last frame with a visible click ("склеюється з щілчком").
+const bands = new Map<string, number>();
+export function setCardBand(key: string, height: number): void {
+  if (height > 0) bands.set(key, height);
+  else bands.delete(key);
+}
+export function cardBand(key: string): number {
+  return bands.get(key) ?? 0;
+}
+
 export function measureCard(key: string): Promise<Rect | null> {
   const node = cards.get(key);
   if (!node) return Promise.resolve(null);

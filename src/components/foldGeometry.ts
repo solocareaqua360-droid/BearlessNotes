@@ -37,7 +37,10 @@ export function foldTransforms(
   cy: number,
   cw: number,
   ch: number,
-  sheetY: number
+  sheetY: number,
+  // The card keeps its own line under the clip (utils/morph's band): the
+  // clip's bottom then meets that line, so its bottom corners are square.
+  squareBottom = false
 ) {
   'worklet';
   const xc = cx * (1 - k);
@@ -54,10 +57,14 @@ export function foldTransforms(
   // The corner as the eye sees it, in the scaled view's own units.
   const meanScale = (sx + sy) / 2;
   const radius = (CARD_RADIUS * (1 - k)) / (meanScale > 0 ? meanScale : 1);
+  const bottomRadius = squareBottom ? 0 : radius;
   return {
     clip: {
       transform: [{ translateX: xc }, { translateY: yc }, { scaleX: sx }, { scaleY: sy }],
-      borderRadius: radius,
+      borderTopLeftRadius: radius,
+      borderTopRightRadius: radius,
+      borderBottomLeftRadius: bottomRadius,
+      borderBottomRightRadius: bottomRadius,
     },
     page: {
       transform: [

@@ -10,6 +10,8 @@ export type Fold = {
   frame: Rect;
   card: Rect;
   sheetY: number;
+  // The card keeps its own line under the clip (utils/morph's band).
+  squareBottom: boolean;
   // The picture is on screen where the page is: the page may go.
   onShown: () => void;
 };

@@ -93,6 +93,11 @@ export function setMorphDriver(_driver: unknown): void {}
 export function morphCardRef(_key: string): undefined {
   return undefined;
 }
+export function setCardBand(_key: string, _height: number): void {}
+export function cardBand(_key: string): number {
+  return 0;
+}
+
 export function measureCard(_key: string): Promise<Rect | null> {
   return Promise.resolve(null);
 }

@@ -61,6 +61,7 @@ function Folding({ fold }: { fold: Fold }) {
   const cw = fold.card.width;
   const ch = fold.card.height;
   const sheetY = fold.sheetY;
+  const squareBottom = fold.squareBottom;
   const id = fold.id;
 
   const t = useSharedValue(1);
@@ -89,11 +90,11 @@ function Folding({ fold }: { fold: Fold }) {
 
   // The same move as MorphFrame's, in transforms only (foldGeometry).
   const clip = useAnimatedStyle(() => {
-    const g = foldTransforms(t.value, fw, fh, cx, cy, cw, ch, sheetY);
-    return { transform: g.clip.transform, borderRadius: g.clip.borderRadius };
+    const g = foldTransforms(t.value, fw, fh, cx, cy, cw, ch, sheetY, squareBottom);
+    return g.clip;
   });
   const page = useAnimatedStyle(() => {
-    const g = foldTransforms(t.value, fw, fh, cx, cy, cw, ch, sheetY);
+    const g = foldTransforms(t.value, fw, fh, cx, cy, cw, ch, sheetY, squareBottom);
     return { transform: g.page.transform };
   });
 

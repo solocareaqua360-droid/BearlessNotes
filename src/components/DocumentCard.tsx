@@ -5,10 +5,9 @@ import { usePressSettle } from '../hooks/usePressSettle';
 import { cardRadius } from '../theme/scale';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { flipId } from '../utils/flipId';
-import { dataSets, morphKey } from '../utils/morph';
+import { dataSets, morphKey, setCardBand } from '../utils/morph';
 import { IS_POINTER } from '../utils/pointer';
 import { rightClick } from '../utils/rightClick';
-import type { LayoutChangeEvent } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
 import { useRecordColour, useTextScale, useTheme } from '../theme/ThemeProvider';
@@ -23,7 +22,6 @@ import { softTokens, useSoftSurface, type SoftTokens } from '../theme/soft';
 import ProjectBadge from './ProjectBadge';
 import { SoftCheck } from './SoftIcon';
 import DocumentPageMiniature from './DocumentPageMiniature';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { pressDown, pressUp, useRenderTimer } from '../utils/perfWatch';
 
 // Fine grain laid over every card. Two things keep it reading as paper
@@ -51,6 +49,8 @@ const GRID_THUMB_HEIGHT = 96;
 // Fixed rather than a minimum: uniform card height is what keeps the grid
 // gap-free without needing a masonry/waterfall layout at all.
 const GRID_CARD_HEIGHT = 228;
+// The card's own line (date, project) under its page picture - see PageBody.
+const PAGE_LINE_H = 32;
 // How far down the page a ROW's window opens: past the page's own empty
 // band, which at a row's height would be most of what it showed.
 const PAGE_HEADER_BAND = 24;
@@ -387,46 +387,8 @@ type Props = {
 // why it isn't a random pick or a stored field), with the text/border/
 // delete-icon colors all derived to stay readable against whichever fill a
 // given document landed on.
-// THE PAGE'S OWN PAPER, fading up into nothing - not a white slab.
-// Hard-coded white, it was a bright band across a dark page in the black
-// theme, and a wall of them scrolling past read as a zebra. And whatever
-// the colour, an edge is what the eye catches: this has none, it simply
-// stops being there.
-//
-// MEASURED, never "100%". react-native-svg's own percentage width and
-// height on the root <Svg> are not reliable here - this file's own list
-// screen already says so, about a gradient that stayed sized to a folded
-// phone's width after it was unfolded - and drawn that way this one did
-// not paint at all: "плашка на картці ніби прозора".
-function PageChromeFade({ id, color }: { id: string; color: string }) {
-  const [box, setBox] = useState({ w: 0, h: 0 });
-  const onLayout = (e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
-    setBox((prev) => (prev.w === width && prev.h === height ? prev : { w: width, h: height }));
-  };
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none" onLayout={onLayout}>
-      {box.w > 0 && box.h > 0 && (
-        <Svg width={box.w} height={box.h} pointerEvents="none">
-          <Defs>
-            {/* Unique per card: a gradient id is a name in the whole
-                document, and a wall of cards sharing one is a wall of
-                cards sharing whichever definition was drawn last. */}
-            <LinearGradient id={`chrome-${id}`} x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={color} stopOpacity={0} />
-              <Stop offset="0.55" stopColor={color} stopOpacity={0.86} />
-              <Stop offset="1" stopColor={color} stopOpacity={1} />
-            </LinearGradient>
-          </Defs>
-          <Rect x={0} y={0} width={box.w} height={box.h} fill={`url(#chrome-${id})`} />
-        </Svg>
-      )}
-    </View>
-  );
-}
-
 // A CARD'S WHOLE BODY, when the card is the page: the picture, and the
-// card's own line over it. Measured rather than told its width - a row
+// card's own line under it. Measured rather than told its width - a row
 // is a flex child and a tile can be half of whatever is left, so only
 // the layout knows.
 function PageBody({
@@ -442,6 +404,7 @@ function PageBody({
   paper,
   paperColor,
   ink,
+  lineInk,
   search,
   soft,
 }: {
@@ -468,6 +431,8 @@ function PageBody({
   paper: string;
   paperColor: { background: string; text: string; textMuted: string } | null;
   ink: string;
+  // The card's own muted ink: its line stands on the card, under the page.
+  lineInk: string;
 }) {
   const [width, setWidth] = useState(0);
   return (
@@ -492,19 +457,25 @@ function PageBody({
           coverDriveFileId={page.coverDriveFileId}
           paperColor={paperColor}
           width={width}
-          height={height}
+          height={Math.max(0, height - PAGE_LINE_H)}
           offsetY={offsetY}
           highlight={search}
         />
       )}
       {/* What the CARD knows and the page does not - when it was last
-          touched, and which project it belongs to. Over the picture
-          rather than inside it, so the picture stays the page. */}
-      <View style={[styles.pageChrome, soft && styles.softDateRow]} pointerEvents="box-none">
-        <PageChromeFade id={id} color={paper} />
-        <Text style={[styles.dateCompact, { color: ink }, soft && styles.softText]}>{formatUpdatedAt(updatedAt)}</Text>
-        {/* On the page's own paper, which is light in every theme - so
-            the light soft tint, whichever theme is on. */}
+          touched, and which project it belongs to - on a line of its own
+          UNDER the picture, on the card (2026-10-06). It used to lie over
+          the picture's bottom behind a fade, and the page growing out of
+          its card tore away from it and stuck back on at the end: the
+          line is the card's, so it stands apart from the page, and the
+          page grows out of - and folds back into - the picture alone. */}
+      <View
+        style={[styles.pageLine, soft && styles.softDateRow]}
+        pointerEvents="box-none"
+        // Its height, told to the card-to-page move (utils/morph's band).
+        onLayout={(e) => setCardBand(`note:${id}`, e.nativeEvent.layout.height)}
+      >
+        <Text style={[styles.dateCompact, { color: lineInk }, soft && styles.softText]}>{formatUpdatedAt(updatedAt)}</Text>
         {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft ? softTokens('light') : null} softSize={11} />}
       </View>
     </View>
@@ -751,6 +722,7 @@ export default function DocumentCard({
               paper={pageFill}
               paperColor={pagePaper}
               ink={pageInk}
+              lineInk={textMuted}
               search={search}
               soft={soft}
             />
@@ -822,6 +794,7 @@ export default function DocumentCard({
               paper={pageFill}
               paperColor={pagePaper}
               ink={pageInk}
+              lineInk={textMuted}
               search={search}
               soft={soft}
             />
@@ -1246,20 +1219,13 @@ const styles = StyleSheet.create({
   },
   // The card's own line along the bottom of the page picture, on a
   // wash so a page that ends in text does not swallow it.
-  pageChrome: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+  pageLine: {
+    height: PAGE_LINE_H,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 6,
     paddingHorizontal: 10,
-    // Room for the fade to happen in - a gradient in eight points is a
-    // line with soft edges, not a fade.
-    paddingTop: 34,
-    paddingBottom: 8,
   },
   // The little sheet at the start of a row: a real page, cut to a
   // square, with an edge so it reads as paper rather than as a hole.

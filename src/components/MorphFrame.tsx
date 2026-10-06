@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { openMark } from '../utils/openTiming';
 import { backFoldBegin, backMarkPop } from '../utils/perfWatch';
 import { chromeAbort, chromeBackBegin, chromeEnd, chromeOpenArrive, chromeT } from '../utils/chromeMorph';
-import { measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
+import { cardBand, measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
 import { foldTransforms } from './foldGeometry';
 import { captureRef, releaseCapture } from 'react-native-view-shot';
 import { startPageFold } from '../utils/pageFold';
@@ -52,7 +52,9 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
   const cx = useSharedValue(0);
   const cy = useSharedValue(0);
   const cw = useSharedValue(from.width);
-  const ch = useSharedValue(from.height);
+  // The part of the card above its own line (utils/morph's band).
+  const band = cardBand(morphKey);
+  const ch = useSharedValue(from.height - band);
   // The window's size until the frame has measured its own: laid out at
   // 0 x 0 first, the editor would measure itself wrong (see the measured-
   // width lessons in this repo's memory).
@@ -162,7 +164,7 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
         cx.value = card.x - frame.x;
         cy.value = card.y - frame.y;
         cw.value = card.width;
-        ch.value = card.height;
+        ch.value = card.height - band;
         // THE PICTURE FOLDS, THE SCREEN GOES NOW (components/PageFold). The
         // note's screen used to stay over the list for the whole fold and a
         // beat after it, taking the first tap meant for the list. Once the
@@ -173,7 +175,8 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
           startPageFold({
             uri: picture,
             frame,
-            card: { x: card.x - frame.x, y: card.y - frame.y, width: card.width, height: card.height },
+            card: { x: card.x - frame.x, y: card.y - frame.y, width: card.width, height: card.height - band },
+            squareBottom: band > 0,
             sheetY: sheetY.value,
             // A frame after the picture has loaded: drawn, so hiding the page
             // under it changes nothing anyone can see.
@@ -221,8 +224,8 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
 
   // The move itself, in transforms only - see components/foldGeometry.
   const clip = useAnimatedStyle(() => {
-    const g = foldTransforms(t.value, bw.value, bh.value, cx.value, cy.value, cw.value, ch.value, sheetY.value);
-    return { transform: g.clip.transform, borderRadius: g.clip.borderRadius, opacity: shown.value };
+    const g = foldTransforms(t.value, bw.value, bh.value, cx.value, cy.value, cw.value, ch.value, sheetY.value, band > 0);
+    return { ...g.clip, opacity: shown.value };
   });
   // The page at its full size, scaled to the clip's width from its top
   // left corner - so what the card showed is what the page's top is.
@@ -232,7 +235,7 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
   // card's corner and the sheet is the card's width; the ground around it
   // comes into view as the page grows.
   const page = useAnimatedStyle(() => {
-    const g = foldTransforms(t.value, bw.value, bh.value, cx.value, cy.value, cw.value, ch.value, sheetY.value);
+    const g = foldTransforms(t.value, bw.value, bh.value, cx.value, cy.value, cw.value, ch.value, sheetY.value, band > 0);
     return { transform: g.page.transform };
   });
 
