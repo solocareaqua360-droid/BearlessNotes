@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { captureRef } from 'react-native-view-shot';
 import { deskPull } from './deskPull';
+import { experiments } from '../utils/experiments';
 
 // THE DESKS' PICTURES, for the panel of open desks (components/DeskSwitcher):
 // what each open desk last looked like, as a small photograph.
@@ -99,6 +100,7 @@ async function pictureOf(node: View): Promise<string | null> {
 }
 
 export async function captureDesk(key: string): Promise<void> {
+  if (experiments.noDeskShots) return;
   const node = nodeFor(key);
   if (!node || busy.has(key)) return;
   busy.add(key);

@@ -3,6 +3,7 @@ import type { View } from 'react-native';
 import { makeMutable } from 'react-native-reanimated';
 import { captureRef, releaseCapture } from 'react-native-view-shot';
 import type { Rect } from './morph';
+import { experiments } from './experiments';
 
 // THE DOCK AND THE TOP BAR MOVING WITH THE PAGE (the phone's card-to-page
 // morph, utils/morph + components/MorphFrame). Both belong to whichever
@@ -193,6 +194,7 @@ let lastSettled = 0;
 // skipping, rather than every other move paying in full.
 let lastAsked = 0;
 function tooSoon(): boolean {
+  if (experiments.noChromePhotos) return true;
   const now = Date.now();
   const soon = state.active || now - Math.max(lastSettled, lastAsked) < QUIET_BEFORE_MS;
   lastAsked = now;

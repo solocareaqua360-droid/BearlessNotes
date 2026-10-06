@@ -120,6 +120,7 @@ import { go } from '../components/DesktopTabs';
 import TagEditSheet from '../components/TagEditSheet';
 import { listenError } from '../utils/listenError';
 import { useRenderTimer, useWhyRender } from '../utils/perfWatch';
+import { EXPERIMENT_LABELS, experiments, toggleExperiment, type ExperimentKey } from '../utils/experiments';
 import { useDeskGate } from '../navigation/deskVisibility';
 import { FEATURES } from '../features';
 import { recentReports } from '../utils/perfWatch';
@@ -274,18 +275,30 @@ const LIGHT_WINDOW = { windowSize: 5, initialNumToRender: 6, maxToRenderPerBatch
 const NO_BLOCKS: Block[] = [];
 
 // The diagnostics window (temporary, utils/perfWatch): the whole text can be
-// copied in one press instead of twenty screenshots.
+// copied in one press instead of twenty screenshots, and the suspects of
+// the post-close freeze can be switched off one by one (utils/experiments).
 async function showDiagnostics(copied = false): Promise<void> {
   const text = recentReports();
+  const keys = Object.keys(experiments) as ExperimentKey[];
   const answer = await ask({
     title: copied ? 'Діагностика · скопійовано' : 'Діагностика',
     message: text,
-    actions: [{ id: 'copy', label: 'Скопіювати все', tone: 'primary' }],
+    actions: [
+      { id: 'copy', label: 'Скопіювати все', tone: 'primary' },
+      ...keys.map((k) => ({
+        id: `x:${k}`,
+        label: `${experiments[k] ? 'УВІМКНУТИ' : 'ВИМКНУТИ'}: ${EXPERIMENT_LABELS[k]}`,
+        hint: experiments[k] ? 'зараз вимкнено' : 'зараз працює',
+      })),
+    ],
     cancelLabel: 'Закрити',
   });
   if (answer === 'copy') {
     await Clipboard.setStringAsync(text);
     void showDiagnostics(true);
+  } else if (answer.startsWith('x:')) {
+    toggleExperiment(answer.slice(2) as ExperimentKey);
+    void showDiagnostics();
   }
 }
 
