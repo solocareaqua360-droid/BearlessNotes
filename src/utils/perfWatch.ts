@@ -116,9 +116,9 @@ export function logReport(title: string, body: string): void {
   if (REPORTS) stallReporter?.(title, body);
 }
 export function recentReports(): string {
-  if (kept.length === 0) return 'Нічого не записано.';
+  if (kept.length === 0 && !allHand.length) return 'Нічого не записано.';
   const now = Date.now();
-  return kept
+  return handLog() + kept
     .slice()
     .reverse()
     .map((r) => `${Math.round((now - r.at) / 1000)} с тому · ${r.title}\n${r.body}`)
@@ -142,7 +142,26 @@ let foldTouches: { at: number; waited: number }[] = [];
 // 0.5-1.5 s after the page has folded - later than the way-back report).
 let timeline: { at: number; what: string }[] = [];
 export function noteHand(what: string): void {
+  noteAll(what);
   if (foldStart && Date.now() - foldStart < 3000) timeline.push({ at: Date.now() - foldStart, what });
+}
+// EVERY touch and every opening, not only those inside a 3 s window after a
+// fold: a quick hand opens the next note sooner than that, and the window's
+// report was then never written - exactly the cycles where the first tap was
+// lost. The last 40, with how long after the last close each came.
+const allHand: { at: number; what: string }[] = [];
+function noteAll(what: string): void {
+  allHand.push({ at: Date.now(), what });
+  while (allHand.length > 40) allHand.shift();
+}
+function handLog(): string {
+  if (!allHand.length) return '';
+  const clock = (t: number) => {
+    const d = new Date(t);
+    const two = (n: number) => String(n).padStart(2, '0');
+    return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+  };
+  return `ОСТАННІ ДОТИКИ (новіші знизу):\n${allHand.map((h) => `${clock(h.at)} · ${h.what}`).join('\n')}\n\n`;
 }
 // The keyboard coming and going is a window resize under the whole screen:
 // told to the timeline so a freeze can be laid against it.
@@ -159,6 +178,7 @@ let frameGaps: { at: number; ms: number }[] = [];
 let frameLoop = 0;
 export function backFoldBegin(): void {
   foldStart = Date.now();
+  noteAll('— ЗАКРИТТЯ нотатки (складання почалось) —');
   foldTouches = [];
   timeline = [];
   frameGaps = [];
@@ -235,7 +255,10 @@ export function touchArrived(nativeTimestamp: number, target?: unknown, x?: numb
   if (gap < minGap) minGap = gap;
   const waited = gap - minGap;
   if (foldStart && Date.now() - foldStart < 3000) foldTouches.push({ at: Date.now() - foldStart, waited: Math.round(waited) });
-  if (foldStart && Date.now() - foldStart < 3000) noteHand(`дотик (чекав ${Math.round(waited)}) → ${describeTarget(target, x, y)}`);
+  const since = foldStart ? ` · ${Date.now() - foldStart} мс після закриття` : '';
+  const line = `дотик (чекав ${Math.round(waited)})${since} → ${describeTarget(target, x, y)}`;
+  if (foldStart && Date.now() - foldStart < 3000) noteHand(line);
+  else noteAll(line);
   if (waited > 150 && Date.now() - lastTouchReport > 3000) {
     lastTouchReport = Date.now();
     logReport(`Дотик чекав ${waited} мс`, perfSummary(Date.now() - waited - 1500));
