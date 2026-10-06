@@ -74,6 +74,7 @@
       ],
       "./plugins/withAlarmRingActivity.js",
       "./plugins/withWallpaperWindow.js",
+      "./plugins/withReanimatedDeadViewFix.js",
       "@maplibre/maplibre-react-native",
       [
         "react-native-android-widget",
