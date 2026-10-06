@@ -1,6 +1,7 @@
 import type { View } from 'react-native';
 import { chromeAbort, chromeOpenBegin } from './chromeMorph';
 import { markTapLag, noteHand } from './perfWatch';
+import { experiments } from './experiments';
 import { openMark } from './openTiming';
 
 // THE CARD THAT BECOMES THE PAGE, on the phone (the laptop's is the .web
@@ -126,6 +127,12 @@ export function morph(
   openMark('tap');
   markTapLag();
   noteHand('ВІДКРИТТЯ нотатки (morph)');
+  // Temporary (utils/experiments): opened the way a board is - an ordinary
+  // push, no transparent modal, no frame folding on the way back.
+  if (experiments.noNoteMorph) {
+    update(false);
+    return;
+  }
   if (!run && opts?.into) {
     update(false);
     return;

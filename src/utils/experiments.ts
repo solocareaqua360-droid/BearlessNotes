@@ -6,15 +6,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // closings, and no measurement from JS says what holds it. Each switch
 // turns one suspect off; the diagnostics window flips them, the user closes
 // a few notes, and the freeze either goes or it does not.
-export type ExperimentKey = 'noPreviews' | 'noChromePhotos' | 'noDeskShots';
+export type ExperimentKey = 'noNoteMorph' | 'noPreviews' | 'noChromePhotos' | 'noDeskShots';
 
 export const experiments: Record<ExperimentKey, boolean> = {
+  noNoteMorph: false,
   noPreviews: false,
   noChromePhotos: false,
   noDeskShots: false,
 };
 
 export const EXPERIMENT_LABELS: Record<ExperimentKey, string> = {
+  noNoteMorph: 'Морф нотатки (прозорий екран + складання), як у дошок без нього',
   noPreviews: 'Усі прев\'ю (сторінки в картках, дні, дошки, знімки столів)',
   noChromePhotos: 'Фото смужок і дока при переході',
   noDeskShots: 'Знімки столів для перемикача',
