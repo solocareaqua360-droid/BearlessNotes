@@ -97,6 +97,7 @@ import {
   useNavTopExtras,
   useNavTopSearch,
   useTopBack,
+  useStableTopExtras,
   useTopExtras,
 } from '../navigation/navDock';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -464,6 +465,14 @@ export default function DatabasesScreen() {
     { label: 'Налаштування', icon: 'settings-outline', onPress: () => navigation.navigate('Settings') },
   ];
   useTopExtras(databasesMenu, null, databasesFocused && !databasesLayer);
+  // For the bar drawn inside the layer: one object while it says the same
+  // (built inline it was new on every render and the bar redrew with them).
+  const layerTools = inDrawer
+    ? [{ key: 'view', icon: drawerList ? 'grid-outline' : 'list-outline', label: drawerList ? 'Плитки' : 'Список', onPress: toggleDrawerList }]
+    : null;
+  const layerExtras = useStableTopExtras(databasesMenu, null, layerTools);
+  const layerClose = databasesLayer?.close;
+  const layerBack = useMemo(() => (layerClose ? { onPress: layerClose, dimmed: false } : null), [layerClose]);
   // With a pointer there is no bar at the top to hang that list from, so
   // the dock's middle keeps these as it had them.
   const pointerLayout = !useTopNavOn();
@@ -2158,21 +2167,8 @@ export default function DatabasesScreen() {
             inline={{ width: windowWidth }}
             softInline={!!S}
             title={{ icon: 'apps-outline', label: 'Бази' }}
-            backOverride={{ onPress: databasesLayer.close, dimmed: false }}
-            extrasOverride={{
-              menu: databasesMenu,
-              select: null,
-              tools: inDrawer
-                ? [
-                    {
-                      key: 'view',
-                      icon: drawerList ? 'grid-outline' : 'list-outline',
-                      label: drawerList ? 'Плитки' : 'Список',
-                      onPress: toggleDrawerList,
-                    },
-                  ]
-                : null,
-            }}
+            backOverride={layerBack}
+            extrasOverride={layerExtras}
           />
           <InlineDock
             width={windowWidth}

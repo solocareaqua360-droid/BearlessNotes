@@ -886,6 +886,68 @@ export function useTopNavClaim(enabled = true) {
   useEffect(() => (claim && enabled ? claim() : undefined), [claim, enabled]);
 }
 
+type ExtrasInputs = {
+  menu: MenuEntry[] | null;
+  select: { active: boolean; onPress: () => void } | null;
+  pane?: { icon: string; onPress: () => void } | null;
+  tools?: TopTool[] | null;
+};
+
+// What the bar is handed: the screen's entries with STABLE handlers that
+// call the latest ones through the ref.
+function buildExtras(ref: { current: ExtrasInputs }): TopExtras {
+  const live = ref.current;
+  return {
+    menu: live.menu
+      ? live.menu.map((e, i) =>
+          e.kind === 'section' || e.kind === 'rule'
+            ? e
+            : {
+                ...e,
+                onPress: () => {
+                  const current = ref.current.menu?.[i];
+                  if (current && current.kind !== 'section' && current.kind !== 'rule') current.onPress();
+                },
+              }
+        )
+      : null,
+    select: live.select ? { active: live.select.active, onPress: () => ref.current.select?.onPress() } : null,
+    pane: live.pane ? { icon: live.pane.icon, onPress: () => ref.current.pane?.onPress() } : null,
+    tools: live.tools
+      ? live.tools.map((t) => ({
+          ...t,
+          onPress: () => ref.current.tools?.find((x) => x.key === t.key)?.onPress(),
+        }))
+      : null,
+  };
+}
+
+function extrasSignature(inputs: ExtrasInputs): string {
+  const { menu, select, pane, tools } = inputs;
+  return JSON.stringify([
+    menu?.map((e) => (e.kind === 'section' ? ['s', e.label] : e.kind === 'rule' ? ['r'] : [e.label, e.icon, !!e.checked, e.tone])),
+    select ? select.active : null,
+    pane ? pane.icon : null,
+    tools?.map((t) => [t.key, t.icon, !!t.dimmed]) ?? null,
+  ]);
+}
+
+// The same extras for a bar DRAWN INSIDE a drawer (it is handed them
+// directly, not through the published claims). Built fresh in the screen
+// each render they made the bar redraw with the screen; this is one object
+// until what it shows changes.
+export function useStableTopExtras(
+  menu: MenuEntry[] | null,
+  select: { active: boolean; onPress: () => void } | null,
+  tools?: TopTool[] | null
+): TopExtras {
+  const ref = useRef<ExtrasInputs>({ menu, select, tools });
+  ref.current = { menu, select, tools };
+  const signature = extrasSignature(ref.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => buildExtras(ref), [signature]);
+}
+
 // What a writing screen puts at the bar's right end - see TopExtras. The
 // handlers are stable wrappers reading the latest ones through a ref, and
 // the whole is republished only when what it SHOWS changes (labels,
@@ -902,38 +964,10 @@ export function useTopExtras(
   const id = useId();
   const ref = useRef({ menu, select, pane, tools });
   ref.current = { menu, select, pane, tools };
-  const signature = JSON.stringify([
-    menu?.map((e) => (e.kind === 'section' ? ['s', e.label] : e.kind === 'rule' ? ['r'] : [e.label, e.icon, !!e.checked, e.tone])),
-    select ? select.active : null,
-    pane ? pane.icon : null,
-    tools?.map((t) => [t.key, t.icon, !!t.dimmed]) ?? null,
-  ]);
+  const signature = extrasSignature(ref.current);
   useWhileFocused(() => {
     if (!publish || !enabled) return;
-    const live = ref.current;
-    publish(id, {
-      menu: live.menu
-        ? live.menu.map((e, i) =>
-            e.kind === 'section' || e.kind === 'rule'
-              ? e
-              : {
-                  ...e,
-                  onPress: () => {
-                    const current = ref.current.menu?.[i];
-                    if (current && current.kind !== 'section' && current.kind !== 'rule') current.onPress();
-                  },
-                }
-          )
-        : null,
-      select: live.select ? { active: live.select.active, onPress: () => ref.current.select?.onPress() } : null,
-      pane: live.pane ? { icon: live.pane.icon, onPress: () => ref.current.pane?.onPress() } : null,
-      tools: live.tools
-        ? live.tools.map((t) => ({
-            ...t,
-            onPress: () => ref.current.tools?.find((x) => x.key === t.key)?.onPress(),
-          }))
-        : null,
-    }, layer);
+    publish(id, buildExtras(ref), layer);
     return () => publish(id, null);
   }, [publish, enabled, signature, id, layer]);
 }

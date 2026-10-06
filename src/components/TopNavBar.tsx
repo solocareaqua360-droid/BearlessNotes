@@ -1037,7 +1037,10 @@ function sameTrail(a?: TopTrail, b?: TopTrail): boolean {
   return (
     a.icon === b.icon &&
     a.crumbs.length === b.crumbs.length &&
-    a.crumbs.every((c, i) => c.label === b.crumbs[i].label && c.onPress === b.crumbs[i].onPress)
+    // A crumb's handler goes where its label says (the editor builds it from
+    // the folder path), so equal words are an equal crumb - the handlers
+    // are made fresh on every render of the note.
+    a.crumbs.every((c, i) => c.label === b.crumbs[i].label && !!c.onPress === !!b.crumbs[i].onPress)
   );
 }
 type BarProps = React.ComponentProps<typeof TopNavBar>;

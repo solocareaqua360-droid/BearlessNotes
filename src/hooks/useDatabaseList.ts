@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { doc, onSnapshot } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
@@ -136,17 +136,26 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     [groupKind]
   );
 
-  function changeViewMode(mode: 'list' | 'grid' | 'wide' | 'canvas') {
-    setDoc(prefsDoc, { viewMode: mode }, { merge: true });
-  }
+  // THE SAME FUNCTIONS EVERY RENDER (2026-10-06). These were plain function
+  // declarations, new on each render, and the folders drawer's `mode` prop
+  // carries one - so the drawer (memoised) redrew with its list every time
+  // ("Шторка: tags+mode" in the report, 7 renders for one note opened and
+  // closed). They read the latest document and flag through refs.
+  const prefsDocRef = useRef(prefsDoc);
+  prefsDocRef.current = prefsDoc;
+  const groupsRowHiddenRef = useRef(groupsRowHidden);
+  groupsRowHiddenRef.current = groupsRowHidden;
+  const changeViewMode = useCallback((mode: 'list' | 'grid' | 'wide' | 'canvas') => {
+    setDoc(prefsDocRef.current, { viewMode: mode }, { merge: true });
+  }, []);
 
-  function setListMode(mode: ListMode) {
-    setDoc(prefsDoc, { listMode: mode }, { merge: true });
-  }
+  const setListMode = useCallback((mode: ListMode) => {
+    setDoc(prefsDocRef.current, { listMode: mode }, { merge: true });
+  }, []);
 
-  function toggleGroupsRow() {
-    setDoc(prefsDoc, { groupsRowHidden: !groupsRowHidden }, { merge: true });
-  }
+  const toggleGroupsRow = useCallback(() => {
+    setDoc(prefsDocRef.current, { groupsRowHidden: !groupsRowHiddenRef.current }, { merge: true });
+  }, []);
 
   // Pending deletes first: an item on its way out must not be counted by
   // anything below, or the counts flicker back when the toast expires.
@@ -172,7 +181,18 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
   // Only tags actually assigned to something in this database - not the
   // whole app-wide list - so the drawer stays a short, relevant menu.
   const usedTagIds = new Set(items.flatMap(tagIdsOf));
-  const drawerTags = tagApi.tags.filter((t) => usedTagIds.has(t.id) && (tagAllowed ? tagAllowed(t) : true));
+  const drawerTagsNow = tagApi.tags.filter((t) => usedTagIds.has(t.id) && (tagAllowed ? tagAllowed(t) : true));
+  // The same array while its members are the same ones: the list is built
+  // fresh on every render, and everything memoised on it (the folders
+  // drawer, the explorer) saw a change each time.
+  const drawerTagsKept = useRef(drawerTagsNow);
+  if (
+    drawerTagsKept.current.length !== drawerTagsNow.length ||
+    drawerTagsKept.current.some((t, i) => t !== drawerTagsNow[i])
+  ) {
+    drawerTagsKept.current = drawerTagsNow;
+  }
+  const drawerTags = drawerTagsKept.current;
 
   // The group section the drawer draws, counted over this database only:
   // the same list the row above the cards shows, sentinels and all, so the

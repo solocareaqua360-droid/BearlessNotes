@@ -56,7 +56,7 @@ import { usePublishRailPanel } from '../navigation/navRail';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft, type SoftTokens } from '../theme/soft';
-import { DockMark, useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher, useTopBack, useTopExtras } from '../navigation/navDock';
+import { DockMark, useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher, useStableTopExtras, useTopBack, useTopExtras } from '../navigation/navDock';
 import InlineDock from '../components/InlineDock';
 import {
   MONTH_FULL,
@@ -896,6 +896,10 @@ export default function CalendarScreen() {
     ] as const;
   const calendarSelect = { active: noteSelectMode, onPress: () => noteEditorRef.current?.toggleSelectMode() };
   useTopExtras([...calendarMenu], calendarSelect, !pointerDensity && !calendarDrawer);
+  // For the bar drawn inside the drawer: one object while it says the same.
+  const drawerExtras = useStableTopExtras([...calendarMenu], calendarSelect);
+  const drawerClose = calendarDrawer?.close;
+  const drawerBack = useMemo(() => (drawerClose ? { onPress: drawerClose, dimmed: false } : null), [drawerClose]);
   const shownSearchBead = pointerDensity || notePanelOpen ? null : searchBead;
   const shownPencilBead = pointerDensity ? null : pencilBead;
   useDockBeads(calendarDrawer ? null : shownSearchBead, calendarDrawer ? null : shownPencilBead);
@@ -2182,8 +2186,8 @@ export default function CalendarScreen() {
             inline={{ width: windowWidth }}
             softInline={!!S}
             title={{ icon: 'calendar-outline', label: 'Календар' }}
-            backOverride={{ onPress: calendarDrawer.close, dimmed: false }}
-            extrasOverride={{ menu: [...calendarMenu], select: calendarSelect }}
+            backOverride={drawerBack}
+            extrasOverride={drawerExtras}
             searchOverride={
               daySearch !== null
                 ? {
