@@ -175,7 +175,7 @@ import NestedDocuments from '../components/NestedDocuments';
 import { createOwnedNote, makeOrdinary } from '../utils/recordNotes';
 import { binNote } from '../utils/nestedNotes';
 import { SHOW_OPEN_REPORTS, SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTiming';
-import { lastPressInfo, lastTapLag, logReport, markEditorEffectsGone, markEditorGone, perfSummary } from '../utils/perfWatch';
+import { logReport, markEditorGone, perfSummary } from '../utils/perfWatch';
 import { peekDocument, useDocumentIndex } from '../hooks/useDocumentIndex';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
@@ -402,9 +402,6 @@ const NOTE_END_BEYOND = 120;
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   // Temporary diagnosis - see utils/perfWatch.
   useRenderTimer('Нотатка');
-  // Temporary (perfWatch): the first effect of the page, so its cleanup is
-  // the first of the page's passive cleanups when the page is taken down.
-  useEffect(() => () => markEditorEffectsGone(), []);
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const embedded = 'embedded' in props;
@@ -1347,10 +1344,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const total = end - start;
     if (total < SLOW_OPEN_MS) return;
     const ms = (n: number) => `${Math.max(0, Math.round(n))} мс`;
-    const lag = lastTapLag();
     const steps = [
-      lag >= 0 ? `палець→натискання ${ms(lag)}` : null,
-      lastPressInfo() || null,
       marks.tap && marks.measured ? `картка ${ms(marks.measured - marks.tap)}` : null,
       marks.measured && marks.chrome ? `фото смужок ${ms(marks.chrome - marks.measured)}` : null,
       marks.chrome ? `перехід ${ms(t.mount - marks.chrome)}` : null,

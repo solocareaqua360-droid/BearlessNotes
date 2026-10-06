@@ -28,7 +28,7 @@ import MorphHost from './src/components/MorphHost';
 import ChromeMorph from './src/components/ChromeMorph';
 import PageFoldHost from './src/components/PageFold';
 import { AskHost, notify } from './src/components/surfaces/Ask';
-import { setStallReporter, touchArrived } from './src/utils/perfWatch';
+import { setStallReporter } from './src/utils/perfWatch';
 
 // Temporary diagnosis (utils/perfWatch): a long stall says what held the app.
 setStallReporter((title, body) => {
@@ -147,15 +147,6 @@ export default function App() {
         <View style={{ flex: 1, backgroundColor: '#0F1839' }} />
       ) : (
         <GestureHandlerRootView style={{ flex: 1 }}>
-        {/* Temporary diagnosis (perfWatch): every touch, seen in the capture
-            phase so one a child takes is heard too. */}
-        <View
-          style={{ flex: 1 }}
-          onStartShouldSetResponderCapture={(e) => {
-            touchArrived(e.nativeEvent.timestamp, e.target, e.nativeEvent.pageX, e.nativeEvent.pageY);
-            return false;
-          }}
-        >
         {/* At the root, so the pieces mounted here - the question
             window below - can read the insets too. Every screen gets
             its own from the navigator; nothing above it did. */}
@@ -246,7 +237,6 @@ export default function App() {
           </ThemedNavigationContainer>
           </KeyboardProvider>
         </SafeAreaProvider>
-        </View>
         </GestureHandlerRootView>
       )}
     </ShareIntentProvider>

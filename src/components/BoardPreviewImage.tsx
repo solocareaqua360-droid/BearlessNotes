@@ -1,6 +1,5 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
-import { useExperiment } from '../utils/experiments';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { downloadFileFromDrive } from '../utils/googleDrive';
 
@@ -54,7 +53,7 @@ function forgetOlder(boardId: string, keep: string) {
     .catch(() => {});
 }
 
-function BoardPreviewImageInner({
+export default function BoardPreviewImage({
   boardId,
   uri,
   driveFileId,
@@ -117,14 +116,4 @@ function BoardPreviewImageInner({
       )}
     </View>
   );
-}
-
-// Temporary (utils/experiments): with every preview switched off, a plain
-// blank of the same size stands in - to tell whether previews are what
-// holds the app after a note is closed. A wrapper, so flipping it never
-// changes the hooks of the component below.
-export default function BoardPreviewImage(props: Parameters<typeof BoardPreviewImageInner>[0]) {
-  const off = useExperiment('noPreviews');
-  if (off) return <View style={{ flex: 1 }} />;
-  return <BoardPreviewImageInner {...props} />;
 }

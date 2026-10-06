@@ -22,7 +22,7 @@ import { softTokens, useSoftSurface, type SoftTokens } from '../theme/soft';
 import ProjectBadge from './ProjectBadge';
 import { SoftCheck } from './SoftIcon';
 import DocumentPageMiniature from './DocumentPageMiniature';
-import { pressDown, pressUp, useRenderTimer } from '../utils/perfWatch';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // Fine grain laid over every card. Two things keep it reading as paper
 // tooth and not as dirt: the specks are half lighter and half darker than
@@ -520,16 +520,6 @@ export default function DocumentCard({
   const recordColour = useRecordColour();
   // A tile settles under the finger (the phone's; the laptop's is CSS).
   const settle = usePressSettle();
-  // Temporary: when the phone saw the press, against when JS heard it
-  // (utils/perfWatch) - a card that opens late either was held or waited.
-  const probedPress = (event: { nativeEvent: { timestamp: number } }) => {
-    pressUp(event.nativeEvent.timestamp);
-    (isSelectMode ? onToggleSelect : onPress)?.();
-  };
-  const probedIn = (event: { nativeEvent: { timestamp: number } }) => {
-    pressDown(event.nativeEvent.timestamp);
-    settle.handlers.onPressIn();
-  };
   // Held: the card says so first, so a menu it opens lifts THIS card over
   // the blur (heldNode / holdAsk). The morph's own ref still gets the node.
   const tapNode = useRef<View | null>(null);
@@ -703,7 +693,7 @@ export default function DocumentCard({
         ]}
       >
         {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-        <Pressable ref={tapRef} style={styles.wideTap} onPress={probedPress} onLongPress={hold} {...rightClick(onLongPress)} {...settle.handlers} onPressIn={probedIn} nativeID="картка">
+        <Pressable ref={tapRef} style={styles.wideTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={hold} {...rightClick(onLongPress)} {...settle.handlers}>
           {page ? (
             /* The same picture, in a wider window: twice a tile's width
                means the page is drawn nearly at its own size, so this is
@@ -779,7 +769,7 @@ export default function DocumentCard({
         ]}
       >
         {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-        <Pressable ref={tapRef} style={styles.gridTap} onPress={probedPress} onLongPress={hold} {...rightClick(onLongPress)} {...settle.handlers} onPressIn={probedIn} nativeID="картка">
+        <Pressable ref={tapRef} style={styles.gridTap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={hold} {...rightClick(onLongPress)} {...settle.handlers}>
           {page ? (
             <PageBody
               id={id}
@@ -867,7 +857,7 @@ export default function DocumentCard({
       ]}
     >
       {!soft && <Image source={GRAIN} resizeMode="cover" resizeMethod="resize" style={styles.grain} />}
-      <Pressable ref={tapRef} style={styles.tap} onPress={probedPress} onPressIn={(e) => pressDown(e.nativeEvent.timestamp)} onLongPress={hold} {...rightClick(onLongPress)} nativeID="картка">
+      <Pressable ref={tapRef} style={styles.tap} onPress={isSelectMode ? onToggleSelect : onPress} onLongPress={hold} {...rightClick(onLongPress)}>
         {/* A ROW IS A LINE OF TEXT BESIDE A THUMBNAIL, and it stays one:
             a strip of the page across the whole width was the title and
             nothing else, at a size nobody asked for - "виглядає погано і

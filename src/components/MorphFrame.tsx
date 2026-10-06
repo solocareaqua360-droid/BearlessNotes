@@ -3,7 +3,7 @@ import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { openMark } from '../utils/openTiming';
-import { backFoldBegin, backMarkPop } from '../utils/perfWatch';
+import { backMarkPop } from '../utils/perfWatch';
 import { chromeAbort, chromeBackBegin, chromeEnd, chromeOpenArrive, chromeT } from '../utils/chromeMorph';
 import { cardBand, measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
 import { foldTransforms } from './foldGeometry';
@@ -122,7 +122,6 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
       if (type !== 'GO_BACK' && type !== 'POP') return;
       e.preventDefault();
       passing = true;
-      backFoldBegin();
       // A growth that had not started yet must not start under the fold.
       started.current = true;
       const frame = box.current;
@@ -240,8 +239,8 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
   });
 
   return (
-    <View ref={rootRef} style={StyleSheet.absoluteFill} onLayout={onLayout} collapsable={false} pointerEvents="box-none" nativeID="рамка-нотатки">
-      <Animated.View style={[styles.clip, clip]} pointerEvents={leaving ? 'none' : 'auto'} nativeID="рамка-обріз">
+    <View ref={rootRef} style={StyleSheet.absoluteFill} onLayout={onLayout} collapsable={false} pointerEvents="box-none">
+      <Animated.View style={[styles.clip, clip]} pointerEvents={leaving ? 'none' : 'auto'}>
         <Animated.View ref={pageRef} collapsable={false} style={[styles.page, page]}>
           {children}
         </Animated.View>

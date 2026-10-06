@@ -1,6 +1,5 @@
 import { Ionicons } from './icons/Ionicons';
 import { StyleSheet, Text, View } from 'react-native';
-import { useExperiment } from '../utils/experiments';
 import { Block } from '../types';
 import { stripFormatting } from '../utils/documentPreview';
 import AttachmentImage from './AttachmentImage';
@@ -32,7 +31,7 @@ import type { Theme } from '../theme/tokens';
 // one costs a row to lay out.
 const MAX_BLOCKS = 16;
 
-function CardPreviewInner({
+export default function CardPreview({
   blocks,
   color,
   mutedColor,
@@ -350,13 +349,3 @@ const makeStyles = (_t: Theme) =>
       fontFamily: 'monospace',
     },
   });
-
-// Temporary (utils/experiments): with every preview switched off, a plain
-// blank of the same size stands in - to tell whether previews are what
-// holds the app after a note is closed. A wrapper, so flipping it never
-// changes the hooks of the component below.
-export default function CardPreview(props: Parameters<typeof CardPreviewInner>[0]) {
-  const off = useExperiment('noPreviews');
-  if (off) return null;
-  return <CardPreviewInner {...props} />;
-}

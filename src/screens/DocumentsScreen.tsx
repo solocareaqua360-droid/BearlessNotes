@@ -119,8 +119,7 @@ import { openTabWithSequence } from '../navigation/desktopTabs';
 import { go } from '../components/DesktopTabs';
 import TagEditSheet from '../components/TagEditSheet';
 import { listenError } from '../utils/listenError';
-import { useRenderTimer, useWhyRender } from '../utils/perfWatch';
-import { EXPERIMENT_LABELS, experiments, toggleExperiment, type ExperimentKey } from '../utils/experiments';
+import { useRenderTimer } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
 import { FEATURES } from '../features';
 import { recentReports } from '../utils/perfWatch';
@@ -274,31 +273,19 @@ const LIGHT_WINDOW = { windowSize: 5, initialNumToRender: 6, maxToRenderPerBatch
 
 const NO_BLOCKS: Block[] = [];
 
-// The diagnostics window (temporary, utils/perfWatch): the whole text can be
-// copied in one press instead of twenty screenshots, and the suspects of
-// the post-close freeze can be switched off one by one (utils/experiments).
+// The diagnostics window (utils/perfWatch, kept as a quiet tool): what the
+// app measured lately, and one press to copy it all.
 async function showDiagnostics(copied = false): Promise<void> {
   const text = recentReports();
-  const keys = Object.keys(experiments) as ExperimentKey[];
   const answer = await ask({
     title: copied ? 'Діагностика · скопійовано' : 'Діагностика',
     message: text,
-    actions: [
-      { id: 'copy', label: 'Скопіювати все', tone: 'primary' },
-      ...keys.map((k) => ({
-        id: `x:${k}`,
-        label: `${experiments[k] ? 'УВІМКНУТИ' : 'ВИМКНУТИ'}: ${EXPERIMENT_LABELS[k]}`,
-        hint: experiments[k] ? 'зараз вимкнено' : 'зараз працює',
-      })),
-    ],
+    actions: [{ id: 'copy', label: 'Скопіювати все', tone: 'primary' }],
     cancelLabel: 'Закрити',
   });
   if (answer === 'copy') {
     await Clipboard.setStringAsync(text);
     void showDiagnostics(true);
-  } else if (answer.startsWith('x:')) {
-    toggleExperiment(answer.slice(2) as ExperimentKey);
-    void showDiagnostics();
   }
 }
 
@@ -432,8 +419,6 @@ export default function DocumentsScreen({
     selected: selectedDocuments,
     needle,
   } = list;
-  // Temporary: which input made this screen draw again (utils/perfWatch).
-  useWhyRender('Док.екран', { documents, openDoc, liveRecords, isLoading, tags, displayedDocuments, groups, drawerTags, groupFilter, activeFilter, isSelectMode, selectedIds, searchOpen, searchText, viewMode, listMode });
   // One object per selection state, not a fresh array every render: a new
   // extraData re-renders every mounted card on any render of this screen.
   const selectionExtra = useMemo(() => [isSelectMode, selectedIds], [isSelectMode, selectedIds]);
@@ -2056,7 +2041,6 @@ export default function DocumentsScreen({
             <GestureDetector gesture={carrying.listGesture}>
           <FlatList
             ref={carrying.scrollRef as React.RefObject<FlatList<DocumentItem>>}
-            nativeID="список-документів"
             {...pull.listProps}
             {...LIGHT_WINDOW}
             // FlatList throws if numColumns changes on an already-mounted

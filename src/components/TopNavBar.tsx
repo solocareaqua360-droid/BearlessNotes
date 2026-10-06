@@ -16,7 +16,7 @@ import SoftIcon, { SoftIconName } from './SoftIcon';
 import { SoftTokens, useSoft } from '../theme/soft';
 import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
-import { useRenderTimer, useWhyRender } from '../utils/perfWatch';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // THE DESKS, AT THE TOP - the user's plan after looking at Notion: the
 // way back in the top-left corner, then the desks, the one you are on
@@ -174,7 +174,6 @@ function TopNavBar({
   const inkMuted = soft ? S.ink2 : theme.glass.inkMuted;
   const frame = topBarFrame(inline ? inline.width : windowWidth);
   const cover = useNavDrawerCover();
-  useWhyRender('Смужка', { desks, title, trail, onLongPress, saving, inline, backOverride, extrasOverride, searchOverride, theme, lift, insets, windowWidth, publishedBack, publishedExtras, publishedSearch, chromeStyle, S, cover, menuOpen });
   const fading = !!fadeWithDrawer && !!cover?.active;
   const coverProgress = cover?.progress;
   const fadeStyle = useAnimatedStyle(

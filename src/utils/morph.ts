@@ -1,7 +1,5 @@
 import type { View } from 'react-native';
 import { chromeAbort, chromeOpenBegin } from './chromeMorph';
-import { markTapLag, noteHand } from './perfWatch';
-import { experiments } from './experiments';
 import { endPageFold } from './pageFold';
 import { openMark } from './openTiming';
 
@@ -141,17 +139,9 @@ export function morph(
 ): void {
   const run = driver;
   openMark('tap');
-  markTapLag();
   // An old page still folding as a picture goes, rather than standing over
   // the new one (components/PageFold).
   endPageFold();
-  noteHand('ВІДКРИТТЯ нотатки (morph)');
-  // Temporary (utils/experiments): opened the way a board is - an ordinary
-  // push, no transparent modal, no frame folding on the way back.
-  if (experiments.noNoteMorph) {
-    update(false);
-    return;
-  }
   if (!run && opts?.into) {
     update(false);
     return;

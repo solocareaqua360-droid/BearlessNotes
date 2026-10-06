@@ -25,7 +25,7 @@ import { categoryFromSiteName } from '../utils/linkCategory';
 import { FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_LINE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { listenError } from '../utils/listenError';
-import { useRenderTimer, useWhyRender } from '../utils/perfWatch';
+import { useRenderTimer } from '../utils/perfWatch';
 
 // What else is in this group. A group is the one thing in the app that
 // deliberately crosses databases (see the Group comment in types.ts), and
@@ -131,7 +131,6 @@ function GroupSectionsInner({
   views?: { id: string; databaseId: string; name: string; icon?: string }[];
 }) {
   useRenderTimer('Проєкт: розділи');
-  useWhyRender('Розділи', { groupId, currentKind, tags, sidePadding, onOpen, items, databases, views });
   const recordColour = useRecordColour();
   const S = useSoft();
   const given = !!items;
