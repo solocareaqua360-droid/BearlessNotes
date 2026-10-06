@@ -7,6 +7,7 @@
 // opening report prints what it saw around the tap.
 
 import { useLayoutEffect, useRef } from 'react';
+import { Keyboard } from 'react-native';
 
 type Run = { at: number; label: string; ms: number };
 
@@ -143,6 +144,11 @@ let timeline: { at: number; what: string }[] = [];
 export function noteHand(what: string): void {
   if (foldStart && Date.now() - foldStart < 3000) timeline.push({ at: Date.now() - foldStart, what });
 }
+// The keyboard coming and going is a window resize under the whole screen:
+// told to the timeline so a freeze can be laid against it.
+Keyboard.addListener('keyboardDidShow', () => noteHand('клавіатура: показалась'));
+Keyboard.addListener('keyboardDidHide', () => noteHand('клавіатура: сховалась'));
+
 // THE FRAMES AFTER THE FOLD (2026-10-06): the user cannot tap the next note
 // for up to a second after the page has folded, while the JS thread is free
 // (no hang reported). A frame callback comes from the UI thread's own
@@ -156,6 +162,7 @@ export function backFoldBegin(): void {
   foldTouches = [];
   timeline = [];
   frameGaps = [];
+  noteHand(Keyboard.isVisible() ? 'клавіатура ВІДКРИТА на початку складання' : 'клавіатура закрита на початку складання');
   const mine = ++frameLoop;
   let last = Date.now();
   const tick = () => {
