@@ -129,6 +129,9 @@ export function AskHost() {
   const S = chromeStyle === 'soft' ? softTokens : null;
   const softDanger = S ? (S.dark ? '#FF7A6E' : '#C8452F') : null;
   const pointer = useDensity() === 'pointer';
+  // A long message (the diagnostics) scrolls inside the card instead of
+  // running off the screen.
+  const { height: windowHeight } = useWindowDimensions();
   useEffect(() => {
     if (current) Keyboard.dismiss();
   }, [current]);
@@ -241,7 +244,9 @@ export function AskHost() {
           {current.title}
         </Text>
         {!!current.message && (
-          <Text style={[styles.message, S && { fontFamily: SOFT_REGULAR, color: S.ink2 }]}>{current.message}</Text>
+          <ScrollView style={{ maxHeight: Math.round(windowHeight * 0.55), flexGrow: 0 }} nestedScrollEnabled>
+            <Text selectable style={[styles.message, S && { fontFamily: SOFT_REGULAR, color: S.ink2 }]}>{current.message}</Text>
+          </ScrollView>
         )}
 
         {/* Scrolls once there are more answers than fit. The rows were a
