@@ -140,6 +140,21 @@ export function touchArrived(nativeTimestamp: number): void {
     logReport(`Дотик чекав ${waited} мс`, perfSummary(Date.now() - waited - 1500));
   }
 }
+// THE FINGER LIFTING to the press being handled (2026-10-06): a note's open
+// is timed from morph(), which starts only when JS has been told of the
+// press - anything that held the thread (or the touch system) between the
+// finger lifting and that call was never in the numbers.
+let lastUp = 0;
+let tapLagMs = -1;
+export function touchEnded(nativeTimestamp: number): void {
+  lastUp = nativeTimestamp || 0;
+}
+export function markTapLag(): void {
+  tapLagMs = lastUp && Number.isFinite(minGap) ? Math.max(0, Date.now() - lastUp - minGap) : -1;
+}
+export function lastTapLag(): number {
+  return tapLagMs;
+}
 let lastReport = 0;
 export function setStallReporter(report: (title: string, body: string) => void): void {
   stallReporter = REPORTS ? report : null;

@@ -119,7 +119,7 @@ import { openTabWithSequence } from '../navigation/desktopTabs';
 import { go } from '../components/DesktopTabs';
 import TagEditSheet from '../components/TagEditSheet';
 import { listenError } from '../utils/listenError';
-import { useRenderTimer } from '../utils/perfWatch';
+import { useRenderTimer, useWhyRender } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
 import { FEATURES } from '../features';
 import { recentReports } from '../utils/perfWatch';
@@ -403,6 +403,8 @@ export default function DocumentsScreen({
     selected: selectedDocuments,
     needle,
   } = list;
+  // Temporary: which input made this screen draw again (utils/perfWatch).
+  useWhyRender('Док.екран', { documents, openDoc, liveRecords, isLoading, tags, displayedDocuments, groups, drawerTags, groupFilter, activeFilter, isSelectMode, selectedIds, searchOpen, searchText, viewMode, listMode });
   // One object per selection state, not a fresh array every render: a new
   // extraData re-renders every mounted card on any render of this screen.
   const selectionExtra = useMemo(() => [isSelectMode, selectedIds], [isSelectMode, selectedIds]);

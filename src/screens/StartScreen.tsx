@@ -39,7 +39,7 @@ import { ownedQuery } from '../utils/owned';
 import { listenError } from '../utils/listenError';
 import type { Block, CustomDatabase, CustomDatabaseRow, Tag } from '../types';
 import { rowTitleOf } from '../utils/customRowDisplay';
-import { useRenderTimer } from '../utils/perfWatch';
+import { useRenderTimer, useWhyRender } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
 import { FEATURES } from '../features';
 import BoardPreviewImage from '../components/BoardPreviewImage';
@@ -98,6 +98,7 @@ export default function StartScreen() {
   const pull = usePullToSearch(() => go('Search'), true, openDeskSwitcher);
   const recent = useRecentPlaces();
   const index = useDocumentIndex();
+  useWhyRender('Старт', { S, insets, isFocused, topNavOn, dockClear, desksControl, recent, index, pull });
   const { setEdgeZone } = useSideDrawerActions();
   // A note in the bin is not offered; until the index has arrived, none is
   // judged (a list that blinked empty while loading would be worse).
