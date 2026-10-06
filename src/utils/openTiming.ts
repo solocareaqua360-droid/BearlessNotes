@@ -4,7 +4,8 @@
 // photographed (chromeMorph), the push, the note read (cache or server),
 // the first draw - and only measuring says which one it was. The editor
 // reports an opening slower than SLOW_MS, step by step.
-export const SLOW_OPEN_MS = 450;
+// Zero: every opening is kept (quietly, for «Діагностика») with its steps.
+export const SLOW_OPEN_MS = 0;
 // Off since 2026-10-06 - the openings were measured; see perfWatch.
 export const SHOW_OPEN_REPORTS = false;
 

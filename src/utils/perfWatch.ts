@@ -111,7 +111,7 @@ let stallReporter: ((title: string, body: string) => void) | null = null;
 const kept: { at: number; title: string; body: string }[] = [];
 export function logReport(title: string, body: string): void {
   kept.push({ at: Date.now(), title, body });
-  while (kept.length > 8) kept.shift();
+  while (kept.length > 20) kept.shift();
   if (REPORTS) stallReporter?.(title, body);
 }
 export function recentReports(): string {
