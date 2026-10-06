@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { useRecordColour } from '../theme/ThemeProvider';
@@ -25,7 +25,7 @@ import { categoryFromSiteName } from '../utils/linkCategory';
 import { FONT_BOLD, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_LINE, GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { listenError } from '../utils/listenError';
-import { useRenderTimer } from '../utils/perfWatch';
+import { useRenderTimer, useWhyRender } from '../utils/perfWatch';
 
 // What else is in this group. A group is the one thing in the app that
 // deliberately crosses databases (see the Group comment in types.ts), and
@@ -95,7 +95,7 @@ function useCollection(name: string, enabled: boolean): Row[] {
   return rows;
 }
 
-export default function GroupSections({
+function GroupSectionsInner({
   groupId,
   currentKind,
   tags,
@@ -131,6 +131,7 @@ export default function GroupSections({
   views?: { id: string; databaseId: string; name: string; icon?: string }[];
 }) {
   useRenderTimer('Проєкт: розділи');
+  useWhyRender('Розділи', { groupId, currentKind, tags, sidePadding, onOpen, items, databases, views });
   const recordColour = useRecordColour();
   const S = useSoft();
   const given = !!items;
@@ -531,6 +532,10 @@ export default function GroupSections({
     </View>
   );
 }
+
+// A parent that draws again (the documents list, every note open and
+// close) no longer redraws every section with it: the props decide.
+export default memo(GroupSectionsInner);
 
 const styles = StyleSheet.create({
   // Full width on purpose: these sit at the end of a list that may be a

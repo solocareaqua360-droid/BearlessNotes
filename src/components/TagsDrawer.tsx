@@ -19,7 +19,7 @@ import { RAIL_RIGHT } from '../constants/rail';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
-import { useRenderTimer } from '../utils/perfWatch';
+import { useRenderTimer, useWhyRender } from '../utils/perfWatch';
 
 // Two thirds of the window, measured per render (useWindowDimensions) and
 // never captured once at module scope from Dimensions.get() - see
@@ -389,6 +389,7 @@ function TagsDrawerInner({
   useRenderTimer('Шторка папок');
   const theme = useTheme();
   const styles = useStyles(makeStyles);
+  useWhyRender('Шторка', { tags, activeFilter, onSelectFilter, counts, mode, stickers, trash, groupSection, theme, styles });
   const showGroups = !mode || mode.value === 'groups';
   const showTree = !mode || mode.value !== 'groups';
   const showFilterMode = !mode || mode.value === 'list';

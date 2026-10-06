@@ -6,7 +6,7 @@
 // at the one door, firestore.ts) and stalls of the JS thread - and the
 // opening report prints what it saw around the tap.
 
-import { useLayoutEffect } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 
 type Run = { at: number; label: string; ms: number };
 
@@ -50,6 +50,21 @@ export function useRenderTimer(label: string): void {
     renders.push({ at: now, label, ms });
     trim(renders);
   });
+}
+
+// WHY a screen drew again (2026-10-06): the counts said «Шторка папок 4x»
+// and the props looked stable. Each render's inputs are compared with the
+// last one's and the ones that changed are named; «власний стан» means no
+// input changed - the component's own state or a context it reads.
+const whys: { at: number; text: string }[] = [];
+export function useWhyRender(label: string, inputs: Record<string, unknown>): void {
+  const last = useRef<Record<string, unknown> | null>(null);
+  const before = last.current;
+  last.current = inputs;
+  if (!before) return;
+  const changed = Object.keys(inputs).filter((k) => !Object.is(inputs[k], before[k]));
+  whys.push({ at: Date.now(), text: `${label}: ${changed.join('+') || 'власний стан'}` });
+  trim(whys);
 }
 
 // A RENDER LOOP (two pieces setting each other's state, round and round)
@@ -213,6 +228,14 @@ export function perfSummary(since: number): string {
   trim(runs);
   trim(stalls);
   trim(renders);
+  trim(whys);
+  const why = new Map<string, number>();
+  whys.filter((w) => w.at >= since).forEach((w) => why.set(w.text, (why.get(w.text) ?? 0) + 1));
+  const whyLine = Array.from(why.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([t, n]) => `${t} ×${n}`)
+    .join('; ');
   const total = Array.from(live.values()).reduce((a, b) => a + b, 0);
   const top = Array.from(live.entries())
     .sort((a, b) => b[1] - a[1])
@@ -252,5 +275,6 @@ export function perfSummary(since: number): string {
     `слухачів ${total} (${top})`,
     `знімків ${recent.length} = ${Math.round(spent)} мс${heavy ? ` (${heavy})` : ''}`,
     `зависань ${late.length}${late.length ? `, найдовше ${Math.round(worst)} мс` : ''}`,
+    ...(whyLine ? [`чому: ${whyLine}`] : []),
   ].join('\n');
 }
