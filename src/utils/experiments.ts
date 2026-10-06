@@ -6,9 +6,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // closings, and no measurement from JS says what holds it. Each switch
 // turns one suspect off; the diagnostics window flips them, the user closes
 // a few notes, and the freeze either goes or it does not.
-export type ExperimentKey = 'noNoteMorph' | 'noPreviews' | 'noChromePhotos' | 'noDeskShots';
+export type ExperimentKey = 'noBlur' | 'noNoteMorph' | 'noPreviews' | 'noChromePhotos' | 'noDeskShots';
 
 export const experiments: Record<ExperimentKey, boolean> = {
+  noBlur: false,
   noNoteMorph: false,
   noPreviews: false,
   noChromePhotos: false,
@@ -16,6 +17,7 @@ export const experiments: Record<ExperimentKey, boolean> = {
 };
 
 export const EXPERIMENT_LABELS: Record<ExperimentKey, string> = {
+  noBlur: 'Живе розмиття (смужка, док, кнопки, рядок проєктів)',
   noNoteMorph: 'Морф нотатки (прозорий екран + складання), як у дошок без нього',
   noPreviews: 'Усі прев\'ю (сторінки в картках, дні, дошки, знімки столів)',
   noChromePhotos: 'Фото смужок і дока при переході',
@@ -28,7 +30,7 @@ const listeners = new Set<() => void>();
 function announce() {
   listeners.forEach((l) => l());
 }
-function subscribe(listener: () => void) {
+export function subscribeExperiments(listener: () => void) {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -37,7 +39,7 @@ function subscribe(listener: () => void) {
 // For what draws differently with a switch: renders again when it flips (or
 // when the saved switches arrive, a moment after start).
 export function useExperiment(key: ExperimentKey): boolean {
-  return useSyncExternalStore(subscribe, () => experiments[key], () => experiments[key]);
+  return useSyncExternalStore(subscribeExperiments, () => experiments[key], () => experiments[key]);
 }
 
 AsyncStorage.getItem(STORE_KEY)

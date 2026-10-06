@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import { experiments, subscribeExperiments } from '../utils/experiments';
 
 // THE LIVE BLUR, PAUSED while something heavy scrolls under it.
 //
@@ -16,7 +17,12 @@ const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  // Temporary (utils/experiments): the switch that holds every blur paused.
+  const off = subscribeExperiments(listener);
+  return () => {
+    listeners.delete(listener);
+    off();
+  };
 }
 
 function set(delta: number) {
@@ -25,7 +31,7 @@ function set(delta: number) {
 }
 
 export function useFrostPaused(): boolean {
-  return useSyncExternalStore(subscribe, () => holders > 0, () => false);
+  return useSyncExternalStore(subscribe, () => holders > 0 || experiments.noBlur, () => false);
 }
 
 export function usePauseFrost(active: boolean) {
