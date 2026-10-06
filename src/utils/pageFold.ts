@@ -1,3 +1,4 @@
+import type { SharedValue } from 'react-native-reanimated';
 import type { Rect } from './morph';
 
 // The one fold in progress (components/PageFold draws it). Kept apart from
@@ -12,6 +13,9 @@ export type Fold = {
   sheetY: number;
   // The card keeps its own line under the clip (utils/morph's band).
   squareBottom: boolean;
+  // The fold's clock, 1 = the whole frame, 0 = in the card: the page's own
+  // (MorphFrame), already running - the picture joins it mid-way.
+  t: SharedValue<number>;
   // The picture is on screen where the page is: the page may go.
   onShown: () => void;
 };
@@ -34,9 +38,10 @@ export function currentPageFold(): Fold | null {
   return current;
 }
 
-export function startPageFold(fold: Omit<Fold, 'id'>): void {
+export function startPageFold(fold: Omit<Fold, 'id'>): number {
   current = { ...fold, id: nextId++ };
   announce();
+  return current.id;
 }
 
 // A new page growing out of a card while an old one is still folding: the

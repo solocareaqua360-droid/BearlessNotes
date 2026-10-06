@@ -1,6 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
-import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { releaseCapture } from 'react-native-view-shot';
 import { GlassPortal } from './GlassPortal';
 import { foldTransforms } from './foldGeometry';
@@ -21,12 +21,14 @@ import { currentPageFold, endPageFold, subscribePageFold, type Fold } from '../u
 // numbers MorphFrame used, and the note's screen goes at once. The list is
 // live under the picture from the first frame of the fold.
 //
-// The fold's geometry is MorphFrame's own, copied: the clip shrinks from
-// the frame to the card's rectangle with the card's corner, and the page in
-// it scales from 1 to the card's width over the sheet, from its top left.
+// The fold's geometry is MorphFrame's own (components/foldGeometry), and so
+// is its clock: the page starts folding as itself the moment "back" is
+// pressed, and the picture joins it mid-way on the same shared value - the
+// same frame, so the hand-over cannot be seen. (The fold used to wait for the
+// photograph to begin: 80-90 ms of a still page after every "back".)
 
-const EASE = Easing.bezier(0.22, 1, 0.36, 1);
-export const PAGE_FOLD_MS = 300;
+// The longest a fold can take, waits included: the picture never outlives it.
+const FOLD_SAFETY_MS = 1500;
 
 function releaseQuietly(uri: string) {
   try {
@@ -64,21 +66,18 @@ function Folding({ fold }: { fold: Fold }) {
   const squareBottom = fold.squareBottom;
   const id = fold.id;
 
-  const t = useSharedValue(1);
-  const started = useRef(false);
-  const start = () => {
-    if (started.current) return;
-    started.current = true;
+  const t = fold.t;
+  const shown = useRef(false);
+  const onShown = () => {
+    if (shown.current) return;
+    shown.current = true;
     fold.onShown();
-    t.value = withTiming(0, { duration: PAGE_FOLD_MS, easing: EASE }, (finished) => {
-      if (finished) runOnJS(endPageFold)(id);
-    });
   };
   // A picture that never says it has loaded must not keep the note's screen
-  // up: the fold starts anyway (the page has its own fallback, too).
+  // up (the page has its own fallback, too); nor stay after the fold.
   useEffect(() => {
-    const timer = setTimeout(start, 250);
-    const safety = setTimeout(() => endPageFold(id), PAGE_FOLD_MS + 1200);
+    const timer = setTimeout(onShown, 250);
+    const safety = setTimeout(() => endPageFold(id), FOLD_SAFETY_MS);
     return () => {
       clearTimeout(timer);
       clearTimeout(safety);
@@ -102,7 +101,7 @@ function Folding({ fold }: { fold: Fold }) {
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Animated.View style={[styles.clip, { left: fx, top: fy, width: fw, height: fh }, clip]}>
         <Animated.View style={[styles.page, page]}>
-          <Image source={{ uri: fold.uri }} style={{ width: fw, height: fh }} fadeDuration={0} onLoad={start} />
+          <Image source={{ uri: fold.uri }} style={{ width: fw, height: fh }} fadeDuration={0} onLoad={onShown} />
         </Animated.View>
       </Animated.View>
     </View>

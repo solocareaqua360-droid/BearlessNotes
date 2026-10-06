@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
-import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, makeMutable, runOnJS, runOnUI, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { openMark } from '../utils/openTiming';
 import { backMarkPop } from '../utils/perfWatch';
@@ -8,7 +8,7 @@ import { chromeAbort, chromeBackBegin, chromeEnd, chromeOpenArrive, chromeT } fr
 import { cardBand, measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
 import { foldTransforms } from './foldGeometry';
 import { captureRef, releaseCapture } from 'react-native-view-shot';
-import { startPageFold } from '../utils/pageFold';
+import { endPageFold, startPageFold } from '../utils/pageFold';
 
 // THE PAGE THAT GROWS OUT OF ITS CARD (utils/morph tells the whole story).
 // Wraps a pushed note. Opened from a card, it lays the page out at its full
@@ -46,7 +46,10 @@ export default function MorphFrame({ morphKey, navigation, children }: { morphKe
 
 function Growing({ morphKey, navigation, from, children }: { morphKey: string; navigation: Nav; from: Rect; children: ReactNode }) {
   // 0: in the card, 1: the whole screen.
-  const t = useSharedValue(0);
+  // Not useSharedValue: that one stops its animation when the screen goes,
+  // and on the way back the clock goes on after it - the page's picture
+  // finishes the fold on it (components/PageFold).
+  const [t] = useState(() => makeMutable(0));
   const shown = useSharedValue(0);
   // The card, in the frame's own coordinates, and the frame's size.
   const cx = useSharedValue(0);
@@ -86,9 +89,21 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
     // meanwhile, and the chrome catches up once its other end is there, in
     // what is left of the page's own time.
     openMark('moving');
-    shown.value = 1;
-    const began = Date.now();
-    t.value = withTiming(1, { duration: OUT_MS, easing: EASE });
+    // Two frames ON THE UI THREAD (2026-10-06): the one the note's commit is
+    // mounted in, and the one it is painted in - then the page moves. They
+    // used to be counted on the JS thread, which is busiest exactly then
+    // (the note's effects, its next rows): 60-90 ms for two frames, a still
+    // card after the tap. The UI thread is idle meanwhile.
+    runOnUI(() => {
+      'worklet';
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          shown.value = 1;
+          t.value = withTiming(1, { duration: OUT_MS, easing: EASE });
+        });
+      });
+    })();
+    const began = Date.now() + 33;
     // The chrome's move ends the stand-in, not the page's: it may finish
     // a little later.
     chromeOpenArrive().then(() => {
@@ -99,11 +114,30 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
     });
   };
 
+  // Where the frame stands in the window. Asked straight away (the answer
+  // is the shadow tree's, synchronous) rather than waiting for onLayout: the
+  // layout event queues behind the note's own rendering and came 60-80 ms
+  // after the note was drawn - and the growth waited for it (2026-10-06).
+  const measureBox = () => {
+    rootRef.current?.measureInWindow((x, y, width, height) => {
+      if (!width || !height) return;
+      const first = !box.current;
+      box.current = { x, y, width, height };
+      bw.value = width;
+      bh.value = height;
+      if (first) {
+        cx.value = from.x - x;
+        cy.value = from.y - y;
+        start();
+      }
+    });
+  };
+
   useEffect(() => {
     whenLanded(morphKey, () => {
       landed.current = true;
-      // The frame the note was committed in, and the one it is painted in.
-      requestAnimationFrame(() => requestAnimationFrame(start));
+      if (box.current) start();
+      else measureBox();
     });
     const late = setTimeout(() => {
       landed.current = true;
@@ -130,30 +164,46 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
       const pagePicture = pageRef.current
         ? captureRef(pageRef.current, { format: 'jpg', quality: 0.92, result: 'tmpfile' }).catch(() => null)
         : Promise.resolve(null);
-      Promise.all([measureCard(morphKey), chromeBackBegin(), pagePicture]).then(([card, carrying, picture]) => {
+      const chromeCarried = chromeBackBegin();
+      const release = (picture: string | null) => {
+        if (!picture) return;
+        try {
+          releaseCapture(picture);
+        } catch {
+          // Already gone.
+        }
+      };
+      // Once, whatever happens to the fold: an interrupted animation
+      // (finished false) used to leave the note on the stack, unseen, with
+      // the desks' bar waiting for it to go.
+      let left = false;
+      let carrying = false;
+      const leave = () => {
+        if (left) return;
+        left = true;
+        backMarkPop();
+        shown.value = 0;
+        navigation.dispatch(e.data.action as never);
         // The list's own chrome mounts with its focus, after the pop: the
         // stand-in waits for it before it goes.
-        // Once, whatever happens to the fold: an interrupted animation
-        // (finished false) used to leave the note on the stack, unseen,
-        // with the desks' bar waiting for it to go.
-        let left = false;
-        const leave = () => {
-          if (left) return;
-          left = true;
-          backMarkPop();
-          shown.value = 0;
-          navigation.dispatch(e.data.action as never);
-          if (carrying) chromeEnd('list');
-        };
+        if (carrying) chromeEnd('list');
+      };
+      // The screen goes once the chrome's stand-in is settled one way or
+      // the other (it covers the real chrome the pop changes).
+      chromeCarried.then((c) => {
+        carrying = c;
+        // Left already (the safety below): the stand-in still goes.
+        if (c && left) chromeEnd('list');
+      });
+      const leaveWhenChromeIs = () => {
+        chromeCarried.then(leave);
+      };
+      measureCard(morphKey).then((card) => {
         if (!card || !frame) {
-          if (picture) {
-            try {
-              releaseCapture(picture);
-            } catch {
-              // Already gone.
-            }
-          }
-          if (carrying) chromeAbort();
+          pagePicture.then(release);
+          chromeCarried.then((c) => {
+            if (c) chromeAbort();
+          });
           const pop = () => navigation.dispatch(e.data.action as never);
           shown.value = withTiming(0, { duration: 160 }, (finished) => {
             if (finished) runOnJS(pop)();
@@ -164,62 +214,67 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
         cy.value = card.y - frame.y;
         cw.value = card.width;
         ch.value = card.height - band;
-        // THE PICTURE FOLDS, THE SCREEN GOES NOW (components/PageFold). The
+        // THE FOLD STARTS AT ONCE, on the page itself (2026-10-06). It used
+        // to wait for the photographs below - 80-90 ms of a still page
+        // after "back", every time (the phone's trace). The picture takes
+        // over mid-way, on the same clock (`t`), so the two are the same
+        // frame by frame and the hand-over cannot be seen.
+        const began = Date.now();
+        let folded = false;
+        let foldId: number | null = null;
+        const onFolded = () => {
+          folded = true;
+          if (foldId !== null) endPageFold(foldId);
+          // Folded as itself, the page goes AT ONCE: the list's own card is
+          // right under it, in the same place. It used to stay up until the
+          // pop had been committed, and for that half second the folded page
+          // stood where the card is and then blinked into it, taking every
+          // tap meanwhile (2026-10-05).
+          else leaveWhenChromeIs();
+        };
+        setLeaving(true);
+        t.value = withTiming(0, { duration: BACK_MS, easing: EASE }, (finished) => {
+          if (finished) shown.value = 0;
+          runOnJS(onFolded)();
+        });
+        chromeCarried.then((c) => {
+          if (!c) return;
+          // The chrome catches up in what is left of the page's time.
+          const remaining = Math.max(120, BACK_MS - (Date.now() - began));
+          chromeT.value = withTiming(0, { duration: remaining, easing: EASE });
+        });
+        // THE PICTURE TAKES OVER, THE SCREEN GOES (components/PageFold). The
         // note's screen used to stay over the list for the whole fold and a
         // beat after it, taking the first tap meant for the list. Once the
-        // picture stands where the page is, the page hides and the screen is
-        // taken away under it; the list is live from the fold's first frame.
-        if (picture) {
-          setLeaving(true);
-          startPageFold({
+        // picture stands where the page is, the page hides and the screen
+        // is taken away under it; the list is live for the rest of the fold.
+        pagePicture.then((picture) => {
+          if (!picture) return;
+          if (folded || left) {
+            release(picture);
+            return;
+          }
+          foldId = startPageFold({
             uri: picture,
             frame,
             card: { x: card.x - frame.x, y: card.y - frame.y, width: card.width, height: card.height - band },
             squareBottom: band > 0,
             sheetY: sheetY.value,
+            t,
             // A frame after the picture has loaded: drawn, so hiding the page
             // under it changes nothing anyone can see.
-            onShown: () => requestAnimationFrame(leave),
+            onShown: () => requestAnimationFrame(leaveWhenChromeIs),
           });
-          if (carrying) chromeT.value = withTiming(0, { duration: BACK_MS, easing: EASE });
-          // And if the picture never arrives at all.
-          setTimeout(leave, BACK_MS + 400);
-          return;
-        }
-        // No picture: the page folds as itself, as before.
-        // Folded, the page goes AT ONCE, on the UI thread: the list's own
-        // card is right under it, in the same place. It used to stay up
-        // until the pop had been committed - the editor taken down, the
-        // list redrawn - and for that half second the folded page (the
-        // note's own shade and edge fade) stood where the card is and then
-        // blinked into it, taking every tap meanwhile (2026-10-05).
-        t.value = withTiming(0, { duration: BACK_MS, easing: EASE }, (finished) => {
-          if (finished) shown.value = 0;
-          runOnJS(leave)();
         });
-        // And if the animation never reports at all.
+        // And if nothing ever reports at all.
         setTimeout(leave, BACK_MS + 400);
-        setLeaving(true);
-        if (carrying) chromeT.value = withTiming(0, { duration: BACK_MS, easing: EASE });
       });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation, morphKey]);
 
-  const onLayout = () => {
-    rootRef.current?.measureInWindow((x, y, width, height) => {
-      if (!width || !height) return;
-      const first = !box.current;
-      box.current = { x, y, width, height };
-      bw.value = width;
-      bh.value = height;
-      if (first) {
-        cx.value = from.x - x;
-        cy.value = from.y - y;
-        start();
-      }
-    });
-  };
+  // And again whenever the frame changes size (the Fold opened or closed).
+  const onLayout = measureBox;
 
   // The move itself, in transforms only - see components/foldGeometry.
   const clip = useAnimatedStyle(() => {
