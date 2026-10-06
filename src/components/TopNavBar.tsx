@@ -16,7 +16,7 @@ import SoftIcon, { SoftIconName } from './SoftIcon';
 import { SoftTokens, useSoft } from '../theme/soft';
 import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
-import { useRenderTimer } from '../utils/perfWatch';
+import { useRenderTimer, useWhyRender } from '../utils/perfWatch';
 
 // THE DESKS, AT THE TOP - the user's plan after looking at Notion: the
 // way back in the top-left corner, then the desks, the one you are on
@@ -174,6 +174,7 @@ function TopNavBar({
   const inkMuted = soft ? S.ink2 : theme.glass.inkMuted;
   const frame = topBarFrame(inline ? inline.width : windowWidth);
   const cover = useNavDrawerCover();
+  useWhyRender('Смужка', { desks, title, trail, onLongPress, saving, inline, backOverride, extrasOverride, searchOverride, theme, lift, insets, windowWidth, publishedBack, publishedExtras, publishedSearch, chromeStyle, S, cover, menuOpen });
   const fading = !!fadeWithDrawer && !!cover?.active;
   const coverProgress = cover?.progress;
   const fadeStyle = useAnimatedStyle(
@@ -1020,4 +1021,36 @@ const styles = StyleSheet.create({
 
 // Rendered only when its own props or the published bar change - see the
 // desks' bar in FloatingIslandTabBar, which keeps its props stable for it.
-export default memo(TopNavBar);
+// THE PROPS COMPARED BY WHAT THEY SAY (2026-10-06). Nearly every screen
+// hands the bar `title={{ icon, label }}` - a fresh object each render - so
+// the default shallow comparison saw a change every time and the memo did
+// nothing: the bar redrew whenever its screen did (5x per note opened).
+// A title or trail is equal when its words, icons and handlers are.
+function sameTitle(a?: TopTitle, b?: TopTitle): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.icon === b.icon && a.label === b.label && a.onPress === b.onPress;
+}
+function sameTrail(a?: TopTrail, b?: TopTrail): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.icon === b.icon &&
+    a.crumbs.length === b.crumbs.length &&
+    a.crumbs.every((c, i) => c.label === b.crumbs[i].label && c.onPress === b.crumbs[i].onPress)
+  );
+}
+type BarProps = React.ComponentProps<typeof TopNavBar>;
+function sameBar(prev: BarProps, next: BarProps): boolean {
+  if (!sameTitle(prev.title, next.title) || !sameTrail(prev.trail, next.trail)) return false;
+  // `inline` is a `{ width }` made fresh by its caller as well.
+  if (prev.inline !== next.inline && prev.inline?.width !== next.inline?.width) return false;
+  if (!!prev.inline !== !!next.inline) return false;
+  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+  for (const k of keys) {
+    if (k === 'title' || k === 'trail' || k === 'inline') continue;
+    if (!Object.is((prev as Record<string, unknown>)[k], (next as Record<string, unknown>)[k])) return false;
+  }
+  return true;
+}
+export default memo(TopNavBar, sameBar);
