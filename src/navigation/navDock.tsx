@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { View } from 'react-native';
 import type { MenuEntry } from '../components/surfaces/Menu';
 import { useNavigation } from '@react-navigation/native';
@@ -336,7 +336,46 @@ type Value = {
 
 };
 
-const NavDockContext = createContext<Value | null>(null);
+// THE STATE, READ BY SLICE (2026-10-06). The context used to carry the whole
+// value, so a reader of one field (the top bar reads six) re-rendered on
+// every change of any of the thirty: an action, a bead, a flip, a drifting
+// swipe - five bar renders for one note opening (measured, ~35 ms each).
+// The context now carries a STABLE store; each hook below subscribes to
+// only what it returns, through useSyncExternalStore, and renders again
+// only when that part is a different object.
+type DockStore = {
+  value: Value | null;
+  listeners: Set<() => void>;
+  subscribe: (listener: () => void) => () => void;
+};
+function makeDockStore(): DockStore {
+  const store: DockStore = {
+    value: null,
+    listeners: new Set(),
+    subscribe: (listener) => {
+      store.listeners.add(listener);
+      return () => {
+        store.listeners.delete(listener);
+      };
+    },
+  };
+  return store;
+}
+const NavDockContext = createContext<DockStore | null>(null);
+const emptyStore = makeDockStore();
+
+// `select` must hand back the SAME object while the part is unchanged
+// (every field of the value is memoised or a primitive), or this would
+// render on every change like the old context did.
+function useDockSlice<T>(select: (value: Value) => T, fallback: T): T {
+  const store = useContext(NavDockContext) ?? emptyStore;
+  return useSyncExternalStore(
+    store.subscribe,
+    () => (store.value ? select(store.value) : fallback),
+    () => fallback
+  );
+}
+const NO_BEADS = { left: null, right: null } as const;
 
 // THE PUBLISHING HALF ALONE (2026-10-05). Every screen that says what the
 // bar and the dock should hold (its way back, its menu, its actions, its
@@ -725,10 +764,19 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
+  // Built once; filled before the first child reads it, and told to its
+  // subscribers after every commit that changed the value.
+  const store = useMemo(() => makeDockStore(), []);
+  if (store.value === null) store.value = value;
+  useLayoutEffect(() => {
+    if (store.value === value) return;
+    store.value = value;
+    store.listeners.forEach((l) => l());
+  }, [store, value]);
   return (
     <NavDockPublishContext.Provider value={publishers}>
       <NavDockFaceContext.Provider value={face}>
-        <NavDockContext.Provider value={value}>{children}</NavDockContext.Provider>
+        <NavDockContext.Provider value={store}>{children}</NavDockContext.Provider>
       </NavDockFaceContext.Provider>
     </NavDockPublishContext.Provider>
   );
@@ -736,10 +784,7 @@ export function NavDockProvider({ children }: { children: ReactNode }) {
 
 // What the dock reads. Null where nothing has been wrapped.
 export function useNavDockContext(): DockContext | null {
-  const value = useContext(NavDockContext);
-  if (!value) return null;
-  if (value.hidden) return value.base;
-  return value.context ?? value.base;
+  return useDockSlice((v) => (v.hidden ? v.base : v.context ?? v.base), null);
 }
 
 // The screen's OWN context - a path, a run of days - with no fallback to
@@ -747,11 +792,11 @@ export function useNavDockContext(): DockContext | null {
 // now, because the desks vanishing the moment you step into a folder is
 // the one thing a navigation dock must never do.
 export function useNavDockOwnContext(): DockContext | null {
-  return useContext(NavDockContext)?.context ?? null;
+  return useDockSlice((v) => v.context, null);
 }
 
 export function useNavDockDesks(): DockContext | null {
-  return useContext(NavDockContext)?.base ?? null;
+  return useDockSlice((v) => v.base, null);
 }
 
 // Whether a context is actually ON SCREEN. This is what the desks ask
@@ -760,14 +805,13 @@ export function useNavDockDesks(): DockContext | null {
 // context still EXISTED, so the desks kept hiding from something nobody
 // could see.
 export function useNavDockShowing(): boolean {
-  const value = useContext(NavDockContext);
-  return !!value?.context && !value.hidden;
+  return useDockSlice((v) => !!v.context && !v.hidden, false);
 }
 
 // Whether there IS a context at all, shown or put away - what the desk
 // you are standing on asks before offering to bring it back.
 export function useNavDockHasContext(): boolean {
-  return !!useContext(NavDockContext)?.context;
+  return useDockSlice((v) => !!v.context, false);
 }
 
 // The setter alone, for what only puts the context away or back - it does
@@ -778,8 +822,9 @@ export function useNavDockSetHidden(): (hidden: boolean) => void {
 const noopSetHidden = () => {};
 
 export function useNavDockHidden(): [boolean, (hidden: boolean) => void] {
-  const value = useContext(NavDockContext);
-  return [value?.hidden ?? false, value?.setHidden ?? (() => {})];
+  const hidden = useDockSlice((v) => v.hidden, false);
+  const setHidden = useNavDockSetHidden();
+  return useMemo(() => [hidden, setHidden], [hidden, setHidden]);
 }
 
 // What a screen writes. Publishing null (or unmounting) hands the dock
@@ -791,7 +836,7 @@ export function useNavDockPublisher() {
 // What the dock's crumbs register themselves with, and what a carry
 // publishes into. Null where nothing is being carried anywhere.
 export function useNavDockTargets(): DockTargets | null {
-  return useContext(NavDockContext)?.targets ?? null;
+  return useDockSlice((v) => v.targets, null);
 }
 
 export function useNavDockTargetPublisher() {
@@ -832,7 +877,7 @@ export function useTopBack(onPress: (() => void) | null, enabled = true, icon?: 
 }
 
 export function useNavTopNavUp(): boolean {
-  return useContext(NavDockContext)?.topNavUp ?? false;
+  return useDockSlice((v) => v.topNavUp, false);
 }
 
 // Held by a TopNavBar for as long as it is drawn.
@@ -940,20 +985,21 @@ export function useChromeStyle(style: ChromeStyle | null, enabled = true) {
 }
 
 export function useNavChromeStyle(): ChromeStyle | null {
-  return useContext(NavDockContext)?.chromeStyle ?? null;
+  return useDockSlice((v) => v.chromeStyle, null);
 }
 
 export function useNavTopSearch(): TopSearch | null {
-  return useContext(NavDockContext)?.topSearch ?? null;
+  return useDockSlice((v) => v.topSearch, null);
 }
 
 export function useNavTopExtras(): TopExtras | null {
-  return useContext(NavDockContext)?.topExtras ?? null;
+  return useDockSlice((v) => v.topExtras, null);
 }
 
 export function useNavDrawerCover() {
-  const context = useContext(NavDockContext);
-  return context ? { progress: context.drawerProgress, ...context.drawerCover } : null;
+  const progress = useDockSlice((v) => v.drawerProgress, null);
+  const cover = useDockSlice((v) => v.drawerCover, null);
+  return useMemo(() => (progress && cover ? { progress, ...cover } : null), [progress, cover]);
 }
 
 export function useDrawerCoverPublisher() {
@@ -965,11 +1011,11 @@ export function useNavDrawerProgress() {
 }
 
 export function useNavTopBack(): TopBack | null {
-  return useContext(NavDockContext)?.topBack ?? null;
+  return useDockSlice((v) => v.topBack, null);
 }
 
 export function useNavDockLeave(): DockLeave | null {
-  return useContext(NavDockContext)?.leave ?? null;
+  return useDockSlice((v) => v.leave, null);
 }
 
 // What a screen publishes as its own actions - see DockAction.
@@ -1014,7 +1060,7 @@ export function useDockActions(actions: DockAction[] | null) {
 }
 
 export function useNavDockActions(): DockAction[] | null {
-  return useContext(NavDockContext)?.actions ?? null;
+  return useDockSlice((v) => v.actions, null);
 }
 
 // The two fixed beads either side of the stack - see DockBead. Same
@@ -1053,14 +1099,14 @@ export function useDockBeads(left: DockBead | null, right: DockBead | null) {
 }
 
 export function useNavDockBeads() {
-  return useContext(NavDockContext)?.beads ?? { left: null, right: null };
+  return useDockSlice((v) => v.beads, NO_BEADS as { left: DockBead | null; right: DockBead | null });
 }
 
 // Whether a swipe has visually settled on a new desk that
 // react-navigation does not know about yet - see the field's own
 // comment on Value. Read by ContextDock, written by FloatingIslandTabBar.
 export function useNavDockTabsInFlux(): boolean {
-  return useContext(NavDockContext)?.tabsInFlux ?? false;
+  return useDockSlice((v) => v.tabsInFlux, false);
 }
 
 export function useDockTabsInFluxPublisher() {
@@ -1072,7 +1118,7 @@ export function useDockTabsDriftPublisher() {
 }
 
 export function useNavDockTabsDrifting(): boolean {
-  return useContext(NavDockContext)?.tabsDrifting ?? false;
+  return useDockSlice((v) => v.tabsDrifting, false);
 }
 
 // The desks, published by the tab bar - see DockDesk.
@@ -1094,7 +1140,7 @@ export function useDockBase(base: DockContext | null) {
 // Which card of the stack is in front, and how to change it.
 // What the DOCK reads: the standing request, if any.
 export function useNavDockFlipRequest(): { face: DockFace; at: number } | null {
-  return useContext(NavDockContext)?.flip ?? null;
+  return useDockSlice((v) => v.flip, null);
 }
 
 // What a SCREEN calls: turn the dock to that card, visibly.
@@ -1127,7 +1173,7 @@ export function useDockOpensOnActions(prefers: boolean) {
 }
 
 export function useNavDockPrefersActions(): boolean {
-  return useContext(NavDockContext)?.prefersActions ?? false;
+  return useDockSlice((v) => v.prefersActions, false);
 }
 
 // See `wide`. Published while focused and cleared on the way out, so a
@@ -1142,7 +1188,7 @@ export function useDockWide(wide: boolean) {
 }
 
 export function useNavDockWide(): boolean {
-  return useContext(NavDockContext)?.wide ?? false;
+  return useDockSlice((v) => v.wide, false);
 }
 
 // What a screen calls when an action has FINISHED somewhere else - a
