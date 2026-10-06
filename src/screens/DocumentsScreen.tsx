@@ -42,7 +42,7 @@ import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 're
 import { Ionicons } from '../components/icons/Ionicons';
 import AttachmentImage from '../components/AttachmentImage';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -60,7 +60,8 @@ import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { binNote, purgeNote, restoreNote } from '../utils/nestedNotes';
 import { onDesktopCommand } from '../utils/desktopCommands';
 import { useDensity } from '../hooks/useDensity';
-import { usePublishRailTree } from '../navigation/navRail';
+import { usePublishRailTreeWhileFocused } from '../navigation/navRail';
+import { FocusHideView, useFocusStore, WhenFocused } from '../hooks/useFocusStore';
 import { BackHandler } from 'react-native';
 import { db } from '../firebase';
 import { Block, DocumentItem, SketchElement, Tag } from '../types';
@@ -771,7 +772,11 @@ export default function DocumentsScreen({
   const chromeBottom = chromeTop + chromeHeight + 8;
   // The island is drawn through the portal, over the whole window, so it
   // has to withdraw when this screen isn't the one on show.
-  const isFocused = useIsFocused();
+  // Not useIsFocused: that redraws this whole screen on every focus and blur
+  // (two renders per note opened or closed). The pieces that must follow
+  // focus read this store through <WhenFocused>; the publishers below follow
+  // the navigation's own events.
+  const focus = useFocusStore();
   const blurTarget = useBlurTarget();
   // The rail carries an ACTIONS capsule now, a capsule's height where the
   // folder button stood - see RailCapsule.
@@ -844,7 +849,7 @@ export default function DocumentsScreen({
     onDesk
   );
   useDockBeads(
-    isFocused && !(isTwoPane && !!openDoc && paneFullscreen)
+    !(isTwoPane && !!openDoc && paneFullscreen)
       ? onDesk
         ? // On the desk's own screen the way back is at the top-left of
           // the desks bar (TopNavBar), and search is back on this bead.
@@ -858,7 +863,7 @@ export default function DocumentsScreen({
           }
         : { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
       : null,
-    isFocused && !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen)
+    !isSelectMode && !searchingAlone && !(isTwoPane && !!openDoc && paneFullscreen)
       ? {
           icon: 'document-text-outline',
           badge: 'add-circle-outline',
@@ -920,7 +925,7 @@ export default function DocumentsScreen({
   useDockActions(
     paneFullscreenDoc
       ? null
-      : isFocused && !searchingAlone && (isSelectMode || !onDesk)
+      : !searchingAlone && (isSelectMode || !onDesk)
       ? isSelectMode
         ? [
             {
@@ -1083,7 +1088,7 @@ export default function DocumentsScreen({
         : []),
     ],
     { active: isSelectMode, onPress: () => toggleSelectMode() },
-    onDesk && isFocused && !paneFullscreenDoc
+    onDesk && !paneFullscreenDoc
   );
   // The folder back/forward arrows are gone from the rail - the dock
   // carries the path now, and every level of it is one press away. The
@@ -1177,10 +1182,11 @@ export default function DocumentsScreen({
   // rail stands outside every screen and this is the one that knows (see
   // navigation/navRail). Only when this list is the screen, not a pane
   // inside another one: two publishers would fight over one rail.
-  usePublishRailTree(
+  usePublishRailTreeWhileFocused(
     // See DatabaseChrome's own: the claim belongs to whoever is in
-    // front, not to whoever rendered last.
-    inPane || !isFocused
+    // front, not to whoever rendered last (it publishes on focus and
+    // withdraws on blur, by the navigation's events).
+    inPane
       ? null
       : {
           paths: explorer.allFolderPaths,
@@ -1317,12 +1323,27 @@ export default function DocumentsScreen({
   useSearchDismissal({
     isSearching: searchOpen,
     query: searchText,
-    isFocused,
+    isFocused: true,
     close: () => {
       setSearchOpen(false);
       setSearchText('');
     },
   });
+  // Searching, then leaving the screen: the keyboard goes and the search
+  // closes (useSearchDismissal's own focus half, kept off the render path).
+  const searchOpenRef = useRef(searchOpen);
+  searchOpenRef.current = searchOpen;
+  useEffect(
+    () =>
+      focus.subscribe(() => {
+        if (!focus.get() && searchOpenRef.current) {
+          Keyboard.dismiss();
+          setSearchOpen(false);
+          setSearchText('');
+        }
+      }),
+    [focus, setSearchOpen, setSearchText]
+  );
 
   // The stickers' tab isn't a filter over the documents - it replaces
   // them.
@@ -1711,19 +1732,25 @@ export default function DocumentsScreen({
             the portal for the same reason as the island: a blur cannot
             live inside the view it blurs. */}
         {/* Search, in the top-left corner for now - see SearchCorner. */}
-        {isFocused && onDesk && standalone && !(isTwoPane && !!openDoc && paneFullscreen) && (
-          <TopNavBar title={{ icon: 'document-text-outline', label: 'Документи' }} />
+        {onDesk && standalone && !(isTwoPane && !!openDoc && paneFullscreen) && (
+          <WhenFocused store={focus}>
+            {(focused) => (focused ? <TopNavBar title={{ icon: 'document-text-outline', label: 'Документи' }} /> : null)}
+          </WhenFocused>
         )}
-        <SearchCorner
-          visible={!onDesk && isFocused && !isSelectMode && !(isTwoPane && !!openDoc && paneFullscreen)}
-          open={searchOpen}
-          query={searchText}
-          onChangeQuery={setSearchText}
-          placeholder="Пошук документів"
-          soft={!!soft}
-          onOpen={openSearchCorner}
-          onClose={closeSearchCorner}
-        />
+        <WhenFocused store={focus}>
+          {(focused) => (
+            <SearchCorner
+              visible={!onDesk && focused && !isSelectMode && !(isTwoPane && !!openDoc && paneFullscreen)}
+              open={searchOpen}
+              query={searchText}
+              onChangeQuery={setSearchText}
+              placeholder="Пошук документів"
+              soft={!!soft}
+              onOpen={openSearchCorner}
+              onClose={closeSearchCorner}
+            />
+          )}
+        </WhenFocused>
         {/* KEPT, HIDDEN, while a note is open over the list (2026-10-06):
             it used to be taken down on every note opened and built again -
             project tabs, recent folders and all - on every way back. It is
@@ -1731,8 +1758,9 @@ export default function DocumentsScreen({
             none rather than gone; a hidden layout's 0 is not a height. */}
         {!(isTwoPane && !!openDoc && paneFullscreen) && (
         <GlassPortal>
-        <View
-          style={[styles.topChrome, { top: chromeTop }, !isFocused && { display: 'none' }]}
+        <FocusHideView
+          store={focus}
+          style={[styles.topChrome, { top: chromeTop }]}
           pointerEvents="box-none"
           onLayout={(e) => {
             const h = e.nativeEvent.layout.height;
@@ -1793,7 +1821,7 @@ export default function DocumentsScreen({
               )}
             </View>
           )}
-        </View>
+        </FocusHideView>
         </GlassPortal>
         )}
 
@@ -2485,8 +2513,14 @@ export default function DocumentsScreen({
 
       {/* The recent folders over the dock while something is selected -
           one tap files the selection (the folders rework, step 2). */}
-      {isFocused && isSelectMode && selectedIds.size > 0 && Platform.OS !== 'web' && (
-        <RecentFolderStrip tags={tags} onPick={bulkAttachTag} onOther={() => setBulkTagPickerVisible(true)} />
+      {isSelectMode && selectedIds.size > 0 && Platform.OS !== 'web' && (
+        <WhenFocused store={focus}>
+          {(focused) =>
+            focused ? (
+              <RecentFolderStrip tags={tags} onPick={bulkAttachTag} onOther={() => setBulkTagPickerVisible(true)} />
+            ) : null
+          }
+        </WhenFocused>
       )}
 
       <WhileOpen open={bulkTagPickerVisible}>

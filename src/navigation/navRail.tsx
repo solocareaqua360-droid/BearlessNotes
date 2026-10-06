@@ -1,5 +1,6 @@
 import { useIsFocused } from '@react-navigation/native';
-import { ReactNode, useEffect, useId, useState } from 'react';
+import { ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { useWhileFocused } from './navDock';
 
 // What the desktop rail shows about the screen it is standing beside.
 //
@@ -53,6 +54,28 @@ export function usePublishRailTree(value: RailTree | null): void {
     publish(id, value);
   });
   useEffect(() => () => publish(id, null), [id]);
+}
+
+// The same publication for a screen that does NOT re-render when it comes
+// to the front or goes (see useFocusStore): it publishes on the
+// navigation's focus event and withdraws on blur, and keeps the tree
+// current while it stands in front.
+export function usePublishRailTreeWhileFocused(value: RailTree | null): void {
+  const id = useId();
+  const active = useRef(false);
+  const latest = useRef(value);
+  latest.current = value;
+  useWhileFocused(() => {
+    active.current = true;
+    publish(id, latest.current);
+    return () => {
+      active.current = false;
+      publish(id, null);
+    };
+  }, [id]);
+  useEffect(() => {
+    if (active.current) publish(id, value);
+  });
 }
 
 export function useRailTree(): RailTree | null {

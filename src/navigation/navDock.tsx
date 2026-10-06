@@ -11,7 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 // navigation's own focus/blur events now start and stop the publication
 // directly; `run` is the effect body while in front, its return the
 // withdrawal, and `deps` restart it as useEffect's would.
-function useWhileFocused(run: () => void | (() => void), deps: unknown[]): void {
+export function useWhileFocused(run: () => void | (() => void), deps: unknown[]): void {
   const navigation = useNavigation();
   const runRef = useRef(run);
   runRef.current = run;
