@@ -273,6 +273,22 @@ const LIGHT_WINDOW = { windowSize: 5, initialNumToRender: 6, maxToRenderPerBatch
 
 const NO_BLOCKS: Block[] = [];
 
+// The diagnostics window (temporary, utils/perfWatch): the whole text can be
+// copied in one press instead of twenty screenshots.
+async function showDiagnostics(copied = false): Promise<void> {
+  const text = recentReports();
+  const answer = await ask({
+    title: copied ? 'Діагностика · скопійовано' : 'Діагностика',
+    message: text,
+    actions: [{ id: 'copy', label: 'Скопіювати все', tone: 'primary' }],
+    cancelLabel: 'Закрити',
+  });
+  if (answer === 'copy') {
+    await Clipboard.setStringAsync(text);
+    void showDiagnostics(true);
+  }
+}
+
 export default function DocumentsScreen({
   inPane,
   // A copy pushed over the tile board: it has a way back and no island.
@@ -1076,7 +1092,7 @@ export default function DocumentsScreen({
       { label: 'Смартпапки', icon: 'pricetag-outline', checked: !!activeFilter, onPress: () => drawerRef.current?.open() },
       // Temporary (2026-10-06): what the app measured lately - read back
       // when asked, never popped up (see utils/perfWatch).
-      { label: 'Діагностика', icon: 'pulse-outline', onPress: () => notify('Діагностика', recentReports()) },
+      { label: 'Діагностика', icon: 'pulse-outline', onPress: () => showDiagnostics() },
       // Here since the pencil's hold opens the chat (2026-10-02) - the
       // same row the other databases' "⋯" has.
       ...(explorer.active
