@@ -136,6 +136,13 @@ let minGap = Infinity;
 // where the user did tap would mean the touch never arrived.
 let foldStart = 0;
 let foldTouches: { at: number; waited: number }[] = [];
+// Everything the hand does from the start of a fold, in order, for the
+// report that is written AFTER the window (the user's ignored taps come
+// 0.5-1.5 s after the page has folded - later than the way-back report).
+let timeline: { at: number; what: string }[] = [];
+export function noteHand(what: string): void {
+  if (foldStart && Date.now() - foldStart < 3000) timeline.push({ at: Date.now() - foldStart, what });
+}
 // THE FRAMES AFTER THE FOLD (2026-10-06): the user cannot tap the next note
 // for up to a second after the page has folded, while the JS thread is free
 // (no hang reported). A frame callback comes from the UI thread's own
@@ -147,6 +154,7 @@ let frameLoop = 0;
 export function backFoldBegin(): void {
   foldStart = Date.now();
   foldTouches = [];
+  timeline = [];
   frameGaps = [];
   const mine = ++frameLoop;
   let last = Date.now();
@@ -160,8 +168,12 @@ export function backFoldBegin(): void {
   requestAnimationFrame(tick);
   // Its own report, once the whole window has passed.
   setTimeout(() => {
-    if (mine === frameLoop) logReport('Кадри після складання', frameGapsLine());
-  }, 2600);
+    if (mine !== frameLoop) return;
+    const hand = timeline.length
+      ? timeline.map((t) => `${t.at} мс ${t.what}`).join('\n')
+      : 'жодного дотику за 3 с';
+    logReport('Кадри й дотики після складання', `${frameGapsLine()}\nхронологія від початку складання:\n${hand}`);
+  }, 3100);
 }
 export function frameGapsLine(): string {
   if (!frameGaps.length) return 'кадри: без пауз понад 60 мс';
@@ -178,6 +190,7 @@ export function touchArrived(nativeTimestamp: number): void {
   if (gap < minGap) minGap = gap;
   const waited = gap - minGap;
   if (foldStart && Date.now() - foldStart < 3000) foldTouches.push({ at: Date.now() - foldStart, waited: Math.round(waited) });
+  noteHand(`дотик (чекав ${Math.round(waited)})`);
   if (waited > 150 && Date.now() - lastTouchReport > 3000) {
     lastTouchReport = Date.now();
     logReport(`Дотик чекав ${waited} мс`, perfSummary(Date.now() - waited - 1500));
@@ -206,6 +219,7 @@ let downNative = 0;
 let downWait = -1;
 let pressInfo = '';
 export function pressDown(nativeTimestamp: number): void {
+  noteHand('картка: палець вниз');
   downNative = nativeTimestamp || 0;
   downWait = downNative && Number.isFinite(minGap) ? Math.max(0, Math.round(Date.now() - downNative - minGap)) : -1;
 }

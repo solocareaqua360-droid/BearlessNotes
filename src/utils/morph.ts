@@ -1,6 +1,6 @@
 import type { View } from 'react-native';
 import { chromeAbort, chromeOpenBegin } from './chromeMorph';
-import { markTapLag } from './perfWatch';
+import { markTapLag, noteHand } from './perfWatch';
 import { openMark } from './openTiming';
 
 // THE CARD THAT BECOMES THE PAGE, on the phone (the laptop's is the .web
@@ -125,6 +125,7 @@ export function morph(
   const run = driver;
   openMark('tap');
   markTapLag();
+  noteHand('ВІДКРИТТЯ нотатки (morph)');
   if (!run && opts?.into) {
     update(false);
     return;
