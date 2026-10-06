@@ -136,9 +136,40 @@ let minGap = Infinity;
 // where the user did tap would mean the touch never arrived.
 let foldStart = 0;
 let foldTouches: { at: number; waited: number }[] = [];
+// THE FRAMES AFTER THE FOLD (2026-10-06): the user cannot tap the next note
+// for up to a second after the page has folded, while the JS thread is free
+// (no hang reported). A frame callback comes from the UI thread's own
+// choreographer, so a long gap between two of them is the UI thread - the
+// native views being taken down and laid out - not JS. Kept from the start
+// of the fold for 2.5 s: every gap over 60 ms, with when it was.
+let frameGaps: { at: number; ms: number }[] = [];
+let frameLoop = 0;
 export function backFoldBegin(): void {
   foldStart = Date.now();
   foldTouches = [];
+  frameGaps = [];
+  const mine = ++frameLoop;
+  let last = Date.now();
+  const tick = () => {
+    if (mine !== frameLoop) return;
+    const now = Date.now();
+    if (now - last > 60) frameGaps.push({ at: now - foldStart, ms: now - last });
+    last = now;
+    if (now - foldStart < 2500) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  // Its own report, once the whole window has passed.
+  setTimeout(() => {
+    if (mine === frameLoop) logReport('Кадри після складання', frameGapsLine());
+  }, 2600);
+}
+export function frameGapsLine(): string {
+  if (!frameGaps.length) return 'кадри: без пауз понад 60 мс';
+  const worst = frameGaps.reduce((m, g) => Math.max(m, g.ms), 0);
+  return `кадри: найдовша пауза ${worst} мс; паузи: ${frameGaps
+    .slice(0, 8)
+    .map((g) => `${g.ms} мс на ${g.at}`)
+    .join(', ')}`;
 }
 let lastTouchReport = 0;
 export function touchArrived(nativeTimestamp: number): void {
