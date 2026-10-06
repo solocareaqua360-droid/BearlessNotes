@@ -167,6 +167,25 @@ export function markTapLag(): void {
 export function lastTapLag(): number {
   return tapLagMs;
 }
+// The card's own press, from its Pressable: when the phone saw the finger
+// go down and come up (the event's native time) against when JS heard each.
+// Says whether a late press was a long hold, or a touch that WAITED to be
+// delivered (the UI thread, not the JS one, being busy).
+let downNative = 0;
+let downWait = -1;
+let pressInfo = '';
+export function pressDown(nativeTimestamp: number): void {
+  downNative = nativeTimestamp || 0;
+  downWait = downNative && Number.isFinite(minGap) ? Math.max(0, Math.round(Date.now() - downNative - minGap)) : -1;
+}
+export function pressUp(nativeTimestamp: number): void {
+  const upWait = nativeTimestamp && Number.isFinite(minGap) ? Math.max(0, Math.round(Date.now() - nativeTimestamp - minGap)) : -1;
+  const held = downNative && nativeTimestamp ? Math.round(nativeTimestamp - downNative) : -1;
+  pressInfo = `палець тримався ${held} мс · вниз дійшло за ${downWait} мс · вгору за ${upWait} мс`;
+}
+export function lastPressInfo(): string {
+  return pressInfo;
+}
 let lastReport = 0;
 export function setStallReporter(report: (title: string, body: string) => void): void {
   stallReporter = REPORTS ? report : null;
