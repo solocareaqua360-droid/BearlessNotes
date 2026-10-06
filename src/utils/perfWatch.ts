@@ -191,13 +191,47 @@ export function frameGapsLine(): string {
     .join(', ')}`;
 }
 let lastTouchReport = 0;
-export function touchArrived(nativeTimestamp: number): void {
+// WHO IS UNDER THE FINGER (2026-10-06): touches after a closed note reach
+// the app's root but never the card. The touched element's own name and
+// every element above it that carries a nativeID - the suspects are tagged
+// - name what takes the touch, with its size (a whole-screen one is a
+// layer lying over the list).
+function describeTarget(t: any, x?: number, y?: number): string {
+  if (t == null) return 'ціль невідома';
+  if (typeof t === 'number') return `ціль tag ${t}`;
+  const ids: string[] = [];
+  try {
+    let f = t.__internalInstanceHandle ?? t._internalInstanceHandle ?? null;
+    let n = 0;
+    while (f && n < 800) {
+      const p = f.memoizedProps;
+      const id = p && (p.nativeID || p.testID);
+      if (id && ids[ids.length - 1] !== id) ids.push(String(id));
+      f = f.return;
+      n += 1;
+    }
+  } catch {
+    // An internal shape this version does not have - the size still says a lot.
+  }
+  let size = '';
+  try {
+    const r = t.getBoundingClientRect?.();
+    if (r) size = ` ${Math.round(r.width)}×${Math.round(r.height)} у ${Math.round(r.x)},${Math.round(r.y)}`;
+  } catch {
+    // No measure on this node.
+  }
+  const kind = t.nodeName ?? t.tagName ?? t.viewConfig?.uiViewClassName ?? t.__viewConfig?.uiViewClassName ?? 'в\'ю';
+  const at = x !== undefined && y !== undefined ? ` · палець ${Math.round(x)},${Math.round(y)}` : '';
+  return `${kind}${size}${at} · ${ids.length ? ids.slice(0, 8).join(' ← ') : 'без міток'}`;
+}
+
+export function touchArrived(nativeTimestamp: number, target?: unknown, x?: number, y?: number): void {
   if (!nativeTimestamp) return;
   const gap = Date.now() - nativeTimestamp;
   if (gap < minGap) minGap = gap;
   const waited = gap - minGap;
   if (foldStart && Date.now() - foldStart < 3000) foldTouches.push({ at: Date.now() - foldStart, waited: Math.round(waited) });
-  noteHand(`дотик (чекав ${Math.round(waited)})`);
+  if (foldStart && Date.now() - foldStart < 3000) noteHand(`дотик (чекав ${Math.round(waited)}) → ${describeTarget(target, x, y)}`);
   if (waited > 150 && Date.now() - lastTouchReport > 3000) {
     lastTouchReport = Date.now();
     logReport(`Дотик чекав ${waited} мс`, perfSummary(Date.now() - waited - 1500));

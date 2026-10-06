@@ -151,7 +151,7 @@ export default function App() {
         <View
           style={{ flex: 1 }}
           onStartShouldSetResponderCapture={(e) => {
-            touchArrived(e.nativeEvent.timestamp);
+            touchArrived(e.nativeEvent.timestamp, e.target, e.nativeEvent.pageX, e.nativeEvent.pageY);
             return false;
           }}
         >

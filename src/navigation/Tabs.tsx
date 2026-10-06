@@ -76,6 +76,7 @@ function DeskHost({
       <View
         ref={(node) => registerDeskNode(deskKey, node)}
         collapsable={false}
+        nativeID={`стіл:${deskKey}`}
         style={styles.fill}
         // Any touch on the desk ending: its picture is retaken once it rests.
         onTouchEnd={() => noteDeskTouched(deskKey)}
@@ -291,7 +292,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
   );
 
   return (
-    <View style={styles.fill}>
+    <View style={styles.fill} nativeID="столи">
       <GestureDetector gesture={swipe}>
         <Animated.View style={[styles.fill, deskFade]}>
           <Tab.Navigator

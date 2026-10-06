@@ -225,8 +225,8 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
   });
 
   return (
-    <View ref={rootRef} style={StyleSheet.absoluteFill} onLayout={onLayout} collapsable={false} pointerEvents="box-none">
-      <Animated.View style={[styles.clip, clip]} pointerEvents={leaving ? 'none' : 'auto'}>
+    <View ref={rootRef} style={StyleSheet.absoluteFill} onLayout={onLayout} collapsable={false} pointerEvents="box-none" nativeID="рамка-нотатки">
+      <Animated.View style={[styles.clip, clip]} pointerEvents={leaving ? 'none' : 'auto'} nativeID="рамка-обріз">
         <Animated.View style={[styles.page, page]}>{children}</Animated.View>
       </Animated.View>
     </View>

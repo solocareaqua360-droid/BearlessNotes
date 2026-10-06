@@ -82,7 +82,7 @@ export function GlassPortalHost({ children }: { children: ReactNode }) {
       {/* Above everything the children drew. box-none: with no sheet open
           this layer must let every touch through to the app under it. */}
       {entries.length > 0 && (
-        <View style={[styles.host, { height: windowHeight }]} pointerEvents="box-none">
+        <View style={[styles.host, { height: windowHeight }]} pointerEvents="box-none" nativeID="портал">
           {entries.map(([id, entry]) => (
             <PortalEntry key={id} node={entry.node} />
           ))}

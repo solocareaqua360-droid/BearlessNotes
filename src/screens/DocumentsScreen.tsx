@@ -2056,6 +2056,7 @@ export default function DocumentsScreen({
             <GestureDetector gesture={carrying.listGesture}>
           <FlatList
             ref={carrying.scrollRef as React.RefObject<FlatList<DocumentItem>>}
+            nativeID="список-документів"
             {...pull.listProps}
             {...LIGHT_WINDOW}
             // FlatList throws if numColumns changes on an already-mounted

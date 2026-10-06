@@ -94,7 +94,7 @@ export default function CardCarryOverlay<T extends { id: string }>({
     // order.
     <GlassPortal priority={10}>
     <GestureDetector gesture={Gesture.Simultaneous(secondFinger, secondFingerTap)}>
-      <Animated.View style={StyleSheet.absoluteFill} pointerEvents={ghost ? 'auto' : 'none'}>
+      <Animated.View style={StyleSheet.absoluteFill} pointerEvents={ghost ? 'auto' : 'none'} nativeID="перенесення">
         {ghost && (
           <Animated.View style={[styles.ghostWrap, style]} pointerEvents="none">
             <GlassDrop radius={16} lift="shadow" style={styles.ghost}>

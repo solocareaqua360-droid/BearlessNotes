@@ -21,7 +21,7 @@ export default function ChromeMorph() {
   const { active, shots } = useChromeMorph();
   if (!active) return null;
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    <View style={StyleSheet.absoluteFill} pointerEvents="none" nativeID="підміна-смужок">
       {shots.bar.list && <Bar list={shots.bar.list} note={shots.bar.note} />}
       {shots.dock.list && <Dock list={shots.dock.list} note={shots.dock.note} />}
     </View>

@@ -193,6 +193,7 @@ export default function SideLayer({
               <Animated.View
                 style={[StyleSheet.absoluteFill, presenceStyle]}
                 pointerEvents={open && tabsFocused ? 'box-none' : 'none'}
+                nativeID="шар-шухляди"
               >
                 {drawer && open && (
                   <Pressable
