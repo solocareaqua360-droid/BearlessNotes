@@ -1,4 +1,5 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
+import { useExperiment } from '../utils/experiments';
 import { Ionicons } from './icons/Ionicons';
 import Svg, { Line } from 'react-native-svg';
 import AttachmentImage from './AttachmentImage';
@@ -22,7 +23,7 @@ import { FONT_REGULAR } from '../utils/fonts';
 // Real content where there is any: a photo card shows its photo, a sticky
 // keeps its colour, everything else is a pale block. Small, that reads as
 // the shape of the board; large, as the board.
-export default function BoardMiniMap({
+function BoardMiniMapInner({
   cards,
   columns,
   connections,
@@ -268,3 +269,13 @@ const styles = StyleSheet.create({
     paddingTop: 1,
   },
 });
+
+// Temporary (utils/experiments): with every preview switched off, a plain
+// blank of the same size stands in - to tell whether previews are what
+// holds the app after a note is closed. A wrapper, so flipping it never
+// changes the hooks of the component below.
+export default function BoardMiniMap(props: Parameters<typeof BoardMiniMapInner>[0]) {
+  const off = useExperiment('noPreviews');
+  if (off) return <View style={{ flex: 1 }} />;
+  return <BoardMiniMapInner {...props} />;
+}

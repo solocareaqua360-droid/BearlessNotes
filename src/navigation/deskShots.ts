@@ -100,7 +100,7 @@ async function pictureOf(node: View): Promise<string | null> {
 }
 
 export async function captureDesk(key: string): Promise<void> {
-  if (experiments.noDeskShots) return;
+  if (experiments.noDeskShots || experiments.noPreviews) return;
   const node = nodeFor(key);
   if (!node || busy.has(key)) return;
   busy.add(key);

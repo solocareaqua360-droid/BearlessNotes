@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { experiments } from '../utils/experiments';
 import { View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import BoardMiniMap from './BoardMiniMap';
@@ -61,6 +62,7 @@ export function captureBoardPreview(
   shapes: BoardShape[],
   containers: BoardContainer[]
 ): Promise<string | null> {
+  if (experiments.noPreviews) return Promise.resolve(null);
   if (cards.length === 0 && columns.length === 0 && shapes.length === 0) return Promise.resolve(null);
   if (!requestCapture) {
     console.warn('[board preview] capture host not mounted');

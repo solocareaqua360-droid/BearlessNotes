@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useExperiment } from '../utils/experiments';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -195,7 +196,16 @@ function DayPageMiniature({
 // A month of these is re-rendered every time the overview's state moves
 // (a month added, the scroll settling); the page itself only changes
 // when its blocks do.
-export default memo(DayPageMiniature);
+// Temporary (utils/experiments): with every preview switched off, a plain
+// blank of the same size stands in - to tell whether previews are what
+// holds the app after a note is closed. A wrapper, so flipping it never
+// changes the hooks of the component below.
+function PreviewGate(props: Parameters<typeof DayPageMiniature>[0]) {
+  const off = useExperiment('noPreviews');
+  if (off) return <View style={{ width: props.pageWidth * props.scale, height: props.pageHeight * props.scale, borderRadius: props.radius }} />;
+  return <DayPageMiniature {...props} />;
+}
+export default memo(PreviewGate);
 
 const styles = StyleSheet.create({
   sheet: {

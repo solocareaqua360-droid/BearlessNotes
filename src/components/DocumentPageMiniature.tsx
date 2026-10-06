@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useExperiment } from '../utils/experiments';
 import { IS_POINTER } from '../utils/pointer';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
@@ -259,7 +260,16 @@ function DocumentPageMiniature({
 
 // A wall of these re-renders whenever the list's own state moves; a page
 // only changes when its document does.
-export default memo(DocumentPageMiniature);
+// Temporary (utils/experiments): with every preview switched off, a plain
+// blank of the same size stands in - to tell whether previews are what
+// holds the app after a note is closed. A wrapper, so flipping it never
+// changes the hooks of the component below.
+function PreviewGate(props: Parameters<typeof DocumentPageMiniature>[0]) {
+  const off = useExperiment('noPreviews');
+  if (off) return <View style={{ width: props.width, height: props.height }} />;
+  return <DocumentPageMiniature {...props} />;
+}
+export default memo(PreviewGate);
 
 const styles = StyleSheet.create({
   sheet: {
