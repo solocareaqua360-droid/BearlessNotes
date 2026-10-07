@@ -830,14 +830,21 @@ export default function ChatScreen() {
             setSelected(new Set([pressedLive.id]));
           },
         },
-        {
-          key: 'delete',
-          label: 'Видалити',
-          icon: 'trash-outline',
-          tone: 'danger',
-          confirmLabel: 'Точно видалити?',
-          onPress: () => deleteChatMessage(pressedLive.id).catch((e: Error) => notify('Не вдалося', e.message)),
-        },
+        // Not on a COPY: «Видалити» there would remove the message itself,
+        // which is not what the person holding a copy thinks they are
+        // deleting (2026-10-07: two messages went that way).
+        ...(pressed?.copyId
+          ? []
+          : [
+              {
+                key: 'delete',
+                label: 'Видалити',
+                icon: 'trash-outline' as const,
+                tone: 'danger' as const,
+                confirmLabel: 'Точно видалити?',
+                onPress: () => deleteChatMessage(pressedLive.id).catch((e: Error) => notify('Не вдалося', e.message)),
+              },
+            ]),
       ]
     : [];
 
