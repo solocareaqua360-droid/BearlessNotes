@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useRef } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -11,6 +11,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, { Line } from 'react-native-svg';
 import type { ChatMessage } from '../utils/chat';
 import type { BoardDay } from './ChatDayBoard';
 
@@ -40,6 +41,60 @@ export function cameraCardWidth(width: number): number {
   return Math.floor((width - OUTER * 2 - FRAME_PAD * 2 - 3 - GAP) / 2) - 1;
 }
 
+// A copy on the table. `x` and `y` are in the table's own units; -1 means
+// «not placed yet»: it lies in the free strip below the newest day, two to a
+// row, until it is dragged somewhere.
+export type CameraCopy = { id: string; messageId: string; x: number; y: number; node: ReactNode };
+const AUTO_ROW = 230;
+
+function CopyCard({
+  id,
+  x,
+  y,
+  scale,
+  onMove,
+  children,
+}: {
+  id: string;
+  x: number;
+  y: number;
+  scale: { value: number };
+  onMove: (id: string, x: number, y: number) => void;
+  children: ReactNode;
+}) {
+  const px = useSharedValue(x);
+  const py = useSharedValue(y);
+  const sx = useSharedValue(0);
+  const sy = useSharedValue(0);
+  useEffect(() => {
+    px.value = x;
+    py.value = y;
+  }, [x, y, px, py]);
+  const pan = Gesture.Pan()
+    .minDistance(6)
+    .onStart(() => {
+      'worklet';
+      sx.value = px.value;
+      sy.value = py.value;
+    })
+    .onUpdate((e) => {
+      'worklet';
+      // The finger moves in screen points; the table is drawn at `scale`.
+      px.value = sx.value + e.translationX / scale.value;
+      py.value = sy.value + e.translationY / scale.value;
+    })
+    .onEnd(() => {
+      'worklet';
+      runOnJS(onMove)(id, px.value, py.value);
+    });
+  const style = useAnimatedStyle(() => ({ left: px.value, top: py.value }));
+  return (
+    <GestureDetector gesture={pan}>
+      <Animated.View style={[{ position: 'absolute' }, style]}>{children}</Animated.View>
+    </GestureDetector>
+  );
+}
+
 export default function ChatDayCamera({
   days,
   width,
@@ -48,6 +103,8 @@ export default function ChatDayCamera({
   onSnap,
   onLeave,
   onEarlier,
+  copies,
+  onMoveCopy,
   paddingTop,
   paddingBottom,
   renderCard,
@@ -65,6 +122,8 @@ export default function ChatDayCamera({
   onLeave: () => void;
   // Set when older days exist that are not drawn: a button at the top asks for a month more.
   onEarlier?: () => void;
+  copies: CameraCopy[];
+  onMoveCopy: (id: string, x: number, y: number) => void;
   paddingTop: number;
   paddingBottom: number;
   renderCard: (message: ChatMessage, cardWidth: number) => ReactNode;
@@ -85,6 +144,24 @@ export default function ChatDayCamera({
     padTop.value = paddingTop;
   }, [height, paddingTop, viewH, padTop]);
   const placed = useRef(false);
+  // Where every original card sits on the table, for the threads. Kept in
+  // refs as the layouts arrive; a redraw is asked for only while there are
+  // copies to draw threads to.
+  const frameLay = useRef<Record<string, { x: number; y: number }>>({});
+  const cardsLay = useRef<Record<string, { x: number; y: number }>>({});
+  const cardLay = useRef<Record<string, { x: number; y: number; w: number; h: number; day: string }>>({});
+  const [framesH, setFramesH] = useState(0);
+  const [, setBump] = useState(0);
+  const bumpQueued = useRef(false);
+  const hasCopies = copies.length > 0;
+  const askRedraw = useCallback(() => {
+    if (!hasCopies || bumpQueued.current) return;
+    bumpQueued.current = true;
+    requestAnimationFrame(() => {
+      bumpQueued.current = false;
+      setBump((n) => n + 1);
+    });
+  }, [hasCopies]);
 
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollY.value = e.contentOffset.y;
@@ -145,6 +222,16 @@ export default function ChatDayCamera({
       runOnJS(settle)(scale.value);
     });
 
+  // Copies not placed yet lie below the days, two to a row.
+  const autoIds = copies.filter((c) => c.x < 0 || c.y < 0).map((c) => c.id);
+  const resolve = (c: CameraCopy) => {
+    if (c.x >= 0 && c.y >= 0) return { x: c.x, y: c.y };
+    const i = autoIds.indexOf(c.id);
+    return { x: OUTER + (i % 2) * (cardWidth + GAP), y: framesH + 16 + Math.floor(i / 2) * AUTO_ROW };
+  };
+  // The free strip is as tall as the lowest copy needs.
+  const freeH = copies.reduce((m, c) => Math.max(m, resolve(c).y + AUTO_ROW - framesH), 0);
+
   const boxStyle = useAnimatedStyle(() => ({
     height: baseH.value * scale.value,
   }));
@@ -178,14 +265,75 @@ export default function ChatDayCamera({
                 <Text style={[styles.label, { color: labelColor }]}>Раніше · ще місяць</Text>
               </Pressable>
             )}
-            {days.map((day) => (
-              <View key={day.key} style={[styles.frame, { borderColor: frameColor, backgroundColor: frameFill }]}>
-                <Text style={[styles.label, { color: labelColor }]}>
-                  {day.label} · {day.messages.length}
-                </Text>
-                <View style={styles.cards}>{day.messages.map((m) => renderCard(m, cardWidth))}</View>
-              </View>
-            ))}
+            {hasCopies && (
+              <Svg style={StyleSheet.absoluteFill} width={width} height={framesH + freeH} pointerEvents="none">
+                {copies.map((c) => {
+                  const spot = cardLay.current[c.messageId];
+                  const from = spot && frameLay.current[spot.day] && cardsLay.current[spot.day];
+                  if (!spot || !from) return null;
+                  const at = resolve(c);
+                  const ox = frameLay.current[spot.day].x + cardsLay.current[spot.day].x + spot.x + spot.w / 2;
+                  const oy = frameLay.current[spot.day].y + cardsLay.current[spot.day].y + spot.y + spot.h / 2;
+                  return (
+                    <Line
+                      key={c.id}
+                      x1={ox}
+                      y1={oy}
+                      x2={at.x + cardWidth / 2}
+                      y2={at.y + 24}
+                      stroke={frameColor}
+                      strokeWidth={1.5}
+                      strokeDasharray="5 5"
+                    />
+                  );
+                })}
+              </Svg>
+            )}
+            <View onLayout={(e) => setFramesH(e.nativeEvent.layout.height)}>
+              {days.map((day) => (
+                <View
+                  key={day.key}
+                  style={[styles.frame, { borderColor: frameColor, backgroundColor: frameFill }]}
+                  onLayout={(e) => {
+                    frameLay.current[day.key] = { x: e.nativeEvent.layout.x, y: e.nativeEvent.layout.y };
+                    askRedraw();
+                  }}
+                >
+                  <Text style={[styles.label, { color: labelColor }]}>
+                    {day.label} · {day.messages.length}
+                  </Text>
+                  <View
+                    style={styles.cards}
+                    onLayout={(e) => {
+                      cardsLay.current[day.key] = { x: e.nativeEvent.layout.x, y: e.nativeEvent.layout.y };
+                      askRedraw();
+                    }}
+                  >
+                    {day.messages.map((m) => (
+                      <View
+                        key={m.id}
+                        onLayout={(e) => {
+                          const l = e.nativeEvent.layout;
+                          cardLay.current[m.id] = { x: l.x, y: l.y, w: l.width, h: l.height, day: day.key };
+                          askRedraw();
+                        }}
+                      >
+                        {renderCard(m, cardWidth)}
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </View>
+            {hasCopies && <View style={{ height: freeH }} />}
+            {copies.map((c) => {
+              const at = resolve(c);
+              return (
+                <CopyCard key={c.id} id={c.id} x={at.x} y={at.y} scale={scale} onMove={onMoveCopy}>
+                  {c.node}
+                </CopyCard>
+              );
+            })}
           </Animated.View>
         </Animated.View>
       </Animated.ScrollView>

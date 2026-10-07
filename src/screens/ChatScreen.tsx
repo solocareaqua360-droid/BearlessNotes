@@ -39,6 +39,7 @@ import { ChatLayerContext } from '../navigation/sideDrawers';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import InlineDock from '../components/InlineDock';
+import { addBoardCopy, moveBoardCopy, removeBoardCopy, watchBoardCopies, type BoardCopy } from '../utils/chatBoardCopies';
 import ChatDayCamera, { cameraCardWidth } from '../components/ChatDayCamera';
 import ChatDayBoard, { BOARD_COLS, boardCardWidth, type BoardDay } from '../components/ChatDayBoard';
 import { useFrameDimensions } from '../hooks/useResponsiveLayout';
@@ -620,14 +621,14 @@ export default function ChatScreen() {
   // A MESSAGE HELD (see ChatMessageMenu): the list stays, blurred, and
   // this message is lifted above it with everything it can become.
   const bubbleRefs = useRef<Record<string, View | null>>({});
-  const [pressed, setPressed] = useState<{ message: ChatMessage; rect: { x: number; y: number; width: number; height: number } } | null>(null);
+  const [pressed, setPressed] = useState<{ message: ChatMessage; copyId?: string; rect: { x: number; y: number; width: number; height: number } } | null>(null);
   const [recentNotes, setRecentNotes] = useState<{ id: string; title: string }[] | null>(null);
-  function liftMessage(message: ChatMessage) {
-    const node = bubbleRefs.current[message.id];
+  function liftMessage(message: ChatMessage, copyId?: string) {
+    const node = bubbleRefs.current[copyId ? `copy:${copyId}` : message.id];
     if (!node) return;
     node.measureInWindow((x, y, width, height) => {
       hapticPickUp();
-      setPressed({ message, rect: { x, y, width, height } });
+      setPressed({ message, copyId, rect: { x, y, width, height } });
     });
   }
   // THE BOARD LOOK of the layer's chat (see ChatDayBoard): one frame per
@@ -675,12 +676,19 @@ export default function ChatScreen() {
   // The camera draws every day at once (no virtual list), so it starts with
   // the last month and asks for another one at a time.
   const [boardMonths, setBoardMonths] = useState(1);
+  // Copies put on the table (see utils/chatBoardCopies): listened to only
+  // while the camera board is what is on screen.
+  const [boardCopies, setBoardCopies] = useState<BoardCopy[]>([]);
+  useEffect(() => {
+    if (!camera || !boardView) return;
+    return watchBoardCopies(setBoardCopies, (e) => notify('Копії не завантажились', e.message));
+  }, [camera, boardView]);
   const cameraDays = useMemo(() => {
     const since = Date.now() - boardMonths * 30 * 86400000;
     return boardDays.filter((d) => d.messages[0].createdAt >= since || d.messages.some((m) => m.createdAt >= since)).reverse();
   }, [boardDays, boardMonths]);
   const cameraHasEarlier = cameraDays.length < boardDays.length;
-  function renderBoardCard(message: ChatMessage, cardWidth: number, lifted = false) {
+  function renderBoardCard(message: ChatMessage, cardWidth: number, lifted = false, copyId?: string) {
     const picked = !lifted && selected.has(message.id);
     const unsorted = sorting && sortedBefore !== null && !isChatMessageSorted(message, sortedBefore);
     // The camera never re-flows: its cards are always the two-to-a-row look.
@@ -703,7 +711,7 @@ export default function ChatScreen() {
           lifted
             ? undefined
             : (node: View | null) => {
-                bubbleRefs.current[message.id] = node;
+                bubbleRefs.current[copyId ? `copy:${copyId}` : message.id] = node;
               }
         }
         collapsable={false}
@@ -711,9 +719,9 @@ export default function ChatScreen() {
         onPress={() => (isSelectMode ? toggle(message.id) : undefined)}
         onLongPress={() => {
           if (isSelectMode) return;
-          liftMessage(message);
+          liftMessage(message, copyId);
         }}
-        {...rightClick(isSelectMode ? undefined : () => liftMessage(message))}
+        {...rightClick(isSelectMode ? undefined : () => liftMessage(message, copyId))}
         style={[
           {
             width: cardWidth,
@@ -725,7 +733,7 @@ export default function ChatScreen() {
             borderColor: picked ? theme.accent : unsorted ? '#d9a441' : 'transparent',
           },
           softChat ? { boxShadow: softChat.shadow } : null,
-          !lifted && pressed?.message.id === message.id && { opacity: 0 },
+          !lifted && pressed?.message.id === message.id && pressed.copyId === copyId && { opacity: 0 },
         ]}
       >
         {pictured && <BoardCardPicture attachment={pictured} width={pictureW} height={pictureH} />}
@@ -767,6 +775,29 @@ export default function ChatScreen() {
   const pressedLive = pressed ? messages.find((m) => m.id === pressed.message.id) ?? pressed.message : null;
   const menuActions: ChatMenuAction[] = pressedLive
     ? [
+        // On the camera board: a card is put on the table as a copy (the
+        // message stays in the chat), and a copy is taken off it again.
+        ...(camera && boardView
+          ? [
+              pressed?.copyId
+                ? {
+                    key: 'uncopy',
+                    label: 'Прибрати копію',
+                    icon: 'close-outline' as const,
+                    onPress: () => {
+                      removeBoardCopy(pressed.copyId!).catch((e: Error) => notify('Не вдалося', e.message));
+                    },
+                  }
+                : {
+                    key: 'copyout',
+                    label: 'Копія на стіл',
+                    icon: 'copy-outline' as const,
+                    onPress: () => {
+                      addBoardCopy(pressedLive.id, -1, -1).catch((e: Error) => notify('Не вдалося', e.message));
+                    },
+                  },
+            ]
+          : []),
         { key: 'edit', label: 'Виправити', icon: 'pencil-outline', onPress: () => openCaptureForEdit(pressedLive) },
         { key: 'copy', label: 'Копіювати', icon: 'copy-outline', onPress: () => Clipboard.setStringAsync(pressedLive.text) },
         { key: 'project', label: 'У проект', icon: 'albums-outline', page: 'projects' },
@@ -1139,6 +1170,20 @@ export default function ChatScreen() {
             snap={boardLevel}
             onSnap={setBoardLevel}
             onLeave={() => leaveBoard?.()}
+            copies={boardCopies
+              .map((c) => ({ copy: c, message: messages.find((m) => m.id === c.messageId) }))
+              .filter((c): c is { copy: BoardCopy; message: ChatMessage } => !!c.message)
+              .sort((a, b) => a.copy.createdAt - b.copy.createdAt)
+              .map(({ copy, message }) => ({
+                id: copy.id,
+                messageId: message.id,
+                x: copy.x,
+                y: copy.y,
+                node: renderBoardCard(message, cameraCardWidth(frameWidth), false, copy.id),
+              }))}
+            onMoveCopy={(id, x, y) => {
+              moveBoardCopy(id, x, y).catch((e: Error) => notify('Не вдалося', e.message));
+            }}
             onEarlier={cameraHasEarlier ? () => setBoardMonths((n) => n + 1) : undefined}
             paddingTop={headerH + 8}
             paddingBottom={dockClear + insets.bottom}
