@@ -298,9 +298,11 @@ export default function ChatScreen() {
     []
   );
   // THE GLUE: pieces picked here and stuck together (utils/chatGlue).
-  const [glue, setGlue] = useState<GlueState>({ blocks: [], chatIds: [] });
+  const [glue, setGlue] = useState<GlueState>({ blocks: [], chatIds: [], sources: {} });
   const [glueOpen, setGlueOpen] = useState(false);
   const [glueNaming, setGlueNaming] = useState(false);
+  const [glueDest, setGlueDest] = useState(false);
+  const [glueProject, setGlueProject] = useState<string | null>(null);
   useEffect(() => {
     if (!FEATURES.chatGlue) return;
     return watchGlue(setGlue, (e) => notify('Склейка не завантажилась', e.message));
@@ -1383,11 +1385,30 @@ export default function ChatScreen() {
         visible={glueOpen}
         onClose={() => setGlueOpen(false)}
         blocks={glue.blocks}
+        sources={glue.sources}
+        onShow={(chatId) => {
+          setGlueOpen(false);
+          setTimeout(() => scrollToMessage(chatId), 250);
+        }}
+        onToProject={async () => {
+          if (projects.length === 0) {
+            notify('Ще немає проектів', 'Створіть проект у будь-якій базі - і сюди можна буде скласти склейку.');
+            return;
+          }
+          const picked = await ask({
+            title: 'Склейка в проект',
+            message: 'З неї буде нотатка, і вона стане в проекті.',
+            actions: projects.map((p) => ({ id: p.id, label: p.name, icon: 'albums-outline' as const })),
+          });
+          if (!picked || picked === 'cancel') return;
+          setGlueProject(picked);
+          setGlueNaming(true);
+        }}
         onEdit={() => {
           setGlueOpen(false);
           navigation.navigate('Editor', { documentId: glueId() });
         }}
-        onToNote={() => setGlueNaming(true)}
+        onToNote={() => setGlueDest(true)}
         onClear={async () => {
           const sure = await confirm({ title: 'Розклеїти все?', message: 'Склейка спорожніє. Повідомлення в чаті лишаться як були.', confirmLabel: 'Розклеїти' });
           if (sure) {
@@ -1396,18 +1417,51 @@ export default function ChatScreen() {
           }
         }}
       />
+      <SaveDestinationSheet
+        visible={glueDest && !glueNaming}
+        notesOnly
+        title="Склейка у…"
+        onPickToday={async () => {
+          setGlueDest(false);
+          setGlueOpen(false);
+          try {
+            const documentId = await glueToNote('', { into: 'today' });
+            if (documentId) navigation.navigate('Editor', { documentId });
+          } catch (e) {
+            notify('Не збереглося', (e as Error).message);
+          }
+        }}
+        onPickNew={() => setGlueNaming(true)}
+        onPickExisting={async (documentId, documentTitle) => {
+          setGlueDest(false);
+          setGlueOpen(false);
+          try {
+            const id = await glueToNote('', { into: { id: documentId, title: documentTitle } });
+            if (id) navigation.navigate('Editor', { documentId: id });
+          } catch (e) {
+            notify('Не збереглося', (e as Error).message);
+          }
+        }}
+        onClose={() => setGlueDest(false)}
+      />
       <RenamePrompt
         visible={glueNaming}
         title="Нотатка зі склейки"
         initialValue={`Думки · ${formatShortDate(new Date())}`}
         placeholder="Назва нотатки"
         busy={false}
-        onCancel={() => setGlueNaming(false)}
-        onSave={async (name: string) => {
+        onCancel={() => {
           setGlueNaming(false);
+          setGlueProject(null);
+        }}
+        onSave={async (name: string) => {
+          const groupId = glueProject ?? undefined;
+          setGlueDest(false);
+          setGlueNaming(false);
+          setGlueProject(null);
           setGlueOpen(false);
           try {
-            const documentId = await glueToNote(name);
+            const documentId = await glueToNote(name, { groupId });
             if (documentId) navigation.navigate('Editor', { documentId });
           } catch (e) {
             notify('Не збереглося', (e as Error).message);
