@@ -39,6 +39,7 @@ import { ChatLayerContext } from '../navigation/sideDrawers';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import InlineDock from '../components/InlineDock';
+import ChatDayCamera, { cameraCardWidth } from '../components/ChatDayCamera';
 import ChatDayBoard, { BOARD_COLS, boardCardWidth, type BoardDay } from '../components/ChatDayBoard';
 import { useFrameDimensions } from '../hooks/useResponsiveLayout';
 import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
@@ -227,7 +228,7 @@ export default function ChatScreen() {
   const publishing = isFocused && !inLayer;
   // In front, either way.
   const shown = inLayer ? chatLayer!.open : isFocused;
-  const { width: frameWidth } = useFrameDimensions();
+  const { width: frameWidth, height: frameHeight } = useFrameDimensions();
   const showContext = useDockShowContext();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -631,7 +632,8 @@ export default function ChatScreen() {
   }
   // THE BOARD LOOK of the layer's chat (see ChatDayBoard): one frame per
   // day, newest day first, the cards in the order they were said.
-  const [boardLevel, setBoardLevel] = useState(1);
+  const camera = FEATURES.chatBoardCamera;
+  const [boardLevel, setBoardLevel] = useState(camera ? 0 : 1);
   // The board's own zoom ends where the tape begins: nearer than the
   // nearest level is the tape, and a pinch out from the tape is the board.
   const boardLevelRef = useRef(boardLevel);
@@ -673,7 +675,8 @@ export default function ChatScreen() {
   function renderBoardCard(message: ChatMessage, cardWidth: number, lifted = false) {
     const picked = !lifted && selected.has(message.id);
     const unsorted = sorting && sortedBefore !== null && !isChatMessageSorted(message, sortedBefore);
-    const cols = BOARD_COLS[boardLevel];
+    // The camera never re-flows: its cards are always the two-to-a-row look.
+    const cols = BOARD_COLS[camera ? 1 : boardLevel];
     const first = message.attachments?.[0];
     // The picture: the first attachment that has one.
     const pictured = (message.attachments ?? []).find((a) => a.kind === 'photo' || (a.kind === 'link' && !!a.imageUrl));
@@ -1120,6 +1123,21 @@ export default function ChatScreen() {
               </Pressable>
             )}
           </View>
+        ) : boardView && camera ? (
+          <ChatDayCamera
+            days={[...boardDays].reverse()}
+            width={frameWidth}
+            height={Math.max(0, frameHeight - headerH - dockClear - insets.bottom)}
+            snap={boardLevel}
+            onSnap={setBoardLevel}
+            onLeave={() => leaveBoard?.()}
+            paddingTop={headerH + 8}
+            paddingBottom={dockClear + insets.bottom}
+            renderCard={(m, w) => renderBoardCard(m, w)}
+            labelColor={softChat ? softChat.ink3 : theme.ink.muted}
+            frameColor={softChat ? softChat.line : theme.ink.faint}
+            frameFill={softChat ? 'rgba(255,255,255,0.35)' : 'transparent'}
+          />
         ) : boardView ? (
           <ChatDayBoard
             days={boardDays}
@@ -1252,7 +1270,7 @@ export default function ChatScreen() {
       />
       <ChatMessageMenu
         anchor={pressed?.rect ?? null}
-        bubble={pressedLive ? (boardView ? renderBoardCard(pressedLive, boardCardWidth(frameWidth, boardLevel), true) : renderMessageBubble(pressedLive, true)) : null}
+        bubble={pressedLive ? (boardView ? renderBoardCard(pressedLive, camera ? cameraCardWidth(frameWidth) : boardCardWidth(frameWidth, boardLevel), true) : renderMessageBubble(pressedLive, true)) : null}
         actions={menuActions}
         projects={projects.map((p) => ({ id: p.id, name: p.name, color: p.color, on: (pressedLive?.projectIds ?? []).includes(p.id) }))}
         onToggleProject={(projectId) => {
