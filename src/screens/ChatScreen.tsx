@@ -40,6 +40,8 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import InlineDock from '../components/InlineDock';
 import { addBoardCopy, moveBoardCopy, removeBoardCopy, watchBoardCopies, type BoardCopy } from '../utils/chatBoardCopies';
+import ChatGlueSheet from '../components/ChatGlueSheet';
+import { addToGlue, clearGlue, glueId, glueToNote, watchGlue, type GlueState } from '../utils/chatGlue';
 import ChatBinSheet from '../components/ChatBinSheet';
 import ChatDayCamera, { cameraCardWidth } from '../components/ChatDayCamera';
 import ChatDayBoard, { BOARD_COLS, boardCardWidth, type BoardDay } from '../components/ChatDayBoard';
@@ -295,6 +297,14 @@ export default function ChatScreen() {
       watchChat(setMessages, (e) => notify('Чат не завантажився', e.message)),
     []
   );
+  // THE GLUE: pieces picked here and stuck together (utils/chatGlue).
+  const [glue, setGlue] = useState<GlueState>({ blocks: [], chatIds: [] });
+  const [glueOpen, setGlueOpen] = useState(false);
+  const [glueNaming, setGlueNaming] = useState(false);
+  useEffect(() => {
+    if (!FEATURES.chatGlue) return;
+    return watchGlue(setGlue, (e) => notify('Склейка не завантажилась', e.message));
+  }, []);
   // THE BIN: deleted messages wait here, and the ones past their time go for good.
   const [bin, setBin] = useState<ChatMessage[]>([]);
   const [binOpen, setBinOpen] = useState(false);
@@ -505,6 +515,21 @@ export default function ChatScreen() {
                 onPress: () => setSending([...selected]),
                 closesStack: true,
               },
+              ...(FEATURES.chatGlue
+                ? [
+                    {
+                      key: 'glue',
+                      icon: 'link-outline' as const,
+                      label: 'Склеїти',
+                      onPress: () => {
+                        addToGlue(messages.filter((m) => selected.has(m.id))).catch((e: Error) => notify('Не вдалося', e.message));
+                        setSelected(new Set());
+                        setIsSelectMode(false);
+                      },
+                      closesStack: true,
+                    },
+                  ]
+                : []),
               // Only once there is something TO group - "думки
               // приходять поступово... хотілося, щоб вона лишилася
               // однією ідеєю".
@@ -816,6 +841,18 @@ export default function ChatScreen() {
         { key: 'copy', label: 'Копіювати', icon: 'copy-outline', onPress: () => Clipboard.setStringAsync(pressedLive.text) },
         { key: 'project', label: 'У проект', icon: 'albums-outline', page: 'projects' },
         { key: 'note', label: 'У нотатку', icon: 'document-text-outline', page: 'notes' },
+        ...(FEATURES.chatGlue
+          ? [
+              {
+                key: 'glue',
+                label: 'У склейку',
+                icon: 'link-outline' as const,
+                onPress: () => {
+                  addToGlue([pressedLive]).catch((e: Error) => notify('Не вдалося', e.message));
+                },
+              },
+            ]
+          : []),
         { key: 'task', label: 'Зробити справою', icon: 'checkbox-outline', onPress: () => makeTask(pressedLive) },
         // «Відкласти»: looked at, left for now - leaves «Необроблене».
         ...(sorting && pressedLive.from !== 'gemini'
@@ -1330,6 +1367,53 @@ export default function ChatScreen() {
         ]}
       />
 
+      {FEATURES.chatGlue && glue.blocks.length > 0 && !glueOpen && (
+        <Pressable
+          onPress={() => setGlueOpen(true)}
+          style={[
+            styles.glueButton,
+            { bottom: dockClear + insets.bottom + 12, backgroundColor: theme.surface, borderColor: theme.accent },
+          ]}
+        >
+          <Ionicons name="link-outline" size={18} color={theme.accent} />
+          <Text style={{ color: theme.ink.primary, fontSize: 14, fontWeight: '600' }}>Склейка · {glue.blocks.length}</Text>
+        </Pressable>
+      )}
+      <ChatGlueSheet
+        visible={glueOpen}
+        onClose={() => setGlueOpen(false)}
+        blocks={glue.blocks}
+        onEdit={() => {
+          setGlueOpen(false);
+          navigation.navigate('Editor', { documentId: glueId() });
+        }}
+        onToNote={() => setGlueNaming(true)}
+        onClear={async () => {
+          const sure = await confirm({ title: 'Розклеїти все?', message: 'Склейка спорожніє. Повідомлення в чаті лишаться як були.', confirmLabel: 'Розклеїти' });
+          if (sure) {
+            clearGlue().catch((e: Error) => notify('Не вдалося', e.message));
+            setGlueOpen(false);
+          }
+        }}
+      />
+      <RenamePrompt
+        visible={glueNaming}
+        title="Нотатка зі склейки"
+        initialValue={`Думки · ${formatShortDate(new Date())}`}
+        placeholder="Назва нотатки"
+        busy={false}
+        onCancel={() => setGlueNaming(false)}
+        onSave={async (name: string) => {
+          setGlueNaming(false);
+          setGlueOpen(false);
+          try {
+            const documentId = await glueToNote(name);
+            if (documentId) navigation.navigate('Editor', { documentId });
+          } catch (e) {
+            notify('Не збереглося', (e as Error).message);
+          }
+        }}
+      />
       <ChatBinSheet
         visible={binOpen}
         onClose={() => setBinOpen(false)}
@@ -1561,6 +1645,17 @@ const makeStyles = (t: Theme) =>
       justifyContent: 'center',
       gap: 8,
       paddingHorizontal: 40,
+    },
+    glueButton: {
+      position: 'absolute',
+      right: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      height: 44,
+      paddingHorizontal: 16,
+      borderRadius: 22,
+      borderWidth: 1.5,
     },
     emptyLabel: {
       fontSize: 16,

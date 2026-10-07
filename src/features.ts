@@ -22,6 +22,9 @@ export const FEATURES = {
   // щипок наближає/віддаляє весь стіл і зупиняється на одній із трьох висот.
   // Off: the board re-flows its cards one, two or four to a row, as before.
   chatBoardCamera: false,
+  // Склейка: думки з чату, зліплені в чернетку, яку можна переглянути й
+  // поправити (ChatGlueSheet, utils/chatGlue). Off: no glue anywhere.
+  chatGlue: true,
   // Копії карток на столі дошки (chatBoardCopies) - відкладено: дошка це
   // чат, відзумлений; склейка піде кнопкою. Код лишається.
   chatBoardCopies: false,
