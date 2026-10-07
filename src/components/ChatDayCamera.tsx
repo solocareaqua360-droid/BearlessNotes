@@ -143,7 +143,8 @@ export default function ChatDayCamera({
     viewH.value = height;
     padTop.value = paddingTop;
   }, [height, paddingTop, viewH, padTop]);
-  const placed = useRef(false);
+  // Stays at the bottom (the newest day) until the finger first moves the board.
+  const stick = useRef(true);
   // Where every original card sits on the table, for the threads. Kept in
   // refs as the layouts arrive; a redraw is asked for only while there are
   // copies to draw threads to.
@@ -232,6 +233,17 @@ export default function ChatDayCamera({
   // The free strip is as tall as the lowest copy needs.
   const freeH = copies.reduce((m, c) => Math.max(m, resolve(c).y + AUTO_ROW - framesH), 0);
 
+  // A double tap steps the camera to the next height (and round again): the
+  // same settling a pinch ends in, for a mouse, a steady hand, or a check.
+  const cycle = useCallback(() => onSnap((snap + 1) % CAMERA_SNAPS.length), [snap, onSnap]);
+  const doubleTap = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd((_e, ok) => {
+      'worklet';
+      if (ok) runOnJS(cycle)();
+    });
+  const gesture = Gesture.Simultaneous(pinch, doubleTap);
+
   const boxStyle = useAnimatedStyle(() => ({
     height: baseH.value * scale.value,
   }));
@@ -240,10 +252,13 @@ export default function ChatDayCamera({
   }));
 
   return (
-    <GestureDetector gesture={pinch}>
+    <GestureDetector gesture={gesture}>
       <Animated.ScrollView
         ref={scrollRef}
         onScroll={onScroll}
+        onScrollBeginDrag={() => {
+          stick.current = false;
+        }}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop, paddingBottom }}
@@ -253,10 +268,8 @@ export default function ChatDayCamera({
             style={[styles.table, { width }, tableStyle]}
             onLayout={(e) => {
               baseH.value = e.nativeEvent.layout.height;
-              // Opens on the newest day, at the bottom - once.
-              if (!placed.current && e.nativeEvent.layout.height > 0) {
-                placed.current = true;
-                setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 0);
+              if (stick.current && e.nativeEvent.layout.height > 0) {
+                setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 30);
               }
             }}
           >
