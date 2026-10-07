@@ -21,7 +21,9 @@ const GAP = 8;
 
 export function boardCardWidth(width: number, level: number): number {
   const cols = BOARD_COLS[level] ?? 2;
-  return Math.floor((width - OUTER * 2 - FRAME_PAD * 2 - GAP * (cols - 1)) / cols);
+  // Less the frame's own border (1.5 a side): without it the last card of a
+  // row is two points too wide to fit and wraps.
+  return Math.floor((width - OUTER * 2 - FRAME_PAD * 2 - 3 - GAP * (cols - 1)) / cols) - 1;
 }
 
 export default function ChatDayBoard({
