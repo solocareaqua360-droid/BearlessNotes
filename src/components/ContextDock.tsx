@@ -2317,13 +2317,24 @@ export default function ContextDock() {
                         borderRadius: TWO_BEAD / 2 - FIELD_INSET,
                         marginRight: FIELD_INSET,
                         // Quiet always - only "+" is the strong one; a
-                        // filter or a sort in force is the accent dot.
-                        backgroundColor: pressed ? soft.line : soft.fillSolid,
+                        // filter or a sort in force is the accent dot
+                        // (or, for a button that asks for it, the circle
+                        // turning dark - the chat's funnel).
+                        backgroundColor: right.extra?.filled && right.extra?.active ? soft.ink : pressed ? soft.line : soft.fillSolid,
                       },
                     ]}
                   >
-                    <Ionicons name={right.extra.icon as keyof typeof Ionicons.glyphMap} size={20} color={soft.ink} />
-                    {right.extra.active && <View style={[styles.fieldDot, { backgroundColor: soft.accent, borderColor: soft.chrome }]} />}
+                    <Ionicons
+                      name={right.extra.icon as keyof typeof Ionicons.glyphMap}
+                      size={20}
+                      color={right.extra.filled && right.extra.active ? soft.card : soft.ink}
+                    />
+                    {right.extra.active && !right.extra.filled && <View style={[styles.fieldDot, { backgroundColor: soft.accent, borderColor: soft.chrome }]} />}
+                    {!!right.extra.count && (
+                      <View style={[styles.fieldCount, { backgroundColor: soft.accent, borderColor: soft.chrome }]}>
+                        <Text style={styles.fieldCountText}>{right.extra.count > 99 ? '99+' : right.extra.count}</Text>
+                      </View>
+                    )}
                   </Pressable>
                 )}
                 {/* The round "+" button itself, a little smaller, set into
@@ -2430,6 +2441,11 @@ export default function ContextDock() {
                 size={21}
                 color={right.extra.active ? soft.card : soft.ink}
               />
+              {!!right.extra.count && (
+                <View style={[styles.fieldCount, { backgroundColor: soft.accent, borderColor: soft.chrome }]}>
+                  <Text style={styles.fieldCountText}>{right.extra.count > 99 ? '99+' : right.extra.count}</Text>
+                </View>
+              )}
             </Pressable>
           )}
           {right && !merged && (
@@ -3034,6 +3050,25 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     borderWidth: 2,
+  },
+  // A number on a round button (the chat's «не розібране»).
+  fieldCount: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fieldCountText: {
+    color: '#fff',
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
   },
   softFieldText: {
     flex: 1,

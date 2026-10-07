@@ -49,7 +49,29 @@ export type ChatMessage = {
   projectIds?: string[];
   // Written in a project's own chat - the main chat says so.
   createdInProject?: string;
+  // «Відкласти»: the user looked at this and chose to leave it for now.
+  // Not sorted anywhere, but no longer "not yet looked at" - it leaves the
+  // «Необроблене» count and waits under «Відкладене».
+  deferred?: boolean;
 };
+
+// WHETHER A MESSAGE HAS BEEN DEALT WITH (the chat's «не розібране»). Not a
+// stored flag: whatever already says what a message became is the answer -
+// taken into a note, made a task, folded into a group, put in a project,
+// deferred on purpose - plus the old ones, which count as sorted by DATE
+// (`sortedBefore`, one number in settings) rather than by writing to every
+// message. Gemini's own words are never "a thought to sort".
+export function isChatMessageSorted(m: ChatMessage, sortedBefore: number): boolean {
+  if (m.from === 'gemini') return true;
+  if (m.createdAt < sortedBefore) return true;
+  return (
+    !!m.deferred ||
+    !!m.groupedInto ||
+    Object.keys(m.usedIn ?? {}).length > 0 ||
+    Object.keys(m.tasks ?? {}).length > 0 ||
+    (m.projectIds ?? []).length > 0
+  );
+}
 
 // The project chat open right now, if any: what the capture window
 // writes into while the chat stands filtered to one project (ChatScreen
@@ -116,6 +138,7 @@ export function watchChat(
           groupedInto: d.data().groupedInto as string | undefined,
           projectIds: d.data().projectIds as string[] | undefined,
           createdInProject: d.data().createdInProject as string | undefined,
+          deferred: d.data().deferred as boolean | undefined,
           // `attachment`, singular, is what the first messages were
           // written with - read as a list of one rather than migrated,
           // since nothing is gained by rewriting what already works.
@@ -196,4 +219,11 @@ export async function setChatMessagesInProject(ids: string[], projectId: string,
       updateDoc(doc(db, 'chat', id), { projectIds: inProject ? arrayUnion(projectId) : arrayRemove(projectId) })
     )
   );
+}
+
+// «Відкласти» / taking it back. The field is removed rather than set to
+// false, so a message that was never deferred and one that was and came
+// back are the same message.
+export async function setChatMessagesDeferred(ids: string[], deferred: boolean) {
+  await Promise.all(ids.map((id) => updateDoc(doc(db, 'chat', id), { deferred: deferred ? true : deleteField() })));
 }

@@ -233,7 +233,10 @@ export type DockBead = {
   // small circle in the soft dock's search field, ahead of "+" (a personal
   // database's «Подача», 2026-10-04), or as a round button beside it where
   // there is no field to hold it.
-  extra?: { icon: string; label: string; active?: boolean; onPress: () => void };
+  // `count`: a small number on the circle (the chat's «не розібране»);
+  // `filled`: the circle turns dark while it is in force, instead of the
+  // quiet accent dot `active` gives.
+  extra?: { icon: string; label: string; active?: boolean; onPress: () => void; count?: number; filled?: boolean };
 };
 
 type Value = {

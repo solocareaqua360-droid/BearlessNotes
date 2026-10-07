@@ -42,6 +42,9 @@ export type MenuEntry =
       icon?: keyof typeof Ionicons.glyphMap;
       // A tick on the right: this is the option in force.
       checked?: boolean;
+      // A number on the right, in the accent colour (how many are behind
+      // this row).
+      count?: number;
       tone?: 'normal' | 'danger';
       onPress: () => void;
     };
@@ -142,6 +145,11 @@ export default function Menu({
                 >
                   {entry.label}
                 </Text>
+                {entry.count !== undefined && (
+                  <Text style={[styles.rowLabel, { flex: 0, fontSize: soft ? 15 : 14 }, { color: soft ? soft.accent : accent ?? theme.ink.primary }]}>
+                    {entry.count}
+                  </Text>
+                )}
                 {entry.checked && (
                   <Ionicons name="checkmark" size={18} color={soft ? soft.accent : accent ?? theme.ink.primary} />
                 )}

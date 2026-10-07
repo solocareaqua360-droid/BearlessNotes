@@ -38,7 +38,9 @@ import EdgeFade from '../components/EdgeFade';
 import { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { ChatMessage, deleteChatMessage, groupChatMessages, markChatMessageTask, markChatMessagesUsed, sendGeminiReply, watchChat, setChatMessagesInProject, setChatProjectContext } from '../utils/chat';
+import { ChatMessage, deleteChatMessage, groupChatMessages, isChatMessageSorted, markChatMessageTask, markChatMessagesUsed, sendGeminiReply, setChatMessagesDeferred, watchChat, setChatMessagesInProject, setChatProjectContext } from '../utils/chat';
+import { FEATURES } from '../features';
+import { useChatSortedBefore } from '../utils/chatSorting';
 import {
   appendBlocksToToday,
   clipBlocksToNote,
@@ -204,6 +206,11 @@ export default function ChatScreen() {
   // вкладеннях (з групуванням фото, youtube, геоточка, посилання)".
   const [filterKind, setFilterKind] = useState<AttachmentGroup | 'any' | null>(null);
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  // «НЕРОЗІБРАНЕ» / «ВІДКЛАДЕНЕ» (features.chatSorting): which part of the
+  // chat is shown, besides the attachment filter above.
+  const sorting = FEATURES.chatSorting;
+  const [stateFilter, setStateFilter] = useState<'all' | 'unsorted' | 'deferred'>('all');
+  const sortedBefore = useChatSortedBefore();
   // PROJECT CHATS (2026-09-29): the same chat, narrowed to one project -
   // "чати проектів". Projects are the app's one project concept (groups).
   const [projects, setProjects] = useState<Group[]>([]);
@@ -241,7 +248,24 @@ export default function ChatScreen() {
     []
   );
 
+  // How many wait. Hidden (zero) until the date the count starts from is
+  // known, so the old messages never flash as unsorted.
+  const sortCounts = useMemo(() => {
+    if (!sorting || sortedBefore === null) return { unsorted: 0, deferred: 0 };
+    let unsorted = 0;
+    let deferred = 0;
+    messages.forEach((m) => {
+      if (m.deferred) deferred += 1;
+      else if (!isChatMessageSorted(m, sortedBefore)) unsorted += 1;
+    });
+    return { unsorted, deferred };
+  }, [messages, sorting, sortedBefore]);
+
   const needle = searchQuery.trim().toLowerCase();
+  function messageMatchesState(message: ChatMessage): boolean {
+    if (!sorting || stateFilter === 'all' || sortedBefore === null) return true;
+    return stateFilter === 'deferred' ? !!message.deferred : !isChatMessageSorted(message, sortedBefore);
+  }
   function messageMatchesFilter(message: ChatMessage): boolean {
     if (!filterKind) return true;
     const groups = (message.attachments ?? []).map(attachmentGroup);
@@ -257,10 +281,11 @@ export default function ChatScreen() {
       messages.filter(
         (m) =>
           messageMatchesFilter(m) &&
+          messageMatchesState(m) &&
           messageMatchesSearch(m) &&
           (!projectFilter || (m.projectIds ?? []).includes(projectFilter))
       ),
-    [messages, filterKind, needle, projectFilter]
+    [messages, filterKind, needle, projectFilter, stateFilter, sortedBefore]
   );
 
   // "Затисканням на повідомленні його можна скопіювати в чат проекту":
@@ -373,7 +398,16 @@ export default function ChatScreen() {
           icon: 'mic-outline',
           onPress: openCapture,
           extra: bar
-            ? { icon: 'funnel-outline', label: 'Фільтр', active: filterKind !== null, onPress: () => setFilterMenuOpen((v) => !v) }
+            ? {
+                icon: 'funnel-outline',
+                label: 'Фільтр',
+                active: filterKind !== null || (sorting && stateFilter !== 'all'),
+                // With the sorting on: the circle turns dark while a
+                // filter is in force, and carries the unsorted count.
+                filled: sorting,
+                count: sorting ? sortCounts.unsorted : undefined,
+                onPress: () => setFilterMenuOpen((v) => !v),
+              }
             : undefined,
         }
       : null
@@ -438,7 +472,7 @@ export default function ChatScreen() {
               key: 'filter',
               icon: 'funnel-outline',
               label: 'Фільтр',
-              active: filterKind !== null,
+              active: filterKind !== null || (sorting && stateFilter !== 'all'),
               onPress: () => setFilterMenuOpen((v) => !v),
             },
           ]
@@ -552,6 +586,19 @@ export default function ChatScreen() {
         { key: 'project', label: 'У проект', icon: 'albums-outline', page: 'projects' },
         { key: 'note', label: 'У нотатку', icon: 'document-text-outline', page: 'notes' },
         { key: 'task', label: 'Зробити справою', icon: 'checkbox-outline', onPress: () => makeTask(pressedLive) },
+        // «Відкласти»: looked at, left for now - leaves «Необроблене».
+        ...(sorting && pressedLive.from !== 'gemini'
+          ? [
+              {
+                key: 'defer',
+                label: pressedLive.deferred ? 'Повернути з відкладеного' : 'Відкласти',
+                icon: 'time-outline' as const,
+                onPress: () => {
+                  setChatMessagesDeferred([pressedLive.id], !pressedLive.deferred).catch((e: Error) => notify('Не вдалося', e.message));
+                },
+              },
+            ]
+          : []),
         // Gemini's own words are not asked about again - a reply of a
         // reply is a rabbit hole nobody asked this screen to dig.
         ...(pressedLive.from !== 'gemini'
@@ -802,6 +849,12 @@ export default function ChatScreen() {
                 </Pressable>
               );
             })}
+          {sorting && !!message.deferred && (
+            <View style={styles.usedChip}>
+              <Ionicons name="time-outline" size={11} color={theme.ink.muted} />
+              <Text style={[styles.usedLabel, { color: theme.ink.muted }]}>Відкладено</Text>
+            </View>
+          )}
           {!!message.groupedInto && (
             <Pressable
               style={styles.usedChip}
@@ -854,8 +907,13 @@ export default function ChatScreen() {
           <View style={[styles.empty, { paddingTop: headerH }]}>
             <Ionicons name="search-outline" size={32} color={theme.ink.faint} />
             <Text style={styles.emptyLabel}>Нічого не знайдено</Text>
-            {filterKind !== null && (
-              <Pressable onPress={() => setFilterKind(null)}>
+            {(filterKind !== null || (sorting && stateFilter !== 'all')) && (
+              <Pressable
+                onPress={() => {
+                  setFilterKind(null);
+                  setStateFilter('all');
+                }}
+              >
                 <Text style={[styles.emptyHint, { color: theme.accent }]}>Скинути фільтр</Text>
               </Pressable>
             )}
@@ -937,6 +995,14 @@ export default function ChatScreen() {
         onClose={() => setFilterMenuOpen(false)}
         style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
         entries={[
+          ...(sorting
+            ? [
+                { label: 'Все', checked: stateFilter === 'all', onPress: () => setStateFilter('all') },
+                { label: 'Необроблене', count: sortCounts.unsorted, checked: stateFilter === 'unsorted', onPress: () => setStateFilter('unsorted') },
+                { label: 'Відкладене', count: sortCounts.deferred, checked: stateFilter === 'deferred', onPress: () => setStateFilter('deferred') },
+                { kind: 'rule' as const },
+              ]
+            : []),
           ...(filterKind !== null
             ? [
                 {

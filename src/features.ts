@@ -10,4 +10,8 @@ export const FEATURES = {
   timecodes: false,
   // «Стікери»: the database, its tile and rows, the strip, the composer.
   stickers: false,
+  // Чат: «не розібране» / «відкладене» - the count on the funnel, the state
+  // rows in its menu, «Відкласти» in a message's own menu. Off: the chat
+  // is exactly what it was.
+  chatSorting: true,
 } as const;
