@@ -406,7 +406,7 @@ function beadSignature(beads: { left: DockBead | null; right: DockBead | null })
   const one = (b: DockBead | null) =>
     b
       ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}:${b.dimmed ? 1 : 0}:${b.label ?? ''}:${b.round ? 1 : 0}:${
-          b.extra ? `${b.extra.icon}${b.extra.active ? 1 : 0}` : ''
+          b.extra ? `${b.extra.icon}${b.extra.active ? 1 : 0}${b.extra.filled ? 1 : 0}${b.extra.count ?? ''}` : ''
         }`
       : '-';
   return `${one(beads.left)}/${one(beads.right)}`;

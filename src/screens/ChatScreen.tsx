@@ -591,7 +591,7 @@ export default function ChatScreen() {
           ? [
               {
                 key: 'defer',
-                label: pressedLive.deferred ? 'Повернути з відкладеного' : 'Відкласти',
+                label: pressedLive.deferred ? 'Зняти відкладення' : 'Відкласти',
                 icon: 'time-outline' as const,
                 onPress: () => {
                   setChatMessagesDeferred([pressedLive.id], !pressedLive.deferred).catch((e: Error) => notify('Не вдалося', e.message));
