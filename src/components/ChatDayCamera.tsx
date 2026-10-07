@@ -7,6 +7,7 @@ import Animated, {
   useAnimatedReaction,
   useAnimatedRef,
   useAnimatedScrollHandler,
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -156,6 +157,9 @@ export default function ChatDayCamera({
   const anchorX = useSharedValue(width / 2);
   const anchorY = useSharedValue(height / 2);
   const gesturing = useSharedValue(false);
+  // True from the lift of the fingers (or a double tap) until the camera has
+  // come to rest: the board's own scroll events say nothing true meanwhile.
+  const settling = useSharedValue(false);
   const startScale = useSharedValue(1);
   const startTx = useSharedValue(0);
   const startScroll = useSharedValue(0);
@@ -187,9 +191,16 @@ export default function ChatDayCamera({
     });
   }, [hasCopies]);
 
+  // While the camera moves the scroll position, WE are the truth about it: a
+  // scroll event that was already on its way would put an old offset back
+  // and every following frame would be worked out from it (that was the
+  // «chaotic» zoom of the first version).
   const onScroll = useAnimatedScrollHandler((e) => {
+    if (gesturing.value || settling.value) return;
     scrollY.value = e.contentOffset.y;
   });
+  // The board's own finger-scroll must not run alongside two fingers.
+  const scrollProps = useAnimatedProps(() => ({ scrollEnabled: !gesturing.value }));
 
   // While the scale changes by itself (settling on a height), the point
   // under the anchor stays under it. A pinch does the same by its own hand.
@@ -208,14 +219,20 @@ export default function ChatDayCamera({
 
   // The snap chosen elsewhere (a new level) moves the camera to it.
   useEffect(() => {
-    scale.value = withTiming(CAMERA_SNAPS[snap] ?? 1, { duration: 220 });
+    scale.value = withTiming(CAMERA_SNAPS[snap] ?? 1, { duration: 220 }, () => {
+      'worklet';
+      settling.value = false;
+    });
   }, [snap, scale]);
 
   const settle = useCallback(
     (raw: number) => {
       // Far enough past the nearest height: that is the way out to the tape.
       if (raw > 1.2 && snap === 0) {
-        scale.value = withTiming(1, { duration: 160 });
+        scale.value = withTiming(1, { duration: 160 }, () => {
+          'worklet';
+          settling.value = false;
+        });
         onLeave();
         return;
       }
@@ -228,10 +245,13 @@ export default function ChatDayCamera({
           best = i;
         }
       });
-      scale.value = withTiming(CAMERA_SNAPS[best], { duration: 220 });
+      scale.value = withTiming(CAMERA_SNAPS[best], { duration: 220 }, () => {
+        'worklet';
+        settling.value = false;
+      });
       if (best !== snap) onSnap(best);
     },
-    [snap, onSnap, onLeave, scale]
+    [snap, onSnap, onLeave, scale, settling]
   );
 
   // Two fingers: the table is scaled around the point between them AND
@@ -263,6 +283,7 @@ export default function ChatDayCamera({
     })
     .onEnd(() => {
       'worklet';
+      settling.value = true;
       gesturing.value = false;
       runOnJS(settle)(scale.value);
     })
@@ -291,6 +312,7 @@ export default function ChatDayCamera({
       if (!ok) return;
       anchorX.value = e.x;
       anchorY.value = e.y;
+      settling.value = true;
       runOnJS(cycle)();
     });
   const gesture = Gesture.Simultaneous(pinch, doubleTap);
@@ -306,6 +328,7 @@ export default function ChatDayCamera({
     <GestureDetector gesture={gesture}>
       <Animated.ScrollView
         ref={scrollRef}
+        animatedProps={scrollProps}
         onScroll={onScroll}
         onScrollBeginDrag={() => {
           stick.current = false;
