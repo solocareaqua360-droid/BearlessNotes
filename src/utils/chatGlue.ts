@@ -5,6 +5,7 @@ import type { Block } from '../types';
 import type { ChatMessage } from './chat';
 import { appendBlocksToToday, blockFromFile, blockFromLink, blockFromPhoto, clipBlocksToNote, copyObjectsToNote } from './copyToNote';
 import { markChatMessagesUsed } from './chat';
+import { linkDocId } from './linkId';
 
 // THE GLUE (2026-10-07): thoughts picked in the chat and stuck together in
 // a draft, to be looked at, mended, and only then made into a note. The
@@ -73,7 +74,20 @@ async function attachmentBlocks(message: ChatMessage): Promise<Block[]> {
           })
         );
       } else {
-        out.push({ ...blockFromLink({ url: a.url, title: a.title, imageUrl: a.imageUrl, siteName: a.siteName }), createdAt: message.createdAt });
+        // The link's own record knows what the message does not: the point
+        // on the map of a geo point, a better title and picture.
+        const data = ((await getDoc(doc(db, 'links', linkDocId(a.url)))) as { data: () => Record<string, unknown> | undefined }).data();
+        out.push({
+          ...blockFromLink({
+            url: a.url,
+            title: (data?.title as string | undefined) ?? a.title,
+            imageUrl: (data?.imageUrl as string | undefined) ?? a.imageUrl,
+            siteName: (data?.siteName as string | undefined) ?? a.siteName,
+            geoLat: data?.geoLat as number | undefined,
+            geoLng: data?.geoLng as number | undefined,
+          }),
+          createdAt: message.createdAt,
+        });
       }
     } catch {
       // A record that will not load is left out rather than stopping the glue.

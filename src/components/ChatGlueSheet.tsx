@@ -14,6 +14,12 @@ function pieceLabel(b: Block): string {
   return b.text?.trim() || '…';
 }
 
+function kindMark(b: Block): string {
+  if (b.type === 'file') return '📎 ';
+  if (b.type === 'link') return b.linkSiteName === 'Геоточка' ? '📍 ' : '🔗 ';
+  return '';
+}
+
 export default function ChatGlueSheet({
   visible,
   onClose,
@@ -36,6 +42,14 @@ export default function ChatGlueSheet({
   onClear: () => void;
 }) {
   const theme = useTheme();
+  // Consecutive pieces of the same message are one group.
+  const groups: { source?: string; blocks: Block[] }[] = [];
+  blocks.forEach((b) => {
+    const source = sources[b.id];
+    const last = groups[groups.length - 1];
+    if (last && source && last.source === source) last.blocks.push(b);
+    else groups.push({ source, blocks: [b] });
+  });
   return (
     <Sheet
       visible={visible}
@@ -45,27 +59,34 @@ export default function ChatGlueSheet({
       scroll
       maxHeight="85%"
     >
-      {blocks.map((b, i) => {
-        const source = sources[b.id];
-        return (
-          <View key={b.id}>
-            {i > 0 && <View style={[styles.seam, { borderColor: theme.ink.faint }]} />}
-            <View style={[styles.piece, { backgroundColor: theme.surface }]}>
-              {b.type === 'image' && !!b.imageUri && (
-                <Image source={{ uri: b.imageUri }} style={styles.picture} resizeMode="cover" />
-              )}
-              <Text numberOfLines={4} style={[styles.text, { color: theme.ink.primary }]}>
-                {pieceLabel(b)}
-              </Text>
-              {!!source && (
-                <Pressable onPress={() => onShow(source)} hitSlop={8}>
-                  <Text style={[styles.source, { color: theme.accent }]}>показати в чаті</Text>
-                </Pressable>
-              )}
-            </View>
+      {groups.map((group, i) => (
+        <View key={group.blocks[0].id}>
+          {i > 0 && <View style={[styles.seam, { borderColor: theme.ink.faint }]} />}
+          {/* One message is ONE frame, however many pieces it brought:
+              the picture on top, the words, then a plain row for a file or
+              a link - the seam is only between messages. */}
+          <View style={[styles.piece, { backgroundColor: theme.surface }]}>
+            {group.blocks.map((b, j) => (
+              <View key={b.id} style={j > 0 ? [styles.row, { borderColor: theme.ink.faint }] : undefined}>
+                {b.type === 'image' && !!b.imageUri && (
+                  <Image source={{ uri: b.imageUri }} style={styles.picture} resizeMode="cover" />
+                )}
+                {(b.type !== 'image' || !b.imageUri) && (
+                  <Text numberOfLines={4} style={[styles.text, { color: theme.ink.primary }]}>
+                    {kindMark(b)}
+                    {pieceLabel(b)}
+                  </Text>
+                )}
+              </View>
+            ))}
+            {!!group.source && (
+              <Pressable onPress={() => onShow(group.source!)} hitSlop={8}>
+                <Text style={[styles.source, { color: theme.accent }]}>показати в чаті</Text>
+              </Pressable>
+            )}
           </View>
-        );
-      })}
+        </View>
+      ))}
       <View style={styles.buttons}>
         <Pressable onPress={onEdit} style={[styles.button, { backgroundColor: theme.accent }]}>
           <Text style={[styles.buttonText, { color: '#fff' }]}>Редагувати</Text>
@@ -88,6 +109,7 @@ export default function ChatGlueSheet({
 
 const styles = StyleSheet.create({
   piece: { borderRadius: 14, padding: 12, gap: 6 },
+  row: { borderTopWidth: 0.5, paddingTop: 6, marginTop: 2 },
   picture: { width: '100%', height: 120, borderRadius: 10 },
   // The line that says these two were stuck together.
   seam: { alignSelf: 'center', height: 10, borderLeftWidth: 1.5, borderStyle: 'dashed' },
