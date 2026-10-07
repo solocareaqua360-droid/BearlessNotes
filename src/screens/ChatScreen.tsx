@@ -2,7 +2,8 @@ import { usePaneBar } from '../navigation/paneBar';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { IS_POINTER } from '../utils/pointer';
 import { rightClick } from '../utils/rightClick';
-import { ActivityIndicator, FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import AttachmentImage from '../components/AttachmentImage';
 import { FileRow, LinkRow, PhotoRow } from '../components/ItemCards';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
@@ -119,6 +120,32 @@ function newBlockId(): string {
 // only the id and the address of the copy on the phone that took it; the
 // photo's OWN record is what knows where its Drive copy is, which is all a
 // laptop can show - so the record is looked up, and the row is given that.
+// THE PICTURE ON A BOARD CARD (the chat's board, ChatDayBoard): the first
+// photo - read from its own record, as the tape's card does, so a picture
+// no longer on this phone is restored from Drive - or the first link's
+// preview image. A file or a link without a picture has none, and its card
+// says what it carries in words.
+function BoardCardPicture({ attachment, width, height }: { attachment: ChatAttachment; width: number; height: number }) {
+  const photoId = attachment.kind === 'photo' ? attachment.id : null;
+  const [driveFileId, setDriveFileId] = useState<string | undefined>();
+  useEffect(() => {
+    if (!photoId) return;
+    return onSnapshot(
+      doc(db, 'photos', photoId),
+      (snapshot) => setDriveFileId((snapshot.data() as { driveFileId?: string } | undefined)?.driveFileId),
+      () => {}
+    );
+  }, [photoId]);
+  const style = { width, height, borderRadius: 8 };
+  if (attachment.kind === 'photo') {
+    return <AttachmentImage uri={attachment.uri} driveFileId={driveFileId} style={style} resizeMode="cover" />;
+  }
+  if (attachment.kind === 'link' && attachment.imageUrl) {
+    return <Image source={{ uri: attachment.imageUrl }} style={style} resizeMode="cover" resizeMethod="resize" />;
+  }
+  return null;
+}
+
 function ChatPhoto({ id, uri, onPress }: { id: string; uri: string; onPress: () => void }) {
   const [record, setRecord] = useState<{ driveFileId?: string; title?: string; createdAt?: number } | null>(null);
   useEffect(
@@ -648,7 +675,12 @@ export default function ChatScreen() {
     const unsorted = sorting && sortedBefore !== null && !isChatMessageSorted(message, sortedBefore);
     const cols = BOARD_COLS[boardLevel];
     const first = message.attachments?.[0];
-    const text = message.text.trim() || (first ? attachmentLabel(first) : '…');
+    // The picture: the first attachment that has one.
+    const pictured = (message.attachments ?? []).find((a) => a.kind === 'photo' || (a.kind === 'link' && !!a.imageUrl));
+    const pictureW = cardWidth - (cols === 4 ? 12 : 20) - 3;
+    const pictureH = Math.round(pictureW * 0.75);
+    const own = message.text.trim();
+    const text = own || (pictured ? '' : first ? attachmentLabel(first) : '…');
     const fontSize = cols === 1 ? 15 : cols === 2 ? 12.5 : 10;
     const lines = cols === 1 ? 8 : cols === 2 ? 6 : 5;
     const ink = softChat ? softChat.ink : theme.ink.primary;
@@ -685,9 +717,12 @@ export default function ChatScreen() {
           !lifted && pressed?.message.id === message.id && { opacity: 0 },
         ]}
       >
-        <Text numberOfLines={lines} style={{ color: ink, fontSize, lineHeight: Math.round(fontSize * 1.3) }}>
-          {text}
-        </Text>
+        {pictured && <BoardCardPicture attachment={pictured} width={pictureW} height={pictureH} />}
+        {!!text && (
+          <Text numberOfLines={pictured ? Math.max(2, lines - 3) : lines} style={{ color: ink, fontSize, lineHeight: Math.round(fontSize * 1.3) }}>
+            {text}
+          </Text>
+        )}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
           {cols < 4 && (
             <Text style={{ color: muted, fontSize: 10 }}>
