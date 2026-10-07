@@ -76,11 +76,16 @@ export default function ChatDayBoard({
       <View style={styles.fill}>
         <FlatList
           data={days}
+          // Inverted, as the tape is: the newest day is the LAST one down
+          // the screen and the list opens on it. `days` comes newest first
+          // (that is the bottom of an inverted list), and top and bottom
+          // padding swap with it.
+          inverted
           keyExtractor={(d) => d.key}
           renderItem={renderDay}
           // The width is part of the key: a new level re-lays every card.
           extraData={`${level}:${width}`}
-          contentContainerStyle={{ paddingTop, paddingBottom }}
+          contentContainerStyle={{ paddingTop: paddingBottom, paddingBottom: paddingTop }}
           showsVerticalScrollIndicator={false}
         />
       </View>
