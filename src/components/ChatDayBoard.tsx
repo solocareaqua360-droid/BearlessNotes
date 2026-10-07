@@ -14,7 +14,8 @@ import type { ChatMessage } from '../utils/chat';
 export type BoardDay = { key: string; label: string; messages: ChatMessage[] };
 
 // Columns per level, from near to far.
-export const BOARD_COLS = [1, 2, 4] as const;
+// (2026-10-07: one to a row is gone - a card that big is the tape's job.)
+export const BOARD_COLS = [2, 4] as const;
 const OUTER = 16;
 const FRAME_PAD = 8;
 const GAP = 8;

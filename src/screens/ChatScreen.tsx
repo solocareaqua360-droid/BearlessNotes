@@ -648,7 +648,7 @@ export default function ChatScreen() {
   // day, newest day first, the cards in the order they were said.
   const camera = FEATURES.chatBoardCamera;
   const copiesOn = camera && FEATURES.chatBoardCopies;
-  const [boardLevel, setBoardLevel] = useState(camera ? 0 : 1);
+  const [boardLevel, setBoardLevel] = useState(0);
   // The board's own zoom ends where the tape begins: nearer than the
   // nearest level is the tape, and a pinch out from the tape is the board.
   const boardLevelRef = useRef(boardLevel);
