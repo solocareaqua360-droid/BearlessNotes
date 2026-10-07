@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -47,6 +47,7 @@ export default function ChatDayCamera({
   snap,
   onSnap,
   onLeave,
+  onEarlier,
   paddingTop,
   paddingBottom,
   renderCard,
@@ -62,6 +63,8 @@ export default function ChatDayCamera({
   snap: number;
   onSnap: (index: number) => void;
   onLeave: () => void;
+  // Set when older days exist that are not drawn: a button at the top asks for a month more.
+  onEarlier?: () => void;
   paddingTop: number;
   paddingBottom: number;
   renderCard: (message: ChatMessage, cardWidth: number) => ReactNode;
@@ -170,6 +173,11 @@ export default function ChatDayCamera({
               }
             }}
           >
+            {onEarlier && (
+              <Pressable onPress={onEarlier} style={[styles.earlier, { borderColor: frameColor }]}>
+                <Text style={[styles.label, { color: labelColor }]}>Раніше · ще місяць</Text>
+              </Pressable>
+            )}
             {days.map((day) => (
               <View key={day.key} style={[styles.frame, { borderColor: frameColor, backgroundColor: frameFill }]}>
                 <Text style={[styles.label, { color: labelColor }]}>
@@ -195,6 +203,14 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     padding: FRAME_PAD,
     gap: 6,
+  },
+  earlier: {
+    alignSelf: 'center',
+    marginBottom: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1.5,
   },
   label: { fontSize: 12, fontWeight: '600', letterSpacing: 0.3, paddingHorizontal: 4, paddingTop: 2 },
   cards: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },

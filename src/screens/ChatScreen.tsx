@@ -672,6 +672,14 @@ export default function ChatScreen() {
       .sort((a, b) => b.at - a.at)
       .map(({ key, label, messages: list }) => ({ key, label, messages: list }));
   }, [boardView, visibleMessages]);
+  // The camera draws every day at once (no virtual list), so it starts with
+  // the last month and asks for another one at a time.
+  const [boardMonths, setBoardMonths] = useState(1);
+  const cameraDays = useMemo(() => {
+    const since = Date.now() - boardMonths * 30 * 86400000;
+    return boardDays.filter((d) => d.messages[0].createdAt >= since || d.messages.some((m) => m.createdAt >= since)).reverse();
+  }, [boardDays, boardMonths]);
+  const cameraHasEarlier = cameraDays.length < boardDays.length;
   function renderBoardCard(message: ChatMessage, cardWidth: number, lifted = false) {
     const picked = !lifted && selected.has(message.id);
     const unsorted = sorting && sortedBefore !== null && !isChatMessageSorted(message, sortedBefore);
@@ -1125,12 +1133,13 @@ export default function ChatScreen() {
           </View>
         ) : boardView && camera ? (
           <ChatDayCamera
-            days={[...boardDays].reverse()}
+            days={cameraDays}
             width={frameWidth}
             height={Math.max(0, frameHeight - headerH - dockClear - insets.bottom)}
             snap={boardLevel}
             onSnap={setBoardLevel}
             onLeave={() => leaveBoard?.()}
+            onEarlier={cameraHasEarlier ? () => setBoardMonths((n) => n + 1) : undefined}
             paddingTop={headerH + 8}
             paddingBottom={dockClear + insets.bottom}
             renderCard={(m, w) => renderBoardCard(m, w)}
