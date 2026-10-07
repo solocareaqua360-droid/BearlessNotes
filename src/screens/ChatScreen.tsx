@@ -706,7 +706,7 @@ export default function ChatScreen() {
     const picked = !lifted && selected.has(message.id);
     const unsorted = sorting && sortedBefore !== null && !isChatMessageSorted(message, sortedBefore);
     // The camera never re-flows: its cards are always the two-to-a-row look.
-    const cols = BOARD_COLS[camera ? 1 : boardLevel];
+    const cols = BOARD_COLS[camera ? 0 : boardLevel];
     const first = message.attachments?.[0];
     // The picture: the first attachment that has one.
     const pictured = (message.attachments ?? []).find((a) => a.kind === 'photo' || (a.kind === 'link' && !!a.imageUrl));
@@ -714,8 +714,8 @@ export default function ChatScreen() {
     const pictureH = Math.round(pictureW * 0.75);
     const own = message.text.trim();
     const text = own || (pictured ? '' : first ? attachmentLabel(first) : '…');
-    const fontSize = cols === 1 ? 15 : cols === 2 ? 12.5 : 10;
-    const lines = cols === 1 ? 8 : cols === 2 ? 6 : 5;
+    const fontSize = cols === 2 ? 12.5 : 10;
+    const lines = cols === 2 ? 6 : 5;
     const ink = softChat ? softChat.ink : theme.ink.primary;
     const muted = softChat ? softChat.ink3 : theme.ink.muted;
     return (
