@@ -36,6 +36,7 @@ import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockShow
 import type { DockAction, DockBead } from '../navigation/navDock';
 import { ChatLayerContext } from '../navigation/sideDrawers';
 import InlineDock from '../components/InlineDock';
+import ChatDayBoard, { BOARD_COLS, boardCardWidth, type BoardDay } from '../components/ChatDayBoard';
 import { useFrameDimensions } from '../hooks/useResponsiveLayout';
 import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import EdgeFade from '../components/EdgeFade';
@@ -426,17 +427,19 @@ export default function ChatScreen() {
   useDockBeads(publishing ? leftBead : null, publishing ? rightBead : null);
   // The layer's own bar: «календар | чат» for a title, the way back closes
   // the layer, choosing at the bar's edge.
-  const layerSwitch = chatLayer?.switchTo;
+  const layerPages = chatLayer?.pages;
+  const boardView = inLayer && chatLayer!.view === 'board';
   const layerTitle = useMemo(
     () => ({
       icon: 'chatbubbles-outline',
       label: 'Чат',
       choices: [
-        { label: 'календар', active: false, onPress: layerSwitch },
-        { label: 'чат', active: true },
+        { label: 'календар', active: false, onPress: layerPages?.calendar },
+        { label: 'чат', active: !boardView, onPress: boardView ? layerPages?.chat : undefined },
+        { label: 'дошка', active: boardView, onPress: boardView ? undefined : layerPages?.board },
       ],
     }),
-    [layerSwitch]
+    [layerPages, boardView]
   );
   const layerClose = chatLayer?.close;
   const layerBack = useMemo(() => (layerClose ? { onPress: layerClose, dimmed: false } : null), [layerClose]);
@@ -596,6 +599,88 @@ export default function ChatScreen() {
       hapticPickUp();
       setPressed({ message, rect: { x, y, width, height } });
     });
+  }
+  // THE BOARD LOOK of the layer's chat (see ChatDayBoard): one frame per
+  // day, newest day first, the cards in the order they were said.
+  const [boardLevel, setBoardLevel] = useState(1);
+  const stepBoard = useMemo(
+    () => (step: 1 | -1) => setBoardLevel((l) => Math.min(BOARD_COLS.length - 1, Math.max(0, l + step))),
+    []
+  );
+  const boardDays = useMemo<BoardDay[]>(() => {
+    if (!boardView) return [];
+    const byDay = new Map<string, ChatMessage[]>();
+    visibleMessages.forEach((m) => {
+      const key = new Date(m.createdAt).toDateString();
+      const list = byDay.get(key) ?? [];
+      list.push(m);
+      byDay.set(key, list);
+    });
+    return [...byDay.entries()]
+      .map(([key, list]) => ({ key, label: formatShortDate(new Date(list[0].createdAt)), messages: list, at: list[0].createdAt }))
+      .sort((a, b) => b.at - a.at)
+      .map(({ key, label, messages: list }) => ({ key, label, messages: list }));
+  }, [boardView, visibleMessages]);
+  function renderBoardCard(message: ChatMessage, cardWidth: number, lifted = false) {
+    const picked = !lifted && selected.has(message.id);
+    const unsorted = sorting && sortedBefore !== null && !isChatMessageSorted(message, sortedBefore);
+    const cols = BOARD_COLS[boardLevel];
+    const first = message.attachments?.[0];
+    const text = message.text.trim() || (first ? attachmentLabel(first) : '…');
+    const fontSize = cols === 1 ? 15 : cols === 2 ? 12.5 : 10;
+    const lines = cols === 1 ? 8 : cols === 2 ? 6 : 5;
+    const ink = softChat ? softChat.ink : theme.ink.primary;
+    const muted = softChat ? softChat.ink3 : theme.ink.muted;
+    return (
+      <Pressable
+        key={message.id}
+        ref={
+          lifted
+            ? undefined
+            : (node: View | null) => {
+                bubbleRefs.current[message.id] = node;
+              }
+        }
+        collapsable={false}
+        disabled={lifted}
+        onPress={() => (isSelectMode ? toggle(message.id) : undefined)}
+        onLongPress={() => {
+          if (isSelectMode) return;
+          liftMessage(message);
+        }}
+        {...rightClick(isSelectMode ? undefined : () => liftMessage(message))}
+        style={[
+          {
+            width: cardWidth,
+            borderRadius: cols === 4 ? 10 : 14,
+            padding: cols === 4 ? 6 : 10,
+            gap: 4,
+            backgroundColor: softChat ? softChat.card : theme.surface,
+            borderWidth: 1.5,
+            borderColor: picked ? theme.accent : unsorted ? '#d9a441' : 'transparent',
+          },
+          softChat ? { boxShadow: softChat.shadow } : null,
+          !lifted && pressed?.message.id === message.id && { opacity: 0 },
+        ]}
+      >
+        <Text numberOfLines={lines} style={{ color: ink, fontSize, lineHeight: Math.round(fontSize * 1.3) }}>
+          {text}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+          {cols < 4 && (
+            <Text style={{ color: muted, fontSize: 10 }}>
+              {new Date(message.createdAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          )}
+          {Object.keys(message.tasks ?? {}).length > 0 && <Ionicons name="checkbox-outline" size={11} color={theme.accent} />}
+          {Object.keys(message.usedIn ?? {}).length > 0 && <Ionicons name="document-text-outline" size={11} color={theme.accent} />}
+          {!!message.groupedInto && <Ionicons name="git-merge-outline" size={11} color={theme.accent} />}
+          {(message.projectIds ?? []).length > 0 && <Ionicons name="albums-outline" size={11} color={muted} />}
+          {sorting && !!message.deferred && <Ionicons name="time-outline" size={11} color={muted} />}
+          {(message.attachments?.length ?? 0) > 0 && <Ionicons name="attach-outline" size={11} color={muted} />}
+        </View>
+      </Pressable>
+    );
   }
   function loadRecentNotes() {
     if (recentNotes) return;
@@ -951,6 +1036,19 @@ export default function ChatScreen() {
               </Pressable>
             )}
           </View>
+        ) : boardView ? (
+          <ChatDayBoard
+            days={boardDays}
+            width={frameWidth}
+            level={boardLevel}
+            onLevel={stepBoard}
+            paddingTop={headerH + 8}
+            paddingBottom={dockClear + insets.bottom}
+            renderCard={(m, w) => renderBoardCard(m, w)}
+            labelColor={softChat ? softChat.ink3 : theme.ink.muted}
+            frameColor={softChat ? softChat.line : theme.ink.faint}
+            frameFill={softChat ? 'rgba(255,255,255,0.35)' : 'transparent'}
+          />
         ) : (
           <FlatList
             ref={listRef}
@@ -1088,7 +1186,7 @@ export default function ChatScreen() {
       />
       <ChatMessageMenu
         anchor={pressed?.rect ?? null}
-        bubble={pressedLive ? renderMessageBubble(pressedLive, true) : null}
+        bubble={pressedLive ? (boardView ? renderBoardCard(pressedLive, boardCardWidth(frameWidth, boardLevel), true) : renderMessageBubble(pressedLive, true)) : null}
         actions={menuActions}
         projects={projects.map((p) => ({ id: p.id, name: p.name, color: p.color, on: (pressedLive?.projectIds ?? []).includes(p.id) }))}
         onToggleProject={(projectId) => {

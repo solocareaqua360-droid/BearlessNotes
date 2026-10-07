@@ -9,6 +9,9 @@ import { FEATURES } from '../features';
 // each laid over the blurred desk. This holds whether each is open, and
 // lets a screen that needs the sideways swipe for itself (a board's
 // canvas) keep the edges from opening anything while it is up.
+// The layer's pages: the calendar, the chat as a tape, the chat as a board.
+export type LeftPage = 'calendar' | 'chat' | 'board';
+
 type SideDrawers = {
   // 0 shut .. 1 open, on the UI thread: the swipe moves the layer WITH
   // the finger by writing this directly, instead of waiting for the
@@ -28,8 +31,8 @@ type SideDrawers = {
   // The layer holds two pages (features.chatInLeftLayer): the page in
   // front, and a way to open the layer ON the calendar whatever was last
   // in front (the start desk's «Щоденник»).
-  leftPage: 'calendar' | 'chat';
-  setLeftPage: (page: 'calendar' | 'chat') => void;
+  leftPage: LeftPage;
+  setLeftPage: (page: LeftPage) => void;
   openDiary: () => void;
   databasesProgress: SharedValue<number> | null;
   databasesOpen: boolean;
@@ -90,7 +93,7 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
   const [databasesDragging, setDatabasesDragging] = useState(false);
   const [blocks, setBlocks] = useState(0);
   const [calendarJump, setCalendarJump] = useState<{ key: string; n: number } | null>(null);
-  const [leftPage, setLeftPage] = useState<'calendar' | 'chat'>(FEATURES.chatInLeftLayer ? 'chat' : 'calendar');
+  const [leftPage, setLeftPage] = useState<LeftPage>(FEATURES.chatInLeftLayer ? 'chat' : 'calendar');
   useEffect(
     () =>
       listenCalendarRequests((key) => {
@@ -249,8 +252,8 @@ export const CalendarDrawerContext = createContext<{
   open: boolean;
   close: () => void;
   jump: { key: string; n: number } | null;
-  // The layer's other page (features.chatInLeftLayer): the chat. Stable.
-  switchTo?: () => void;
+  // The layer's other pages (features.chatInLeftLayer). Stable.
+  pages?: { chat: () => void; board: () => void };
 } | null>(null);
 
 // The same, for the chat when it is the layer's page: it draws its own bar
@@ -258,8 +261,10 @@ export const CalendarDrawerContext = createContext<{
 export const ChatLayerContext = createContext<{
   open: boolean;
   close: () => void;
-  // The layer's other page: the calendar. Stable.
-  switchTo: () => void;
+  // Which of its two looks the chat has in front: the tape or the board.
+  view: 'tape' | 'board';
+  // Every page of the layer, to switch to. Stable.
+  pages: { calendar: () => void; chat: () => void; board: () => void };
 } | null>(null);
 
 // The same, for the databases («Більше») drawn inside theirs.

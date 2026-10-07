@@ -901,21 +901,22 @@ export default function CalendarScreen() {
   const drawerClose = calendarDrawer?.close;
   const drawerBack = useMemo(() => (drawerClose ? { onPress: drawerClose, dimmed: false } : null), [drawerClose]);
   // The drawer's other page, as words in the bar: «календар | чат».
-  const drawerSwitch = calendarDrawer?.switchTo;
+  const drawerPages = calendarDrawer?.pages;
   const drawerTitle = useMemo(
     () => ({
       icon: 'calendar-outline',
       label: 'Календар',
-      ...(drawerSwitch
+      ...(drawerPages
         ? {
             choices: [
               { label: 'календар', active: true },
-              { label: 'чат', active: false, onPress: drawerSwitch },
+              { label: 'чат', active: false, onPress: drawerPages.chat },
+              { label: 'дошка', active: false, onPress: drawerPages.board },
             ],
           }
         : {}),
     }),
-    [drawerSwitch]
+    [drawerPages]
   );
   const shownSearchBead = pointerDensity || notePanelOpen ? null : searchBead;
   const shownPencilBead = pointerDensity ? null : pencilBead;

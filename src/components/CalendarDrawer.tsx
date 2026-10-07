@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Freeze from './Freeze';
 import { DeskVisibilityContext, makeVisibilityBox, setBoxVisible, type VisibilityBox } from '../navigation/deskVisibility';
@@ -58,15 +58,22 @@ export default function CalendarDrawer() {
   const { calendarOpen, closeCalendar, calendarProgress, calendarDragging, calendarJump, leftPage, setLeftPage } = useSideDrawers();
   const chatOn = FEATURES.chatInLeftLayer;
   const calendarFront = !chatOn || leftPage === 'calendar';
-  const toChat = useCallback(() => setLeftPage('chat'), [setLeftPage]);
-  const toCalendar = useCallback(() => setLeftPage('calendar'), [setLeftPage]);
-  const drawer = useMemo(
-    () => ({ open: calendarOpen && calendarFront, close: closeCalendar, jump: calendarJump, switchTo: chatOn ? toChat : undefined }),
-    [calendarOpen, calendarFront, closeCalendar, calendarJump, chatOn, toChat]
+  const pages = useMemo(
+    () => ({
+      calendar: () => setLeftPage('calendar'),
+      chat: () => setLeftPage('chat'),
+      board: () => setLeftPage('board'),
+    }),
+    [setLeftPage]
   );
+  const drawer = useMemo(
+    () => ({ open: calendarOpen && calendarFront, close: closeCalendar, jump: calendarJump, pages: chatOn ? pages : undefined }),
+    [calendarOpen, calendarFront, closeCalendar, calendarJump, chatOn, pages]
+  );
+  const chatView: 'tape' | 'board' = leftPage === 'board' ? 'board' : 'tape';
   const chatLayer = useMemo(
-    () => ({ open: calendarOpen && !calendarFront, close: closeCalendar, switchTo: toCalendar }),
-    [calendarOpen, calendarFront, closeCalendar, toCalendar]
+    () => ({ open: calendarOpen && !calendarFront, close: closeCalendar, view: chatView, pages }),
+    [calendarOpen, calendarFront, closeCalendar, chatView, pages]
   );
   const wanted = calendarOpen || calendarDragging;
   const frozen = useShutFreeze(wanted);
