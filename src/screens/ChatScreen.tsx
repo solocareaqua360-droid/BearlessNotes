@@ -40,6 +40,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import InlineDock from '../components/InlineDock';
 import { addBoardCopy, moveBoardCopy, removeBoardCopy, watchBoardCopies, type BoardCopy } from '../utils/chatBoardCopies';
+import ChatMessageMedia from '../components/ChatMessageMedia';
 import ChatGlueSheet from '../components/ChatGlueSheet';
 import { addToGlue, clearGlue, glueId, glueToNote, watchGlue, type GlueState } from '../utils/chatGlue';
 import ChatBinSheet from '../components/ChatBinSheet';
@@ -1030,44 +1031,21 @@ export default function ChatScreen() {
             preview: "в чаті повинен бути вигляд картки з бази
             даних". It is the same record, not a copy, so
             touching it goes to where it lives. */}
-        {(message.attachments ?? []).map((item, index) => (
-          <View key={`${item.kind}-${item.id}-${index}`} style={styles.attachment}>
-            {item.kind === 'photo' ? (
-              <ChatPhoto
-                id={item.id}
-                uri={item.uri}
-                onPress={() =>
-                  isSelectMode ? toggle(message.id) : navigation.navigate('Photos')
-                }
-              />
-            ) : item.kind === 'file' ? (
-              <ChatFile
-                id={item.id}
-                name={item.name}
-                uri={item.uri}
-                onPress={() =>
-                  isSelectMode ? toggle(message.id) : navigation.navigate('Files')
-                }
-              />
-            ) : (
-              <LinkRow
-                link={{
-                  id: item.id,
-                  url: item.url,
-                  title: item.title,
-                  siteName: item.siteName,
-                  imageUrl: item.imageUrl,
-                  tagIds: [],
-                }}
-                tags={[]}
-                onPress={() => {
-                  if (isSelectMode) return toggle(message.id);
-                  Linking.openURL(item.url).catch(() => {});
-                }}
-              />
-            )}
-          </View>
-        ))}
+        <ChatMessageMedia
+          attachments={message.attachments ?? []}
+          padH={14}
+          padTop={softChat ? 10 : 11}
+          radius={softChat ? 20 : 16}
+          ink={softChat ? softChat.ink : theme.ink.primary}
+          muted={softChat ? softChat.ink3 : theme.ink.muted}
+          line={softChat ? softChat.line : theme.ink.faint}
+          onOpen={(item) => {
+            if (isSelectMode) return toggle(message.id);
+            if (item.kind === 'photo') navigation.navigate('Photos');
+            else if (item.kind === 'file') navigation.navigate('Files');
+            else Linking.openURL(item.url).catch(() => {});
+          }}
+        />
         {!!message.text && <Text style={styles.bubbleText}>{message.text}</Text>}
         {askingId === message.id && (
           <View style={styles.askingRow}>
