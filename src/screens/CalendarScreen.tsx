@@ -911,7 +911,6 @@ export default function CalendarScreen() {
             choices: [
               { label: 'календар', active: true },
               { label: 'чат', active: false, onPress: drawerPages.chat },
-              { label: 'дошка', active: false, onPress: drawerPages.board },
             ],
           }
         : {}),

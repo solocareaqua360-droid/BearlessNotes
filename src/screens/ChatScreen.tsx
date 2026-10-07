@@ -40,6 +40,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import InlineDock from '../components/InlineDock';
 import { addBoardCopy, moveBoardCopy, removeBoardCopy, watchBoardCopies, type BoardCopy } from '../utils/chatBoardCopies';
+import ChatBinSheet from '../components/ChatBinSheet';
 import ChatDayCamera, { cameraCardWidth } from '../components/ChatDayCamera';
 import ChatDayBoard, { BOARD_COLS, boardCardWidth, type BoardDay } from '../components/ChatDayBoard';
 import { useFrameDimensions } from '../hooks/useResponsiveLayout';
@@ -48,7 +49,7 @@ import EdgeFade from '../components/EdgeFade';
 import { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { ChatMessage, deleteChatMessage, groupChatMessages, isChatMessageSorted, markChatMessageTask, markChatMessagesUsed, sendGeminiReply, setChatMessagesDeferred, watchChat, setChatMessagesInProject, setChatProjectContext } from '../utils/chat';
+import { ChatMessage, CHAT_BIN_DAYS, deleteChatMessage, groupChatMessages, purgeChatMessage, restoreChatMessage, watchChatBin, isChatMessageSorted, markChatMessageTask, markChatMessagesUsed, sendGeminiReply, setChatMessagesDeferred, watchChat, setChatMessagesInProject, setChatProjectContext } from '../utils/chat';
 import { FEATURES } from '../features';
 import { useChatSortedBefore } from '../utils/chatSorting';
 import {
@@ -294,6 +295,18 @@ export default function ChatScreen() {
       watchChat(setMessages, (e) => notify('Чат не завантажився', e.message)),
     []
   );
+  // THE BIN: deleted messages wait here, and the ones past their time go for good.
+  const [bin, setBin] = useState<ChatMessage[]>([]);
+  const [binOpen, setBinOpen] = useState(false);
+  useEffect(
+    () =>
+      watchChatBin((list) => {
+        setBin(list);
+        const stale = Date.now() - CHAT_BIN_DAYS * 86400000;
+        list.filter((m) => (m.deletedAt ?? 0) < stale).forEach((m) => purgeChatMessage(m.id).catch(() => {}));
+      }, (e) => notify('Кошик не завантажився', e.message)),
+    []
+  );
 
   // How many wait. Hidden (zero) until the date the count starts from is
   // known, so the old messages never flash as unsorted.
@@ -466,8 +479,8 @@ export default function ChatScreen() {
       label: 'Чат',
       choices: [
         { label: 'календар', active: false, onPress: layerPages?.calendar },
-        { label: 'чат', active: !boardView, onPress: boardView ? layerPages?.chat : undefined },
-        { label: 'дошка', active: boardView, onPress: boardView ? undefined : layerPages?.board },
+        // The board is the chat zoomed out (a pinch gets there), not a page of its own.
+        { label: 'чат', active: true, onPress: boardView ? layerPages?.chat : undefined },
       ],
     }),
     [layerPages, boardView]
@@ -634,6 +647,7 @@ export default function ChatScreen() {
   // THE BOARD LOOK of the layer's chat (see ChatDayBoard): one frame per
   // day, newest day first, the cards in the order they were said.
   const camera = FEATURES.chatBoardCamera;
+  const copiesOn = camera && FEATURES.chatBoardCopies;
   const [boardLevel, setBoardLevel] = useState(camera ? 0 : 1);
   // The board's own zoom ends where the tape begins: nearer than the
   // nearest level is the tape, and a pinch out from the tape is the board.
@@ -680,9 +694,9 @@ export default function ChatScreen() {
   // while the camera board is what is on screen.
   const [boardCopies, setBoardCopies] = useState<BoardCopy[]>([]);
   useEffect(() => {
-    if (!camera || !boardView) return;
+    if (!copiesOn || !boardView) return;
     return watchBoardCopies(setBoardCopies, (e) => notify('Копії не завантажились', e.message));
-  }, [camera, boardView]);
+  }, [copiesOn, boardView]);
   const cameraDays = useMemo(() => {
     const since = Date.now() - boardMonths * 30 * 86400000;
     return boardDays.filter((d) => d.messages[0].createdAt >= since || d.messages.some((m) => m.createdAt >= since)).reverse();
@@ -777,7 +791,7 @@ export default function ChatScreen() {
     ? [
         // On the camera board: a card is put on the table as a copy (the
         // message stays in the chat), and a copy is taken off it again.
-        ...(camera && boardView
+        ...(copiesOn && boardView
           ? [
               pressed?.copyId
                 ? {
@@ -920,7 +934,7 @@ export default function ChatScreen() {
     if (ids.length === 0) return;
     const sure = await confirm({
       title: ids.length === 1 ? 'Видалити повідомлення?' : `Видалити ${ids.length} повідомлень?`,
-      message: 'Це єдине, що справді прибирає їх з чату.',
+      message: `Вони підуть у кошик на ${CHAT_BIN_DAYS} днів, звідти можна повернути.`,
       confirmLabel: 'Видалити',
     });
     if (!sure) return;
@@ -1289,6 +1303,18 @@ export default function ChatScreen() {
                 { kind: 'rule' as const },
               ]
             : []),
+          ...(bin.length > 0
+            ? [
+                { kind: 'rule' as const },
+                {
+                  label: 'Кошик',
+                  icon: 'trash-outline' as const,
+                  count: bin.length,
+                  onPress: () => setBinOpen(true),
+                },
+                { kind: 'rule' as const },
+              ]
+            : []),
           {
             label: 'Усі вкладення',
             icon: 'attach-outline' as const,
@@ -1302,6 +1328,18 @@ export default function ChatScreen() {
             onPress: () => setFilterKind(kind),
           })),
         ]}
+      />
+
+      <ChatBinSheet
+        visible={binOpen}
+        onClose={() => setBinOpen(false)}
+        items={bin}
+        label={(m) => (m.attachments?.[0] ? attachmentLabel(m.attachments[0]) : '…')}
+        onRestore={(id) => restoreChatMessage(id).catch((e: Error) => notify('Не вдалося', e.message))}
+        onPurge={async (id) => {
+          const sure = await confirm({ title: 'Видалити назавжди?', message: 'Це повідомлення не можна буде повернути.', confirmLabel: 'Видалити' });
+          if (sure) purgeChatMessage(id).catch((e: Error) => notify('Не вдалося', e.message));
+        }}
       />
 
       {/* Where the chosen messages go. Notes only: a message is text, and

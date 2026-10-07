@@ -53,6 +53,8 @@ export type ChatMessage = {
   // Not sorted anywhere, but no longer "not yet looked at" - it leaves the
   // «Необроблене» count and waits under «Відкладене».
   deferred?: boolean;
+  // In the bin (2026-10-07): deleted, kept for CHAT_BIN_DAYS, then gone for good.
+  deletedAt?: number;
 };
 
 // WHETHER A MESSAGE HAS BEEN DEALT WITH (the chat's «не розібране»). Not a
@@ -127,6 +129,7 @@ export function watchChat(
     ownedQuery('chat'),
     (snapshot) => {
       const messages = snapshot.docs
+        .filter((d) => !d.data().deletedAt)
         .map((d) => ({
           id: d.id,
           text: (d.data().text as string) ?? '',
@@ -202,8 +205,47 @@ export async function groupChatMessages(
 // The one thing here that really removes something. Nothing else in this
 // screen consumes a message - harvesting leaves it where it is - so this
 // is deliberately the only way a message ever leaves the chat.
+//
+// Since 2026-10-07 «the only way» puts the message in the BIN, not into
+// nothing: a copy on the board's menu once deleted two real messages, and a
+// delete that cannot be taken back is not one this screen should have.
+export const CHAT_BIN_DAYS = 30;
+
 export async function deleteChatMessage(id: string) {
+  await updateDoc(doc(db, 'chat', id), { deletedAt: Date.now() });
+}
+
+export async function restoreChatMessage(id: string) {
+  await updateDoc(doc(db, 'chat', id), { deletedAt: deleteField() });
+}
+
+// Gone for good - from the bin only.
+export async function purgeChatMessage(id: string) {
   await deleteDoc(doc(db, 'chat', id));
+}
+
+// What is in the bin, the most recently deleted first.
+export function watchChatBin(onMessages: (messages: ChatMessage[]) => void, onError: (error: Error) => void) {
+  return onSnapshot(
+    ownedQuery('chat'),
+    (snapshot) => {
+      onMessages(
+        snapshot.docs
+          .filter((d) => !!d.data().deletedAt)
+          .map((d) => ({
+            id: d.id,
+            text: (d.data().text as string) ?? '',
+            createdAt: (d.data().createdAt as number) ?? 0,
+            deletedAt: d.data().deletedAt as number,
+            attachments:
+              (d.data().attachments as ChatAttachment[] | undefined) ??
+              (d.data().attachment ? [d.data().attachment as ChatAttachment] : undefined),
+          }))
+          .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0))
+      );
+    },
+    (e) => onError(e as Error)
+  );
 }
 
 // What a message became, when it became something to do.
