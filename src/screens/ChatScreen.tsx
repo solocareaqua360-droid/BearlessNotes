@@ -35,6 +35,8 @@ import { getGeminiKey } from '../utils/geminiKey';
 import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockShowContext, useStableTopExtras, useTopBack, useTopExtras } from '../navigation/navDock';
 import type { DockAction, DockBead } from '../navigation/navDock';
 import { ChatLayerContext } from '../navigation/sideDrawers';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import InlineDock from '../components/InlineDock';
 import ChatDayBoard, { BOARD_COLS, boardCardWidth, type BoardDay } from '../components/ChatDayBoard';
 import { useFrameDimensions } from '../hooks/useResponsiveLayout';
@@ -603,9 +605,29 @@ export default function ChatScreen() {
   // THE BOARD LOOK of the layer's chat (see ChatDayBoard): one frame per
   // day, newest day first, the cards in the order they were said.
   const [boardLevel, setBoardLevel] = useState(1);
+  // The board's own zoom ends where the tape begins: nearer than the
+  // nearest level is the tape, and a pinch out from the tape is the board.
+  const boardLevelRef = useRef(boardLevel);
+  boardLevelRef.current = boardLevel;
+  const leaveBoard = layerPages?.chat;
   const stepBoard = useMemo(
-    () => (step: 1 | -1) => setBoardLevel((l) => Math.min(BOARD_COLS.length - 1, Math.max(0, l + step))),
-    []
+    () => (step: 1 | -1) => {
+      if (step === -1 && boardLevelRef.current === 0) {
+        leaveBoard?.();
+        return;
+      }
+      setBoardLevel((l) => Math.min(BOARD_COLS.length - 1, Math.max(0, l + step)));
+    },
+    [leaveBoard]
+  );
+  const enterBoard = layerPages?.board;
+  const tapePinch = useMemo(
+    () =>
+      Gesture.Pinch().onEnd((e) => {
+        'worklet';
+        if (e.scale < 0.8 && enterBoard) runOnJS(enterBoard)();
+      }),
+    [enterBoard]
   );
   const boardDays = useMemo<BoardDay[]>(() => {
     if (!boardView) return [];
@@ -996,6 +1018,33 @@ export default function ChatScreen() {
     );
   }
 
+  // The tape: the chat's messages, newest last (the list is inverted).
+  const tapeList = (
+    <FlatList
+    ref={listRef}
+    inverted
+    data={listRows}
+    keyExtractor={(row) => row.key}
+    // Inverted, so top and bottom swap: paddingTop is the visual
+    // bottom (clear of the dock), paddingBottom the visual top.
+    // The list runs edge to edge, under the bar and the projects'
+    // row at the top and the dock below; what passes under them
+    // melts into the ground (EdgeFade), as on every other list.
+    contentContainerStyle={[styles.list, { paddingTop: dockClear + insets.bottom, paddingBottom: headerH + 8 }]}
+    onScrollToIndexFailed={() => {}}
+    renderItem={({ item }) => {
+      if (item.kind === 'day') {
+        return (
+          <View style={styles.dayRow}>
+            <Text style={styles.dayLabel}>{item.label}</Text>
+          </View>
+        );
+      }
+      return renderMessageBubble(item.message, false);
+    }}
+            />
+  );
+
   return (
     <SoftSurfaceContext.Provider value={softChat}>
     <View style={styles.container}>
@@ -1049,30 +1098,12 @@ export default function ChatScreen() {
             frameColor={softChat ? softChat.line : theme.ink.faint}
             frameFill={softChat ? 'rgba(255,255,255,0.35)' : 'transparent'}
           />
+        ) : inLayer ? (
+          <GestureDetector gesture={tapePinch}>
+            <View style={{ flex: 1 }}>{tapeList}</View>
+          </GestureDetector>
         ) : (
-          <FlatList
-            ref={listRef}
-            inverted
-            data={listRows}
-            keyExtractor={(row) => row.key}
-            // Inverted, so top and bottom swap: paddingTop is the visual
-            // bottom (clear of the dock), paddingBottom the visual top.
-            // The list runs edge to edge, under the bar and the projects'
-            // row at the top and the dock below; what passes under them
-            // melts into the ground (EdgeFade), as on every other list.
-            contentContainerStyle={[styles.list, { paddingTop: dockClear + insets.bottom, paddingBottom: headerH + 8 }]}
-            onScrollToIndexFailed={() => {}}
-            renderItem={({ item }) => {
-              if (item.kind === 'day') {
-                return (
-                  <View style={styles.dayRow}>
-                    <Text style={styles.dayLabel}>{item.label}</Text>
-                  </View>
-                );
-              }
-              return renderMessageBubble(item.message, false);
-            }}
-          />
+          tapeList
         )}
       </ContentColumn>
 
