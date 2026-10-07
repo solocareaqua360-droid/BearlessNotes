@@ -21,5 +21,5 @@ export const FEATURES = {
   // Дошка чату як КАМЕРА над столом (ChatDayCamera): картки лежать один раз,
   // щипок наближає/віддаляє весь стіл і зупиняється на одній із трьох висот.
   // Off: the board re-flows its cards one, two or four to a row, as before.
-  chatBoardCamera: false,
+  chatBoardCamera: true,
 } as const;
