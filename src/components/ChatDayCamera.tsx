@@ -95,6 +95,18 @@ function CopyCard({
   );
 }
 
+// The table can be slid sideways between its two side fields (a card's width
+// each, where copies will lie). `tx` is the screen x of the table's left
+// edge; this keeps the visible part inside the table with its fields, and
+// centres the table when it is smaller than the screen.
+function clampTx(t: number, s: number, width: number, gutter: number): number {
+  'worklet';
+  const lo = width - s * (width + gutter);
+  const hi = s * gutter;
+  if (lo > hi) return (width - s * width) / 2;
+  return Math.min(hi, Math.max(lo, t));
+}
+
 export default function ChatDayCamera({
   days,
   width,
@@ -137,7 +149,18 @@ export default function ChatDayCamera({
   const baseH = useSharedValue(0);
   const scrollY = useSharedValue(0);
   const viewH = useSharedValue(height);
+  const gutter = cardWidth + 12;
+  const tx = useSharedValue(clampTx(0, CAMERA_SNAPS[snap] ?? 1, width, gutter));
+  // The screen point the table is scaled around while it settles: where the
+  // fingers were (or the tap).
+  const anchorX = useSharedValue(width / 2);
+  const anchorY = useSharedValue(height / 2);
+  const gesturing = useSharedValue(false);
   const startScale = useSharedValue(1);
+  const startTx = useSharedValue(0);
+  const startScroll = useSharedValue(0);
+  const startFx = useSharedValue(0);
+  const startFy = useSharedValue(0);
   const padTop = useSharedValue(paddingTop);
   useEffect(() => {
     viewH.value = height;
@@ -168,14 +191,16 @@ export default function ChatDayCamera({
     scrollY.value = e.contentOffset.y;
   });
 
-  // The middle of the screen stays where it is while the scale changes.
+  // While the scale changes by itself (settling on a height), the point
+  // under the anchor stays under it. A pinch does the same by its own hand.
   useAnimatedReaction(
     () => scale.value,
     (now, before) => {
-      if (before === null || before === now || baseH.value === 0) return;
-      const mid = viewH.value / 2;
-      const point = (scrollY.value + mid - padTop.value) / before;
-      const y = Math.max(0, point * now + padTop.value - mid);
+      if (gesturing.value || before === null || before === now || baseH.value === 0) return;
+      const wx = (anchorX.value - tx.value) / before;
+      const wy = (scrollY.value + anchorY.value - padTop.value) / before;
+      tx.value = clampTx(anchorX.value - now * wx, now, width, gutter);
+      const y = Math.max(0, padTop.value + now * wy - anchorY.value);
       scrollTo(scrollRef, 0, y, false);
       scrollY.value = y;
     }
@@ -209,18 +234,41 @@ export default function ChatDayCamera({
     [snap, onSnap, onLeave, scale]
   );
 
+  // Two fingers: the table is scaled around the point between them AND
+  // follows them, so sliding both fingers moves it. Every frame is worked
+  // out from where the gesture began, not from the last frame, so a clamp
+  // or a late scroll cannot pile up an error.
   const pinch = Gesture.Pinch()
-    .onStart(() => {
+    .onStart((e) => {
       'worklet';
+      gesturing.value = true;
       startScale.value = scale.value;
+      startTx.value = tx.value;
+      startScroll.value = scrollY.value;
+      startFx.value = e.focalX;
+      startFy.value = e.focalY;
     })
     .onUpdate((e) => {
       'worklet';
-      scale.value = Math.min(MAX_SCALE, Math.max(MIN_SCALE, startScale.value * e.scale));
+      const s1 = Math.min(MAX_SCALE, Math.max(MIN_SCALE, startScale.value * e.scale));
+      const wx = (startFx.value - startTx.value) / startScale.value;
+      const wy = (startScroll.value + startFy.value - padTop.value) / startScale.value;
+      scale.value = s1;
+      tx.value = clampTx(e.focalX - s1 * wx, s1, width, gutter);
+      const y = Math.max(0, padTop.value + s1 * wy - e.focalY);
+      scrollTo(scrollRef, 0, y, false);
+      scrollY.value = y;
+      anchorX.value = e.focalX;
+      anchorY.value = e.focalY;
     })
     .onEnd(() => {
       'worklet';
+      gesturing.value = false;
       runOnJS(settle)(scale.value);
+    })
+    .onFinalize(() => {
+      'worklet';
+      gesturing.value = false;
     });
 
   // Copies not placed yet lie below the days, two to a row.
@@ -238,9 +286,12 @@ export default function ChatDayCamera({
   const cycle = useCallback(() => onSnap((snap + 1) % CAMERA_SNAPS.length), [snap, onSnap]);
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
-    .onEnd((_e, ok) => {
+    .onEnd((e, ok) => {
       'worklet';
-      if (ok) runOnJS(cycle)();
+      if (!ok) return;
+      anchorX.value = e.x;
+      anchorY.value = e.y;
+      runOnJS(cycle)();
     });
   const gesture = Gesture.Simultaneous(pinch, doubleTap);
 
@@ -248,7 +299,7 @@ export default function ChatDayCamera({
     height: baseH.value * scale.value,
   }));
   const tableStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: (width - width * scale.value) / 2 }, { scale: scale.value }],
+    transform: [{ translateX: tx.value }, { scale: scale.value }],
   }));
 
   return (
