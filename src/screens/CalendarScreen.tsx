@@ -900,6 +900,23 @@ export default function CalendarScreen() {
   const drawerExtras = useStableTopExtras([...calendarMenu], calendarSelect);
   const drawerClose = calendarDrawer?.close;
   const drawerBack = useMemo(() => (drawerClose ? { onPress: drawerClose, dimmed: false } : null), [drawerClose]);
+  // The drawer's other page, as words in the bar: «календар | чат».
+  const drawerSwitch = calendarDrawer?.switchTo;
+  const drawerTitle = useMemo(
+    () => ({
+      icon: 'calendar-outline',
+      label: 'Календар',
+      ...(drawerSwitch
+        ? {
+            choices: [
+              { label: 'календар', active: true },
+              { label: 'чат', active: false, onPress: drawerSwitch },
+            ],
+          }
+        : {}),
+    }),
+    [drawerSwitch]
+  );
   const shownSearchBead = pointerDensity || notePanelOpen ? null : searchBead;
   const shownPencilBead = pointerDensity ? null : pencilBead;
   useDockBeads(calendarDrawer ? null : shownSearchBead, calendarDrawer ? null : shownPencilBead);
@@ -2185,7 +2202,7 @@ export default function CalendarScreen() {
           <TopNavBar
             inline={{ width: windowWidth }}
             softInline={!!S}
-            title={{ icon: 'calendar-outline', label: 'Календар' }}
+            title={drawerTitle}
             backOverride={drawerBack}
             extrasOverride={drawerExtras}
             searchOverride={

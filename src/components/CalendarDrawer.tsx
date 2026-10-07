@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import Freeze from './Freeze';
 import { DeskVisibilityContext, makeVisibilityBox, setBoxVisible, type VisibilityBox } from '../navigation/deskVisibility';
 import CalendarScreen from '../screens/CalendarScreen';
 import DatabasesScreen from '../screens/DatabasesScreen';
 import { useWindowDimensions } from 'react-native';
-import { CalendarDrawerContext, DatabasesLayerContext, databasesDrawerWidth, useSideDrawers } from '../navigation/sideDrawers';
+import ChatScreen from '../screens/ChatScreen';
+import { FEATURES } from '../features';
+import { CalendarDrawerContext, ChatLayerContext, DatabasesLayerContext, databasesDrawerWidth, useSideDrawers } from '../navigation/sideDrawers';
 import SideLayer from './SideLayer';
 import { useRenderTimer } from '../utils/perfWatch';
 
@@ -44,27 +47,66 @@ function useShutFreeze(visible: boolean): boolean {
 // CalendarScreen, told it lives here (CalendarDrawerContext): it draws its
 // own bar and dock inside the layer and publishes nothing for the
 // window's, which fade out as it comes in.
+//
+// With features.chatInLeftLayer the layer holds TWO pages, the calendar and
+// the chat (ChatLayerContext), switched from the words in the layer's own
+// bar. Both stay mounted once seen - the calendar keeps its day, the chat
+// its place - and the one not in front is frozen and told the layer is not
+// open for it, so it says nothing to the bar or the dock.
 export default function CalendarDrawer() {
   useRenderTimer('Шторка календаря');
-  const { calendarOpen, closeCalendar, calendarProgress, calendarDragging, calendarJump } = useSideDrawers();
+  const { calendarOpen, closeCalendar, calendarProgress, calendarDragging, calendarJump, leftPage, setLeftPage } = useSideDrawers();
+  const chatOn = FEATURES.chatInLeftLayer;
+  const calendarFront = !chatOn || leftPage === 'calendar';
+  const toChat = useCallback(() => setLeftPage('chat'), [setLeftPage]);
+  const toCalendar = useCallback(() => setLeftPage('calendar'), [setLeftPage]);
   const drawer = useMemo(
-    () => ({ open: calendarOpen, close: closeCalendar, jump: calendarJump }),
-    [calendarOpen, closeCalendar, calendarJump]
+    () => ({ open: calendarOpen && calendarFront, close: closeCalendar, jump: calendarJump, switchTo: chatOn ? toChat : undefined }),
+    [calendarOpen, calendarFront, closeCalendar, calendarJump, chatOn, toChat]
   );
-  const frozen = useShutFreeze(calendarOpen || calendarDragging);
+  const chatLayer = useMemo(
+    () => ({ open: calendarOpen && !calendarFront, close: closeCalendar, switchTo: toCalendar }),
+    [calendarOpen, calendarFront, closeCalendar, toCalendar]
+  );
+  const wanted = calendarOpen || calendarDragging;
+  const frozen = useShutFreeze(wanted);
   const box = useVisibilityBox(!frozen);
+  // The chat is built the first time the layer is pulled out on it, not at
+  // the app's start.
+  const [chatBuilt, setChatBuilt] = useState(false);
+  useEffect(() => {
+    if (chatOn && !calendarFront && wanted) setChatBuilt(true);
+  }, [chatOn, calendarFront, wanted]);
   return (
     <SideLayer side="left" open={calendarOpen} close={closeCalendar} progress={calendarProgress} dragging={calendarDragging}>
-      <CalendarDrawerContext.Provider value={drawer}>
-        <DeskVisibilityContext.Provider value={box}>
-          <Freeze freeze={frozen}>
-            <CalendarScreen />
-          </Freeze>
-        </DeskVisibilityContext.Provider>
-      </CalendarDrawerContext.Provider>
+      <View style={[StyleSheet.absoluteFill, !calendarFront && styles.away]}>
+        <CalendarDrawerContext.Provider value={drawer}>
+          <DeskVisibilityContext.Provider value={box}>
+            <Freeze freeze={frozen || !calendarFront}>
+              <CalendarScreen />
+            </Freeze>
+          </DeskVisibilityContext.Provider>
+        </CalendarDrawerContext.Provider>
+      </View>
+      {chatOn && chatBuilt && (
+        <View style={[StyleSheet.absoluteFill, calendarFront && styles.away]}>
+          <ChatLayerContext.Provider value={chatLayer}>
+            <DeskVisibilityContext.Provider value={box}>
+              <Freeze freeze={frozen || calendarFront}>
+                <ChatScreen />
+              </Freeze>
+            </DeskVisibilityContext.Provider>
+          </ChatLayerContext.Provider>
+        </View>
+      )}
     </SideLayer>
   );
 }
+
+const styles = StyleSheet.create({
+  // The page not in front: laid out nowhere, drawn nowhere.
+  away: { display: 'none' },
+});
 
 // THE DATABASES, right of the last desk - the app library. «Більше» as it
 // is, over the blurred desk; a tap on a tile opens that database full

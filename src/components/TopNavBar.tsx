@@ -99,7 +99,15 @@ type PathContext = Extract<DockContext, { kind: 'path' }>;
 // piece on the same plate.
 // `onPress` makes the title itself a control - the board's name, tapped
 // to rename it, the way its old chip at the top was.
-export type TopTitle = { icon: string; label: string; onPress?: () => void };
+export type TopTitle = {
+  icon: string;
+  label: string;
+  onPress?: () => void;
+  // Several words in the title's place, each a button, the one in force
+  // standing out - the left layer's «календар | чат». Replaces the single
+  // title (the icon and label are then only its accessibility name).
+  choices?: { label: string; active: boolean; onPress?: () => void }[];
+};
 // A note says where it lives instead: its folder, then its own name -
 // "папка › назва", each folder a way to that folder, the name itself the
 // place you are.
@@ -341,7 +349,25 @@ function TopNavBar({
                   pointerEvents={path ? 'none' : 'box-none'}
                 >
                   {trail && <TrailRow trail={trail} radius={pieceRadius} ink={ink} inkMuted={inkMuted} soft={soft} />}
-                  {title && (
+                  {title?.choices && (
+                    <View style={styles.titlePress}>
+                      <Surface soft={soft} style={styles.piece} radius={pieceRadius}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                          {title.choices.map((choice) => (
+                            <Pressable key={choice.label} onPress={choice.onPress} hitSlop={8} accessibilityLabel={choice.label}>
+                              <Text
+                                numberOfLines={1}
+                                style={[styles.label, styles.titleLabel, { color: choice.active ? ink : inkMuted, opacity: choice.active ? 1 : 0.75 }, soft && styles.softLabel]}
+                              >
+                                {choice.label}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      </Surface>
+                    </View>
+                  )}
+                  {title && !title.choices && (
                     <Pressable
                       disabled={!title.onPress}
                       onPress={title.onPress}
@@ -1028,7 +1054,12 @@ const styles = StyleSheet.create({
 function sameTitle(a?: TopTitle, b?: TopTitle): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
-  return a.icon === b.icon && a.label === b.label && a.onPress === b.onPress;
+  if (a.icon !== b.icon || a.label !== b.label || a.onPress !== b.onPress) return false;
+  const ac = a.choices;
+  const bc = b.choices;
+  if (ac === bc) return true;
+  if (!ac || !bc || ac.length !== bc.length) return false;
+  return ac.every((c, i) => c.label === bc[i].label && c.active === bc[i].active && c.onPress === bc[i].onPress);
 }
 function sameTrail(a?: TopTrail, b?: TopTrail): boolean {
   if (a === b) return true;

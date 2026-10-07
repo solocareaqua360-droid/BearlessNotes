@@ -144,10 +144,15 @@ export default function InlineDock({
               <Pressable
                 onPress={right.extra.onPress}
                 accessibilityLabel={right.extra.label}
-                style={({ pressed }) => inset(false, pressed)}
+                style={({ pressed }) => inset(!!right.extra?.filled && !!right.extra?.active, pressed)}
               >
-                <Ionicons name={right.extra.icon as never} size={20} color={soft.ink} />
-                {right.extra.active && <View style={[styles.fieldDot, { backgroundColor: soft.accent, borderColor: soft.chrome }]} />}
+                <Ionicons name={right.extra.icon as never} size={20} color={right.extra.filled && right.extra.active ? soft.card : soft.ink} />
+                {right.extra.active && !right.extra.filled && <View style={[styles.fieldDot, { backgroundColor: soft.accent, borderColor: soft.chrome }]} />}
+                {!!right.extra.count && (
+                  <View style={[styles.fieldCount, { backgroundColor: soft.accent, borderColor: soft.chrome }]}>
+                    <Text style={styles.fieldCountText}>{right.extra.count > 99 ? '99+' : right.extra.count}</Text>
+                  </View>
+                )}
               </Pressable>
             )}
             {right && (
@@ -210,6 +215,11 @@ export default function InlineDock({
             style={[styles.softButton, surface, { width: TWO_BEAD }, right.extra.active && { backgroundColor: soft.ink }]}
           >
             <Ionicons name={right.extra.icon as never} size={21} color={right.extra.active ? soft.card : soft.ink} />
+            {!!right.extra.count && (
+              <View style={[styles.fieldCount, { backgroundColor: soft.accent, borderColor: soft.chrome }]}>
+                <Text style={styles.fieldCountText}>{right.extra.count > 99 ? '99+' : right.extra.count}</Text>
+              </View>
+            )}
           </Pressable>
         )}
         {right && (
@@ -258,6 +268,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 18,
+  },
+  // A number on a round button (the chat's «не розібране»).
+  fieldCount: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fieldCountText: {
+    color: '#fff',
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
   },
   fieldDot: {
     position: 'absolute',

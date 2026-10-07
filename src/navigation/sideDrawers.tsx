@@ -2,6 +2,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { SharedValue, useSharedValue } from 'react-native-reanimated';
 import { useDrawerCoverPublisher, useNavDrawerProgress, useWhileFocused } from './navDock';
 import { listenCalendarRequests } from './calendarRequest';
+import { FEATURES } from '../features';
 
 // THE TWO SCREENS BESIDE THE DESKS - the user's iOS model (2026-09-28):
 // the calendar left of the first desk, the databases right of the last,
@@ -24,6 +25,12 @@ type SideDrawers = {
   setCalendarDragging: (dragging: boolean) => void;
   openCalendar: () => void;
   closeCalendar: () => void;
+  // The layer holds two pages (features.chatInLeftLayer): the page in
+  // front, and a way to open the layer ON the calendar whatever was last
+  // in front (the start desk's «Щоденник»).
+  leftPage: 'calendar' | 'chat';
+  setLeftPage: (page: 'calendar' | 'chat') => void;
+  openDiary: () => void;
   databasesProgress: SharedValue<number> | null;
   databasesOpen: boolean;
   databasesDragging: boolean;
@@ -55,6 +62,9 @@ const NONE: SideDrawers = {
   setCalendarDragging: () => {},
   openCalendar: () => {},
   closeCalendar: () => {},
+  leftPage: 'calendar',
+  setLeftPage: () => {},
+  openDiary: () => {},
   databasesProgress: null,
   databasesOpen: false,
   databasesDragging: false,
@@ -80,10 +90,12 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
   const [databasesDragging, setDatabasesDragging] = useState(false);
   const [blocks, setBlocks] = useState(0);
   const [calendarJump, setCalendarJump] = useState<{ key: string; n: number } | null>(null);
+  const [leftPage, setLeftPage] = useState<'calendar' | 'chat'>(FEATURES.chatInLeftLayer ? 'chat' : 'calendar');
   useEffect(
     () =>
       listenCalendarRequests((key) => {
         setCalendarJump((prev) => ({ key, n: (prev?.n ?? 0) + 1 }));
+        setLeftPage('calendar');
         setDatabasesOpen(false);
         setCalendarOpen(true);
       }),
@@ -120,6 +132,11 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
     setCalendarOpen(true);
   }, []);
   const closeCalendar = useCallback(() => setCalendarOpen(false), []);
+  const openDiary = useCallback(() => {
+    setLeftPage('calendar');
+    setDatabasesOpen(false);
+    setCalendarOpen(true);
+  }, []);
   const openDatabases = useCallback(() => {
     setCalendarOpen(false);
     setDatabasesOpen(true);
@@ -143,6 +160,9 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
       setCalendarDragging,
       openCalendar,
       closeCalendar,
+      leftPage,
+      setLeftPage,
+      openDiary,
       databasesProgress,
       databasesOpen,
       databasesDragging,
@@ -163,6 +183,8 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
       calendarDragging,
       openCalendar,
       closeCalendar,
+      leftPage,
+      openDiary,
       databasesProgress,
       databasesOpen,
       databasesDragging,
@@ -180,8 +202,8 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
   // drawer or holds the swipe re-rendered whenever any drawer state moved -
   // the start desk, on every note opened and closed.
   const actions = useMemo(
-    () => ({ openCalendar, closeCalendar, openDatabases, closeDatabases, blockSwipe, holdEdgeOnly, setEdgeZone }),
-    [openCalendar, closeCalendar, openDatabases, closeDatabases, blockSwipe, holdEdgeOnly, setEdgeZone]
+    () => ({ openCalendar, closeCalendar, openDiary, openDatabases, closeDatabases, blockSwipe, holdEdgeOnly, setEdgeZone }),
+    [openCalendar, closeCalendar, openDiary, openDatabases, closeDatabases, blockSwipe, holdEdgeOnly, setEdgeZone]
   );
   return (
     <SideDrawerActionsContext.Provider value={actions}>
@@ -198,7 +220,7 @@ export function useSideDrawers(): SideDrawers {
 
 type SideDrawerActions = Pick<
   SideDrawers,
-  'openCalendar' | 'closeCalendar' | 'openDatabases' | 'closeDatabases' | 'blockSwipe' | 'holdEdgeOnly' | 'setEdgeZone'
+  'openCalendar' | 'closeCalendar' | 'openDiary' | 'openDatabases' | 'closeDatabases' | 'blockSwipe' | 'holdEdgeOnly' | 'setEdgeZone'
 >;
 const SideDrawerActionsContext = createContext<SideDrawerActions | null>(null);
 
@@ -227,6 +249,17 @@ export const CalendarDrawerContext = createContext<{
   open: boolean;
   close: () => void;
   jump: { key: string; n: number } | null;
+  // The layer's other page (features.chatInLeftLayer): the chat. Stable.
+  switchTo?: () => void;
+} | null>(null);
+
+// The same, for the chat when it is the layer's page: it draws its own bar
+// and dock inside the layer and publishes nothing for the window's.
+export const ChatLayerContext = createContext<{
+  open: boolean;
+  close: () => void;
+  // The layer's other page: the calendar. Stable.
+  switchTo: () => void;
 } | null>(null);
 
 // The same, for the databases («Більше») drawn inside theirs.

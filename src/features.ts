@@ -14,4 +14,8 @@ export const FEATURES = {
   // rows in its menu, «Відкласти» in a message's own menu. Off: the chat
   // is exactly what it was.
   chatSorting: true,
+  // Чат у лівому шарі, на місці шторки календаря: a switch «календар | чат»
+  // in the layer's bar, the swipe from the left edge opens the page last
+  // used (the chat at first). Off: the layer is the calendar alone.
+  chatInLeftLayer: true,
 } as const;

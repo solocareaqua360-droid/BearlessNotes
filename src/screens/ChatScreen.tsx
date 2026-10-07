@@ -1,5 +1,5 @@
 import { usePaneBar } from '../navigation/paneBar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { IS_POINTER } from '../utils/pointer';
 import { rightClick } from '../utils/rightClick';
 import { ActivityIndicator, FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -32,7 +32,11 @@ import { onSnapshot } from '../firestore';
 import type { Group } from '../types';
 import { askGemini } from '../utils/gemini';
 import { getGeminiKey } from '../utils/geminiKey';
-import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockShowContext, useTopBack, useTopExtras } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockShowContext, useStableTopExtras, useTopBack, useTopExtras } from '../navigation/navDock';
+import type { DockAction, DockBead } from '../navigation/navDock';
+import { ChatLayerContext } from '../navigation/sideDrawers';
+import InlineDock from '../components/InlineDock';
+import { useFrameDimensions } from '../hooks/useResponsiveLayout';
 import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import EdgeFade from '../components/EdgeFade';
 import { MAX_CONTENT_WIDTH } from '../components/ContentColumn';
@@ -177,12 +181,23 @@ export default function ChatScreen() {
   // glass ("чат"). On a phone: the soft bar and dock, the soft ground,
   // messages as soft cards, Inter.
   const softChat = useSoftDatabase();
-  useChromeStyle('soft', !!softChat);
+  // THE LEFT LAYER'S PAGE (features.chatInLeftLayer): drawn inside the layer
+  // with its own bar and dock, and telling nothing to the window's - the
+  // layer is always mounted, so anything it published would be the
+  // window's chrome at all times.
+  const chatLayer = useContext(ChatLayerContext);
+  const inLayer = !!chatLayer;
+  useChromeStyle('soft', !!softChat && !inLayer);
   const styles = softenStyles(useStyles(makeStyles), softChat, softChatRecipe);
   const insets = useSafeAreaInsets();
   const dockClear = useDockClearance();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
+  // Speaks to the window's bar and dock: a chat that is a screen of its own.
+  const publishing = isFocused && !inLayer;
+  // In front, either way.
+  const shown = inLayer ? chatLayer!.open : isFocused;
+  const { width: frameWidth } = useFrameDimensions();
   const showContext = useDockShowContext();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -238,9 +253,9 @@ export default function ChatScreen() {
   // Writing from the capture window while a project's chat is open lands
   // in that project (and in the main chat, marked as written there).
   useEffect(() => {
-    setChatProjectContext(isFocused && projectFilter ? projectFilter : null);
+    setChatProjectContext(shown && projectFilter ? projectFilter : null);
     return () => setChatProjectContext(null);
-  }, [isFocused, projectFilter]);
+  }, [shown, projectFilter]);
 
   useEffect(
     () =>
@@ -346,14 +361,14 @@ export default function ChatScreen() {
   const ground = softChat ? softChat.bg : null;
   const listRef = useRef<FlatList<Row>>(null);
 
-  useDockLeave('chatbubbles-outline', () => navigation.goBack());
+  useDockLeave('chatbubbles-outline', () => navigation.goBack(), publishing);
   // A BAR LIKE EVERY DESK'S (the user's, 2026-10-04): «Чат» at the top with
   // the way back and choosing at its edge; the dock below is the search
   // field holding «Фільтр» and the microphone, with back on the right.
   const bar = useTopNavOn();
   // Inside the databases' drawer the drawer draws the bar - see paneBar.
   const paneBar = usePaneBar();
-  useTopBack(() => navigation.goBack(), bar);
+  useTopBack(() => navigation.goBack(), bar && publishing);
   useTopExtras(
     null,
     {
@@ -364,58 +379,76 @@ export default function ChatScreen() {
         if (isSelectMode) showContext();
       },
     },
-    bar && isFocused
+    bar && publishing
   );
-  useDockBeads(
-    isFocused && bar
-      ? {
-          icon: isSelectMode ? 'close-outline' : isSearching ? 'close-outline' : 'search-outline',
-          active: isSearching,
-          onPress: () => {
-            if (isSelectMode) {
-              setSelected(new Set());
-              setIsSelectMode(false);
-              showContext();
-              return;
-            }
-            if (isSearching) setSearchQuery('');
-            setIsSearching((v) => !v);
-          },
-        }
-      : isFocused
-      ? {
-          icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
-          active: isSelectMode,
-          onPress: () => {
+  // The two beads, once: published to the window's dock when this chat is a
+  // screen of its own, drawn by the layer's own dock when it is the layer's page.
+  const leftBead: DockBead | null = bar
+    ? {
+        icon: isSelectMode ? 'close-outline' : isSearching ? 'close-outline' : 'search-outline',
+        active: isSearching,
+        onPress: () => {
+          if (isSelectMode) {
             setSelected(new Set());
-            setIsSelectMode((prev) => !prev);
-            if (isSelectMode) showContext();
-          },
-        }
-      : null,
-    isFocused
+            setIsSelectMode(false);
+            if (!inLayer) showContext();
+            return;
+          }
+          if (isSearching) setSearchQuery('');
+          setIsSearching((v) => !v);
+        },
+      }
+    : {
+        icon: isSelectMode ? 'close-outline' : 'checkmark-circle-outline',
+        active: isSelectMode,
+        onPress: () => {
+          setSelected(new Set());
+          setIsSelectMode((prev) => !prev);
+          if (isSelectMode && !inLayer) showContext();
+        },
+      };
+  const rightBead: DockBead = {
+    icon: 'mic-outline',
+    onPress: openCapture,
+    extra: bar
       ? {
-          icon: 'mic-outline',
-          onPress: openCapture,
-          extra: bar
-            ? {
-                icon: 'funnel-outline',
-                label: 'Фільтр',
-                active: filterKind !== null || (sorting && stateFilter !== 'all'),
-                // With the sorting on: the circle turns dark while a
-                // filter is in force, and carries the unsorted count.
-                filled: sorting,
-                count: sorting ? sortCounts.unsorted : undefined,
-                onPress: () => setFilterMenuOpen((v) => !v),
-              }
-            : undefined,
+          icon: 'funnel-outline',
+          label: 'Фільтр',
+          active: filterKind !== null || (sorting && stateFilter !== 'all'),
+          // With the sorting on: the circle turns dark while a filter is
+          // in force, and carries the unsorted count.
+          filled: sorting,
+          count: sorting ? sortCounts.unsorted : undefined,
+          onPress: () => setFilterMenuOpen((v) => !v),
         }
-      : null
+      : undefined,
+  };
+  useDockBeads(publishing ? leftBead : null, publishing ? rightBead : null);
+  // The layer's own bar: «календар | чат» for a title, the way back closes
+  // the layer, choosing at the bar's edge.
+  const layerSwitch = chatLayer?.switchTo;
+  const layerTitle = useMemo(
+    () => ({
+      icon: 'chatbubbles-outline',
+      label: 'Чат',
+      choices: [
+        { label: 'календар', active: false, onPress: layerSwitch },
+        { label: 'чат', active: true },
+      ],
+    }),
+    [layerSwitch]
   );
-  useDockActions(
-    !isFocused
-      ? null
-      : isSelectMode
+  const layerClose = chatLayer?.close;
+  const layerBack = useMemo(() => (layerClose ? { onPress: layerClose, dimmed: false } : null), [layerClose]);
+  const layerExtras = useStableTopExtras(null, {
+    active: isSelectMode,
+    onPress: () => {
+      setSelected(new Set());
+      setIsSelectMode((prev) => !prev);
+    },
+  });
+  const dockActionsList: DockAction[] | null =
+    isSelectMode
         ? selected.size > 0
           ? [
               {
@@ -475,8 +508,8 @@ export default function ChatScreen() {
               active: filterKind !== null || (sorting && stateFilter !== 'all'),
               onPress: () => setFilterMenuOpen((v) => !v),
             },
-          ]
-  );
+          ];
+  useDockActions(publishing ? dockActionsList : null);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -960,7 +993,7 @@ export default function ChatScreen() {
           onLayout={(e) => setHeaderH(Math.round(e.nativeEvent.layout.height))}
         >
         <View pointerEvents="none" style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
-        {isFocused && bar && !paneBar && <TopNavBar title={{ icon: 'chatbubbles-outline', label: 'Чат' }} />}
+        {publishing && bar && !paneBar && <TopNavBar title={{ icon: 'chatbubbles-outline', label: 'Чат' }} />}
         {chatProjects.length > 0 && (
           <ProjectTabsRow
             items={chatProjects}
@@ -1080,6 +1113,26 @@ export default function ChatScreen() {
         newNoteDefault={`Думки · ${formatShortDate(new Date())}`}
         onClose={() => setPressed(null)}
       />
+      {/* The layer's page: its own bar and dock, inside it and moving with
+          it - see CalendarDrawer. */}
+      {inLayer && (
+        <>
+          <TopNavBar
+            inline={{ width: frameWidth }}
+            softInline={!!softChat}
+            title={layerTitle}
+            backOverride={layerBack}
+            extrasOverride={layerExtras}
+          />
+          <InlineDock
+            width={frameWidth}
+            beads={{ left: leftBead, right: rightBead }}
+            actions={dockActionsList}
+            soft={softChat}
+            back={chatLayer!.close}
+          />
+        </>
+      )}
     </View>
     </SoftSurfaceContext.Provider>
   );

@@ -92,7 +92,7 @@ export default function StartScreen() {
   const navigation = useNavigation();
   const topNavOn = useTopNavOn();
   const dockClear = useDockClearance();
-  const { openCalendar, openDatabases } = useSideDrawerActions();
+  const { openDiary, openDatabases } = useSideDrawerActions();
   const desksControl = useContext(DesksControlContext);
   // The soft style, as every database's chrome wears it (DatabaseChrome).
   useChromeStyle('soft', true);
@@ -349,7 +349,7 @@ export default function StartScreen() {
       icon: 'document-outline',
       onOpen: openIn('files', 'db:files', 'Files'),
     }),
-    { key: 'diary', label: 'Щоденник', icon: 'book-outline', direct: openCalendar },
+    { key: 'diary', label: 'Щоденник', icon: 'book-outline', direct: openDiary },
     {
       key: 'bases',
       label: 'Бази даних',
