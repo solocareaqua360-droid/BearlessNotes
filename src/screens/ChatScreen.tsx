@@ -805,7 +805,7 @@ export default function ChatScreen() {
       .then((snapshot) =>
         setRecentNotes(
           snapshot.docs
-            .filter((d) => !d.id.startsWith('day_') && !d.data().deletedAt)
+            .filter((d) => !d.id.startsWith('day_') && !d.data().deletedAt && d.data().owner?.kind !== 'chat')
             .map((d) => ({ id: d.id, title: (d.data().title as string) ?? '', updatedAt: (d.data().updatedAt as number) ?? 0 }))
             .sort((a, b) => b.updatedAt - a.updatedAt)
             .map(({ id, title }) => ({ id, title }))

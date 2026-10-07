@@ -82,7 +82,7 @@ export default function SaveDestinationSheet({
       setDocuments(
         [...snapshot.docs]
           .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
-          .filter((d) => !d.data().calendarDate && !d.data().deletedAt)
+          .filter((d) => !d.data().calendarDate && !d.data().deletedAt && d.data().owner?.kind !== 'chat')
           .map((d) => ({ id: d.id, title: d.data().title }))
       );
     }, listenError('SaveDestinationSheet:documents'));

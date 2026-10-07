@@ -81,6 +81,8 @@ function startListening() {
         // Daily notes belong to the calendar, not to this list - the
         // same line DocumentsScreen draws.
         if (data.calendarDate) return;
+        // The chat's glue is a draft, not a note anyone links to.
+        if (data.owner?.kind === 'chat') return;
         next.set(d.id, {
           id: d.id,
           title: (data.title as string) ?? '',

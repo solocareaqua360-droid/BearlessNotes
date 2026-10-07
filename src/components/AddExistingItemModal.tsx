@@ -320,7 +320,7 @@ export default function AddExistingItemModal({
       setDocuments(
         [...snapshot.docs]
           .sort(newestFirst)
-          .filter((d) => !d.data().calendarDate && !d.data().deletedAt)
+          .filter((d) => !d.data().calendarDate && !d.data().deletedAt && d.data().owner?.kind !== 'chat')
           .map((d) => ({ id: d.id, title: (d.data().title as string) || 'Без назви' }))
       );
     }, listenerFailed('documents'));
