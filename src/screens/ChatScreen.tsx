@@ -791,7 +791,7 @@ export default function ChatScreen() {
                 : {
                     key: 'copyout',
                     label: 'Копія на стіл',
-                    icon: 'copy-outline' as const,
+                    icon: 'albums-outline' as const,
                     onPress: () => {
                       addBoardCopy(pressedLive.id, -1, -1).catch((e: Error) => notify('Не вдалося', e.message));
                     },
@@ -1323,7 +1323,16 @@ export default function ChatScreen() {
         onSave={gatherIntoNewNote}
       />
       <ChatMessageMenu
-        anchor={pressed?.rect ?? null}
+        anchor={
+          pressed && camera && boardView
+            ? // The camera draws cards smaller than they are lifted: the lifted
+              // one is shown at its own size, kept on the screen.
+              (() => {
+                const natural = cameraCardWidth(frameWidth);
+                return { ...pressed.rect, width: natural, x: Math.max(16, Math.min(pressed.rect.x, frameWidth - natural - 16)) };
+              })()
+            : pressed?.rect ?? null
+        }
         bubble={pressedLive ? (boardView ? renderBoardCard(pressedLive, camera ? cameraCardWidth(frameWidth) : boardCardWidth(frameWidth, boardLevel), true) : renderMessageBubble(pressedLive, true)) : null}
         actions={menuActions}
         projects={projects.map((p) => ({ id: p.id, name: p.name, color: p.color, on: (pressedLive?.projectIds ?? []).includes(p.id) }))}
