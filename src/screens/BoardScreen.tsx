@@ -4300,7 +4300,7 @@ export default function BoardScreen() {
       // reasoning a note's own card follows.
       if (card.boardId) navigation.push('Board', { boardId: card.boardId });
     } else if (type === 'document') {
-      if (FEATURES.cardWindow && isDayBoard && !isTwoPane && card.documentId) {
+      if (FEATURES.cardWindow && isDayBoard && card.documentId) {
         const open = {
           docId: card.documentId,
           title: card.documentTitle || 'Документ',
@@ -7729,7 +7729,7 @@ export default function BoardScreen() {
           />
         </View>
       )}
-      {!isTwoPane && cardWindow !== null && (
+      {cardWindow !== null && (
         <Animated.View
           style={[
             styles.cardWindow,
@@ -7737,9 +7737,18 @@ export default function BoardScreen() {
             // Writing: the card reaches down to the screen's foot, so the
             // bar above the keyboard stands where it does in a note - and
             // nothing is clipped, so that bar can span the whole screen.
-            cardWindowWriting && { overflow: 'visible' },
+            // Writing, the frame runs to the screen's foot for the editor's
+            // bar and panel, but only the CARD is painted - by the layer
+            // below - so under it the board shows, not a square of paper.
+            cardWindowWriting && { overflow: 'visible', backgroundColor: 'transparent', boxShadow: 'none' },
           ]}
         >
+          {cardWindowWriting && (
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.cardWindowGround, cardWindowOutlineStyle, { backgroundColor: theme.paper.fill }]}
+            />
+          )}
           <View style={styles.cardWindowHead}>
             <Ionicons name="document-text-outline" size={16} color="#55555a" />
             <Text style={styles.cardWindowTitle} numberOfLines={1}>
@@ -7770,7 +7779,8 @@ export default function BoardScreen() {
                 const id = cardWindow.docId;
                 Keyboard.dismiss();
                 setCardWindow(null);
-                navigation.navigate('EditorModal', { documentId: id });
+                if (isTwoPane) setPaneDocId(id);
+                else navigation.navigate('EditorModal', { documentId: id });
               }}
             >
               <Ionicons name="expand-outline" size={17} color="#1c1c1e" />
@@ -7799,6 +7809,7 @@ export default function BoardScreen() {
                 navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
                 extraFields={cardWindow.docId.startsWith('day_') ? { calendarDate: cardWindow.docId.slice(4) } : undefined}
                 panelBleed={cardWindowWriting ? Math.round((windowWidth - winSize.w) / 2) : 0}
+                clearGround={cardWindowWriting}
                 onPanelChange={setCardWindowPanel}
               />
             </TextScaleOverride>
@@ -7932,6 +7943,14 @@ const makeStyles = (theme: Theme) =>
       borderBottomWidth: 2.5,
       borderColor: 'rgba(0,0,0,0.35)',
       borderBottomRightRadius: 4,
+    },
+    cardWindowGround: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      borderRadius: 22,
+      boxShadow: '0px 6px 24px rgba(0,0,0,0.18)',
     },
     cardWindowOutline: {
       position: 'absolute',

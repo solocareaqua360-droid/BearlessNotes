@@ -306,6 +306,9 @@ type Props =
       // this much (the frame must not clip - the calendar's scrolling
       // paper does not).
       panelBleed?: number;
+      // No ground of its own: whoever holds the note paints it (a board's
+      // card window paints just the card, so below it the board shows).
+      clearGround?: boolean;
     }
   // Pane mode (DocumentsScreen's two-pane layout on a wide screen): the
   // WHOLE editor, header and title and cover included - unlike embedded
@@ -493,6 +496,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const onPanelChange = 'embedded' in props ? props.onPanelChange : undefined;
   const scrollPaperProp = 'embedded' in props ? !!props.scrollPaper : false;
   const panelBleed = 'embedded' in props ? props.panelBleed ?? 0 : 0;
+  const clearGround = 'embedded' in props ? !!props.clearGround : false;
   const [scrollViewportH, setScrollViewportH] = useState(0);
   const onSaveStatusChange =
     'embedded' in props ? props.onSaveStatusChange : 'pane' in props ? props.onSaveStatusChange : undefined;
@@ -5586,6 +5590,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // Told the bar may reach past the frame (a board's card window):
         // the frame must not clip it, or its end buttons are cut off.
         embedded && panelBleed > 0 && { overflow: 'visible' as const },
+        clearGround && { backgroundColor: 'transparent' },
         // The still frame - on the canvas only now; see scrollSheet for
         // where the page's own frame went.
         sheetPage && !scrollSheet && styles.pageSheet,
