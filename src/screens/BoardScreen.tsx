@@ -2660,6 +2660,8 @@ export default function BoardScreen() {
   const winH = useSharedValue(260);
   const [winSize, setWinSize] = useState({ w: 240, h: 260 });
   const cardWindowTyping = useSharedValue(false);
+  // Where this screen starts in the window (0 on a phone; under the tabs on the Mac).
+  const rootOffYSV = useSharedValue(0);
   // 0 at the card's place on the board, 1 where it is written in.
   const cardWindowTypingP = useSharedValue(0);
   const lastKbSV = useSharedValue(0);
@@ -2671,7 +2673,7 @@ export default function BoardScreen() {
     const rawLeft =
       canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
     if (cardWindowTyping.value) {
-      const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+      const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       // Centred while writing, so the note's bar and panel - which reach
@@ -2682,12 +2684,12 @@ export default function BoardScreen() {
       const at = rawTop + (top - rawTop) * p;
       // Down to the screen's foot while writing: the editor's bar and
       // panel stand there, measured from this frame's bottom.
-      return { top: at, left: rawLeft + (left - rawLeft) * p, width: w, height: windowHeight - at };
+      return { top: at, left: rawLeft + (left - rawLeft) * p, width: w, height: windowHeight - rootOffYSV.value - at };
     }
     const p = cardWindowTypingP.value;
     if (p > 0) {
       // On the way back: from where it was written in to its place.
-      const barTop = windowHeight - lastKbSV.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+      const barTop = windowHeight - rootOffYSV.value - lastKbSV.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       const left = (windowWidth - w) / 2;
@@ -2703,7 +2705,7 @@ export default function BoardScreen() {
     const rawLeft =
       canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
     if (cardWindowTyping.value) {
-      const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+      const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       const p = cardWindowTypingP.value;
@@ -2712,7 +2714,7 @@ export default function BoardScreen() {
     }
     const p = cardWindowTypingP.value;
     if (p > 0) {
-      const barTop = windowHeight - lastKbSV.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+      const barTop = windowHeight - rootOffYSV.value - lastKbSV.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       return { top: rawTop + (top - rawTop) * p - CARD_BUTTONS_H, left: rawLeft + ((windowWidth - w) / 2 - rawLeft) * p, width: w };
@@ -2721,7 +2723,7 @@ export default function BoardScreen() {
   });
   // The painted card while writing: its own height, ending on the bar.
   const cardWindowOutlineStyle = useAnimatedStyle(() => {
-    const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+    const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
     const rawTop =
       canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
     const h = Math.min(winH.value, barTop - cardWindowMinTop);
@@ -4034,6 +4036,7 @@ export default function BoardScreen() {
       }
       root.measureInWindow((rx, ry) => {
         rootOffsetRef.current = { x: rx, y: ry };
+        rootOffYSV.value = ry;
         canvasOriginX.value = cx - rx;
         canvasOriginY.value = cy - ry;
         then();
@@ -6772,14 +6775,14 @@ export default function BoardScreen() {
   // While a card window is being written in, the note's own bar and panel
   // own the foot of the screen - the board's dock steps away.
   useDockBeads(
-    boardShowing && !cardWindowWriting && !inlineBlockId && (!bar || !selecting)
+    boardShowing && !(cardWindowWriting && !pointerDensity) && !inlineBlockId && (!bar || !selecting)
       ? {
           icon: 'layers-outline',
           active: layersDrawerVisible,
           onPress: () => setLayersDrawerVisible((v) => !v),
         }
       : null,
-    boardShowing && !cardWindowWriting && !inlineBlockId && (bar ? !selecting : selectedCardIds.size === 0)
+    boardShowing && !(cardWindowWriting && !pointerDensity) && !inlineBlockId && (bar ? !selecting : selectedCardIds.size === 0)
       ? // The right round button is the way OUT of the board on the phone
         // (2026-10-08, the user's: "+ з дошки перенести в її док, а замість
         // + кнопка назад") - as it already is inside the databases; "+"
@@ -6818,7 +6821,7 @@ export default function BoardScreen() {
   // variable, scrolling list of actions with a word under each icon -
   // this was simply the one screen that had never been moved onto it.
   useDockActions(
-    (paneDocOpen && paneFullscreen) || cardWindowWriting || inlineBlockId !== null
+    (paneDocOpen && paneFullscreen) || (cardWindowWriting && !pointerDensity) || inlineBlockId !== null
       ? null
       : boardFocused
       ? selectedCardIds.size > 0 || selectedShapeIds.size > 0
