@@ -7781,7 +7781,7 @@ export default function BoardScreen() {
       )}
       {cardWindow !== null && (
         <>
-        <Animated.View pointerEvents="box-none" style={[styles.cardWindowFrame, cardWindowStyle]}>
+        <Animated.View style={[styles.cardWindowFrame, cardWindowStyle]}>
           {cardWindowWriting && (
             <Animated.View
               pointerEvents="none"
@@ -7789,7 +7789,6 @@ export default function BoardScreen() {
             />
           )}
           <View
-            pointerEvents="box-none"
             style={[
               styles.cardWindowInner,
               { borderRadius: 16 * cardWindow.zoom },
