@@ -1323,6 +1323,7 @@ type DraggableCardProps = {
 // the board's own units, and the size its text is read at - one size for the
 // card at rest and the same card being written in.
 const PAPER_DOC_HEIGHT = 260;
+const CARD_BUTTONS_H = 44;
 const PAPER_DOC_TEXT = 0.62;
 
 function DraggableCard({
@@ -2450,7 +2451,7 @@ export default function BoardScreen() {
   // window lies exactly where the card is, at its size - at the board's
   // zoom - and follows it. Writing, it keeps that size and only rises, if
   // it has to, so its foot sits on the bar above the keyboard.
-  const cardWindowMinTop = boardInsets.top + 68 + 44;
+  const cardWindowMinTop = boardInsets.top + 68 + CARD_BUTTONS_H;
   const winW = useSharedValue(240);
   const winH = useSharedValue(260);
   const [winSize, setWinSize] = useState({ w: 240, h: 260 });
@@ -2471,9 +2472,12 @@ export default function BoardScreen() {
       const left = (windowWidth - w) / 2;
       // Down to the screen's foot while writing: the editor's bar and
       // panel stand there, measured from this frame's bottom.
-      return { top, left, width: w, height: windowHeight - top };
+      return { top: top - CARD_BUTTONS_H, left, width: w, height: windowHeight - top + CARD_BUTTONS_H };
     }
-    return { top: rawTop, left: rawLeft, width: w, height: winH.value };
+    // The frame reaches CARD_BUTTONS_H above the card: Android delivers
+    // touches only inside a view's own bounds, so the buttons that stand
+    // over the card's corner must be inside the frame.
+    return { top: rawTop - CARD_BUTTONS_H, left: rawLeft, width: w, height: winH.value + CARD_BUTTONS_H };
   });
   // The painted card while writing: its own height, ending on the bar.
   const cardWindowOutlineStyle = useAnimatedStyle(() => {
@@ -7988,10 +7992,10 @@ const makeStyles = (theme: Theme) =>
       borderBottomRightRadius: 4,
     },
     cardWindowFrame: { position: 'absolute' },
-    cardWindowInner: { flex: 1 },
+    cardWindowInner: { flex: 1, marginTop: CARD_BUTTONS_H },
     cardWindowButtons: {
       position: 'absolute',
-      top: -44,
+      top: 0,
       right: 0,
       flexDirection: 'row',
       gap: 6,
@@ -8001,7 +8005,7 @@ const makeStyles = (theme: Theme) =>
     paperDocTitle: { flex: 1 },
     cardWindowGround: {
       position: 'absolute',
-      top: 0,
+      top: CARD_BUTTONS_H,
       left: 0,
       right: 0,
       borderRadius: 22,
@@ -8009,7 +8013,7 @@ const makeStyles = (theme: Theme) =>
     },
     cardWindowOutline: {
       position: 'absolute',
-      top: 0,
+      top: CARD_BUTTONS_H,
       left: 0,
       right: 0,
       borderWidth: 2,
