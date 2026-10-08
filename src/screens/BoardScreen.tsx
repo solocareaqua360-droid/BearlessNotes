@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Alert,
   BackHandler,
+  Keyboard,
   Image,
   Linking,
   Modal,
@@ -140,6 +141,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { FEATURES } from '../features';
+import DocumentCardBlocks from '../components/DocumentCardBlocks';
 import { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockWide, useTopBack, useTopExtras } from '../navigation/navDock';
 import TopNavBar, { useTopNavOn } from '../components/TopNavBar';
@@ -1736,10 +1738,17 @@ function DraggableCard({
             <Text style={styles.refLabel} numberOfLines={card.documentExpanded ? undefined : 2}>
               {card.documentTitle || 'Без назви'}
             </Text>
-            {!!card.documentPreviewText && (
-              <Text style={styles.documentPreviewText} numberOfLines={card.documentExpanded ? undefined : 4}>
-                {card.documentPreviewText}
-              </Text>
+            {card.documentExpanded && FEATURES.cardWindow && card.documentId ? (
+              // Opened out: the note's own blocks, as they are.
+              <TextScaleOverride factor={0.72}>
+                <DocumentCardBlocks documentId={card.documentId} />
+              </TextScaleOverride>
+            ) : (
+              !!card.documentPreviewText && (
+                <Text style={styles.documentPreviewText} numberOfLines={card.documentExpanded ? undefined : 4}>
+                  {card.documentPreviewText}
+                </Text>
+              )
             )}
           </View>
         ) : type === 'paragraph' ? (
@@ -2157,6 +2166,10 @@ export default function BoardScreen() {
   // the calendar shows a day in: no header, no title, no «+ папка»).
   const [cardWindow, setCardWindow] = useState<{ docId: string; title: string; worldX: number; worldY: number; worldW: number } | null>(null);
   const cardWindowDocId = cardWindow?.docId ?? null;
+  // The note's own panel (lists, text, insert - the one that takes the
+  // keyboard's place) counts as writing too: the card stands up and the
+  // panel spans the screen under it, instead of opening inside the card.
+  const [cardWindowPanel, setCardWindowPanel] = useState(false);
   const isDayBoard = boardId.startsWith('day_');
   // One column read as flowing text in the right-hand half. Not a document
   // and not a copy: it edits the cards themselves, which is why nothing
@@ -2416,7 +2429,7 @@ export default function BoardScreen() {
     if (cardWindowTyping.value) {
       return { top: cardWindowMinTop, left: (windowWidth - cardWindowTypingW) / 2, width: cardWindowTypingW };
     }
-    const w = Math.min(Math.max(cardWorldW.value * scale.value, 300), windowWidth - 56);
+    const w = Math.min(Math.max(cardWorldW.value * scale.value, 270), windowWidth - 56);
     const rawTop =
       canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
     const rawLeft =
@@ -2427,9 +2440,10 @@ export default function BoardScreen() {
       width: w,
     };
   });
+  const cardWindowWriting = keyboardHeight > 0 || cardWindowPanel;
   useEffect(() => {
-    cardWindowTyping.value = keyboardHeight > 0;
-  }, [keyboardHeight, cardWindowTyping]);
+    cardWindowTyping.value = cardWindowWriting;
+  }, [cardWindowWriting, cardWindowTyping]);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
   // The world point under the pinch's own focal (the midpoint between the
@@ -3449,6 +3463,7 @@ export default function BoardScreen() {
     // A tap on the board beside an open card window closes it, as in
     // Scrintal.
     setCardWindow(null);
+    setCardWindowPanel(false);
     setSelectedShapeId(null);
     setSelectedCardIds(new Set());
     setSelectedShapeIds(new Set());
@@ -7655,7 +7670,7 @@ export default function BoardScreen() {
             // Writing: the card reaches down to the screen's foot, so the
             // bar above the keyboard stands where it does in a note - and
             // nothing is clipped, so that bar can span the whole screen.
-            keyboardHeight > 0 ? { bottom: 0, overflow: 'visible' } : { height: cardWindowH },
+            cardWindowWriting ? { bottom: 0, overflow: 'visible' } : { height: cardWindowH },
           ]}
         >
           <View style={styles.cardWindowHead}>
@@ -7663,38 +7678,70 @@ export default function BoardScreen() {
             <Text style={styles.cardWindowTitle} numberOfLines={1}>
               {cardWindow.title}
             </Text>
+            {/* The card's top-right corner (the user's): opened out on the
+                board, full screen, and the way out - a tick while writing. */}
             <Pressable
-              style={styles.cardWindowButton}
+              style={styles.cardWindowIcon}
+              hitSlop={4}
+              accessibilityLabel="Розгорнути на дошці"
               onPress={() => {
                 const id = cardWindow.docId;
+                Keyboard.dismiss();
+                setCardWindow(null);
+                setCards((prev) =>
+                  prev.map((c) => (c.type === 'document' && c.documentId === id ? { ...c, documentExpanded: !c.documentExpanded } : c))
+                );
+              }}
+            >
+              <Ionicons name="reader-outline" size={17} color="#1c1c1e" />
+            </Pressable>
+            <Pressable
+              style={styles.cardWindowIcon}
+              hitSlop={4}
+              accessibilityLabel="На весь екран"
+              onPress={() => {
+                const id = cardWindow.docId;
+                Keyboard.dismiss();
                 setCardWindow(null);
                 navigation.navigate('EditorModal', { documentId: id });
               }}
             >
-              <Ionicons name="expand-outline" size={15} color="#1c1c1e" />
-              <Text style={styles.cardWindowButtonText}>Відкрити</Text>
+              <Ionicons name="expand-outline" size={17} color="#1c1c1e" />
+            </Pressable>
+            <Pressable
+              style={[styles.cardWindowIcon, cardWindowWriting && { backgroundColor: '#1c1c1e' }]}
+              hitSlop={4}
+              accessibilityLabel={cardWindowWriting ? 'Готово' : 'Закрити'}
+              onPress={() => {
+                Keyboard.dismiss();
+                setCardWindow(null);
+                setCardWindowPanel(false);
+              }}
+            >
+              <Ionicons name={cardWindowWriting ? 'checkmark' : 'close-outline'} size={18} color={cardWindowWriting ? '#ffffff' : '#1c1c1e'} />
             </Pressable>
           </View>
-          <View style={[styles.cardWindowBody, keyboardHeight > 0 && { overflow: 'visible' }]}>
-            <TextScaleOverride factor={0.86}>
+          <View style={[styles.cardWindowBody, cardWindowWriting && { overflow: 'visible' }]}>
+            <TextScaleOverride factor={0.76}>
               <DocumentEditorScreen
                 key={cardWindow.docId}
                 embedded
                 documentId={cardWindow.docId}
                 navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
                 extraFields={cardWindow.docId.startsWith('day_') ? { calendarDate: cardWindow.docId.slice(4) } : undefined}
-                panelBleed={keyboardHeight > 0 ? Math.round((windowWidth - cardWindowTypingW) / 2) : 0}
+                panelBleed={cardWindowWriting ? Math.round((windowWidth - cardWindowTypingW) / 2) : 0}
+                onPanelChange={setCardWindowPanel}
               />
             </TextScaleOverride>
           </View>
           {/* The canvas cards' own "being edited" outline - round the CARD
               only, ending above the bar, which belongs to the screen. */}
-          {keyboardHeight > 0 && (
+          {cardWindowWriting && (
             <View
               pointerEvents="none"
               style={[
                 styles.cardWindowOutline,
-                { bottom: keyboardHeight + EDITOR_TOOLBAR_HEIGHT + bottomInset + 10, borderColor: softBoardTokens?.accent ?? '#c46a2c' },
+                { bottom: Math.max(keyboardHeight, cardWindowPanel ? windowHeight * 0.38 : 0) + EDITOR_TOOLBAR_HEIGHT + bottomInset + 10, borderColor: softBoardTokens?.accent ?? '#c46a2c' },
               ]}
             />
           )}
@@ -7833,6 +7880,14 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: 'rgba(0,0,0,0.06)',
     },
     cardWindowButtonText: { fontSize: 13, color: '#1c1c1e' },
+    cardWindowIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(0,0,0,0.06)',
+    },
     cardWindowBody: { flex: 1 },
     docPane: {
       flex: 1,
