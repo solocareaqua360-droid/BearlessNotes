@@ -7781,7 +7781,7 @@ export default function BoardScreen() {
       )}
       {cardWindow !== null && (
         <>
-        <Animated.View style={[styles.cardWindowFrame, cardWindowStyle]}>
+        <Animated.View collapsable={false} style={[styles.cardWindowFrame, cardWindowStyle]}>
           {cardWindowWriting && (
             <Animated.View
               pointerEvents="none"
@@ -7789,6 +7789,10 @@ export default function BoardScreen() {
             />
           )}
           <View
+            // Never flattened away: its style empties while writing, and a
+            // view Android drops takes the focused field out from under the
+            // keyboard - which then closes half a second after opening.
+            collapsable={false}
             style={[
               styles.cardWindowInner,
               { borderRadius: 16 * cardWindow.zoom },
