@@ -139,6 +139,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
+import { FEATURES } from '../features';
 import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockWide, useTopBack, useTopExtras } from '../navigation/navDock';
 import TopNavBar, { useTopNavOn } from '../components/TopNavBar';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -5931,7 +5932,13 @@ export default function BoardScreen() {
         }
       : null,
     boardShowing && (bar ? !selecting : selectedCardIds.size === 0)
-      ? { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
+      ? // The right round button is the way OUT of the board on the phone
+        // (2026-10-08, the user's: "+ з дошки перенести в її док, а замість
+        // + кнопка назад") - as it already is inside the databases; "+"
+        // stands at the end of the tools strip instead.
+        bar && FEATURES.boardDockBack
+        ? { icon: 'chevron-back', onPress: leaveOrClosePane }
+        : { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
       : null
   );
   // Beside the board, both are on show and both have something to say,
@@ -6103,6 +6110,8 @@ export default function BoardScreen() {
               active: canvasTool === 'connect',
               onPress: () => setCanvasTool('connect'),
             },
+            // "+" moved here from the right round button (see useDockBeads).
+            ...(FEATURES.boardDockBack ? [{ key: 'add', icon: 'add-outline', label: 'Додати', onPress: () => setAddSheetVisible(true) }] : []),
           ]
         : [
             // Three separate buttons now, not one cycled through - "чому
