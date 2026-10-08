@@ -6775,14 +6775,14 @@ export default function BoardScreen() {
   // While a card window is being written in, the note's own bar and panel
   // own the foot of the screen - the board's dock steps away.
   useDockBeads(
-    boardShowing && !(cardWindowWriting && !pointerDensity) && !inlineBlockId && (!bar || !selecting)
+    boardShowing && !(cardWindowWriting && !pointerDensity) && !(inlineBlockId && !pointerDensity) && (!bar || !selecting)
       ? {
           icon: 'layers-outline',
           active: layersDrawerVisible,
           onPress: () => setLayersDrawerVisible((v) => !v),
         }
       : null,
-    boardShowing && !(cardWindowWriting && !pointerDensity) && !inlineBlockId && (bar ? !selecting : selectedCardIds.size === 0)
+    boardShowing && !(cardWindowWriting && !pointerDensity) && !(inlineBlockId && !pointerDensity) && (bar ? !selecting : selectedCardIds.size === 0)
       ? // The right round button is the way OUT of the board on the phone
         // (2026-10-08, the user's: "+ з дошки перенести в її док, а замість
         // + кнопка назад") - as it already is inside the databases; "+"
@@ -6821,7 +6821,7 @@ export default function BoardScreen() {
   // variable, scrolling list of actions with a word under each icon -
   // this was simply the one screen that had never been moved onto it.
   useDockActions(
-    (paneDocOpen && paneFullscreen) || (cardWindowWriting && !pointerDensity) || inlineBlockId !== null
+    (paneDocOpen && paneFullscreen) || (cardWindowWriting && !pointerDensity) || (inlineBlockId !== null && !pointerDensity)
       ? null
       : boardFocused
       ? selectedCardIds.size > 0 || selectedShapeIds.size > 0
@@ -8435,7 +8435,7 @@ export default function BoardScreen() {
           />
         </View>
       )}
-      {inlineBlockId !== null && keyboardHeight > 0 && (
+      {inlineBlockId !== null && (keyboardHeight > 0 || pointerDensity) && (
         <View style={[styles.freeBar, { bottom: keyboardHeight + bottomInset, backgroundColor: theme.paper.fill }]}>
           {(
             [
