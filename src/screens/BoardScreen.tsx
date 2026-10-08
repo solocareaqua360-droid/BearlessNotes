@@ -2676,7 +2676,7 @@ export default function BoardScreen() {
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       // Centred while writing, so the note's bar and panel - which reach
       // out the same amount on both sides - span the screen exactly.
-      const left = (windowWidth - w) / 2;
+      const left = pointerDensity ? Math.min(Math.max(rawLeft, 8), windowWidth - w - 8) : (windowWidth - w) / 2;
       // Glides there rather than jumping (the user, on the unfolded Fold).
       const p = cardWindowTypingP.value;
       const at = rawTop + (top - rawTop) * p;
@@ -2707,7 +2707,8 @@ export default function BoardScreen() {
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       const p = cardWindowTypingP.value;
-      return { top: rawTop + (top - rawTop) * p - CARD_BUTTONS_H, left: rawLeft + ((windowWidth - w) / 2 - rawLeft) * p, width: w };
+      const to = pointerDensity ? Math.min(Math.max(rawLeft, 8), windowWidth - w - 8) : (windowWidth - w) / 2;
+      return { top: rawTop + (top - rawTop) * p - CARD_BUTTONS_H, left: rawLeft + (to - rawLeft) * p, width: w };
     }
     const p = cardWindowTypingP.value;
     if (p > 0) {
@@ -2749,7 +2750,9 @@ export default function BoardScreen() {
   // the keyboard is still sliding to the foot for a few frames, and a card
   // that shrank at once had that bar sliding through it (the user saw
   // buttons flash across the card).
-  const writingNow = !!cardWindow?.live && (keyboardHeight > 0 || cardWindowPanel);
+  // At a pointer there is no soft keyboard to say so: a live card is always
+  // ready to be written in, the note's own bar at the window's foot.
+  const writingNow = !!cardWindow?.live && (pointerDensity || keyboardHeight > 0 || cardWindowPanel);
   const [writingHeld, setWritingHeld] = useState(false);
   useEffect(() => {
     if (writingNow) {
