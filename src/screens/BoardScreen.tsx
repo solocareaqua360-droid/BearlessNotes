@@ -2394,11 +2394,18 @@ export default function BoardScreen() {
   const viewportHeightSV = useSharedValue(windowHeight);
   const cardWindowMinTop = boardInsets.top + 68;
   const cardWindowMaxTop = Math.round(windowHeight * 0.42);
+  // While writing the card stands up under the bar: at its own spot low on
+  // the screen it left one line between its head and the keyboard's bar.
+  const cardWindowTyping = useSharedValue(false);
   const cardWindowStyle = useAnimatedStyle(() => {
+    if (cardWindowTyping.value) return { top: cardWindowMinTop };
     const raw =
       canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
     return { top: Math.min(Math.max(raw, cardWindowMinTop), cardWindowMaxTop) };
   });
+  useEffect(() => {
+    cardWindowTyping.value = keyboardHeight > 0;
+  }, [keyboardHeight, cardWindowTyping]);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
   // The world point under the pinch's own focal (the midpoint between the
@@ -7612,7 +7619,8 @@ export default function BoardScreen() {
             // it wears the canvas cards' own "being edited" outline.
             keyboardHeight > 0
               ? { bottom: 0, borderWidth: 2, borderColor: softBoardTokens?.accent ?? '#c46a2c' }
-              : { height: Math.round(windowHeight * 0.5) },
+              : // Without the keyboard the card ends above the dock, not under it.
+              { bottom: dockClear + bottomInset + 8 },
           ]}
         >
           <View style={styles.cardWindowHead}>
