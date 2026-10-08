@@ -233,6 +233,10 @@ export type DockBead = {
   // Drawn round, as the right bead is, not as the wide field - a left
   // bead that is a BUTTON, not a search (the folders' databases).
   round?: boolean;
+  // RIGHT bead that does not CREATE (a view switch): it keeps its own
+  // glyph instead of the one «+» every create circle wears. The folders'
+  // canvas/list switch had turned into a «+» and was lost (2026-10-08).
+  keepIcon?: boolean;
   // RIGHT bead only: a second button that goes with it - drawn as another
   // small circle in the soft dock's search field, ahead of "+" (a personal
   // database's «Подача», 2026-10-04), or as a round button beside it where

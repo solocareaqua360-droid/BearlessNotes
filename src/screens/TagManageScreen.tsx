@@ -117,7 +117,7 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
             onPress: () => setLinksOpen((v) => !v),
           }
         : null,
-    isFocused ? { icon: view === 'canvas' ? 'reorder-four-outline' : 'easel-outline', onPress: switchView } : null
+    isFocused ? { icon: view === 'canvas' ? 'reorder-four-outline' : 'easel-outline', keepIcon: true, onPress: switchView } : null
   );
   // A tag's path IS the tree - "робота/оренда" is the folder "робота"
   // holding "оренда" - and this screen drew them as a flat list of full
