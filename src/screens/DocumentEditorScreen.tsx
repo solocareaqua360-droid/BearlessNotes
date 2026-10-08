@@ -6017,7 +6017,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         style={[
           styles.scrollArea,
           referencesSplit && { paddingRight: referencePanelWidth },
-          scrollHeight !== undefined && { flex: 0, flexGrow: 0, height: Math.max(0, scrollHeight) },
+          // flexBasis too: on the web `flex: 1` leaves a 0% basis that beats a height.
+          scrollHeight !== undefined && { flex: 0, flexGrow: 0, flexShrink: 0, flexBasis: Math.max(0, scrollHeight), height: Math.max(0, scrollHeight) },
         ]}
         contentContainerStyle={[
           embedded && styles.scrollAreaEmbedded,

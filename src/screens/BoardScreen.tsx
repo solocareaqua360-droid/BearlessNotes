@@ -2774,7 +2774,13 @@ export default function BoardScreen() {
   // While writing is held after the keyboard went down, the card stays
   // where it stood over the keyboard rather than dropping and coming back.
   const cardWindowKbNow =
-    keyboardHeight > 0 ? keyboardHeight : cardWindowPanel || cardWindowWriting ? lastKbRef.current || Math.round(windowHeight * 0.36) : 0;
+    keyboardHeight > 0
+      ? keyboardHeight
+      : pointerDensity
+        ? 0
+        : cardWindowPanel || cardWindowWriting
+          ? lastKbRef.current || Math.round(windowHeight * 0.36)
+          : 0;
   const cardWindowScrollH =
     Math.min(winSize.h, windowHeight - cardWindowKbNow - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12 - cardWindowMinTop) - cardHeadH;
   useEffect(() => {
