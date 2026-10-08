@@ -33,7 +33,8 @@ export default function DocumentCardBlocks({ documentId }: { documentId: string 
     [documentId]
   );
   if (!blocks) return null;
-  const all = visibleBlocks(blocks).filter((b) => !(isLightRow(b) && !b.text?.trim() && (b.type ?? 'paragraph') === 'paragraph'));
+  // Empty rows are left out: on a card an empty line is only a gap.
+  const all = visibleBlocks(blocks).filter((b) => !(isLightRow(b) && !b.text?.trim()));
   let numbered = 0;
   let indented = false;
   return (
@@ -102,5 +103,6 @@ export default function DocumentCardBlocks({ documentId }: { documentId: string 
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginHorizontal: -12, marginTop: 4 },
+  // Inside the card, never past its edges.
+  wrap: { marginTop: 4, overflow: 'hidden' },
 });

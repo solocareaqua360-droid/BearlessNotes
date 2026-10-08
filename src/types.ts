@@ -588,6 +588,10 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // adding scroll-vs-drag gesture arbitration for potentially very long
   // text - a card can't be dragged while open, only while collapsed.
   documentExpanded?: boolean;
+  // 'document' cards only - the size its editing window (BoardScreen's
+  // card window) was last given with its corner handle, in screen points.
+  windowW?: number;
+  windowH?: number;
   // Which BoardLayer this card belongs to, if any - see BoardLayer's own
   // comment for how it differs from a column or a container.
   layerId?: string;

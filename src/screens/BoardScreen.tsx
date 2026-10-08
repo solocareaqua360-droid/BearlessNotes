@@ -1740,7 +1740,7 @@ function DraggableCard({
             </Text>
             {card.documentExpanded && FEATURES.cardWindow && card.documentId ? (
               // Opened out: the note's own blocks, as they are.
-              <TextScaleOverride factor={0.72}>
+              <TextScaleOverride factor={0.62}>
                 <DocumentCardBlocks documentId={card.documentId} />
               </TextScaleOverride>
             ) : (
@@ -2166,6 +2166,10 @@ export default function BoardScreen() {
   // the calendar shows a day in: no header, no title, no «+ папка»).
   const [cardWindow, setCardWindow] = useState<{ docId: string; title: string; worldX: number; worldY: number; worldW: number } | null>(null);
   const cardWindowDocId = cardWindow?.docId ?? null;
+  const cardWindowDocIdSV = useSharedValue<string | null>(null);
+  useEffect(() => {
+    cardWindowDocIdSV.value = cardWindowDocId;
+  }, [cardWindowDocId, cardWindowDocIdSV]);
   // The note's own panel (lists, text, insert - the one that takes the
   // keyboard's place) counts as writing too: the card stands up and the
   // panel spans the screen under it, instead of opening inside the card.
@@ -2410,40 +2414,94 @@ export default function BoardScreen() {
   const cardWorldW = useSharedValue(DEFAULT_CARD_WIDTH);
   const viewportHeightSV = useSharedValue(windowHeight);
   const viewportWidthSV = useSharedValue(windowWidth);
-  // The card stays a CARD (version 3, the user's: a window as wide as the
-  // screen "не дає ніяких переваг" over full screen): its own width on the
-  // board, never narrower than reads well, always leaving board in sight
-  // either side. Writing, it is centred at a fixed width, so the bar above
-  // the keyboard can reach out by the same amount on both sides.
-  const cardWindowTypingW = windowWidth - 56;
+  // THE WINDOW'S OWN SIZE (version 4, the user's): it keeps the size it was
+  // given - set with the handle in its bottom-right corner, remembered on
+  // the card - and never grows to fill the screen. Writing, it rises so
+  // its foot sits on the bar above the keyboard, shrinking only if there
+  // is not room for it there.
   const cardWindowMinTop = boardInsets.top + 68;
-  // A FIXED height: the card slides with the board instead of stretching
-  // (its top used to follow the board while its foot stayed put).
-  const cardWindowH = Math.round(Math.min(windowHeight * 0.52, windowHeight - cardWindowMinTop - dockClear - bottomInset - 24));
-  const cardWindowLowest = windowHeight - dockClear - bottomInset - 16 - cardWindowH;
-  const cardWindowMaxTop = Math.round(windowHeight * 0.42);
-  // While writing the card stands up under the bar: at its own spot low on
-  // the screen it left one line between its head and the keyboard's bar.
+  const clampWinW = (w: number) => Math.round(Math.min(Math.max(w, 240), windowWidth - 24));
+  const clampWinH = (h: number) => Math.round(Math.min(Math.max(h, 200), windowHeight - cardWindowMinTop - dockClear - bottomInset - 24));
+  const winW = useSharedValue(300);
+  const winH = useSharedValue(320);
+  const [winSize, setWinSize] = useState({ w: 300, h: 320 });
   const cardWindowTyping = useSharedValue(false);
+  const cardWindowKb = useSharedValue(0);
+  const cardWindowLowest = windowHeight - dockClear - bottomInset - 16;
+  // Where the bar above the keyboard begins (RN's keyboard height leaves
+  // out the navigation inset).
+  const barTopFor = (kb: number) => windowHeight - kb - bottomInset - EDITOR_TOOLBAR_HEIGHT - 6;
   const cardWindowStyle = useAnimatedStyle(() => {
+    const w = winW.value;
     if (cardWindowTyping.value) {
-      return { top: cardWindowMinTop, left: (windowWidth - cardWindowTypingW) / 2, width: cardWindowTypingW };
+      const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 6;
+      const h = Math.min(winH.value, barTop - cardWindowMinTop);
+      const top = barTop - h;
+      // Down to the screen's foot while writing: the editor's bar and
+      // panel stand there, measured from this frame's bottom.
+      return { top, left: (windowWidth - w) / 2, width: w, height: windowHeight - top };
     }
-    const w = Math.min(Math.max(cardWorldW.value * scale.value, 270), windowWidth - 56);
+    const h = winH.value;
     const rawTop =
       canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
     const rawLeft =
       canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
     return {
-      top: Math.min(Math.max(rawTop, cardWindowMinTop), Math.max(cardWindowMinTop, Math.min(cardWindowMaxTop, cardWindowLowest))),
-      left: Math.min(Math.max(rawLeft, 16), windowWidth - w - 16),
+      top: Math.min(Math.max(rawTop, cardWindowMinTop), Math.max(cardWindowMinTop, cardWindowLowest - h)),
+      left: Math.min(Math.max(rawLeft, 12), windowWidth - w - 12),
       width: w,
+      height: h,
     };
   });
+  // The outline round the card while writing ends on the bar.
+  const cardWindowOutlineStyle = useAnimatedStyle(() => {
+    const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 6;
+    return { height: Math.min(winH.value, barTop - cardWindowMinTop) };
+  });
+  // The corner handle: drag to make the window wider or taller.
+  const winStartW = useSharedValue(0);
+  const winStartH = useSharedValue(0);
+  const saveWinSize = useCallback(
+    (w: number, h: number, docId: string | null) => {
+      setWinSize({ w, h });
+      if (!docId) return;
+      setCards((prev) =>
+        prev.map((c) => (c.type === 'document' && c.documentId === docId ? { ...c, windowW: Math.round(w), windowH: Math.round(h) } : c))
+      );
+    },
+    []
+  );
+  const cardWindowMaxW = windowWidth - 24;
+  const cardWindowMaxH = windowHeight - cardWindowMinTop - dockClear - bottomInset - 24;
   const cardWindowWriting = keyboardHeight > 0 || cardWindowPanel;
+  // The panel takes the keyboard's place at the keyboard's height.
+  const lastKbRef = useRef(0);
+  if (keyboardHeight > 0) lastKbRef.current = keyboardHeight;
+  const cardWindowKbNow = keyboardHeight > 0 ? keyboardHeight : cardWindowPanel ? lastKbRef.current || Math.round(windowHeight * 0.36) : 0;
   useEffect(() => {
     cardWindowTyping.value = cardWindowWriting;
-  }, [cardWindowWriting, cardWindowTyping]);
+    cardWindowKb.value = cardWindowKbNow;
+  }, [cardWindowWriting, cardWindowTyping, cardWindowKb, cardWindowKbNow]);
+  const resizeGestureWin = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(2)
+        .onStart(() => {
+          'worklet';
+          winStartW.value = winW.value;
+          winStartH.value = winH.value;
+        })
+        .onUpdate((e) => {
+          'worklet';
+          winW.value = Math.min(Math.max(winStartW.value + e.translationX, 240), cardWindowMaxW);
+          winH.value = Math.min(Math.max(winStartH.value + e.translationY, 200), cardWindowMaxH);
+        })
+        .onEnd(() => {
+          'worklet';
+          runOnJS(saveWinSize)(winW.value, winH.value, cardWindowDocIdSV.value);
+        }),
+    [winW, winH, winStartW, winStartH, cardWindowMaxW, cardWindowMaxH, saveWinSize]
+  );
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
   // The world point under the pinch's own focal (the midpoint between the
@@ -4250,10 +4308,17 @@ export default function BoardScreen() {
           worldY: card.y,
           worldW: Number.isFinite(card.width) ? card.width : DEFAULT_CARD_WIDTH,
         };
+        // The window's size: the one last set with its corner handle, or
+        // the card's own width on screen and a modest height.
+        const w = clampWinW(card.windowW ?? (Number.isFinite(card.width) ? card.width : DEFAULT_CARD_WIDTH) * scale.value);
+        const h = clampWinH(card.windowH ?? windowHeight * 0.42);
         const place = () => {
           cardWorldX.value = open.worldX;
           cardWorldY.value = open.worldY;
           cardWorldW.value = open.worldW;
+          winW.value = w;
+          winH.value = h;
+          setWinSize({ w, h });
           setCardWindow(open);
         };
         const node = canvasRef.current;
@@ -7670,7 +7735,7 @@ export default function BoardScreen() {
             // Writing: the card reaches down to the screen's foot, so the
             // bar above the keyboard stands where it does in a note - and
             // nothing is clipped, so that bar can span the whole screen.
-            cardWindowWriting ? { bottom: 0, overflow: 'visible' } : { height: cardWindowH },
+            cardWindowWriting && { overflow: 'visible' },
           ]}
         >
           <View style={styles.cardWindowHead}>
@@ -7722,14 +7787,16 @@ export default function BoardScreen() {
             </Pressable>
           </View>
           <View style={[styles.cardWindowBody, cardWindowWriting && { overflow: 'visible' }]}>
-            <TextScaleOverride factor={0.76}>
+            {/* The text's size follows the window: a small window reads
+                small, and past a point it stops growing - a note's own size. */}
+            <TextScaleOverride factor={Math.min(1, Math.max(0.6, winSize.w / (windowWidth - 40)))}>
               <DocumentEditorScreen
                 key={cardWindow.docId}
                 embedded
                 documentId={cardWindow.docId}
                 navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
                 extraFields={cardWindow.docId.startsWith('day_') ? { calendarDate: cardWindow.docId.slice(4) } : undefined}
-                panelBleed={cardWindowWriting ? Math.round((windowWidth - cardWindowTypingW) / 2) : 0}
+                panelBleed={cardWindowWriting ? Math.round((windowWidth - winSize.w) / 2) : 0}
                 onPanelChange={setCardWindowPanel}
               />
             </TextScaleOverride>
@@ -7737,13 +7804,17 @@ export default function BoardScreen() {
           {/* The canvas cards' own "being edited" outline - round the CARD
               only, ending above the bar, which belongs to the screen. */}
           {cardWindowWriting && (
-            <View
+            <Animated.View
               pointerEvents="none"
-              style={[
-                styles.cardWindowOutline,
-                { bottom: Math.max(keyboardHeight, cardWindowPanel ? windowHeight * 0.38 : 0) + EDITOR_TOOLBAR_HEIGHT + bottomInset + 10, borderColor: softBoardTokens?.accent ?? '#c46a2c' },
-              ]}
+              style={[styles.cardWindowOutline, cardWindowOutlineStyle, { borderColor: softBoardTokens?.accent ?? '#c46a2c' }]}
             />
+          )}
+          {!cardWindowWriting && (
+            <GestureDetector gesture={resizeGestureWin}>
+              <View style={styles.cardWindowResize} hitSlop={10} accessibilityLabel="Змінити розмір">
+                <View style={styles.cardWindowResizeMark} />
+              </View>
+            </GestureDetector>
           )}
         </Animated.View>
       )}
@@ -7842,6 +7913,23 @@ const makeStyles = (theme: Theme) =>
     },
     paneHidden: {
       display: 'none',
+    },
+    cardWindowResize: {
+      position: 'absolute',
+      right: 0,
+      bottom: 0,
+      width: 36,
+      height: 36,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cardWindowResizeMark: {
+      width: 12,
+      height: 12,
+      borderRightWidth: 2.5,
+      borderBottomWidth: 2.5,
+      borderColor: 'rgba(0,0,0,0.35)',
+      borderBottomRightRadius: 4,
     },
     cardWindowOutline: {
       position: 'absolute',
