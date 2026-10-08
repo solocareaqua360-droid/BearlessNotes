@@ -2485,12 +2485,24 @@ export default function BoardScreen() {
       const left = (windowWidth - w) / 2;
       // Down to the screen's foot while writing: the editor's bar and
       // panel stand there, measured from this frame's bottom.
-      return { top: top - CARD_BUTTONS_H, left, width: w, height: windowHeight - top + CARD_BUTTONS_H };
+      return { top, left, width: w, height: windowHeight - top };
     }
-    // The frame reaches CARD_BUTTONS_H above the card: Android delivers
-    // touches only inside a view's own bounds, so the buttons that stand
-    // over the card's corner must be inside the frame.
-    return { top: rawTop - CARD_BUTTONS_H, left: rawLeft, width: w, height: winH.value + CARD_BUTTONS_H };
+    return { top: rawTop, left: rawLeft, width: w, height: winH.value };
+  });
+  // The buttons' layer: the same left/width as the card, CARD_BUTTONS_H above it.
+  const cardWindowButtonsStyle = useAnimatedStyle(() => {
+    const w = winW.value;
+    const rawTop =
+      canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
+    const rawLeft =
+      canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
+    if (cardWindowTyping.value) {
+      const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+      const h = Math.min(winH.value, barTop - cardWindowMinTop);
+      const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
+      return { top: top - CARD_BUTTONS_H, left: (windowWidth - w) / 2, width: w };
+    }
+    return { top: rawTop - CARD_BUTTONS_H, left: rawLeft, width: w };
   });
   // The painted card while writing: its own height, ending on the bar.
   const cardWindowOutlineStyle = useAnimatedStyle(() => {
@@ -7780,6 +7792,7 @@ export default function BoardScreen() {
         </View>
       )}
       {cardWindow !== null && (
+        <>
         <Animated.View pointerEvents="box-none" style={[styles.cardWindowFrame, cardWindowStyle]}>
           {cardWindowWriting && (
             <Animated.View
@@ -7852,8 +7865,12 @@ export default function BoardScreen() {
             </GestureDetector>
           )}
           </View>
-          {/* Above the card's top-right corner, never over its text. */}
-          <View style={styles.cardWindowButtons}>
+        </Animated.View>
+        {/* Above the card's top-right corner, never over its text: its own
+            layer, so the card's frame (which the note's touches live in)
+            keeps exactly the card's bounds. */}
+        <Animated.View pointerEvents="box-none" style={[styles.cardWindowButtonLayer, cardWindowButtonsStyle]}>
+          <View style={styles.cardWindowButtonsRow}>
             <Pressable
               style={styles.cardWindowIcon}
               hitSlop={4}
@@ -7897,6 +7914,7 @@ export default function BoardScreen() {
             </Pressable>
           </View>
         </Animated.View>
+        </>
       )}
       {/* Databases held open over the board - see BoardDatabaseWindow. */}
       {dbWindows.map((w) => (
@@ -8012,20 +8030,15 @@ const makeStyles = (theme: Theme) =>
       borderBottomRightRadius: 4,
     },
     cardWindowFrame: { position: 'absolute' },
-    cardWindowInner: { flex: 1, marginTop: CARD_BUTTONS_H },
-    cardWindowButtons: {
-      position: 'absolute',
-      top: 0,
-      right: 0,
-      flexDirection: 'row',
-      gap: 6,
-    },
+    cardWindowInner: { flex: 1 },
+    cardWindowButtonLayer: { position: 'absolute', height: CARD_BUTTONS_H, justifyContent: 'center', alignItems: 'flex-end' },
+    cardWindowButtonsRow: { flexDirection: 'row', gap: 6 },
     paperDocCard: { padding: 0, gap: 0 },
     paperDocHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingTop: 8 },
     paperDocTitle: { flex: 1 },
     cardWindowGround: {
       position: 'absolute',
-      top: CARD_BUTTONS_H,
+      top: 0,
       left: 0,
       right: 0,
       borderRadius: 22,
@@ -8033,7 +8046,7 @@ const makeStyles = (theme: Theme) =>
     },
     cardWindowOutline: {
       position: 'absolute',
-      top: CARD_BUTTONS_H,
+      top: 0,
       left: 0,
       right: 0,
       borderWidth: 2,
