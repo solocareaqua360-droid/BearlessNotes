@@ -2463,7 +2463,7 @@ export default function BoardScreen() {
     const rawLeft =
       canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
     if (cardWindowTyping.value) {
-      const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 1;
+      const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       // Centred while writing, so the note's bar and panel - which reach
@@ -2477,7 +2477,7 @@ export default function BoardScreen() {
   });
   // The painted card while writing: its own height, ending on the bar.
   const cardWindowOutlineStyle = useAnimatedStyle(() => {
-    const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 1;
+    const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
     const rawTop =
       canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
     const h = Math.min(winH.value, barTop - cardWindowMinTop);
