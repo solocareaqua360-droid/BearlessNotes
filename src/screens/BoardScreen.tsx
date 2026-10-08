@@ -2145,6 +2145,13 @@ export default function BoardScreen() {
   // is the whole point of a board full of documents. Full screen is still
   // a tap away, so nothing that worked before stops working.
   const [paneDocId, setPaneDocId] = useState<string | null>(null);
+  // THE CARD WINDOW (a trial, 2026-10-08, features.cardWindow): on a
+  // phone, a document card on a DAY's board opens as a small window over
+  // the board with the real editor in it - typed blocks, editable - while
+  // the board stays in sight and can still be moved. Full screen is one
+  // press from it.
+  const [cardWindowDocId, setCardWindowDocId] = useState<string | null>(null);
+  const isDayBoard = boardId.startsWith('day_');
   // One column read as flowing text in the right-hand half. Not a document
   // and not a copy: it edits the cards themselves, which is why nothing
   // here is synchronised with anything. Opened by long-pressing a column
@@ -2896,9 +2903,10 @@ export default function BoardScreen() {
   // up with it: the editor saves on its own 600ms beat and this hears
   // every one of those writes, so the card on the canvas changes as the
   // document is written rather than when the pane is closed.
+  const liveDocId = paneDocId ?? cardWindowDocId;
   useEffect(() => {
-    if (!paneDocId) return;
-    return onSnapshot(doc(db, 'documents', paneDocId), (snapshot) => {
+    if (!liveDocId) return;
+    return onSnapshot(doc(db, 'documents', liveDocId), (snapshot) => {
       const data = snapshot.data();
       if (!data) return;
       const blocks: Block[] = data.blocks ?? [];
@@ -2911,7 +2919,7 @@ export default function BoardScreen() {
       setCards((prev) => {
         let changed = false;
         const next = prev.map((card) => {
-          if (card.documentId !== paneDocId) return card;
+          if (card.documentId !== liveDocId) return card;
           if (
             card.documentTitle === title &&
             (card.documentPreviewText ?? '') === text &&
@@ -2936,7 +2944,7 @@ export default function BoardScreen() {
         return changed ? next : prev;
       });
     }, listenError('BoardScreen:documents'));
-  }, [paneDocId]);
+  }, [liveDocId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -4158,6 +4166,10 @@ export default function BoardScreen() {
       // reasoning a note's own card follows.
       if (card.boardId) navigation.push('Board', { boardId: card.boardId });
     } else if (type === 'document') {
+      if (FEATURES.cardWindow && isDayBoard && !isTwoPane && card.documentId) {
+        setCardWindowDocId(card.documentId);
+        return;
+      }
       toggleDocumentExpanded(card);
     } else if (type === 'flashcard') {
       setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, flashcardOpen: !c.flashcardOpen } : c)));
@@ -7548,6 +7560,44 @@ export default function BoardScreen() {
           />
         </View>
       )}
+      {!isTwoPane && cardWindowDocId !== null && (
+        <View
+          style={[styles.cardWindow, { top: boardInsets.top + 72, height: Math.round(windowHeight * 0.56) }]}
+        >
+          <View style={styles.cardWindowHead}>
+            <Pressable
+              style={styles.cardWindowButton}
+              onPress={() => {
+                const id = cardWindowDocId;
+                setCardWindowDocId(null);
+                navigation.navigate('EditorModal', { documentId: id });
+              }}
+            >
+              <Ionicons name="expand-outline" size={16} color="#1c1c1e" />
+              <Text style={styles.cardWindowButtonText}>На весь екран</Text>
+            </Pressable>
+            <Pressable style={styles.cardWindowButton} onPress={() => setCardWindowDocId(null)}>
+              <Ionicons name="close-outline" size={18} color="#1c1c1e" />
+              <Text style={styles.cardWindowButtonText}>Закрити</Text>
+            </Pressable>
+          </View>
+          <View style={styles.cardWindowBody}>
+            <DocumentEditorScreen
+              key={cardWindowDocId}
+              pane
+              documentId={cardWindowDocId}
+              navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
+              isFullscreen={false}
+              onToggleFullscreen={() => {
+                const id = cardWindowDocId;
+                setCardWindowDocId(null);
+                navigation.navigate('EditorModal', { documentId: id });
+              }}
+              onClose={() => setCardWindowDocId(null)}
+            />
+          </View>
+        </View>
+      )}
       {/* Databases held open over the board - see BoardDatabaseWindow. */}
       {dbWindows.map((w) => (
         <BoardDatabaseWindow
@@ -7644,6 +7694,34 @@ const makeStyles = (theme: Theme) =>
     paneHidden: {
       display: 'none',
     },
+    cardWindow: {
+      position: 'absolute',
+      left: 12,
+      right: 12,
+      borderRadius: 22,
+      backgroundColor: '#ffffff',
+      boxShadow: '0px 6px 24px rgba(0,0,0,0.18)',
+      overflow: 'hidden',
+    },
+    cardWindowHead: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 8,
+      paddingHorizontal: 10,
+      paddingTop: 8,
+      paddingBottom: 4,
+    },
+    cardWindowButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      height: 32,
+      paddingHorizontal: 12,
+      borderRadius: 16,
+      backgroundColor: 'rgba(0,0,0,0.06)',
+    },
+    cardWindowButtonText: { fontSize: 13, color: '#1c1c1e' },
+    cardWindowBody: { flex: 1 },
     docPane: {
       flex: 1,
       borderLeftWidth: 1,
