@@ -309,6 +309,10 @@ type Props =
       // No ground of its own: whoever holds the note paints it (a board's
       // card window paints just the card, so below it the board shows).
       clearGround?: boolean;
+      // The page scrolls inside this height only, while the frame (and the
+      // bar above the keyboard, at its foot) may run further - a board's card
+      // window, whose card is shorter than the frame it writes in.
+      scrollHeight?: number;
     }
   // Pane mode (DocumentsScreen's two-pane layout on a wide screen): the
   // WHOLE editor, header and title and cover included - unlike embedded
@@ -497,6 +501,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const scrollPaperProp = 'embedded' in props ? !!props.scrollPaper : false;
   const panelBleed = 'embedded' in props ? props.panelBleed ?? 0 : 0;
   const clearGround = 'embedded' in props ? !!props.clearGround : false;
+  const scrollHeight = 'embedded' in props ? props.scrollHeight : undefined;
   const [scrollViewportH, setScrollViewportH] = useState(0);
   const onSaveStatusChange =
     'embedded' in props ? props.onSaveStatusChange : 'pane' in props ? props.onSaveStatusChange : undefined;
@@ -6009,7 +6014,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         {...(!embedded && !('pane' in props) ? morphKey(`note:${documentId}`, 'child') : {})}
         // Split, the note moves aside into what is left of the row
         // rather than lying under the drawer - see referencesSplit.
-        style={[styles.scrollArea, referencesSplit && { paddingRight: referencePanelWidth }]}
+        style={[
+          styles.scrollArea,
+          referencesSplit && { paddingRight: referencePanelWidth },
+          scrollHeight !== undefined && { flex: 0, flexGrow: 0, height: Math.max(0, scrollHeight) },
+        ]}
         contentContainerStyle={[
           embedded && styles.scrollAreaEmbedded,
           // A line of text is read across a column, not across a 1440-wide

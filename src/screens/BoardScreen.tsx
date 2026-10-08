@@ -2534,6 +2534,10 @@ export default function BoardScreen() {
     return () => clearTimeout(t);
   }, [writingNow]);
   const cardWindowWriting = !!cardWindow?.live && (writingNow || writingHeld);
+  // While writing, the note scrolls only within the painted card - below it
+  // the frame runs on to the screen's foot for the bar, and the rest of the
+  // note showed through there (the user: "щось пропливає").
+  const [cardHeadH, setCardHeadH] = useState(30);
   cardWindowZoomRef.current = cardWindow?.zoom ?? 1;
   // The panel takes the keyboard's place at the keyboard's height.
   const lastKbRef = useRef(0);
@@ -2542,6 +2546,8 @@ export default function BoardScreen() {
   // where it stood over the keyboard rather than dropping and coming back.
   const cardWindowKbNow =
     keyboardHeight > 0 ? keyboardHeight : cardWindowPanel || cardWindowWriting ? lastKbRef.current || Math.round(windowHeight * 0.36) : 0;
+  const cardWindowScrollH =
+    Math.min(winSize.h, windowHeight - cardWindowKbNow - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12 - cardWindowMinTop) - cardHeadH;
   useEffect(() => {
     cardWindowTyping.value = cardWindowWriting;
     cardWindowKb.value = cardWindowKbNow;
@@ -7822,6 +7828,7 @@ export default function BoardScreen() {
               reads as the same card - with its buttons over its right end. */}
           <View
             pointerEvents={cardWindow.live ? 'auto' : 'box-none'}
+            onLayout={(e) => setCardHeadH(Math.round(e.nativeEvent.layout.height))}
             style={[styles.paperDocHead, { paddingHorizontal: 8 * cardWindow.zoom, paddingTop: 8 * cardWindow.zoom, opacity: cardWindow.live ? 1 : 0 }]}
           >
             <Ionicons name="document-text-outline" size={13 * cardWindow.zoom} color={theme.paper.inkMuted} />
@@ -7848,6 +7855,7 @@ export default function BoardScreen() {
                   extraFields={cardWindow.docId.startsWith('day_') ? { calendarDate: cardWindow.docId.slice(4) } : undefined}
                   panelBleed={cardWindowWriting ? Math.max(0, Math.round((windowWidth - winSize.w) / 2)) : 0}
                   clearGround
+                  scrollHeight={cardWindowWriting ? cardWindowScrollH : undefined}
                   onPanelChange={setCardWindowPanel}
                 />
               </TextScaleOverride>
