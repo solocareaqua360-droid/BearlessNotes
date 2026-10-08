@@ -6,7 +6,7 @@ import { BoardFieldsContext } from '../components/boardFieldsContext';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import type { BoardDbWindow, CustomDatabase, CustomDatabaseRow } from '../types';
 import BoardDatabaseWindow from '../components/BoardDatabaseWindow';
-import { MONTH_SHORT, WEEKDAY_SHORT, addDays, dateKey, mondayIndex, parseDateKey } from '../utils/dateLocale';
+import { MONTH_SHORT, WEEKDAY_SHORT, addDays, dateKey, formatShortDate, mondayIndex, parseDateKey } from '../utils/dateLocale';
 import { mutedForTheme, type Theme } from '../theme/tokens';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -2109,6 +2109,16 @@ type Props = NativeStackScreenProps<BoardsStackParamList, 'Board'>;
 // plus x/y/width (see BoardCard in types.ts) - a card referencing an
 // existing file/photo/link comes straight out of AddExistingItemModal
 // unmodified, exactly like inserting one into a document does.
+// What a document card is called. A day's note has no title of its own -
+// it is the day - so on a board (the day's board above all) it is called
+// by the day, not «Без назви».
+function documentCardTitle(data: Record<string, unknown> | undefined): string {
+  const title = data?.title as string | undefined;
+  const day = data?.calendarDate as string | undefined;
+  if (day && !title?.trim()) return `Аркуш · ${formatShortDate(parseDateKey(day))}`;
+  return title ?? 'Без назви';
+}
+
 export default function BoardScreen() {
   const theme = useTheme();
   const styles = useBoardStyles();
@@ -2840,7 +2850,7 @@ export default function BoardScreen() {
       const data = snapshot.data();
       const blocks: Block[] = data?.blocks ?? [];
       fresh.set(documentIds[index], {
-        title: data?.title ?? 'Без назви',
+        title: documentCardTitle(data),
         text: blocksToPreviewText(blocks).slice(0, 20000),
         // The cover image (DocumentEditorScreen's "..." menu) takes
         // priority over a body image block, same rule extractPreview
@@ -2892,7 +2902,7 @@ export default function BoardScreen() {
       const data = snapshot.data();
       if (!data) return;
       const blocks: Block[] = data.blocks ?? [];
-      const title = (data.title as string) ?? 'Без назви';
+      const title = documentCardTitle(data);
       const text = blocksToPreviewText(blocks).slice(0, 20000);
       const imageUri = (data.coverImageUri as string | undefined) ?? firstImageUri(blocks);
       const driveFileId = data.coverImageUri
