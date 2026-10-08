@@ -48,6 +48,7 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import {
+  arrayUnion,
   collection,
   doc,
   getDoc,
@@ -4899,9 +4900,56 @@ export default function BoardScreen() {
     });
     setDraggedCardId(null);
     if (before && !copied) commitConnectionPull(x - before.x, y - before.y);
+    // A free block (or a strip, by its head) let go over a note's card goes
+    // INTO that note - its one home is now the note.
+    if (before?.freeBlock && dropIntoDocument(id, x, y)) return;
     // Glue last, after the pull has moved whatever rode along: the strips
     // are laid out from where their heads now stand.
     if (before?.freeBlock) setCards((prev) => applyGlue(prev, id));
+  }
+
+  // MOVED INTO A NOTE (the «один дім» rule): the blocks are added to the end
+  // of the note, in order, with their kinds - and leave the board. The
+  // note's write lands in the local cache at once (and syncs later, offline
+  // too), which is why the board lets them go without waiting for the server.
+  function dropIntoDocument(id: string, x: number, y: number): boolean {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return false;
+    const strip = card.glueId ? glueMembers(cards, card.glueId) : [];
+    const isHead = strip.length > 0 && strip[0].id === id;
+    const moving = isHead ? strip : [card];
+    const px = x + (Number.isFinite(card.width) ? card.width : FREE_BLOCK_WIDTH) / 2;
+    const py = y + 12;
+    const target = cards.find(
+      (c) =>
+        c.type === 'document' &&
+        !!c.documentId &&
+        !isHidden(c) &&
+        px >= c.x &&
+        px <= c.x + (Number.isFinite(c.width) ? c.width : DEFAULT_CARD_WIDTH) &&
+        py >= c.y &&
+        py <= c.y + heightOf(c, cardHeights)
+    );
+    if (!target?.documentId) return false;
+    const blocks: Block[] = moving
+      .filter((m) => m.text?.trim())
+      .map((m) => {
+        const b: Block = { id: generateId(), text: m.text ?? '', type: (m.type ?? 'paragraph') as Block['type'], createdAt: m.createdAt ?? Date.now() };
+        if (m.type === 'heading') b.headingLevel = m.headingLevel ?? 2;
+        if (m.type === 'checkbox') b.checked = !!m.checked;
+        return b;
+      });
+    const movingIds = new Set(moving.map((m) => m.id));
+    const leave = () => setCards((prev) => reflowGlue(dropLoneGlue(prev.filter((c) => !movingIds.has(c.id))), cardHeights));
+    if (blocks.length === 0) {
+      leave();
+      return true;
+    }
+    hapticDrop();
+    updateDoc(doc(db, 'documents', target.documentId), { blocks: arrayUnion(...blocks), updatedAt: Date.now() })
+      .catch((e: Error) => notify('Не вдалося перенести в нотатку', e.message));
+    leave();
+    return true;
   }
 
   // A free block let go: out of its strip if it was not the head, and onto
