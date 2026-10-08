@@ -2150,7 +2150,12 @@ export default function BoardScreen() {
   // the board with the real editor in it - typed blocks, editable - while
   // the board stays in sight and can still be moved. Full screen is one
   // press from it.
-  const [cardWindowDocId, setCardWindowDocId] = useState<string | null>(null);
+  // Version 2 (the user's Scrintal screenshot): the card itself becomes
+  // the editor - at its own place, following the board up and down, with
+  // the note's blocks at card size (the editor's `embedded` mode, the one
+  // the calendar shows a day in: no header, no title, no «+ папка»).
+  const [cardWindow, setCardWindow] = useState<{ docId: string; title: string; worldY: number } | null>(null);
+  const cardWindowDocId = cardWindow?.docId ?? null;
   const isDayBoard = boardId.startsWith('day_');
   // One column read as flowing text in the right-hand half. Not a document
   // and not a copy: it edits the cards themselves, which is why nothing
@@ -2315,6 +2320,15 @@ export default function BoardScreen() {
   // The drawer isn't built on GlassLayer (see its own JSX comment), so it
   // has to catch the hardware back button itself, the way GlassLayer does
   // for every other sheet.
+  // The phone's back closes the card window first.
+  useEffect(() => {
+    if (!cardWindow) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setCardWindow(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [cardWindow]);
   useEffect(() => {
     if (!layersDrawerVisible) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -2372,6 +2386,19 @@ export default function BoardScreen() {
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
+  // The card window's place: where its card's top is on the screen now,
+  // kept below the bar and above the lower half - so it rides along when
+  // the board is moved up or down, at the card's own spot.
+  const canvasOriginY = useSharedValue(0);
+  const cardWorldY = useSharedValue(0);
+  const viewportHeightSV = useSharedValue(windowHeight);
+  const cardWindowMinTop = boardInsets.top + 68;
+  const cardWindowMaxTop = Math.round(windowHeight * 0.42);
+  const cardWindowStyle = useAnimatedStyle(() => {
+    const raw =
+      canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
+    return { top: Math.min(Math.max(raw, cardWindowMinTop), cardWindowMaxTop) };
+  });
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
   // The world point under the pinch's own focal (the midpoint between the
@@ -3388,6 +3415,9 @@ export default function BoardScreen() {
   }, [isLoaded, focusCardIds, cards]);
 
   const clearSelection = useCallback(() => {
+    // A tap on the board beside an open card window closes it, as in
+    // Scrintal.
+    setCardWindow(null);
     setSelectedShapeId(null);
     setSelectedCardIds(new Set());
     setSelectedShapeIds(new Set());
@@ -4167,7 +4197,18 @@ export default function BoardScreen() {
       if (card.boardId) navigation.push('Board', { boardId: card.boardId });
     } else if (type === 'document') {
       if (FEATURES.cardWindow && isDayBoard && !isTwoPane && card.documentId) {
-        setCardWindowDocId(card.documentId);
+        const open = { docId: card.documentId, title: card.documentTitle || 'Документ', worldY: card.y };
+        const node = canvasRef.current;
+        if (node) {
+          node.measureInWindow((_x, y) => {
+            canvasOriginY.value = y;
+            cardWorldY.value = open.worldY;
+            setCardWindow(open);
+          });
+        } else {
+          cardWorldY.value = open.worldY;
+          setCardWindow(open);
+        }
         return;
       }
       toggleDocumentExpanded(card);
@@ -6249,6 +6290,7 @@ export default function BoardScreen() {
           if (previous > 0 && width !== previous) translateX.value += (width - previous) / 2;
           viewportWidthRef.current = width;
           setViewport({ width, height });
+          viewportHeightSV.value = height;
         }}
       >
         <GestureDetector gesture={canvasGesture}>
@@ -7560,43 +7602,47 @@ export default function BoardScreen() {
           />
         </View>
       )}
-      {!isTwoPane && cardWindowDocId !== null && (
-        <View
-          style={[styles.cardWindow, { top: boardInsets.top + 72, height: Math.round(windowHeight * 0.56) }]}
+      {!isTwoPane && cardWindow !== null && (
+        <Animated.View
+          style={[
+            styles.cardWindow,
+            cardWindowStyle,
+            // Writing: the card reaches down to the screen's foot, so the
+            // bar above the keyboard stands where it does in a note, and
+            // it wears the canvas cards' own "being edited" outline.
+            keyboardHeight > 0
+              ? { bottom: 0, borderWidth: 2, borderColor: softBoardTokens?.accent ?? '#c46a2c' }
+              : { height: Math.round(windowHeight * 0.5) },
+          ]}
         >
           <View style={styles.cardWindowHead}>
+            <Ionicons name="document-text-outline" size={17} color="#55555a" />
+            <Text style={styles.cardWindowTitle} numberOfLines={1}>
+              {cardWindow.title}
+            </Text>
             <Pressable
               style={styles.cardWindowButton}
               onPress={() => {
-                const id = cardWindowDocId;
-                setCardWindowDocId(null);
+                const id = cardWindow.docId;
+                setCardWindow(null);
                 navigation.navigate('EditorModal', { documentId: id });
               }}
             >
-              <Ionicons name="expand-outline" size={16} color="#1c1c1e" />
-              <Text style={styles.cardWindowButtonText}>На весь екран</Text>
-            </Pressable>
-            <Pressable style={styles.cardWindowButton} onPress={() => setCardWindowDocId(null)}>
-              <Ionicons name="close-outline" size={18} color="#1c1c1e" />
-              <Text style={styles.cardWindowButtonText}>Закрити</Text>
+              <Ionicons name="expand-outline" size={15} color="#1c1c1e" />
+              <Text style={styles.cardWindowButtonText}>Відкрити</Text>
             </Pressable>
           </View>
           <View style={styles.cardWindowBody}>
             <DocumentEditorScreen
-              key={cardWindowDocId}
-              pane
-              documentId={cardWindowDocId}
+              key={cardWindow.docId}
+              embedded
+              documentId={cardWindow.docId}
               navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
-              isFullscreen={false}
-              onToggleFullscreen={() => {
-                const id = cardWindowDocId;
-                setCardWindowDocId(null);
-                navigation.navigate('EditorModal', { documentId: id });
-              }}
-              onClose={() => setCardWindowDocId(null)}
+              extraFields={cardWindow.docId.startsWith('day_') ? { calendarDate: cardWindow.docId.slice(4) } : undefined}
+              panelBleed={12}
             />
           </View>
-        </View>
+        </Animated.View>
       )}
       {/* Databases held open over the board - see BoardDatabaseWindow. */}
       {dbWindows.map((w) => (
@@ -7705,12 +7751,16 @@ const makeStyles = (theme: Theme) =>
     },
     cardWindowHead: {
       flexDirection: 'row',
-      justifyContent: 'flex-end',
+      alignItems: 'center',
       gap: 8,
-      paddingHorizontal: 10,
+      paddingLeft: 16,
+      paddingRight: 8,
       paddingTop: 8,
-      paddingBottom: 4,
+      paddingBottom: 6,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: 'rgba(0,0,0,0.12)',
     },
+    cardWindowTitle: { flex: 1, fontSize: 15, fontWeight: '600', color: '#1c1c1e' },
     cardWindowButton: {
       flexDirection: 'row',
       alignItems: 'center',
