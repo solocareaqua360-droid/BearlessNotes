@@ -2434,7 +2434,7 @@ export default function BoardScreen() {
   const cardWindowStyle = useAnimatedStyle(() => {
     const w = winW.value;
     if (cardWindowTyping.value) {
-      const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 6;
+      const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 1;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = barTop - h;
       // Down to the screen's foot while writing: the editor's bar and
@@ -2455,7 +2455,7 @@ export default function BoardScreen() {
   });
   // The outline round the card while writing ends on the bar.
   const cardWindowOutlineStyle = useAnimatedStyle(() => {
-    const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 6;
+    const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 1;
     return { height: Math.min(winH.value, barTop - cardWindowMinTop) };
   });
   // The corner handle: drag to make the window wider or taller.
@@ -6106,15 +6106,17 @@ export default function BoardScreen() {
   // can be done to it.
   const selecting = selectedCardIds.size > 0 || selectedShapeIds.size > 0;
   useDockWide(bar && !selecting);
+  // While a card window is being written in, the note's own bar and panel
+  // own the foot of the screen - the board's dock steps away.
   useDockBeads(
-    boardShowing && (!bar || !selecting)
+    boardShowing && !cardWindowWriting && (!bar || !selecting)
       ? {
           icon: 'layers-outline',
           active: layersDrawerVisible,
           onPress: () => setLayersDrawerVisible((v) => !v),
         }
       : null,
-    boardShowing && (bar ? !selecting : selectedCardIds.size === 0)
+    boardShowing && !cardWindowWriting && (bar ? !selecting : selectedCardIds.size === 0)
       ? // The right round button is the way OUT of the board on the phone
         // (2026-10-08, the user's: "+ з дошки перенести в її док, а замість
         // + кнопка назад") - as it already is inside the databases; "+"
@@ -6153,7 +6155,7 @@ export default function BoardScreen() {
   // variable, scrolling list of actions with a word under each icon -
   // this was simply the one screen that had never been moved onto it.
   useDockActions(
-    paneDocOpen && paneFullscreen
+    (paneDocOpen && paneFullscreen) || cardWindowWriting
       ? null
       : boardFocused
       ? selectedCardIds.size > 0 || selectedShapeIds.size > 0
