@@ -4007,12 +4007,36 @@ export default function BoardScreen() {
     startInlineEdit(card.id);
   }
 
+  // Where the canvas starts, measured from THIS screen's own corner - the
+  // card window and the free block's field are placed inside this screen.
+  // On a phone that corner is the window's; on the Mac the screen sits
+  // beside the sidebar and under the tabs, and window coordinates put the
+  // card window that far off its card.
+  const rootOffsetRef = useRef({ x: 0, y: 0 });
+  function measureCanvasOrigin(then: () => void) {
+    const node = canvasRef.current;
+    const root = deskContentRef.current;
+    if (!node) return then();
+    node.measureInWindow((cx, cy) => {
+      if (!root) {
+        canvasOriginX.value = cx;
+        canvasOriginY.value = cy;
+        return then();
+      }
+      root.measureInWindow((rx, ry) => {
+        rootOffsetRef.current = { x: rx, y: ry };
+        canvasOriginX.value = cx - rx;
+        canvasOriginY.value = cy - ry;
+        then();
+      });
+    });
+  }
+
   // TYPING IN A FREE BLOCK ON THE BOARD (2026-10-08, the user's: "логіка
   // така сама як із вводом в звичайний блок документа"): no sheet - the
   // block itself turns into the field.
   function startInlineEdit(id: string) {
-    const node = canvasRef.current;
-    if (node) node.measureInWindow((_x, y) => (canvasOriginY.value = y));
+    measureCanvasOrigin(() => {});
     inlineKbSeenRef.current = false;
     setInlineBlockId(id);
   }
@@ -4755,14 +4779,7 @@ export default function BoardScreen() {
           setWinSize({ w: worldW * zoom, h: worldH * zoom });
           setCardWindow(open);
         };
-        const node = canvasRef.current;
-        if (node) {
-          node.measureInWindow((x, y) => {
-            canvasOriginX.value = x;
-            canvasOriginY.value = y;
-            place();
-          });
-        } else place();
+        measureCanvasOrigin(place);
         return;
       }
       toggleDocumentExpanded(card);
