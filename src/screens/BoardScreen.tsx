@@ -2450,7 +2450,7 @@ export default function BoardScreen() {
   // window lies exactly where the card is, at its size - at the board's
   // zoom - and follows it. Writing, it keeps that size and only rises, if
   // it has to, so its foot sits on the bar above the keyboard.
-  const cardWindowMinTop = boardInsets.top + 68;
+  const cardWindowMinTop = boardInsets.top + 68 + 44;
   const winW = useSharedValue(240);
   const winH = useSharedValue(260);
   const [winSize, setWinSize] = useState({ w: 240, h: 260 });
@@ -7763,28 +7763,23 @@ export default function BoardScreen() {
         </View>
       )}
       {cardWindow !== null && (
-        <Animated.View
-          pointerEvents="box-none"
-          style={[
-            styles.cardWindow,
-            {
-              borderRadius: 16 * cardWindow.zoom,
-              backgroundColor: cardWindow.live ? theme.paper.fill : 'transparent',
-              boxShadow: cardWindow.live ? undefined : 'none',
-            },
-            cardWindowStyle,
-            // Writing, the frame runs to the screen's foot for the editor's
-            // bar and panel, but only the CARD is painted - by the layer
-            // below - so under it the board shows.
-            cardWindowWriting && { overflow: 'visible', backgroundColor: 'transparent', boxShadow: 'none' },
-          ]}
-        >
+        <Animated.View pointerEvents="box-none" style={[styles.cardWindowFrame, cardWindowStyle]}>
           {cardWindowWriting && (
             <Animated.View
               pointerEvents="none"
               style={[styles.cardWindowGround, cardWindowOutlineStyle, { backgroundColor: theme.paper.fill, borderRadius: 16 * cardWindow.zoom }]}
             />
           )}
+          <View
+            pointerEvents="box-none"
+            style={[
+              styles.cardWindowInner,
+              { borderRadius: 16 * cardWindow.zoom },
+              cardWindow.live && !cardWindowWriting
+                ? { backgroundColor: theme.paper.fill, boxShadow: '0px 6px 24px rgba(0,0,0,0.18)', overflow: 'hidden' }
+                : null,
+            ]}
+          >
           {/* The card's own head, at the card's own size - so the live card
               reads as the same card - with its buttons over its right end. */}
           <View
@@ -7799,6 +7794,41 @@ export default function BoardScreen() {
               {cardWindow.title}
             </Text>
           </View>
+          {cardWindow.live && (
+            <View style={[styles.cardWindowBody, cardWindowWriting && { overflow: 'visible' }]}>
+              <TextScaleOverride factor={Math.max(0.42, PAPER_DOC_TEXT * cardWindow.zoom)}>
+                <DocumentEditorScreen
+                  key={cardWindow.docId}
+                  embedded
+                  documentId={cardWindow.docId}
+                  navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
+                  extraFields={cardWindow.docId.startsWith('day_') ? { calendarDate: cardWindow.docId.slice(4) } : undefined}
+                  panelBleed={cardWindowWriting ? Math.max(0, Math.round((windowWidth - winSize.w) / 2)) : 0}
+                  clearGround
+                  onPanelChange={setCardWindowPanel}
+                />
+              </TextScaleOverride>
+            </View>
+          )}
+          {cardWindowWriting && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.cardWindowOutline,
+                cardWindowOutlineStyle,
+                { borderColor: softBoardTokens?.accent ?? '#c46a2c', borderRadius: 16 * cardWindow.zoom },
+              ]}
+            />
+          )}
+          {cardWindow.live && !cardWindowWriting && (
+            <GestureDetector gesture={resizeGestureWin}>
+              <View style={styles.cardWindowResize} hitSlop={10} accessibilityLabel="Змінити розмір">
+                <View style={styles.cardWindowResizeMark} />
+              </View>
+            </GestureDetector>
+          )}
+          </View>
+          {/* Above the card's top-right corner, never over its text. */}
           <View style={styles.cardWindowButtons}>
             <Pressable
               style={styles.cardWindowIcon}
@@ -7842,39 +7872,6 @@ export default function BoardScreen() {
               <Ionicons name={cardWindowWriting ? 'checkmark' : 'close-outline'} size={18} color={cardWindowWriting ? '#ffffff' : '#1c1c1e'} />
             </Pressable>
           </View>
-          {cardWindow.live && (
-            <View style={[styles.cardWindowBody, cardWindowWriting && { overflow: 'visible' }]}>
-              <TextScaleOverride factor={Math.max(0.42, PAPER_DOC_TEXT * cardWindow.zoom)}>
-                <DocumentEditorScreen
-                  key={cardWindow.docId}
-                  embedded
-                  documentId={cardWindow.docId}
-                  navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
-                  extraFields={cardWindow.docId.startsWith('day_') ? { calendarDate: cardWindow.docId.slice(4) } : undefined}
-                  panelBleed={cardWindowWriting ? Math.max(0, Math.round((windowWidth - winSize.w) / 2)) : 0}
-                  clearGround
-                  onPanelChange={setCardWindowPanel}
-                />
-              </TextScaleOverride>
-            </View>
-          )}
-          {cardWindowWriting && (
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.cardWindowOutline,
-                cardWindowOutlineStyle,
-                { borderColor: softBoardTokens?.accent ?? '#c46a2c', borderRadius: 16 * cardWindow.zoom },
-              ]}
-            />
-          )}
-          {cardWindow.live && !cardWindowWriting && (
-            <GestureDetector gesture={resizeGestureWin}>
-              <View style={styles.cardWindowResize} hitSlop={10} accessibilityLabel="Змінити розмір">
-                <View style={styles.cardWindowResizeMark} />
-              </View>
-            </GestureDetector>
-          )}
         </Animated.View>
       )}
       {/* Databases held open over the board - see BoardDatabaseWindow. */}
@@ -7990,10 +7987,12 @@ const makeStyles = (theme: Theme) =>
       borderColor: 'rgba(0,0,0,0.35)',
       borderBottomRightRadius: 4,
     },
+    cardWindowFrame: { position: 'absolute' },
+    cardWindowInner: { flex: 1 },
     cardWindowButtons: {
       position: 'absolute',
-      top: 6,
-      right: 6,
+      top: -44,
+      right: 0,
       flexDirection: 'row',
       gap: 6,
     },
