@@ -63,6 +63,7 @@ export default function GroupImportSheet({
         // Copied before sorting: `docs` is the snapshot's own array, and
         // sort rearranges in place.
         [...snapshot.docs]
+          .filter((d) => !d.data().calendarDate)
           .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
           .map((d) => ({ id: d.id, title: (d.data().title as string) || 'Без назви' }))
       );

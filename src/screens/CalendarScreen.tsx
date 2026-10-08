@@ -25,6 +25,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Ionicons } from '../components/icons/Ionicons';
+import { FEATURES } from '../features';
+import { ensureDayBoard } from '../utils/dayBoard';
+import { notify } from '../components/surfaces/Ask';
 import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -64,6 +67,7 @@ import {
   addDays,
   dateKey,
   formatBigDate,
+  formatShortDate,
   getMonthGrid,
   getWeekDates,
   isSameDay,
@@ -2193,6 +2197,43 @@ export default function CalendarScreen() {
             </ScrollView>
           )}
         </View>
+      )}
+
+      {/* THE DAY'S BOARD (utils/dayBoard): a floating round button opens
+          the board of the day being looked at - its own board, with the
+          day's sheet laid on it as a card. Floating, so neither the
+          calendar's dock nor the board's has to give anything up. */}
+      {FEATURES.dayBoard && !overviewOpen && daySearch === null && !notePanelOpen && (
+        <Pressable
+          accessibilityLabel="Дошка дня"
+          onPress={() => {
+            const day = new Date(selectedDate);
+            const key = dateKey(day);
+            ensureDayBoard(key, `День · ${formatShortDate(day)}`)
+              .then((boardId) => {
+                calendarDrawer?.close();
+                navigation.navigate('BoardCopy', { boardId });
+              })
+              .catch((e: Error) => notify('Дошка дня не відкрилась', e.message));
+          }}
+          style={({ pressed }) => [
+            {
+              position: 'absolute',
+              right: 16,
+              bottom: overviewClear + calendarInsets.bottom + 12,
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: S ? S.card : '#ffffff',
+              boxShadow: S ? S.shadow : '0px 2px 10px rgba(0,0,0,0.12)',
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <Ionicons name="easel-outline" size={22} color={S ? S.ink : '#1c1c1e'} />
+        </Pressable>
       )}
 
       {/* In the drawer: the calendar's own bar and dock, inside it and

@@ -93,6 +93,7 @@ export default function SaveDestinationSheet({
     return onSnapshot(ownedQuery('boards'), (snapshot) => {
       setBoards(
         [...snapshot.docs]
+          .filter((d) => !d.data().calendarDate)
           .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
           .map((d) => ({ id: d.id, title: d.data().title }))
       );

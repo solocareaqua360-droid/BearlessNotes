@@ -300,6 +300,7 @@ export default function StartScreen() {
     }),
     base('board', 'Дошки', 'easel-outline', 'board', 'Створити дошку', createOf('board'), BOARDS_DESK, 'BoardsCopy', undefined, {
       collection: 'boards',
+      belongs: (r) => !r.calendarDate,
       titleOf: (r) => str(r.title),
       icon: 'easel-outline',
       onOpen: (id) => go('BoardCopy', { boardId: id }),

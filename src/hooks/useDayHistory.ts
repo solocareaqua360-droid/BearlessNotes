@@ -167,12 +167,18 @@ export function useDayHistory(
     };
   });
 
-  const boards = useCreatedAtItems('boards', startMs, endMs, (id, data) => ({
-    id,
-    kind: 'board',
-    title: (data.title as string) || 'Без назви',
-    createdAt: data.createdAt as number,
-  }));
+  // A day's own board (utils/dayBoard) is the day itself, not something
+  // made on it.
+  const boards = useCreatedAtItems('boards', startMs, endMs, (id, data) =>
+    data.calendarDate
+      ? null
+      : {
+          id,
+          kind: 'board',
+          title: (data.title as string) || 'Без назви',
+          createdAt: data.createdAt as number,
+        }
+  );
 
   const tasks = useCreatedAtItems('tasks', startMs, endMs, (id, data) => ({
     id,

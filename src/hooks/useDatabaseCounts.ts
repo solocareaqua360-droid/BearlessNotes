@@ -69,7 +69,8 @@ export function useDatabaseContents(enabled = true): DatabaseContents {
   const files = useCollection('files', enabled);
   const stickers = useCollection('stickers', enabled);
   const flashcards = useCollection('flashcards', enabled);
-  const boards = useCollection('boards', enabled);
+  // A day's own board is the day's, not one of the boards.
+  const boards = useCollection('boards', enabled).filter((b) => !b.calendarDate);
   const tags = useCollection('tags', enabled);
   const groups = useCollection('groups', enabled);
   const chat = useCollection('chat', enabled);
@@ -78,7 +79,7 @@ export function useDatabaseContents(enabled = true): DatabaseContents {
   // Daily notes live in the documents collection but are the diary, not
   // the documents - the same split the documents list itself makes.
   // A note nested in another lives inside it, not among the documents.
-  const notes = documents.filter((d) => !d.calendarDate && (d.owner as { kind?: string } | undefined)?.kind !== 'note');
+  const notes = documents.filter((d) => !d.calendarDate && !['note', 'chat'].includes((d.owner as { kind?: string } | undefined)?.kind ?? ''));
   const diary = documents.filter((d) => !!d.calendarDate);
   const byCategory = { geo: [] as Row[], other: [] as Row[], video: [] as Row[] };
   for (const link of links) {

@@ -261,6 +261,8 @@ export default function BoardsListScreen({
               tagIds: data.tagIds ?? [],
               groupId: data.groupId,
               trashed: data.trashed === true,
+              // A day's own board (utils/dayBoard) belongs to its day, not here.
+              dayBoard: !!data.calendarDate,
               createdAt: data.createdAt ?? 0,
               updatedAt: data.updatedAt ?? 0,
               previewImageUri: data.previewImageUri,
@@ -269,7 +271,7 @@ export default function BoardsListScreen({
           })
           // A board in the bin is not in the list. The bin itself is the
           // next slice of this work.
-          .filter((board) => !board.trashed)
+          .filter((board) => !board.trashed && !board.dayBoard)
           .sort((a, b) => b.updatedAt - a.updatedAt)
       );
         setIsLoading(false);
