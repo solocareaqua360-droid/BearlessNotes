@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { doc, onSnapshot } from '../firestore';
 import { db } from '../firebase';
 import { useStyles, useTheme, useTextScale } from '../theme/ThemeProvider';
 import type { Block } from '../types';
 import BlockRow from './BlockRow';
 import PagePreviewRow, { isLightRow } from './PagePreviewRow';
-import { makeStyles as makeEditorStyles } from './documentEditorStyles';
+import { PAGE_TEXT, makeStyles as makeEditorStyles } from './documentEditorStyles';
+import { SoftTaskCheck } from './SoftIcon';
 import { visibleBlocks } from '../utils/toggleBlocks';
 
 // A DOCUMENT CARD OPENED OUT ON A BOARD, showing its blocks as they are -
@@ -47,9 +48,22 @@ export default function DocumentCardBlocks({ documentId }: { documentId: string 
         if (item.exitsToggle) indented = false;
         const rowIndented = indented;
         if (item.type === 'toggle') indented = true;
-        // A task goes through BlockRow's own preview: the light row's task
-        // layout collapsed to no height on a card (its words vanished).
-        if (isLightRow(item) && item.type !== 'checkbox') {
+        // A task drawn plainly - the box and its words. The page's own task
+        // row lost its words on a narrow card (its text measured zero wide).
+        if ((item.type as string) === 'checkbox') {
+          const size = { fontSize: Math.round(PAGE_TEXT.size * textScale), lineHeight: Math.round(PAGE_TEXT.line * textScale) };
+          return (
+            <View key={item.id} style={styles.task}>
+              <View style={styles.taskBox}>
+                <SoftTaskCheck checked={!!item.checked} ink={theme.paper.ink} faint={theme.paper.inkFaint} paper={theme.paper.fill} />
+              </View>
+              <Text style={[editorStyles.blockDisplayText, size, styles.taskText, item.checked && editorStyles.checkedText]}>
+                {item.text}
+              </Text>
+            </View>
+          );
+        }
+        if (isLightRow(item)) {
           return (
             // The row's own width, given: a task's text is a flex child of a
             // row that otherwise had nothing to measure it against on a
@@ -116,4 +130,7 @@ const styles = StyleSheet.create({
   // Inside the card, never past its edges.
   wrap: { marginTop: 4, overflow: 'hidden' },
   full: { width: '100%' },
+  task: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingHorizontal: 12, paddingVertical: 4 },
+  taskBox: { paddingTop: 2 },
+  taskText: { flex: 1 },
 });
