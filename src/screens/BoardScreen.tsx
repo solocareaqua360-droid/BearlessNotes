@@ -4908,6 +4908,100 @@ export default function BoardScreen() {
     if (before?.freeBlock) setCards((prev) => applyGlue(prev, id));
   }
 
+  // «Нотатка»: the strip a free block is in (or the block alone) becomes a
+  // note of its own, its blocks in order with their kinds; the note's card
+  // takes the strip's place. Named by its first line.
+  async function stripToNote(card: BoardCard) {
+    const strip = card.glueId ? glueMembers(cards, card.glueId) : [card];
+    const filled = strip.filter((m) => m.text?.trim());
+    if (filled.length === 0) return;
+    const head = strip[0];
+    const blocks: Block[] = filled.map((m) => {
+      const b: Block = { id: generateId(), text: m.text ?? '', type: (m.type ?? 'paragraph') as Block['type'], createdAt: m.createdAt ?? Date.now() };
+      if (m.type === 'heading') b.headingLevel = m.headingLevel ?? 2;
+      if ((m.type as string) === 'checkbox') b.checked = !!m.checked;
+      return b;
+    });
+    const title = (filled[0].text ?? '').split('\n')[0].trim().slice(0, 80) || 'Без назви';
+    const now = Date.now();
+    try {
+      // A plain first line (or a heading) IS the title, so it is not kept
+      // twice; a first task or list item stays a row, and only lends its words.
+      const firstIsName = ['paragraph', 'heading'].includes((filled[0].type ?? 'paragraph') as string);
+      const body = firstIsName ? blocks.slice(1) : blocks;
+      const created = await addDoc(documentsCollection, { title, blocks: body, createdAt: now, updatedAt: now });
+      const ids = new Set(strip.map((m) => m.id));
+      const noteCard: BoardCard = {
+        id: generateId(),
+        text: '',
+        type: 'document',
+        createdAt: now,
+        documentId: created.id,
+        documentTitle: title,
+        x: head.x,
+        y: head.y,
+        width: Number.isFinite(head.width) ? head.width : FREE_BLOCK_WIDTH,
+      };
+      clearSelection();
+      setCards((prev) => [...prev.filter((c) => !ids.has(c.id)), noteCard]);
+      hapticDrop();
+    } catch (e) {
+      notify('Нотатка не створилась', (e as Error).message);
+    }
+  }
+
+  // «Розібрати»: a note's card comes apart into a strip of free blocks at its
+  // place, and the note goes to the bin (its blocks live on the board now).
+  // Only a note of text rows: a picture or a table has no free-block form.
+  async function noteToStrip(card: BoardCard) {
+    if (!card.documentId) return;
+    try {
+      const snap = await getDoc(doc(db, 'documents', card.documentId));
+      const data = snap.data() as { title?: string; blocks?: Block[] } | undefined;
+      const all = (data?.blocks ?? []).filter((b) => !!b.text?.trim() || !['paragraph', undefined].includes(b.type));
+      const kinds = new Set(['paragraph', 'heading', 'checkbox', 'bulleted', 'numbered']);
+      if (all.some((b) => !kinds.has((b.type ?? 'paragraph') as string))) {
+        notify('Не розібрати', 'У нотатці є не лише текст (картинка, файл, таблиця…). Розбирати можна нотатку з самих рядків.');
+        return;
+      }
+      if (card.documentId.startsWith('day_')) {
+        notify('Не розібрати', 'Аркуш дня лишається аркушем.');
+        return;
+      }
+      const title = data?.title?.trim();
+      const rows: Block[] = [
+        ...(title && title !== 'Без назви' ? [{ id: generateId(), text: title, type: 'heading' as const, headingLevel: 2 } as Block] : []),
+        ...all,
+      ];
+      if (rows.length === 0) return;
+      const gid = generateId();
+      const width = Number.isFinite(card.width) ? card.width : FREE_BLOCK_WIDTH;
+      const fresh: BoardCard[] = rows.map((b, i) => {
+        const kind = (b.type ?? 'paragraph') === 'numbered' ? 'bulleted' : b.type ?? 'paragraph';
+        const out: BoardCard = {
+          id: generateId(),
+          text: b.text ?? '',
+          type: kind as BoardCard['type'],
+          freeBlock: true,
+          createdAt: b.createdAt ?? Date.now(),
+          x: card.x,
+          y: card.y + i * 40,
+          width,
+          ...(rows.length > 1 ? { glueId: gid, glueOrder: i } : {}),
+        };
+        if (kind === 'heading') out.headingLevel = b.headingLevel ?? 2;
+        if ((kind as string) === 'checkbox') out.checked = !!b.checked;
+        return out;
+      });
+      await updateDoc(doc(db, 'documents', card.documentId), { deletedAt: Date.now() });
+      clearSelection();
+      setCards((prev) => reflowGlue([...prev.filter((c) => c.id !== card.id), ...fresh], cardHeights));
+      hapticDrop();
+    } catch (e) {
+      notify('Не вдалося розібрати', (e as Error).message);
+    }
+  }
+
   // MOVED INTO A NOTE (the «один дім» rule): the blocks are added to the end
   // of the note, in order, with their kinds - and leave the board. The
   // note's write lands in the local cache at once (and syncs later, offline
@@ -6704,6 +6798,14 @@ export default function BoardScreen() {
       ? selectedCardIds.size > 0 || selectedShapeIds.size > 0
         ? [
             { key: 'cancel', icon: 'close-outline', label: 'Вийти', onPress: clearSelection },
+            // A free block (with its strip) becomes a note; a note's card on
+            // a day board comes apart into free blocks again.
+            ...(onlySelectedCard?.freeBlock
+              ? [{ key: 'to-note', icon: 'document-text-outline', label: 'Нотатка', onPress: () => stripToNote(onlySelectedCard) }]
+              : []),
+            ...(onlySelectedCard?.type === 'document' && onlySelectedCard.documentId && isDayBoard
+              ? [{ key: 'apart', icon: 'reorder-four-outline', label: 'Розібрати', onPress: () => noteToStrip(onlySelectedCard) }]
+              : []),
             ...(selectedCardIds.size >= 2
               ? [
                   {
