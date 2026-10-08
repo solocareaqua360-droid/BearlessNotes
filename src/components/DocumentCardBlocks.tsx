@@ -32,6 +32,9 @@ export default function DocumentCardBlocks({ documentId }: { documentId: string 
       ),
     [documentId]
   );
+  // The card's own ground shows through: no sheet behind the rows, no row
+  // frames (the user: "не впевнений чи взагалі треба відображати їх контур").
+  const clear = { background: 'transparent', text: theme.paper.ink, textMuted: theme.paper.inkMuted };
   if (!blocks) return null;
   // Empty rows are left out: on a card an empty line is only a gap.
   const all = visibleBlocks(blocks).filter((b) => !(isLightRow(b) && !b.text?.trim()));
@@ -51,7 +54,7 @@ export default function DocumentCardBlocks({ documentId }: { documentId: string 
               item={item}
               indented={rowIndented}
               listNumber={item.type === 'numbered' ? numbered : undefined}
-              paperColor={null}
+              paperColor={clear}
               styles={editorStyles}
               theme={theme}
               textScale={textScale}
@@ -93,7 +96,7 @@ export default function DocumentCardBlocks({ documentId }: { documentId: string 
             onOpenCustomRow={noop}
             onOpenCustomView={noop}
             inputRef={noop}
-            paperColor={null}
+            paperColor={clear}
             preview
           />
         );
