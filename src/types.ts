@@ -592,6 +592,9 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // card window) was last given with its corner handle, in screen points.
   windowW?: number;
   windowH?: number;
+  // 'document' cards on a day's board - the folded card's height (board
+  // units), set with the handle of the card made live.
+  docHeight?: number;
   // Which BoardLayer this card belongs to, if any - see BoardLayer's own
   // comment for how it differs from a column or a container.
   layerId?: string;
