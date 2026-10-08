@@ -2200,6 +2200,18 @@ export default function BoardScreen() {
   } | null>(null);
   const cardWindowDocId = cardWindow?.docId ?? null;
   const cardEditorRef = useRef<DocumentEditorHandle>(null);
+  const startCardWriting = useCallback(() => cardEditorRef.current?.startWriting(), []);
+  // The tap is a gesture-handler one: the note's scroll view swallows plain
+  // touches, a Pressable around it never hears them.
+  const cardBodyTap = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(300)
+        .onEnd((_e, ok) => {
+          if (ok) runOnJS(startCardWriting)();
+        }),
+    [startCardWriting]
+  );
   const cardWindowDocIdSV = useSharedValue<string | null>(null);
   useEffect(() => {
     cardWindowDocIdSV.value = cardWindow?.cardId ?? null;
@@ -7804,10 +7816,8 @@ export default function BoardScreen() {
             // stand inert until then so that a swipe scrolls them, and the
             // pencil that wakes them is not on a card (utils: the note's
             // own startWriting).
-            <Pressable
-              style={[styles.cardWindowBody, cardWindowWriting && { overflow: 'visible' }]}
-              onPress={() => cardEditorRef.current?.startWriting()}
-            >
+            <GestureDetector gesture={cardBodyTap}>
+            <View style={[styles.cardWindowBody, cardWindowWriting && { overflow: 'visible' }]}>
               <TextScaleOverride factor={Math.max(0.42, PAPER_DOC_TEXT * cardWindow.zoom)}>
                 <DocumentEditorScreen
                   key={cardWindow.docId}
@@ -7821,7 +7831,8 @@ export default function BoardScreen() {
                   onPanelChange={setCardWindowPanel}
                 />
               </TextScaleOverride>
-            </Pressable>
+            </View>
+            </GestureDetector>
           )}
           {cardWindowWriting && (
             <Animated.View
