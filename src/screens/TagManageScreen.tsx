@@ -98,8 +98,24 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
   const [resetFolders, setResetFolders] = useState(0);
   useTopExtras(
     view === 'canvas'
-      ? [{ label: 'Упорядкувати папки', icon: 'reorder-four-outline', onPress: () => setResetFolders((n) => n + 1) }]
-      : null,
+      ? [
+          { label: linksOpen ? 'Сховати бази й зв\'язки' : 'Бази й зв\'язки', icon: 'git-network-outline', onPress: () => setLinksOpen((v) => !v) },
+          { label: 'Упорядкувати папки', icon: 'reorder-four-outline', onPress: () => setResetFolders((n) => n + 1) },
+        ]
+      : // The list has no lines: this opens the canvas with the databases'
+        // circles and their lines up (the same switch the dock's right button makes).
+        [
+          {
+            label: 'Бази й зв\'язки',
+            icon: 'git-network-outline',
+            onPress: () => {
+              setView('canvas');
+              AsyncStorage.setItem('foldersView', 'canvas').catch(() => {});
+              closeSearch();
+              setLinksOpen(true);
+            },
+          },
+        ],
     null,
     isFocused
   );
