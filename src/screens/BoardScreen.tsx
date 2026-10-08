@@ -142,8 +142,9 @@ import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { FEATURES } from '../features';
 import DocumentCardBlocks from '../components/DocumentCardBlocks';
-import { makeStyles as makeEditorStyles } from '../components/documentEditorStyles';
+import { PAGE_H2, PAGE_TEXT, makeStyles as makeEditorStyles } from '../components/documentEditorStyles';
 import PagePreviewRow from '../components/PagePreviewRow';
+import { SoftTaskCheck } from '../components/SoftIcon';
 import { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockWide, useTopBack, useTopExtras } from '../navigation/navDock';
 import TopNavBar, { useTopNavOn } from '../components/TopNavBar';
@@ -360,6 +361,8 @@ function newTextCard(index: number, at: { x: number; y: number }): BoardCard {
 
 // A free block: paper, a text kind of the note's own, wide enough to read.
 const FREE_BLOCK_WIDTH = 240;
+// The strip of block kinds over the keyboard while a free block is typed in.
+const FREE_BAR_H = 48;
 function newFreeBlock(index: number, at: { x: number; y: number }): BoardCard {
   const jitter = (index % 6) * 24;
   return {
@@ -1281,6 +1284,12 @@ type DraggableCardProps = {
   // the note's paper - and a tap makes that same card live (BoardScreen's
   // card window lies exactly over it).
   livePaper?: boolean;
+  // A free block being typed in, right here on the board (no sheet): the
+  // card turns into the field, and its own gestures step aside.
+  inlineEditing?: boolean;
+  onInlineText?: (id: string, text: string) => void;
+  onInlineDoubleEnter?: (id: string) => void;
+  onInlineBackspaceEmpty?: (id: string) => void;
   // This card's live world position. Owned by BoardScreen (see
   // cardPositions) rather than created here, so the connection lines can
   // read it while a drag is in flight - the card itself still treats it
@@ -1387,6 +1396,72 @@ type DraggableCardProps = {
 // `canvasScale` is read inside the worklet so a drag still tracks the
 // finger 1:1 while the canvas is pinch-zoomed. A Tap is raced against the
 // Pan so a quick tap (edit a sticky's text) and a real drag never fight.
+// A free block typed in on the board: the note's own row - the same sizes
+// and marks a page draws (PagePreviewRow) - with a field in it. Single Enter
+// is a line break and two make the next block, as in a note.
+const FREE_BLOCK_TEXT = 0.86;
+function FreeBlockInput({
+  card,
+  editorStyles,
+  ink,
+  faint,
+  paper,
+  onText,
+  onDoubleEnter,
+  onBackspaceEmpty,
+}: {
+  card: BoardCard;
+  editorStyles: ReturnType<typeof makeEditorStyles>;
+  ink: string;
+  faint: string;
+  paper: string;
+  onText: (text: string) => void;
+  onDoubleEnter: () => void;
+  onBackspaceEmpty: () => void;
+}) {
+  const kind = card.type ?? 'paragraph';
+  const base = kind === 'heading' ? PAGE_H2 : PAGE_TEXT;
+  const size = { fontSize: Math.round(base.size * FREE_BLOCK_TEXT), lineHeight: Math.round(base.line * FREE_BLOCK_TEXT) };
+  const textRef = useRef(card.text ?? '');
+  textRef.current = card.text ?? '';
+  return (
+    <View style={freeInputStyles.row}>
+      {kind === 'checkbox' && (
+        <View style={freeInputStyles.mark}>
+          <SoftTaskCheck checked={!!card.checked} ink={ink} faint={faint} paper={paper} />
+        </View>
+      )}
+      {kind === 'bulleted' && <Text style={[freeInputStyles.bullet, { color: ink }, size]}>•</Text>}
+      <TextInput
+        autoFocus
+        multiline
+        disableFullscreenUI
+        value={card.text ?? ''}
+        placeholder={kind === 'heading' ? 'Заголовок' : 'Текст…'}
+        placeholderTextColor={faint}
+        onChangeText={(t) => {
+          if (t.endsWith('\n\n')) {
+            onText(t.slice(0, -2));
+            onDoubleEnter();
+            return;
+          }
+          onText(t);
+        }}
+        onKeyPress={(e) => {
+          if (e.nativeEvent.key === 'Backspace' && textRef.current === '') onBackspaceEmpty();
+        }}
+        style={[editorStyles.blockDisplayText, kind === 'heading' && editorStyles.heading2, size, freeInputStyles.input, { color: ink }]}
+      />
+    </View>
+  );
+}
+const freeInputStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, gap: 8 },
+  mark: { paddingTop: 3 },
+  bullet: { width: 12 },
+  input: { flex: 1, padding: 0, margin: 0, textAlignVertical: 'top' },
+});
+
 // The day board's document card (see livePaper): its height when folded, in
 // the board's own units, and the size its text is read at - one size for the
 // card at rest and the same card being written in.
@@ -1436,6 +1511,10 @@ function DraggableCard({
   onVideoTime,
   canvasHoldGesture,
   livePaper,
+  inlineEditing,
+  onInlineText,
+  onInlineDoubleEnter,
+  onInlineBackspaceEmpty,
 }: DraggableCardProps) {
   // FRAMES FROM THE PLAYER (the user's, 2026-10-04): the phone's screen
   // capture (asked for once per session), the newest frame cut to the
@@ -1689,7 +1768,8 @@ function DraggableCard({
       runOnJS(onLongPress)(card);
     });
 
-  const gesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
+  // Typing in it: the field takes every touch (the caret, a selection).
+  const gesture = inlineEditing ? Gesture.Tap().enabled(false) : Gesture.Race(panGesture, tapGesture, longPressGesture);
 
   // Two shared offsets can apply on top of this card's own position: the
   // group-drag one (a selected sibling is being dragged) and the column
@@ -1801,9 +1881,20 @@ function DraggableCard({
               // Glued: the line that says these two were stuck together.
               !!card.glueId && (card.glueOrder ?? 0) > 0 && styles.freeBlockSeam,
             ]}
-            pointerEvents="none"
+            pointerEvents={inlineEditing ? 'auto' : 'none'}
           >
-            {card.text?.trim() ? (
+            {inlineEditing ? (
+              <FreeBlockInput
+                card={card}
+                editorStyles={freeBlockStyles}
+                ink={theme.paper.ink}
+                faint={theme.paper.inkFaint}
+                paper={theme.paper.fill}
+                onText={(t) => onInlineText?.(card.id, t)}
+                onDoubleEnter={() => onInlineDoubleEnter?.(card.id)}
+                onBackspaceEmpty={() => onInlineBackspaceEmpty?.(card.id)}
+              />
+            ) : card.text?.trim() ? (
               <PagePreviewRow
                 item={card as unknown as Block}
                 indented={false}
@@ -2354,6 +2445,10 @@ export default function BoardScreen() {
   // blocks - the offer to put it on a board rides in with it.
   const [paneOfferBoard, setPaneOfferBoard] = useState(false);
   const [editingCard, setEditingCard] = useState<BoardCard | null>(null);
+  const [inlineBlockId, setInlineBlockId] = useState<string | null>(null);
+  const inlineBlockIdRef = useRef<string | null>(null);
+  inlineBlockIdRef.current = inlineBlockId;
+  const inlineKbSeenRef = useRef(false);
   const [editingText, setEditingText] = useState('');
   const [renamingTitle, setRenamingTitle] = useState(false);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
@@ -2678,6 +2773,25 @@ export default function BoardScreen() {
     cardWindowTyping.value = cardWindowWriting;
     cardWindowKb.value = cardWindowKbNow;
   }, [cardWindowWriting, cardWindowTyping, cardWindowTypingP, lastKbSV, cardWindowKb, cardWindowKbNow]);
+  // Typing in a free block: the board slides up if the keyboard would cover
+  // it, and the keyboard going down ends the typing (as in a note).
+  useEffect(() => {
+    if (!inlineBlockId) return;
+    if (keyboardHeight > 0) {
+      inlineKbSeenRef.current = true;
+      const card = cards.find((c) => c.id === inlineBlockId);
+      if (!card) return;
+      const top =
+        canvasOriginY.value + (card.y - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
+      const bottom = top + heightOf(card, cardHeights) * scale.value;
+      const limit = windowHeight - keyboardHeight - bottomInset - FREE_BAR_H - 24;
+      if (bottom > limit) translateY.value = withTiming(translateY.value - (bottom - limit), { duration: 220 });
+      else if (top < boardInsets.top + 80) translateY.value = withTiming(translateY.value + (boardInsets.top + 80 - top), { duration: 220 });
+      return;
+    }
+    if (inlineKbSeenRef.current) endInlineEdit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyboardHeight, inlineBlockId]);
   const resizeGestureWin = useMemo(
     () =>
       Gesture.Pan()
@@ -3718,6 +3832,10 @@ export default function BoardScreen() {
     // Scrintal.
     setCardWindow(null);
     setCardWindowPanel(false);
+    if (inlineBlockIdRef.current) {
+      Keyboard.dismiss();
+      endInlineEdit();
+    }
     setSelectedShapeId(null);
     setSelectedCardIds(new Set());
     setSelectedShapeIds(new Set());
@@ -3879,8 +3997,90 @@ export default function BoardScreen() {
     setAddSheetVisible(false);
     const card = newFreeBlock(cards.length, viewCenter());
     setCards((prev) => [...prev, card]);
-    setEditingCard(card);
-    setEditingText('');
+    startInlineEdit(card.id);
+  }
+
+  // TYPING IN A FREE BLOCK ON THE BOARD (2026-10-08, the user's: "логіка
+  // така сама як із вводом в звичайний блок документа"): no sheet - the
+  // block itself turns into the field.
+  function startInlineEdit(id: string) {
+    const node = canvasRef.current;
+    if (node) node.measureInWindow((_x, y) => (canvasOriginY.value = y));
+    inlineKbSeenRef.current = false;
+    setInlineBlockId(id);
+  }
+  function endInlineEdit() {
+    const id = inlineBlockIdRef.current;
+    setInlineBlockId(null);
+    if (!id) return;
+    // A block left empty is no block.
+    setCards((prev) => {
+      const c = prev.find((x) => x.id === id);
+      if (!c || c.text?.trim()) return prev;
+      return reflowGlue(dropLoneGlue(prev.filter((x) => x.id !== id)), cardHeightsRef.current);
+    });
+  }
+  function inlineText(id: string, text: string) {
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, text } : c)));
+  }
+  // Two Enters: the next block, glued under this one, typed in at once. A
+  // list or a task carries on as a list or a task, as in a note.
+  function inlineDoubleEnter(id: string) {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return;
+    const kind = card.type ?? 'paragraph';
+    const nextKind = kind === 'checkbox' || kind === 'bulleted' ? kind : 'paragraph';
+    const fresh: BoardCard = {
+      id: generateId(),
+      text: '',
+      type: nextKind,
+      freeBlock: true,
+      createdAt: Date.now(),
+      x: card.x,
+      y: card.y + heightOf(card, cardHeights),
+      width: card.width,
+    };
+    setCards((prev) => {
+      const gid = card.glueId ?? generateId();
+      const order = card.glueOrder ?? 0;
+      const next = prev.map((c) => {
+        if (c.id === card.id) return card.glueId ? c : { ...c, glueId: gid, glueOrder: 0 };
+        if (card.glueId && c.glueId === gid && (c.glueOrder ?? 0) > order) return { ...c, glueOrder: (c.glueOrder ?? 0) + 1 };
+        return c;
+      });
+      return reflowGlue([...next, { ...fresh, glueId: gid, glueOrder: order + 1 }], cardHeights);
+    });
+    setInlineBlockId(fresh.id);
+  }
+  // Backspace in an empty block: it goes, and the caret to the one above.
+  function inlineBackspaceEmpty(id: string) {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return;
+    let previous: string | null = null;
+    if (card.glueId) {
+      const strip = glueMembers(cards, card.glueId);
+      const i = strip.findIndex((m) => m.id === id);
+      if (i > 0) previous = strip[i - 1].id;
+    }
+    setCards((prev) => reflowGlue(dropLoneGlue(prev.filter((c) => c.id !== id)), cardHeights));
+    if (previous) setInlineBlockId(previous);
+    else {
+      setInlineBlockId(null);
+      Keyboard.dismiss();
+    }
+  }
+  function setInlineKind(kind: 'paragraph' | 'heading' | 'checkbox' | 'bulleted') {
+    const id = inlineBlockIdRef.current;
+    if (!id) return;
+    setCards((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) return c;
+        const out: BoardCard = { ...c, type: kind };
+        if (kind === 'heading') out.headingLevel = 2;
+        else delete out.headingLevel;
+        return out;
+      })
+    );
   }
 
   // A free block's kind, from its editor: text, heading, task, list.
@@ -4512,7 +4712,11 @@ export default function BoardScreen() {
 
   function handleCardTap(card: BoardCard) {
     const type = card.type ?? 'paragraph';
-    if (card.freeBlock || type === 'paragraph') {
+    if (card.freeBlock) {
+      startInlineEdit(card.id);
+      return;
+    }
+    if (type === 'paragraph') {
       setEditingCard(card);
       setEditingText(card.text);
     } else if (type === 'board') {
@@ -6394,14 +6598,14 @@ export default function BoardScreen() {
   // While a card window is being written in, the note's own bar and panel
   // own the foot of the screen - the board's dock steps away.
   useDockBeads(
-    boardShowing && !cardWindowWriting && (!bar || !selecting)
+    boardShowing && !cardWindowWriting && !inlineBlockId && (!bar || !selecting)
       ? {
           icon: 'layers-outline',
           active: layersDrawerVisible,
           onPress: () => setLayersDrawerVisible((v) => !v),
         }
       : null,
-    boardShowing && !cardWindowWriting && (bar ? !selecting : selectedCardIds.size === 0)
+    boardShowing && !cardWindowWriting && !inlineBlockId && (bar ? !selecting : selectedCardIds.size === 0)
       ? // The right round button is the way OUT of the board on the phone
         // (2026-10-08, the user's: "+ з дошки перенести в її док, а замість
         // + кнопка назад") - as it already is inside the databases; "+"
@@ -6440,7 +6644,7 @@ export default function BoardScreen() {
   // variable, scrolling list of actions with a word under each icon -
   // this was simply the one screen that had never been moved onto it.
   useDockActions(
-    (paneDocOpen && paneFullscreen) || cardWindowWriting
+    (paneDocOpen && paneFullscreen) || cardWindowWriting || inlineBlockId !== null
       ? null
       : boardFocused
       ? selectedCardIds.size > 0 || selectedShapeIds.size > 0
@@ -7092,6 +7296,10 @@ export default function BoardScreen() {
                     onResize={commitCardResize}
                     canvasHoldGesture={holdToSelectGesture}
                     livePaper={FEATURES.cardWindow && isDayBoard}
+                    inlineEditing={inlineBlockId === card.id}
+                    onInlineText={inlineText}
+                    onInlineDoubleEnter={inlineDoubleEnter}
+                    onInlineBackspaceEmpty={inlineBackspaceEmpty}
                     dimmed={(isolatedIds !== null && !isolatedIds.has(card.id)) || (findIds !== null && !findIds.has(card.id))}
                   />
                 );
@@ -8042,6 +8250,36 @@ export default function BoardScreen() {
           />
         </View>
       )}
+      {inlineBlockId !== null && keyboardHeight > 0 && (
+        <View style={[styles.freeBar, { bottom: keyboardHeight + bottomInset, backgroundColor: theme.paper.fill }]}>
+          {(
+            [
+              ['paragraph', 'text-outline'],
+              ['heading', 'reorder-four-outline'],
+              ['checkbox', 'checkbox-outline'],
+              ['bulleted', 'list-outline'],
+            ] as const
+          ).map(([kind, icon]) => {
+            const current = (cards.find((c) => c.id === inlineBlockId)?.type ?? 'paragraph') === kind;
+            return (
+              <Pressable key={kind} onPress={() => setInlineKind(kind)} style={[styles.freeBarButton, current && styles.freeBlockKindActive]}>
+                <Ionicons name={icon} size={20} color="#1c1c1e" />
+              </Pressable>
+            );
+          })}
+          <View style={{ flex: 1 }} />
+          <Pressable
+            accessibilityLabel="Готово"
+            onPress={() => {
+              Keyboard.dismiss();
+              endInlineEdit();
+            }}
+            style={[styles.freeBarButton, { backgroundColor: '#1c1c1e' }]}
+          >
+            <Ionicons name="checkmark" size={20} color="#ffffff" />
+          </Pressable>
+        </View>
+      )}
       {cardWindow !== null && (
         <>
         <Animated.View collapsable={false} style={[styles.cardWindowFrame, cardWindowStyle]}>
@@ -8286,6 +8524,19 @@ const makeStyles = (theme: Theme) =>
     cardWindowFrame: { position: 'absolute' },
     freeBlockCard: { paddingVertical: 4, paddingHorizontal: 2, borderRadius: 12 },
     freeBlockSeam: { borderTopWidth: 1.5, borderTopColor: 'rgba(0,0,0,0.18)', borderStyle: 'dashed', borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+    freeBar: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      height: FREE_BAR_H,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: 'rgba(0,0,0,0.12)',
+    },
+    freeBarButton: { width: 40, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
     freeBlockEmpty: { fontSize: 13, paddingHorizontal: 10, paddingVertical: 8 },
     freeBlockKinds: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
     freeBlockKind: {
