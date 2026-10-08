@@ -34,6 +34,7 @@ export default function PagePreviewRow({
   styles,
   theme,
   textScale,
+  noReminder,
 }: {
   item: Block;
   indented: boolean;
@@ -43,6 +44,8 @@ export default function PagePreviewRow({
   styles: ReturnType<typeof makeStyles>;
   theme: Theme;
   textScale: number;
+  // A free block on a board is a box, not a task: no reminder line.
+  noReminder?: boolean;
 }) {
   const type = item.type ?? 'paragraph';
   const rowPaperColor = item.isSticker ? null : paperColor;
@@ -101,12 +104,14 @@ export default function PagePreviewRow({
           </View>
           {textField}
         </View>
+        {!noReminder && (
         <View style={styles.checkboxReminderRow}>
           <Ionicons name="alarm-outline" size={11} color={reminderLabel ? theme.accent : theme.paper.inkFaint} />
           <Text style={[styles.checkboxReminderText, !reminderLabel && styles.checkboxReminderTextEmpty]}>
             {reminderLabel ?? 'Нагадування'}
           </Text>
         </View>
+        )}
       </View>
     );
   }

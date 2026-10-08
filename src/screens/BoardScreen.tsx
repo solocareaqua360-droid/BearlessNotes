@@ -1753,6 +1753,7 @@ function DraggableCard({
                 styles={freeBlockStyles}
                 theme={theme}
                 textScale={0.86}
+                noReminder
               />
             ) : (
               <Text style={[styles.freeBlockEmpty, { color: theme.paper.inkMuted }]}>Порожній блок</Text>
