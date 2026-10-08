@@ -2199,6 +2199,7 @@ export default function BoardScreen() {
     zoom: number;
   } | null>(null);
   const cardWindowDocId = cardWindow?.docId ?? null;
+  const cardEditorRef = useRef<DocumentEditorHandle>(null);
   const cardWindowDocIdSV = useSharedValue<string | null>(null);
   useEffect(() => {
     cardWindowDocIdSV.value = cardWindow?.cardId ?? null;
@@ -7799,10 +7800,18 @@ export default function BoardScreen() {
             </Text>
           </View>
           {cardWindow.live && (
-            <View style={[styles.cardWindowBody, cardWindowWriting && { overflow: 'visible' }]}>
+            // A tap on the card's body starts writing - the note's blocks
+            // stand inert until then so that a swipe scrolls them, and the
+            // pencil that wakes them is not on a card (utils: the note's
+            // own startWriting).
+            <Pressable
+              style={[styles.cardWindowBody, cardWindowWriting && { overflow: 'visible' }]}
+              onPress={() => cardEditorRef.current?.startWriting()}
+            >
               <TextScaleOverride factor={Math.max(0.42, PAPER_DOC_TEXT * cardWindow.zoom)}>
                 <DocumentEditorScreen
                   key={cardWindow.docId}
+                  ref={cardEditorRef}
                   embedded
                   documentId={cardWindow.docId}
                   navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
@@ -7812,7 +7821,7 @@ export default function BoardScreen() {
                   onPanelChange={setCardWindowPanel}
                 />
               </TextScaleOverride>
-            </View>
+            </Pressable>
           )}
           {cardWindowWriting && (
             <Animated.View
