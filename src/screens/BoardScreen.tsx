@@ -2519,12 +2519,29 @@ export default function BoardScreen() {
   );
   const cardWindowMaxW = windowWidth - 16;
   const cardWindowMaxH = windowHeight - cardWindowMinTop - 24;
-  const cardWindowWriting = !!cardWindow?.live && (keyboardHeight > 0 || cardWindowPanel);
+  // Writing ends a moment AFTER the keyboard is down: the note's bar above
+  // the keyboard is still sliding to the foot for a few frames, and a card
+  // that shrank at once had that bar sliding through it (the user saw
+  // buttons flash across the card).
+  const writingNow = !!cardWindow?.live && (keyboardHeight > 0 || cardWindowPanel);
+  const [writingHeld, setWritingHeld] = useState(false);
+  useEffect(() => {
+    if (writingNow) {
+      setWritingHeld(true);
+      return;
+    }
+    const t = setTimeout(() => setWritingHeld(false), 450);
+    return () => clearTimeout(t);
+  }, [writingNow]);
+  const cardWindowWriting = !!cardWindow?.live && (writingNow || writingHeld);
   cardWindowZoomRef.current = cardWindow?.zoom ?? 1;
   // The panel takes the keyboard's place at the keyboard's height.
   const lastKbRef = useRef(0);
   if (keyboardHeight > 0) lastKbRef.current = keyboardHeight;
-  const cardWindowKbNow = keyboardHeight > 0 ? keyboardHeight : cardWindowPanel ? lastKbRef.current || Math.round(windowHeight * 0.36) : 0;
+  // While writing is held after the keyboard went down, the card stays
+  // where it stood over the keyboard rather than dropping and coming back.
+  const cardWindowKbNow =
+    keyboardHeight > 0 ? keyboardHeight : cardWindowPanel || cardWindowWriting ? lastKbRef.current || Math.round(windowHeight * 0.36) : 0;
   useEffect(() => {
     cardWindowTyping.value = cardWindowWriting;
     cardWindowKb.value = cardWindowKbNow;
