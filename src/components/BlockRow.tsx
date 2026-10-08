@@ -695,6 +695,11 @@ export default function BlockRow({
   } else {
     const textField = canEditText ? (
       <TextInput
+        // Never Android's full-screen "extract" editor (a bare field and a
+        // «Готово» button over the whole app) - the unfolded Fold is
+        // landscape and short enough for Android to choose it, which hid
+        // the card window and the note behind it (2026-10-08).
+        disableFullscreenUI
         // The panel that stands where the keyboard was needs this field
         // to KEEP FOCUS while the keyboard is gone - otherwise the text
         // selection goes with it, and bold/italic/colour have nothing to
