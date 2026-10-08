@@ -49,6 +49,10 @@ export default function DocumentCardBlocks({ documentId }: { documentId: string 
         if (item.type === 'toggle') indented = true;
         if (isLightRow(item)) {
           return (
+            // The row's own width, given: a task's text is a flex child of a
+            // row that otherwise had nothing to measure it against on a
+            // card, and came out zero wide - the box with no words.
+            <View key={item.id} style={styles.full}>
             <PagePreviewRow
               key={item.id}
               item={item}
@@ -59,6 +63,7 @@ export default function DocumentCardBlocks({ documentId }: { documentId: string 
               theme={theme}
               textScale={textScale}
             />
+            </View>
           );
         }
         return (
@@ -108,4 +113,5 @@ export default function DocumentCardBlocks({ documentId }: { documentId: string 
 const styles = StyleSheet.create({
   // Inside the card, never past its edges.
   wrap: { marginTop: 4, overflow: 'hidden' },
+  full: { width: '100%' },
 });
