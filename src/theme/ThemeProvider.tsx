@@ -298,6 +298,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
+// A smaller (or larger) reading size for what is inside - a note drawn as a
+// CARD on a board (BoardScreen's card window) reads at card size, not page
+// size. A real font size, not a transform: a scaled view blurs its text.
+export function TextScaleOverride({ factor, children }: { factor: number; children: ReactNode }) {
+  const outer = useContext(ThemeContext);
+  const value = useMemo(
+    () => ({ ...outer, fontScale: { ...outer.fontScale, text: outer.fontScale.text * factor } }),
+    [outer, factor]
+  );
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
 export function useTheme(): Theme {
   return useContext(ThemeContext).theme;
 }
