@@ -27,6 +27,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { copyPickedFile } from '../utils/localCopy';
 import {
   deleteDoc,
   deleteField,
@@ -350,8 +351,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     const added: JustAddedFile[] = [];
     for (const asset of result.assets) {
       const id = generateId();
-      const fileUri = `${LegacyFileSystem.cacheDirectory}${id}-${asset.name}`;
-      await LegacyFileSystem.copyAsync({ from: asset.uri, to: fileUri });
+      const fileUri = await copyPickedFile(asset.uri, id, asset.name);
       const data: Record<string, unknown> = { fileUri, fileName: asset.name, updatedAt: now, createdAt: now, usedInDocuments: {} };
       if (asset.mimeType) data.mimeType = asset.mimeType;
       await setDoc(doc(db, 'files', id), data, { merge: true });

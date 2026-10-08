@@ -45,6 +45,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { copyPickedFile } from '../utils/localCopy';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import {
@@ -4338,8 +4339,7 @@ export default function BoardScreen() {
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     const id = generateId();
-    const fileUri = `${LegacyFileSystem.cacheDirectory}${id}-${asset.name}`;
-    await LegacyFileSystem.copyAsync({ from: asset.uri, to: fileUri });
+    const fileUri = await copyPickedFile(asset.uri, id, asset.name);
     const now = Date.now();
     const data: Record<string, unknown> = {
       fileUri,

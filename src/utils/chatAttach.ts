@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { saveLinkFromUrl } from './linkRecord';
 import * as DocumentPicker from 'expo-document-picker';
-import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { copyPickedFile } from './localCopy';
 import { doc, updateDoc } from '../firestore';
 import { setDoc } from './owned';
 import { db } from '../firebase';
@@ -40,8 +40,7 @@ export async function pickMediaForChat(): Promise<ChatAttachment[]> {
     const isImage = (asset.type ?? 'image') === 'image';
     const id = generateId();
     const name = asset.fileName || `${id}${isImage ? '.jpg' : '.mp4'}`;
-    const destUri = `${LegacyFileSystem.cacheDirectory}${id}-${name}`;
-    await LegacyFileSystem.copyAsync({ from: asset.uri, to: destUri });
+    const destUri = await copyPickedFile(asset.uri, id, name);
     const now = Date.now();
     const mimeType = asset.mimeType || (isImage ? 'image/jpeg' : 'video/mp4');
     if (isImage) {
@@ -105,8 +104,7 @@ export async function pickFileForChat(): Promise<ChatAttachment[]> {
   const out: ChatAttachment[] = [];
   for (const asset of result.assets) {
     const id = generateId();
-    const destUri = `${LegacyFileSystem.cacheDirectory}${id}-${asset.name}`;
-    await LegacyFileSystem.copyAsync({ from: asset.uri, to: destUri });
+    const destUri = await copyPickedFile(asset.uri, id, asset.name);
     out.push(await saveFileRecord(id, destUri, asset.name, asset.mimeType || 'application/octet-stream'));
   }
   return out;

@@ -46,6 +46,7 @@ import { cancelReminder, scheduleReminder, type ReminderKind } from '../utils/re
 // plain native file copy given two paths, which is what actually works
 // for re-homing a file expo-document-picker (a different module) picked.
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { copyPickedFile } from '../utils/localCopy';
 // react-native-gesture-handler's own ScrollView (not the core RN one) so it
 // shares the same touch arena as our rows' Pan gestures - otherwise a swipe
 // starting on a block (its TextInput especially) never reaches the
@@ -4730,8 +4731,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: false });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    const fileUri = `${LegacyFileSystem.cacheDirectory}${generateId()}-${asset.name}`;
-    await LegacyFileSystem.copyAsync({ from: asset.uri, to: fileUri });
+    const fileUri = await copyPickedFile(asset.uri, generateId(), asset.name);
     snapshotBeforeChange();
     setBlocks((prev) => {
       const index = prev.findIndex((b) => b.id === id);
