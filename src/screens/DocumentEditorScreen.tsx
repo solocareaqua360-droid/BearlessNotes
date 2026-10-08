@@ -5583,6 +5583,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       style={[
         styles.container,
         embedded && !embeddedPaperScrolls && styles.containerEmbedded,
+        // Told the bar may reach past the frame (a board's card window):
+        // the frame must not clip it, or its end buttons are cut off.
+        embedded && panelBleed > 0 && { overflow: 'visible' as const },
         // The still frame - on the canvas only now; see scrollSheet for
         // where the page's own frame went.
         sheetPage && !scrollSheet && styles.pageSheet,

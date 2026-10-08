@@ -7686,7 +7686,7 @@ export default function BoardScreen() {
               pointerEvents="none"
               style={[
                 styles.cardWindowOutline,
-                { bottom: keyboardHeight + EDITOR_TOOLBAR_HEIGHT, borderColor: softBoardTokens?.accent ?? '#c46a2c' },
+                { bottom: keyboardHeight + EDITOR_TOOLBAR_HEIGHT + 12, borderColor: softBoardTokens?.accent ?? '#c46a2c' },
               ]}
             />
           )}
