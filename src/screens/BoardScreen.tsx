@@ -2404,6 +2404,10 @@ export default function BoardScreen() {
   // the keyboard can reach out by the same amount on both sides.
   const cardWindowTypingW = windowWidth - 56;
   const cardWindowMinTop = boardInsets.top + 68;
+  // A FIXED height: the card slides with the board instead of stretching
+  // (its top used to follow the board while its foot stayed put).
+  const cardWindowH = Math.round(Math.min(windowHeight * 0.52, windowHeight - cardWindowMinTop - dockClear - bottomInset - 24));
+  const cardWindowLowest = windowHeight - dockClear - bottomInset - 16 - cardWindowH;
   const cardWindowMaxTop = Math.round(windowHeight * 0.42);
   // While writing the card stands up under the bar: at its own spot low on
   // the screen it left one line between its head and the keyboard's bar.
@@ -2418,7 +2422,7 @@ export default function BoardScreen() {
     const rawLeft =
       canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
     return {
-      top: Math.min(Math.max(rawTop, cardWindowMinTop), cardWindowMaxTop),
+      top: Math.min(Math.max(rawTop, cardWindowMinTop), Math.max(cardWindowMinTop, Math.min(cardWindowMaxTop, cardWindowLowest))),
       left: Math.min(Math.max(rawLeft, 16), windowWidth - w - 16),
       width: w,
     };
@@ -6655,7 +6659,11 @@ export default function BoardScreen() {
                 );
               })}
 
-              {cards.filter((card) => !isHidden(card)).map((card) => {
+              {cards
+                // The card open as a window is drawn by the window - its
+                // own small self stays out of sight behind it.
+                .filter((card) => !isHidden(card) && !(cardWindowDocId !== null && card.type === 'document' && card.documentId === cardWindowDocId))
+                .map((card) => {
                 const isSelected = selectedCardIds.has(card.id);
                 const position = positionOf(card);
                 return (
@@ -7647,7 +7655,7 @@ export default function BoardScreen() {
             // Writing: the card reaches down to the screen's foot, so the
             // bar above the keyboard stands where it does in a note - and
             // nothing is clipped, so that bar can span the whole screen.
-            keyboardHeight > 0 ? { bottom: 0, overflow: 'visible' } : { bottom: dockClear + bottomInset + 8 },
+            keyboardHeight > 0 ? { bottom: 0, overflow: 'visible' } : { height: cardWindowH },
           ]}
         >
           <View style={styles.cardWindowHead}>
@@ -7686,7 +7694,7 @@ export default function BoardScreen() {
               pointerEvents="none"
               style={[
                 styles.cardWindowOutline,
-                { bottom: keyboardHeight + EDITOR_TOOLBAR_HEIGHT + 12, borderColor: softBoardTokens?.accent ?? '#c46a2c' },
+                { bottom: keyboardHeight + EDITOR_TOOLBAR_HEIGHT + bottomInset + 10, borderColor: softBoardTokens?.accent ?? '#c46a2c' },
               ]}
             />
           )}
