@@ -2841,6 +2841,30 @@ export function ActionButton({
 }) {
   const ink = soft ? (action.active ? soft.accent : soft.ink) : action.active ? theme.accent : theme.glass.ink;
   const ownIcon = soft ? SOFT_DOCK_GLYPHS[action.icon] : undefined;
+  // THE STRONG ONE: a dark circle of its own in the strip, no word under
+  // it - set apart from the tools by contrast, as "+" is everywhere else.
+  if (soft && action.strong) {
+    const d = Math.min(height - 8, width - 8, 46);
+    return (
+      <Pressable
+        onPress={() => {
+          action.onPress();
+          if (action.closesStack) onDone();
+        }}
+        onLongPress={action.onLongPress}
+        accessibilityLabel={action.label}
+        style={{ width, height, alignItems: 'center', justifyContent: 'center' }}
+      >
+        <View style={{ width: d, height: d, borderRadius: d / 2, backgroundColor: soft.ink, alignItems: 'center', justifyContent: 'center' }}>
+          {ownIcon ? (
+            <SoftIcon name={ownIcon} size={iconSize + 2} color={soft.card} />
+          ) : (
+            <Ionicons name={action.icon as keyof typeof Ionicons.glyphMap} size={iconSize + 1} color={soft.card} />
+          )}
+        </View>
+      </Pressable>
+    );
+  }
   return (
     <Pressable
       onPress={() => {

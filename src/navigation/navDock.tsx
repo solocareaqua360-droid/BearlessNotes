@@ -199,6 +199,10 @@ export type DockAction = {
   closesStack?: boolean;
   onLongPress?: () => void;
   active?: boolean;
+  // Drawn as its own dark circle inside the strip, the strong button -
+  // the board's «+» once it moved into the tools strip (2026-10-08: «в
+  // окремий кружечок, зіграємо на контрасті»). Soft dock only.
+  strong?: boolean;
   // A small glyph over the icon's corner - "the plus ON the thing it
   // adds", which is how this app has drawn creation since the user asked
   // for it.

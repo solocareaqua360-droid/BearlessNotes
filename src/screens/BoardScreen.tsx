@@ -6111,7 +6111,7 @@ export default function BoardScreen() {
               onPress: () => setCanvasTool('connect'),
             },
             // "+" moved here from the right round button (see useDockBeads).
-            ...(FEATURES.boardDockBack ? [{ key: 'add', icon: 'add-outline', label: 'Додати', onPress: () => setAddSheetVisible(true) }] : []),
+            ...(FEATURES.boardDockBack ? [{ key: 'add', icon: 'add-outline', label: 'Додати', strong: true, onPress: () => setAddSheetVisible(true) }] : []),
           ]
         : [
             // Three separate buttons now, not one cycled through - "чому
