@@ -595,6 +595,11 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // 'document' cards on a day's board - the folded card's height (board
   // units), set with the handle of the card made live.
   docHeight?: number;
+  // A FREE BLOCK on a board (2026-10-08): a line of text living on the board
+  // itself, not in any note - paper, not a coloured наліпка - in one of the
+  // note's text kinds (paragraph / heading / checkbox / bulleted). Its one
+  // home is the board until it is dropped into a note (see «один дім»).
+  freeBlock?: boolean;
   // Which BoardLayer this card belongs to, if any - see BoardLayer's own
   // comment for how it differs from a column or a container.
   layerId?: string;

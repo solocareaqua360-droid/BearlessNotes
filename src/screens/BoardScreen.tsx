@@ -142,6 +142,8 @@ import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { FEATURES } from '../features';
 import DocumentCardBlocks from '../components/DocumentCardBlocks';
+import { makeStyles as makeEditorStyles } from '../components/documentEditorStyles';
+import PagePreviewRow from '../components/PagePreviewRow';
 import { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockWide, useTopBack, useTopExtras } from '../navigation/navDock';
 import TopNavBar, { useTopNavOn } from '../components/TopNavBar';
@@ -353,6 +355,22 @@ function newTextCard(index: number, at: { x: number; y: number }): BoardCard {
     y: at.y - 60 + jitter,
     width: DEFAULT_CARD_WIDTH,
     color: STICKY_COLORS[index % STICKY_COLORS.length],
+  };
+}
+
+// A free block: paper, a text kind of the note's own, wide enough to read.
+const FREE_BLOCK_WIDTH = 240;
+function newFreeBlock(index: number, at: { x: number; y: number }): BoardCard {
+  const jitter = (index % 6) * 24;
+  return {
+    id: generateId(),
+    text: '',
+    type: 'paragraph',
+    freeBlock: true,
+    createdAt: Date.now(),
+    x: at.x - FREE_BLOCK_WIDTH / 2 + jitter,
+    y: at.y - 30 + jitter,
+    width: FREE_BLOCK_WIDTH,
   };
 }
 
@@ -1416,6 +1434,7 @@ function DraggableCard({
   }
   const theme = useTheme();
   const styles = useBoardStyles();
+  const freeBlockStyles = useStyles(makeEditorStyles);
   // The last position this card itself put into the parent's state. Used
   // only to tell "our own drag echoing back" (ignore) apart from a real
   // external move (adopt).
@@ -1721,7 +1740,25 @@ function DraggableCard({
         ]}
         pointerEvents={dimmed ? 'none' : 'auto'}
       >
-        {type === 'board' ? (
+        {card.freeBlock ? (
+          // A free block: the note's own row, on its paper - the same look
+          // it will have once it is dropped into a note.
+          <View style={[styles.refCard, styles.freeBlockCard, { backgroundColor: theme.paper.fill }]} pointerEvents="none">
+            {card.text?.trim() ? (
+              <PagePreviewRow
+                item={card as unknown as Block}
+                indented={false}
+                listNumber={undefined}
+                paperColor={{ background: 'transparent', text: theme.paper.ink, textMuted: theme.paper.inkMuted }}
+                styles={freeBlockStyles}
+                theme={theme}
+                textScale={0.86}
+              />
+            ) : (
+              <Text style={[styles.freeBlockEmpty, { color: theme.paper.inkMuted }]}>Порожній блок</Text>
+            )}
+          </View>
+        ) : type === 'board' ? (
           // Another board. Deliberately plainer than a document card:
           // there is nothing to preview - a board is a surface, not a
           // text - so what it shows is what it IS, a named place to go.
@@ -3774,6 +3811,31 @@ export default function BoardScreen() {
     transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }],
   }));
 
+  function addFreeBlock() {
+    setAddSheetVisible(false);
+    const card = newFreeBlock(cards.length, viewCenter());
+    setCards((prev) => [...prev, card]);
+    setEditingCard(card);
+    setEditingText('');
+  }
+
+  // A free block's kind, from its editor: text, heading, task, list.
+  function setEditingBlockKind(kind: 'paragraph' | 'heading' | 'checkbox' | 'bulleted') {
+    if (!editingCard) return;
+    const patch: Partial<BoardCard> = { type: kind, headingLevel: kind === 'heading' ? 2 : undefined };
+    const next = { ...editingCard, ...patch };
+    if (kind !== 'heading') delete next.headingLevel;
+    setEditingCard(next);
+    setCards((prev) =>
+      prev.map((c) => {
+        if (c.id !== editingCard.id) return c;
+        const updated = { ...c, ...patch };
+        if (kind !== 'heading') delete updated.headingLevel;
+        return updated;
+      })
+    );
+  }
+
   function addTextCard() {
     setAddSheetVisible(false);
     const card = newTextCard(cards.length, viewCenter());
@@ -4386,7 +4448,7 @@ export default function BoardScreen() {
 
   function handleCardTap(card: BoardCard) {
     const type = card.type ?? 'paragraph';
-    if (type === 'paragraph') {
+    if (card.freeBlock || type === 'paragraph') {
       setEditingCard(card);
       setEditingText(card.text);
     } else if (type === 'board') {
@@ -7308,6 +7370,8 @@ export default function BoardScreen() {
                         // Текст; two things under one word is the confusion
                         // this renames away from.
                         { key: 'sticky', icon: 'text-outline', label: 'Наліпка', onPress: addTextCard },
+                        // A line of the note's own, free on the board.
+                        { key: 'block', icon: 'reorder-two-outline', label: 'Блок', onPress: addFreeBlock },
                         { key: 'link', icon: 'link-outline', label: 'Посилання', onPress: () => openLinkPrompt('other') },
                         { key: 'video', icon: 'videocam-outline', label: 'Відео', onPress: () => openLinkPrompt('video') },
                         { key: 'geo', icon: 'location-outline', label: 'Геоточка', onPress: () => openLinkPrompt('geo') },
@@ -7742,11 +7806,33 @@ export default function BoardScreen() {
                 placeholderTextColor={GLASS_TEXT_FAINT}
                 style={styles.textEditInput}
               />
+              {editingCard.freeBlock && (
+                <View style={styles.freeBlockKinds}>
+                  {(
+                    [
+                      ['paragraph', 'text-outline', 'Текст'],
+                      ['heading', 'reorder-four-outline', 'Заголовок'],
+                      ['checkbox', 'checkbox-outline', 'Справа'],
+                      ['bulleted', 'list-outline', 'Список'],
+                    ] as const
+                  ).map(([kind, icon, label]) => (
+                    <Pressable
+                      key={kind}
+                      onPress={() => setEditingBlockKind(kind)}
+                      style={[styles.freeBlockKind, (editingCard.type ?? 'paragraph') === kind && styles.freeBlockKindActive]}
+                    >
+                      <Ionicons name={icon} size={16} color="#111827" />
+                      <Text style={styles.freeBlockKindLabel}>{label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
               {/* The наліпка's own two sizes - its text, and how wide the
                   card itself is. Steps rather than sliders, and the text
                   one counts on the same scale a shape's text does (see
                   textSizeStepLabel), so "3/6" means one size across the
                   whole board. */}
+              {!editingCard.freeBlock && (
               <View style={styles.stickySizeRow}>
                 <MaterialCommunityIcons name="format-size" size={16} color="#6B7280" />
                 <Pressable hitSlop={8} onPress={() => stepEditingCardFontSize(-1)}>
@@ -7768,6 +7854,8 @@ export default function BoardScreen() {
                   <Ionicons name="add" size={18} color="#111827" />
                 </Pressable>
               </View>
+              )}
+              {!editingCard.freeBlock && (
               <View style={styles.textEditColors}>
                 {STICKY_COLORS.map((color) => (
                   <Pressable
@@ -7783,6 +7871,7 @@ export default function BoardScreen() {
                   />
                 ))}
               </View>
+              )}
               <View style={styles.textEditButtons}>
                 <Pressable style={styles.textEditCancel} onPress={() => setEditingCard(null)}>
                   <Text style={styles.textEditCancelLabel}>Скасувати</Text>
@@ -8069,6 +8158,20 @@ const makeStyles = (theme: Theme) =>
       borderBottomRightRadius: 4,
     },
     cardWindowFrame: { position: 'absolute' },
+    freeBlockCard: { paddingVertical: 4, paddingHorizontal: 2, borderRadius: 12 },
+    freeBlockEmpty: { fontSize: 13, paddingHorizontal: 10, paddingVertical: 8 },
+    freeBlockKinds: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+    freeBlockKind: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      height: 34,
+      paddingHorizontal: 10,
+      borderRadius: 17,
+      backgroundColor: 'rgba(0,0,0,0.05)',
+    },
+    freeBlockKindActive: { backgroundColor: 'rgba(196,106,44,0.18)' },
+    freeBlockKindLabel: { fontSize: 13, color: '#111827' },
     cardWindowInner: { flex: 1 },
     cardWindowButtonLayer: { position: 'absolute', height: CARD_BUTTONS_H, justifyContent: 'center', alignItems: 'flex-end' },
     cardWindowButtonsRow: { flexDirection: 'row', gap: 6 },
