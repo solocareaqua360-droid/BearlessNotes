@@ -374,6 +374,56 @@ function newFreeBlock(index: number, at: { x: number; y: number }): BoardCard {
   };
 }
 
+// GLUE: how close a block's top-left must land to another block's
+// bottom-left to stick there, in board units.
+const GLUE_SNAP_X = 70;
+const GLUE_SNAP_ABOVE = 40;
+const GLUE_SNAP_BELOW = 55;
+
+function glueMembers(cards: BoardCard[], glueId: string): BoardCard[] {
+  return cards.filter((c) => c.glueId === glueId).sort((a, b) => (a.glueOrder ?? 0) - (b.glueOrder ?? 0));
+}
+
+// Every strip laid out under its head: same x and width, edge to edge.
+// Returns the same array when nothing moved, so it can run on every
+// change of the measured heights without looping.
+function reflowGlue(cards: BoardCard[], heights: Map<string, number>): BoardCard[] {
+  const ids = new Set(cards.filter((c) => c.glueId).map((c) => c.glueId as string));
+  if (ids.size === 0) return cards;
+  const place = new Map<string, { x: number; y: number; width: number }>();
+  ids.forEach((gid) => {
+    const members = glueMembers(cards, gid);
+    const head = members[0];
+    let y = head.y + heightOf(head, heights);
+    members.slice(1).forEach((m) => {
+      place.set(m.id, { x: head.x, y, width: head.width });
+      y += heightOf(m, heights);
+    });
+  });
+  let changed = false;
+  const next = cards.map((c) => {
+    const at = place.get(c.id);
+    if (!at || (Math.abs(c.x - at.x) < 0.5 && Math.abs(c.y - at.y) < 0.5 && c.width === at.width)) return c;
+    changed = true;
+    return { ...c, ...at };
+  });
+  return changed ? next : cards;
+}
+
+// A strip of one is no strip.
+function dropLoneGlue(cards: BoardCard[]): BoardCard[] {
+  const counts = new Map<string, number>();
+  cards.forEach((c) => c.glueId && counts.set(c.glueId, (counts.get(c.glueId) ?? 0) + 1));
+  if (![...counts.values()].some((n) => n < 2)) return cards;
+  return cards.map((c) => {
+    if (!c.glueId || (counts.get(c.glueId) ?? 0) >= 2) return c;
+    const out = { ...c };
+    delete out.glueId;
+    delete out.glueOrder;
+    return out;
+  });
+}
+
 function cardFromExistingBlock(block: Block, index: number, at: { x: number; y: number }): BoardCard {
   const jitter = (index % 6) * 24;
   return {
@@ -1743,7 +1793,16 @@ function DraggableCard({
         {card.freeBlock ? (
           // A free block: the note's own row, on its paper - the same look
           // it will have once it is dropped into a note.
-          <View style={[styles.refCard, styles.freeBlockCard, { backgroundColor: theme.paper.fill }]} pointerEvents="none">
+          <View
+            style={[
+              styles.refCard,
+              styles.freeBlockCard,
+              { backgroundColor: theme.paper.fill },
+              // Glued: the line that says these two were stuck together.
+              !!card.glueId && (card.glueOrder ?? 0) > 0 && styles.freeBlockSeam,
+            ]}
+            pointerEvents="none"
+          >
             {card.text?.trim() ? (
               <PagePreviewRow
                 item={card as unknown as Block}
@@ -2436,6 +2495,10 @@ export default function BoardScreen() {
   // every time one of them is measured - the listener depends on it, and
   // resubscribing on every measurement would be a lot of churn for
   // nothing.
+  // A strip re-lays itself whenever one of its blocks changes height.
+  useEffect(() => {
+    setCards((prev) => reflowGlue(prev, cardHeights));
+  }, [cardHeights]);
   const cardHeightsRef = useRef(cardHeights);
   cardHeightsRef.current = cardHeights;
   const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
@@ -4626,6 +4689,61 @@ export default function BoardScreen() {
     });
     setDraggedCardId(null);
     if (before && !copied) commitConnectionPull(x - before.x, y - before.y);
+    // Glue last, after the pull has moved whatever rode along: the strips
+    // are laid out from where their heads now stand.
+    if (before?.freeBlock) setCards((prev) => applyGlue(prev, id));
+  }
+
+  // A free block let go: out of its strip if it was not the head, and onto
+  // the foot of whichever strip (or lone block) it landed under.
+  function applyGlue(prev: BoardCard[], id: string): BoardCard[] {
+    let next = prev;
+    const card = next.find((c) => c.id === id);
+    if (!card) return prev;
+    const ownStrip = card.glueId ? glueMembers(next, card.glueId) : [];
+    const isHead = ownStrip.length > 0 && ownStrip[0].id === id;
+    // What moves together: a head brings its strip, anything else goes alone.
+    let moving: BoardCard[] = isHead ? ownStrip : [card];
+    if (card.glueId && !isHead) {
+      next = next.map((c) => {
+        if (c.id !== id) return c;
+        const out = { ...c };
+        delete out.glueId;
+        delete out.glueOrder;
+        return out;
+      });
+      moving = [next.find((c) => c.id === id)!];
+    }
+    const movingIds = new Set(moving.map((m) => m.id));
+    const top = next.find((c) => c.id === id)!;
+    let target: BoardCard | undefined;
+    for (const t of next) {
+      if (!t.freeBlock || movingIds.has(t.id)) continue;
+      if (t.glueId) {
+        const strip = glueMembers(next, t.glueId);
+        if (strip[strip.length - 1].id !== t.id) continue;
+      }
+      const foot = t.y + heightOf(t, cardHeights);
+      const dy = top.y - foot;
+      if (Math.abs(top.x - t.x) < GLUE_SNAP_X && dy > -GLUE_SNAP_ABOVE && dy < GLUE_SNAP_BELOW) {
+        target = t;
+        break;
+      }
+    }
+    if (target) {
+      const gid = target.glueId ?? generateId();
+      const strip = target.glueId ? glueMembers(next, gid) : [target];
+      let order = Math.max(...strip.map((m) => m.glueOrder ?? 0)) + 1;
+      const assigned = new Map<string, number>();
+      moving.forEach((m) => assigned.set(m.id, order++));
+      next = next.map((c) => {
+        if (c.id === target!.id && !c.glueId) return { ...c, glueId: gid, glueOrder: 0 };
+        const o = assigned.get(c.id);
+        return o === undefined ? c : { ...c, glueId: gid, glueOrder: o };
+      });
+      hapticDrop();
+    }
+    return reflowGlue(dropLoneGlue(next), cardHeights);
   }
 
   // «Дублювати»: a copy of this card beside it, tied to it by the line
@@ -6100,7 +6218,14 @@ export default function BoardScreen() {
   }
 
   function beginConnectionPull(id: string) {
-    setPullMembers(expandPulledContainers(pulledIdsFrom(id)));
+    const pulled = pulledIdsFrom(id);
+    // A strip's head carries the strip with it.
+    const card = cardById.get(id);
+    if (card?.glueId) {
+      const strip = glueMembers(cards, card.glueId);
+      if (strip[0]?.id === id) strip.slice(1).forEach((m) => pulled.add(m.id));
+    }
+    setPullMembers(expandPulledContainers(pulled));
   }
 
   function commitConnectionPull(dx: number, dy: number) {
@@ -8160,6 +8285,7 @@ const makeStyles = (theme: Theme) =>
     },
     cardWindowFrame: { position: 'absolute' },
     freeBlockCard: { paddingVertical: 4, paddingHorizontal: 2, borderRadius: 12 },
+    freeBlockSeam: { borderTopWidth: 1.5, borderTopColor: 'rgba(0,0,0,0.18)', borderStyle: 'dashed', borderTopLeftRadius: 4, borderTopRightRadius: 4 },
     freeBlockEmpty: { fontSize: 13, paddingHorizontal: 10, paddingVertical: 8 },
     freeBlockKinds: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
     freeBlockKind: {

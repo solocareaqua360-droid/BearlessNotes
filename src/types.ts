@@ -600,6 +600,11 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // note's text kinds (paragraph / heading / checkbox / bulleted). Its one
   // home is the board until it is dropped into a note (see «один дім»).
   freeBlock?: boolean;
+  // GLUED free blocks: the strip it belongs to and its place in it. The
+  // first is the strip's head - it holds the strip's place and width; the
+  // rest stand under it, edge to edge, in order (BoardScreen reflowGlue).
+  glueId?: string;
+  glueOrder?: number;
   // Which BoardLayer this card belongs to, if any - see BoardLayer's own
   // comment for how it differs from a column or a container.
   layerId?: string;
