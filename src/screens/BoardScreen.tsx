@@ -1409,15 +1409,17 @@ function FreeBlockInput({
   onText,
   onDoubleEnter,
   onBackspaceEmpty,
+  readOnly,
 }: {
   card: BoardCard;
   editorStyles: ReturnType<typeof makeEditorStyles>;
   ink: string;
   faint: string;
   paper: string;
-  onText: (text: string) => void;
-  onDoubleEnter: () => void;
-  onBackspaceEmpty: () => void;
+  onText?: (text: string) => void;
+  onDoubleEnter?: () => void;
+  onBackspaceEmpty?: () => void;
+  readOnly?: boolean;
 }) {
   const kind = card.type ?? 'paragraph';
   const base = kind === 'heading' ? PAGE_H2 : PAGE_TEXT;
@@ -1432,6 +1434,11 @@ function FreeBlockInput({
         </View>
       )}
       {kind === 'bulleted' && <Text style={[freeInputStyles.bullet, { color: ink }, size]}>•</Text>}
+      {readOnly ? (
+        <Text style={[editorStyles.blockDisplayText, kind === 'heading' && editorStyles.heading2, size, freeInputStyles.input, { color: card.text ? ink : faint }]}>
+          {card.text || (kind === 'heading' ? 'Заголовок' : 'Порожній блок')}
+        </Text>
+      ) : (
       <TextInput
         autoFocus
         multiline
@@ -1441,17 +1448,18 @@ function FreeBlockInput({
         placeholderTextColor={faint}
         onChangeText={(t) => {
           if (t.endsWith('\n\n')) {
-            onText(t.slice(0, -2));
-            onDoubleEnter();
+            onText?.(t.slice(0, -2));
+            onDoubleEnter?.();
             return;
           }
-          onText(t);
+          onText?.(t);
         }}
         onKeyPress={(e) => {
-          if (e.nativeEvent.key === 'Backspace' && textRef.current === '') onBackspaceEmpty();
+          if (e.nativeEvent.key === 'Backspace' && textRef.current === '') onBackspaceEmpty?.();
         }}
         style={[editorStyles.blockDisplayText, kind === 'heading' && editorStyles.heading2, size, freeInputStyles.input, { color: ink }]}
       />
+      )}
     </View>
   );
 }
@@ -1894,19 +1902,17 @@ function DraggableCard({
                 onDoubleEnter={() => onInlineDoubleEnter?.(card.id)}
                 onBackspaceEmpty={() => onInlineBackspaceEmpty?.(card.id)}
               />
-            ) : card.text?.trim() ? (
-              <PagePreviewRow
-                item={card as unknown as Block}
-                indented={false}
-                listNumber={undefined}
-                paperColor={{ background: 'transparent', text: theme.paper.ink, textMuted: theme.paper.inkMuted }}
-                styles={freeBlockStyles}
-                theme={theme}
-                textScale={0.86}
-                noReminder
-              />
             ) : (
-              <Text style={[styles.freeBlockEmpty, { color: theme.paper.inkMuted }]}>Порожній блок</Text>
+              // At rest: the very same row, without the field - so nothing
+              // moves when typing starts or stops.
+              <FreeBlockInput
+                card={card}
+                editorStyles={freeBlockStyles}
+                ink={theme.paper.ink}
+                faint={theme.paper.inkFaint}
+                paper={theme.paper.fill}
+                readOnly
+              />
             )}
           </View>
         ) : type === 'board' ? (
