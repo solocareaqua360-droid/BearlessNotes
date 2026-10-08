@@ -2457,6 +2457,9 @@ export default function BoardScreen() {
   const winH = useSharedValue(260);
   const [winSize, setWinSize] = useState({ w: 240, h: 260 });
   const cardWindowTyping = useSharedValue(false);
+  // 0 at the card's place on the board, 1 where it is written in.
+  const cardWindowTypingP = useSharedValue(0);
+  const lastKbSV = useSharedValue(0);
   const cardWindowKb = useSharedValue(0);
   const cardWindowStyle = useAnimatedStyle(() => {
     const w = winW.value;
@@ -2471,9 +2474,21 @@ export default function BoardScreen() {
       // Centred while writing, so the note's bar and panel - which reach
       // out the same amount on both sides - span the screen exactly.
       const left = (windowWidth - w) / 2;
+      // Glides there rather than jumping (the user, on the unfolded Fold).
+      const p = cardWindowTypingP.value;
+      const at = rawTop + (top - rawTop) * p;
       // Down to the screen's foot while writing: the editor's bar and
       // panel stand there, measured from this frame's bottom.
-      return { top, left, width: w, height: windowHeight - top };
+      return { top: at, left: rawLeft + (left - rawLeft) * p, width: w, height: windowHeight - at };
+    }
+    const p = cardWindowTypingP.value;
+    if (p > 0) {
+      // On the way back: from where it was written in to its place.
+      const barTop = windowHeight - lastKbSV.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+      const h = Math.min(winH.value, barTop - cardWindowMinTop);
+      const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
+      const left = (windowWidth - w) / 2;
+      return { top: rawTop + (top - rawTop) * p, left: rawLeft + (left - rawLeft) * p, width: w, height: winH.value };
     }
     return { top: rawTop, left: rawLeft, width: w, height: winH.value };
   });
@@ -2488,7 +2503,15 @@ export default function BoardScreen() {
       const barTop = windowHeight - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
-      return { top: top - CARD_BUTTONS_H, left: (windowWidth - w) / 2, width: w };
+      const p = cardWindowTypingP.value;
+      return { top: rawTop + (top - rawTop) * p - CARD_BUTTONS_H, left: rawLeft + ((windowWidth - w) / 2 - rawLeft) * p, width: w };
+    }
+    const p = cardWindowTypingP.value;
+    if (p > 0) {
+      const barTop = windowHeight - lastKbSV.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+      const h = Math.min(winH.value, barTop - cardWindowMinTop);
+      const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
+      return { top: rawTop + (top - rawTop) * p - CARD_BUTTONS_H, left: rawLeft + ((windowWidth - w) / 2 - rawLeft) * p, width: w };
     }
     return { top: rawTop - CARD_BUTTONS_H, left: rawLeft, width: w };
   });
@@ -2549,9 +2572,11 @@ export default function BoardScreen() {
   const cardWindowScrollH =
     Math.min(winSize.h, windowHeight - cardWindowKbNow - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12 - cardWindowMinTop) - cardHeadH;
   useEffect(() => {
+    cardWindowTypingP.value = withTiming(cardWindowWriting ? 1 : 0, { duration: 240 });
+    if (cardWindowKbNow > 0) lastKbSV.value = cardWindowKbNow;
     cardWindowTyping.value = cardWindowWriting;
     cardWindowKb.value = cardWindowKbNow;
-  }, [cardWindowWriting, cardWindowTyping, cardWindowKb, cardWindowKbNow]);
+  }, [cardWindowWriting, cardWindowTyping, cardWindowTypingP, lastKbSV, cardWindowKb, cardWindowKbNow]);
   const resizeGestureWin = useMemo(
     () =>
       Gesture.Pan()
