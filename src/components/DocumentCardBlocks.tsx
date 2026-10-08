@@ -47,7 +47,9 @@ export default function DocumentCardBlocks({ documentId }: { documentId: string 
         if (item.exitsToggle) indented = false;
         const rowIndented = indented;
         if (item.type === 'toggle') indented = true;
-        if (isLightRow(item)) {
+        // A task goes through BlockRow's own preview: the light row's task
+        // layout collapsed to no height on a card (its words vanished).
+        if (isLightRow(item) && item.type !== 'checkbox') {
           return (
             // The row's own width, given: a task's text is a flex child of a
             // row that otherwise had nothing to measure it against on a
