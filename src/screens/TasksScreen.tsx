@@ -2645,7 +2645,6 @@ export default function TasksScreen() {
     return (
       <GlassPortal priority={10}>
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          {dropLine && <View style={[styles.dropLine, { left: dropLine.x, top: dropLine.y, width: dropLine.w, backgroundColor: '#C9742E' }]} />}
           <View
             style={[
               styles.cardGhost,
@@ -2657,6 +2656,8 @@ export default function TasksScreen() {
               {task.text}
             </Text>
           </View>
+          {/* On top of the pale copy, or the copy hides it. */}
+          {dropLine && <View style={[styles.dropLine, { left: dropLine.x, top: dropLine.y, width: dropLine.w, backgroundColor: '#C9742E' }]} />}
         </View>
       </GlassPortal>
     );
