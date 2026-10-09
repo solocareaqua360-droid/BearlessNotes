@@ -195,7 +195,7 @@ import {
 import { softCursor, useSoft } from '../theme/soft';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
-import Menu, { MENU_WIDTH, MenuEntry } from '../components/surfaces/Menu';
+import type { MenuEntry } from '../components/surfaces/Menu';
 import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE } from '../components/TopNavBar';
 import EdgeFade from '../components/EdgeFade';
 import { useEditorAccessory } from '../components/editorAccessory';
@@ -2917,11 +2917,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         },
     !embedded
   );
-  const [macMenuOpen, setMacMenuOpen] = useState(false);
-  // Where the button stands in the WINDOW - the menu is drawn in a portal at
-  // the window's level, so its place is measured, not guessed.
-  const macMoreRef = useRef<View>(null);
-  const [macMenuAt, setMacMenuAt] = useState({ left: 0, top: 0 });
   const noteMenuEntries: MenuEntry[] | null =
     embedded
       ? null
@@ -3142,6 +3137,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           canvasMode
             ? { key: 'reset', icon: 'refresh-outline', label: 'Скинути', onPress: confirmResetCanvas }
             : { key: 'write', icon: 'pencil-outline', label: 'Писати', onPress: startWriting },
+          // The Mac's fourth: the note's «⋯». The phone keeps it in the top
+          // bar; a pointer has no such bar, so the same list stands here,
+          // on the capsule that is already above the paper (the user,
+          // 2026-10-09: «чому б не додати до них і три крапки?»). It opens
+          // as the small menu at the click, the way every Mac question does.
+          ...(pointerDensity && noteMenuEntries
+            ? [{ key: 'more', icon: 'ellipsis-horizontal', label: 'Ще', onPress: openNoteMenu }]
+            : []),
         ]
   );
   // The pinned toolbar rides on the live height, so it comes up (and goes
@@ -5142,6 +5145,26 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // button asks. Through the app's own Ask surface rather than a raw
   // Alert, and in the same shape the scanner already uses for "Як фото
   // / Як PDF" - one question, the answers as the actions.
+  // The note's «⋯» list as a question at the click: its rows become the
+  // answers, the chosen one runs as it would from the phone's bar.
+  function openNoteMenu() {
+    const rows = (noteMenuEntries ?? []).filter(
+      (entry): entry is Extract<MenuEntry, { label: string }> & { kind?: 'row' } => !('kind' in entry && entry.kind && entry.kind !== 'row')
+    );
+    ask({
+      title: 'Нотатка',
+      actions: rows.map((row, i) => ({
+        id: String(i),
+        label: row.label,
+        icon: row.icon,
+        tone: row.tone === 'danger' ? ('danger' as const) : undefined,
+      })),
+    }).then((id) => {
+      const row = id ? rows[Number(id)] : undefined;
+      row?.onPress();
+    });
+  }
+
   function askExport() {
     ask({
       title: 'Експортувати нотатку',
@@ -5656,37 +5679,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         setEditorWidth(pointerDensity && !embedded ? Math.min(paper, DESKTOP_NOTE_MEASURE) : paper);
       }}
     >
-      {/* «⋯» ON THE MAC. The phone's top bar carries the note's own list
-          (Вигляд, Проект, Експорт, Копіювати посилання...) and a pointer has
-          no such bar - so on the Mac that list had no door at all (the user,
-          2026-10-09: «в документі немає трьох крапок»). The same entries,
-          at the paper's top right corner, level with the dock's row. */}
-      {pointerDensity && !embedded && !('pane' in props) && noteMenuEntries && (
-        <View pointerEvents="box-none" style={styles.macMoreWrap}>
-          <View pointerEvents="box-none" style={styles.macMoreColumn}>
-            <Pressable
-              ref={macMoreRef}
-              onPress={() => {
-                macMoreRef.current?.measureInWindow((x, y, w, h) => {
-                  setMacMenuAt({ left: Math.max(8, x + w - MENU_WIDTH), top: y + h + 6 });
-                  setMacMenuOpen((v) => !v);
-                });
-              }}
-              accessibilityLabel="Ще"
-              style={[styles.macMore, { backgroundColor: soft.fill }]}
-            >
-              <Ionicons name="ellipsis-horizontal" size={20} color={soft.ink} />
-            </Pressable>
-            <Menu
-              visible={macMenuOpen}
-              onClose={() => setMacMenuOpen(false)}
-              entries={noteMenuEntries}
-              style={{ position: 'absolute', left: macMenuAt.left, top: macMenuAt.top }}
-              soft={soft}
-            />
-          </View>
-        </View>
-      )}
       {/* The room above the title - inside the scrolling paper instead
           (its own top padding) where the paper scrolls. */}
       {/* Not over the canvas on a phone: there the bar floats over the

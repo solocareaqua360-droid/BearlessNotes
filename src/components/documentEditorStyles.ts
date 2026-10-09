@@ -157,26 +157,6 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
     bottom: 0,
     zIndex: 5,
   },
-  macMoreWrap: {
-    position: 'absolute',
-    top: 40,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 30,
-  },
-  macMoreColumn: {
-    width: '100%',
-    maxWidth: 860,
-    alignItems: 'flex-end',
-  },
-  macMore: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   exportMenuPanel: {
     position: 'absolute',
     width: 200,
