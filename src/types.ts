@@ -259,6 +259,10 @@ export interface Block {
   // at all, on purpose), «Ввечері» (today, after work) and how many times
   // a task already due was moved to a later day - the quiet «перенесено 3
   // рази» that asks whether it is too big or not needed.
+  // 'checkbox' blocks only - the card's place in its kanban column once it
+  // has been put there by hand (a drop on a line between two cards). Unset
+  // = never placed: such cards stand above the placed ones.
+  kanbanOrder?: number;
   someday?: boolean;
   evening?: boolean;
   postponeCount?: number;

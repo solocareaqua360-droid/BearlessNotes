@@ -123,6 +123,7 @@ type Task = {
   someday?: boolean;
   evening?: boolean;
   postponeCount?: number;
+  kanbanOrder?: number;
   planTime?: string;
   planMinutes?: number;
   reminderDate?: string;
@@ -557,6 +558,7 @@ export default function TasksScreen() {
         someday: docSnapshot.data().someday,
         evening: docSnapshot.data().evening,
         postponeCount: docSnapshot.data().postponeCount,
+        kanbanOrder: docSnapshot.data().kanbanOrder,
         planTime: docSnapshot.data().planTime,
         planMinutes: docSnapshot.data().planMinutes,
         reminderDate: docSnapshot.data().reminderDate,
@@ -1098,6 +1100,8 @@ export default function TasksScreen() {
     moveItem: async (task, destination) => {
       if (!destination) return;
       await setTaskStatus(task, destination as KanbanStatus);
+      const at = dropAtRef.current;
+      if (v2 && at && at.column === destination) await placeInColumn({ ...task, kanbanStatus: destination as KanbanStatus }, destination, at.index);
     },
     onMoved: (items, destination, origin) => {
       if (!destination || !items[0]) return;
@@ -1123,10 +1127,93 @@ export default function TasksScreen() {
       autoScrollTimer.current = null;
     }
   }
+  // WHERE IN THE COLUMN the card in the hand would stand: a line between two
+  // cards, as the editor draws it for a block (the user: «риска-індикатор
+  // куди саме вставиться»). The columns and the cards are measured on the
+  // move (a card's place changes with every scroll), the answer kept in a
+  // ref for the drop and in a little state for the line.
+  const columnNodes = useRef<Record<string, View | null>>({});
+  const cardNodes = useRef<Record<string, View | null>>({});
+  const dropAtRef = useRef<{ column: string; index: number } | null>(null);
+  const [dropLine, setDropLine] = useState<{ x: number; y: number; w: number } | null>(null);
+  const lastProbe = useRef(0);
+  function sortColumn(list: Task[]): Task[] {
+    const placed = list.filter((t) => t.kanbanOrder != null).sort((a, b) => (a.kanbanOrder as number) - (b.kanbanOrder as number));
+    return [...list.filter((t) => t.kanbanOrder == null), ...placed];
+  }
+  function columnList(key: string, except?: string): Task[] {
+    return sortColumn(kanbanSource.filter((t) => (t.kanbanStatus ?? 'inbox') === key && t.id !== except));
+  }
+  function probeDrop(x: number, y: number) {
+    const now = Date.now();
+    if (now - lastProbe.current < 70) return;
+    lastProbe.current = now;
+    const carriedId = kanbanCarry.ghost?.items[0]?.id;
+    const keys = KANBAN_COLUMNS.map((c) => c.key as string).filter((k) => columnNodes.current[k]);
+    const rects: Record<string, { x: number; y: number; w: number; h: number }> = {};
+    let pending = keys.length;
+    if (pending === 0) return;
+    keys.forEach((k) =>
+      columnNodes.current[k]?.measureInWindow((nx, ny, nw, nh) => {
+        rects[k] = { x: nx, y: ny, w: nw, h: nh };
+        pending -= 1;
+        if (pending > 0) return;
+        const hit = keys.find((c) => x >= rects[c].x && x <= rects[c].x + rects[c].w && y >= rects[c].y && y <= rects[c].y + rects[c].h);
+        if (!hit) {
+          dropAtRef.current = null;
+          setDropLine(null);
+          return;
+        }
+        const cards = columnList(hit, carriedId);
+        const column = rects[hit];
+        if (cards.length === 0) {
+          dropAtRef.current = { column: hit, index: 0 };
+          setDropLine({ x: column.x + 12, y: column.y + 66, w: column.w - 24 });
+          return;
+        }
+        const boxes: { top: number; h: number }[] = [];
+        let left = cards.length;
+        cards.forEach((card, i) =>
+          cardNodes.current[card.id]?.measureInWindow((_cx, cy, _cw, ch) => {
+            boxes[i] = { top: cy, h: ch };
+            left -= 1;
+            if (left > 0) return;
+            let index = cards.length;
+            for (let n = 0; n < cards.length; n += 1) {
+              const b = boxes[n];
+              if (b && y < b.top + b.h / 2) {
+                index = n;
+                break;
+              }
+            }
+            const before = boxes[index];
+            const after = boxes[index - 1];
+            const lineY = before ? before.top - 6 : after ? after.top + after.h + 4 : column.y + 66;
+            dropAtRef.current = { column: hit, index };
+            setDropLine({ x: column.x + 12, y: lineY, w: column.w - 24 });
+          })
+        );
+      })
+    );
+  }
+  // The column's final sequence, written down: every card of it gets its
+  // number (steps of 1000), so a later drop only has to insert.
+  async function placeInColumn(task: Task, columnKey: string, index: number) {
+    const rest = columnList(columnKey, task.id);
+    const at = Math.max(0, Math.min(index, rest.length));
+    const sequence = [...rest.slice(0, at), task, ...rest.slice(at)];
+    const orderOf = new Map(sequence.map((t, i) => [t.id, (i + 1) * 1000]));
+    await updateTasksBothSides(
+      sequence,
+      (t) => ({ kanbanOrder: orderOf.get(t.id) }),
+      (t, b) => ({ ...b, kanbanOrder: orderOf.get(t.id) })
+    );
+  }
   const kanbanBoardGesture = Gesture.Pan()
     .activateAfterLongPress(650)
     .runOnJS(true)
     .onStart((e) => {
+      dropAtRef.current = null;
       kanbanCarry.pickUpAt(e.absoluteX, e.absoluteY);
       startBoardAutoScroll();
     })
@@ -1134,12 +1221,24 @@ export default function TasksScreen() {
       fingerXRef.current = e.absoluteX;
       kanbanCarry.updateCarry(e.absoluteX, e.absoluteY);
       kanbanCarry.hitTargetAt(e.absoluteX, e.absoluteY, markHover);
+      if (v2) probeDrop(e.absoluteX, e.absoluteY);
     })
     .onEnd((_e, success) => {
-      if (success) kanbanCarry.endCarry();
+      if (!success) return;
+      const at = dropAtRef.current;
+      const task = kanbanCarry.ghost?.items[0];
+      // Let go inside the card's OWN column: only the place changes (the
+      // carry itself calls that «no move» and puts the card down).
+      if (v2 && at && task && at.column === (task.kanbanStatus ?? 'inbox')) {
+        placeInColumn(task, at.column, at.index);
+        kanbanCarry.cancelCarry();
+        return;
+      }
+      kanbanCarry.endCarry();
     })
     .onFinalize(() => {
       stopBoardAutoScroll();
+      setDropLine(null);
       kanbanCarry.cancelCarry();
     });
   // The first status column was «Вхідні» and now a WINDOW has that name, so
@@ -2426,7 +2525,10 @@ export default function TasksScreen() {
     return (
       <View
         key={task.id}
-        ref={kanbanCarry.registerCard(task.id, () => [task], () => {})}
+        ref={(node) => {
+          cardNodes.current[task.id] = node;
+          kanbanCarry.registerCard(task.id, () => [task], () => {})(node);
+        }}
         collapsable={false}
         onLayout={(e) => {
           if (!isCarrying) cardSizes.current[task.id] = { w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height };
@@ -2539,6 +2641,7 @@ export default function TasksScreen() {
     return (
       <GlassPortal priority={10}>
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          {dropLine && <View style={[styles.dropLine, { left: dropLine.x, top: dropLine.y, width: dropLine.w, backgroundColor: soft.accent }]} />}
           <View
             style={[
               styles.cardGhost,
@@ -2573,11 +2676,14 @@ export default function TasksScreen() {
         scrollEventThrottle={16}
       >
         {KANBAN_COLUMNS.map((column, columnIndex) => {
-          const columnTasks = kanbanSource.filter((t) => (t.kanbanStatus ?? 'inbox') === column.key);
+          const columnTasks = sortColumn(kanbanSource.filter((t) => (t.kanbanStatus ?? 'inbox') === column.key));
           return (
             <View
               key={column.key}
-              ref={kanbanCarry.registerFolder(column.key)}
+              ref={(node) => {
+                columnNodes.current[column.key] = node;
+                kanbanCarry.registerFolder(column.key)(node);
+              }}
               collapsable={false}
               style={[{ width: kanbanColumnWidth }, hoverColumn === column.key && kanbanCarry.ghost && { borderRadius: 22, boxShadow: `0px 0px 0px 2px ${soft.accent}` }]}
             >
@@ -3704,6 +3810,11 @@ const makeStyles = (t: Theme) =>
     boxShadow: '0px 0px 0px 0px rgba(0,0,0,0)',
     shadowOpacity: 0,
     elevation: 0,
+  },
+  dropLine: {
+    position: 'absolute',
+    height: 3,
+    borderRadius: 2,
   },
   cardGhost: {
     position: 'absolute',
