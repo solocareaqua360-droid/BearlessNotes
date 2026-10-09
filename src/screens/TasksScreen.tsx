@@ -1930,7 +1930,10 @@ export default function TasksScreen() {
     if (v === 'inbox')
       return (
         <>
-          <Text style={styles.v2Hint}>{tasksWord(list.length)} розбору. Відкрийте справу - під нею буде «Коли?».</Text>
+          <Text style={styles.v2Hint}>
+            {tasksWord(list.length)} розбору.{' '}
+            {phone ? 'Свайп праворуч - на сьогодні, ліворуч - колись.' : 'Права кнопка миші - що з нею зробити.'}
+          </Text>
           {list.map(renderV2Row)}
         </>
       );
