@@ -68,7 +68,7 @@ import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { useChromeStyle, useDockWide, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import RenamePrompt from '../components/RenamePrompt';
@@ -291,8 +291,16 @@ export default function TasksScreen() {
       : null,
     bar
   );
+  // «Справи» v2 on a phone: THE BOARDS' DOCK (the user's sketch) - one
+  // white capsule of labelled buttons with the dark «+» inside it, and the
+  // round way back on the right. The old screen («Усі справи») keeps its
+  // search + «+».
+  const v2Dock = v2 && bar && view !== 'all';
+  useDockWide(isFocused && v2Dock && !isSelectMode);
   useDockBeads(
-    isFocused
+    isFocused && v2Dock && !isSelectMode
+      ? null
+      : isFocused
       ? bar
         ? {
             icon: isSelectMode || isSearching ? 'close-outline' : 'search-outline',
@@ -308,7 +316,9 @@ export default function TasksScreen() {
           }
         : { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
       : null,
-    isFocused && !isSelectMode
+    isFocused && v2Dock && !isSelectMode
+      ? { icon: 'chevron-back', onPress: () => back?.() }
+      : isFocused && !isSelectMode
       ? { icon: 'checkbox-outline', badge: 'add-circle-outline', onPress: () => setCreating(true) }
       : null
   );
@@ -316,8 +326,39 @@ export default function TasksScreen() {
     // On a phone with the bar, what the list does is in the bar's "⋯"
     // (useTopExtras, below) - the documents' own arrangement - and the dock
     // keeps search and "+" alone; a selection still brings its actions.
-    isFocused && (isSelectMode || !bar)
-      ? isSelectMode
+    isFocused && (isSelectMode || !bar || v2Dock)
+      ? v2Dock && !isSelectMode
+        ? [
+            ...(kanbanAllowed && view !== 'home'
+              ? [
+                  {
+                    key: 'shape',
+                    icon: (kanbanMode ? 'reorder-four-outline' : 'albums-outline') as 'albums-outline',
+                    label: kanbanMode ? 'Список' : 'Канбан',
+                    onPress: () => setKanbanMode((v) => !v),
+                  },
+                ]
+              : []),
+            { key: 'search', icon: 'search-outline' as const, label: 'Пошук', active: isSearching, onPress: () => setIsSearching((v) => !v) },
+            ...(view !== 'home'
+              ? [
+                  { key: 'sort', icon: 'filter-outline' as const, label: 'Порядок', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
+                  {
+                    key: 'select',
+                    icon: 'checkmark-circle-outline' as const,
+                    label: 'Вибір',
+                    onPress: () => {
+                      setKanbanMode(false);
+                      toggleSelectMode();
+                    },
+                  },
+                ]
+              : []),
+            ...(view !== 'logbook'
+              ? [{ key: 'add', icon: 'add-outline' as const, label: 'Справа', strong: true, onPress: () => setCreating(true) }]
+              : []),
+          ]
+        : isSelectMode
         ? [
             {
               key: 'cancel',
