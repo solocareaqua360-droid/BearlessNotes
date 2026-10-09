@@ -11,7 +11,7 @@ import GlassLayer from './GlassLayer';
 import { SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 import { ChatMessage, editChatMessage, sendChatMessage } from '../utils/chat';
-import { ChatAttachment, attachLinkToChat, pickFileForChat, pickMediaForChat } from '../utils/chatAttach';
+import { ChatAttachment, attachLinkToChat, clipboardHasPicture, pasteClipboardPicture, pickFileForChat, pickMediaForChat } from '../utils/chatAttach';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'react-native';
 import { hapticButtonDown } from '../utils/haptics';
@@ -180,6 +180,13 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
     else await sendChatMessage(toSend, withThem);
   }
 
+  // Whether the clipboard holds a picture right now - asked each time the
+  // window opens, so «Вставити скріншот» stands there only when it can work.
+  const [clipPicture, setClipPicture] = useState(false);
+  useEffect(() => {
+    if (visible) clipboardHasPicture().then(setClipPicture);
+  }, [visible]);
+
   async function attach(pick: () => Promise<ChatAttachment[]>) {
     setAttaching(true);
     try {
@@ -252,6 +259,13 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
             ref={inputRef}
             value={text}
             onChangeText={(next) => {
+              // A picture «pasted» by the keyboard arrives as a page of
+              // replacement characters. It is not text: drop it, and take
+              // the picture from the clipboard instead.
+              if (isGarbagePaste(next, text)) {
+                attach(pasteClipboardPicture);
+                return;
+              }
               setText(next);
               // Typed over: what the recogniser adds next follows this,
               // rather than the words it heard before the correction.
@@ -320,6 +334,19 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
             <Pressable hitSlop={8} style={styles.attachButton} disabled={attaching} onPress={attachLink}>
               <Ionicons name="link-outline" size={20} color={theme.ink.muted} />
             </Pressable>
+            {clipPicture && (
+              <Pressable
+                hitSlop={8}
+                style={styles.attachButton}
+                disabled={attaching}
+                onPress={() => {
+                  attach(pasteClipboardPicture);
+                  setClipPicture(false);
+                }}
+              >
+                <Ionicons name="clipboard-outline" size={20} color={theme.accent} />
+              </Pressable>
+            )}
           </View>
 
           <View style={styles.row}>
@@ -484,3 +511,12 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+// What a «paste» of a picture looks like in a text field: many replacement
+// characters (U+FFFD) and control bytes arriving at once.
+function isGarbagePaste(next: string, previous: string): boolean {
+  const added = next.length - previous.length;
+  if (added < 20) return false;
+  const bad = (next.match(/[\uFFFD\u0000-\u0008\u000E-\u001F]/g) ?? []).length;
+  return bad >= 8;
+}

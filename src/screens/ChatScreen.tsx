@@ -26,7 +26,7 @@ import ChatMessageMenu, { type ChatMenuAction } from '../components/ChatMessageM
 import { addDoc } from '../utils/owned';
 import { groupKindFields } from '../utils/groups';
 import { hapticPickUp } from '../utils/haptics';
-import { collection, doc, getDocs } from '../firestore';
+import { collection, doc, getDoc, getDocs } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
 import { onSnapshot } from '../firestore';
@@ -59,6 +59,8 @@ import {
   appendBlocksToToday,
   clipBlocksToNote,
   copyObjectsToNote,
+  blockFromFile,
+  blockFromPhoto,
   createTaskInToday,
 } from '../utils/copyToNote';
 import { formatShortDate } from '../utils/dateLocale';
@@ -936,7 +938,20 @@ export default function ChatScreen() {
   // app lives, so it shows up in the calendar's day and in Справи at once.
   async function makeTask(message: ChatMessage) {
     try {
-      const { taskId, documentId } = await createTaskInToday(message.text);
+      // The message's pictures and files go WITH the task (2026-10-09: «правки
+      // та баги йдуть в комплекті зі скріном») - read from their own records,
+      // so the Drive copy travels with them.
+      const carried: Block[] = [];
+      for (const a of message.attachments ?? []) {
+        if (a.kind === 'photo') {
+          const d = (await getDoc(doc(db, 'photos', a.id))).data();
+          if (d?.imageUri) carried.push(blockFromPhoto({ id: a.id, ...(d as { imageUri: string }) }));
+        } else if (a.kind === 'file') {
+          const d = (await getDoc(doc(db, 'files', a.id))).data();
+          if (d?.fileUri) carried.push(blockFromFile({ id: a.id, ...(d as { fileUri: string; fileName: string }) }));
+        }
+      }
+      const { taskId, documentId } = await createTaskInToday(message.text, undefined, carried);
       await markChatMessageTask(message.id, taskId, documentId);
     } catch (e) {
       notify('Не вдалося створити справу', (e as Error).message);

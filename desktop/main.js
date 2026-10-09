@@ -346,6 +346,32 @@ async function serveDesktopApi(req, res, pathname) {
     return done(405, { error: 'method not allowed' });
   }
 
+  // A PORTION FOR CLAUDE, written to disk: the text and every screenshot that
+  // belongs to it, side by side, in
+  //   ~/Documents/mindEva-порції/<folder>/<file>
+  // so that whoever reads the text (a Claude session on this same Mac) can
+  // open the pictures by their paths, each exactly where the text puts it.
+  //   PUT /__desktop/export/<folder>/<file>  <- the bytes   -> { path }
+  // The custom header makes a browser ask first (a preflight nothing here
+  // answers), so a web page cannot write files through this by itself.
+  if (pathname.startsWith('/__desktop/export/') && req.method === 'PUT') {
+    if (req.headers['x-mindeva'] !== '1') return done(403, { error: 'forbidden' });
+    const parts = pathname.slice('/__desktop/export/'.length).split('/').map((p) => decodeURIComponent(p));
+    if (parts.length !== 2 || parts.some((p) => !p || p === '.' || p === '..' || /[\/\\\0]/.test(p))) {
+      return done(400, { error: 'bad path' });
+    }
+    try {
+      const bytes = await readBytes(req, 100 * 1024 * 1024);
+      const dir = path.join(app.getPath('documents'), 'mindEva-порції', parts[0]);
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, parts[1]);
+      fs.writeFileSync(file, bytes);
+      return done(200, { path: file });
+    } catch (e) {
+      return done(500, { error: String(e) });
+    }
+  }
+
   if (pathname === '/__desktop/handoff/clear' && req.method === 'POST') {
     handoff = null;
     return done(204);

@@ -6,6 +6,9 @@ import { doc, updateDoc } from '../firestore';
 import { setDoc } from './owned';
 import { db } from '../firebase';
 import { backupFileToDrive } from './googleDrive';
+import * as Clipboard from 'expo-clipboard';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 
 // What a chat message can carry besides its words. Whatever is attached
 // becomes a record in its OWN database at the same moment - the user's
@@ -60,6 +63,45 @@ export async function pickMediaForChat(): Promise<ChatAttachment[]> {
     out.push(await saveFileRecord(id, destUri, name, mimeType));
   }
   return out;
+}
+
+// A SCREENSHOT OFF THE CLIPBOARD (the user, 2026-10-09: «від як вставляються
+// скріншоти з буферу обміну в чат» - the keyboard's paste put the picture's
+// bytes into the field as a page of «�» characters). The text field cannot
+// take a picture, so it is asked for here: whether the clipboard holds one,
+// and the picture itself, saved as a photo like any picked one.
+export async function clipboardHasPicture(): Promise<boolean> {
+  try {
+    return await Clipboard.hasImageAsync();
+  } catch {
+    return false;
+  }
+}
+
+export async function pasteClipboardPicture(): Promise<ChatAttachment[]> {
+  const image = await Clipboard.getImageAsync({ format: 'png' });
+  if (!image?.data) return [];
+  const id = generateId();
+  const name = `скрін-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`;
+  const base64 = image.data.replace(/^data:image\/\w+;base64,/, '');
+  let destUri: string;
+  if (Platform.OS === 'web') {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    destUri = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+  } else {
+    destUri = `${LegacyFileSystem.cacheDirectory}${id}-${name}`;
+    await LegacyFileSystem.writeAsStringAsync(destUri, base64, { encoding: 'base64' });
+  }
+  const now = Date.now();
+  await setDoc(
+    doc(db, 'photos', id),
+    { imageUri: destUri, imageFit: 'contain', title: name, updatedAt: now, createdAt: now, usedInDocuments: {} },
+    { merge: true }
+  );
+  backupFileToDrive(destUri, name, 'image/png', 'Photos').then((uploaded) => {
+    if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+  });
+  return [{ kind: 'photo', id, uri: destUri }];
 }
 
 async function saveFileRecord(

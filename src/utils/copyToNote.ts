@@ -294,7 +294,11 @@ export async function createTaskInToday(
   // time - the user's own ask, so a task made while looking at one
   // project doesn't default to "Вхідні" and need a second step to land
   // back where it was made.
-  groupId?: string
+  groupId?: string,
+  // The pictures/files the thought came with (a chat message's screenshot):
+  // kept on the task itself, in its «Вкладення», so that a task made from a
+  // message with a screenshot is a task WITH that screenshot.
+  attachments?: Block[]
 ): Promise<{ taskId: string; documentId: string }> {
   const key = dateKey(new Date());
   const documentId = `day_${key}`;
@@ -308,6 +312,7 @@ export async function createTaskInToday(
     checked: false,
     createdAt: now,
     ...(groupId ? { groupId } : {}),
+    ...(attachments?.length ? { attachments } : {}),
   };
   const blocks: Block[] = [...((data?.blocks as Block[] | undefined) ?? []), block];
   await setDoc(
@@ -327,6 +332,7 @@ export async function createTaskInToday(
     updatedAt: now,
     createdAt: now,
     ...(groupId ? { groupId } : {}),
+    ...(attachments?.length ? { attachments } : {}),
   });
   return { taskId: block.id, documentId };
 }

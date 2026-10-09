@@ -74,6 +74,7 @@ import RenamePrompt from '../components/RenamePrompt';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import * as Clipboard from 'expo-clipboard';
 import { FEATURES } from '../features';
+import { saveHandoffFiles, saveHandoffText } from '../utils/handoffExport';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { pickPhotosFromDevice } from '../utils/photoLibrary';
 
@@ -1244,16 +1245,37 @@ export default function TasksScreen() {
         .filter(Boolean)
         .join(' / ');
     const places = [...new Set(fresh.map(where).filter(Boolean))];
+    // THE SCREENSHOTS GO WITH THE TASK, IN ITS PLACE (the user, 2026-10-09:
+    // «правки та баги йдуть в комплекті зі скріном»). In the Mac app every
+    // picture/file of a task is written to a folder beside the text and the
+    // text says where each lies, right under the task it belongs to - the
+    // reader (a Claude session on the same Mac) opens them by those paths.
+    // Where nothing can be written (the phone) they are only NAMED.
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    const folder = `Порція-${batch}-${stamp}`;
+    const items = fresh.flatMap((t) =>
+      (t.attachments ?? []).flatMap((a) => {
+        const uri = a.imageUri ?? a.fileUri;
+        if (!uri) return [];
+        return [{ key: `${t.id}:${a.id}`, name: a.fileName || a.imageTitle || 'файл', uri, driveFileId: a.driveFileId }];
+      })
+    );
+    const written = items.length ? await saveHandoffFiles(folder, items) : null;
     const lines: string[] = [`Порція №${batch}${places.length ? ` — ${places.join('; ')}` : ''}`, ''];
     fresh.forEach((t, i) => {
       lines.push(`${i + 1}. ${t.text}`);
       if (t.comment?.trim()) lines.push(`   Деталі: ${t.comment.trim().replace(/\n/g, '\n   ')}`);
       (t.subtasks ?? []).forEach((s) => lines.push(`   ${s.checked ? '[x]' : '[ ]'} ${s.text}`));
-      const files = (t.attachments ?? []).map((a) => a.fileName || (a.imageUri ? 'зображення' : 'файл'));
-      if (files.length) lines.push(`   Вкладення (додай окремо): ${files.join(', ')}`);
+      (t.attachments ?? []).forEach((a) => {
+        const label = a.fileName || a.imageTitle || (a.imageUri ? 'зображення' : 'файл');
+        const at = written?.[`${t.id}:${a.id}`];
+        lines.push(at ? `   Скрін/файл «${label}»: ${at}` : `   Вкладення «${label}» (додай окремо)`);
+      });
       lines.push('');
     });
-    await Clipboard.setStringAsync(lines.join('\n').trim());
+    const text = lines.join('\n').trim();
+    const textPath = written ? await saveHandoffText(folder, 'порція.md', text) : null;
+    await Clipboard.setStringAsync(textPath ? `${text}\n\n(Усе це також у файлі: ${textPath})` : text);
     // The tasks mirror and the checkbox block in its note, written together
     // (one read per note) - the same pair setTaskStatus keeps in step.
     const byDocument = new Map<string, Task[]>();
@@ -1274,7 +1296,12 @@ export default function TasksScreen() {
       }
     }
     clearSelection();
-    notify(`Порція №${batch} скопійована`, `${fresh.length} справ у буфері. Вставте їх Claude - вони тепер «У роботі».`);
+    notify(
+      `Порція №${batch} скопійована`,
+      written
+        ? `${fresh.length} справ у буфері, скріни лежать поряд у теці «mindEva-порції/${folder}» (Документи). Вставте текст Claude - вони тепер «У роботі».`
+        : `${fresh.length} справ у буфері. Вставте їх Claude - вони тепер «У роботі».`
+    );
   }
 
   function renderTaskRow(item: Task, opts: { showProjectChip: boolean; showListChip: boolean }) {
