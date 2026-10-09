@@ -68,7 +68,7 @@ import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useChromeStyle, useDockWide, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import RenamePrompt from '../components/RenamePrompt';
@@ -296,7 +296,6 @@ export default function TasksScreen() {
   // round way back on the right. The old screen («Усі справи») keeps its
   // search + «+».
   const v2Dock = v2 && bar && view !== 'all';
-  useDockWide(isFocused && v2Dock && !isSelectMode);
   useDockBeads(
     isFocused && v2Dock && !isSelectMode
       ? null
@@ -317,7 +316,9 @@ export default function TasksScreen() {
         : { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
       : null,
     isFocused && v2Dock && !isSelectMode
-      ? { icon: 'chevron-back', onPress: () => back?.() }
+      ? view === 'logbook'
+        ? { icon: 'add-outline', capsule: true, dimmed: true, onPress: () => {} }
+        : { icon: 'add-outline', capsule: true, onPress: () => setCreating(true) }
       : isFocused && !isSelectMode
       ? { icon: 'checkbox-outline', badge: 'add-circle-outline', onPress: () => setCreating(true) }
       : null
@@ -353,9 +354,6 @@ export default function TasksScreen() {
                     },
                   },
                 ]
-              : []),
-            ...(view !== 'logbook'
-              ? [{ key: 'add', icon: 'add-outline' as const, label: 'Справа', strong: true, onPress: () => setCreating(true) }]
               : []),
           ]
         : isSelectMode
