@@ -81,6 +81,8 @@ import { tasksToHtml } from '../utils/tasksHtml';
 import { ageInDays, inView, isDueToday, isOverdue, VIEW_META, whenFields, type TaskView, type WhenChoice } from '../utils/taskViews';
 import { useSoft } from '../theme/soft';
 import DayTimeline from '../components/DayTimeline';
+import SwipeRow, { type SwipeAction } from '../components/SwipeRow';
+import { rightClick } from '../utils/rightClick';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { pickPhotosFromDevice } from '../utils/photoLibrary';
 
@@ -439,6 +441,16 @@ export default function TasksScreen() {
   // comment field and attachments, none of which ever appear anywhere
   // else (see Block.comment's own comment on why).
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
+  // v2: the row standing open on its swipe buttons, the cards whose
+  // subtasks were opened by hand, and the «Скасувати» after a swipe.
+  const [openSwipeId, setOpenSwipeId] = useState<string | null>(null);
+  const [subtaskOpenIds, setSubtaskOpenIds] = useState<Set<string>>(new Set());
+  const [swipeToast, setSwipeToast] = useState<{ message: string; undo: () => void } | null>(null);
+  useEffect(() => {
+    if (!swipeToast) return;
+    const id = setTimeout(() => setSwipeToast(null), 4000);
+    return () => clearTimeout(id);
+  }, [swipeToast]);
   function toggleTaskExpanded(id: string) {
     setExpandedTaskIds((prev) => {
       const next = new Set(prev);
@@ -1553,6 +1565,99 @@ export default function TasksScreen() {
     return `${n} справ чекають`;
   }
 
+  // WHAT A SWIPE DOES, window by window (the user's sketch «Відкрита
+  // справа»): right is forward, left is putting it off. Every swipe can be
+  // taken back for a moment (the toast at the bottom).
+  type DayFields = Pick<Task, 'todayMarkedDate' | 'reminderDate' | 'someday' | 'evening' | 'postponeCount' | 'planTime'>;
+  function dayFieldsOf(t: Task): DayFields {
+    return {
+      todayMarkedDate: t.todayMarkedDate,
+      reminderDate: t.reminderDate,
+      someday: t.someday,
+      evening: t.evening,
+      postponeCount: t.postponeCount,
+      planTime: t.planTime,
+    };
+  }
+  async function restoreDayFields(task: Task, fields: DayFields) {
+    const mirror: Record<string, unknown> = {};
+    Object.entries(fields).forEach(([k, v]) => {
+      mirror[k] = v === undefined ? deleteField() : v;
+    });
+    await updateTaskBothSides(task, mirror, (b) => {
+      const next: Record<string, unknown> = { ...b };
+      Object.entries(fields).forEach(([k, v]) => {
+        if (v === undefined) delete next[k];
+        else next[k] = v;
+      });
+      return next as unknown as Block;
+    });
+  }
+  function moveWithUndo(task: Task, choice: WhenChoice, label: string) {
+    const before = dayFieldsOf(task);
+    setWhen(task, choice);
+    setSwipeToast({ message: `«${task.text || 'Справа'}» → ${label}`, undo: () => restoreDayFields(task, before) });
+  }
+  function doneWithUndo(task: Task) {
+    toggleTask(task);
+    setSwipeToast({ message: task.checked ? `«${task.text || 'Справа'}» повернуто` : `«${task.text || 'Справа'}» зроблено`, undo: () => toggleTask({ ...task, checked: !task.checked }) });
+  }
+  function startWithUndo(task: Task) {
+    const before = (task.kanbanStatus ?? 'inbox') as KanbanStatus;
+    setTaskStatus(task, 'inProgress');
+    setSwipeToast({ message: `«${task.text || 'Справа'}» у роботі`, undo: () => setTaskStatus({ ...task, kanbanStatus: 'inProgress' }, before) });
+  }
+  function swipeActionsFor(item: Task): { leading: SwipeAction[]; trailing: SwipeAction[]; longLeading?: SwipeAction; longTrailing?: SwipeAction } {
+    const A = {
+      today: { key: 'today', label: 'Сьогодні', icon: 'star', color: '#E0A92B', onPress: () => moveWithUndo(item, 'today', 'Сьогодні') },
+      when: { key: 'when', label: 'Коли?', icon: 'calendar-outline', color: '#4A7BD0', onPress: () => askWhen(item) },
+      someday: { key: 'someday', label: 'Колись', icon: 'archive-outline', color: '#8C8A7E', onPress: () => moveWithUndo(item, 'someday', 'Колись') },
+      remove: { key: 'remove', label: 'Прибрати', icon: 'trash-outline', color: '#D5564B', onPress: () => confirmRemoveTask(item) },
+      start: { key: 'start', label: 'Почати', icon: 'play-outline', color: '#3E8E5E', onPress: () => startWithUndo(item) },
+      done: { key: 'done', label: 'Готово', icon: 'checkmark-done-outline', color: '#22A06B', onPress: () => doneWithUndo(item) },
+      tomorrow: { key: 'tomorrow', label: 'Завтра', icon: 'calendar-outline', color: '#8C8A7E', onPress: () => moveWithUndo(item, 'tomorrow', 'Завтра') },
+      noDate: { key: 'none', label: 'Без дати', icon: 'close-circle-outline', color: '#8C8A7E', onPress: () => moveWithUndo(item, 'none', 'Вхідні') },
+      back: { key: 'back', label: 'Повернути', icon: 'arrow-undo-outline', color: '#4A7BD0', onPress: () => doneWithUndo(item) },
+    } satisfies Record<string, SwipeAction>;
+    switch (view) {
+      case 'inbox':
+        return { leading: [A.today, A.when], trailing: [A.someday, A.remove], longLeading: A.today, longTrailing: A.someday };
+      case 'today':
+        return {
+          leading: item.kanbanStatus === 'inProgress' ? [A.done] : [A.start, A.done],
+          trailing: [A.tomorrow, A.when],
+          longLeading: A.done,
+          longTrailing: A.tomorrow,
+        };
+      case 'upcoming':
+        return { leading: [A.today, A.when], trailing: [A.someday, A.noDate], longLeading: A.today, longTrailing: A.someday };
+      case 'someday':
+        return { leading: [A.today, A.when], trailing: [A.remove], longLeading: A.today };
+      case 'logbook':
+        return { leading: [A.back], trailing: [A.remove], longLeading: A.back };
+      default:
+        return { leading: [], trailing: [] };
+    }
+  }
+
+  // The Mac has no swipe: the same actions under the right button.
+  async function askRowActions(item: Task) {
+    const { leading, trailing } = swipeActionsFor(item);
+    const all = [...leading, ...trailing];
+    const id = await ask({
+      title: item.text || 'Справа',
+      actions: [
+        ...all.map((a) => ({ id: a.key, label: a.label, icon: a.icon as never })),
+        { id: 'project', label: 'У проєкт', icon: 'folder-outline' },
+        { id: 'note', label: 'Нотатка', icon: 'document-text-outline' },
+      ],
+    });
+    const hit = all.find((a) => a.key === id);
+    if (hit) hit.onPress();
+    else if (id === 'project') openProjectPicker(item.id);
+    else if (id === 'note') navigation.navigate('Editor', { documentId: item.documentId });
+  }
+
   function renderV2Row(item: Task) {
     const isExpanded = expandedTaskIds.has(item.id);
     const isSelected = selectedIds.has(item.id);
@@ -1568,23 +1673,9 @@ export default function TasksScreen() {
     if (item.reminderTime) meta.push({ text: `нагадування ${item.reminderTime}` });
     if (!item.checked && item.kanbanStatus === 'inProgress') meta.push({ text: 'у роботі' });
     if (project && !view.startsWith('project:')) meta.push({ text: project.name });
-    const attached = item.attachments?.length ?? 0;
-    if (attached > 0) meta.push({ text: `вкладень: ${attached}` });
-    // What can be done with it - shown only on the card that was opened
-    // (the user: «біля кожної справи купа блоків тексту - вже лячно»).
-    const actions: { key: string; label: string; icon: string; onPress: () => void; strong?: boolean }[] = [];
-    if (!item.checked) {
-      if (view === 'today' && item.kanbanStatus !== 'inProgress')
-        actions.push({ key: 'start', label: 'Почати', icon: 'play-outline', strong: true, onPress: () => setTaskStatus(item, 'inProgress') });
-      actions.push({ key: 'when', label: 'Коли?', icon: 'calendar-outline', strong: view === 'inbox', onPress: () => askWhen(item) });
-      if (view === 'today' || view === 'upcoming') actions.push({ key: 'time', label: item.planTime ? item.planTime : 'Час', icon: 'time-outline', onPress: () => askTime(item) });
-      actions.push({ key: 'project', label: 'У проєкт', icon: 'folder-outline', onPress: () => openProjectPicker(item.id) });
-      if (view !== 'someday') actions.push({ key: 'someday', label: 'Колись', icon: 'archive-outline', onPress: () => setWhen(item, 'someday') });
-    }
-    actions.push({ key: 'note', label: 'Нотатка', icon: 'document-text-outline', onPress: () => navigation.navigate('Editor', { documentId: item.documentId }) });
-    if (view === 'inbox') actions.push({ key: 'remove', label: 'Прибрати', icon: 'trash-outline', onPress: () => confirmRemoveTask(item) });
-    return (
-      <View key={item.id} style={styles.row}>
+    const swipe = swipeActionsFor(item);
+    const card = (
+      <View style={styles.row} {...rightClick(phone ? undefined : () => askRowActions(item))}>
         <View style={styles.rowMain}>
           <Pressable hitSlop={8} onPress={() => toggleTask(item)}>
             <Ionicons
@@ -1595,7 +1686,18 @@ export default function TasksScreen() {
           </Pressable>
           <Pressable
             style={styles.rowTextTap}
-            onPress={() => (isSelectMode ? toggleSelected(item.id) : toggleTaskExpanded(item.id))}
+            onPress={() => {
+              if (isSelectMode) {
+                toggleSelected(item.id);
+                return;
+              }
+              // A row standing open on its swipe buttons closes first.
+              if (openSwipeId === item.id) {
+                setOpenSwipeId(null);
+                return;
+              }
+              toggleTaskExpanded(item.id);
+            }}
           >
             <Text style={[styles.rowText, item.checked && styles.rowTextChecked]} numberOfLines={isExpanded ? undefined : 2}>
               {item.text}
@@ -1621,21 +1723,151 @@ export default function TasksScreen() {
             </Pressable>
           )}
         </View>
-        {isExpanded && (
-          <>
-            <View style={styles.v2Actions}>
-              {actions.map((a) => (
-                <Pressable key={a.key} onPress={a.onPress} style={[styles.v2Btn, a.strong && { backgroundColor: theme.ink.primary }]}>
-                  <Ionicons name={a.icon as never} size={15} color={a.strong ? theme.surface : theme.ink.primary} />
-                  <Text style={[styles.v2BtnText, a.strong && { color: theme.surface }]}>{a.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            {renderTaskDetails(item)}
-          </>
-        )}
+        {isExpanded && renderV2Details(item)}
       </View>
     );
+    return (
+      <SwipeRow
+        key={item.id}
+        id={item.id}
+        openId={openSwipeId}
+        onOpenChange={setOpenSwipeId}
+        enabled={phone && !isSelectMode && !isExpanded}
+        leading={swipe.leading}
+        trailing={swipe.trailing}
+        longLeading={swipe.longLeading}
+        longTrailing={swipe.longTrailing}
+      >
+        {card}
+      </SwipeRow>
+    );
+  }
+
+  // THE OPENED TASK, quiet (the user: «занадто багато кнопок»): its notes,
+  // then only what it already holds - subtasks, files - and ONE capsule of
+  // labelled buttons, the boards' dock in small. A button that has
+  // something to say says it: the project's name, «2 з 3».
+  function renderV2Details(item: Task) {
+    const subtasks = item.subtasks ?? [];
+    const attachments = item.attachments ?? [];
+    const project = item.groupId ? projectsById[item.groupId] : undefined;
+    const showSubtasks = subtasks.length > 0 || subtaskOpenIds.has(item.id);
+    const draft = subtaskDrafts[item.id] ?? '';
+    const commentDraft = commentDrafts[item.id] ?? item.comment ?? '';
+    const submitSubtask = () => {
+      if (!draft.trim()) return;
+      addSubtask(item, draft);
+      setSubtaskDrafts((prev) => ({ ...prev, [item.id]: '' }));
+    };
+    const doneSubs = subtasks.filter((x) => x.checked).length;
+    const capsule: { key: string; label: string; icon: string; on?: boolean; onPress: () => void }[] = [
+      { key: 'project', label: project ? project.name : 'Проєкт', icon: 'folder-outline', on: !!project, onPress: () => openProjectPicker(item.id) },
+      {
+        key: 'subtasks',
+        label: subtasks.length ? `${doneSubs} з ${subtasks.length}` : 'Підзадачі',
+        icon: 'list-outline',
+        on: subtasks.length > 0,
+        onPress: () =>
+          setSubtaskOpenIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(item.id)) next.delete(item.id);
+            else next.add(item.id);
+            return next;
+          }),
+      },
+      { key: 'file', label: attachments.length ? `Файли: ${attachments.length}` : 'Файл', icon: 'attach-outline', on: attachments.length > 0, onPress: () => askAttachSource(item) },
+      { key: 'more', label: 'Ще', icon: 'ellipsis-horizontal', onPress: () => askMore(item) },
+    ];
+    return (
+      <View style={styles.v2Details}>
+        <TextInput
+          value={commentDraft}
+          onChangeText={(v) => setCommentDrafts((prev) => ({ ...prev, [item.id]: v }))}
+          onBlur={() => saveTaskComment(item, commentDraft)}
+          placeholder="Нотатки"
+          placeholderTextColor={theme.field.placeholder}
+          style={styles.v2Notes}
+          multiline
+        />
+        {showSubtasks && (
+          <View style={styles.v2Subtasks}>
+            {subtasks.map((st) => (
+              <View key={st.id} style={styles.subtaskRow}>
+                <Pressable hitSlop={8} onPress={() => toggleSubtask(item, st.id)}>
+                  <Ionicons name={st.checked ? 'checkbox' : 'square-outline'} size={18} color={st.checked ? accent : theme.ink.faint} />
+                </Pressable>
+                <Text style={[styles.subtaskText, st.checked && styles.rowTextChecked]} numberOfLines={2}>
+                  {st.text}
+                </Text>
+                <Pressable hitSlop={8} onPress={() => deleteSubtask(item, st.id)}>
+                  <Ionicons name="close" size={16} color={theme.field.placeholder} />
+                </Pressable>
+              </View>
+            ))}
+            <View style={styles.subtaskAddRow}>
+              <TextInput
+                value={draft}
+                onChangeText={(v) => setSubtaskDrafts((prev) => ({ ...prev, [item.id]: v }))}
+                placeholder="Нова підзадача"
+                placeholderTextColor={theme.field.placeholder}
+                style={styles.subtaskInput}
+                onSubmitEditing={submitSubtask}
+                returnKeyType="done"
+              />
+              <Pressable hitSlop={8} onPress={submitSubtask}>
+                <Ionicons name="add-circle-outline" size={22} color={accent} />
+              </Pressable>
+            </View>
+          </View>
+        )}
+        {attachments.length > 0 && (
+          <View style={styles.attachmentsRow}>
+            {attachments.map((a) => (
+              <View key={a.id} style={styles.attachmentChip}>
+                <Ionicons name={(a.type ?? 'paragraph') === 'image' ? 'image-outline' : 'document-outline'} size={14} color={theme.ink.muted} />
+                <Text style={styles.attachmentChipText} numberOfLines={1}>
+                  {(a.type === 'image' ? a.imageTitle : a.fileTitle || a.fileName) || 'Без назви'}
+                </Text>
+                <Pressable hitSlop={8} onPress={() => removeAttachment(item, a.id)}>
+                  <Ionicons name="close" size={13} color={theme.ink.faint} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+        <View style={[styles.v2Capsule, { backgroundColor: soft.card, boxShadow: soft.shadow }]}>
+          {capsule.map((c) => (
+            <Pressable key={c.key} onPress={c.onPress} style={styles.v2CapItem} hitSlop={4}>
+              <Ionicons name={c.icon as never} size={16} color={c.on ? '#2F6FD0' : theme.ink.muted} />
+              <Text style={[styles.v2CapText, c.on && { color: '#2F6FD0' }]} numberOfLines={1}>
+                {c.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  // «Ще»: what a task needs now and then - its note, its hour, a repeat.
+  async function askMore(item: Task) {
+    const id = await ask({
+      title: item.text || 'Справа',
+      actions: [
+        { id: 'when', label: 'Коли?', icon: 'calendar-outline' },
+        { id: 'time', label: item.planTime ? `Час: ${item.planTime}` : 'Час', icon: 'time-outline' },
+        { id: 'repeat', label: item.recurrence ? recurrenceLabel(item.recurrence) : 'Повторення', icon: 'repeat-outline' },
+        { id: 'reminder', label: item.reminderTime ? `Нагадування ${item.reminderTime}` : 'Нагадування', icon: 'alarm-outline' },
+        { id: 'note', label: 'Відкрити нотатку', icon: 'document-text-outline' },
+        { id: 'remove', label: 'Прибрати', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (id === 'when') askWhen(item);
+    else if (id === 'time') askTime(item);
+    else if (id === 'repeat') setRecurrenceTaskId(item.id);
+    else if (id === 'reminder') openReminderPicker(item.id);
+    else if (id === 'note') navigation.navigate('Editor', { documentId: item.documentId });
+    else if (id === 'remove') confirmRemoveTask(item);
   }
 
   // THE LIST OF WINDOWS - the «Справи» a person lands on (as «Папки» is):
@@ -2360,7 +2592,17 @@ export default function TasksScreen() {
             {!bar && <Text style={styles.v2Title}>{viewTitle.label}</Text>}
             {view === 'home' ? renderHome() : renderViewList()}
           </ScrollView>
-        ) : kanbanMode ? (
+        ) : null}
+        {v2 && swipeToast && (
+          <UndoToast
+            message={swipeToast.message}
+            onUndo={() => {
+              swipeToast.undo();
+              setSwipeToast(null);
+            }}
+          />
+        )}
+        {v2 && (view === 'home' || (isWindowList && !kanbanMode)) ? null : kanbanMode ? (
           <>
             {renderKanbanBoard()}
             {kanbanToast && (
@@ -2906,6 +3148,45 @@ const makeStyles = (t: Theme) =>
   rowTextTap: {
     flex: 1,
     gap: 5,
+  },
+  v2Details: {
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+    gap: 10,
+  },
+  v2Notes: {
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.primary,
+    paddingVertical: 2,
+    paddingLeft: 34,
+    minHeight: 24,
+  },
+  v2Subtasks: {
+    paddingLeft: 34,
+    gap: 6,
+  },
+  v2Capsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    height: 46,
+    borderRadius: 23,
+    paddingHorizontal: 6,
+    marginLeft: 34,
+  },
+  v2CapItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 4,
+    flexShrink: 1,
+  },
+  v2CapText: {
+    fontSize: 13.5,
+    fontFamily: FONT_MEDIUM,
+    color: t.ink.primary,
+    flexShrink: 1,
   },
   v2Title: {
     fontSize: 26,
