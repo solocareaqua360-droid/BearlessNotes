@@ -262,6 +262,11 @@ export interface Block {
   someday?: boolean;
   evening?: boolean;
   postponeCount?: number;
+  // 'checkbox' blocks only - the hour the task is PLANNED for on its day
+  // (HH:mm) and for how long, drawn on «Сьогодні»'s scale of hours. Not a
+  // reminder: nothing rings for it (that is reminderTime's job).
+  planTime?: string;
+  planMinutes?: number;
   // 'checkbox' blocks only - a richer, optional alternative to just
   // todayMarkedDate: a specific due date, and optionally a time that
   // schedules a local notification (see utils/reminders.ts). Setting this

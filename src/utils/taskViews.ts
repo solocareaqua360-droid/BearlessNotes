@@ -89,12 +89,14 @@ export function whenFields(
   const later = choice === 'tomorrow' || choice === 'someday' || (typeof choice === 'object' && choice.date > today);
   const postponeCount = wasDue && later ? (t.postponeCount ?? 0) + 1 : t.postponeCount;
   const clearReminder = { reminderTime: undefined, reminderKind: undefined, reminderNotificationId: undefined };
+  // No day, no hour: «Колись» and «Без дати» let the planned hour go too.
+  const noDay = { planTime: undefined, planMinutes: undefined };
   if (choice === 'today' || choice === 'evening')
     return { todayMarkedDate: today, reminderDate: undefined, ...clearReminder, someday: undefined, evening: choice === 'evening' ? true : undefined, postponeCount };
   if (choice === 'someday')
-    return { todayMarkedDate: undefined, reminderDate: undefined, ...clearReminder, someday: true, evening: undefined, postponeCount };
+    return { todayMarkedDate: undefined, reminderDate: undefined, ...clearReminder, ...noDay, someday: true, evening: undefined, postponeCount };
   if (choice === 'none')
-    return { todayMarkedDate: undefined, reminderDate: undefined, ...clearReminder, someday: undefined, evening: undefined, postponeCount };
+    return { todayMarkedDate: undefined, reminderDate: undefined, ...clearReminder, ...noDay, someday: undefined, evening: undefined, postponeCount };
   const date = choice === 'tomorrow' ? dateKeyPlus(today, 1) : choice.date;
   if (date <= today)
     return { todayMarkedDate: today, reminderDate: undefined, ...clearReminder, someday: undefined, evening: undefined, postponeCount };

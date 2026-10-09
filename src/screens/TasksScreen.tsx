@@ -80,6 +80,7 @@ import { exportHtmlAsPdf } from '../utils/htmlToPdf';
 import { tasksToHtml } from '../utils/tasksHtml';
 import { ageInDays, inView, isDueToday, isOverdue, VIEW_META, whenFields, type TaskView, type WhenChoice } from '../utils/taskViews';
 import { useSoft } from '../theme/soft';
+import DayTimeline from '../components/DayTimeline';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { pickPhotosFromDevice } from '../utils/photoLibrary';
 
@@ -119,6 +120,8 @@ type Task = {
   someday?: boolean;
   evening?: boolean;
   postponeCount?: number;
+  planTime?: string;
+  planMinutes?: number;
   reminderDate?: string;
   reminderTime?: string;
   reminderKind?: ReminderKind;
@@ -524,6 +527,8 @@ export default function TasksScreen() {
         someday: docSnapshot.data().someday,
         evening: docSnapshot.data().evening,
         postponeCount: docSnapshot.data().postponeCount,
+        planTime: docSnapshot.data().planTime,
+        planMinutes: docSnapshot.data().planMinutes,
         reminderDate: docSnapshot.data().reminderDate,
         reminderTime: docSnapshot.data().reminderTime,
         reminderKind: docSnapshot.data().reminderKind,
@@ -1447,6 +1452,78 @@ export default function TasksScreen() {
     setWhen(task, id as WhenChoice);
   }
 
+  // THE HOUR ON THE DAY'S SCALE - planned, not rung (see Block.planTime).
+  async function setPlan(task: Task, time: string | null) {
+    await updateTaskBothSides(task, { planTime: time ?? deleteField() }, (b) => {
+      const next = { ...b };
+      if (time) next.planTime = time;
+      else delete next.planTime;
+      return next;
+    });
+  }
+
+  // The coming hours, from the next full one to late evening.
+  function comingSlots(): string[] {
+    const h = new Date().getHours();
+    const out: string[] = [];
+    for (let x = Math.max(7, h + 1); x <= 22 && out.length < 8; x++) out.push(`${String(x).padStart(2, '0')}:00`);
+    return out;
+  }
+
+  async function askTime(task: Task) {
+    const id = await ask({
+      title: task.text || 'Справа',
+      message: 'О котрій?',
+      actions: [
+        ...comingSlots().map((t) => ({ id: t, label: t, icon: 'time-outline' as const })),
+        ...(task.planTime ? [{ id: 'clear', label: 'Без часу', icon: 'close-circle-outline' as const }] : []),
+      ],
+    });
+    if (!id || id === 'cancel') return;
+    // A time is a time TODAY unless the task already has a later day.
+    if (id !== 'clear' && !isDueToday(task, today) && !task.reminderDate) await setWhen(task, 'today');
+    setPlan(task, id === 'clear' ? null : id);
+  }
+
+  // An empty hour on the scale, tapped: which of today's tasks goes there.
+  async function askForHour(hour: number) {
+    const time = `${String(hour).padStart(2, '0')}:00`;
+    const free = viewTasksOf('today').filter((t) => !t.planTime).slice(0, 8);
+    if (free.length === 0) {
+      notify('Нема що ставити', 'Усі справи на сьогодні вже мають час. Додайте нову через «+».');
+      return;
+    }
+    const id = await ask({
+      title: `На ${time}`,
+      message: 'Яку справу поставити?',
+      actions: free.map((t) => ({ id: t.id, label: t.text || 'Справа', icon: 'square-outline' as const })),
+    });
+    const task = free.find((t) => t.id === id);
+    if (task) setPlan(task, time);
+  }
+
+  // A block on the scale, tapped: what a timed task can do from there.
+  async function askTimedTask(taskId: string) {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const id = await ask({
+      title: task.text || 'Справа',
+      message: task.planTime,
+      actions: [
+        ...(task.kanbanStatus !== 'inProgress' && !task.checked ? [{ id: 'start', label: 'Почати', icon: 'play-outline' as const }] : []),
+        { id: 'done', label: task.checked ? 'Не зроблено' : 'Зроблено', icon: 'checkmark-done-outline' },
+        { id: 'time', label: 'Інший час', icon: 'time-outline' },
+        { id: 'when', label: 'Інший день…', icon: 'calendar-outline' },
+        { id: 'note', label: 'Нотатка', icon: 'document-text-outline' },
+      ],
+    });
+    if (id === 'start') setTaskStatus(task, 'inProgress');
+    else if (id === 'done') toggleTask(task);
+    else if (id === 'time') askTime(task);
+    else if (id === 'when') askWhen(task);
+    else if (id === 'note') navigation.navigate('Editor', { documentId: task.documentId });
+  }
+
   function confirmRemoveTask(task: Task) {
     confirm({
       title: 'Прибрати справу?',
@@ -1487,7 +1564,8 @@ export default function TasksScreen() {
     }
     if (view === 'today' && isOverdue(item, today)) meta.push({ text: 'з минулих днів', warn: true });
     if (!item.checked && (item.postponeCount ?? 0) >= 2) meta.push({ text: `перенесено ${item.postponeCount} р.`, warn: true });
-    if (item.reminderTime) meta.push({ text: item.reminderTime });
+    if (item.planTime && view !== 'today') meta.push({ text: item.planTime });
+    if (item.reminderTime) meta.push({ text: `нагадування ${item.reminderTime}` });
     if (!item.checked && item.kanbanStatus === 'inProgress') meta.push({ text: 'у роботі' });
     if (project && !view.startsWith('project:')) meta.push({ text: project.name });
     const attached = item.attachments?.length ?? 0;
@@ -1499,6 +1577,7 @@ export default function TasksScreen() {
       if (view === 'today' && item.kanbanStatus !== 'inProgress')
         actions.push({ key: 'start', label: 'Почати', icon: 'play-outline', strong: true, onPress: () => setTaskStatus(item, 'inProgress') });
       actions.push({ key: 'when', label: 'Коли?', icon: 'calendar-outline', strong: view === 'inbox', onPress: () => askWhen(item) });
+      if (view === 'today' || view === 'upcoming') actions.push({ key: 'time', label: item.planTime ? item.planTime : 'Час', icon: 'time-outline', onPress: () => askTime(item) });
       actions.push({ key: 'project', label: 'У проєкт', icon: 'folder-outline', onPress: () => openProjectPicker(item.id) });
       if (view !== 'someday') actions.push({ key: 'someday', label: 'Колись', icon: 'archive-outline', onPress: () => setWhen(item, 'someday') });
     }
@@ -1615,7 +1694,7 @@ export default function TasksScreen() {
   function renderViewList() {
     const v = view as 'inbox' | 'today' | 'upcoming' | 'someday' | 'logbook';
     const list = viewTasksOf(v);
-    if (list.length === 0) return <Text style={styles.emptyFilterLabel}>{EMPTY_TEXT[v]}</Text>;
+    if (list.length === 0 && v !== 'today') return <Text style={styles.emptyFilterLabel}>{EMPTY_TEXT[v]}</Text>;
     if (v === 'inbox')
       return (
         <>
@@ -1624,11 +1703,31 @@ export default function TasksScreen() {
         </>
       );
     if (v === 'today') {
-      const main = list.filter((t) => !t.evening);
-      const evening = list.filter((t) => t.evening);
+      const timed = list.filter((t) => t.planTime);
+      const main = list.filter((t) => !t.planTime && !t.evening);
+      const evening = list.filter((t) => !t.planTime && t.evening);
+      // Done today, still drawn on the scale (struck through) - the day
+      // keeps its shape after the work is done.
+      const doneTimed = tasks.filter((t) => t.checked && t.planTime && t.todayMarkedDate === today);
       return (
         <>
+          {list.length === 0 && <Text style={styles.v2Hint}>{EMPTY_TEXT.today}</Text>}
+          {main.length > 0 && <Text style={styles.v2Section}>Протягом дня</Text>}
           {main.map(renderV2Row)}
+          <Text style={styles.v2Section}>Шкала дня</Text>
+          <DayTimeline
+            items={[...timed, ...doneTimed].map((t) => ({
+              id: t.id,
+              text: t.text,
+              time: t.planTime as string,
+              minutes: t.planMinutes,
+              done: t.checked,
+              warn: (t.postponeCount ?? 0) >= 2,
+              sub: t.kanbanStatus === 'inProgress' && !t.checked ? 'у роботі' : projectsById[t.groupId ?? '']?.name,
+            }))}
+            onPressItem={askTimedTask}
+            onPressHour={askForHour}
+          />
           {evening.length > 0 && <Text style={styles.v2Section}>Ввечері</Text>}
           {evening.map(renderV2Row)}
         </>
