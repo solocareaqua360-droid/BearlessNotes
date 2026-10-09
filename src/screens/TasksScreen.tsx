@@ -2257,6 +2257,8 @@ export default function TasksScreen() {
           <ScrollView
             contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad + 8 }]}
           >
+            {/* The Mac has no bar at the top to say which window this is. */}
+            {!bar && <Text style={styles.v2Title}>{viewTitle.label}</Text>}
             {view === 'home' ? renderHome() : renderViewList()}
           </ScrollView>
         ) : kanbanMode ? (
@@ -2805,6 +2807,13 @@ const makeStyles = (t: Theme) =>
   rowTextTap: {
     flex: 1,
     gap: 5,
+  },
+  v2Title: {
+    fontSize: 26,
+    fontFamily: FONT_BOLD,
+    color: t.ink.primary,
+    paddingHorizontal: 4,
+    paddingBottom: 6,
   },
   v2Meta: {
     fontSize: 12.5,
