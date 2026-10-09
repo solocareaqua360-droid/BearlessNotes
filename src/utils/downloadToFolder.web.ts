@@ -71,7 +71,7 @@ function withExtension(name: string, mimeType: string): string {
 // The file's bytes: the address while this page holds it, the copy kept for
 // an upload that is still waiting, then Drive (through the desktop disk
 // keep when there is one).
-async function bytesOf(uri: string, driveFileId?: string): Promise<Blob | null> {
+export async function bytesOf(uri: string, driveFileId?: string): Promise<Blob | null> {
   if (!uri.startsWith('file:')) {
     try {
       const response = await fetch(uri);

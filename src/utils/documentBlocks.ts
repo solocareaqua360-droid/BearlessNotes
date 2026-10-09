@@ -3,6 +3,7 @@ import { Block, BlockType, TableRow } from '../types';
 import { formatShortDate, parseDateKey } from './dateLocale';
 import { photoWithSketchHtml, sketchToSvg } from './sketchSvg';
 import { downloadToFolder } from './downloadToFolder';
+import { imageBase64 } from './imageBase64';
 
 // Pulled out of DocumentEditorScreen.tsx (2026-09-19), which had grown to
 // 6883 lines - everything here is a pure function or a small constant, none
@@ -613,7 +614,7 @@ export async function buildDocumentHtml(title: string, blocks: Block[]): Promise
       parts.push(`<ol style="margin:2px 0;"><li>${textToHtml(block.text)}</li></ol>`);
     } else if (type === 'image' && block.imageUri) {
       try {
-        const base64 = await LegacyFileSystem.readAsStringAsync(block.imageUri, { encoding: 'base64' });
+        const base64 = await imageBase64(block.imageUri, block.driveFileId);
         const img = `<img src="data:image/jpeg;base64,${base64}" style="max-width:100%;display:block;" />`;
         // A photograph the user has drawn over carries its drawing as a
         // layer of its own (never burnt into the file), so the export is

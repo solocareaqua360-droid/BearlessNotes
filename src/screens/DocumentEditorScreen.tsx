@@ -407,6 +407,19 @@ const RENDER_CHUNK_GAP_MS = 70;
 // How far past the window a note's sheet runs at the least.
 const NOTE_END_BEYOND = 120;
 
+// A note's HTML printed from a frame of its own - the browser's way to a PDF.
+function printHtmlInFrame(html: string) {
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+  frame.srcdoc = html;
+  frame.onload = () => {
+    frame.contentWindow?.focus();
+    frame.contentWindow?.print();
+    setTimeout(() => frame.remove(), 60_000);
+  };
+  document.body.appendChild(frame);
+}
+
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   // Temporary diagnosis - see utils/perfWatch.
   useRenderTimer('Нотатка');
@@ -4171,6 +4184,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   async function exportAsPdf() {
     setExportMenuOpen(false);
     const html = await buildDocumentHtml(title, blocks);
+    if (Platform.OS === 'web') {
+      // expo-print's web version prints the WHOLE APP PAGE. The note goes
+      // into a frame of its own and THAT is printed - on the Mac the
+      // system's dialog, whose «PDF» button is the save (2026-10-09).
+      printHtmlInFrame(html);
+      return;
+    }
     const { uri } = await Print.printToFileAsync({ html });
     const fileName = `${sanitizeFileName(title)}.pdf`;
     const destUri = await downloadToDevice(uri, fileName, 'application/pdf');
@@ -4180,6 +4200,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   async function exportAsTxt() {
     setExportMenuOpen(false);
     const text = buildDocumentText(title, blocks);
+    if (Platform.OS === 'web') {
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+      await downloadToDevice(url, `${sanitizeFileName(title)}.txt`, 'text/plain');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      return;
+    }
     const tempUri = `${LegacyFileSystem.cacheDirectory}${generateId()}.txt`;
     await LegacyFileSystem.writeAsStringAsync(tempUri, text, { encoding: 'utf8' });
     const fileName = `${sanitizeFileName(title)}.txt`;
