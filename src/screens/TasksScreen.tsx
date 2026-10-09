@@ -2690,7 +2690,8 @@ export default function TasksScreen() {
         )}
         {v2 && (view === 'home' || (isWindowList && !kanbanMode)) ? null : kanbanMode ? (
           <>
-            {v2 && !kanbanCarry.ghost && <Text style={[styles.v2Hint, { paddingHorizontal: 20, paddingBottom: 4 }]}>Затримайте картку й перетягніть на стовпець</Text>}
+            {/* Kept in place (only dimmed away) while a card is carried: taking it out moved the columns up under the finger. */}
+            {v2 && <Text style={[styles.v2Hint, { paddingHorizontal: 20, paddingBottom: 4, opacity: kanbanCarry.ghost ? 0 : 1 }]}>Затримайте картку й перетягніть на стовпець</Text>}
             {renderKanbanBoard()}
             {kanbanToast && (
               <UndoToast
