@@ -1,7 +1,7 @@
 import { usePaneBar } from '../navigation/paneBar';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { IS_POINTER } from '../utils/pointer';
-import { rightClick } from '../utils/rightClick';
+import { bindRightClick } from '../utils/rightClick';
 import { ActivityIndicator, FlatList, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import AttachmentImage from '../components/AttachmentImage';
 import { FileRow, LinkRow, PhotoRow } from '../components/ItemCards';
@@ -754,6 +754,10 @@ export default function ChatScreen() {
             ? undefined
             : (node: View | null) => {
                 bubbleRefs.current[copyId ? `copy:${copyId}` : message.id] = node;
+                // The right button here too - spread as a second `ref` it
+                // replaced this one, and the menu never found where the
+                // message stood (the Mac, 2026-10-09).
+                bindRightClick(node, isSelectMode ? undefined : () => liftMessage(message, copyId));
               }
         }
         collapsable={false}
@@ -763,7 +767,6 @@ export default function ChatScreen() {
           if (isSelectMode) return;
           liftMessage(message, copyId);
         }}
-        {...rightClick(isSelectMode ? undefined : () => liftMessage(message, copyId))}
         style={[
           {
             width: cardWidth,
@@ -1000,6 +1003,7 @@ export default function ChatScreen() {
             ? undefined
             : (node: View | null) => {
                 bubbleRefs.current[message.id] = node;
+                bindRightClick(node, isSelectMode ? undefined : () => liftMessage(message));
               }
         }
         collapsable={false}
@@ -1017,7 +1021,6 @@ export default function ChatScreen() {
           if (isSelectMode) return;
           liftMessage(message);
         }}
-        {...rightClick(isSelectMode ? undefined : () => liftMessage(message))}
       >
         {fromGemini && (
           <View style={styles.geminiLabel}>
