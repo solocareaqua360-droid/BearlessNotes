@@ -228,12 +228,16 @@ export default function TasksScreen() {
   const v2 = FEATURES.tasksV2;
   const [view, setView] = useState<TaskView>(v2 && !route.params?.focusTaskId ? 'home' : 'all');
   function goHome() {
+    setSearchQuery('');
+    setIsSearching(false);
     setView('home');
     setKanbanMode(false);
     setProjectFilter(UNASSIGNED_ID);
     setExpandedTaskIds(new Set());
   }
   function openView(next: TaskView) {
+    setSearchQuery('');
+    setIsSearching(false);
     setExpandedTaskIds(new Set());
     setKanbanMode(false);
     if (next.startsWith('project:')) setProjectFilter(next.slice('project:'.length));
@@ -280,7 +284,7 @@ export default function TasksScreen() {
   useTopSearch(
     isSearching
       ? {
-          placeholder: 'Пошук справ',
+          placeholder: v2 && view === 'home' ? 'Пошук серед усіх справ' : v2 && view !== 'all' ? 'Пошук у цьому вікні' : 'Пошук справ',
           initialQuery: searchQuery,
           onChangeQuery: setSearchQuery,
           onClose: () => {
@@ -1591,9 +1595,17 @@ export default function TasksScreen() {
 
   // The tasks of one window, in the order the ⋯ menu chose - Найближчі by
   // day, Зроблено newest first.
+  function matchesSearch(t: Task, needle: string): boolean {
+    return (
+      t.text.toLowerCase().includes(needle) ||
+      (t.comment ?? '').toLowerCase().includes(needle) ||
+      (t.subtasks ?? []).some((x) => x.text.toLowerCase().includes(needle))
+    );
+  }
+
   function viewTasksOf(v: 'inbox' | 'today' | 'upcoming' | 'someday' | 'logbook'): Task[] {
     const needle = searchQuery.trim().toLowerCase();
-    let list = tasks.filter((t) => inView(v, t, today) && (!needle || t.text.toLowerCase().includes(needle)));
+    let list = tasks.filter((t) => inView(v, t, today) && (!needle || matchesSearch(t, needle)));
     if (v === 'upcoming') return [...list].sort((a, b) => String(a.reminderDate).localeCompare(String(b.reminderDate)));
     if (v === 'logbook') return [...list].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 200);
     list = sortItems(list, sortPref, (t) => t.text || 'Без назви', (t) => t.createdAt, (t) => t.updatedAt);
@@ -1915,6 +1927,41 @@ export default function TasksScreen() {
 
   // THE LIST OF WINDOWS - the «Справи» a person lands on (as «Папки» is):
   // one row per window with how many tasks are in it, the projects under.
+  // Searching from the list of windows looks through EVERY task, done ones
+  // too, and says which window each one is in.
+  function windowOf(t: Task): string {
+    for (const v of ['inbox', 'today', 'upcoming', 'someday', 'logbook'] as const) {
+      if (inView(v, t, today)) return VIEW_META[v].label;
+    }
+    return t.groupId ? projectsById[t.groupId]?.name ?? 'Проєкт' : 'Справа';
+  }
+
+  function renderSearchResults() {
+    const needle = searchQuery.trim().toLowerCase();
+    const found = tasks.filter((t) => matchesSearch(t, needle)).slice(0, 80);
+    if (found.length === 0) return <Text style={styles.emptyFilterLabel}>Нічого не знайдено серед усіх справ.</Text>;
+    return (
+      <>
+        <Text style={styles.v2Hint}>Знайдено: {found.length}</Text>
+        {found.map((t) => (
+          <Pressable key={t.id} onPress={() => navigation.navigate('Editor', { documentId: t.documentId })} style={styles.row}>
+            <View style={styles.rowMain}>
+              <Ionicons name={t.checked ? 'checkbox' : 'square-outline'} size={22} color={t.checked ? accent : theme.ink.faint} />
+              <View style={styles.rowTextTap}>
+                <Text style={[styles.rowText, t.checked && styles.rowTextChecked]} numberOfLines={2}>
+                  {t.text}
+                </Text>
+                <Text style={styles.v2Meta} numberOfLines={1}>
+                  {windowOf(t)}
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+        ))}
+      </>
+    );
+  }
+
   function renderHome() {
     const count = (v: 'inbox' | 'today' | 'upcoming' | 'someday') => tasks.filter((t) => inView(v, t, today)).length;
     const row = (key: string, label: string, icon: string, color: string, n: number, warn: boolean, onPress: () => void) => (
@@ -2636,7 +2683,7 @@ export default function TasksScreen() {
           >
             {/* The Mac has no bar at the top to say which window this is. */}
             {!bar && <Text style={styles.v2Title}>{viewTitle.label}</Text>}
-            {view === 'home' ? renderHome() : renderViewList()}
+            {view === 'home' ? (isSearching && searchQuery.trim() ? renderSearchResults() : renderHome()) : renderViewList()}
           </ScrollView>
         ) : null}
         {v2 && swipeToast && (
