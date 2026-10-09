@@ -195,6 +195,7 @@ import {
 import { softCursor, useSoft } from '../theme/soft';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
+import Menu, { MenuEntry } from '../components/surfaces/Menu';
 import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE } from '../components/TopNavBar';
 import EdgeFade from '../components/EdgeFade';
 import { useEditorAccessory } from '../components/editorAccessory';
@@ -2916,7 +2917,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         },
     !embedded
   );
-  useTopExtras(
+  const [macMenuOpen, setMacMenuOpen] = useState(false);
+  const noteMenuEntries: MenuEntry[] | null =
     embedded
       ? null
       : canvasMode
@@ -2941,7 +2943,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             { label: 'Створити картки', icon: 'albums-outline', onPress: () => makeFlashcards(blocks) },
             { kind: 'rule' },
             { label: 'Видалити', icon: 'trash-outline', tone: 'danger', onPress: confirmDeleteDocument },
-          ],
+          ];
+  useTopExtras(
+    noteMenuEntries,
     embedded || canvasMode
       ? null
       : {
@@ -5648,6 +5652,31 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         setEditorWidth(pointerDensity && !embedded ? Math.min(paper, DESKTOP_NOTE_MEASURE) : paper);
       }}
     >
+      {/* «⋯» ON THE MAC. The phone's top bar carries the note's own list
+          (Вигляд, Проект, Експорт, Копіювати посилання...) and a pointer has
+          no such bar - so on the Mac that list had no door at all (the user,
+          2026-10-09: «в документі немає трьох крапок»). The same entries,
+          at the paper's top right corner, level with the dock's row. */}
+      {pointerDensity && !embedded && !('pane' in props) && noteMenuEntries && (
+        <View pointerEvents="box-none" style={styles.macMoreWrap}>
+          <View pointerEvents="box-none" style={styles.macMoreColumn}>
+            <Pressable
+              onPress={() => setMacMenuOpen((v) => !v)}
+              accessibilityLabel="Ще"
+              style={[styles.macMore, { backgroundColor: soft.fill }]}
+            >
+              <Ionicons name="ellipsis-horizontal" size={20} color={soft.ink} />
+            </Pressable>
+            <Menu
+              visible={macMenuOpen}
+              onClose={() => setMacMenuOpen(false)}
+              entries={noteMenuEntries}
+              style={{ position: 'absolute', right: 0, top: 44 }}
+              soft={soft}
+            />
+          </View>
+        </View>
+      )}
       {/* The room above the title - inside the scrolling paper instead
           (its own top padding) where the paper scrolls. */}
       {/* Not over the canvas on a phone: there the bar floats over the
