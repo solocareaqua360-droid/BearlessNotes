@@ -234,13 +234,21 @@ export default function TasksScreen() {
   // ('home'), one of them, a project, or the old screen ('all'). Arriving
   // for one task (focusTaskId) opens the old screen, where it is found.
   const v2 = FEATURES.tasksV2;
+  // Opens on the inbox, the first tab: the user wants what is still
+  // unsorted before the everything-list, which now sits last. In v2 it is
+  // the PROJECT filter over any window: null = all projects.
+  const [projectFilter, setProjectFilter] = useState<string | null>(UNASSIGNED_ID);
+  // «Закрити день»: the queue of today's open tasks, one at a time.
+  const [closeDay, setCloseDay] = useState<{ queue: string[]; at: number; done: number } | null>(null);
+  // «Розбити на кроки»: the task whose first step is being asked for.
+  const [stepsFor, setStepsFor] = useState<Task | null>(null);
   const [view, setView] = useState<TaskView>(v2 && !route.params?.focusTaskId ? 'home' : 'all');
   function goHome() {
     setSearchQuery('');
     setIsSearching(false);
     setView('home');
     setKanbanMode(false);
-    setProjectFilter(UNASSIGNED_ID);
+    setProjectFilter(null);
     setExpandedTaskIds(new Set());
   }
   function openView(next: TaskView) {
@@ -432,6 +440,26 @@ export default function TasksScreen() {
             } as const,
           ]
         : []),
+      ...(v2 && view === 'today'
+        ? [{ label: 'Закрити день', icon: 'moon-outline', onPress: () => startCloseDay() } as const]
+        : []),
+      ...(v2 && view !== 'all' && groups.length > 0
+        ? [
+            { kind: 'section', label: 'Проєкт' } as const,
+            {
+              label: 'Усі проєкти',
+              icon: 'albums-outline',
+              checked: projectFilter === null,
+              onPress: () => setProjectFilter(null),
+            } as const,
+            ...groups.slice(0, 8).map((g) => ({
+              label: g.name,
+              icon: 'folder-outline' as const,
+              checked: projectFilter === g.id,
+              onPress: () => setProjectFilter(g.id),
+            })),
+          ]
+        : []),
       { kind: 'section', label: 'Порядок' },
       ...FIELD_ORDER.map((field) => ({
         label:
@@ -452,9 +480,6 @@ export default function TasksScreen() {
     },
     bar && isFocused
   );
-  // Opens on the inbox, the first tab: the user wants what is still
-  // unsorted before the everything-list, which now sits last.
-  const [projectFilter, setProjectFilter] = useState<string | null>(UNASSIGNED_ID);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   // Which tasks currently show their own expanded row - subtasks, the
   // comment field and attachments, none of which ever appear anywhere
@@ -1687,7 +1712,12 @@ export default function TasksScreen() {
 
   function viewTasksOf(v: 'inbox' | 'today' | 'upcoming' | 'someday' | 'logbook'): Task[] {
     const needle = searchQuery.trim().toLowerCase();
-    let list = tasks.filter((t) => inView(v, t, today) && (!needle || matchesSearch(t, needle)));
+    let list = tasks.filter(
+      (t) =>
+        inView(v, t, today) &&
+        (!needle || matchesSearch(t, needle)) &&
+        (projectFilter === null || projectFilter === UNASSIGNED_ID || t.groupId === projectFilter)
+    );
     if (v === 'upcoming') return [...list].sort((a, b) => String(a.reminderDate).localeCompare(String(b.reminderDate)));
     if (v === 'logbook') return [...list].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 200);
     list = sortItems(list, sortPref, (t) => t.text || 'Без назви', (t) => t.createdAt, (t) => t.updatedAt);
@@ -1793,6 +1823,76 @@ export default function TasksScreen() {
     if (hit) hit.onPress();
     else if (id === 'project') openProjectPicker(item.id);
     else if (id === 'note') navigation.navigate('Editor', { documentId: item.documentId });
+  }
+
+  // ===== «Закрити день» =====
+  function startCloseDay() {
+    const queue = tasks.filter((t) => inView('today', t, today) && !t.checked).map((t) => t.id);
+    setCloseDay({ queue, at: 0, done: 0 });
+  }
+  function closeDayStep(action: 'tomorrow' | 'someday' | 'done' | 'skip') {
+    if (!closeDay) return;
+    const task = tasks.find((t) => t.id === closeDay.queue[closeDay.at]);
+    if (task) {
+      if (action === 'tomorrow') setWhen(task, 'tomorrow');
+      else if (action === 'someday') setWhen(task, 'someday');
+      else if (action === 'done') toggleTask(task);
+    }
+    setCloseDay({ ...closeDay, at: closeDay.at + 1, done: closeDay.done + (action === 'done' ? 1 : 0) });
+  }
+  function renderCloseDay() {
+    if (!closeDay) return null;
+    const dueToday = tasks.filter((t) => t.todayMarkedDate === today || t.reminderDate === today);
+    const doneNow = dueToday.filter((t) => t.checked).length;
+    const task = tasks.find((t) => t.id === closeDay.queue[closeDay.at]);
+    const finished = !task;
+    return (
+      <Modal visible transparent animationType="fade" onRequestClose={() => setCloseDay(null)}>
+        <View style={styles.cdBackdrop}>
+          <View style={[styles.cdCard, { backgroundColor: soft.card, boxShadow: soft.popShadow }]}>
+            <View style={styles.cdHead}>
+              <Text style={[styles.cdTitle, { color: soft.ink }]}>Закрити день</Text>
+              <Pressable hitSlop={10} onPress={() => setCloseDay(null)}>
+                <Ionicons name="close" size={22} color={soft.ink2} />
+              </Pressable>
+            </View>
+            <Text style={[styles.cdSub, { color: soft.ink3 }]}>
+              Зроблено {doneNow} з {dueToday.length}
+              {finished ? '' : ` · розібрати: ${closeDay.queue.length - closeDay.at}`}
+            </Text>
+            {finished ? (
+              <>
+                <Text style={[styles.cdBig, { color: soft.ink }]}>{closeDay.queue.length === 0 ? 'Нічого не висить.' : 'Усе розібрано.'}</Text>
+                <Pressable style={[styles.cdBtn, { backgroundColor: soft.ink }]} onPress={() => setCloseDay(null)}>
+                  <Text style={[styles.cdBtnText, { color: soft.card }]}>Готово</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.cdCount, { color: soft.ink3 }]}>
+                  {closeDay.at + 1} з {closeDay.queue.length}
+                </Text>
+                <Text style={[styles.cdBig, { color: soft.ink }]}>{task?.text}</Text>
+                <View style={styles.cdRow}>
+                  <Pressable style={[styles.cdBtn, { backgroundColor: soft.fill }]} onPress={() => closeDayStep('tomorrow')}>
+                    <Text style={[styles.cdBtnText, { color: soft.ink }]}>Завтра</Text>
+                  </Pressable>
+                  <Pressable style={[styles.cdBtn, { backgroundColor: soft.fill }]} onPress={() => closeDayStep('someday')}>
+                    <Text style={[styles.cdBtnText, { color: soft.ink }]}>Колись</Text>
+                  </Pressable>
+                  <Pressable style={[styles.cdBtn, { backgroundColor: '#DDEFE3' }]} onPress={() => closeDayStep('done')}>
+                    <Text style={[styles.cdBtnText, { color: '#2F7A4D' }]}>Зроблено</Text>
+                  </Pressable>
+                </View>
+                <Pressable hitSlop={8} onPress={() => closeDayStep('skip')}>
+                  <Text style={[styles.cdSkip, { color: soft.ink3 }]}>Пропустити</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+    );
   }
 
   function renderV2Row(item: Task) {
@@ -1972,6 +2072,14 @@ export default function TasksScreen() {
             ))}
           </View>
         )}
+        {!item.checked && (item.postponeCount ?? 0) >= 2 && (
+          <View style={styles.v2Nudge}>
+            <Text style={styles.v2NudgeText}>Перенесено {item.postponeCount} р. Може, справа завелика?</Text>
+            <Pressable onPress={() => setStepsFor(item)} style={styles.v2NudgeBtn}>
+              <Text style={styles.v2NudgeBtnText}>Розбити на кроки</Text>
+            </Pressable>
+          </View>
+        )}
         <View style={[styles.v2Capsule, { backgroundColor: soft.card, boxShadow: soft.shadow }]}>
           {capsule.map((c) => (
             <Pressable key={c.key} onPress={c.onPress} style={styles.v2CapItem} hitSlop={4}>
@@ -1996,6 +2104,7 @@ export default function TasksScreen() {
       title: item.text || 'Справа',
       actions: [
         { id: 'when', label: 'Коли?', icon: 'calendar-outline' },
+        { id: 'steps', label: 'Розбити на кроки', icon: 'list-outline' },
         { id: 'time', label: item.planTime ? `Час: ${item.planTime}` : 'Час', icon: 'time-outline' },
         { id: 'repeat', label: item.recurrence ? recurrenceLabel(item.recurrence) : 'Повторення', icon: 'repeat-outline' },
         { id: 'reminder', label: item.reminderTime ? `Нагадування ${item.reminderTime}` : 'Нагадування', icon: 'alarm-outline' },
@@ -2004,7 +2113,8 @@ export default function TasksScreen() {
         { id: 'remove', label: 'Прибрати', icon: 'trash-outline', tone: 'danger' },
       ],
     });
-    if (id === 'file') askAttachSource(item);
+    if (id === 'steps') setStepsFor(item);
+    else if (id === 'file') askAttachSource(item);
     else if (id === 'when') askWhen(item);
     else if (id === 'time') askTime(item);
     else if (id === 'repeat') setRecurrenceTaskId(item.id);
@@ -2104,10 +2214,19 @@ export default function TasksScreen() {
   function renderViewList() {
     const v = view as 'inbox' | 'today' | 'upcoming' | 'someday' | 'logbook';
     const list = viewTasksOf(v);
-    if (list.length === 0 && v !== 'today') return <Text style={styles.emptyFilterLabel}>{EMPTY_TEXT[v]}</Text>;
+    const filterName = projectFilter && projectFilter !== UNASSIGNED_ID ? projectsById[projectFilter]?.name : undefined;
+    const filterLine = filterName ? <Text style={styles.v2Hint}>Проєкт: {filterName} · змінити в «⋯»</Text> : null;
+    if (list.length === 0 && v !== 'today')
+      return (
+        <>
+          {filterLine}
+          <Text style={styles.emptyFilterLabel}>{EMPTY_TEXT[v]}</Text>
+        </>
+      );
     if (v === 'inbox')
       return (
         <>
+          {filterLine}
           <Text style={styles.v2Hint}>{tasksWord(list.length)} розбору</Text>
           {list.map(renderV2Row)}
         </>
@@ -2119,8 +2238,16 @@ export default function TasksScreen() {
       // Done today, still drawn on the scale (struck through) - the day
       // keeps its shape after the work is done.
       const doneTimed = tasks.filter((t) => t.checked && t.planTime && t.todayMarkedDate === today);
+      const openToday = list.filter((t) => !t.checked).length;
       return (
         <>
+          {filterLine}
+          {new Date().getHours() >= 18 && openToday > 0 && (
+            <Pressable onPress={() => startCloseDay()} style={styles.v2Evening}>
+              <Text style={styles.v2EveningText}>Вечір: лишилось {openToday}. Закрити день?</Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.ink.faint} />
+            </Pressable>
+          )}
           {list.length === 0 && <Text style={styles.v2Hint}>{EMPTY_TEXT.today}</Text>}
           {main.length > 0 && <Text style={styles.v2Section}>Протягом дня</Text>}
           {main.map(renderV2Row)}
@@ -3115,6 +3242,22 @@ export default function TasksScreen() {
           </Pressable>
         </Modal>
 
+        {renderCloseDay()}
+        <RenamePrompt
+          visible={stepsFor !== null}
+          title="Перший крок"
+          initialValue=""
+          placeholder="Що саме зробити першим?"
+          onCancel={() => setStepsFor(null)}
+          onSave={(text) => {
+            const task = stepsFor;
+            setStepsFor(null);
+            if (!task || !text.trim()) return;
+            addSubtask(task, text);
+            setSubtaskOpenIds((prev) => new Set(prev).add(task.id));
+            setExpandedTaskIds((prev) => new Set(prev).add(task.id));
+          }}
+        />
         <RenamePrompt
         visible={creating}
         title="Нова справа"
@@ -3431,6 +3574,104 @@ const makeStyles = (t: Theme) =>
     fontFamily: FONT_MEDIUM,
     color: t.ink.primary,
     flexShrink: 1,
+  },
+  v2Evening: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 16,
+    backgroundColor: '#FBF1DC',
+  },
+  v2EveningText: {
+    fontSize: 14,
+    fontFamily: FONT_MEDIUM,
+    color: '#7A5A14',
+  },
+  v2Nudge: {
+    marginLeft: 34,
+    padding: 12,
+    gap: 8,
+    borderRadius: 14,
+    backgroundColor: '#FBF1DC',
+  },
+  v2NudgeText: {
+    fontSize: 13.5,
+    fontFamily: FONT_REGULAR,
+    color: '#7A5A14',
+  },
+  v2NudgeBtn: {
+    alignSelf: 'flex-start',
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: 17,
+    justifyContent: 'center',
+    backgroundColor: '#2B2623',
+  },
+  v2NudgeBtnText: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    color: '#FFFFFF',
+  },
+  cdBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(20,22,24,0.42)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  cdCard: {
+    borderRadius: 26,
+    padding: 20,
+    gap: 12,
+  },
+  cdHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cdTitle: {
+    fontSize: 20,
+    fontFamily: FONT_BOLD,
+  },
+  cdSub: {
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+  },
+  cdCount: {
+    fontSize: 12.5,
+    fontFamily: FONT_SEMIBOLD,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: 6,
+  },
+  cdBig: {
+    fontSize: 20,
+    lineHeight: 27,
+    fontFamily: FONT_SEMIBOLD,
+    paddingVertical: 4,
+  },
+  cdRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 6,
+  },
+  cdBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cdBtnText: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+  },
+  cdSkip: {
+    textAlign: 'center',
+    fontSize: 14,
+    fontFamily: FONT_MEDIUM,
+    paddingTop: 6,
   },
   v2Title: {
     fontSize: 26,
