@@ -3641,8 +3641,6 @@ const makeStyles = (t: Theme) =>
   cdCount: {
     fontSize: 12.5,
     fontFamily: FONT_SEMIBOLD,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
     marginTop: 6,
   },
   cdBig: {
