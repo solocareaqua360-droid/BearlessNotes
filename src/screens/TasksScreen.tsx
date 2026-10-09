@@ -170,7 +170,12 @@ const KANBAN_COLUMN_GAP = 12;
 const KANBAN_BOARD_PADDING = 16;
 const KANBAN_WIDE_SCREEN_BREAKPOINT = 600;
 
-function kanbanColumnWidthFor(screenWidth: number): number {
+function kanbanColumnWidthFor(screenWidth: number, narrow = false): number {
+  // «Справи» v2 on a phone: TWO columns on screen, the rest a swipe away
+  // (the user: «стовпці можна вужчі зробити», as the bases' kanban has them).
+  if (narrow && screenWidth < KANBAN_WIDE_SCREEN_BREAKPOINT) {
+    return Math.floor((screenWidth - KANBAN_BOARD_PADDING * 2 - KANBAN_COLUMN_GAP) / 2);
+  }
   if (screenWidth >= KANBAN_WIDE_SCREEN_BREAKPOINT) {
     const totalGap = KANBAN_COLUMN_GAP * (KANBAN_COLUMNS.length - 1) + KANBAN_BOARD_PADDING * 2;
     return Math.floor((screenWidth - totalGap) / KANBAN_COLUMNS.length);
@@ -204,7 +209,7 @@ export default function TasksScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [kanbanMode, setKanbanMode] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
-  const kanbanColumnWidth = kanbanColumnWidthFor(windowWidth);
+  const kanbanColumnWidth = kanbanColumnWidthFor(windowWidth, FEATURES.tasksV2);
   // Kanban and bulk-select are mutually exclusive - each has its own
   // interaction model (arrows to move a card vs. checkboxes to pick rows),
   // so switching one on turns the other off instead of trying to make them
@@ -1126,6 +1131,7 @@ export default function TasksScreen() {
     .onUpdate((e) => {
       fingerXRef.current = e.absoluteX;
       kanbanCarry.updateCarry(e.absoluteX, e.absoluteY);
+      kanbanCarry.hitTargetAt(e.absoluteX, e.absoluteY, markHover);
     })
     .onEnd((_e, success) => {
       if (success) kanbanCarry.endCarry();
@@ -2497,48 +2503,15 @@ export default function TasksScreen() {
   // instead sized so all four columns fit on screen at once (see
   // kanbanColumnWidthFor above) - a plain ScrollView with snapping covers
   // both without needing separate paging UI.
-  // One column fills a phone's screen, so the next column cannot be a drop
-  // target the finger can see. While a card is in the hand the four
-  // statuses stand as a strip under the top pill instead - let go on one.
-  const dropStrip = v2 && windowWidth < KANBAN_WIDE_SCREEN_BREAKPOINT;
-  // Kept on screen half a second AFTER the finger lets go: the drop reads
-  // the chips' places with measureInWindow, which answers a moment later -
-  // and the gesture's own finalize clears the carry at once, so a strip
-  // that vanished with the carry was gone before it could be read, and the
-  // card went back where it was (the user, 2026-10-09: «не переміщається,
-  // повертається назад»).
-  const carrying = !!kanbanCarry.ghost;
-  const [stripHeld, setStripHeld] = useState(false);
-  useEffect(() => {
-    if (carrying) {
-      setStripHeld(true);
-      return;
-    }
-    const id = setTimeout(() => setStripHeld(false), 600);
-    return () => clearTimeout(id);
-  }, [carrying]);
-  function renderDropStrip() {
-    if (!dropStrip || !(kanbanCarry.ghost || stripHeld)) return null;
-    const origin = (kanbanCarry.ghost?.items[0]?.kanbanStatus ?? dragOriginRef.current) as KanbanStatus;
-    return (
-      <View pointerEvents="none" style={[styles.dropStrip, { top: insets.top + CHROME_TOP + TOP_NAV_H + 22, backgroundColor: soft.card, boxShadow: soft.shadow }]}>
-        {KANBAN_COLUMNS.map((column) => (
-          <View
-            key={column.key}
-            ref={kanbanCarry.registerFolder(column.key)}
-            collapsable={false}
-            style={[styles.dropChip, column.key === origin && { backgroundColor: soft.fill }]}
-          >
-            <Text style={[styles.dropChipText, { color: soft.ink }]} numberOfLines={1}>
-              {columnTitle(column.key)}
-            </Text>
-            <Text style={[styles.dropChipCount, { color: soft.ink3 }]}>
-              {kanbanSource.filter((t) => (t.kanbanStatus ?? 'inbox') === column.key).length}
-            </Text>
-          </View>
-        ))}
-      </View>
-    );
+  // Dropping on a column: the column under the finger gets an outline
+  // while a card is carried (as in the bases' kanban), and the row of
+  // columns scrolls itself near either edge (startBoardAutoScroll).
+  const [hoverColumn, setHoverColumn] = useState<string | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function markHover(key: string) {
+    setHoverColumn(key);
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setHoverColumn(null), 220);
   }
 
   function renderKanbanBoard() {
@@ -2563,9 +2536,9 @@ export default function TasksScreen() {
           return (
             <View
               key={column.key}
-              ref={dropStrip ? undefined : kanbanCarry.registerFolder(column.key)}
+              ref={kanbanCarry.registerFolder(column.key)}
               collapsable={false}
-              style={{ width: kanbanColumnWidth }}
+              style={[{ width: kanbanColumnWidth }, hoverColumn === column.key && kanbanCarry.ghost && { borderRadius: 22, boxShadow: `0px 0px 0px 2px ${soft.accent}` }]}
             >
               <View style={styles.kanbanColumnHead}>
                 <Text style={styles.kanbanColumnTitle}>{columnTitle(column.key)}</Text>
@@ -2717,9 +2690,8 @@ export default function TasksScreen() {
         )}
         {v2 && (view === 'home' || (isWindowList && !kanbanMode)) ? null : kanbanMode ? (
           <>
-            {v2 && !kanbanCarry.ghost && dropStrip && <Text style={[styles.v2Hint, { paddingHorizontal: 20, paddingBottom: 4 }]}>Затримайте картку й перетягніть на стовпець</Text>}
+            {v2 && !kanbanCarry.ghost && <Text style={[styles.v2Hint, { paddingHorizontal: 20, paddingBottom: 4 }]}>Затримайте картку й перетягніть на стовпець</Text>}
             {renderKanbanBoard()}
-            {renderDropStrip()}
             {kanbanToast && (
               <UndoToast
                 message={`Перенесено в «${kanbanToastLabel(kanbanToast.to)}»`}
@@ -3302,33 +3274,6 @@ const makeStyles = (t: Theme) =>
     fontFamily: FONT_MEDIUM,
     color: t.ink.primary,
     flexShrink: 1,
-  },
-  dropStrip: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    height: 62,
-    borderRadius: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 6,
-    gap: 4,
-    zIndex: 5,
-  },
-  dropChip: {
-    flex: 1,
-    height: 50,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dropChipText: {
-    fontSize: 13,
-    fontFamily: FONT_SEMIBOLD,
-  },
-  dropChipCount: {
-    fontSize: 11.5,
-    fontFamily: FONT_REGULAR,
   },
   v2Title: {
     fontSize: 26,
