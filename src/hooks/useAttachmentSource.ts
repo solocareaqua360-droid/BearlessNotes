@@ -1,4 +1,4 @@
-import { useCachedAttachment, CacheStatus } from './useCachedAttachment';
+import { useCachedAttachment, localPathFor, CacheStatus } from './useCachedAttachment';
 
 // What to actually put in an <Image>, and how that is going.
 //
@@ -21,5 +21,5 @@ export function useAttachmentSource(
   // spinner in front of each one for that tick, which is a flicker the
   // phone never had. Withheld only while the copy is genuinely not there:
   // being pulled back from Drive, or gone.
-  return { status, source: status === 'ready' || status === 'checking' ? uri : undefined };
+  return { status, source: status === 'ready' || status === 'checking' ? localPathFor(uri, driveFileId) : undefined };
 }
