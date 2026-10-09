@@ -195,7 +195,7 @@ import {
 import { softCursor, useSoft } from '../theme/soft';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassPortal } from '../components/GlassPortal';
-import Menu, { MenuEntry } from '../components/surfaces/Menu';
+import Menu, { MENU_WIDTH, MenuEntry } from '../components/surfaces/Menu';
 import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE } from '../components/TopNavBar';
 import EdgeFade from '../components/EdgeFade';
 import { useEditorAccessory } from '../components/editorAccessory';
@@ -2918,6 +2918,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     !embedded
   );
   const [macMenuOpen, setMacMenuOpen] = useState(false);
+  // Where the button stands in the WINDOW - the menu is drawn in a portal at
+  // the window's level, so its place is measured, not guessed.
+  const macMoreRef = useRef<View>(null);
+  const [macMenuAt, setMacMenuAt] = useState({ left: 0, top: 0 });
   const noteMenuEntries: MenuEntry[] | null =
     embedded
       ? null
@@ -5661,7 +5665,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <View pointerEvents="box-none" style={styles.macMoreWrap}>
           <View pointerEvents="box-none" style={styles.macMoreColumn}>
             <Pressable
-              onPress={() => setMacMenuOpen((v) => !v)}
+              ref={macMoreRef}
+              onPress={() => {
+                macMoreRef.current?.measureInWindow((x, y, w, h) => {
+                  setMacMenuAt({ left: Math.max(8, x + w - MENU_WIDTH), top: y + h + 6 });
+                  setMacMenuOpen((v) => !v);
+                });
+              }}
               accessibilityLabel="Ще"
               style={[styles.macMore, { backgroundColor: soft.fill }]}
             >
@@ -5671,7 +5681,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               visible={macMenuOpen}
               onClose={() => setMacMenuOpen(false)}
               entries={noteMenuEntries}
-              style={{ position: 'absolute', right: 0, top: 44 }}
+              style={{ position: 'absolute', left: macMenuAt.left, top: macMenuAt.top }}
               soft={soft}
             />
           </View>
