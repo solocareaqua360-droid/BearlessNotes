@@ -68,7 +68,7 @@ import ScreenBackdrop from '../components/ScreenBackdrop';
 import Menu from '../components/surfaces/Menu';
 import { CHROME_TOP } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
-import { useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import RenamePrompt from '../components/RenamePrompt';
@@ -187,6 +187,10 @@ export default function TasksScreen() {
   const softDb = useSoftDatabase();
   const styles = softenStyles(useStyles(makeStyles), softDb, softTasks);
   const soft = useSoft();
+  // The soft chrome - the white pill on top and the white capsule dock -
+  // as on the documents, the folders and the personal databases. This was
+  // the one database still drawn in the old grey glass (2026-10-09).
+  useChromeStyle('soft', !!softDb);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // Drawn as one of the desks - see navigation/desks.
   const desk = useContext(DeskContext);
