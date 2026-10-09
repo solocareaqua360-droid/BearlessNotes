@@ -237,11 +237,6 @@ export type DockBead = {
   // glyph instead of the one «+» every create circle wears. The folders'
   // canvas/list switch had turned into a «+» and was lost (2026-10-08).
   keepIcon?: boolean;
-  // RIGHT bead only: the screen's actions are drawn INSIDE the soft field
-  // (labelled buttons where «Пошук» would stand) with this bead as the
-  // dark «+» at its end - the bases' dock to the pixel, the way back in
-  // the same place, the «+» the same size («Справи», 2026-10-09).
-  capsule?: boolean;
   // RIGHT bead only: a second button that goes with it - drawn as another
   // small circle in the soft dock's search field, ahead of "+" (a personal
   // database's «Подача», 2026-10-04), or as a round button beside it where
@@ -418,7 +413,7 @@ function actionSignature(list: DockAction[] | null): string {
 function beadSignature(beads: { left: DockBead | null; right: DockBead | null }): string {
   const one = (b: DockBead | null) =>
     b
-      ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}:${b.dimmed ? 1 : 0}:${b.label ?? ''}:${b.round ? 1 : 0}:${b.capsule ? 1 : 0}:${
+      ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}:${b.dimmed ? 1 : 0}:${b.label ?? ''}:${b.round ? 1 : 0}:${
           b.extra ? `${b.extra.icon}${b.extra.active ? 1 : 0}${b.extra.filled ? 1 : 0}${b.extra.count ?? ''}` : ''
         }`
       : '-';

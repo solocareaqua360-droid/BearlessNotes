@@ -46,11 +46,14 @@ export default function DayTimeline({
     return () => clearInterval(id);
   }, []);
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  // The working day by default; widened to whatever the day actually holds.
+  // THE SCALE STARTS WHERE THE DAY IS: two hours before now and nine after
+  // (at seven in the evening there is no use in eight empty morning hours
+  // between you and the red line), widened to whatever the day holds.
   const starts = items.map((i) => Math.floor(toMinutes(i.time) / 60));
   const ends = items.map((i) => Math.ceil((toMinutes(i.time) + (i.minutes ?? 30)) / 60));
-  const first = Math.max(0, Math.min(8, ...starts, showNow ? now.getHours() : 24));
-  const last = Math.min(24, Math.max(21, ...ends, showNow ? now.getHours() + 1 : 0));
+  const h = now.getHours();
+  const first = Math.max(0, Math.min(showNow ? Math.max(6, h - 2) : 8, ...starts));
+  const last = Math.min(24, Math.max(showNow ? h + 9 : 18, ...ends));
   const hours = Array.from({ length: last - first }, (_, i) => first + i);
   const top = (min: number) => ((min - first * 60) / 60) * HOUR_H;
 

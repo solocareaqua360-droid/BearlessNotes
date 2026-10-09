@@ -295,15 +295,11 @@ export default function TasksScreen() {
       : null,
     bar
   );
-  // «Справи» v2 on a phone: THE BOARDS' DOCK (the user's sketch) - one
-  // white capsule of labelled buttons with the dark «+» inside it, and the
-  // round way back on the right. The old screen («Усі справи») keeps its
-  // search + «+».
-  const v2Dock = v2 && bar && view !== 'all';
+  // The dock is the bases' dock, nothing of its own: search on the left,
+  // «+» inside the field, the round way back from the bar's back. What a
+  // window can do (Канбан, Порядок, Вибір) is in the top pill (⋯ and ☑).
   useDockBeads(
-    isFocused && v2Dock && !isSelectMode
-      ? null
-      : isFocused
+    isFocused
       ? bar
         ? {
             icon: isSelectMode || isSearching ? 'close-outline' : 'search-outline',
@@ -319,11 +315,7 @@ export default function TasksScreen() {
           }
         : { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
       : null,
-    isFocused && v2Dock && !isSelectMode
-      ? view === 'logbook'
-        ? { icon: 'add-outline', capsule: true, dimmed: true, onPress: () => {} }
-        : { icon: 'add-outline', capsule: true, onPress: () => setCreating(true) }
-      : isFocused && !isSelectMode
+    isFocused && !isSelectMode
       ? { icon: 'checkbox-outline', badge: 'add-circle-outline', onPress: () => setCreating(true) }
       : null
   );
@@ -331,36 +323,8 @@ export default function TasksScreen() {
     // On a phone with the bar, what the list does is in the bar's "⋯"
     // (useTopExtras, below) - the documents' own arrangement - and the dock
     // keeps search and "+" alone; a selection still brings its actions.
-    isFocused && (isSelectMode || !bar || v2Dock)
-      ? v2Dock && !isSelectMode
-        ? [
-            ...(kanbanAllowed && view !== 'home'
-              ? [
-                  {
-                    key: 'shape',
-                    icon: (kanbanMode ? 'reorder-four-outline' : 'albums-outline') as 'albums-outline',
-                    label: kanbanMode ? 'Список' : 'Канбан',
-                    onPress: () => setKanbanMode((v) => !v),
-                  },
-                ]
-              : []),
-            { key: 'search', icon: 'search-outline' as const, label: 'Пошук', active: isSearching, onPress: () => setIsSearching((v) => !v) },
-            ...(view !== 'home'
-              ? [
-                  { key: 'sort', icon: 'filter-outline' as const, label: 'Порядок', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
-                  {
-                    key: 'select',
-                    icon: 'checkmark-circle-outline' as const,
-                    label: 'Вибір',
-                    onPress: () => {
-                      setKanbanMode(false);
-                      toggleSelectMode();
-                    },
-                  },
-                ]
-              : []),
-          ]
-        : isSelectMode
+    isFocused && (isSelectMode || !bar)
+      ? isSelectMode
         ? [
             {
               key: 'cancel',
@@ -1169,8 +1133,14 @@ export default function TasksScreen() {
       stopBoardAutoScroll();
       kanbanCarry.cancelCarry();
     });
+  // The first status column was «Вхідні» and now a WINDOW has that name, so
+  // in v2 the column says what it is: new, not yet started.
+  function columnTitle(key: KanbanStatus): string {
+    if (v2 && key === 'inbox') return 'Нове';
+    return KANBAN_COLUMNS.find((c) => c.key === key)?.title ?? key;
+  }
   function kanbanToastLabel(status: KanbanStatus) {
-    return KANBAN_COLUMNS.find((c) => c.key === status)?.title ?? status;
+    return columnTitle(status);
   }
 
   function openProjectPicker(taskId: string) {
@@ -1816,6 +1786,7 @@ export default function TasksScreen() {
     };
     const doneSubs = subtasks.filter((x) => x.checked).length;
     const capsule: { key: string; label: string; icon: string; on?: boolean; onPress: () => void }[] = [
+      { key: 'when', label: 'Коли?', icon: 'calendar-outline', onPress: () => askWhen(item) },
       { key: 'project', label: project ? project.name : 'Проєкт', icon: 'folder-outline', on: !!project, onPress: () => openProjectPicker(item.id) },
       {
         key: 'subtasks',
@@ -1830,7 +1801,6 @@ export default function TasksScreen() {
             return next;
           }),
       },
-      { key: 'file', label: attachments.length ? `Файли: ${attachments.length}` : 'Файл', icon: 'attach-outline', on: attachments.length > 0, onPress: () => askAttachSource(item) },
       { key: 'more', label: 'Ще', icon: 'ellipsis-horizontal', onPress: () => askMore(item) },
     ];
     return (
@@ -1904,6 +1874,10 @@ export default function TasksScreen() {
     );
   }
 
+  function attachments0(item: Task): number {
+    return item.attachments?.length ?? 0;
+  }
+
   // «Ще»: what a task needs now and then - its note, its hour, a repeat.
   async function askMore(item: Task) {
     const id = await ask({
@@ -1913,11 +1887,13 @@ export default function TasksScreen() {
         { id: 'time', label: item.planTime ? `Час: ${item.planTime}` : 'Час', icon: 'time-outline' },
         { id: 'repeat', label: item.recurrence ? recurrenceLabel(item.recurrence) : 'Повторення', icon: 'repeat-outline' },
         { id: 'reminder', label: item.reminderTime ? `Нагадування ${item.reminderTime}` : 'Нагадування', icon: 'alarm-outline' },
+        { id: 'file', label: attachments0(item) ? `Додати файл (є ${attachments0(item)})` : 'Додати файл або фото', icon: 'attach-outline' },
         { id: 'note', label: 'Відкрити нотатку', icon: 'document-text-outline' },
         { id: 'remove', label: 'Прибрати', icon: 'trash-outline', tone: 'danger' },
       ],
     });
-    if (id === 'when') askWhen(item);
+    if (id === 'file') askAttachSource(item);
+    else if (id === 'when') askWhen(item);
     else if (id === 'time') askTime(item);
     else if (id === 'repeat') setRecurrenceTaskId(item.id);
     else if (id === 'reminder') openReminderPicker(item.id);
@@ -2020,10 +1996,7 @@ export default function TasksScreen() {
     if (v === 'inbox')
       return (
         <>
-          <Text style={styles.v2Hint}>
-            {tasksWord(list.length)} розбору.{' '}
-            {phone ? 'Свайп праворуч - на сьогодні, ліворуч - колись.' : 'Права кнопка миші - що з нею зробити.'}
-          </Text>
+          <Text style={styles.v2Hint}>{tasksWord(list.length)} розбору</Text>
           {list.map(renderV2Row)}
         </>
       );
@@ -2463,7 +2436,7 @@ export default function TasksScreen() {
         </View>
         <View style={styles.kanbanCardBottom}>
           <View style={styles.chipsRow}>
-            {showProjectChip && (
+            {showProjectChip && (!v2 || !!project) && (
               <Pressable onPress={() => openProjectPicker(task.id)}>
                 <View style={[styles.chip, project ? { backgroundColor: `${project.color}1A` } : styles.chipEmpty]}>
                   <Ionicons
@@ -2490,6 +2463,7 @@ export default function TasksScreen() {
               </Pressable>
             )}
           </View>
+          {!v2 && (
           <View style={styles.kanbanArrows}>
             <Pressable
               style={styles.kanbanArrowButton}
@@ -2510,6 +2484,7 @@ export default function TasksScreen() {
               />
             </Pressable>
           </View>
+          )}
         </View>
       </View>
     );
@@ -2521,6 +2496,34 @@ export default function TasksScreen() {
   // instead sized so all four columns fit on screen at once (see
   // kanbanColumnWidthFor above) - a plain ScrollView with snapping covers
   // both without needing separate paging UI.
+  // One column fills a phone's screen, so the next column cannot be a drop
+  // target the finger can see. While a card is in the hand the four
+  // statuses stand as a strip under the top pill instead - let go on one.
+  const dropStrip = v2 && windowWidth < KANBAN_WIDE_SCREEN_BREAKPOINT;
+  function renderDropStrip() {
+    if (!dropStrip || !kanbanCarry.ghost) return null;
+    const origin = kanbanCarry.ghost.items[0]?.kanbanStatus ?? 'inbox';
+    return (
+      <View pointerEvents="none" style={[styles.dropStrip, { top: insets.top + CHROME_TOP + TOP_NAV_H + 22, backgroundColor: soft.card, boxShadow: soft.shadow }]}>
+        {KANBAN_COLUMNS.map((column) => (
+          <View
+            key={column.key}
+            ref={kanbanCarry.registerFolder(column.key)}
+            collapsable={false}
+            style={[styles.dropChip, column.key === origin && { backgroundColor: soft.fill }]}
+          >
+            <Text style={[styles.dropChipText, { color: soft.ink }]} numberOfLines={1}>
+              {columnTitle(column.key)}
+            </Text>
+            <Text style={[styles.dropChipCount, { color: soft.ink3 }]}>
+              {kanbanSource.filter((t) => (t.kanbanStatus ?? 'inbox') === column.key).length}
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
+
   function renderKanbanBoard() {
     return (
       <GestureDetector gesture={kanbanBoardGesture}>
@@ -2543,12 +2546,12 @@ export default function TasksScreen() {
           return (
             <View
               key={column.key}
-              ref={kanbanCarry.registerFolder(column.key)}
+              ref={dropStrip ? undefined : kanbanCarry.registerFolder(column.key)}
               collapsable={false}
               style={{ width: kanbanColumnWidth }}
             >
               <View style={styles.kanbanColumnHead}>
-                <Text style={styles.kanbanColumnTitle}>{column.title}</Text>
+                <Text style={styles.kanbanColumnTitle}>{columnTitle(column.key)}</Text>
                 <Text style={styles.kanbanColumnCount}>{columnTasks.length}</Text>
               </View>
               <ScrollView style={styles.kanbanColumnBody} contentContainerStyle={styles.kanbanColumnBodyContent}>
@@ -2697,7 +2700,9 @@ export default function TasksScreen() {
         )}
         {v2 && (view === 'home' || (isWindowList && !kanbanMode)) ? null : kanbanMode ? (
           <>
+            {v2 && !kanbanCarry.ghost && dropStrip && <Text style={styles.v2Hint}>Затримайте картку й перетягніть на стовпець</Text>}
             {renderKanbanBoard()}
+            {renderDropStrip()}
             {kanbanToast && (
               <UndoToast
                 message={`Перенесено в «${kanbanToastLabel(kanbanToast.to)}»`}
@@ -3280,6 +3285,33 @@ const makeStyles = (t: Theme) =>
     fontFamily: FONT_MEDIUM,
     color: t.ink.primary,
     flexShrink: 1,
+  },
+  dropStrip: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    height: 62,
+    borderRadius: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 6,
+    gap: 4,
+    zIndex: 5,
+  },
+  dropChip: {
+    flex: 1,
+    height: 50,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dropChipText: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+  },
+  dropChipCount: {
+    fontSize: 11.5,
+    fontFamily: FONT_REGULAR,
   },
   v2Title: {
     fontSize: 26,
