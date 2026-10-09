@@ -1,4 +1,6 @@
 import { notify } from '../components/surfaces/Ask';
+import { fetchFromDrive } from '../hooks/useAttachmentSource.web';
+import { readPending } from './pendingUploads';
 
 // Saving a file to a folder of the user's choosing - in a browser, no.
 //
@@ -24,12 +26,73 @@ export async function chooseDownloadFolder(): Promise<{ uri: string; label: stri
 }
 
 export async function downloadToFolder(
-  _uri: string,
-  _fileName: string,
-  _mimeType: string
+  uri: string,
+  fileName: string,
+  mimeType: string,
+  driveFileId?: string
 ): Promise<{ destUri: string; fileName: string } | null> {
-  notify('Зберегти у браузері', 'Відкрий файл - він з\'явиться у новій вкладці, і звідти його можна зберегти.');
+  const blob = await bytesOf(uri, driveFileId);
+  if (!blob) {
+    notify('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає або Диск не підключений.');
+    return null;
+  }
+  // A real download: the Mac app's window answers it with the system's own
+  // «Зберегти як» dialog, a browser with its downloads bar (2026-10-09 - it
+  // used to say "open the file in a tab", which the Mac app has no tabs for).
+  const url = URL.createObjectURL(mimeType ? new Blob([blob], { type: mimeType }) : blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = withExtension(fileName, mimeType);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  // Null: nothing was written to a folder this page knows, so there is no
+  // «Показати в теці» toast to offer - the system's dialog was the answer.
   return null;
+}
+
+// A title like «Звіт» saved as a bare name would open with nothing; the
+// extension the type implies is added when the name has none.
+const EXTENSIONS: Record<string, string> = {
+  'application/pdf': '.pdf',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'text/plain': '.txt',
+  'video/mp4': '.mp4',
+  'application/zip': '.zip',
+};
+function withExtension(name: string, mimeType: string): string {
+  if (/\.[A-Za-z0-9]{1,5}$/.test(name)) return name;
+  return name + (EXTENSIONS[mimeType] ?? '');
+}
+
+// The file's bytes: the address while this page holds it, the copy kept for
+// an upload that is still waiting, then Drive (through the desktop disk
+// keep when there is one).
+async function bytesOf(uri: string, driveFileId?: string): Promise<Blob | null> {
+  if (!uri.startsWith('file:')) {
+    try {
+      const response = await fetch(uri);
+      if (response.ok) return await response.blob();
+    } catch {
+      // Dead blob: URL after a reload - the kept copy or Drive is next.
+    }
+  }
+  if (uri.startsWith('blob:')) {
+    const kept = await readPending(uri);
+    if (kept) return kept;
+  }
+  if (!driveFileId) return null;
+  const url = await fetchFromDrive(driveFileId);
+  if (!url) return null;
+  try {
+    const response = await fetch(url);
+    return response.ok ? await response.blob() : null;
+  } catch {
+    return null;
+  }
 }
 
 // Showing a file that was just saved. On the phone this fires a VIEW

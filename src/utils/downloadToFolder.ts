@@ -43,7 +43,9 @@ export async function chooseDownloadFolder(): Promise<{ uri: string; label: stri
 export async function downloadToFolder(
   uri: string,
   fileName: string,
-  mimeType: string
+  mimeType: string,
+  // Only the browser's version needs it (see downloadToFolder.web).
+  _driveFileId?: string
 ): Promise<{ destUri: string; fileName: string } | null> {
   const stored = await AsyncStorage.getItem(DOWNLOAD_DIR_STORAGE_KEY);
   let dirUri = stored;

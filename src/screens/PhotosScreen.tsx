@@ -244,7 +244,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
 
   async function handleDownloadPhoto(photo: PhotoItem) {
     const uri = await flattenPhoto(photo.imageUri, photo.driveFileId, photo.sketchElements, photo.sketchWidth, photo.sketchHeight);
-    const result = await downloadToFolder(uri, `photo-${Date.now()}.jpg`, 'image/jpeg');
+    const result = await downloadToFolder(uri, `photo-${Date.now()}.jpg`, 'image/jpeg', photo.driveFileId);
     if (result) showDownloadToast(result.fileName, result.destUri, 'image/jpeg');
   }
 

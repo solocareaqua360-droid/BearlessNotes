@@ -82,8 +82,8 @@ export function fileIconColorFor(name?: string): string {
 // utils/downloadToFolder, which also has a browser answer. This kept its
 // own copy of that logic for a while, with one branch the shared one
 // lacked and a folder key that happened to match; the two are one.
-export async function downloadToDevice(sourceUri: string, fileName: string, mimeType: string): Promise<string | null> {
-  return (await downloadToFolder(sourceUri, fileName, mimeType))?.destUri ?? null;
+export async function downloadToDevice(sourceUri: string, fileName: string, mimeType: string, driveFileId?: string): Promise<string | null> {
+  return (await downloadToFolder(sourceUri, fileName, mimeType, driveFileId))?.destUri ?? null;
 }
 
 // Inline formatting is stored as plain markers inside the block's own text

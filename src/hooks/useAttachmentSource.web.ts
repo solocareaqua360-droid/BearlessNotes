@@ -26,7 +26,7 @@ import { readPending } from '../utils/pendingUploads';
 const cache = new Map<string, string>();
 const inFlight = new Map<string, Promise<string | null>>();
 
-async function fetchFromDrive(driveFileId: string): Promise<string | null> {
+export async function fetchFromDrive(driveFileId: string): Promise<string | null> {
   const cached = cache.get(driveFileId);
   if (cached) return cached;
   const running = inFlight.get(driveFileId);

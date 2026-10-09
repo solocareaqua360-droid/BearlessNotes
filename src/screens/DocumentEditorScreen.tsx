@@ -4266,7 +4266,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       block.sketchHeight
     );
     const fileName = `photo-${Date.now()}.jpg`;
-    const destUri = await downloadToDevice(uri, fileName, 'image/jpeg');
+    const destUri = await downloadToDevice(uri, fileName, 'image/jpeg', block.driveFileId);
     if (destUri) showDownloadToast(fileName, destUri, 'image/jpeg');
   }
 
@@ -4275,7 +4275,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (!block?.fileUri) return;
     const fileName = block.fileName ?? 'file';
     const mimeType = block.mimeType ?? 'application/octet-stream';
-    const destUri = await downloadToDevice(block.fileUri, fileName, mimeType);
+    const destUri = await downloadToDevice(block.fileUri, fileName, mimeType, block.driveFileId);
     if (destUri) showDownloadToast(fileName, destUri, mimeType);
   }
 

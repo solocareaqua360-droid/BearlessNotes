@@ -403,7 +403,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       const result = await downloadToFolder(
         file.fileUri,
         file.title || file.fileName,
-        file.mimeType || 'application/octet-stream'
+        file.mimeType || 'application/octet-stream',
+        file.driveFileId
       );
       if (result) showDownloadToast(result.fileName, result.destUri, file.mimeType || '*/*');
     } catch (error) {

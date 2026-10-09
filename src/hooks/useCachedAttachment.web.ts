@@ -1,3 +1,5 @@
+// A browser draws what it is given - see utils/localPath.
+export { localPathFor } from '../utils/localPath';
 export type CacheStatus = 'checking' | 'ready' | 'restoring' | 'missing';
 
 // Whether a file is "here", in a browser - where "here" cannot mean what
