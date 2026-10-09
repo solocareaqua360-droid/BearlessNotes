@@ -75,6 +75,8 @@ import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fo
 import * as Clipboard from 'expo-clipboard';
 import { FEATURES } from '../features';
 import { saveHandoffFiles, saveHandoffText } from '../utils/handoffExport';
+import { exportHtmlAsPdf } from '../utils/htmlToPdf';
+import { tasksToHtml } from '../utils/tasksHtml';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { pickPhotosFromDevice } from '../utils/photoLibrary';
 
@@ -295,6 +297,7 @@ export default function TasksScreen() {
                       setListPickerTaskId(BULK);
                     },
                   },
+                  { key: 'pdf', icon: 'document-text-outline' as const, label: 'PDF', onPress: exportSelectedAsPdf },
                   ...(FEATURES.claudeHandoff
                     ? [{ key: 'claude', icon: 'send-outline' as const, label: 'Claude', onPress: handOverToClaude }]
                     : []),
@@ -1227,6 +1230,37 @@ export default function TasksScreen() {
   // taken is copied as text, flips to «У роботі» and carries the batch's
   // number; attachments cannot travel in text, so they are NAMED and the
   // user pastes the pictures beside it.
+  // «PDF»: the chosen tasks, any sphere of life, as ONE document with their
+  // screenshots under them - for a list that is not for Claude at all.
+  async function exportSelectedAsPdf() {
+    const chosen = tasks.filter((t) => selectedIds.has(t.id));
+    if (chosen.length === 0) return;
+    try {
+      const html = await tasksToHtml(
+        'Справи',
+        chosen.map((t) => ({
+          text: t.text,
+          checked: t.checked,
+          comment: t.comment,
+          subtasks: t.subtasks,
+          attachments: (t.attachments ?? []).map((a) => ({
+            imageUri: a.imageUri,
+            fileName: a.fileName,
+            imageTitle: a.imageTitle,
+            driveFileId: a.driveFileId,
+          })),
+          where: [t.groupId ? projectsById[t.groupId]?.name : undefined, t.listId ? taskListsById[t.listId]?.name : undefined]
+            .filter(Boolean)
+            .join(' / '),
+        }))
+      );
+      const ok = await exportHtmlAsPdf(html, `Справи-${new Date().toISOString().slice(0, 10)}.pdf`);
+      if (ok) clearSelection();
+    } catch (e) {
+      notify('Не вдалося зробити PDF', (e as Error).message);
+    }
+  }
+
   async function handOverToClaude() {
     const chosen = tasks.filter((t) => selectedIds.has(t.id));
     const fresh = chosen.filter((t) => !t.checked && t.handoffBatch == null);
