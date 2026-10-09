@@ -100,7 +100,13 @@ export default function FlashcardView({
             <Text style={[styles.panelTitle, { color: text }]}>Пояснення</Text>
             <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={text} />
           </Pressable>
-          {open && <Text style={[styles.explanation, { color: text }]}>{card.explanation}</Text>}
+          {open && (
+            // A long explanation scrolls inside its own panel (2026-10-09, the
+            // user's), so the term and the pictures stay in sight above it.
+            <ScrollView style={styles.explanationScroll} nestedScrollEnabled showsVerticalScrollIndicator>
+              <Text style={[styles.explanation, { color: text }]}>{card.explanation}</Text>
+            </ScrollView>
+          )}
         </View>
       )}
     </>
@@ -269,6 +275,9 @@ const styles = StyleSheet.create({
   panelTitle: {
     fontSize: 15,
     fontFamily: FONT_SEMIBOLD,
+  },
+  explanationScroll: {
+    maxHeight: 260,
   },
   explanation: {
     paddingHorizontal: 14,

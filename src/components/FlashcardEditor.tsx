@@ -9,6 +9,7 @@ import { db } from '../firebase';
 import { Flashcard, FlashcardImage, Group, Tag } from '../types';
 import { detachTagFromDeletedItem, useTags } from '../hooks/useTags';
 import TagPicker from './TagPicker';
+import StableTextInput from './StableTextInput';
 import { groupKindFields } from '../utils/groups';
 import { backupFileToDrive } from '../utils/googleDrive';
 import AttachmentImage from './AttachmentImage';
@@ -208,7 +209,7 @@ export default function FlashcardEditor({
     <>
     <Sheet visible={visible} onClose={onClose} title={card ? 'Картка' : 'Нова картка'} scroll maxHeight="85%">
       <Text style={styles.label}>Термін</Text>
-      <TextInput
+      <StableTextInput
         style={[styles.input, styles.termInput]}
         value={term}
         onChangeText={setTerm}
@@ -219,7 +220,7 @@ export default function FlashcardEditor({
       />
 
       <Text style={styles.label}>Пояснення</Text>
-      <TextInput
+      <StableTextInput
         style={[styles.input, styles.explanationInput]}
         value={explanation}
         onChangeText={setExplanation}
@@ -383,8 +384,11 @@ const makeStyles = (t: Theme) =>
       fontSize: 18,
       fontFamily: FONT_SEMIBOLD,
     },
+    // A long explanation scrolls INSIDE its field instead of pushing the
+    // whole sheet down (2026-10-09).
     explanationInput: {
       minHeight: 110,
+      maxHeight: 240,
     },
     thumbs: {
       gap: 8,
