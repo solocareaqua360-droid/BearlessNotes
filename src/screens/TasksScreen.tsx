@@ -2501,9 +2501,25 @@ export default function TasksScreen() {
   // target the finger can see. While a card is in the hand the four
   // statuses stand as a strip under the top pill instead - let go on one.
   const dropStrip = v2 && windowWidth < KANBAN_WIDE_SCREEN_BREAKPOINT;
+  // Kept on screen half a second AFTER the finger lets go: the drop reads
+  // the chips' places with measureInWindow, which answers a moment later -
+  // and the gesture's own finalize clears the carry at once, so a strip
+  // that vanished with the carry was gone before it could be read, and the
+  // card went back where it was (the user, 2026-10-09: «не переміщається,
+  // повертається назад»).
+  const carrying = !!kanbanCarry.ghost;
+  const [stripHeld, setStripHeld] = useState(false);
+  useEffect(() => {
+    if (carrying) {
+      setStripHeld(true);
+      return;
+    }
+    const id = setTimeout(() => setStripHeld(false), 600);
+    return () => clearTimeout(id);
+  }, [carrying]);
   function renderDropStrip() {
-    if (!dropStrip || !kanbanCarry.ghost) return null;
-    const origin = kanbanCarry.ghost.items[0]?.kanbanStatus ?? 'inbox';
+    if (!dropStrip || !(kanbanCarry.ghost || stripHeld)) return null;
+    const origin = (kanbanCarry.ghost?.items[0]?.kanbanStatus ?? dragOriginRef.current) as KanbanStatus;
     return (
       <View pointerEvents="none" style={[styles.dropStrip, { top: insets.top + CHROME_TOP + TOP_NAV_H + 22, backgroundColor: soft.card, boxShadow: soft.shadow }]}>
         {KANBAN_COLUMNS.map((column) => (
