@@ -1083,6 +1083,9 @@ export default function TasksScreen() {
   // that fallback read as "no real move" and cancel quietly instead of
   // moving it somewhere arbitrary.
   const dragOriginRef = useRef<KanbanStatus>('inbox');
+  // What is in the hand, read by the gesture's callbacks (they were built
+  // before the carry began, so state is stale inside them - a ref is not).
+  const carriedRef = useRef<Task | null>(null);
   const [kanbanToast, setKanbanToast] = useState<{ taskId: string; from: KanbanStatus; to: KanbanStatus } | null>(
     null
   );
@@ -1095,6 +1098,7 @@ export default function TasksScreen() {
     currentPath: dragOriginRef.current,
     onPickUp: (items) => {
       dragOriginRef.current = items[0]?.kanbanStatus ?? 'inbox';
+      carriedRef.current = items[0] ?? null;
       return dragOriginRef.current;
     },
     moveItem: async (task, destination) => {
@@ -1148,7 +1152,7 @@ export default function TasksScreen() {
     const now = Date.now();
     if (now - lastProbe.current < 70) return;
     lastProbe.current = now;
-    const carriedId = kanbanCarry.ghost?.items[0]?.id;
+    const carriedId = carriedRef.current?.id;
     const keys = KANBAN_COLUMNS.map((c) => c.key as string).filter((k) => columnNodes.current[k]);
     const rects: Record<string, { x: number; y: number; w: number; h: number }> = {};
     let pending = keys.length;
@@ -1226,7 +1230,7 @@ export default function TasksScreen() {
     .onEnd((_e, success) => {
       if (!success) return;
       const at = dropAtRef.current;
-      const task = kanbanCarry.ghost?.items[0];
+      const task = carriedRef.current;
       // Let go inside the card's OWN column: only the place changes (the
       // carry itself calls that «no move» and puts the card down).
       if (v2 && at && task && at.column === (task.kanbanStatus ?? 'inbox')) {
@@ -2641,7 +2645,7 @@ export default function TasksScreen() {
     return (
       <GlassPortal priority={10}>
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          {dropLine && <View style={[styles.dropLine, { left: dropLine.x, top: dropLine.y, width: dropLine.w, backgroundColor: soft.accent }]} />}
+          {dropLine && <View style={[styles.dropLine, { left: dropLine.x, top: dropLine.y, width: dropLine.w, backgroundColor: '#C9742E' }]} />}
           <View
             style={[
               styles.cardGhost,
@@ -3813,7 +3817,7 @@ const makeStyles = (t: Theme) =>
   },
   dropLine: {
     position: 'absolute',
-    height: 3,
+    height: 4,
     borderRadius: 2,
   },
   cardGhost: {
