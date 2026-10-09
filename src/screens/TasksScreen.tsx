@@ -81,6 +81,7 @@ import { tasksToHtml } from '../utils/tasksHtml';
 import { ageInDays, inView, isDueToday, isOverdue, VIEW_META, whenFields, type TaskView, type WhenChoice } from '../utils/taskViews';
 import { useSoft } from '../theme/soft';
 import DayTimeline from '../components/DayTimeline';
+import { GlassPortal } from '../components/GlassPortal';
 import SwipeRow, { type SwipeAction } from '../components/SwipeRow';
 import { rightClick } from '../utils/rightClick';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -171,10 +172,11 @@ const KANBAN_BOARD_PADDING = 16;
 const KANBAN_WIDE_SCREEN_BREAKPOINT = 600;
 
 function kanbanColumnWidthFor(screenWidth: number, narrow = false): number {
-  // «Справи» v2 on a phone: TWO columns on screen, the rest a swipe away
-  // (the user: «стовпці можна вужчі зробити», as the bases' kanban has them).
+  // «Справи» v2 on a phone: one whole column and THREE QUARTERS of the next
+  // in a row (the user's own proportion): the second one reads as «there is
+  // more», and the first still has room for a card's words.
   if (narrow && screenWidth < KANBAN_WIDE_SCREEN_BREAKPOINT) {
-    return Math.floor((screenWidth - KANBAN_BOARD_PADDING * 2 - KANBAN_COLUMN_GAP) / 2);
+    return Math.floor((screenWidth - KANBAN_BOARD_PADDING - KANBAN_COLUMN_GAP) / 1.75);
   }
   if (screenWidth >= KANBAN_WIDE_SCREEN_BREAKPOINT) {
     const totalGap = KANBAN_COLUMN_GAP * (KANBAN_COLUMNS.length - 1) + KANBAN_BOARD_PADDING * 2;
@@ -2413,6 +2415,10 @@ export default function TasksScreen() {
   // delete button - deleting only happens via the flat list's select mode
   // now, so removing a task from Kanban means going back to that view
   // first (the header back button does exactly that while in Kanban).
+  // How big each card is, to draw its pale copy at that very size while it
+  // is carried (the user: «копію картки не зменшувати, просто блідою»).
+  const cardSizes = useRef<Record<string, { w: number; h: number }>>({});
+
   function renderKanbanCard(task: Task, columnIndex: number) {
     const project = task.groupId ? projectsById[task.groupId] : undefined;
     const reminderLabel = formatReminderBadge(task);
@@ -2422,8 +2428,15 @@ export default function TasksScreen() {
         key={task.id}
         ref={kanbanCarry.registerCard(task.id, () => [task], () => {})}
         collapsable={false}
-        style={[styles.kanbanCard, isCarrying && styles.kanbanCardDimmed]}
+        onLayout={(e) => {
+          if (!isCarrying) cardSizes.current[task.id] = { w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height };
+        }}
+        style={[
+          styles.kanbanCard,
+          isCarrying && (v2 ? [styles.kanbanCardPlaceholder, { borderColor: theme.ink.faint }] : styles.kanbanCardDimmed),
+        ]}
       >
+       <View style={isCarrying && v2 ? { opacity: 0 } : null}>
         <View style={styles.kanbanCardTop}>
           <Pressable hitSlop={8} onPress={() => toggleTask(task)}>
             <Ionicons
@@ -2493,6 +2506,7 @@ export default function TasksScreen() {
           </View>
           )}
         </View>
+       </View>
       </View>
     );
   }
@@ -2512,6 +2526,33 @@ export default function TasksScreen() {
     setHoverColumn(key);
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => setHoverColumn(null), 220);
+  }
+
+  // The card in the hand: the same card, same size, only pale; its place
+  // in the column stays as a dashed outline. A look for the eye only - the
+  // carry itself is useCardCarry's, unchanged.
+  function renderCardGhost() {
+    const ghost = kanbanCarry.ghost;
+    const task = ghost?.items[0];
+    if (!ghost || !task) return null;
+    const size = cardSizes.current[task.id] ?? { w: kanbanColumnWidth - 20, h: 60 };
+    return (
+      <GlassPortal priority={10}>
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <View
+            style={[
+              styles.cardGhost,
+              { width: size.w, minHeight: size.h, left: ghost.x + 18 - size.w / 2, top: ghost.y + 58 - 36, backgroundColor: soft.card, boxShadow: soft.popShadow },
+            ]}
+          >
+            <Ionicons name="square-outline" size={20} color={theme.ink.faint} />
+            <Text style={styles.kanbanCardText} numberOfLines={3}>
+              {task.text}
+            </Text>
+          </View>
+        </View>
+      </GlassPortal>
+    );
   }
 
   function renderKanbanBoard() {
@@ -2706,12 +2747,16 @@ export default function TasksScreen() {
             {/* The floating task while one is being carried between
                 columns - see useCardCarry. Always mounted, invisible
                 until then. */}
-            <CardCarryOverlay
-              carry={kanbanCarry}
-              label={(items) => items[0]?.text ?? 'Справа'}
-              icon="checkbox-outline"
-              onEnterFolder={() => {}}
-            />
+            {v2 ? (
+              renderCardGhost()
+            ) : (
+              <CardCarryOverlay
+                carry={kanbanCarry}
+                label={(items) => items[0]?.text ?? 'Справа'}
+                icon="checkbox-outline"
+                onEnterFolder={() => {}}
+              />
+            )}
           </>
         ) : (
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad + 8 }]}>
@@ -3652,6 +3697,23 @@ const makeStyles = (t: Theme) =>
     shadowOpacity: 0.06,
   },
   // A card whose task is in hand right now.
+  kanbanCardPlaceholder: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    boxShadow: '0px 0px 0px 0px rgba(0,0,0,0)',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  cardGhost: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 14,
+    borderRadius: 16,
+    opacity: 0.72,
+  },
   kanbanCardDimmed: {
     opacity: 0.4,
     shadowRadius: 4,
