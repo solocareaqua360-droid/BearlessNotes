@@ -72,6 +72,8 @@ import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import RenamePrompt from '../components/RenamePrompt';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import * as Clipboard from 'expo-clipboard';
+import { FEATURES } from '../features';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { pickPhotosFromDevice } from '../utils/photoLibrary';
 
@@ -107,6 +109,7 @@ type Task = {
   listId?: string;
   todayMarkedDate?: string;
   kanbanStatus?: KanbanStatus;
+  handoffBatch?: number;
   reminderDate?: string;
   reminderTime?: string;
   reminderKind?: ReminderKind;
@@ -291,6 +294,9 @@ export default function TasksScreen() {
                       setListPickerTaskId(BULK);
                     },
                   },
+                  ...(FEATURES.claudeHandoff
+                    ? [{ key: 'claude', icon: 'send-outline' as const, label: 'Claude', onPress: handOverToClaude }]
+                    : []),
                   { key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: confirmBulkDeleteTasks },
                 ]
               : []),
@@ -455,6 +461,7 @@ export default function TasksScreen() {
         listId: docSnapshot.data().listId,
         todayMarkedDate: docSnapshot.data().todayMarkedDate,
         kanbanStatus: docSnapshot.data().kanbanStatus,
+        handoffBatch: docSnapshot.data().handoffBatch,
         reminderDate: docSnapshot.data().reminderDate,
         reminderTime: docSnapshot.data().reminderTime,
         reminderKind: docSnapshot.data().reminderKind,
@@ -1212,6 +1219,64 @@ export default function TasksScreen() {
     });
   }
 
+  // «ПЕРЕДАТИ CLAUDE» (the user, 2026-10-09: the thought's path must END
+  // somewhere - a task goes out as ONE piece of text and comes back done).
+  // Only what has not gone out yet is taken - «Нове» - so a second press
+  // after new findings gives the DELTA, never the old tasks again. What is
+  // taken is copied as text, flips to «У роботі» and carries the batch's
+  // number; attachments cannot travel in text, so they are NAMED and the
+  // user pastes the pictures beside it.
+  async function handOverToClaude() {
+    const chosen = tasks.filter((t) => selectedIds.has(t.id));
+    const fresh = chosen.filter((t) => !t.checked && t.handoffBatch == null);
+    if (fresh.length === 0) {
+      notify(
+        'Нічого нового',
+        chosen.length > 0
+          ? 'Вибрані справи вже передані або виконані. Нові справи підуть наступною порцією.'
+          : 'Спершу виберіть справи.'
+      );
+      return;
+    }
+    const batch = tasks.reduce((max, t) => Math.max(max, t.handoffBatch ?? 0), 0) + 1;
+    const where = (t: Task) =>
+      [t.groupId ? projectsById[t.groupId]?.name : undefined, t.listId ? taskListsById[t.listId]?.name : undefined]
+        .filter(Boolean)
+        .join(' / ');
+    const places = [...new Set(fresh.map(where).filter(Boolean))];
+    const lines: string[] = [`Порція №${batch}${places.length ? ` — ${places.join('; ')}` : ''}`, ''];
+    fresh.forEach((t, i) => {
+      lines.push(`${i + 1}. ${t.text}`);
+      if (t.comment?.trim()) lines.push(`   Деталі: ${t.comment.trim().replace(/\n/g, '\n   ')}`);
+      (t.subtasks ?? []).forEach((s) => lines.push(`   ${s.checked ? '[x]' : '[ ]'} ${s.text}`));
+      const files = (t.attachments ?? []).map((a) => a.fileName || (a.imageUri ? 'зображення' : 'файл'));
+      if (files.length) lines.push(`   Вкладення (додай окремо): ${files.join(', ')}`);
+      lines.push('');
+    });
+    await Clipboard.setStringAsync(lines.join('\n').trim());
+    // The tasks mirror and the checkbox block in its note, written together
+    // (one read per note) - the same pair setTaskStatus keeps in step.
+    const byDocument = new Map<string, Task[]>();
+    fresh.forEach((t) => byDocument.set(t.documentId, [...(byDocument.get(t.documentId) ?? []), t]));
+    fresh.forEach((t) => updateDoc(doc(db, 'tasks', t.id), { kanbanStatus: 'inProgress', handoffBatch: batch }));
+    for (const [documentId, group] of byDocument) {
+      try {
+        const ref = doc(db, 'documents', documentId);
+        const data = (await getDoc(ref)).data();
+        if (!data) continue;
+        const ids = new Set(group.map((t) => t.id));
+        const blocks: Block[] = (data.blocks ?? []).map((b: Block) =>
+          ids.has(b.id) ? { ...b, kanbanStatus: 'inProgress', handoffBatch: batch } : b
+        );
+        await updateDoc(ref, { blocks });
+      } catch (e) {
+        console.warn('[tasks] handoff: note not updated', documentId, e);
+      }
+    }
+    clearSelection();
+    notify(`Порція №${batch} скопійована`, `${fresh.length} справ у буфері. Вставте їх Claude - вони тепер «У роботі».`);
+  }
+
   function renderTaskRow(item: Task, opts: { showProjectChip: boolean; showListChip: boolean }) {
     const project = item.groupId ? projectsById[item.groupId] : undefined;
     const list = item.listId ? taskListsById[item.listId] : undefined;
@@ -1293,6 +1358,12 @@ export default function TasksScreen() {
                     <Text style={styles.reminderChipText}>{reminderLabel}</Text>
                   </View>
                 </Pressable>
+              )}
+              {item.handoffBatch != null && (
+                <View style={styles.reminderChip}>
+                  <Ionicons name="send-outline" size={11} color={theme.ink.muted} />
+                  <Text style={styles.reminderChipText}>Порція №{item.handoffBatch}</Text>
+                </View>
               )}
               {subtaskCount > 0 && (
                 <View style={styles.reminderChip}>

@@ -250,6 +250,11 @@ export interface Block {
   // starred (todayMarkedDate === today) tasks - Kanban only ever shows
   // those.
   kanbanStatus?: 'inbox' | 'inProgress' | 'paused' | 'done';
+  // 'checkbox' blocks only - the number of the «порція» this task went to
+  // Claude in (TasksScreen «Передати Claude»). Absent = never handed over.
+  // A task found AFTER a batch went out gets no number until the next one,
+  // so «Нове» always means exactly what has not been handed over.
+  handoffBatch?: number;
   // 'checkbox' blocks only - a richer, optional alternative to just
   // todayMarkedDate: a specific due date, and optionally a time that
   // schedules a local notification (see utils/reminders.ts). Setting this

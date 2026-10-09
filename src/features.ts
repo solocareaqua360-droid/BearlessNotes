@@ -32,6 +32,10 @@ export const FEATURES = {
   // Дошка дня: плаваюча кнопка на екрані дня в календарі відкриває дошку
   // цього дня з карткою «Аркуш дня» (utils/dayBoard). Off: no button.
   dayBoard: true,
+  // «Передати Claude»: a button in the tasks' selection mode that copies the
+  // chosen NEW tasks as text, flips them to «У роботі» and numbers the
+  // batch. Off: no button, no chip.
+  claudeHandoff: true,
   // ПРОБА: картка-документ на дошці дня відкривається маленьким вікном
   // з редактором поверх дошки (телефон). Off: дотик розгортає картку.
   cardWindow: true,
