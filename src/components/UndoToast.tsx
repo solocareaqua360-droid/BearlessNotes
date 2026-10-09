@@ -1,7 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toastClear } from '../constants/rail';
-import { useTheme } from '../theme/ThemeProvider';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 
 // `actionLabel` defaults to "Скасувати" (its original, only job) - Files/
@@ -27,14 +26,13 @@ export default function UndoToast({
   // not follow the app's own ground. Only the action text ties to the
   // scheme, the same way a Snackbar's action is usually the app's own
   // brand colour rather than a fixed blue nobody chose.
-  const accent = useTheme().accent;
   return (
     <View style={[styles.toast, toastClear(railSide, insets.bottom)]}>
       <Text style={styles.message} numberOfLines={1}>
         {message}
       </Text>
       <Pressable hitSlop={8} onPress={onUndo}>
-        <Text style={[styles.undo, { color: accent }]}>{actionLabel ?? 'Скасувати'}</Text>
+        <Text style={styles.undo}>{actionLabel ?? 'Скасувати'}</Text>
       </Pressable>
     </View>
   );
@@ -59,7 +57,11 @@ const styles = StyleSheet.create({
     fontFamily: FONT_REGULAR,
     color: '#fff',
   },
+  // A light warm tone ON the dark pill. It used to be the app's accent,
+  // which is dark brown in the white theme - «Скасувати» was close to
+  // invisible on the navy (seen on the phone, 2026-10-09).
   undo: {
+    color: '#E8C97A',
     fontSize: 14,
     fontWeight: '700',
     fontFamily: FONT_BOLD,

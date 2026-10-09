@@ -1086,6 +1086,7 @@ export default function TasksScreen() {
     currentPath: dragOriginRef.current,
     onPickUp: (items) => {
       dragOriginRef.current = items[0]?.kanbanStatus ?? 'inbox';
+      return dragOriginRef.current;
     },
     moveItem: async (task, destination) => {
       if (!destination) return;
@@ -2700,7 +2701,7 @@ export default function TasksScreen() {
         )}
         {v2 && (view === 'home' || (isWindowList && !kanbanMode)) ? null : kanbanMode ? (
           <>
-            {v2 && !kanbanCarry.ghost && dropStrip && <Text style={styles.v2Hint}>Затримайте картку й перетягніть на стовпець</Text>}
+            {v2 && !kanbanCarry.ghost && dropStrip && <Text style={[styles.v2Hint, { paddingHorizontal: 20, paddingBottom: 4 }]}>Затримайте картку й перетягніть на стовпець</Text>}
             {renderKanbanBoard()}
             {renderDropStrip()}
             {kanbanToast && (

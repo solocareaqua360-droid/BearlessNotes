@@ -106,7 +106,11 @@ export function useCardCarry<T extends { id: string }>({
   // single fixed answer - the kanban board, where it has to be THIS
   // card's own column, not some notion of "the folder you're standing
   // in" that a board of status columns does not have.
-  onPickUp?: (items: T[]) => void;
+  // May ANSWER with the origin of THIS carry (the kanban: the card's own
+  // column). `currentPath` is a prop read at render time, so after a first
+  // carry it still named the first card's column, and a second card could not
+  // be put back where the first had come from - it counted as "no move".
+  onPickUp?: (items: T[]) => void | string;
 }) {
   const [ghost, setGhost] = useState<CarryGhost<T> | null>(null);
   // Mirrors `ghost` for code that runs inside a gesture callback (already
@@ -250,7 +254,11 @@ export function useCardCarry<T extends { id: string }>({
       const next = { items, x: finger.x + GHOST_NUDGE_X, y: finger.y + GHOST_NUDGE_Y };
       ghostRef.current = next;
       setGhost(next);
-      onPickUp?.(items);
+      const picked = onPickUp?.(items);
+      if (typeof picked === 'string') {
+        originRef.current = picked;
+        pathRef.current = picked;
+      }
     });
   }, [onPickUp]);
 
