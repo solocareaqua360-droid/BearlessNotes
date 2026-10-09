@@ -255,6 +255,13 @@ export interface Block {
   // A task found AFTER a batch went out gets no number until the next one,
   // so «Нове» always means exactly what has not been handed over.
   handoffBatch?: number;
+  // 'checkbox' blocks only - «Справи» v2 (utils/taskViews): «Колись» (no day
+  // at all, on purpose), «Ввечері» (today, after work) and how many times
+  // a task already due was moved to a later day - the quiet «перенесено 3
+  // рази» that asks whether it is too big or not needed.
+  someday?: boolean;
+  evening?: boolean;
+  postponeCount?: number;
   // 'checkbox' blocks only - a richer, optional alternative to just
   // todayMarkedDate: a specific due date, and optionally a time that
   // schedules a local notification (see utils/reminders.ts). Setting this

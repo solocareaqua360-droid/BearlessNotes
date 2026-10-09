@@ -12,6 +12,7 @@ import type { Theme } from '../theme/tokens';
 import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import {
   ActivityIndicator,
+  BackHandler,
   Keyboard,
   Modal,
   Platform,
@@ -77,6 +78,8 @@ import { FEATURES } from '../features';
 import { saveHandoffFiles, saveHandoffText } from '../utils/handoffExport';
 import { exportHtmlAsPdf } from '../utils/htmlToPdf';
 import { tasksToHtml } from '../utils/tasksHtml';
+import { ageInDays, inView, isDueToday, isOverdue, VIEW_META, whenFields, type TaskView, type WhenChoice } from '../utils/taskViews';
+import { useSoft } from '../theme/soft';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { pickPhotosFromDevice } from '../utils/photoLibrary';
 
@@ -113,6 +116,9 @@ type Task = {
   todayMarkedDate?: string;
   kanbanStatus?: KanbanStatus;
   handoffBatch?: number;
+  someday?: boolean;
+  evening?: boolean;
+  postponeCount?: number;
   reminderDate?: string;
   reminderTime?: string;
   reminderKind?: ReminderKind;
@@ -175,6 +181,7 @@ export default function TasksScreen() {
   // Soft on a phone, as the database chrome around it is (theme/soft).
   const softDb = useSoftDatabase();
   const styles = softenStyles(useStyles(makeStyles), softDb, softTasks);
+  const soft = useSoft();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // Drawn as one of the desks - see navigation/desks.
   const desk = useContext(DeskContext);
@@ -206,6 +213,38 @@ export default function TasksScreen() {
   const [creating, setCreating] = useState(false);
   const [creatingBusy, setCreatingBusy] = useState(false);
   const isFocused = useIsFocused();
+  // «Справи» v2: which window is open - the list of windows itself
+  // ('home'), one of them, a project, or the old screen ('all'). Arriving
+  // for one task (focusTaskId) opens the old screen, where it is found.
+  const v2 = FEATURES.tasksV2;
+  const [view, setView] = useState<TaskView>(v2 && !route.params?.focusTaskId ? 'home' : 'all');
+  function goHome() {
+    setView('home');
+    setKanbanMode(false);
+    setProjectFilter(UNASSIGNED_ID);
+    setExpandedTaskIds(new Set());
+  }
+  function openView(next: TaskView) {
+    setExpandedTaskIds(new Set());
+    setKanbanMode(false);
+    if (next.startsWith('project:')) setProjectFilter(next.slice('project:'.length));
+    else if (next === 'all') setProjectFilter(UNASSIGNED_ID);
+    else setProjectFilter(null);
+    setView(next);
+  }
+  // On the windows list there is nothing to order; Вхідні, Найближчі,
+  // Колись and Зроблено have no columns to show.
+  const kanbanAllowed = !v2 || view === 'today' || view === 'all' || view.startsWith('project:');
+  // Android's own back steps out of a window to the list of windows first.
+  useEffect(() => {
+    if (!v2 || view === 'home' || !isFocused) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      goHome();
+      return true;
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v2, view, isFocused]);
   // The way back on the left and making a task on the right. Back is the
   // dock's left bead on every screen now ("кнопка назад є одним із
   // головних якорів"), one step at a time: out of selecting, out of
@@ -218,9 +257,11 @@ export default function TasksScreen() {
           setSearchQuery('');
           setIsSearching(false);
         }
-      : desk
-        ? desk.back
-        : () => navigation.goBack();
+      : v2 && view !== 'home'
+        ? () => goHome()
+        : desk
+          ? desk.back
+          : () => navigation.goBack();
   // On a phone the bar at the top holds the way back (TopNavBar, drawn in
   // the render with this screen's own name), and search is the left bead.
   const bar = useTopNavOn();
@@ -305,14 +346,20 @@ export default function TasksScreen() {
                 ]
               : []),
           ]
-        : [
-            {
-              key: 'shape',
-              icon: kanbanMode ? 'albums-outline' : 'reorder-four-outline',
-              label: kanbanMode ? 'Канбан' : 'Список',
-              closesStack: true,
-              onPress: () => setKanbanMode((v) => !v),
-            },
+        : v2 && view === 'home'
+          ? []
+          : [
+            ...(kanbanAllowed
+              ? [
+                  {
+                    key: 'shape',
+                    icon: (kanbanMode ? 'albums-outline' : 'reorder-four-outline') as 'albums-outline',
+                    label: kanbanMode ? 'Канбан' : 'Список',
+                    closesStack: true,
+                    onPress: () => setKanbanMode((v) => !v),
+                  },
+                ]
+              : []),
             { key: 'sort', icon: 'filter-outline', label: 'Порядок', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
             // At the bar's edge instead, where there is a bar.
             ...(bar
@@ -349,12 +396,18 @@ export default function TasksScreen() {
   // документами... все переноситься в три крапки": the list/kanban switch
   // and the order go up there, choosing stands at the bar's edge.
   useTopExtras(
-    [
-      {
-        label: kanbanMode ? 'Список' : 'Канбан',
-        icon: kanbanMode ? 'reorder-four-outline' : 'albums-outline',
-        onPress: () => setKanbanMode((v) => !v),
-      },
+    v2 && view === 'home'
+      ? null
+      : [
+      ...(kanbanAllowed
+        ? [
+            {
+              label: kanbanMode ? 'Список' : 'Канбан',
+              icon: kanbanMode ? 'reorder-four-outline' : 'albums-outline',
+              onPress: () => setKanbanMode((v) => !v),
+            } as const,
+          ]
+        : []),
       { kind: 'section', label: 'Порядок' },
       ...FIELD_ORDER.map((field) => ({
         label:
@@ -364,7 +417,9 @@ export default function TasksScreen() {
         onPress: () => selectSortField(field),
       })),
     ],
-    {
+    v2 && view === 'home'
+      ? null
+      : {
       active: isSelectMode,
       onPress: () => {
         setKanbanMode(false);
@@ -466,6 +521,9 @@ export default function TasksScreen() {
         todayMarkedDate: docSnapshot.data().todayMarkedDate,
         kanbanStatus: docSnapshot.data().kanbanStatus,
         handoffBatch: docSnapshot.data().handoffBatch,
+        someday: docSnapshot.data().someday,
+        evening: docSnapshot.data().evening,
+        postponeCount: docSnapshot.data().postponeCount,
         reminderDate: docSnapshot.data().reminderDate,
         reminderTime: docSnapshot.data().reminderTime,
         reminderKind: docSnapshot.data().reminderKind,
@@ -609,7 +667,13 @@ export default function TasksScreen() {
       // A real project tab open (not "Всі"/"Вхідні") - the new task
       // starts there instead of needing a second tap to catch up to
       // where it was made.
-      await createTaskInToday(text, projectFilter && projectFilter !== UNASSIGNED_ID ? projectFilter : undefined);
+      const made = await createTaskInToday(text, projectFilter && projectFilter !== UNASSIGNED_ID ? projectFilter : undefined);
+      // Made in Сьогодні / Найближчі / Колись, it belongs there - not in
+      // Вхідні, where a task with no day would otherwise land.
+      if (v2 && (view === 'today' || view === 'upcoming' || view === 'someday')) {
+        const stub = { id: made.taskId, documentId: made.documentId, checked: false, text, updatedAt: Date.now() } as Task;
+        await setWhen(stub, view === 'today' ? 'today' : view === 'upcoming' ? 'tomorrow' : 'someday');
+      }
       setCreating(false);
     } catch (e) {
       notify('Не збереглося', (e as Error).message);
@@ -873,6 +937,7 @@ export default function TasksScreen() {
       reminderTime: reminderTime ?? deleteField(),
       reminderKind: reminderTime ? reminderKind : deleteField(),
       reminderNotificationId: notificationId ?? deleteField(),
+      someday: deleteField(),
       ...(becomesToday ? { todayMarkedDate: today } : {}),
     });
     const documentRef = doc(db, 'documents', task.documentId);
@@ -883,6 +948,7 @@ export default function TasksScreen() {
     const updatedBlocks = blocks.map((b) => {
       if (b.id !== task.id) return b;
       const next: Block = { ...b, reminderDate };
+      delete next.someday;
       if (reminderTime) {
         next.reminderTime = reminderTime;
         next.reminderKind = reminderKind;
@@ -1338,6 +1404,260 @@ export default function TasksScreen() {
     );
   }
 
+  // ===== «Справи» v2 (utils/taskViews) =====
+
+  // «Коли?»: a task's day, written to the mirror and its block together.
+  // A timed reminder goes with the old day (see whenFields).
+  async function setWhen(task: Task, choice: WhenChoice) {
+    const fields = whenFields(choice, today, task);
+    if (task.reminderNotificationId) await cancelReminder(task.reminderNotificationId);
+    const mirror: Record<string, unknown> = {};
+    Object.entries(fields).forEach(([key, value]) => {
+      mirror[key] = value === undefined ? deleteField() : value;
+    });
+    await updateTaskBothSides(task, mirror, (b) => {
+      const next: Record<string, unknown> = { ...b };
+      Object.entries(fields).forEach(([key, value]) => {
+        if (value === undefined) delete next[key];
+        else next[key] = value;
+      });
+      return next as unknown as Block;
+    });
+  }
+
+  async function askWhen(task: Task) {
+    const dated = !!task.todayMarkedDate || !!task.reminderDate || !!task.someday;
+    const id = await ask({
+      title: task.text || 'Справа',
+      message: 'Коли?',
+      actions: [
+        { id: 'today', label: 'Сьогодні', icon: 'star-outline' },
+        { id: 'evening', label: 'Сьогодні ввечері', icon: 'moon-outline' },
+        { id: 'tomorrow', label: 'Завтра', icon: 'calendar-outline' },
+        { id: 'pick', label: 'Вибрати день…', icon: 'calendar-number-outline' },
+        { id: 'someday', label: 'Колись', icon: 'archive-outline' },
+        ...(dated ? [{ id: 'none', label: 'Без дати', icon: 'close-circle-outline' as const }] : []),
+      ],
+    });
+    if (!id || id === 'cancel') return;
+    if (id === 'pick') {
+      openReminderPicker(task.id);
+      return;
+    }
+    setWhen(task, id as WhenChoice);
+  }
+
+  function confirmRemoveTask(task: Task) {
+    confirm({
+      title: 'Прибрати справу?',
+      message: 'Чекбокс також зникне з документа, де його написано.',
+      confirmLabel: 'Прибрати',
+    }).then((yes) => {
+      if (yes) deleteTask(task);
+    });
+  }
+
+  // The tasks of one window, in the order the ⋯ menu chose - Найближчі by
+  // day, Зроблено newest first.
+  function viewTasksOf(v: 'inbox' | 'today' | 'upcoming' | 'someday' | 'logbook'): Task[] {
+    const needle = searchQuery.trim().toLowerCase();
+    let list = tasks.filter((t) => inView(v, t, today) && (!needle || t.text.toLowerCase().includes(needle)));
+    if (v === 'upcoming') return [...list].sort((a, b) => String(a.reminderDate).localeCompare(String(b.reminderDate)));
+    if (v === 'logbook') return [...list].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 200);
+    list = sortItems(list, sortPref, (t) => t.text || 'Без назви', (t) => t.createdAt, (t) => t.updatedAt);
+    return list;
+  }
+
+  function tasksWord(n: number): string {
+    const d = n % 10;
+    const dd = n % 100;
+    if (d === 1 && dd !== 11) return `${n} справа чекає`;
+    if (d >= 2 && d <= 4 && (dd < 12 || dd > 14)) return `${n} справи чекають`;
+    return `${n} справ чекають`;
+  }
+
+  function renderV2Row(item: Task) {
+    const isExpanded = expandedTaskIds.has(item.id);
+    const isSelected = selectedIds.has(item.id);
+    const project = item.groupId ? projectsById[item.groupId] : undefined;
+    const meta: { text: string; warn?: boolean }[] = [];
+    if (view === 'inbox') {
+      const age = ageInDays(item.createdAt);
+      if (age >= 2) meta.push({ text: `${age} дн. без розбору`, warn: true });
+    }
+    if (view === 'today' && isOverdue(item, today)) meta.push({ text: 'з минулих днів', warn: true });
+    if (!item.checked && (item.postponeCount ?? 0) >= 2) meta.push({ text: `перенесено ${item.postponeCount} р.`, warn: true });
+    if (item.reminderTime) meta.push({ text: item.reminderTime });
+    if (!item.checked && item.kanbanStatus === 'inProgress') meta.push({ text: 'у роботі' });
+    if (project && !view.startsWith('project:')) meta.push({ text: project.name });
+    const attached = item.attachments?.length ?? 0;
+    if (attached > 0) meta.push({ text: `вкладень: ${attached}` });
+    // What can be done with it - shown only on the card that was opened
+    // (the user: «біля кожної справи купа блоків тексту - вже лячно»).
+    const actions: { key: string; label: string; icon: string; onPress: () => void; strong?: boolean }[] = [];
+    if (!item.checked) {
+      if (view === 'today' && item.kanbanStatus !== 'inProgress')
+        actions.push({ key: 'start', label: 'Почати', icon: 'play-outline', strong: true, onPress: () => setTaskStatus(item, 'inProgress') });
+      actions.push({ key: 'when', label: 'Коли?', icon: 'calendar-outline', strong: view === 'inbox', onPress: () => askWhen(item) });
+      actions.push({ key: 'project', label: 'У проєкт', icon: 'folder-outline', onPress: () => openProjectPicker(item.id) });
+      if (view !== 'someday') actions.push({ key: 'someday', label: 'Колись', icon: 'archive-outline', onPress: () => setWhen(item, 'someday') });
+    }
+    actions.push({ key: 'note', label: 'Нотатка', icon: 'document-text-outline', onPress: () => navigation.navigate('Editor', { documentId: item.documentId }) });
+    if (view === 'inbox') actions.push({ key: 'remove', label: 'Прибрати', icon: 'trash-outline', onPress: () => confirmRemoveTask(item) });
+    return (
+      <View key={item.id} style={styles.row}>
+        <View style={styles.rowMain}>
+          <Pressable hitSlop={8} onPress={() => toggleTask(item)}>
+            <Ionicons
+              name={item.checked ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={item.checked ? accent : theme.ink.faint}
+            />
+          </Pressable>
+          <Pressable
+            style={styles.rowTextTap}
+            onPress={() => (isSelectMode ? toggleSelected(item.id) : toggleTaskExpanded(item.id))}
+          >
+            <Text style={[styles.rowText, item.checked && styles.rowTextChecked]} numberOfLines={isExpanded ? undefined : 2}>
+              {item.text}
+            </Text>
+            {meta.length > 0 && (
+              <Text style={styles.v2Meta} numberOfLines={1}>
+                {meta.map((m, i) => (
+                  <Text key={i} style={m.warn ? styles.v2Warn : null}>
+                    {i > 0 ? ' · ' : ''}
+                    {m.text}
+                  </Text>
+                ))}
+              </Text>
+            )}
+          </Pressable>
+          {isSelectMode && (
+            <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowDelete}>
+              <Ionicons
+                name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                size={20}
+                color={isSelected ? accent : theme.ink.faint}
+              />
+            </Pressable>
+          )}
+        </View>
+        {isExpanded && (
+          <>
+            <View style={styles.v2Actions}>
+              {actions.map((a) => (
+                <Pressable key={a.key} onPress={a.onPress} style={[styles.v2Btn, a.strong && { backgroundColor: theme.ink.primary }]}>
+                  <Ionicons name={a.icon as never} size={15} color={a.strong ? theme.surface : theme.ink.primary} />
+                  <Text style={[styles.v2BtnText, a.strong && { color: theme.surface }]}>{a.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {renderTaskDetails(item)}
+          </>
+        )}
+      </View>
+    );
+  }
+
+  // THE LIST OF WINDOWS - the «Справи» a person lands on (as «Папки» is):
+  // one row per window with how many tasks are in it, the projects under.
+  function renderHome() {
+    const count = (v: 'inbox' | 'today' | 'upcoming' | 'someday') => tasks.filter((t) => inView(v, t, today)).length;
+    const row = (key: string, label: string, icon: string, color: string, n: number, warn: boolean, onPress: () => void) => (
+      <Pressable key={key} onPress={onPress} style={styles.homeRow}>
+        <View style={[styles.homeIcon, { backgroundColor: soft.card, boxShadow: soft.shadow }]}>
+          <Ionicons name={icon as never} size={20} color={color} />
+        </View>
+        <Text style={[styles.homeLabel, { color: soft.ink }]} numberOfLines={1}>
+          {label}
+        </Text>
+        {n > 0 && <Text style={[styles.homeCount, { color: warn ? '#D9A441' : soft.ink3 }]}>{n}</Text>}
+        <Ionicons name="chevron-forward" size={18} color={soft.ink3} />
+      </Pressable>
+    );
+    const projectGroups = groups.filter((g) => tasks.some((t) => t.groupId === g.id));
+    return (
+      <View style={styles.homeList}>
+        {row('inbox', VIEW_META.inbox.label, VIEW_META.inbox.icon, VIEW_META.inbox.color, count('inbox'), true, () => openView('inbox'))}
+        <View style={styles.homeGap} />
+        {row('today', VIEW_META.today.label, VIEW_META.today.icon, VIEW_META.today.color, count('today'), false, () => openView('today'))}
+        {row('upcoming', VIEW_META.upcoming.label, VIEW_META.upcoming.icon, VIEW_META.upcoming.color, count('upcoming'), false, () => openView('upcoming'))}
+        {row('someday', VIEW_META.someday.label, VIEW_META.someday.icon, VIEW_META.someday.color, count('someday'), false, () => openView('someday'))}
+        <View style={styles.homeGap} />
+        {row('logbook', VIEW_META.logbook.label, VIEW_META.logbook.icon, VIEW_META.logbook.color, 0, false, () => openView('logbook'))}
+        {projectGroups.length > 0 && <Text style={[styles.homeSection, { color: soft.ink3 }]}>Проєкти</Text>}
+        {projectGroups.map((g) =>
+          row(
+            `p:${g.id}`,
+            g.name,
+            'folder-outline',
+            g.color || soft.ink3,
+            tasks.filter((t) => t.groupId === g.id && !t.checked).length,
+            false,
+            () => openView(`project:${g.id}`)
+          )
+        )}
+        <View style={styles.homeGap} />
+        {/* The old screen stays reachable until the user says it can go. */}
+        {row('all', 'Усі справи (як раніше)', 'list-outline', soft.ink3, 0, false, () => openView('all'))}
+      </View>
+    );
+  }
+
+  const EMPTY_TEXT: Record<string, string> = {
+    inbox: 'Усе розібрано. Нові справи з чату й нотаток лягають сюди.',
+    today: 'На сьогодні нічого. Відкрийте справу у «Вхідних» і натисніть «Коли?».',
+    upcoming: 'На найближчі дні нічого не заплановано.',
+    someday: 'Тут лежать справи без дати, до яких ви колись повернетесь.',
+    logbook: 'Ще нічого не зроблено.',
+  };
+
+  function renderViewList() {
+    const v = view as 'inbox' | 'today' | 'upcoming' | 'someday' | 'logbook';
+    const list = viewTasksOf(v);
+    if (list.length === 0) return <Text style={styles.emptyFilterLabel}>{EMPTY_TEXT[v]}</Text>;
+    if (v === 'inbox')
+      return (
+        <>
+          <Text style={styles.v2Hint}>{tasksWord(list.length)} розбору. Відкрийте справу - під нею буде «Коли?».</Text>
+          {list.map(renderV2Row)}
+        </>
+      );
+    if (v === 'today') {
+      const main = list.filter((t) => !t.evening);
+      const evening = list.filter((t) => t.evening);
+      return (
+        <>
+          {main.map(renderV2Row)}
+          {evening.length > 0 && <Text style={styles.v2Section}>Ввечері</Text>}
+          {evening.map(renderV2Row)}
+        </>
+      );
+    }
+    if (v === 'upcoming') {
+      const days: string[] = [];
+      list.forEach((t) => {
+        if (t.reminderDate && !days.includes(t.reminderDate)) days.push(t.reminderDate);
+      });
+      return (
+        <>
+          {days.map((d) => {
+            const date = parseDateKey(d);
+            return (
+              <View key={d} style={styles.group}>
+                <Text style={styles.v2Section}>
+                  {WEEKDAY_FULL[(date.getDay() + 6) % 7]}, {formatShortDate(date)}
+                </Text>
+                {list.filter((t) => t.reminderDate === d).map(renderV2Row)}
+              </View>
+            );
+          })}
+        </>
+      );
+    }
+    return <>{list.map(renderV2Row)}</>;
+  }
+
   function renderTaskRow(item: Task, opts: { showProjectChip: boolean; showListChip: boolean }) {
     const project = item.groupId ? projectsById[item.groupId] : undefined;
     const list = item.listId ? taskListsById[item.listId] : undefined;
@@ -1674,6 +1994,15 @@ export default function TasksScreen() {
   }
 
   const todayTasks = filteredTasks.filter((t) => isTaskToday(t, today));
+  // v2: Сьогодні's columns hold everything due today, carried-over tasks
+  // too; a project's columns hold the whole project, not only its starred.
+  const kanbanSource = !v2
+    ? todayTasks
+    : view === 'today'
+      ? filteredTasks.filter((t) => isTaskToday(t, today) || (!t.checked && isDueToday(t, today)))
+      : view.startsWith('project:')
+        ? filteredTasks
+        : todayTasks;
 
   // A card is deliberately smaller than renderTaskRow: no star (every card
   // here is starred by definition, showing it again is just noise) and no
@@ -1786,7 +2115,7 @@ export default function TasksScreen() {
         scrollEventThrottle={16}
       >
         {KANBAN_COLUMNS.map((column, columnIndex) => {
-          const columnTasks = todayTasks.filter((t) => (t.kanbanStatus ?? 'inbox') === column.key);
+          const columnTasks = kanbanSource.filter((t) => (t.kanbanStatus ?? 'inbox') === column.key);
           return (
             <View
               key={column.key}
@@ -1845,6 +2174,15 @@ export default function TasksScreen() {
   }
 
   const floatHeader = phone && !kanbanMode;
+  const isWindowList = v2 && (view === 'inbox' || view === 'today' || view === 'upcoming' || view === 'someday' || view === 'logbook');
+  const viewTitle: { icon: keyof typeof Ionicons.glyphMap; label: string } =
+    !v2 || view === 'home'
+      ? { icon: 'checkbox-outline', label: 'Справи' }
+      : view === 'all'
+        ? { icon: 'checkbox-outline', label: 'Усі справи' }
+        : view.startsWith('project:')
+          ? { icon: 'folder-outline', label: projectsById[view.slice('project:'.length)]?.name ?? 'Проєкт' }
+          : { icon: VIEW_META[view as 'inbox'].icon as never, label: VIEW_META[view as 'inbox'].label };
   const topPad = headerHeight || insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) + 52;
   return (
     <View style={styles.container}>
@@ -1868,7 +2206,7 @@ export default function TasksScreen() {
         {/* The band the status bar and the rail's top capsule stand in.
             It was the header row's own top padding until the header went. */}
         <View pointerEvents="none" style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
-        {isFocused && bar && !desk && !paneBar && <TopNavBar title={{ icon: 'checkbox-outline', label: 'Справи' }} />}
+        {isFocused && bar && !desk && !paneBar && <TopNavBar title={viewTitle} />}
         {/* No header row any more. Its title said the name of the screen
             you had just tapped to reach, and its three buttons were a
             light capsule of this screen's own invention - the one screen
@@ -1892,7 +2230,7 @@ export default function TasksScreen() {
             its room so the tabs and the list start below it. */}
         {isSearching && !bar && <View pointerEvents="none" style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
 
-        {!kanbanMode && groups.length > 0 && (
+        {!kanbanMode && groups.length > 0 && (!v2 || view === 'all') && (
           <ProjectTabsRow
             items={groups}
             selected={projectFilter}
@@ -1915,7 +2253,13 @@ export default function TasksScreen() {
           </>
         )}
 
-        {kanbanMode ? (
+        {v2 && (view === 'home' || (isWindowList && !kanbanMode)) ? (
+          <ScrollView
+            contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad + 8 }]}
+          >
+            {view === 'home' ? renderHome() : renderViewList()}
+          </ScrollView>
+        ) : kanbanMode ? (
           <>
             {renderKanbanBoard()}
             {kanbanToast && (
@@ -2461,6 +2805,82 @@ const makeStyles = (t: Theme) =>
   rowTextTap: {
     flex: 1,
     gap: 5,
+  },
+  v2Meta: {
+    fontSize: 12.5,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.faint,
+  },
+  v2Warn: {
+    color: '#C98A1E',
+  },
+  v2Actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+  },
+  v2Btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 38,
+    paddingHorizontal: 13,
+    borderRadius: 19,
+    backgroundColor: t.field.fill,
+  },
+  v2BtnText: {
+    fontSize: 14,
+    fontFamily: FONT_MEDIUM,
+    color: t.ink.primary,
+  },
+  v2Hint: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.faint,
+    paddingHorizontal: 4,
+  },
+  v2Section: {
+    fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.muted,
+    paddingHorizontal: 4,
+    paddingTop: 10,
+  },
+  homeList: {
+    gap: 2,
+  },
+  homeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
+    paddingVertical: 8,
+  },
+  homeIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  homeLabel: {
+    flex: 1,
+    fontSize: 17,
+    fontFamily: FONT_MEDIUM,
+  },
+  homeCount: {
+    fontSize: 15,
+    fontFamily: FONT_REGULAR,
+  },
+  homeGap: {
+    height: 12,
+  },
+  homeSection: {
+    fontSize: 13,
+    fontFamily: FONT_SEMIBOLD,
+    paddingTop: 18,
+    paddingBottom: 4,
   },
   rowText: {
     fontSize: 16,

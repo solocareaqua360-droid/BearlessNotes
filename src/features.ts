@@ -36,6 +36,11 @@ export const FEATURES = {
   // chosen NEW tasks as text, flips them to «У роботі» and numbers the
   // batch. Off: no button, no chip.
   claudeHandoff: true,
+  // «Справи» v2 (ескіз «Шлях справи», 2026-10-09): головний список видів
+  // (Вхідні / Сьогодні / Найближчі / Колись / Зроблено / проєкти) - кожен
+  // окремим вікном, кнопки лише на відкритій картці, «Коли?». Off: the
+  // old screen with project tabs, exactly as before.
+  tasksV2: true,
   // ПРОБА: картка-документ на дошці дня відкривається маленьким вікном
   // з редактором поверх дошки (телефон). Off: дотик розгортає картку.
   cardWindow: true,
