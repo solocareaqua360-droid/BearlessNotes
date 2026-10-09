@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { localPathFor } from '../utils/localPath';
 import { Image, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import Animated, { SharedValue, useAnimatedStyle } from 'react-native-reanimated';
@@ -113,7 +114,7 @@ export default function ScreenBackdrop({
           while it is still downloading from Drive on a fresh device. */}
       {override?.type === 'image' && imageStatus === 'ready' && (
         <Image
-          source={{ uri: override.uri }}
+          source={{ uri: localPathFor(override.uri, override.driveFileId) as string }}
           blurRadius={Math.round((override.blur / 100) * 30)}
           resizeMode="cover"
           style={StyleSheet.absoluteFill}

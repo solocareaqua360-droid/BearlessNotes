@@ -1,22 +1,12 @@
 import { useEffect, useState } from 'react';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { localPathFor } from '../utils/localPath';
 import { touchAttachment } from '../utils/attachmentCache';
 import { downloadFileFromDrive } from '../utils/googleDrive';
 
+export { localPathFor };
 export type CacheStatus = 'checking' | 'ready' | 'restoring' | 'missing';
 
-// WHERE THE FILE LIVES ON THIS PHONE. A record made on the phone holds its
-// own file:// path. One made in a browser (the Mac app) holds a blob: URL -
-// a thing that exists only in that tab, and that this phone can neither
-// read nor download INTO, so a picture sent from the Mac showed a crossed
-// cloud here even though its Drive copy was fine (2026-10-09, the chat's
-// «референс для проекту»). For such a record the Drive copy goes to a
-// path of its own, named by the Drive id.
-export function localPathFor(uri: string | undefined, driveFileId: string | undefined): string | undefined {
-  if (!uri) return uri;
-  if (!driveFileId || uri.startsWith('file:') || uri.startsWith('/')) return uri;
-  return `${LegacyFileSystem.cacheDirectory}drive-${driveFileId}`;
-}
 
 // A photo/file block only ever stores a local URI (see backupFileToDrive's
 // own comment) - on a device that never created it, that path simply

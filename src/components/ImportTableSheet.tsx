@@ -1,4 +1,5 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { localPathFor } from '../utils/localPath';
 import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -202,7 +203,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
       notify('Файл недоступний', 'Його немає на цьому пристрої і не вдалося відновити з резервної копії.');
       return;
     }
-    await loadFile(file.fileUri, file.title || file.fileName);
+    await loadFile(localPathFor(file.fileUri, file.driveFileId) as string, file.title || file.fileName);
   }
 
   function selectSheet(index: number) {

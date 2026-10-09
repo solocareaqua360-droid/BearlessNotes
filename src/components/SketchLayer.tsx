@@ -1,4 +1,5 @@
 import { G, Image as SvgImage, Path, Rect, Text as SvgText } from 'react-native-svg';
+import { localPathFor } from '../utils/localPath';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import type { SketchElement, SketchImageElement } from '../types';
 import { FILL_OPACITY, LABEL_SIZE, inkOn, pivotOf, transformOf } from '../utils/sketchGeometry';
@@ -63,7 +64,7 @@ function SketchPicture({ el }: { el: SketchImageElement }) {
   }
   return (
     <SvgImage
-      href={{ uri: el.uri }}
+      href={{ uri: localPathFor(el.uri, el.driveFileId) as string }}
       x={el.x}
       y={el.y}
       width={el.w}

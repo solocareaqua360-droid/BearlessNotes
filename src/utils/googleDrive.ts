@@ -1,4 +1,5 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { localPathFor } from './localPath';
 import { DRIVE_SCOPE, ensureGoogleConfigured } from './googleClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
@@ -598,8 +599,9 @@ export async function deleteFileFromDrive(driveFileId: string, bytes?: number): 
 // Same idea as useCachedAttachment, for the places that act on a file
 // rather than render one.
 export async function ensureLocalFile(uri: string, driveFileId?: string): Promise<boolean> {
-  const info = await LegacyFileSystem.getInfoAsync(uri);
+  const path = localPathFor(uri, driveFileId) as string;
+  const info = await LegacyFileSystem.getInfoAsync(path);
   if (info.exists) return true;
   if (!driveFileId) return false;
-  return downloadFileFromDrive(driveFileId, uri);
+  return downloadFileFromDrive(driveFileId, path);
 }

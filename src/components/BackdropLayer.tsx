@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { localPathFor } from '../utils/localPath';
 import { Image, StyleSheet, View } from 'react-native';
 import Animated, { SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useActiveBackdropOverride, useTheme } from '../theme/ThemeProvider';
@@ -78,7 +79,7 @@ export default function BackdropLayer() {
   return (
     <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.ground }]} pointerEvents="none">
       {indices.map((i) => (
-        <Level key={`${image.uri}-${i}`} i={i} level={level} uri={image.uri} />
+        <Level key={`${image.uri}-${i}`} i={i} level={level} uri={localPathFor(image.uri, image.driveFileId) as string} />
       ))}
     </View>
   );

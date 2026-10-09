@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { localPathFor } from './localPath';
 import { noteOpened } from '../navigation/recentPlaces';
 import * as Sharing from 'expo-sharing';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
@@ -43,7 +44,7 @@ function intentLauncher(): typeof import('expo-intent-launcher') | null {
 export async function ensureFileIsHere(file: { fileUri: string; driveFileId?: string }): Promise<boolean> {
   const restored = await ensureLocalFile(file.fileUri, file.driveFileId).catch(() => false);
   // Opening it is the clearest "someone looked at this" there is.
-  if (restored) touchAttachment(file.fileUri);
+  if (restored) touchAttachment(localPathFor(file.fileUri, file.driveFileId) as string);
   if (!restored) {
     notify('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
   }
@@ -63,7 +64,7 @@ export async function shareFile(file: {
     notify('Немає чим поділитись', 'На цьому пристрої не знайшлось застосунку для цього.');
     return;
   }
-  await Sharing.shareAsync(file.fileUri, { mimeType: file.mimeType, dialogTitle: file.fileName });
+  await Sharing.shareAsync(localPathFor(file.fileUri, file.driveFileId) as string, { mimeType: file.mimeType, dialogTitle: file.fileName });
 }
 
 export async function openFileExternally(file: {
@@ -81,7 +82,7 @@ export async function openFileExternally(file: {
   const launcher = intentLauncher();
   if (launcher) {
     try {
-      const contentUri = await LegacyFileSystem.getContentUriAsync(file.fileUri);
+      const contentUri = await LegacyFileSystem.getContentUriAsync(localPathFor(file.fileUri, file.driveFileId) as string);
       await launcher.startActivityAsync('android.intent.action.VIEW', {
         data: contentUri,
         // FLAG_GRANT_READ_URI_PERMISSION: without it the app on the other
@@ -102,5 +103,5 @@ export async function openFileExternally(file: {
     notify('Немає чим відкрити', 'На цьому пристрої не знайшлось застосунку для такого файлу.');
     return;
   }
-  await Sharing.shareAsync(file.fileUri, { mimeType: file.mimeType, dialogTitle: file.fileName });
+  await Sharing.shareAsync(localPathFor(file.fileUri, file.driveFileId) as string, { mimeType: file.mimeType, dialogTitle: file.fileName });
 }

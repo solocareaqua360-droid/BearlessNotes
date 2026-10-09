@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { localPathFor } from '../utils/localPath';
 import { useRecordColour } from '../theme/ThemeProvider';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
@@ -128,7 +129,7 @@ export default function DayHistoryList({
           notify('Файл недоступний', 'Його немає на цьому пристрої, а копії на Google Диску теж немає.');
           return;
         }
-        await Sharing.shareAsync(fileUri, {
+        await Sharing.shareAsync(localPathFor(fileUri, item.data?.driveFileId as string | undefined) as string, {
           mimeType: item.data?.mimeType as string | undefined,
           dialogTitle: item.title,
         });
