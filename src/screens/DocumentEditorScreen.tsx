@@ -184,6 +184,7 @@ import NotePanel from '../components/desktop/NotePanel';
 import NoteInspector from '../components/desktop/NoteInspector';
 import FormatPanel, { type FormatBlockKind } from '../components/desktop/FormatPanel';
 import SlashPopup from '../components/desktop/SlashPopup';
+import { caretPoint } from '../utils/caretRect';
 import type { TileKey } from '../components/desktop/insertCatalogue';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
@@ -3664,6 +3665,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const label = markup.slice(markup.indexOf('}') + 1, markup.length - '{/n}'.length);
     const pos = at.start + LINK_GLYPH.length + label.length + 1;
     setTimeout(() => setSelection(inputRefs.current[at.blockId], pos, pos), 40);
+    // In a browser the field that has the focus does not redraw a text changed from outside until it loses it (the link
+    // stayed «@пе» on screen after Enter): let go of the field and take it back, caret behind the link.
+    if (Platform.OS === 'web') {
+      setTimeout(() => {
+        const field = inputRefs.current[at.blockId] as unknown as { blur?: () => void; focus?: () => void } | undefined;
+        field?.blur?.();
+        setTimeout(() => {
+          field?.focus?.();
+          setSelection(inputRefs.current[at.blockId], pos, pos);
+        }, 50);
+      }, 90);
+    }
   }
 
   // «Нова нотатка» from the @ window: nested in this one (the user's) -
@@ -3994,10 +4007,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // middle of a sentence is a slash.
     if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType) && notePanelOn) {
       // The Mac: a flat list under the caret that filters as the word after the slash is typed (SlashPopup).
-      const rect = (typeof document !== 'undefined' ? document.activeElement : null)?.getBoundingClientRect?.();
-      const below = rect ? rect.bottom + 4 : 200;
+      const at = caretPoint();
+      const below = at ? at.top + at.height + 6 : 200;
       const room = typeof window !== 'undefined' ? window.innerHeight - below : 400;
-      setSlash({ id, left: rect ? Math.max(8, rect.left) : 200, top: room < 380 && rect ? Math.max(8, rect.top - 372) : below });
+      setSlash({ id, left: at ? Math.max(8, at.left - 6) : 200, top: room < 380 && at ? Math.max(8, at.top - 372) : below });
     } else if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
       openSlashMenu(id);
     }
@@ -7091,6 +7104,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           soft={soft}
           onPick={insertNoteLink}
           onCreate={createNoteForLink}
+          anchor={(() => {
+            // The Mac: under the field that has the caret, not at the foot of the window (there is no keyboard to stand over).
+            if (!notePanelOn || typeof document === 'undefined') return undefined;
+            // Right under the typed word, like Craft's.
+            const at = caretPoint();
+            if (!at) return undefined;
+            const below = at.top + at.height + 6;
+            return { left: Math.max(8, at.left - 6), top: window.innerHeight - below < 290 ? Math.max(8, at.top - 276) : below };
+          })()}
         />
       )}
       <RenamePrompt
