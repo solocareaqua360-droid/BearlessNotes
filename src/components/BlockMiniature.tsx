@@ -19,11 +19,13 @@ const LIGHT: Record<string, string> = {
   ink: '#1F1E1B', mute: '#9E9B93', faint: '#CFCCC4', line: '#E3E0D8', paper: '#FFFFFF', onAccent: '#FFFFFF',
   mist: '#E6E8EA', sand: '#EADFC8', sage: '#B3C9B9', clay: '#D9B7AB', copper: '#D9AE82', stone: '#D8D6D0',
   graphite: '#4A4946', rust: '#C8713F', link: '#2563EB', linkBg: 'rgba(37,99,235,0.14)',
+  sticky: '#F3E3A0', red: '#D9473B', green: '#35A56A',
 };
 const DARK: Record<string, string> = {
   ink: '#F1F0EC', mute: '#8E8B85', faint: '#4A4946', line: '#3A3936', paper: '#2A2A28', onAccent: '#FFFFFF',
   mist: '#3A4550', sand: '#5A4F36', sage: '#47604F', clay: '#6B4A40', copper: '#7A5430', stone: '#4A4946',
   graphite: '#1C1C1B', rust: '#D9814F', link: '#8AB0FF', linkBg: 'rgba(138,176,255,0.2)',
+  sticky: '#6B5F2A', red: '#E2685C', green: '#4FBF85',
 };
 
 export default function BlockMiniature({ kind, width = 94 }: { kind: string; width?: number }) {

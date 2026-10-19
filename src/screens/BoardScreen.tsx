@@ -148,6 +148,10 @@ import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { FEATURES } from '../features';
 import { usePublishToolbarTitle } from '../navigation/toolbarTitle';
+import { usePublishRailPanel } from '../navigation/navRail';
+import { inspector } from '../navigation/inspector';
+import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
+import BoardPanel, { BoardSelection, type BoardTab } from '../components/desktop/BoardPanel';
 import DocumentCardBlocks from '../components/DocumentCardBlocks';
 import { PAGE_H2, PAGE_TEXT, makeStyles as makeEditorStyles } from '../components/documentEditorStyles';
 import PagePreviewRow from '../components/PagePreviewRow';
@@ -2552,6 +2556,8 @@ export default function BoardScreen() {
   // to select worked, but it left the tool lit as though a mode had been
   // entered that nobody chose.
   const [canvasTool, setCanvasTool] = useState<'move' | 'hand' | 'select' | 'connect'>('move');
+  // Which tab the Mac's right panel shows (Вставити · Шари · Обране · Інфо).
+  const [panelTab, setPanelTab] = useState<BoardTab>('insert');
   // Isolation is deliberately its OWN flag, not a fourth canvasTool - it
   // is a lens over the whole board (dim/disable everything outside a
   // chain), not a way of interacting with the canvas the way move/
@@ -5517,6 +5523,18 @@ export default function BoardScreen() {
     );
   }
 
+  // Closing a database window asks first (its chosen records, filters and field settings go with it).
+  async function closeDbWindow(id: string) {
+    const yes = await confirm({
+      title: 'Закрити вікно бази?',
+      message: 'Вибрані записи, фільтри й налаштування полів для цього вікна зникнуть. Картки на дошці лишаться.',
+      confirmLabel: 'Закрити',
+    });
+    if (!yes) return;
+    setDbWindows((prev) => prev.filter((x) => x.id !== id));
+    setPanelTab((t) => (t === `db:${id}` ? 'insert' : t));
+  }
+
   async function addDatabaseWindow() {
     setAddSheetVisible(false);
     try {
@@ -5534,10 +5552,16 @@ export default function BoardScreen() {
       });
       if (!databaseId || databaseId === 'cancel') return;
       const open = dbWindows.length;
+      const windowId = generateId();
       setDbWindows((prev) => [
         ...prev,
-        { id: generateId(), databaseId, chosen: null, x: Math.max(8, viewport.width - 316 - open * 24), y: 110 + open * 24 },
+        { id: windowId, databaseId, chosen: null, x: Math.max(8, viewport.width - 316 - open * 24), y: 110 + open * 24 },
       ]);
+      // On the Mac the window is a tab of the right panel: show it.
+      if (macBoard) {
+        setPanelTab(`db:${windowId}`);
+        inspector.set(true);
+      }
     } catch (e) {
       notify('Не вдалося відкрити базу', (e as Error).message);
     }
@@ -6949,6 +6973,9 @@ export default function BoardScreen() {
   // phone «pill» and the dock's tool buttons are not drawn; the rest (add, layers, selection actions) moves into the
   // right panel in the next steps.
   const macBoard = FEATURES.macFrameB && Platform.OS === 'web';
+  // The names of the user's databases, for the panel's tabs of open database windows.
+  const { customDatabases: boardDatabases } = useDatabaseTiles();
+  const dbNames: Record<string, string> = Object.fromEntries(boardDatabases.map((d) => [d.id, d.name || 'База']));
   // The canvas takes every sideways drag for itself: the drawers' swipe
   // stands down while a board is open.
   useBlockDrawerSwipe(boardFocused);
@@ -6962,9 +6989,20 @@ export default function BoardScreen() {
   );
   // V Рух · H Рука · S Вибір · C Зв'язок · N Додати - the keys of every canvas (Figma, Miro), only while nothing is being
   // typed and no modifier is held (⌘C / ⌘V / ⌘D / ⌘A are useBoardKeys').
+  const historyRef = useRef({ undo, redo });
+  historyRef.current = { undo, redo };
   useEffect(() => {
     if (!macBoard || !boardFocused || typeof window === 'undefined') return;
     const onKey = (e: KeyboardEvent) => {
+      // ⌘Z / ⇧⌘Z - the board's own history (a card's text field keeps the browser's).
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'z') {
+        const tg = e.target as HTMLElement | null;
+        if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA' || tg.isContentEditable)) return;
+        e.preventDefault();
+        if (e.shiftKey) historyRef.current.redo();
+        else historyRef.current.undo();
+        return;
+      }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
@@ -6973,7 +7011,7 @@ export default function BoardScreen() {
       else if (k === 'h') setCanvasTool('hand');
       else if (k === 's') setCanvasTool('select');
       else if (k === 'c') setCanvasTool('connect');
-      else if (k === 'n') setAddSheetVisible(true);
+      else if (k === 'n') openInsert();
       else return;
       e.preventDefault();
     };
@@ -6991,8 +7029,8 @@ export default function BoardScreen() {
   const layerInkMuted = softBoardTokens ? softBoardTokens.ink2 : GLASS_TEXT_MUTED;
   // ...and at a size for a finger on the phone: "строки об'єктів та шари
   // дрібні ... тут може бути все трішки зручнішим для пальця".
-  const layerIcon = softBoardTokens ? 21 : 16;
-  const layerButtonSlop = softBoardTokens ? 12 : 6;
+  const layerIcon = softBoardTokens && !macBoard ? 21 : 16;
+  const layerButtonSlop = softBoardTokens && !macBoard ? 12 : 6;
   useTopExtras(
     [
       ...(isolatedIds !== null ? [{ label: 'Вийти з ізоляції', icon: 'scan-outline' as const, onPress: toggleIsolation }] : []),
@@ -7004,7 +7042,7 @@ export default function BoardScreen() {
         : []),
     ],
     null,
-    bar,
+    bar || macBoard,
     paneDocOpen && !paneFullscreen ? { icon: 'expand-outline', onPress: () => setPaneFullscreen(true) } : null,
     [
       { key: 'undo', icon: 'arrow-undo-outline', label: 'Скасувати', dimmed: !canUndo, onPress: undo },
@@ -7024,8 +7062,13 @@ export default function BoardScreen() {
     boardShowing && !(cardWindowWriting && !pointerDensity) && !(inlineBlockId && !pointerDensity) && (!bar || !selecting)
       ? {
           icon: 'layers-outline',
-          active: layersDrawerVisible,
-          onPress: () => setLayersDrawerVisible((v) => !v),
+          active: macBoard ? panelTab === 'layers' : layersDrawerVisible,
+          onPress: () => {
+            if (macBoard) {
+              setPanelTab('layers');
+              inspector.set(true);
+            } else setLayersDrawerVisible((v) => !v);
+          },
         }
       : null,
     boardShowing && !(cardWindowWriting && !pointerDensity) && !(inlineBlockId && !pointerDensity) && (bar ? !selecting : selectedCardIds.size === 0)
@@ -7035,7 +7078,7 @@ export default function BoardScreen() {
         // stands at the end of the tools strip instead.
         bar && FEATURES.boardDockBack
         ? { icon: 'chevron-back', onPress: leaveOrClosePane }
-        : { icon: 'add-outline', onPress: () => setAddSheetVisible(true) }
+        : { icon: 'add-outline', onPress: () => (macBoard ? openInsert() : setAddSheetVisible(true)) }
       : null
   );
   // Beside the board, both are on show and both have something to say,
@@ -7058,6 +7101,151 @@ export default function BoardScreen() {
         { key: 'pane-close', icon: 'close-outline', label: 'Закрити', onPress: closePane },
       ]
     : [];
+  // What can be done with the chosen cards - ONE list: the phone's dock shows it as buttons, the Mac's right panel as rows.
+  const selectionActions = [
+      { key: 'cancel', icon: 'close-outline', label: 'Вийти', onPress: clearSelection },
+      // A free block (with its strip) becomes a note; a note's card on
+      // a day board comes apart into free blocks again.
+      ...(onlySelectedCard?.freeBlock
+        ? [{ key: 'to-note', icon: 'document-text-outline', label: 'Нотатка', onPress: () => stripToNote(onlySelectedCard) }]
+        : []),
+      ...(onlySelectedCard?.type === 'document' && onlySelectedCard.documentId && isDayBoard
+        ? [{ key: 'apart', icon: 'reorder-four-outline', label: 'Розібрати', onPress: () => noteToStrip(onlySelectedCard) }]
+        : []),
+      // Several chosen cards: their texts together, one after another, with a blank line between.
+      ...(selectedCardIds.size >= 2
+        ? [
+            {
+              key: 'copy-many',
+              icon: 'copy-outline',
+              label: 'Копіювати',
+              onPress: async () => {
+                const chosen = cards.filter((c) => selectedCardIds.has(c.id));
+                const texts = await Promise.all(chosen.map((c) => textOfCard(c)));
+                await Clipboard.setStringAsync(texts.filter((t) => t.trim()).join('\n\n'));
+              },
+            },
+          ]
+        : []),
+      ...(cards.some((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'paragraph' && !c.freeBlock)
+        ? [
+            (() => {
+              const mine = cards.filter((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'paragraph' && !c.freeBlock);
+              const allShort = mine.every((c) => c.short);
+              return {
+                key: 'short',
+                icon: allShort ? 'expand-outline' : 'contract-outline',
+                label: allShort ? 'Повністю' : 'Коротко',
+                onPress: () => setShort(new Set(mine.map((c) => c.id)), !allShort),
+              };
+            })(),
+          ]
+        : []),
+      ...(selectedCardIds.size >= 2
+        ? [
+            {
+              key: 'align',
+              icon: 'mc:align-horizontal-left',
+              label: 'Вирівняти',
+              active: alignMenuVisible,
+              onPress: () => setAlignMenuVisible((v) => !v),
+            },
+          ]
+        : []),
+      ...(onlySelectedCard
+        ? [
+            // While a chain is isolated the same button is the way OUT -
+            // a second hold offers it at once, no trip to the "..."
+            // menu. On a card of the chain itself, isolating again
+            // would change nothing; on any other card it re-aims.
+            isolatedIds !== null && isolatedIds.has(onlySelectedCard.id)
+              ? {
+                  key: 'isolate',
+                  icon: 'mc:image-filter-center-focus',
+                  label: 'Вийти з ізоляції',
+                  active: true,
+                  onPress: () => {
+                    clearSelection();
+                    setIsolatedIds(null);
+                  },
+                }
+              : {
+                  key: 'isolate',
+                  icon: 'mc:image-filter-center-focus',
+                  label: 'Ізоляція',
+                  onPress: () => isolateSelectedCard(onlySelectedCard.id),
+                },
+            {
+              key: 'copy',
+              icon: 'copy-outline',
+              label: 'Копіювати',
+              onPress: () => copyCardText(onlySelectedCard),
+            },
+            // A record card (a car, a road list) can be planned on
+            // several days: a copy of it, linked to it.
+            ...(onlySelectedCard.type === 'dbRow'
+              ? [
+                  {
+                    key: 'duplicate',
+                    icon: 'duplicate-outline',
+                    label: 'Дублювати',
+                    onPress: () => duplicateCard(onlySelectedCard),
+                  },
+                ]
+              : []),
+          ]
+        : []),
+      ...(onlySelectedDocumentCard
+        ? [
+            {
+              key: 'openText',
+              icon: 'reader-outline',
+              label: 'Текст',
+              onPress: () => openCardText(onlySelectedDocumentCard),
+            },
+            {
+              key: 'editDoc',
+              icon: 'create-outline',
+              label: 'Редагувати',
+              onPress: () => editDocumentCard(onlySelectedDocumentCard),
+            },
+          ]
+        : []),
+      ...(selectionHasConnections
+        ? [
+            {
+              key: 'disconnect',
+              icon: 'mc:vector-line',
+              label: 'Відʼєднати',
+              onPress: disconnectSelectedCards,
+            },
+          ]
+        : []),
+      ...(onlySelectedImageCard
+        ? [
+            {
+              key: 'natural',
+              icon: onlySelectedImageCard.imageNatural ? 'mc:crop-square' : 'mc:image-size-select-actual',
+              label: onlySelectedImageCard.imageNatural ? 'Однакові' : 'Свої пропорції',
+              onPress: () => toggleImageNatural(onlySelectedImageCard),
+            },
+            {
+              key: 'bare',
+              icon: onlySelectedImageCard.imageBare ? 'text-outline' : 'image-outline',
+              label: onlySelectedImageCard.imageBare ? 'З підписом' : 'Без підпису',
+              onPress: () => toggleImageBare(onlySelectedImageCard),
+            },
+          ]
+        : []),
+      {
+        key: 'move',
+        icon: 'mc:arrow-right-bold-box-outline',
+        label: 'Перенести',
+        onPress: openMovePicker,
+      },
+      { key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: deleteSelection },
+  ];
+
   // A CARD SELECTION IS AN ACTIONS CARD, the same as on every other
   // database (Documents/Files/Photos/Links) - it used to be its own
   // floating capsule instead, which is what left the dock showing one
@@ -7069,151 +7257,14 @@ export default function BoardScreen() {
   useDockActions(
     (paneDocOpen && paneFullscreen) || (cardWindowWriting && !pointerDensity) || (inlineBlockId !== null && !pointerDensity)
       ? null
+      : macBoard
+      ? // On the Mac the right panel's «Обране» holds the selection's actions; only the way out of isolation stays on the bar.
+        isolatedIds !== null && !(selectedCardIds.size > 0 || selectedShapeIds.size > 0)
+        ? [{ key: 'isolate', icon: 'mc:image-filter-center-focus', label: 'Вийти з ізоляції', active: true, onPress: toggleIsolation }]
+        : null
       : boardFocused
       ? selectedCardIds.size > 0 || selectedShapeIds.size > 0
-        ? [
-            { key: 'cancel', icon: 'close-outline', label: 'Вийти', onPress: clearSelection },
-            // A free block (with its strip) becomes a note; a note's card on
-            // a day board comes apart into free blocks again.
-            ...(onlySelectedCard?.freeBlock
-              ? [{ key: 'to-note', icon: 'document-text-outline', label: 'Нотатка', onPress: () => stripToNote(onlySelectedCard) }]
-              : []),
-            ...(onlySelectedCard?.type === 'document' && onlySelectedCard.documentId && isDayBoard
-              ? [{ key: 'apart', icon: 'reorder-four-outline', label: 'Розібрати', onPress: () => noteToStrip(onlySelectedCard) }]
-              : []),
-            // Several chosen cards: their texts together, one after another, with a blank line between.
-            ...(selectedCardIds.size >= 2
-              ? [
-                  {
-                    key: 'copy-many',
-                    icon: 'copy-outline',
-                    label: 'Копіювати',
-                    onPress: async () => {
-                      const chosen = cards.filter((c) => selectedCardIds.has(c.id));
-                      const texts = await Promise.all(chosen.map((c) => textOfCard(c)));
-                      await Clipboard.setStringAsync(texts.filter((t) => t.trim()).join('\n\n'));
-                    },
-                  },
-                ]
-              : []),
-            ...(cards.some((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'paragraph' && !c.freeBlock)
-              ? [
-                  (() => {
-                    const mine = cards.filter((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'paragraph' && !c.freeBlock);
-                    const allShort = mine.every((c) => c.short);
-                    return {
-                      key: 'short',
-                      icon: allShort ? 'expand-outline' : 'contract-outline',
-                      label: allShort ? 'Повністю' : 'Коротко',
-                      onPress: () => setShort(new Set(mine.map((c) => c.id)), !allShort),
-                    };
-                  })(),
-                ]
-              : []),
-            ...(selectedCardIds.size >= 2
-              ? [
-                  {
-                    key: 'align',
-                    icon: 'mc:align-horizontal-left',
-                    label: 'Вирівняти',
-                    active: alignMenuVisible,
-                    onPress: () => setAlignMenuVisible((v) => !v),
-                  },
-                ]
-              : []),
-            ...(onlySelectedCard
-              ? [
-                  // While a chain is isolated the same button is the way OUT -
-                  // a second hold offers it at once, no trip to the "..."
-                  // menu. On a card of the chain itself, isolating again
-                  // would change nothing; on any other card it re-aims.
-                  isolatedIds !== null && isolatedIds.has(onlySelectedCard.id)
-                    ? {
-                        key: 'isolate',
-                        icon: 'mc:image-filter-center-focus',
-                        label: 'Вийти з ізоляції',
-                        active: true,
-                        onPress: () => {
-                          clearSelection();
-                          setIsolatedIds(null);
-                        },
-                      }
-                    : {
-                        key: 'isolate',
-                        icon: 'mc:image-filter-center-focus',
-                        label: 'Ізоляція',
-                        onPress: () => isolateSelectedCard(onlySelectedCard.id),
-                      },
-                  {
-                    key: 'copy',
-                    icon: 'copy-outline',
-                    label: 'Копіювати',
-                    onPress: () => copyCardText(onlySelectedCard),
-                  },
-                  // A record card (a car, a road list) can be planned on
-                  // several days: a copy of it, linked to it.
-                  ...(onlySelectedCard.type === 'dbRow'
-                    ? [
-                        {
-                          key: 'duplicate',
-                          icon: 'duplicate-outline',
-                          label: 'Дублювати',
-                          onPress: () => duplicateCard(onlySelectedCard),
-                        },
-                      ]
-                    : []),
-                ]
-              : []),
-            ...(onlySelectedDocumentCard
-              ? [
-                  {
-                    key: 'openText',
-                    icon: 'reader-outline',
-                    label: 'Текст',
-                    onPress: () => openCardText(onlySelectedDocumentCard),
-                  },
-                  {
-                    key: 'editDoc',
-                    icon: 'create-outline',
-                    label: 'Редагувати',
-                    onPress: () => editDocumentCard(onlySelectedDocumentCard),
-                  },
-                ]
-              : []),
-            ...(selectionHasConnections
-              ? [
-                  {
-                    key: 'disconnect',
-                    icon: 'mc:vector-line',
-                    label: 'Відʼєднати',
-                    onPress: disconnectSelectedCards,
-                  },
-                ]
-              : []),
-            ...(onlySelectedImageCard
-              ? [
-                  {
-                    key: 'natural',
-                    icon: onlySelectedImageCard.imageNatural ? 'mc:crop-square' : 'mc:image-size-select-actual',
-                    label: onlySelectedImageCard.imageNatural ? 'Однакові' : 'Свої пропорції',
-                    onPress: () => toggleImageNatural(onlySelectedImageCard),
-                  },
-                  {
-                    key: 'bare',
-                    icon: onlySelectedImageCard.imageBare ? 'text-outline' : 'image-outline',
-                    label: onlySelectedImageCard.imageBare ? 'З підписом' : 'Без підпису',
-                    onPress: () => toggleImageBare(onlySelectedImageCard),
-                  },
-                ]
-              : []),
-            {
-              key: 'move',
-              icon: 'mc:arrow-right-bold-box-outline',
-              label: 'Перенести',
-              onPress: openMovePicker,
-            },
-            { key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: deleteSelection },
-          ]
+        ? selectionActions
         : bar
         ? [
             {
@@ -7311,6 +7362,273 @@ export default function BoardScreen() {
             ...paneControls,
           ]
       : null
+  );
+
+    type Tile = { key: string; icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void };
+    const addSections: { title: string; tiles: Tile[] }[] = [
+      {
+        title: 'Картки',
+        tiles: [
+          { key: 'doc', icon: 'document-text-outline', label: 'Документ', onPress: createDocumentCard },
+          // «Наліпка», not «Текст» - a bare text label with no
+          // card under it is a SHAPE and is already called
+          // Текст; two things under one word is the confusion
+          // this renames away from.
+          { key: 'sticky', icon: 'text-outline', label: 'Наліпка', onPress: addTextCard },
+          // A line of the note's own, free on the board.
+          { key: 'block', icon: 'reorder-two-outline', label: 'Блок', onPress: addFreeBlock },
+          { key: 'link', icon: 'link-outline', label: 'Посилання', onPress: () => openLinkPrompt('other') },
+          { key: 'video', icon: 'videocam-outline', label: 'Відео', onPress: () => openLinkPrompt('video') },
+          { key: 'geo', icon: 'location-outline', label: 'Геоточка', onPress: () => openLinkPrompt('geo') },
+          { key: 'image', icon: 'image-outline', label: 'Зображення', onPress: createImageCard },
+          { key: 'file', icon: 'document-outline', label: 'Файл', onPress: createFileCard },
+          { key: 'board', icon: 'easel-outline', label: 'Дошка', onPress: openBoardPicker },
+          { key: 'existing', icon: 'search-outline', label: 'З бази', onPress: openExistingItemPicker },
+        ],
+      },
+      {
+        title: 'Пачкою',
+        tiles: [
+          // The one that brings a whole theme's worth of
+          // material at once rather than one card.
+          {
+            key: 'project',
+            icon: 'albums-outline',
+            label: 'З проекту',
+            onPress: () => {
+              setAddSheetVisible(false);
+              setGroupPickerVisible(true);
+            },
+          },
+          // A live column (BoardColumn.liveTaskSource), apart
+          // from «З проекту», which makes a one-time snapshot.
+          {
+            key: 'tasks',
+            icon: 'checkbox-outline',
+            label: 'Справи',
+            onPress: () => {
+              setAddSheetVisible(false);
+              setTaskColumnPickerVisible(true);
+            },
+          },
+          { key: 'window', icon: 'server-outline', label: 'Вікно бази', onPress: addDatabaseWindow },
+          // A tree of ideas pasted as text (an AI's answer) becomes cards with lines.
+          { key: 'outline', icon: 'git-network-outline', label: 'Карта з тексту', onPress: () => pasteOutlineAsMap(true) },
+          // The first version: plain text cards that live only on this board.
+          { key: 'outline-cards', icon: 'albums-outline', label: 'Карта картками', onPress: () => pasteOutlineAsMap(false) },
+        ],
+      },
+      {
+        // Furniture, not content - below everything that
+        // becomes part of a document.
+        title: 'Розмітка',
+        tiles: [
+          { key: 'column', icon: 'browsers-outline', label: 'Стовпчик', onPress: addColumn },
+          { key: 'strip', icon: 'newspaper-outline', label: 'Ряд з «+»', onPress: addStrip },
+          { key: 'week', icon: 'calendar-number-outline', label: 'Тиждень', onPress: addWeek },
+          { key: 'area', icon: 'scan-outline', label: 'Область', onPress: addContainer },
+          {
+            key: 'shape',
+            icon: 'shapes-outline',
+            label: 'Фігура',
+            onPress: () => {
+              setAddSheetVisible(false);
+              setShapeSheetVisible(true);
+            },
+          },
+        ],
+      },
+    ];
+
+  // The layers list - ONE piece of JSX for the phone's drawer and the Mac's panel tab.
+  const layersBody = (
+  <GestureDetector gesture={layersDragGesture}>
+    <ScrollView style={styles.layersScroll}>
+      {/* "Без шару": every object nothing has claimed - a bucket,
+          not a real layer, so it has no eye/lock of its own. */}
+      <View
+        ref={layersCarry.registerFolder('')}
+        collapsable={false}
+        style={styles.layerGroup}
+      >
+        <Pressable
+          style={styles.layerHeaderRow}
+          onPress={() => toggleLayerCollapsed('__none__')}
+        >
+          <Ionicons
+            name={collapsedLayerIds.has('__none__') ? 'chevron-forward' : 'chevron-down'}
+            size={layerIcon}
+            color={layerInkMuted}
+          />
+          <Text style={[styles.layerName, { color: layerInkMuted }]} numberOfLines={1}>
+            Без шару
+          </Text>
+          <Text style={styles.layerCount}>{(layerMembers.get('') ?? []).length}</Text>
+        </Pressable>
+        {!collapsedLayerIds.has('__none__') &&
+          (layerMembers.get('') ?? []).map((member) => renderLayerMemberRow(member))}
+      </View>
+
+      {layers.map((layer) => (
+        <View
+          key={layer.id}
+          ref={layersCarry.registerFolder(layer.id)}
+          collapsable={false}
+          style={styles.layerGroup}
+        >
+          <View style={styles.layerHeaderRow}>
+            <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerCollapsed(layer.id)}>
+              <Ionicons
+                name={collapsedLayerIds.has(layer.id) ? 'chevron-forward' : 'chevron-down'}
+                size={layerIcon}
+                color={layerInk}
+              />
+            </Pressable>
+            <Pressable style={styles.layerNameTap} onPress={() => setRenamingLayer(layer)}>
+              <Text style={styles.layerName} numberOfLines={1}>
+                {layer.name}
+              </Text>
+            </Pressable>
+            <Text style={styles.layerCount}>{(layerMembers.get(layer.id) ?? []).length}</Text>
+            <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerHidden(layer)}>
+              <Ionicons
+                name={layer.hidden ? 'eye-off-outline' : 'eye-outline'}
+                size={layerIcon}
+                color={layer.hidden ? '#F87171' : layerInk}
+              />
+            </Pressable>
+            <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerLocked(layer)}>
+              <Ionicons
+                name={layer.locked ? 'lock-closed' : 'lock-open-outline'}
+                size={layerIcon}
+                color={layer.locked ? '#F5C77E' : layerInk}
+              />
+            </Pressable>
+            <Pressable hitSlop={layerButtonSlop} onPress={() => confirmDeleteLayer(layer)}>
+              <Ionicons name="trash-outline" size={layerIcon} color={layerInkMuted} />
+            </Pressable>
+          </View>
+          {!collapsedLayerIds.has(layer.id) &&
+            (layerMembers.get(layer.id) ?? []).map((member) => renderLayerMemberRow(member))}
+        </View>
+      ))}
+
+      {layers.length === 0 && (
+        <Text style={styles.layersEmpty}>
+          Ще немає жодного шару. Натисніть «+», щоб створити перший.
+        </Text>
+      )}
+    </ScrollView>
+  </GestureDetector>
+  );
+
+  // THE BOARD'S PANEL (Mac, frame B): the add sheet's kinds as tiles, opened from the palette's «+», the N key and the bar's
+  // «+» instead of the big sheet. The tab asked for is local; an opened panel is the inspector's door (remembered).
+  const openInsert = () => {
+    setPanelTab('insert');
+    inspector.set(true);
+  };
+  // Something chosen -> the panel shows «Обране»; nothing chosen any more -> back to «Вставити».
+  const hasSelection = selectedCardIds.size > 0 || selectedShapeIds.size > 0 || !!selectedShape;
+  useEffect(() => {
+    if (!macBoard) return;
+    // The panel is not forced open: someone who folded it for room keeps it folded (the dot on «Обране» says why).
+    if (hasSelection) setPanelTab('selected');
+    else setPanelTab((t) => (t === 'selected' ? 'insert' : t));
+  }, [hasSelection, macBoard]);
+  usePublishRailPanel(
+    macBoard && !(paneDocOpen && paneFullscreen) ? (
+      <BoardPanel
+        tab={panelTab}
+        onTab={setPanelTab}
+        groups={addSections.map((g) => ({ title: g.title, tiles: g.tiles.map((t) => ({ key: t.key, label: t.label, onPress: t.onPress })) }))}
+        selectedBadge={hasSelection}
+        dbTabs={dbWindows.map((w) => ({
+          id: `db:${w.id}`,
+          label: dbNames[w.databaseId] ?? 'База',
+          onClose: () => closeDbWindow(w.id),
+          node: (
+            <BoardDatabaseWindow
+              inPanel
+              win={w}
+              placed={placedByRecord}
+              onChange={(patch) => patchWindow(w.id, patch)}
+              onClose={() => closeDbWindow(w.id)}
+              onPlace={placeRecord}
+              onFind={findRecord}
+              onCarryMove={carryMove}
+              onCarryEnd={carryEnd}
+            />
+          ),
+        }))}
+        layers={
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 }}>
+              <Text style={{ fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', color: '#9E9B93', fontWeight: '600' }}>Шари</Text>
+              <Pressable onPress={addLayer} hitSlop={8} accessibilityLabel="Новий шар">
+                <Ionicons name="add" size={20} color="#6E6B64" />
+              </Pressable>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 8 }}>{layersBody}</View>
+          </View>
+        }
+        selected={
+          hasSelection ? (
+            <BoardSelection
+              heading={
+                selectedShape && selectedCardIds.size === 0
+                  ? 'Обрана фігура'
+                  : selectedCardIds.size === 1
+                  ? 'Обрана картка'
+                  : `Обрано ${selectedCardIds.size + selectedShapeIds.size} елементів`
+              }
+              actions={
+                selectedShape && selectedCardIds.size === 0
+                  ? [{ key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: () => deleteShape(selectedShape.id) }]
+                  : selectionActions
+              }
+              onClear={clearSelection}
+              align={selectedCardIds.size >= 2 ? { onAlign: (k) => alignSelectedCards(k), onGrid: arrangeSelectedGrid } : undefined}
+              shape={
+                selectedShape && selectedCardIds.size === 0
+                  ? {
+                      kind: selectedShape.kind,
+                      text: selectedShape.text ?? '',
+                      sizeLabel: textSizeStepLabel(selectedShape.fontSize ?? (selectedShape.kind === 'text' ? SHAPE_TEXT_SIZE_DEFAULT : SHAPE_LABEL_SIZE_DEFAULT)),
+                      filled: !!selectedShape.filled,
+                      canFill: selectedShape.kind !== 'text',
+                      colour: selectedShape.color,
+                      colours: STICKY_COLORS,
+                      onText: () => setEditingShape(selectedShape),
+                      onSize: (d) => stepShapeTextSize(selectedShape, d),
+                      onFill: () => toggleShapeFilled(selectedShape.id),
+                      onColour: (c) => setShapeColour(selectedShape.id, c),
+                      onDelete: () => deleteShape(selectedShape.id),
+                    }
+                  : undefined
+              }
+            />
+          ) : undefined
+        }
+        info={
+          <View style={{ gap: 8 }}>
+            <View style={{ backgroundColor: '#FFFFFF', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 6 }}>
+              {[
+                ['Назва', title || 'Без назви'],
+                ['Карток', String(cards.length)],
+                ['Зв\'язків', String(connections.length)],
+                ['Шарів', String(layers.length)],
+              ].map(([k, v]) => (
+                <View key={k} style={{ paddingVertical: 7 }}>
+                  <Text style={{ fontSize: 11.5, color: '#9E9B93' }}>{k}</Text>
+                  <Text style={{ fontSize: 13.5, fontWeight: '600', color: '#1F1E1B' }}>{v}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        }
+      />
+    ) : null
   );
 
   // The fields each database's cards show ON THIS BOARD - see
@@ -7831,7 +8149,7 @@ export default function BoardScreen() {
               ))}
               <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(31,30,27,0.12)', marginVertical: 3, marginHorizontal: 6 }} />
               <Pressable
-                onPress={() => setAddSheetVisible(true)}
+                onPress={openInsert}
                 accessibilityLabel="Додати"
                 {...({ title: 'Додати (N)' } as object)}
                 style={{ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
@@ -8188,81 +8506,7 @@ export default function BoardScreen() {
                   Still scrolls, for a small screen. */}
               <ScrollView style={{ maxHeight: Math.round(windowHeight * 0.74) }} showsVerticalScrollIndicator={false}>
                 {(() => {
-                  type Tile = { key: string; icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void };
-                  const sections: { title: string; tiles: Tile[] }[] = [
-                    {
-                      title: 'Картки',
-                      tiles: [
-                        { key: 'doc', icon: 'document-text-outline', label: 'Документ', onPress: createDocumentCard },
-                        // «Наліпка», not «Текст» - a bare text label with no
-                        // card under it is a SHAPE and is already called
-                        // Текст; two things under one word is the confusion
-                        // this renames away from.
-                        { key: 'sticky', icon: 'text-outline', label: 'Наліпка', onPress: addTextCard },
-                        // A line of the note's own, free on the board.
-                        { key: 'block', icon: 'reorder-two-outline', label: 'Блок', onPress: addFreeBlock },
-                        { key: 'link', icon: 'link-outline', label: 'Посилання', onPress: () => openLinkPrompt('other') },
-                        { key: 'video', icon: 'videocam-outline', label: 'Відео', onPress: () => openLinkPrompt('video') },
-                        { key: 'geo', icon: 'location-outline', label: 'Геоточка', onPress: () => openLinkPrompt('geo') },
-                        { key: 'image', icon: 'image-outline', label: 'Зображення', onPress: createImageCard },
-                        { key: 'file', icon: 'document-outline', label: 'Файл', onPress: createFileCard },
-                        { key: 'board', icon: 'easel-outline', label: 'Дошка', onPress: openBoardPicker },
-                        { key: 'existing', icon: 'search-outline', label: 'З бази', onPress: openExistingItemPicker },
-                      ],
-                    },
-                    {
-                      title: 'Пачкою',
-                      tiles: [
-                        // The one that brings a whole theme's worth of
-                        // material at once rather than one card.
-                        {
-                          key: 'project',
-                          icon: 'albums-outline',
-                          label: 'З проекту',
-                          onPress: () => {
-                            setAddSheetVisible(false);
-                            setGroupPickerVisible(true);
-                          },
-                        },
-                        // A live column (BoardColumn.liveTaskSource), apart
-                        // from «З проекту», which makes a one-time snapshot.
-                        {
-                          key: 'tasks',
-                          icon: 'checkbox-outline',
-                          label: 'Справи',
-                          onPress: () => {
-                            setAddSheetVisible(false);
-                            setTaskColumnPickerVisible(true);
-                          },
-                        },
-                        { key: 'window', icon: 'server-outline', label: 'Вікно бази', onPress: addDatabaseWindow },
-                        // A tree of ideas pasted as text (an AI's answer) becomes cards with lines.
-                        { key: 'outline', icon: 'git-network-outline', label: 'Карта з тексту', onPress: () => pasteOutlineAsMap(true) },
-                        // The first version: plain text cards that live only on this board.
-                        { key: 'outline-cards', icon: 'albums-outline', label: 'Карта картками', onPress: () => pasteOutlineAsMap(false) },
-                      ],
-                    },
-                    {
-                      // Furniture, not content - below everything that
-                      // becomes part of a document.
-                      title: 'Розмітка',
-                      tiles: [
-                        { key: 'column', icon: 'browsers-outline', label: 'Стовпчик', onPress: addColumn },
-                        { key: 'strip', icon: 'newspaper-outline', label: 'Ряд з «+»', onPress: addStrip },
-                        { key: 'week', icon: 'calendar-number-outline', label: 'Тиждень', onPress: addWeek },
-                        { key: 'area', icon: 'scan-outline', label: 'Область', onPress: addContainer },
-                        {
-                          key: 'shape',
-                          icon: 'shapes-outline',
-                          label: 'Фігура',
-                          onPress: () => {
-                            setAddSheetVisible(false);
-                            setShapeSheetVisible(true);
-                          },
-                        },
-                      ],
-                    },
-                  ];
+                  const sections = addSections;
                   return sections.map((section) => (
                     <View key={section.title}>
                       <Text style={styles.addSectionTitle}>{section.title}</Text>
@@ -8492,84 +8736,7 @@ export default function BoardScreen() {
                   </Pressable>
                 </View>
               </View>
-              <GestureDetector gesture={layersDragGesture}>
-                <ScrollView style={styles.layersScroll}>
-                  {/* "Без шару": every object nothing has claimed - a bucket,
-                      not a real layer, so it has no eye/lock of its own. */}
-                  <View
-                    ref={layersCarry.registerFolder('')}
-                    collapsable={false}
-                    style={styles.layerGroup}
-                  >
-                    <Pressable
-                      style={styles.layerHeaderRow}
-                      onPress={() => toggleLayerCollapsed('__none__')}
-                    >
-                      <Ionicons
-                        name={collapsedLayerIds.has('__none__') ? 'chevron-forward' : 'chevron-down'}
-                        size={layerIcon}
-                        color={layerInkMuted}
-                      />
-                      <Text style={[styles.layerName, { color: layerInkMuted }]} numberOfLines={1}>
-                        Без шару
-                      </Text>
-                      <Text style={styles.layerCount}>{(layerMembers.get('') ?? []).length}</Text>
-                    </Pressable>
-                    {!collapsedLayerIds.has('__none__') &&
-                      (layerMembers.get('') ?? []).map((member) => renderLayerMemberRow(member))}
-                  </View>
-
-                  {layers.map((layer) => (
-                    <View
-                      key={layer.id}
-                      ref={layersCarry.registerFolder(layer.id)}
-                      collapsable={false}
-                      style={styles.layerGroup}
-                    >
-                      <View style={styles.layerHeaderRow}>
-                        <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerCollapsed(layer.id)}>
-                          <Ionicons
-                            name={collapsedLayerIds.has(layer.id) ? 'chevron-forward' : 'chevron-down'}
-                            size={layerIcon}
-                            color={layerInk}
-                          />
-                        </Pressable>
-                        <Pressable style={styles.layerNameTap} onPress={() => setRenamingLayer(layer)}>
-                          <Text style={styles.layerName} numberOfLines={1}>
-                            {layer.name}
-                          </Text>
-                        </Pressable>
-                        <Text style={styles.layerCount}>{(layerMembers.get(layer.id) ?? []).length}</Text>
-                        <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerHidden(layer)}>
-                          <Ionicons
-                            name={layer.hidden ? 'eye-off-outline' : 'eye-outline'}
-                            size={layerIcon}
-                            color={layer.hidden ? '#F87171' : layerInk}
-                          />
-                        </Pressable>
-                        <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerLocked(layer)}>
-                          <Ionicons
-                            name={layer.locked ? 'lock-closed' : 'lock-open-outline'}
-                            size={layerIcon}
-                            color={layer.locked ? '#F5C77E' : layerInk}
-                          />
-                        </Pressable>
-                        <Pressable hitSlop={layerButtonSlop} onPress={() => confirmDeleteLayer(layer)}>
-                          <Ionicons name="trash-outline" size={layerIcon} color={layerInkMuted} />
-                        </Pressable>
-                      </View>
-                      {!collapsedLayerIds.has(layer.id) &&
-                        (layerMembers.get(layer.id) ?? []).map((member) => renderLayerMemberRow(member))}
-                    </View>
-                  ))}
-
-                  {layers.length === 0 && (
-                    <Text style={styles.layersEmpty}>
-                      Ще немає жодного шару. Натисніть «+», щоб створити перший.
-                    </Text>
-                  )}
-                </ScrollView>
-              </GestureDetector>
+              {layersBody}
               </View>
             </View>
           </GlassPortal>
@@ -8911,7 +9078,7 @@ export default function BoardScreen() {
         </>
       )}
       {/* Databases held open over the board - see BoardDatabaseWindow. */}
-      {dbWindows.map((w) => (
+      {!macBoard && dbWindows.map((w) => (
         <BoardDatabaseWindow
           key={w.id}
           win={w}

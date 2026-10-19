@@ -40,6 +40,9 @@ const DOCKED_WIDTH = 340;
 const CIRCLE = 56;
 
 export type BoardWindowProps = {
+  // THE MAC'S PANEL TAB (frame B, 2026-10-20): the window is not a floating card but fills a tab of the board's right panel -
+  // no frame to drag, no fold, no pin; the tab's × is its close. The records, the drag out onto the board and «знайти» stay.
+  inPanel?: boolean;
   win: BoardDbWindow;
   // recordId -> how many cards of it are on the board.
   placed: Map<string, number>;
@@ -60,7 +63,7 @@ export type BoardWindowProps = {
   bounds?: { width: number; height: number };
 };
 
-export default function BoardDatabaseWindow({ win, placed, onChange, onClose, onPlace, onFind, onCarryMove, onCarryEnd, bounds }: BoardWindowProps) {
+export default function BoardDatabaseWindow({ win, placed, onChange, onClose, onPlace, onFind, onCarryMove, onCarryEnd, bounds, inPanel }: BoardWindowProps) {
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const dims = useWindowDimensions();
@@ -141,14 +144,14 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
     [onChange]
   );
   const pointer = useDensity() === 'pointer';
-  const collapsed = !!win.collapsed;
-  const docked = pointer && !!win.docked && !collapsed;
+  const collapsed = !inPanel && !!win.collapsed;
+  const docked = !inPanel && pointer && !!win.docked && !collapsed;
   const toggleDocked = useCallback(() => onChange({ docked: !win.docked }), [onChange, win.docked]);
   const toggleCollapsed = useCallback(() => onChange({ collapsed: !collapsed }), [onChange, collapsed]);
   const maxX = windowW - (collapsed ? CIRCLE : WIDTH) - 8;
   const maxY = windowH - (collapsed ? CIRCLE : 120) - 8;
   const pan = Gesture.Pan()
-    .enabled(!docked)
+    .enabled(!docked && !inPanel)
     .minDistance(6)
     .onChange((e) => {
       posX.value = Math.max(8, Math.min(maxX, posX.value + e.changeX));
@@ -227,10 +230,12 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
           styles.frame,
           collapsed
             ? { width: CIRCLE, height: CIRCLE, borderRadius: CIRCLE / 2, backgroundColor: S.chrome, boxShadow: S.popShadow }
-            : docked
+            : inPanel
+              ? { position: 'relative', flex: 1, width: '100%', zIndex: 1, backgroundColor: 'transparent' }
+              : docked
               ? { width: DOCKED_WIDTH, left: 'auto', right: 8, top: insets.top + 8, bottom: 8, borderRadius: 26, backgroundColor: S.card, boxShadow: S.popShadow }
               : { width: WIDTH, height, borderRadius: 26, backgroundColor: S.card, boxShadow: S.popShadow },
-          !docked && frameStyle,
+          !docked && !inPanel && frameStyle,
         ]}
       >
         {collapsed ? (
@@ -256,7 +261,7 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
                   {shown.length}
                   {chosen ? `/${titled.length}` : ''}
                 </Text>
-                {pointer && (
+                {pointer && !inPanel && (
                   <Pressable hitSlop={8} onPress={toggleDocked} style={styles.headerButton} accessibilityLabel={docked ? 'Відкріпити' : 'Закріпити збоку'}>
                     <Ionicons name="pin" size={19} color={docked ? S.accent : S.ink2} />
                   </Pressable>
@@ -276,12 +281,16 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
                 <Pressable hitSlop={8} onPress={() => setSettings((v) => !v)} style={styles.headerButton} accessibilityLabel="Параметри вікна">
                   <Ionicons name={settings ? 'checkmark' : 'options-outline'} size={20} color={settings ? S.accent : S.ink2} />
                 </Pressable>
-                <Pressable hitSlop={8} onPress={toggleCollapsed} style={styles.headerButton} accessibilityLabel="Згорнути">
-                  <Ionicons name="remove" size={20} color={S.ink2} />
-                </Pressable>
-                <Pressable hitSlop={8} onPress={onClose} style={styles.headerButton} accessibilityLabel="Закрити вікно">
-                  <Ionicons name="close" size={20} color={S.ink2} />
-                </Pressable>
+                {!inPanel && (
+                  <>
+                    <Pressable hitSlop={8} onPress={toggleCollapsed} style={styles.headerButton} accessibilityLabel="Згорнути">
+                      <Ionicons name="remove" size={20} color={S.ink2} />
+                    </Pressable>
+                    <Pressable hitSlop={8} onPress={onClose} style={styles.headerButton} accessibilityLabel="Закрити вікно">
+                      <Ionicons name="close" size={20} color={S.ink2} />
+                    </Pressable>
+                  </>
+                )}
               </View>
             </GestureDetector>
 
@@ -417,7 +426,7 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
                     )}
                   </View>
                   {!listQuery && !lifted && (
-                    <Text style={[styles.hint, { color: S.ink3 }]}>Затисни картку й перетягни на дошку, або тапни «+»</Text>
+                    <Text style={[styles.hint, { color: S.ink3 }]}>{pointer ? 'Перетягни запис на дошку або клацни «+» - з\'явиться посеред поля' : 'Затисни картку й перетягни на дошку, або тапни «+»'}</Text>
                   )}
                   <ScrollView style={styles.list} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
                     {shown.map(({ row, title }) => {
