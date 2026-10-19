@@ -70,6 +70,8 @@ export function RelationThumb({
 }
 
 type Props = {
+  // The record standing in the Mac's right panel (frame B): a ring round its card, so the list says which one.
+  chosen?: boolean;
   // Only used to pick the card's colour, so the same row keeps the same
   // shade everywhere it appears (its own database, a document, later the
   // board) - same colorForDocument every other card in the app uses.
@@ -103,6 +105,7 @@ export default function CustomRowCard({
   onTagPress,
   documentCount,
   right,
+  chosen,
 }: Props) {
   const recordColour = useRecordColour();
   // Soft (a soft screen around it says so): the card surface and inks.
@@ -113,7 +116,7 @@ export default function CustomRowCard({
   const settle = usePressSettle(rowId);
   const cardRef = useRef<View>(null);
   return (
-    <Animated.View ref={cardRef} {...lift()} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, settle.style]}>
+    <Animated.View ref={cardRef} {...lift()} style={[styles.row, soft && softCardFrame(soft), { backgroundColor: background }, chosen && { boxShadow: `0 0 0 2px ${text}` }, settle.style]}>
       <Pressable
         style={styles.rowTap}
         {...settle.handlers}
@@ -259,9 +262,11 @@ export function CustomRowGridCard({
   documentCount,
   right,
   width,
+  chosen,
 }: {
   rowId: string;
   display: RowDisplay;
+  chosen?: boolean;
   // The press event goes through: a card that opens by turning over
   // (utils/flipOpen) is photographed from it.
   onPress?: (event?: GestureResponderEvent) => void;
@@ -285,7 +290,7 @@ export function CustomRowGridCard({
     <Animated.View
       ref={cardRef}
       {...lift()}
-      style={[gridStyles.tile, soft && softCardFrame(soft), width !== undefined && { width }, { backgroundColor: background }, settle.style]}
+      style={[gridStyles.tile, soft && softCardFrame(soft), width !== undefined && { width }, { backgroundColor: background }, chosen && { boxShadow: `0 0 0 2px ${text}` }, settle.style]}
     >
     <Pressable
       {...settle.handlers}

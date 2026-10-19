@@ -2301,6 +2301,7 @@ export default function CustomDatabaseScreen({
         display={rowDisplayFor(item)}
         tags={tags.filter((t) => (item.tagIds ?? []).includes(t.id))}
         documentCount={documentIdsOf(item).length}
+        chosen={recordPanelOn && rowPageId === item.id}
         onPress={(e) => (isSelectMode ? toggleSelected(item.id) : openRowFromCard(item.id, e))}
         onLongPress={() => setRowMenuId(item.id)}
         right={
@@ -2471,6 +2472,7 @@ export default function CustomDatabaseScreen({
             width={gridTileWidth}
             display={rowDisplayFor(row)}
             documentCount={documentIdsOf(row).length}
+            chosen={recordPanelOn && rowPageId === row.id}
             onPress={(e) => (isSelectMode ? toggleSelected(row.id) : openRowFromCard(row.id, e))}
             onLongPress={() => setRowMenuId(row.id)}
             right={
@@ -2946,6 +2948,7 @@ export default function CustomDatabaseScreen({
             width={width}
             display={rowDisplayFor(row)}
             documentCount={documentIdsOf(row).length}
+            chosen={recordPanelOn && rowPageId === row.id}
             onPress={(e) => (isSelectMode ? toggleSelected(row.id) : openRowFromCard(row.id, e))}
             onLongPress={() => setRowMenuId(row.id)}
             right={

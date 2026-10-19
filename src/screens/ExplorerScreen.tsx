@@ -854,6 +854,11 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const [fanOpen, setFanOpen] = useState(false);
   // The quick-create window (features.quickCreate) - what the «+» opens now.
   const [quickOpen, setQuickOpen] = useState(false);
+  // The window belongs to the explorer: when another screen comes in front (a base from the Mac's sidebar), it
+  // closes rather than standing over that screen (seen 2026-10-19: «Нова нотатка» over the «Авто» list).
+  useEffect(() => {
+    if (!isFocused) setQuickOpen(false);
+  }, [isFocused]);
   // «Новий» in the Mac's sidebar (navigation/explorerPlace).
   const createWanted = useExplorerCreateWanted();
   useEffect(() => {

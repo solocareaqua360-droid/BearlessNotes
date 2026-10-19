@@ -17,6 +17,7 @@ import { explorerPlace, useExplorerPath } from '../../navigation/explorerPlace';
 import { DESKTOP_TITLE_BAND, DESKTOP_RAIL_WIDTH } from '../../constants/desktop';
 import { cardSwatch } from '../../constants/cardPalette';
 import { UNFILED } from '../../screens/ExplorerScreen';
+import { onDesktopCommand } from '../../utils/desktopCommands';
 
 // THE MAC'S ONE NAVIGATION (frame B, 2026-10-19, after the user's own look at Claude's window: «тут є відчуття
 // зручності»). Everything the window can go to stands here, top to bottom in the order a hand reaches: search,
@@ -144,6 +145,29 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
   const [basesOpen, setBasesOpen] = useState(true);
 
   const onExplorer = where.route === 'Explorer';
+  // THE KEYS (frame B, 2026-10-19): ⌘K = the search (the sidebar's own label), ⌘N = «Новий» - the shell's menu
+  // sends 'new-note', which the old documents list answered; in frame B the explorer's quick-create is the one
+  // way to make anything, so it answers here. ⌘K is not in the menu (⌘F is), so it is read off the keyboard.
+  const newItem = () => {
+    if (!onExplorer) goFolder(where.path);
+    explorerPlace.requestCreate();
+  };
+  useEffect(() => {
+    const stopNew = onDesktopCommand('new-note', newItem);
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      if (e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        go('Search');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      stopNew();
+      window.removeEventListener('keydown', onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onExplorer, where.path]);
   const sections: { key: string; label: string; icon: string; on: boolean; onPress: () => void; count?: number }[] = [
     { key: 'start', label: 'Старт', icon: 'home-outline', on: onExplorer && !where.path, onPress: () => goFolder('') },
     { key: 'thoughts', label: 'Думки', icon: 'cloud-outline', on: where.route === 'Thoughts', onPress: () => goSection('Thoughts') },
@@ -237,11 +261,7 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
           icon: 'add',
           label: 'Новий',
           on: false,
-          onPress: () => {
-            // In the explorer, its own quick-create window; elsewhere, go to the explorer first.
-            if (!onExplorer) goFolder(where.path);
-            explorerPlace.requestCreate();
-          },
+          onPress: newItem,
         })}
         {sections.map((s) => row({ key: s.key, icon: s.icon, label: s.label, on: s.on, onPress: s.onPress, count: s.count }))}
 

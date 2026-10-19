@@ -137,6 +137,22 @@ export default function QuickCreate({
     });
     return () => sub.remove();
   }, [visible, level]);
+  // A keyboard's Escape (the Mac): up one step like the phone's back, and out of the window from the first step.
+  useEffect(() => {
+    if (!visible || typeof window === 'undefined' || !window.addEventListener) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      if (level === 'compose') onClose();
+      else {
+        setLevel('compose');
+        setQuery('');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, level]);
 
   const styles = useMemo(() => makeStyles(S), [S]);
   const hasText = text.trim().length > 0;
