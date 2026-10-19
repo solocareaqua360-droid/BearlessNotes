@@ -4011,7 +4011,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const at = caretPoint();
       const below = at ? at.top + at.height + 6 : 200;
       const room = typeof window !== 'undefined' ? window.innerHeight - below : 400;
-      setSlash({ id, left: at ? Math.max(8, at.left - 6) : 200, top: room < 380 && at ? Math.max(8, at.top - 372) : below });
+      setSlash({ id, left: at ? Math.max(8, at.left - 6) : 200, top: room < 270 && at ? Math.max(8, at.top - 262) : below });
     } else if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
       openSlashMenu(id);
     }

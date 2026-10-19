@@ -69,7 +69,8 @@ import {
 import { prefetchState, startOfflinePrefetch, subscribeToPrefetch } from './src/utils/offlineCache.web';
 import { onDesktopCommand } from './src/utils/desktopCommands';
 import { LEAN_WINDOW } from './src/utils/leanWindow';
-import { useInspectorOpen } from './src/navigation/inspector';
+import { inspector, useInspectorOpen } from './src/navigation/inspector';
+import { Ionicons } from './src/components/icons/Ionicons';
 import {
   HandoffKind,
   handoffRequest,
@@ -363,10 +364,44 @@ function FrameBRightPanel() {
   const panel = useRailPanel();
   const open = useInspectorOpen();
   const D = deskColors(softTokens(useTheme().scheme));
-  if (!panel || !open) return null;
+  // The panel folds from ITSELF (the user, 2026-10-20: «кнопка згортання повинна бути на самій панелі»): a round handle
+  // on its left edge, halfway down, folds it; folded, a slim strip at the window's edge keeps the same handle to open it.
+  // Nothing to fold when no screen has published a panel.
+  if (!panel) return null;
+  const handle = (folded: boolean) => (
+    <Pressable
+      onPress={() => inspector.toggle()}
+      accessibilityLabel={folded ? 'Показати панель' : 'Сховати панель'}
+      {...({ title: folded ? 'Показати панель' : 'Сховати панель' } as object)}
+      style={(state) => [
+        {
+          position: 'absolute',
+          left: folded ? 1 : -12,
+          top: '50%',
+          marginTop: -14,
+          width: folded ? 18 : 24,
+          height: 28,
+          borderRadius: 12,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: D.card,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: D.line,
+          zIndex: 30,
+          opacity: (state as { hovered?: boolean }).hovered ? 1 : 0.7,
+        },
+      ]}
+    >
+      <Ionicons name={folded ? 'chevron-back' : 'chevron-forward'} size={14} color={D.ink2} />
+    </Pressable>
+  );
+  if (!open) {
+    return <View style={{ width: 20, backgroundColor: D.chrome, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: D.line }}>{handle(true)}</View>;
+  }
   return (
     <View style={{ width: 340, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: D.line, paddingTop: 12, backgroundColor: D.chrome }}>
       {panel}
+      {handle(false)}
     </View>
   );
 }

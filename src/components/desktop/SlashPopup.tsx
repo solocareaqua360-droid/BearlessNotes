@@ -11,6 +11,10 @@ import { INSERT_GROUPS, TILE_LABELS, type TileKey } from './insertCatalogue';
 // panel's «Вставити», cut into the same shelves, filtered by what is typed after the slash ("/чек" keeps the checkbox).
 // Arrows and Enter walk and pick, Escape lets go and leaves the "/" as typed. One keydown listener on the window, in the
 // capture phase and before the text field sees the key: the field must not also move its caret or make a new block.
+// Compact on purpose (the user, 2026-10-20: «вона повинна бути відносно компактною… можна зробити прокручуваною»): about
+// five rows, the rest by scrolling; typing narrows it and the window shrinks by itself.
+const MAX_H = 214;
+
 export default function SlashPopup({
   query,
   anchor,
@@ -73,7 +77,7 @@ export default function SlashPopup({
   }
   return (
     <View style={[styles.box, { backgroundColor: D.card, borderColor: D.line, boxShadow: D.soft.shadow }, position]}>
-      <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="always">
+      <ScrollView style={{ maxHeight: MAX_H }} keyboardShouldPersistTaps="always">
         {groups.map((g) => (
           <View key={g.title}>
             <Text style={[styles.group, { color: D.ink3 }]}>{g.title}</Text>
@@ -89,7 +93,7 @@ export default function SlashPopup({
                   {...({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}
                 >
                   <View style={[styles.pic, { borderColor: D.line, backgroundColor: D.card }]}>
-                    <BlockMiniature kind={k} width={46} />
+                    <BlockMiniature kind={k} width={38} />
                   </View>
                   <Text style={[styles.label, { color: D.ink }]}>{labelOf.get(k)}</Text>
                 </Pressable>
@@ -104,10 +108,10 @@ export default function SlashPopup({
 
 const makeStyles = (_t: Theme) =>
   StyleSheet.create({
-    box: { width: 320, borderRadius: RADIUS.panel, borderWidth: StyleSheet.hairlineWidth, padding: 6, zIndex: 60 },
+    box: { width: 296, borderRadius: RADIUS.panel, borderWidth: StyleSheet.hairlineWidth, padding: 6, zIndex: 60 },
     group: { fontSize: TYPE.xs, fontFamily: FONT_SEMIBOLD, textTransform: 'uppercase', letterSpacing: 0.4, paddingHorizontal: 8, paddingTop: 8, paddingBottom: 2 },
-    row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 6, height: 40, borderRadius: RADIUS.control },
-    pic: { width: 48, height: 34, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 6, height: 34, borderRadius: RADIUS.control },
+    pic: { width: 42, height: 26, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
     label: { flex: 1, fontSize: TYPE.sm, fontFamily: FONT_REGULAR },
     empty: { fontSize: TYPE.sm, fontFamily: FONT_REGULAR, padding: 12 },
   });
