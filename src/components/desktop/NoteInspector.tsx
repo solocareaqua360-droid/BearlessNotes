@@ -6,20 +6,13 @@ import { FONT_REGULAR, FONT_SEMIBOLD } from '../../utils/fonts';
 import { useStyles } from '../../theme/ThemeProvider';
 import type { Theme } from '../../theme/tokens';
 import BlockMiniature from '../BlockMiniature';
-import { BLOCK_ACTIONS, type BlockAction } from '../blockActions';
+import { INSERT_GROUPS, TILE_LABELS, type TileKey } from './insertCatalogue';
 
 // THE NOTE'S RIGHT PANEL (the Mac's frame B, 2026-10-20, after Craft's «Insert · Format · Style · Info»): tabs on top -
 // «Вставити» (what a block can become or hold, drawn as pictures of the result), «Інфо» (where the note stands, its
 // links), «Джерела» (the files, photos, links and records to drag in). The tab's content comes in as props: this
 // only draws the frame and the insert catalogue.
 export type InspectorTab = 'insert' | 'format' | 'info' | 'refs';
-
-// The groups of the catalogue (BLOCK_ACTIONS is the one list; this only sorts it into shelves).
-export const INSERT_GROUPS: { title: string; keys: BlockAction[] }[] = [
-  { title: 'Текст', keys: ['heading', 'bulleted', 'numbered', 'checkbox', 'toggle', 'divider', 'code'] },
-  { title: 'Медіа', keys: ['image', 'camera', 'file', 'sketch', 'scan'] },
-  { title: 'Таблиці й посилання', keys: ['table', 'document', 'existing'] },
-];
 
 export default function NoteInspector({
   tab,
@@ -31,7 +24,7 @@ export default function NoteInspector({
 }: {
   tab: InspectorTab;
   onTab: (t: InspectorTab) => void;
-  onInsert: (action: BlockAction) => void;
+  onInsert: (key: TileKey) => void;
   format: ReactNode;
   info: ReactNode;
   refs: ReactNode;
@@ -39,14 +32,13 @@ export default function NoteInspector({
   const styles = useStyles(makeStyles);
   const D = useDeskColors();
   const [query, setQuery] = useState('');
-  const labelOf = useMemo(() => new Map(BLOCK_ACTIONS.map((a) => [a.key, a.label])), []);
+  const labelOf = useMemo(() => new Map(Object.entries(TILE_LABELS)), []);
   const needle = query.trim().toLowerCase();
   const groups = useMemo(
     () =>
       INSERT_GROUPS.map((g) => ({
         title: g.title,
-        // The scanner is the phone's: there is no document camera in a browser.
-        keys: g.keys.filter((k) => k !== 'scan' && (!needle || (labelOf.get(k) ?? '').toLowerCase().includes(needle))),
+        keys: g.keys.filter((k) => !needle || (labelOf.get(k) ?? '').toLowerCase().includes(needle)),
       })).filter((g) => g.keys.length > 0),
     [needle, labelOf]
   );

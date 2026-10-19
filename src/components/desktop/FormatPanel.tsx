@@ -10,11 +10,14 @@ import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../EditorToolbar';
 // Format tab): what kind of block this is (the one in force is lit), the four text styles, the colours. A menu cannot show
 // «що зараз увімкнено»; this does. Nothing here takes the field's focus (onMouseDown is cancelled): the selection the
 // buttons act on must still be there when the click lands.
-export type FormatBlockKind = 'paragraph' | 'heading' | 'bulleted' | 'numbered' | 'checkbox' | 'toggle' | 'code';
+// The headings are the phone's three levels (the note's own title is the first heading, so the body's start at 2).
+export type FormatBlockKind = 'paragraph' | 'h2' | 'h3' | 'h4' | 'bulleted' | 'numbered' | 'checkbox' | 'toggle' | 'code';
 
 const KINDS: { id: FormatBlockKind; label: string }[] = [
   { id: 'paragraph', label: 'Текст' },
-  { id: 'heading', label: 'Заголовок' },
+  { id: 'h2', label: 'Заголовок 2' },
+  { id: 'h3', label: 'Заголовок 3' },
+  { id: 'h4', label: 'Заголовок 4' },
   { id: 'bulleted', label: 'Список' },
   { id: 'numbered', label: '1. 2. 3.' },
   { id: 'checkbox', label: 'Чекбокс' },
@@ -37,18 +40,36 @@ export default function FormatPanel({
   onKind,
   onStyle,
   onColor,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }: {
   kind: FormatBlockKind | null;
   hasSelection: boolean;
   onKind: (k: FormatBlockKind) => void;
   onStyle: (s: 'bold' | 'italic' | 'underline' | 'strike') => void;
   onColor: (which: 'c' | 'h', hex: string) => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
 }) {
   const styles = useStyles(makeStyles);
   const D = useDeskColors();
   const head = (label: string) => <Text style={[styles.head, { color: D.ink3 }]}>{label}</Text>;
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
+      <View style={styles.styleRow}>
+        <Pressable onPress={onUndo} {...keepFocus} style={[styles.styleBtn, { backgroundColor: D.card, borderColor: D.line, flexDirection: 'row', gap: 6 }, !canUndo && { opacity: 0.45 }]}>
+          <Ionicons name="arrow-undo-outline" size={16} color={D.ink} />
+          <Text style={[{ fontSize: TYPE.sm, color: D.ink }]}>Скасувати</Text>
+        </Pressable>
+        <Pressable onPress={onRedo} {...keepFocus} style={[styles.styleBtn, { backgroundColor: D.card, borderColor: D.line, flexDirection: 'row', gap: 6 }, !canRedo && { opacity: 0.45 }]}>
+          <Ionicons name="arrow-redo-outline" size={16} color={D.ink} />
+          <Text style={[{ fontSize: TYPE.sm, color: D.ink }]}>Повторити</Text>
+        </Pressable>
+      </View>
       {kind === null && <Text style={[styles.hint, { color: D.ink3 }]}>Постав каретку в текст — тут буде видно, що під нею.</Text>}
       {head('Блок')}
       <View style={styles.kinds}>

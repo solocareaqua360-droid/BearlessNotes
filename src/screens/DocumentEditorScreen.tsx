@@ -184,6 +184,7 @@ import NotePanel from '../components/desktop/NotePanel';
 import NoteInspector from '../components/desktop/NoteInspector';
 import FormatPanel, { type FormatBlockKind } from '../components/desktop/FormatPanel';
 import SlashPopup from '../components/desktop/SlashPopup';
+import type { TileKey } from '../components/desktop/insertCatalogue';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
 import { BlurView } from 'expo-blur';
@@ -3021,9 +3022,20 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   useEffect(() => {
     if (focusedBlockId) lastCaretBlockRef.current = focusedBlockId;
   }, [focusedBlockId]);
-  const insertFromPanel = (action: BlockAction) => {
+  // One door for the panel's tiles and the «/» list: the phone's heading LEVELS, rules and URL link are tiles of their own.
+  const insertTile = (key: TileKey, id: string) => {
+    if (key === 'h2') setHeadingLevel(id, 1);
+    else if (key === 'h3') setHeadingLevel(id, 2);
+    else if (key === 'h4') setHeadingLevel(id, 3);
+    else if (key === 'rule-solid') insertDivider(id, 'solid');
+    else if (key === 'rule-dotted') insertDivider(id, 'dotted');
+    else if (key === 'rule-bold') insertDivider(id, 'bold');
+    else if (key === 'link') openLinkPrompt(id);
+    else handleBlockAction(key, id);
+  };
+  const insertFromPanel = (key: TileKey) => {
     const target = lastCaretBlockRef.current && blocks.some((b) => b.id === lastCaretBlockRef.current) ? lastCaretBlockRef.current : blocks[blocks.length - 1]?.id;
-    if (target) handleBlockAction(action, target);
+    if (target) insertTile(key, target);
   };
   usePublishRailPanel(
     notePanelOn ? (
@@ -3041,14 +3053,26 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           <FormatPanel
             kind={(() => {
               const id = focusedBlockId ?? lastCaretBlockRef.current;
-              const t = (blocks.find((b) => b.id === id)?.type ?? (id ? 'paragraph' : null)) as string | null;
-              return t && ['paragraph', 'heading', 'bulleted', 'numbered', 'checkbox', 'toggle', 'code'].includes(t) ? (t as FormatBlockKind) : null;
+              const b = blocks.find((x) => x.id === id);
+              const t = (b?.type ?? (id ? 'paragraph' : null)) as string | null;
+              // The phone's levels: 1 = «Заголовок 2», 2 = «Заголовок 3», 3 = «Заголовок 4»; a heading without a level reads as 3.
+              if (t === 'heading') return (['h2', 'h3', 'h4'] as const)[Math.min(3, Math.max(1, b?.headingLevel ?? 2)) - 1];
+              return t && ['paragraph', 'bulleted', 'numbered', 'checkbox', 'toggle', 'code'].includes(t) ? (t as FormatBlockKind) : null;
             })()}
             hasSelection={!!activeSelection && activeSelection.start !== activeSelection.end}
             onKind={(k) => {
               const id = focusedBlockId ?? lastCaretBlockRef.current;
-              if (id) convertBlockType(id, k as BlockType);
+              if (!id) return;
+              if (k === 'h2') setHeadingLevel(id, 1);
+              else if (k === 'h3') setHeadingLevel(id, 2);
+              else if (k === 'h4') setHeadingLevel(id, 3);
+              else if (k === 'paragraph') setHeadingLevel(id, null);
+              else convertBlockType(id, k as BlockType);
             }}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
             onStyle={(st) => applyMarkerToSelection(st === 'bold' ? '**' : st === 'italic' ? '*' : st === 'underline' ? '__' : '~~', st === 'bold' ? '**' : st === 'italic' ? '*' : st === 'underline' ? '__' : '~~')}
             onColor={(which, hex) => applyColorToSelection(which, hex)}
           />
@@ -5799,7 +5823,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             setSlash(null);
             // Picking clears the "/ word" first, so the block does not keep a stray slash in front of a picture.
             setBlocks((prev) => prev.map((b) => (b.id === id && b.text.startsWith('/') ? { ...b, text: '' } : b)));
-            handleBlockAction(action, id);
+            insertTile(action, id);
           }}
         />
       )}

@@ -5,8 +5,7 @@ import { FONT_REGULAR, FONT_SEMIBOLD } from '../../utils/fonts';
 import { useStyles } from '../../theme/ThemeProvider';
 import type { Theme } from '../../theme/tokens';
 import BlockMiniature from '../BlockMiniature';
-import { BLOCK_ACTIONS, type BlockAction } from '../blockActions';
-import { INSERT_GROUPS } from './NoteInspector';
+import { INSERT_GROUPS, TILE_LABELS, type TileKey } from './insertCatalogue';
 
 // «/» ON THE MAC (frame B, 2026-10-20): a flat list under the caret - the same catalogue and the same pictures as the
 // panel's «Вставити», cut into the same shelves, filtered by what is typed after the slash ("/чек" keeps the checkbox).
@@ -20,18 +19,18 @@ export default function SlashPopup({
 }: {
   query: string;
   anchor: { left: number; top: number };
-  onPick: (action: BlockAction) => void;
+  onPick: (key: TileKey) => void;
   onClose: () => void;
 }) {
   const styles = useStyles(makeStyles);
   const D = useDeskColors();
-  const labelOf = useMemo(() => new Map(BLOCK_ACTIONS.map((a) => [a.key, a.label])), []);
+  const labelOf = useMemo(() => new Map(Object.entries(TILE_LABELS)), []);
   const needle = query.trim().toLowerCase();
   const groups = useMemo(
     () =>
       INSERT_GROUPS.map((g) => ({
         title: g.title,
-        keys: g.keys.filter((k) => k !== 'scan' && (!needle || (labelOf.get(k) ?? '').toLowerCase().includes(needle))),
+        keys: g.keys.filter((k) => !needle || (labelOf.get(k) ?? '').toLowerCase().includes(needle)),
       })).filter((g) => g.keys.length > 0),
     [needle, labelOf]
   );

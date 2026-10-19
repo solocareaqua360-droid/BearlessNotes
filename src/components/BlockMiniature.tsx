@@ -2,7 +2,6 @@ import Svg, { Circle, Line, Path, Rect, Text as SvgText } from 'react-native-svg
 import { useTheme } from '../theme/ThemeProvider';
 import { FONT_SEMIBOLD } from '../utils/fonts';
 import miniatures from './blockMiniatures.json';
-import type { BlockAction } from './blockActions';
 
 // A BLOCK AS A PICTURE OF ITS RESULT (the Mac's insert panel and «/» popup, 2026-10-20, the user: «маленька іконка на
 // великому білому фоні - збільшити іконку не вирішить, треба продумати»). Each block is drawn as what it will look like in
@@ -13,7 +12,7 @@ type Shape = {
   x?: number; y?: number; w?: number; h?: number; r?: number;
   x1?: number; y1?: number; x2?: number; y2?: number;
   cx?: number; cy?: number; d?: string; txt?: string; size?: number; bold?: boolean; anchor?: 'middle';
-  f?: string; s?: string; sw?: number; nf?: boolean;
+  f?: string; s?: string; sw?: number; nf?: boolean; dash?: string;
 };
 
 const LIGHT: Record<string, string> = {
@@ -27,7 +26,7 @@ const DARK: Record<string, string> = {
   graphite: '#1C1C1B', rust: '#D9814F', link: '#8AB0FF', linkBg: 'rgba(138,176,255,0.2)',
 };
 
-export default function BlockMiniature({ kind, width = 94 }: { kind: BlockAction; width?: number }) {
+export default function BlockMiniature({ kind, width = 94 }: { kind: string; width?: number }) {
   const scheme = useTheme().scheme;
   const pal = scheme === 'dark' ? DARK : LIGHT;
   const shapes = (miniatures as unknown as Record<string, Shape[]>)[kind] ?? [];
@@ -41,7 +40,7 @@ export default function BlockMiniature({ kind, width = 94 }: { kind: BlockAction
         if (sh.t === 'rect') return <Rect key={i} x={sh.x} y={sh.y} width={sh.w} height={sh.h} rx={sh.r} {...common} />;
         if (sh.t === 'circle') return <Circle key={i} cx={sh.cx} cy={sh.cy} r={sh.r} {...common} />;
         if (sh.t === 'path') return <Path key={i} d={sh.d} {...common} />;
-        if (sh.t === 'line') return <Line key={i} x1={sh.x1} y1={sh.y1} x2={sh.x2} y2={sh.y2} stroke={stroke} strokeWidth={sh.sw} strokeLinecap="round" />;
+        if (sh.t === 'line') return <Line key={i} x1={sh.x1} y1={sh.y1} x2={sh.x2} y2={sh.y2} stroke={stroke} strokeWidth={sh.sw} strokeLinecap="round" strokeDasharray={sh.dash} />;
         return (
           <SvgText key={i} x={sh.x} y={sh.y} fontFamily={FONT_SEMIBOLD} fontSize={sh.size} fontWeight={sh.bold ? '700' : '400'} fill={colour(sh.f)} textAnchor={sh.anchor === 'middle' ? 'middle' : 'start'}>
             {sh.txt}
