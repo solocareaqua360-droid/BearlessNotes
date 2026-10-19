@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { navigationRef } from '../navigationRef';
 import { useExplorerPath } from '../navigation/explorerPlace';
 import { FEATURES } from '../features';
+import { useToolbarTitle } from '../navigation/toolbarTitle';
 import { CONTROL, RADIUS, SPACE, TYPE, useDeskColors } from '../theme/desktopTheme';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -84,6 +85,7 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
   const extras = useNavTopExtras();
   const frameB = FEATURES.macFrameB && !compact;
   const [menuOpen, setMenuOpen] = useState(false);
+  const toolbarTitle = useToolbarTitle();
   // «Джерела» is the note's own «Референси» action - drawn as the one right-hand toggle, not among the capsule.
   const refs = frameB ? (actions ?? []).find((a) => a.key === 'refs') ?? null : null;
   const leftBead = !beadsHidden && beads.left && !/back/.test(beads.left.icon) ? beads.left : null;
@@ -131,6 +133,21 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
       <View style={styles.bar} pointerEvents="box-none">
         <View style={styles.crumbs} pointerEvents="box-none">
           {!compact && <UpButton fallback={up} />}
+          {frameB && !!toolbarTitle && (
+            <View style={styles.crumbCell}>
+              {!!toolbarTitle.parent && (
+                <Pressable style={styles.crumb} onPress={toolbarTitle.onParent}>
+                  <Text style={[styles.crumbLabel, { color: D.ink3 }]} numberOfLines={1}>{`${toolbarTitle.parent} /`}</Text>
+                </Pressable>
+              )}
+              <Pressable style={[styles.crumb, { flexDirection: 'row', alignItems: 'center', gap: 5 }]} onPress={toolbarTitle.onRename}>
+                <Text style={[styles.crumbLabel, styles.crumbLast, { maxWidth: 360 }]} numberOfLines={1}>
+                  {toolbarTitle.title}
+                </Text>
+                {!!toolbarTitle.onRename && <Ionicons name="chevron-down" size={12} color={theme.ink.faint} />}
+              </Pressable>
+            </View>
+          )}
           {crumbs.length > 0 && (
             <Pressable style={styles.crumb} onPress={() => onGo?.('')}>
               <Ionicons name="home-outline" size={14} color={theme.ink.muted} />

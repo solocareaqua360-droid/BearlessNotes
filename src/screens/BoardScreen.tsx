@@ -147,6 +147,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { useBlurTarget } from '../components/GlassTarget';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { FEATURES } from '../features';
+import { usePublishToolbarTitle } from '../navigation/toolbarTitle';
 import DocumentCardBlocks from '../components/DocumentCardBlocks';
 import { PAGE_H2, PAGE_TEXT, makeStyles as makeEditorStyles } from '../components/documentEditorStyles';
 import PagePreviewRow from '../components/PagePreviewRow';
@@ -6944,12 +6945,41 @@ export default function BoardScreen() {
   // hidden then and the note's own controls hold the dock.
   const topNavOn = useTopNavOn();
   const bar = topNavOn && !(paneDocOpen && paneFullscreen);
+  // THE MAC'S BOARD (frame B, 2026-10-20): the name goes to the window bar, the tools to a palette on the canvas, the grey
+  // phone «pill» and the dock's tool buttons are not drawn; the rest (add, layers, selection actions) moves into the
+  // right panel in the next steps.
+  const macBoard = FEATURES.macFrameB && Platform.OS === 'web';
   // The canvas takes every sideways drag for itself: the drawers' swipe
   // stands down while a board is open.
   useBlockDrawerSwipe(boardFocused);
   const leaveOrClosePane = () => (isTwoPane && paneDocId !== null ? closePane() : navigation.goBack());
   useDockLeave('easel-outline', leaveOrClosePane, !bar);
   useTopBack(leaveOrClosePane, bar);
+  usePublishToolbarTitle(
+    macBoard && !(paneDocOpen && paneFullscreen)
+      ? { parent: 'Дошки', title: title || 'Без назви', onParent: leaveOrClosePane, onRename: () => setRenamingTitle(true) }
+      : null
+  );
+  // V Рух · H Рука · S Вибір · C Зв'язок · N Додати - the keys of every canvas (Figma, Miro), only while nothing is being
+  // typed and no modifier is held (⌘C / ⌘V / ⌘D / ⌘A are useBoardKeys').
+  useEffect(() => {
+    if (!macBoard || !boardFocused || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const k = e.key.toLowerCase();
+      if (k === 'v') setCanvasTool('move');
+      else if (k === 'h') setCanvasTool('hand');
+      else if (k === 's') setCanvasTool('select');
+      else if (k === 'c') setCanvasTool('connect');
+      else if (k === 'n') setAddSheetVisible(true);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [macBoard, boardFocused]);
   // THE BOARD IN THE SOFT STYLE (theme/soft) - the user's pick after the
   // databases ("дошки"). On a phone the bar and the dock follow; every
   // piece of the canvas takes its styles through useBoardStyles.
@@ -7218,6 +7248,9 @@ export default function BoardScreen() {
             ...(FEATURES.boardDockBack ? [{ key: 'add', icon: 'add-outline', label: 'Додати', strong: true, onPress: () => setAddSheetVisible(true) }] : []),
           ]
         : [
+            ...(macBoard
+              ? []
+              : [
             // Three separate buttons now, not one cycled through - "чому
             // їх всі не розмістити на доці? а не проклацувати одну
             // кнопку - це ж нелогічно". The card was already sized for
@@ -7253,6 +7286,7 @@ export default function BoardScreen() {
               active: canvasTool === 'connect',
               onPress: () => setCanvasTool('connect'),
             },
+              ]),
             // Isolation is no tool of the strip: it lives in the menu a held
             // card opens (see the selection bar) - "режим ізоляції треба
             // перенести в док в меню яке виникає при затисканні картки".
@@ -7271,8 +7305,9 @@ export default function BoardScreen() {
             // Also not tools - one-shot actions, shown only once there is
             // something to do (see undo/redo's own comment on why they
             // stay in sync for free with every mutation on the board).
-            ...(canUndo ? [{ key: 'undo', icon: 'arrow-undo-outline', label: 'Скасувати', onPress: undo }] : []),
-            ...(canRedo ? [{ key: 'redo', icon: 'arrow-redo-outline', label: 'Повторити', onPress: redo }] : []),
+            // On the Mac undo/redo stand in the window bar already (useTopExtras above).
+            ...(canUndo && !macBoard ? [{ key: 'undo', icon: 'arrow-undo-outline', label: 'Скасувати', onPress: undo }] : []),
+            ...(canRedo && !macBoard ? [{ key: 'redo', icon: 'arrow-redo-outline', label: 'Повторити', onPress: redo }] : []),
             ...paneControls,
           ]
       : null
@@ -7761,13 +7796,49 @@ export default function BoardScreen() {
               title={{ icon: 'easel-outline', label: title || 'Без назви', onPress: () => setRenamingTitle(true) }}
             />
           )
-        ) : (
+        ) : macBoard ? null : (
           <View style={styles.headerRow} pointerEvents="box-none">
             <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
               <Text style={styles.headerTitle} numberOfLines={1}>
                 {title || 'Без назви'}
               </Text>
             </Pressable>
+          </View>
+        )}
+
+        {/* THE MAC'S TOOL PALETTE: on the canvas, at its left edge, like Figma's and Miro's - the phone's dock buttons
+            were drawn in the window bar as a capsule. A tool lights while it is the one in the hand; the key is in the tip. */}
+        {macBoard && boardFocused && !(paneDocOpen && paneFullscreen) && (
+          <View pointerEvents="box-none" style={{ position: 'absolute', left: 14, top: 70, zIndex: 20 }}>
+            <View style={{ backgroundColor: '#FFFFFF', borderRadius: 14, padding: 5, gap: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.12)' } as never}>
+              {(
+                [
+                  { tool: 'move' as const, icon: 'mc:cursor-move', label: 'Рух', key: 'V' },
+                  { tool: 'hand' as const, icon: 'mc:hand-back-right-outline', label: 'Рука', key: 'H' },
+                  { tool: 'select' as const, icon: 'mc:selection-drag', label: 'Вибір', key: 'S' },
+                  { tool: 'connect' as const, icon: 'mc:vector-line', label: 'Зв\'язок', key: 'C' },
+                ]
+              ).map((t) => (
+                <Pressable
+                  key={t.tool}
+                  onPress={() => setCanvasTool(t.tool)}
+                  accessibilityLabel={t.label}
+                  {...({ title: `${t.label} (${t.key})` } as object)}
+                  style={{ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: canvasTool === t.tool ? '#1F1E1B' : 'transparent' }}
+                >
+                  <MaterialCommunityIcons name={t.icon.slice(3) as never} size={21} color={canvasTool === t.tool ? '#FFFFFF' : '#6E6B64'} />
+                </Pressable>
+              ))}
+              <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(31,30,27,0.12)', marginVertical: 3, marginHorizontal: 6 }} />
+              <Pressable
+                onPress={() => setAddSheetVisible(true)}
+                accessibilityLabel="Додати"
+                {...({ title: 'Додати (N)' } as object)}
+                style={{ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Ionicons name="add" size={24} color="#6E6B64" />
+              </Pressable>
+            </View>
           </View>
         )}
 
