@@ -39,6 +39,7 @@ export function navigateToTarget(target: PaneTarget): void {
   else if (target.kind === 'links') go('Links', { category: target.category });
   else if (target.kind === 'documents') go('Tabs', { screen: 'Документи' });
   else if (target.kind === 'boards') go('Tabs', { screen: 'Дошки' });
+  else if (target.kind === 'note') go('Editor', { documentId: target.documentId });
   else go(target.route);
 }
 

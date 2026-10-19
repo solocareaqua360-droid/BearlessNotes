@@ -20,6 +20,8 @@ export default function PaneTargetScreen({ target }: { target: PaneTarget }) {
   if (target.kind === 'documents') return <DocumentsScreen inPane />;
   if (target.kind === 'boards') return <BoardsListScreen inPane />;
   if (target.kind === 'links') return <LinksScreen category={target.category} inPane />;
+  // A note is never a pane's content (it goes to the main pane or its own window).
+  if (target.kind === 'note') return null;
   switch (target.route) {
     case 'Photos':
       return <PhotosScreen inPane />;

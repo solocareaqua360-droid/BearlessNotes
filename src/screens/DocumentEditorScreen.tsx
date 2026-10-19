@@ -178,6 +178,7 @@ import { SHOW_OPEN_REPORTS, SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTim
 import { logReport, markEditorGone, perfSummary } from '../utils/perfWatch';
 import { peekDocument, useDocumentIndex } from '../hooks/useDocumentIndex';
 import { usePublishRailPanel } from '../navigation/navRail';
+import { windowUrlFor } from '../navigation/paneTargetInfo';
 import NotePanel from '../components/desktop/NotePanel';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
@@ -2956,6 +2957,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             { label: 'Проект', icon: 'folder-outline', checked: !!groupId, onPress: () => setGroupPickerVisible(true) },
             { label: 'Експорт', icon: 'share-outline', onPress: askExport },
             { label: 'Копіювати посилання', icon: 'link-outline', onPress: copyNoteAddress },
+            // The Mac: this note in a window of its own (the shell opens the same app at an address that says
+            // what to open - see App.web's `open` parameter).
+            ...(notePanelOn
+              ? [{ label: 'У вікно', icon: 'copy-outline' as const, onPress: () => window.open(windowUrlFor({ kind: 'note', documentId }), '_blank') }]
+              : []),
             // Nested in another note: out into the documents list, with
             // its own nested ones still inside it.
             ...(documentIndex.get(documentId)?.parentId

@@ -10,6 +10,8 @@ export type PaneTarget =
   // The three registries - the diary, the groups and the tags - open in
   // the pane like every other database now. They are not lists of records
   // and carry no chrome of their own; see PlainScreenShell.
-  | { kind: 'route'; route: 'Photos' | 'Files' | 'Stickers' | 'Flashcards' | 'Tasks' | 'Tags' | 'Groups' | 'Diary' | 'Chat' };
+  | { kind: 'route'; route: 'Photos' | 'Files' | 'Stickers' | 'Flashcards' | 'Tasks' | 'Tags' | 'Groups' | 'Diary' | 'Chat' }
+  // A note in a window of its own (the Mac's «У вікно», frame B 2026-10-19) - never a pane's content.
+  | { kind: 'note'; documentId: string };
 
 export const sameTarget = (a: PaneTarget, b: PaneTarget) => JSON.stringify(a) === JSON.stringify(b);
