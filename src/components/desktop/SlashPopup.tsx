@@ -20,36 +20,23 @@ export default function SlashPopup({
   anchor,
   onPick,
   onClose,
-  catalogue,
 }: {
   query: string;
   anchor: { left: number; top: number };
   onPick: (key: TileKey) => void;
   onClose: () => void;
-  // Another list than the note's (the board's card kinds): shelves of {key, label, picture} - the same window, the same keys.
-  catalogue?: { title: string; items: { key: string; label: string; picture: string }[] }[];
 }) {
   const styles = useStyles(makeStyles);
   const D = useDeskColors();
-  // One shape for both lists: shelves of {key, label, picture}.
-  const shelves = useMemo(
-    () =>
-      catalogue ??
-      INSERT_GROUPS.map((g) => ({ title: g.title, items: g.keys.map((k) => ({ key: k as string, label: TILE_LABELS[k] ?? k, picture: k as string })) })),
-    [catalogue]
-  );
-  const labelOf = useMemo(() => new Map(shelves.flatMap((g) => g.items.map((i) => [i.key, i.label] as const))), [shelves]);
-  const pictureOf = useMemo(() => new Map(shelves.flatMap((g) => g.items.map((i) => [i.key, i.picture] as const))), [shelves]);
+  const labelOf = useMemo(() => new Map(Object.entries(TILE_LABELS)), []);
   const needle = query.trim().toLowerCase();
   const groups = useMemo(
     () =>
-      shelves
-        .map((g) => ({
-          title: g.title,
-          keys: g.items.map((i) => i.key as TileKey).filter((k) => !needle || (labelOf.get(k) ?? '').toLowerCase().includes(needle)),
-        }))
-        .filter((g) => g.keys.length > 0),
-    [needle, shelves, labelOf]
+      INSERT_GROUPS.map((g) => ({
+        title: g.title,
+        keys: g.keys.filter((k) => !needle || (labelOf.get(k) ?? '').toLowerCase().includes(needle)),
+      })).filter((g) => g.keys.length > 0),
+    [needle, labelOf]
   );
   const flat = useMemo(() => groups.flatMap((g) => g.keys), [groups]);
   const [index, setIndex] = useState(0);
@@ -89,7 +76,7 @@ export default function SlashPopup({
     );
   }
   return (
-    <View {...({ dataSet: { slashpopup: '1' } } as object)} style={[styles.box, { backgroundColor: D.card, borderColor: D.line, boxShadow: D.soft.shadow }, position]}>
+    <View style={[styles.box, { backgroundColor: D.card, borderColor: D.line, boxShadow: D.soft.shadow }, position]}>
       <ScrollView style={{ maxHeight: MAX_H }} keyboardShouldPersistTaps="always">
         {groups.map((g) => (
           <View key={g.title}>
@@ -106,7 +93,7 @@ export default function SlashPopup({
                   {...({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}
                 >
                   <View style={[styles.pic, { borderColor: D.line, backgroundColor: D.card }]}>
-                    <BlockMiniature kind={pictureOf.get(k) ?? k} width={38} />
+                    <BlockMiniature kind={k} width={38} />
                   </View>
                   <Text style={[styles.label, { color: D.ink }]}>{labelOf.get(k)}</Text>
                 </Pressable>
