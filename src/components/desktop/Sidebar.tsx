@@ -18,6 +18,9 @@ import { DESKTOP_TITLE_BAND, DESKTOP_RAIL_WIDTH } from '../../constants/desktop'
 import { cardSwatch } from '../../constants/cardPalette';
 import { UNFILED } from '../../screens/ExplorerScreen';
 import { onDesktopCommand } from '../../utils/desktopCommands';
+import { usePins, type Pin } from '../../navigation/pinned';
+import { useDocumentIndex } from '../../hooks/useDocumentIndex';
+import { rightClick } from '../../utils/rightClick';
 
 // THE MAC'S ONE NAVIGATION (frame B, 2026-10-19, after the user's own look at Claude's window: «тут є відчуття
 // зручності»). Everything the window can go to stands here, top to bottom in the order a hand reaches: search,
@@ -107,6 +110,9 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
   const { tags } = useTags();
   const items = useAllFolderItems(tags, { includeUnfiled: true });
   const { customDatabases, iconFor } = useDatabaseTiles();
+  // «Закріплені»: what the user keeps at hand (navigation/pinned); a right click lets go of one.
+  const { pins, toggle: togglePin } = usePins();
+  const documentIndex = useDocumentIndex();
   const inner = useInnerBackNow();
   const paneUp = useMainPaneUp();
   // Inside a folder the explorer is one level down from its root: «Назад» climbs the path (the rule of 2026-10-19 -
@@ -168,6 +174,23 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onExplorer, where.path]);
+  // A pin's face and its door: a note (title from the document index; gone from it = binned, not shown), one of the
+  // user's bases, a folder of the explorer.
+  function pinFace(p: Pin): { key: string; icon?: string; swatch?: string; label: string; on: boolean; open: () => void } | null {
+    if (p.kind === 'note') {
+      const d = documentIndex.get(p.id);
+      if (!d || d.deletedAt) return null;
+      return { key: `note:${p.id}`, icon: 'document-text-outline', label: d.title || 'Без назви', on: false, open: () => goSection('Editor', { documentId: p.id }) };
+    }
+    if (p.kind === 'custom') {
+      const d = customDatabases.find((x) => x.id === p.id);
+      if (!d) return null;
+      return { key: `custom:${p.id}`, icon: (d.icon as string | undefined) ?? 'grid-outline', label: d.name, on: false, open: () => goSection('CustomDatabase', { databaseId: p.id }) };
+    }
+    const tag = tags.find((t) => t.path === p.path);
+    if (!tag) return null;
+    return { key: `folder:${p.path}`, swatch: cardSwatch(tag.color ?? 'mist', theme.scheme)?.bg ?? D.fill, label: p.path.split('/').pop() ?? p.path, on: onExplorer && where.path === p.path, open: () => goFolder(p.path) };
+  }
   const sections: { key: string; label: string; icon: string; on: boolean; onPress: () => void; count?: number }[] = [
     { key: 'start', label: 'Старт', icon: 'home-outline', on: onExplorer && !where.path, onPress: () => goFolder('') },
     { key: 'thoughts', label: 'Думки', icon: 'cloud-outline', on: where.route === 'Thoughts', onPress: () => goSection('Thoughts') },
@@ -185,12 +208,13 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
     else if (t.route) goSection(t.route);
   };
 
-  function row(opts: { key: string; icon?: string; swatch?: string; label: string; on: boolean; onPress: () => void; count?: number; depth?: number; twist?: 'open' | 'closed' | null; onTwist?: () => void; tree?: boolean }) {
+  function row(opts: { key: string; icon?: string; swatch?: string; label: string; on: boolean; onPress: () => void; count?: number; depth?: number; twist?: 'open' | 'closed' | null; onTwist?: () => void; tree?: boolean; unpin?: () => void }) {
     const { icon, swatch, label, on, onPress, count, depth = 0, twist = null, onTwist } = opts;
     return (
       <Pressable
         key={opts.key}
         onPress={onPress}
+        {...(opts.unpin ? rightClick(opts.unpin) : {})}
         style={(state) => [
           styles.row,
           { paddingLeft: 10 + depth * 14 },
@@ -264,6 +288,17 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
           onPress: newItem,
         })}
         {sections.map((s) => row({ key: s.key, icon: s.icon, label: s.label, on: s.on, onPress: s.onPress, count: s.count }))}
+
+        {pins.length > 0 && (
+          <View style={styles.sec}>
+            <Text style={styles.secLabel}>Закріплені</Text>
+          </View>
+        )}
+        {pins.map((p) => {
+          const face = pinFace(p);
+          if (!face) return null;
+          return row({ key: `pin:${face.key}`, icon: face.icon, swatch: face.swatch, label: face.label, on: face.on, onPress: face.open, unpin: () => togglePin(p) });
+        })}
 
         <View style={styles.sec}>
           <Text style={styles.secLabel}>Провідник</Text>

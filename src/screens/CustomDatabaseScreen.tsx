@@ -80,6 +80,7 @@ import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import GlassLayer from '../components/GlassLayer';
 import RecordPanel from '../components/desktop/RecordPanel';
 import { usePublishRailPanel } from '../navigation/navRail';
+import { usePins } from '../navigation/pinned';
 import { db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
 import {
@@ -1024,6 +1025,9 @@ export default function CustomDatabaseScreen({
   // FRAME B on the Mac: the base's tools, «Вибір» and «⋯» go to the window's toolbar as they go to the phone's bar,
   // and the two capsule rows under it (views, project) are not drawn - the same as under the phone's bar.
   const chromeTools = bar || (FEATURES.macFrameB && Platform.OS === 'web' && !inPane);
+  // «Закріпити» in the Mac's sidebar (frame B) - see navigation/pinned.
+  const pinsHere = usePins();
+  const pinHere = FEATURES.macFrameB && Platform.OS === 'web' && !inPane;
   useTopBack(back, bar);
   // Under the bar the search is its own name plate, opened out.
   useTopSearch(
@@ -1058,6 +1062,9 @@ export default function CustomDatabaseScreen({
               if (database) updateDoc(doc(db, 'customDatabases', database.id), { onStart: !database.onStart });
             },
           },
+          ...(pinHere && database
+            ? [{ label: 'Закріпити в бічній панелі', icon: 'pin-outline' as const, checked: pinsHere.isPinned({ kind: 'custom', id: database.id }), onPress: () => pinsHere.toggle({ kind: 'custom', id: database.id }) }]
+            : []),
           { label: 'Поля', icon: 'options-outline', onPress: () => setEditingFields(true) },
           // A faster way in than opening a saved view's own editor first
           // just to hide a field before saving a new one - the same

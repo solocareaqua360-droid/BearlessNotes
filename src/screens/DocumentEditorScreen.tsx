@@ -179,6 +179,7 @@ import { logReport, markEditorGone, perfSummary } from '../utils/perfWatch';
 import { peekDocument, useDocumentIndex } from '../hooks/useDocumentIndex';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { windowUrlFor } from '../navigation/paneTargetInfo';
+import { usePins } from '../navigation/pinned';
 import NotePanel from '../components/desktop/NotePanel';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
@@ -2537,6 +2538,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // one embedded or in a pane. Decided here because the split below must not take the note's width for a panel
   // that stands in the right column instead.
   const notePanelOn = FEATURES.macFrameB && Platform.OS === 'web' && !embedded && !('pane' in props);
+  // «Закріпити» in the sidebar (frame B) - see navigation/pinned.
+  const pinsHere = usePins();
   const referencesSplit = referencePanelOpen && !embedded && noteWidth >= REFERENCES_SPLIT_MIN && !notePanelOn;
   // Where the note does not split, a soft note takes «Референси» as a
   // SHEET FROM THE BOTTOM (see ReferencePanel's `sheet`) - the side
@@ -2960,7 +2963,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             // The Mac: this note in a window of its own (the shell opens the same app at an address that says
             // what to open - see App.web's `open` parameter).
             ...(notePanelOn
-              ? [{ label: 'У вікно', icon: 'copy-outline' as const, onPress: () => window.open(windowUrlFor({ kind: 'note', documentId }), '_blank') }]
+              ? [
+                  { label: 'У вікно', icon: 'copy-outline' as const, onPress: () => window.open(windowUrlFor({ kind: 'note', documentId }), '_blank') },
+                  { label: 'Закріпити в бічній панелі', icon: 'pin-outline' as const, checked: pinsHere.isPinned({ kind: 'note', id: documentId }), onPress: () => pinsHere.toggle({ kind: 'note', id: documentId }) },
+                ]
               : []),
             // Nested in another note: out into the documents list, with
             // its own nested ones still inside it.
