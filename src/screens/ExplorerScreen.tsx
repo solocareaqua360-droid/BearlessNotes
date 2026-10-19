@@ -1,5 +1,6 @@
 import { type ComponentProps, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usePublishRailPanel } from '../navigation/navRail';
+import { usePins } from '../navigation/pinned';
 import ExplorerPanel from '../components/desktop/ExplorerPanel';
 import { formatAddedOn } from '../utils/documentPreview';
 import { COMPOSER_CLEAR } from '../components/desktop/Composer';
@@ -2035,6 +2036,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // THE INSPECTOR (frame B): view, order, switches, style; the chosen thing or folder, else the folder stood in; actions.
   const KIND_LABEL: Record<string, string> = { document: 'Нотатка', board: 'Дошка', file: 'Файл', photo: 'Фото', link: 'Посилання', flashcard: 'Картка', shortcut: 'Ярлик', collection: 'Підбірка', row: 'Запис' };
   const countWords = (n: number) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'предмет' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'предмети' : 'предметів'}`;
+  const pinsApi = usePins();
   const folderForPanel = (fp: string, isChosen: boolean) => {
     const colourable = fp !== UNFILED && !!fp;
     return {
@@ -2050,6 +2052,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           }
         : undefined,
       onOpen: isChosen ? () => chosenOpen.current?.() : undefined,
+      pin: colourable ? { on: pinsApi.isPinned({ kind: 'folder', path: fp }), onToggle: () => pinsApi.toggle({ kind: 'folder', path: fp }) } : undefined,
     };
   };
   useEffect(() => setChosen(null), [path]);

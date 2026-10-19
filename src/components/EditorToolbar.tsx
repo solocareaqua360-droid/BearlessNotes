@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 // Deliberately gesture-handler's ScrollView, not react-native's: the whole
 // editor is built on gesture-handler (drag-to-reorder, swipe), and these
 // two rows were rendered with that same component before they moved here.
@@ -234,7 +234,7 @@ export default function EditorToolbar({
             <Ionicons name="arrow-redo-outline" size={22} color={canRedo ? theme.glass.ink : theme.glass.inkMuted} />
           </Pressable>
           <View style={styles.divider} />
-          {(canvas ? CANVAS_ACTIONS : BLOCK_ACTIONS).map((action) => (
+          {(canvas ? CANVAS_ACTIONS : BLOCK_ACTIONS).filter((a) => Platform.OS !== 'web' || a.key !== 'scan').map((action) => (
             <Pressable
               key={action.key}
               style={styles.iconButton}

@@ -5,7 +5,7 @@ import { BLOCK_ACTIONS, type BlockAction } from '../blockActions';
 // the heading LEVELS (Заголовок 2/3/4), the three rules (суцільна, пунктирна, жирна) and the URL link - so those are
 // tiles of their own here. Phone-only things are left out on purpose: the camera (a browser has no camera shot, only
 // a file picker, which «Зображення» already is) and the document scanner.
-export type TileKey = BlockAction | 'h2' | 'h3' | 'h4' | 'rule-solid' | 'rule-dotted' | 'rule-bold' | 'link';
+export type TileKey = BlockAction | 'h2' | 'h3' | 'h4' | 'rule-solid' | 'rule-dotted' | 'rule-bold' | 'link' | 'mention';
 
 const EXTRA: Record<string, string> = {
   h2: 'Заголовок 2',
@@ -15,6 +15,8 @@ const EXTRA: Record<string, string> = {
   'rule-dotted': 'Пунктирна лінія',
   'rule-bold': 'Жирна лінія',
   link: 'Посилання',
+  // «@» in a sentence: the word that links to another note (typed «@» opens the same picker).
+  mention: 'Слово-посилання на нотатку',
 };
 
 export const TILE_LABELS: Record<string, string> = {
@@ -26,5 +28,5 @@ export const INSERT_GROUPS: { title: string; keys: TileKey[] }[] = [
   { title: 'Текст', keys: ['h2', 'h3', 'h4', 'bulleted', 'numbered', 'checkbox', 'toggle', 'code'] },
   { title: 'Лінії', keys: ['rule-solid', 'rule-dotted', 'rule-bold'] },
   { title: 'Медіа', keys: ['image', 'file', 'sketch'] },
-  { title: 'Таблиці й посилання', keys: ['table', 'link', 'document', 'existing'] },
+  { title: 'Таблиці й посилання', keys: ['table', 'link', 'mention', 'document', 'existing'] },
 ];

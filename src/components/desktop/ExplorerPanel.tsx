@@ -25,7 +25,7 @@ export type ExplorerPanelProps = {
   style: 'clean' | 'modern';
   onStyle: (s: 'clean' | 'modern') => void;
   // The folder in the panel: the one chosen with a click, else the one the explorer stands in.
-  folder: { label: string; sub: string; chosen: boolean; colorId?: string; onColor?: (id: string) => void; onOpen?: () => void } | null;
+  folder: { label: string; sub: string; chosen: boolean; colorId?: string; onColor?: (id: string) => void; onOpen?: () => void; pin?: { on: boolean; onToggle: () => void } } | null;
   // A thing chosen with a click (a note, a board, a file…).
   chosen: { title: string; kind: string; facts?: { label: string; value: string }[]; onOpen: () => void } | null;
   onNewFolder: () => void;
@@ -167,6 +167,7 @@ export default function ExplorerPanel(p: ExplorerPanelProps) {
                   </View>
                 </View>
               )}
+              {!!p.folder.pin && action('pin', 'pin-outline', p.folder.pin.on ? 'Відкріпити з бічної панелі' : 'Закріпити в бічній панелі', p.folder.pin.onToggle)}
               {!!p.folder.onOpen && (
                 <Pressable onPress={p.folder.onOpen} style={[styles.primary, { backgroundColor: D.ink }]}>
                   <Text style={[styles.primaryText, { color: D.card }]}>Відкрити</Text>

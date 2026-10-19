@@ -3022,6 +3022,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   useEffect(() => {
     if (focusedBlockId) lastCaretBlockRef.current = focusedBlockId;
   }, [focusedBlockId]);
+  // THE MAC'S KEYS in a note (frame B): ⌘B bold, ⌘I italic, ⌘U underline, ⌘⇧X strike (the same markers the panel's Ж К П З
+  // put on the selection), ⌘Z / ⌘⇧Z the note's own undo and redo (a block-level history; the field's native undo knows
+  // only its text). Only while a BLOCK field has the caret - the title keeps the browser's own.
+  const keysRef = useRef({ mark: (_o: string, _c: string) => {}, undo: () => {}, redo: () => {}, block: false, canUndo: false, canRedo: false });
+  keysRef.current = { mark: applyMarkerToSelection, undo, redo, block: focusedBlockId !== null, canUndo, canRedo };
+  useEffect(() => {
+    if (!notePanelOn || !editorFocused || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || !keysRef.current.block) return;
+      const k = e.key.toLowerCase();
+      const k2 = keysRef.current;
+      const eat = () => e.preventDefault();
+      if (k === 'b' && !e.shiftKey) { eat(); k2.mark('**', '**'); }
+      else if (k === 'i' && !e.shiftKey) { eat(); k2.mark('*', '*'); }
+      else if (k === 'u' && !e.shiftKey) { eat(); k2.mark('__', '__'); }
+      else if (k === 'x' && e.shiftKey) { eat(); k2.mark('~~', '~~'); }
+      else if (k === 'z' && !e.shiftKey && k2.canUndo) { eat(); k2.undo(); }
+      else if (k === 'z' && e.shiftKey && k2.canRedo) { eat(); k2.redo(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [notePanelOn, editorFocused]);
   // One door for the panel's tiles and the «/» list: the phone's heading LEVELS, rules and URL link are tiles of their own.
   const insertTile = (key: TileKey, id: string) => {
     if (key === 'h2') setHeadingLevel(id, 1);
@@ -3031,10 +3053,48 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     else if (key === 'rule-dotted') insertDivider(id, 'dotted');
     else if (key === 'rule-bold') insertDivider(id, 'bold');
     else if (key === 'link') openLinkPrompt(id);
+    else if (key === 'mention') {
+      // The «@» of the word link: put one at the end of the block (after a space) and leave the caret behind it - the
+      // same «@» picker the phone opens when it is typed opens by itself.
+      const text = blocks.find((b) => b.id === id)?.text ?? '';
+      const next = `${text}${text && !/\s$/.test(text) ? ' ' : ''}@`;
+      // The block takes the focus the way a heading change does (focusIdRef); the caret then goes behind the «@».
+      // Through handleBlockChange - the way typing goes - so the field on screen and the caret follow the new text.
+      focusIdRef.current = id;
+      handleBlockChange(id, next);
+      setTimeout(() => {
+        inputRefs.current[id]?.focus?.();
+        setSelection(inputRefs.current[id], next.length, next.length);
+      }, 120);
+    }
     else handleBlockAction(key, id);
   };
+  // What the last text field held when it was last typed in or entered: a mouse press on a tile can take the focus (and
+  // the field's own bookkeeping lags), but this still says which block the caret was in.
+  const lastFieldTextRef = useRef('');
+  useEffect(() => {
+    if (!notePanelOn || typeof document === 'undefined') return;
+    const note = (e: Event) => {
+      const t = e.target as HTMLTextAreaElement | null;
+      if (t && t.tagName === 'TEXTAREA') lastFieldTextRef.current = t.value;
+    };
+    document.addEventListener('input', note, true);
+    document.addEventListener('focusin', note, true);
+    return () => {
+      document.removeEventListener('input', note, true);
+      document.removeEventListener('focusin', note, true);
+    };
+  }, [notePanelOn]);
   const insertFromPanel = (key: TileKey) => {
-    const target = lastCaretBlockRef.current && blocks.some((b) => b.id === lastCaretBlockRef.current) ? lastCaretBlockRef.current : blocks[blocks.length - 1]?.id;
+    // The field that has the caret RIGHT NOW, read off the page. The editor mounts ONE text field for the block being
+    // written and its bookkeeping (focusedBlockId, the field's ref) lags behind a block made with «Додати блок»: the tile
+    // went into the block BEFORE the new one. The tile keeps the caret in place (mousedown is cancelled), so the field
+    // under the caret is the one to find - by its text, the last block that reads the same.
+    const active = typeof document !== 'undefined' ? (document.activeElement as HTMLTextAreaElement | null) : null;
+    const typed = active && active.tagName === 'TEXTAREA' ? active.value : lastFieldTextRef.current;
+    const byText = typed ? [...blocks].reverse().find((b) => plainTextOf(b.text ?? '') === typed)?.id ?? null : null;
+    const live = byText ?? (focusedBlockId && blocks.some((b) => b.id === focusedBlockId) ? focusedBlockId : null);
+    const target = live ?? (lastCaretBlockRef.current && blocks.some((b) => b.id === lastCaretBlockRef.current) ? lastCaretBlockRef.current : blocks[blocks.length - 1]?.id);
     if (target) insertTile(key, target);
   };
   usePublishRailPanel(

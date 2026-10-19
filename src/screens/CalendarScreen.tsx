@@ -57,6 +57,7 @@ import DocumentCard from '../components/DocumentCard';
 import DayPageMiniature from '../components/DayPageMiniature';
 import { extractPreview } from '../utils/documentPreview';
 import { usePublishRailPanel } from '../navigation/navRail';
+import { COMPOSER_CLEAR } from '../components/desktop/Composer';
 import { calendarPlace, useCalendarCreateWanted } from '../navigation/calendarPlace';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
@@ -1313,6 +1314,8 @@ export default function CalendarScreen() {
           // the note stays mounted - the dock's pencil talks to it - but
           // takes no room.
           primary && historyFill && styles.noteAreaGone,
+          // The Mac's composer floats over the foot of the column: the day's paper stops above it.
+          chromeToolsB && { paddingBottom: COMPOSER_CLEAR },
         ]}
       >
         {/* The day IS the page's title, so on a pointer it stands ON the

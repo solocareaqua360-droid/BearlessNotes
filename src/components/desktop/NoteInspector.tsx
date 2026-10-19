@@ -80,7 +80,8 @@ export default function NoteInspector({
               <Text style={[styles.group, { color: D.ink3 }]}>{g.title}</Text>
               <View style={styles.tiles}>
                 {g.keys.map((k) => (
-                  <Pressable key={k} onPress={() => onInsert(k)} style={styles.tile} accessibilityLabel={labelOf.get(k)}>
+                  // The mouse must not take the caret out of the note: the tile acts where the caret is.
+                  <Pressable key={k} onPress={() => onInsert(k)} style={styles.tile} accessibilityLabel={labelOf.get(k)} {...({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}>
                     {(state) => (
                       <>
                         <View style={[styles.pic, { backgroundColor: D.card, borderColor: (state as { hovered?: boolean }).hovered ? D.ink3 : D.line }]}>
