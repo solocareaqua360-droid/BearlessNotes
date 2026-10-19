@@ -151,7 +151,8 @@ import { usePublishToolbarTitle } from '../navigation/toolbarTitle';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { inspector } from '../navigation/inspector';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
-import BoardPanel, { BoardSelection, type BoardTab } from '../components/desktop/BoardPanel';
+import BoardPanel, { BoardSelection, PICTURE, type BoardTab } from '../components/desktop/BoardPanel';
+import SlashPopup from '../components/desktop/SlashPopup';
 import DocumentCardBlocks from '../components/DocumentCardBlocks';
 import { PAGE_H2, PAGE_TEXT, makeStyles as makeEditorStyles } from '../components/documentEditorStyles';
 import PagePreviewRow from '../components/PagePreviewRow';
@@ -2558,6 +2559,9 @@ export default function BoardScreen() {
   const [canvasTool, setCanvasTool] = useState<'move' | 'hand' | 'select' | 'connect'>('move');
   // Which tab the Mac's right panel shows (Вставити · Шари · Обране · Інфо).
   const [panelTab, setPanelTab] = useState<BoardTab>('insert');
+  // «/» over the canvas (Mac): the compact list of card kinds, opened where the pointer stands, filtered by what is typed.
+  const [boardSlash, setBoardSlash] = useState<{ left: number; top: number; query: string } | null>(null);
+  const pointerAt = useRef({ x: 420, y: 220 });
   // Isolation is deliberately its OWN flag, not a fourth canvasTool - it
   // is a lens over the whole board (dim/disable everything outside a
   // chain), not a way of interacting with the canvas the way move/
@@ -7011,13 +7015,48 @@ export default function BoardScreen() {
       else if (k === 'h') setCanvasTool('hand');
       else if (k === 's') setCanvasTool('select');
       else if (k === 'c') setCanvasTool('connect');
+      else if (e.key === '/') setBoardSlash({ left: pointerAt.current.x + 6, top: pointerAt.current.y + 6, query: '' });
       else if (k === 'n') openInsert();
       else return;
       e.preventDefault();
     };
+    const onMove = (e: MouseEvent) => {
+      pointerAt.current = { x: e.clientX, y: e.clientY };
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('mousemove', onMove);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousemove', onMove);
+    };
   }, [macBoard, boardFocused]);
+  // While the «/» list is open it takes the typing (letters narrow it, Backspace takes one back, and past the slash closes it)
+  // and a click outside lets go. Arrows, Enter and Escape are the list's own.
+  useEffect(() => {
+    if (!boardSlash || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key.length === 1) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setBoardSlash((cur) => (cur ? { ...cur, query: cur.query + e.key } : cur));
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setBoardSlash((cur) => (cur && cur.query ? { ...cur, query: cur.query.slice(0, -1) } : null));
+      }
+    };
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (!(t && t.closest && t.closest('[data-slashpopup]'))) setBoardSlash(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('mousedown', onDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('mousedown', onDown, true);
+    };
+  }, [!!boardSlash]);
   // THE BOARD IN THE SOFT STYLE (theme/soft) - the user's pick after the
   // databases ("дошки"). On a phone the bar and the dock follow; every
   // piece of the canvas takes its styles through useBoardStyles.
@@ -8160,12 +8199,25 @@ export default function BoardScreen() {
           </View>
         )}
 
+        {macBoard && boardSlash && (
+          <SlashPopup
+            query={boardSlash.query}
+            anchor={{ left: boardSlash.left, top: boardSlash.top }}
+            catalogue={addSections.map((g) => ({ title: g.title, items: g.tiles.map((t) => ({ key: t.key, label: t.label, picture: PICTURE[t.key] ?? 'b-doc' })) }))}
+            onClose={() => setBoardSlash(null)}
+            onPick={(key) => {
+              setBoardSlash(null);
+              addSections.flatMap((g) => g.tiles).find((t) => t.key === key)?.onPress();
+            }}
+          />
+        )}
+
         {/* FURNITURE'S OWN BAR. Separate from the cards' one and never
             shown with it, because the two act on two different lists -
             and that is deliberate: if a shape could join a card
             selection, every bulk action would have to learn to skip it.
             See BoardShape. */}
-        {selectedShape && selectedCardIds.size === 0 ? (
+        {!macBoard && selectedShape && selectedCardIds.size === 0 ? (
           // TWO ROWS, not one long one. A single row here ran wider than
           // even the Fold's OUTER (cover) screen - "розмір панелі ширший
           // за зовнішній фолд" - because it was never one control, it was
