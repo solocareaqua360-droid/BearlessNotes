@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { navigationRef } from '../navigationRef';
+import { StackActions } from '@react-navigation/native';
+import { FEATURES } from '../features';
 import { tabKey, turnIntoStart, useStartFront } from './desktopTabs';
 import { useWorkspace } from './workspace';
 import { targetFromRoute } from './paneTargetInfo';
@@ -16,7 +18,15 @@ const UP: Record<string, () => void> = {};
 const go = (name: string, params?: unknown) => () =>
   (navigationRef.navigate as (n: string, p?: unknown) => void)(name, params);
 
-const TO_HOME = go('Tabs', { screen: 'Документи' });
+// FRAME B (2026-10-19): the home is the explorer, under everything - back DOWN to it, never a copy on top (the old
+// «Документи» tab is not drawn in frame B, so going there showed an empty column).
+const toExplorer = () => {
+  const state = navigationRef.getRootState();
+  const at = state?.routes?.findIndex((r) => r.name === 'Explorer') ?? -1;
+  if (at >= 0) navigationRef.dispatch(StackActions.popTo('Explorer'));
+  else (navigationRef.navigate as (n: string) => void)('Explorer');
+};
+const TO_HOME = FEATURES.macFrameB ? toExplorer : go('Tabs', { screen: 'Документи' });
 const TO_DATABASES = go('Tabs', { screen: 'Більше' });
 
 // A note is left for the start page, in its own tab's place - where the
@@ -47,6 +57,10 @@ const TO_START = () => {
 // it with the database just left lit for a moment (databaseFlash).
 type Opener = { openAtRoot: (spec: { kind: 'databases' }) => void } | null;
 const leaveDatabase = (workspace: Opener) => () => {
+  if (FEATURES.macFrameB) {
+    toExplorer();
+    return;
+  }
   const route = navigationRef.getCurrentRoute();
   const target = route ? targetFromRoute(route.name, route.params as Record<string, unknown> | undefined) : null;
   const place = placeNow();
@@ -56,7 +70,7 @@ const leaveDatabase = (workspace: Opener) => () => {
   workspace.openAtRoot({ kind: 'databases' });
   if (target) flashDatabase(target);
 };
-const DATABASE_ROUTES = new Set(['CustomDatabase', 'Links', 'Photos', 'Files', 'Stickers', 'Flashcards', 'Tasks', 'Tags', 'Groups', 'Diary', 'Chat', 'TagItems', 'BoardsCopy']);
+const DATABASE_ROUTES = new Set(['CustomDatabase', 'Links', 'Photos', 'Files', 'Stickers', 'Flashcards', 'Tasks', 'Tags', 'Groups', 'Explorer', 'Diary', 'Chat', 'TagItems', 'BoardsCopy']);
 UP.Editor = TO_START;
 UP.EditorModal = TO_START;
 // A file in its tab is left the same way as a note.
@@ -69,11 +83,21 @@ UP.FileView = () => {
 UP.Settings = () => goHome();
 UP.Search = () => goHome();
 UP.DocumentsCopy = () => goHome();
-UP.Board = go('Tabs', { screen: 'Дошки', params: { screen: 'BoardsList' } });
-UP.BoardCopy = go('BoardsCopy');
-for (const name of ['CustomDatabase', 'Links', 'Photos', 'Files', 'Stickers', 'Flashcards', 'Tasks', 'Tags', 'Groups', 'Diary', 'Chat', 'TagItems', 'BoardsCopy']) {
+UP.Board = FEATURES.macFrameB ? toExplorer : go('Tabs', { screen: 'Дошки', params: { screen: 'BoardsList' } });
+// Frame B: a board is left for the home (the explorer), not for the boards list - that list is one base among the
+// sidebar's, and a board opened from the calendar's day would land in it.
+UP.BoardCopy = FEATURES.macFrameB ? toExplorer : go('BoardsCopy');
+for (const name of ['CustomDatabase', 'Links', 'Photos', 'Files', 'Stickers', 'Flashcards', 'Tasks', 'Tags', 'Groups', 'Explorer', 'Diary', 'Chat', 'TagItems', 'BoardsCopy']) {
   UP[name] = TO_DATABASES;
 }
+
+// FRAME B: the sections (what the sidebar switches between) stand level with each other - nothing to go up to. What
+// was opened from inside one goes back ONE level, to where it came from, never to the home.
+const FRAME_B_SECTIONS = new Set(['Explorer', 'Thoughts', 'Tasks', 'Tabs', 'Календар', 'Більше', 'Документи']);
+const backOneLevel = () => {
+  if (navigationRef.canGoBack()) navigationRef.goBack();
+  else toExplorer();
+};
 
 export function useMainPaneUp(): (() => void) | null {
   const [route, setRoute] = useState<string | null>(null);
@@ -86,6 +110,14 @@ export function useMainPaneUp(): (() => void) | null {
   const startFront = useStartFront();
   const workspace = useWorkspace();
   if (startFront) return null;
+  if (FEATURES.macFrameB) {
+    if (!route || FRAME_B_SECTIONS.has(route)) return null;
+    const state = navigationRef.getRootState();
+    const depth = state?.routes?.length ?? 0;
+    // A base opened from the sidebar stands on the explorer (depth 2): it is a section too, no «up».
+    if (depth <= 2 && DATABASE_ROUTES.has(route)) return null;
+    return backOneLevel;
+  }
   if (route && DATABASE_ROUTES.has(route)) return leaveDatabase(workspace);
   return route ? (UP[route] ?? null) : null;
 }

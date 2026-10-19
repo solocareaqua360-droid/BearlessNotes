@@ -6,6 +6,9 @@ import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import EdgeFade from '../components/EdgeFade';
+import ZoomableImageViewer from '../components/ZoomableImageViewer';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { openFileExternally } from '../utils/openFileExternally';
 import { useDensity } from '../hooks/useDensity';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -86,6 +89,7 @@ import SwipeRow, { type SwipeAction } from '../components/SwipeRow';
 import { rightClick } from '../utils/rightClick';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { pickPhotosFromDevice } from '../utils/photoLibrary';
+import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
 
 // The foot the list keeps clear for the dock - the same reckoning
 // DatabaseChrome makes.
@@ -187,6 +191,8 @@ function kanbanColumnWidthFor(screenWidth: number, narrow = false): number {
 }
 
 export default function TasksScreen() {
+  // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
+  useDockDesksWhileFocused(true);
   // In front: the start desk's recents.
   useTileOpened('tasks');
   const theme = useTheme();
@@ -234,6 +240,14 @@ export default function TasksScreen() {
   // ('home'), one of them, a project, or the old screen ('all'). Arriving
   // for one task (focusTaskId) opens the old screen, where it is found.
   const v2 = FEATURES.tasksV2;
+  // A list's colour as TEXT: a near-white one on the light paper (or a near-black on the dark) was invisible - the
+  // list's name «білий на білому» (2026-10-18). Such a colour takes the theme's own ink; any other stays itself.
+  const readableInk = (color: string | null | undefined): string => {
+    if (!color || !/^#[0-9a-f]{6}$/i.test(color)) return color ?? theme.ink.faint;
+    const lum = 0.299 * parseInt(color.slice(1, 3), 16) + 0.587 * parseInt(color.slice(3, 5), 16) + 0.114 * parseInt(color.slice(5, 7), 16);
+    if (theme.scheme === 'dark' ? lum < 60 : lum > 190) return theme.ink.primary;
+    return color;
+  };
   // Opens on the inbox, the first tab: the user wants what is still
   // unsorted before the everything-list, which now sits last. In v2 it is
   // the PROJECT filter over any window: null = all projects.
@@ -513,6 +527,10 @@ export default function TasksScreen() {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   // Which task the file/photo picker is currently open for.
   const [attachTaskId, setAttachTaskId] = useState<string | null>(null);
+  // A task's title while it is being edited in its opened row (2026-10-13: the title could only be fixed in the day's
+  // note), and the attached picture being looked at.
+  const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
+  const [viewerAttachment, setViewerAttachment] = useState<{ taskId: string; uri: string; driveFileId?: string } | null>(null);
   // Which task the recurrence picker is currently open for.
   const [recurrenceTaskId, setRecurrenceTaskId] = useState<string | null>(null);
   const [pickerTaskId, setPickerTaskId] = useState<string | null>(null);
@@ -555,6 +573,10 @@ export default function TasksScreen() {
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       setKeyboardHeight(0);
+      // Android hides the keyboard but leaves the field FOCUSED - its cursor blinked on for good and the only way
+      // out was leaving the desk (the user, 2026-10-13). A hidden keyboard ends the editing: the field lets go,
+      // which also saves what was typed (onBlur).
+      TextInput.State.currentlyFocusedInput()?.blur();
     });
     return () => {
       showSub.remove();
@@ -615,6 +637,15 @@ export default function TasksScreen() {
   // this from re-firing (and re-collapsing anything the user opens by
   // hand afterwards) on every unrelated re-render.
   const focusedTaskRef = useRef<string | null>(null);
+  // Opened from a SHORTCUT (the explorer): straight into one project's tasks, once.
+  const openedProjectRef = useRef<string | null>(null);
+  useEffect(() => {
+    const openProjectId = route.params?.openProjectId;
+    if (!openProjectId || openedProjectRef.current === openProjectId) return;
+    openedProjectRef.current = openProjectId;
+    openView(`project:${openProjectId}` as TaskView);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params?.openProjectId]);
   useEffect(() => {
     const focusTaskId = route.params?.focusTaskId;
     if (!focusTaskId || focusedTaskRef.current === focusTaskId) return;
@@ -812,6 +843,17 @@ export default function TasksScreen() {
         await updateDoc(documentRef, { blocks: updatedBlocks });
       })
     );
+  }
+
+  function saveTaskTitle(task: Task) {
+    const draft = titleDrafts[task.id];
+    setTitleDrafts((prev) => {
+      const { [task.id]: _gone, ...rest } = prev;
+      return rest;
+    });
+    const trimmed = draft?.trim();
+    if (!trimmed || trimmed === task.text) return;
+    updateTaskBothSides(task, { text: trimmed }, (b) => ({ ...b, text: trimmed }));
   }
 
   function saveTaskComment(task: Task, comment: string) {
@@ -1936,9 +1978,22 @@ export default function TasksScreen() {
               toggleTaskExpanded(item.id);
             }}
           >
-            <Text style={[styles.rowText, item.checked && styles.rowTextChecked]} numberOfLines={isExpanded ? undefined : 2}>
-              {item.text}
-            </Text>
+            {isExpanded && !isSelectMode ? (
+              // The opened task's title is editable right here (it was only reachable through the day's note).
+              <TextInput
+                value={titleDrafts[item.id] ?? item.text}
+                onChangeText={(v) => setTitleDrafts((prev) => ({ ...prev, [item.id]: v }))}
+                onBlur={() => saveTaskTitle(item)}
+                style={[styles.rowText, item.checked && styles.rowTextChecked, { padding: 0 }]}
+                multiline
+                blurOnSubmit
+                returnKeyType="done"
+              />
+            ) : (
+              <Text style={[styles.rowText, item.checked && styles.rowTextChecked]} numberOfLines={isExpanded ? undefined : 2}>
+                {item.text}
+              </Text>
+            )}
             {meta.length > 0 && (
               <Text style={styles.v2Meta} numberOfLines={1}>
                 {meta.map((m, i) => (
@@ -1950,6 +2005,11 @@ export default function TasksScreen() {
               </Text>
             )}
           </Pressable>
+          {isExpanded && !isSelectMode && (
+            <Pressable hitSlop={10} onPress={() => toggleTaskExpanded(item.id)} accessibilityLabel="Згорнути">
+              <Ionicons name="chevron-up" size={20} color={theme.ink.faint} />
+            </Pressable>
+          )}
           {isSelectMode && (
             <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowDelete}>
               <Ionicons
@@ -2061,16 +2121,33 @@ export default function TasksScreen() {
           <View style={styles.attachmentsRow}>
             {attachments.map((a) => (
               <View key={a.id} style={styles.attachmentChip}>
-                <Ionicons name={(a.type ?? 'paragraph') === 'image' ? 'image-outline' : 'document-outline'} size={14} color={theme.ink.muted} />
-                <Text style={styles.attachmentChipText} numberOfLines={1}>
-                  {(a.type === 'image' ? a.imageTitle : a.fileTitle || a.fileName) || 'Без назви'}
-                </Text>
+                {/* A tap on the chip LOOKS at it: a picture in the viewer, a file in the app that opens it. */}
+                <Pressable
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}
+                  onPress={() => {
+                    if (a.type === 'image' && a.imageUri) setViewerAttachment({ taskId: item.id, uri: a.imageUri, driveFileId: a.driveFileId });
+                    else if (a.fileUri)
+                      openFileExternally({ fileUri: a.fileUri, fileName: a.fileName ?? 'Файл', mimeType: a.mimeType, driveFileId: a.driveFileId });
+                  }}
+                >
+                  <Ionicons name={(a.type ?? 'paragraph') === 'image' ? 'image-outline' : 'document-outline'} size={14} color={theme.ink.muted} />
+                  <Text style={styles.attachmentChipText} numberOfLines={1}>
+                    {(a.type === 'image' ? a.imageTitle : a.fileTitle || a.fileName) || 'Без назви'}
+                  </Text>
+                </Pressable>
                 <Pressable hitSlop={8} onPress={() => removeAttachment(item, a.id)}>
                   <Ionicons name="close" size={13} color={theme.ink.faint} />
                 </Pressable>
               </View>
             ))}
           </View>
+        )}
+        {viewerAttachment?.taskId === item.id && (
+          <Modal visible transparent animationType="fade" onRequestClose={() => setViewerAttachment(null)}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <ZoomableImageViewer uri={viewerAttachment.uri} driveFileId={viewerAttachment.driveFileId} onClose={() => setViewerAttachment(null)} />
+            </GestureHandlerRootView>
+          </Modal>
         )}
         {!item.checked && (item.postponeCount ?? 0) >= 2 && (
           <View style={styles.v2Nudge}>
@@ -2320,7 +2397,8 @@ export default function TasksScreen() {
                 : navigation.navigate('Editor', { documentId: item.documentId })
             }
           >
-            <Text style={[styles.rowText, item.checked && styles.rowTextChecked]} numberOfLines={2}>
+            {/* Opened, the whole title (the user's: only the note showed it all). */}
+            <Text style={[styles.rowText, item.checked && styles.rowTextChecked]} numberOfLines={isExpanded ? undefined : 2}>
               {item.text}
             </Text>
             <View style={styles.chipsRow}>
@@ -2354,8 +2432,8 @@ export default function TasksScreen() {
               {project && opts.showListChip && (
                 <Pressable onPress={() => openListPicker(item.id)}>
                   <View style={[styles.chip, list ? { backgroundColor: `${list.color}1A` } : styles.chipEmpty]}>
-                    <Ionicons name="list-outline" size={11} color={list ? list.color : theme.ink.faint} />
-                    <Text style={[styles.chipText, { color: list ? list.color : theme.ink.faint }]}>
+                    <Ionicons name="list-outline" size={11} color={list ? readableInk(list.color) : theme.ink.faint} />
+                    <Text style={[styles.chipText, { color: list ? readableInk(list.color) : theme.ink.faint }]}>
                       {list ? list.name : 'Без списку'}
                     </Text>
                   </View>
@@ -2532,8 +2610,8 @@ export default function TasksScreen() {
               with nothing in it to offer. */}
           <Pressable onPress={() => (item.groupId ? openListPicker(item.id) : openProjectPicker(item.id))}>
             <View style={[styles.chip, list ? { backgroundColor: `${list.color}1A` } : styles.chipEmpty]}>
-              <Ionicons name="list-outline" size={11} color={list ? list.color : theme.ink.faint} />
-              <Text style={[styles.chipText, { color: list ? list.color : theme.ink.faint }]}>
+              <Ionicons name="list-outline" size={11} color={list ? readableInk(list.color) : theme.ink.faint} />
+              <Text style={[styles.chipText, { color: list ? readableInk(list.color) : theme.ink.faint }]}>
                 {list ? list.name : 'Без списку'}
               </Text>
             </View>
@@ -2585,16 +2663,16 @@ export default function TasksScreen() {
           <>
             <View style={styles.groupHeader}>
               {section.icon === 'star' ? (
-                <Ionicons name="star" size={14} color={section.color ?? theme.ink.faint} />
+                <Ionicons name="star" size={14} color={readableInk(section.color)} />
               ) : section.icon === 'list' ? (
-                <Ionicons name="list-outline" size={20} color={section.color ?? theme.ink.faint} />
+                <Ionicons name="list-outline" size={20} color={readableInk(section.color)} />
               ) : (
                 <View style={[styles.groupDot, { backgroundColor: section.color ?? theme.ink.faint }]} />
               )}
               <Text
                 style={[
                   section.icon === 'list' ? styles.groupTitleList : styles.groupTitle,
-                  { color: section.color ?? theme.ink.faint },
+                  { color: readableInk(section.color) },
                 ]}
               >
                 {section.title}
@@ -2951,6 +3029,7 @@ export default function TasksScreen() {
 
         {v2 && (view === 'home' || (isWindowList && !kanbanMode)) ? (
           <ScrollView
+            keyboardDismissMode="on-drag"
             contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad + 8 }]}
           >
             {/* The Mac has no bar at the top to say which window this is. */}

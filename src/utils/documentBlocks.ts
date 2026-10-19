@@ -41,6 +41,7 @@ export function retype(block: Block, type: BlockType): Block {
   const next = buildBlock(block.id, type, block.text);
   if (block.createdAt) next.createdAt = block.createdAt;
   if (block.canvas) next.canvas = block.canvas;
+  if (block.canvasGroup) next.canvasGroup = block.canvasGroup;
   if (block.exitsToggle) next.exitsToggle = true;
   return next;
 }
@@ -208,7 +209,14 @@ function parseFormattedInto(text: string, style: TextStyle, out: TextSegment[], 
   while (i < text.length) {
     const rest = text.slice(i);
     let consumed = 0;
-    if (rest.startsWith('**')) {
+    // Bold AND italic on the same words: italic put round bold (or bold round italic) gives three stars each side.
+    // Read as two pairs it came apart into stray stars on the screen (2026-10-19, «tst ***day***»).
+    const triple = rest.startsWith('***') ? rest.indexOf('***', 3) : -1;
+    if (triple !== -1) {
+      flushPlain(i);
+      parseFormattedInto(rest.slice(3, triple), { ...style, bold: true, italic: true }, out, base + i + 3);
+      consumed = triple + 3;
+    } else if (rest.startsWith('**')) {
       const close = rest.indexOf('**', 2);
       if (close !== -1) {
         flushPlain(i);
@@ -716,4 +724,84 @@ export function buildDocumentText(title: string, blocks: Block[]): string {
 
 export function sanitizeFileName(name: string): string {
   return name.replace(/[/\\]/g, '-').trim() || 'Без назви';
+}
+
+// ONE STYLE AT A TIME (2026-10-19, the user's: bold, italic, underline, strikethrough exclude each other, and changing
+// one must clear the markers of the other that cannot be seen). The block's text is rebuilt from its runs rather than
+// having markers put round the selection: the chosen words get ONLY the chosen style (pressed again, none), their
+// colour and highlight and note links stay. The displayed text never changes, so a selection in display terms is
+// still the same words afterwards. An empty selection changes nothing.
+export type InlineStyleKey = 'bold' | 'italic' | 'underline' | 'strikethrough';
+type StyledPiece = { text: string; atom?: string; style: TextStyle };
+const sameStyle = (a: TextStyle, b: TextStyle) =>
+  !!a.bold === !!b.bold &&
+  !!a.italic === !!b.italic &&
+  !!a.underline === !!b.underline &&
+  !!a.strikethrough === !!b.strikethrough &&
+  a.color === b.color &&
+  a.highlight === b.highlight;
+function serializePiece(p: StyledPiece): string {
+  let core = p.atom ?? p.text;
+  if (!core) return '';
+  const s = p.style;
+  if (s.bold && s.italic) core = `***${core}***`;
+  else if (s.bold) core = `**${core}**`;
+  else if (s.italic) core = `*${core}*`;
+  if (s.underline) core = `__${core}__`;
+  if (s.strikethrough) core = `~~${core}~~`;
+  if (s.highlight) core = `{h:${s.highlight}}${core}${HIGHLIGHT_CLOSE}`;
+  if (s.color) core = `{c:${s.color}}${core}${COLOR_CLOSE}`;
+  return core;
+}
+export function applyExclusiveStyle(raw: string, start: number, end: number, key: InlineStyleKey): string {
+  if (end <= start) return raw;
+  const pieces: StyledPiece[] = [];
+  let at = 0;
+  for (const seg of parseFormattedText(raw)) {
+    const style: TextStyle = {
+      bold: seg.bold,
+      italic: seg.italic,
+      underline: seg.underline,
+      strikethrough: seg.strikethrough,
+      color: seg.color,
+      highlight: seg.highlight,
+    };
+    const from = at;
+    at += seg.text.length;
+    if (seg.noteLink) {
+      // A note link is one atom: kept whole, with its own markup.
+      pieces.push({ text: seg.text, atom: raw.slice(seg.rawStart, seg.rawEnd), style });
+      continue;
+    }
+    // Cut at the selection's two ends.
+    const cuts = [0, Math.max(0, Math.min(seg.text.length, start - from)), Math.max(0, Math.min(seg.text.length, end - from)), seg.text.length];
+    for (let i = 0; i < 3; i++) {
+      if (cuts[i + 1] > cuts[i]) pieces.push({ text: seg.text.slice(cuts[i], cuts[i + 1]), style: { ...style } });
+    }
+  }
+  // Which pieces lie inside the selection (atoms included: a link takes the style too).
+  let pos = 0;
+  const inside: StyledPiece[] = [];
+  for (const p of pieces) {
+    const from = pos;
+    pos += p.text.length;
+    if (from >= start && pos <= end) inside.push(p);
+  }
+  if (inside.length === 0) return raw;
+  const off = inside.every((p) => p.style[key]);
+  for (const p of inside) {
+    p.style.bold = false;
+    p.style.italic = false;
+    p.style.underline = false;
+    p.style.strikethrough = false;
+    if (!off) p.style[key] = true;
+  }
+  // Neighbours alike become one run again, so a word does not end up in a chain of markers.
+  const merged: StyledPiece[] = [];
+  for (const p of pieces) {
+    const last = merged[merged.length - 1];
+    if (last && !last.atom && !p.atom && sameStyle(last.style, p.style)) last.text += p.text;
+    else merged.push({ ...p, style: { ...p.style } });
+  }
+  return merged.map(serializePiece).join('');
 }

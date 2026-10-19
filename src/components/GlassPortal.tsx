@@ -9,7 +9,7 @@ import {
   useState,
   memo,
 } from 'react';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { BlurTargetBridge, useBlurTarget } from './GlassTarget';
 
 // Draws a sheet at the top of the app instead of where it is declared.
@@ -32,7 +32,7 @@ import { BlurTargetBridge, useBlurTarget } from './GlassTarget';
 // overlay mounts with a screen, and which of those comes first is an
 // accident of the navigator. A carried card has to ride over the dock:
 // it is the thing in your hand.
-type Mount = (id: string, node: ReactNode, priority: number) => void;
+type Mount = (id: string, node: ReactNode, priority: number, name?: string) => void;
 type Unmount = (id: string) => void;
 
 const PortalContext = createContext<{ mount: Mount; unmount: Unmount } | null>(null);
@@ -55,11 +55,11 @@ export function GlassPortalHost({ children }: { children: ReactNode }) {
   // explicit height from it can no longer disagree with what the actual
   // screen underneath is doing.
   const { height: windowHeight } = useWindowDimensions();
-  const [nodes, setNodes] = useState<Map<string, { node: ReactNode; priority: number }>>(new Map());
-  const mount = useCallback<Mount>((id, node, priority) => {
+  const [nodes, setNodes] = useState<Map<string, { node: ReactNode; priority: number; name?: string }>>(new Map());
+  const mount = useCallback<Mount>((id, node, priority, name) => {
     setNodes((prev) => {
       const next = new Map(prev);
-      next.set(id, { node, priority });
+      next.set(id, { node, priority, name });
       return next;
     });
   }, []);
@@ -88,6 +88,13 @@ export function GlassPortalHost({ children }: { children: ReactNode }) {
           ))}
         </View>
       )}
+      {/* TEMPORARY (2026-10-15, hunting a grey veil): every portal layer standing, with its priority and the
+          component that put it there. Remove with the fix. */}
+      {DEBUG_PORTALS && (
+        <Text pointerEvents="none" style={{ position: 'absolute', left: 4, top: 4, fontSize: 9, color: '#c00', backgroundColor: 'rgba(255,255,255,0.8)', zIndex: 9999 }}>
+          {entries.map(([id, e]) => `${e.priority}:${e.name ?? id}`).join(" ")}
+        </Text>
+      )}
     </PortalContext.Provider>
   );
 }
@@ -107,8 +114,9 @@ const PortalEntry = memo(function PortalEntry({ node }: { node: ReactNode }) {
 });
 
 let nextId = 0;
+const DEBUG_PORTALS = false;
 
-export function GlassPortal({ children, priority = 0 }: { children: ReactNode; priority?: number }) {
+export function GlassPortal({ children, priority = 0, name }: { children: ReactNode; priority?: number; name?: string }) {
   const portal = useContext(PortalContext);
   // Captured HERE, where the glass is written - inside the target - and
   // carried to the host, which is outside it. Without this every
@@ -122,7 +130,7 @@ export function GlassPortal({ children, priority = 0 }: { children: ReactNode; p
   // Layout effect, not effect: the host should have the sheet before the
   // frame is shown, or a sheet flickers in a frame late.
   useLayoutEffect(() => {
-    portal?.mount(id, <BlurTargetBridge value={blurTarget}>{children}</BlurTargetBridge>, priority);
+    portal?.mount(id, <BlurTargetBridge value={blurTarget}>{children}</BlurTargetBridge>, priority, name);
   });
   useLayoutEffect(() => () => portal?.unmount(id), [portal, id]);
 

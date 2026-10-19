@@ -1,5 +1,6 @@
+import { FEATURES } from '../features';
 import { Ionicons } from '../components/icons/Ionicons';
-import { whenDeskIsThere } from '../navigation/deskRegistry';
+import { threeDesksOnly, whenDeskIsThere } from '../navigation/deskRegistry';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { doc } from '../firestore';
 import { db } from '../firebase';
@@ -19,7 +20,7 @@ export type Tile = {
   // "Скоро" placeholder.
   linkCategory?: 'video' | 'geo' | 'other';
   // Set for tiles with their own dedicated (paramless) screen.
-  route?: 'Photos' | 'Files' | 'Tags' | 'Groups' | 'Diary' | 'Stickers' | 'Tasks' | 'Chat' | 'Flashcards';
+  route?: 'Photos' | 'Files' | 'Tags' | 'Groups' | 'Explorer' | 'Diary' | 'Stickers' | 'Tasks' | 'Chat' | 'Flashcards';
   // The documents tile - documents are a TAB, not a root-stack screen, so
   // it goes through `navigation.navigate('Tabs', { screen: 'Документи' })`.
   opensDocumentsTab?: boolean;
@@ -63,6 +64,8 @@ export const GRID_TILES: Tile[] = [
   { key: 'stickers', label: 'Стікери', icon: 'reader-outline', route: 'Stickers' },
   { key: 'board', label: 'Дошка', icon: 'apps-outline', opensBoardsTab: true },
   { key: 'tags', label: 'Папки', icon: 'folder-outline', route: 'Tags' },
+  // The single explorer, step 2 (view only) - see screens/ExplorerScreen.
+  ...(FEATURES.singleExplorer ? [{ key: 'explorer', label: 'Провідник', icon: 'folder-open-outline' as const, route: 'Explorer' as const }] : []),
   { key: 'groups', label: 'Проекти', icon: 'albums-outline', route: 'Groups' },
   { key: 'diary', label: 'Щоденник', icon: 'book-outline', route: 'Diary' },
   { key: 'chat', label: 'Чат', icon: 'chatbubbles-outline', route: 'Chat' },
@@ -91,11 +94,16 @@ export function openDatabaseTile(
   tile: Tile
 ) {
   if (tile.opensDocumentsTab) {
-    whenDeskIsThere('Документи', () => navigation.navigate('Tabs', { screen: 'Документи' }));
+    whenDeskIsThere(
+      'Документи',
+      () => navigation.navigate('Tabs', { screen: 'Документи' }),
+      () => navigation.navigate('DocumentsCopy')
+    );
   } else if (tile.linkCategory) {
     navigation.navigate('Links', { category: tile.linkCategory });
   } else if (tile.opensBoardsTab) {
-    navigation.navigate('Tabs', { screen: 'Дошки' });
+    if (threeDesksOnly) navigation.navigate('BoardsCopy');
+    else navigation.navigate('Tabs', { screen: 'Дошки' });
   } else if (tile.route) {
     navigation.navigate(tile.route);
   } else {

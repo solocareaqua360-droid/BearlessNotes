@@ -1,5 +1,42 @@
 import { Block, CanvasLink } from '../types';
 
+// GLUED BLOCKS (Block.canvasGroup): which blocks stand together as one card, and which of them is the head (the
+// lowest order - its position places the group). Only groups with at least two members present count; a lone
+// member is an ordinary card.
+export type CanvasGroups = {
+  headOf: Map<string, string>;
+  members: Map<string, Block[]>;
+};
+export function canvasGroups(blocks: Block[]): CanvasGroups {
+  const byGroup = new Map<string, Block[]>();
+  for (const b of blocks) {
+    if (!b.canvasGroup || b.canvasDivider) continue;
+    (byGroup.get(b.canvasGroup.id) ?? byGroup.set(b.canvasGroup.id, []).get(b.canvasGroup.id)!).push(b);
+  }
+  const headOf = new Map<string, string>();
+  const members = new Map<string, Block[]>();
+  for (const list of byGroup.values()) {
+    if (list.length < 2) continue;
+    const sorted = [...list].sort((a, b) => a.canvasGroup!.order - b.canvasGroup!.order || a.id.localeCompare(b.id));
+    const head = sorted[0].id;
+    members.set(head, sorted);
+    sorted.forEach((m) => headOf.set(m.id, head));
+  }
+  return { headOf, members };
+}
+
+// The arrows as the groups see them: each end moved to its group's head, an arrow inside one group dropped.
+export function anchorCanvasLinks(links: Record<string, CanvasLink>, headOf: Map<string, string>): Record<string, CanvasLink> {
+  const out: Record<string, CanvasLink> = {};
+  for (const [id, link] of Object.entries(links)) {
+    const from = headOf.get(link.from) ?? link.from;
+    const to = headOf.get(link.to) ?? link.to;
+    if (from === to) continue;
+    out[id] = from === link.from && to === link.to ? link : { ...link, from, to };
+  }
+  return out;
+}
+
 // Which arrows set the order, and which merely point.
 //
 // The user's way of never having to choose between parallel arrows: the
@@ -49,7 +86,13 @@ export function sequenceLinkIds(links: Record<string, CanvasLink>): Set<string> 
 //
 // Returns the SAME array when nothing would move, so a caller can tell
 // "nothing to do" from "reordered" without comparing.
-export function orderByCanvasLinks(blocks: Block[], links: Record<string, CanvasLink>): Block[] {
+export function orderByCanvasLinks(blocks: Block[], rawLinks: Record<string, CanvasLink>): Block[] {
+  // A glued group is one card here: its arrows start and end at its head, and wherever the head goes on the page
+  // the rest of the group follows it, in its own order.
+  const groups = canvasGroups(blocks);
+  const links = anchorCanvasLinks(rawLinks, groups.headOf);
+  const anchorOf = (id: string) => groups.headOf.get(id) ?? id;
+  const expand = (ids: string[]) => ids.flatMap((id) => groups.members.get(id)?.map((m) => m.id) ?? [id]);
   const byId = new Map(blocks.map((b, index) => [b.id, { block: b, index }]));
   const outgoing = new Map<string, string[]>();
   const incoming = new Set<string>();
@@ -60,7 +103,7 @@ export function orderByCanvasLinks(blocks: Block[], links: Record<string, Canvas
     (outgoing.get(link.from) ?? outgoing.set(link.from, []).get(link.from)!).push(link.to);
     incoming.add(link.to);
   }
-  if (outgoing.size === 0) return blocks;
+  if (outgoing.size === 0 && groups.members.size === 0) return blocks;
 
   // Where a card sits, for "top to bottom": its canvas position when it
   // has been placed, and otherwise its place in the page, which is also
@@ -94,8 +137,15 @@ export function orderByCanvasLinks(blocks: Block[], links: Record<string, Canvas
   // start it at its topmost card.
   for (const id of Array.from(connected).sort(byPosition)) read(id);
 
-  const rest = blocks.filter((b) => !seen.has(b.id)).map((b) => b.id);
-  const next = [...order, ...rest];
+  // The rest keep their order - a group at the place of its first member on the page.
+  const rest: string[] = [];
+  for (const b of blocks) {
+    const anchor = anchorOf(b.id);
+    if (seen.has(anchor)) continue;
+    seen.add(anchor);
+    rest.push(anchor);
+  }
+  const next = expand([...order, ...rest]);
   if (next.every((id, index) => blocks[index].id === id)) return blocks;
   return next.map((id) => byId.get(id)!.block);
 }
@@ -121,16 +171,18 @@ export function assembleWithDivider(
 ): Block[] {
   const withoutLine = blocks.filter((b) => !b.canvasDivider);
   const ordered = orderByCanvasLinks(withoutLine, links);
-  const primary = sequenceLinkIds(links);
+  const groups = canvasGroups(withoutLine);
+  const anchored = anchorCanvasLinks(links, groups.headOf);
+  const primary = sequenceLinkIds(anchored);
   const chained = new Set<string>();
-  for (const [id, link] of Object.entries(links)) {
+  for (const [id, link] of Object.entries(anchored)) {
     if (!primary.has(id)) continue;
     if (withoutLine.some((b) => b.id === link.from) && withoutLine.some((b) => b.id === link.to)) {
       chained.add(link.from);
       chained.add(link.to);
     }
   }
-  const assembledCount = ordered.filter((b) => chained.has(b.id)).length;
+  const assembledCount = ordered.filter((b) => chained.has(groups.headOf.get(b.id) ?? b.id)).length;
   const next =
     assembledCount > 0 && assembledCount < ordered.length
       ? [...ordered.slice(0, assembledCount), { ...makeDivider(), canvasDivider: true }, ...ordered.slice(assembledCount)]

@@ -5,11 +5,14 @@ import { markHeld } from '../utils/heldNode';
 // A Pressable whose hold says "this one" before its handler runs, so the
 // menu the hold opens lifts it over the blur (heldNode / holdAsk). For the
 // odd card drawn inline, without a card component of its own to do it.
-export default function HoldPressable({ onLongPress, ...rest }: PressableProps) {
+export default function HoldPressable({ onLongPress, nodeRef, ...rest }: PressableProps & { nodeRef?: (node: View | null) => void }) {
   const node = useRef<View | null>(null);
   return (
     <Pressable
-      ref={node}
+      ref={(n) => {
+        node.current = n;
+        nodeRef?.(n);
+      }}
       {...rest}
       onLongPress={
         onLongPress

@@ -1,8 +1,9 @@
 import { Ionicons } from './icons/Ionicons';
 import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
 import { ReactNode, useEffect, useMemo, useRef, useState, memo } from 'react';
+import { Animated as RNAnimated } from 'react-native';
 import { Keyboard, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput, useWindowDimensions, View, ViewStyle } from 'react-native';
-import Animated, { Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, Extrapolation, FadeIn, FadeOut, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost, { FlatFrostContext } from './DockFrost';
 import { GlassPortal } from './GlassPortal';
@@ -12,11 +13,16 @@ import { DOCK_PIECE_RADIUS, dockCardHeight } from '../navigation/dockGeometry';
 import Menu from './surfaces/Menu';
 import SaveRing from './SaveRing';
 import { DockContext, TopBack, TopExtras, TopSearch, useNavChromeStyle, useNavDockOwnContext, useNavDockTargets, useNavDrawerCover, useNavTopBack, useNavTopExtras, useNavTopSearch, useTopNavClaim } from '../navigation/navDock';
+import { navigationRef } from '../navigationRef';
+import { chromeCompact, useChromeCompactFlag } from '../navigation/chromeScroll';
+import { useDeskBeads, useDockCarriesBack } from '../navigation/deskBeadsBus';
+import { FEATURES } from '../features';
 import SoftIcon, { SoftIconName } from './SoftIcon';
 import { SoftTokens, useSoft } from '../theme/soft';
 import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDensity } from '../hooks/useDensity';
 import { useRenderTimer } from '../utils/perfWatch';
+import { CAPSULE_H, CAPSULE_W, VoiceCapsule, useVoiceCapsuleOn } from './thoughts/VoicePlayer';
 
 // THE DESKS, AT THE TOP - the user's plan after looking at Notion: the
 // way back in the top-left corner, then the desks, the one you are on
@@ -111,12 +117,15 @@ export type TopTitle = {
 // A note says where it lives instead: its folder, then its own name -
 // "папка › назва", each folder a way to that folder, the name itself the
 // place you are.
-export type TopTrail = { icon: string; crumbs: { label: string; onPress?: () => void }[] };
+// `step`: the folder path this crumb stands for - a card held in a finger can be stepped into it (the
+// carry's step targets), as on the folder path row.
+export type TopTrail = { icon: string; crumbs: { label: string; onPress?: () => void; step?: string }[] };
 
 function TopNavBar({
-  desks,
-  title,
-  trail,
+  desks: desksAll,
+  deskPosition,
+  title: titleProp,
+  trail: trailProp,
   onLongPress,
   saving,
   inline,
@@ -127,6 +136,8 @@ function TopNavBar({
   softInline,
 }: {
   desks?: TopDesk[];
+  // The pager's live position (react-navigation's tab view): the desks' names ride it - see DeskTitles.
+  deskPosition?: RNAnimated.Value | RNAnimated.AnimatedInterpolation<number>;
   title?: TopTitle;
   trail?: TopTrail;
   onLongPress?: () => void;
@@ -150,10 +161,40 @@ function TopNavBar({
   saving?: boolean;
 }) {
   useRenderTimer('Верхня смужка');
+  // THE DESKS ARE IN THE DOCK NOW (features.deskDock, 2026-10-12, the user's: «буде тільки назва нашого поточного
+  // столу»): while the dock carries the three, the bar keeps only the one in front - its name, its cross where it
+  // can be closed - and the plate is that wide.
+  const dockBeads = useDeskBeads();
+  const desks = useMemo(
+    () => (FEATURES.deskDock && dockBeads?.length && desksAll ? desksAll.filter((d) => d.active) : desksAll),
+    [desksAll, dockBeads]
+  );
   // While this bar is drawn, the path is drawn in it (not over the dock).
   // A bar inside a drawer is not the window's bar: it says nothing about
   // where the window's path and days should stand.
   useTopNavClaim(!inline);
+  // A BASE OPENED FROM THE BASES DESK says where it is (2026-10-12, the user's: «при відкритті бази у верхній
+  // стрічці повинен показуватись шлях»): the bases desk marks what it opens (`fromBases`, see DatabasesScreen),
+  // and a plain title becomes the trail «Бази › <name>», the first crumb the way back. Read here, once, rather
+  // than taught to each of the dozen screens that draw a title.
+  const fromBases =
+    !inline &&
+    FEATURES.basesDesk &&
+    !!titleProp &&
+    !titleProp.choices &&
+    !!(navigationRef.isReady() && (navigationRef.getCurrentRoute()?.params as { fromBases?: boolean } | undefined)?.fromBases);
+  const title = fromBases ? undefined : titleProp;
+  const trail: TopTrail | undefined =
+    trailProp ??
+    (fromBases && titleProp
+      ? {
+          icon: titleProp.icon,
+          crumbs: [
+            { label: 'Бази', onPress: () => navigationRef.isReady() && navigationRef.canGoBack() && navigationRef.goBack() },
+            { label: titleProp.label },
+          ],
+        }
+      : undefined);
   const theme = useTheme();
   const lift = useLift();
   const insets = useSafeAreaInsets();
@@ -183,6 +224,11 @@ function TopNavBar({
   const frame = topBarFrame(inline ? inline.width : windowWidth);
   const cover = useNavDrawerCover();
   const fading = !!fadeWithDrawer && !!cover?.active;
+  // The chrome steps back while a list is read (features.chromeCompact): the bar stays SOLID (a see-through one
+  // over scrolling text is a mess) but narrows to the plate with the title, the way back and the "⋯" / choosing
+  // cluster fading out and taking no touches while folded.
+  const compactOn = useChromeCompactFlag() && FEATURES.chromeCompact && !inline;
+  const compactCluster = useAnimatedStyle(() => ({ opacity: 1 - chromeCompact.value }));
   const coverProgress = cover?.progress;
   const fadeStyle = useAnimatedStyle(
     () => ({
@@ -202,7 +248,88 @@ function TopNavBar({
   const clusterCount = toolCount + (extras?.menu ? 1 : 0) + (extras?.select ? 1 : 0) + (extras?.pane ? 1 : 0);
   const clusterWidth =
     toolCount * MENU_W + (extras?.menu ? MENU_W : 0) + (extras?.select ? SIDE_W : 0) + (extras?.pane ? SIDE_W : 0);
-  const plateWidth = frame.width - (SIDE_W + gap) - (clusterCount > 0 ? clusterWidth + gap : 0);
+  // The way back is the dock's circle now (DeskDock): the bar draws none of its own, and keeps the same room on the
+  // left as the buttons take on the right, so the name sits on the middle of the SCREEN, not of what is left.
+  const dockCarriesBack = useDockCarriesBack();
+  const backHidden = FEATURES.deskDock && dockCarriesBack && !inline && soft;
+  const rightW = clusterCount > 0 ? clusterWidth + gap : 0;
+  // Soft bar: the left side keeps as much room as the right one even with the back button there (empty room after
+  // it), so every name stands on the middle of the SCREEN.
+  const leftWBase = soft && !inline ? Math.max(SIDE_W + gap, rightW) : backHidden ? rightW : SIDE_W + gap;
+  // THE PLAYER'S CAPSULE on the bar's left edge while something is read aloud (thoughts/VoicePlayer.tsx, the
+  // user's sketch 2026-10-15): the left keeps room for it, and the right as much again, so the name still stands
+  // on the middle of the SCREEN («головне правильно центрувати»). Where the way back is still at the top, the
+  // capsule stands after it.
+  const capsuleOn = useVoiceCapsuleOn() && !inline;
+  const capsuleX = backHidden ? PLATE_PAD : SIDE_W + gap + 4;
+  const leftW = capsuleOn ? Math.max(leftWBase, capsuleX + CAPSULE_W + PLATE_PAD, rightW) : leftWBase;
+  const rightRoom = capsuleOn ? leftW : rightW;
+  const rightExtra = Math.max(0, rightRoom - rightW - gap);
+  const plateWidth = frame.width - leftW - rightRoom;
+  // The solid pill narrows to the plate while the chrome is folded (see compactOn above).
+  // Not to nothing: a see-through pill over scrolling text left the name lost in it (tried 2026-10-12, rim only).
+  const compactFill = useAnimatedStyle(() => ({ opacity: 1 - 0.08 * chromeCompact.value }));
+  const compactRim = useAnimatedStyle(() => ({ opacity: chromeCompact.value }));
+  // The width of the desk's name in front (DeskTitles reports it): folded, the rim wraps just that, a little wider.
+  const titleW = useSharedValue(0);
+  // 1 while the plate shows a folder PATH: that is wider than any name, so the folded capsule keeps the whole plate
+  // (it hugged the last desk name and cut the path off, 2026-10-13).
+  const pathOn = useSharedValue(0);
+  // The plate and the cluster ease to their new widths when the screen in front has fewer (or more) buttons at the
+  // bar's right end - «⋯» slides across to the end, the checking circle dissolves - instead of jumping.
+  const plateW = useSharedValue(plateWidth);
+  const clusterW = useSharedValue(clusterWidth);
+  const leftWv = useSharedValue(leftW);
+  const rightExtraV = useSharedValue(rightExtra);
+  const capOn = useSharedValue(capsuleOn ? 1 : 0);
+  useEffect(() => {
+    plateW.value = withTiming(plateWidth, { duration: 260, easing: Easing.out(Easing.cubic) });
+    clusterW.value = withTiming(clusterWidth, { duration: 260, easing: Easing.out(Easing.cubic) });
+    leftWv.value = withTiming(leftW, { duration: 260, easing: Easing.out(Easing.cubic) });
+    rightExtraV.value = withTiming(rightExtra, { duration: 260, easing: Easing.out(Easing.cubic) });
+    capOn.value = capsuleOn ? 1 : 0;
+  }, [plateWidth, clusterWidth, leftW, rightExtra, capsuleOn, plateW, clusterW, leftWv, rightExtraV, capOn]);
+  const rightSpacer = useAnimatedStyle(() => ({ width: rightExtraV.value, height: TOP_NAV_H }));
+  const leftSpacer = useAnimatedStyle(() => ({ width: leftWv.value, height: TOP_NAV_H }));
+  const clusterSize = useAnimatedStyle(() => ({ width: clusterW.value }));
+  // Folded with the capsule: it rides in from the left edge to stand against the name, and the two are centred
+  // as one (the name moves over by half the capsule) - the folded pill wraps both.
+  const hugPair = (): { pairLeft: number; pairW: number } | null => {
+    'worklet';
+    if (capOn.value === 0 || pathOn.value !== 0 || titleW.value <= 0) return null;
+    const centre = leftWv.value + plateW.value / 2;
+    const w = Math.min(plateW.value, titleW.value + 44);
+    const pairW = CAPSULE_W + 4 + w;
+    return { pairLeft: centre - pairW / 2, pairW };
+  };
+  const capsuleRide = useAnimatedStyle(() => {
+    const pair = hugPair();
+    return { transform: [{ translateX: pair ? chromeCompact.value * (pair.pairLeft + 2 - capsuleX) : 0 }] };
+  });
+  const titleRide = useAnimatedStyle(() => ({
+    transform: [{ translateX: hugPair() ? (chromeCompact.value * (CAPSULE_W + 4)) / 2 : 0 }],
+  }));
+  const compactBg = useAnimatedStyle(() => {
+    const c = chromeCompact.value;
+    const pair = hugPair();
+    if (pair) {
+      return {
+        left: c * (pair.pairLeft - 2),
+        right: c * (frame.width - (pair.pairLeft + pair.pairW)),
+        top: c * 4,
+        bottom: c * 4,
+      };
+    }
+    const centre = leftWv.value + plateW.value / 2;
+    const w = pathOn.value === 0 && titleW.value > 0 ? Math.min(plateW.value, titleW.value + 44) : plateW.value;
+    return {
+      left: c * (centre - w / 2),
+      right: c * (frame.width - (centre + w / 2)),
+      // ...and in height too: the capsule hugs the name's line.
+      top: c * 7,
+      bottom: c * 7,
+    };
+  });
   const innerWidth = plateWidth - PLATE_PAD * 2;
   // The open desk takes whatever the plate has left once the closed desks
   // and the cuts between them have theirs - so the widths always add up,
@@ -224,6 +351,9 @@ function TopNavBar({
   const own = useNavDockOwnContext();
   // A drawer's bar is not where the desk's folder path belongs.
   const path = !inline && own?.kind === 'path' ? own : null;
+  useEffect(() => {
+    pathOn.value = path ? 1 : 0;
+  }, [path, pathOn]);
   const lastPath = useRef<PathContext | null>(null);
   if (path) lastPath.current = path;
   const shownPath = path ?? lastPath.current;
@@ -285,8 +415,8 @@ function TopNavBar({
     opacity: interpolate(expand.value, [0, 0.6], [1, 0], Extrapolation.CLAMP),
   }));
   const plateGrow = useAnimatedStyle(() => ({
-    marginLeft: -(SIDE_W + gap) * expand.value,
-    width: plateWidth + (frame.width - plateWidth) * expand.value,
+    marginLeft: -leftWv.value * expand.value,
+    width: plateW.value + (frame.width - plateW.value) * expand.value,
   }));
   const rowsAway = useAnimatedStyle(() => ({
     opacity: interpolate(expand.value, [0, 0.4], [1, 0], Extrapolation.CLAMP),
@@ -315,11 +445,40 @@ function TopNavBar({
         style={[styles.row, { top: barTop, left: frame.left, width: frame.width, gap }, fadeStyle]}
       >
         {soft && (
-          <View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { backgroundColor: S.chrome, borderRadius: TOP_NAV_H / 2, boxShadow: S.shadow }]}
-          />
+          <>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: S.chrome, borderRadius: TOP_NAV_H / 2, boxShadow: S.shadow },
+                !inline && FEATURES.chromeCompact ? compactBg : undefined,
+                !inline && FEATURES.chromeCompact ? compactFill : undefined,
+              ]}
+            />
+            {/* Folded: no fill at all, only the rim - drawn the moment the fill goes. */}
+            {!inline && FEATURES.chromeCompact && (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFill,
+                  { borderRadius: TOP_NAV_H / 2, boxShadow: `0px 0px 0px 1px ${S.dark ? 'rgba(255,255,255,0.2)' : 'rgba(30,30,28,0.17)'}` },
+                  compactBg,
+                  compactRim,
+                ]}
+              />
+            )}
+          </>
         )}
+        {backHidden ? (
+          // Its own key: the same kind of view in the same place, the back wrapper below would inherit this one's
+          // animated width (90) and push the plate and the «⋯ ✓» cluster off the bar's end (2026-10-13).
+          <Animated.View key="left-spacer" style={leftSpacer} pointerEvents="none" />
+        ) : (
+        <Animated.View
+          key="back"
+          style={[{ flexDirection: 'row' }, !inline && FEATURES.chromeCompact ? compactCluster : undefined]}
+          pointerEvents={compactOn ? 'none' : 'box-none'}
+        >
         <Animated.View style={backAway} pointerEvents={searchShown ? 'none' : 'auto'}>
         <Pressable
           disabled={!back || back.dimmed}
@@ -334,6 +493,9 @@ function TopNavBar({
           </Surface>
         </Pressable>
         </Animated.View>
+        {leftW > SIDE_W + gap && <View key="left-room" style={{ width: leftW - (SIDE_W + gap) }} pointerEvents="none" />}
+        </Animated.View>
+        )}
 
         {/* The plate, and on it whichever of the two rows is in front -
             or, with neither a title nor desks to show, no plate at all:
@@ -343,7 +505,7 @@ function TopNavBar({
             <>
               {!soft && <DockFrost style={StyleSheet.absoluteFill} radius={corners.plate} />}
               <View style={[styles.viewport, { borderRadius: pieceRadius }]}>
-                <Animated.View style={[StyleSheet.absoluteFill, rowsAway]} pointerEvents={searchShown ? 'none' : 'box-none'}>
+                <Animated.View style={[StyleSheet.absoluteFill, rowsAway, titleRide]} pointerEvents={searchShown ? 'none' : 'box-none'}>
                 <Animated.View
                   style={[styles.layer, desksStyle]}
                   pointerEvents={path ? 'none' : 'box-none'}
@@ -382,7 +544,20 @@ function TopNavBar({
                       </Surface>
                     </Pressable>
                   )}
-                  {!!desks?.length && (
+                  {!!desks?.length && soft && FEATURES.deskDock && !!dockBeads?.length && (
+                    <DeskTitles
+                      desks={deskPosition && desksAll ? desksAll : desks}
+                      position={deskPosition}
+                      width={innerWidth}
+                      ink={ink}
+                      inkMuted={inkMuted}
+                      onLongPress={onLongPress}
+                      onActiveWidth={(w) => {
+                        titleW.value = w;
+                      }}
+                    />
+                  )}
+                  {!!desks?.length && !(soft && FEATURES.deskDock && !!dockBeads?.length) && (
                     <DesksRow
                       desks={desks}
                       radius={pieceRadius}
@@ -418,14 +593,15 @@ function TopNavBar({
           )}
         </Animated.View>
 
+        {rightExtra > 0 && <Animated.View key="right-room" style={rightSpacer} pointerEvents="none" />}
         {/* "⋯", choosing and (on a Fold pane) expand/collapse as ONE
             piece - "дві кнопки об'єднати": one plate, a hairline between
             the buttons on it, so they read as one control at rest and
             not only while the save ring is tracing round them. */}
         {clusterCount > 0 && (
           <Animated.View
-            pointerEvents={searchShown ? 'none' : 'auto'}
-            style={[styles.cluster, !soft && lift, { width: clusterWidth, borderRadius: corners.plate }, clusterAway]}
+            pointerEvents={searchShown || compactOn ? 'none' : 'auto'}
+            style={[styles.cluster, !soft && lift, { borderRadius: corners.plate }, clusterSize, clusterAway, !inline && FEATURES.chromeCompact ? compactCluster : undefined]}
           >
             {!soft && <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} />}
             {[
@@ -434,7 +610,8 @@ function TopNavBar({
                 width: MENU_W,
                 icon: t.icon,
                 label: t.label,
-                active: false,
+                active: !!t.active,
+                dot: !!t.dot,
                 dimmed: !!t.dimmed,
                 onPress: t.onPress,
               })),
@@ -450,8 +627,8 @@ function TopNavBar({
             ]
               .filter((b): b is NonNullable<typeof b> => !!b)
               .map((b, i) => (
+                <Animated.View key={b.key} entering={FadeIn.duration(220)} exiting={FadeOut.duration(140)}>
                 <Pressable
-                  key={b.key}
                   disabled={'dimmed' in b && b.dimmed}
                   onPress={b.onPress}
                   accessibilityLabel={b.label}
@@ -460,10 +637,22 @@ function TopNavBar({
                   {i > 0 && !soft && <View style={[styles.clusterDivider, { backgroundColor: theme.glass.inkMuted }]} />}
                   <View style={'dimmed' in b && b.dimmed ? { opacity: 0.3 } : null}>
                     <Glyph name={b.icon} size={soft ? 22 : 21} color={b.active ? (soft ? S.accent : theme.accent) : ink} soft={soft} />
+                    {'dot' in b && b.dot && (
+                      <View
+                        pointerEvents="none"
+                        style={[styles.toolDot, { backgroundColor: soft ? S.accent : theme.accent, borderColor: soft ? S.chrome : 'transparent' }]}
+                      />
+                    )}
                   </View>
                 </Pressable>
+                </Animated.View>
               ))}
             <SaveRing saving={!!saving} color={ink} radius={corners.plate} />
+          </Animated.View>
+        )}
+        {capsuleOn && (
+          <Animated.View style={[{ position: 'absolute', left: capsuleX, top: (TOP_NAV_H - CAPSULE_H) / 2 }, capsuleRide]}>
+            <VoiceCapsule />
           </Animated.View>
         )}
       </Animated.View>
@@ -536,7 +725,7 @@ function Glyph({ name, size, color, soft }: { name: string; size: number; color:
 function PortalLayer({ children }: { children: ReactNode }) {
   const cover = useAnimatedStyle(() => ({ opacity: 1 - chromeCover.value }));
   return (
-    <GlassPortal priority={1}>
+    <GlassPortal priority={1} name="topBar">
       <Animated.View style={[StyleSheet.absoluteFill, cover]} pointerEvents="box-none">
         {children}
       </Animated.View>
@@ -774,6 +963,94 @@ function DeskPill({
   );
 }
 
+// THE DESK'S NAME, ALONE (2026-10-12, the user's: «залиш лише текст ... при прокручуванні столів текст назви одного
+// вікна їде ліворуч або праворуч, з'являється наступна»): no capsule under it; the names of all the desks lie side
+// by side, each as wide as the plate, and the row rides the pager's own position - a swipe between desks carries
+// the name out one side and the next in from the other, and a tap does the same, since the pager moves either way.
+// Without a position (the web build) only the desk in front is drawn, still.
+function DeskTitles({
+  desks,
+  position,
+  width,
+  ink,
+  inkMuted,
+  onLongPress,
+  onActiveWidth,
+}: {
+  desks: TopDesk[];
+  position?: RNAnimated.Value | RNAnimated.AnimatedInterpolation<number>;
+  width: number;
+  ink: string;
+  inkMuted: string;
+  onLongPress?: () => void;
+  // The width of the name in front, for the folded rim to wrap.
+  onActiveWidth?: (w: number) => void;
+}) {
+  const activeIndex = Math.max(0, desks.findIndex((d) => d.active));
+  const shift = useMemo(
+    () =>
+      position && desks.length > 1
+        ? position.interpolate({
+            inputRange: desks.map((_, i) => i),
+            outputRange: desks.map((_, i) => -i * width),
+            extrapolate: 'clamp',
+          })
+        : -activeIndex * width,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [position, desks.length, width, position ? 0 : activeIndex]
+  );
+  // The name stays centred while the plate's width changes (a screen with fewer buttons at its right end): the
+  // plate itself eases to the new width, and the name eases from where it stood to where it now centres.
+  const comp = useSharedValue(0);
+  const prevWidth = useRef(width);
+  useEffect(() => {
+    if (prevWidth.current === width) return;
+    comp.value = (prevWidth.current - width) / 2;
+    comp.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
+    prevWidth.current = width;
+  }, [width, comp]);
+  const compStyle = useAnimatedStyle(() => ({ transform: [{ translateX: comp.value }] }));
+  return (
+    <View style={{ width, height: PIECE_H, overflow: 'hidden' }}>
+      <Animated.View style={compStyle}>
+      <RNAnimated.View style={{ flexDirection: 'row', width: width * desks.length, transform: [{ translateX: shift }] }}>
+        {desks.map((desk, i) => {
+          // The name dissolves as it rides out and as the next rides in.
+          const fade =
+            position && desks.length > 1
+              ? position.interpolate({ inputRange: [i - 0.7, i, i + 0.7], outputRange: [0, 1, 0], extrapolate: 'clamp' })
+              : 1;
+          const label = [styles.label, styles.softLabel, { color: ink }];
+          return (
+            <RNAnimated.View key={desk.key} style={{ width, height: PIECE_H, opacity: fade }}>
+              <Pressable
+                onPress={desk.onPress}
+                onLongPress={onLongPress}
+                delayLongPress={400}
+                accessibilityLabel={desk.label}
+                style={{ width, height: PIECE_H, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={label}
+                  onLayout={(e) => desk.active && onActiveWidth?.(e.nativeEvent.layout.width)}
+                >
+                  {desk.label}
+                </Text>
+                {desk.active && desk.onClose && (
+                  <Pressable hitSlop={8} onPress={desk.onClose} accessibilityLabel="Закрити стіл" style={styles.deskClose}>
+                    <SoftIcon name="close" size={15} color={inkMuted} />
+                  </Pressable>
+                )}
+              </Pressable>
+            </RNAnimated.View>
+          );
+        })}
+      </RNAnimated.View>
+      </Animated.View>
+    </View>
+  );
+}
 // Where a note lives: its database's glyph, then the folders down to it,
 // then its own name - the same look as the folder path below, and the
 // same rule: every crumb but the last is a way there.
@@ -791,6 +1068,7 @@ function TrailRow({
   soft?: boolean;
 }) {
   useRenderTimer('Смужка: слід');
+  const targets = useNavDockTargets();
   const scroll = useRef<ScrollView>(null);
   return (
     <>
@@ -818,11 +1096,13 @@ function TrailRow({
                     {crumb.label}
                   </Text>
                 ) : (
-                  <Pressable hitSlop={6} onPress={crumb.onPress}>
-                    <Text numberOfLines={1} style={[styles.crumb, { color: inkMuted }]}>
-                      {crumb.label}
-                    </Text>
-                  </Pressable>
+                  <View ref={crumb.step !== undefined ? targets?.(crumb.step) : undefined} collapsable={false}>
+                    <Pressable hitSlop={6} onPress={crumb.onPress}>
+                      <Text numberOfLines={1} style={[styles.crumb, { color: inkMuted }]}>
+                        {crumb.label}
+                      </Text>
+                    </Pressable>
+                  </View>
                 )}
               </View>
             );
@@ -853,6 +1133,24 @@ function PathRow({
   useRenderTimer('Смужка: шлях');
   const targets = useNavDockTargets();
   const scroll = useRef<ScrollView>(null);
+  // ONE name only (the bin, a folder at the first level): centred like a desk's name, not a circle and a word
+  // pushed to the left (the user, 2026-10-13: «назва корзина не по центру»). A tap on it still goes to the root.
+  if (soft && path.crumbs.length === 1) {
+    return (
+      <View ref={targets?.('')} collapsable={false} style={{ flex: 1, height: PIECE_H }}>
+        <Pressable
+          onPress={() => path.onGo('')}
+          accessibilityLabel="Корінь"
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Glyph name={path.icon} size={20} color={ink} soft />
+          <Text numberOfLines={1} style={[styles.label, styles.softLabel, { color: ink, marginLeft: 8 }]}>
+            {path.crumbs[0]}
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
   return (
     <>
       <View ref={targets?.('')} collapsable={false}>
@@ -919,6 +1217,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.16)',
   },
+  toolDot: { position: 'absolute', right: -3, top: -2, width: 8, height: 8, borderRadius: 4, borderWidth: 1.5 },
   clusterButton: {
     height: TOP_NAV_H,
     alignItems: 'center',

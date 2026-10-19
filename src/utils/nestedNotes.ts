@@ -49,6 +49,13 @@ function nestedUnder(rootId: string, nodes: Map<string, Node>): Node[] {
   return found;
 }
 
+// How many notes are nested under this one - said in the deletion window,
+// because they go to the bin with it (the user's rule).
+export async function nestedNoteCount(id: string): Promise<number> {
+  const nodes = await loadNodes().catch(() => null);
+  return nodes ? nestedUnder(id, nodes).filter((n) => !n.deletedAt).length : 0;
+}
+
 export async function binNote(id: string): Promise<void> {
   const stamp = Date.now();
   // Merged rather than updated: a note just made may not be written yet.

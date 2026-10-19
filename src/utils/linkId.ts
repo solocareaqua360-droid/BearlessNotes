@@ -61,3 +61,32 @@ export function linkDocId(url: string): string {
   }
   return `link-${(hash >>> 0).toString(36)}`;
 }
+
+
+// THE ADDRESS AS A PROGRAM WANTS IT WHEN COPIED (2026-10-11: NotebookLM refused a link copied from the
+// app, while the same video copied from YouTube itself was fine). What is STORED stays exactly what
+// the share sheet gave (it also decides which record a link is - see canonicalUrlForDedup); only the
+// text put on the clipboard is cleaned: a YouTube video becomes the plain
+// https://www.youtube.com/watch?v=ID (the start time, if any, kept), without the `si=` and other
+// tracking tail; anything else is only trimmed.
+export function linkForCopy(url: string): string {
+  const text = url.trim();
+  try {
+    const u = new URL(text);
+    const host = u.hostname.replace(/^www\./, '').replace(/^m\./, '');
+    let id: string | null = null;
+    if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0] || null;
+    else if (host === 'youtube.com') {
+      id = u.searchParams.get('v');
+      if (!id) {
+        const m = u.pathname.match(/^\/(?:shorts|embed|live)\/([\w-]+)/);
+        if (m) id = m[1];
+      }
+    }
+    if (!id) return text;
+    const t = u.searchParams.get('t') ?? u.searchParams.get('start');
+    return `https://www.youtube.com/watch?v=${id}${t && /^\d+s?$/.test(t) ? `&t=${t.replace(/s$/, '')}s` : ''}`;
+  } catch {
+    return text;
+  }
+}

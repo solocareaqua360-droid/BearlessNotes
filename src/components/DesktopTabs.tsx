@@ -39,6 +39,8 @@ const SECTIONS: { ref: string; label: string; icon: string }[] = [
   { ref: 'Більше', label: 'Бази', icon: 'apps-outline' },
   { ref: 'Tasks', label: 'Справи', icon: 'checkbox-outline' },
   { ref: 'Chat', label: 'Чат', icon: 'chatbubbles-outline' },
+  // The phone's explorer («Модерний»: small and middle folders, collections, the bin) as a Mac tab (2026-10-16).
+  { ref: 'Explorer', label: 'Провідник', icon: 'folder-open-outline' },
 ];
 
 type Place = { kind: 'home' } | { kind: Tab['kind']; ref: string } | null;
@@ -80,6 +82,7 @@ export function placeNow(): Place {
     case 'Більше':
     case 'Tasks':
     case 'Chat':
+    case 'Explorer':
       return { kind: 'section', ref: name };
     default:
       return null;
@@ -151,7 +154,7 @@ function goNow(tab: Tab | null) {
     if (current === 'CustomDatabase') {
       navigationRef.dispatch(StackActions.replace('CustomDatabase', { databaseId: tab.ref }));
     } else navigationRef.navigate('CustomDatabase', { databaseId: tab.ref } as never);
-  } else if (tab.ref === 'Tasks' || tab.ref === 'Chat') {
+  } else if (tab.ref === 'Tasks' || tab.ref === 'Chat' || tab.ref === 'Explorer') {
     navigationRef.navigate(tab.ref as never);
   } else {
     navigationRef.navigate('Tabs', { screen: tab.ref } as never);

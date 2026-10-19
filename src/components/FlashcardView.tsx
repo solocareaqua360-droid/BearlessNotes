@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import RichText from './RichText';
 import { Ionicons } from './icons/Ionicons';
 import AttachmentImage from './AttachmentImage';
 import { useRecordColour } from '../theme/ThemeProvider';
@@ -90,9 +92,15 @@ export default function FlashcardView({
         </View>
       )}
 
-      <Text style={[styles.term, { color: text }, images.length === 0 && styles.termAlone]}>
-        {card.term || 'Без терміна'}
-      </Text>
+      {card.term ? (
+        <RichText
+          text={card.term}
+          color={text}
+          style={StyleSheet.flatten([styles.term, images.length === 0 && styles.termAlone]) as never}
+        />
+      ) : (
+        <Text style={[styles.term, { color: text }, images.length === 0 && styles.termAlone]}>Без терміна</Text>
+      )}
 
       {hasExplanation && (
         <View style={[styles.panel, { borderColor: edge }]}>
@@ -104,7 +112,7 @@ export default function FlashcardView({
             // A long explanation scrolls inside its own panel (2026-10-09, the
             // user's), so the term and the pictures stay in sight above it.
             <ScrollView style={styles.explanationScroll} nestedScrollEnabled showsVerticalScrollIndicator>
-              <Text style={[styles.explanation, { color: text }]}>{card.explanation}</Text>
+              <RichText text={card.explanation ?? ''} color={text} style={StyleSheet.flatten(styles.explanation) as never} />
             </ScrollView>
           )}
         </View>
@@ -117,6 +125,13 @@ export default function FlashcardView({
       <Text style={[styles.position, { color: textMuted }]} numberOfLines={2}>
         {header.position ?? ''}
       </Text>
+      <Pressable
+        onPress={() => Clipboard.setStringAsync([card.term, card.explanation].filter((t) => !!t?.trim()).join('\n\n')).catch(() => {})}
+        style={[styles.closeButton, { borderColor: edge }]}
+        accessibilityLabel="Копіювати"
+      >
+        <Ionicons name="copy-outline" size={20} color={text} />
+      </Pressable>
       {onEdit && (
         <Pressable onPress={onEdit} style={[styles.headerButton, { borderColor: edge }]}>
           <Ionicons name="create-outline" size={18} color={text} />

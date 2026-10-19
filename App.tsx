@@ -17,7 +17,10 @@ import { ShareIntentProvider } from 'expo-share-intent';
 import { DefaultTheme, NavigationContainer, Theme as NavTheme } from '@react-navigation/native';
 import { ensureSignedIn } from './src/firebase';
 import RootNavigator from './src/AppNavigator';
+import { setChromeCompact } from './src/navigation/chromeScroll';
 import ShareIntentHandler from './src/components/ShareIntentHandler';
+import { FEATURES } from './src/features';
+import ThoughtsHost from './src/components/thoughts/ThoughtsHost';
 import * as SplashScreen from 'expo-splash-screen';
 import { sweepIfDue } from './src/utils/attachmentCache';
 import { migrateBoardShapes } from './src/utils/boardMigration';
@@ -27,6 +30,7 @@ import { GlassPortalHost } from './src/components/GlassPortal';
 import MorphHost from './src/components/MorphHost';
 import ChromeMorph from './src/components/ChromeMorph';
 import PageFoldHost from './src/components/PageFold';
+import DeleteContentsHost from './src/components/DeleteContentsHost';
 import { AskHost, notify } from './src/components/surfaces/Ask';
 import { setStallReporter } from './src/utils/perfWatch';
 
@@ -45,6 +49,7 @@ import ContextDock from './src/components/ContextDock';
 import { NavDockProvider } from './src/navigation/navDock';
 import AlarmRingOverlay from './src/components/AlarmRingOverlay';
 import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
+import { setNavigationBarContrast } from './src/utils/mindevaNative';
 
 // The screens themselves - every route, and the tab navigator they sit
 // behind - live in src/AppNavigator, shared with the browser build. What
@@ -57,6 +62,12 @@ import { useStickerDeepLink } from './src/hooks/useStickerDeepLink';
 // instead, and let go below once the fonts and the sign-in have resolved,
 // which is when there is really something to show.
 SplashScreen.preventAutoHideAsync().catch(() => {});
+// Let go at once, not through Android's 400 ms fade (2026-10-15, the user's: the full-screen icon went see-through
+// over the Start desk, «раніше це відбувалося миттєво»). The fade was always there; it only showed once the desk was
+// already drawn underneath when the splash was let go.
+try {
+  SplashScreen.setOptions({ duration: 0, fade: false });
+} catch {}
 
 // The navigator paints its own card behind every screen, and its default
 // theme's is WHITE - which is what showed through as small white patches
@@ -79,7 +90,14 @@ function ThemedNavigationContainer({ children }: { children: React.ReactNode }) 
     },
   };
   return (
-    <NavigationContainer ref={navigationRef} theme={navTheme}>
+    <NavigationContainer
+      ref={navigationRef}
+      theme={navTheme}
+      // Every move to another screen brings the folded chrome back (2026-10-16, the user: in a personal base «⋯»,
+      // «Виділити» and the search did nothing / were gone). Folding was undone only on a desk change, so a base
+      // opened from a scrolled list inherited the fold - and at its top there is nothing to scroll back up with.
+      onStateChange={() => setChromeCompact(false)}
+    >
       <BackdropLayer />
       {children}
     </NavigationContainer>
@@ -111,10 +129,15 @@ export default function App() {
   const [signedIn, setSignedIn] = useState(false);
   useEffect(() => {
     ensureSignedIn().then(() => setSignedIn(true));
+    // The pale band at the foot of the Fold's inner screen: Android's own veil over the navigation bar's area, laid
+    // where the app draws its own ground anyway. Off, where the APK can ask (utils/mindevaNative).
+    setNavigationBarContrast(false);
   }, []);
   const ready = fontsLoaded && signedIn;
   useEffect(() => {
-    if (ready) SplashScreen.hideAsync().catch(() => {});
+    // A beat after `ready`: the desk is drawn ~60 ms later, and the window is see-through over the wallpaper - let go
+    // at once, the splash uncovered the phone's wallpaper for those frames (measured 2026-10-15, 7 frames).
+    if (ready) setTimeout(() => SplashScreen.hideAsync().catch(() => {}), 160);
     // The bytes of files nobody has opened in three months go, quietly,
     // once a day - their records stay, and they come back from Drive on
     // the next open. See attachmentCache.
@@ -174,6 +197,7 @@ export default function App() {
                 blur target: what it blurs is the screens, and from outside
                 them expo-blur quietly falls back to a flat dim. */}
             <AskHost />
+            <DeleteContentsHost />
             {/* A hold's menu, as the chat's: the held thing lifted over
                 a blur (holdAsk, CardMenu). Inside the blur target too. */}
             <HoldAskHost />
@@ -187,12 +211,17 @@ export default function App() {
               onOpenChat={() => {
                 if (navigationRef.isReady()) navigationRef.navigate('Chat');
               }}
+              onOpenNote={(documentId) => {
+                if (navigationRef.isReady()) navigationRef.navigate('Editor', { documentId });
+              }}
             />
             {/* A ringing alarm is its own Modal too, for the same reason -
                 see AlarmRingOverlay. */}
             <AlarmRingOverlay />
             {/* Inside the target too: it raises the naming dialog. */}
             <ShareIntentHandler />
+            {/* The thought windows (the share sheet opens them too) - see components/thoughts. */}
+            {FEATURES.thoughts && <ThoughtsHost />}
             {/* The board-preview capture rig - mounted ONCE, here, so it
                 never unmounts while a board that asked for a capture is
                 being left (see BoardMiniature's own long comment on

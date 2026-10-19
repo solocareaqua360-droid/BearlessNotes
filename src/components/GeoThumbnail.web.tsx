@@ -10,6 +10,7 @@ export default function GeoThumbnail(_props: {
   width: number;
   height: number;
   style?: StyleProp<ImageStyle>;
+  zoom?: number;
 }) {
   return null;
 }

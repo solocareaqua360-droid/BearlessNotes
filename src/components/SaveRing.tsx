@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -56,8 +56,12 @@ export default function SaveRing({
   // where two of the runs are zero.
   const perimeter = Math.max(1, 2 * (w - 2 * radius) + 2 * (h - 2 * radius) + 2 * Math.PI * radius);
 
+  // The outline lights once when a save LANDS - not when the ring first appears: a bar whose buttons change with the
+  // desk in front mounted it anew and it flashed black round «⋯» at every switch (2026-10-12).
+  const wasSaving = useRef(false);
   useEffect(() => {
     if (saving) {
+      wasSaving.current = true;
       ringOpacity.value = withTiming(0, { duration: 120 });
       arcOpacity.value = withTiming(1, { duration: 160 });
       travel.value = 0;
@@ -66,6 +70,8 @@ export default function SaveRing({
     }
     cancelAnimation(travel);
     arcOpacity.value = withTiming(0, { duration: 200 });
+    if (!wasSaving.current) return;
+    wasSaving.current = false;
     // The whole outline, once, then gone.
     ringOpacity.value = withTiming(1, { duration: 180 }, () => {
       ringOpacity.value = withTiming(0, { duration: 900 });

@@ -1,4 +1,5 @@
 import { useFolderArrival } from '../navigation/folderArrival';
+import { SwipeSelectItem } from '../components/SwipeSelect';
 import { useEffect, useMemo, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
 import { holdAsk } from '../components/surfaces/HoldAsk';
@@ -25,7 +26,7 @@ import { GestureDetector } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import * as Sharing from 'expo-sharing';
+import { copyImageFile, shareImageFile } from '../utils/shareAndCopy';
 import * as ImagePicker from 'expo-image-picker';
 import { compressPickedImage, writePhotoRecord } from '../utils/photoLibrary';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
@@ -52,13 +53,15 @@ import UndoToast from '../components/UndoToast';
 import { PhotoCell, PhotoRow } from '../components/ItemCards';
 import { useDensity } from '../hooks/useDensity';
 import GroupSections from '../components/GroupSections';
-import TagPicker from '../components/TagPicker';
+import TagPicker, { COLLECTION_WORDS } from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { FEATURES } from '../features';
+import { useFileInExplorer } from '../hooks/useFileInExplorer';
 import { useRecordPhotoIds } from '../hooks/useRecordPhotoIds';
 import { useTechnicalDocIds } from '../hooks/useTechnicalDocs';
 import { isTechnicalItem } from '../utils/recordNotes';
@@ -68,6 +71,7 @@ import FolderCanvas, { CANVAS_TILE } from '../components/FolderCanvas';
 import AttachmentImage from '../components/AttachmentImage';
 import { canvasFolderActions } from '../utils/canvasFolderActions';
 import ExplorerHead from '../components/ExplorerHead';
+import CollectionCard, { collectionFaceFor } from '../components/CollectionCard';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { downloadToFolder, showDownloadedFile } from '../utils/downloadToFolder';
@@ -82,6 +86,7 @@ import DownloadToast from '../components/DownloadToast';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { listenError } from '../utils/listenError';
+import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
 
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
@@ -117,6 +122,8 @@ type PhotoItem = {
 };
 
 export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
+  // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
+  useDockDesksWhileFocused(!inPane);
   // In front: the start desk's recents.
   useTileOpened('photos');
   const { width: windowWidth } = useWindowDimensions();
@@ -215,6 +222,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     createdAtOf: (p) => p.createdAt,
     updatedAtOf: (p) => p.updatedAt,
     searchTextOf: (p) => p.title ?? '',
+    folders: !FEATURES.mediaWithoutFolders || FEATURES.baseCollections,
   });
   const {
     displayed: displayedPhotos,
@@ -315,9 +323,17 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     needle,
     createFolderTag: list.createFolderTag,
     deleteTagCompletely: list.deleteTagCompletely,
+    baseOnly: FEATURES.baseCollections,
     renameTag: list.renameTag,
     attachTag: list.attachTag,
     detachTag: list.detachTag,
+  });
+  // «У провідник…» (mediaWithoutFolders): the base has no folders of its own; a photo goes into the explorer's.
+  const fileInExplorer = useFileInExplorer({
+    tags: list.tags,
+    attachTag: list.attachTag as never,
+    detachTag: list.detachTag as never,
+    createFolderTag: list.createFolderTag as never,
   });
   // Sent here standing in a folder (the start desk's «Робочі столи»).
   useFolderArrival('photo', list.explorerMode, list.setListMode, explorer.setPath);
@@ -349,7 +365,29 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     viewerIndex >= 0 && viewerIndex < itemsHere.length - 1 ? itemsHere[viewerIndex + 1].id : null;
 
   // Held: the chat's gesture - see FolderHoldMenu.
-  const folderHold = useFolderHold({ explorer, itemIcon: 'image-outline' });
+  // A collection shows its photos (CollectionCard) - in the list of folders and lifted under a held menu alike; a
+  // folder that is only a step of a path keeps its row.
+  const collectionFace = FEATURES.collectionCards
+    ? (folder: ExplorerFolder) => {
+        const tag = folder.tag;
+        if (!tag) return null;
+        const mine = photos.filter((p) => p.tagIds.includes(tag.id)).slice(0, 6);
+        const look = collectionFaceFor(tag.card, 'grid');
+        return {
+          wide: look.wide,
+          node: (
+            <CollectionCard
+              kind="photo"
+              name={folder.name}
+              count={folder.docs}
+              previews={mine.map((p) => ({ id: p.id, title: p.title ?? '', uri: p.imageUri, driveFileId: p.driveFileId }))}
+              face={look.face}
+            />
+          ),
+        };
+      }
+    : undefined;
+  const folderHold = useFolderHold({ explorer, itemIcon: 'image-outline', faceOf: collectionFace });
 
   const tagPickerPhoto = tagPickerForId ? photos.find((p) => p.id === tagPickerForId) ?? null : null;
 
@@ -496,20 +534,14 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   }
 
   async function shareImage(photo: PhotoItem) {
-    try {
-      const available = await Sharing.isAvailableAsync();
-      if (!available) return;
-      const uri = await flattenPhoto(
-        photo.imageUri,
-        photo.driveFileId,
-        photo.sketchElements,
-        photo.sketchWidth,
-        photo.sketchHeight
-      );
-      await Sharing.shareAsync(uri);
-    } catch {
-      // No sharing app available or the user backed out - nothing to do.
-    }
+    const uri = await flattenPhoto(photo.imageUri, photo.driveFileId, photo.sketchElements, photo.sketchWidth, photo.sketchHeight);
+    await shareImageFile(uri, uri === photo.imageUri ? photo.driveFileId : undefined, photo.title);
+  }
+
+  // The same picture onto the clipboard (the drawing, if any, is part of it).
+  async function copyImage(photo: PhotoItem) {
+    const uri = await flattenPhoto(photo.imageUri, photo.driveFileId, photo.sketchElements, photo.sketchWidth, photo.sketchHeight);
+    await copyImageFile(uri, uri === photo.imageUri ? photo.driveFileId : undefined);
   }
 
   // Rename is always available, and propagates into every document block
@@ -656,7 +688,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
 
   async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
     setBulkTagPickerVisible(false);
-    await createAndAttachTagToMany(path, icon, color, 'photo', selectedPhotos.map((p) => p.id), 'photos');
+    await createAndAttachTagToMany(path, icon, color, 'photo', selectedPhotos.map((p) => p.id), 'photos', FEATURES.baseCollections ? { baseOnly: true } : undefined);
     clearSelection();
   }
 
@@ -710,15 +742,25 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     const choice = await holdAsk({
       title: photo.title || 'Без назви',
       actions: [
-        { id: 'move', label: 'Перемістити в папку', icon: 'folder-outline' },
+        ...(FEATURES.mediaWithoutFolders && FEATURES.baseCollections
+          ? [
+              { id: 'move', label: 'У підбірку…', icon: 'albums-outline' as const },
+              { id: 'file', label: 'У провідник…', icon: 'folder-open-outline' as const },
+            ]
+          : FEATURES.mediaWithoutFolders
+          ? [{ id: 'file', label: 'У провідник…', icon: 'folder-open-outline' as const }]
+          : [{ id: 'move', label: 'Перемістити в папку', icon: 'folder-outline' as const }]),
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
-        { id: 'tags', label: 'Папки', icon: 'pricetag-outline' },
+        ...(FEATURES.mediaWithoutFolders ? [] : [{ id: 'tags', label: 'Папки', icon: 'pricetag-outline' as const }]),
         { id: 'share', label: 'Поділитись', icon: 'share-social-outline' },
+        { id: 'copy', label: 'Копіювати', icon: 'copy-outline' },
         { id: 'draw', label: 'Малювати', icon: 'brush-outline' },
         { id: 'bin', label: 'У кошик', icon: 'trash-outline', tone: 'danger' },
       ],
     });
     if (choice === 'share') shareImage(photo);
+    else if (choice === 'copy') copyImage(photo);
+    else if (choice === 'file') fileInExplorer.open([{ id: photo.id, tagKind: 'photo', collection: 'photos', tagIds: photo.tagIds }]);
     else if (choice === 'move') {
       const destination = await explorer.pickDestination(`Перемістити «${photo.title || 'Без назви'}» в…`);
       if (destination === 'cancel') return;
@@ -732,15 +774,25 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   function viewerActionsFor(photo: PhotoItem): ViewerAction[] {
     return [
       { key: 'rename', icon: 'pencil-outline', label: 'Назва', onPress: () => setRenamingPhoto(photo) },
-      {
-        key: 'tags',
-        icon: 'pricetag-outline',
-        label: 'Папки',
-        onPress: () => {
-          setViewerPhotoId(null);
-          setTagPickerForId(photo.id);
-        },
-      },
+      FEATURES.mediaWithoutFolders
+        ? {
+            key: 'tags',
+            icon: 'folder-open-outline',
+            label: 'У провідник',
+            onPress: () => {
+              setViewerPhotoId(null);
+              fileInExplorer.open([{ id: photo.id, tagKind: 'photo', collection: 'photos', tagIds: photo.tagIds }]);
+            },
+          }
+        : {
+            key: 'tags',
+            icon: 'pricetag-outline',
+            label: 'Папки',
+            onPress: () => {
+              setViewerPhotoId(null);
+              setTagPickerForId(photo.id);
+            },
+          },
       {
         key: 'document',
         icon: 'document-text-outline',
@@ -755,6 +807,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
         onPress: () => setSketchPhotoId(photo.id),
       },
       { key: 'share', icon: 'share-social-outline', label: 'Поділитись', onPress: () => shareImage(photo) },
+      { key: 'copy', icon: 'copy-outline', label: 'Копіювати', onPress: () => copyImage(photo) },
       {
         key: 'download',
         icon: 'download-outline',
@@ -813,6 +866,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
 
   return (
     <DatabaseChrome
+      swipeScroll={carrying}
       list={list}
       railSide={inPane ? 'left' : 'right'}
       accent={accent}
@@ -885,7 +939,9 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       // The canvas is a surface that moves on its own: no pull-to-search,
       // no readable-column cap.
       fullWidth={viewMode === 'canvas' && !trashOpen}
-      explorer={{
+      // No folders of its own here under mediaWithoutFolders: no folder switch, no «Нова папка».
+      explorer={FEATURES.mediaWithoutFolders && !FEATURES.baseCollections ? undefined : {
+        newFolderLabel: FEATURES.baseCollections ? 'Нова підбірка' : undefined,
         mode: list.listMode,
         onChangeMode: list.setListMode,
         active: explorer.active,
@@ -901,6 +957,15 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       }}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
+        tagLabel: FEATURES.baseCollections ? 'У підбірку' : undefined,
+        tagIcon: FEATURES.baseCollections ? 'albums-outline' : undefined,
+        folderTags: FEATURES.baseCollections ? explorer.ownCollections : undefined,
+        onFile: FEATURES.mediaWithoutFolders
+          ? () => {
+              fileInExplorer.open(selectedPhotos.map((p) => ({ id: p.id, tagKind: 'photo', collection: 'photos', tagIds: p.tagIds })));
+              clearSelection();
+            }
+          : undefined,
         onTagTo: bulkAttachTag,
         onGroup: () => setBulkGroupPickerVisible(true),
         onCopy: () => setBulkCopyModalVisible(true),
@@ -995,6 +1060,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             onClose={() => setDocumentPicker(null)}
           />
 
+          {fileInExplorer.node}
           <TagPicker
             visible={tagPickerPhoto !== null}
             kind="photo"
@@ -1012,7 +1078,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
           {folderHold.menu}
           <RenamePrompt
             visible={explorer.folderPrompt !== null}
-            title={explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}
+            title={FEATURES.baseCollections ? (explorer.folderPrompt?.mode === 'rename' ? 'Назва підбірки' : 'Нова підбірка') : explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}
             initialValue={explorer.folderPrompt?.mode === 'rename' ? nameOf(explorer.folderPrompt.path) : ''}
             onCancel={() => explorer.setFolderPrompt(null)}
             onSave={(name) => explorer.saveFolderName(name)}
@@ -1021,12 +1087,14 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
           <TagPicker
             visible={bulkTagPickerVisible}
             kind="photo"
-            tags={tags}
+            tags={FEATURES.baseCollections ? explorer.collectionTags : tags}
+            plain={FEATURES.baseCollections}
+            words={FEATURES.baseCollections ? COLLECTION_WORDS : undefined}
             selectedTagIds={[]}
             onAttach={bulkAttachTag}
             onDetach={() => {}}
             onCreateAndAttach={bulkCreateAndAttachTag}
-            onRenameTag={renameTag}
+            onRenameTag={FEATURES.baseCollections ? explorer.renameCollection : renameTag}
             onClose={() => setBulkTagPickerVisible(false)}
           />
 
@@ -1194,6 +1262,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                   }}
                   onFolderMenu={folderHold.open}
                   trash={{ count: trashedPhotos.length, onOpen: () => setTrashOpen(true) }}
+                  // A collection shows its photos (CollectionCard); a folder that is only a step of a path keeps its row.
+                  faceOf={collectionFace}
                 />
               ) : null
             }
@@ -1225,7 +1295,13 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               const carried =
                 !trashOpen && explorer.active ? carrying.cardProps(photo, () => openPhotoMenu(photo)) : {};
               return viewMode === 'list' ? (
-                <PhotoRow {...shared} {...carried} />
+                trashOpen ? (
+                  <PhotoRow {...shared} {...carried} />
+                ) : (
+                  <SwipeSelectItem id={photo.id}>
+                    <PhotoRow {...shared} {...carried} />
+                  </SwipeSelectItem>
+                )
               ) : (
                 <PhotoCell {...shared} {...carried} columns={photoColumns} />
               );

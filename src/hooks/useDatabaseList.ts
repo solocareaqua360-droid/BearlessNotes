@@ -43,6 +43,9 @@ export type DatabaseListOptions<T> = {
   // narrower than "assigned to something here" - the three link screens
   // share one collection but must never show each other's tags.
   tagAllowed?: (tag: Tag) => boolean;
+  // false: this base keeps no folders of its own - its records stand at its root, and the folders they are in
+  // belong to the explorer alone (2026-10-12, the media bases: features.mediaWithoutFolders).
+  folders?: boolean;
   // What the in-screen search looks through, when it is more than the
   // title (a link also matches on its address, a file on its name).
   searchTextOf?: (item: T) => string;
@@ -71,6 +74,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
     matchesSearch,
     searchIgnoresFilters,
     tagAllowed,
+    folders = true,
   } = options;
   const prefsDoc = doc(db, 'settings', prefsKey);
 
@@ -95,7 +99,7 @@ export function useDatabaseList<T extends { id: string }>(options: DatabaseListO
   // names below are derived from it there so nothing else has to change.
   const [listMode, setListModeState] = useState<ListMode | null>(null);
   const [groupsRowHiddenPref, setGroupsRowHiddenPref] = useState(false);
-  const explorerMode = listMode === 'explorer';
+  const explorerMode = folders && listMode === 'explorer';
   const groupsRowHidden = listMode ? listMode !== 'groups' : groupsRowHiddenPref;
 
   const { sortPref, selectSortField } = useSortPref(prefsKey);

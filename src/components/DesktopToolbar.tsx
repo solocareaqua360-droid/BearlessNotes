@@ -1,15 +1,20 @@
 import { useStartFront } from '../navigation/desktopTabs';
+import { useEffect, useState } from 'react';
+import { navigationRef } from '../navigationRef';
+import { useExplorerPath } from '../navigation/explorerPlace';
+import { FEATURES } from '../features';
 import { CONTROL, RADIUS, SPACE, TYPE, useDeskColors } from '../theme/desktopTheme';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Ionicons } from './icons/Ionicons';
-import { useNavDockActions, useNavDockBeads, useNavDockContext } from '../navigation/navDock';
+import { useNavDockActions, useNavDockBeads, useNavDockContext, useNavTopExtras } from '../navigation/navDock';
+import Menu from './surfaces/Menu';
+import { useSoft } from '../theme/soft';
 import UpButton from './desktop/UpButton';
 import { useMainPaneUp } from '../navigation/mainPaneUp';
 import { MAX_CONTENT_WIDTH } from './ContentColumn';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
-import { useSoft } from '../theme/soft';
 import type { Theme } from '../theme/tokens';
 
 // Where a cursor is pointing, this is the dock - unrolled.
@@ -62,8 +67,27 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
   // header, so a panel's toolbar has none. A screen's own back bead (the
   // phone's dock) is not drawn here - that was a second arrow, and on a
   // laptop it went by history, into whatever tab was open before.
-  const up = useMainPaneUp();
-  const leftBead = beads.left && !/back/.test(beads.left.icon) ? beads.left : null;
+  const paneUp = useMainPaneUp();
+  // Frame B: the explorer at its root IS the home - nothing above it to go to.
+  const explorerPath = useExplorerPath();
+  const [routeName, setRouteName] = useState('');
+  useEffect(() => {
+    const read = () => setRouteName(navigationRef.isReady() ? ((navigationRef.getCurrentRoute()?.name as string) ?? '') : '');
+    read();
+    return navigationRef.addListener('state', read);
+  }, []);
+  const up = FEATURES.macFrameB && routeName === 'Explorer' && !explorerPath ? null : paneUp;
+  // Frame B: the explorer's corner beads («+», the lens) are the sidebar's and the composer's now.
+  const beadsHidden = FEATURES.macFrameB && routeName === 'Explorer';
+  // FRAME B: what the phone's top bar carries at its right end - the screen's own tools (a base's views and
+  // «Подача»), «Вибір» and «⋯» - stands at this bar's right end too (the phone's bar is not drawn on a pointer).
+  const extras = useNavTopExtras();
+  const frameB = FEATURES.macFrameB && !compact;
+  const [menuOpen, setMenuOpen] = useState(false);
+  // «Джерела» is the note's own «Референси» action - drawn as the one right-hand toggle, not among the capsule.
+  const refs = frameB ? (actions ?? []).find((a) => a.key === 'refs') ?? null : null;
+  const leftBead = !beadsHidden && beads.left && !/back/.test(beads.left.icon) ? beads.left : null;
+  const rightBead = beadsHidden ? null : beads.right;
   // The screens under it wear the soft ground now; a strip of the old
   // beige across their top read as a seam.
   const soft = useSoft();
@@ -79,7 +103,7 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
   // that left no way to make a folder at all.
   //
   // So it is back, under the name of what it actually is now.
-  const shown = (actions ?? []).map((a) => (a.key === 'tags' ? { ...a, label: 'Папки' } : a));
+  const shown = (actions ?? []).filter((a) => !(refs && a.key === 'refs')).map((a) => (a.key === 'tags' ? { ...a, label: 'Папки' } : a));
 
   // Words under the icons only while they fit. A note publishes seven
   // actions - «Полотно», «Референси», «Вибір», «Вигляд», «Проект»,
@@ -94,7 +118,7 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
 
   // Nothing published means nothing to show - a board, say, which owns
   // its whole window.
-  if (compact && !shown.length && !leftBead && !beads.right && crumbs.length === 0) return null;
+  if (compact && !shown.length && !leftBead && !rightBead && crumbs.length === 0) return null;
   // The start page stands in front of the main pane, and its ground is glass
   // in the Mac app: the screen's buttons under it would show through.
   if (!compact && startFront) return null;
@@ -135,7 +159,7 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
         <View
           style={[
             styles.controls,
-            !compact && (!!leftBead || shown.length > 0 || !!beads.right) && {
+            !compact && (!!leftBead || shown.length > 0 || !!rightBead || (frameB && (!!extras?.tools?.length || !!extras?.select || !!extras?.menu?.length)) || !!refs) && {
               backgroundColor: D.card,
               boxShadow: D.soft.shadow,
               borderRadius: RADIUS.pill,
@@ -163,28 +187,76 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
               {!!action.label && withLabels && <Text style={styles.buttonLabel}>{action.label}</Text>}
             </Pressable>
           ))}
-          {!!beads.right && (
+          {frameB && !!extras?.tools?.length &&
+            extras.tools.map((tool) => (
+              <Pressable
+                key={tool.key}
+                style={[styles.button, tool.active && [styles.buttonOn, { backgroundColor: D.fill }], tool.dimmed && { opacity: 0.4 }]}
+                onPress={tool.onPress}
+                accessibilityLabel={tool.label}
+                {...({ title: tool.label } as object)}
+              >
+                <ActionIcon icon={tool.icon} size={17} color={theme.ink.primary} />
+                {tool.dot && <View style={styles.dot} />}
+              </Pressable>
+            ))}
+          {frameB && !!extras?.select && (
+            <Pressable
+              style={[styles.button, extras.select.active && [styles.buttonOn, { backgroundColor: D.fill }]]}
+              onPress={extras.select.onPress}
+              accessibilityLabel="Вибір"
+              {...({ title: 'Вибір' } as object)}
+            >
+              <ActionIcon icon="checkmark-circle-outline" size={17} color={theme.ink.primary} />
+            </Pressable>
+          )}
+          {!!refs && (
+            <Pressable
+              style={[styles.button, refs.active && [styles.buttonOn, { backgroundColor: D.fill }]]}
+              onPress={refs.onPress}
+              accessibilityLabel="Джерела"
+              {...({ title: 'Джерела' } as object)}
+            >
+              <ActionIcon icon="albums-outline" size={17} color={theme.ink.primary} />
+            </Pressable>
+          )}
+          {frameB && !!extras?.menu?.length && (
+            <Pressable style={[styles.button, menuOpen && [styles.buttonOn, { backgroundColor: D.fill }]]} onPress={() => setMenuOpen((v) => !v)} accessibilityLabel="Меню">
+              <ActionIcon icon="ellipsis-horizontal" size={17} color={theme.ink.primary} />
+            </Pressable>
+          )}
+          {!!rightBead && (
             // The one filled button: the thing this screen is FOR.
             <Pressable
               style={styles.primary}
-              onPress={beads.right.onPress}
-              onLongPress={beads.right.onLongPress}
+              onPress={rightBead.onPress}
+              onLongPress={rightBead.onLongPress}
             >
               {/* The bead's OWN icon. It was a hardcoded "add", which is
                   right on a list and a lie everywhere else - on the
                   calendar the right bead is "go to today", and it was
                   drawn as a plus. A filled button is a claim about
                   importance, not about what the button does. */}
-              <ActionIcon icon={beads.right.icon} size={18} color={theme.onAccent} />
+              <ActionIcon icon={rightBead.icon} size={18} color={theme.onAccent} />
             </Pressable>
           )}
         </View>
       </View>
+      {frameB && (
+        <Menu
+          visible={menuOpen && !!extras?.menu}
+          onClose={() => setMenuOpen(false)}
+          entries={extras?.menu ?? []}
+          style={{ position: 'absolute', right: 16, top: DESKTOP_TOOLBAR_HEIGHT + 4 }}
+          soft={soft}
+        />
+      )}
     </View>
   );
 }
 
 const makeStyles = (t: Theme) => StyleSheet.create({
+  dot: { position: 'absolute', right: 5, top: 5, width: 6, height: 6, borderRadius: 3, backgroundColor: '#D9793F' },
   frame: {
     width: '100%',
     alignItems: 'center',

@@ -170,7 +170,7 @@ export function useDayHistory(
   // A day's own board (utils/dayBoard) is the day itself, not something
   // made on it.
   const boards = useCreatedAtItems('boards', startMs, endMs, (id, data) =>
-    data.calendarDate
+    data.calendarDate || data.deletedAt || data.trashed
       ? null
       : {
           id,

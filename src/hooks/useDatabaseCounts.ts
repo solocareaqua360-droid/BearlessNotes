@@ -3,6 +3,7 @@ import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { categoryFromSiteName } from '../utils/linkCategory';
 import { listenError } from '../utils/listenError';
+import { isGone } from '../utils/isGone';
 
 // What each database has in it, for the tiles to show. A tile that only
 // carries an icon gets emptier the bigger it is made; a count and the
@@ -46,7 +47,8 @@ function useCollection(name: string, enabled: boolean): Row[] {
   useEffect(() => {
     if (!enabled) return;
     return onSnapshot(ownedQuery(name), (snapshot) => {
-      setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
+      // What is in the bin is not counted, found, or shown as the newest (isGone).
+      setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })).filter((r) => !isGone(r)));
     }, listenError(`useDatabaseCounts:${name}`));
   }, [name, enabled]);
   return rows;

@@ -19,7 +19,7 @@ import { FROM_IONICONS, LUCIDE, SOLID_IONICONS, type IconElement } from './lucid
 // blank - add it to FROM_IONICONS (map.py in the generator) instead.
 type Props = ComponentProps<typeof VectorIonicons>;
 
-function renderElement([kind, attrs]: IconElement, key: number, stroke: string, fill: string) {
+export function renderElement([kind, attrs]: IconElement, key: number, stroke: string, fill: string) {
   const common = { stroke, fill, strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   const a = attrs as Record<string, string>;
   switch (kind) {
@@ -40,6 +40,14 @@ function renderElement([kind, attrs]: IconElement, key: number, stroke: string, 
     default:
       return null;
   }
+}
+
+// An icon's line shapes by its app name (the same lookup the icon below makes), for whoever draws many icons inside
+// ONE Svg of its own - FolderPattern. Null when the name has no Lucide drawing.
+export function lucideElementsOf(name: string): IconElement[] | null {
+  const key = name.endsWith('-outline') ? name.slice(0, -8) : name;
+  const lucide = key.startsWith('lc:') ? key.slice(3) : FROM_IONICONS[key];
+  return (lucide && LUCIDE[lucide]) || null;
 }
 
 function IoniconsSoft(props: Props) {

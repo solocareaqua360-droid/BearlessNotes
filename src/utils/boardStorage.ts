@@ -53,7 +53,19 @@ export function keyedDiff<T extends WithId>(before: T[], after: T[]): Record<str
 
   after.forEach((item) => {
     const previous = beforeById.get(item.id);
-    if (!previous || !contentEqual(previous, item)) patch[item.id] = item;
+    if (!previous || !contentEqual(previous, item)) {
+      // The board is written with `merge: true`, and a merge NEVER removes a field that is merely absent from
+      // the new object: a block let go from its strip lost its `glueId` here but kept it on the server, and a few
+      // seconds later the sync brought it back and the block stuck to its neighbour again (2026-10-11). A field
+      // the card had and no longer has is deleted explicitly.
+      const written: Record<string, unknown> = { ...(item as Record<string, unknown>) };
+      if (previous) {
+        Object.keys(previous as Record<string, unknown>).forEach((key) => {
+          if (!(key in written)) written[key] = deleteField();
+        });
+      }
+      patch[item.id] = written;
+    }
   });
   before.forEach((item) => {
     if (!afterIds.has(item.id)) patch[item.id] = deleteField();

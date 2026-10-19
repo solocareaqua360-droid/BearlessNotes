@@ -8,6 +8,7 @@ import { PAGE_H1, PAGE_H2, PAGE_H3, PAGE_TEXT, makeStyles } from './documentEdit
 import { withAlpha } from '../utils/color';
 import type { Block } from '../types';
 import type { Theme } from '../theme/tokens';
+import { IS_POINTER } from '../utils/pointer';
 
 // THE TEXT ROWS OF A PAGE MINIATURE, drawn directly (2026-10-06, the preview
 // plan's stage 3). A miniature is laid out at page size and scaled - the
@@ -104,7 +105,8 @@ export default function PagePreviewRow({
           </View>
           {textField}
         </View>
-        {!noReminder && (
+        {/* A pointer's page draws no empty reminder line (BlockRow) - nor does its miniature. */}
+        {!noReminder && (!IS_POINTER || !!reminderLabel) && (
         <View style={styles.checkboxReminderRow}>
           <Ionicons name="alarm-outline" size={11} color={reminderLabel ? theme.accent : theme.paper.inkFaint} />
           <Text style={[styles.checkboxReminderText, !reminderLabel && styles.checkboxReminderTextEmpty]}>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { FlipFrom } from '../utils/flipOpen';
-import { ActivityIndicator, Image, Keyboard, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Linking, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -19,6 +19,7 @@ import { hostnameOf } from '../utils/linkPreview';
 import type { LinkCategory } from '../utils/linkCategory';
 import type { LinkFragment } from '../utils/articleReader';
 import { notify } from './surfaces/Ask';
+import { copyLinkText } from '../utils/shareAndCopy';
 
 // A link's own record - every link's, since 2026-09-25; it began as the
 // geo point's alone. A tap on a link opens this; the site itself is a
@@ -254,6 +255,7 @@ export default function LinkDetailSheet({
                   </>
                 )}
                 <Button icon={primary.icon} label={primary.label} onPress={onOpen} kind="primary" styles={styles} theme={theme} />
+                <ShareCopyRow link={shown} styles={styles} theme={theme} />
               </Panel>
             ) : (
               <Panel
@@ -340,6 +342,7 @@ export default function LinkDetailSheet({
                     </Pressable>
                   </View>
                 )}
+                <ShareCopyRow link={shown} styles={styles} theme={theme} />
               </Panel>
             )}
 
@@ -558,6 +561,30 @@ function Button({
       <Ionicons name={icon} size={20} color={ink} />
       <Text style={[styles.buttonLabel, { color: ink }]}>{label}</Text>
     </Pressable>
+  );
+}
+
+// «Поділитись» and «Копіювати» for the link itself - the address (for a
+// place, its map link) into the system's share sheet or onto the
+// clipboard. Two full-size labelled halves, like the rest of the card.
+function ShareCopyRow({ link, styles, theme }: { link: { url: string; title?: string }; styles: Styles; theme: Theme }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      <View style={{ flex: 1 }}>
+        <Button
+          icon="share-social-outline"
+          label="Поділитись"
+          onPress={() => {
+            Share.share({ message: link.title ? `${link.title}\n${link.url}` : link.url }).catch(() => {});
+          }}
+          styles={styles}
+          theme={theme}
+        />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Button icon="copy-outline" label="Копіювати" onPress={() => copyLinkText(link.url)} styles={styles} theme={theme} />
+      </View>
+    </View>
   );
 }
 

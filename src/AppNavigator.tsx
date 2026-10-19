@@ -1,6 +1,7 @@
 import { pushFromLayer } from './navigation/layerPush';
 import { createNativeStackNavigator, type NativeStackScreenProps } from '@react-navigation/native-stack';
 import MorphFrame from './components/MorphFrame';
+import BoardZoomFrame from './components/BoardZoomFrame';
 import Tabs from './navigation/Tabs';
 import PlaceholderScreen from './screens/PlaceholderScreen';
 import TasksScreen from './screens/TasksScreen';
@@ -17,6 +18,8 @@ import FlashcardsScreen from './screens/FlashcardsScreen';
 import CustomDatabaseScreen from './screens/CustomDatabaseScreen';
 import TagManageScreen from './screens/TagManageScreen';
 import GroupsScreen from './screens/GroupsScreen';
+import ExplorerScreen from './screens/ExplorerScreen';
+import ThoughtsScreen from './screens/ThoughtsScreen';
 import TagItemsScreen from './screens/TagItemsScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import SearchScreen from './screens/SearchScreen';
@@ -51,6 +54,17 @@ function EditorScreen(props: NativeStackScreenProps<RootStackParamList, 'Editor'
   );
 }
 
+// A board opened from its card in the explorer zooms in (utils/boardZoom); any other way it is just the board.
+function BoardCopyScreen(props: NativeStackScreenProps<RootStackParamList, 'BoardCopy'>) {
+  const screen = <BoardScreen {...(props as unknown as Record<string, never>)} />;
+  if (!props.route.params.zoom) return screen;
+  return (
+    <BoardZoomFrame boardId={props.route.params.boardId} navigation={props.navigation as never}>
+      {screen}
+    </BoardZoomFrame>
+  );
+}
+
 export default function RootNavigator() {
   return (
     <Stack.Navigator
@@ -81,7 +95,13 @@ export default function RootNavigator() {
       <Stack.Screen name="FileView" component={FileViewScreen} />
       <Stack.Screen name="DocumentsCopy">{() => <DocumentsScreen standalone />}</Stack.Screen>
       <Stack.Screen name="BoardsCopy">{() => <BoardsListScreen standalone />}</Stack.Screen>
-      <Stack.Screen name="BoardCopy" component={BoardScreen} />
+      <Stack.Screen
+        name="BoardCopy"
+        component={BoardCopyScreen}
+        options={({ route }) =>
+          (route.params as { zoom?: boolean } | undefined)?.zoom ? { animation: 'none', presentation: 'transparentModal' } : {}
+        }
+      />
       <Stack.Screen name="Links" component={LinksScreen} />
       <Stack.Screen name="Photos" component={PhotosScreen} />
       <Stack.Screen name="Files" component={FilesScreen} />
@@ -90,6 +110,8 @@ export default function RootNavigator() {
       <Stack.Screen name="CustomDatabase" component={CustomDatabaseScreen} />
       <Stack.Screen name="Tags" component={TagManageScreen} />
       <Stack.Screen name="Groups" component={GroupsScreen} />
+      <Stack.Screen name="Explorer" component={ExplorerScreen} />
+      <Stack.Screen name="Thoughts" component={ThoughtsScreen} />
       <Stack.Screen name="TagItems" component={TagItemsScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="Search" component={SearchScreen} />

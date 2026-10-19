@@ -39,6 +39,8 @@ export default function AttachmentImage({
   // A picture in a grid being scrolled past is not someone looking at it
   // - see attachmentCache. Only a note that carries the picture says so.
   countsAsUse = false,
+  onLoad,
+  onError,
 }: {
   uri: string;
   driveFileId?: string;
@@ -46,10 +48,14 @@ export default function AttachmentImage({
   resizeMode?: ImageResizeMode;
   resizeMethod?: 'auto' | 'resize' | 'scale' | 'none';
   countsAsUse?: boolean;
+  // The picture is drawn (or could not be): the full-screen viewer keeps the
+  // previous one under it until this fires, so paging never shows black.
+  onLoad?: () => void;
+  onError?: () => void;
 }) {
   const { status, source } = useAttachmentSource(uri, driveFileId, countsAsUse);
   if (source)
-    return <Image source={{ uri: source }} style={style} resizeMode={resizeMode} resizeMethod={resizeMethod} />;
+    return <Image source={{ uri: source }} style={style} resizeMode={resizeMode} resizeMethod={resizeMethod} onLoad={onLoad} onError={onError} />;
   return (
     <View style={[style, styles.frame]}>
       {status === 'missing' ? (

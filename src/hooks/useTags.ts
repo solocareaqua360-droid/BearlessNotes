@@ -106,6 +106,12 @@ export function useTags() {
             types: data.types ?? [],
             usedIn: data.usedIn ?? {},
             keep: !!data.keep,
+            ...(data.baseOnly ? { baseOnly: true } : {}),
+            ...(data.inExplorer ? { inExplorer: true } : {}),
+            // Project assignment and card look (2026-10-10). Left out here the
+            // first time round - the fields were saved and never came back.
+            ...(Array.isArray(data.groupIds) ? { groupIds: data.groupIds as string[] } : {}),
+            ...(data.card ? { card: data.card as Tag['card'] } : {}),
           };
         })
       );
@@ -193,7 +199,8 @@ export function useTags() {
     color: string,
     kind: TaggableKind,
     itemIds: string[],
-    itemsCollection: string
+    itemsCollection: string,
+    opts?: { baseOnly?: boolean }
   ) {
     const tagRef = doc(tagsCollection);
     const batch = writeBatch(db);
@@ -205,6 +212,7 @@ export function useTags() {
       color,
       types: [kind],
       usedIn,
+      ...(opts?.baseOnly ? { baseOnly: true, keep: true } : {}),
       ownerId: auth.currentUser?.uid ?? null,
     });
     for (const itemId of itemIds) {
@@ -219,15 +227,19 @@ export function useTags() {
   // yet, kept alive by `keep` (see the Tag doc comment in types.ts) so
   // the empty-tag rule below leaves it alone. Given a folder's own icon
   // and a colour from the palette, like a tag made from a note is.
-  async function createFolderTag(path: string, kind: TaggableKind, color: string) {
+  // `kind` may be a list: a UNIVERSAL folder (the unified-explorer plan, stage 1a)
+  // is one tag listing every kind of thing, so each explorer shows it and
+  // nothing has to be filed under a second tag of the same path.
+  async function createFolderTag(path: string, kind: TaggableKind | TaggableKind[], color: string, opts?: { baseOnly?: boolean }) {
     const tagRef = doc(tagsCollection);
     await setDoc(tagRef, {
       path: path.trim(),
       icon: 'folder-outline',
       color,
-      types: [kind],
+      types: Array.isArray(kind) ? kind : [kind],
       usedIn: {},
       keep: true,
+      ...(opts?.baseOnly ? { baseOnly: true } : {}),
       ownerId: auth.currentUser?.uid ?? null,
     });
     return tagRef.id;
@@ -274,6 +286,35 @@ export function useTags() {
     await batch.commit();
   }
 
+  // A folder moved or renamed BY ITS PATH, not by a tag: a folder shown in an explorer may have no
+  // tag of its own (only deeper ones, «a/b», make «a» appear), and then there is no tag to hand to
+  // renameTag - the move silently did nothing while the toast said it was done (2026-10-11).
+  // Returns how many tags changed, so a caller can say so when none did.
+  async function moveBranch(oldPath: string, newPath: string): Promise<number> {
+    const from = oldPath.trim();
+    const to = newPath.trim();
+    if (!from || !to || from === to) return 0;
+    const hit = tags.filter((t) => t.path === from || t.path.startsWith(`${from}/`));
+    if (hit.length === 0) return 0;
+    const batch = writeBatch(db);
+    hit.forEach((t) => batch.update(doc(db, 'tags', t.id), { path: to + t.path.slice(from.length) }));
+    await batch.commit();
+    return hit.length;
+  }
+
+  // A folder's icon and colour, for EVERY tag of that path (a folder is one tag per kind of thing).
+  async function setFolderAppearance(path: string, look: { icon?: string; color?: string }) {
+    const hit = tags.filter((t) => t.path === path);
+    if (hit.length === 0) return;
+    const fields: Record<string, string> = {};
+    if (look.icon) fields.icon = look.icon;
+    if (look.color) fields.color = look.color;
+    if (Object.keys(fields).length === 0) return;
+    const batch = writeBatch(db);
+    hit.forEach((t) => batch.update(doc(db, 'tags', t.id), fields));
+    await batch.commit();
+  }
+
   // Full edit from TagManageScreen - path, icon and color all at once,
   // unlike renameTag's path-only quick fix from the per-item picker.
   async function updateTag(tag: Tag, updates: { path: string; icon: string; color: string; types?: TaggableKind[] }) {
@@ -290,6 +331,33 @@ export function useTags() {
       ...(updates.types ? { types: updates.types } : {}),
     });
     await batch.commit();
+  }
+
+  // Folder fields that are not path/icon/colour: the projects it is assigned
+  // to and its card look (see Tag.groupIds / Tag.card). Merged, never replaced.
+  // A base's collection placed in the explorer: it (and its branch) shows there from now on.
+  async function placeInExplorer(paths: string[]) {
+    const affected = tags.filter((t) => t.baseOnly && paths.some((p) => t.path === p || t.path.startsWith(`${p}/`)));
+    await Promise.all(affected.map((t) => updateDoc(doc(db, 'tags', t.id), { inExplorer: true })));
+  }
+
+  // Taken back out of the explorer: the collection stays in its base, as it was before it was placed.
+  async function removeFromExplorer(paths: string[]) {
+    const affected = tags.filter((t) => t.inExplorer && paths.some((p) => t.path === p || t.path.startsWith(`${p}/`)));
+    await Promise.all(affected.map((t) => updateDoc(doc(db, 'tags', t.id), { inExplorer: deleteField() })));
+  }
+
+  async function setTagFields(tagId: string, fields: { groupIds?: string[]; card?: Tag['card'] }) {
+    // Firestore refuses `undefined` anywhere in a value, and the card sheet
+    // sends undefined for an empty description or no colour - the whole save
+    // failed without a word and the new size never stuck. An empty field is
+    // simply not written.
+    const clean: Record<string, unknown> = { ...fields };
+    // Only a plain object is cleaned; the delete sentinel is passed through as is.
+    if (fields.card && Object.getPrototypeOf(fields.card) === Object.prototype) {
+      clean.card = Object.fromEntries(Object.entries(fields.card).filter(([, v]) => v !== undefined));
+    }
+    await updateDoc(doc(db, 'tags', tagId), clean);
   }
 
   // Explicit delete from TagManageScreen - strips the tag off every item
@@ -324,9 +392,14 @@ export function useTags() {
     createAndAttachTag,
     createAndAttachTagToMany,
     createFolderTag,
+    placeInExplorer,
+    removeFromExplorer,
     detachTag,
     renameTag,
+    moveBranch,
+    setFolderAppearance,
     updateTag,
+    setTagFields,
     deleteTagCompletely,
   };
 }

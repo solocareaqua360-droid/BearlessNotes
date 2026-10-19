@@ -1,6 +1,6 @@
 import { lift } from '../utils/lift';
 import { cardRadius } from '../theme/scale';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -30,6 +30,7 @@ export default function ExplorerHead({
   trash,
   columns,
   folderRef,
+  faceOf,
 }: {
   path: string;
   folders: ExplorerFolder[];
@@ -51,6 +52,10 @@ export default function ExplorerHead({
   // a card be dropped straight onto a parent). Absent on a screen that
   // has not joined drag-and-drop yet.
   folderRef?: (path: string) => (node: View | null) => void;
+  // A base of collections draws each of its collections by what is in it (CollectionCard) - the screen hands the face
+  // over; null keeps the ordinary folder row. Faced folders stand together above the rest, so a tall face never
+  // stretches a short row beside it.
+  faceOf?: (folder: ExplorerFolder) => { node: ReactNode; wide: boolean } | null;
 }) {
   const theme = useTheme();
   // Soft (a database's chrome says so - see SoftSurfaceContext): the same
@@ -73,11 +78,40 @@ export default function ExplorerHead({
   // Nothing above the list unless there is something to put there. The
   // path used to count as something; it lives in the dock now.
   if (folders.length === 0 && !trash) return null;
+  const faced: { folder: ExplorerFolder; face: ReactNode; wide: boolean }[] = [];
+  const plain: ExplorerFolder[] = [];
+  folders.forEach((folder) => {
+    const got = faceOf?.(folder) ?? null;
+    if (got) faced.push({ folder, face: got.node, wide: got.wide });
+    else plain.push(folder);
+  });
+  // Faces stand two across at least (a face a whole line wide on the cover screen is a poster).
+  const faceCols = Math.max(2, cols);
+  const faceWidth = width > 0 ? Math.floor((width - FOLDER_GAP * (faceCols - 1)) / faceCols) - 1 : undefined;
 
   return (
     <View style={styles.head} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      {faced.length > 0 && (
+        <View style={[styles.folderGrid, { alignItems: 'flex-start', marginBottom: plain.length > 0 || (!!trash && trash.count > 0 && path === '') ? FOLDER_GAP : 0 }]}>
+          {faced.map(({ folder, face, wide }) => (
+            <View key={folder.fullPath} ref={folderRef?.(folder.fullPath)} collapsable={false} style={wide ? { width: '100%' } : faceWidth !== undefined && { width: faceWidth }}>
+              <Pressable
+                {...lift()}
+                onPress={() => onGo(folder.fullPath)}
+                ref={(node) => {
+                  if (node) rowNodes.current.set(folder.fullPath, node);
+                  else rowNodes.current.delete(folder.fullPath);
+                }}
+                onLongPress={() => onFolderMenu(folder, rowNodes.current.get(folder.fullPath))}
+              >
+                {face}
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
       <View style={cols > 1 ? styles.folderGrid : styles.folderStack}>
-      {folders.map((folder) => (
+      {plain.map((folder) => (
         <View key={folder.fullPath} ref={folderRef?.(folder.fullPath)} collapsable={false}>
           <Pressable
             {...lift()}

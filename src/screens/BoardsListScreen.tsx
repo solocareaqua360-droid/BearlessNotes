@@ -1,4 +1,5 @@
 import { useFolderArrival } from '../navigation/folderArrival';
+import { SwipeSelectItem } from '../components/SwipeSelect';
 import { useEffect, useRef, useState } from 'react';
 import { markHeld } from '../utils/heldNode';
 import { holdAsk } from '../components/surfaces/HoldAsk';
@@ -60,6 +61,11 @@ import { go } from '../components/DesktopTabs';
 import { useDensity } from '../hooks/useDensity';
 import { listenError } from '../utils/listenError';
 import BoardPreviewImage from '../components/BoardPreviewImage';
+import DeleteContentsSheet from '../components/DeleteContentsSheet';
+import { FEATURES } from '../features';
+import { BoardPlan, PlanItem, describeBoard, describeBoards, removeItems } from '../utils/deletionPlan';
+import { askWhatToKeep } from '../components/DeleteContentsHost';
+import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
 
 // The "+" fill: the accent at half strength, since the blur behind it is
 // what separates it from the screen (see DatabaseChrome).
@@ -75,6 +81,8 @@ export default function BoardsListScreen({
   inPane,
   standalone,
 }: { inPane?: boolean; standalone?: boolean } = {}) {
+  // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
+  useDockDesksWhileFocused(!!standalone && !inPane);
   const theme = useTheme();
   const accent = theme.sections.boards;
   const accentGlass = withAlpha(accent, 0.55);
@@ -110,6 +118,7 @@ export default function BoardsListScreen({
     await setDoc(doc(db, 'settings', 'boardsPrefs'), { viewMode: mode }, { merge: true });
   }
   const [renamingBoard, setRenamingBoard] = useState<BoardItem | null>(null);
+  const [deleting, setDeleting] = useState<{ board: BoardItem; plan: BoardPlan } | null>(null);
   const [tagPickerBoardId, setTagPickerBoardId] = useState<string | null>(null);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
@@ -231,10 +240,31 @@ export default function BoardsListScreen({
     },
   });
 
-  function confirmDeleteSelected() {
+  async function confirmDeleteSelected() {
     const toDelete = selectedBoards;
+    let chosen: PlanItem[] = [];
+    if (FEATURES.deleteAsksContents) {
+      try {
+        const plan = await describeBoards(toDelete, boards);
+        if (plan.groups.length > 0) {
+          const answer = await askWhatToKeep({
+            title: `Видалити дошки (${toDelete.length})?`,
+            subtitle: toDelete.map((b) => b.title || 'Без назви').join(', '),
+            noun: 'дошки',
+            plan,
+            withIt: 'ними',
+            place: 'цих дошках',
+          });
+          if (!answer) return;
+          chosen = answer;
+        }
+      } catch (e) {
+        console.warn('describeBoards', e);
+      }
+    }
     requestDeleteMany(toDelete, `Видалено дощок: ${toDelete.length}`, () => {
       toDelete.forEach((b) => deleteDoc(doc(db, 'boards', b.id)));
+      if (chosen.length > 0) removeItems(chosen);
     });
     clearSelection();
   }
@@ -260,7 +290,7 @@ export default function BoardsListScreen({
               columns: readBoardPart<BoardColumn>(data.columns),
               tagIds: data.tagIds ?? [],
               groupId: data.groupId,
-              trashed: data.trashed === true,
+              trashed: data.trashed === true || !!data.deletedAt,
               // A day's own board (utils/dayBoard) belongs to its day, not here.
               dayBoard: !!data.calendarDate,
               createdAt: data.createdAt ?? 0,
@@ -375,6 +405,19 @@ export default function BoardsListScreen({
   }
 
   function confirmDeleteBoard(board: BoardItem) {
+    if (FEATURES.deleteAsksContents) {
+      describeBoard(board, boards)
+        .then((plan) => {
+          if (plan.groups.length === 0) return plainDeleteBoard(board);
+          setDeleting({ board, plan });
+        })
+        .catch(() => plainDeleteBoard(board));
+      return;
+    }
+    plainDeleteBoard(board);
+  }
+
+  function plainDeleteBoard(board: BoardItem) {
     confirm({
       title: 'Видалити дошку?',
       message: board.title || 'Без назви',
@@ -556,6 +599,7 @@ export default function BoardsListScreen({
 
   return (
     <DatabaseChrome<BoardItem>
+      swipeScroll={carrying}
       list={list}
       accent={accent}
       accentGlass={accentGlass}
@@ -670,6 +714,23 @@ export default function BoardsListScreen({
               if (renamingBoard) renameBoard(renamingBoard, title);
             }}
           />
+
+          {deleting && (
+            <DeleteContentsSheet
+              visible
+              title="Видалити дошку?"
+              subtitle={deleting.board.title || 'Без назви'}
+              noun="дошку"
+              plan={deleting.plan}
+              onCancel={() => setDeleting(null)}
+              onConfirm={(chosen) => {
+                const { board } = deleting;
+                setDeleting(null);
+                deleteDoc(doc(db, 'boards', board.id));
+                if (chosen.length > 0) removeItems(chosen);
+              }}
+            />
+          )}
         </>
       }
     >
@@ -742,7 +803,11 @@ export default function BoardsListScreen({
             )}
             {viewMode === 'cards'
               ? boardsHere.map((board) => renderBoardTile(board, tileWidth))
-              : boardsHere.map(renderBoardRow)}
+              : boardsHere.map((board) => (
+                  <SwipeSelectItem key={board.id} id={board.id}>
+                    {renderBoardRow(board)}
+                  </SwipeSelectItem>
+                ))}
             {/* What else is in this group - see GroupSections. */}
             <GroupSections groupId={list.selectedGroupId} currentKind="board" tags={tags} />
           </ScrollView>

@@ -117,9 +117,20 @@ export default function SideLayer({
   // Opened or shut from anywhere but a swipe (back, the bar's arrow): the
   // layer finishes the way there on its own. A swipe has already put it
   // where it is going, so this only settles it.
+  //
+  // STANDING STILL once it has arrived (2026-10-12): left on its animated transform, the open panel was measured
+  // by its buttons at a place it had already left - 45-100 dp to the side for several seconds after a swipe (the
+  // transform reached the screen, not the layout tree that taps are measured against). A finger always drifts a
+  // pixel or two, and a press that "left" its button was dropped: the «⋯» of the bases drawer ignored every real
+  // tap right after the drawer came in, while a perfectly still tap went through. The same cure as the open
+  // card's (GlassLayer's FlipIn): once arrived, the animated transform is taken off and the panel just stands.
+  const [still, setStill] = useState(false);
   useEffect(() => {
     if (open) setMounted(true);
-    progress.value = withTiming(open ? 1 : 0, { duration: 200, easing: Easing.out(Easing.cubic) });
+    setStill(false);
+    progress.value = withTiming(open ? 1 : 0, { duration: 200, easing: Easing.out(Easing.cubic) }, (finished) => {
+      if (finished && open) runOnJS(setStill)(true);
+    });
   }, [open, progress]);
 
   useEffect(() => {
@@ -147,13 +158,17 @@ export default function SideLayer({
       Gesture.Pan()
         .activeOffsetX(direction * 14)
         .failOffsetY([-12, 12])
+        .onStart(() => runOnJS(setStill)(false))
         .onUpdate((e) => {
           progress.value = Math.min(1, Math.max(0, 1 - (e.translationX * direction) / width));
         })
         .onEnd((e) => {
           const travelled = e.translationX * direction;
           const shut = travelled > width * 0.3 || e.velocityX * direction > 500;
-          progress.value = withTiming(shut ? 0 : 1, { duration: 180, easing: Easing.out(Easing.cubic) });
+          progress.value = withTiming(shut ? 0 : 1, { duration: 180, easing: Easing.out(Easing.cubic) }, (finished) => {
+            // Let go short of shutting: back where it was, and standing still again.
+            if (finished && !shut) runOnJS(setStill)(true);
+          });
           if (shut) runOnJS(close)();
         }),
     [progress, width, close, direction]
@@ -168,7 +183,7 @@ export default function SideLayer({
           the window's own blur deepens (wallpaperBoost) - this blur cannot
           see the wallpaper, and its dim would stack on the screen's veil. */}
       {!wallpaper && (
-      <GlassPortal priority={-2}>
+      <GlassPortal priority={-2} name="sideDim">
         <Animated.View style={[StyleSheet.absoluteFill, styles.dim, groundStyle]} pointerEvents="none">
           {blurShown && blurTarget && (
             <BlurView
@@ -185,7 +200,7 @@ export default function SideLayer({
       )}
       {/* The screen itself: over its blur, under the dock and the bars
           (faded out while it is open) and under every sheet it opens. */}
-      <GlassPortal priority={-1}>
+      <GlassPortal priority={-1} name="sideScreen">
         <NavigationContext.Provider value={navigation}>
           <NavigationRouteContext.Provider value={route}>
             <SideDrawersContext.Provider value={sideDrawers}>
@@ -208,7 +223,7 @@ export default function SideLayer({
                       { width },
                       drawer && (side === 'right' ? { left: windowWidth - width } : null),
                       drawer && (side === 'right' ? styles.drawerRight : styles.drawerLeft),
-                      panelStyle,
+                      still ? null : panelStyle,
                     ]}
                     pointerEvents={open ? 'auto' : 'none'}
                   >

@@ -13,6 +13,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  Platform,
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -81,6 +82,9 @@ import { useBlurTarget } from '../components/GlassTarget';
 import SaveRing from '../components/SaveRing';
 import GlassDrop, { GlassIcon } from '../components/GlassDrop';
 import { CalendarDrawerContext } from '../navigation/sideDrawers';
+import CalendarRiver, { type CalendarRiverHandle } from '../components/CalendarRiver';
+import QuickCreateHost from '../components/QuickCreateHost';
+import UndoToast from '../components/UndoToast';
 import { usePauseFrost } from '../components/frostPause';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import { useDockClearance } from '../navigation/dockGeometry';
@@ -116,6 +120,9 @@ const PLATE_MARGIN = 16;
 // повинні бути меншими". 360 fits seven 46px columns and the history
 // cards under them without either having to wrap.
 const DESKTOP_CALENDAR_WIDTH = 360;
+// The Mac feed's day pages: laid out at about the Mac sheet's width, cut at a little more than square.
+const FEED_PAGE_W = 620;
+const FEED_PAGE_H = 700;
 const calendarPrefsDoc = doc(db, 'settings', 'calendarPrefs');
 
 // The week strip pages between exactly 3 in-memory weeks (prev/current/next)
@@ -187,6 +194,21 @@ export default function CalendarScreen() {
   // which is exactly the cramped feeling a column of its own removes.
   const { isTwoPane, isThreePane } = useResponsiveLayout();
   const pointerDensity = useDensity() === 'pointer';
+  // THE DAY RIVER (features.calendarRiver, 2026-10-12): on the calendar desk the days run as one column
+  // (components/CalendarRiver). The day page as it was stays one tap away in «⋯» («Вигляд дня»), until the user
+  // says it can go.
+  const [dayPageView, setDayPageView] = useState(false);
+  const river = FEATURES.calendarRiver && !calendarDrawer && !pointerDensity && !dayPageView;
+  const riverRef = useRef<CalendarRiverHandle>(null);
+  // The «+» over the river opens the quick-create window, on «У щоденник» (the user, 2026-10-13: the same window
+  // as the explorer's «+»); the old note/task question stays in CalendarRiver.plus() for the flag-off case.
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickTold, setQuickTold] = useState<string | null>(null);
+  useEffect(() => {
+    if (!quickTold) return;
+    const t = setTimeout(() => setQuickTold(null), 2600);
+    return () => clearTimeout(t);
+  }, [quickTold]);
   // THE CALENDAR IN THE SOFT STYLE (theme/soft) - the user's pick of the
   // next screen after the note ("календар"). On a phone, and not when it
   // is the drawer over a desk (there the blurred desk is its ground). The
@@ -242,7 +264,7 @@ export default function CalendarScreen() {
   const calendarPaneWidthFixed = !isTwoPane
     ? null
     : pointerDensity
-      ? DESKTOP_CALENDAR_WIDTH
+      ? (FEATURES.macFrameB && Platform.OS === 'web' ? 0 : DESKTOP_CALENDAR_WIDTH)
       : windowWidth >= windowHeight
         ? Math.floor(windowWidth / 2.3)
         : null;
@@ -296,6 +318,23 @@ export default function CalendarScreen() {
   // which is why the filter button is gone on this density: it was a
   // control describing something that can simply be shown.
   const feedMode = pointerDensity && isTwoPane;
+  // FRAME B (the Mac, 2026-10-19): the feed of days stands in the right column under the month (the rail panel),
+  // not beside the day's page - the page takes the column.
+  const feedInPanel = feedMode && FEATURES.macFrameB && Platform.OS === 'web';
+  // ...and the day's own tools («Вибір», «Дошка дня», the menu) are the window toolbar's, as the phone's bar carries
+  // them: the sheet's corner circle and the floating board button are not drawn.
+  const chromeToolsB = FEATURES.macFrameB && Platform.OS === 'web' && pointerDensity;
+  // THE DAY'S BOARD (utils/dayBoard): its own board, with the day's sheet laid on it as a card.
+  const openDayBoard = () => {
+    const day = new Date(selectedDate);
+    const key = dateKey(day);
+    ensureDayBoard(key, `День · ${formatShortDate(day)}`)
+      .then((boardId) => {
+        calendarDrawer?.close();
+        navigation.navigate('BoardCopy', { boardId });
+      })
+      .catch((e: Error) => notify('Дошка дня не відкрилась', e.message));
+  };
   // THE OVERVIEW, on a phone: the day's page zooms out into the same feed
   // of big day cards, newest at the top, the day you were on first in
   // view and the ones before it below. Two ways in, both the user's
@@ -877,10 +916,24 @@ export default function CalendarScreen() {
   // the pencil, which makes what can be made here - text in the day's
   // note. While the note's blocks are being chosen, the note's own
   // actions fill the dock's middle.
-  const pencilBead = calendarFocused && !notePanelOpen
+  const pencilBead = river
+    ? calendarFocused
+      ? { icon: 'add-outline', onPress: () => (FEATURES.quickCreate ? setQuickOpen(true) : riverRef.current?.plus()) }
+      : null
+    : calendarFocused && !notePanelOpen
     ? { icon: 'pencil-outline', onPress: () => { setHistoryExpanded(false); noteEditorRef.current?.startWriting(); } }
     : null;
   const calendarMenu = [
+      ...(FEATURES.calendarRiver && !calendarDrawer && !pointerDensity
+        ? [
+            {
+              label: dayPageView ? 'Стрічка днів' : 'Вигляд дня',
+              icon: (dayPageView ? 'list-outline' : 'today-outline') as 'list-outline' | 'today-outline',
+              checked: false,
+              onPress: () => setDayPageView((v) => !v),
+            },
+          ]
+        : []),
       {
         label: 'Місяць',
         icon: 'calendar-outline',
@@ -899,7 +952,13 @@ export default function CalendarScreen() {
       },
     ] as const;
   const calendarSelect = { active: noteSelectMode, onPress: () => noteEditorRef.current?.toggleSelectMode() };
-  useTopExtras([...calendarMenu], calendarSelect, !pointerDensity && !calendarDrawer);
+  useTopExtras(
+    [...calendarMenu],
+    calendarSelect,
+    (!pointerDensity || chromeToolsB) && !calendarDrawer,
+    undefined,
+    chromeToolsB ? [{ key: 'dayBoard', icon: 'easel-outline', label: 'Дошка дня', onPress: () => openDayBoard() }] : null
+  );
   // For the bar drawn inside the drawer: one object while it says the same.
   const drawerExtras = useStableTopExtras([...calendarMenu], calendarSelect);
   const drawerClose = calendarDrawer?.close;
@@ -1260,6 +1319,7 @@ export default function CalendarScreen() {
                 came off the toolbar, and this is now the ONLY way into
                 it for a daily note - so it moves in the same step it is
                 removed from, never before. */}
+            {!chromeToolsB && (
             <Pressable
               hitSlop={6}
               style={[styles.sheetSelect, noteSelectMode && styles.sheetSelectOn]}
@@ -1274,6 +1334,7 @@ export default function CalendarScreen() {
                 color={theme.paper.inkMuted}
               />
             </Pressable>
+            )}
           </View>
         )}
         <DocumentEditorScreen
@@ -1532,9 +1593,34 @@ export default function CalendarScreen() {
           <Ionicons name="today-outline" size={14} color={theme.ink.primary} />
           <Text style={styles.railTodayLabel}>Сьогодні</Text>
         </Pressable>
-        <View style={styles.railHistory}>
-          <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill dense />
-        </View>
+        {!feedInPanel && (
+          <View style={styles.railHistory}>
+            <DayHistoryList items={historyByDate.get(selectedKey) ?? []} fill dense />
+          </View>
+        )}
+        {feedInPanel && (
+          <View style={styles.railFeed}>
+            <Text style={styles.railFeedLabel}>Дні</Text>
+            {dayFeed.length === 0 ? (
+              <Text style={styles.feedEmpty}>Ще немає жодного заповненого дня</Text>
+            ) : (
+              <ScrollView contentContainerStyle={styles.railFeedContent} showsVerticalScrollIndicator={false}>
+                {dayFeed.map((day) => {
+                  const date = parseDateKey(day.key);
+                  const here = day.key === selectedKey;
+                  return (
+                    <Pressable key={day.key} onPress={() => selectDay(date)} style={[styles.railFeedDay, here && styles.railFeedDayHere]} accessibilityLabel={formatBigDate(date)}>
+                      <Text style={[styles.railFeedDayLabel, here && styles.railFeedDayLabelHere]} numberOfLines={1}>
+                        {`${WEEKDAY_SHORT[mondayIndex(date)]}, ${formatBigDate(date)}`}
+                      </Text>
+                      <DayPageMiniature blocks={day.blocks} pageWidth={FEED_PAGE_W} pageHeight={360} scale={(340 - 24 - 24) / FEED_PAGE_W} radius={10} />
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        )}
       </View>
     ) : null
   );
@@ -1622,7 +1708,7 @@ export default function CalendarScreen() {
         !calendarDrawer && <ScreenBackdrop id="calendarBg" />
       )}
 
-      {!pointerDensity && (
+      {!river && !pointerDensity && (
       <Animated.View style={[styles.headerRow, { paddingTop: headerPadTop }, phoneOverview && overviewFadeStyle]}>
         <View
           style={styles.headerLeft}
@@ -1691,6 +1777,15 @@ export default function CalendarScreen() {
       {/* One column on a phone (calendar, then the note under it), two on
           a wide screen (calendar left, note right). Both halves are flex:1
           in the row, so they split the window evenly. */}
+      {river ? (
+        <>
+          <CalendarRiver ref={riverRef} navigation={navigation} />
+          {FEATURES.quickCreate && (
+            <QuickCreateHost visible={quickOpen} onClose={() => setQuickOpen(false)} initialKind="day" tasksOnDay onTell={setQuickTold} />
+          )}
+          {quickTold && <UndoToast message={quickTold} actionLabel="Гаразд" onUndo={() => setQuickTold(null)} />}
+        </>
+      ) : (
       <View
         onLayout={(e) => {
           stackYRef.current = e.nativeEvent.layout.y;
@@ -1735,7 +1830,7 @@ export default function CalendarScreen() {
               ))}
             </View>
           )}
-          {feedMode ? (
+          {feedMode && !feedInPanel ? (
             <>
               {/* Newest first, and it just keeps going: the days that
                   hold nothing are not drawn at all, so the column IS the
@@ -1747,29 +1842,18 @@ export default function CalendarScreen() {
                 <ScrollView contentContainerStyle={styles.feedContent} showsVerticalScrollIndicator={false}>
                   {dayFeed.map((day) => {
                     const date = parseDateKey(day.key);
-                    const preview = extractPreview(day.blocks, day.coverImageUri, undefined, day.coverDriveFileId);
+                    // THE DAY'S OWN PAGE, shrunk (2026-10-16, the user: the Mac's calendar «давно не оновлювався» -
+                    // it still drew document cards with a gradient cover): the same miniature the phone's overview
+                    // is made of, laid out at the Mac sheet's width and cut at a page's height.
+                    const pageW = FEED_PAGE_W;
+                    const scale = (DESKTOP_CALENDAR_WIDTH - 40) / pageW;
                     return (
-                      <DocumentCard
-                        key={day.key}
-                        id={`day_${day.key}`}
-                        // The DAY is the card's name, the same as it is
-                        // the sheet's - a daily note has no other.
-                        title={`${WEEKDAY_SHORT[mondayIndex(date)]}, ${formatBigDate(date)}`}
-                        updatedAt={day.updatedAt}
-                        imageUri={preview.imageUri}
-                        coverGradient={day.coverGradient}
-                        imageDriveFileId={preview.imageDriveFileId}
-                        imageUris={preview.imageUris}
-                        imageDriveFileIds={preview.imageDriveFileIds}
-                        previewText={preview.previewText}
-                        previewTail={preview.previewTail}
-                        blocks={day.blocks}
-                        checklistItems={preview.checklistItems}
-                        layout="grid"
-                        soft={S}
-                        gridWidth={DESKTOP_CALENDAR_WIDTH - 40}
-                        onPress={() => selectDay(date)}
-                      />
+                      <Pressable key={day.key} onPress={() => selectDay(date)} style={styles.feedDay} accessibilityLabel={formatBigDate(date)}>
+                        <Text style={[styles.overviewDate, styles.feedDayLabel]} numberOfLines={1}>
+                          {`${WEEKDAY_SHORT[mondayIndex(date)]}, ${formatBigDate(date)}`}
+                        </Text>
+                        <DayPageMiniature blocks={day.blocks} pageWidth={pageW} pageHeight={FEED_PAGE_H} scale={scale} radius={14} />
+                      </Pressable>
                     );
                   })}
                 </ScrollView>
@@ -2033,7 +2117,7 @@ export default function CalendarScreen() {
               {dueElsewhere.map((task, index) => (
                 <Pressable
                   key={task.id}
-                  style={[styles.dueRow, index > 0 && styles.dueRowDivider]}
+                  style={[styles.dueRow, chromeToolsB && styles.dueRowDense, index > 0 && styles.dueRowDivider]}
                   onPress={() => navigation.navigate('Editor', { documentId: task.documentId })}
                 >
                   <Pressable hitSlop={6} onPress={() => toggleDueReminder(task)}>
@@ -2073,6 +2157,7 @@ export default function CalendarScreen() {
         {!(compactFilter === 'history' && noteCollapsed) && renderDayNote(selectedKey, true)}
 
       </View>
+      )}
 
       {phoneOverview && overviewOpen && (
         <View style={StyleSheet.absoluteFill}>
@@ -2203,19 +2288,10 @@ export default function CalendarScreen() {
           the board of the day being looked at - its own board, with the
           day's sheet laid on it as a card. Floating, so neither the
           calendar's dock nor the board's has to give anything up. */}
-      {FEATURES.dayBoard && !overviewOpen && daySearch === null && !notePanelOpen && (
+      {FEATURES.dayBoard && !river && !overviewOpen && daySearch === null && !notePanelOpen && !chromeToolsB && (
         <Pressable
           accessibilityLabel="Дошка дня"
-          onPress={() => {
-            const day = new Date(selectedDate);
-            const key = dateKey(day);
-            ensureDayBoard(key, `День · ${formatShortDate(day)}`)
-              .then((boardId) => {
-                calendarDrawer?.close();
-                navigation.navigate('BoardCopy', { boardId });
-              })
-              .catch((e: Error) => notify('Дошка дня не відкрилась', e.message));
-          }}
+          onPress={openDayBoard}
           style={({ pressed }) => [
             {
               position: 'absolute',
@@ -2902,6 +2978,13 @@ const makeStyles = (t: Theme) =>
     minHeight: 0,
     marginTop: 10,
   },
+  railFeed: { flex: 1, minHeight: 0, marginTop: 14, gap: 6 },
+  railFeedLabel: { fontSize: 12, fontFamily: FONT_SEMIBOLD, color: t.ink.faint, paddingHorizontal: 2 },
+  railFeedContent: { gap: 14, paddingBottom: 20 },
+  railFeedDay: { gap: 5, borderRadius: 12, padding: 6 },
+  railFeedDayHere: { backgroundColor: t.selected },
+  railFeedDayLabel: { fontSize: 12.5, fontFamily: FONT_SEMIBOLD, color: t.ink.muted, paddingLeft: 2 },
+  railFeedDayLabelHere: { color: t.ink.primary },
   daySearch: {
     position: 'absolute',
     left: 0,
@@ -2915,8 +2998,10 @@ const makeStyles = (t: Theme) =>
     paddingHorizontal: 20,
     paddingBottom: 160,
   },
+  feedDay: { gap: 6 },
+  feedDayLabel: { paddingLeft: 4 },
   feedContent: {
-    gap: 10,
+    gap: 18,
     paddingRight: 20,
     paddingBottom: 24,
   },
@@ -3131,6 +3216,8 @@ const makeStyles = (t: Theme) =>
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
+  // A pointer's rows (frame B): 36 tall, the Mac scale (desktopTheme CONTROL.row).
+  dueRowDense: { paddingVertical: 6, gap: 8 },
   dueRowDivider: {
     borderTopWidth: 1,
     borderStyle: 'dashed',

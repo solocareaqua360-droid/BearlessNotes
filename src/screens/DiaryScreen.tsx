@@ -28,6 +28,7 @@ import { ask } from '../components/surfaces/Ask';
 import { useDensity } from '../hooks/useDensity';
 import { openTabWithSequence } from '../navigation/desktopTabs';
 import { go } from '../components/DesktopTabs';
+import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
 
 type Sheet = DocumentItem & { calendarDate?: string };
 
@@ -42,6 +43,8 @@ type Sheet = DocumentItem & { calendarDate?: string };
 // test the "filled days" dots use). No tags and no projects: calendar
 // days deliberately carry neither.
 export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
+  // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
+  useDockDesksWhileFocused(!inPane);
   // In front: the start desk's recents.
   useTileOpened('diary');
   const theme = useTheme();

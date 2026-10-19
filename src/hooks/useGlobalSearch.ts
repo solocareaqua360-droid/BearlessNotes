@@ -6,6 +6,7 @@ import { Block, CustomDatabase } from '../types';
 import { TextMatch, documentMatchesQuery, findBodyMatch, findTitleMatch } from '../utils/documentPreview';
 import { categoryFromSiteName } from '../utils/linkCategory';
 import { listenError } from '../utils/listenError';
+import { isGone } from '../utils/isGone';
 import { FEATURES } from '../features';
 
 // One search over every database. Firestore has no query that reaches
@@ -81,7 +82,8 @@ function useCollection(name: string): Row[] {
   useEffect(
     () =>
       onSnapshot(ownedQuery(name), (snapshot) => {
-        setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
+        // The bin is not searched (isGone).
+        setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })).filter((r) => !isGone(r)));
       }, listenError('useGlobalSearch:useGlobalSearch')),
     [name]
   );

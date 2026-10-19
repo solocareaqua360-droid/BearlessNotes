@@ -97,7 +97,7 @@ function SearchCorner({
 
   if (!visible || startFront) return null;
   return (
-    <GlassPortal>
+    <GlassPortal name="SearchCorner">
       <Animated.View
         pointerEvents="box-none"
         style={[

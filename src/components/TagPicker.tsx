@@ -41,12 +41,19 @@ type Props = {
   // just this sub-view rather than duplicating the icon/color grid).
   initialMode?: 'list' | 'create';
   initialPath?: string;
+  // A base of collections calls them what they are there (2026-10-15): «Підбірки», «Створити підбірку …».
+  words?: { title: string; create: string; newTitle: string; nameTitle: string };
+  // Collections of a base: made at once by name, and no «hide from suggestions» cross on a short list of its own.
+  plain?: boolean;
 };
 
 // Bottom-sheet tag picker for a single database item (Files/Photos/Links
 // row) - see TagPicker.dc.html / IconColorPicker.dc.html. Two internal
 // modes: the search+list, and a "new tag" icon+color form reached only
 // from a first assignment (there's no standalone tag-creation path).
+export const COLLECTION_WORDS = { title: 'Підбірки', create: 'Створити підбірку', newTitle: 'Нова підбірка', nameTitle: 'Назва підбірки' };
+export const PLAYLIST_WORDS = { title: 'Плейлисти', create: 'Створити плейліст', newTitle: 'Новий плейліст', nameTitle: 'Назва плейлиста' };
+
 // Marks where the other folders begin in the one list (see `elsewhere`).
 const SECTION_BREAK = { id: '__section__' } as Tag;
 
@@ -62,6 +69,8 @@ export default function TagPicker({
   onClose,
   initialMode = 'list',
   initialPath = '',
+  plain = false,
+  words = { title: 'Папки', create: 'Створити папку', newTitle: 'Нова папка', nameTitle: 'Назва папки' },
 }: Props) {
   const theme = useTheme();
   const accent = theme.accent;
@@ -138,6 +147,13 @@ export default function TagPicker({
   const canCreate = needle.length >= 2 && !hasExactMatch;
 
   function startCreate() {
+    // A base's collection is made at once, with the folder icon - no colour-and-icon form for a name just typed
+    // (2026-10-15, walking the user's own path: the form stood between «Створити підбірку» and the collection).
+    if (plain) {
+      onCreateAndAttach(query.trim(), 'folder-outline', swatches[0]);
+      onClose();
+      return;
+    }
     setCreatingPath(query.trim());
     setIconQuery('');
     setSelectedIcon(TAG_ICONS[0]);
@@ -170,7 +186,7 @@ export default function TagPicker({
           {mode === 'list' ? (
             <>
               <View style={styles.titleRow}>
-                <Text style={styles.title}>Папки</Text>
+                <Text style={styles.title}>{words.title}</Text>
                 {/* The way out. This sheet stands nearly edge to edge and
                     the keyboard covers the rest, so the backdrop a tap
                     used to close it through is barely on the screen -
@@ -225,9 +241,11 @@ export default function TagPicker({
                       <Pressable hitSlop={8} style={styles.pencilButton} onPress={() => setRenamingTag(tag)}>
                         <Ionicons name="pencil-outline" size={14} color={theme.ink.faint} />
                       </Pressable>
-                      <Pressable hitSlop={8} style={styles.pencilButton} onPress={() => hideTag(tag.id)}>
-                        <Ionicons name="close" size={14} color={theme.ink.faint} />
-                      </Pressable>
+                      {!plain && (
+                        <Pressable hitSlop={8} style={styles.pencilButton} onPress={() => hideTag(tag.id)}>
+                          <Ionicons name="close" size={14} color={theme.ink.faint} />
+                        </Pressable>
+                      )}
                     </View>
                   );
                 })}
@@ -235,7 +253,7 @@ export default function TagPicker({
                 {canCreate && (
                   <Pressable style={styles.createRow} onPress={startCreate}>
                     <Ionicons name="add" size={18} color={accent} />
-                    <Text style={styles.createLabel}>Створити папку "{query.trim()}"</Text>
+                    <Text style={styles.createLabel}>{words.create} "{query.trim()}"</Text>
                   </Pressable>
                 )}
               </ScrollView>
@@ -246,7 +264,7 @@ export default function TagPicker({
                 <Pressable onPress={() => setMode('list')}>
                   <Text style={styles.createHeaderCancel}>Скасувати</Text>
                 </Pressable>
-                <Text style={styles.createHeaderTitle}>Нова папка</Text>
+                <Text style={styles.createHeaderTitle}>{words.newTitle}</Text>
                 <Pressable onPress={saveNewTag}>
                   <Text style={styles.createHeaderSave}>Зберегти</Text>
                 </Pressable>
@@ -321,7 +339,7 @@ export default function TagPicker({
 
       <RenamePrompt
         visible={renamingTag !== null}
-        title="Назва папки"
+        title={words.nameTitle}
         initialValue={renamingTag?.path ?? ''}
         onCancel={() => setRenamingTag(null)}
         onSave={(value) => {

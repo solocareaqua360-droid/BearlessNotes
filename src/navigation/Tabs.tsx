@@ -7,12 +7,14 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming
 import { useSeeThroughBackdrop } from '../theme/ThemeProvider';
 import FloatingIslandTabBar from '../components/FloatingIslandTabBar';
 import CalendarDrawer, { DatabasesLayer, SIDE_DRAWER_FRACTION } from '../components/CalendarDrawer';
+import { FEATURES } from '../features';
 import { SideDrawersProvider, databasesDrawerWidth, useSideDrawers } from './sideDrawers';
 import { deskScreenFor } from './tabScreens';
 import { noteDeskTouched, registerDeskNode } from './deskShots';
 import Freeze from '../components/Freeze';
 import { DeskVisibilityContext, makeVisibilityBox, setBoxVisible, type VisibilityBox } from './deskVisibility';
 import { DeskContext, DesksControlContext, registerDesks, useDesks } from './desks';
+import { threeDesksOnly } from './deskRegistry';
 import { useRenderTimer } from '../utils/perfWatch';
 
 // Material top tabs, not bottom tabs: the navigator the desks were built
@@ -178,9 +180,20 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
   // first home page is the widgets page, a leftward one on the last is the
   // app library. Anywhere between, the same swipe is the next desk.
   const [focusedTab, setFocusedTab] = useState(desks[0]);
+  // The desk that HEARS ITS DATA (DeskHost's `active`) follows the focused one only once the switch has settled
+  // (2026-10-16): arriving, a desk catches up on everything that changed while it was away - a re-render that landed
+  // right on the dock capsule's journey and stalled it 2-3 frames. 380 ms: after the capsule has come to rest.
+  const [hearingTab, setHearingTab] = useState(desks[0]);
+  useEffect(() => {
+    if (hearingTab === focusedTab) return;
+    const timer = setTimeout(() => setHearingTab(focusedTab), 380);
+    return () => clearTimeout(timer);
+  }, [focusedTab, hearingTab]);
   const layerOpen = calendarOpen || databasesOpen;
-  const canCalendar = !swipeBlocked && !layerOpen && focusedTab === desks[0];
-  const canDatabases = !swipeBlocked && !layerOpen && focusedTab === desks[desks.length - 1];
+  // The left layer is the chat once the calendar is a desk - archived with features.chatDrawer off.
+  const canCalendar = (FEATURES.chatDrawer || !FEATURES.calendarDesk) && !swipeBlocked && !layerOpen && focusedTab === desks[0];
+  // No right layer when the bases are a desk of their own (features.basesDesk).
+  const canDatabases = !FEATURES.basesDesk && !swipeBlocked && !layerOpen && focusedTab === desks[desks.length - 1];
   // Over a screen that scrolls sideways itself, the swipe starts from the
   // edge: EDGE_BAND wide on the side it goes to, and it takes over at once
   // (the scroll's own slop would otherwise win the race).
@@ -303,7 +316,9 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
               sceneStyle: { backgroundColor: 'transparent' },
               // Swiped between, as desks are; the calendar waits past the
               // first one (see `blocked` above).
-              swipeEnabled: true,
+              // Only the three desks (features.threeDesks): no swipe at all - the dock's beads switch, and the swipe
+              // is left free for selecting.
+              swipeEnabled: !threeDesksOnly,
               animationEnabled: false,
             }}
           >
@@ -317,7 +332,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
                   listeners={{ focus: () => setFocusedTab(name) }}
                   options={
                     // A board's canvas takes every sideways drag itself.
-                    name === 'Дошки'
+                    name === 'Дошки' && !threeDesksOnly
                       ? ({ route }) => ({ swipeEnabled: getFocusedRouteNameFromRoute(route) !== 'Board' })
                       : undefined
                   }
@@ -334,8 +349,14 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
                         component={screen.component}
                         props={screen.props}
                         back={backFor(name, previous)}
-                        frozen={Math.abs(index - focusedIndex) > 1}
-                        active={index === focusedIndex}
+                        // The three main desks are NEVER frozen (2026-10-16, the user: a «ривок» going Календар -> Бази,
+                        // none Старт <-> Календар). Freezing hides by Suspense, and on Fabric a hidden subtree is taken
+                        // off the screen: freezing the Start desk unmounted thousands of views, thawing it mounted them
+                        // again - 50-80 ms of UI thread right on the switch. Only the desks beyond the three freeze, and
+                        // a desk beyond them thaws by the SETTLED desk (hearingTab, 380 ms on): going Календар -> Бази
+                        // thawed the fourth desk on the very frame of the switch (the last 34 ms hitch).
+                        frozen={index >= 3 && index !== focusedIndex && Math.abs(index - Math.max(0, desks.indexOf(hearingTab))) > 1}
+                        active={index === Math.max(0, desks.indexOf(hearingTab))}
                       />
                     );
                   }}
@@ -346,7 +367,7 @@ function TabsWithDrawers({ desks }: { desks: string[] }) {
         </Animated.View>
       </GestureDetector>
       <CalendarDrawerMemo />
-      <DatabasesLayerMemo />
+      {!FEATURES.basesDesk && <DatabasesLayerMemo />}
     </View>
   );
 }

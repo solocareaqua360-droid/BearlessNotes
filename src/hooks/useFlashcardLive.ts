@@ -19,6 +19,8 @@ function subscribe(listener: () => void) {
       (snapshot) => {
         const next = new Map<string, Flashcard>();
         snapshot.docs.forEach((d) => {
+          // In the bin: gone from the live map, so a block of it falls back to its own snapshot.
+          if (d.data().deletedAt) return;
           const data = d.data() as Omit<Flashcard, 'id'>;
           next.set(d.id, {
             id: d.id,

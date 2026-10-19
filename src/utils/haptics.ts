@@ -56,6 +56,18 @@ export function hapticSelectItem() {
   android(Haptics.AndroidHaptics.Segment_Tick, () => Haptics.selectionAsync());
 }
 
+// A card or a block picked or let go BY A TAP (2026-10-19, the user's: «при звичайному тапі сильніше»): a plain key
+// click, clearly felt - one deliberate touch, one answer.
+export function hapticSelectTap() {
+  android(Haptics.AndroidHaptics.Virtual_Key, () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+}
+
+// Each card or block a sweep passes over (swipe to select, the tick strip) - «при протягуванні... слабшим»: the
+// lightest tick Android has, the one meant for many in a row.
+export function hapticSweepTick() {
+  android(Haptics.AndroidHaptics.Segment_Frequent_Tick, () => Haptics.selectionAsync());
+}
+
 // An operation finished and produced something - a group imported onto a
 // board, a record saved.
 export function hapticSuccess() {

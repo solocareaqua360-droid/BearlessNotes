@@ -24,7 +24,7 @@ import { useSideDrawerActions } from '../navigation/sideDrawers';
 import { BOARDS_DESK, DesksControlContext, PERMANENT_DESK, deskFace, deskKeyForCustom } from '../navigation/desks';
 import { GRID_TILES, WIDE_TILES, openDatabaseTile } from '../constants/databaseTiles';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
-import { whenDeskIsThere } from '../navigation/deskRegistry';
+import { threeDesksOnly, whenDeskIsThere } from '../navigation/deskRegistry';
 import { requestCreate } from '../navigation/startCreate';
 import { navigationRef } from '../navigationRef';
 import { doc, onSnapshot } from '../firestore';
@@ -150,7 +150,11 @@ export default function StartScreen() {
     }
     // A closed documents desk is put back first.
     if (item.key === 'doc') {
-      whenDeskIsThere(PERMANENT_DESK, () => requestCreate(item.route, item.params, item.wanted));
+      whenDeskIsThere(
+        PERMANENT_DESK,
+        () => requestCreate(item.route, item.params, item.wanted),
+        () => requestCreate('DocumentsCopy', undefined, 'DocumentsCopy')
+      );
       return;
     }
     requestCreate(item.route, item.params, item.wanted);
@@ -264,7 +268,7 @@ export default function StartScreen() {
     items: [
       { key: 'create', label: createLabel, short: 'Створити', icon: 'add-outline', onPress: () => create(createItem) },
       // Already one of the desks: a second window of it is not a thing.
-      ...(isDesk(deskKey)
+      ...(isDesk(deskKey) || threeDesksOnly
         ? []
         : [{ key: 'window', label: 'Відкрити в новому вікні', short: 'Нове вікно', icon: 'copy-outline', onPress: () => whenDeskIsThere(deskKey, () => go('Tabs', { screen: deskKey })) }]),
       { key: 'go', label: 'Перейти до бази', short: 'Перейти', icon: 'arrow-forward-outline', onPress: () => goToBase(deskKey, route, params) },
@@ -610,8 +614,8 @@ const RecentDocument = memo(function RecentDocument({ id, onPress }: { id: strin
 
 const RecentBoard = memo(function RecentBoard({ id, onPress }: { id: string; onPress: () => void }) {
   const S = useSoft();
-  const data = useRecord<{ title?: string; previewImageUri?: string; previewDriveFileId?: string }>('boards', id);
-  if (!data) return null;
+  const data = useRecord<{ title?: string; previewImageUri?: string; previewDriveFileId?: string; deletedAt?: number }>('boards', id);
+  if (!data || data.deletedAt) return null; // in the bin: not among the recents
   return (
     <RecentFrame onPress={onPress} label={data.title?.trim() || 'Дошка'} icon="easel-outline">
       {/* Kept where it lasts, no spinner (BoardPreviewImage). */}
@@ -687,68 +691,34 @@ const ROW_OF_TILE: Record<string, string> = {
   video: 'video',
 };
 
-// THE БАЗИ BOARD'S BLOCKS, in its order: every folder one block (its
-// members in their order), every tile standing alone a block of its own -
-// read off the phone view's layout, left to right and top to bottom, a
-// section (under a divider) after the one above it. A tile with no place of
-// its own yet comes after the placed ones of its section, in the board's
-// stored order.
+// THE BASES IN THE LIST'S ORDER (2026-10-12: the tile board is gone; its folders and dividers decide nothing
+// now): settings/basesList keeps the order the user arranged and the bases after which a section ends. Each
+// section is one block; a base the order does not know yet joins the last block.
 function useBoardBlocks(ownKeys: string[]): string[][] {
-  const [layout, setLayout] = useState<{
-    positions?: Record<string, string>;
-    sections?: Record<string, string>;
-    dividers?: Record<string, { y: number }>;
-  }>({});
-  const [folders, setFolders] = useState<Record<string, { members?: string[] }>>({});
-  const [order, setOrder] = useState<string[]>([]);
-  useEffect(() => {
-    const stops = [
+  const [list, setList] = useState<{ order: string[]; breaks: string[] }>({ order: [], breaks: [] });
+  useEffect(
+    () =>
       onSnapshot(
-        doc(db, 'settings', 'databaseTileLayouts'),
-        (snap) => setLayout((snap.data()?.phone as typeof layout) ?? {}),
-        listenError('StartScreen:tileLayouts')
+        doc(db, 'settings', 'basesList'),
+        (snap) => {
+          const d = snap.data();
+          setList({ order: (d?.order as string[] | undefined) ?? [], breaks: (d?.breaks as string[] | undefined) ?? [] });
+        },
+        listenError('StartScreen:basesList')
       ),
-      onSnapshot(
-        doc(db, 'settings', 'databaseTileFolders'),
-        (snap) => setFolders((snap.data()?.folders as typeof folders) ?? {}),
-        listenError('StartScreen:tileFolders')
-      ),
-      onSnapshot(
-        doc(db, 'settings', 'databaseTileOrder'),
-        (snap) => setOrder(Array.isArray(snap.data()?.order) ? (snap.data()?.order as string[]) : []),
-        listenError('StartScreen:tileOrder')
-      ),
-    ];
-    return () => stops.forEach((stop) => stop());
-  }, []);
-  const dividerIds = Object.entries(layout.dividers ?? {})
-    .sort((a, b) => a[1].y - b[1].y || a[0].localeCompare(b[0]))
-    .map(([id]) => id);
-  const items: { key: string; members: string[] }[] = [];
-  const inFolder = new Set<string>();
-  for (const [id, folder] of Object.entries(folders)) {
-    const members = folder.members ?? [];
-    if (!members.length) continue;
-    members.forEach((m) => inFolder.add(m));
-    items.push({ key: `folder:${id}`, members });
-  }
-  for (const key of [...Object.keys(ROW_OF_TILE), ...ownKeys]) if (!inFolder.has(key)) items.push({ key, members: [key] });
-  const rank = (key: string) => {
-    const sectionId = layout.sections?.[key];
-    const section = sectionId && layout.dividers?.[sectionId] ? dividerIds.indexOf(sectionId) + 1 : 0;
-    const raw = layout.positions?.[key];
-    const [x, y] = typeof raw === 'string' ? raw.split(',').map((n) => Number.parseInt(n, 10)) : [NaN, NaN];
-    const placed = Number.isFinite(x) && Number.isFinite(y);
-    const fallback = order.indexOf(key);
-    return [section, placed ? 0 : 1, placed ? y : fallback < 0 ? 9999 : fallback, placed ? x : 0];
-  };
-  items.sort((a, b) => {
-    const ra = rank(a.key);
-    const rb = rank(b.key);
-    for (let i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return ra[i] - rb[i];
-    return 0;
+    []
+  );
+  const known = [...Object.keys(ROW_OF_TILE), ...ownKeys];
+  const knownSet = new Set(known);
+  const stored = list.order.filter((key) => knownSet.has(key));
+  const keys = [...stored, ...known.filter((key) => !stored.includes(key))];
+  const breaks = new Set(list.breaks);
+  const blocks: string[][] = [[]];
+  keys.forEach((key, index) => {
+    blocks[blocks.length - 1].push(key);
+    if (breaks.has(key) && index < keys.length - 1) blocks.push([]);
   });
-  return items.map((item) => item.members);
+  return blocks.filter((block) => block.length > 0);
 }
 
 // `short`: one of the actions at the top of an open row, drawn as a button

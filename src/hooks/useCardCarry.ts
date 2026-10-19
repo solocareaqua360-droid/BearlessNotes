@@ -369,7 +369,9 @@ export function useCardCarry<T extends { id: string }>({
     // same folder twice.
     items
       .reduce<Promise<unknown>>((run, one) => run.then(() => moveItem(one, destination)), Promise.resolve())
-      .then(() => onMoved?.(items, destination, origin));
+      .then(() => onMoved?.(items, destination, origin))
+      // A move the screen refused (and said why) is not announced as done.
+      .catch(() => {});
   }
 
   const cancelCarry = useCallback(() => {

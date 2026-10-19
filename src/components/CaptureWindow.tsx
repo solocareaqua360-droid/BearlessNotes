@@ -10,7 +10,10 @@ import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
 import { SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
-import { ChatMessage, editChatMessage, sendChatMessage } from '../utils/chat';
+import { ChatMessage, editChatMessage, markChatMessagesUsed, sendChatMessage } from '../utils/chat';
+import { clipBlocksToNote } from '../utils/copyToNote';
+import { buildBlock, generateId, newBlock } from '../utils/documentBlocks';
+import { notify } from './surfaces/Ask';
 import { ChatAttachment, attachLinkToChat, clipboardHasPicture, pasteClipboardPicture, pickFileForChat, pickMediaForChat } from '../utils/chatAttach';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'react-native';
@@ -45,7 +48,7 @@ export function openCaptureForEdit(message: ChatMessage) {
   editListener?.(message);
 }
 
-export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }) {
+export default function CaptureWindow({ onOpenChat, onOpenNote }: { onOpenChat: () => void; onOpenNote?: (documentId: string) => void }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [visible, setVisible] = useState(false);
@@ -178,6 +181,38 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
     close();
     if (wasEditing) await editChatMessage(wasEditing, toSend, withThem);
     else await sendChatMessage(toSend, withThem);
+  }
+
+  // A THOUGHT THAT GROWS (2026-10-12, the user's: in the chat «думка несеться… ти вже хочеш створювати прям
+  // документ», and a message is one unbroken text). This turns what is typed so far into a real note - the first
+  // line its title, every paragraph a block, an empty block to go on in - and opens it. The chat keeps the thought
+  // as a message that says where it went, as a message gathered into a note always has.
+  async function expandToNote() {
+    const raw = text.trim();
+    const withThem = attachments;
+    if (!raw) return;
+    close();
+    try {
+      const lines = raw.split('\n');
+      const first = lines[0].trim();
+      const title = first.length <= 80 ? first : '';
+      const rest = (title ? lines.slice(1) : lines).join('\n').trim();
+      const blocks = [
+        ...rest
+          .split(/\n\s*\n/)
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .map((p) => buildBlock(generateId(), 'paragraph', p)),
+        newBlock(),
+      ];
+      const name = title || 'Без назви';
+      const documentId = await clipBlocksToNote(name, blocks);
+      const messageId = await sendChatMessage(raw, withThem);
+      if (messageId) await markChatMessagesUsed([messageId], documentId, name);
+      onOpenNote?.(documentId);
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+    }
   }
 
   // Whether the clipboard holds a picture right now - asked each time the
@@ -334,6 +369,18 @@ export default function CaptureWindow({ onOpenChat }: { onOpenChat: () => void }
             <Pressable hitSlop={8} style={styles.attachButton} disabled={attaching} onPress={attachLink}>
               <Ionicons name="link-outline" size={20} color={theme.ink.muted} />
             </Pressable>
+            {!editingId && onOpenNote && (
+              <Pressable
+                hitSlop={8}
+                style={[styles.attachButton, styles.expandButton, !text.trim() && styles.sideButtonOff]}
+                disabled={!text.trim()}
+                onPress={expandToNote}
+                accessibilityLabel="Розгорнути в нотатку"
+              >
+                <Ionicons name="expand-outline" size={18} color={text.trim() ? theme.accent : theme.ink.faint} />
+                <Text style={[styles.expandLabel, { color: text.trim() ? theme.ink.primary : theme.ink.faint }]}>У нотатку</Text>
+              </Pressable>
+            )}
             {clipPicture && (
               <Pressable
                 hitSlop={8}
@@ -486,6 +533,18 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  // «У нотатку»: wider than the round ones, it carries its word.
+  expandButton: {
+    width: undefined,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 14,
+    marginLeft: 'auto',
+  },
+  expandLabel: {
+    fontFamily: FONT_REGULAR,
+    fontSize: 14,
   },
   row: {
     flexDirection: 'row',

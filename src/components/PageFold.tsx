@@ -45,7 +45,7 @@ export default function PageFoldHost() {
   const fold = useSyncExternalStore(subscribePageFold, currentPageFold, () => null);
   if (!fold) return null;
   return (
-    <GlassPortal priority={-5}>
+    <GlassPortal priority={-5} name="pageFold">
       <Folding key={fold.id} fold={fold} />
     </GlassPortal>
   );

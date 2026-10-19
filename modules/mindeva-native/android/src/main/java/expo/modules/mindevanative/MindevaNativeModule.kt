@@ -13,6 +13,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.view.View
+import android.widget.EditText
 import android.view.PixelCopy
 import java.io.File
 import java.io.FileOutputStream
@@ -21,6 +23,7 @@ import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.functions.Queues
 
 // The app's own small native pieces - each one something a JS library in
 // the app could not do (see src/utils/mindevaNative.ts for the JS side,
@@ -154,6 +157,43 @@ class MindevaNativeModule : Module() {
     Function("stopScreenCapture") {
       context.stopService(Intent(context, ScreenCaptureService::class.java))
       ScreenCapture.release()
+      true
+    }
+
+    // A NOTE LINK WHILE TYPING, ROUNDED (see ChipSpans.kt). JS hands over
+    // the look in dp and the alpha that marks a link's run, then names each
+    // field that shows links by its view tag.
+    Constant("chipSpans") { true }
+
+    Function("configureChipSpans") { fill: Int, mark: Int, radius: Double, padX: Double, padTop: Double, padBottom: Double ->
+      ChipSpans.configure(
+        context.resources.displayMetrics.density,
+        fill,
+        mark,
+        radius.toFloat(),
+        padX.toFloat(),
+        padTop.toFloat(),
+        padBottom.toFloat()
+      )
+      true
+    }
+
+    AsyncFunction("attachChipField") { viewTag: Int ->
+      val field = appContext.findView<View>(viewTag) as? EditText ?: return@AsyncFunction false
+      ChipSpans.attach(field)
+      true
+    }.runOnQueue(Queues.MAIN)
+
+    // THE WHITE STRIP AT THE FOOT OF THE FOLD'S INNER SCREEN (found
+    // 2026-10-02, there only - the cover screen has none): Android lays a
+    // contrast veil over the navigation bar's area when it thinks the app
+    // under it might be hard to read against. The app draws its own ground
+    // there, so the veil only shows as a pale band. Off asks the phone not
+    // to lay it (Android 10+; false where there is no such setting).
+    Function("setNavigationBarContrast") { enforced: Boolean ->
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@Function false
+      val activity = appContext.currentActivity ?: return@Function false
+      activity.runOnUiThread { activity.window.isNavigationBarContrastEnforced = enforced }
       true
     }
 

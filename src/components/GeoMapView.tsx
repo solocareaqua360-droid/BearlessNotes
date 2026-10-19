@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   Camera,
@@ -42,17 +42,29 @@ type PointProps = { pointId: string; title: string };
 // trying to show every point inside it at once. See
 // `project_map_view_plan` for the rest of what is still ahead
 // (offline regions, the browser build).
+// How close a chosen point is shown: the street and the blocks around it.
+const FOCUS_ZOOM = 14;
+
 export default function GeoMapView({
   points,
   onPressPoint,
+  focusId,
+  bare,
 }: {
   points: GeoMapPoint[];
   onPressPoint: (id: string) => void;
+  // The point to centre on (a collection's chosen one): the camera flies there and its pin is drawn larger.
+  focusId?: string | null;
+  // Inside a small window: no offline / locate buttons.
+  bare?: boolean;
 }) {
   const theme = useTheme();
   const cameraRef = useRef<CameraRef>(null);
-  const first = points[0];
-  const initialZoom = first ? 11 : DEFAULT_ZOOM;
+  // Opened on a chosen point (a collection's window, its full screen): it is where the map starts, at the zoom a focus
+  // flies to - a map built centred on the FIRST point and then asked to fly before its camera was ready stayed there.
+  const focused = focusId ? points.find((x) => x.id === focusId) : undefined;
+  const first = focused ?? points[0];
+  const initialZoom = focused ? FOCUS_ZOOM : first ? 11 : DEFAULT_ZOOM;
   const initialCenter: [number, number] = first ? [first.lng, first.lat] : DEFAULT_CENTER;
   const [view, setView] = useState<{ zoom: number; bounds: [number, number, number, number] }>({
     zoom: initialZoom,
@@ -84,6 +96,14 @@ export default function GeoMapView({
   function flyTo(center: [number, number], zoom: number) {
     cameraRef.current?.flyTo({ center, zoom, duration: 400 });
   }
+  useEffect(() => {
+    if (!focusId) return;
+    const p = points.find((x) => x.id === focusId);
+    // Always the same distance (2026-10-15): «at least 14» only ever zoomed IN, and a second point opened onto an
+    // empty field with nothing around it to say where it is.
+    if (p) flyTo([p.lng, p.lat], FOCUS_ZOOM);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId]);
 
   const [offlineSheetVisible, setOfflineSheetVisible] = useState(false);
   const [locationEnabled, setLocationEnabled] = useState(false);
@@ -138,8 +158,8 @@ export default function GeoMapView({
           return (
             <Marker key={point.pointId} lngLat={[lng, lat]} onPress={() => onPressPoint(point.pointId)}>
               <View style={styles.pinGroup}>
-                <View style={[styles.pin, { backgroundColor: theme.accent }]}>
-                  <Ionicons name="location" size={16} color={theme.onAccent} />
+                <View style={[styles.pin, { backgroundColor: theme.accent }, point.pointId === focusId && styles.pinFocus]}>
+                  <Ionicons name="location" size={point.pointId === focusId ? 20 : 16} color={theme.onAccent} />
                 </View>
                 {view.zoom >= LABEL_MIN_ZOOM && (
                   <View style={[styles.pinLabel, { backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}>
@@ -160,6 +180,8 @@ export default function GeoMapView({
           </Text>
         </View>
       )}
+      {!bare && (
+      <>
       <Pressable
         style={[styles.offlineButton, { backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}
         onPress={() => setOfflineSheetVisible(true)}
@@ -176,6 +198,8 @@ export default function GeoMapView({
           <Ionicons name={locationEnabled ? 'locate' : 'locate-outline'} size={20} color={theme.ink.primary} />
         )}
       </Pressable>
+      </>
+      )}
       <GeoOfflineRegionsSheet
         visible={offlineSheetVisible}
         currentBounds={view.bounds}
@@ -192,6 +216,7 @@ const styles = StyleSheet.create({
   pinGroup: {
     alignItems: 'center',
   },
+  pinFocus: { width: 40, height: 40, borderRadius: 20, borderWidth: 3, borderColor: '#fff' },
   pin: {
     width: 30,
     height: 30,

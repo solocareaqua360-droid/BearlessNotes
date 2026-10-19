@@ -537,7 +537,7 @@ function TagsDrawerInner({
       // view rather than moving into GlassLayer - but it goes through the
       // same portal, for the same reason: a blur drawn inside the target it
       // blurs draws itself.
-      <GlassPortal>
+      <GlassPortal name="TagsDrawer">
       <View style={styles.layer} pointerEvents="box-none">
         {/* A plain dim, no blur: the screen beside the drawer should stay
             readable - only what is BEHIND the drawer is frosted. */}

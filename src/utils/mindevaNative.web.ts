@@ -30,3 +30,12 @@ export async function copyWindowRect(
 ): Promise<{ uri: string; width: number; height: number } | null> {
   return null;
 }
+
+// A browser draws its own text: no rounded runs to ask for, no navigation bar.
+export const CHIP_MARK_ALPHA = 0x0b;
+export const supportsChipSpans = false;
+export const CHIP_LOOK = { radius: 7, padX: 5, padTop: 0.5, padBottom: 0 };
+export function attachChipField(_viewTag: number | null): void {}
+export function setNavigationBarContrast(_enforced: boolean): boolean {
+  return false;
+}

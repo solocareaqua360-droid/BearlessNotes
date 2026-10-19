@@ -23,6 +23,10 @@ type MindevaNative = {
     maxWidth: number,
     quality: number
   ): Promise<{ uri: string; width: number; height: number } | null>;
+  chipSpans?: boolean;
+  configureChipSpans?(fill: number, mark: number, radius: number, padX: number, padTop: number, padBottom: number): boolean;
+  attachChipField?(viewTag: number): Promise<boolean>;
+  setNavigationBarContrast?(enforced: boolean): boolean;
 };
 
 const native = requireOptionalNativeModule<MindevaNative>('MindevaNative');
@@ -116,5 +120,52 @@ export async function copyWindowRect(
     );
   } catch {
     return null;
+  }
+}
+
+// A NOTE LINK WHILE TYPING, ROUNDED (MindevaNativeModule's ChipSpans): a
+// field's run whose background has exactly this alpha is drawn by the APK
+// as a rounded chip, a little wider than its letters, filled with the same
+// colour at CHIP_FILL_ALPHA. No colour the user picks carries it. Only in
+// an APK that has it - elsewhere the run keeps its plain tint.
+export const CHIP_MARK_ALPHA = 0x0b;
+const CHIP_FILL_ALPHA = 0x24;
+export const supportsChipSpans = !!native?.chipSpans && typeof native?.attachChipField === 'function';
+
+// The chip's look in dp - the same numbers as the chip at rest
+// (FormattedText's chipStyles), so the two read as one thing.
+export const CHIP_LOOK = { radius: 7, padX: 5, padTop: 0.5, padBottom: 0 };
+
+let chipSpansConfigured = false;
+
+// Names one field to the APK by its view tag: from then on its marked runs
+// are drawn rounded, on every change of its text (native side: a watcher on
+// the field). Once per field is enough.
+export function attachChipField(viewTag: number | null): void {
+  if (!supportsChipSpans || viewTag == null) return;
+  try {
+    if (!chipSpansConfigured) {
+      chipSpansConfigured = !!native?.configureChipSpans?.(
+        CHIP_FILL_ALPHA,
+        CHIP_MARK_ALPHA,
+        CHIP_LOOK.radius,
+        CHIP_LOOK.padX,
+        CHIP_LOOK.padTop,
+        CHIP_LOOK.padBottom
+      );
+    }
+    native?.attachChipField?.(viewTag)?.catch(() => {});
+  } catch {
+    // An APK without it: the run keeps its plain tint.
+  }
+}
+
+// The pale band Android lays over the navigation bar's area (seen at the
+// foot of the Fold's inner screen): off, where this APK can ask for it.
+export function setNavigationBarContrast(enforced: boolean): boolean {
+  try {
+    return !!native?.setNavigationBarContrast?.(enforced);
+  } catch {
+    return false;
   }
 }

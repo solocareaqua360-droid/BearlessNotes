@@ -26,6 +26,7 @@ import SaveDestinationSheet from './SaveDestinationSheet';
 import { notify } from './surfaces/Ask';
 import { categoryFromSiteName, LINK_CATEGORY_INFO } from '../utils/linkCategory';
 import { FEATURES } from '../features';
+import { openThoughtCapture } from '../utils/thoughtBus';
 
 // Identical to LinksScreen.tsx's/AddExistingItemModal.tsx's own copy of
 // this same small classifier - see those for why it isn't shared.
@@ -119,11 +120,24 @@ export default function ShareIntentHandler() {
     if (shareIntent.webUrl) {
       const url = shareIntent.webUrl;
       const preview: LinkPreview = await fetchLinkPreview(url).catch(() => ({}) as LinkPreview);
-      setPendingShare({ kind: 'link', url, preview });
+      const share: PendingShare = { kind: 'link', url, preview };
+      // THE THOUGHT FLOW (2026-10-15, the user's: «поширити - і в тебе виникає вікно з думкою»): what is shared is
+      // first a thought; «Інше місце…» in that window brings the old «куди зберегти?» back.
+      if (
+        FEATURES.thoughts &&
+        openThoughtCapture({
+          source: { kind: 'link', url, title: preview.title, imageUrl: preview.imageUrl, siteName: preview.siteName },
+          onElsewhere: () => setPendingShare(share),
+        })
+      )
+        return;
+      setPendingShare(share);
       return;
     }
     if (shareIntent.text && shareIntent.text.trim()) {
-      setPendingShare({ kind: 'text', text: shareIntent.text.trim() });
+      const share: PendingShare = { kind: 'text', text: shareIntent.text.trim() };
+      if (FEATURES.thoughts && openThoughtCapture({ source: { kind: 'text', text: share.text }, onElsewhere: () => setPendingShare(share) })) return;
+      setPendingShare(share);
     }
   }
 
@@ -157,6 +171,21 @@ export default function ShareIntentHandler() {
     }
     if (queued.length === 0) return;
     addedCountRef.current = { photos: 0, files: 0 };
+    // PICTURES SHARED IN ARE A THOUGHT FIRST (2026-10-15, the user's: «думка може прийти і через зображення»): one or
+    // several photos open the thought window with the pictures in it; «Інше місце…» brings back the old way (each
+    // photo to the Photos base, with its name prompt). Anything but photos in the share goes the old way at once.
+    if (
+      FEATURES.thoughts &&
+      queued.every((q) => q.kind === 'photo') &&
+      openThoughtCapture({
+        images: queued.map((q) => q.destUri),
+        onElsewhere: () => {
+          addedCountRef.current = { photos: 0, files: 0 };
+          setRenameQueue(queued);
+        },
+      })
+    )
+      return;
     setRenameQueue(queued);
   }
 

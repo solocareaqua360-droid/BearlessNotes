@@ -1,4 +1,5 @@
 import { useFolderArrival } from '../navigation/folderArrival';
+import { SwipeSelectItem } from '../components/SwipeSelect';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
 import RenamePrompt from '../components/RenamePrompt';
@@ -7,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
 import { useOpenRequest } from '../utils/openRequest';
 import TurningPressable from '../components/TurningPressable';
+import { plainPreview } from '../utils/richText';
 import { endFlip, prepareFlip, type FlipFrom } from '../utils/flipOpen';
 import { softCardFrame, softenStyles, softRecordColours, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
@@ -51,6 +53,7 @@ import { confirm } from '../components/surfaces/Ask';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { listenError } from '../utils/listenError';
 import { formatUpdatedAt } from '../utils/documentPreview';
+import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
 
 // «Картки» - things to learn, one card each: a term, an explanation that
 // stays folded until it is wanted, and pictures. THE LINK CARD IS THE
@@ -66,6 +69,8 @@ import { formatUpdatedAt } from '../utils/documentPreview';
 // the learned ones can be left out of the stack. It is a switch on the
 // deck, not on the database: "як опція для певної групи карток".
 export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) {
+  // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
+  useDockDesksWhileFocused(!inPane);
   // In front: the start desk's recents.
   useTileOpened('flashcards');
   const theme = useTheme();
@@ -94,7 +99,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
   useOpenRequest('flashcards', cards.map((c) => c.id), (id) => {
     const card = cards.find((c) => c.id === id);
     if (card) openReader(card);
-  });
+  }, reading !== null);
   const [readerFlip, setReaderFlip] = useState<FlipFrom | null>(null);
   useEffect(() => {
     if (reading !== null) return;
@@ -109,7 +114,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
     () =>
       onSnapshot(ownedQuery('flashcards'), (snapshot) => {
         setCards(
-          snapshot.docs.map((d) => {
+          snapshot.docs.filter((d) => !d.data().deletedAt).map((d) => {
             const data = d.data() as Omit<Flashcard, 'id'>;
             return {
               id: d.id,
@@ -383,7 +388,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
           </View>
         )}
         <View style={styles.rowBody}>
-          <Text style={[styles.rowTitle, { color: text }]}>{card.term || 'Без терміна'}</Text>
+          <Text style={[styles.rowTitle, { color: text }]} numberOfLines={card.short ? 3 : undefined}>{plainPreview(card.term) || 'Без терміна'}</Text>
           <View style={styles.knownRow}>
             {!!(card.createdAt ?? card.updatedAt) && (
               <Text style={[styles.rowCaption, { color: textMuted }]}>
@@ -429,7 +434,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
             )}
           </View>
         )}
-        <Text style={[styles.cellTitle, { color: text }]}>{card.term || 'Без терміна'}</Text>
+        <Text style={[styles.cellTitle, { color: text }]} numberOfLines={card.short ? 3 : undefined}>{plainPreview(card.term) || 'Без терміна'}</Text>
         <View style={styles.knownRow}>
           {!!(card.createdAt ?? card.updatedAt) && (
             <Text style={[styles.cellCaption, { color: textMuted }]}>
@@ -611,7 +616,11 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
               contentContainerStyle={[styles.list, railClear(inPane ? 'left' : 'right', 20), { paddingTop: listTopPad }]}
             >
               {explorerHead}
-              {shown.map(renderRow)}
+              {shown.map((card) => (
+                <SwipeSelectItem key={card.id} id={card.id}>
+                  {renderRow(card)}
+                </SwipeSelectItem>
+              ))}
             </ScrollView>
           )
       )}

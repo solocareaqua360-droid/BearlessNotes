@@ -5,7 +5,7 @@ import { Block, Tag } from '../types';
 import { useStyles } from '../theme/ThemeProvider';
 import { makeStyles } from './documentEditorStyles';
 import type { colorForDocument } from '../utils/documentColor';
-import { hapticDrop, hapticPickUp, hapticSnapTick } from '../utils/haptics';
+import { hapticDrop, hapticPickUp, hapticSelectMode, hapticSnapTick, hapticSweepTick } from '../utils/haptics';
 import SortableBlockRow from './SortableBlockRow';
 import type { DocumentIndex } from '../hooks/useDocumentIndex';
 import { useBlockMarquee } from '../hooks/useBlockMarquee';
@@ -43,6 +43,15 @@ type BlockListProps = {
   onSelectRange?: (ids: string[]) => void;
   // A click on the empty place: the pick is let go (only told while there is one).
   onClearSelect?: () => void;
+  // SWIPE TO SELECT, like Craft (features.swipeSelect): a swipe left on a block picks it (or, on a picked one, lets it
+  // go), and the finger carried on over the blocks around does the same to every block it passes. The whole picked set
+  // each time it changes, and once more when the finger lifts.
+  onSweepSelect?: (ids: Set<string>) => void;
+  onSweepEnd?: (ids: Set<string>) => void;
+  // Where the finger is during a sweep (null once it lifts), for the screen to scroll along at the edges; and how far
+  // the screen is scrolled, so the finger is read in the list's own space while the list moves under it.
+  onSweepEdge?: (absoluteY: number | null) => void;
+  getScrollY?: () => number;
   selectedIds: Set<string>;
   isSelectMode: boolean;
   focusedBlockId: string | null;
@@ -106,6 +115,8 @@ export type BlockListHandle = {
   // Where a block sits inside the list, for scrolling to it. Null until
   // that row has been laid out - the caller is expected to ask again.
   offsetOf: (blockId: string) => number | null;
+  // The note scrolled under a finger that stands still: the sweep reads where it now is.
+  sweepRefresh: () => void;
 };
 
 const NOTHING_DRAGGING: Set<string> = new Set();
@@ -120,6 +131,10 @@ function BlockList({
   onHoldWithoutDrag,
   onSelectRange,
   onClearSelect,
+  onSweepSelect,
+  onSweepEnd,
+  onSweepEdge,
+  getScrollY,
   selectedIds,
   isSelectMode,
   focusedBlockId,
@@ -225,6 +240,10 @@ function BlockList({
     // editor's focusLinkTo. Null while that row has not been laid out
     // yet, which is the first frame after opening a long note.
     offsetOf: (blockId: string) => rowLayouts.current[blockId]?.y ?? null,
+    sweepRefresh: () => {
+      const sweep = sweepRef.current;
+      if (sweep && sweep.lastY !== null) handleSweepUpdate(sweep.anchor, sweep.lastY, 0);
+    },
   }));
 
   function handleRowLayout(id: string, e: LayoutChangeEvent) {
@@ -346,6 +365,107 @@ function BlockList({
     setInsertIndex(null);
   }
 
+  // THE SWEEP (see onSweepSelect). Started on one block: it decides whether this sweep picks or lets go (a block
+  // already picked lets go), and the set as it was is the base every step starts from again - so carrying the finger
+  // back undoes what it passed. Where the finger is, is read in the list's own space: rows above it may grow or
+  // shrink when select mode draws its ticks, and the measured rows follow that, a translation from the start would not.
+  const sweepRef = useRef<{
+    anchor: string;
+    picks: boolean;
+    base: Set<string>;
+    listTop: number | null;
+    scrollAtStart: number;
+    lastY: number | null;
+    range: string;
+    last: Set<string>;
+  } | null>(null);
+
+  function sweepApply(targetId: string) {
+    const sweep = sweepRef.current;
+    if (!sweep) return;
+    const list = blocksRef.current;
+    const a = list.findIndex((b) => b.id === sweep.anchor);
+    const t = list.findIndex((b) => b.id === targetId);
+    if (a < 0 || t < 0) return;
+    const from = Math.min(a, t);
+    const to = Math.max(a, t);
+    const range = `${from}:${to}`;
+    if (range === sweep.range) return;
+    if (sweep.range) hapticSweepTick();
+    sweep.range = range;
+    const next = new Set(sweep.base);
+    for (let i = from; i <= to; i++) {
+      if (sweep.picks) next.add(list[i].id);
+      else next.delete(list[i].id);
+    }
+    sweep.last = next;
+    onSweepSelect?.(next);
+  }
+
+  function handleSweepStart(anchorId: string) {
+    const picks = !(isSelectMode && selectedIds.has(anchorId));
+    sweepRef.current = {
+      anchor: anchorId,
+      picks,
+      base: new Set(isSelectMode ? selectedIds : []),
+      listTop: null,
+      scrollAtStart: getScrollY?.() ?? 0,
+      lastY: null,
+      range: '',
+      last: new Set(selectedIds),
+    };
+    containerRef.current?.measureInWindow((_x, y) => {
+      // Measured a moment after the start: read back to the scroll offset of the start.
+      if (sweepRef.current) sweepRef.current.listTop = y + ((getScrollY?.() ?? 0) - sweepRef.current.scrollAtStart);
+    });
+    // Entering the mode is the heavier tick; inside it, a block is the light one.
+    if (isSelectMode) hapticSweepTick();
+    else hapticSelectMode();
+    sweepApply(anchorId);
+  }
+
+  function handleSweepUpdate(anchorId: string, absoluteY: number, translationY: number) {
+    const sweep = sweepRef.current;
+    if (!sweep) return;
+    sweep.lastY = absoluteY;
+    onSweepEdge?.(absoluteY);
+    const anchor = rowLayouts.current[anchorId];
+    const scrolled = (getScrollY?.() ?? 0) - sweep.scrollAtStart;
+    const y =
+      sweep.listTop !== null
+        ? absoluteY - sweep.listTop + scrolled
+        : anchor
+          ? anchor.y + anchor.height / 2 + translationY + scrolled
+          : null;
+    if (y === null) return;
+    // The row under the finger; past the first or the last drawn row, that row.
+    let target: string | null = null;
+    let first: string | null = null;
+    let last: string | null = null;
+    for (const b of blocksRef.current) {
+      const rl = rowLayouts.current[b.id];
+      if (!rl) continue;
+      if (first === null) first = b.id;
+      last = b.id;
+      if (y >= rl.y && y < rl.y + rl.height) {
+        target = b.id;
+        break;
+      }
+    }
+    if (target === null) {
+      const top = first ? rowLayouts.current[first] : null;
+      target = top && y < top.y ? first : last;
+    }
+    if (target) sweepApply(target);
+  }
+
+  function handleSweepEnd() {
+    const sweep = sweepRef.current;
+    sweepRef.current = null;
+    if (sweep) onSweepEdge?.(null);
+    if (sweep) onSweepEnd?.(sweep.last);
+  }
+
   // How far (in px) this row needs to travel to visually converge on the
   // anchor row's center - 0 for the anchor itself, and 0 for anything not
   // currently part of the drag. Layouts are stable during a drag (nothing
@@ -410,6 +530,7 @@ function BlockList({
     onDownloadFile, onOpenFileDatabase, onOpenLink, onOpenLinkDatabase, onTimecode, onNoteLink, onNoteLinkMenu,
     isNestedLink, onOpenSketch, onOpenCustomRow, onOpenDocument, onOpenCustomView, onInputRef, onHoldWithoutDrag,
     handleRowLayout, handleDragStart, handleDragUpdate, handleDragEnd, dragGroupFor,
+    handleSweepStart, handleSweepUpdate, handleSweepEnd,
   };
   const call = (key: string) => (live.current[key] as ((...args: unknown[]) => unknown) | undefined);
   const stable = useMemo(() => {
@@ -450,6 +571,9 @@ function BlockList({
     onDragUpdate: (translationY: number) => void;
     onDragEnd: () => void;
     onHandleClick: () => void;
+    onSweepStart: () => void;
+    onSweepUpdate: (absoluteY: number, translationY: number) => void;
+    onSweepEnd: () => void;
     inputRef: (node: TextInput | null) => void;
   };
   const rowFnsCache = useRef(new Map<string, RowFns>());
@@ -463,6 +587,9 @@ function BlockList({
         onDragUpdate: (translationY) => call('handleDragUpdate')?.(id, group(), translationY),
         onDragEnd: () => call('handleDragEnd')?.(id, group()),
         onHandleClick: () => call('onHoldWithoutDrag')?.(id),
+        onSweepStart: () => call('handleSweepStart')?.(id),
+        onSweepUpdate: (absoluteY, translationY) => call('handleSweepUpdate')?.(id, absoluteY, translationY),
+        onSweepEnd: () => call('handleSweepEnd')?.(),
         inputRef: (node) => call('onInputRef')?.(id, node),
       };
       rowFnsCache.current.set(id, fns);
@@ -510,6 +637,10 @@ function BlockList({
           onDragUpdate={rowFns(item.id).onDragUpdate}
           onDragEnd={rowFns(item.id).onDragEnd}
           onHandleClick={rowFns(item.id).onHandleClick}
+          swipeSelect={!!onSweepSelect}
+          onSweepStart={rowFns(item.id).onSweepStart}
+          onSweepUpdate={rowFns(item.id).onSweepUpdate}
+          onSweepEnd={rowFns(item.id).onSweepEnd}
           onToggleSelected={stable.onToggleSelected}
           onToggleChecked={stable.onToggleChecked}
           onOpenReminder={stable.onOpenReminder}

@@ -14,8 +14,8 @@ import { MAP_STYLE_URL } from '../utils/geoMapStyle';
 const cache = new Map<string, string>();
 const inFlight = new Map<string, Promise<string>>();
 
-function keyFor(lat: number, lng: number, width: number, height: number): string {
-  return `${lat.toFixed(5)},${lng.toFixed(5)},${width}x${height}`;
+function keyFor(lat: number, lng: number, width: number, height: number, zoom: number): string {
+  return `${lat.toFixed(5)},${lng.toFixed(5)},${width}x${height},z${zoom.toFixed(2)}`;
 }
 
 export default function GeoThumbnail({
@@ -24,14 +24,17 @@ export default function GeoThumbnail({
   width,
   height,
   style,
+  zoom = 15,
 }: {
   lat: number;
   lng: number;
   width: number;
   height: number;
   style?: StyleProp<ImageStyle>;
+  // A collection's cover shows all its points at once - farther out than one point's own picture.
+  zoom?: number;
 }) {
-  const key = keyFor(lat, lng, width, height);
+  const key = keyFor(lat, lng, width, height, zoom);
   const [uri, setUri] = useState<string | null>(cache.get(key) ?? null);
 
   useEffect(() => {
@@ -46,7 +49,7 @@ export default function GeoThumbnail({
       inFlight.get(key) ??
       StaticMapImageManager.createImage({
         center: [lng, lat],
-        zoom: 15,
+        zoom,
         mapStyle: MAP_STYLE_URL,
         width,
         height,
@@ -67,7 +70,7 @@ export default function GeoThumbnail({
     return () => {
       cancelled = true;
     };
-  }, [key, lat, lng, width, height, uri]);
+  }, [key, lat, lng, width, height, zoom, uri]);
 
   if (!uri) return null;
   return <Image source={{ uri }} style={style} resizeMode="cover" />;

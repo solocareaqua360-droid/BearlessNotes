@@ -20,6 +20,7 @@ import { useSoft } from '../../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
 import type { Block, CustomDatabase } from '../../types';
 import { FEATURES } from '../../features';
+import ThoughtsFolder from '../thoughts/ThoughtsFolder';
 
 // THE START PAGE - what a new tab opens on the laptop (the «+» in the tab
 // row). Three things, top to bottom, the order a hand reaches for them:
@@ -144,12 +145,16 @@ function RecentNote({ id, onPress }: { id: string; onPress: () => void }) {
 
 function RecentBoard({ id, onPress }: { id: string; onPress: () => void }) {
   const S = useSoft();
-  const [data, setData] = useState<{ title?: string; previewImageUri?: string; previewDriveFileId?: string } | null>(null);
+  const [data, setData] = useState<{ title?: string; previewImageUri?: string; previewDriveFileId?: string; deletedAt?: number } | null>(null);
   useEffect(
     () =>
       onSnapshot(
         doc(db, 'boards', id),
-        (snapshot) => setData((snapshot.data() as typeof data) ?? null),
+        (snapshot) => {
+          const next = (snapshot.data() as typeof data) ?? null;
+          // In the bin: not among the recents.
+          setData(next && next.deletedAt ? null : next);
+        },
         () => setData(null)
       ),
     [id]
@@ -320,6 +325,7 @@ export default function StartPage() {
     { key: 'boards', label: 'Дошки', icon: 'easel-outline', ref: 'Дошки' },
     { key: 'dbs', label: 'Бази', icon: 'apps-outline', ref: 'Більше' },
     { key: 'tasks', label: 'Справи', icon: 'checkbox-outline', ref: 'Tasks' },
+    { key: 'explorer', label: 'Провідник', icon: 'folder-open-outline', ref: 'Explorer' },
   ];
 
   return (
@@ -392,6 +398,13 @@ export default function StartPage() {
             </View>
           ) : (
             <>
+              {/* «Думки» on the Mac too (2026-10-16): the same living folder as the phone's first desk - its balloons,
+                  a click opens the space of themes, a long press catches a thought. */}
+              {FEATURES.thoughts && (
+                <View style={styles.thoughts}>
+                  <ThoughtsFolder />
+                </View>
+              )}
               <Text style={[styles.heading, { color: S.ink3 }]}>Створити</Text>
               <View style={styles.tiles}>
                 {CREATE.filter((item) => FEATURES.stickers || item.key !== 'sticker').map((item) => (
@@ -425,7 +438,7 @@ export default function StartPage() {
                       }
                       leaveStart();
                       const tab = addTab('section', section.ref);
-                      if (tab.ref === 'Tasks') navigate('Tasks');
+                      if (tab.ref === 'Tasks' || tab.ref === 'Explorer') navigate(tab.ref);
                       else navigate('Tabs', { screen: tab.ref });
                     }}
                   />
@@ -478,6 +491,7 @@ function CreateTile({ label, icon, onPress, quiet }: { label: string; icon: stri
 }
 
 const styles = StyleSheet.create({
+  thoughts: { marginBottom: 26 },
   page: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 25 },
   scroll: { paddingVertical: 48, paddingHorizontal: 24, alignItems: 'center' },
   column: { width: '100%', maxWidth: 900, gap: 12 },

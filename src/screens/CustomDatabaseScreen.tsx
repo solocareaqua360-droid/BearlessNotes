@@ -1,4 +1,5 @@
 import { appendToLessonNote, captureVideoFrame, formatStamp, frameBlocks, timecodeBlocks } from '../utils/videoFrames';
+import { SwipeSelectArea, SwipeSelectItem } from '../components/SwipeSelect';
 import { stopScreenCapture, supportsScreenCapture } from '../utils/mindevaNative';
 import type { MenuEntry } from '../components/surfaces/Menu';
 import { usePaneBar } from '../navigation/paneBar';
@@ -18,7 +19,7 @@ import EdgeFade from '../components/EdgeFade';
 import CustomDatabaseKanban from '../components/CustomDatabaseKanban';
 import { SoftSurfaceContext, softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { withAlpha } from '../utils/color';
@@ -126,6 +127,7 @@ import TagPicker from '../components/TagPicker';
 import GroupPickerSheet from '../components/GroupPickerSheet';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
+import { useDockDesksHere } from '../navigation/deskBeadsBus';
 import { usePendingDelete } from '../hooks/usePendingDelete';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
@@ -157,7 +159,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
-import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, topBarFrame, useTopNavOn } from '../components/TopNavBar';
 import SearchCorner, { searchCornerHeight } from '../components/SearchCorner';
 import { GLASS_ISLAND } from '../constants/glass';
 import { CHROME_TOP } from '../constants/rail';
@@ -310,7 +312,14 @@ export default function CustomDatabaseScreen({
   const prefsDoc = doc(db, 'settings', prefsKey);
 
   const [database, setDatabase] = useState<CustomDatabase | null>(null);
-  const [rows, setRows] = useState<CustomDatabaseRow[]>([]);
+  // EVERY custom database's rows, read once (2026-10-12, the load fix): this database's own rows and the rows of
+  // the databases its relations point at both come out of this one read, instead of a second full read of the
+  // same collection started only after this database's fields had arrived.
+  const [allRows, setAllRows] = useState<CustomDatabaseRow[]>([]);
+  const rows = useMemo(
+    () => allRows.filter((r) => r.databaseId === databaseId).sort((a, b) => b.updatedAt - a.updatedAt),
+    [allRows, databaseId]
+  );
   const [isLoading, setIsLoading] = useState(true);
   // Why the list is empty, when it is empty for a reason other than having
   // nothing in it - see the rows listener's error handler below.
@@ -351,6 +360,13 @@ export default function CustomDatabaseScreen({
   // database, so the common case stays one tap plus no thinking. Kept in
   // the same per-database prefs document the sort and the filters are.
   const [paramsTab, setParamsTab] = useState<ParamsTab>('sort');
+  // The parameters window lists its four sections with what each is set to; the one in use is unfolded under its
+  // row (2026-10-16, sketch J5ECjL7FhoorcJNyYdn57Y). A tap on the unfolded one folds it, to read all four at once.
+  const [paramsFolded, setParamsFolded] = useState(false);
+  // The project as a filter condition (the capsule row above the list went, 2026-10-16) - its own sub-list.
+  const [projectFilterOpen, setProjectFilterOpen] = useState(false);
+  // The saved views, as a small list under their own button at the bar's edge.
+  const [viewsMenuOpen, setViewsMenuOpen] = useState(false);
   const [sortPref, setSortPref] = useState<RowSort>(DEFAULT_ROW_SORT);
   const [filters, setFilters] = useState<RowFilter[]>([]);
   // Which field the list is broken into groups by, if any - each group
@@ -559,8 +575,12 @@ export default function CustomDatabaseScreen({
     { id: string; url: string; title?: string; imageUrl?: string; category: LinkCategory }[]
   >([]);
   const [otherDatabases, setOtherDatabases] = useState<{ id: string; name: string }[]>([]);
-  const [relatedDatabases, setRelatedDatabases] = useState<Record<string, CustomDatabase>>({});
-  const [relatedRows, setRelatedRows] = useState<Record<string, CustomDatabaseRow[]>>({});
+  // Every custom database's definition, from the one list read at mount - the databases a relation here points at
+  // are taken from it (no second read that could only start after this database's fields had come).
+  const [allDatabases, setAllDatabases] = useState<Record<string, CustomDatabase>>({});
+  // Whether that list has ANSWERED. Until it has, a database it should hold is not «not found»: the schedule of the
+  // road sheets said so for a second on every opening, while the base of its rows was on its way.
+  const [databasesAnswered, setDatabasesAnswered] = useState(false);
   // The header scrolls sideways only as a mirror of the body's own offset.
   const headerScrollRef = useRef<ScrollView>(null);
   const bodyScrollRef = useRef<ScrollView>(null);
@@ -634,8 +654,14 @@ export default function CustomDatabaseScreen({
   // Technical notes (recordNotes): an app's «Розбір» and its other notes.
   const technicalDocs = useTechnicalDocs();
   const { tags, attachTag, detachTag, createAndAttachTag, createAndAttachTagToMany, renameTag } = useTags();
-  const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, clear: clearSelection } =
+  const { isSelectMode, selectedIds, toggleSelectMode, toggle: toggleSelected, sweepTo, clear: clearSelection } =
     useMultiSelect();
+  // A row in the list wrapped for swipe to select (components/SwipeSelect).
+  const swipeRow = (item: CustomDatabaseRow) => (
+    <SwipeSelectItem key={item.id} id={item.id}>
+      {renderRowCard(item)}
+    </SwipeSelectItem>
+  );
 
   useEffect(() => {
     return onSnapshot(doc(db, 'customDatabases', databaseId), (snapshot) => {
@@ -680,7 +706,7 @@ export default function CustomDatabaseScreen({
     // Filtered client-side by databaseId, same "avoid a composite index"
     // tradeoff every other database screen in this app already makes.
     return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
-      setRows(
+      setAllRows(
         snapshot.docs
           .map((docSnapshot) => {
             const data = docSnapshot.data();
@@ -695,8 +721,6 @@ export default function CustomDatabaseScreen({
               updatedAt: data.updatedAt ?? 0,
             } as CustomDatabaseRow;
           })
-          .filter((r) => r.databaseId === databaseId)
-          .sort((a, b) => b.updatedAt - a.updatedAt)
       );
       setReadError(null);
       setIsLoading(false);
@@ -723,8 +747,23 @@ export default function CustomDatabaseScreen({
     }, listenError('CustomDatabaseScreen:groups'));
   }, [customRowKind]);
 
-  // See photosList's own comment above - unconditional, same as groups/tags.
+  // Photos, files and links are read only when a relation can show them - one here, or one in a database a relation
+  // here points at (its rows are drawn too). They used to be read on every opening of every database, three whole
+  // collections the road sheets never draw (2026-10-12, the load fix). A field added later starts the read.
+  const ownFieldsForReach = database?.fields ?? [];
+  const reachDbIds = ownFieldsForReach
+    .filter((f) => (f.type === 'relation' && f.relationTarget?.kind === 'customDb') || (f.type === 'backlink' && f.backlinkSource))
+    .map((f) => (f.type === 'backlink' ? f.backlinkSource!.databaseId : (f.relationTarget as { kind: 'customDb'; databaseId: string }).databaseId));
+  const reachFields = [...ownFieldsForReach, ...reachDbIds.flatMap((id) => allDatabases[id]?.fields ?? [])];
+  const reaches = (kind: string) => reachFields.some((f) => f.type === 'relation' && f.relationTarget?.kind === kind);
+  const needPhotos = reaches('photos');
+  const needFiles = reaches('files');
+  const needLinks = reaches('links');
   useEffect(() => {
+    if (!needPhotos) {
+      setPhotosList([]);
+      return;
+    }
     return onSnapshot(ownedQuery('photos'), (snapshot) => {
       setPhotosList(
         snapshot.docs.map((d) => {
@@ -733,9 +772,13 @@ export default function CustomDatabaseScreen({
         })
       );
     }, listenError('CustomDatabaseScreen:photos'));
-  }, []);
+  }, [needPhotos]);
 
   useEffect(() => {
+    if (!needFiles) {
+      setFilesList([]);
+      return;
+    }
     return onSnapshot(ownedQuery('files'), (snapshot) => {
       setFilesList(
         snapshot.docs.map((d) => {
@@ -744,9 +787,13 @@ export default function CustomDatabaseScreen({
         })
       );
     }, listenError('CustomDatabaseScreen:files'));
-  }, []);
+  }, [needFiles]);
 
   useEffect(() => {
+    if (!needLinks) {
+      setLinksList([]);
+      return;
+    }
     return onSnapshot(ownedQuery('links'), (snapshot) => {
       setLinksList(
         snapshot.docs.map((d) => {
@@ -764,14 +811,24 @@ export default function CustomDatabaseScreen({
         })
       );
     }, listenError('CustomDatabaseScreen:links'));
-  }, []);
+  }, [needLinks]);
 
   useEffect(() => {
     return onSnapshot(ownedQuery('customDatabases'), (snapshot) => {
       setOtherDatabases(
         snapshot.docs.filter((d) => d.id !== databaseId).map((d) => ({ id: d.id, name: d.data().name ?? 'База' }))
       );
-    }, listenError('CustomDatabaseScreen:customDatabases'));
+      const all: Record<string, CustomDatabase> = {};
+      snapshot.docs.forEach((d) => {
+        const data = d.data();
+        all[d.id] = { id: d.id, name: data.name, icon: data.icon, color: data.color, fields: data.fields ?? [], createdAt: data.createdAt, updatedAt: data.updatedAt };
+      });
+      setAllDatabases(all);
+      setDatabasesAnswered(true);
+    }, (error) => {
+      setDatabasesAnswered(true);
+      listenError('CustomDatabaseScreen:customDatabases')(error);
+    });
   }, [databaseId]);
 
   // Which OTHER databases a 'relation' field here actually points at right
@@ -793,51 +850,24 @@ export default function CustomDatabaseScreen({
   );
   const referencedDbIdsKey = referencedDbIds.join(',');
 
-  useEffect(() => {
-    if (referencedDbIds.length === 0) return;
-    const unsubs = referencedDbIds.map((id) =>
-      onSnapshot(doc(db, 'customDatabases', id), (snapshot) => {
-        const data = snapshot.data();
-        if (!data) return;
-        setRelatedDatabases((prev) => ({
-          ...prev,
-          [id]: { id, name: data.name, icon: data.icon, color: data.color, fields: data.fields ?? [], createdAt: data.createdAt, updatedAt: data.updatedAt },
-        }));
-      }, listenError('CustomDatabaseScreen:customDatabases'))
-    );
-    return () => unsubs.forEach((u) => u());
+  // The databases a relation here points at, and their rows - both out of the reads above, no reads of their own.
+  const relatedDatabases = useMemo(() => {
+    const out: Record<string, CustomDatabase> = {};
+    referencedDbIds.forEach((id) => {
+      if (allDatabases[id]) out[id] = allDatabases[id];
+    });
+    return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [referencedDbIdsKey]);
-
-  useEffect(() => {
-    if (referencedDbIds.length === 0) {
-      setRelatedRows({});
-      return;
-    }
-    // One listener over the whole flat collection (same "avoid a composite
-    // index" tradeoff as this screen's own rows effect above), split by
-    // databaseId client-side rather than one listener per referenced
-    // database.
-    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
-      const grouped: Record<string, CustomDatabaseRow[]> = {};
-      snapshot.docs.forEach((d) => {
-        const data = d.data();
-        if (!referencedDbIds.includes(data.databaseId)) return;
-        const row: CustomDatabaseRow = {
-          id: d.id,
-          databaseId: data.databaseId,
-          values: data.values ?? {},
-          tagIds: data.tagIds ?? [],
-          groupId: data.groupId,
-          createdAt: data.createdAt ?? 0,
-          updatedAt: data.updatedAt ?? 0,
-        };
-        (grouped[data.databaseId] ??= []).push(row);
-      });
-      setRelatedRows(grouped);
-    }, listenError('CustomDatabaseScreen:customDatabaseRows'));
+  }, [allDatabases, referencedDbIdsKey]);
+  const relatedRows = useMemo(() => {
+    const grouped: Record<string, CustomDatabaseRow[]> = {};
+    if (referencedDbIds.length === 0) return grouped;
+    allRows.forEach((row) => {
+      if (referencedDbIds.includes(row.databaseId)) (grouped[row.databaseId] ??= []).push(row);
+    });
+    return grouped;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [referencedDbIdsKey]);
+  }, [allRows, referencedDbIdsKey]);
 
   // A Modal handled the hardware back button for free; a plain overlay has
   // to claim it, or back would leave the database entirely with the page
@@ -885,6 +915,7 @@ export default function CustomDatabaseScreen({
   useEffect(() => {
     return onSnapshot(prefsDoc, (snapshot) => {
       const data = snapshot.data();
+      lastPrefsRef.current = data ?? null;
       const nextActiveViewId = (data?.activeViewId as string | undefined) ?? null;
       setActiveViewId(nextActiveViewId);
       if (nextActiveViewId === null) {
@@ -916,6 +947,8 @@ export default function CustomDatabaseScreen({
   // own once savedViews actually contains the view, so switching to one
   // right after creating it still works before its snapshot round-trips.
   const seededViewIdRef = useRef<string | null>(null);
+  // The prefs doc as last heard - «Поточні зміни» is applied from it at once on a tap (selectCapsule).
+  const lastPrefsRef = useRef<Record<string, unknown> | null>(null);
   useEffect(() => {
     if (activeViewId === null) {
       seededViewIdRef.current = null;
@@ -942,6 +975,7 @@ export default function CustomDatabaseScreen({
   // counts when it is not the default one this database opens with.
   const activeParamCount =
     filters.length +
+    (groupFilter !== null ? 1 : 0) +
     (groupFieldId ? 1 : 0) +
     (sortPref.field === DEFAULT_ROW_SORT.field && sortPref.dir === DEFAULT_ROW_SORT.dir ? 0 : 1);
 
@@ -985,6 +1019,9 @@ export default function CustomDatabaseScreen({
   // bead. Not inside another screen's pane.
   const paneBar = usePaneBar();
   const bar = useTopNavOn() && (!inPane || paneBar);
+  // FRAME B on the Mac: the base's tools, «Вибір» and «⋯» go to the window's toolbar as they go to the phone's bar,
+  // and the two capsule rows under it (views, project) are not drawn - the same as under the phone's bar.
+  const chromeTools = bar || (FEATURES.macFrameB && Platform.OS === 'web' && !inPane);
   useTopBack(back, bar);
   // Under the bar the search is its own name plate, opened out.
   useTopSearch(
@@ -1058,14 +1095,9 @@ export default function CustomDatabaseScreen({
           // circle in the search field beside "+", «Параметри» went up to
           // the bar's "⋯" and «Зберегти» into Подача's «Представлення» -
           // the dock no longer carries a strip of its own.
-          extra: bar
-            ? {
-                icon: 'funnel-outline',
-                label: 'Подача',
-                active: openParam === 'params' || activeParamCount > 0,
-                onPress: () => openParamList('params'),
-              }
-            : undefined,
+          // 2026-10-16: «Подача» went up to the bar, beside the saved views (sketch J5ECjL7FhoorcJNyYdn57Y) - the dock
+          // carries the desks inside a base now and has no room for it.
+          extra: undefined,
         }
       : null
   );
@@ -1109,26 +1141,54 @@ export default function CustomDatabaseScreen({
             // table/gallery/graphic) - "Подача" (as in HOW the list is
             // served up), same funnel icon the filter tab already used
             // inside it.
-            {
-              key: 'params',
-              icon: 'funnel-outline',
-              label: 'Подача',
-              active: openParam === 'params' || activeParamCount > 0,
-              onPress: () => openParamList('params'),
-            },
+            // Where the chrome carries the tools (the phone's bar, the Mac's frame B toolbar) «Подача» is one of them.
+            ...(chromeTools
+              ? []
+              : [
+                  {
+                    key: 'params',
+                    icon: 'funnel-outline',
+                    label: 'Подача',
+                    active: openParam === 'params' || activeParamCount > 0,
+                    onPress: () => openParamList('params'),
+                  },
+                ]),
             // At the bar's edge instead, where there is a bar.
-            ...(bar ? [] : [{ key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => toggleSelectMode() }]),
+            ...(chromeTools ? [] : [{ key: 'select', icon: 'checkmark-circle-outline', label: 'Вибір', onPress: () => toggleSelectMode() }]),
             // The rare, per-database housekeeping (rename, fields, hide/
             // show properties, saved views, import, delete) - "Параметри"
             // freed up from the button that used to be "Вигляд", gear
             // icon since this is genuinely database settings now.
-            { key: 'menu', icon: 'settings-outline', label: 'Параметри', active: menuOpen, onPress: () => setMenuOpen((v) => !v) },
+            // ...and so is the housekeeping list: it is the «⋯» there.
+            ...(chromeTools ? [] : [{ key: 'menu', icon: 'settings-outline', label: 'Параметри', active: menuOpen, onPress: () => setMenuOpen((v) => !v) }]),
           ]
       : null
   );
   // Choosing at the bar's edge, as on every screen with a bar.
   // «Параметри» under a bar: its housekeeping list is the bar's "⋯".
-  useTopExtras(bar ? databaseMenuEntries : null, { active: isSelectMode, onPress: () => toggleSelectMode() }, bar && isFocused);
+  // Ahead of "⋯": the saved views and «Подача» (sorting, filtering, grouping, representation) - the two rows of
+  // capsules that stood under the bar are gone (2026-10-16, the user's).
+  useTopExtras(
+    chromeTools ? databaseMenuEntries : null,
+    { active: isSelectMode, onPress: () => toggleSelectMode() },
+    chromeTools && isFocused,
+    undefined,
+    chromeTools && !isSelectMode
+      ? [
+          { key: 'views', icon: 'bookmark-outline', label: 'Збережені вигляди', active: viewsMenuOpen, onPress: () => setViewsMenuOpen((v) => !v) },
+          {
+            key: 'params',
+            icon: 'options-outline',
+            label: 'Сортування, фільтр, групування',
+            active: openParam === 'params',
+            dot: activeParamCount > 0,
+            onPress: () => openParamList('params'),
+          },
+        ]
+      : null
+  );
+  // The three desks stay in the dock inside the base (deskBeadsBus's useDockDesksHere).
+  useDockDesksHere(isFocused && bar && !inPane);
 
   if (!database) {
     return (
@@ -1357,8 +1417,34 @@ export default function CustomDatabaseScreen({
   // Switches which capsule is active - a real view's own doc seeds the
   // display (see the effect right after the prefs one), "Поточні зміни"
   // (null) reverts to whatever the prefs doc itself last had stored.
+  // ONE RENDER PER SWITCH (2026-10-16, the user: a capsule answered after ~1-1.5 s). The capsule used to wait for the
+  // prefs doc's echo to light up (one full render of the old display), and only then did the view's own settings land
+  // (a second one) - each 200-400 ms on a big base. Now the choice and its settings are set together, at the tap, in one
+  // batch; the echo then finds the same values and changes nothing.
   function selectCapsule(viewId: string | null) {
     closeParamList();
+    setActiveViewId(viewId);
+    if (viewId) {
+      const view = savedViews.find((v) => v.id === viewId);
+      if (view) {
+        seededViewIdRef.current = viewId;
+        setViewMode(view.viewMode);
+        setSortPref({ field: view.sortField, dir: view.sortDir });
+        setFilters(view.filters ?? []);
+        setGroupFieldId(view.groupFieldId ?? null);
+        setHiddenFieldIds(view.hiddenFieldIds ?? []);
+      }
+    } else {
+      seededViewIdRef.current = null;
+      const data = lastPrefsRef.current;
+      setViewMode((data?.viewMode as ViewMode | undefined) ?? 'list');
+      setSortPref(
+        data?.sortField ? { field: data.sortField as string, dir: (data.sortDir as RowSort['dir']) ?? 'desc' } : DEFAULT_ROW_SORT
+      );
+      setFilters((data?.rowFilters as RowFilter[] | undefined) ?? []);
+      setGroupFieldId((data?.groupFieldId as string | undefined) ?? null);
+      setHiddenFieldIds((data?.hiddenFieldIds as string[] | undefined) ?? []);
+    }
     setDoc(prefsDoc, { activeViewId: viewId ?? deleteField() }, { merge: true });
   }
 
@@ -3136,6 +3222,8 @@ export default function CustomDatabaseScreen({
       });
     const defaultStart = dateKey(addDays(new Date(), -SCHEDULE_PAST_DAYS));
 
+    // Still on its way: a quiet empty grid area, not an error.
+    if (!rowDatabase && !databasesAnswered) return <View style={styles.emptyState} />;
     if (!rowDatabase) {
       return (
         <View style={styles.emptyState}>
@@ -3441,6 +3529,59 @@ export default function CustomDatabaseScreen({
     );
   }
 
+  // The parameters window's four sections, with what each is set to (a line that may wrap) - see paramsFolded.
+  const fieldNameOf = (id: string) => database.fields.find((f) => f.id === id)?.name ?? 'Поле';
+  const sortName =
+    (BUILT_IN_SORT_LABELS as Record<string, string>)[sortPref.field] ?? fieldNameOf(sortPref.field);
+  const projectName =
+    groupFilter === null ? null : groupFilter === UNASSIGNED_ID ? 'Без проекту' : groups.find((g) => g.id === groupFilter)?.name ?? 'Проєкт';
+  const filterParts = [
+    ...(projectName ? [`Проєкт: ${projectName}`] : []),
+    ...filters.map((f) =>
+      f.op === 'filled'
+        ? `${fieldNameOf(f.fieldId)}: заповнено`
+        : f.op === 'empty'
+          ? `${fieldNameOf(f.fieldId)}: порожньо`
+          : `${fieldNameOf(f.fieldId)} (${f.values?.length ?? 0})`
+    ),
+  ];
+  const paramSections = (
+    [
+      {
+        key: 'sort' as const,
+        icon: 'swap-vertical-outline' as const,
+        label: 'Сортування',
+        value: `${sortName}, ${sortPref.dir === 'asc' ? 'за зростанням' : 'за спаданням'}`,
+        inForce: !(sortPref.field === DEFAULT_ROW_SORT.field && sortPref.dir === DEFAULT_ROW_SORT.dir),
+      },
+      {
+        key: 'filter' as const,
+        icon: 'funnel-outline' as const,
+        label: 'Фільтр',
+        value: filterParts.length ? filterParts.join(' · ') : 'Усі записи',
+        inForce: filterParts.length > 0,
+      },
+      {
+        key: 'group' as const,
+        icon: 'layers-outline' as const,
+        label: 'Групування',
+        value: groupField ? groupField.name : 'Без групування',
+        inForce: !!groupField,
+      },
+      {
+        key: 'representation' as const,
+        icon: 'grid-outline' as const,
+        label: 'Представлення',
+        value: VIEW_LABELS[viewMode],
+        inForce: false,
+      },
+    ] as const
+  )
+    // A section for something this database cannot do would open an empty list.
+    .filter((tab) =>
+      tab.key === 'filter' ? filterFields.length > 0 || groups.length > 0 : tab.key === 'group' ? groupFields.length > 0 : true
+    );
+
   return (
     <SoftSurfaceContext.Provider value={softDb}>
     <View style={styles.container}>
@@ -3486,7 +3627,7 @@ export default function CustomDatabaseScreen({
         <TopNavBar title={{ icon: database?.icon ?? 'grid-outline', label: database?.name || 'База' }} />
       )}
       <SearchCorner
-        visible={!bar && isFocused && !isSelectMode}
+        visible={!chromeTools && isFocused && !isSelectMode}
         open={isSearching}
         query={searchQuery}
         onChangeQuery={setSearchQuery}
@@ -3508,6 +3649,7 @@ export default function CustomDatabaseScreen({
           Switching a capsule is the only thing this row does; managing
           the views themselves (rename/delete/edit/project) lives in
           Параметри → Налаштування виглядів now. */}
+      {!chromeTools && (
       <View style={styles.controlsRow} pointerEvents="box-none">
         <ScrollView
           horizontal
@@ -3548,9 +3690,11 @@ export default function CustomDatabaseScreen({
           })}
         </ScrollView>
       </View>
+      )}
 
       {/* The tabs have this row to themselves now that the capsule stands
-          on the rail. */}
+          on the rail. Under a bar the project is a condition in «Подача»'s filter instead. */}
+      {!chromeTools && (
       <View style={styles.controlsRow} pointerEvents="box-none">
         {groups.length > 0 ? (
           <ProjectTabsRow
@@ -3565,7 +3709,31 @@ export default function CustomDatabaseScreen({
           <View pointerEvents="none" style={styles.controlsSpacer} />
         )}
       </View>
+      )}
       </View>
+
+      {/* The saved views, hanging from their button at the bar's edge. */}
+      <Menu
+        soft={softDb}
+        visible={viewsMenuOpen && bar}
+        onClose={() => setViewsMenuOpen(false)}
+        style={{ position: 'absolute', right: (windowWidth - topBarFrame(windowWidth).width) / 2, top: insets.top + CHROME_TOP + TOP_NAV_H + 8 }}
+        entries={[
+          { label: 'Поточні зміни', icon: 'ellipse-outline', checked: activeViewId === null, onPress: () => { setViewsMenuOpen(false); selectCapsule(null); } },
+          ...savedViews.map((view) => ({
+            label: view.name,
+            icon: ((view.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[view.viewMode]) as keyof typeof Ionicons.glyphMap,
+            checked: activeViewId === view.id,
+            onPress: () => {
+              setViewsMenuOpen(false);
+              selectCapsule(view.id);
+            },
+          })),
+          { kind: 'rule' as const },
+          { label: 'Новий вигляд', icon: 'add-circle-outline', onPress: () => { setViewsMenuOpen(false); confirmSaveNewView(); } },
+          { label: 'Керування', icon: 'settings-outline', onPress: () => { setViewsMenuOpen(false); setViewsManagerVisible(true); } },
+        ]}
+      />
 
       <Menu
         soft={softDb}
@@ -3593,7 +3761,8 @@ export default function CustomDatabaseScreen({
       <GlassLayer visible={openParam === 'params'} onClose={closeParamList}>
         <View style={styles.layerBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeParamList} />
-          <View style={[styles.paramsSheet, { maxHeight: Math.min(windowHeight * 0.6, 520) }]}>
+          {/* Not the whole width (the user's, 2026-10-16: «аномально витягнуте»): a window of its own size. */}
+          <View style={[styles.paramsSheet, { maxWidth: 380, maxHeight: Math.min(windowHeight * 0.7, 560) }]}>
             {/* Only while "редагувати" (startEditView) brought us here -
                 a reminder that changes on every tab below now write
                 straight back into this saved view (see persistParam's own
@@ -3620,247 +3789,299 @@ export default function CustomDatabaseScreen({
                 </Text>
               </View>
             )}
-            <View style={styles.paramsTabs}>
-              {(
-                [
-                  { key: 'sort' as const, icon: 'swap-vertical-outline' as const, label: 'Сортування' },
-                  { key: 'filter' as const, icon: 'funnel-outline' as const, label: 'Фільтр' },
-                  { key: 'group' as const, icon: 'layers-outline' as const, label: 'Групування' },
-                  { key: 'representation' as const, icon: 'grid-outline' as const, label: 'Представлення' },
-                ] as const
-              )
-                // A tab for something this database cannot do would be a
-                // tab that opens an empty list.
-                .filter((tab) =>
-                  tab.key === 'filter' ? filterFields.length > 0 : tab.key === 'group' ? groupFields.length > 0 : true
-                )
-                .map((tab) => (
-                  <Pressable
-                    key={tab.key}
-                    style={[styles.paramsTab, paramsTab === tab.key && styles.paramsTabActive]}
-                    onPress={() => openParamsTab(tab.key)}
-                  >
-                    <Ionicons
-                      name={tab.icon}
-                      size={14}
-                      color={paramsTab === tab.key ? sInk('#fff') : sInk3('rgba(255,255,255,0.55)')}
-                    />
-                    <Text
-                      style={[styles.paramsTabLabel, paramsTab === tab.key && styles.paramsTabLabelActive]}
-                      numberOfLines={1}
-                    >
-                      {tab.label}
-                    </Text>
-                  </Pressable>
-                ))}
+            {/* What the window is about: this base and the view in force. Then the four sections as rows, each with
+                what it is set to, wrapping - not a strip of four tabs squeezed into one line (2026-10-16, the user's:
+                «ми що, не вміємо в перенесення строчок»). */}
+            <View style={styles.paramsHead}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[styles.paramsSheetTitle, { flex: 0 }]} numberOfLines={1}>
+                  Налаштування вигляду
+                </Text>
+                <Text style={styles.paramsHeadSub} numberOfLines={1}>
+                  {database.name} · {activeView?.name ?? 'Поточні зміни'}
+                </Text>
+              </View>
               <Pressable hitSlop={8} style={styles.paramsClose} onPress={closeParamList}>
                 <Ionicons name="close" size={18} color={sInk2('rgba(255,255,255,0.7)')} />
               </Pressable>
             </View>
-
             <ScrollView keyboardShouldPersistTaps="handled" style={styles.paramsBody}>
-              {paramsTab === 'sort' && (
-                <>
-                  {BUILT_IN_SORT_FIELDS.map((field) => (
-                    <SortOption
-                      key={field}
-                      label={BUILT_IN_SORT_LABELS[field]}
-                      active={sortPref.field === field}
-                      dir={sortPref.dir}
-                      onPress={() => selectSortField(field)}
-                    />
-                  ))}
-                  {/* The database's own fields continue the same list under
-                      a divider - sorting by "Дата зйомки" is the same kind
-                      of choice as sorting by "Змінено", just not one every
-                      database has. */}
-                  {sortFields.length > 0 && <View style={styles.paramDivider} />}
-                  {sortFields.map((field) => (
-                    <SortOption
-                      key={field.id}
-                      label={field.name}
-                      icon={FIELD_TYPE_ICON[field.type]}
-                      active={sortPref.field === field.id}
-                      dir={sortPref.dir}
-                      onPress={() => selectSortField(field.id)}
-                    />
-                  ))}
-                </>
-              )}
-
-              {paramsTab === 'group' && (
-                <>
-                  <Pressable style={styles.paramOption} onPress={() => selectGroupField(null)}>
-                    <Text style={[styles.paramOptionLabel, !groupField && styles.paramOptionLabelActive]}>
-                      Без групування
-                    </Text>
-                    {!groupField && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
-                  </Pressable>
-                  {groupFields.map((field) => (
-                    <Pressable key={field.id} style={styles.paramOption} onPress={() => selectGroupField(field.id)}>
-                      <Ionicons
-                        name={FIELD_TYPE_ICON[field.type]}
-                        size={14}
-                        color={groupField?.id === field.id ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
-                      />
-                      <Text
-                        style={[
-                          styles.paramOptionLabel,
-                          groupField?.id === field.id && styles.paramOptionLabelActive,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {field.name}
-                      </Text>
-                      {groupField?.id === field.id && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
+              {paramSections.map((tab) => {
+                const open = paramsTab === tab.key && !paramsFolded;
+                return (
+                  <View key={tab.key} style={[styles.paramsSection, open && styles.paramsSectionOpen]}>
+                    <Pressable
+                      style={styles.paramsSectionRow}
+                      onPress={() => {
+                        if (open) {
+                          setParamsFolded(true);
+                          return;
+                        }
+                        setParamsFolded(false);
+                        setFilterFieldId(null);
+                        setProjectFilterOpen(false);
+                        openParamsTab(tab.key);
+                      }}
+                    >
+                      <View style={styles.paramsSectionIcon}>
+                        <Ionicons name={tab.icon} size={15} color={sInk('#fff')} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.paramsSectionTitle}>{tab.label}</Text>
+                          {tab.inForce && <View style={styles.paramsSectionDot} />}
+                        </View>
+                        <Text style={styles.paramsSectionValue}>{tab.value}</Text>
+                      </View>
+                      <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={sInk3('rgba(255,255,255,0.45)')} />
                     </Pressable>
-                  ))}
-                </>
-              )}
-
-              {paramsTab === 'filter' && (
-                <>
-                  {openFilterField && (
-                    <Pressable style={styles.paramsBack} onPress={() => setFilterFieldId(null)}>
-                      <Ionicons name="chevron-back" size={14} color={sInk('#fff')} />
-                      <Text style={styles.paramsBackLabel} numberOfLines={1}>
-                        {openFilterField.name}
-                      </Text>
-                    </Pressable>
-                  )}
-                  {!openFilterField &&
-                    filterFields.map((field) => {
-                      const active = activeFilterFor(filters, field.id);
-                      return (
-                        <Pressable key={field.id} style={styles.paramOption} onPress={() => setFilterFieldId(field.id)}>
-                          <Ionicons
-                            name={FIELD_TYPE_ICON[field.type]}
-                            size={14}
-                            color={active ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
+                    {open && (
+                      <View style={styles.paramsSectionBody}>
+                    {tab.key === 'sort' && (
+                      <>
+                        {BUILT_IN_SORT_FIELDS.map((field) => (
+                          <SortOption
+                            key={field}
+                            label={BUILT_IN_SORT_LABELS[field]}
+                            active={sortPref.field === field}
+                            dir={sortPref.dir}
+                            onPress={() => selectSortField(field)}
                           />
-                          <Text style={[styles.paramOptionLabel, !!active && styles.paramOptionLabelActive]}>
-                            {field.name}
+                        ))}
+                        {/* The database's own fields continue the same list under
+                            a divider - sorting by "Дата зйомки" is the same kind
+                            of choice as sorting by "Змінено", just not one every
+                            database has. */}
+                        {sortFields.length > 0 && <View style={styles.paramDivider} />}
+                        {sortFields.map((field) => (
+                          <SortOption
+                            key={field.id}
+                            label={field.name}
+                            icon={FIELD_TYPE_ICON[field.type]}
+                            active={sortPref.field === field.id}
+                            dir={sortPref.dir}
+                            onPress={() => selectSortField(field.id)}
+                          />
+                        ))}
+                      </>
+                    )}
+
+                    {tab.key === 'group' && (
+                      <>
+                        <Pressable style={styles.paramOption} onPress={() => selectGroupField(null)}>
+                          <Text style={[styles.paramOptionLabel, !groupField && styles.paramOptionLabelActive]}>
+                            Без групування
                           </Text>
-                          {!!active && (
-                            <Text style={styles.paramOptionCount}>
-                              {active.op === 'filled' ? '≠∅' : active.op === 'empty' ? '∅' : active.values?.length}
-                            </Text>
-                          )}
-                          <Ionicons name="chevron-forward" size={13} color={sInk3('rgba(255,255,255,0.45)')} />
+                          {!groupField && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
                         </Pressable>
-                      );
-                    })}
-                  {openFilterField && (
-                    <>
-                      {openFilterFacets.map((facet) => {
-                        const active = activeFilterFor(filters, openFilterField.id);
-                        const on = active?.op === 'any' && (active.values ?? []).includes(facet.key);
-                        return (
-                          <Pressable
-                            key={facet.key}
-                            style={styles.paramOption}
-                            onPress={() => applyFilters(toggleFacet(filters, openFilterField.id, facet.key))}
-                          >
+                        {groupFields.map((field) => (
+                          <Pressable key={field.id} style={styles.paramOption} onPress={() => selectGroupField(field.id)}>
                             <Ionicons
-                              name={on ? 'checkbox' : 'square-outline'}
-                              size={15}
-                              color={on ? sInk('#fff') : sInk3('rgba(255,255,255,0.5)')}
+                              name={FIELD_TYPE_ICON[field.type]}
+                              size={14}
+                              color={groupField?.id === field.id ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
                             />
-                            <Text style={[styles.paramOptionLabel, on && styles.paramOptionLabelActive]} numberOfLines={1}>
-                              {facet.label}
+                            <Text
+                              style={[
+                                styles.paramOptionLabel,
+                                groupField?.id === field.id && styles.paramOptionLabelActive,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {field.name}
                             </Text>
-                            <Text style={styles.paramOptionCount}>{facet.count}</Text>
+                            {groupField?.id === field.id && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
                           </Pressable>
-                        );
-                      })}
-                      <View style={styles.paramDivider} />
-                      {(['filled', 'empty'] as const).map((op) => {
-                        const on = activeFilterFor(filters, openFilterField.id)?.op === op;
-                        return (
-                          <Pressable
-                            key={op}
-                            style={styles.paramOption}
-                            onPress={() => applyFilters(setPresenceOp(filters, openFilterField.id, op))}
-                          >
-                            <Ionicons
-                              name={on ? 'radio-button-on' : 'radio-button-off'}
-                              size={15}
-                              color={on ? sInk('#fff') : sInk3('rgba(255,255,255,0.5)')}
-                            />
-                            <Text style={[styles.paramOptionLabel, on && styles.paramOptionLabelActive]}>
-                              {op === 'filled' ? 'Заповнено' : 'Порожньо'}
+                        ))}
+                      </>
+                    )}
+
+                    {tab.key === 'filter' && (
+                      <>
+                        {openFilterField && (
+                          <Pressable style={styles.paramsBack} onPress={() => setFilterFieldId(null)}>
+                            <Ionicons name="chevron-back" size={14} color={sInk('#fff')} />
+                            <Text style={styles.paramsBackLabel} numberOfLines={1}>
+                              {openFilterField.name}
                             </Text>
                           </Pressable>
-                        );
-                      })}
-                      {!!activeFilterFor(filters, openFilterField.id) && (
+                        )}
+                        {/* The project, as a condition (2026-10-16): the capsule row above the list went. */}
+                        {!openFilterField && !projectFilterOpen && groups.length > 0 && (
+                          <Pressable style={styles.paramOption} onPress={() => setProjectFilterOpen(true)}>
+                            <Ionicons name="folder-outline" size={14} color={groupFilter !== null ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')} />
+                            <Text style={[styles.paramOptionLabel, groupFilter !== null && styles.paramOptionLabelActive]}>Проєкт</Text>
+                            {groupFilter !== null && <Text style={styles.paramOptionCount}>1</Text>}
+                            <Ionicons name="chevron-forward" size={13} color={sInk3('rgba(255,255,255,0.45)')} />
+                          </Pressable>
+                        )}
+                        {projectFilterOpen && (
+                          <>
+                            <Pressable style={styles.paramsBack} onPress={() => setProjectFilterOpen(false)}>
+                              <Ionicons name="chevron-back" size={14} color={sInk('#fff')} />
+                              <Text style={styles.paramsBackLabel} numberOfLines={1}>
+                                Проєкт
+                              </Text>
+                            </Pressable>
+                            {[
+                              { id: null as string | null, name: 'Усі' },
+                              ...groups.map((g) => ({ id: g.id as string | null, name: g.name })),
+                              { id: UNASSIGNED_ID as string | null, name: 'Без проекту' },
+                            ].map((option) => {
+                              const on = groupFilter === option.id;
+                              return (
+                                <Pressable key={option.id ?? '__all__'} style={styles.paramOption} onPress={() => setGroupFilter(option.id)}>
+                                  <Ionicons
+                                    name={on ? 'radio-button-on' : 'radio-button-off'}
+                                    size={15}
+                                    color={on ? sInk('#fff') : sInk3('rgba(255,255,255,0.5)')}
+                                  />
+                                  <Text style={[styles.paramOptionLabel, on && styles.paramOptionLabelActive]} numberOfLines={1}>
+                                    {option.name}
+                                  </Text>
+                                </Pressable>
+                              );
+                            })}
+                          </>
+                        )}
+                        {!openFilterField && !projectFilterOpen &&
+                          filterFields.map((field) => {
+                            const active = activeFilterFor(filters, field.id);
+                            return (
+                              <Pressable key={field.id} style={styles.paramOption} onPress={() => setFilterFieldId(field.id)}>
+                                <Ionicons
+                                  name={FIELD_TYPE_ICON[field.type]}
+                                  size={14}
+                                  color={active ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
+                                />
+                                <Text style={[styles.paramOptionLabel, !!active && styles.paramOptionLabelActive]}>
+                                  {field.name}
+                                </Text>
+                                {!!active && (
+                                  <Text style={styles.paramOptionCount}>
+                                    {active.op === 'filled' ? '≠∅' : active.op === 'empty' ? '∅' : active.values?.length}
+                                  </Text>
+                                )}
+                                <Ionicons name="chevron-forward" size={13} color={sInk3('rgba(255,255,255,0.45)')} />
+                              </Pressable>
+                            );
+                          })}
+                        {openFilterField && (
+                          <>
+                            {openFilterFacets.map((facet) => {
+                              const active = activeFilterFor(filters, openFilterField.id);
+                              const on = active?.op === 'any' && (active.values ?? []).includes(facet.key);
+                              return (
+                                <Pressable
+                                  key={facet.key}
+                                  style={styles.paramOption}
+                                  onPress={() => applyFilters(toggleFacet(filters, openFilterField.id, facet.key))}
+                                >
+                                  <Ionicons
+                                    name={on ? 'checkbox' : 'square-outline'}
+                                    size={15}
+                                    color={on ? sInk('#fff') : sInk3('rgba(255,255,255,0.5)')}
+                                  />
+                                  <Text style={[styles.paramOptionLabel, on && styles.paramOptionLabelActive]} numberOfLines={1}>
+                                    {facet.label}
+                                  </Text>
+                                  <Text style={styles.paramOptionCount}>{facet.count}</Text>
+                                </Pressable>
+                              );
+                            })}
+                            <View style={styles.paramDivider} />
+                            {(['filled', 'empty'] as const).map((op) => {
+                              const on = activeFilterFor(filters, openFilterField.id)?.op === op;
+                              return (
+                                <Pressable
+                                  key={op}
+                                  style={styles.paramOption}
+                                  onPress={() => applyFilters(setPresenceOp(filters, openFilterField.id, op))}
+                                >
+                                  <Ionicons
+                                    name={on ? 'radio-button-on' : 'radio-button-off'}
+                                    size={15}
+                                    color={on ? sInk('#fff') : sInk3('rgba(255,255,255,0.5)')}
+                                  />
+                                  <Text style={[styles.paramOptionLabel, on && styles.paramOptionLabelActive]}>
+                                    {op === 'filled' ? 'Заповнено' : 'Порожньо'}
+                                  </Text>
+                                </Pressable>
+                              );
+                            })}
+                            {!!activeFilterFor(filters, openFilterField.id) && (
+                              <Pressable
+                                style={styles.paramOption}
+                                onPress={() => applyFilters(clearFilterFor(filters, openFilterField.id))}
+                              >
+                                <Ionicons name="close-circle-outline" size={15} color={DANGER} />
+                                <Text style={[styles.paramOptionLabel, { color: DANGER }]}>Скинути</Text>
+                              </Pressable>
+                            )}
+                          </>
+                        )}
+                      </>
+                    )}
+
+                    {tab.key === 'representation' && (
+                      <>
+                        {(['list', 'table', 'cards', 'shelves', 'kanban'] as ViewMode[]).map((mode) => (
+                          <Pressable key={mode} style={styles.paramOption} onPress={() => changeViewMode(mode)}>
+                            <Ionicons
+                              name={VIEW_ICONS[mode]}
+                              size={14}
+                              color={viewMode === mode ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
+                            />
+                            <Text style={[styles.paramOptionLabel, viewMode === mode && styles.paramOptionLabelActive]}>
+                              {VIEW_LABELS[mode]}
+                            </Text>
+                            {viewMode === mode && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
+                          </Pressable>
+                        ))}
+                        {/* Graphic needs its own relation/date fields first, so
+                            picking it here applies the first existing one or
+                            opens its own dedicated setup sheet instead of just
+                            flipping a mode flag - see selectScheduleView's own
+                            comment. A long press on an existing one is the
+                            direct way back into its own config. */}
                         <Pressable
                           style={styles.paramOption}
-                          onPress={() => applyFilters(clearFilterFor(filters, openFilterField.id))}
+                          onPress={selectScheduleView}
+                          onLongPress={() => {
+                            const existing = savedViews.find((v) => v.viewMode === 'schedule');
+                            if (existing) startEditView(existing);
+                          }}
                         >
-                          <Ionicons name="close-circle-outline" size={15} color={DANGER} />
-                          <Text style={[styles.paramOptionLabel, { color: DANGER }]}>Скинути</Text>
+                          <Ionicons
+                            name={VIEW_ICONS.schedule}
+                            size={14}
+                            color={viewMode === 'schedule' ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
+                          />
+                          <Text style={[styles.paramOptionLabel, viewMode === 'schedule' && styles.paramOptionLabelActive]}>
+                            {VIEW_LABELS.schedule}
+                          </Text>
+                          {viewMode === 'schedule' && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
                         </Pressable>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-
-              {paramsTab === 'representation' && (
-                <>
-                  {(['list', 'table', 'cards', 'shelves', 'kanban'] as ViewMode[]).map((mode) => (
-                    <Pressable key={mode} style={styles.paramOption} onPress={() => changeViewMode(mode)}>
-                      <Ionicons
-                        name={VIEW_ICONS[mode]}
-                        size={14}
-                        color={viewMode === mode ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
-                      />
-                      <Text style={[styles.paramOptionLabel, viewMode === mode && styles.paramOptionLabelActive]}>
-                        {VIEW_LABELS[mode]}
-                      </Text>
-                      {viewMode === mode && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
-                    </Pressable>
-                  ))}
-                  {/* Graphic needs its own relation/date fields first, so
-                      picking it here applies the first existing one or
-                      opens its own dedicated setup sheet instead of just
-                      flipping a mode flag - see selectScheduleView's own
-                      comment. A long press on an existing one is the
-                      direct way back into its own config. */}
-                  <Pressable
-                    style={styles.paramOption}
-                    onPress={selectScheduleView}
-                    onLongPress={() => {
-                      const existing = savedViews.find((v) => v.viewMode === 'schedule');
-                      if (existing) startEditView(existing);
-                    }}
-                  >
-                    <Ionicons
-                      name={VIEW_ICONS.schedule}
-                      size={14}
-                      color={viewMode === 'schedule' ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
-                    />
-                    <Text style={[styles.paramOptionLabel, viewMode === 'schedule' && styles.paramOptionLabelActive]}>
-                      {VIEW_LABELS.schedule}
-                    </Text>
-                    {viewMode === 'schedule' && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
-                  </Pressable>
-                  {/* «Зберегти» lives here now (2026-10-04): what is in
-                      force, kept as a new view - a button of its own under
-                      the representations, with a "+". */}
-                  <Pressable
-                    style={[styles.paramOption, styles.saveViewOption]}
-                    onPress={() => {
-                      closeParamList();
-                      confirmSaveNewView();
-                    }}
-                  >
-                    <Ionicons name="add-circle-outline" size={16} color={sInk('#fff')} />
-                    <Text style={[styles.paramOptionLabel, styles.paramOptionLabelActive]}>Зберегти як новий вигляд</Text>
-                  </Pressable>
-                </>
-              )}
+                        {/* «Зберегти» lives here now (2026-10-04): what is in
+                            force, kept as a new view - a button of its own under
+                            the representations, with a "+". */}
+                        <Pressable
+                          style={[styles.paramOption, styles.saveViewOption]}
+                          onPress={() => {
+                            closeParamList();
+                            confirmSaveNewView();
+                          }}
+                        >
+                          <Ionicons name="add-circle-outline" size={16} color={sInk('#fff')} />
+                          <Text style={[styles.paramOptionLabel, styles.paramOptionLabelActive]}>Зберегти як новий вигляд</Text>
+                        </Pressable>
+                      </>
+                    )}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
             </ScrollView>
           </View>
         </View>
@@ -3908,6 +4129,16 @@ export default function CustomDatabaseScreen({
         // the total under the last group - the "how many working, how many
         // in for repair, how many altogether" read. Collapsible, same as
         // the table and gallery's own grouped rendering.
+        <SwipeSelectArea
+          enabled={FEATURES.swipeSelect}
+          isSelectMode={isSelectMode}
+          selectedIds={selectedIds}
+          onSelect={sweepTo}
+          onEnd={(ids) => {
+            if (ids.size === 0) clearSelection();
+          }}
+          onToggle={toggleSelected}
+        >
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
           {renderTotals()}
           {rowGroups.map((group) => {
@@ -3926,7 +4157,7 @@ export default function CustomDatabaseScreen({
                   </Text>
                   <Text style={styles.groupHeaderCount}>{group.rows.length}</Text>
                 </Pressable>
-                {!collapsed && group.rows.map(renderRowCard)}
+                {!collapsed && group.rows.map(swipeRow)}
               </View>
             );
           })}
@@ -3935,11 +4166,23 @@ export default function CustomDatabaseScreen({
             <Text style={styles.groupTotalCount}>{displayedRows.length}</Text>
           </View>
         </ScrollView>
+        </SwipeSelectArea>
       ) : (
+        <SwipeSelectArea
+          enabled={FEATURES.swipeSelect}
+          isSelectMode={isSelectMode}
+          selectedIds={selectedIds}
+          onSelect={sweepTo}
+          onEnd={(ids) => {
+            if (ids.size === 0) clearSelection();
+          }}
+          onToggle={toggleSelected}
+        >
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
           {renderTotals()}
-          {displayedRows.map(renderRowCard)}
+          {displayedRows.map(swipeRow)}
         </ScrollView>
+        </SwipeSelectArea>
       )}
 
       {/* What runs off the top and the bottom melts into the ground rather
@@ -6151,6 +6394,12 @@ const softCustomDatabaseWindows = (S: SoftTokens) =>
     paramsTabs: { borderBottomColor: S.line },
     paramsTabActive: { backgroundColor: S.fill },
     paramsTabLabel: { color: S.ink3 },
+    paramsHeadSub: { color: S.ink3 },
+    paramsSectionOpen: { backgroundColor: S.fill, borderRadius: 16, overflow: 'hidden' },
+    paramsSectionIcon: { backgroundColor: S.fillSolid },
+    paramsSectionTitle: { color: S.ink },
+    paramsSectionValue: { color: S.ink3 },
+    paramsSectionDot: { backgroundColor: S.accent },
     paramsTabLabelActive: { color: S.ink },
     paramsSheetTitle: { color: S.ink },
     editingViewIconBtn: { backgroundColor: S.fill },
@@ -7087,6 +7336,67 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   paramsBody: {
     paddingTop: 6,
     paddingHorizontal: 7,
+  },
+  paramsHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 14,
+    paddingBottom: 8,
+    paddingLeft: 12,
+    paddingRight: 10,
+  },
+  paramsHeadSub: {
+    fontSize: 12.5,
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(255,255,255,0.55)',
+    paddingLeft: 4,
+    marginTop: 2,
+  },
+  paramsSection: {
+    borderRadius: 16,
+    marginBottom: 2,
+  },
+  paramsSectionOpen: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  paramsSectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  paramsSectionIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  paramsSectionTitle: {
+    fontSize: 14.5,
+    fontFamily: FONT_BOLD,
+    color: '#fff',
+  },
+  paramsSectionValue: {
+    fontSize: 12.5,
+    lineHeight: 17,
+    fontFamily: FONT_REGULAR,
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 1,
+  },
+  paramsSectionDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#D9793F',
+  },
+  paramsSectionBody: {
+    paddingBottom: 6,
+    paddingHorizontal: 2,
   },
   // While "редагувати" (startEditView) is active - see editingViewId.
   editingViewBanner: {

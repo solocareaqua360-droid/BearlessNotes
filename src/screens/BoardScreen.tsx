@@ -63,6 +63,10 @@ import DocumentPickerModal from '../components/DocumentPickerModal';
 import { groupAppliesTo } from '../utils/groups';
 import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
 import * as Clipboard from 'expo-clipboard';
+import { outlineToBoard, parseOutline } from '../utils/outlineToBoard';
+import FormattedText from '../components/FormattedText';
+import { parseFormattedText } from '../utils/documentBlocks';
+import { createOutlineNotes } from '../utils/outlineToNotes';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import { db } from '../firebase';
 import { BoardsStackParamList, RootStackParamList } from '../navigation';
@@ -381,9 +385,10 @@ function newFreeBlock(index: number, at: { x: number; y: number }): BoardCard {
 
 // GLUE: how close a block's top-left must land to another block's
 // bottom-left to stick there, in board units.
-const GLUE_SNAP_X = 70;
-const GLUE_SNAP_ABOVE = 40;
-const GLUE_SNAP_BELOW = 55;
+// THE MAGNET (2026-10-11, the user: a radius within which a block sticks to a block - truly, at once, exactly):
+// measured on the SCREEN, so it feels the same at any zoom. Let go within this many points of a block's foot (or
+// head) and the block is laid flush against it in the same moment.
+const GLUE_SNAP_SCREEN = 44;
 
 function glueMembers(cards: BoardCard[], glueId: string): BoardCard[] {
   return cards.filter((c) => c.glueId === glueId).sort((a, b) => (a.glueOrder ?? 0) - (b.glueOrder ?? 0));
@@ -392,12 +397,16 @@ function glueMembers(cards: BoardCard[], glueId: string): BoardCard[] {
 // Every strip laid out under its head: same x and width, edge to edge.
 // Returns the same array when nothing moved, so it can run on every
 // change of the measured heights without looping.
-function reflowGlue(cards: BoardCard[], heights: Map<string, number>): BoardCard[] {
+// `needMeasured`: a strip is laid out only when EVERY block of it has been measured. Laid out by the rough constant
+// (what an unmeasured block falls back to) the blocks are put 140 units apart AND that is then saved - the user's
+// «при відкритті дошки блоки то склеєні, то розклеєні» (2026-10-11).
+function reflowGlue(cards: BoardCard[], heights: Map<string, number>, needMeasured = false): BoardCard[] {
   const ids = new Set(cards.filter((c) => c.glueId).map((c) => c.glueId as string));
   if (ids.size === 0) return cards;
   const place = new Map<string, { x: number; y: number; width: number }>();
   ids.forEach((gid) => {
     const members = glueMembers(cards, gid);
+    if (needMeasured && members.some((m) => !heights.has(m.id))) return;
     const head = members[0];
     let y = head.y + heightOf(head, heights);
     members.slice(1).forEach((m) => {
@@ -1281,7 +1290,11 @@ function DraggableContainer({
 
 type DraggableCardProps = {
   card: BoardCard;
-  // A day's board (features.cardWindow): a document card is drawn as the
+  // Bumped after EVERY drop: the card's drawn position is re-read from its state even when the state did not
+  // change (a glued block let go near its old place snaps back to the very same state value - React saw no change
+  // and left it drawn where it was dropped, with the strip's seam and a gap: the user, 2026-10-11).
+  settleTick?: number;
+  // Every board (features.cardWindow; first only a day's): a document card is drawn as the
   // ONE card it is in every state - its title, then its real blocks, on
   // the note's paper - and a tap makes that same card live (BoardScreen's
   // card window lies exactly over it).
@@ -1428,6 +1441,28 @@ function FreeBlockInput({
   const size = { fontSize: Math.round(base.size * FREE_BLOCK_TEXT), lineHeight: Math.round(base.line * FREE_BLOCK_TEXT) };
   const textRef = useRef(card.text ?? '');
   textRef.current = card.text ?? '';
+  // FOCUS ASKED FOR, NOT HOPED FOR (2026-10-11, the user: after two Enters the keyboard stayed up for 3-4 s with
+  // no caret anywhere, then went down and the empty new block vanished; the same on the Mac). `autoFocus` of a
+  // field that mounts as the previous one unmounts is not reliable - the keyboard stays, the focus does not move.
+  // So the field is focused by hand, a few times over the first half second (harmless if it already has it).
+  const inputRef = useRef<TextInput>(null);
+  const caretPlaced = useRef(false);
+  useEffect(() => {
+    if (readOnly) return;
+    const timers = [0, 40, 120, 260, 480].map((ms) =>
+      setTimeout(() => {
+        const input = inputRef.current;
+        if (input && !input.isFocused()) {
+          input.focus();
+          // A block opened for typing puts the caret at the END of its text, not at the start (the Mac).
+          const end = (textRef.current ?? '').length;
+          (input as unknown as { setSelection?: (a: number, b: number) => void }).setSelection?.(end, end);
+        }
+      }, ms)
+    );
+    return () => timers.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <View style={freeInputStyles.row}>
       {kind === 'checkbox' && (
@@ -1442,6 +1477,7 @@ function FreeBlockInput({
         </Text>
       ) : (
       <TextInput
+        ref={inputRef}
         autoFocus
         multiline
         disableFullscreenUI
@@ -1455,6 +1491,14 @@ function FreeBlockInput({
             return;
           }
           onText?.(t);
+        }}
+        onFocus={(e) => {
+          // The browser's own focus lands the caret at 0: once, at the first focus, move it to the end.
+          if (caretPlaced.current) return;
+          caretPlaced.current = true;
+          const el = (e as unknown as { target?: { setSelectionRange?: (a: number, b: number) => void } }).target;
+          const end = (textRef.current ?? '').length;
+          el?.setSelectionRange?.(end, end);
         }}
         onKeyPress={(e) => {
           if (e.nativeEvent.key === 'Backspace' && textRef.current === '') onBackspaceEmpty?.();
@@ -1522,6 +1566,7 @@ function DraggableCard({
   canvasHoldGesture,
   livePaper,
   inlineEditing,
+  settleTick,
   onInlineText,
   onInlineDoubleEnter,
   onInlineBackspaceEmpty,
@@ -1618,7 +1663,7 @@ function DraggableCard({
     pullOffsetX.value = 0;
     pullOffsetY.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card.x, card.y]);
+  }, [card.x, card.y, settleTick]);
 
   // blocksExternalGesture: RNGH's Gesture API treats gestures in separate
   // (even nested) GestureDetectors as fully independent, so without this
@@ -1981,9 +2026,16 @@ function DraggableCard({
           >
             <Text
               style={[styles.stickyText, { fontSize: card.fontSize ?? STICKY_TEXT_SIZE_DEFAULT }]}
-              numberOfLines={6}
+              numberOfLines={card.short ? 4 : undefined}
             >
-              {card.text || 'Порожня наліпка'}
+              {card.text ? (
+                <FormattedText
+                  segments={parseFormattedText(card.text)}
+                  defaultColor={String(StyleSheet.flatten(styles.stickyText).color ?? theme.canvas.ink)}
+                />
+              ) : (
+                'Порожня наліпка'
+              )}
             </Text>
           </View>
         ) : type === 'image' ? (
@@ -2364,6 +2416,11 @@ export default function BoardScreen() {
   // typed against.
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList & BoardsStackParamList>>();
   const { params } = useRoute<Props['route']>();
+  // A board opened from the explorer lives in the root stack as «BoardCopy»; the walk from one board
+  // into another (and the move of a group) must stay on the same route name or the tap goes nowhere.
+  const boardRouteName = useRoute().name === 'BoardCopy' ? 'BoardCopy' : 'Board';
+  const goBoard = (method: 'push' | 'navigate', boardId: string, extra?: object) =>
+    (navigation as unknown as Record<string, (name: string, params?: object) => void>)[method](boardRouteName, { boardId, ...extra });
   const { boardId, openDocumentId, focusCardIds } = params;
   // The board is what the boards desk's picture shows while it is open.
   const deskContentRef = useDeskContent();
@@ -2594,14 +2651,38 @@ export default function BoardScreen() {
   // change re-renders: a column whose single card grew has nothing to
   // reposition, but its OWN height still has to catch up.
   const [cardHeights, setCardHeights] = useState<Map<string, number>>(new Map());
+  const [settleTick, setSettleTick] = useState(0);
   // The same heights, reachable from a callback that must not be rebuilt
   // every time one of them is measured - the listener depends on it, and
   // resubscribing on every measurement would be a lot of churn for
   // nothing.
-  // A strip re-lays itself whenever one of its blocks changes height.
+  // A strip re-lays itself whenever one of its blocks changes height - and whenever the cards change at all
+  // (a sync that brings a `glueId` back, a block let go, an undo): glued blocks are never left standing apart
+  // for a few seconds, waiting for a measurement. reflowGlue returns the same array when nothing has to move.
   useEffect(() => {
-    setCards((prev) => reflowGlue(prev, cardHeights));
-  }, [cardHeights]);
+    // A «strip» of one is no strip: a block that carries glue but has nobody to be glued to (a sync that brought
+    // a `glueId` back, an old save) is shown with a seam and refuses to stick again until it is dragged far away
+    // and back (the user, 2026-10-11). Such leftovers are cleared here, in the same place the layout is kept flush.
+    setCards((prev) => reflowGlue(dropLoneGlue(prev), cardHeights, true));
+  }, [cardHeights, cards]);
+  // And the DRAWN positions are re-read from the state a moment after anything has settled - a strip laid out
+  // while blocks were still being measured must not stay drawn where it first stood. Also once, a little after
+  // the board has opened, when every height is certain to be known.
+  useEffect(() => {
+    const t = setTimeout(() => setSettleTick((n) => n + 1), 160);
+    return () => clearTimeout(t);
+  }, [cardHeights, cards]);
+  useEffect(() => {
+    if (!isLoaded) return;
+    const t = setTimeout(() => {
+      // Not strict: a block that is never drawn (hidden by a layer) has no height and must not keep its strip
+      // from being laid out for ever.
+      setCards((prev) => reflowGlue(dropLoneGlue(prev), cardHeightsRef.current));
+      setSettleTick((n) => n + 1);
+    }, 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded]);
   const cardHeightsRef = useRef(cardHeights);
   cardHeightsRef.current = cardHeights;
   const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
@@ -2808,7 +2889,14 @@ export default function BoardScreen() {
       else if (top < boardInsets.top + 80) translateY.value = withTiming(translateY.value + (boardInsets.top + 80 - top), { duration: 220 });
       return;
     }
-    if (inlineKbSeenRef.current) endInlineEdit();
+    // The keyboard dips for a moment while one field hands the focus to the next (two Enters): only a keyboard
+    // that STAYS down ends the typing.
+    if (!inlineKbSeenRef.current) return;
+    const id = inlineBlockId;
+    const timer = setTimeout(() => {
+      if (inlineBlockIdRef.current === id) endInlineEdit();
+    }, 450);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyboardHeight, inlineBlockId]);
   const resizeGestureWin = useMemo(
@@ -3236,7 +3324,7 @@ export default function BoardScreen() {
     const snapshots = await Promise.all(boardIds.map((id) => getDoc(doc(db, 'boards', id))));
     const fresh = new Map<string, string>();
     snapshots.forEach((snapshot, index) => {
-      if (!snapshot.exists()) return;
+      if (!snapshot.exists() || snapshot.data()?.deletedAt) return;
       fresh.set(boardIds[index], (snapshot.data()?.title as string)?.trim() || 'Без назви');
     });
     setCards((prev) => {
@@ -3863,7 +3951,18 @@ export default function BoardScreen() {
   }, []);
 
   function deleteConnection(id: string) {
-    setConnections((prev) => prev.filter((c) => c.id !== id));
+    // Every line between the same two ends goes, not only this id - a copy of it (made by an old sync or
+    // a double drop) would otherwise sit under it, looking like the line that would not break.
+    setConnections((prev) => {
+      const gone = prev.find((c) => c.id === id);
+      if (!gone) return prev;
+      return prev.filter(
+        (c) =>
+          c.id !== id &&
+          !((c.fromCardId === gone.fromCardId && c.toCardId === gone.toCardId) ||
+            (c.fromCardId === gone.toCardId && c.toCardId === gone.fromCardId))
+      );
+    });
     setSelectedConnectionId(null);
   }
 
@@ -3891,10 +3990,38 @@ export default function BoardScreen() {
     );
   }
 
+  // A tap on bare canvas clears the selection and ends typing in a free block - but NOT a tap that lands ON the
+  // block being typed in (2026-10-11, the Mac: a click inside the field to move the caret reached this canvas
+  // gesture through the browser's event bubbling and closed the block; on the phone the field keeps its own touch).
+  function clearSelectionTap(wx: number, wy: number) {
+    const id = inlineBlockIdRef.current;
+    if (id) {
+      const card = cards.find((c) => c.id === id);
+      if (card && wx >= card.x && wx <= card.x + card.width && wy >= card.y && wy <= card.y + heightOf(card, cardHeights)) return;
+    }
+    // A tap on the selected line's own buttons (2026-10-11, the "x" that broke a line once in ten): this canvas
+    // gesture fires for it TOO, and clearing the selection unmounted the buttons before their press arrived.
+    if (selectedConnectionId) {
+      const sel = connections.find((c) => c.id === selectedConnectionId);
+      const a = sel && nodeById.get(sel.fromCardId);
+      const b = sel && nodeById.get(sel.toCardId);
+      if (sel && a && b) {
+        const e = connectionEndpoints(a.x, a.y, a.width, a.height, b.x, b.y, b.width, b.height);
+        const buttons = sel.kind === 'arrow' ? 3 : 2;
+        const left = (e.x1 + e.x2) / 2 - 15 - 8;
+        const top = (e.y1 + e.y2) / 2 - 15 - 8;
+        if (wx >= left && wx <= left + buttons * 34 + 12 && wy >= top && wy <= top + 46) return;
+      }
+    }
+    clearSelection();
+  }
   const clearSelectionGesture = Gesture.Tap()
     .maxDuration(250)
-    .onEnd((_event, success) => {
-      if (success) runOnJS(clearSelection)();
+    .onEnd((event, success) => {
+      if (!success) return;
+      const wx = (event.x - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (event.y - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      runOnJS(clearSelectionTap)(wx, wy);
     });
 
   // Holding bare canvas asks for the marquee. The same gesture a phone
@@ -4144,6 +4271,60 @@ export default function BoardScreen() {
     );
   }
 
+  // «КАРТА З ТЕКСТУ»: what is on the clipboard - a tree of ideas as Markdown headings (or an indented
+  // list), the sort of answer an AI gives when asked for a mind map - becomes cards with their lines,
+  // laid out from the middle of what is on screen (utils/outlineToBoard).
+  async function pasteOutlineAsMap(asNotes: boolean) {
+    setAddSheetVisible(false);
+    let text = '';
+    try {
+      text = await Clipboard.getStringAsync();
+    } catch {
+      // handled below as an empty clipboard
+    }
+    const nodes = parseOutline(text);
+    if (nodes.length < 2) {
+      notify(
+        'Нема з чого будувати карту',
+        'Скопіюйте текст із заголовками (#, ##, ###) - заголовок стане карткою, текст під ним її змістом - або список із відступами, і спробуйте ще раз.'
+      );
+      return;
+    }
+    if (nodes.length > 80 && !(await confirm({ title: `${nodes.length} карток`, message: 'Це дуже велика карта. Додати все?', confirmLabel: 'Додати' }))) return;
+    if (asNotes) {
+      // The tree becomes notes nested in the root note, on a new board; this board gets ONE card for it.
+      if (nodes.filter((n) => n.parent === null).length !== 1) {
+        notify('Потрібен один корінь', 'У тексті має бути один головний заголовок (#), під ним решта. Попросіть ШІ про один корінь.');
+        return;
+      }
+      try {
+        const made = await createOutlineNotes(nodes);
+        setCards((prev) => [...prev, newBoardCard({ id: made.boardId, title: made.boardTitle }, prev.length, viewCenter())]);
+      } catch (e) {
+        notify('Не вдалося створити карту', (e as Error).message);
+      }
+      return;
+    }
+    const built = outlineToBoard(nodes, viewCenter());
+    setCards((prev) => [...prev, ...built.cards]);
+    setConnections((prev) => [...prev, ...built.connections]);
+  }
+
+  // «КОРОТКО»: sticky text cards show their first lines only (BoardCard.short), all of them at once or the
+  // chosen ones.
+  const textCards = cards.filter((c) => (c.type ?? 'paragraph') === 'paragraph' && !c.freeBlock);
+  function setShort(ids: Set<string> | null, short: boolean) {
+    setCards((prev) =>
+      prev.map((c) => {
+        if ((c.type ?? 'paragraph') !== 'paragraph' || c.freeBlock) return c;
+        if (ids && !ids.has(c.id)) return c;
+        if (!!c.short === short) return c;
+        const { short: _gone, ...rest } = c;
+        return short ? { ...rest, short: true } : rest;
+      })
+    );
+  }
+
   function addTextCard() {
     setAddSheetVisible(false);
     const card = newTextCard(cards.length, viewCenter());
@@ -4383,7 +4564,7 @@ export default function BoardScreen() {
       snapshot.docs
         // Not this one: a board holding a card of itself is a loop with
         // nothing at the end of it.
-        .filter((d) => d.id !== boardId && !d.data().trashed)
+        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt)
         .map((d) => ({ id: d.id, title: (d.data().title as string)?.trim() || 'Без назви' }))
         .sort((a, b) => a.title.localeCompare(b.title))
     );
@@ -4481,10 +4662,7 @@ export default function BoardScreen() {
       // No "done" dialog. The target board opens on the group a moment
       // later, which says it better than a box with one button - and a
       // box with one button is a tap the move does not need.
-      navigation.navigate('Board', {
-        boardId: targetId,
-        focusCardIds: landedCards.map((c) => c.id),
-      });
+      goBoard('navigate', targetId, { focusCardIds: landedCards.map((c) => c.id) });
     } catch (e) {
       notify('Не вдалося перенести', String(e));
     } finally {
@@ -4496,7 +4674,7 @@ export default function BoardScreen() {
     const snapshot = await getDocs(ownedQuery('boards'));
     setPickableBoards(
       snapshot.docs
-        .filter((d) => d.id !== boardId && !d.data().trashed)
+        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt)
         .map((d) => ({ id: d.id, title: (d.data().title as string)?.trim() || 'Без назви' }))
         .sort((a, b) => a.title.localeCompare(b.title))
     );
@@ -4766,9 +4944,20 @@ export default function BoardScreen() {
       // Straight there. push rather than navigate, so walking from one
       // board into another and back retraces the path - the same
       // reasoning a note's own card follows.
-      if (card.boardId) navigation.push('Board', { boardId: card.boardId });
+      if (card.boardId) {
+        const target = card.boardId;
+        // A board that went to the bin is not walked into: say so instead.
+        getDoc(doc(db, 'boards', target))
+          .then((s) => {
+            if (s.exists() && s.data()?.deletedAt) notify('Ця дошка в кошику', 'Відновіть її, щоб відкрити.');
+            else goBoard('push', target);
+          })
+          .catch(() => goBoard('push', target));
+      }
     } else if (type === 'document') {
-      if (FEATURES.cardWindow && isDayBoard && card.documentId) {
+      // Every board now, not only a day's (2026-10-18, the user's «робимо»): a document is the same paper card that
+      // comes alive in place wherever it lies.
+      if (FEATURES.cardWindow && card.documentId) {
         // The SAME card becomes live: the window lies exactly over it, at
         // its size and the board's zoom - unless it is opened out, which
         // only shows its buttons (too tall to write in on a phone).
@@ -4928,6 +5117,7 @@ export default function BoardScreen() {
       return reflowColumns(assigned, columns, cardHeights);
     });
     setDraggedCardId(null);
+    setSettleTick((t) => t + 1);
     if (before && !copied) commitConnectionPull(x - before.x, y - before.y);
     // A free block (or a strip, by its head) let go over a note's card goes
     // INTO that note - its one home is now the note.
@@ -5097,30 +5287,50 @@ export default function BoardScreen() {
     }
     const movingIds = new Set(moving.map((m) => m.id));
     const top = next.find((c) => c.id === id)!;
-    let target: BoardCard | undefined;
+    const radius = GLUE_SNAP_SCREEN / Math.max(0.2, scale.value);
+    const movHeight = moving.reduce((sum, m) => sum + heightOf(m, cardHeights), 0);
+    // The nearest block within the radius, by the corner that would meet: the moving block's top-left to a
+    // block's foot (it goes UNDER it), or the moving strip's foot to a block's top-left (it goes ABOVE it).
+    let best: { target: BoardCard; dist: number; below: boolean } | null = null;
     for (const t of next) {
       if (!t.freeBlock || movingIds.has(t.id)) continue;
-      if (t.glueId) {
-        const strip = glueMembers(next, t.glueId);
-        if (strip[strip.length - 1].id !== t.id) continue;
+      const strip = t.glueId ? glueMembers(next, t.glueId) : [t];
+      if (strip[strip.length - 1].id === t.id) {
+        const d = Math.hypot(top.x - t.x, top.y - (t.y + heightOf(t, cardHeights)));
+        if (d < radius && (!best || d < best.dist)) best = { target: t, dist: d, below: true };
       }
-      const foot = t.y + heightOf(t, cardHeights);
-      const dy = top.y - foot;
-      if (Math.abs(top.x - t.x) < GLUE_SNAP_X && dy > -GLUE_SNAP_ABOVE && dy < GLUE_SNAP_BELOW) {
-        target = t;
-        break;
+      if (strip[0].id === t.id) {
+        const d = Math.hypot(top.x - t.x, top.y + movHeight - t.y);
+        if (d < radius && (!best || d < best.dist)) best = { target: t, dist: d, below: false };
       }
     }
-    if (target) {
+    if (best) {
+      const target = best.target;
       const gid = target.glueId ?? generateId();
       const strip = target.glueId ? glueMembers(next, gid) : [target];
-      let order = Math.max(...strip.map((m) => m.glueOrder ?? 0)) + 1;
       const assigned = new Map<string, number>();
-      moving.forEach((m) => assigned.set(m.id, order++));
+      if (best.below) {
+        let order = Math.max(...strip.map((m) => m.glueOrder ?? 0)) + 1;
+        moving.forEach((m) => assigned.set(m.id, order++));
+        // A LONE block that others stick under becomes the head of a strip itself (it carried no glue yet) -
+        // without this the moving blocks were glued to a strip of one, which is no strip and was dropped.
+        if (!target.glueId) assigned.set(target.id, 0);
+      } else {
+        // Above: the moving blocks take the head's place, the target strip follows them.
+        moving.forEach((m, i) => assigned.set(m.id, i));
+        strip.forEach((m, i) => assigned.set(m.id, moving.length + i));
+      }
       next = next.map((c) => {
-        if (c.id === target!.id && !c.glueId) return { ...c, glueId: gid, glueOrder: 0 };
         const o = assigned.get(c.id);
-        return o === undefined ? c : { ...c, glueId: gid, glueOrder: o };
+        if (o === undefined) return c;
+        const out: BoardCard = { ...c, glueId: gid, glueOrder: o };
+        // The new head stands flush on top of the old one: the strip is laid out from it.
+        if (!best!.below && c.id === moving[0].id) {
+          out.x = target.x;
+          out.y = target.y - movHeight;
+          out.width = target.width;
+        }
+        return out;
       });
       hapticDrop();
     }
@@ -6756,6 +6966,12 @@ export default function BoardScreen() {
   useTopExtras(
     [
       ...(isolatedIds !== null ? [{ label: 'Вийти з ізоляції', icon: 'scan-outline' as const, onPress: toggleIsolation }] : []),
+      ...(textCards.length > 0
+        ? [
+            { label: 'Згорнути всі картки', icon: 'contract-outline' as const, onPress: () => setShort(null, true) },
+            { label: 'Розгорнути всі картки', icon: 'expand-outline' as const, onPress: () => setShort(null, false) },
+          ]
+        : []),
     ],
     null,
     bar,
@@ -6834,6 +7050,35 @@ export default function BoardScreen() {
               : []),
             ...(onlySelectedCard?.type === 'document' && onlySelectedCard.documentId && isDayBoard
               ? [{ key: 'apart', icon: 'reorder-four-outline', label: 'Розібрати', onPress: () => noteToStrip(onlySelectedCard) }]
+              : []),
+            // Several chosen cards: their texts together, one after another, with a blank line between.
+            ...(selectedCardIds.size >= 2
+              ? [
+                  {
+                    key: 'copy-many',
+                    icon: 'copy-outline',
+                    label: 'Копіювати',
+                    onPress: async () => {
+                      const chosen = cards.filter((c) => selectedCardIds.has(c.id));
+                      const texts = await Promise.all(chosen.map((c) => textOfCard(c)));
+                      await Clipboard.setStringAsync(texts.filter((t) => t.trim()).join('\n\n'));
+                    },
+                  },
+                ]
+              : []),
+            ...(cards.some((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'paragraph' && !c.freeBlock)
+              ? [
+                  (() => {
+                    const mine = cards.filter((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'paragraph' && !c.freeBlock);
+                    const allShort = mine.every((c) => c.short);
+                    return {
+                      key: 'short',
+                      icon: allShort ? 'expand-outline' : 'contract-outline',
+                      label: allShort ? 'Повністю' : 'Коротко',
+                      onPress: () => setShort(new Set(mine.map((c) => c.id)), !allShort),
+                    };
+                  })(),
+                ]
               : []),
             ...(selectedCardIds.size >= 2
               ? [
@@ -7367,50 +7612,6 @@ export default function BoardScreen() {
                         )}
                       </Svg>
                     </GestureDetector>
-                    {isSelected && (
-                      <View
-                        style={[
-                          styles.connectionToolbar,
-                          { left: (x1 + x2) / 2 - left - 11, top: (y1 + y2) / 2 - top - 11 },
-                        ]}
-                      >
-                        {/* Plain -> one-way -> two-way -> plain - the
-                            button's own icon says which one is current. */}
-                        <Pressable
-                          hitSlop={6}
-                          style={styles.connectionToolButton}
-                          onPress={() => cycleConnectionKind(connection.id)}
-                        >
-                          <Ionicons
-                            name={
-                              kind === 'plain'
-                                ? 'remove-outline'
-                                : kind === 'arrow'
-                                  ? 'arrow-forward-outline'
-                                  : 'swap-horizontal-outline'
-                            }
-                            size={14}
-                            color="#fff"
-                          />
-                        </Pressable>
-                        {kind === 'arrow' && (
-                          <Pressable
-                            hitSlop={6}
-                            style={styles.connectionToolButton}
-                            onPress={() => flipConnectionDirection(connection.id)}
-                          >
-                            <Ionicons name="repeat-outline" size={14} color="#fff" />
-                          </Pressable>
-                        )}
-                        <Pressable
-                          hitSlop={6}
-                          style={styles.connectionToolButton}
-                          onPress={() => deleteConnection(connection.id)}
-                        >
-                          <Ionicons name="close" size={14} color="#fff" />
-                        </Pressable>
-                      </View>
-                    )}
                   </View>
                 );
               })}
@@ -7480,8 +7681,9 @@ export default function BoardScreen() {
                     onLongPress={handleCardLongPress}
                     onResize={commitCardResize}
                     canvasHoldGesture={holdToSelectGesture}
-                    livePaper={FEATURES.cardWindow && isDayBoard}
+                    livePaper={FEATURES.cardWindow}
                     inlineEditing={inlineBlockId === card.id}
+                    settleTick={settleTick}
                     onInlineText={inlineText}
                     onInlineDoubleEnter={inlineDoubleEnter}
                     onInlineBackspaceEmpty={inlineBackspaceEmpty}
@@ -7489,6 +7691,43 @@ export default function BoardScreen() {
                   />
                 );
               })}
+
+              {/* The selected line's buttons live HERE, above the cards and every other line's
+                  box (2026-10-11: inside their own line's box - 48 wide for a vertical line - the
+                  "x" stuck out past the edge, where Android hands no touches, and the boxes of
+                  other lines lay on top of it; it broke a line about once in ten taps). */}
+              {(() => {
+                const sel = selectedConnectionId ? connections.find((c) => c.id === selectedConnectionId) : undefined;
+                if (!sel) return null;
+                const from = nodeById.get(sel.fromCardId);
+                const to = nodeById.get(sel.toCardId);
+                if (!from || !to) return null;
+                if (allMovingIds && (allMovingIds.has(from.id) || allMovingIds.has(to.id))) return null;
+                const { x1, y1, x2, y2 } = connectionEndpoints(from.x, from.y, from.width, from.height, to.x, to.y, to.width, to.height);
+                const kind = sel.kind ?? 'plain';
+                return (
+                  <View
+                    style={[styles.connectionToolbar, { left: (x1 + x2) / 2 - 15, top: (y1 + y2) / 2 - 15 }]}
+                  >
+                    {/* Plain -> one-way -> two-way -> plain - the button's own icon says which is current. */}
+                    <Pressable hitSlop={8} style={styles.connectionToolButton} onPress={() => cycleConnectionKind(sel.id)}>
+                      <Ionicons
+                        name={kind === 'plain' ? 'remove-outline' : kind === 'arrow' ? 'arrow-forward-outline' : 'swap-horizontal-outline'}
+                        size={16}
+                        color="#fff"
+                      />
+                    </Pressable>
+                    {kind === 'arrow' && (
+                      <Pressable hitSlop={8} style={styles.connectionToolButton} onPress={() => flipConnectionDirection(sel.id)}>
+                        <Ionicons name="repeat-outline" size={16} color="#fff" />
+                      </Pressable>
+                    )}
+                    <Pressable hitSlop={8} style={styles.connectionToolButton} onPress={() => deleteConnection(sel.id)}>
+                      <Ionicons name="close" size={16} color="#fff" />
+                    </Pressable>
+                  </View>
+                );
+              })()}
 
               {/* The rubber-band line a connect-drag trails behind the
                   finger - live (shared values), so an animated style rather
@@ -7926,6 +8165,10 @@ export default function BoardScreen() {
                           },
                         },
                         { key: 'window', icon: 'server-outline', label: 'Вікно бази', onPress: addDatabaseWindow },
+                        // A tree of ideas pasted as text (an AI's answer) becomes cards with lines.
+                        { key: 'outline', icon: 'git-network-outline', label: 'Карта з тексту', onPress: () => pasteOutlineAsMap(true) },
+                        // The first version: plain text cards that live only on this board.
+                        { key: 'outline-cards', icon: 'albums-outline', label: 'Карта картками', onPress: () => pasteOutlineAsMap(false) },
                       ],
                     },
                     {
@@ -8151,7 +8394,7 @@ export default function BoardScreen() {
             the "Шари" bead again (now a toggle), the drawer's own "×", or
             the hardware back button. */}
         {layersDrawerVisible && (
-          <GlassPortal>
+          <GlassPortal name="BoardScreen">
             <View style={styles.layersLayer} pointerEvents="box-none">
               <View style={[StyleSheet.absoluteFill, styles.layersDim]} pointerEvents="none" />
               <View style={[styles.layersPanel, { width: layersPanelWidth }]}>
@@ -8518,7 +8761,10 @@ export default function BoardScreen() {
                   extraFields={cardWindow.docId.startsWith('day_') ? { calendarDate: cardWindow.docId.slice(4) } : undefined}
                   panelBleed={cardWindowWriting ? Math.max(0, Math.round((windowWidth - winSize.w) / 2)) : 0}
                   clearGround
-                  scrollHeight={cardWindowWriting ? cardWindowScrollH : undefined}
+                  // A height ALWAYS while the card is live, only its number changing (2026-10-18): switching the note's
+                  // scroll from "fill" to a fixed height at the moment the keyboard came up took the focus away from
+                  // the field that had just got it - the keyboard opened and closed, the card could not be written in.
+                  scrollHeight={cardWindowWriting ? cardWindowScrollH : Math.max(0, winSize.h - cardHeadH)}
                   onPanelChange={setCardWindowPanel}
                 />
               </TextScaleOverride>
@@ -9041,9 +9287,9 @@ const makeStyles = (theme: Theme) =>
       gap: 4,
     },
     connectionToolButton: {
-      width: 22,
-      height: 22,
-      borderRadius: 11,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: SELECTION_COLOR,

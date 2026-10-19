@@ -2,6 +2,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { SharedValue, useSharedValue } from 'react-native-reanimated';
 import { useDrawerCoverPublisher, useNavDrawerProgress, useWhileFocused } from './navDock';
 import { listenCalendarRequests } from './calendarRequest';
+import { navigationRef } from '../navigationRef';
 import { FEATURES } from '../features';
 
 // THE TWO SCREENS BESIDE THE DESKS - the user's iOS model (2026-09-28):
@@ -93,10 +94,17 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
   const [databasesDragging, setDatabasesDragging] = useState(false);
   const [blocks, setBlocks] = useState(0);
   const [calendarJump, setCalendarJump] = useState<{ key: string; n: number } | null>(null);
-  const [leftPage, setLeftPage] = useState<LeftPage>(FEATURES.chatInLeftLayer ? 'chat' : 'calendar');
+  const [leftPage, setLeftPage] = useState<LeftPage>(FEATURES.chatInLeftLayer || FEATURES.calendarDesk ? 'chat' : 'calendar');
   useEffect(
     () =>
       listenCalendarRequests((key) => {
+        // The calendar is a desk (features.calendarDesk): the day is asked of it there.
+        if (FEATURES.calendarDesk) {
+          setDatabasesOpen(false);
+          setCalendarOpen(false);
+          if (navigationRef.isReady()) navigationRef.navigate('Tabs', { screen: 'Календар', params: { jumpToDate: key } } as never);
+          return;
+        }
         setCalendarJump((prev) => ({ key, n: (prev?.n ?? 0) + 1 }));
         setLeftPage('calendar');
         setDatabasesOpen(false);
@@ -142,6 +150,11 @@ export function SideDrawersProvider({ children }: { children: ReactNode }) {
   }, []);
   const openDatabases = useCallback(() => {
     setCalendarOpen(false);
+    // The bases are a desk (features.basesDesk): going to them is going there, not pulling a layer out.
+    if (FEATURES.basesDesk) {
+      if (navigationRef.isReady()) navigationRef.navigate('Tabs', { screen: 'Більше' } as never);
+      return;
+    }
     setDatabasesOpen(true);
   }, []);
   const closeDatabases = useCallback(() => setDatabasesOpen(false), []);

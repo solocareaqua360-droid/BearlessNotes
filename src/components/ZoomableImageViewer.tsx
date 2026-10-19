@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { INK } from '../utils/sketchGeometry';
 import SketchLayer from './SketchLayer';
@@ -70,6 +71,18 @@ export default function ZoomableImageViewer({
   sketchWidth,
   sketchHeight,
 }: Props) {
+  // PAGING WITHOUT BLACK (the user, 2026-10-10: «між перегортаннями блимає
+  // проміжний кадр»): the new picture is decoded at full size and for a moment
+  // draws nothing, so the dark backdrop showed through. The picture that was
+  // on screen stays UNDER the new one until the new one has loaded.
+  const [under, setUnder] = useState({ uri, driveFileId });
+  useEffect(() => {
+    // A different viewer opened on another picture altogether is not paging.
+    if (under.uri === uri) return;
+    const slow = setTimeout(() => setUnder({ uri, driveFileId }), 1500);
+    return () => clearTimeout(slow);
+  }, [uri]);
+  const settled = under.uri === uri;
   // The backdrop, icons and action bar stay dark chrome in every theme -
   // a photo viewer, like a camera app, is deliberately theme-invariant
   // (the same reasoning as the canvas being paper in every theme). Only
@@ -153,6 +166,15 @@ export default function ZoomableImageViewer({
         <Animated.View style={[styles.imageWrap, animatedStyle]}>
           {/* The one picture that must NOT be decoded down to its frame:
               this is the viewer, and it is meant to be zoomed into. */}
+          {!settled && (
+            <AttachmentImage
+              uri={under.uri}
+              driveFileId={under.driveFileId}
+              style={[styles.image, StyleSheet.absoluteFill]}
+              resizeMode="contain"
+              resizeMethod="scale"
+            />
+          )}
           <AttachmentImage
             uri={uri}
             driveFileId={driveFileId}
@@ -160,8 +182,10 @@ export default function ZoomableImageViewer({
             resizeMode="contain"
             resizeMethod="scale"
             countsAsUse
+            onLoad={() => setUnder({ uri, driveFileId })}
+            onError={() => setUnder({ uri, driveFileId })}
           />
-          {!!sketchElements?.length && (
+          {settled && !!sketchElements?.length && (
             <Svg
               style={StyleSheet.absoluteFill}
               viewBox={`0 0 ${sketchWidth || 1} ${sketchHeight || 1}`}

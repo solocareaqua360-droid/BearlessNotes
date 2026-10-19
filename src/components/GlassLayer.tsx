@@ -1,7 +1,7 @@
 import { MOTION } from '../theme/desktopTheme';
 import { NO_WINDOW_DRAG } from '../utils/windowDrag';
 import { useLeaving } from '../hooks/useLeaving';
-import { ReactNode, useEffect, useRef } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { BackHandler, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FLIP_MS, flipProgress, type FlipFrom } from '../utils/flipOpen';
 import { BlurView } from 'expo-blur';
@@ -10,6 +10,7 @@ import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
 import { GLASS_BACKDROP } from '../constants/glass';
 import { useDensity } from '../hooks/useDensity';
+import { useSoft } from '../theme/soft';
 
 // What a bottom sheet sits in, now that a sheet is a layer rather than a
 // window. The reason is the blur: on Android it blurs what is inside ITS
@@ -26,19 +27,30 @@ export default function GlassLayer({
   children,
   intensity = 50,
   flipFrom,
+  softDim,
+  priority = 0,
 }: {
   visible: boolean;
   onClose: () => void;
   children: ReactNode;
+  // Its place among the layers over the app (GlassPortal): above a full-screen layer it opens from, e.g. the theme
+  // canvas (16) - at 0 it stood UNDER it on the Mac, opened and unseen (2026-10-16).
+  priority?: number;
   intensity?: number;
   // Opened from a card (utils/flipOpen): the window turns that card over
   // and grows out of its back, and goes back into it the same way. The
   // phone only.
   flipFrom?: FlipFrom | null;
+  // A window you TYPE in (the quick-create one): no blur - only a dim that fades up and down with the window, at the
+  // keyboard's pace, instead of switching on and off at once (the user, 2026-10-13). The blur is left out on
+  // purpose: a live blur that animates has frozen this app. The dim follows the theme: a darkening on black, a
+  // whitening («розбілення») on the light one.
+  softDim?: boolean;
 }) {
   // Without this ref expo-blur falls back to a plain translucent view on
   // Android - which is what made the first two attempts look like a dim.
   const blurTarget = useBlurTarget();
+  const soft = useSoft();
   // At a pointer (the laptop) a window over the app is a Mac's: no blur, the
   // app behind barely dimmed, Esc closes it. The phone keeps its glass.
   const pointer = useDensity() === 'pointer';
@@ -64,24 +76,30 @@ export default function GlassLayer({
   // the caller's own content may already be gone. At a pointer by CSS, on
   // the phone by GrowIn below (the soft motion, 2026-10-02).
   const flip = !pointer && flipFrom ? flipFrom : null;
-  const { mounted, leaving } = useLeaving(visible, flip ? FLIP_MS : MOTION.out);
+  const { mounted, leaving } = useLeaving(visible, flip ? flip.ms ?? FLIP_MS : MOTION.out);
   // The card's turn, 0 in the card .. 1 open - and the dim and the blur
   // behind follow the same clock: they came on at once ("ніби світло
   // вимкнули") and went off only after the card had settled.
   const flipT = flipProgress;
   const backdropStyle = useAnimatedStyle(() => ({ opacity: flipT.value }));
+  const dimShown = useSharedValue(0);
+  useEffect(() => {
+    if (!softDim) return;
+    dimShown.value = leaving ? withTiming(0, { duration: MOTION.out, easing: Easing.in(Easing.quad) }) : withTiming(1, { duration: 320, easing: Easing.out(Easing.quad) });
+  }, [softDim, leaving, dimShown]);
+  const softDimStyle = useAnimatedStyle(() => ({ opacity: dimShown.value }));
   const lastChildren = useRef(children);
   if (visible) lastChildren.current = children;
   if (!mounted) return null;
 
   return (
-    <GlassPortal>
+    <GlassPortal name="glassLayer" priority={priority}>
     <View style={[styles.layer, NO_WINDOW_DRAG]}>
       {/* The blur covers the whole screen, not just the sheet: what is
           beside a sheet is as much "behind the glass" as what is under it,
           and blurring only the sheet's own rectangle looks like a cut-out. */}
       <Animated.View style={[StyleSheet.absoluteFill, flip ? backdropStyle : null]} pointerEvents="box-none">
-      {!pointer && (
+      {!pointer && !softDim && (
       <BlurView
         intensity={intensity}
         tint="dark"
@@ -95,7 +113,16 @@ export default function GlassLayer({
           its parent: as a parent it took the touch responder for every drag
           that didn't land on a deeper child, which is what used to keep
           these lists from scrolling. */}
-      <Pressable style={[StyleSheet.absoluteFill, pointer ? styles.dimLight : styles.dim]} onPress={onClose} />
+      {softDim && !pointer ? (
+        <Animated.View style={[StyleSheet.absoluteFill, softDimStyle]} pointerEvents="box-none">
+          <Pressable
+            style={[StyleSheet.absoluteFill, { backgroundColor: soft.dark ? 'rgba(0,0,0,0.62)' : 'rgba(246,245,242,0.84)' }]}
+            onPress={onClose}
+          />
+        </Animated.View>
+      ) : (
+        <Pressable style={[StyleSheet.absoluteFill, pointer ? styles.dimLight : styles.dim]} onPress={onClose} />
+      )}
       </Animated.View>
       {pointer ? (
         <View
@@ -168,8 +195,19 @@ function FlipIn({
   const rh = from.rect.height;
   const ww = window.width;
   const wh = window.height;
+  // Once it has turned, the animated transform is DROPPED from the view: a window that kept its
+  // (identity) perspective transform took a finger that moved a little while pressing as "left the
+  // button" for the first second or so, and the cross needed a second tap (2026-10-11).
+  const [settled, setSettled] = useState(false);
   useEffect(() => {
-    p.value = withTiming(leaving ? 0 : 1, { duration: FLIP_MS, easing: Easing.inOut(Easing.cubic) });
+    const ms = from.ms ?? FLIP_MS;
+    p.value = withTiming(leaving ? 0 : 1, { duration: ms, easing: Easing.inOut(Easing.cubic) });
+    if (leaving) {
+      setSettled(false);
+      return;
+    }
+    const t = setTimeout(() => setSettled(true), ms + 60);
+    return () => clearTimeout(t);
   }, [leaving, p]);
   const back = useAnimatedStyle(() => {
     const q = Math.max(0, (p.value - 0.5) * 2);
@@ -187,7 +225,7 @@ function FlipIn({
     };
   });
   return (
-    <Animated.View style={[styles.content, back]} pointerEvents={leaving ? 'none' : 'box-none'}>
+    <Animated.View style={settled && !leaving ? styles.content : [styles.content, back]} pointerEvents={leaving ? 'none' : 'box-none'}>
       {children}
     </Animated.View>
   );

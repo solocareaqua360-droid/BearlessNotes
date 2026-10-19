@@ -31,7 +31,7 @@ import { Ionicons } from '../components/icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as DocumentPicker from 'expo-document-picker';
-import * as Sharing from 'expo-sharing';
+import { copyImageFile, shareImageFile } from '../utils/shareAndCopy';
 import { useFlattenPhoto } from '../hooks/useFlattenPhoto';
 import { scanPages } from '../utils/documentScanner';
 import * as Print from 'expo-print';
@@ -127,7 +127,7 @@ import ReferencePanel from '../components/ReferencePanel';
 import CrashBoundary from '../components/CrashBoundary';
 import { assembleWithDivider } from '../utils/canvasOrder';
 import { stableStringify } from '../utils/stableStringify';
-import { hapticSuccess, hapticToggle } from '../utils/haptics';
+import { hapticSelectTap, hapticSuccess, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { type VideoSeek } from '../components/InlineVideoPlayer';
@@ -161,8 +161,7 @@ import {
   parseNoteRef,
   plainTextOf,
   rawIndexForDisplayIndex,
-  sanitizeFileName,
-} from '../utils/documentBlocks';
+  sanitizeFileName, applyExclusiveStyle, type InlineStyleKey } from '../utils/documentBlocks';
 import type { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
@@ -174,7 +173,7 @@ import DocumentPickerModal from '../components/DocumentPickerModal';
 import RelatedDocuments from '../components/RelatedDocuments';
 import NestedDocuments from '../components/NestedDocuments';
 import { createOwnedNote, makeOrdinary } from '../utils/recordNotes';
-import { binNote } from '../utils/nestedNotes';
+import { binNoteAsking } from '../utils/deleteNote';
 import { SHOW_OPEN_REPORTS, SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTiming';
 import { logReport, markEditorGone, perfSummary } from '../utils/perfWatch';
 import { peekDocument, useDocumentIndex } from '../hooks/useDocumentIndex';
@@ -184,6 +183,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import {
   useDockActions,
+  useDockBeads,
   useDockOpensOnActions,
   useDockShowContext,
   useNavDockFlip,
@@ -214,6 +214,8 @@ import { openTab } from '../navigation/desktopTabs';
 import { listenError } from '../utils/listenError';
 import { useRenderTimer } from '../utils/perfWatch';
 import { FEATURES } from '../features';
+import DayTasksBlock from '../components/DayTasksBlock';
+import { ensureDayBoard } from '../utils/dayBoard';
 
 // Below this, a note has no room to stand beside «Референси» and the
 // drawer lies over it instead - see referencesSplit. 300 is the drawer's
@@ -482,17 +484,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
   function confirmDeleteDocument() {
     setExportMenuOpen(false);
-    confirm({
-      title: 'У кошик?',
-      message: 'Нотатку можна буде повернути з кошика протягом 30 днів.',
-      confirmLabel: 'У кошик',
-    }).then(async (yes) => {
-      if (!yes) return;
-      // Into the bin, not gone: the tags, mirrors and arrows stay as they
-      // are so a restored note is the whole note. Throwing it away for
-      // good is the bin's job - see the documents screen.
-      // What is nested in it goes too, under the same stamp (nestedNotes).
-      await binNote(documentId);
+    // Into the bin, not gone: the tags, mirrors and arrows stay as they
+    // are so a restored note is the whole note. Throwing it away for
+    // good is the bin's job - see the documents screen. What is nested in
+    // it goes too, under the same stamp (nestedNotes); what it holds in the
+    // bases is asked about first (utils/deleteNote).
+    binNoteAsking(documentId, title).then((went) => {
+      if (!went) return;
       if (closePane) closePane();
       else navigation.goBack();
     });
@@ -985,6 +983,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const focusIdRef = useRef<string | null>(null);
   const focusToEndRef = useRef(false);
   const focusCursorIndexRef = useRef<number | null>(null);
+  // THE TAPPED PLACE, KEPT UNTIL THE FIELD HAS ITS TEXT (2026-10-19). With the formatting while typing the field gets
+  // its words as styled runs, and they reach the native field a moment after it is made - after the caret was put
+  // where the tap was. Android keeps a caret as its distance from the END while the text changes, so the caret ended
+  // up at the end of the block. The field says so itself (a selection change to the end): that is when the tapped
+  // place is put back. Let go once that is done, once the caret is seen where the tap was, or once the field is typed
+  // in or a range is picked.
+  const pendingCaretRef = useRef<{ id: string; index: number; length: number } | null>(null);
   const focusedBlockIdRef = useRef<string | null>(null);
   // A block whose text gets truncated by splitting off a new block below it
   // (Enter in a list item, or the paragraph double-Enter) keeps the SAME
@@ -1907,8 +1912,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       focusToEndRef.current = false;
     } else if (focusCursorIndexRef.current !== null) {
       const block = blocks.find((b) => b.id === id);
-      const index = Math.min(focusCursorIndexRef.current, block ? fieldLength(block) : 0);
+      const length = block ? fieldLength(block) : 0;
+      const index = Math.min(focusCursorIndexRef.current, length);
       setSelection(input, index, index);
+      pendingCaretRef.current = index < length ? { id, index, length } : null;
       focusCursorIndexRef.current = null;
     }
     focusIdRef.current = null;
@@ -2228,7 +2235,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const id = focusedBlockIdRef.current;
     if (open) {
       // Blurs the field, which is what takes the keyboard down - and
-      // the handlers ignore it while the panel is up.
+      // the handlers ignore it while the panel is up. (BlockRow gives the field its focus and selection back once the
+      // keyboard is down - see its liveFormat selection effect.)
       Keyboard.dismiss();
       return;
     }
@@ -2907,16 +2915,26 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
   const soft = useSoft();
   useChromeStyle('soft', softPage);
-  useTopBack(
-    embedded
-      ? null
-      : () => {
-          if (requestBack()) return;
-          if (closePane) closePane();
-          else navigation.goBack();
-        },
-    !embedded
+  const leaveNote = () => {
+    if (requestBack()) return;
+    if (closePane) closePane();
+    else navigation.goBack();
+  };
+  useTopBack(embedded ? null : leaveNote, !embedded);
+  // THE WAY BACK IS THE DOCK'S RIGHT CIRCLE here too (2026-10-15, the user's: «на документі треба зробити кнопку
+  // назад в правому нижньому куті як всюди»): the bar at the top then drops its own (CarriesBackMarker), and its
+  // left edge is free for the voice player's capsule.
+  // Not while writing (2026-10-16, the user's: «кнопка назад поднялась разом с клавиатурою» - the circle rode up over
+  // the writing toolbar): with the keyboard up the bar at the top carries back, as it already does then.
+  // ...nor while the panel stands where the keyboard was (2026-10-19, the user: «кнопка назад поверх слеш панелі»).
+  useDockBeads(
+    null,
+    !embedded && softPage && FEATURES.deskDock && keyboardHeight === 0 && panelSection === null && !panelClosing
+      ? { icon: 'chevron-back', onPress: leaveNote }
+      : null
   );
+  // Where the dock draws the note's own places (the back circle above), the canvas's "+" is its black circle.
+  const canvasAddInDock = !embedded && softPage && FEATURES.deskDock;
   const noteMenuEntries: MenuEntry[] | null =
     embedded
       ? null
@@ -3136,13 +3154,34 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // 'isSelectMode' branch above).
           canvasMode
             ? { key: 'reset', icon: 'refresh-outline', label: 'Скинути', onPress: confirmResetCanvas }
-            : { key: 'write', icon: 'pencil-outline', label: 'Писати', onPress: startWriting },
+            : { key: 'write', icon: 'pencil-outline', label: 'Писати', primary: true, onPress: startWriting },
+          // On the canvas the black circle is its "+" (2026-10-16, the user's: the same places everywhere) - the
+          // canvas's own round button then stays away (noAddButton).
+          ...(canvasMode && canvasAddInDock
+            ? [{ key: 'add', icon: 'add', label: 'Додати', primary: true, onPress: () => canvasApiRef.current?.addAtCentre() }]
+            : []),
+          // A day's note carries the way to that day's board (2026-10-12, the user's: in the dock, not a floating
+          // circle). Made on the first tap if the day has none yet.
+          ...(calendarDate && !embedded && FEATURES.dayTasksBlock
+            ? [
+                {
+                  key: 'dayboard',
+                  icon: 'easel-outline',
+                  label: 'Дошка',
+                  onPress: () =>
+                    ensureDayBoard(calendarDate, `День · ${formatShortDate(parseDateKey(calendarDate))}`)
+                      .then((boardId) => navigation.navigate('BoardCopy', { boardId }))
+                      .catch((e: Error) => notify('Дошка дня не відкрилась', e.message)),
+                },
+              ]
+            : []),
           // The Mac's fourth: the note's «⋯». The phone keeps it in the top
           // bar; a pointer has no such bar, so the same list stands here,
           // on the capsule that is already above the paper (the user,
           // 2026-10-09: «чому б не додати до них і три крапки?»). It opens
           // as the small menu at the click, the way every Mac question does.
-          ...(pointerDensity && noteMenuEntries
+          // (Frame B draws the same list as the toolbar's own «⋯» at its right end - not twice.)
+          ...(pointerDensity && noteMenuEntries && !FEATURES.macFrameB
             ? [{ key: 'more', icon: 'ellipsis-horizontal', label: 'Ще', onPress: openNoteMenu }]
             : []),
         ]
@@ -3298,6 +3337,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   function handleBlockSelectionChange(id: string, start: number, end: number) {
+    const pending = pendingCaretRef.current;
+    if (pending) {
+      if (pending.id !== id || start !== end) pendingCaretRef.current = null;
+      else if (start === pending.length) {
+        // The text arrived and pushed the caret to the end: back to the tapped place.
+        pendingCaretRef.current = null;
+        const input = inputRefs.current[id];
+        if (input) setSelection(input, pending.index, pending.index);
+        return;
+      } else if (start === pending.index && start > 0) pendingCaretRef.current = null;
+    }
     setActiveSelection(start === end ? null : { blockId: id, start, end });
     setCaret(start === end ? { blockId: id, pos: start } : null);
   }
@@ -3559,6 +3609,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (!sel) return;
     const block = blocks.find((b) => b.id === sel.blockId);
     if (!block) return;
+    // ONE STYLE AT A TIME (2026-10-19, the user's): the four exclude each other, and the block's markers are rebuilt
+    // so none is left over unseen - see applyExclusiveStyle. The displayed text does not change, so the selection
+    // stays on the same words.
+    const exclusiveKey: InlineStyleKey | null =
+      open === '**' ? 'bold' : open === '*' ? 'italic' : open === '__' ? 'underline' : open === '~~' ? 'strikethrough' : null;
+    if (exclusiveKey) {
+      const rebuilt = applyExclusiveStyle(block.text, sel.start, sel.end, exclusiveKey);
+      if (rebuilt === block.text) return;
+      snapshotBeforeChange();
+      setBlocks((prev) => prev.map((b) => (b.id === sel.blockId ? { ...b, text: rebuilt } : b)));
+      setActiveSelection({ blockId: sel.blockId, start: sel.start, end: sel.end });
+      requestAnimationFrame(() => {
+        setSelection(inputRefs.current[sel.blockId], sel.start, sel.end);
+      });
+      return;
+    }
     // sel.start/end are DISPLAY positions (the active field's own
     // selection, marker-free) - the wrap/unwrap itself still has to
     // happen on the RAW text, since that is what markers live in.
@@ -3682,6 +3748,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   function handleBlockChange(id: string, rawText: string) {
+    pendingCaretRef.current = null;
     // A note's address pasted in (from «Копіювати посилання») becomes a
     // word linking to that note, named as the note is - and the caret goes
     // after it.
@@ -4133,15 +4200,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function toggleSelected(id: string) {
     // The release that ended a drag-pick is not a tap on the block under it.
     if (dragSelectJustEnded()) return;
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+    hapticSelectTap();
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    // The last picked block let go by a tap ends the mode, as a swipe does (2026-10-19, the user's).
+    if (next.size === 0 && FEATURES.swipeSelect) {
+      clearSelection();
+      return;
+    }
+    setSelectedIds(next);
   }
 
   function toggleChecked(id: string) {
@@ -5217,6 +5285,74 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     showActions();
   }
 
+  // SWIPE TO SELECT (features.swipeSelect, BlockList's sweep): the whole picked set as the finger goes. The first
+  // block picked turns select mode on and the dock to its actions, the way a hold does.
+  function sweepSelect(ids: Set<string>) {
+    setSelectedIds(ids);
+    if (ids.size > 0 && !isSelectMode) {
+      setIsSelectMode(true);
+      showActions();
+    }
+  }
+
+  // The finger lifted with nothing picked (the last picked block swiped off): the mode ends.
+  function sweepEnd(ids: Set<string>) {
+    if (ids.size === 0) clearSelection();
+  }
+
+  // THE NOTE SCROLLS ALONG WITH A SWEEP at its edges (the user's: «свайп виділяє блоки + автопрокрутка»): the nearer
+  // the finger comes to the top of the sheet or to the dock, the faster, frame by frame while the finger is there; the
+  // list reads the finger again after each step, so the blocks scrolling under it get picked. Stops when it lifts.
+  const sweepFingerRef = useRef<number | null>(null);
+  const sweepFrameRef = useRef<number | null>(null);
+  const sweepViewportRef = useRef<{ top: number; bottom: number } | null>(null);
+  function sweepEdge(absoluteY: number | null) {
+    sweepFingerRef.current = absoluteY;
+    if (absoluteY === null) {
+      if (sweepFrameRef.current !== null) cancelAnimationFrame(sweepFrameRef.current);
+      sweepFrameRef.current = null;
+      sweepViewportRef.current = null;
+      return;
+    }
+    if (sweepFrameRef.current !== null) return;
+    (scrollViewRef.current as unknown as View | null)?.measureInWindow((_x, y, _w, h) => {
+      sweepViewportRef.current = { top: y, bottom: y + h };
+    });
+    // The top bar floats over the sheet's top and the dock over its foot: the zones start where they end.
+    const ZONE = 80;
+    const TOP_BAR = 72;
+    const DOCK = 96;
+    const FASTEST = 16;
+    const step = () => {
+      const finger = sweepFingerRef.current;
+      if (finger === null) {
+        sweepFrameRef.current = null;
+        return;
+      }
+      const viewport = sweepViewportRef.current;
+      if (viewport) {
+        const top = viewport.top + TOP_BAR + ZONE;
+        const bottom = viewport.bottom - DOCK - ZONE;
+        const speed =
+          finger < top
+            ? -FASTEST * Math.min(1, (top - finger) / ZONE)
+            : finger > bottom
+              ? FASTEST * Math.min(1, (finger - bottom) / ZONE)
+              : 0;
+        if (speed !== 0) {
+          const next = Math.max(0, scrollOffsetRef.current + speed);
+          if (next !== scrollOffsetRef.current) {
+            // The offset itself comes back through onScroll - past the end the scroll stops and so does it.
+            scrollViewRef.current?.scrollTo({ y: next, animated: false });
+            blockListRef.current?.sweepRefresh();
+          }
+        }
+      }
+      sweepFrameRef.current = requestAnimationFrame(step);
+    };
+    sweepFrameRef.current = requestAnimationFrame(step);
+  }
+
   // A click on the empty place lets the pick go (the laptop's).
   function clearSelection() {
     setIsSelectMode(false);
@@ -5386,20 +5522,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   async function shareImageBlock(block: Block) {
-    try {
-      const available = await Sharing.isAvailableAsync();
-      if (!available) return;
-      const uri = await flattenPhoto(
-        block.imageUri!,
-        block.driveFileId,
-        block.sketchElements,
-        block.sketchWidth,
-        block.sketchHeight
-      );
-      await Sharing.shareAsync(uri);
-    } catch {
-      // No sharing app available or the user backed out - nothing to do.
-    }
+    const uri = await flattenPhoto(block.imageUri!, block.driveFileId, block.sketchElements, block.sketchWidth, block.sketchHeight);
+    await shareImageFile(uri, uri === block.imageUri ? block.driveFileId : undefined, block.imageTitle);
+  }
+
+  async function copyImageBlock(block: Block) {
+    const uri = await flattenPhoto(block.imageUri!, block.driveFileId, block.sketchElements, block.sketchWidth, block.sketchHeight);
+    await copyImageFile(uri, uri === block.imageUri ? block.driveFileId : undefined);
   }
 
   function renameImageBlock(id: string, title: string) {
@@ -5746,11 +5875,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   return {
                     label,
                     onPress: () =>
-                      whenDeskIsThere('Документи', () =>
-                        (navigation as unknown as { navigate: (name: string, params: object) => void }).navigate('Tabs', {
-                          screen: 'Документи',
-                          params: { folder: path },
-                        })
+                      whenDeskIsThere(
+                        'Документи',
+                        () =>
+                          (navigation as unknown as { navigate: (name: string, params: object) => void }).navigate('Tabs', {
+                            screen: 'Документи',
+                            params: { folder: path },
+                          }),
+                        () =>
+                          (navigation as unknown as { navigate: (name: string, params: object) => void }).navigate(
+                            'DocumentsCopy',
+                            { folder: path }
+                          )
                       ),
                   };
                 });
@@ -5768,7 +5904,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           POINTER ONLY now - touch has the bar above instead, project and
           save ring included in its own corner cluster. */}
       {!embedded && editorFocused && !referencePanelOpen && pointerDensity && (
-        <GlassPortal>
+        <GlassPortal name="DocumentEditorScreen">
           {/* The same line the documents screen's capsule hangs from, off
               the same constants - the two screens sit one behind the
               other, and a capsule that shifted between them would read as
@@ -5843,7 +5979,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           them. */}
       {exportMenuOpen && <Pressable style={styles.exportMenuBackdrop} onPress={() => setExportMenuOpen(false)} />}
       {exportMenuOpen && (
-        <GlassPortal>
+        <GlassPortal name="DocumentEditorScreen">
         // Beside the rail rather than under the old header corner: its
         // top lines up with the rail's, and it stops short of it.
         <View
@@ -5998,6 +6134,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <View style={[{ flex: 1 }, referencesSplit && { marginRight: referencePanelWidth }]}>
         <DocumentCanvas
           ref={canvasApiRef}
+          noAddButton={canvasAddInDock}
           soft={softPage ? soft : null}
           onEditingChange={(id) => {
             setCanvasEditingId(id);
@@ -6033,6 +6170,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // is renamed on the canvas too.
           blocks={liveBlocks}
           onMoveBlock={(id, x, y) => updateBlockFields(id, { canvas: { x, y } })}
+          // Gluing on the canvas: every block one drop changes, as one undo step.
+          onPatchBlocks={(patches) => {
+            snapshotBeforeChange();
+            setBlocks((prev) =>
+              prev.map((b) => {
+                const mine = patches.filter((p) => p.id === b.id);
+                if (mine.length === 0) return b;
+                let next: Block = { ...b };
+                for (const p of mine) {
+                  for (const key of p.unset ?? []) delete next[key];
+                  if (p.set) next = { ...next, ...p.set };
+                }
+                return next;
+              })
+            );
+          }}
           // The page's own handler: one place decides what typing into a
           // block means - a list that continues itself, an undo snapshot
           // per pause, the mirror records. The canvas is another keyboard
@@ -6292,6 +6445,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         />
         )}
 
+        {/* The day's tasks that live elsewhere, live (features.dayTasksBlock) - see DayTasksBlock. */}
+        {!embedded && !!calendarDate && FEATURES.dayTasksBlock && (
+          <DayTasksBlock dayKey={calendarDate} documentId={documentId} onOpenDocument={openReferencedDocument} />
+        )}
+
         <BlockList
           ref={blockListRef}
           searchHighlight={searchFlash}
@@ -6311,6 +6469,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onHoldWithoutDrag={selectFromHold}
           onSelectRange={selectBlocks}
           onClearSelect={clearSelection}
+          // The day's note on the calendar is left out for now: its page has sideways moves of its own.
+          onSweepSelect={FEATURES.swipeSelect && !embedded ? sweepSelect : undefined}
+          onSweepEnd={FEATURES.swipeSelect && !embedded ? sweepEnd : undefined}
+          onSweepEdge={FEATURES.swipeSelect && !embedded ? sweepEdge : undefined}
+          getScrollY={() => scrollOffsetRef.current}
           selectedIds={selectedIds}
           isSelectMode={isSelectMode}
           focusedBlockId={focusedBlockId}
@@ -6557,6 +6720,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   // touched by this; it is only put together for the
                   // file that leaves the app.
                   onPress: () => shareImageBlock(viewerBlock),
+                },
+                {
+                  key: 'copy',
+                  icon: 'copy-outline',
+                  label: 'Копіювати',
+                  onPress: () => copyImageBlock(viewerBlock),
                 },
                 {
                   key: 'download',

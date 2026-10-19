@@ -37,6 +37,7 @@ const KIND_ICON: Record<FolderItem['kind'], string> = {
   flashcard: 'albums-outline',
   board: 'easel-outline',
   row: 'grid-outline',
+  shortcut: 'rocket-outline',
 };
 
 const nameOf = (path: string) => path.split('/').pop() ?? path;
@@ -49,8 +50,12 @@ export default function FoldersCanvas({
   resetFolders,
   onFolderMenu,
   focusFolder,
+  onOpenItem,
 }: {
   topPad: number;
+  // A screen that opens things in its OWN windows (the single explorer) says how; without it
+  // a tile goes to its database, as it always did.
+  onOpenItem?: (item: FolderItem) => void;
   linksOpen: boolean;
   resetFolders?: number;
   onFolderMenu?: (path: string, rect: { x: number; y: number; width: number; height: number }) => void;
@@ -155,6 +160,10 @@ export default function FoldersCanvas({
 
   const open = (c: CanvasPhoto) => {
     const item = asItem(c);
+    if (onOpenItem) {
+      onOpenItem(item);
+      return;
+    }
     switch (item.kind) {
       case 'document':
         navigation.navigate('Editor', { documentId: item.docId });
@@ -168,7 +177,7 @@ export default function FoldersCanvas({
         }
         return;
       case 'board':
-        (navigation as unknown as { navigate: (name: string, params?: object) => void }).navigate('Board', { boardId: item.docId });
+        (navigation as unknown as { navigate: (name: string, params?: object) => void }).navigate('BoardCopy', { boardId: item.docId });
         return;
       // Its database, asked to open this very one as it arrives.
       case 'photo':

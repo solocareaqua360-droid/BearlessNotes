@@ -7,6 +7,8 @@ import { useStyles, useTheme } from '../../theme/ThemeProvider';
 import EdgeFade from '../EdgeFade';
 import type { Theme } from '../../theme/tokens';
 import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
+import { useKeyboardRide } from '../../hooks/useKeyboardRide';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { SHEET_FRAME, SHEET_WINDOW, PHONE_ONLY } from '../../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../../utils/fonts';
 
@@ -46,8 +48,13 @@ export default function Sheet({
   maxHeight,
   fadeEdges,
   flipFrom,
+  anchor,
+  inset,
+  priority,
   children,
 }: {
+  // See GlassLayer's own.
+  priority?: number;
   visible: boolean;
   onClose: () => void;
   // Opened from a card: the sheet comes round from its back (utils/flipOpen).
@@ -72,11 +79,20 @@ export default function Sheet({
   // the sheet instead of being cut off at a hard edge (see EdgeFade) -
   // and only at an edge that really has more beyond it.
   fadeEdges?: boolean;
+  // 'bottom': the window stands just above the keyboard (or the foot of the screen) instead of in the middle - a
+  // sheet you TYPE in (the quick-create window), where the field belongs under the thumb.
+  anchor?: 'bottom';
+  // The same breathing room on all four sides (points), instead of the usual 20 / 12 / 24.
+  inset?: number;
   children: ReactNode;
 }) {
   const styles = useStyles(makeStyles);
   const theme = useTheme();
   const keyboardHeight = useKeyboardHeight();
+  // A sheet you type in rides the keyboard FRAME BY FRAME (the keyboard's own animated height), so it rises at the
+  // keyboard's pace instead of jumping once it has settled (the user, 2026-10-13: «не вистрілювати як з лука»).
+  const keyboard = useKeyboardRide();
+  const ride = useAnimatedStyle(() => ({ transform: [{ translateY: Math.min(0, keyboard.height.value) }] }));
   const scrollY = useRef(0);
   const viewportH = useRef(0);
   const contentH = useRef(0);
@@ -139,10 +155,10 @@ export default function Sheet({
   );
 
   return (
-    <GlassLayer visible={visible} onClose={onClose} flipFrom={flipFrom}>
-      <View style={[styles.frame, { paddingBottom: keyboardHeight }]} pointerEvents="box-none">
+    <GlassLayer visible={visible} onClose={onClose} flipFrom={flipFrom} softDim={anchor === 'bottom'} priority={priority}>
+      <View style={[styles.frame, { paddingBottom: keyboardHeight }, anchor === 'bottom' && { justifyContent: 'flex-end', paddingBottom: 24 }]} pointerEvents="box-none">
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[styles.window, maxHeight !== undefined && !scroll && { maxHeight }]}>
+        <Animated.View style={[anchor === 'bottom' && ride, styles.window, inset !== undefined && { paddingHorizontal: inset, paddingTop: inset, paddingBottom: inset }, maxHeight !== undefined && !scroll && { maxHeight }]}>
           {handle && <View style={styles.handle} />}
           {!!title && <Text style={styles.title}>{title}</Text>}
           {!!subtitle && (
@@ -152,7 +168,7 @@ export default function Sheet({
           )}
           {header}
           {body}
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );

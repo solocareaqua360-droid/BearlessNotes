@@ -1,9 +1,12 @@
 import { ownedQuery } from '../utils/owned';
 import { listenError } from '../utils/listenError';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { useDockLeave } from '../navigation/navDock';
+import { useChromeStyle, useDockBeads, useTopBack } from '../navigation/navDock';
+import { requestAddProjectFolder } from '../utils/projectFoldersBus';
+import { openCapture } from '../components/CaptureWindow';
+import { addDoc } from '../utils/owned';
 import { useIsFocused } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -17,10 +20,17 @@ import {
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useFanDragGesture } from '../utils/fanDrag';
 import Animated, {
   Easing,
+  Extrapolation,
   cancelAnimation,
+  interpolateColor,
+  interpolate,
   runOnJS,
+  useAnimatedReaction,
+  useAnimatedScrollHandler,
+  useDerivedValue,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -34,7 +44,7 @@ import { SoftSurfaceContext, useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { usePaneBar } from '../navigation/paneBar';
-import { TOP_NAV_H, TOP_NAV_SPACE } from '../components/TopNavBar';
+import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -51,18 +61,65 @@ import { groupKindFields, kindsOf, labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import { GroupItem, useGroupItems } from '../hooks/useGroupItems';
 import GroupSections from '../components/GroupSections';
+import ProjectFolders from '../components/ProjectFolders';
 import { useTags } from '../hooks/useTags';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
-import { confirm, notify } from '../components/surfaces/Ask';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { useRenderTimer } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
 
 const DANGER = '#EF4444';
 const SIDE = 12;
+// The folded accordion's height and how far the page scrolls to fold it.
+const COMPACT_H = 58;
+const DOTS_H = 34;
 const GAP = 6;
 const MIN_NARROW = 40;
 const MAX_NARROW = 64;
 const NAME_H = 18;
+
+// THE FOLD (the user, 2026-10-10): from the very first pixel of scroll the
+// side projects leave (their width runs out in `SIDE_OUT` px, the open card
+// widening over the row), then the one card that is left thins to nothing
+// and dissolves while its name goes up into the top bar's path. c1 is the
+// sideways part, c2 the whole way, both 0 (in full) .. 1.
+// Where the project's name stands in the top bar's path (after «Проєкти»).
+const PATH_FLY_X = 214;
+const SIDE_OUT = 90;
+function squeeze(y: number, cardH: number, wide: number, narrow: number, full: number) {
+  'worklet';
+  const c1 = Math.max(0, Math.min(1, y / SIDE_OUT));
+  const c2 = Math.max(0, Math.min(1, y / (cardH + DOTS_H)));
+  return {
+    c: c1,
+    c2,
+    // The open card widens over the row; the others keep their size and are
+    // carried away by the row sliding (rowStyle), not squeezed.
+    wide: wide + (full - wide) * c1,
+    narrow,
+    gap: GAP,
+    h: Math.max(0, cardH * (1 - c2)),
+  };
+}
+
+// WHERE THE ROW STANDS AT REST (nothing folded): the layout position of the
+// open card and the row's centring shift, from the widths with no fold in
+// them. Every card's folding path is measured from this.
+function restGeometry(focus: number, n: number, wide: number, narrow: number, inner: number) {
+  'worklet';
+  let x = 0;
+  let middle = 0;
+  let frontLeft = 0;
+  for (let i = 0; i < n; i++) {
+    const t = Math.max(0, 1 - Math.abs(focus - i));
+    const w = narrow + (wide - narrow) * t;
+    middle += t * (x + w / 2);
+    frontLeft += t * x;
+    x += w + GAP;
+  }
+  const base = Math.max(0, Math.min(x - GAP - inner, middle - inner / 2));
+  return { base, frontLeft };
+}
 
 function widthOf(i: number, focus: number, wide: number, narrow: number): number {
   'worklet';
@@ -122,7 +179,12 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   // different thing entirely.
   const { tags } = useTags();
   const isFocused = useIsFocused();
-  useDockLeave('albums-outline', () => navigation.goBack(), isFocused);
+  // THE SOFT CHROME (2026-10-10): the bar with the name on top, the way back
+  // and «+» on the dock - the screen stood under an empty grey plate.
+  useChromeStyle('soft', isFocused);
+  const topNavOn = useTopNavOn();
+  useTopBack(() => navigation.goBack(), isFocused && !inPane);
+  const [creatingProject, setCreatingProject] = useState(false);
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [renamingGroup, setRenamingGroup] = useState<Group | null>(null);
@@ -225,6 +287,23 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   // moves, so it is read once, not every swipe.
   const [W, setW] = useState(windowWidth);
   const focus = useSharedValue(0);
+  // EACH PROJECT'S OWN SCROLL, in pixels - written on the UI thread by its
+  // page. The accordion's fold is read off them, blended by the focus, so
+  // every project keeps its own state (folded where you left it, open where
+  // you did not scroll) and a swipe between two moves smoothly from one to
+  // the other. The accordion floats over the pages, which stand under it on
+  // a top padding, and shortens exactly as fast as the page scrolls - nothing
+  // in the layout depends on it, so there is no loop (a first version
+  // resized the page's own viewport and the screen shook).
+  const offsets = useSharedValue<number[]>([]);
+  const collapse = useDerivedValue(() => {
+    const f = Math.min(Math.max(0, focus.value), Math.max(0, n - 1));
+    const a = Math.floor(f);
+    const b = Math.min(n - 1, a + 1);
+    const t = f - a;
+    const list = offsets.value;
+    return (list[a] ?? 0) * (1 - t) + (list[b] ?? 0) * t;
+  }, [n]);
   const focusAtStart = useSharedValue(0);
   // The project the row has settled on: its page and its two neighbours
   // are drawn, the rest wait - mounting a page's cards mid-swipe is what
@@ -257,6 +336,24 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   const wide = n > 1 ? Math.max(150, inner - (n - 1) * (narrow + GAP)) : inner;
   const step = Math.max(70, wide - narrow + GAP);
   const cardH = Math.round(Math.min(280, Math.max(190, windowHeight * 0.28)));
+  const overlayStyle = useAnimatedStyle(() => ({
+    height: Math.max(0, cardH + DOTS_H - collapse.value),
+  }));
+  const accordionStyle = useAnimatedStyle(() => ({
+    height: Math.max(0, cardH * (1 - Math.min(1, collapse.value / (cardH + DOTS_H)))),
+  }));
+  const dotsRowStyle = useAnimatedStyle(() => ({ opacity: interpolate(collapse.value, [0, 40], [1, 0], Extrapolation.CLAMP) }));
+  // The front project's name goes up into the bar's path once its strip is
+  // mostly gone.
+  const [folded, setFolded] = useState(false);
+  useAnimatedReaction(
+    () => collapse.value > (cardH + DOTS_H) * 0.95,
+    (now, was) => {
+      if (now !== was) runOnJS(setFolded)(now);
+    },
+    [cardH]
+  );
+  const [folderTrail, setFolderTrail] = useState<Record<string, { crumbs: { label: string; onPress?: () => void }[]; closeAll: () => void; anyOpen: boolean }>>({});
 
   const scrub = useMemo(
     () =>
@@ -293,93 +390,159 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   centreRef.current = centre;
 
   // More projects than fit: the row moves along so the open one stays in view.
+  // THE FOLD CARRIES THE WHOLE ROW LEFT, all alike: the open card ends at the
+  // left edge, filling the width; the ones before it have left, the ones after
+  // it are pushed out on the right by its widening. Measured from the row's
+  // REST widths so nothing in it moves with the fold itself (an earlier
+  // version measured the widened row and left a hole at the right end).
   const rowStyle = useAnimatedStyle(() => {
-    let x = 0;
-    let middle = 0;
-    for (let i = 0; i < n; i++) {
-      const w = widthOf(i, focus.value, wide, narrow);
-      const t = Math.max(0, 1 - Math.abs(focus.value - i));
-      middle += t * (x + w / 2);
-      x += w + GAP;
-    }
-    const total = x - GAP;
-    const shift = Math.max(0, Math.min(total - inner, middle - inner / 2));
-    return { transform: [{ translateX: -shift }] };
+    const q = squeeze(collapse.value, cardH, wide, narrow, inner);
+    const g = restGeometry(focus.value, n, wide, narrow, inner);
+    return { transform: [{ translateX: -(g.base * (1 - q.c) + g.frontLeft * q.c) }] };
   });
   const pagesStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -focus.value * W }] }));
 
   const paneBar = usePaneBar();
-  const top = insets.top + CHROME_TOP + 8 + (paneBar ? TOP_NAV_SPACE : 0);
+  const ownBar = !paneBar && topNavOn;
+  const frontGroup = shownGroups[Math.round(centre)] ?? null;
+  const ft = frontGroup ? folderTrail[frontGroup.id] : undefined;
+  const trailCrumbs: { label: string; onPress?: () => void }[] = [{ label: 'Проєкти' }];
+  if (frontGroup && (folded || (ft && ft.anyOpen))) {
+    trailCrumbs.push({ label: frontGroup.name, onPress: ft && ft.anyOpen ? ft.closeAll : undefined });
+  }
+  if (ft) trailCrumbs.push(...ft.crumbs);
+  const trail = { icon: 'albums-outline', crumbs: trailCrumbs };
+  const top = insets.top + CHROME_TOP + 8 + (paneBar || ownBar ? TOP_NAV_SPACE : 0);
+  // THE FRONT PROJECT'S NAME FLIES to its place in the top bar's path as the
+  // strip folds (the user, 2026-10-10): from where it stands on the card to
+  // right after «Проєкти», shrinking to the path's size.
+  const inkColor = S.ink;
+  const flyY = 69 - NAME_H / 2;
+  const flyStyle = useAnimatedStyle(() => {
+    const q = squeeze(collapse.value, cardH, wide, narrow, inner);
+    const g = restGeometry(focus.value, n, wide, narrow, inner);
+    const fromX = SIDE + (g.frontLeft - g.base) * (1 - q.c) + 14;
+    const fromY = top + q.h - 14 - NAME_H;
+    const p = Math.max(0, Math.min(1, q.c2 * 1.1));
+    return {
+      position: 'absolute',
+      left: fromX + (PATH_FLY_X - fromX) * p,
+      top: fromY + (flyY - fromY) * p,
+      opacity: collapse.value < 3 || p >= 1 ? 0 : 1,
+      transform: [{ scale: 1 - 0.12 * p }],
+      color: interpolateColor(p, [0, 1], ['#FFFFFF', inkColor]),
+    };
+  });
+  // «+»: a new project, or a folder into the one in front.
+  async function openPlus() {
+    const front = shownGroups[Math.round(centreRef.current)] ?? null;
+    if (!front) {
+      setCreatingProject(true);
+      return;
+    }
+    // The fan itself lives with the project's page (ProjectFolders); the
+    // «+» only asks the front project to open it.
+    requestAddProjectFolder(front.id);
+  }
+  // Press and slide from the «+»: the same opening, the finger carries on to a button.
+  const plusDrag = useFanDragGesture(openPlus);
+  // THE WAY BACK sits on the dock's right bead, as everywhere; the «+» stands
+  // just left of it, a round button of this screen's own (the fan opens from it).
+  // The same round «‹» the other screens' dock ends with (chevron, not the long arrow).
+  useDockBeads(null, isFocused && !inPane ? { icon: 'chevron-back', onPress: () => navigation.goBack(), keepIcon: true } : null);
   return (
     <SoftSurfaceContext.Provider value={S}>
       <View style={styles.container} onLayout={(e) => setW(Math.round(e.nativeEvent.layout.width))}>
         <ScreenGround color={S.bg} />
+        {isFocused && ownBar && <TopNavBar trail={trail} />}
         {isLoading ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color={S.ink3} />
           </View>
         ) : (
-          <View style={[styles.container, { paddingTop: top }]}>
+          <GestureDetector gesture={scrub}>
+          <View style={[styles.container, { paddingTop: top }]} collapsable={false}>
             {n === 0 ? (
               <Text style={[styles.emptyHint, { color: S.ink3 }]}>
                 {showArchived
                   ? 'Архівних проєктів немає.'
                   : 'Проекти створюються там, де ви їх використовуєте — у документах, фото, файлах, дошках чи власній базі.'}
               </Text>
-            ) : (
-              <GestureDetector gesture={scrub}>
-                <View style={[styles.accordion, { height: cardH, marginHorizontal: SIDE }]} collapsable={false}>
-                  <Animated.View style={[styles.accRow, rowStyle]}>
-                    {shownGroups.map((group, i) => (
-                      <ProjectCard
-                        key={group.id}
-                        index={i}
-                        group={group}
-                        count={(itemsByGroup[group.id] ?? []).length}
-                        focus={focus}
-                        wide={wide}
-                        narrow={narrow}
-                        height={cardH}
-                        fallback={accent}
-                        onTap={() => {
-                          if (Date.now() - swipedAt.current < 350) return;
-                          if (i === centreRef.current && Math.abs(focus.value - i) < 0.05) setOpenGroupId(group.id);
-                          else goToCard(i);
-                        }}
-                      />
-                    ))}
+            ) : null}
+            {n > 0 && (
+              <Animated.View style={[styles.overlay, { top, backgroundColor: S.bg }, overlayStyle]} pointerEvents="box-none">
+                  <Animated.View style={[styles.accordion, { marginHorizontal: SIDE }, accordionStyle]} collapsable={false}>
+                    <Animated.View style={[styles.accRow, rowStyle]}>
+                      {shownGroups.map((group, i) => (
+                        <ProjectCard
+                          key={group.id}
+                          index={i}
+                          group={group}
+                          count={(itemsByGroup[group.id] ?? []).length}
+                          focus={focus}
+                          wide={wide}
+                          narrow={narrow}
+                          height={cardH}
+                          collapse={collapse}
+                          full={inner}
+                          count_n={n}
+                          fallback={accent}
+                          onTap={() => {
+                            if (Date.now() - swipedAt.current < 350) return;
+                            if (i === centreRef.current && Math.abs(focus.value - i) < 0.05) setOpenGroupId(group.id);
+                            else goToCard(i);
+                          }}
+                        />
+                      ))}
+                    </Animated.View>
                   </Animated.View>
-                </View>
-              </GestureDetector>
+                <Animated.View style={[styles.dotsRow, dotsRowStyle]}>
+                  <View style={styles.dots}>
+                    {n > 1 && shownGroups.map((group, i) => <Dot key={group.id} index={i} focus={focus} color={S.ink} />)}
+                  </View>
+                  {(archivedGroups.length > 0 || showArchived) && (
+                    <Pressable
+                      onPress={() => setShowArchived((v) => !v)}
+                      style={({ pressed }) => [styles.archivePill, { backgroundColor: pressed || showArchived ? S.fill : 'transparent' }]}
+                      accessibilityLabel={showArchived ? 'Активні проєкти' : 'Архівні проєкти'}
+                    >
+                      <Ionicons name={showArchived ? 'arrow-undo-outline' : 'archive-outline'} size={15} color={S.ink2} />
+                      <Text style={[styles.archivePillLabel, { color: S.ink2 }]}>
+                        {showArchived ? 'Активні' : archivedGroups.length}
+                      </Text>
+                    </Pressable>
+                  )}
+                </Animated.View>
+              </Animated.View>
             )}
 
-            <View style={styles.dotsRow}>
-              <View style={styles.dots}>
-                {n > 1 && shownGroups.map((group, i) => <Dot key={group.id} index={i} focus={focus} color={S.ink} />)}
-              </View>
-              {(archivedGroups.length > 0 || showArchived) && (
-                <Pressable
-                  onPress={() => setShowArchived((v) => !v)}
-                  style={({ pressed }) => [styles.archivePill, { backgroundColor: pressed || showArchived ? S.fill : 'transparent' }]}
-                  accessibilityLabel={showArchived ? 'Активні проєкти' : 'Архівні проєкти'}
-                >
-                  <Ionicons name={showArchived ? 'arrow-undo-outline' : 'archive-outline'} size={15} color={S.ink2} />
-                  <Text style={[styles.archivePillLabel, { color: S.ink2 }]}>
-                    {showArchived ? 'Активні' : archivedGroups.length}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
+            {n > 0 && (
+              <Animated.Text pointerEvents="none" numberOfLines={1} style={[cardStyles.nameText, styles.flyName, flyStyle]}>
+                {frontGroup?.name ?? ''}
+              </Animated.Text>
+            )}
 
             <View style={styles.pagesClip}>
               <Animated.View style={[styles.pages, { width: W * Math.max(1, n) }, pagesStyle]}>
                 {shownGroups.map((group, i) => (
                   <View key={group.id} style={{ width: W }}>
                     {Math.abs(i - centre) <= 1 && (
-                      <ScrollView
-                        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: dockClear + insets.bottom + 24 }}
-                        showsVerticalScrollIndicator={false}
+                      <ProjectPage
+                        index={i}
+                        offsets={offsets}
+                        paddingTop={cardH + DOTS_H}
+                        // Always enough to scroll the whole fold, however short the
+                        // project is - or a short page could never fold the strip.
+                        minHeight={windowHeight + cardH - COMPACT_H}
+                        paddingBottom={dockClear + insets.bottom + 24}
                       >
+                        <ProjectFolders
+                          groupId={group.id}
+                          groupName={group.name}
+                          groups={groups}
+                          onNewProject={() => setCreatingProject(true)}
+                          onTrail={(crumbs, closeAll, anyOpen) => setFolderTrail((prev) => ({ ...prev, [group.id]: { crumbs, closeAll, anyOpen } }))}
+                        />
                         {(itemsByGroup[group.id] ?? []).length === 0 && !(viewsByGroup[group.id] ?? []).length ? (
                           <Text style={[styles.pageEmpty, { color: S.ink3 }]}>У цьому проєкті ще нічого немає.</Text>
                         ) : (
@@ -393,7 +556,7 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
                             views={viewsByGroup[group.id]}
                           />
                         )}
-                      </ScrollView>
+                      </ProjectPage>
                     )}
                   </View>
                 ))}
@@ -401,8 +564,23 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
             </View>
             <EdgeFade edge="bottom" color={S.bg} height={Math.round((dockClear + insets.bottom) * 0.85)} />
           </View>
+          </GestureDetector>
         )}
         <EdgeFade edge="top" color={S.bg} height={insets.top + CHROME_TOP + (paneBar ? TOP_NAV_H : 0)} />
+
+        {isFocused && !inPane && n > 0 && (
+          <GestureDetector gesture={plusDrag}>
+            <Pressable
+              onPress={openPlus}
+              onLongPress={() => openCapture()}
+              delayLongPress={450}
+              hitSlop={6}
+              style={[styles.plusBtn, { bottom: insets.bottom + 28, backgroundColor: S.card, boxShadow: S.popShadow }]}
+            >
+              <Ionicons name="add-outline" size={26} color={S.ink} />
+            </Pressable>
+          </GestureDetector>
+        )}
 
         <Modal visible={openGroup !== null} transparent animationType="fade" onRequestClose={() => setOpenGroupId(null)}>
           <View style={styles.backdrop}>
@@ -509,6 +687,24 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
         />
 
         <RenamePrompt
+          visible={creatingProject}
+          title="Новий проєкт"
+          initialValue=""
+          onCancel={() => setCreatingProject(false)}
+          onSave={async (name) => {
+            setCreatingProject(false);
+            const clean = name.trim();
+            if (!clean) return;
+            await addDoc(collection(db, 'groups'), {
+              name: clean,
+              color: NEW_PROJECT_COLORS[groups.length % NEW_PROJECT_COLORS.length],
+              // Seen in every database's project tabs; edit them on the card.
+              ...groupKindFields(['document', 'photo', 'file', 'link-video', 'link-geo', 'link-other', 'board', 'task', 'flashcard']),
+            });
+          }}
+        />
+
+        <RenamePrompt
           visible={renamingGroup !== null}
           title="Назва проекту"
           initialValue={renamingGroup?.name ?? ''}
@@ -522,6 +718,61 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
   );
 }
 
+// ONE PROJECT'S PAGE: its own vertical scroll, read on the UI thread. While
+// it is the page in front it writes its offset to the shared `scrollY` the
+// accordion folds by; when a swipe brings it to the front it hands its own
+// last offset over, so the accordion is never out of step with the page
+// under it.
+function ProjectPage({
+  index,
+  offsets,
+  paddingTop,
+  paddingBottom,
+  minHeight,
+  children,
+}: {
+  index: number;
+  offsets: SharedValue<number[]>;
+  paddingTop: number;
+  paddingBottom: number;
+  minHeight: number;
+  children: ReactNode;
+}) {
+  const handler = useAnimatedScrollHandler((e) => {
+    // In place: cloning the array on every scroll frame was what made the fold lag.
+    offsets.modify((list) => {
+      'worklet';
+      list[index] = e.contentOffset.y;
+      return list;
+    });
+  });
+  // A page that is (re)mounted starts at the top, whatever its slot held.
+  useEffect(() => {
+    const reset = () => {
+      offsets.modify((list) => {
+        'worklet';
+        list[index] = 0;
+        return list;
+      });
+    };
+    reset();
+    return reset;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index]);
+  return (
+    <Animated.ScrollView
+      onScroll={handler}
+      scrollEventThrottle={16}
+      contentContainerStyle={{ paddingHorizontal: 16, paddingTop, paddingBottom, minHeight }}
+      showsVerticalScrollIndicator={false}
+    >
+      {children}
+    </Animated.ScrollView>
+  );
+}
+
+const NEW_PROJECT_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
+
 function ProjectCard({
   index,
   group,
@@ -530,6 +781,9 @@ function ProjectCard({
   wide,
   narrow,
   height,
+  collapse,
+  full,
+  count_n,
   fallback,
   onTap,
 }: {
@@ -540,36 +794,53 @@ function ProjectCard({
   wide: number;
   narrow: number;
   height: number;
+  collapse: Readonly<SharedValue<number>>;
+  full: number;
+  count_n: number;
   fallback: string;
   onTap: () => void;
 }) {
   const color = group.color || fallback;
   const gradientId = `project${group.id.replace(/[^A-Za-z0-9]/g, '')}`;
-  const cardStyle = useAnimatedStyle(() => ({ width: widthOf(index, focus.value, wide, narrow) }));
+  const cardStyle = useAnimatedStyle(() => {
+    const q = squeeze(collapse.value, height, wide, narrow, full);
+    const t = Math.max(0, 1 - Math.abs(focus.value - index));
+    return {
+      width: widthOf(index, focus.value, q.wide, q.narrow),
+      height: q.h,
+      marginRight: q.gap,
+      opacity: 1 - t * Math.max(0, Math.min(1, (q.c2 - 0.55) / 0.4)),
+    };
+  });
   const shadeStyle = useAnimatedStyle(() => {
     const t = Math.max(0, 1 - Math.abs(focus.value - index));
     return { opacity: 0.32 - 0.25 * t };
   });
-  const countStyle = useAnimatedStyle(() => ({ opacity: Math.max(0, 1 - Math.abs(focus.value - index)) }));
+  const countStyle = useAnimatedStyle(() => ({ opacity: Math.max(0, 1 - Math.abs(focus.value - index)) * interpolate(collapse.value, [0, 40], [1, 0], Extrapolation.CLAMP) }));
   // Horizontal on the open card, turned up on its edge as it shuts - see
   // DeskSwitcher's same name.
   const nameStyle = useAnimatedStyle(() => {
+    const q = squeeze(collapse.value, height, wide, narrow, full);
     const t = Math.max(0, 1 - Math.abs(focus.value - index));
-    const w = widthOf(index, focus.value, wide, narrow);
+    const w = widthOf(index, focus.value, q.wide, q.narrow);
     const shut = (w + NAME_H) / 2;
     // As long as the card is tall once turned up, as wide as the card
     // while it lies flat - a long name ends in "…", not under the edge.
     return {
       left: 14 + (1 - t) * (shut - 14),
-      width: (height - 28) * (1 - t) + Math.max(0, w - 28) * t,
+      width: (q.h - 28) * (1 - t) + Math.max(0, w - 28) * t,
+      // The names of the cards being pushed out go first, so no half-readable
+      // slivers stand at the edges.
+      // Side names stay with their cards; the front one hands over to the flying name.
+      opacity: 1 - t * Math.min(1, q.c * 7),
       transform: [{ rotate: `${-90 * (1 - t)}deg` }],
     };
   });
   return (
-    <Animated.View style={[cardStyles.card, { height }, cardStyle]}>
+    <Animated.View style={[cardStyles.card, cardStyle]}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onTap} accessibilityLabel={group.name}>
         {/* A fixed-width picture, centred: a narrow card is a slit onto it. */}
-        <View style={[cardStyles.picture, { width: wide, marginLeft: -wide / 2 }]} pointerEvents="none">
+        <View style={[cardStyles.picture, { width: Math.max(wide, full), marginLeft: -Math.max(wide, full) / 2 }]} pointerEvents="none">
           <Svg width="100%" height="100%">
             <Defs>
               <LinearGradient id={gradientId} x1="0" y1="0" x2="0.55" y2="1">
@@ -657,13 +928,21 @@ const makeStyles = (t: Theme) =>
   accordion: {
     overflow: 'hidden',
   },
+  plusBtn: { position: 'absolute', right: 86, width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', zIndex: 9 },
+  flyName: { zIndex: 5, textShadowColor: 'transparent' },
+  overlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 3,
+    overflow: 'hidden',
+  },
   accRow: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     left: 0,
     flexDirection: 'row',
-    gap: GAP,
   },
   dotsRow: {
     height: 34,

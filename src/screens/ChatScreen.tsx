@@ -67,6 +67,7 @@ import { formatShortDate } from '../utils/dateLocale';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { SoftSurfaceContext, softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { Block } from '../types';
+import { usePhotosAlive, useTaskClosedMap } from '../hooks/useChatLinks';
 import { RootStackParamList } from '../navigation';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import { mutedForTheme, type Theme } from '../theme/tokens';
@@ -215,6 +216,9 @@ function ChatFile({ id, name, uri, onPress }: { id: string; name: string; uri: s
 
 export default function ChatScreen() {
   const theme = useTheme();
+  // What messages point at, live: a closed task strikes its message through, a cleaned picture is said so.
+  const { value: taskClosed } = useTaskClosedMap();
+  const { value: photosAlive, loaded: photosLoaded } = usePhotosAlive();
   // THE CHAT IN THE SOFT STYLE (theme/soft) - the last screen still in
   // glass ("чат"). On a phone: the soft bar and dock, the soft ground,
   // messages as soft cards, Inter.
@@ -492,11 +496,19 @@ export default function ChatScreen() {
     () => ({
       icon: 'chatbubbles-outline',
       label: 'Чат',
-      choices: [
-        { label: 'календар', active: false, onPress: layerPages?.calendar },
-        // The board is the chat zoomed out (a pinch gets there), not a page of its own.
-        { label: 'чат', active: true, onPress: boardView ? layerPages?.chat : undefined },
-      ],
+      // With the calendar a desk (features.calendarDesk) the layer is the chat alone: no «календар» word; on the
+      // board view «чат» stays as the way back to the tape.
+      ...(FEATURES.calendarDesk
+        ? boardView
+          ? { choices: [{ label: 'чат', active: false, onPress: layerPages?.chat }] }
+          : {}
+        : {
+            choices: [
+              { label: 'календар', active: false, onPress: layerPages?.calendar },
+              // The board is the chat zoomed out (a pinch gets there), not a page of its own.
+              { label: 'чат', active: true, onPress: boardView ? layerPages?.chat : undefined },
+            ],
+          }),
     }),
     [layerPages, boardView]
   );
@@ -1009,6 +1021,12 @@ export default function ChatScreen() {
   // its menu is open, so the two are exactly the same picture.
   function renderMessageBubble(message: ChatMessage, lifted: boolean) {
     const used = Object.entries(message.usedIn ?? {});
+    // Struck through once EVERY task it made is closed (a task that is gone does not count).
+    const madeTasks = Object.keys(message.tasks ?? {}).filter((id) => taskClosed.has(id));
+    const taskDone = madeTasks.length > 0 && madeTasks.every((id) => taskClosed.get(id) === true);
+    const allAttachments = message.attachments ?? [];
+    const goneAttachments = photosLoaded ? allAttachments.filter((a) => a.kind === 'photo' && !photosAlive.has(a.id)) : [];
+    const shownAttachments = goneAttachments.length ? allAttachments.filter((a) => !goneAttachments.includes(a)) : allAttachments;
     const picked = !lifted && selected.has(message.id);
     const fromGemini = message.from === 'gemini';
     return (
@@ -1049,8 +1067,14 @@ export default function ChatScreen() {
             preview: "в чаті повинен бути вигляд картки з бази
             даних". It is the same record, not a copy, so
             touching it goes to where it lives. */}
+        {/* Pictures that were cleaned away (a closed task's leftovers): said in small grey words. */}
+        {goneAttachments.length > 0 && (
+          <Text style={[styles.goneNote, { color: softChat ? softChat.ink3 : theme.ink.muted }]}>
+            {taskDone ? 'Справу закрито, фото прибрано' : goneAttachments.length > 1 ? 'Фото прибрано' : 'Фото прибрано'}
+          </Text>
+        )}
         <ChatMessageMedia
-          attachments={message.attachments ?? []}
+          attachments={shownAttachments}
           padH={14}
           padTop={softChat ? 10 : 11}
           radius={softChat ? 20 : 16}
@@ -1064,7 +1088,7 @@ export default function ChatScreen() {
             else Linking.openURL(item.url).catch(() => {});
           }}
         />
-        {!!message.text && <Text style={styles.bubbleText}>{message.text}</Text>}
+        {!!message.text && <Text style={[styles.bubbleText, taskDone && styles.bubbleTextDone]}>{message.text}</Text>}
         {askingId === message.id && (
           <View style={styles.askingRow}>
             <ActivityIndicator size="small" color={theme.ink.muted} />
@@ -1573,6 +1597,9 @@ const softChatRecipe = (S: SoftTokens) =>
     askingLabel: { fontFamily: SOFT_REGULAR, color: S.ink2 },
     bubbleText: { fontFamily: SOFT_REGULAR, fontSize: IS_POINTER ? 14.5 : 16.5, lineHeight: IS_POINTER ? 21 : 24, color: S.ink },
     bubbleTime: { fontFamily: SOFT_MEDIUM, color: S.ink3 },
+    // A message whose task is closed: no longer news.
+    bubbleTextDone: { textDecorationLine: 'line-through', color: S.ink3 },
+    goneNote: { fontFamily: SOFT_REGULAR, fontSize: 12, marginBottom: 6 },
     usedLabel: { fontFamily: SOFT_MEDIUM },
     emptyLabel: { fontFamily: SOFT_SEMIBOLD, color: S.ink },
     emptyHint: { fontFamily: SOFT_REGULAR, color: S.ink3 },
@@ -1649,6 +1676,8 @@ const makeStyles = (t: Theme) =>
       fontFamily: FONT_REGULAR,
       color: t.ink.muted,
     },
+    bubbleTextDone: { textDecorationLine: 'line-through', opacity: 0.55 },
+    goneNote: { fontFamily: FONT_REGULAR, fontSize: 12, marginBottom: 6 },
     bubbleText: {
       fontSize: IS_POINTER ? 14.5 : 16,
       lineHeight: IS_POINTER ? 21 : 22,

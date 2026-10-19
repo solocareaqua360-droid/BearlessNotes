@@ -1,3 +1,4 @@
+import { FEATURES } from '../features';
 import { lift } from '../utils/lift';
 import { markHeld } from '../utils/heldNode';
 import { cardRadius } from '../theme/scale';
@@ -447,7 +448,9 @@ export function FileRow({ file, ...rest }: { file: FileCardItem } & Common) {
   );
 }
 
-export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardItem } & Common & { columns?: number }) {
+// `natural`: as tall as its own content (the single explorer's cascade lays cards in columns of their
+// own heights; the Files base keeps the fixed ratio so its rows line up).
+export function FileGridCell({ file, columns = 2, natural, ...rest }: { file: FileCardItem } & Common & { columns?: number; natural?: boolean }) {
   const recordColour = useRecordColour();
   const soft = useSoftSurface();
   const { background, text, textMuted } = softColours(soft, recordColour(file.id));
@@ -461,7 +464,7 @@ export function FileGridCell({ file, columns = 2, ...rest }: { file: FileCardIte
       style={[
         styles.gridCard,
         soft && softCardFrame(soft),
-        styles.gridCardRatio,
+        !natural && styles.gridCardRatio,
         { backgroundColor: background, flexBasis: gridBasis(columns) },
         turning.style,
       ]}
@@ -600,7 +603,7 @@ export function PhotoCell({ photo, columns = 2, ...rest }: { photo: PhotoCardIte
       collapsable={false}
       // Its share of the row from the row's own count - a fixed 46% made
       // three across 138% wide, and the third ran off the window.
-      style={[styles.cell, { flexBasis: gridBasis(columns) }, soft && softCardFrame(soft)]}
+      style={[styles.cell, { flexBasis: gridBasis(columns) }, soft && softCardFrame(soft), FEATURES.itemLook && styles.polaroid]}
       onPress={rest.onPress}
       onLongPress={
         rest.onLongPress
@@ -614,7 +617,7 @@ export function PhotoCell({ photo, columns = 2, ...rest }: { photo: PhotoCardIte
     >
       {/* The grid was the last place in the Photos database still
           drawing the phone's path directly - see AttachmentImage. */}
-      <AttachmentImage uri={photo.imageUri} driveFileId={photo.driveFileId} style={styles.cellImage} />
+      <AttachmentImage uri={photo.imageUri} driveFileId={photo.driveFileId} style={FEATURES.itemLook ? styles.polaroidImage : styles.cellImage} />
       {rest.isSelectMode ? (
         <View style={styles.cellCheckbox}>
           <Ionicons
@@ -623,8 +626,8 @@ export function PhotoCell({ photo, columns = 2, ...rest }: { photo: PhotoCardIte
             color={rest.isSelected ? '#EC4899' : '#fff'}
           />
         </View>
-      ) : (
-        // The same three facts the row carries - when it was added, how
+      ) : FEATURES.itemLook ? null : (
+        // A BARE photo (features.itemLook): nothing over it. Before: the same three facts the row carries - when it was added, how
         // many notes use it, and which folder it is in - on a scrim
         // along the foot of the picture, so a grid cell says as much as
         // a row without stopping being a picture.
@@ -699,8 +702,8 @@ const styles = StyleSheet.create({
   // gets this window - with its page picture in it, or its icon.
   rowThumbWide: {
     width: 104,
-    aspectRatio: 16 / 9,
-    borderRadius: 8,
+    aspectRatio: FEATURES.itemLook ? 4 / 3 : 16 / 9,
+    borderRadius: FEATURES.itemLook ? 12 : 8,
     backgroundColor: '#E5E7EB',
   },
   thumbIconWindow: {
@@ -880,6 +883,24 @@ const styles = StyleSheet.create({
   cellImage: {
     width: '100%',
     height: '100%',
+  },
+  // A PHOTO ON PHOTO PAPER (the user, 2026-10-14, a picture of polaroids on a string): a white print with the same
+  // margin at the sides and the top and a slightly wider one at the foot (his correction: «нижня трохи більша»), barely rounded, a soft shadow under it.
+  polaroid: {
+    aspectRatio: undefined,
+    borderRadius: 7,
+    overflow: 'visible',
+    backgroundColor: '#FFFFFF',
+    padding: 6,
+    paddingBottom: 18,
+    boxShadow: '0px 1px 2px rgba(30,30,28,0.10), 0px 8px 16px -8px rgba(30,30,28,0.28)',
+  },
+  polaroidImage: {
+    width: '100%',
+    aspectRatio: 1,
+    // Rounded too, a little less than the print (his: 10/6 was too round, 4/2 too sharp).
+    borderRadius: 4,
+    overflow: 'hidden',
   },
   cellImageStatus: {
     backgroundColor: '#F3F4F6',

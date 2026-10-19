@@ -18,14 +18,14 @@ import { STICKER_INK } from '../utils/documentBlocks';
 // files now import it.
 
 // A permanent gap kept clear of text on the right of every paragraph/
-// bulleted/numbered/checkbox block (see blockInput/blockDisplayText),
-// on top of the drag-handle icon's own column. A tall, multi-line block
-// used to leave only that icon's ~32px, vertically centered on the whole
-// block, as a safe place to grab for a swipe - everywhere else on that
-// same edge was live text, so a swipe starting a few px off would land on
-// a word and start text selection (while editing) instead of scrolling.
-// This reserves a wide, blank strip the full height of the block instead.
-const TEXT_SWIPE_MARGIN = 24;
+// bulleted/numbered/checkbox block (see blockInput/blockDisplayText) used to
+// be here: a swipe on the edited block's text started word selection instead
+// of scrolling, so a blank strip was the only safe place to grab. That cause
+// is gone (2026-10-18: the edited block's own gesture wrapper was what held
+// the touch - see SortableBlockRow), so the strip is too (2026-10-19, the
+// user's: «є місце, воно вільне, чому б його не використати») - the text runs
+// to the row's own edge, and in select mode the tick floats over the end of
+// the first line, which the user accepted.
 
 // How far a page's sheet stands in from the screen's edges. Named and
 // exported because a card that IS that page, made small, has to lay its
@@ -473,8 +473,6 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
     color: t.paper.ink,
     paddingHorizontal: 8,
     paddingVertical: 6,
-    // See TEXT_SWIPE_MARGIN.
-    marginRight: TEXT_SWIPE_MARGIN,
   },
   dbRowBlock: {
     flex: 1,
@@ -531,11 +529,17 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
     textDecorationLine: 'line-through',
     opacity: 0.5,
   },
+  // The mark stands on the FIRST line of the item: centred on the whole row, a bullet of a two-line item sat between
+  // its lines (2026-10-15, on the Mac).
   prefixedRow: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 4,
+  },
+  // The fold chevron on the first line too: the text's top padding, then centred on one line of it.
+  toggleMark: {
+    marginTop: 6 + (PAGE_TEXT.line - 18) / 2,
   },
   checkboxBlock: {
     flex: 1,
@@ -568,6 +572,9 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
     fontFamily: SOFT_REGULAR,
     color: t.paper.ink,
     paddingLeft: 4,
+    // One line of the text beside it, at the text's own top padding (blockInput's paddingVertical).
+    lineHeight: PAGE_TEXT.line,
+    paddingTop: 6,
   },
   dividerLine: {
     flex: 1,

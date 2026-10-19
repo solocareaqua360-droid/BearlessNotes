@@ -4,10 +4,13 @@ import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
-import { DesksControlContext, START_DESK, deskFace } from '../navigation/desks';
+import { DesksControlContext, FIXED_DESKS, deskFace } from '../navigation/desks';
 import { captureAllDesks, captureDesk, forgetDesk, setCurrentDesk, setDeskCapturePaused, useDeskShots } from '../navigation/deskShots';
 import DeskSwitcher from './DeskSwitcher';
 import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
+import { registerDeskBeads, registerDeskReach } from '../navigation/deskBeadsBus';
+import { navigationRef } from '../navigationRef';
+import { setChromeCompact } from '../navigation/chromeScroll';
 import { deskPull, deskPullEnabled } from '../navigation/deskPull';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { useDockBase, useDockTabsDriftPublisher, useDockTabsInFluxPublisher, useNavDockSetHidden } from '../navigation/navDock';
@@ -86,6 +89,8 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   // listener above never disagreed with it in the first place; a swipe
   // moves the live index first and this is what clears it again.
   useEffect(() => {
+    // A new desk in front starts with the chrome whole (it may have been folded by the one before).
+    setChromeCompact(false);
     liveIndexRef.current = state.index;
     setLocalTabsInFlux(false);
     setLocalTabsDrifting(false);
@@ -192,7 +197,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   // vanishes from under the finger; any other just goes.
   const closeDesk = (index: number) => {
     const route = state.routes[index];
-    if (!deskControl || !route || route.name === START_DESK) return;
+    if (!deskControl || !route || FIXED_DESKS.includes(route.name)) return;
     if (liveIndex === index) {
       const previous = state.routes[index - 1]?.name;
       if (previous) navigation.navigate(previous);
@@ -245,7 +250,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         // "хрестик на вкладці" - the desk in front can be closed, the
         // documents too now (only the start desk stays).
         onClose:
-          deskControl && route.name !== START_DESK && liveIndex === index
+          deskControl && !FIXED_DESKS.includes(route.name) && liveIndex === index
             ? () => barHandlers.current.closeDesk(index)
             : undefined,
       })),
@@ -264,11 +269,54 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
       deskPullEnabled.value = false;
     };
   }, [switcherReachable]);
+  // The three fixed desks, for the bottom dock's round buttons (features.deskDock) - the same list while nothing
+  // about them changes; the open desks beyond the three stay in the switcher.
+  const dockDesks = useMemo(
+    () =>
+      state.routes
+        .map((route, index) => ({ route, index }))
+        .filter(({ route }) => FIXED_DESKS.includes(route.name))
+        .map(({ route, index }) => ({
+          key: route.key,
+          label: faceOf(route.name).label as string,
+          icon: faceOf(route.name).icon as string,
+          active: liveIndex === index,
+          onPress: () => barHandlers.current.desks[index]?.onPress(),
+        })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.routes, liveIndex, customDatabases, iconFor]
+  );
+  useEffect(() => {
+    registerDeskBeads(switcherReachable ? dockDesks : null, Math.max(0, state.routes.length - dockDesks.length));
+  }, [switcherReachable, dockDesks, state.routes.length]);
+  useEffect(() => () => registerDeskBeads(null), []);
+  // The same three, to be reached from a base pushed over the tabs (deskBeadsBus's registerDeskReach): the root
+  // navigator goes back to the tabs, onto that desk - the base in front is left, as with its own back.
+  const reachDesks = useMemo(
+    () =>
+      dockDesks.map((d, i) => {
+        const route = state.routes.filter((r) => FIXED_DESKS.includes(r.name))[i];
+        return {
+          ...d,
+          onPress: () => {
+            if (route && navigationRef.isReady()) navigationRef.navigate('Tabs', { screen: route.name } as never);
+          },
+        };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dockDesks]
+  );
+  const reachable = !!deskControl && topNavOn;
+  useEffect(() => {
+    registerDeskReach(reachable ? reachDesks : null);
+  }, [reachable, reachDesks]);
+  useEffect(() => () => registerDeskReach(null), []);
   if (!barUp) return null;
   return (
     <>
     <TopNavBar
       desks={barDesks}
+      deskPosition={position as never}
       onLongPress={openCapture}
       // The calendar's drawer carries its own bar; this one steps back
       // as it comes in.
@@ -284,7 +332,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         shot: shots[route.name],
         // Goes there; the panel stays until it is dismissed.
         onGo: () => desks[index].onPress(),
-        onClose: deskControl && route.name !== START_DESK ? () => closeDesk(index) : undefined,
+        onClose: deskControl && !FIXED_DESKS.includes(route.name) ? () => closeDesk(index) : undefined,
       }))}
     />
     </>

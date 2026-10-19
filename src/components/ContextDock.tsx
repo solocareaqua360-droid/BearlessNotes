@@ -4,10 +4,15 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useKeyboardRide } from '../hooks/useKeyboardRide';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useFanDragGesture } from '../utils/fanDrag';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Ionicons } from './icons/Ionicons';
 import { openCapture } from './CaptureWindow';
 import { openDeskSwitcher, useDeskSwitcherAvailable, useDeskSwitcherRight } from '../navigation/deskSwitcherBus';
+import { useDeskBeads, useDeskReach, useDockDesksWanted } from '../navigation/deskBeadsBus';
+import DeskDock, { DESK_PLUS } from './DeskDock';
+import CarriesBackMarker from './CarriesBackMarker';
+import { FEATURES } from '../features';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Rect } from 'react-native-svg';
 import { GlassPortal } from './GlassPortal';
@@ -645,6 +650,37 @@ const DESK_HINT_TRAVEL = 18;
 // How far the round "+" sits in from the search field's edges.
 const FIELD_INSET = 5;
 
+
+// A bead that also OPENS A FAN ON A SLIDE: the pan of utils/fanDrag around the bead's own pressable.
+function SlideOpen({ open, children }: { open?: () => void; children: React.ReactElement }) {
+  const gesture = useFanDragGesture(open ?? (() => {}));
+  if (!open) return children;
+  return <GestureDetector gesture={gesture}>{children}</GestureDetector>;
+}
+
+// THROUGH A HAND-OVER, THE LAST DOCK STAYS (2026-10-16, the user: «щось миготить під доком» switching desks). The
+// screen being left takes its beads away a frame before the screen arriving puts its own up, and for that frame
+// there was no dock at all - a blink, seen in a 120 fps recording. An empty value is believed only once it has
+// lasted HANDOVER_MS; until then the last full one is drawn.
+const HANDOVER_MS = 150;
+function useHeldThroughHandover<T>(value: T, full: (v: T) => boolean): T {
+  const last = useRef(value);
+  const emptySince = useRef<number | null>(null);
+  const [, bump] = useState(0);
+  const isFull = full(value);
+  if (isFull) emptySince.current = null;
+  else if (emptySince.current === null) emptySince.current = Date.now();
+  const held = !isFull && full(last.current) && emptySince.current !== null && Date.now() - emptySince.current < HANDOVER_MS;
+  // Always called (a hook below an early return is what once whitened the app): only arms a re-check while held.
+  useEffect(() => {
+    if (!held) return;
+    const timer = setTimeout(() => bump((n) => n + 1), HANDOVER_MS + 10);
+    return () => clearTimeout(timer);
+  });
+  if (!held) last.current = value;
+  return held ? last.current : value;
+}
+
 export default function ContextDock() {
   useRenderTimer('Док');
   const theme = useTheme();
@@ -811,10 +847,14 @@ export default function ContextDock() {
   // hold of its own - "чатом я користуюся набагато частіше, ніж створюю
   // папки" (2026-10-02): the dock's own hold used to open it, and then
   // nothing did. Making a folder moved to the "⋯" menus.
-  const beads = withChatHold(useNavDockBeads());
+  const beads = useHeldThroughHandover(withChatHold(useNavDockBeads()), (b) => !!b.left || !!b.right);
   // The experiment: a round button for the open desks, left of the search.
   const switcherAvailable = useDeskSwitcherAvailable();
   const switcherRight = useDeskSwitcherRight();
+  const deskBeads = useHeldThroughHandover(useDeskBeads(), (d) => !!d?.length);
+  // The desks a base pushed over the tabs keeps in its dock (deskBeadsBus's useDockDesksHere).
+  const reachDesks = useDeskReach();
+  const desksWanted = useDockDesksWanted();
   // Declared, not inferred - see useDockWide's own comment. A screen that
   // publishes neither bead while asking for this reads as "give the
   // middle the room those slots would have held", whether or not it also
@@ -2112,8 +2152,72 @@ export default function ContextDock() {
           </DockPortal>
         );
       }
+      // THE NOTE (2026-10-16, sketch JD1ELAiSpepZLXsxwcVk1x): the same places as every other screen - the capsule
+      // on the left where the desks stand, the pencil as the black circle where "+" stands, back at the right edge.
+      const primary = FEATURES.deskDock && !beads.left && beads.right ? actions.find((a) => a.primary) : undefined;
+      if (primary && beads.right) {
+        const rest = actions.filter((a) => a !== primary);
+        const NOTE_SIDE = 48;
+        const noteButtonW = Math.min(STRIP_BUTTON_W, Math.floor((frame.width - NOTE_SIDE * 2 - 16 - 16 - 8) / Math.max(1, rest.length)));
+        const back = beads.right;
+        return (
+          <DockPortal>
+            {back.icon === 'chevron-back' && <CarriesBackMarker />}
+            <View
+              pointerEvents="box-none"
+              style={[styles.twoBeads, { bottom: softRest, left: frame.left, width: frame.width, height: TWO_BEAD, alignItems: 'center' }]}
+            >
+              {rest.length > 0 && (
+                <View style={[surface, { height: 60, borderRadius: 30, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center' }]}>
+                  {rest.map((action) => (
+                    <ActionButton
+                      key={action.key}
+                      action={action}
+                      width={noteButtonW}
+                      height={52}
+                      iconSize={ACT_ICON}
+                      theme={theme}
+                      onDone={() => {}}
+                      soft={soft}
+                    />
+                  ))}
+                </View>
+              )}
+              <View style={{ flex: 1 }} pointerEvents="none" />
+              <Pressable
+                onPress={primary.onPress}
+                onLongPress={primary.onLongPress}
+                accessibilityLabel={primary.label}
+                style={({ pressed }) => [
+                  styles.softButton,
+                  primary.primary === 'quiet' ? surface : { backgroundColor: soft.ink },
+                  { width: NOTE_SIDE, height: NOTE_SIDE, borderRadius: NOTE_SIDE / 2, opacity: pressed ? 0.8 : 1 },
+                ]}
+              >
+                <Ionicons
+                  name={primary.icon as keyof typeof Ionicons.glyphMap}
+                  size={21}
+                  color={primary.primary === 'quiet' ? soft.ink : soft.chrome}
+                />
+              </Pressable>
+              <View style={{ width: 16 }} pointerEvents="none" />
+              <Pressable
+                onPress={back.onPress}
+                onLongPress={back.onLongPress}
+                disabled={back.dimmed}
+                accessibilityLabel="Назад"
+                hitSlop={6}
+                style={[styles.softButton, surface, { width: NOTE_SIDE, height: NOTE_SIDE, borderRadius: NOTE_SIDE / 2, opacity: back.dimmed ? 0.5 : 1 }]}
+              >
+                <Ionicons name={back.icon as keyof typeof Ionicons.glyphMap} size={22} color={soft.ink} />
+              </Pressable>
+            </View>
+          </DockPortal>
+        );
+      }
       return (
         <DockPortal>
+          {FEATURES.deskDock && beads.right?.icon === 'chevron-back' && <CarriesBackMarker />}
           <View
             pointerEvents="box-none"
             style={[
@@ -2258,6 +2362,10 @@ export default function ContextDock() {
     // field all the same.
     const backHere = (!switcherRight || inFolder) && !!topBack && !topBack.dimmed && !dockSearch && !!left && !left.round;
     const merged = multitask || backHere;
+    // The desk dock (features.deskDock): the same dock drawn by DeskDock, on a desk and inside.
+    const deskDockOn = FEATURES.deskDock && !!left && !!right && ((multitask && !!deskBeads?.length) || backHere);
+    // Inside a base that asked for them: the desk pill as on a desk, the circle the way back.
+    const backWithDesks = backHere && !multitask && desksWanted && !!reachDesks?.length;
     return (
       <DockPortal>
         <Animated.View
@@ -2284,7 +2392,87 @@ export default function ContextDock() {
               <Ionicons name="copy-outline" size={21} color={soft.ink} />
             </Pressable>
           )}
-          {merged && left ? (
+          {deskDockOn && left && right ? (
+            <DeskDock
+              state={multitask || backWithDesks ? 'root' : 'inside'}
+              circleBack={backWithDesks}
+              width={frame.width}
+              soft={soft}
+              desks={(backWithDesks ? reachDesks : deskBeads) ?? []}
+              onSearch={left.onPress}
+              onSearchLong={left.onLongPress}
+              searchDisabled={left.dimmed}
+              searchIcon={
+                leftIcon ? (
+                  <SoftIcon name={leftIcon} size={20} color={soft.ink2} />
+                ) : (
+                  <Ionicons name={left.icon as keyof typeof Ionicons.glyphMap} size={19} color={soft.ink2} />
+                )
+              }
+              searchLabel={left.label ?? (left.active ? 'Закрити пошук' : 'Пошук')}
+              plusEl={
+                <SlideOpen open={right.onSlide}>
+                  <Pressable
+                    onPress={right.onPress}
+                    onLongPress={right.onLongPress}
+                    disabled={right.dimmed}
+                    accessibilityLabel="Створити"
+                    style={({ pressed }) => [
+                      styles.softFieldCreate,
+                      {
+                        width: DESK_PLUS,
+                        height: DESK_PLUS,
+                        borderRadius: DESK_PLUS / 2,
+                        backgroundColor: soft.ink,
+                        opacity: right.dimmed ? 0.5 : pressed ? 0.8 : 1,
+                      },
+                    ]}
+                  >
+                    {right.icon !== 'pencil-outline' && right.icon !== 'mic-outline' && !right.keepIcon ? (
+                      <Ionicons name="add" size={25} color={soft.chrome} />
+                    ) : rightIcon ? (
+                      <SoftIcon name={rightIcon} size={22} color={soft.chrome} />
+                    ) : (
+                      <Ionicons name={right.icon as keyof typeof Ionicons.glyphMap} size={21} color={soft.chrome} />
+                    )}
+                  </Pressable>
+                </SlideOpen>
+              }
+              extraEl={
+                right.extra ? (
+                  <Pressable
+                    onPress={right.extra.onPress}
+                    accessibilityLabel={right.extra.label}
+                    style={({ pressed }) => [
+                      styles.softFieldCreate,
+                      {
+                        width: DESK_PLUS,
+                        height: DESK_PLUS,
+                        borderRadius: DESK_PLUS / 2,
+                        backgroundColor: right.extra?.filled && right.extra?.active ? soft.ink : pressed ? soft.line : soft.fillSolid,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={right.extra.icon as keyof typeof Ionicons.glyphMap}
+                      size={20}
+                      color={right.extra.filled && right.extra.active ? soft.card : soft.ink}
+                    />
+                    {right.extra.active && !right.extra.filled && <View style={[styles.fieldDot, { backgroundColor: soft.accent, borderColor: soft.chrome }]} />}
+                    {!!right.extra.count && (
+                      <View style={[styles.fieldCount, { backgroundColor: soft.accent, borderColor: soft.chrome }]}>
+                        <Text style={styles.fieldCountText}>{right.extra.count > 99 ? '99+' : right.extra.count}</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                ) : null
+              }
+              multiIcon={<Ionicons name="copy-outline" size={21} color={soft.ink} />}
+              onMulti={openDeskSwitcher}
+              backIcon={<Ionicons name={(topBack?.icon ?? 'chevron-back') as keyof typeof Ionicons.glyphMap} size={22} color={soft.ink} />}
+              onBack={topBack?.onPress ?? (() => {})}
+            />
+          ) : merged && left ? (
             <>
               <View style={[styles.softField, surface, { paddingLeft: 0, paddingRight: 0, gap: 0 }]}>
                 <Pressable
@@ -2340,6 +2528,7 @@ export default function ContextDock() {
                 {/* The round "+" button itself, a little smaller, set into
                     the field's right end (the user's, 2026-10-04). */}
                 {right && (
+                <SlideOpen open={right.onSlide}>
                 <Pressable
                   onPress={right.onPress}
                   onLongPress={right.onLongPress}
@@ -2373,6 +2562,7 @@ export default function ContextDock() {
                     <Ionicons name={right.icon as keyof typeof Ionicons.glyphMap} size={21} color={soft.chrome} />
                   )}
                 </Pressable>
+                </SlideOpen>
                 )}
               </View>
               {multitask ? (
@@ -2985,7 +3175,7 @@ function DockPortal({ children }: { children: ReactNode }) {
     [active, progress]
   );
   return (
-    <GlassPortal>
+    <GlassPortal name="ContextDock">
       <Animated.View
         style={[StyleSheet.absoluteFill, fade]}
         pointerEvents={active && cover?.open ? 'none' : 'box-none'}

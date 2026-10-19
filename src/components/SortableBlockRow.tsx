@@ -50,6 +50,11 @@ type SortableBlockRowProps = {
   onDragEnd: () => void;
   // At a pointer: a click on the handle, without a drag.
   onHandleClick?: () => void;
+  // Swipe to select (see BlockList's sweep): on where the screen asks for it.
+  swipeSelect?: boolean;
+  onSweepStart?: () => void;
+  onSweepUpdate?: (absoluteY: number, translationY: number) => void;
+  onSweepEnd?: () => void;
   onToggleSelected: (id: string) => void;
   onToggleChecked: (id: string) => void;
   onOpenReminder: (id: string) => void;
@@ -96,6 +101,17 @@ type SortableBlockRowProps = {
 // tap - a tap on a block now starts editing it (see BlockRow), so the two
 // can't be allowed to blur into each other.
 const DRAG_LONG_PRESS_MS = 500;
+// How far left a finger goes before a swipe picks the block - and how far up or down it may go first before the
+// move is the scroll's instead.
+const SWIPE_START = 14;
+// The swiped block's words follow the finger a little to the left (the user's: «при свайпі сам текст теж повинен
+// трохи зміщуватись»), at most this far, and spring back when it lifts.
+const NUDGE_MAX = 28;
+// In select mode the strip down the right edge, where the ticks stand: a move up or down there picks block after block
+// (and the note scrolls along at the edges); the rest of the block keeps its scroll. A few points start it, before the
+// note's own scroll can take the move.
+const EDGE_W = 56;
+const EDGE_START = 4;
 
 function SortableBlockRow({
   item,
@@ -117,6 +133,10 @@ function SortableBlockRow({
   onDragUpdate,
   onDragEnd,
   onHandleClick,
+  swipeSelect,
+  onSweepStart,
+  onSweepUpdate,
+  onSweepEnd,
   onToggleSelected,
   onToggleChecked,
   onOpenReminder,
@@ -189,7 +209,45 @@ function SortableBlockRow({
   // for every other block the plain drag gesture is all there is, which
   // is what lets the ScrollView see a swipe over them.
   const canEditText = isActive && !isSelectMode;
-  const gesture = canEditText ? Gesture.Simultaneous(dragGesture, Gesture.Native()) : dragGesture;
+  // THE BLOCK BEING WRITTEN IN HAS NO GESTURE OF ITS OWN (2026-10-18, the user: a swipe on it must scroll the note,
+  // a tap must place the caret). The Native+drag pair above held every touch that began on the field: the note's
+  // ScrollView could never take a swipe over it, so the swipe only dragged the caret. Without it the field's own
+  // native rules apply - it gives a vertical move to the scroll (it cannot scroll itself, it grows with its text)
+  // and keeps a tap. A hold on the text is the system's own word selection there; the other blocks still move by
+  // a hold, and this one does too the moment writing ends.
+  // A SWIPE LEFT PICKS (features.swipeSelect, like Craft): it starts only once the finger has gone SWIPE_START to the
+  // left, gives up if it went up or down or to the right first (the note's scroll keeps every vertical move), and from
+  // then on follows the finger up and down over the other blocks. It races the hold: whichever starts first wins.
+  const nudge = useSharedValue(0);
+  const sweepGesture = Gesture.Pan()
+    .enabled(!pointer && !!swipeSelect)
+    .activeOffsetX([-SWIPE_START, 10000])
+    .failOffsetX([-10000, SWIPE_START])
+    .failOffsetY([-SWIPE_START, SWIPE_START])
+    .runOnJS(true)
+    .onStart(() => onSweepStart?.())
+    .onUpdate((e) => {
+      nudge.value = Math.max(-NUDGE_MAX, Math.min(0, e.translationX * 0.35));
+      onSweepUpdate?.(e.absoluteY, e.translationY);
+    })
+    .onFinalize(() => {
+      // Straight back, no spring (the user's: «інерційність гіперболізована... звести її до нуля»).
+      nudge.value = withTiming(0, { duration: 120 });
+      onSweepEnd?.();
+    });
+  // The tick strip's own: a move up or down picks along, a tap picks this one.
+  const edgeGesture = Gesture.Exclusive(
+    Gesture.Pan()
+      .activeOffsetY([-EDGE_START, EDGE_START])
+      .runOnJS(true)
+      .onStart(() => onSweepStart?.())
+      .onUpdate((e) => onSweepUpdate?.(e.absoluteY, e.translationY))
+      .onFinalize(() => onSweepEnd?.()),
+    Gesture.Tap()
+      .runOnJS(true)
+      .onEnd(() => onToggleSelected(item.id))
+  );
+  const gesture = canEditText ? Gesture.Pan().enabled(false) : Gesture.Race(sweepGesture, dragGesture);
 
   // Every row currently being dragged - whether it's the one lone block or
   // one of several in a multi-select bulk move - eases toward faded and
@@ -206,6 +264,7 @@ function SortableBlockRow({
   const compressStyle = useAnimatedStyle(() => ({
     opacity: 1 - compress.value * 0.45,
     transform: [
+      { translateX: nudge.value },
       { translateY: compressTowardOffset * compress.value },
       // Shrinks evenly on every side rather than flattening vertically -
       // a picked-up card reads as "lifted away", where the old scaleY-only
@@ -275,12 +334,18 @@ function SortableBlockRow({
           />
         </Animated.View>
       </GestureDetector>
+      {isSelectMode && !!swipeSelect && !pointer && (
+        <GestureDetector gesture={edgeGesture}>
+          <View style={styles.edge} />
+        </GestureDetector>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   glow: { backgroundColor: 'rgba(37,99,235,0.14)', borderRadius: 12 },
+  edge: { position: 'absolute', top: 0, bottom: 0, right: 0, width: EDGE_W },
 });
 
 // Re-rendered only when its own props change - BlockList keeps every

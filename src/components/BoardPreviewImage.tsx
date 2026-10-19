@@ -98,13 +98,18 @@ export default function BoardPreviewImage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
 
-  // The stand-in stays until the picture has actually been drawn, then
-  // goes - a live board map under a picture that hides it is work for
-  // nothing.
+  // The stand-in stays until a picture has actually been drawn, then goes - a live board map under a
+  // picture that hides it is work for nothing. A NEWER version of the picture (the capture saved,
+  // then its Drive copy arriving) is drawn OVER the one already there and replaces it once loaded:
+  // the stand-in must not come back in between, that was the double blink after leaving a board
+  // (2026-10-11).
   const [drawn, setDrawn] = useState<string | null>(null);
   return (
     <View style={StyleSheet.absoluteFill}>
-      {drawn !== shown || !shown ? fallback : null}
+      {!drawn || !shown ? fallback : null}
+      {drawn && shown && drawn !== shown && (
+        <Image source={{ uri: drawn }} style={StyleSheet.absoluteFill} resizeMode="cover" resizeMethod="resize" />
+      )}
       {shown && (
         <Image
           source={{ uri: shown }}

@@ -1,11 +1,12 @@
 import { enableScreens } from 'react-native-screens';
-import { MOTION, deskGlass } from './src/theme/desktopTheme';
+import { MOTION, deskGlass, deskColors } from './src/theme/desktopTheme';
 import { RADIUS } from './src/theme/scale';
 import UnderToolbar from './src/components/desktop/UnderToolbar';
 import { inShell } from './src/navigation/desktopTabs';
 import { softTokens } from './src/theme/soft';
 import { IS_POINTER } from './src/utils/pointer';
 import { useEffect, useState, type ReactNode } from 'react';
+import { CommonActions } from '@react-navigation/native';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   useFonts,
@@ -27,9 +28,13 @@ import { auth, ensureSignedIn, signInWithGoogleAccount, signOutEverywhere } from
 import { signInForHandoff } from './src/firebase.web';
 import { onAuthStateChanged } from 'firebase/auth';
 import RootNavigator from './src/AppNavigator';
+import { setChromeCompact } from './src/navigation/chromeScroll';
 import { navigationRef } from './src/navigationRef';
 import { navigateToTarget } from './src/navigation/paneTargetInfo';
 import type { PaneTarget } from './src/navigation/paneTarget';
+import DeleteContentsHost from './src/components/DeleteContentsHost';
+import ThoughtsHost from './src/components/thoughts/ThoughtsHost';
+import { FEATURES } from './src/features';
 import { AskHost } from './src/components/surfaces/Ask';
 import CaptureWindow from './src/components/CaptureWindow';
 import BoardPreviewCaptureHost from './src/components/BoardMiniature';
@@ -40,6 +45,9 @@ import CrashBoundary from './src/components/CrashBoundary';
 import FatalErrorOverlay from './src/components/FatalErrorOverlay';
 import ContextDock from './src/components/ContextDock';
 import DesktopRail from './src/components/DesktopRail';
+import Sidebar from './src/components/desktop/Sidebar';
+import Composer from './src/components/desktop/Composer';
+import { useRailPanel } from './src/navigation/navRail';
 import RightColumn from './src/components/desktop/RightColumn';
 import StartPage, { CreateWatcher } from './src/components/desktop/StartPage';
 import { useStartFront } from './src/navigation/desktopTabs';
@@ -326,6 +334,51 @@ function DeskGround({ children }: { children: ReactNode }) {
   return <View style={[styles.deskBody, { backgroundColor: ground }, { viewTransitionName: 'desk-main' } as never]}>{children}</View>;
 }
 
+// FRAME B: no start page - the app opens on the explorer (the home), once the navigator is ready. The tab row's
+// bookkeeping (DesktopTabs) is not mounted, so this does the one thing it did at launch.
+function FrameBHome() {
+  useEffect(() => {
+    let waiting: ReturnType<typeof setTimeout> | undefined;
+    const launch = () => {
+      if (!navigationRef.isReady()) {
+        waiting = setTimeout(launch, 50);
+        return;
+      }
+      // The stack is ONE explorer at launch - nothing (the old «Документи» tab) under it to fall back onto.
+      navigationRef.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Explorer' }] }));
+    };
+    launch();
+    return () => {
+      if (waiting) clearTimeout(waiting);
+    };
+  }, []);
+  return <CreateWatcher />;
+}
+
+// FRAME B's right column: what a screen publishes for the rail (the calendar's month + history + the feed of days).
+// The old rail drew it under the folder tree; the sidebar is navigation only, so it stands beside the column.
+function FrameBRightPanel() {
+  const panel = useRailPanel();
+  const D = deskColors(softTokens(useTheme().scheme));
+  if (!panel) return null;
+  return (
+    <View style={{ width: 340, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: D.line, paddingTop: 12, backgroundColor: D.chrome }}>
+      {panel}
+    </View>
+  );
+}
+
+// The composer stands only on the explorer (see Composer).
+function FrameBComposer() {
+  const [route, setRoute] = useState('');
+  useEffect(() => {
+    const read = () => setRoute(navigationRef.isReady() ? ((navigationRef.getCurrentRoute()?.name as string) ?? '') : '');
+    read();
+    return navigationRef.addListener('state', read);
+  }, []);
+  return route === 'Explorer' ? <Composer /> : null;
+}
+
 function StartPageHost() {
   const front = useStartFront();
   return (
@@ -344,7 +397,14 @@ function ThemedNavigationContainer({ children }: { children: React.ReactNode }) 
     colors: { ...DefaultTheme.colors, background: theme.ground, card: theme.surface, text: theme.ink.primary },
   };
   return (
-    <NavigationContainer ref={navigationRef} theme={navTheme}>
+    <NavigationContainer
+      ref={navigationRef}
+      theme={navTheme}
+      // Every move to another screen brings the folded chrome back (2026-10-16, the user: in a personal base «⋯»,
+      // «Виділити» and the search did nothing / were gone). Folding was undone only on a desk change, so a base
+      // opened from a scrolled list inherited the fold - and at its top there is nothing to scroll back up with.
+      onStateChange={() => setChromeCompact(false)}
+    >
       {children}
     </NavigationContainer>
   );
@@ -679,12 +739,18 @@ export default function App() {
           <GlassPortalHost>
             <GlassTargetProvider>
               <AskHost />
+              <DeleteContentsHost />
+              {/* The thought windows - the same host as the phone's (components/thoughts). */}
+              {FEATURES.thoughts && <ThoughtsHost />}
             {/* «Загальний чат» - the window the dock's long press
                 opens, already listening. Inside the blur target,
                 like every other sheet. */}
             <CaptureWindow
               onOpenChat={() => {
                 if (navigationRef.isReady()) navigationRef.navigate('Chat');
+              }}
+              onOpenNote={(documentId) => {
+                if (navigationRef.isReady()) navigationRef.navigate('Editor', { documentId });
               }}
             />
             {/* See App.tsx: mounted once, here, so a board's own
@@ -705,7 +771,7 @@ export default function App() {
                 <WorkspaceProvider>
                 <InnerBackProvider>
                 <View style={styles.deskRow}>
-                  <DesktopRail footer={accountStrip} />
+                  {FEATURES.macFrameB ? <Sidebar footer={accountStrip} /> : <DesktopRail footer={accountStrip} />}
                   <DeskGround>
                     {/* The dock, unrolled - the path on the left and
                         what this screen can do on the right, off the
@@ -713,7 +779,7 @@ export default function App() {
                     {/* Above everything the screen says about itself:
                         the tabs are what you are switching BETWEEN, the
                         toolbar is about whichever one is in front. */}
-                    <DesktopTabs />
+                    {!FEATURES.macFrameB && <DesktopTabs />}
                     <View style={styles.deskBody}>
                       <UnderToolbar>
                         <RootNavigator />
@@ -725,11 +791,13 @@ export default function App() {
                       {/* The new tab's page, over the navigator AND its
                           toolbar while it is the tab in front - see
                           StartPage. */}
-                      <StartPageHost />
-                      <TabStepper />
+                      {FEATURES.macFrameB ? <FrameBHome /> : <StartPageHost />}
+                      {FEATURES.macFrameB && <FrameBComposer />}
+                      {!FEATURES.macFrameB && <TabStepper />}
                     </View>
                   </DeskGround>
-                  <RightColumn />
+                  {!FEATURES.macFrameB && <RightColumn />}
+                  {FEATURES.macFrameB && <FrameBRightPanel />}
                 </View>
                 </InnerBackProvider>
                 </WorkspaceProvider>

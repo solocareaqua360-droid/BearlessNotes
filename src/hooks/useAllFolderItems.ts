@@ -11,7 +11,7 @@ import type { Block, Tag } from '../types';
 // заплутатися, тому тут полотно повинно врятувати"). Only what carries
 // at least one folder: the folders screen is about folders, and every
 // record of every database loose on one table would bury them.
-export type FolderItemKind = 'document' | 'photo' | 'file' | 'link' | 'flashcard' | 'board' | 'row';
+export type FolderItemKind = 'document' | 'photo' | 'file' | 'link' | 'flashcard' | 'board' | 'row' | 'shortcut';
 
 export type FolderItem = {
   // Unique across databases: `${collection}:${docId}`.
@@ -30,6 +30,8 @@ export type FolderItem = {
   blocks?: Block[];
   linkCategory?: 'video' | 'geo' | 'other';
   databaseId?: string;
+  // The record as stored - what a card of its own kind is drawn from.
+  raw?: Record<string, unknown>;
 };
 
 type Raw = Record<string, unknown>;
@@ -48,6 +50,7 @@ const base = (collection: string, docId: string, data: Raw, kind: FolderItemKind
   collection,
   tagIds: ids(data.tagIds),
   title,
+  raw: data,
 });
 
 const SOURCES: Source[] = [
@@ -91,7 +94,14 @@ const SOURCES: Source[] = [
   },
   {
     collection: 'boards',
-    make: (id, d) => ({ ...base('boards', id, d, 'board', 'board', str(d.title) || str(d.name) || 'Дошка') }),
+    // A day's own board (utils/dayBoard) belongs to its day, not to the boards.
+    make: (id, d) => (d.calendarDate ? null : { ...base('boards', id, d, 'board', 'board', str(d.title) || str(d.name) || 'Дошка') }),
+  },
+  {
+    // A SHORTCUT («ярлик-програма», the one plan's part 2): a record that opens a base's
+    // own screen preset - a table, a project's tasks, a collection of links.
+    collection: 'shortcuts',
+    make: (id, d) => ({ ...base('shortcuts', id, d, 'shortcut', 'shortcut', str(d.title) || 'Ярлик') }),
   },
   {
     collection: 'customDatabaseRows',
@@ -108,7 +118,14 @@ const SOURCES: Source[] = [
   },
 ];
 
-export function useAllFolderItems(tags: Tag[]): FolderItem[] {
+// `includeUnfiled`: also the things that carry NO folder - the single
+// explorer's root is made of them (the default stays what the folders
+// canvas always had: only what is in a folder).
+// `withBinned`: also what is in the bin (its `deletedAt` stays in `raw`) - the explorer's
+// Кошик reads them; every other caller leaves it off and never sees them.
+export function useAllFolderItems(tags: Tag[], options: { includeUnfiled?: boolean; withBinned?: boolean } = {}): FolderItem[] {
+  const includeUnfiled = !!options.includeUnfiled;
+  const withBinned = !!options.withBinned;
   const [byCollection, setByCollection] = useState<Record<string, FolderItem[]>>({});
   useEffect(() => {
     const stops = SOURCES.map((source) =>
@@ -118,9 +135,9 @@ export function useAllFolderItems(tags: Tag[]): FolderItem[] {
           const next: FolderItem[] = [];
           snapshot.docs.forEach((d) => {
             const data = d.data() as Raw;
-            if (data.deletedAt) return;
+            if (data.deletedAt && !withBinned) return;
             const item = source.make(d.id, data);
-            if (item && item.tagIds.length > 0) next.push(item);
+            if (item && (includeUnfiled || item.tagIds.length > 0)) next.push(item);
           });
           setByCollection((prev) => ({ ...prev, [source.collection]: next }));
         },
@@ -128,10 +145,10 @@ export function useAllFolderItems(tags: Tag[]): FolderItem[] {
       )
     );
     return () => stops.forEach((stop) => stop());
-  }, []);
+  }, [includeUnfiled, withBinned]);
   const tagIds = useMemo(() => new Set(tags.map((t) => t.id)), [tags]);
   return useMemo(
-    () => Object.values(byCollection).flat().filter((item) => item.tagIds.some((id) => tagIds.has(id))),
-    [byCollection, tagIds]
+    () => Object.values(byCollection).flat().filter((item) => includeUnfiled || item.tagIds.some((id) => tagIds.has(id))),
+    [byCollection, tagIds, includeUnfiled]
   );
 }

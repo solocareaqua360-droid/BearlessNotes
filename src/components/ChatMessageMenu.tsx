@@ -298,7 +298,7 @@ export default function ChatMessageMenu({
   }
 
   return (
-    <GlassPortal>
+    <GlassPortal name="ChatMessageMenu">
       <View style={styles.layer}>
         {/* The blur fades in with everything else - in the ground's own
             tone, light over a light screen - rather than dropping in dark. */}

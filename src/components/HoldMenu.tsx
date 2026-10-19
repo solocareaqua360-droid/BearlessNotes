@@ -203,7 +203,7 @@ export default function HoldMenu({
   }
 
   return (
-    <GlassPortal>
+    <GlassPortal name="HoldMenu">
       <View style={[styles.layer, NO_WINDOW_DRAG]}>
         <Animated.View style={[StyleSheet.absoluteFill, dimMotion]} pointerEvents="none">
           <BlurView

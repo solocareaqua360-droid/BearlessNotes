@@ -49,6 +49,9 @@ import { STALE_AFTER_DAYS, localAttachmentUsage } from '../utils/attachmentCache
 import { chooseDownloadFolder, currentDownloadFolder } from '../utils/downloadToFolder';
 import { getPexelsKey, setPexelsKey } from '../utils/pexelsKey';
 import { getGeminiKey, setGeminiKey } from '../utils/geminiKey';
+import { VOICES, getVoiceName, keptVoiceSeconds, previewVoice, setVoiceName, subscribeVoiced } from '../utils/thoughtVoice';
+import { resetGeminiUsage, useGeminiUsage } from '../utils/geminiUsage';
+import { FEATURES } from '../features';
 import {
   useColourScheme,
   useThemeChoice,
@@ -99,6 +102,46 @@ function formatUpdateTime(date: Date | null): string {
   return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}, ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+// WHAT GEMINI HAS COST (2026-10-15, the user: «лічильник витрачених грошей, збережених хвилин аудіо та лічильник
+// запитів на озвучку»). An estimate counted on this phone (utils/geminiUsage); the bill itself is in AI Studio.
+function GeminiUsageCard({ styles, accent }: { styles: ReturnType<typeof makeStyles>; accent: string }) {
+  const usage = useGeminiUsage();
+  const [kept, setKept] = useState<number | null>(null);
+  useEffect(() => {
+    const read = () => keptVoiceSeconds().then(setKept);
+    read();
+    return subscribeVoiced(read);
+  }, []);
+  const minutes = (sec: number) => (sec < 60 ? `${Math.round(sec)} с` : `${Math.round(sec / 60)} хв`);
+  const since = usage ? new Date(usage.since).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long' }) : '';
+  const row = (label: string, value: string) => (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, paddingVertical: 6 }}>
+      <Text style={[styles.cardHint, { marginTop: 0, flex: 1 }]}>{label}</Text>
+      <Text style={[styles.cardBody, { marginTop: 0 }]}>{value}</Text>
+    </View>
+  );
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <Ionicons name="stats-chart-outline" size={22} color={accent} />
+        <Text style={styles.cardTitle}>Gemini: витрати</Text>
+      </View>
+      <Text style={styles.cardHint}>
+        {`Оцінка за цінами Google, порахована на цьому телефоні${since ? ` з ${since}` : ''}. Точний рахунок - у Google AI Studio → Billing.`}
+      </Text>
+      <View style={{ marginTop: 6 }}>
+        {row('Витрачено', usage ? `$${usage.costUsd.toFixed(usage.costUsd < 1 ? 3 : 2)}` : '…')}
+        {row('Запитів на озвучку', usage ? `${usage.ttsRequests} · ${minutes(usage.ttsSeconds)} звуку` : '…')}
+        {row('Збережено на телефоні', kept === null ? '…' : `${minutes(kept)} аудіо`)}
+        {row('Запитів до ШІ (резюме, питання)', usage ? `${usage.textRequests}` : '…')}
+      </View>
+      <Pressable onPress={() => resetGeminiUsage()} hitSlop={6} style={{ alignSelf: 'flex-start', marginTop: 8 }}>
+        <Text style={[styles.cardHint, { marginTop: 0, color: accent }]}>Почати лік заново</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const theme = useTheme();
   const accent = theme.sections.settings;
@@ -141,6 +184,11 @@ export default function SettingsScreen() {
   // Powers the chat's "Запитати Gemini".
   const [geminiKey, setGeminiKeyState] = useState<string | null | undefined>(undefined);
   const [enteringGeminiKey, setEnteringGeminiKey] = useState(false);
+  // The thoughts' voice (utils/thoughtVoice), chosen here.
+  const [voice, setVoice] = useState('Kore');
+  useEffect(() => {
+    getVoiceName().then(setVoice).catch(() => {});
+  }, []);
   useEffect(() => {
     getGeminiKey().then(setGeminiKeyState);
   }, []);
@@ -928,6 +976,49 @@ export default function SettingsScreen() {
           )}
         </View>
         )}
+
+        {section === 'integrations' && FEATURES.thoughts && (
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="volume-high-outline" size={22} color={accent} />
+            <Text style={styles.cardTitle}>Голос для думок</Text>
+          </View>
+          <Text style={styles.cardHint}>
+            Яким голосом Gemini читає думки й резюме. Торкнись голосу - почуєш, як він звучить, і він стане твоїм.
+          </Text>
+          <View style={{ gap: 6, marginTop: 6 }}>
+            {VOICES.map((v) => {
+              const on = v.id === voice;
+              return (
+                <Pressable
+                  key={v.id}
+                  onPress={() => {
+                    setVoice(v.id);
+                    setVoiceName(v.id).catch(() => {});
+                    previewVoice(v.id).catch(() => {});
+                  }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    borderRadius: 14,
+                    backgroundColor: on ? theme.surface : 'transparent',
+                  }}
+                >
+                  <Ionicons name={(on ? 'checkmark-circle' : 'play-circle-outline') as never} size={22} color={on ? accent : theme.ink.faint} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardBody, { marginTop: 0 }]}>{v.label}</Text>
+                    <Text style={[styles.cardHint, { marginTop: 0 }]}>{v.note}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+        )}
+        {FEATURES.thoughts && section === 'integrations' && <GeminiUsageCard styles={styles} accent={accent} />}
 
         {/* "хочу можливість вибирати і налаштовувати кольоровий градієнт
             фону від 2 до 4 кольорів переходу. також хочу мати можливість

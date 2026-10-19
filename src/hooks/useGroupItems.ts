@@ -6,6 +6,7 @@ import { CustomDatabase, CustomDatabaseRow, Group } from '../types';
 import { labelForKind } from '../utils/groups';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import { listenError } from '../utils/listenError';
+import { isGone } from '../utils/isGone';
 import { useDeskGate } from '../navigation/deskVisibility';
 
 // Everything a group can gather, and where each kind actually lives.
@@ -110,6 +111,7 @@ export function useGroupItems() {
             const data = d.data();
             const groupId = data.groupId as string | undefined;
             if (!groupId) return;
+            if (isGone(data)) return; // in the bin
             let kind = source.kind;
             let title = '';
             let databaseId: string | undefined;

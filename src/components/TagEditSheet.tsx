@@ -65,7 +65,8 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
   }, [visible, tag]);
 
   function toggleType(kind: string) {
-    if (holding(kind)) return;
+    // Unticking a kind that already holds things is allowed (2026-10-11): it only takes the folder out of
+    // that kind's base (a playlist, a photo folder); the things stay filed and come back with the tick.
     setTypes((prev) => (prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind]));
   }
 
@@ -117,7 +118,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
           <View style={styles.kindRow}>
             {kindChoices.map((choice) => {
               const on = types.includes(choice.kind);
-              const locked = holding(choice.kind);
+              const locked = false;
               return (
                 <Pressable
                   key={choice.kind}

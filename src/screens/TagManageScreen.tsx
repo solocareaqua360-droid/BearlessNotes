@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSoft, softCardFrame } from '../theme/soft';
 import ScreenGround from '../components/ScreenGround';
 import ContentColumn from '../components/ContentColumn';
+import { planFolderMerge, describePlan, applyFolderMerge } from '../utils/folderMerge';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import { useDockClearance } from '../navigation/dockGeometry';
 import type { Theme } from '../theme/tokens';
@@ -27,7 +28,7 @@ import { db } from '../firebase';
 import TagEditSheet from '../components/TagEditSheet';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { TAG_KIND_LABELS as KIND_LABELS } from '../constants/tagKinds';
-import { ask, confirm } from '../components/surfaces/Ask';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { binNote } from '../utils/nestedNotes';
 
 const DANGER = '#EF4444';
@@ -113,6 +114,32 @@ export default function TagManageScreen({ inPane }: { inPane?: boolean } = {}) {
               AsyncStorage.setItem('foldersView', 'canvas').catch(() => {});
               closeSearch();
               setLinksOpen(true);
+            },
+          },
+          {
+            label: 'Пробне злиття папок (нічого не змінює)',
+            icon: 'git-network-outline',
+            onPress: () => {
+              const plan = planFolderMerge(tags, folderItems);
+              console.log('MERGE_DRYRUN', JSON.stringify(plan.map((g) => ({ path: g.path, survivor: g.survivor.id, twins: g.twins.map((t) => t.id), moves: g.moves, alreadyThere: g.alreadyThere, types: g.types, groupIds: g.groupIds, notes: g.notes, drift: g.drift }))));
+              ask({
+                title: 'Злиття однойменних теґів',
+                message: describePlan(plan),
+                actions: plan.length ? [{ id: 'go', label: 'Злити (це змінює дані)', icon: 'git-network-outline', tone: 'danger' }] : [],
+                cancelLabel: plan.length ? 'Нічого не змінювати' : 'Зрозуміло',
+              }).then(async (answer) => {
+                if (answer !== 'go') return;
+                const lines: string[] = [];
+                for (const g of plan) {
+                  try {
+                    const r = await applyFolderMerge(g, folderItems);
+                    lines.push(r.ok ? `«${g.path}»: злито, перенесено ${r.moved}` : `«${g.path}»: НЕ злито, ${r.reason}`);
+                  } catch (e) {
+                    lines.push(`«${g.path}»: помилка, нічого не змінено (${(e as Error).message})`);
+                  }
+                }
+                notify('Результат', lines.join('\n'));
+              });
             },
           },
         ],

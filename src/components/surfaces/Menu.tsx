@@ -92,7 +92,7 @@ export default function Menu({
   const isFocused = useIsFocused();
   if (!visible || !isFocused) return null;
   return (
-    <GlassPortal>
+    <GlassPortal name="Menu">
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View
         style={[

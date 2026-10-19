@@ -51,7 +51,7 @@ export type RootStackParamList = {
   // to "Всі" so the task is guaranteed visible regardless of its own
   // project, leaves Kanban if it was on, and opens that task's row
   // expanded.
-  Tasks: { focusTaskId?: string } | undefined;
+  Tasks: { focusTaskId?: string; openProjectId?: string } | undefined;
   // «Загальний чат» - the capture inbox read back. What goes IN is the
   // window on the dock's long press; this is the history.
   Chat: undefined;
@@ -59,11 +59,11 @@ export type RootStackParamList = {
   // board. The tile is a door into the database, the way every other tile
   // is, not a shortcut to its tab - so it opens a screen on top, and back
   // returns to the board. The tab's own instance stays where it was.
-  DocumentsCopy: undefined;
+  DocumentsCopy: { groupId?: string; folder?: string } | undefined;
   BoardsCopy: undefined;
   // One board, opened FROM the boards copy - the root stack has no Board
   // route of its own, that lives in the tab's nested stack.
-  BoardCopy: { boardId: string; openDocumentId?: string; focusCardIds?: string[] };
+  BoardCopy: { boardId: string; openDocumentId?: string; focusCardIds?: string[]; zoom?: boolean };
   // Geo/video/other links all live in the one `links` mirror collection
   // (see DocumentEditorScreen's fetchLinkPreview) - this param is what
   // splits LinksScreen's one query into three separate-looking databases.
@@ -85,6 +85,8 @@ export type RootStackParamList = {
   Tags: undefined;
   // The temporary, cross-database counterpart to Tags (see the Group type).
   Groups: undefined;
+  Explorer: undefined;
+  Thoughts: undefined;
   TagItems: { tagId: string };
   // Absent -> the menu (list of sections, phone-settings style). A
   // section pushes a SECOND instance of this same screen with its own

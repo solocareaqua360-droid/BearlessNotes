@@ -58,6 +58,9 @@ import {
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { binNote, purgeNote, restoreNote } from '../utils/nestedNotes';
+import { selectionDock } from '../navigation/selectionDock';
+import { orderSection, viewSection } from '../navigation/topMenu';
+import { binNoteAsking } from '../utils/deleteNote';
 import { onDesktopCommand } from '../utils/desktopCommands';
 import { useDensity } from '../hooks/useDensity';
 import { usePublishRailTreeWhileFocused } from '../navigation/navRail';
@@ -71,6 +74,7 @@ import { hapticButtonDown, hapticButtonUp } from '../utils/haptics';
 import { RootStackParamList } from '../navigation';
 import { detachTagFromDeletedItem, ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { SwipeSelectArea, SwipeSelectItem } from '../components/SwipeSelect';
 import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
 import Animated from 'react-native-reanimated';
 import { SearchVoid, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
@@ -124,6 +128,7 @@ import { useDeskGate } from '../navigation/deskVisibility';
 import { FEATURES } from '../features';
 import { recentReports } from '../utils/perfWatch';
 import WhileOpen from '../components/WhileOpen';
+import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
 
 // Палітра №3 (Теплий Теракотовий) - the create/edit action color across
 // this redesign; replaces the old blue accent wherever this screen used it.
@@ -294,6 +299,8 @@ export default function DocumentsScreen({
   // A copy pushed over the tile board: it has a way back and no island.
   standalone,
 }: { inPane?: boolean; standalone?: boolean } = {}) {
+  // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
+  useDockDesksWhileFocused(!!standalone && !inPane);
   // Temporary diagnosis - see utils/perfWatch.
   useRenderTimer('Документи');
   const theme = useTheme();
@@ -491,7 +498,9 @@ export default function DocumentsScreen({
     // file-manager gesture the user asked for by pointing at that exact
     // row. Both halves are this screen's, because "in the bin" is a
     // field here and undoing it is not a move back to anywhere.
-    binItem: (item) => confirmDeleteDocument(item.id),
+    binItem: async (item) => {
+      await binNoteAsking(item.id, item.title);
+    },
     unbinItem: (item) => restoreDocument(item.id),
     items: documents,
     isSelectMode,
@@ -547,6 +556,16 @@ export default function DocumentsScreen({
         go(openTabWithSequence('note', item.id, explorer.visibleItems.map((d) => d.id)));
       } else if (answer === 'select') selectFromHold(item);
     });
+  }
+  // SWIPE TO SELECT (components/SwipeSelect): the picked set as the finger goes; the first pick turns the dock to the
+  // selection's actions, the way a hold does; lifted with nothing picked, the mode ends.
+  function sweepSelect(ids: Set<string>) {
+    const entering = !isSelectMode && ids.size > 0;
+    list.sweepTo(ids);
+    if (entering) setDockFace('actions');
+  }
+  function sweepEnd(ids: Set<string>) {
+    if (ids.size === 0) clearSelection();
   }
   function selectFromHold(item: DocumentItem) {
     if (isSelectMode) {
@@ -664,7 +683,7 @@ export default function DocumentsScreen({
   // which is what the white screen was.
   // The canvas is the photos' alone so far: a stray 'canvas' here is a grid.
   const drawnMode: 'list' | 'grid' | 'wide' =
-    viewMode !== 'list' && isTwoPane && !!openDoc ? 'list' : viewMode === 'canvas' ? 'grid' : viewMode;
+    viewMode !== 'list' && isTwoPane && !!openDoc ? 'list' : (viewMode === 'canvas' || viewMode === 'wide' ? 'grid' : viewMode) as 'list' | 'grid' | 'wide'; // «Широка картка» is gone (the user, 2026-10-13): a stored 'wide' is a grid
   // Widths in PIXELS, from the width the list actually has, so a row of
   // cards ends on the same line as a row of folders above it. As
   // percentages the two could not agree: the gaps between cards are
@@ -943,62 +962,46 @@ export default function DocumentsScreen({
       ? null
       : !searchingAlone && (isSelectMode || !onDesk)
       ? isSelectMode
-        ? [
-            {
-              key: 'cancel',
-              icon: 'close-outline',
-              label: 'Вийти',
-              onPress: () => {
-                showContext();
-                toggleSelectMode();
-              },
+        ? selectionDock({
+            onExit: () => {
+              showContext();
+              toggleSelectMode();
             },
-            ...(selectedIds.size > 0
-              ? [
-                  { key: 'move', icon: 'arrow-forward-outline' as const, label: 'Перемістити', onPress: moveSelected },
-                  ...(selectedDocuments.length === 1
-                    ? [
-                        {
-                          key: 'rename',
-                          icon: 'pencil-outline' as const,
-                          label: 'Перейменувати',
-                          onPress: () => {
-                            const item = selectedDocuments[0];
-                            showContext();
-                            clearSelection();
-                            setDocRename(item);
-                          },
-                        },
-                        {
-                          // The note's address, to paste into another note
-                          // as a word linking to this one.
-                          key: 'address',
-                          icon: 'link-outline' as const,
-                          label: 'Посилання',
-                          onPress: async () => {
-                            const item = selectedDocuments[0];
-                            await Clipboard.setStringAsync(noteAddress(item.id));
-                            showContext();
-                            clearSelection();
-                            notify('Посилання скопійовано', 'Встав його в іншу нотатку - воно стане словом-посиланням на цю.');
-                          },
-                        },
-                      ]
-                    : []),
-                  { key: 'tag', icon: 'pricetag-outline' as const, label: 'Папки', onPress: () => setBulkTagPickerVisible(true) },
-                  { key: 'group', icon: 'folder-outline' as const, label: 'Проект', onPress: () => setBulkGroupPickerVisible(true) },
-                  {
-                    key: 'wide',
-                    icon: selectedDocuments.every((d) => d.wideCard)
-                      ? 'contract-outline'
-                      : 'tablet-landscape-outline',
-                    label: 'Ширина',
-                    onPress: bulkToggleWideCard,
-                  },
-                  { key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: confirmDeleteSelected },
-                ]
-              : []),
-          ]
+            all: !trashOpen
+              ? {
+                  shown: explorer.visibleItems.length,
+                  chosen: explorer.visibleItems.filter((d) => selectedIds.has(d.id)).length,
+                  onAll: () => list.selectMany(explorer.visibleItems.map((d) => d.id)),
+                  onNone: () => list.selectMany([]),
+                }
+              : undefined,
+            count: selectedIds.size,
+            move: moveSelected,
+            rename:
+              selectedDocuments.length === 1
+                ? () => {
+                    const item = selectedDocuments[0];
+                    showContext();
+                    clearSelection();
+                    setDocRename(item);
+                  }
+                : undefined,
+            // The note's address, to paste into another note as a word linking to this one.
+            link:
+              selectedDocuments.length === 1
+                ? async () => {
+                    const item = selectedDocuments[0];
+                    await Clipboard.setStringAsync(noteAddress(item.id));
+                    showContext();
+                    clearSelection();
+                    notify('Посилання скопійовано', 'Встав його в іншу нотатку - воно стане словом-посиланням на цю.');
+                  }
+                : undefined,
+            tag: () => setBulkTagPickerVisible(true),
+            group: () => setBulkGroupPickerVisible(true),
+            wide: { onPress: bulkToggleWideCard, on: selectedDocuments.every((d) => d.wideCard) },
+            remove: confirmDeleteSelected,
+          })
         : [
             // Three ways round: a list, a grid of tiles, and a column
             // of wide cards (cover on the left).
@@ -1013,7 +1016,6 @@ export default function DocumentsScreen({
               ? ([
                   { key: 'view-list', icon: 'reorder-four-outline', mode: 'list' as const },
                   { key: 'view-grid', icon: 'grid-outline', mode: 'grid' as const },
-                  { key: 'view-wide', icon: 'tablet-landscape-outline', mode: 'wide' as const },
                   { key: 'view-canvas', icon: 'easel-outline', mode: 'canvas' as const },
                 ].map((entry) => ({
                   key: entry.key,
@@ -1036,7 +1038,7 @@ export default function DocumentsScreen({
                     // The icon says which one is on, as it always did.
                     onPress: () =>
                       changeViewMode(
-                        viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'wide' : viewMode === 'wide' ? 'canvas' : 'list'
+                        viewMode === 'list' ? 'grid' : viewMode === 'canvas' ? 'list' : viewMode === 'grid' ? 'canvas' : 'grid'
                       ),
                     closesStack: true,
                   },
@@ -1072,20 +1074,8 @@ export default function DocumentsScreen({
   // brings its actions into the dock, under the thumb.
   useTopExtras(
     [
-      { kind: 'section', label: 'Вигляд' },
-      { label: 'Список', icon: 'reorder-four-outline', checked: viewMode === 'list', onPress: () => changeViewMode('list') },
-      { label: 'Сітка', icon: 'grid-outline', checked: viewMode === 'grid', onPress: () => changeViewMode('grid') },
-      { label: 'Широкі картки', icon: 'tablet-landscape-outline', checked: viewMode === 'wide', onPress: () => changeViewMode('wide') },
-      { label: 'Полотно', icon: 'easel-outline', checked: viewMode === 'canvas', onPress: () => changeViewMode('canvas') },
-      { kind: 'section', label: 'Порядок' },
-      ...FIELD_ORDER.map((field) => ({
-        // The one in force says which way it runs; choosing it again
-        // turns it round.
-        label: sortPref.field === field ? `${FIELD_LABELS[field]} ${sortPref.dir === 'asc' ? '↑' : '↓'}` : FIELD_LABELS[field],
-        icon: FIELD_ICONS[field],
-        checked: sortPref.field === field,
-        onPress: () => selectSortField(field),
-      })),
+      ...viewSection(viewMode, changeViewMode),
+      ...orderSection(sortPref, selectSortField),
       { kind: 'rule' },
       { label: 'Смартпапки', icon: 'pricetag-outline', checked: !!activeFilter, onPress: () => drawerRef.current?.open() },
       // Temporary (2026-10-06): what the app measured lately - read back
@@ -1510,6 +1500,12 @@ export default function DocumentsScreen({
 
   function confirmDeleteSelected() {
     const toDelete = selectedDocuments;
+    // ONE note goes straight to the bin (the bin is the undo - the user's rule, 2026-10-10); several
+    // are asked once, with the count.
+    if (toDelete.length === 1) {
+      confirmDeleteDocument(toDelete[0].id).then(() => clearSelection());
+      return;
+    }
     confirm({
       title: toDelete.length === 1 ? 'У кошик?' : `У кошик (${toDelete.length})?`,
       message: 'Можна буде повернути з кошика протягом 30 днів.',
@@ -1773,7 +1769,7 @@ export default function DocumentsScreen({
             in the portal over everything, so out of focus it is display:
             none rather than gone; a hidden layout's 0 is not a height. */}
         {!(isTwoPane && !!openDoc && paneFullscreen) && (
-        <GlassPortal>
+        <GlassPortal name="DocumentsScreen">
         <FocusHideView
           store={focus}
           style={[styles.topChrome, { top: chromeTop }]}
@@ -2039,6 +2035,16 @@ export default function DocumentsScreen({
             <View ref={flipScope} style={{ flex: 1 }}>
             <GestureDetector gesture={pull.gesture}>
             <GestureDetector gesture={carrying.listGesture}>
+          <SwipeSelectArea
+            enabled={FEATURES.swipeSelect && drawnMode === 'list' && !trashOpen}
+            order={explorer.visibleItems.map((d) => d.id)}
+            isSelectMode={isSelectMode}
+            selectedIds={selectedIds}
+            onSelect={sweepSelect}
+            onEnd={sweepEnd}
+            onToggle={toggleSelected}
+            scroll={carrying}
+          >
           <FlatList
             ref={carrying.scrollRef as React.RefObject<FlatList<DocumentItem>>}
             {...pull.listProps}
@@ -2326,9 +2332,11 @@ export default function DocumentsScreen({
               // itself, the same way a list row does - so it ends on
               // the same line as the folders above it instead of
               // running to the screen's own edges.
-              return drawnMode === 'wide' ? <View style={styles.wideRow}>{card}</View> : card;
+              if (drawnMode === 'wide') return <View style={styles.wideRow}>{card}</View>;
+              return <SwipeSelectItem id={item.id}>{card}</SwipeSelectItem>;
             }}
           />
+          </SwipeSelectArea>
           </GestureDetector>
           </GestureDetector>
             </View>

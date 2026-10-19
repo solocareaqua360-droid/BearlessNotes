@@ -118,9 +118,12 @@ function regionsGeoJson(regions: Region[]) {
 export default function GeoMapView({
   points,
   onPressPoint,
+  focusId,
 }: {
   points: GeoMapPoint[];
   onPressPoint: (id: string) => void;
+  focusId?: string | null;
+  bare?: boolean;
 }) {
   const theme = useTheme();
   const S = useSoft();
@@ -310,6 +313,12 @@ export default function GeoMapView({
   }, []);
 
   // New points, or one renamed or moved, without building the map again.
+  useEffect(() => {
+    if (!focusId) return;
+    const p = points.find((x) => x.id === focusId);
+    if (p) map.current?.easeTo({ center: [p.lng, p.lat], zoom: 14 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId]);
   useEffect(() => {
     const source = map.current?.getSource?.('points');
     if (source) source.setData(toGeoJson(points));

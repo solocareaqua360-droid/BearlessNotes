@@ -21,12 +21,15 @@ export default function RecentFolderStrip({
   tags,
   onPick,
   onOther,
+  otherLabel,
 }: {
   // Every folder there is (useTags) - the recent ids are looked up here,
   // and one deleted since is simply not shown.
   tags: Tag[];
   onPick: (tag: Tag) => void;
   onOther: () => void;
+  // «У підбірку…» in a base of collections.
+  otherLabel?: string;
 }) {
   useRenderTimer('Недавні папки');
   const S = useSoft();
@@ -53,7 +56,7 @@ export default function RecentFolderStrip({
         ))}
         <Pressable style={chip} onPress={onOther}>
           <Ionicons name="folder-open-outline" size={16} color={S.ink2} />
-          <Text style={[styles.label, { color: S.ink2 }]}>{recent.length > 0 ? 'Інша папка…' : 'У папку…'}</Text>
+          <Text style={[styles.label, { color: S.ink2 }]}>{otherLabel ? (recent.length > 0 ? 'Інша…' : `${otherLabel}…`) : recent.length > 0 ? 'Інша папка…' : 'У папку…'}</Text>
         </Pressable>
       </ScrollView>
     </View>

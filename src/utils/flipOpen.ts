@@ -14,7 +14,8 @@ import type { Rect } from './morph';
 // growing from the card's place. One clock, one card - a photograph of
 // the card was tried first and showed as "another card" at the hand-over
 // (no shadow, other corners, taken a beat late).
-export type FlipFrom = { rect: Rect };
+// `ms`: this opening's own turn length, where it should differ from FLIP_MS (a collection's - see ExplorerScreen).
+export type FlipFrom = { rect: Rect; ms?: number };
 
 // The turn's length, both ways - the window's half and the card's.
 export const FLIP_MS = 460;

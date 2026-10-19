@@ -31,7 +31,8 @@ import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { setSelection } from '../utils/setSelection';
 import Svg, { Path } from 'react-native-svg';
 import { Block, CanvasLink } from '../types';
-import { orderByCanvasLinks, sequenceLinkIds } from '../utils/canvasOrder';
+import { anchorCanvasLinks, canvasGroups, orderByCanvasLinks, sequenceLinkIds } from '../utils/canvasOrder';
+import { hapticDrop } from '../utils/haptics';
 import { FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import type { SoftTokens } from '../theme/soft';
 import SoftIcon from './SoftIcon';
@@ -170,14 +171,43 @@ export function layOutBlocks(
   blocks: Block[],
   heights: Record<string, number> = {}
 ): CanvasPlacement[] {
+  // A glued group (Block.canvasGroup) stands as ONE card: its head is placed like any card, the rest flush under it,
+  // and in the column it takes one slot as tall as all of it.
+  const groups = canvasGroups(blocks);
+  const h = (b: Block) => heights[b.id] ?? approximateHeight(b);
+  const placed = new Map<string, { x: number; y: number }>();
   let nextY = 0;
-  return blocks.map((block) => {
-    if (block.canvas) return { id: block.id, x: block.canvas.x, y: block.canvas.y };
-    const y = nextY;
-    nextY += (heights[block.id] ?? approximateHeight(block)) + LANE_GAP;
-    return { id: block.id, x: 0, y };
-  });
+  for (const block of blocks) {
+    const head = groups.headOf.get(block.id);
+    if (head && head !== block.id) continue;
+    const members = head ? groups.members.get(head)! : [block];
+    const total = members.reduce((sum, m) => sum + h(m), 0);
+    let x = 0;
+    let y: number;
+    if (block.canvas) {
+      x = block.canvas.x;
+      y = block.canvas.y;
+    } else {
+      y = nextY;
+      nextY += total + LANE_GAP;
+    }
+    let dy = 0;
+    for (const m of members) {
+      placed.set(m.id, { x, y: y + dy });
+      dy += h(m);
+    }
+  }
+  return blocks.map((b) => ({ id: b.id, ...(placed.get(b.id) ?? { x: 0, y: 0 }) }));
 }
+
+// How near (on screen) a card's top-left must come to a card's foot for it to glue on under it.
+const GLUE_RADIUS = 44;
+// A card moved less than this from where it stood was nudged, not placed: it does not glue (cards in the column stand
+// only 20 apart, so the card above is always within reach of a nudge).
+const GLUE_NUDGE = 28;
+
+// What a drop asks of the document: fields set, fields taken away - several blocks in one undo step.
+export type CanvasPatch = { id: string; set?: Partial<Block>; unset?: ('canvas' | 'canvasGroup')[] };
 
 function approximateHeight(block: Block): number {
   const type = block.type ?? 'paragraph';
@@ -202,11 +232,14 @@ export type DocumentCanvasHandle = {
   // own drop handler) asks, so the panel never has to know this
   // component's own pan/zoom math.
   screenToSurface: (screenX: number, screenY: number, then: (at: { x: number; y: number } | null) => void) => void;
+  // A new card where the eye is - what the round "+" does; the note's dock calls it when it carries the "+".
+  addAtCentre: () => void;
 };
 
 function DocumentCanvasInner({
   blocks,
   onMoveBlock,
+  onPatchBlocks,
   onChangeText,
   onOpenBlock,
   onEditingChange,
@@ -215,11 +248,14 @@ function DocumentCanvasInner({
   links,
   onToggleLink,
   onAdd,
+  noAddButton,
   soft = null,
 }: {
   blocks: Block[];
   // Called once, when a card is let go - not on every frame of the drag.
   onMoveBlock: (id: string, x: number, y: number) => void;
+  // Gluing and unglueing (Block.canvasGroup): every block a drop changes, applied as one step.
+  onPatchBlocks: (patches: CanvasPatch[]) => void;
   // The editor's own handler, untouched: one place decides what typing
   // into a block means (list continuation, undo snapshots, mirrors), and
   // the canvas is just another keyboard pointed at it.
@@ -247,6 +283,8 @@ function DocumentCanvasInner({
   // coordinates, so whatever gets added lands where the eye already is
   // rather than at the bottom of a column somewhere off-screen.
   onAdd: (at: { x: number; y: number }) => void;
+  // The note's dock carries the "+" (its black circle): no round button of the canvas's own.
+  noAddButton?: boolean;
   // The soft style (theme/soft), when the note wears it - handed to every
   // piece of the canvas through SoftCanvasContext rather than prop by prop.
   soft?: SoftTokens | null;
@@ -283,25 +321,32 @@ function DocumentCanvasInner({
   const [cardHeights, setCardHeights] = useState<Record<string, number>>({});
   const placements = useMemo(() => layOutBlocks(blocks, cardHeights), [blocks, cardHeights]);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const sequenceIds = useMemo(() => sequenceLinkIds(links), [links]);
+  // Glued blocks stand as one card; arrows touch the group, never a block inside it.
+  const groups = useMemo(() => canvasGroups(blocks), [blocks]);
+  const anchorOf = (id: string) => groups.headOf.get(id) ?? id;
+  const anchoredLinks = useMemo(() => anchorCanvasLinks(links, groups.headOf), [links, groups]);
+  const sequenceIds = useMemo(() => sequenceLinkIds(anchoredLinks), [anchoredLinks]);
   // The number each chained card will have on the page - the order the
   // arrows ask for, shown on the cards themselves so nobody has to work
   // it out. Only cards an order-setting arrow touches get one: the rest
   // keep the order they had, which the arrows say nothing about.
   const ordinals = useMemo(() => {
     const chained = new Set<string>();
-    for (const [id, link] of Object.entries(links)) {
+    for (const [id, link] of Object.entries(anchoredLinks)) {
       if (!sequenceIds.has(id)) continue;
       chained.add(link.from);
       chained.add(link.to);
     }
     const result = new Map<string, number>();
     if (chained.size === 0) return result;
-    orderByCanvasLinks(blocks, links).forEach((block, index) => {
-      if (chained.has(block.id)) result.set(block.id, index + 1);
+    // Numbered by cards as the eye sees them: a group is one number, on its head.
+    let n = 0;
+    orderByCanvasLinks(blocks, links).forEach((block) => {
+      if ((groups.headOf.get(block.id) ?? block.id) !== block.id) return;
+      if (chained.has(block.id)) result.set(block.id, ++n);
     });
     return result;
-  }, [blocks, links, sequenceIds]);
+  }, [blocks, links, anchoredLinks, sequenceIds, groups]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // The card a hold has made the start of an arrow. The next tap on
   // another card finishes it; a tap beside the cards, or on the same
@@ -348,6 +393,88 @@ function DocumentCanvasInner({
   function heightOf(index: number) {
     return cardHeights[blocks[index].id] ?? approximateHeight(blocks[index]);
   }
+  // A card as the arrows see it: a lone block, or a whole glued group under its head.
+  function groupHeightOf(anchorId: string) {
+    const members = groups.members.get(anchorId);
+    if (!members) {
+      const index = blocks.findIndex((b) => b.id === anchorId);
+      return index === -1 ? 0 : heightOf(index);
+    }
+    return members.reduce((sum, m) => sum + (cardHeights[m.id] ?? approximateHeight(m)), 0);
+  }
+
+  // GLUING (2026-10-16, sketch LHWkBezMbi2e1chEqCjYfo; the board's rules): a card let go with its top-left near
+  // another card's foot sticks on under it. A group's head moves the whole group; any other block of a group drags
+  // OUT of it - let go near its old place, it goes back.
+  const dragX = useSharedValue(0);
+  const dragY = useSharedValue(0);
+  const dragOn = useSharedValue(false);
+  const glueTargets = useSharedValue<{ x: number; y: number }[]>([]);
+  const dragStartX = useSharedValue(0);
+  const dragStartY = useSharedValue(0);
+  function glueTargetsFor(movingId: string): { id: string; x: number; y: number }[] {
+    const head = groups.headOf.get(movingId);
+    const exclude = new Set(head ? groups.members.get(head)!.map((m) => m.id) : [movingId]);
+    const out: { id: string; x: number; y: number }[] = [];
+    blocks.forEach((b, index) => {
+      if (exclude.has(b.id) || anchorOf(b.id) !== b.id || b.canvasDivider) return;
+      out.push({ id: b.id, x: placements[index].x, y: placements[index].y + groupHeightOf(b.id) });
+    });
+    return out;
+  }
+  function startDrag(id: string) {
+    setDraggingId(id);
+    glueTargets.value = glueTargetsFor(id).map(({ x, y }) => ({ x, y }));
+    const index = blocks.findIndex((b) => b.id === id);
+    if (index !== -1) {
+      dragStartX.value = placements[index].x;
+      dragStartY.value = placements[index].y;
+      dragX.value = placements[index].x;
+      dragY.value = placements[index].y;
+    }
+    dragOn.value = !selectedIds.has(id);
+  }
+  function dropCard(id: string, x: number, y: number) {
+    const index = blocks.findIndex((b) => b.id === id);
+    if (index === -1) return;
+    const block = blocks[index];
+    const head = groups.headOf.get(id);
+    const isHead = head === id;
+    const isMember = !!head && !isHead;
+    const radius = GLUE_RADIUS / Math.max(0.2, scale.value);
+    // Back to its own place: nothing changes, the card returns there.
+    if (isMember && Math.hypot(x - placements[index].x, y - placements[index].y) < radius) return;
+    const nudged = Math.hypot(x - placements[index].x, y - placements[index].y) < GLUE_NUDGE / Math.max(0.2, scale.value);
+    let best: { id: string; d: number } | null = null;
+    for (const t of nudged ? [] : glueTargetsFor(id)) {
+      const d = Math.hypot(x - t.x, y - t.y);
+      if (d < radius && (!best || d < best.d)) best = { id: t.id, d };
+    }
+    const patches: CanvasPatch[] = [];
+    if (isMember) {
+      // Out of its group; a group left with one block is no group.
+      const rest = groups.members.get(head!)!.filter((m) => m.id !== id);
+      if (rest.length === 1) patches.push({ id: rest[0].id, unset: ['canvasGroup'] });
+    }
+    if (best) {
+      const target = best.id;
+      const targetMembers = groups.members.get(target);
+      const gid = targetMembers ? targetMembers[0].canvasGroup!.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      let order = targetMembers ? Math.max(...targetMembers.map((m) => m.canvasGroup!.order)) + 1 : 1;
+      // A lone card others stick under becomes the head. Its place stays as it is - a card nobody has placed keeps
+      // its slot in the column (fixing it there took it out of the column, and the next card slid up under it).
+      if (!targetMembers) patches.push({ id: target, set: { canvasGroup: { id: gid, order: 0 } } });
+      const moving = isHead ? groups.members.get(id)! : [block];
+      moving.forEach((m) => patches.push({ id: m.id, set: { canvasGroup: { id: gid, order: order++ } } }));
+      hapticDrop();
+    } else if (isMember) {
+      patches.push({ id, unset: ['canvasGroup'], set: { canvas: { x, y } } });
+    } else {
+      onMoveBlock(id, x, y);
+      return;
+    }
+    onPatchBlocks(patches);
+  }
 
   // Last match wins: a card later in the document paints on top of an
   // earlier one, so where they overlap the visible one is the one meant.
@@ -378,7 +505,7 @@ function DocumentCanvasInner({
   function endHandleDrag(id: string, x: number, y: number) {
     draftVisible.value = false;
     const target = cardAt(x, y);
-    if (target && target !== id) onToggleLink(id, target);
+    if (target && anchorOf(target) !== anchorOf(id)) onToggleLink(id, target);
   }
   // Written by whichever selected card is under the finger, read by every
   // other selected card - which is what makes a whole selection visibly
@@ -410,7 +537,7 @@ function DocumentCanvasInner({
   }
 
   function handleLinkTap(id: string) {
-    if (linkSourceId !== null && linkSourceId !== id) onToggleLink(linkSourceId, id);
+    if (linkSourceId !== null && anchorOf(linkSourceId) !== anchorOf(id)) onToggleLink(linkSourceId, id);
     setLinkSourceId(null);
   }
 
@@ -432,7 +559,13 @@ function DocumentCanvasInner({
     });
   }
 
-  useImperativeHandle(ref, () => ({ stopEditing, screenToSurface }));
+  function addAtCentre() {
+    const centre = toSurface(viewport.width / 2, viewport.height / 2);
+    // A little up and left of the exact middle, so the new card's
+    // top-left corner - not its centre - is where the eye is.
+    onAdd({ x: centre.x - CARD_WIDTH / 2, y: centre.y - 40 });
+  }
+  useImperativeHandle(ref, () => ({ stopEditing, screenToSurface, addAtCentre }));
 
   useEffect(() => {
     onEditingChange?.(editingId);
@@ -626,13 +759,13 @@ function DocumentCanvasInner({
   function armLinkNear(x: number, y: number) {
     const threshold = 18 / scale.value;
     let best: { id: string; distance: number } | null = null;
-    for (const [id, link] of Object.entries(links)) {
+    for (const [id, link] of Object.entries(anchoredLinks)) {
       const fromIndex = blocks.findIndex((b) => b.id === link.from);
       const toIndex = blocks.findIndex((b) => b.id === link.to);
       if (fromIndex === -1 || toIndex === -1) continue;
       const { x1, y1, x2, y2 } = linkEndpoints(
-        { ...placements[fromIndex], height: heightOf(fromIndex) },
-        { ...placements[toIndex], height: heightOf(toIndex) }
+        { ...placements[fromIndex], height: groupHeightOf(link.from) },
+        { ...placements[toIndex], height: groupHeightOf(link.to) }
       );
       // The same curve curvePath draws: control points pushed straight
       // out sideways from each end.
@@ -746,7 +879,7 @@ function DocumentCanvasInner({
                 trails a live line for that, and this will too once the
                 surface is shared; for now the arrow is right whenever
                 nothing is moving. */}
-            {Object.entries(links).map(([id, link]) => {
+            {Object.entries(anchoredLinks).map(([id, link]) => {
               const colour = sequenceIds.has(id) ? (soft ? soft.ink2 : LINK_COLOR) : soft ? soft.ink3 : LINK_COLOR_AUX;
               const fromIndex = blocks.findIndex((b) => b.id === link.from);
               const toIndex = blocks.findIndex((b) => b.id === link.to);
@@ -768,7 +901,7 @@ function DocumentCanvasInner({
                   ...positionOf(blockId, place),
                   offsetX: groupMoving && selectedIds.has(blockId) ? groupOffsetX : null,
                   offsetY: groupMoving && selectedIds.has(blockId) ? groupOffsetY : null,
-                  height: heightOf(index),
+                  height: groupHeightOf(blockId),
                 });
                 return (
                   <LiveLine
@@ -780,8 +913,8 @@ function DocumentCanvasInner({
                 );
               }
               const { x1, y1, x2, y2 } = linkEndpoints(
-                { ...from, height: cardHeights[link.from] ?? approximateHeight(blocks[fromIndex]) },
-                { ...to, height: cardHeights[link.to] ?? approximateHeight(blocks[toIndex]) }
+                { ...from, height: groupHeightOf(link.from) },
+                { ...to, height: groupHeightOf(link.to) }
               );
               const left = Math.min(x1, x2) - LINK_PADDING;
               const top = Math.min(y1, y2) - LINK_PADDING;
@@ -816,7 +949,9 @@ function DocumentCanvasInner({
                       ]}
                       onPress={() => {
                         setArmedLinkId(null);
-                        onToggleLink(link.from, link.to);
+                        // The arrow as it was made, block to block - the drawn one runs between the groups.
+                        const raw = links[id] ?? link;
+                        onToggleLink(raw.from, raw.to);
                       }}
                     >
                       {/* On the arrow's own violet, not on a card - so
@@ -835,14 +970,35 @@ function DocumentCanvasInner({
               visible={draftVisible}
             />
             <Animated.View style={[styles.marquee, marqueeStyle]} pointerEvents="none" />
-            {blocks.map((block, index) => (
+            <GlueLine dragX={dragX} dragY={dragY} dragOn={dragOn} targets={glueTargets} scale={scale} startX={dragStartX} startY={dragStartY} />
+            {blocks.map((block, index) => {
+              const head = groups.headOf.get(block.id);
+              const members = head ? groups.members.get(head)! : null;
+              const role: GroupRole = !members
+                ? 'single'
+                : members[0].id === block.id
+                  ? 'head'
+                  : members[members.length - 1].id === block.id
+                    ? 'tail'
+                    : 'middle';
+              const headIndex = head ? blocks.findIndex((b) => b.id === head) : -1;
+              const follow =
+                head && head !== block.id && headIndex !== -1
+                  ? { ...positionOf(head, placements[headIndex]), dy: placements[index].y - placements[headIndex].y }
+                  : null;
+              return (
               <CanvasCard
                 key={block.id}
                 block={block}
                 placement={placements[index]}
                 position={positionOf(block.id, placements[index])}
+                groupRole={role}
+                follow={follow}
+                dragX={dragX}
+                dragY={dragY}
+                dragOn={dragOn}
                 dragging={draggingId === block.id}
-                onDragStart={setDraggingId}
+                onDragStart={startDrag}
                 onDragEnd={() => setDraggingId(null)}
                 draftEndX={draftEndX}
                 draftEndY={draftEndY}
@@ -874,7 +1030,7 @@ function DocumentCanvasInner({
                   });
                 }}
                 onHeight={reportHeight}
-                onMove={onMoveBlock}
+                onMove={dropCard}
                 onChangeText={onChangeText}
                 onSelectionChange={onSelectionChange}
                 onInputRef={onInputRef}
@@ -885,7 +1041,8 @@ function DocumentCanvasInner({
                 }}
                 onOpen={onOpenBlock}
               />
-            ))}
+              );
+            })}
           </Animated.View>
           </View>
         </Animated.View>
@@ -894,14 +1051,10 @@ function DocumentCanvasInner({
           canvas had no way to add anything, which meant no photo, no
           file, no database record without leaving it. One button, icon
           only, where the databases keep theirs. */}
+      {!noAddButton && (
       <Pressable
         style={styles.addButton}
-        onPress={() => {
-          const centre = toSurface(viewport.width / 2, viewport.height / 2);
-          // A little up and left of the exact middle, so the new card's
-          // top-left corner - not its centre - is where the eye is.
-          onAdd({ x: centre.x - CARD_WIDTH / 2, y: centre.y - 40 });
-        }}
+        onPress={addAtCentre}
       >
         {soft ? (
           <SoftIcon name="plus" size={26} color={soft.ink} />
@@ -909,6 +1062,7 @@ function DocumentCanvasInner({
           <Ionicons name="add" size={28} color={theme.canvas.fabInk} />
         )}
       </Pressable>
+      )}
       {blocks.length === 0 && (
         <View style={styles.emptyState} pointerEvents="none">
           <Ionicons name="shapes-outline" size={30} color={theme.canvas.inkFaint} />
@@ -929,6 +1083,58 @@ type LiveEnd = {
   offsetY: SharedValue<number> | null;
   height: number;
 };
+
+type GroupRole = 'single' | 'head' | 'middle' | 'tail';
+
+// Where a card in the hand would glue on: a line at the foot of the nearest card within reach, read on the UI
+// thread from the dragged card's corner and the feet gathered when the drag began.
+function GlueLine({
+  dragX,
+  dragY,
+  dragOn,
+  targets,
+  scale,
+  startX,
+  startY,
+}: {
+  startX: SharedValue<number>;
+  startY: SharedValue<number>;
+  dragX: SharedValue<number>;
+  dragY: SharedValue<number>;
+  dragOn: SharedValue<boolean>;
+  targets: SharedValue<{ x: number; y: number }[]>;
+  scale: SharedValue<number>;
+}) {
+  const soft = useContext(SoftCanvasContext);
+  const style = useAnimatedStyle(() => {
+    const list = targets.value;
+    const radius = GLUE_RADIUS / Math.max(0.2, scale.value);
+    let best = -1;
+    let bestD = 1e9;
+    for (let i = 0; i < list.length; i++) {
+      const d = Math.hypot(dragX.value - list[i].x, dragY.value - list[i].y);
+      if (d < radius && d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    const nudged = Math.hypot(dragX.value - startX.value, dragY.value - startY.value) < GLUE_NUDGE / Math.max(0.2, scale.value);
+    if (!dragOn.value || best < 0 || nudged) return { opacity: 0 };
+    return {
+      opacity: 1,
+      transform: [{ translateX: WORLD_HALF + list[best].x + 10 }, { translateY: WORLD_HALF + list[best].y + 3 }],
+    };
+  });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        { position: 'absolute', left: 0, top: 0, width: CARD_WIDTH - 20, height: 3, borderRadius: 2, backgroundColor: soft?.accent ?? '#E58B4E' },
+        style,
+      ]}
+    />
+  );
+}
 
 // The arrow while either card is moving. A straight rotated View rather
 // than the Svg curve, as on the board: a curve's canvas would have to be
@@ -1003,6 +1209,11 @@ function CanvasCard({
   block,
   placement,
   position,
+  groupRole,
+  follow,
+  dragX,
+  dragY,
+  dragOn,
   dragging,
   onDragStart,
   onDragEnd,
@@ -1039,6 +1250,14 @@ function CanvasCard({
   placement: CanvasPlacement;
   // The card's shared position, owned by the canvas - see positionOf.
   position: { x: SharedValue<number>; y: SharedValue<number> };
+  // Its place in a glued group, and - for any block of a group but its head - the head's position it stands under
+  // (dy below it), so it rides along while the head is dragged.
+  groupRole: GroupRole;
+  follow: { x: SharedValue<number>; y: SharedValue<number>; dy: number } | null;
+  // The dragged card's corner, for the glue line.
+  dragX: SharedValue<number>;
+  dragY: SharedValue<number>;
+  dragOn: SharedValue<boolean>;
   dragging: boolean;
   onDragStart: (id: string) => void;
   onDragEnd: () => void;
@@ -1189,8 +1408,11 @@ function CanvasCard({
       }
       posX.value += e.changeX / canvasScale.value;
       posY.value += e.changeY / canvasScale.value;
+      dragX.value = posX.value;
+      dragY.value = posY.value;
     })
     .onEnd(() => {
+      dragOn.value = false;
       if (selected) {
         runOnJS(onGroupMove)(groupOffsetX.value, groupOffsetY.value);
         groupOffsetX.value = 0;
@@ -1201,6 +1423,7 @@ function CanvasCard({
       runOnJS(onDragEnd)();
     })
     .onFinalize(() => {
+      dragOn.value = false;
       runOnJS(onDragEnd)();
     });
 
@@ -1245,10 +1468,12 @@ function CanvasCard({
       runOnJS(onHandleEnd)(block.id, draftEndX.value, draftEndY.value);
     });
 
+  // Under its head while it is not in the hand itself.
+  const rideHead = !!follow && !dragging;
   const cardStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: WORLD_HALF + posX.value + (selected ? groupOffsetX.value : 0) },
-      { translateY: WORLD_HALF + posY.value + (selected ? groupOffsetY.value : 0) },
+      { translateX: WORLD_HALF + (rideHead && follow ? follow.x.value : posX.value) + (selected ? groupOffsetX.value : 0) },
+      { translateY: WORLD_HALF + (rideHead && follow ? follow.y.value + follow.dy : posY.value) + (selected ? groupOffsetY.value : 0) },
     ],
   }));
 
@@ -1260,10 +1485,15 @@ function CanvasCard({
           selected && styles.cardSelected,
           editing && styles.cardEditing,
           linkSource && styles.cardLinkSource,
+          groupRole === 'head' && styles.cardGroupHead,
+          groupRole === 'middle' && styles.cardGroupMiddle,
+          groupRole === 'tail' && styles.cardGroupTail,
+          dragging && groupRole !== 'single' && groupRole !== 'head' && styles.cardGroupLifted,
           cardStyle,
         ]}
         onLayout={(e) => onHeight(block.id, e.nativeEvent.layout.height)}
       >
+        {(groupRole === 'middle' || groupRole === 'tail') && !dragging && <View style={styles.groupSeam} pointerEvents="none" />}
         {ordinal !== null && (
           <View style={styles.ordinal} pointerEvents="none">
             <Text style={styles.ordinalLabel}>{ordinal}</Text>
@@ -1327,11 +1557,13 @@ function CanvasCard({
               linesRef.current = e.nativeEvent.lines;
             }}
           />
+          {(groupRole === 'single' || groupRole === 'head') && (
           <GestureDetector gesture={handleGesture}>
             <View style={styles.handle} hitSlop={8}>
               <View style={styles.handleDot} />
             </View>
           </GestureDetector>
+          )}
           </>
         )}
       </Animated.View>
@@ -1584,6 +1816,21 @@ const makeStyles = (theme: Theme) =>
       borderColor: theme.canvas.edgeActive,
       borderWidth: 2,
     },
+    // A glued group reads as one card: square where its blocks meet, a hairline seam between them.
+    cardGroupHead: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+    cardGroupMiddle: { borderRadius: 0 },
+    cardGroupTail: { borderTopLeftRadius: 0, borderTopRightRadius: 0 },
+    // The seam: short of both edges, as in the sketch - the card reads as one sheet.
+    groupSeam: {
+      position: 'absolute',
+      top: 0,
+      left: 16,
+      right: 16,
+      height: StyleSheet.hairlineWidth * 2,
+      backgroundColor: 'rgba(120, 116, 106, 0.16)',
+    },
+    // A block being pulled out of its group is a whole card again in the hand.
+    cardGroupLifted: { borderRadius: 20 },
     cardInput: {
       paddingRight: 22,
       // A browser gives a textarea its own default width (the `cols`

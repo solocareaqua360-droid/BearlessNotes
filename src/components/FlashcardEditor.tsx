@@ -10,6 +10,8 @@ import { Flashcard, FlashcardImage, Group, Tag } from '../types';
 import { detachTagFromDeletedItem, useTags } from '../hooks/useTags';
 import TagPicker from './TagPicker';
 import StableTextInput from './StableTextInput';
+import * as Clipboard from 'expo-clipboard';
+import { htmlToMarkdown, lettersOf } from '../utils/richText';
 import { groupKindFields } from '../utils/groups';
 import { backupFileToDrive } from '../utils/googleDrive';
 import AttachmentImage from './AttachmentImage';
@@ -67,13 +69,39 @@ async function backUpImages(cardId: string, images: FlashcardImage[]) {
 // Making a card and changing one - one window for both. The term on top,
 // the explanation under it, the pictures as a row of thumbnails with
 // "Додати фото" at its end, and the project the card is filed under.
+// A PASTE KEEPS ITS FORMATTING: when a lot of text lands in a field at once, the clipboard is read again
+// as HTML (a chat copies a numbered list as `<ol><li>`, a text field takes only the plain part and loses
+// the numbers) and, if it is the same words, the pasted piece is replaced by its Markdown form.
+function richPaste(prev: string, next: string, apply: (text: string) => void) {
+  if (next.length - prev.length < 12) return;
+  let p = 0;
+  while (p < prev.length && p < next.length && prev[p] === next[p]) p += 1;
+  let q = 0;
+  while (q < prev.length - p && q < next.length - p && prev[prev.length - 1 - q] === next[next.length - 1 - q]) q += 1;
+  const inserted = next.slice(p, next.length - q);
+  if (inserted.length < 12) return;
+  Clipboard.getStringAsync({ preferredFormat: Clipboard.StringFormat.HTML })
+    .then((html) => {
+      if (!html || !/<(ol|ul|li|h[1-6]|b|strong|br|p)\b/i.test(html)) return;
+      const md = htmlToMarkdown(html);
+      const a = lettersOf(md);
+      const b = lettersOf(inserted);
+      if (!b || a !== b) return;
+      if (md.replace(/\s+/g, '') === inserted.replace(/\s+/g, '')) return;
+      apply(next.slice(0, p) + md + next.slice(next.length - q));
+    })
+    .catch(() => {});
+}
+
 export default function FlashcardEditor({
   visible,
   card,
   groups,
   defaultGroupId,
+  defaultTagIds,
   tagApi,
   onClose,
+  onSaved,
 }: {
   visible: boolean;
   // null = a new card.
@@ -81,14 +109,19 @@ export default function FlashcardEditor({
   groups: Group[];
   // A new card lands in the project being looked at.
   defaultGroupId?: string | null;
+  // A new card filed in these smartfolders from the start (the projects window's fan).
+  defaultTagIds?: string[];
   // The screen's own tag machinery (useDatabaseList spreads useTags).
   tagApi: Pick<ReturnType<typeof useTags>, 'tags' | 'attachTag' | 'detachTag' | 'createAndAttachTag' | 'renameTag'>;
   onClose: () => void;
+  // A NEW card was saved: its id.
+  onSaved?: (id: string) => void;
 }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [term, setTerm] = useState('');
   const [explanation, setExplanation] = useState('');
+  const [short, setShort] = useState(false);
   const [images, setImages] = useState<FlashcardImage[]>([]);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [newGroupName, setNewGroupName] = useState<string | null>(null);
@@ -102,13 +135,14 @@ export default function FlashcardEditor({
     if (!visible) return;
     setTerm(card?.term ?? '');
     setExplanation(card?.explanation ?? '');
+    setShort(!!card?.short);
     setImages(card?.images ?? []);
     setGroupId(card ? card.groupId ?? null : defaultGroupId ?? null);
     setNewGroupName(null);
-    setTagIds(card?.tagIds ?? []);
+    setTagIds(card?.tagIds ?? defaultTagIds ?? []);
     setNewTags([]);
     setTagPickerVisible(false);
-  }, [visible, card, defaultGroupId]);
+  }, [visible, card, defaultGroupId, defaultTagIds]);
 
   async function addPhoto() {
     const source = await ask({
@@ -159,6 +193,7 @@ export default function FlashcardEditor({
       await updateDoc(doc(db, 'flashcards', id), {
         term: cleanTerm,
         explanation: explanation.trim(),
+        short,
         images,
         groupId: groupId ?? deleteField(),
         updatedAt: now,
@@ -167,6 +202,7 @@ export default function FlashcardEditor({
       await setDoc(doc(db, 'flashcards', id), {
         term: cleanTerm,
         explanation: explanation.trim(),
+        short,
         images,
         tagIds: [],
         ...(groupId ? { groupId } : {}),
@@ -175,6 +211,7 @@ export default function FlashcardEditor({
       });
     }
     onClose();
+    if (!card) onSaved?.(id);
     // The smartfolders, now that there is a card to file.
     const before = card?.tagIds ?? [];
     for (const tagId of tagIds) {
@@ -212,7 +249,10 @@ export default function FlashcardEditor({
       <StableTextInput
         style={[styles.input, styles.termInput]}
         value={term}
-        onChangeText={setTerm}
+        onChangeText={(t) => {
+          richPaste(term, t, setTerm);
+          setTerm(t);
+        }}
         placeholder="Що вивчити"
         placeholderTextColor={theme.field.placeholder}
         multiline
@@ -223,12 +263,23 @@ export default function FlashcardEditor({
       <StableTextInput
         style={[styles.input, styles.explanationInput]}
         value={explanation}
-        onChangeText={setExplanation}
+        onChangeText={(t) => {
+          richPaste(explanation, t, setExplanation);
+          setExplanation(t);
+        }}
         placeholder="Розгорнеться під терміном - необовʼязково"
         placeholderTextColor={theme.field.placeholder}
         multiline
         textAlignVertical="top"
       />
+
+      <Pressable style={styles.shortRow} onPress={() => setShort((v) => !v)}>
+        <Ionicons name={short ? 'checkbox' : 'square-outline'} size={22} color={theme.ink.primary} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.shortTitle}>Показувати коротко</Text>
+          <Text style={styles.shortHint}>У списках і плитках - лише перші рядки терміна. Сама картка лишається повною.</Text>
+        </View>
+      </Pressable>
 
       <Text style={styles.label}>Фото</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbs}>
@@ -389,6 +440,23 @@ const makeStyles = (t: Theme) =>
     explanationInput: {
       minHeight: 110,
       maxHeight: 240,
+    },
+    shortRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginTop: 14,
+    },
+    shortTitle: {
+      fontSize: 15,
+      fontFamily: FONT_SEMIBOLD,
+      color: t.ink.primary,
+    },
+    shortHint: {
+      fontSize: 12,
+      fontFamily: FONT_REGULAR,
+      color: t.ink.muted,
+      marginTop: 2,
     },
     thumbs: {
       gap: 8,

@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import Freeze from './Freeze';
 import { DeskVisibilityContext, makeVisibilityBox, setBoxVisible, type VisibilityBox } from '../navigation/deskVisibility';
 import CalendarScreen from '../screens/CalendarScreen';
+import { navigationRef } from '../navigationRef';
 import DatabasesScreen from '../screens/DatabasesScreen';
 import { useWindowDimensions } from 'react-native';
 import ChatScreen from '../screens/ChatScreen';
@@ -56,15 +57,25 @@ function useShutFreeze(visible: boolean): boolean {
 export default function CalendarDrawer() {
   useRenderTimer('Шторка календаря');
   const { calendarOpen, closeCalendar, calendarProgress, calendarDragging, calendarJump, leftPage, setLeftPage } = useSideDrawers();
-  const chatOn = FEATURES.chatInLeftLayer;
-  const calendarFront = !chatOn || leftPage === 'calendar';
+  const chatOn = FEATURES.chatInLeftLayer || FEATURES.calendarDesk;
+  // With the calendar a desk of its own (features.calendarDesk) this layer is the chat alone: its «календар» word
+  // goes to that desk instead of a page here.
+  const calendarHere = !FEATURES.calendarDesk;
+  const calendarFront = calendarHere && (!chatOn || leftPage === 'calendar');
   const pages = useMemo(
     () => ({
-      calendar: () => setLeftPage('calendar'),
+      calendar: () => {
+        if (calendarHere) {
+          setLeftPage('calendar');
+          return;
+        }
+        closeCalendar();
+        if (navigationRef.isReady()) navigationRef.navigate('Tabs', { screen: 'Календар' } as never);
+      },
       chat: () => setLeftPage('chat'),
       board: () => setLeftPage('board'),
     }),
-    [setLeftPage]
+    [setLeftPage, calendarHere, closeCalendar]
   );
   const drawer = useMemo(
     () => ({ open: calendarOpen && calendarFront, close: closeCalendar, jump: calendarJump, pages: chatOn ? pages : undefined }),
@@ -86,6 +97,7 @@ export default function CalendarDrawer() {
   }, [chatOn, calendarFront, wanted]);
   return (
     <SideLayer side="left" open={calendarOpen} close={closeCalendar} progress={calendarProgress} dragging={calendarDragging}>
+      {calendarHere && (
       <View style={[StyleSheet.absoluteFill, !calendarFront && styles.away]}>
         <CalendarDrawerContext.Provider value={drawer}>
           <DeskVisibilityContext.Provider value={box}>
@@ -95,6 +107,7 @@ export default function CalendarDrawer() {
           </DeskVisibilityContext.Provider>
         </CalendarDrawerContext.Provider>
       </View>
+      )}
       {chatOn && chatBuilt && (
         <View style={[StyleSheet.absoluteFill, calendarFront && styles.away]}>
           <ChatLayerContext.Provider value={chatLayer}>

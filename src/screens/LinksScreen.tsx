@@ -1,5 +1,6 @@
 import { useFolderArrival } from '../navigation/folderArrival';
-import { useEffect, useState } from 'react';
+import { SwipeSelectItem } from '../components/SwipeSelect';
+import { useEffect, useRef, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
 import { useFolderHold } from '../components/FolderHoldMenu';
 import BinRestoreRows from '../components/BinRestoreRows';
@@ -53,6 +54,7 @@ import RenamePrompt from '../components/RenamePrompt';
 import GeoPointEntrySheet from '../components/GeoPointEntrySheet';
 import GeoMapView, { type GeoMapPoint } from '../components/GeoMapView';
 import LinkDetailSheet from '../components/LinkDetailSheet';
+import { copyLinkText } from '../utils/shareAndCopy';
 import LinkReaderSheet from '../components/LinkReaderSheet';
 import { addFragment, deleteArticleForLink, removeFragment, saveArticleForLink, type LinkFragment } from '../utils/articleReader';
 import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
@@ -64,14 +66,17 @@ import DocumentPickerModal, { PickableDocument } from '../components/DocumentPic
 import UndoToast from '../components/UndoToast';
 import { gridBasis, gridFillerCount, LinkGridCell, LinkRow } from '../components/ItemCards';
 import GroupSections from '../components/GroupSections';
-import TagPicker from '../components/TagPicker';
+import TagPicker, { COLLECTION_WORDS, PLAYLIST_WORDS } from '../components/TagPicker';
 import { copyObject, labelForBlock } from '../utils/objectClipboard';
 import GroupPickerSheet, { GroupKind } from '../components/GroupPickerSheet';
 import CopyToNoteModal from '../components/CopyToNoteModal';
 import { useDatabaseList } from '../hooks/useDatabaseList';
+import { FEATURES } from '../features';
 import { useBin } from '../hooks/useBin';
 import { useExplorer, ExplorerFolder, nameOf } from '../hooks/useExplorer';
+import { useFileInExplorer } from '../hooks/useFileInExplorer';
 import ExplorerHead from '../components/ExplorerHead';
+import CollectionCard, { collectionFaceFor } from '../components/CollectionCard';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -87,6 +92,7 @@ import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { listenError } from '../utils/listenError';
+import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
 
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
@@ -181,6 +187,8 @@ export default function LinksScreen({
   category: categoryProp,
   inPane,
 }: Partial<Props> & { category?: 'video' | 'geo' | 'other'; inPane?: boolean }) {
+  // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
+  useDockDesksWhileFocused(!inPane);
   // The laptop's folders stand two across, not one under another.
   const pointerFolders = useDensity() === 'pointer' ? 2 : undefined;
   const theme = useTheme();
@@ -189,6 +197,9 @@ export default function LinksScreen({
   const styles = useStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const category = categoryProp ?? route?.params.category ?? 'other';
+  // The media bases keep no folders of their own (features.mediaWithoutFolders) - except the geo points, which got
+  // theirs back (the user, 2026-10-13: «в геоточках зараз неможливо створити папку»).
+  const noFolders = FEATURES.mediaWithoutFolders && category !== 'geo' && !(FEATURES.baseCollections && category === 'video');
   // In front: the start desk's recents (geo, YouTube / TikTok, links).
   useTileOpened(category === 'geo' ? 'geo' : category === 'video' ? 'video' : 'links');
   // Neither grid nor list here left room for the dock at the bottom of
@@ -235,7 +246,7 @@ export default function LinksScreen({
   const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
   // Sent here to open one link's card (utils/openRequest - the folders'
   // canvas).
-  useOpenRequest('links', links.map((l) => l.id), (id) => setDetailLinkId(id));
+  useOpenRequest('links', links.map((l) => l.id), (id) => setDetailLinkId(id), detailLinkId !== null);
   // The card the link's sheet was opened from (utils/flipOpen), dropped
   // once the sheet has turned back into it.
   const [linkFlip, setLinkFlip] = useState<FlipFrom | null>(null);
@@ -293,6 +304,7 @@ export default function LinksScreen({
     // types.ts) - the drawer must only ever offer tags belonging to
     // whichever of the three link screens this is.
     tagAllowed: (t) => isTagAllowedForKind(t, tagKind),
+    folders: !noFolders,
   });
   const {
     displayed: filteredLinks,
@@ -382,6 +394,15 @@ export default function LinksScreen({
     renameTag: list.renameTag,
     attachTag: list.attachTag,
     detachTag: list.detachTag,
+    playlist: category === 'video',
+    baseOnly: FEATURES.baseCollections && (category === 'video' || category === 'geo'),
+  });
+  // «У провідник» (the video base first): files the chosen videos in explorer folders.
+  const fileInExplorer = useFileInExplorer({
+    tags: list.tags,
+    attachTag: list.attachTag as never,
+    detachTag: list.detachTag as never,
+    createFolderTag: list.createFolderTag as never,
   });
   // Sent here standing in a folder (the start desk's «Робочі столи»).
   useFolderArrival(tagKind, list.explorerMode, list.setListMode, explorer.setPath);
@@ -410,8 +431,89 @@ export default function LinksScreen({
     },
   });
 
+  // A base of collections (YouTube's playlists, geo's collections): the dock, the picker and the strip over the dock
+  // offer only this base's own, never the explorer's folders (2026-10-15).
+  const ownCollectionsOn = FEATURES.baseCollections && (category === 'video' || category === 'geo');
+  const collectionWords = category === 'video' ? PLAYLIST_WORDS : COLLECTION_WORDS;
+
   // Held: the chat's gesture - see FolderHoldMenu.
-  const folderHold = useFolderHold({ explorer, itemIcon: 'link-outline' });
+  // «У провідник…» on a PLAYLIST (the video base, 2026-10-11): the playlist is a folder of the explorer, and this
+  // puts it INSIDE another folder of the explorer (any of them, not only the video ones) - or at the root.
+  // A playlist shows its videos, a collection of points its points on a map (CollectionCard) - in the folders and
+  // lifted under a held menu alike.
+  const collectionFace =
+    FEATURES.collectionCards && ownCollectionsOn
+      ? (folder: ExplorerFolder) => {
+          const tag = folder.tag;
+          if (!tag) return null;
+          const mine = links.filter((l) => l.tagIds.includes(tag.id));
+          const look = collectionFaceFor(tag.card, 'grid');
+          return {
+            wide: look.wide,
+            node: (
+              <CollectionCard
+                kind={category === 'geo' ? 'geo' : 'video'}
+                name={folder.name}
+                count={folder.docs}
+                previews={(category === 'geo' ? mine : mine.slice(0, 6)).map((l) => ({
+                  id: l.id,
+                  title: l.title ?? '',
+                  thumb: l.imageUrl,
+                  lat: l.geoLat,
+                  lng: l.geoLng,
+                }))}
+                face={look.face}
+              />
+            ),
+          };
+        }
+      : undefined;
+  const folderHold = useFolderHold({
+    faceOf: collectionFace,
+    explorer,
+    itemIcon: category === 'geo' ? 'location-outline' : category === 'video' ? 'videocam-outline' : 'link-outline',
+    // With base collections on, FolderHoldMenu draws «У провідник…» for every base itself.
+    extras:
+      category === 'video' && !FEATURES.baseCollections
+        ? (folder) => [
+            {
+              key: 'to-explorer',
+              label: 'У провідник…',
+              icon: 'folder-open-outline',
+              onPress: async () => {
+                const path = folder.fullPath;
+                const all = Array.from(new Set(list.tags.map((t) => t.path)))
+                  .filter((p) => p !== path && !p.startsWith(`${path}/`))
+                  .sort((x, y) => x.localeCompare(y));
+                const choice = await ask({
+                  title: `«${nameOf(path)}» у папку провідника…`,
+                  actions: [
+                    { id: '/', label: 'У корінь провідника', icon: 'home-outline' },
+                    ...all.map((p) => ({ id: `p:${p}`, label: p.split('/').join(' › '), icon: 'folder-outline' as const })),
+                  ],
+                });
+                if (choice === 'cancel') return;
+                const dest = choice === '/' ? null : String(choice).slice(2);
+                const next = dest ? `${dest}/${nameOf(path)}` : nameOf(path);
+                if (next === path) {
+                  await list.placeInExplorer([path]).catch(() => {});
+                  return;
+                }
+                if (list.tags.some((t) => t.path === next || t.path.startsWith(`${next}/`))) {
+                  notify('Така папка вже є', `У цьому місці вже є «${nameOf(path)}».`);
+                  return;
+                }
+                try {
+                  await list.moveBranch(path, next);
+                  await list.placeInExplorer([next]).catch(() => {});
+                } catch (e) {
+                  notify('Не вдалося перенести', (e as Error).message);
+                }
+              },
+            },
+          ]
+        : undefined,
+  });
 
   const tagPickerLink = tagPickerForId ? links.find((l) => l.id === tagPickerForId) ?? null : null;
   const cardMenuLink = cardMenuLinkId ? links.find((l) => l.id === cardMenuLinkId) ?? null : null;
@@ -463,19 +565,46 @@ export default function LinksScreen({
           Share.share({ message: link.title ? `${link.title}\n${link.url}` : link.url }).catch(() => {});
         },
       },
+      // The bare address on the clipboard - for a video, a page or a
+      // place on a map alike.
+      {
+        icon: 'copy-outline',
+        label: 'Копіювати посилання',
+        onPress: () => {
+          close();
+          copyLinkText(link.url);
+        },
+      },
       // Where the drag-and-drop lands a card, for anyone who would rather
       // pick the folder from a list - and the only way to reach a folder
       // that is nowhere near the screen.
-      {
-        icon: 'folder-outline',
-        label: 'Перемістити в папку',
-        onPress: async () => {
-          close();
-          const destination = await explorer.pickDestination(`Перемістити «${link.title || link.url}» в…`);
-          if (destination === 'cancel') return;
-          await explorer.moveItem(link, destination);
-        },
-      },
+      ...(noFolders
+        ? []
+        : [
+            {
+              icon: 'folder-outline',
+              label: FEATURES.baseCollections && category === 'video' ? 'У плейліст…' : FEATURES.baseCollections && category === 'geo' ? 'У підбірку…' : 'Перемістити в папку',
+              onPress: async () => {
+                close();
+                const destination = await explorer.pickDestination(`Перемістити «${link.title || link.url}» в…`);
+                if (destination === 'cancel') return;
+                await explorer.moveItem(link, destination);
+              },
+            },
+          ]),
+      // Every link base files into the explorer now (mediaWithoutFolders), not only the video one.
+      ...(category === 'video' || noFolders
+        ? [
+            {
+              icon: 'folder-open-outline',
+              label: 'У провідник…',
+              onPress: () => {
+                close();
+                fileInExplorer.open([{ id: link.id, tagKind, collection: 'links', tagIds: link.tagIds }]);
+              },
+            },
+          ]
+        : []),
       ...(link.documentIds.length > 0
         ? [
             {
@@ -825,7 +954,7 @@ export default function LinksScreen({
 
   async function bulkCreateAndAttachTag(path: string, icon: string, color: string) {
     setBulkTagPickerVisible(false);
-    await createAndAttachTagToMany(path, icon, color, tagKind, selectedLinks.map((l) => l.id), 'links');
+    await createAndAttachTagToMany(path, icon, color, tagKind, selectedLinks.map((l) => l.id), 'links', ownCollectionsOn ? { baseOnly: true } : undefined);
     clearSelection();
   }
 
@@ -993,7 +1122,7 @@ export default function LinksScreen({
         folderRef={carrying.carry.registerFolder}
         path={explorer.path}
         folders={explorer.folders}
-        itemIcon="link-outline"
+        itemIcon={category === 'geo' ? 'location-outline' : category === 'video' ? 'videocam-outline' : 'link-outline'}
         onGo={(next) => {
           explorer.setPath(next);
           if (needle !== '') {
@@ -1003,12 +1132,15 @@ export default function LinksScreen({
         }}
         onFolderMenu={folderHold.open}
         trash={{ count: trashedLinks.length, onOpen: () => setTrashOpen(true) }}
+        // A playlist shows its videos, a collection of points its points on a map (CollectionCard).
+        faceOf={collectionFace}
       />
     );
   }
 
   return (
     <DatabaseChrome
+      swipeScroll={carrying}
       fullWidth={(mapVisible && category === 'geo') || (viewMode === 'canvas' && !trashOpen)}
       list={list}
       railSide={inPane ? 'left' : 'right'}
@@ -1081,11 +1213,13 @@ export default function LinksScreen({
           }
         },
       }}
-      explorer={{
+      // No folders of its own here under mediaWithoutFolders: no folder switch, no «Нова папка».
+      explorer={noFolders ? undefined : {
         mode: list.listMode,
         onChangeMode: list.setListMode,
         active: explorer.active,
         onNewFolder: () => explorer.setFolderPrompt({ mode: 'new', parent: explorer.path }),
+        newFolderLabel: category === 'video' ? 'Новий плейліст' : FEATURES.baseCollections && category === 'geo' ? 'Нова підбірка' : undefined,
         paths: explorer.allFolderPaths,
         path: explorer.path,
         onGo: explorer.setPath,
@@ -1097,6 +1231,16 @@ export default function LinksScreen({
       }}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
+        tagLabel: ownCollectionsOn ? (category === 'video' ? 'У плейліст' : 'У підбірку') : undefined,
+        tagIcon: ownCollectionsOn ? 'albums-outline' : undefined,
+        folderTags: ownCollectionsOn ? explorer.ownCollections : undefined,
+        onFile:
+          category === 'video' || ownCollectionsOn
+            ? () => {
+                fileInExplorer.open(selectedLinks.map((l) => ({ id: l.id, tagKind, collection: 'links', tagIds: l.tagIds })));
+                clearSelection();
+              }
+            : undefined,
         onTagTo: bulkAttachTag,
         onGroup: () => setBulkGroupPickerVisible(true),
         onCopy: () => setBulkCopyModalVisible(true),
@@ -1285,9 +1429,10 @@ export default function LinksScreen({
           />
 
           {folderHold.menu}
+          {fileInExplorer.node}
           <RenamePrompt
             visible={explorer.folderPrompt !== null}
-            title={explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}
+            title={category === 'video' ? (explorer.folderPrompt?.mode === 'rename' ? 'Назва плейлиста' : 'Новий плейліст') : FEATURES.baseCollections && category === 'geo' ? (explorer.folderPrompt?.mode === 'rename' ? 'Назва підбірки' : 'Нова підбірка') : explorer.folderPrompt?.mode === 'rename' ? 'Назва папки' : 'Нова папка'}
             initialValue={explorer.folderPrompt?.mode === 'rename' ? nameOf(explorer.folderPrompt.path) : ''}
             onCancel={() => explorer.setFolderPrompt(null)}
             onSave={(name) => explorer.saveFolderName(name)}
@@ -1296,12 +1441,14 @@ export default function LinksScreen({
           <TagPicker
             visible={bulkTagPickerVisible}
             kind={tagKind}
-            tags={tags}
+            tags={ownCollectionsOn ? explorer.collectionTags : tags}
+            plain={ownCollectionsOn}
+            words={ownCollectionsOn ? collectionWords : undefined}
             selectedTagIds={[]}
             onAttach={bulkAttachTag}
             onDetach={() => {}}
             onCreateAndAttach={bulkCreateAndAttachTag}
-            onRenameTag={renameTag}
+            onRenameTag={ownCollectionsOn ? explorer.renameCollection : renameTag}
             onClose={() => setBulkTagPickerVisible(false)}
           />
 
@@ -1458,7 +1605,13 @@ export default function LinksScreen({
           >
             {explorerOrTrashHead()}
             {(trashOpen ? trashedLinks : linksHere).map((item) =>
-              trashOpen ? renderLinkTrashRow(item) : renderLinkRow(item)
+              trashOpen ? (
+                renderLinkTrashRow(item)
+              ) : (
+                <SwipeSelectItem key={item.id} id={item.id}>
+                  {renderLinkRow(item)}
+                </SwipeSelectItem>
+              )
             )}
             {/* What else is in this group - see GroupSections. */}
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />}

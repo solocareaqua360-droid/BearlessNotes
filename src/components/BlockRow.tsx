@@ -1,9 +1,10 @@
 import FlashcardBlockCard from './FlashcardBlockCard';
 import SketchLayer from './SketchLayer';
 import { INK, drawingViewBox } from '../utils/sketchGeometry';
-import { ComponentProps, ReactNode, useContext, useEffect, useRef, useState } from 'react';
+import { ComponentProps, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  findNodeHandle,
   GestureResponderEvent,
   Image,
   Pressable,
@@ -17,6 +18,7 @@ import {
 // file on 2026-09-19).
 import { GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { useRowHover } from '../hooks/useRowHover';
+import { FEATURES } from '../features';
 import { useDensity } from '../hooks/useDensity';
 import { Ionicons } from './icons/Ionicons';
 import Svg, { Line, Path, Text as SvgText } from 'react-native-svg';
@@ -50,6 +52,7 @@ import {
 import FormattedText from './FormattedText';
 import { setSelection } from '../utils/setSelection';
 import { withAlpha } from '../utils/color';
+import { attachChipField, CHIP_MARK_ALPHA, supportsChipSpans } from '../utils/mindevaNative';
 import TableBlockContent from './TableBlockContent';
 import CustomRowBlockCard from './CustomRowBlockCard';
 import LiveDocumentCard from './LiveDocumentCard';
@@ -203,6 +206,72 @@ export default function BlockRow({
   // just like it already did over the icon column.
   const canEditText = isActive && !isSelectMode;
 
+  // THE FORMATTING WHILE TYPING (features.liveFormat): the field's text as styled runs - the block's own runs, so the
+  // field shows what the block shows at rest. Not for code (never parsed) nor an empty block. A link to a note nested
+  // in this one wears its own arrow, as the plain field's text does (displayWithNestedGlyphs). Memoised on the text:
+  // runs rebuilt on every render handed the field its text anew each time, and that dropped a selection (opening the
+  // panel under the keyboard re-renders the row - the user: «скидається виділення тексту»).
+  const blockType = item.type ?? 'paragraph';
+  const liveRuns = useMemo(
+    () =>
+      canEditText && FEATURES.liveFormat && blockType !== 'code' && (item.text ?? '') !== ''
+        ? parseFormattedText(item.text).map((seg) =>
+            seg.noteLink && isNestedLink?.(seg.noteLink) && seg.text.startsWith(LINK_GLYPH)
+              ? { ...seg, text: NESTED_GLYPH + seg.text.slice(LINK_GLYPH.length) }
+              : seg
+          )
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canEditText, blockType, item.text]
+  );
+  // A note link while typing: the chip's own blue on its own tint. Android draws a run's background as a square box
+  // hugging its letters; an APK with ChipSpans (utils/mindevaNative) draws a run marked with CHIP_MARK_ALPHA as the
+  // rounded chip instead, CHIP_LOOK.padX wider at each side - over the spaces around it, the text's widths untouched
+  // (so the words beside a link stand a little closer than beside the chip at rest). Making real room with letter
+  // spacing was tried and dropped (2026-10-19): Android ignored it on the arrow, and splitting the link into pieces
+  // gave each piece its own chip. The link stays ONE run.
+  const roundChips = supportsChipSpans && liveRuns?.some((seg) => !!seg.noteLink) === true;
+  const linkInkLive = theme.scheme === 'dark' ? LINK_BLUE_DARK : LINK_BLUE;
+  const linkTintLive = roundChips
+    ? linkInkLive + CHIP_MARK_ALPHA.toString(16).padStart(2, '0')
+    : withAlpha(linkInkLive, 0.14);
+  const liveChildren = useMemo(() => {
+    if (!liveRuns) return undefined;
+    const out: ReactNode[] = [];
+    liveRuns.forEach((seg, i) => {
+      const decorations = [seg.underline && 'underline', seg.strikethrough && 'line-through'].filter(Boolean).join(' ');
+      const style = {
+        fontWeight: (seg.bold ? '700' : seg.noteLink ? '600' : '400') as '700' | '600' | '400',
+        fontStyle: (seg.italic ? 'italic' : 'normal') as 'italic' | 'normal',
+        textDecorationLine: (decorations || 'none') as 'none' | 'underline' | 'line-through',
+        color: seg.color ?? (seg.noteLink ? linkInkLive : undefined),
+        backgroundColor: seg.highlight ?? (seg.noteLink ? linkTintLive : undefined),
+      };
+      out.push(
+        <Text key={i} style={style}>
+          {seg.text}
+        </Text>
+      );
+    });
+    return out;
+  }, [liveRuns, linkInkLive, linkTintLive]);
+  // The last selection the field reported, put back when the panel under the keyboard opens or closes: the field is
+  // re-rendered then, and Android let a selected RANGE collapse (bold, colour then had nothing to act on).
+  const lastSelectionRef = useRef<{ start: number; end: number } | null>(null);
+  // The panel blurs the field to take the keyboard down, and a blurred field draws no selection. Once the keyboard
+  // is gone and the field no longer asks for one (showSoftInputOnFocus off), focus comes back WITHOUT a keyboard
+  // and the picked words are lit again.
+  useEffect(() => {
+    const sel = lastSelectionRef.current;
+    if (!canEditText || softInputDisabled !== true || !sel || sel.start === sel.end) return;
+    const t = setTimeout(() => {
+      localInputRef.current?.focus();
+      setSelection(localInputRef.current, sel.start, sel.end);
+    }, 380);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [softInputDisabled]);
+
   // "Розмір тексту" - the reading scale, applied here rather than baked
   // into `styles.blockInput`/`heading1..3`: those come from a
   // theme-only `useStyles` factory, and a note's own body is exactly
@@ -230,6 +299,16 @@ export default function BlockRow({
   // nothing at all; in a browser it is the difference between a block and
   // a two-line window with the rest of the block scrolled away inside it.
   const localInputRef = useRef<TextInput | null>(null);
+  // The field is named to the APK once per field (a block's field is made anew when it becomes the active one): the
+  // tag differs, and only then is it sent.
+  const chipFieldTagRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!roundChips) return;
+    const tag = findNodeHandle(localInputRef.current);
+    if (tag == null || tag === chipFieldTagRef.current) return;
+    chipFieldTagRef.current = tag;
+    attachChipField(tag);
+  }, [roundChips, liveRuns]);
   useEffect(() => {
     autoGrowInput(localInputRef.current);
   }, [item.text, canEditText]);
@@ -326,6 +405,10 @@ export default function BlockRow({
     onActivate(item.id, displayIndex);
   }
 
+  // A pointer's rows: the handle shows where the pointer is (and only there) - see below. Read here, before the
+  // content, because a task's empty reminder line follows the hover too.
+  const pointer = useDensity() === 'pointer';
+  const [hoverRef, hover] = useRowHover();
   let content: ReactNode;
   if (type === 'divider') {
     // Three looks, one block type - see Block.dividerStyle. A 'break'
@@ -734,12 +817,17 @@ export default function BlockRow({
         // locked block has always shown (plainTextOf). A code block is
         // the one exception: nothing in it is ever parsed, so it keeps
         // showing its own raw text untouched.
+        // THE FORMATTING WHILE TYPING (features.liveFormat, a trial 2026-10-19): the field is handed its text as
+        // styled runs instead of one plain string - the same runs the block shows at rest, so what is on screen does
+        // not change, only how it looks. RN refuses value AND children together, so with the runs there is no value.
         value={
-          type === 'code'
-            ? item.text
-            : isNestedLink
-              ? displayWithNestedGlyphs(item.text, plainTextOf(item.text), isNestedLink)
-              : plainTextOf(item.text)
+          liveRuns
+            ? undefined
+            : type === 'code'
+              ? item.text
+              : isNestedLink
+                ? displayWithNestedGlyphs(item.text, plainTextOf(item.text), isNestedLink)
+                : plainTextOf(item.text)
         }
         onChangeText={(displayText) =>
           onChangeText(
@@ -752,6 +840,7 @@ export default function BlockRow({
         {...softCursor(theme.scheme)}
         onSelectionChange={({ nativeEvent }) => {
           const { start, end } = nativeEvent.selection;
+          lastSelectionRef.current = { start, end };
           // The caret never stands inside a note link: landing there is a
           // tap on it - its menu, and the caret put after it.
           if (type !== 'code' && start === end && onNoteLinkMenu) {
@@ -785,7 +874,9 @@ export default function BlockRow({
           type !== 'code' && scaledTextStyle,
         ]}
         multiline
-      />
+      >
+        {liveChildren}
+      </TextInput>
     ) : (
       // While not the active block, formatting markers (**bold** etc.) are
       // parsed into styled runs instead of showing as raw text - and a
@@ -865,7 +956,7 @@ export default function BlockRow({
       // has to look folded on the card - see visibleBlocks.
       content = (
         <View style={styles.prefixedRow}>
-          <Pressable hitSlop={8} onPress={() => onUpdateBlock(item.id, { collapsed: !item.collapsed })}>
+          <Pressable hitSlop={8} style={styles.toggleMark} onPress={() => onUpdateBlock(item.id, { collapsed: !item.collapsed })}>
             <Ionicons
               name={item.collapsed ? 'chevron-forward' : 'chevron-down'}
               size={18}
@@ -893,8 +984,15 @@ export default function BlockRow({
           </Pressable>
           {textField}
         </View>
-        {!isSelectMode && (
-          <Pressable style={styles.checkboxReminderRow} hitSlop={4} onPress={() => onOpenReminder(item.id)}>
+        {/* With a pointer an EMPTY reminder line is not drawn under every task (the Mac's day sheet, 2026-10-16:
+            a «Нагадування» line under each task) - it comes up at the row's right end while the pointer is over the
+            task, taking no room (rows do not jump). A set one stays where it is. */}
+        {!isSelectMode && (!pointer || !!reminderLabel || hover) && (
+          <Pressable
+            style={[styles.checkboxReminderRow, pointer && !reminderLabel && { position: 'absolute', right: 38, top: 4 }]}
+            hitSlop={4}
+            onPress={() => onOpenReminder(item.id)}
+          >
             <Ionicons name="alarm-outline" size={11} color={reminderLabel ? theme.accent : theme.paper.inkFaint} />
             <Text style={[styles.checkboxReminderText, !reminderLabel && styles.checkboxReminderTextEmpty]}>
               {reminderLabel ?? 'Нагадування'}
@@ -910,8 +1008,6 @@ export default function BlockRow({
 
   // A pointer's rows: the handle shows where the pointer is (and only
   // there), a pick is a light tint - no tick squares - see below.
-  const pointer = useDensity() === 'pointer';
-  const [hoverRef, hover] = useRowHover();
   const showPointerHandle = pointer && !!handleGesture && hover;
 
   return (

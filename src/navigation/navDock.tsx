@@ -156,7 +156,9 @@ export type TopExtras = {
   tools?: TopTool[] | null;
 };
 
-export type TopTool = { key: string; icon: string; label: string; dimmed?: boolean; onPress: () => void };
+// `active`: lit while what it opens is open; `dot`: the accent dot - something it governs is in force (a base's
+// filter or sort).
+export type TopTool = { key: string; icon: string; label: string; dimmed?: boolean; active?: boolean; dot?: boolean; onPress: () => void };
 
 // SEARCH IN THE BAR ITSELF - the user's rule: the plate that carries the
 // desk's (or database's) name IS the search field; it opens out across
@@ -203,6 +205,11 @@ export type DockAction = {
   // the board's «+» once it moved into the tools strip (2026-10-08: «в
   // окремий кружечок, зіграємо на контрасті»). Soft dock only.
   strong?: boolean;
+  // THE NOTE'S PENCIL (2026-10-16, sketch JD1ELAiSpepZLXsxwcVk1x): taken out of the capsule and drawn as the black
+  // circle where "+" stands on every other screen; the capsule moves to the left, where the desks stand elsewhere,
+  // and the way back to the right edge. Soft dock with a back circle and no left bead only.
+  // 'quiet': the same place, a white circle - the canvas's «Скинути» (not the strong button, it asks to undo).
+  primary?: boolean | 'quiet';
   // A small glyph over the icon's corner - "the plus ON the thing it
   // adds", which is how this app has drawn creation since the user asked
   // for it.
@@ -222,6 +229,9 @@ export type DockBead = {
   icon: string;
   onPress: () => void;
   onLongPress?: () => void;
+  // PRESS AND SLIDE (a create bead that deals a fan): a drag that starts on it opens the fan, and the
+  // finger carries on to a button (utils/fanDrag). A plain tap is still onPress.
+  onSlide?: () => void;
   active?: boolean;
   badge?: string;
   // Standing in its place but with nowhere to go - the way back on the
@@ -405,7 +415,7 @@ const NavDockFaceContext = createContext<DockFace>('context');
 function actionSignature(list: DockAction[] | null): string {
   return list
     ? list
-        .map((a) => `${a.key}:${a.icon}:${a.label ?? ''}:${a.badge ?? ''}:${a.count ?? ''}:${a.active ? 1 : 0}`)
+        .map((a) => `${a.key}:${a.icon}:${a.label ?? ''}:${a.badge ?? ''}:${a.count ?? ''}:${a.active ? 1 : 0}:${a.primary ?? ''}`)
         .join('|')
     : '';
 }
@@ -948,7 +958,7 @@ function extrasSignature(inputs: ExtrasInputs): string {
     menu?.map((e) => (e.kind === 'section' ? ['s', e.label] : e.kind === 'rule' ? ['r'] : [e.label, e.icon, !!e.checked, e.tone])),
     select ? select.active : null,
     pane ? pane.icon : null,
-    tools?.map((t) => [t.key, t.icon, !!t.dimmed]) ?? null,
+    tools?.map((t) => [t.key, t.icon, !!t.dimmed, !!t.active, !!t.dot]) ?? null,
   ]);
 }
 

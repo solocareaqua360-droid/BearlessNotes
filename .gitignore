@@ -47,3 +47,10 @@ GoogleService-Info.plist
 
 # downloaded EAS build artifacts
 *.apk
+
+# session scratch (only serve.py is kept, tracked before this rule)
+scratchpad/
+# frame captures from the animation analysis of 2026-10-19 (adb screenrecord split into frames)
+/dr_*.png
+/drs.png
+/dk2.mp4

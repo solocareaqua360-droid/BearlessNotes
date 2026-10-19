@@ -157,6 +157,11 @@ export interface Block {
   // nobody has arranged on the canvas carries nothing extra, and its page
   // order stays the one true order.
   canvas?: { x: number; y: number };
+  // «Полотно»: blocks GLUED into one card, a paragraph made of several blocks (2026-10-16, sketch
+  // LHWkBezMbi2e1chEqCjYfo). Every member carries the same id; `order` puts them top to bottom, and the lowest is
+  // the head - its `canvas` places the whole group, the rest stand flush under it. A group of one is no group (it is
+  // drawn as an ordinary card). Arrows and the page order treat a group as ONE card - see utils/canvasOrder.
+  canvasGroup?: { id: string; order: number };
   // 'divider' blocks only - the line the canvas puts between what its
   // arrows assembled and everything they did not touch (see
   // assembleWithDivider). Marked so that leaving the canvas again finds
@@ -450,6 +455,8 @@ export interface Flashcard {
   // Learning mode only (a group's own switch, see Group.flashcardLearning):
   // the card has been learned, and can be left out of the stack.
   known?: boolean;
+  // Lists and tiles show only the first lines of the term (the card itself still holds it all).
+  short?: boolean;
   createdAt?: number;
   updatedAt: number;
 }
@@ -520,6 +527,28 @@ export interface Tag {
   // ordinary rule (an unused tag is deleted) is what keeps the drawer free
   // of dead branches, and it still holds for every tag without this.
   keep?: boolean;
+  // A COLLECTION OF A BASE (2026-10-14, the user's: «підбірка фото, плейліст YouTube, підбірка геоточок створюються й
+  // існують у своїх базах ... ніяк не пов'язані з провідником, окрім випадку, коли їх розміщують у провіднику»): made
+  // in the Photos / video / geo base, it is NOT shown in the explorer - until it is placed there (cleared then). Its
+  // branch (the folders under it) goes with it.
+  baseOnly?: boolean;
+  // A base's collection PLACED in the explorer (2026-10-15): shown there too, and it stays in its base - placing it
+  // used to clear baseOnly, and the collection then vanished from the base it lives in.
+  inExplorer?: boolean;
+  // PROJECTS THIS FOLDER IS ASSIGNED TO (2026-10-10): explicit, several
+  // allowed, and NOT inherited - a folder under it is in the project only
+  // if it was assigned too. A project is still a `Group`.
+  groupIds?: string[];
+  // How the folder looks as a card on the project screen: size, one of the
+  // legal swatches (constants/cardPalette), an outer description (on the
+  // card) and an inner one (at the top of the opened folder).
+  card?: { size?: 'L' | 'M' | 'S'; color?: string; outer?: string; inner?: string; pattern?: 'none' | 'light' | 'normal' | 'dense';
+    // A COLLECTION's face in the list and the grid (CollectionCard): «Стос» - a stack / a pile of prints; «Розкладка» -
+    // a strip / a mosaic. Unset: a stack in the list, a mosaic in the grid.
+    face?: 'stack' | 'spread';
+    // A photo behind the card, already toned to the swatch (one file per theme,
+    // this device only - see ProjectFolders).
+    bg?: { light: string; dark: string } };
 }
 
 // A card on a 'Дошка' (board) canvas. Deliberately just a `Block` (the same
@@ -556,6 +585,8 @@ export interface BoardCard extends Omit<Block, 'type'> {
   // 'paragraph' (sticky-note) cards only - no other Block usage in the app
   // has a per-block color, so this lives here rather than on Block itself.
   color?: string;
+  // 'paragraph' (sticky) cards only - shows its first lines (the rest stays in the card). Absent = all of it.
+  short?: boolean;
   // 'paragraph' (наліпка) cards only - its own text size, stepped through
   // the same scale a shape's text uses so the two read on one ruler.
   // Absent means the sticky's own default.

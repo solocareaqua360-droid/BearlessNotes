@@ -7,13 +7,13 @@ import { GRID_TILES, WIDE_TILES } from '../constants/databaseTiles';
 import { CustomDatabase } from '../types';
 import { listenError } from '../utils/listenError';
 import { FEATURES } from '../features';
+import { threeDesksOnly } from './deskRegistry';
 
 // THE DESKS ARE DATABASES - the user's iOS model (2026-09-28): the app
 // starts on a desk, a desk is a database open full screen, and there are
 // up to four of them. «Документи» is always the first and cannot be
-// closed; the rest are the user's own, dragged out of the databases'
-// layer. The calendar lives left of the first desk, the databases right
-// of the last - neither is a desk any more.
+// closed; the rest are the user's own. The calendar lives left of the
+// first desk, the databases right of the last - neither is a desk any more.
 //
 // A desk's KEY is its tab's route name: the two the rest of the app
 // already navigates to by name keep them («Документи», «Дошки»), every
@@ -27,7 +27,20 @@ export const BOARDS_DESK = 'Дошки';
 // list and put in front on read, so a build that does not know it still
 // reads the same stored keys.
 export const START_DESK = 'Старт';
-export const DEFAULT_DESKS = [START_DESK, PERMANENT_DESK, BOARDS_DESK];
+// THE CALENDAR DESK (2026-10-12, the user's: «календар… другим екраном після провідника»): under
+// features.calendarDesk the calendar stands right after the start desk, always, and the left layer keeps only
+// the chat. Like the start desk it is never closed and never stored - put in place on read.
+export const CALENDAR_DESK = 'Календар';
+// The desks that are always there, in front of the user's own.
+// THE BASES DESK (2026-10-12, the user's: «виносимо бази на головний екран, вони більше не в шторці»): under
+// features.basesDesk the bases list is the third fixed desk and the right layer is gone.
+export const BASES_DESK = 'Більше';
+export const FIXED_DESKS = [
+  START_DESK,
+  ...(FEATURES.calendarDesk ? [CALENDAR_DESK] : []),
+  ...(FEATURES.basesDesk ? [BASES_DESK] : []),
+];
+export const DEFAULT_DESKS = [...FIXED_DESKS, PERMANENT_DESK, BOARDS_DESK];
 // There used to be four ("до чотирьох"); the user lifted it (2026-10-03,
 // «зняти обмеження»): the bar scrolls, and the tab switcher shows them all.
 export const MAX_DESKS = Infinity;
@@ -37,10 +50,11 @@ const desksDoc = doc(db, 'settings', 'desks');
 // The desks, kept in the account's settings - the same place every
 // database keeps its own preferences.
 export function useDesks() {
-  const [desks, setDesksState] = useState<string[]>(DEFAULT_DESKS);
+  const [desks, setDesksState] = useState<string[]>(threeDesksOnly ? FIXED_DESKS : DEFAULT_DESKS);
   useEffect(
     () =>
-      onSnapshot(
+      // Only the three desks: the stored extras are not read (nor written - they come back with the flag off).
+      threeDesksOnly ? undefined : onSnapshot(
         desksDoc,
         (snapshot) => {
           const stored = snapshot.data()?.keys as string[] | undefined;
@@ -51,28 +65,23 @@ export function useDesks() {
           // desk like the others now and may have been closed.
           // A database put away for now (features.ts) is not a desk either
           // (the next change of desks stores the list without it).
-          setDesksState([START_DESK, ...stored.filter((k) => k !== START_DESK && (FEATURES.stickers || k !== 'db:stickers'))]);
+          setDesksState([...FIXED_DESKS, ...stored.filter((k) => !FIXED_DESKS.includes(k) && (FEATURES.stickers || k !== 'db:stickers'))]);
         },
         listenError('useDesks:desks')
       ),
     []
   );
   const setDesks = useCallback((next: string[]) => {
-    const clean = next.filter((k) => k !== START_DESK);
-    setDesksState([START_DESK, ...clean]);
+    if (threeDesksOnly) return;
+    const clean = next.filter((k) => !FIXED_DESKS.includes(k));
+    setDesksState([...FIXED_DESKS, ...clean]);
     // Stored without the start desk (see START_DESK).
     setDoc(desksDoc, { keys: clean }, { merge: true });
   }, []);
   return { desks, setDesks };
 }
 
-// The key a database tile becomes when it is made a desk.
-export function deskKeyForTile(tileKey: string): string {
-  if (tileKey === 'documents') return PERMANENT_DESK;
-  if (tileKey === 'board') return BOARDS_DESK;
-  return `db:${tileKey}`;
-}
-
+// The key a database of the user's own stands under as a desk.
 export function deskKeyForCustom(databaseId: string): string {
   return `db:custom:${databaseId}`;
 }
@@ -85,6 +94,8 @@ export function deskFace(
   iconFor?: (tileKey: string, fallback: string) => string
 ): { label: string; icon: keyof typeof Ionicons.glyphMap } {
   if (key === START_DESK) return { label: 'Старт', icon: 'home-outline' };
+  if (key === CALENDAR_DESK) return { label: 'Календар', icon: 'calendar-outline' };
+  if (key === BASES_DESK) return { label: 'Бази', icon: 'apps-outline' };
   if (key === PERMANENT_DESK) return { label: 'Документи', icon: 'document-text-outline' };
   if (key === BOARDS_DESK) return { label: 'Дошки', icon: 'easel-outline' };
   if (key.startsWith('db:custom:')) {
@@ -111,33 +122,10 @@ export const DeskContext = createContext<{ back: (() => void) | null; key?: stri
 export type DeskScreen = { component: ComponentType<any>; props?: Record<string, unknown> };
 
 // The desks and how to change them, for the bar that draws them (its ✕
-// closes the desk in front) and the databases' layer (a tile dragged out
-// of it becomes one).
+// closes the desk in front) and the start desk.
 export const DesksControlContext = createContext<{
   desks: string[];
   setDesks: (next: string[]) => void;
 } | null>(null);
-
-// Whether a key can stand as a desk at all - the same list deskScreenFor
-// draws (tabScreens), without importing a single screen: the databases'
-// own screen asks this, and importing the screens from there would be a
-// cycle back into itself.
-const DESKABLE = new Set([
-  PERMANENT_DESK,
-  BOARDS_DESK,
-  'db:tasks',
-  'db:photos',
-  'db:files',
-  'db:stickers',
-  'db:flashcards',
-  'db:diary',
-  'db:geo',
-  'db:links',
-  'db:video',
-]);
-
-export function canBeDesk(key: string): boolean {
-  return DESKABLE.has(key) || key.startsWith('db:custom:');
-}
 
 export { ensureDesk, registerDesks, whenDeskIsThere } from './deskRegistry';

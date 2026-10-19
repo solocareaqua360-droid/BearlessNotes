@@ -1,4 +1,5 @@
 import { useFolderArrival } from '../navigation/folderArrival';
+import { SwipeSelectItem } from '../components/SwipeSelect';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
 import { holdAsk } from '../components/surfaces/HoldAsk';
@@ -83,6 +84,7 @@ import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import { listenError } from '../utils/listenError';
+import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
 
 // The same half-strength tint the documents screen's add button takes -
 // the blur behind it is what separates it, so the colour only tints.
@@ -118,6 +120,8 @@ type FileItem = {
 // since the two versions have nothing else in common.
 
 export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
+  // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
+  useDockDesksWhileFocused(!inPane);
   // In front: the start desk's recents.
   useTileOpened('files');
   const theme = useTheme();
@@ -140,11 +144,6 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   const isTwoPane = useResponsiveLayout().isTwoPane && !inPane;
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [files, setFiles] = useState<FileItem[]>([]);
-  // Sent here to open one file (utils/openRequest - the folders' canvas).
-  useOpenRequest('files', files.map((f) => f.id), (id) => {
-    const file = files.find((f) => f.id === id);
-    if (file) openFile(file);
-  });
   const [trashedFiles, setTrashedFiles] = useState<FileItem[]>([]);
   const [trashOpen, setTrashOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -168,6 +167,18 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     kind: QuickLookKind;
     file: FileItem;
   } | null>(null);
+  // Sent here to open one file (utils/openRequest - the folders' canvas).
+  useOpenRequest('files', files.map((f) => f.id), (id, back) => {
+    const file = files.find((f) => f.id === id);
+    if (!file) return;
+    // A file the system opens has no screen of ours to close: asked from the
+    // single explorer, the way back is taken as soon as it has been handed over.
+    if (back && !quickLookKindFor(file.fileName)) {
+      openFile(file).then(() => navigation.goBack());
+      return;
+    }
+    openFile(file);
+  }, quickLook !== null);
   // The card the preview was opened from (utils/flipOpen), dropped once
   // the preview has turned back into it.
   const [fileFlip, setFileFlip] = useState<FlipFrom | null>(null);
@@ -840,6 +851,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
 
   return (
     <DatabaseChrome
+      swipeScroll={carrying}
       list={list}
       railSide={inPane ? 'left' : 'right'}
       accent={accent}
@@ -1181,7 +1193,13 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
           >
 {explorerOrTrashHead()}
             {(trashOpen ? trashedFiles : listedFiles).map((item) =>
-              trashOpen ? renderFileTrashRow(item) : renderFileRow(item)
+              trashOpen ? (
+                renderFileTrashRow(item)
+              ) : (
+                <SwipeSelectItem key={item.id} id={item.id}>
+                  {renderFileRow(item)}
+                </SwipeSelectItem>
+              )
             )}
             {/* What else is in this group - see GroupSections. */}
             {!trashOpen && <GroupSections groupId={list.selectedGroupId} currentKind="file" tags={tags} />}

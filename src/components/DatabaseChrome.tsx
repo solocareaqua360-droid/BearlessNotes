@@ -1,4 +1,6 @@
 import { ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { FEATURES } from '../features';
+import { SwipeSelectArea, type SwipeScroll } from './SwipeSelect';
 import { useDeskContent } from '../navigation/useDeskContent';
 import { openDeskSwitcher } from '../navigation/deskSwitcherBus';
 import type { Tag } from '../types';
@@ -25,6 +27,8 @@ import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, TopTitle, topBarFrame, useTopNavOn
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
+import { selectionDock } from '../navigation/selectionDock';
+import { orderSection } from '../navigation/topMenu';
 import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import { SoftSurfaceContext, useSoft } from '../theme/soft';
 import { useDockClearance } from '../navigation/dockGeometry';
@@ -51,6 +55,8 @@ import { usePaneBar } from '../navigation/paneBar';
 // draws whatever that database looks like.
 
 export type DatabaseChromeProps<T extends { id: string }> = {
+  // The list a swipe-to-select scrolls along at the edges (the carry's pair - see components/SwipeSelect).
+  swipeScroll?: SwipeScroll;
   // The screen is a surface (the map of «Геоточки»), not a list: the
   // readable-column cap does not apply, and a drag down is the surface's
   // own (moving the map), never the pull that opens search.
@@ -108,6 +114,8 @@ export type DatabaseChromeProps<T extends { id: string }> = {
     onChangeMode: (mode: 'groups' | 'list' | 'explorer') => void;
     active: boolean;
     onNewFolder: () => void;
+    // What a folder is called here: the video base calls them playlists (2026-10-11).
+    newFolderLabel?: string;
     // The tree itself, for the desktop rail - every folder path, where
     // this list is standing, and how to go somewhere. The drawer builds
     // its own tree from the tags; the rail is outside every screen and
@@ -130,6 +138,13 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   bulk?: {
     // Absent on a database with no tags (flashcards).
     onTag?: () => void;
+    // What that row is called and which folders the strip over the dock offers - in a base of collections only its
+    // own collections, never the explorer's folders (2026-10-15).
+    tagLabel?: string;
+    tagIcon?: string;
+    folderTags?: Tag[];
+    // «У провідник» (the video base first).
+    onFile?: () => void;
     // Files the whole selection in one folder at once - the strip of
     // recent folders over the dock (RecentFolderStrip).
     onTagTo?: (tag: Tag) => void;
@@ -197,6 +212,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   hideDrawer,
   bulk,
   children,
+  swipeScroll,
   overlay,
   pane,
   topNav: topNavWanted,
@@ -383,22 +399,13 @@ export default function DatabaseChrome<T extends { id: string }>({
       ? null
       : [
       ...(shape ? [{ label: 'Змінити вигляд', icon: shape.icon, onPress: shape.onToggle }] : []),
-      { kind: 'section' as const, label: 'Порядок' },
-      ...FIELD_ORDER.map((field) => ({
-        label:
-          list.sortPref.field === field
-            ? `${FIELD_LABELS[field]} ${list.sortPref.dir === 'asc' ? '↑' : '↓'}`
-            : FIELD_LABELS[field],
-        icon: FIELD_ICONS[field],
-        checked: list.sortPref.field === field,
-        onPress: () => list.selectSortField(field),
-      })),
+      ...orderSection(list.sortPref, list.selectSortField),
       { kind: 'rule' as const },
       ...(!hideDrawer
         ? [{ label: 'Смартпапки', icon: 'pricetag-outline' as const, checked: !!list.tagFilter, onPress: () => drawerRef.current?.open() }]
         : []),
       ...(explorer?.active
-        ? [{ label: 'Нова папка', icon: 'folder-open-outline' as const, onPress: explorer.onNewFolder }]
+        ? [{ label: explorer.newFolderLabel ?? 'Нова папка', icon: 'folder-open-outline' as const, onPress: explorer.onNewFolder }]
         : []),
       // A screen's own extra rows (the photos' record attachments, the
       // stickers' bin) are drawn by the screen, not listed, so they open
@@ -411,54 +418,30 @@ export default function DatabaseChrome<T extends { id: string }>({
   useDockActions(
     isFocused && !searchingAlone && (list.isSelectMode || !deskMenu)
       ? list.isSelectMode
-        ? [
-            {
-              key: 'cancel',
-              icon: 'close-outline',
-              label: 'Вийти',
-              onPress: () => {
-                showContext();
-                list.toggleSelectMode();
-              },
+        ? selectionDock({
+            onExit: () => {
+              showContext();
+              list.toggleSelectMode();
             },
-            // All of what is on screen, or none of it again - "the whole
-            // folder" is the folder opened, then this.
-            ...(bulk && list.displayed.length > 0
-              ? [
-                  list.displayed.every((item) => list.selectedIds.has(item.id))
-                    ? {
-                        key: 'none',
-                        icon: 'remove-circle-outline' as const,
-                        label: 'Зняти всі',
-                        onPress: () => list.selectMany([]),
-                      }
-                    : {
-                        key: 'all',
-                        icon: 'checkmark-done-outline' as const,
-                        label: 'Вибрати всі',
-                        onPress: () => list.selectMany(list.displayed.map((item) => item.id)),
-                      },
-                ]
-              : []),
-            ...(bulk && list.selectedIds.size > 0
-              ? [
-                  ...(bulk.onTag
-                    ? [{ key: 'tag', icon: 'pricetag-outline' as const, label: 'Папки', onPress: bulk.onTag }]
-                    : []),
-                  { key: 'group', icon: 'folder-outline' as const, label: 'Проект', onPress: bulk.onGroup },
-                  ...(bulk.onBoard
-                    ? [{ key: 'board', icon: 'easel-outline' as const, label: 'На дошку', onPress: bulk.onBoard }]
-                    : []),
-                  ...(bulk.onCopy
-                    ? [{ key: 'copy', icon: 'document-text-outline' as const, label: 'У нотатку', onPress: bulk.onCopy }]
-                    : []),
-                  ...(bulk.onCopyObject && list.selectedIds.size === 1
-                    ? [{ key: 'copyObject', icon: 'clipboard-outline' as const, label: 'Копія', onPress: bulk.onCopyObject }]
-                    : []),
-                  { key: 'delete', icon: 'trash-outline' as const, label: 'Видалити', onPress: bulk.onDelete },
-                ]
-              : []),
-          ]
+            all: bulk
+              ? {
+                  shown: list.displayed.length,
+                  chosen: list.displayed.filter((item) => list.selectedIds.has(item.id)).length,
+                  onAll: () => list.selectMany(list.displayed.map((item) => item.id)),
+                  onNone: () => list.selectMany([]),
+                }
+              : undefined,
+            count: bulk ? list.selectedIds.size : 0,
+            tag: bulk?.onTag,
+            tagLabel: bulk?.tagLabel,
+            tagIcon: bulk?.tagIcon,
+            explorer: bulk?.onFile,
+            group: bulk?.onGroup,
+            board: bulk?.onBoard,
+            copyToNote: bulk?.onCopy,
+            copyObject: bulk?.onCopyObject && list.selectedIds.size === 1 ? bulk.onCopyObject : undefined,
+            remove: bulk?.onDelete,
+          })
         : [
             ...(shape
               ? [{ key: 'shape', icon: shape.icon as string, label: 'Вигляд', onPress: shape.onToggle, closesStack: true }]
@@ -580,7 +563,7 @@ export default function DatabaseChrome<T extends { id: string }>({
         {/* The tabs float over the cards rather than standing above them,
             so a card slides under them and off the top of the screen. */}
         {isFocused && (
-          <GlassPortal>
+          <GlassPortal name="DatabaseChrome">
             <View
               style={[styles.topChrome, { top: chromeTop }]}
               pointerEvents="box-none"
@@ -689,6 +672,18 @@ export default function DatabaseChrome<T extends { id: string }>({
           // went down in its band and moved clearly sideways, and the pull
           // fails as soon as the movement reads as horizontal.
           <Animated.View style={[styles.pullBox, pull.pullStyle]}>
+            {/* Swipe to select (components/SwipeSelect): the cards a screen wraps in SwipeSelectItem, in its list view. */}
+            <SwipeSelectArea
+              enabled={FEATURES.swipeSelect && list.viewMode === 'list'}
+              isSelectMode={list.isSelectMode}
+              selectedIds={list.selectedIds}
+              onSelect={list.sweepTo}
+              onEnd={(ids) => {
+                if (ids.size === 0) list.clear();
+              }}
+              onToggle={list.toggle}
+              scroll={swipeScroll}
+            >
             <GestureDetector gesture={listGesture}>
               {children(
                 list.tagFilter || (list.isSearching && !topNav) ? 0 : chromeBottom,
@@ -697,6 +692,7 @@ export default function DatabaseChrome<T extends { id: string }>({
                 pull.scrollY
               )}
             </GestureDetector>
+            </SwipeSelectArea>
           </Animated.View>
         )}
       {/* What runs off the top and the bottom melts into the ground under
@@ -751,7 +747,7 @@ export default function DatabaseChrome<T extends { id: string }>({
       {/* The recent folders over the dock while something is selected -
           one tap files the selection (the folders rework, step 2). */}
       {isFocused && edgesFade && list.isSelectMode && list.selectedIds.size > 0 && bulk?.onTagTo && bulk.onTag && (
-        <RecentFolderStrip tags={list.tags} onPick={bulk.onTagTo} onOther={bulk.onTag} />
+        <RecentFolderStrip tags={bulk.folderTags ?? list.tags} onPick={bulk.onTagTo} onOther={bulk.onTag} otherLabel={bulk.tagLabel} />
       )}
 
       {/* In the explorer the "+" is a capsule of two: this database's own

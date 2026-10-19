@@ -37,6 +37,7 @@ import { useDatabaseList } from '../hooks/useDatabaseList';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR } from '../utils/fonts';
 import { notify } from '../components/surfaces/Ask';
 import { listenError } from '../utils/listenError';
+import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
 
 const STICKER_YELLOW = '#FBE97A';
 const STICKER_DARK = '#4a3f05';
@@ -65,6 +66,8 @@ export default function StickersScreen({
   route,
   inPane,
 }: Partial<Props> & { inPane?: boolean } = {}) {
+  // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
+  useDockDesksWhileFocused(!inPane);
   // In front: the start desk's recents.
   useTileOpened('stickers');
   const theme = useTheme();
