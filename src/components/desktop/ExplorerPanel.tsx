@@ -27,7 +27,7 @@ export type ExplorerPanelProps = {
   // The folder in the panel: the one chosen with a click, else the one the explorer stands in.
   folder: { label: string; sub: string; chosen: boolean; colorId?: string; onColor?: (id: string) => void; onOpen?: () => void } | null;
   // A thing chosen with a click (a note, a board, a file…).
-  chosen: { title: string; kind: string; sub?: string; onOpen: () => void } | null;
+  chosen: { title: string; kind: string; facts?: { label: string; value: string }[]; onOpen: () => void } | null;
   onNewFolder: () => void;
   onNewShortcut: () => void;
   candidates: number;
@@ -119,8 +119,15 @@ export default function ExplorerPanel(p: ExplorerPanelProps) {
                 <Text style={[styles.factValue, { color: D.ink }]} numberOfLines={3}>
                   {p.chosen.title}
                 </Text>
-                {!!p.chosen.sub && <Text style={[styles.factSub, { color: D.ink3 }]}>{p.chosen.sub}</Text>}
               </View>
+              {(p.chosen.facts ?? []).map((f) => (
+                <View key={f.label} style={styles.fact}>
+                  <Text style={[styles.factLabel, { color: D.ink3 }]}>{f.label}</Text>
+                  <Text style={[styles.factValue, { color: D.ink }]} numberOfLines={2}>
+                    {f.value}
+                  </Text>
+                </View>
+              ))}
               <Pressable onPress={p.chosen.onOpen} style={[styles.primary, { backgroundColor: D.ink }]}>
                 <Text style={[styles.primaryText, { color: D.card }]}>Відкрити</Text>
                 <Text style={[styles.primaryKey, { color: D.card }]}>↩</Text>

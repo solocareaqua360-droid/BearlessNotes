@@ -1180,6 +1180,11 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // One hold, one menu: a held card is heard both by its own long press and by the carry's hold, and the second
   // menu waited under the first and came back after «Вигляд картки» was done (2026-10-12).
   async function holdFolder(f: FolderEntry) {
+    // The Finder rule (Mac): a right click CHOOSES the card first, then asks.
+    if (explorerSelect) {
+      chosenOpen.current = () => openFolderEntry(f);
+      setChosen(`folder:${f.path}`);
+    }
     // «Нерозкладене» is not a folder: nothing to rename, colour, move or delete.
     if (f.path === UNFILED) return;
     if (folderHeld.current) return;
@@ -1566,6 +1571,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     }
   }
   async function holdItem(item: FolderItem) {
+    if (explorerSelect) {
+      chosenOpen.current = () => openItem(item);
+      setChosen(item.id);
+    }
     const canShare = item.kind === 'photo' || item.kind === 'link' || item.kind === 'file';
     const canBin = item.kind !== 'row';
     const choice = await holdAsk({
@@ -2030,10 +2039,16 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     const colourable = fp !== UNFILED && !!fp;
     return {
       label: fp ? folderLabel(fp) : 'Провідник',
-      sub: `${countWords(fp ? directItemsOf(fp).length : here.length)}${fp && subFoldersOf(fp) ? ` · ${subFoldersOf(fp)} папок` : ''}`,
+      sub: fp ? `${countWords(directItemsOf(fp).length)}${subFoldersOf(fp) ? ` · ${subFoldersOf(fp)} папок` : ''}` : `${countWords(items.length)} · ${new Set(tags.map((t) => t.path.split('/')[0])).size} папок`,
       chosen: isChosen,
-      colorId: colourable ? cardTagOf(fp)?.color : undefined,
-      onColor: colourable ? (id: string) => setFolderAppearance(fp, { color: id }).catch(() => {}) : undefined,
+      // The CARD's colour (tag.card.color - what the cover and the card draw), not the tag's own dot colour.
+      colorId: colourable ? cardTagOf(fp)?.card?.color : undefined,
+      onColor: colourable
+        ? (id: string) => {
+            const t = cardTagOf(fp);
+            if (t) setTagFields(t.id, { card: { ...(t.card ?? { size: 'M' as const, pattern: 'light' as const }), color: id } }).catch(() => {});
+          }
+        : undefined,
       onOpen: isChosen ? () => chosenOpen.current?.() : undefined,
     };
   };
@@ -2059,9 +2074,19 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             ? {
                 title: chosenItem.title || 'Без назви',
                 kind: KIND_LABEL[chosenItem.kind] ?? chosenItem.kind,
-                sub: (() => {
-                  const at = (chosenItem.raw as { updatedAt?: number } | undefined)?.updatedAt;
-                  return at ? `Змінено ${formatAddedOn(at, true)}` : undefined;
+                facts: (() => {
+                  const raw = (chosenItem.raw ?? {}) as Record<string, unknown>;
+                  const out: { label: string; value: string }[] = [];
+                  const where = (pathsOf.get(chosenItem.id) ?? []).map((p) => p.split('/').pop() ?? p);
+                  out.push({ label: 'Папка', value: where.length ? where.join(', ') : 'Нерозкладене' });
+                  const made = typeof raw.createdAt === 'number' ? raw.createdAt : undefined;
+                  const changed = typeof raw.updatedAt === 'number' ? raw.updatedAt : undefined;
+                  if (made) out.push({ label: 'Створено', value: formatAddedOn(made, true) });
+                  if (changed && changed !== made) out.push({ label: 'Змінено', value: formatAddedOn(changed, true) });
+                  if (typeof raw.url === 'string') out.push({ label: 'Адреса', value: raw.url.replace(/^https?:\/\//, '').slice(0, 60) });
+                  if (typeof raw.fileName === 'string') out.push({ label: 'Файл', value: raw.fileName });
+                  if (typeof raw.size === 'number') out.push({ label: 'Розмір', value: raw.size > 1048576 ? `${(raw.size / 1048576).toFixed(1)} МБ` : `${Math.max(1, Math.round(raw.size / 1024))} КБ` });
+                  return out;
                 })(),
                 onOpen: () => {
                   setChosen(null);

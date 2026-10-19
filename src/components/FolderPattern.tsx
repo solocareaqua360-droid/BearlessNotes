@@ -1,6 +1,6 @@
 import { queueHeavy, useAmbientHeld, useMotionHeld } from '../utils/motionHold';
 import { memo, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, Platform, StyleSheet, View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import { claimPatternShot, patternShot, putPatternShot, releasePatternClaim, usePatternShot } from '../utils/patternShots';
 import Svg, { G } from 'react-native-svg';
@@ -82,7 +82,9 @@ function FolderPatternInner({ kinds, color, density, size, shot, onShown }: Prop
     }
     return groups;
   }, [box.w, box.h, sequence, step, color]);
-  const shotKey = shot && size ? patternKeyOf(kinds, size, color, density) : null;
+  // Not in a browser: the photograph is html2canvas's, painted on an opaque white ground that hid the folder's own
+  // colour (a graphite cover came out white with the title lost in the pattern, 2026-10-19). There the shapes stay.
+  const shotKey = shot && size && Platform.OS !== 'web' ? patternKeyOf(kinds, size, color, density) : null;
   const picture = usePatternShot(shotKey);
   const holder = useRef<View>(null);
   useEffect(() => {
