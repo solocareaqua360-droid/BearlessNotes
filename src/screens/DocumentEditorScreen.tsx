@@ -177,6 +177,8 @@ import { binNoteAsking } from '../utils/deleteNote';
 import { SHOW_OPEN_REPORTS, SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTiming';
 import { logReport, markEditorGone, perfSummary } from '../utils/perfWatch';
 import { peekDocument, useDocumentIndex } from '../hooks/useDocumentIndex';
+import { usePublishRailPanel } from '../navigation/navRail';
+import NotePanel from '../components/desktop/NotePanel';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
 import { BlurView } from 'expo-blur';
@@ -2984,6 +2986,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // for a list at its root, wrong here, where the actions are the whole
   // reason this note stopped drawing a dock of its own.
   useDockOpensOnActions(!embedded);
+  // «Ця нотатка» in the Mac's right panel (frame B): the note's folder, dates, size, and the notes it points at
+  // and is pointed at from - only for a note standing in the main column, not one embedded or in a pane.
+  const notePanelOn = FEATURES.macFrameB && Platform.OS === 'web' && !embedded && !('pane' in props);
+  usePublishRailPanel(
+    notePanelOn ? (
+      <NotePanel
+        documentId={documentId}
+        blocks={blocks}
+        tagIds={tagIds}
+        tags={tags}
+        index={documentIndex}
+        project={groups.find((g) => g.id === groupId)?.name ?? null}
+        onOpen={(id) => (navigation as unknown as { push: (n: string, p: object) => void }).push('Editor', { documentId: id })}
+      />
+    ) : null
+  );
   const showActions = () => setDockFace('actions');
   // The dock shows only when nothing is standing in the bottom of the
   // screen. The panel is such a thing - it stands where the keyboard
@@ -5949,7 +5967,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 since ProjectBadge already carries its own (the same
                 `glass` look TagChips uses) - a pill, not a button. */}
             <View>
-              <ProjectBadge project={groups.find((g) => g.id === groupId) ?? null} glass />
+              {/* On the Mac's frame B the project is a line of «Ця нотатка» in the right panel; the corner keeps
+                  only the save ring. */}
+              {!notePanelOn && <ProjectBadge project={groups.find((g) => g.id === groupId) ?? null} glass />}
               {/* The save indicator STAYS on the badge's own outline -
                   see the corner-vs-middle reasoning in feedback_ambient_
                   indicators. Last child, so it draws over the badge. */}
