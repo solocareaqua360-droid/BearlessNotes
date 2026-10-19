@@ -69,6 +69,7 @@ import {
 import { prefetchState, startOfflinePrefetch, subscribeToPrefetch } from './src/utils/offlineCache.web';
 import { onDesktopCommand } from './src/utils/desktopCommands';
 import { LEAN_WINDOW } from './src/utils/leanWindow';
+import { useInspectorOpen } from './src/navigation/inspector';
 import {
   HandoffKind,
   handoffRequest,
@@ -360,8 +361,9 @@ function FrameBHome() {
 // The old rail drew it under the folder tree; the sidebar is navigation only, so it stands beside the column.
 function FrameBRightPanel() {
   const panel = useRailPanel();
+  const open = useInspectorOpen();
   const D = deskColors(softTokens(useTheme().scheme));
-  if (!panel) return null;
+  if (!panel || !open) return null;
   return (
     <View style={{ width: 340, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: D.line, paddingTop: 12, backgroundColor: D.chrome }}>
       {panel}

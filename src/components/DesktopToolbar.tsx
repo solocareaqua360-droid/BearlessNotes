@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { navigationRef } from '../navigationRef';
 import { useExplorerPath } from '../navigation/explorerPlace';
 import { FEATURES } from '../features';
+import { inspector, useInspectorOpen } from '../navigation/inspector';
 import { CONTROL, RADIUS, SPACE, TYPE, useDeskColors } from '../theme/desktopTheme';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -84,6 +85,7 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
   const extras = useNavTopExtras();
   const frameB = FEATURES.macFrameB && !compact;
   const [menuOpen, setMenuOpen] = useState(false);
+  const inspectorOpen = useInspectorOpen();
   // «Джерела» is the note's own «Референси» action - drawn as the one right-hand toggle, not among the capsule.
   const refs = frameB ? (actions ?? []).find((a) => a.key === 'refs') ?? null : null;
   const leftBead = !beadsHidden && beads.left && !/back/.test(beads.left.icon) ? beads.left : null;
@@ -223,6 +225,17 @@ export default function DesktopToolbar({ compact = false }: { compact?: boolean 
           {frameB && !!extras?.menu?.length && (
             <Pressable style={[styles.button, menuOpen && [styles.buttonOn, { backgroundColor: D.fill }]]} onPress={() => setMenuOpen((v) => !v)} accessibilityLabel="Меню">
               <ActionIcon icon="ellipsis-horizontal" size={17} color={theme.ink.primary} />
+            </Pressable>
+          )}
+          {frameB && (
+            // THE INSPECTOR'S DOOR (navigation/inspector): the right panel, opened and closed here, remembered.
+            <Pressable
+              style={[styles.button, inspectorOpen && [styles.buttonOn, { backgroundColor: D.fill }]]}
+              onPress={() => inspector.toggle()}
+              accessibilityLabel="Панель"
+              {...({ title: inspectorOpen ? 'Сховати панель' : 'Показати панель' } as object)}
+            >
+              <ActionIcon icon={inspectorOpen ? 'chevron-forward-outline' : 'chevron-back-outline'} size={17} color={theme.ink.primary} />
             </Pressable>
           )}
           {!!rightBead && (

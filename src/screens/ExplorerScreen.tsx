@@ -1,4 +1,7 @@
 import { type ComponentProps, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { usePublishRailPanel } from '../navigation/navRail';
+import ExplorerPanel from '../components/desktop/ExplorerPanel';
+import { formatAddedOn } from '../utils/documentPreview';
 import { COMPOSER_CLEAR } from '../components/desktop/Composer';
 import { explorerPlace, useExplorerCreateWanted, useExplorerWanted } from '../navigation/explorerPlace';
 import { folderOpening, useFolderOpening } from '../navigation/folderOpening';
@@ -260,6 +263,9 @@ function cornerIn(delay: number) {
 
 // `desk`: standing as a DESK of the phone (the first one): the island draws the bar, as for the Documents desk -
 // the screen draws none of its own (one over every layer was the 2026-10-11 mishap), and at its root has no way back.
+// A `data-*` attribute for the DOM (the Finder rule's ground-click test); nothing on the phone.
+const webData = (d: Record<string, string>): object => (Platform.OS === 'web' ? { dataSet: d } : {});
+
 export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; desk?: boolean } = {}) {
   const S = useSoft();
   const insets = useSafeAreaInsets();
@@ -360,6 +366,48 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // columns on an 1800 window. The window's width stays the first guess until the list has been laid out, and the
   // phone's answer, where the list is the window.
   const [measuredW, setMeasuredW] = useState(0);
+  // THE FINDER RULE on the Mac (frame B, 2026-10-19, agreed): one click CHOOSES a card (a ring, and the right panel
+  // shows it), a second click within half a second - or Enter - opens it; Escape and a click on the ground let go.
+  // The phone keeps its tap-opens. `chosen` is an item id, or `folder:<path>` for a folder card.
+  const explorerSelect = FEATURES.macFrameB && Platform.OS === 'web' && !inPane;
+  const [chosen, setChosen] = useState<string | null>(null);
+  const lastPick = useRef<{ id: string; at: number }>({ id: '', at: 0 });
+  const chosenOpen = useRef<(() => void) | null>(null);
+  // True when this press is the second of a pair (open now); false when it only chose.
+  const pickTwice = (id: string, open: () => void): boolean => {
+    const now = Date.now();
+    if (lastPick.current.id === id && now - lastPick.current.at < 450) {
+      lastPick.current = { id: '', at: 0 };
+      setChosen(null);
+      return true;
+    }
+    lastPick.current = { id, at: now };
+    chosenOpen.current = open;
+    setChosen(id);
+    return false;
+  };
+  useEffect(() => {
+    if (!explorerSelect || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setChosen(null);
+      else if (e.key === 'Enter' && chosen && chosenOpen.current && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        setChosen(null);
+        chosenOpen.current();
+      }
+    };
+    // A click on the explorer's own ground (not on a card) lets go of the chosen one.
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (t && t.closest && t.closest('[data-explorer]') && !t.closest('[data-card]')) setChosen(null);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onDown);
+    };
+  }, [explorerSelect, chosen]);
   const contentW = !touchDensity && measuredW > 0 ? measuredW - 40 : Math.min(winW, 1100) - 40;
   const gridCols = winW >= 640 ? 3 : 2;
   const TILE_GAP = 12;
@@ -1549,7 +1597,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   }
 
   useTopExtras(
-    [
+    // On the Mac (frame B) the panel beside the list says all of this as live controls (ExplorerPanel).
+    explorerSelect ? null : [
       // The shared set of the bases' «⋯» (the survey of 2026-10-10): the view, the order, then the folder.
       ...viewSection(viewMode, (m) => changeView(m), ['list', 'grid', 'canvas']),
       ...orderSection(sortPref, selectSortField),
@@ -1974,6 +2023,62 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     p === UNFILED ? items.filter((i) => (pathsOf.get(i.id) ?? []).length === 0) : items.filter((i) => (pathsOf.get(i.id) ?? []).includes(p));
   const subFolderNamesOf = (p: string) => [...new Set(tags.filter((t) => t.path.startsWith(`${p}/`)).map((t) => t.path.slice(p.length + 1).split('/')[0]))];
   const subFoldersOf = (p: string) => subFolderNamesOf(p).length;
+  // THE INSPECTOR (frame B): view, order, switches, style; the chosen thing or folder, else the folder stood in; actions.
+  const KIND_LABEL: Record<string, string> = { document: 'Нотатка', board: 'Дошка', file: 'Файл', photo: 'Фото', link: 'Посилання', flashcard: 'Картка', shortcut: 'Ярлик', collection: 'Підбірка', row: 'Запис' };
+  const countWords = (n: number) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'предмет' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'предмети' : 'предметів'}`;
+  const folderForPanel = (fp: string, isChosen: boolean) => {
+    const colourable = fp !== UNFILED && !!fp;
+    return {
+      label: fp ? folderLabel(fp) : 'Провідник',
+      sub: `${countWords(fp ? directItemsOf(fp).length : here.length)}${fp && subFoldersOf(fp) ? ` · ${subFoldersOf(fp)} папок` : ''}`,
+      chosen: isChosen,
+      colorId: colourable ? cardTagOf(fp)?.color : undefined,
+      onColor: colourable ? (id: string) => setFolderAppearance(fp, { color: id }).catch(() => {}) : undefined,
+      onOpen: isChosen ? () => chosenOpen.current?.() : undefined,
+    };
+  };
+  useEffect(() => setChosen(null), [path]);
+  const chosenFolderPath = chosen?.startsWith('folder:') ? chosen.slice('folder:'.length) : null;
+  const chosenItem = chosen && !chosenFolderPath ? items.find((i) => i.id === chosen) ?? null : null;
+  usePublishRailPanel(
+    explorerSelect ? (
+      <ExplorerPanel
+        view={viewMode === 'wide' ? 'grid' : viewMode}
+        onView={(v) => changeView(v)}
+        sortPref={sortPref}
+        onSort={selectSortField}
+        byKind={byKind}
+        onByKind={toggleByKind}
+        chipsOn={chipsOn}
+        onChips={toggleChips}
+        style={explorerStyle}
+        onStyle={changeStyle}
+        folder={chosenFolderPath !== null ? folderForPanel(chosenFolderPath, true) : folderForPanel(path, false)}
+        chosen={
+          chosenItem
+            ? {
+                title: chosenItem.title || 'Без назви',
+                kind: KIND_LABEL[chosenItem.kind] ?? chosenItem.kind,
+                sub: (() => {
+                  const at = (chosenItem.raw as { updatedAt?: number } | undefined)?.updatedAt;
+                  return at ? `Змінено ${formatAddedOn(at, true)}` : undefined;
+                })(),
+                onOpen: () => {
+                  setChosen(null);
+                  chosenOpen.current?.();
+                },
+              }
+            : null
+        }
+        onNewFolder={() => setNaming('new')}
+        onNewShortcut={() => newShortcut()}
+        candidates={candidates.length}
+        onCleanup={enterCleanup}
+        binned={binned.length}
+        onBin={enterBin}
+      />
+    ) : null
+  );
   // The covers of the folders on this level, photographed ahead (PatternWarmup) - so a folder's first opening
   // grows one picture, not ~800 shapes.
   const warmJobs = modernLook
@@ -2145,7 +2250,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                   collapsable={false}
                   entering={arriving() && !!path ? cornerIn(Math.min(n, 10) * 32) : undefined}
                   // A small card keeps its own height (it stretched to a taller neighbour's).
-                  style={size === 'S' ? { height: 95 } : undefined}
+                  {...webData({ card: `folder:${f.path}` })}
+                  style={[size === 'S' ? { height: 95 } : undefined, chosen === `folder:${f.path}` && { boxShadow: `0 0 0 2px ${S.ink}`, borderRadius: 20 }]}
                   ref={(node: View | null) => {
                     if (node) cardNodes.current.set(f.path, node);
                     else cardNodes.current.delete(f.path);
@@ -2161,6 +2267,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                     subNames={subFolderNamesOf(f.path)}
                     navigation={navigation}
                     onOpen={(t, event) => {
+                      if (explorerSelect && !pickTwice(`folder:${f.path}`, () => openFolderEntry(f))) return;
                       const target = (event as unknown as { flipTarget?: { measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void } } | undefined)?.flipTarget;
                       // The opening FIRST; the folder is stepped into right after it starts (onGrown).
                       if (target && !f.playlist && !f.collection) {
@@ -2367,7 +2474,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           <FoldersCanvas topPad={top} linksOpen={false} onOpenItem={(item) => openItem(item)} />
         ) : (
         <GestureDetector gesture={carrying.listGesture}>
-        <View style={{ flex: 1 }} onLayout={touchDensity ? undefined : (e) => setMeasuredW(Math.round(e.nativeEvent.layout.width))}>
+        <View style={{ flex: 1 }} {...webData({ explorer: '1' })} onLayout={touchDensity ? undefined : (e) => setMeasuredW(Math.round(e.nativeEvent.layout.width))}>
         <SwipeSelectArea
           enabled={FEATURES.swipeSelect && viewMode === 'list'}
           order={sweepOrder}
@@ -2410,7 +2517,11 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                   mode={tile ? 'grid' : 'list'}
                   tileWidth={strip ?? (tile ? tileW : contentW)}
                   columns={strip !== undefined ? 1 : gridCols}
-                  onPress={(e) => (selecting ? toggle(item.id) : openItem(item, e))}
+                  onPress={(e) => {
+                    if (selecting) return toggle(item.id);
+                    if (explorerSelect && !pickTwice(item.id, () => openItem(item))) return;
+                    openItem(item, e);
+                  }}
                   // The tick is ours for EVERY card (the bases' cells drew pink, black, whatever their
                   // own colour was - the user saw mixed ticks, 2026-10-12): none passed down.
                 />
@@ -2419,7 +2530,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
               // column makes it fill the column.
               if (own && tile) {
                 return (
-                  <View key={item.id} ref={(n) => carrying.carry.registerCard(item.id, () => carrying.groupFor(item), () => holdItem(item))(n as never)} collapsable={false} style={{ width: strip ?? tileW }}>
+                  <View key={item.id} ref={(n) => carrying.carry.registerCard(item.id, () => carrying.groupFor(item), () => holdItem(item))(n as never)} collapsable={false} {...webData({ card: item.id })} style={[{ width: strip ?? tileW }, chosen === item.id && { boxShadow: `0 0 0 2px ${S.ink}`, borderRadius: 18 }]}>
                     <SwipeSelectItem id={item.id}>
                     <View style={styles.nativeCell} pointerEvents={selecting ? 'none' : 'auto'}>
                       {card}
@@ -2437,7 +2548,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                 );
               }
               return (
-                <View key={item.id} ref={(n) => carrying.carry.registerCard(item.id, () => carrying.groupFor(item), () => holdItem(item))(n as never)} collapsable={false} style={tile ? { width: tileW } : styles.cardWrap}>
+                <View key={item.id} ref={(n) => carrying.carry.registerCard(item.id, () => carrying.groupFor(item), () => holdItem(item))(n as never)} collapsable={false} {...webData({ card: item.id })} style={[tile ? { width: tileW } : styles.cardWrap, chosen === item.id && { boxShadow: `0 0 0 2px ${S.ink}`, borderRadius: tile ? 18 : 14 }]}>
                   <SwipeSelectItem id={item.id}>
                   <View pointerEvents={selecting ? 'none' : 'auto'}>{card}</View>
                   {selecting && (
