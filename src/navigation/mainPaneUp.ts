@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { navigationRef } from '../navigationRef';
 import { StackActions } from '@react-navigation/native';
 import { FEATURES } from '../features';
+import { LEAN_WINDOW } from '../utils/leanWindow';
 import { tabKey, turnIntoStart, useStartFront } from './desktopTabs';
 import { useWorkspace } from './workspace';
 import { targetFromRoute } from './paneTargetInfo';
@@ -95,6 +96,11 @@ for (const name of ['CustomDatabase', 'Links', 'Photos', 'Files', 'Stickers', 'F
 // was opened from inside one goes back ONE level, to where it came from, never to the home.
 const FRAME_B_SECTIONS = new Set(['Explorer', 'Thoughts', 'Tasks', 'Tabs', 'Календар', 'Більше', 'Документи']);
 const backOneLevel = () => {
+  // A note's own window: its one step down is out of the window (utils/leanWindow).
+  if (LEAN_WINDOW && (navigationRef.getRootState()?.routes?.length ?? 0) <= 2 && typeof window !== 'undefined') {
+    window.close();
+    return;
+  }
   if (navigationRef.canGoBack()) navigationRef.goBack();
   else toExplorer();
 };

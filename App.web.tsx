@@ -68,6 +68,7 @@ import {
 } from './src/utils/driveToken.web';
 import { prefetchState, startOfflinePrefetch, subscribeToPrefetch } from './src/utils/offlineCache.web';
 import { onDesktopCommand } from './src/utils/desktopCommands';
+import { LEAN_WINDOW } from './src/utils/leanWindow';
 import {
   HandoffKind,
   handoffRequest,
@@ -367,18 +368,6 @@ function FrameBRightPanel() {
     </View>
   );
 }
-
-// A WINDOW OF ITS OWN for a note («У вікно», frame B): opened at an address that says so, it draws the note alone -
-// no sidebar, no composer, no right panel - the way a torn-off panel stands in Claude's window. Read once, before
-// the address is cleaned (see the `open` effect).
-const LEAN_WINDOW = (() => {
-  try {
-    const raw = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('open') : null;
-    return raw ? (JSON.parse(raw) as { kind?: string }).kind === 'note' : false;
-  } catch {
-    return false;
-  }
-})();
 
 // The composer stands only on the explorer (see Composer) and on the calendar's day.
 function FrameBComposer() {
