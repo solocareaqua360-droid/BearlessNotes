@@ -12,7 +12,7 @@ import { BLOCK_ACTIONS, type BlockAction } from '../blockActions';
 // «Вставити» (what a block can become or hold, drawn as pictures of the result), «Інфо» (where the note stands, its
 // links), «Джерела» (the files, photos, links and records to drag in). The tab's content comes in as props: this
 // only draws the frame and the insert catalogue.
-export type InspectorTab = 'insert' | 'info' | 'refs';
+export type InspectorTab = 'insert' | 'format' | 'info' | 'refs';
 
 // The groups of the catalogue (BLOCK_ACTIONS is the one list; this only sorts it into shelves).
 export const INSERT_GROUPS: { title: string; keys: BlockAction[] }[] = [
@@ -25,12 +25,14 @@ export default function NoteInspector({
   tab,
   onTab,
   onInsert,
+  format,
   info,
   refs,
 }: {
   tab: InspectorTab;
   onTab: (t: InspectorTab) => void;
   onInsert: (action: BlockAction) => void;
+  format: ReactNode;
   info: ReactNode;
   refs: ReactNode;
 }) {
@@ -50,6 +52,7 @@ export default function NoteInspector({
   );
   const tabs: { id: InspectorTab; label: string }[] = [
     { id: 'insert', label: 'Вставити' },
+    { id: 'format', label: 'Формат' },
     { id: 'info', label: 'Інфо' },
     { id: 'refs', label: 'Джерела' },
   ];
@@ -102,6 +105,8 @@ export default function NoteInspector({
             </View>
           ))}
         </ScrollView>
+      ) : tab === 'format' ? (
+        <View style={{ flex: 1 }}>{format}</View>
       ) : tab === 'info' ? (
         <View style={{ flex: 1, paddingTop: 12 }}>{info}</View>
       ) : (

@@ -9,6 +9,8 @@ import type { Block, Tag } from '../../types';
 import type { DocumentIndex, IndexedDocument } from '../../hooks/useDocumentIndex';
 import { documentLinksIn } from '../../utils/documentLinks';
 import { formatAddedOn } from '../../utils/documentPreview';
+import EntryList from './EntryList';
+import type { MenuEntry } from '../surfaces/Menu';
 
 // «ЦЯ НОТАТКА» - the Mac's right panel while a note is open (frame B, 2026-10-19, after Claude's own side panel):
 // where the note stands and when it was touched, how much is in it, what it points at and what points at it. Nothing
@@ -22,6 +24,7 @@ export default function NotePanel({
   index,
   project,
   onOpen,
+  actions,
 }: {
   documentId: string;
   blocks: Block[];
@@ -31,6 +34,8 @@ export default function NotePanel({
   // The note's project («Проект» - the one cross-database grouping), or none.
   project: string | null;
   onOpen: (documentId: string) => void;
+  // The note's «⋯» entries, drawn as «Дії» (the menu itself stays until the user says it goes).
+  actions?: MenuEntry[] | null;
 }) {
   const styles = useStyles(makeStyles);
   const D = useDeskColors();
@@ -90,6 +95,14 @@ export default function NotePanel({
         {me?.updatedAt ? fact('Змінено', formatAddedOn(me.updatedAt, true)) : null}
         {fact('Обсяг', `${size.blocks} ${plural(size.blocks, 'блок', 'блоки', 'блоків')} · ${size.words} ${plural(size.words, 'слово', 'слова', 'слів')}`)}
       </View>
+      {!!actions?.length && (
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: D.ink3 }]}>Дії</Text>
+          <View style={[styles.card, { backgroundColor: D.card, borderColor: D.line, paddingHorizontal: 0 }]}>
+            <EntryList entries={actions} />
+          </View>
+        </View>
+      )}
       {list('Посилається на', outgoing, 'Жодної нотатки')}
       {list('Сюди посилаються', incoming, 'Поки ніхто')}
     </ScrollView>

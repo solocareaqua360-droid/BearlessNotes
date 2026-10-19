@@ -182,6 +182,7 @@ import { windowUrlFor } from '../navigation/paneTargetInfo';
 import { usePins } from '../navigation/pinned';
 import NotePanel from '../components/desktop/NotePanel';
 import NoteInspector from '../components/desktop/NoteInspector';
+import FormatPanel, { type FormatBlockKind } from '../components/desktop/FormatPanel';
 import SlashPopup from '../components/desktop/SlashPopup';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
@@ -3008,7 +3009,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // THE NOTE'S RIGHT PANEL: Вставити (pictures of the blocks, a click inserts at the caret) · Інфо · Джерела.
   // The tile is pressed with the mouse, so the text field has already lost focus: the block to act on is the one
   // that last had it.
-  const [inspectorTab, setInspectorTab] = useState<'insert' | 'info'>('insert');
+  const [inspectorTab, setInspectorTab] = useState<'insert' | 'format' | 'info'>('insert');
   // The «/» popup (Mac): the block it was opened in and where it stands on the screen.
   const [slash, setSlash] = useState<{ id: string; left: number; top: number } | null>(null);
   const slashText = slash ? blocks.find((b) => b.id === slash.id)?.text ?? null : null;
@@ -3036,6 +3037,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           }
         }}
         onInsert={insertFromPanel}
+        format={
+          <FormatPanel
+            kind={(() => {
+              const id = focusedBlockId ?? lastCaretBlockRef.current;
+              const t = (blocks.find((b) => b.id === id)?.type ?? (id ? 'paragraph' : null)) as string | null;
+              return t && ['paragraph', 'heading', 'bulleted', 'numbered', 'checkbox', 'toggle', 'code'].includes(t) ? (t as FormatBlockKind) : null;
+            })()}
+            hasSelection={!!activeSelection && activeSelection.start !== activeSelection.end}
+            onKind={(k) => {
+              const id = focusedBlockId ?? lastCaretBlockRef.current;
+              if (id) convertBlockType(id, k as BlockType);
+            }}
+            onStyle={(st) => applyMarkerToSelection(st === 'bold' ? '**' : st === 'italic' ? '*' : st === 'underline' ? '__' : '~~', st === 'bold' ? '**' : st === 'italic' ? '*' : st === 'underline' ? '__' : '~~')}
+            onColor={(which, hex) => applyColorToSelection(which, hex)}
+          />
+        }
         info={
           <NotePanel
             documentId={documentId}
@@ -3045,6 +3062,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             index={documentIndex}
             project={groups.find((g) => g.id === groupId)?.name ?? null}
             onOpen={(id) => (navigation as unknown as { push: (n: string, p: object) => void }).push('Editor', { documentId: id })}
+            actions={noteMenuEntries}
           />
         }
         refs={<View style={{ flex: 1 }}>{renderReferencePanel(340, false)}</View>}
