@@ -4,6 +4,7 @@ import { useInnerBack } from '../navigation/innerBack';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { FEATURES } from '../features';
 import { requestCalendarDay } from '../navigation/calendarRequest';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -147,7 +148,7 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
         ]
       : null,
     null,
-    !!openDate && topNavOn && isFocused
+    !!openDate && (topNavOn || (FEATURES.macFrameB && Platform.OS === 'web')) && isFocused
   );
 
   if (openDate) {

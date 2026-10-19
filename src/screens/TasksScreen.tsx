@@ -492,7 +492,8 @@ export default function TasksScreen() {
         toggleSelectMode();
       },
     },
-    bar && isFocused
+    // The phone's bar, or the Mac's window toolbar (frame B) - see ExplorerScreen's same line.
+    (bar || (FEATURES.macFrameB && Platform.OS === 'web')) && isFocused
   );
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   // Which tasks currently show their own expanded row - subtasks, the

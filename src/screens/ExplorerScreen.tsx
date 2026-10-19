@@ -1572,7 +1572,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       { label: 'Новий ярлик…', icon: 'rocket-outline' as const, onPress: () => newShortcut() },
     ],
     { active: selecting, onPress: () => (selecting ? leaveSelect() : setSelecting(true)) },
-    isFocused && topNavOn && !inPane
+    // The phone's top bar, or the Mac's window toolbar (frame B) - without the second the whole «⋯» of the start
+    // (view, order, style, cleanup, new folder…) had no door on the Mac (the user, 2026-10-19).
+    isFocused && (topNavOn || (FEATURES.macFrameB && Platform.OS === 'web')) && !inPane
   );
   useDockActions(
     isFocused && inBin
