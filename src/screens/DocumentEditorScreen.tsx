@@ -3063,10 +3063,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // Through handleBlockChange - the way typing goes - so the field on screen and the caret follow the new text.
       focusIdRef.current = id;
       handleBlockChange(id, next);
-      setTimeout(() => {
-        inputRefs.current[id]?.focus?.();
-        setSelection(inputRefs.current[id], next.length, next.length);
-      }, 120);
+      // A browser's focused field does not redraw a text changed from outside until it loses the focus (the «@» was in
+      // the block but not on screen): the field is let go, so the «@» shows; the caret goes back with the next click, and
+      // the picker opens as the name is typed. (Tried and dropped: re-activating the block through focusIdRef - the
+      // typed text of a block made with «Додати блок» was lost and the picker still did not open.)
+      if (Platform.OS === 'web') setTimeout(() => (inputRefs.current[id] as unknown as { blur?: () => void } | undefined)?.blur?.(), 120);
     }
     else handleBlockAction(key, id);
   };
