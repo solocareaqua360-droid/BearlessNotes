@@ -181,6 +181,8 @@ import { usePublishRailPanel } from '../navigation/navRail';
 import { windowUrlFor } from '../navigation/paneTargetInfo';
 import { usePins } from '../navigation/pinned';
 import NotePanel from '../components/desktop/NotePanel';
+import NoteInspector from '../components/desktop/NoteInspector';
+import SlashPopup from '../components/desktop/SlashPopup';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
 import { blockLinksTo, documentLinksIn } from '../utils/documentLinks';
 import { BlurView } from 'expo-blur';
@@ -3003,18 +3005,49 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // reason this note stopped drawing a dock of its own.
   useDockOpensOnActions(!embedded);
   // «Ця нотатка» in the Mac's right panel (frame B) - see notePanelOn above.
+  // THE NOTE'S RIGHT PANEL: Вставити (pictures of the blocks, a click inserts at the caret) · Інфо · Джерела.
+  // The tile is pressed with the mouse, so the text field has already lost focus: the block to act on is the one
+  // that last had it.
+  const [inspectorTab, setInspectorTab] = useState<'insert' | 'info'>('insert');
+  // The «/» popup (Mac): the block it was opened in and where it stands on the screen.
+  const [slash, setSlash] = useState<{ id: string; left: number; top: number } | null>(null);
+  const slashText = slash ? blocks.find((b) => b.id === slash.id)?.text ?? null : null;
+  useEffect(() => {
+    // The slash was erased or the block is gone: the popup goes with it.
+    if (slash && (slashText === null || !slashText.startsWith('/'))) setSlash(null);
+  }, [slash, slashText]);
+  const lastCaretBlockRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (focusedBlockId) lastCaretBlockRef.current = focusedBlockId;
+  }, [focusedBlockId]);
+  const insertFromPanel = (action: BlockAction) => {
+    const target = lastCaretBlockRef.current && blocks.some((b) => b.id === lastCaretBlockRef.current) ? lastCaretBlockRef.current : blocks[blocks.length - 1]?.id;
+    if (target) handleBlockAction(action, target);
+  };
   usePublishRailPanel(
-    notePanelOn && referencePanelOpen ? (
-      <View style={{ flex: 1 }}>{renderReferencePanel(340, false)}</View>
-    ) : notePanelOn ? (
-      <NotePanel
-        documentId={documentId}
-        blocks={blocks}
-        tagIds={tagIds}
-        tags={tags}
-        index={documentIndex}
-        project={groups.find((g) => g.id === groupId)?.name ?? null}
-        onOpen={(id) => (navigation as unknown as { push: (n: string, p: object) => void }).push('Editor', { documentId: id })}
+    notePanelOn ? (
+      <NoteInspector
+        tab={referencePanelOpen ? 'refs' : inspectorTab}
+        onTab={(t) => {
+          if (t === 'refs') setReferencePanelOpen(true);
+          else {
+            setReferencePanelOpen(false);
+            setInspectorTab(t);
+          }
+        }}
+        onInsert={insertFromPanel}
+        info={
+          <NotePanel
+            documentId={documentId}
+            blocks={blocks}
+            tagIds={tagIds}
+            tags={tags}
+            index={documentIndex}
+            project={groups.find((g) => g.id === groupId)?.name ?? null}
+            onOpen={(id) => (navigation as unknown as { push: (n: string, p: object) => void }).push('Editor', { documentId: id })}
+          />
+        }
+        refs={<View style={{ flex: 1 }}>{renderReferencePanel(340, false)}</View>}
       />
     ) : null
   );
@@ -3857,7 +3890,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
     // A slash typed into an EMPTY block, and only then - a "/" in the
     // middle of a sentence is a slash.
-    if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
+    if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType) && notePanelOn) {
+      // The Mac: a flat list under the caret that filters as the word after the slash is typed (SlashPopup).
+      const rect = (typeof document !== 'undefined' ? document.activeElement : null)?.getBoundingClientRect?.();
+      const below = rect ? rect.bottom + 4 : 200;
+      const room = typeof window !== 'undefined' ? window.innerHeight - below : 400;
+      setSlash({ id, left: rect ? Math.max(8, rect.left) : 200, top: room < 380 && rect ? Math.max(8, rect.top - 372) : below });
+    } else if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
       openSlashMenu(id);
     }
 
@@ -5732,6 +5771,20 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
   const bottomChrome = (
     <>
+      {slash && notePanelOn && (
+        <SlashPopup
+          query={(slashText ?? '/').slice(1)}
+          anchor={{ left: slash.left, top: slash.top }}
+          onClose={() => setSlash(null)}
+          onPick={(action) => {
+            const id = slash.id;
+            setSlash(null);
+            // Picking clears the "/ word" first, so the block does not keep a stray slash in front of a picture.
+            setBlocks((prev) => prev.map((b) => (b.id === id && b.text.startsWith('/') ? { ...b, text: '' } : b)));
+            handleBlockAction(action, id);
+          }}
+        />
+      )}
       {!embedded && (referencePanelOpen || referenceSheet) && !notePanelOn && (
         <View
           style={
