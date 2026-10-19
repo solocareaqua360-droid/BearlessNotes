@@ -2532,7 +2532,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // note starts, minus what is to the right of it. Both are measured in
   // window coordinates by whoever put the note in a pane.
   const noteWidth = editorWidth || Math.max(0, windowWidth - paneLeft - railRight);
-  const referencesSplit = referencePanelOpen && !embedded && noteWidth >= REFERENCES_SPLIT_MIN;
+  // «Ця нотатка» / «Джерела» in the Mac's right panel (frame B): only for a note standing in the main column, not
+  // one embedded or in a pane. Decided here because the split below must not take the note's width for a panel
+  // that stands in the right column instead.
+  const notePanelOn = FEATURES.macFrameB && Platform.OS === 'web' && !embedded && !('pane' in props);
+  const referencesSplit = referencePanelOpen && !embedded && noteWidth >= REFERENCES_SPLIT_MIN && !notePanelOn;
   // Where the note does not split, a soft note takes «Референси» as a
   // SHEET FROM THE BOTTOM (see ReferencePanel's `sheet`) - the side
   // drawer had no place of its own and slid under the bar.
@@ -2986,11 +2990,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // for a list at its root, wrong here, where the actions are the whole
   // reason this note stopped drawing a dock of its own.
   useDockOpensOnActions(!embedded);
-  // «Ця нотатка» in the Mac's right panel (frame B): the note's folder, dates, size, and the notes it points at
-  // and is pointed at from - only for a note standing in the main column, not one embedded or in a pane.
-  const notePanelOn = FEATURES.macFrameB && Platform.OS === 'web' && !embedded && !('pane' in props);
+  // «Ця нотатка» in the Mac's right panel (frame B) - see notePanelOn above.
   usePublishRailPanel(
-    notePanelOn ? (
+    notePanelOn && referencePanelOpen ? (
+      <View style={{ flex: 1 }}>{renderReferencePanel(340, false)}</View>
+    ) : notePanelOn ? (
       <NotePanel
         documentId={documentId}
         blocks={blocks}
@@ -5663,9 +5667,60 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // bar floated a finger's width over the keyboard. Where there is no
   // sheet - a pane, a pointer, the calendar's own embedded note - the
   // page IS the screen and they stay inside it, exactly as before.
+  // «Джерела» (ReferencePanel) - drawn once, in one of two places: beside the note in its own column (the split), or
+  // in the Mac's right panel (frame B, 2026-10-19). A function, not a const: it is called from the panel hook above
+  // the loading return as well as from the chrome below it.
+  function renderReferencePanel(width: number, resizable: boolean) {
+    return (
+    <CrashBoundary>
+      <ReferencePanel
+        soft={softPage ? soft : null}
+        sheet={referenceSheet}
+        width={width}
+        onResizeWidth={resizable ? resizeReferences : undefined}
+        visible={referencePanelOpen}
+        onClose={() => setReferencePanelOpen(false)}
+        // The hint has to match the gesture - see useReferenceDrag:
+        // a pointer drags at once, a finger holds first.
+        hint={
+          pointerDensity
+            ? canvasMode
+              ? 'Перетягни на полотно'
+              : 'Перетягни в текст'
+            : canvasMode
+              ? 'Затисни й перетягни на полотно'
+              : 'Затисни й перетягни в текст'
+        }
+        onDragMove={
+          canvasMode ? undefined : (_x, y) => blockListRef.current?.hoverExternal(y)
+        }
+        onDragFinished={canvasMode ? undefined : () => blockListRef.current?.endExternalHover()}
+        onDrop={(block, x, y, respond) => {
+          if (canvasMode) {
+            canvasApiRef.current?.screenToSurface(x, y, (at) => {
+              if (at) insertReferenceBlock(block, at);
+              respond(!!at);
+            }) ?? respond(false);
+            return;
+          }
+          const list = blockListRef.current;
+          if (!list) {
+            respond(false);
+            return;
+          }
+          list.hoverExternal(y, (index) => {
+            list.endExternalHover();
+            if (index !== null) insertReferenceBlockAt(block, index);
+            respond(index !== null);
+          });
+        }}
+      />
+    </CrashBoundary>
+    );
+  }
   const bottomChrome = (
     <>
-      {!embedded && (referencePanelOpen || referenceSheet) && (
+      {!embedded && (referencePanelOpen || referenceSheet) && !notePanelOn && (
         <View
           style={
             referenceSheet
@@ -5677,50 +5732,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           {/* Its own boundary: a panel that browses every database in the
               app has more ways to fail than the note it stands beside,
               and none of them should be able to take the note down. */}
-          <CrashBoundary>
-            <ReferencePanel
-              soft={softPage ? soft : null}
-              sheet={referenceSheet}
-              width={referencePanelWidth}
-              onResizeWidth={pointerDensity && referencesSplit ? resizeReferences : undefined}
-              visible={referencePanelOpen}
-              onClose={() => setReferencePanelOpen(false)}
-              // The hint has to match the gesture - see useReferenceDrag:
-              // a pointer drags at once, a finger holds first.
-              hint={
-                pointerDensity
-                  ? canvasMode
-                    ? 'Перетягни на полотно'
-                    : 'Перетягни в текст'
-                  : canvasMode
-                    ? 'Затисни й перетягни на полотно'
-                    : 'Затисни й перетягни в текст'
-              }
-              onDragMove={
-                canvasMode ? undefined : (_x, y) => blockListRef.current?.hoverExternal(y)
-              }
-              onDragFinished={canvasMode ? undefined : () => blockListRef.current?.endExternalHover()}
-              onDrop={(block, x, y, respond) => {
-                if (canvasMode) {
-                  canvasApiRef.current?.screenToSurface(x, y, (at) => {
-                    if (at) insertReferenceBlock(block, at);
-                    respond(!!at);
-                  }) ?? respond(false);
-                  return;
-                }
-                const list = blockListRef.current;
-                if (!list) {
-                  respond(false);
-                  return;
-                }
-                list.hoverExternal(y, (index) => {
-                  list.endExternalHover();
-                  if (index !== null) insertReferenceBlockAt(block, index);
-                  respond(index !== null);
-                });
-              }}
-            />
-          </CrashBoundary>
+          {renderReferencePanel(referencePanelWidth, pointerDensity && referencesSplit)}
         </View>
       )}
       {isToolbarVisible && (

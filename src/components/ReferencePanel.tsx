@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardRide } from '../hooks/useKeyboardRide';
 import { TOP_NAV_SPACE } from './TopNavBar';
 import { Ionicons } from './icons/Ionicons';
+import { FEATURES } from '../features';
 import AddExistingItemModal from './AddExistingItemModal';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -167,7 +168,7 @@ export default function ReferencePanel({
     <>
       <View style={[styles.deskHeader, { borderBottomColor: S.line }]}>
         <SoftIcon name="doc" size={16} color={S.ink2} />
-        <Text style={[styles.deskTitle, { color: S.ink }]}>Референси</Text>
+        <Text style={[styles.deskTitle, { color: S.ink }]}>{FEATURES.macFrameB ? 'Джерела' : 'Референси'}</Text>
         <Pressable
           onPress={onClose}
           hitSlop={6}
