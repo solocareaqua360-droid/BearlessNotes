@@ -78,6 +78,8 @@ import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
 import { LINK_CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
 import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import GlassLayer from '../components/GlassLayer';
+import RecordPanel from '../components/desktop/RecordPanel';
+import { usePublishRailPanel } from '../navigation/navRail';
 import { db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
 import {
@@ -1189,6 +1191,29 @@ export default function CustomDatabaseScreen({
   );
   // The three desks stay in the dock inside the base (deskBeadsBus's useDockDesksHere).
   useDockDesksHere(isFocused && bar && !inPane);
+
+  // THE MAC'S RIGHT PANEL (frame B): a row pressed shows there, read-only, and the page over the whole window opens
+  // only from the panel's «Сторінка» (pageForced) - the sketch's «її поля тут, без переходу».
+  // Above the loading return below: a hook under an early return is the white-screen trap of 2026-09-19.
+  const panelRow = rowPageId ? rows.find((r) => r.id === rowPageId) ?? null : null;
+  const recordPanelOn = FEATURES.macFrameB && Platform.OS === 'web' && !inPane;
+  const [pageForced, setPageForced] = useState(false);
+  useEffect(() => {
+    if (rowPageId === null) setPageForced(false);
+  }, [rowPageId]);
+  const closePage = () => (recordPanelOn ? setPageForced(false) : setRowPageId(null));
+  usePublishRailPanel(
+    recordPanelOn && panelRow && database ? (
+      <RecordPanel
+        database={database}
+        row={panelRow}
+        context={{ photos: photosList, files: filesList, links: linksList, relatedDatabases, relatedRows }}
+        onEdit={() => openEditRow(panelRow)}
+        onOpenPage={() => setPageForced(true)}
+        onClose={() => setRowPageId(null)}
+      />
+    ) : null
+  );
 
   if (!database) {
     return (
@@ -4507,12 +4532,12 @@ export default function CustomDatabaseScreen({
       {/* Always there, shown by `visible`: a page closing has to stay
           mounted to turn back into its card (GlassLayer's flip). */}
       {(
-        <GlassLayer visible={rowPageRow !== null} onClose={() => setRowPageId(null)} flipFrom={rowPageFlip}>
+        <GlassLayer visible={rowPageRow !== null && (!recordPanelOn || pageForced)} onClose={closePage} flipFrom={recordPanelOn ? null : rowPageFlip}>
           <View style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => setRowPageId(null)} />
+            <Pressable style={StyleSheet.absoluteFill} onPress={closePage} />
           <View style={styles.pageContainer}>
             <View style={styles.pageHeader}>
-              <Pressable hitSlop={10} onPress={() => setRowPageId(null)}>
+              <Pressable hitSlop={10} onPress={closePage}>
                 <Ionicons name="close" size={24} color={sInk(GLASS_TEXT)} />
               </Pressable>
               <Text style={styles.pageHeaderTitle} numberOfLines={1}>
