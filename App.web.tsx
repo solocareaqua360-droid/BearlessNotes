@@ -368,7 +368,19 @@ function FrameBRightPanel() {
   );
 }
 
-// The composer stands only on the explorer (see Composer).
+// A WINDOW OF ITS OWN for a note («У вікно», frame B): opened at an address that says so, it draws the note alone -
+// no sidebar, no composer, no right panel - the way a torn-off panel stands in Claude's window. Read once, before
+// the address is cleaned (see the `open` effect).
+const LEAN_WINDOW = (() => {
+  try {
+    const raw = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('open') : null;
+    return raw ? (JSON.parse(raw) as { kind?: string }).kind === 'note' : false;
+  } catch {
+    return false;
+  }
+})();
+
+// The composer stands only on the explorer (see Composer) and on the calendar's day.
 function FrameBComposer() {
   const [route, setRoute] = useState('');
   useEffect(() => {
@@ -376,7 +388,7 @@ function FrameBComposer() {
     read();
     return navigationRef.addListener('state', read);
   }, []);
-  return route === 'Explorer' ? <Composer /> : null;
+  return route === 'Explorer' ? <Composer /> : route === 'Календар' ? <Composer mode="calendar" /> : null;
 }
 
 function StartPageHost() {
@@ -771,7 +783,7 @@ export default function App() {
                 <WorkspaceProvider>
                 <InnerBackProvider>
                 <View style={styles.deskRow}>
-                  {FEATURES.macFrameB ? <Sidebar footer={accountStrip} /> : <DesktopRail footer={accountStrip} />}
+                  {FEATURES.macFrameB ? !LEAN_WINDOW && <Sidebar footer={accountStrip} /> : <DesktopRail footer={accountStrip} />}
                   <DeskGround>
                     {/* The dock, unrolled - the path on the left and
                         what this screen can do on the right, off the
@@ -792,12 +804,12 @@ export default function App() {
                           toolbar while it is the tab in front - see
                           StartPage. */}
                       {FEATURES.macFrameB ? <FrameBHome /> : <StartPageHost />}
-                      {FEATURES.macFrameB && <FrameBComposer />}
+                      {FEATURES.macFrameB && !LEAN_WINDOW && <FrameBComposer />}
                       {!FEATURES.macFrameB && <TabStepper />}
                     </View>
                   </DeskGround>
                   {!FEATURES.macFrameB && <RightColumn />}
-                  {FEATURES.macFrameB && <FrameBRightPanel />}
+                  {FEATURES.macFrameB && !LEAN_WINDOW && <FrameBRightPanel />}
                 </View>
                 </InnerBackProvider>
                 </WorkspaceProvider>

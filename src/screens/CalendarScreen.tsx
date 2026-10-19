@@ -57,6 +57,7 @@ import DocumentCard from '../components/DocumentCard';
 import DayPageMiniature from '../components/DayPageMiniature';
 import { extractPreview } from '../utils/documentPreview';
 import { usePublishRailPanel } from '../navigation/navRail';
+import { calendarPlace, useCalendarCreateWanted } from '../navigation/calendarPlace';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft, type SoftTokens } from '../theme/soft';
@@ -278,6 +279,17 @@ export default function CalendarScreen() {
 
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [selectedDate, setSelectedDate] = useState(() => new Date());
+  // The Mac's composer (frame B): told which day stands here, and asked to open the quick-create window on it.
+  useEffect(() => {
+    calendarPlace.report(`${WEEKDAY_SHORT[mondayIndex(selectedDate)]}, ${formatBigDate(selectedDate)}`);
+  }, [selectedDate]);
+  const createWanted = useCalendarCreateWanted();
+  const focusedForCreate = useIsFocused();
+  useEffect(() => {
+    if (!createWanted || !focusedForCreate) return;
+    calendarPlace.takeCreate();
+    setQuickOpen(true);
+  }, [createWanted, focusedForCreate]);
   const [isMonthExpanded, setIsMonthExpanded] = useState(false);
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const d = new Date();
@@ -2158,6 +2170,11 @@ export default function CalendarScreen() {
 
       </View>
       )}
+      {/* The quick-create window on a pointer too (the river branch above has its own): the Mac's composer opens it. */}
+      {FEATURES.quickCreate && !river && (
+        <QuickCreateHost visible={quickOpen} onClose={() => setQuickOpen(false)} initialKind="day" tasksOnDay onTell={setQuickTold} />
+      )}
+      {!river && quickTold && <UndoToast message={quickTold} actionLabel="Гаразд" onUndo={() => setQuickTold(null)} />}
 
       {phoneOverview && overviewOpen && (
         <View style={StyleSheet.absoluteFill}>
