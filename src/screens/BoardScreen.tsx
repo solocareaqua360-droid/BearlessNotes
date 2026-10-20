@@ -2825,12 +2825,14 @@ export default function BoardScreen() {
   // The handle resizes the CARD itself, on the board (world units).
   const cardWindowZoomRef = useRef(1);
   const saveWinSize = useCallback(
-    (w: number, h: number, cardId: string | null) => {
+    (w: number, h: number, cardId: string | null, at?: { x: number; y: number }) => {
       setWinSize({ w, h });
       if (!cardId) return;
       const z = cardWindowZoomRef.current || 1;
       setCards((prev) =>
-        prev.map((c) => (c.id === cardId ? { ...c, width: Math.round(w / z), docHeight: Math.round(h / z) } : c))
+        prev.map((c) =>
+          c.id === cardId ? { ...c, width: Math.round(w / z), docHeight: Math.round(h / z), ...(at ? { x: Math.round(at.x), y: Math.round(at.y) } : null) } : c
+        )
       );
     },
     []
@@ -2926,6 +2928,50 @@ export default function BoardScreen() {
         }),
     [winW, winH, winStartW, winStartH, cardWindowMaxW, cardWindowMaxH, saveWinSize]
   );
+  // THE MAC'S RESIZE BY ANY EDGE (frame B, 2026-10-20): the same window, taken by a side or a corner. A left or top edge
+  // also moves the card's corner on the board by what the window lost, so the opposite side stays where it was.
+  const winStartX = useSharedValue(0);
+  const winStartY = useSharedValue(0);
+  const edgeGestures = useMemo(() => {
+    const make = (l: boolean, r: boolean, t: boolean, b: boolean) =>
+      Gesture.Pan()
+        .minDistance(2)
+        .onStart(() => {
+          'worklet';
+          winStartW.value = winW.value;
+          winStartH.value = winH.value;
+          winStartX.value = cardWorldX.value;
+          winStartY.value = cardWorldY.value;
+        })
+        .onUpdate((e) => {
+          'worklet';
+          if (r) winW.value = Math.min(Math.max(winStartW.value + e.translationX, 140), cardWindowMaxW);
+          if (l) {
+            const w = Math.min(Math.max(winStartW.value - e.translationX, 140), cardWindowMaxW);
+            winW.value = w;
+            cardWorldX.value = winStartX.value + (winStartW.value - w) / scale.value;
+          }
+          if (b) winH.value = Math.min(Math.max(winStartH.value + e.translationY, 120), cardWindowMaxH);
+          if (t) {
+            const h = Math.min(Math.max(winStartH.value - e.translationY, 120), cardWindowMaxH);
+            winH.value = h;
+            cardWorldY.value = winStartY.value + (winStartH.value - h) / scale.value;
+          }
+        })
+        .onEnd(() => {
+          'worklet';
+          runOnJS(saveWinSize)(winW.value, winH.value, cardWindowDocIdSV.value, { x: cardWorldX.value, y: cardWorldY.value });
+        });
+    return {
+      left: make(true, false, false, false),
+      right: make(false, true, false, false),
+      top: make(false, false, true, false),
+      bottom: make(false, false, false, true),
+      tl: make(true, false, true, false),
+      tr: make(false, true, true, false),
+      bl: make(true, false, false, true),
+    };
+  }, [winW, winH, winStartW, winStartH, winStartX, winStartY, cardWorldX, cardWorldY, scale, cardWindowMaxW, cardWindowMaxH, saveWinSize]);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
   // The world point under the pinch's own focal (the midpoint between the
@@ -9026,6 +9072,27 @@ export default function BoardScreen() {
             </GestureDetector>
           )}
           </View>
+          {macBoard && cardWindow.live && (
+            // Writing stretches the frame down to the screen's foot, so the handles hang on the VISIBLE card instead:
+            // the same box the outline paints (its own height), at rest the whole frame.
+            <Animated.View pointerEvents="box-none" style={[{ position: 'absolute', left: 0, right: 0, top: 0 }, cardWindowWriting ? cardWindowOutlineStyle : { bottom: 0 }]}>
+              {(
+                [
+                  ['left', { left: -5, top: 14, bottom: 14, width: 10, cursor: 'ew-resize' }],
+                  ['right', { right: -5, top: 14, bottom: 14, width: 10, cursor: 'ew-resize' }],
+                  ['top', { top: -5, left: 14, right: 14, height: 10, cursor: 'ns-resize' }],
+                  ['bottom', { bottom: -5, left: 14, right: 40, height: 10, cursor: 'ns-resize' }],
+                  ['tl', { top: -5, left: -5, width: 18, height: 18, cursor: 'nwse-resize' }],
+                  ['tr', { top: -5, right: -5, width: 18, height: 18, cursor: 'nesw-resize' }],
+                  ['bl', { bottom: -5, left: -5, width: 18, height: 18, cursor: 'nesw-resize' }],
+                ] as const
+              ).map(([key, pos]) => (
+                <GestureDetector key={key} gesture={edgeGestures[key]}>
+                  <View style={[{ position: 'absolute', zIndex: 5 }, pos as never]} accessibilityLabel="Змінити розмір" />
+                </GestureDetector>
+              ))}
+            </Animated.View>
+          )}
         </Animated.View>
         {/* Above the card's top-right corner, never over its text: its own
             layer, so the card's frame (which the note's touches live in)
