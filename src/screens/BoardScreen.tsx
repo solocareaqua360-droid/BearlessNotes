@@ -4401,6 +4401,11 @@ export default function BoardScreen() {
   function openExistingItemPicker() {
     setAddSheetVisible(false);
     setExistingItemPickerVisible(true);
+    // On the Mac the browser of existing things is a tab of the right panel, not a window over the whole app.
+    if (macBoard) {
+      setPanelTab('pick');
+      inspector.set(true);
+    }
   }
 
   // Everything below creates a BRAND NEW database record from the board and
@@ -7578,10 +7583,17 @@ export default function BoardScreen() {
 
   // THE BOARD'S PANEL (Mac, frame B): the add sheet's kinds as tiles, opened from the palette's «+», the N key and the bar's
   // «+» instead of the big sheet. The tab asked for is local; an opened panel is the inspector's door (remembered).
+  const [insertFocus, setInsertFocus] = useState(0);
   const openInsert = () => {
     setPanelTab('insert');
     inspector.set(true);
+    // Already showing «Вставити»? Then the button still does something you can see: the search field takes the caret.
+    setInsertFocus((n) => n + 1);
   };
+  // The picker closed (a pick, or its tab's ×): leave its tab.
+  useEffect(() => {
+    if (!existingItemPickerVisible) setPanelTab((t) => (t === 'pick' ? 'insert' : t));
+  }, [existingItemPickerVisible]);
   // Something chosen -> the panel shows «Обране»; nothing chosen any more -> back to «Вставити».
   const hasSelection = selectedCardIds.size > 0 || selectedShapeIds.size > 0 || !!selectedShape;
   useEffect(() => {
@@ -7597,7 +7609,29 @@ export default function BoardScreen() {
         onTab={setPanelTab}
         groups={addSections.map((g) => ({ title: g.title, tiles: g.tiles.map((t) => ({ key: t.key, label: t.label, onPress: t.onPress })) }))}
         selectedBadge={hasSelection}
-        dbTabs={dbWindows.map((w) => ({
+        focusSearch={insertFocus}
+        dbTabs={[
+          ...(existingItemPickerVisible
+            ? [
+                {
+                  id: 'pick',
+                  label: 'З бази',
+                  onClose: () => setExistingItemPickerVisible(false),
+                  node: (
+                    <AddExistingItemModal
+                      docked
+                      visible
+                      onPick={addExistingCard}
+                      onClose={() => setExistingItemPickerVisible(false)}
+                      excludeIds={existingItemExcludeIds}
+                      includeDocuments
+                      onPickDocument={addDocumentCard}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...dbWindows.map((w) => ({
           id: `db:${w.id}`,
           label: dbNames[w.databaseId] ?? 'База',
           onClose: () => closeDbWindow(w.id),
@@ -7614,7 +7648,8 @@ export default function BoardScreen() {
               onCarryEnd={carryEnd}
             />
           ),
-        }))}
+        })),
+        ]}
         layers={
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 }}>
@@ -8647,7 +8682,7 @@ export default function BoardScreen() {
 
 
         <AddExistingItemModal
-          visible={existingItemPickerVisible}
+          visible={existingItemPickerVisible && !macBoard}
           onPick={addExistingCard}
           onClose={() => setExistingItemPickerVisible(false)}
           excludeIds={existingItemExcludeIds}

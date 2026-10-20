@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '../icons/Ionicons';
 import { RADIUS, TYPE, useDeskColors } from '../../theme/desktopTheme';
@@ -31,6 +31,7 @@ export default function BoardPanel({
   selectedBadge,
   info,
   dbTabs,
+  focusSearch,
 }: {
   tab: BoardTab;
   onTab: (t: BoardTab) => void;
@@ -41,10 +42,18 @@ export default function BoardPanel({
   selectedBadge?: boolean;
   info?: ReactNode;
   dbTabs?: { id: string; label: string; node: ReactNode; onClose: () => void }[];
+  // Counts up each time the bar's «+» is pressed: the search field takes the caret.
+  focusSearch?: number;
 }) {
   const styles = useStyles(makeStyles);
   const D = useDeskColors();
   const [query, setQuery] = useState('');
+  const searchRef = useRef<TextInput>(null);
+  useEffect(() => {
+    if (!focusSearch) return;
+    const t = setTimeout(() => searchRef.current?.focus(), 30);
+    return () => clearTimeout(t);
+  }, [focusSearch]);
   const needle = query.trim().toLowerCase();
   const shown = useMemo(
     () => groups.map((g) => ({ ...g, tiles: g.tiles.filter((t) => !needle || t.label.toLowerCase().includes(needle)) })).filter((g) => g.tiles.length > 0),
@@ -80,7 +89,7 @@ export default function BoardPanel({
           <Text style={[styles.hint, { color: D.ink3 }]}>Клацни — з'явиться посеред поля.</Text>
           <View style={[styles.search, { backgroundColor: D.card, borderColor: D.line }]}>
             <Ionicons name="search-outline" size={15} color={D.ink3} />
-            <TextInput value={query} onChangeText={setQuery} placeholder="Знайти картку" placeholderTextColor={D.ink3} style={[styles.searchInput, { color: D.ink }]} />
+            <TextInput ref={searchRef} value={query} onChangeText={setQuery} placeholder="Знайти картку" placeholderTextColor={D.ink3} style={[styles.searchInput, { color: D.ink }]} />
           </View>
           {shown.length === 0 && <Text style={[styles.hint, { color: D.ink3 }]}>Нічого не знайшов.</Text>}
           {shown.map((g) => (
