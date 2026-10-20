@@ -9,7 +9,7 @@ import ScreenGround from './ScreenGround';
 import { useInnerBack } from '../navigation/innerBack';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from './icons/Ionicons';
 import { useIsFocused } from '@react-navigation/native';
@@ -37,7 +37,8 @@ import EdgeFade from './EdgeFade';
 import { useDensity } from '../hooks/useDensity';
 import { DeskContext } from '../navigation/desks';
 import TagsDrawer, { TagsDrawerHandle, removeTagFromFilter } from './TagsDrawer';
-import { usePublishRailTree } from '../navigation/navRail';
+import { usePublishRailPanel, usePublishRailTree } from '../navigation/navRail';
+import BasePanel from './desktop/BasePanel';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { SearchVoid, useKeyboardVisible, usePullToSearch, useSearchDismissal } from '../hooks/usePullToSearch';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -414,6 +415,22 @@ export default function DatabaseChrome<T extends { id: string }>({
     ],
     bulk ? { active: list.isSelectMode, onPress: () => list.toggleSelectMode() } : null,
     topNav && isFocused
+  );
+  // THE MAC (frame B): the same controls as live rows in the right panel, for every base that is not the explorer.
+  const macBase = FEATURES.macFrameB && Platform.OS === 'web' && !desk && !paneBar && !explorer?.active;
+  usePublishRailPanel(
+    macBase ? (
+      <BasePanel
+        title={navTitle?.label}
+        count={`${list.displayed.length} ${list.displayed.length === 1 ? 'запис' : 'записів'}`}
+        shape={shape ? { icon: shape.icon as string, onToggle: shape.onToggle } : undefined}
+        sortPref={list.sortPref}
+        onSort={list.selectSortField}
+        tags={hideDrawer ? undefined : { on: !!list.tagFilter, onOpen: () => drawerRef.current?.open() }}
+        select={bulk ? { on: list.isSelectMode, onToggle: () => list.toggleSelectMode() } : undefined}
+        extra={menuRows ? menuRows(() => {}) : undefined}
+      />
+    ) : null
   );
   useDockActions(
     isFocused && !searchingAlone && (list.isSelectMode || !deskMenu)
