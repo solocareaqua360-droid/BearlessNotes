@@ -2744,7 +2744,13 @@ export default function BoardScreen() {
   // window lies exactly where the card is, at its size - at the board's
   // zoom - and follows it. Writing, it keeps that size and only rises, if
   // it has to, so its foot sits on the bar above the keyboard.
-  const cardWindowMinTop = boardInsets.top + 68 + CARD_BUTTONS_H;
+  // THE MAC'S BOARD (frame B, 2026-10-20): the name goes to the window bar, the tools to a palette on the canvas, the grey
+  // phone «pill» and the dock's tool buttons are not drawn; add, layers and the selection's actions live in the right panel.
+  const macBoard = FEATURES.macFrameB && Platform.OS === 'web';
+  // On the Mac the card stays EXACTLY where it lies (the user, 2026-10-20: «картка скаче»): no room kept above it for
+  // the three buttons and no room kept at the foot for a phone's editor bar - the buttons hang over it, the panel is on the right.
+  const cardWindowMinTop = macBoard ? 4 : boardInsets.top + 68 + CARD_BUTTONS_H;
+  const cardBarFoot = macBoard ? 0 : bottomInset + EDITOR_TOOLBAR_HEIGHT + 12;
   const winW = useSharedValue(240);
   const winH = useSharedValue(260);
   const [winSize, setWinSize] = useState({ w: 240, h: 260 });
@@ -2762,7 +2768,7 @@ export default function BoardScreen() {
     const rawLeft =
       canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
     if (cardWindowTyping.value) {
-      const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+      const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - cardBarFoot;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       // Centred while writing, so the note's bar and panel - which reach
@@ -2778,7 +2784,7 @@ export default function BoardScreen() {
     const p = cardWindowTypingP.value;
     if (p > 0) {
       // On the way back: from where it was written in to its place.
-      const barTop = windowHeight - rootOffYSV.value - lastKbSV.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+      const barTop = windowHeight - rootOffYSV.value - lastKbSV.value - cardBarFoot;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       const left = (windowWidth - w) / 2;
@@ -2794,7 +2800,7 @@ export default function BoardScreen() {
     const rawLeft =
       canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
     if (cardWindowTyping.value) {
-      const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+      const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - cardBarFoot;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       const p = cardWindowTypingP.value;
@@ -2803,7 +2809,7 @@ export default function BoardScreen() {
     }
     const p = cardWindowTypingP.value;
     if (p > 0) {
-      const barTop = windowHeight - rootOffYSV.value - lastKbSV.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+      const barTop = windowHeight - rootOffYSV.value - lastKbSV.value - cardBarFoot;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       return { top: rawTop + (top - rawTop) * p - CARD_BUTTONS_H, left: rawLeft + ((windowWidth - w) / 2 - rawLeft) * p, width: w };
@@ -2812,7 +2818,7 @@ export default function BoardScreen() {
   });
   // The painted card while writing: its own height, ending on the bar.
   const cardWindowOutlineStyle = useAnimatedStyle(() => {
-    const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12;
+    const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - cardBarFoot;
     const rawTop =
       canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
     const h = Math.min(winH.value, barTop - cardWindowMinTop);
@@ -2875,7 +2881,7 @@ export default function BoardScreen() {
           ? lastKbRef.current || Math.round(windowHeight * 0.36)
           : 0;
   const cardWindowScrollH =
-    Math.min(winSize.h, windowHeight - cardWindowKbNow - bottomInset - EDITOR_TOOLBAR_HEIGHT - 12 - cardWindowMinTop) - cardHeadH;
+    Math.min(winSize.h, windowHeight - cardWindowKbNow - cardBarFoot - cardWindowMinTop) - cardHeadH;
   useEffect(() => {
     cardWindowTypingP.value = withTiming(cardWindowWriting ? 1 : 0, { duration: 240 });
     if (cardWindowKbNow > 0) lastKbSV.value = cardWindowKbNow;
@@ -2970,6 +2976,7 @@ export default function BoardScreen() {
       tl: make(true, false, true, false),
       tr: make(false, true, true, false),
       bl: make(true, false, false, true),
+      br: make(false, true, false, true),
     };
   }, [winW, winH, winStartW, winStartH, winStartX, winStartY, cardWorldX, cardWorldY, scale, cardWindowMaxW, cardWindowMaxH, saveWinSize]);
   const savedTranslateX = useSharedValue(0);
@@ -7015,10 +7022,6 @@ export default function BoardScreen() {
   // hidden then and the note's own controls hold the dock.
   const topNavOn = useTopNavOn();
   const bar = topNavOn && !(paneDocOpen && paneFullscreen);
-  // THE MAC'S BOARD (frame B, 2026-10-20): the name goes to the window bar, the tools to a palette on the canvas, the grey
-  // phone «pill» and the dock's tool buttons are not drawn; the rest (add, layers, selection actions) moves into the
-  // right panel in the next steps.
-  const macBoard = FEATURES.macFrameB && Platform.OS === 'web';
   // The names of the user's databases, for the panel's tabs of open database windows.
   const { customDatabases: boardDatabases } = useDatabaseTiles();
   const dbNames: Record<string, string> = Object.fromEntries(boardDatabases.map((d) => [d.id, d.name || 'База']));
@@ -9064,7 +9067,7 @@ export default function BoardScreen() {
               ]}
             />
           )}
-          {cardWindow.live && !cardWindowWriting && (
+          {cardWindow.live && !cardWindowWriting && !macBoard && (
             <GestureDetector gesture={resizeGestureWin}>
               <View style={styles.cardWindowResize} hitSlop={10} accessibilityLabel="Змінити розмір">
                 <View style={styles.cardWindowResizeMark} />
@@ -9078,13 +9081,14 @@ export default function BoardScreen() {
             <Animated.View pointerEvents="box-none" style={[{ position: 'absolute', left: 0, right: 0, top: 0 }, cardWindowWriting ? cardWindowOutlineStyle : { bottom: 0 }]}>
               {(
                 [
-                  ['left', { left: -5, top: 14, bottom: 14, width: 10, cursor: 'ew-resize' }],
-                  ['right', { right: -5, top: 14, bottom: 14, width: 10, cursor: 'ew-resize' }],
-                  ['top', { top: -5, left: 14, right: 14, height: 10, cursor: 'ns-resize' }],
-                  ['bottom', { bottom: -5, left: 14, right: 40, height: 10, cursor: 'ns-resize' }],
-                  ['tl', { top: -5, left: -5, width: 18, height: 18, cursor: 'nwse-resize' }],
-                  ['tr', { top: -5, right: -5, width: 18, height: 18, cursor: 'nesw-resize' }],
-                  ['bl', { bottom: -5, left: -5, width: 18, height: 18, cursor: 'nesw-resize' }],
+                  ['left', { left: -5, top: 18, bottom: 18, width: 10, cursor: 'ew-resize' }],
+                  ['right', { right: -5, top: 18, bottom: 18, width: 10, cursor: 'ew-resize' }],
+                  ['top', { top: -5, left: 18, right: 18, height: 10, cursor: 'ns-resize' }],
+                  ['bottom', { bottom: -5, left: 18, right: 18, height: 10, cursor: 'ns-resize' }],
+                  ['tl', { top: -5, left: -5, width: 24, height: 24, cursor: 'nwse-resize' }],
+                  ['tr', { top: -5, right: -5, width: 24, height: 24, cursor: 'nesw-resize' }],
+                  ['bl', { bottom: -5, left: -5, width: 24, height: 24, cursor: 'nesw-resize' }],
+                  ['br', { bottom: -5, right: -5, width: 24, height: 24, cursor: 'nwse-resize' }],
                 ] as const
               ).map(([key, pos]) => (
                 <GestureDetector key={key} gesture={edgeGestures[key]}>

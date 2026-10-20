@@ -7,6 +7,7 @@ import {
   findNodeHandle,
   GestureResponderEvent,
   Image,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -214,7 +215,9 @@ export default function BlockRow({
   const blockType = item.type ?? 'paragraph';
   const liveRuns = useMemo(
     () =>
-      canEditText && FEATURES.liveFormat && blockType !== 'code' && (item.text ?? '') !== ''
+      // Native only: RN-web's field draws no children and, with no value, stood EMPTY under the caret (the Mac note and the
+      // board's card window showed a blank field, the caret at 0, Enter splitting nothing - 2026-10-20).
+      Platform.OS !== 'web' && canEditText && FEATURES.liveFormat && blockType !== 'code' && (item.text ?? '') !== ''
         ? parseFormattedText(item.text).map((seg) =>
             seg.noteLink && isNestedLink?.(seg.noteLink) && seg.text.startsWith(LINK_GLYPH)
               ? { ...seg, text: NESTED_GLYPH + seg.text.slice(LINK_GLYPH.length) }
