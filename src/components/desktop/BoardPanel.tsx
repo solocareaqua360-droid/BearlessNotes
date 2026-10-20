@@ -141,6 +141,8 @@ const makeStyles = (_t: Theme) =>
     dot: { width: 6, height: 6, borderRadius: 3 },
     content: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 24, gap: 12 },
     hint: { fontSize: TYPE.xs, fontFamily: FONT_REGULAR },
+    pickRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 34, paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.control },
+    pickLabel: { flex: 1, fontSize: TYPE.sm, fontFamily: FONT_REGULAR },
     search: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: RADIUS.control, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, height: 34 },
     searchInput: { flex: 1, fontSize: TYPE.sm, fontFamily: FONT_REGULAR, outlineStyle: 'none' } as never,
     group: { fontSize: TYPE.xs, fontFamily: FONT_SEMIBOLD, textTransform: 'uppercase', letterSpacing: 0.4, paddingHorizontal: 2 },
@@ -321,3 +323,72 @@ const makeSelStyles = (_t: Theme) =>
     act: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 34, paddingHorizontal: 8, borderRadius: RADIUS.control },
     actLabel: { flex: 1, fontSize: TYPE.sm, fontFamily: FONT_REGULAR },
   });
+
+// A CHOICE LIST IN THE PANEL (Mac, 2026-10-21): what the phone shows as a sheet over the screen - which shape, which project, which board
+// - stands here as a tab instead, so the window is never covered. Rows are {leading, label, meta}; optional search, an optional
+// «create new» row on top and a back row for a second step.
+export type PickRow = { key: string; label: string; leading?: ReactNode; meta?: string; onPress: () => void };
+export function PanelPickList({
+  hint,
+  rows,
+  searchable,
+  createLabel,
+  onCreate,
+  onBack,
+  backLabel,
+  empty,
+}: {
+  hint?: string;
+  rows: PickRow[];
+  searchable?: boolean;
+  createLabel?: string;
+  onCreate?: () => void;
+  onBack?: () => void;
+  backLabel?: string;
+  empty?: string;
+}) {
+  const styles = useStyles(makeStyles);
+  const D = useDeskColors();
+  const [query, setQuery] = useState('');
+  const needle = query.trim().toLowerCase();
+  const shown = needle ? rows.filter((r) => r.label.toLowerCase().includes(needle)) : rows;
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
+      {!!onBack && (
+        <Pressable onPress={onBack} style={styles.pickRow} accessibilityLabel="Назад">
+          <Ionicons name="chevron-back" size={15} color={D.ink2} />
+          <Text style={[styles.pickLabel, { color: D.ink, fontFamily: FONT_SEMIBOLD }]} numberOfLines={1}>
+            {backLabel}
+          </Text>
+        </Pressable>
+      )}
+      {!!hint && <Text style={[styles.hint, { color: D.ink3 }]}>{hint}</Text>}
+      {searchable && (
+        <View style={[styles.search, { backgroundColor: D.card, borderColor: D.line }]}>
+          <Ionicons name="search-outline" size={15} color={D.ink3} />
+          <TextInput value={query} onChangeText={setQuery} placeholder="Пошук" placeholderTextColor={D.ink3} style={[styles.searchInput, { color: D.ink }]} />
+        </View>
+      )}
+      {!!onCreate && (
+        <Pressable onPress={onCreate} style={[styles.pickRow, { borderColor: D.line, borderWidth: StyleSheet.hairlineWidth, backgroundColor: D.card }]}>
+          <Ionicons name="add" size={16} color={D.ink} />
+          <Text style={[styles.pickLabel, { color: D.ink, fontFamily: FONT_SEMIBOLD }]} numberOfLines={1}>
+            {createLabel}
+          </Text>
+        </Pressable>
+      )}
+      {shown.length === 0 && <Text style={[styles.hint, { color: D.ink3 }]}>{empty ?? 'Нічого не знайшов.'}</Text>}
+      <View style={{ gap: 2 }}>
+        {shown.map((r) => (
+          <Pressable key={r.key} onPress={r.onPress} style={(state) => [styles.pickRow, (state as { hovered?: boolean }).hovered && { backgroundColor: D.fill }]}>
+            {r.leading}
+            <Text style={[styles.pickLabel, { color: D.ink }]} numberOfLines={1}>
+              {r.label}
+            </Text>
+            {!!r.meta && <Text style={[styles.hint, { color: D.ink3 }]}>{r.meta}</Text>}
+          </Pressable>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}

@@ -151,7 +151,7 @@ import { usePublishToolbarTitle } from '../navigation/toolbarTitle';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { inspector } from '../navigation/inspector';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
-import BoardPanel, { BoardSelection, type BoardTab } from '../components/desktop/BoardPanel';
+import BoardPanel, { BoardSelection, PanelPickList, type BoardTab } from '../components/desktop/BoardPanel';
 import DocumentCardBlocks from '../components/DocumentCardBlocks';
 import { PAGE_H2, PAGE_TEXT, makeStyles as makeEditorStyles } from '../components/documentEditorStyles';
 import PagePreviewRow from '../components/PagePreviewRow';
@@ -2511,6 +2511,8 @@ export default function BoardScreen() {
   const [moving, setMoving] = useState(false);
   const [pickableBoards, setPickableBoards] = useState<{ id: string; title: string }[]>([]);
   const [existingItemPickerVisible, setExistingItemPickerVisible] = useState(false);
+  // «Вікно бази» on the Mac: the user's databases to choose from, shown as a tab of the right panel (null = not asking).
+  const [dbChoices, setDbChoices] = useState<{ id: string; name: string }[] | null>(null);
   // Set when the pane's document was just made out of another one's
   // blocks - the offer to put it on a board rides in with it.
   const [paneOfferBoard, setPaneOfferBoard] = useState(false);
@@ -5598,6 +5600,21 @@ export default function BoardScreen() {
     setPanelTab((t) => (t === `db:${id}` ? 'insert' : t));
   }
 
+  function openDatabaseWindow(databaseId: string) {
+    const open = dbWindows.length;
+    const windowId = generateId();
+    setDbWindows((prev) => [
+      ...prev,
+      { id: windowId, databaseId, chosen: null, x: Math.max(8, viewport.width - 316 - open * 24), y: 110 + open * 24 },
+    ]);
+    // On the Mac the window is a tab of the right panel: show it.
+    if (macBoard) {
+      setDbChoices(null);
+      setPanelTab(`db:${windowId}`);
+      inspector.set(true);
+    }
+  }
+
   async function addDatabaseWindow() {
     setAddSheetVisible(false);
     try {
@@ -5609,22 +5626,17 @@ export default function BoardScreen() {
         notify('Ще немає баз', 'Створіть власну базу у «Базах» - і її можна буде відкрити тут вікном.');
         return;
       }
+      // On the Mac the choice is a tab of the right panel, not a list window over the app.
+      if (macBoard) {
+        setDbChoices(databases.map((d) => ({ id: d.id, name: d.name || 'Без назви' })));
+        return;
+      }
       const databaseId = await ask({
         title: 'Яку базу відкрити вікном?',
         actions: databases.map((d) => ({ id: d.id, label: d.name || 'Без назви', icon: 'grid-outline' as const })),
       });
       if (!databaseId || databaseId === 'cancel') return;
-      const open = dbWindows.length;
-      const windowId = generateId();
-      setDbWindows((prev) => [
-        ...prev,
-        { id: windowId, databaseId, chosen: null, x: Math.max(8, viewport.width - 316 - open * 24), y: 110 + open * 24 },
-      ]);
-      // On the Mac the window is a tab of the right panel: show it.
-      if (macBoard) {
-        setPanelTab(`db:${windowId}`);
-        inspector.set(true);
-      }
+      openDatabaseWindow(databaseId);
     } catch (e) {
       notify('Не вдалося відкрити базу', (e as Error).message);
     }
@@ -7590,6 +7602,31 @@ export default function BoardScreen() {
     // Already showing «Вставити»? Then the button still does something you can see: the search field takes the caret.
     setInsertFocus((n) => n + 1);
   };
+  // The choice lists of the panel (the phone's sheets): whichever is asked for is the tab shown; when none is asked any more, its
+  // tab goes and the panel goes back to «Вставити».
+  const askedSheet = !macBoard
+    ? null
+    : shapeSheetVisible
+      ? 'shape'
+      : groupPickerVisible
+        ? 'group'
+        : taskColumnPickerVisible
+          ? 'tasks'
+          : boardPickerOpen
+            ? 'board'
+            : movePickerOpen
+              ? 'move'
+              : dbChoices
+                ? 'dbpick'
+                : null;
+  useEffect(() => {
+    if (askedSheet) {
+      setPanelTab(askedSheet);
+      inspector.set(true);
+    } else {
+      setPanelTab((t) => (['shape', 'group', 'tasks', 'board', 'move', 'dbpick'].includes(t) ? 'insert' : t));
+    }
+  }, [askedSheet]);
   // The picker closed (a pick, or its tab's ×): leave its tab.
   useEffect(() => {
     if (!existingItemPickerVisible) setPanelTab((t) => (t === 'pick' ? 'insert' : t));
@@ -7626,6 +7663,143 @@ export default function BoardScreen() {
                       excludeIds={existingItemExcludeIds}
                       includeDocuments
                       onPickDocument={addDocumentCard}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...(shapeSheetVisible
+            ? [
+                {
+                  id: 'shape',
+                  label: 'Фігура',
+                  onClose: () => setShapeSheetVisible(false),
+                  node: (
+                    <PanelPickList
+                      hint="Клацни — з'явиться посеред поля."
+                      rows={SHAPE_MENU.map((entry) => ({
+                        key: entry.kind,
+                        label: entry.label,
+                        leading: <MaterialCommunityIcons name={entry.icon as keyof typeof MaterialCommunityIcons.glyphMap} size={18} color="#6E6B64" />,
+                        onPress: () => addShape(entry.kind),
+                      }))}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...(groupPickerVisible
+            ? [
+                {
+                  id: 'group',
+                  label: 'З проєкту',
+                  onClose: () => setGroupPickerVisible(false),
+                  node: (
+                    <PanelPickList
+                      hint="З якого проєкту взяти речі."
+                      empty="Поки немає жодного проєкту."
+                      rows={groups
+                        .filter((group) => !group.archived)
+                        .map((group) => ({
+                          key: group.id,
+                          label: group.name,
+                          meta: String(itemsByGroup[group.id]?.length ?? 0),
+                          leading: <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: group.color || '#6B7280' }} />,
+                          onPress: () => {
+                            setGroupPickerVisible(false);
+                            setImportingGroup(group);
+                          },
+                        }))}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...(taskColumnPickerVisible
+            ? [
+                {
+                  id: 'tasks',
+                  label: 'Справи',
+                  onClose: () => {
+                    setTaskColumnPickerVisible(false);
+                    setTaskColumnProject(null);
+                  },
+                  node:
+                    taskColumnProject === null ? (
+                      <PanelPickList
+                        hint="З якого проєкту."
+                        rows={[
+                          { key: 'inbox', label: 'Вхідні', leading: <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#6B7280' }} />, onPress: () => setTaskColumnProject({ id: null, name: 'Вхідні' }) },
+                          ...taskProjects
+                            .filter((project) => !project.archived)
+                            .map((project) => ({
+                              key: project.id,
+                              label: project.name,
+                              leading: <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: project.color || '#6B7280' }} />,
+                              onPress: () => setTaskColumnProject({ id: project.id, name: project.name }),
+                            })),
+                        ]}
+                      />
+                    ) : (
+                      <PanelPickList
+                        onBack={() => setTaskColumnProject(null)}
+                        backLabel={taskColumnProject.name}
+                        rows={[
+                          { key: 'all', label: 'Весь проєкт', leading: <Ionicons name="albums-outline" size={17} color="#6E6B64" />, onPress: insertWholeTaskProject },
+                          ...taskLists
+                            .filter((list) => list.groupId === taskColumnProject.id)
+                            .map((list) => ({ key: list.id, label: list.name, leading: <Ionicons name="list-outline" size={17} color="#6E6B64" />, onPress: () => insertOneTaskList(list) })),
+                        ]}
+                      />
+                    ),
+                },
+              ]
+            : []),
+          ...(boardPickerOpen
+            ? [
+                {
+                  id: 'board',
+                  label: 'Дошка',
+                  onClose: () => setBoardPickerOpen(false),
+                  node: (
+                    <PanelPickList
+                      hint="Картка з'явиться на цій дошці."
+                      searchable
+                      rows={pickableBoards.map((b) => ({ key: b.id, label: b.title, leading: <Ionicons name="easel-outline" size={16} color="#6E6B64" />, onPress: () => addBoardCard(b.id) }))}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...(movePickerOpen
+            ? [
+                {
+                  id: 'move',
+                  label: 'Перенести',
+                  onClose: () => setMovePickerOpen(false),
+                  node: (
+                    <PanelPickList
+                      hint="Виділене поїде на цю дошку."
+                      searchable
+                      createLabel="Нова дошка"
+                      onCreate={moveSelectionToNewBoard}
+                      rows={pickableBoards.map((b) => ({ key: b.id, label: b.title, leading: <Ionicons name="easel-outline" size={16} color="#6E6B64" />, onPress: () => moveSelectionTo(b.id) }))}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...(dbChoices
+            ? [
+                {
+                  id: 'dbpick',
+                  label: 'Вікно бази',
+                  onClose: () => setDbChoices(null),
+                  node: (
+                    <PanelPickList
+                      hint="Яку базу відкрити вкладкою."
+                      searchable
+                      rows={dbChoices.map((d) => ({ key: d.id, label: d.name, leading: <Ionicons name="grid-outline" size={16} color="#6E6B64" />, onPress: () => openDatabaseWindow(d.id) }))}
                     />
                   ),
                 },
@@ -8455,7 +8629,7 @@ export default function BoardScreen() {
         />
 
         <Modal
-          visible={groupPickerVisible}
+          visible={groupPickerVisible && !macBoard}
           transparent
           animationType="fade"
           onRequestClose={() => setGroupPickerVisible(false)}
@@ -8498,7 +8672,7 @@ export default function BoardScreen() {
             row's own comment). Two steps: which project, then the whole
             thing or one of its own lists - a project can hold several. */}
         <Modal
-          visible={taskColumnPickerVisible}
+          visible={taskColumnPickerVisible && !macBoard}
           transparent
           animationType="fade"
           onRequestClose={() => {
@@ -8619,7 +8793,7 @@ export default function BoardScreen() {
         {/* Which piece of furniture. A short list of shapes and one
             loose label - see BoardShape for why none of them is a card. */}
         <Modal
-          visible={shapeSheetVisible}
+          visible={shapeSheetVisible && !macBoard}
           transparent
           animationType="fade"
           onRequestClose={() => setShapeSheetVisible(false)}
@@ -8691,7 +8865,7 @@ export default function BoardScreen() {
         />
 
         <DocumentPickerModal
-          visible={movePickerOpen}
+          visible={movePickerOpen && !macBoard}
           title="Куди перенести?"
           subtitle="Виділене поїде на цю дошку"
           icon="easel-outline"
@@ -8703,7 +8877,7 @@ export default function BoardScreen() {
         />
 
         <DocumentPickerModal
-          visible={boardPickerOpen}
+          visible={boardPickerOpen && !macBoard}
           title="Яка дошка?"
           subtitle="Картка зʼявиться на цій дошці"
           icon="easel-outline"
