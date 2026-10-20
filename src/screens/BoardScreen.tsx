@@ -4055,6 +4055,11 @@ export default function BoardScreen() {
   // gesture through the browser's event bubbling and closed the block; on the phone the field keeps its own touch).
   function clearSelectionTap(wx: number, wy: number) {
     const id = inlineBlockIdRef.current;
+    // THE MAC'S ENTER (2026-10-20, the user: «після Enter вихід з поля вводу»): the canvas's tap gesture also ENDS on a
+    // key press in the field (no pointer event at all - measured), and its point lands outside the block, so the first Enter
+    // closed the block before the field could split it. A real tap beside the block first takes the focus away from
+    // the field (the mouse-down), so a field still holding the focus means this is not a tap.
+    if (id && Platform.OS === 'web' && typeof document !== 'undefined' && document.activeElement?.tagName === 'TEXTAREA') return;
     if (id) {
       const card = cards.find((c) => c.id === id);
       if (card && wx >= card.x && wx <= card.x + card.width && wy >= card.y && wy <= card.y + heightOf(card, cardHeights)) return;
