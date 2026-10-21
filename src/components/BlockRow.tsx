@@ -1,4 +1,6 @@
 import FlashcardBlockCard from './FlashcardBlockCard';
+import { ask } from './surfaces/Ask';
+import { foldOf } from '../utils/toggleBlocks';
 import SketchLayer from './SketchLayer';
 import { INK, drawingViewBox } from '../utils/sketchGeometry';
 import { ComponentProps, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
@@ -79,6 +81,10 @@ type BlockRowProps = {
   handleGesture?: ComponentProps<typeof GestureDetector>['gesture'];
   // Under a toggle's section - see BlockList's own `indented` computation.
   indented?: boolean;
+  // A toggle's frame, row by row (BlockList): the title is the head (or solo when nothing is under it), what it holds is body, the last
+  // row is the foot; peekMore on the foot = the «first lines» view is hiding more.
+  toggleRole?: 'solo' | 'head' | 'body' | 'foot';
+  peekMore?: boolean;
   isSelected: boolean;
   isSelectMode: boolean;
   // Only the one block being written in is a live TextInput - every other
@@ -155,6 +161,8 @@ export default function BlockRow({
   hideHandle,
   handleGesture,
   indented,
+  toggleRole,
+  peekMore,
   isSelected,
   isSelectMode,
   isActive,
@@ -960,14 +968,46 @@ export default function BlockRow({
       // has to look folded on the card - see visibleBlocks.
       content = (
         <View style={styles.prefixedRow}>
-          <Pressable hitSlop={8} style={styles.toggleMark} onPress={() => onUpdateBlock(item.id, { collapsed: !item.collapsed })}>
+          <Pressable
+            hitSlop={8}
+            style={styles.toggleMark}
+            onPress={() => {
+              // The chevron folds and unfolds; what it unfolds TO is the view chosen with «···» (open by default).
+              const mode = foldOf(item) === 'closed' ? item.foldView ?? 'open' : 'closed';
+              onUpdateBlock(item.id, { foldMode: mode, collapsed: mode === 'closed' });
+            }}
+          >
             <Ionicons
-              name={item.collapsed ? 'chevron-forward' : 'chevron-down'}
+              name={foldOf(item) === 'closed' ? 'chevron-forward' : 'chevron-down'}
               size={18}
               color={rowPaperColor?.textMuted ?? theme.paper.inkMuted}
             />
           </Pressable>
           {textField}
+          {!isSelectMode && (
+            // Grey and quiet: the choice of the block's view, behind three dots so the header carries no buttons.
+            <Pressable
+              hitSlop={8}
+              style={[styles.toggleMark, { opacity: 0.55, paddingHorizontal: 4 }]}
+              accessibilityLabel="Вигляд блока"
+              onPress={async () => {
+                const now = foldOf(item);
+                const choice = await ask({
+                  title: 'Вигляд блока',
+                  actions: [
+                    { id: 'closed', label: now === 'closed' ? 'Згорнуто  ✓' : 'Згорнуто', icon: 'chevron-forward' },
+                    { id: 'peek', label: now === 'peek' ? 'Перші рядки  ✓' : 'Перші рядки', icon: 'reorder-three-outline' },
+                    { id: 'open', label: now === 'open' ? 'Повністю  ✓' : 'Повністю', icon: 'chevron-down' },
+                  ],
+                });
+                if (choice !== 'closed' && choice !== 'peek' && choice !== 'open') return;
+                // «Перші рядки» and «Повністю» are remembered as what the chevron opens it to; «Згорнуто» keeps that memory.
+                onUpdateBlock(item.id, choice === 'closed' ? { foldMode: 'closed', collapsed: true } : { foldMode: choice, foldView: choice, collapsed: false });
+              }}
+            >
+              <Ionicons name="ellipsis-horizontal" size={16} color={rowPaperColor?.textMuted ?? theme.paper.inkMuted} />
+            </Pressable>
+          )}
         </View>
       );
     } else if (type === 'checkbox') {
@@ -1019,7 +1059,19 @@ export default function BlockRow({
       ref={hoverRef}
       style={[
         styles.blockRow,
-        indented && styles.blockRowIndented,
+        indented && !toggleRole && styles.blockRowIndented,
+        // The toggle's FRAME, row by row: one rounded box from the title down to the last held row (2026-10-21).
+        !!toggleRole && {
+          borderColor: theme.paper.edge,
+          borderTopWidth: toggleRole === 'solo' || toggleRole === 'head' ? 1 : 0,
+          borderBottomWidth: toggleRole === 'solo' || toggleRole === 'foot' ? 1 : 0,
+          borderTopLeftRadius: toggleRole === 'solo' || toggleRole === 'head' ? 14 : 0,
+          borderTopRightRadius: toggleRole === 'solo' || toggleRole === 'head' ? 14 : 0,
+          borderBottomLeftRadius: toggleRole === 'solo' || toggleRole === 'foot' ? 14 : 0,
+          borderBottomRightRadius: toggleRole === 'solo' || toggleRole === 'foot' ? 14 : 0,
+          paddingHorizontal: 12,
+          paddingBottom: peekMore ? 22 : undefined,
+        },
         // The theme's own light-blue highlight, UNLESS the row is on a
         // custom paper colour: that highlight is opaque and fixed, and a
         // paper dark enough to want white text ('#FFFFFF' from
@@ -1045,6 +1097,12 @@ export default function BlockRow({
       ]}
     >
       {content}
+      {/* THE SIGN OF MORE: a toggle in «first lines» that hides blocks shows a small chevron at the foot of its frame; a tap opens it. */}
+      {peekMore && toggleRole && (
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: 2, alignItems: 'center', opacity: 0.55 }}>
+          <Ionicons name="chevron-down" size={14} color={rowPaperColor?.textMuted ?? theme.paper.inkMuted} />
+        </View>
+      )}
       {/* On the right. Hidden where the sheet runs under the rail (the
           calendar's daily note) - but never while selecting: there it is
           the checkbox, and the only thing showing what is picked.

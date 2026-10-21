@@ -23,6 +23,8 @@ type BlockListProps = {
   // what the screen shows first and the rest a moment later (the editor's
   // renderAll). Absent = all of them.
   renderCount?: number;
+  // Toggles in the «peek» view that are hiding blocks (utils/toggleBlocks.peekMoreIds): the foot of their frame says so.
+  peekMore?: Set<string>;
   blocks: Block[];
   onReorder: (blocks: Block[]) => void;
   // A hold that never went anywhere. The drag gesture already waits out
@@ -174,6 +176,7 @@ function BlockList({
   searchHighlight,
   flashBlockId,
   renderCount,
+  peekMore,
 }: BlockListProps, ref: ForwardedRef<BlockListHandle>) {
   const styles = useStyles(makeStyles);
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -515,6 +518,7 @@ function BlockList({
   // який блок вкладений": nothing drew this before, so the only way to
   // tell was to collapse the toggle and see what vanished.
   let indented = false;
+  let frameToggleId: string | null = null;
 
   // EVERY ROW RENDERS ONLY WHEN ITS OWN THINGS CHANGE (2026-10-06). The
   // screen hands this list new handler functions on every one of its
@@ -614,6 +618,15 @@ function BlockList({
         if (item.exitsToggle) indented = false;
         const rowIndented = indented;
         if (item.type === 'toggle') indented = true;
+        // THE FRAME of a toggle's section (2026-10-21): its title row, the blocks it holds, and where the frame ends. «solo» =
+        // a title with nothing under it (closed); head / body / foot = one rounded box drawn row by row.
+        const nextItem = blocks[index + 1];
+        const nextHeld = !!nextItem && nextItem.type !== 'toggle' && !nextItem.exitsToggle;
+        let toggleRole: 'solo' | 'head' | 'body' | 'foot' | undefined;
+        if (item.type === 'toggle') toggleRole = nextHeld ? 'head' : 'solo';
+        else if (rowIndented) toggleRole = nextHeld ? 'body' : 'foot';
+        if (item.type === 'toggle') frameToggleId = item.id;
+        else if (!rowIndented) frameToggleId = null;
         return (
         <SortableBlockRow
           key={item.id}
@@ -622,6 +635,8 @@ function BlockList({
           searchHighlight={searchHighlight}
           flash={flashBlockId === item.id}
           indented={rowIndented}
+          toggleRole={toggleRole}
+          peekMore={!!peekMore && !!frameToggleId && peekMore.has(frameToggleId) && (toggleRole === 'foot' || toggleRole === 'solo')}
           isSelected={selectedIds.has(item.id)}
           isSelectMode={isSelectMode}
           isActive={focusedBlockId === item.id}

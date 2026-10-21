@@ -43,6 +43,9 @@ type SortableBlockRowProps = {
   isDragActive: boolean;
   compressTowardOffset: number;
   listNumber?: number;
+  // The toggle frame this row belongs to, and whether its foot says «there is more» (BlockList computes both).
+  toggleRole?: 'solo' | 'head' | 'body' | 'foot';
+  peekMore?: boolean;
   textVersion: number;
   onLayout: (e: LayoutChangeEvent) => void;
   onDragStart: () => void;
@@ -124,6 +127,8 @@ function SortableBlockRow({
   isDragActive,
   compressTowardOffset,
   listNumber,
+  toggleRole,
+  peekMore,
   textVersion,
   hideHandle,
   searchHighlight,
@@ -302,6 +307,8 @@ function SortableBlockRow({
             showBoundary={isDragActive}
             paperColor={paperColor}
             listNumber={listNumber}
+            toggleRole={toggleRole}
+            peekMore={peekMore}
             textVersion={textVersion}
             onChangeText={onChangeText}
             onBackspaceEmpty={onBackspaceEmpty}

@@ -214,8 +214,13 @@ export interface Block {
   // 'file' blocks only - an optional rename that overrides fileName for
   // display (see FilesScreen) without touching the actual attached file.
   fileTitle?: string;
-  // 'toggle' blocks only: folded, so what follows it is not drawn.
+  // 'toggle' blocks only: folded, so what follows it is not drawn. Kept in step with foldMode ('closed' = true) so an older
+  // client, and every consumer that only knows this flag, still reads a closed toggle as closed.
   collapsed?: boolean;
+  // 'toggle' blocks only (2026-10-21): the block's view - 'closed', 'peek' (the title and its first lines, the rest hidden) or
+  // 'open'. Absent = read from `collapsed`. foldView is what the chevron opens it to again (the view the user chose with «···»).
+  foldMode?: 'closed' | 'peek' | 'open';
+  foldView?: 'peek' | 'open';
   // Any block: marks where a toggle's section ends by hand rather than
   // by running to the next toggle or the end of the note - Backspace on
   // an empty line sets this instead of deleting the line, the one way

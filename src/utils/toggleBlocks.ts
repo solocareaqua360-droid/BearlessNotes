@@ -9,22 +9,45 @@ import type { Block } from '../types';
 // page made small, the day's own miniature on the calendar - or a card
 // would show what its page hides, and the two would stop being the same
 // picture.
+// How many of a toggle's blocks the «peek» view shows under its title.
+export const PEEK_BLOCKS = 3;
+
+// The view a toggle is in, whichever way it was saved (older blocks only know `collapsed`).
+export function foldOf(block: Block): 'closed' | 'peek' | 'open' {
+  return block.foldMode ?? (block.collapsed ? 'closed' : 'open');
+}
+
 export function visibleBlocks(blocks: Block[]): Block[] {
   // Nothing folded is the common case, and it costs a single pass to
   // find out rather than a new array every render.
-  if (!blocks.some((b) => b.type === 'toggle' && b.collapsed)) return blocks;
+  if (!blocks.some((b) => b.type === 'toggle' && foldOf(b) !== 'open')) return blocks;
   const out: Block[] = [];
-  let folded = false;
+  let mode: 'closed' | 'peek' | 'open' = 'open';
+  let shownHeld = 0;
   for (const block of blocks) {
     if (block.type === 'toggle') {
-      folded = !!block.collapsed;
+      mode = foldOf(block);
+      shownHeld = 0;
       out.push(block);
       continue;
     }
     // Stepped back out before this block is drawn - it and everything
     // after it show even while the toggle above stays collapsed.
-    if (block.exitsToggle) folded = false;
-    if (!folded) out.push(block);
+    if (block.exitsToggle) mode = 'open';
+    if (mode === 'open') out.push(block);
+    else if (mode === 'peek' && shownHeld < PEEK_BLOCKS) {
+      shownHeld += 1;
+      out.push(block);
+    }
+  }
+  return out;
+}
+
+// The toggles in «peek» that are hiding something: the foot of their frame shows the sign that there is more.
+export function peekMoreIds(blocks: Block[]): Set<string> {
+  const out = new Set<string>();
+  for (const b of blocks) {
+    if (b.type === 'toggle' && foldOf(b) === 'peek' && foldedUnder(blocks, b.id).length > PEEK_BLOCKS) out.add(b.id);
   }
   return out;
 }
@@ -65,15 +88,20 @@ export function foldedUnder(blocks: Block[], toggleId: string): Block[] {
 // reading of it that is not a trap.
 export function mergeVisibleOrder(all: Block[], visibleOrder: Block[]): Block[] {
   if (all.length === visibleOrder.length) return visibleOrder;
-  const held = new Map<string, Block[]>();
-  for (const block of visibleOrder) {
-    if (block.type === 'toggle' && block.collapsed) held.set(block.id, foldedUnder(all, block.id));
-  }
+  const seen = new Set(visibleOrder.map((b) => b.id));
+  // A closed toggle's whole section follows it at once; a «peek» one keeps its visible blocks where the drag put them and
+  // its hidden remainder follows the LAST of those, before whatever comes next (another toggle, a step out, the end).
+  const hiddenOf = (toggle: Block) => foldedUnder(all, toggle.id).filter((b) => !seen.has(b.id));
   const out: Block[] = [];
+  let pending: Block[] = [];
   for (const block of visibleOrder) {
+    if (block.type === 'toggle' || block.exitsToggle) {
+      out.push(...pending);
+      pending = [];
+    }
     out.push(block);
-    const under = held.get(block.id);
-    if (under) out.push(...under);
+    if (block.type === 'toggle' && foldOf(block) !== 'open') pending = hiddenOf(block);
   }
+  out.push(...pending);
   return out;
 }
