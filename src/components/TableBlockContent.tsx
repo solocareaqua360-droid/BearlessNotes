@@ -783,7 +783,9 @@ export default function TableBlockContent({
                         autoCapitalize="none"
                         autoCorrect={false}
                       />
-                      {!formulaMode && !(editing && isSelected) && (
+                      {/* While typing there is NO catcher: a tap goes straight into the next field, the way the focus moves between fields everywhere - with a
+                          catcher in between the focus was empty for a moment and the keyboard blinked away and back on every move. */}
+                      {!formulaMode && !editing && (
                         <GestureDetector gesture={cellTapGesture(r, c)}>
                           <View collapsable={false} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} accessibilityLabel="Клітинка" />
                         </GestureDetector>
