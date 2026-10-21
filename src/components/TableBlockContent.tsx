@@ -646,9 +646,12 @@ export default function TableBlockContent({
                   c === row.cells.length - 1 && styles.tableGridCellLast,
                   headerColumn && c === 0 && styles.tableGridHeaderCell,
                   { width: widthOf(c) },
-                  inSpan && { backgroundColor: theme.paper.selected },
-                  isSelected && styles.tableCellSelected,
+                  (inSpan || isSelected) && { backgroundColor: theme.paper.selected },
                 ];
+                // The frame is DRAWN over the cell, not a border of it: a 2pt border made the selected cell's row taller than its neighbours.
+                const selFrame = isSelected ? (
+                  <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderWidth: 2, borderColor: theme.accent }} />
+                ) : null;
                 const addressTag = formulaMode ? (
                   <Text pointerEvents="none" style={{ position: 'absolute', right: 4, top: 1, fontSize: 9, color: theme.paper.inkFaint }}>
                     {columnLetter(c)}
@@ -699,6 +702,7 @@ export default function TableBlockContent({
                         autoCapitalize="none"
                         autoCorrect={false}
                       />
+                      {selFrame}
                       {isSelected && !formulaMode && <CellDots onPress={openCellMenu} />}
                       {addressTag}
                     </View>
@@ -715,6 +719,7 @@ export default function TableBlockContent({
                       strongStyle={styles.tableReadStrong}
                       ink={theme.paper.ink}
                     />
+                    {selFrame}
                     {addressTag}
                   </Pressable>
                 );
