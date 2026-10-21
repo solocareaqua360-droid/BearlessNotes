@@ -93,14 +93,17 @@ export default function TableBlockContent({
   // the editor leaves writing mode the moment it hides. With no keyboard, a first tap only selects, and nothing rises.
   const [keyboardUp, setKeyboardUp] = useState(Keyboard.isVisible());
   useEffect(() => {
-    const a = Keyboard.addListener('keyboardDidShow', () => setKeyboardUp(true));
-    const b = Keyboard.addListener('keyboardDidHide', () => setKeyboardUp(false));
+    const a = Keyboard.addListener('keyboardDidShow', () => { keyboardUpRef.current = true; setKeyboardUp(true); });
+    const b = Keyboard.addListener('keyboardDidHide', () => { keyboardUpRef.current = false; setKeyboardUp(false); });
     return () => {
       a.remove();
       b.remove();
     };
   }, []);
-  const focusSink = () => sinkRef.current?.focus();
+  const keyboardUpRef = useRef(Keyboard.isVisible());
+  // Where a select-only tap rests the focus: with no keyboard, on the keyboard-less sink; with the keyboard up (another block was being written in)
+  // on the cell itself, which keeps the keyboard and the writing mode - the sink let both go.
+  const focusTarget = (r: number, c: number) => (keyboardUpRef.current ? cellRefs.current.get(`${r}:${c}`) ?? sinkRef.current : sinkRef.current)?.focus();
   // Reading: the short view («шапка й 3 рядки») can be opened for this visit without changing what was saved.
   const [openedShort, setOpenedShort] = useState(false);
   const lastRowAdd = useRef(0);
@@ -242,7 +245,7 @@ export default function TableBlockContent({
       // block holds the keyboard otherwise lets Android hand the focus to the FIRST field on the page (the folder box under the title):
       // the «курсор зіскакує на поле папки» bug the user reported on 2026-10-22. (Dismissing the keyboard instead is no way out: the
       // editor leaves writing mode the moment it goes.)
-      setTimeout(focusSink, 30);
+      setTimeout(() => focusTarget(r, c), 30);
     }
   }
 
@@ -576,7 +579,7 @@ export default function TableBlockContent({
     // goes can land after a single early attempt.
     const timers = [40, 160, 360].map((ms) =>
       setTimeout(() => {
-        if (!focusedCellRef.current) focusSink();
+        if (!focusedCellRef.current) focusTarget(r, c);
       }, ms)
     );
     return () => timers.forEach(clearTimeout);
