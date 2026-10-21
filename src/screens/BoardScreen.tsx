@@ -9365,8 +9365,23 @@ export default function BoardScreen() {
             // stand inert until then so that a swipe scrolls them, and the
             // pencil that wakes them is not on a card (utils: the note's
             // own startWriting).
-            <View style={[styles.cardWindowBody, cardWindowWriting && { overflow: 'visible' }]}>
-              <TextScaleOverride factor={Math.max(0.42, PAPER_DOC_TEXT * cardWindow.zoom)}>
+            <View style={[styles.cardWindowBody, cardWindowWriting && !macBoard && { overflow: 'visible' }, macBoard && { overflow: 'hidden' }]}>
+              {/* THE MAC: the note is laid out at the CARD'S OWN (world) size and scaled by the board's zoom, exactly as the card at rest is
+                  scaled with the canvas - so opening the card does not re-size its text and list numbers (the user, 2026-10-21: all five
+                  points fitted, then only two, the numbers twice as big). A transform on the web keeps text sharp. */}
+              <View
+                style={
+                  macBoard
+                    ? ({
+                        width: winSize.w / ((cardWindow.zoom || 1) * PAPER_DOC_TEXT),
+                        height: Math.max(0, winSize.h - cardHeadH) / ((cardWindow.zoom || 1) * PAPER_DOC_TEXT),
+                        transform: [{ scale: (cardWindow.zoom || 1) * PAPER_DOC_TEXT }],
+                        transformOrigin: 'top left',
+                      } as never)
+                    : { flex: 1 }
+                }
+              >
+              <TextScaleOverride factor={macBoard ? 1 : Math.max(0.42, PAPER_DOC_TEXT * cardWindow.zoom)}>
                 <DocumentEditorScreen
                   key={cardWindow.docId}
                   ref={cardEditorRef}
@@ -9374,15 +9389,16 @@ export default function BoardScreen() {
                   documentId={cardWindow.docId}
                   navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
                   extraFields={cardWindow.docId.startsWith('day_') ? { calendarDate: cardWindow.docId.slice(4) } : undefined}
-                  panelBleed={cardWindowWriting ? Math.max(0, Math.round((windowWidth - winSize.w) / 2)) : 0}
+                  panelBleed={cardWindowWriting && !macBoard ? Math.max(0, Math.round((windowWidth - winSize.w) / 2)) : 0}
                   clearGround
                   // A height ALWAYS while the card is live, only its number changing (2026-10-18): switching the note's
                   // scroll from "fill" to a fixed height at the moment the keyboard came up took the focus away from
                   // the field that had just got it - the keyboard opened and closed, the card could not be written in.
-                  scrollHeight={cardWindowWriting ? cardWindowScrollH : Math.max(0, winSize.h - cardHeadH)}
+                  scrollHeight={macBoard ? Math.max(0, winSize.h - cardHeadH) / ((cardWindow.zoom || 1) * PAPER_DOC_TEXT) : cardWindowWriting ? cardWindowScrollH : Math.max(0, winSize.h - cardHeadH)}
                   onPanelChange={setCardWindowPanel}
                 />
               </TextScaleOverride>
+              </View>
             </View>
           )}
           {cardWindowWriting && (
