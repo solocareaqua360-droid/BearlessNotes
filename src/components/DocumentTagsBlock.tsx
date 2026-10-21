@@ -27,6 +27,9 @@ export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, on
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [query, setQuery] = useState('');
+  // The folder box is a field only once the user TAPS it. A field that is always there is where Android drops the caret whenever the field
+  // that held it goes away (keyboard lowered, a block deleted) - the user: «в людській голові не може виникнути, щоб воно само перескакувало».
+  const [typing, setTyping] = useState(false);
   const [createModal, setCreateModal] = useState<{ path: string } | null>(null);
 
   const appliedTags = tags.filter((tag) => tagIds.includes(tag.id));
@@ -65,13 +68,21 @@ export default function DocumentTagsBlock({ tagIds, tags, onAttach, onDetach, on
         ))}
         <View style={styles.inputWrap}>
           <Ionicons name="add" size={13} color={theme.paper.inkFaint} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="папка"
-            placeholderTextColor={theme.paper.inkFaint}
-            style={styles.input}
-          />
+          {typing || query.length > 0 ? (
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="папка"
+              placeholderTextColor={theme.paper.inkFaint}
+              style={styles.input}
+              autoFocus={typing}
+              onBlur={() => setTyping(false)}
+            />
+          ) : (
+            <Pressable onPress={() => setTyping(true)} focusable={false} hitSlop={6}>
+              <Text style={[styles.input, { color: theme.paper.inkFaint }]}>папка</Text>
+            </Pressable>
+          )}
         </View>
       </View>
 

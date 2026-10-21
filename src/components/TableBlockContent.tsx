@@ -90,7 +90,7 @@ export default function TableBlockContent({
   // A cell that shows a formula's RESULT is not a field, so selecting it has nothing to focus - and the focus Android then hands out goes to the
   // first field on the page (the folder box). This 1pt invisible field is where the focus rests instead.
   const sinkRef = useRef<TextInput>(null);
-  const focusCell = (r: number, c: number) => (cellRefs.current.get(`${r}:${c}`) ?? sinkRef.current)?.focus();
+  const focusSink = () => sinkRef.current?.focus();
   // Reading: the short view («шапка й 3 рядки») can be opened for this visit without changing what was saved.
   const [openedShort, setOpenedShort] = useState(false);
   const lastRowAdd = useRef(0);
@@ -232,8 +232,7 @@ export default function TableBlockContent({
       // block holds the keyboard otherwise lets Android hand the focus to the FIRST field on the page (the folder box under the title):
       // the «курсор зіскакує на поле папки» bug the user reported on 2026-10-22. (Dismissing the keyboard instead is no way out: the
       // editor leaves writing mode the moment it goes.)
-      selectOnlyRef.current = true;
-      setTimeout(() => focusCell(r, c), 30);
+      setTimeout(focusSink, 30);
     }
   }
 
@@ -563,12 +562,11 @@ export default function TableBlockContent({
     const r = Math.max(0, Math.min(rows.length - 1, Math.floor(tap.y / Math.max(1, tap.height / rows.length))));
     setSelected({ r, c });
     setSpan('cell');
-    selectOnlyRef.current = true;
     // More than once: the field that held the keyboard before is being locked in the same moments, and the focus Android hands out when it
     // goes can land after a single early attempt.
     const timers = [40, 160, 360].map((ms) =>
       setTimeout(() => {
-        if (focusedCellRef.current !== `${r}:${c}`) focusCell(r, c);
+        if (!focusedCellRef.current) focusSink();
       }, ms)
     );
     return () => timers.forEach(clearTimeout);
@@ -737,8 +735,7 @@ export default function TableBlockContent({
                         editable={!formulaMode}
                         onFocus={() => {
                           focusedCellRef.current = `${r}:${c}`;
-                          if (selectOnlyRef.current) selectOnlyRef.current = false;
-                          else setEditing(true);
+                          setEditing(true);
                           setSelected({ r, c });
                           setSpan('cell');
                           setDraftText(raw);
@@ -817,6 +814,13 @@ export default function TableBlockContent({
         ref={sinkRef}
         value=""
         onChangeText={() => {}}
+        showSoftInputOnFocus={false}
+        onFocus={() => {
+          focusedCellRef.current = 'sink';
+        }}
+        onBlur={() => {
+          if (focusedCellRef.current === 'sink') focusedCellRef.current = null;
+        }}
         caretHidden
         accessibilityElementsHidden
         importantForAccessibility="no"
