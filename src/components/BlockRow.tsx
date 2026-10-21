@@ -1,5 +1,6 @@
 import FlashcardBlockCard from './FlashcardBlockCard';
 import { ask } from './surfaces/Ask';
+import { HIGHLIGHT_COLORS } from './EditorToolbar';
 import { foldOf } from '../utils/toggleBlocks';
 import SketchLayer from './SketchLayer';
 import { INK, drawingViewBox } from '../utils/sketchGeometry';
@@ -999,22 +1000,22 @@ export default function BlockRow({
                     { id: 'closed', label: now === 'closed' ? 'Згорнуто  ✓' : 'Згорнуто', icon: 'chevron-forward' },
                     { id: 'peek', label: now === 'peek' ? 'Перші рядки  ✓' : 'Перші рядки', icon: 'reorder-three-outline' },
                     { id: 'open', label: now === 'open' ? 'Повністю  ✓' : 'Повністю', icon: 'chevron-down' },
-                    { id: 'color', label: 'Колір заголовка…', icon: 'color-palette-outline' },
+                    { id: 'color', label: 'Колір шапки…', icon: 'color-palette-outline' },
                   ],
                 });
                 if (choice === 'color') {
-                  // The title's colour, written as the note's own colour marker around the whole title (the same one the text colour
-                  // button writes), so it survives sync, search and export like any coloured text.
-                  const names = ['Звичайний', 'Червоний', 'Помаранчевий', 'Зелений', 'Синій', 'Фіолетовий'];
-                  const palette = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
+                  // The colour of the HEADER itself, like a table's header row: a pale wash from the note's muted set (or none).
                   const picked = await ask({
-                    title: 'Колір заголовка',
-                    actions: names.map((name, i) => ({ id: String(i), label: name, icon: 'ellipse' as const })),
+                    title: 'Колір шапки',
+                    actions: [
+                      { id: 'none', label: 'Без кольору', icon: 'ellipse-outline' as const },
+                      { id: '0', label: 'Пісок', icon: 'ellipse' as const },
+                      { id: '1', label: 'Шавлія', icon: 'ellipse' as const },
+                      { id: '2', label: 'Глина', icon: 'ellipse' as const },
+                    ],
                   });
-                  const at = Number(picked);
-                  if (!Number.isInteger(at) || at < 0 || at >= palette.length) return;
-                  const plain = (item.text ?? '').replace(/\{c:#[0-9A-Fa-f]{6}\}|\{\/c\}/g, '');
-                  onUpdateBlock(item.id, { text: at === 0 || !plain ? plain : `{c:${palette[at]}}${plain}{/c}` });
+                  if (picked === 'none') onUpdateBlock(item.id, { headColor: undefined });
+                  else if (picked === '0' || picked === '1' || picked === '2') onUpdateBlock(item.id, { headColor: HIGHLIGHT_COLORS[Number(picked)] });
                   return;
                 }
                 if (choice !== 'closed' && choice !== 'peek' && choice !== 'open') return;
@@ -1088,6 +1089,8 @@ export default function BlockRow({
           borderBottomRightRadius: toggleRole === 'solo' || toggleRole === 'foot' ? 14 : 0,
           paddingHorizontal: 12,
           paddingBottom: peekMore ? 22 : undefined,
+          // The header's own fill (chosen with «···»): only the title row, never the held blocks.
+          ...((toggleRole === 'solo' || toggleRole === 'head') && item.headColor ? { backgroundColor: item.headColor } : null),
         },
         // The theme's own light-blue highlight, UNLESS the row is on a
         // custom paper colour: that highlight is opaque and fixed, and a

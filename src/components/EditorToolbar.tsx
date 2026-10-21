@@ -25,8 +25,12 @@ import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 // every theme), and a highlighter needs to stay a pale wash whatever the
 // interface scheme is doing - unlike a card fill or a section colour,
 // nothing here is app chrome.
-export const TEXT_COLORS = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
-export const HIGHLIGHT_COLORS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E9D5FF'];
+// THE NOTE'S OWN COLOURS, in the app's muted tones (the user, 2026-10-22): red and green stay because they MEAN something when you mark
+// a text (red = needs fixing, green = liked), but as a brick red and a sage green that sit in the app's style, not the vivid student
+// ones. Plain ink first. Text coloured with the older vivid hexes keeps drawing as it was; only the CHOICE changed.
+export const TEXT_COLORS = ['#111827', '#A8483C', '#5B7B65'];
+// The washes behind text, and the fill of a toggle's header: sand (attention), sage (good), clay (fix) - the card palette's own grounds.
+export const HIGHLIGHT_COLORS = ['#EFE3C6', '#DCE6DD', '#EBD3CE'];
 
 // THIS BAR IS MADE OF THE DOCK, not of GlassDrop with its numbers
 // turned up (2026-09-19).

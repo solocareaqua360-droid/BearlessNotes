@@ -221,6 +221,8 @@ export interface Block {
   // 'open'. Absent = read from `collapsed`. foldView is what the chevron opens it to again (the view the user chose with «···»).
   foldMode?: 'closed' | 'peek' | 'open';
   foldView?: 'peek' | 'open';
+  // 'toggle' blocks only: the fill of the block's HEADER (a pale wash from the note's muted set), like a table's header row.
+  headColor?: string;
   // Any block: marks where a toggle's section ends by hand rather than
   // by running to the next toggle or the end of the note - Backspace on
   // an empty line sets this instead of deleting the line, the one way
