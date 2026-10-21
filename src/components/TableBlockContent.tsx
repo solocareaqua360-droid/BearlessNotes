@@ -351,7 +351,8 @@ export default function TableBlockContent({
           { id: 'head', label: 'Шапка й підсумки…' },
           { id: 'resetWidths', label: 'Скинути ширину колонок' },
           { id: 'clearCell', label: 'Очистити клітинку' },
-          { id: 'del', label: 'Видалити…', tone: 'danger', icon: 'trash-outline' },
+          ...(rows.length > 1 ? [{ id: 'delRow', label: 'Видалити рядок', tone: 'danger' as const, icon: 'trash-outline' as const }] : []),
+          ...(columnCount > 1 ? [{ id: 'delCol', label: 'Видалити колонку', tone: 'danger' as const, icon: 'trash-outline' as const }] : []),
         ],
       });
       if (chosen === 'insert') {
@@ -372,14 +373,6 @@ export default function TableBlockContent({
             ...(r < lastRow ? [{ id: 'down', label: 'Рядок вниз', icon: 'chevron-down' as const }] : []),
             ...(c > 0 ? [{ id: 'left', label: 'Колонку ліворуч', icon: 'chevron-back' as const }] : []),
             ...(c < lastCol ? [{ id: 'right', label: 'Колонку праворуч', icon: 'chevron-forward' as const }] : []),
-          ],
-        });
-      } else if (chosen === 'del') {
-        chosen = await ask({
-          title: 'Видалити',
-          actions: [
-            ...(rows.length > 1 ? [{ id: 'delRow', label: 'Рядок', tone: 'danger' as const }] : []),
-            ...(columnCount > 1 ? [{ id: 'delCol', label: 'Колонку', tone: 'danger' as const }] : []),
           ],
         });
       } else if (chosen === 'head') {
@@ -655,9 +648,21 @@ export default function TableBlockContent({
                   c === row.cells.length - 1 && styles.tableGridCellLast,
                   headerColumn && c === 0 && styles.tableGridHeaderCell,
                   { width: widthOf(c) },
-                  (inSpan || isSelected) && { backgroundColor: theme.paper.selected },
+                  inSpan && { backgroundColor: SPAN_TINT(theme.accent, theme.paper.selected) },
+                  isSelected && !inSpan && { backgroundColor: theme.paper.selected },
                 ];
                 // The frame is DRAWN over the cell, not a border of it: a 2pt border made the selected cell's row taller than its neighbours.
+                // A picked ROW / COLUMN: its cells carry an accent rule on the two long sides (the cell with the dots keeps its full frame).
+                const spanRule = inSpan ? (
+                  <View
+                    pointerEvents="none"
+                    style={{
+                      position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
+                      borderColor: theme.accent,
+                      ...(span === 'row' ? { borderTopWidth: 2, borderBottomWidth: 2 } : { borderLeftWidth: 2, borderRightWidth: 2 }),
+                    }}
+                  />
+                ) : null;
                 const selFrame = isSelected ? (
                   <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderWidth: 2, borderColor: theme.accent }} />
                 ) : null;
@@ -717,6 +722,7 @@ export default function TableBlockContent({
                       {!formulaMode && !(editing && isSelected) && (
                         <Pressable onPress={() => tapCell(r, c)} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} accessibilityLabel="Клітинка" />
                       )}
+                      {spanRule}
                       {selFrame}
                       {isSelected && !formulaMode && <CellDots onPress={openCellMenu} />}
                     </View>
@@ -733,6 +739,7 @@ export default function TableBlockContent({
                       strongStyle={styles.tableReadStrong}
                       ink={theme.paper.ink}
                     />
+                    {spanRule}
                     {selFrame}
                     {isSelected && !formulaMode && <CellDots onPress={openCellMenu} />}
                   </Pressable>
@@ -841,10 +848,10 @@ function CellDots({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       hitSlop={6}
       accessibilityLabel="Меню клітинки"
-      style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 30, alignItems: 'center', justifyContent: 'center', gap: 3 }}
+      style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 30, alignItems: 'center', justifyContent: 'center', gap: 2.5 }}
     >
       {[0, 1, 2].map((i) => (
-        <View key={i} style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#8A867E' }} />
+        <View key={i} style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#9C988F' }} />
       ))}
     </Pressable>
   );
@@ -852,6 +859,8 @@ function CellDots({ onPress }: { onPress: () => void }) {
 
 // Wide enough for a short word plus its padding, narrow enough that
 // three fit on a phone.
+// The tint of a picked row / column: the accent at about a quarter, stronger than the single cell's wash so that it can be SEEN.
+const SPAN_TINT = (accent: string, fallback: string) => (/^#[0-9a-fA-F]{6}$/.test(accent) ? `${accent}40` : fallback);
 const DEFAULT_COLUMN_WIDTH = 110;
 // No row-number column any more (the numbers live inside the cells while a formula is typed); kept as 0 so the guide's maths stays one line.
 const GUTTER_WIDTH = 0;
