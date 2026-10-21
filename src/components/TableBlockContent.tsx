@@ -565,7 +565,7 @@ export default function TableBlockContent({
   useEffect(() => {
     if (!canEdit) return;
     const tap = takeTableTap(block.id);
-    if (!tap) return;
+    if (!tap || !Number.isFinite(tap.x) || !Number.isFinite(tap.y) || !(tap.height > 0)) return;
     let c = 0;
     let x = tap.x;
     while (c < columnCount - 1 && x > widthOf(c)) {

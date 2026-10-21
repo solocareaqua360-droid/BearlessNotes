@@ -574,7 +574,9 @@ export default function BlockRow({
         onPress={(e) => {
           if (isSelectMode) return onToggleSelected(item.id);
           // See utils/tableTap: the live table needs to know which cell this tap was for.
-          rememberTableTap({ blockId: item.id, x: e.nativeEvent.locationX, y: e.nativeEvent.locationY, ...tableBoxRef.current });
+          // Phone: locationX/Y. The browser's press event has no such fields, its MouseEvent carries offsetX/Y.
+          const ne = e.nativeEvent as unknown as { locationX?: number; locationY?: number; offsetX?: number; offsetY?: number };
+          rememberTableTap({ blockId: item.id, x: ne.locationX ?? ne.offsetX ?? NaN, y: ne.locationY ?? ne.offsetY ?? NaN, ...tableBoxRef.current });
           onActivate(item.id);
         }}
       >
