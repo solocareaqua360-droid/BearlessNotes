@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // Deliberately gesture-handler's ScrollView, not react-native's - see the
 // same note in DocumentEditorScreen.tsx (this component moved out of that
 // file on 2026-09-19): the grid needs to sit inside that file's own
@@ -605,8 +605,9 @@ export default function TableBlockContent({
   }
 
   // ---- EDITING ----------------------------------------------------
-  // The grid is just cells. No letters, no numbers: they only mean something inside a formula, so they appear INSIDE the cells (a small
-  // address in the corner) from the moment "=" is typed, and nowhere else (the user, 2026-10-22). The selected cell has a frame, three
+  // The grid is just cells. No letters, no numbers: they only mean something inside a formula, so the lettered strip and the numbered
+  // column are drawn from the moment "=" is typed, like Excel's, and nowhere else (the user, 2026-10-22; a letter INSIDE every cell
+  // was tried the same day and refused: «жах»). The selected cell has a frame, three
   // dots in its right corner (its menu) and, on its right edge, the grip that sets the column's width.
   return (
     <View style={styles.tableBlock}>
@@ -616,6 +617,17 @@ export default function TableBlockContent({
               is clipped by it; drawn over everything, because it is
               standing on the boundary it is about to move. */}
           {!!guide && <View pointerEvents="none" style={[styles.tableGuide, { left: guide.x }]} />}
+          {/* The letters and the numbers - only while a formula is being typed (the user, 2026-10-22: «показувалося тільки при введенні равно»). */}
+          {formulaMode && (
+            <View style={{ flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.paper.edge }}>
+              <View style={[styles.tableGutterCell, { paddingVertical: 4 }]} />
+              {Array.from({ length: columnCount }, (_, c) => (
+                <View key={c} style={[styles.tableColumnHeaderCell, { width: widthOf(c) }]}>
+                  <Text style={styles.tableColumnHeaderText}>{columnLetter(c)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
           {rows.map((row, r) => (
             <View
               key={r}
@@ -625,6 +637,11 @@ export default function TableBlockContent({
                 headerRow && r === 0 && styles.tableGridHeaderRow,
               ]}
             >
+              {formulaMode && (
+                <View style={[styles.tableGridCell, styles.tableGutterCell]}>
+                  <Text style={styles.tableGutterText}>{r + 1}</Text>
+                </View>
+              )}
               {row.cells.map((_, c) => {
                 const isSelected = selected?.r === r && selected?.c === c;
                 const inSpan = !!selected && ((span === 'row' && r === selected.r) || (span === 'col' && c === selected.c));
@@ -651,12 +668,6 @@ export default function TableBlockContent({
                 // The frame is DRAWN over the cell, not a border of it: a 2pt border made the selected cell's row taller than its neighbours.
                 const selFrame = isSelected ? (
                   <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderWidth: 2, borderColor: theme.accent }} />
-                ) : null;
-                const addressTag = formulaMode ? (
-                  <Text pointerEvents="none" style={{ position: 'absolute', right: 4, top: 1, fontSize: 9, color: theme.paper.inkFaint }}>
-                    {columnLetter(c)}
-                    {r + 1}
-                  </Text>
                 ) : null;
                 if (!asAddress && !showsResult) {
                   const raw = row.cells[c] ?? '';
@@ -704,7 +715,6 @@ export default function TableBlockContent({
                       />
                       {selFrame}
                       {isSelected && !formulaMode && <CellDots onPress={openCellMenu} />}
-                      {addressTag}
                     </View>
                   );
                 }
@@ -720,7 +730,6 @@ export default function TableBlockContent({
                       ink={theme.paper.ink}
                     />
                     {selFrame}
-                    {addressTag}
                   </Pressable>
                 );
               })}
