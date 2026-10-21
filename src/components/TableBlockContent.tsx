@@ -815,6 +815,9 @@ function CellText({
     <Text style={[style, strong && strongStyle]} numberOfLines={CELL_MAX_LINES}>
       {isFormula ? (
         displayValueOf(rows, r, c)
+      ) : raw === '' ? (
+        // An empty cell still holds the height of a line: without it a row of empty cells folded to its padding while formulas were typed.
+        '\u200B'
       ) : (
         <FormattedText segments={parseFormattedText(raw)} defaultColor={ink} />
       )}
