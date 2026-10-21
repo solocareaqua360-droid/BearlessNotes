@@ -5692,7 +5692,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     snapshotBeforeChange();
     const created = newBlock();
     focusIdRef.current = created.id;
-    setBlocks((prev) => [...prev, created]);
+    // «Додати блок» is the page's own foot, not a line typed inside a section: when the last block belongs to a toggle (open or
+    // folded), the new one steps OUT of it - it used to land inside, and under a folded toggle it was hidden at once
+    // (the user, 2026-10-21: «всі блоки попадають всередину»).
+    setBlocks((prev) => {
+      const outside = isUnderToggle(prev, prev.length) ? { ...created, exitsToggle: true } : created;
+      return [...prev, outside];
+    });
   }
 
   // Whatever was last copied from a board card or a database screen, as a
@@ -5703,7 +5709,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (!value) return;
     snapshotBeforeChange();
     const pasted: Block = { ...value.block, id: generateId(), createdAt: Date.now() };
-    setBlocks((prev) => [...prev, pasted]);
+    setBlocks((prev) => [...prev, isUnderToggle(prev, prev.length) && pasted.type !== 'toggle' ? { ...pasted, exitsToggle: true } : pasted]);
     clearCopiedObject();
   }
 
