@@ -76,6 +76,17 @@ export default function TableBlockContent({
   const rows = block.tableRows && block.tableRows.length > 0 ? block.tableRows : [{ cells: ['', ''] }];
   const columnCount = rows[0]?.cells.length ?? 0;
   const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
+  // THE EDGE PLUS (the user, 2026-10-22: no permanent «+ Рядок / + Колонка»): a tap on the table's bottom, right or left edge shows a «+»
+  // there; the «+» adds a row / a column, and fades by itself. Filling a table stays clean.
+  const [edge, setEdge] = useState<'bottom' | 'right' | 'left' | null>(null);
+  useEffect(() => {
+    if (!edge) return;
+    const timer = setTimeout(() => setEdge(null), 4000);
+    return () => clearTimeout(timer);
+  }, [edge]);
+  // Reading: the short view («шапка й 3 рядки») can be opened for this visit without changing what was saved.
+  const [openedShort, setOpenedShort] = useState(false);
+  const lastRowAdd = useRef(0);
   // Whether the formula bar currently holds keyboard focus - reliable now
   // that the grid's ScrollView has keyboardShouldPersistTaps="always"
   // (tapping a cell no longer blurs the bar first), unlike when this only
@@ -183,7 +194,18 @@ export default function TableBlockContent({
       c = columnCount - 1;
       r -= 1;
     }
-    if (r < 0 || r >= rows.length) return;
+    if (r < 0) return;
+    if (r >= rows.length) {
+      // Enter / Tab past the last cell: the next row is made (a double Enter at the foot = a new row).
+      if (dr === 0 && dc === 0) return;
+      // One key can arrive twice (the key handler and the keyboard's own submit): one row, not two.
+      if (Date.now() - lastRowAdd.current < 250) return;
+      lastRowAdd.current = Date.now();
+      addRow();
+      setSelected({ r, c });
+      setTimeout(() => cellRefs.current.get(`${r}:${c}`)?.focus(), 60);
+      return;
+    }
     setSelected({ r, c });
     cellRefs.current.get(`${r}:${c}`)?.focus();
   }
@@ -196,6 +218,17 @@ export default function TableBlockContent({
     if (key === 'Enter') {
       moveSelection(shift ? -1 : 1, 0);
       return true;
+    }
+    if (key === 'Backspace' && selected) {
+      // Backspace in an EMPTY row removes the row (the user, 2026-10-22), and the caret goes to the row above.
+      const here = rows[selected.r];
+      if (here && rows.length > 1 && (draftText ?? here.cells[selected.c] ?? '') === '' && here.cells.every((cell) => (cell ?? '').trim() === '')) {
+        const above = Math.max(0, selected.r - 1);
+        const col = selected.c;
+        removeRow(selected.r);
+        setTimeout(() => cellRefs.current.get(`${above}:${col}`)?.focus(), 40);
+        return true;
+      }
     }
     if (key === 'ArrowDown') {
       moveSelection(1, 0);
@@ -224,8 +257,64 @@ export default function TableBlockContent({
     });
   }
 
-  function addColumn() {
-    onUpdate({ tableRows: rows.map((row) => ({ cells: [...row.cells, ''] })) });
+  function addColumn(atStart = false) {
+    onUpdate({
+      tableRows: rows.map((row) => ({ cells: atStart ? ['', ...row.cells] : [...row.cells, ''] })),
+      ...(atStart && block.tableColumnWidths?.length ? { tableColumnWidths: [DEFAULT_COLUMN_WIDTH, ...block.tableColumnWidths] } : null),
+    });
+  }
+
+  // Moving a column or a row one step: from the small menu behind a tap on its letter / number (no dragging on a phone).
+  function moveColumn(c: number, d: -1 | 1) {
+    const to = c + d;
+    if (to < 0 || to >= columnCount) return;
+    const swap = <T,>(a: T[]): T[] => {
+      const out = [...a];
+      [out[c], out[to]] = [out[to], out[c]];
+      return out;
+    };
+    setSelected(null);
+    onUpdate({
+      tableRows: rows.map((row) => ({ cells: swap(row.cells) })),
+      ...(block.tableColumnWidths?.length ? { tableColumnWidths: swap(Array.from({ length: columnCount }, (_, i) => widthOf(i))) } : null),
+    });
+  }
+
+  function moveRow(r: number, d: -1 | 1) {
+    const to = r + d;
+    if (to < 0 || to >= rows.length) return;
+    const next = rows.map((row) => ({ cells: [...row.cells] }));
+    [next[r], next[to]] = [next[to], next[r]];
+    setSelected(null);
+    onUpdate({ tableRows: next });
+  }
+
+  async function openColumnMenu(c: number) {
+    const chosen = await ask({
+      title: `Колонка ${columnLetter(c)}`,
+      actions: [
+        ...(c > 0 ? [{ id: 'left', label: 'Пересунути ліворуч', icon: 'chevron-back' as const }] : []),
+        ...(c < columnCount - 1 ? [{ id: 'right', label: 'Пересунути праворуч', icon: 'chevron-forward' as const }] : []),
+        ...(columnCount > 1 ? [{ id: 'del', label: 'Видалити колонку', tone: 'danger' as const, icon: 'trash-outline' as const }] : []),
+      ],
+    });
+    if (chosen === 'left') moveColumn(c, -1);
+    if (chosen === 'right') moveColumn(c, 1);
+    if (chosen === 'del') removeColumn(c);
+  }
+
+  async function openRowMenu(r: number) {
+    const chosen = await ask({
+      title: `Рядок ${r + 1}`,
+      actions: [
+        ...(r > 0 ? [{ id: 'up', label: 'Пересунути вгору', icon: 'chevron-up' as const }] : []),
+        ...(r < rows.length - 1 ? [{ id: 'down', label: 'Пересунути вниз', icon: 'chevron-down' as const }] : []),
+        ...(rows.length > 1 ? [{ id: 'del', label: 'Видалити рядок', tone: 'danger' as const, icon: 'trash-outline' as const }] : []),
+      ],
+    });
+    if (chosen === 'up') moveRow(r, -1);
+    if (chosen === 'down') moveRow(r, 1);
+    if (chosen === 'del') removeRow(r);
   }
 
   function removeRow(r: number) {
@@ -272,6 +361,7 @@ export default function TableBlockContent({
         { id: 'sum', label: 'Рядок підсумків' },
         { id: 'headerRow', label: headerRow ? 'Прибрати шапку-рядок' : 'Перший рядок — шапка' },
         { id: 'headerCol', label: headerColumn ? 'Прибрати шапку-колонку' : 'Перша колонка — шапка' },
+        { id: 'short', label: block.tableShort ? 'Показувати всю таблицю' : 'Показувати шапку й 3 рядки' },
         { id: 'resetWidths', label: 'Скинути ширину колонок' },
       ],
     });
@@ -280,6 +370,10 @@ export default function TableBlockContent({
     if (chosen === 'sum') addSumRow();
     if (chosen === 'headerRow') onUpdate({ tableHeaderRow: !headerRow });
     if (chosen === 'headerCol') onUpdate({ tableHeaderColumn: !headerColumn });
+    if (chosen === 'short') {
+      setOpenedShort(false);
+      onUpdate({ tableShort: !block.tableShort });
+    }
     if (chosen === 'resetWidths') onUpdate({ tableColumnWidths: [] });
   }
 
@@ -365,6 +459,12 @@ export default function TableBlockContent({
 
   // ---- READING ----------------------------------------------------
   if (!canEdit) {
+    // THE SHORT VIEW (a choice in «···»): the header row and three rows below it - or the first three when there is no header - and
+    // the rest only behind the chevron. Never while editing: what is being written in is always shown whole.
+    const keep = headerRow ? 4 : 3;
+    const short = !!block.tableShort && !openedShort && rows.length > keep;
+    const shownRows = short ? rows.slice(0, keep) : rows;
+    const hidden = rows.length - shownRows.length;
     // NOT styles.tableBlock: it carries flex: 1, and a flex: 1 child of a
     // parent measured by its own content collapses to nothing - which is
     // what a table became the moment editing ended, "просто тоненька
@@ -372,18 +472,19 @@ export default function TableBlockContent({
     // SortableBlockRow, about this same editor, in September. A
     // horizontal scroller takes its height from what is inside it.
     return (
+      <View>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tableReadFrame}
+        contentContainerStyle={{ paddingRight: SCROLL_PAST }}
       >
-        <View>
-          {rows.map((row, r) => (
+        <View style={styles.tableReadFrame}>
+          {shownRows.map((row, r) => (
             <View
               key={r}
               style={[
                 styles.tableGridRow,
-                r === rows.length - 1 && styles.tableGridRowLast,
+                r === shownRows.length - 1 && styles.tableGridRowLast,
                 headerRow && r === 0 && styles.tableGridHeaderRow,
               ]}
             >
@@ -412,6 +513,13 @@ export default function TableBlockContent({
           ))}
         </View>
       </ScrollView>
+      {hidden > 0 && (
+        // The SIGN OF MORE under a short table: faint, a chevron and an ellipsis; a tap opens it for this visit.
+        <Pressable onPress={() => setOpenedShort(true)} hitSlop={8} style={{ alignItems: 'center', paddingTop: 2 }} accessibilityLabel="Показати всю таблицю">
+          <Ionicons name="chevron-down" size={16} color="#A8A59D" />
+        </Pressable>
+      )}
+      </View>
     );
   }
 
@@ -420,13 +528,16 @@ export default function TableBlockContent({
     <View style={styles.tableBlock}>
 
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always">
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingRight: SCROLL_PAST }}>
         <View style={styles.tableFrame}>
           <View style={styles.tableHeaderRow}>
             <View style={styles.tableGutterCell} />
             {Array.from({ length: columnCount }, (_, c) => (
               <View key={c} style={[styles.tableColumnHeaderCell, { width: widthOf(c) }]}>
-                <Text style={styles.tableColumnHeaderText}>{columnLetter(c)}</Text>
+                {/* A tap on the letter opens the column's small menu: move left / right, delete. */}
+                <Pressable onPress={() => openColumnMenu(c)} hitSlop={4}>
+                  <Text style={styles.tableColumnHeaderText}>{columnLetter(c)}</Text>
+                </Pressable>
                 {/* The boundary itself is the handle, which is where a
                     hand already reaches for it. */}
                 <GestureDetector gesture={resizeGesture(c)}>
@@ -450,9 +561,9 @@ export default function TableBlockContent({
                 headerRow && r === 0 && styles.tableGridHeaderRow,
               ]}
             >
-              <View style={[styles.tableGridCell, styles.tableGutterCell]}>
+              <Pressable style={[styles.tableGridCell, styles.tableGutterCell]} onPress={() => openRowMenu(r)}>
                 <Text style={styles.tableGutterText}>{r + 1}</Text>
-              </View>
+              </Pressable>
               {row.cells.map((_, c) => {
                 const isSelected = selected?.r === r && selected?.c === c;
                 // In formula mode every OTHER cell stops being a field
@@ -511,6 +622,9 @@ export default function TableBlockContent({
                           native.preventDefault?.();
                         }
                       }}
+                      // Enter on a phone keyboard: on to the cell below, and at the foot a new row - instead of closing the keyboard.
+                      blurOnSubmit={false}
+                      onSubmitEditing={() => moveSelection(1, 0)}
                       autoCapitalize="none"
                       autoCorrect={false}
                     />
@@ -545,27 +659,64 @@ export default function TableBlockContent({
         </View>
       </ScrollView>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always">
-        <View style={styles.tableControls}>
-          <Pressable style={styles.tableControlBtn} onPress={addRow}>
-            <Ionicons name="add" size={14} color="#6B7280" />
-            <Text style={styles.tableControlLabel}>Рядок</Text>
+      {/* THE EDGES: a thin strip under the table, one on each side. A tap shows a «+» (and it fades by itself); the plus adds. */}
+      <Pressable onPress={() => setEdge(edge === 'bottom' ? null : 'bottom')} style={{ height: 18, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Нижній край таблиці">
+        {edge === 'bottom' && (
+          <Pressable
+            onPress={() => {
+              addRow();
+              setEdge(null);
+            }}
+            hitSlop={10}
+            style={tablePlus}
+            accessibilityLabel="Додати рядок"
+          >
+            <Ionicons name="add" size={14} color="#fff" />
           </Pressable>
-          <Pressable style={styles.tableControlBtn} onPress={addColumn}>
-            <Ionicons name="add" size={14} color="#6B7280" />
-            <Text style={styles.tableControlLabel}>Колонка</Text>
+        )}
+      </Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Pressable onPress={() => setEdge(edge === 'left' ? null : 'left')} hitSlop={6} accessibilityLabel="Лівий край таблиці">
+            {edge === 'left' ? (
+              <Pressable
+                onPress={() => {
+                  addColumn(true);
+                  setEdge(null);
+                }}
+                hitSlop={10}
+                style={tablePlus}
+                accessibilityLabel="Додати колонку ліворуч"
+              >
+                <Ionicons name="add" size={14} color="#fff" />
+              </Pressable>
+            ) : (
+              <Ionicons name="chevron-back" size={13} color="#C0BDB5" />
+            )}
           </Pressable>
-          {/* Everything else is behind one button. Six controls under a
-              two-by-two table is more chrome than table; adding a row
-              and a column are the two anyone does often, and the rest
-              are worth a tap. This also gives row DELETION a home: it
-              used to be an × on every single row, which is where a lot
-              of the clutter came from. */}
-          <Pressable style={styles.tableControlBtn} onPress={openTableMenu}>
-            <Ionicons name="ellipsis-horizontal" size={14} color="#6B7280" />
+          <Pressable onPress={() => setEdge(edge === 'right' ? null : 'right')} hitSlop={6} accessibilityLabel="Правий край таблиці">
+            {edge === 'right' ? (
+              <Pressable
+                onPress={() => {
+                  addColumn(false);
+                  setEdge(null);
+                }}
+                hitSlop={10}
+                style={tablePlus}
+                accessibilityLabel="Додати колонку праворуч"
+              >
+                <Ionicons name="add" size={14} color="#fff" />
+              </Pressable>
+            ) : (
+              <Ionicons name="chevron-forward" size={13} color="#C0BDB5" />
+            )}
           </Pressable>
         </View>
-      </ScrollView>
+        {/* Everything else behind one quiet button. */}
+        <Pressable style={styles.tableControlBtn} onPress={openTableMenu} hitSlop={8}>
+          <Ionicons name="ellipsis-horizontal" size={14} color="#A8A59D" />
+        </Pressable>
+      </View>
     </View>
   );
 
@@ -647,10 +798,20 @@ function CellText({
 
 // Wide enough for a short word plus its padding, narrow enough that
 // three fit on a phone.
+const tablePlus = {
+  width: 22,
+  height: 22,
+  borderRadius: 11,
+  backgroundColor: '#24211D',
+  alignItems: 'center',
+  justifyContent: 'center',
+} as const;
 const DEFAULT_COLUMN_WIDTH = 110;
 // Must match tableGutterCell's own width - the guide is positioned in
 // the grid's coordinates and the row-number column comes first.
 const GUTTER_WIDTH = 28;
+// The table scrolls this far PAST its last column, so the last column's edge is not pinned to the screen's (its width stays adjustable).
+const SCROLL_PAST = 64;
 const MIN_COLUMN_WIDTH = 56;
 // Past this a column is a paragraph, and a paragraph belongs in a
 // paragraph.

@@ -380,6 +380,8 @@ export interface Block {
   // author knows. Craft asks the same two questions in the same words.
   tableHeaderRow?: boolean;
   tableHeaderColumn?: boolean;
+  // 'table' blocks only (2026-10-22): reading shows the header and a few rows with a sign that there is more (editing always shows all).
+  tableShort?: boolean;
 }
 
 export interface TableRow {
