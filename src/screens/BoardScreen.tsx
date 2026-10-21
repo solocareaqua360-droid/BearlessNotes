@@ -2765,6 +2765,8 @@ export default function BoardScreen() {
   // the three buttons and no room kept at the foot for a phone's editor bar - the buttons hang over it, the panel is on the right.
   const cardWindowMinTop = macBoard ? 4 : boardInsets.top + 68 + CARD_BUTTONS_H;
   const cardBarFoot = macBoard ? 0 : bottomInset + EDITOR_TOOLBAR_HEIGHT + 12;
+  // The window's buttons: above the card on a phone; INSIDE its header bar on the Mac, like any window's title bar.
+  const buttonsLift = macBoard ? -4 : CARD_BUTTONS_H;
   const winW = useSharedValue(240);
   const winH = useSharedValue(260);
   const [winSize, setWinSize] = useState({ w: 240, h: 260 });
@@ -2819,16 +2821,16 @@ export default function BoardScreen() {
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
       const p = cardWindowTypingP.value;
       const to = pointerDensity ? Math.min(Math.max(rawLeft, 8), windowWidth - w - 8) : (windowWidth - w) / 2;
-      return { top: rawTop + (top - rawTop) * p - CARD_BUTTONS_H, left: rawLeft + (to - rawLeft) * p, width: w };
+      return { top: rawTop + (top - rawTop) * p - buttonsLift, left: rawLeft + (to - rawLeft) * p, width: w };
     }
     const p = cardWindowTypingP.value;
     if (p > 0) {
       const barTop = windowHeight - rootOffYSV.value - lastKbSV.value - cardBarFoot;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
       const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
-      return { top: rawTop + (top - rawTop) * p - CARD_BUTTONS_H, left: rawLeft + ((windowWidth - w) / 2 - rawLeft) * p, width: w };
+      return { top: rawTop + (top - rawTop) * p - buttonsLift, left: rawLeft + ((windowWidth - w) / 2 - rawLeft) * p, width: w };
     }
-    return { top: rawTop - CARD_BUTTONS_H, left: rawLeft, width: w };
+    return { top: rawTop - buttonsLift, left: rawLeft, width: w };
   });
   // The painted card while writing: its own height, ending on the bar.
   const cardWindowOutlineStyle = useAnimatedStyle(() => {
@@ -2952,6 +2954,9 @@ export default function BoardScreen() {
   // also moves the card's corner on the board by what the window lost, so the opposite side stays where it was.
   const winStartX = useSharedValue(0);
   const winStartY = useSharedValue(0);
+  // The note inside re-flows WHILE the window is dragged (the user, 2026-10-21: shrinking left blocks sticking out, widening drew them
+  // only after the release): the React size is pushed a few times a second, not only at the end.
+  const lastSizePush = useSharedValue(0);
   const edgeGestures = useMemo(() => {
     const make = (l: boolean, r: boolean, t: boolean, b: boolean) =>
       Gesture.Pan()
@@ -2977,6 +2982,10 @@ export default function BoardScreen() {
             winH.value = h;
             cardWorldY.value = winStartY.value + (winStartH.value - h) / scale.value;
           }
+          if (Date.now() - lastSizePush.value > 60) {
+            lastSizePush.value = Date.now();
+            runOnJS(setWinSize)({ w: winW.value, h: winH.value });
+          }
         })
         .onEnd(() => {
           'worklet';
@@ -2992,7 +3001,7 @@ export default function BoardScreen() {
       bl: make(true, false, false, true),
       br: make(false, true, false, true),
     };
-  }, [winW, winH, winStartW, winStartH, winStartX, winStartY, cardWorldX, cardWorldY, scale, cardWindowMaxW, cardWindowMaxH, saveWinSize]);
+  }, [winW, winH, winStartW, winStartH, winStartX, winStartY, lastSizePush, cardWorldX, cardWorldY, scale, cardWindowMaxW, cardWindowMaxH, saveWinSize]);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
   // The world point under the pinch's own focal (the midpoint between the
@@ -9334,7 +9343,7 @@ export default function BoardScreen() {
           <View
             pointerEvents={cardWindow.live ? 'auto' : 'box-none'}
             onLayout={(e) => setCardHeadH(Math.round(e.nativeEvent.layout.height))}
-            style={[styles.paperDocHead, { paddingHorizontal: 8 * cardWindow.zoom, paddingTop: 8 * cardWindow.zoom, opacity: cardWindow.live ? 1 : 0 }]}
+            style={[styles.paperDocHead, { paddingHorizontal: 8 * cardWindow.zoom, paddingTop: 8 * cardWindow.zoom, opacity: cardWindow.live ? 1 : 0 }, macBoard && { paddingRight: 8 * cardWindow.zoom + 100 }]}
           >
             <Ionicons name="document-text-outline" size={13 * cardWindow.zoom} color={theme.paper.inkMuted} />
             <Text
@@ -9415,10 +9424,10 @@ export default function BoardScreen() {
         {/* Above the card's top-right corner, never over its text: its own
             layer, so the card's frame (which the note's touches live in)
             keeps exactly the card's bounds. */}
-        <Animated.View pointerEvents="box-none" style={[styles.cardWindowButtonLayer, cardWindowButtonsStyle]}>
+        <Animated.View pointerEvents="box-none" style={[styles.cardWindowButtonLayer, macBoard && { height: 30, paddingRight: 8 }, cardWindowButtonsStyle]}>
           <View style={styles.cardWindowButtonsRow}>
             <Pressable
-              style={styles.cardWindowIcon}
+              style={macBoard ? styles.cardWindowIconBar : styles.cardWindowIcon}
               hitSlop={4}
               accessibilityLabel={cardWindow.live ? 'Розгорнути вниз' : 'Згорнути'}
               onPress={() => {
@@ -9432,7 +9441,7 @@ export default function BoardScreen() {
               <Ionicons name={cardWindow.live ? 'chevron-down' : 'chevron-up'} size={18} color="#1c1c1e" />
             </Pressable>
             <Pressable
-              style={styles.cardWindowIcon}
+              style={macBoard ? styles.cardWindowIconBar : styles.cardWindowIcon}
               hitSlop={4}
               accessibilityLabel="На весь екран"
               onPress={() => {
@@ -9447,7 +9456,7 @@ export default function BoardScreen() {
               <Ionicons name="expand-outline" size={17} color="#1c1c1e" />
             </Pressable>
             <Pressable
-              style={[styles.cardWindowIcon, cardWindowWriting && { backgroundColor: '#1c1c1e' }]}
+              style={macBoard ? styles.cardWindowIconBar : [styles.cardWindowIcon, cardWindowWriting && { backgroundColor: '#1c1c1e' }]}
               hitSlop={4}
               accessibilityLabel={cardWindowWriting ? 'Готово' : 'Закрити'}
               onPress={() => {
@@ -9456,7 +9465,7 @@ export default function BoardScreen() {
                 setCardWindowPanel(false);
               }}
             >
-              <Ionicons name={cardWindowWriting ? 'checkmark' : 'close-outline'} size={18} color={cardWindowWriting ? '#ffffff' : '#1c1c1e'} />
+              <Ionicons name={cardWindowWriting ? 'checkmark' : 'close-outline'} size={18} color={cardWindowWriting && !macBoard ? '#ffffff' : '#1c1c1e'} />
             </Pressable>
           </View>
         </Animated.View>
@@ -9663,6 +9672,7 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
       backgroundColor: 'rgba(0,0,0,0.06)',
     },
+    cardWindowIconBar: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
     cardWindowBody: { flex: 1 },
     docPane: {
       flex: 1,
