@@ -1310,6 +1310,9 @@ type DraggableCardProps = {
   // A free block being typed in, right here on the board (no sheet): the
   // card turns into the field, and its own gestures step aside.
   inlineEditing?: boolean;
+  // Where this free block stands in its glued strip (undefined = alone): the strip is drawn as ONE sheet - round only at its two ends -
+  // and its head carries the grip that drags the whole strip (the Mac).
+  glueRole?: 'first' | 'middle' | 'last';
   onInlineText?: (id: string, text: string) => void;
   onInlineDoubleEnter?: (id: string) => void;
   onInlineBackspaceEmpty?: (id: string) => void;
@@ -1581,6 +1584,7 @@ function DraggableCard({
   canvasHoldGesture,
   livePaper,
   inlineEditing,
+  glueRole,
   settleTick,
   onInlineText,
   onInlineDoubleEnter,
@@ -1701,7 +1705,7 @@ function DraggableCard({
   // worklet closes over whatever is already in scope where it's built.
   const cardWidthForGuides = liveWidth ?? widthInColumn(card);
   const cardHeightForGuides = allCardBounds.find((b) => b.id === card.id)?.height ?? APPROX_CARD_HEIGHT;
-  const panGesture = Gesture.Pan()
+  const buildPan = () => Gesture.Pan()
     .enabled(dragEnabled)
     .blocksExternalGesture(canvasPanGesture)
     .onStart(() => {
@@ -1802,6 +1806,11 @@ function DraggableCard({
         runOnJS(onDragEnd)(card.id, posX.value, posY.value);
       }
     });
+  const panGesture = buildPan();
+  // THE GRIP (the Mac): a free block's own drag handle, shown on hover - dragging by it moves the block (the whole strip, from its head)
+  // without a text selection ever starting in the field under the pointer.
+  const gripGesture = buildPan().blocksExternalGesture(panGesture);
+  const [hovered, setHovered] = useState(false);
 
   // A press on one of the player's own buttons is also a tap on the card
   // under it (gesture-handler sees both), and a tap on a playing card
@@ -1939,7 +1948,20 @@ function DraggableCard({
           dimmed && { opacity: 0.28 },
         ]}
         pointerEvents={dimmed ? 'none' : 'auto'}
+        {...(Platform.OS === 'web' && card.freeBlock
+          ? ({ onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) } as object)
+          : null)}
       >
+        {card.freeBlock && Platform.OS === 'web' && (!card.glueId || (card.glueOrder ?? 0) === 0) && (hovered || inlineEditing) && (
+          <GestureDetector gesture={gripGesture}>
+            <View
+              accessibilityLabel="Перетягнути"
+              style={{ position: 'absolute', top: -13, left: '50%', marginLeft: -16, width: 32, height: 14, borderRadius: 7, zIndex: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.10)', cursor: 'grab' } as never}
+            >
+              <Ionicons name="reorder-two-outline" size={14} color="rgba(0,0,0,0.55)" />
+            </View>
+          </GestureDetector>
+        )}
         {card.freeBlock ? (
           // A free block: the note's own row, on its paper - the same look
           // it will have once it is dropped into a note.
@@ -1950,6 +1972,11 @@ function DraggableCard({
               { backgroundColor: theme.paper.fill },
               // Glued: the line that says these two were stuck together.
               !!card.glueId && (card.glueOrder ?? 0) > 0 && styles.freeBlockSeam,
+              // ONE white sheet: round at the strip's two ends only; the seam between blocks is the dashed line and nothing else.
+              glueRole === 'first' && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+              glueRole === 'middle' && { borderRadius: 0 },
+              glueRole === 'last' && { borderTopLeftRadius: 0, borderTopRightRadius: 0 },
+              glueRole && { boxShadow: glueRole === 'last' ? '0 0 0 1px rgba(0,0,0,0.05), 0 6px 14px -8px rgba(0,0,0,0.14)' : '0 0 0 1px rgba(0,0,0,0.05)' },
             ]}
             pointerEvents={inlineEditing ? 'auto' : 'none'}
           >
@@ -7116,6 +7143,20 @@ export default function BoardScreen() {
   // stand down for as long as it does - the pane's own controls take the
   // dock's actions card instead (see paneControls below).
   const paneDocOpen = isTwoPane && paneDocId !== null;
+  // Each glued block's place in its strip (first / middle / last), for the one-sheet look.
+  const glueRoleById = useMemo(() => {
+    const out = new Map<string, 'first' | 'middle' | 'last'>();
+    const groups = new Map<string, BoardCard[]>();
+    cards.forEach((c) => {
+      if (c.glueId) groups.set(c.glueId, [...(groups.get(c.glueId) ?? []), c]);
+    });
+    groups.forEach((members) => {
+      if (members.length < 2) return;
+      members.sort((a, b) => (a.glueOrder ?? 0) - (b.glueOrder ?? 0));
+      members.forEach((m, i) => out.set(m.id, i === 0 ? 'first' : i === members.length - 1 ? 'last' : 'middle'));
+    });
+    return out;
+  }, [cards]);
   const boardShowing = boardFocused && !(paneDocOpen && paneFullscreen);
   // THE BOARD UNDER THE SAME SCHEME AS EVERY OTHER SCREEN (touch only):
   // the top bar says where you are - back, the board's name (tap to
@@ -8342,6 +8383,7 @@ export default function BoardScreen() {
                     posY={position.y}
                     canvasScale={scale}
                     canvasPanGesture={canvasBlockingGesture}
+                    glueRole={glueRoleById.get(card.id)}
                     isDragging={card.id === draggedCardId}
                     isSelected={isSelected}
                     isGroupDrag={isSelected && selectedCardIds.size > 1}
