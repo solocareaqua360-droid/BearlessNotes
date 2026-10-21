@@ -87,6 +87,10 @@ export default function TableBlockContent({
   const focusedCellRef = useRef<string | null>(null);
   const formulaBarFocusRef = useRef(false);
   const selectOnlyRef = useRef(false);
+  // A cell that shows a formula's RESULT is not a field, so selecting it has nothing to focus - and the focus Android then hands out goes to the
+  // first field on the page (the folder box). This 1pt invisible field is where the focus rests instead.
+  const sinkRef = useRef<TextInput>(null);
+  const focusCell = (r: number, c: number) => (cellRefs.current.get(`${r}:${c}`) ?? sinkRef.current)?.focus();
   // Reading: the short view («шапка й 3 рядки») can be opened for this visit without changing what was saved.
   const [openedShort, setOpenedShort] = useState(false);
   const lastRowAdd = useRef(0);
@@ -229,7 +233,7 @@ export default function TableBlockContent({
       // the «курсор зіскакує на поле папки» bug the user reported on 2026-10-22. (Dismissing the keyboard instead is no way out: the
       // editor leaves writing mode the moment it goes.)
       selectOnlyRef.current = true;
-      setTimeout(() => cellRefs.current.get(`${r}:${c}`)?.focus(), 30);
+      setTimeout(() => focusCell(r, c), 30);
     }
   }
 
@@ -564,7 +568,7 @@ export default function TableBlockContent({
     // goes can land after a single early attempt.
     const timers = [40, 160, 360].map((ms) =>
       setTimeout(() => {
-        if (focusedCellRef.current !== `${r}:${c}`) cellRefs.current.get(`${r}:${c}`)?.focus();
+        if (focusedCellRef.current !== `${r}:${c}`) focusCell(r, c);
       }, ms)
     );
     return () => timers.forEach(clearTimeout);
@@ -809,7 +813,15 @@ export default function TableBlockContent({
           )}
         </View>
       </ScrollView>
-
+      <TextInput
+        ref={sinkRef}
+        value=""
+        onChangeText={() => {}}
+        caretHidden
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+        style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, opacity: 0 }}
+      />
     </View>
   );
 
