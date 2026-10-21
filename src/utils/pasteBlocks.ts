@@ -42,12 +42,11 @@ const MD_RULE = /^\s*\|[\s:|-]+\|\s*$/;
 // ChatGPT or Notion carries) in this editor's own terms. `code` has no
 // mark of its own here, so its backticks simply go - in a pasted table
 // they stood around every second word ("documents", "title"...) and read
-// as litter. *italic* is this editor's _italic_; **bold** is already the
-// same mark. A <br> inside a table cell is the line break it stands for.
+// as litter. **bold** and *italic* are already this editor's own marks (parseFormattedText), so they stay as they are
+// (italic used to be rewritten to _italic_, which the editor does not read: the underscores showed). A <br> inside a table cell is the line break it stands for.
 export function inlineMarkdown(text: string): string {
   return text
     .replace(/`([^`\n]+)`/g, '$1')
-    .replace(/(^|[^*\w])\*([^\s*](?:[^*\n]*[^\s*])?)\*(?!\*)/g, '$1_$2_')
     .replace(/<br\s*\/?>/gi, '\n');
 }
 

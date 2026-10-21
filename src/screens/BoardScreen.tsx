@@ -124,6 +124,7 @@ import { Group } from '../types';
 import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { useBoardKeys } from '../hooks/useBoardKeys';
+import { autoGrowInput } from '../utils/autoGrowInput';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { rightClick } from '../utils/rightClick';
@@ -1452,6 +1453,11 @@ function FreeBlockInput({
   // So the field is focused by hand, a few times over the first half second (harmless if it already has it).
   const inputRef = useRef<TextInput>(null);
   const caretPlaced = useRef(false);
+  // THE FIELD GROWS WITH ITS TEXT (the Mac, 2026-10-21: a long block turned into a one-line strip when clicked - the text was
+  // all there, behind the field's small box).
+  useEffect(() => {
+    if (!readOnly) autoGrowInput(inputRef.current);
+  }, [card.text, readOnly]);
   useEffect(() => {
     if (readOnly) return;
     const timers = [0, 40, 120, 260, 480].map((ms) =>

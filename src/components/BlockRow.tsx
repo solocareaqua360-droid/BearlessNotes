@@ -786,6 +786,7 @@ export default function BlockRow({
         // landscape and short enough for Android to choose it, which hid
         // the card window and the note behind it (2026-10-08).
         disableFullscreenUI
+        {...({ dataSet: { noteblock: '1' } } as object)}
         // The panel that stands where the keyboard was needs this field
         // to KEEP FOCUS while the keyboard is gone - otherwise the text
         // selection goes with it, and bold/italic/colour have nothing to

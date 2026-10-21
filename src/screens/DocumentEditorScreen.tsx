@@ -118,6 +118,7 @@ import { useTags } from '../hooks/useTags';
 import { measureNode } from '../utils/measureNode';
 import { setSelection } from '../utils/setSelection';
 import { autoGrowInput } from '../utils/autoGrowInput';
+import { installPasteMarkdown } from '../utils/pasteMarkdown';
 import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
 import { attachmentInfoText } from '../utils/attachmentInfo';
 import { showDownloadedFile } from '../utils/downloadToFolder';
@@ -515,6 +516,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (!pointerDensity || embedded || 'pane' in props) return;
     openTab(documentId);
   }, [pointerDensity, embedded, documentId]);
+  // The Mac: a paste out of a rendered page keeps its lists and headings (utils/pasteMarkdown).
+  useEffect(() => installPasteMarkdown(), []);
   const navigation = props.navigation;
   const extraFields = 'embedded' in props ? (props.extraFields ?? {}) : {};
   const onSelectModeChange = 'embedded' in props ? props.onSelectModeChange : undefined;
