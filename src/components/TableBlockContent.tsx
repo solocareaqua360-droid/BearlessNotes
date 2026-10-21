@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // Deliberately gesture-handler's ScrollView, not react-native's - see the
 // same note in DocumentEditorScreen.tsx (this component moved out of that
 // file on 2026-09-19): the grid needs to sit inside that file's own
@@ -86,10 +86,20 @@ export default function TableBlockContent({
   const [editing, setEditing] = useState(false);
   const focusedCellRef = useRef<string | null>(null);
   const formulaBarFocusRef = useRef(false);
-  const selectOnlyRef = useRef(false);
   // A cell that shows a formula's RESULT is not a field, so selecting it has nothing to focus - and the focus Android then hands out goes to the
   // first field on the page (the folder box). This 1pt invisible field is where the focus rests instead.
   const sinkRef = useRef<TextInput>(null);
+  // The sink brings the keyboard only when it is already up (another block was being written in): then the first tap must not take it down -
+  // the editor leaves writing mode the moment it hides. With no keyboard, a first tap only selects, and nothing rises.
+  const [keyboardUp, setKeyboardUp] = useState(Keyboard.isVisible());
+  useEffect(() => {
+    const a = Keyboard.addListener('keyboardDidShow', () => setKeyboardUp(true));
+    const b = Keyboard.addListener('keyboardDidHide', () => setKeyboardUp(false));
+    return () => {
+      a.remove();
+      b.remove();
+    };
+  }, []);
   const focusSink = () => sinkRef.current?.focus();
   // Reading: the short view («шапка й 3 рядки») can be opened for this visit without changing what was saved.
   const [openedShort, setOpenedShort] = useState(false);
@@ -814,7 +824,7 @@ export default function TableBlockContent({
         ref={sinkRef}
         value=""
         onChangeText={() => {}}
-        showSoftInputOnFocus={false}
+        showSoftInputOnFocus={keyboardUp}
         onFocus={() => {
           focusedCellRef.current = 'sink';
         }}
