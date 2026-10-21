@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // Deliberately gesture-handler's ScrollView, not react-native's - see the
 // same note in DocumentEditorScreen.tsx (this component moved out of that
 // file on 2026-09-19): the grid needs to sit inside that file's own
@@ -85,6 +85,7 @@ export default function TableBlockContent({
   const [editing, setEditing] = useState(false);
   const focusedCellRef = useRef<string | null>(null);
   const formulaBarFocusRef = useRef(false);
+  const selectOnlyRef = useRef(false);
   // Reading: the short view («шапка й 3 рядки») can be opened for this visit without changing what was saved.
   const [openedShort, setOpenedShort] = useState(false);
   const lastRowAdd = useRef(0);
@@ -222,9 +223,12 @@ export default function TableBlockContent({
       setEditing(true);
       setTimeout(() => cellRefs.current.get(`${r}:${c}`)?.focus(), 60);
     } else {
-      // Selecting only: let go of whatever field held the keyboard. Left alone, Android hands that focus to the FIRST field on the page
-      // (the folder box under the title) - the «курсор зіскакує на поле папки» bug the user reported the same day.
-      Keyboard.dismiss();
+      // Selecting only. The cell's own field still takes the focus - with its caret hidden - because a tap on a non-field while another
+      // block holds the keyboard otherwise lets Android hand the focus to the FIRST field on the page (the folder box under the title):
+      // the «курсор зіскакує на поле папки» bug the user reported on 2026-10-22. (Dismissing the keyboard instead is no way out: the
+      // editor leaves writing mode the moment it goes.)
+      selectOnlyRef.current = true;
+      setTimeout(() => cellRefs.current.get(`${r}:${c}`)?.focus(), 30);
     }
   }
 
@@ -683,12 +687,14 @@ export default function TableBlockContent({
                         ref={(node) => {
                           cellRefs.current.set(`${r}:${c}`, node);
                         }}
+                        caretHidden={!(editing && isSelected)}
                         style={[styles.tableCellInput, isSelected && !formulaMode && { paddingRight: 30 }]}
                         defaultValue={raw}
                         editable={!formulaMode}
                         onFocus={() => {
                           focusedCellRef.current = `${r}:${c}`;
-                          setEditing(true);
+                          if (selectOnlyRef.current) selectOnlyRef.current = false;
+                          else setEditing(true);
                           setSelected({ r, c });
                           setSpan('cell');
                           setDraftText(raw);
