@@ -396,6 +396,8 @@ export type DocumentEditorHandle = {
   // to be published by whoever owns the pane, and this is how that owner
   // reaches the steps only the note knows about.
   requestBack: () => boolean;
+  // Rename from outside (the board's card window header).
+  setDocumentTitle: (text: string) => void;
 };
 
 // How far past the last block the page can scroll while the keyboard is
@@ -5609,7 +5611,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     addBlockAtEnd();
   }
 
-  useImperativeHandle(ref, () => ({ toggleSelectMode, requestBack, startWriting }));
+  // The board's card window renames the note from its own header; the editor then saves it like any typed title.
+  useImperativeHandle(ref, () => ({ toggleSelectMode, requestBack, startWriting, setDocumentTitle: (text: string) => setTitle(text) }));
 
   useEffect(() => {
     onSelectModeChange?.(isSelectMode);

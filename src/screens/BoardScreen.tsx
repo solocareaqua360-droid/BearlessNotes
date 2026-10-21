@@ -125,6 +125,8 @@ import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScre
 import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { useBoardKeys } from '../hooks/useBoardKeys';
 import { autoGrowInput } from '../utils/autoGrowInput';
+import { installPasteMarkdown } from '../utils/pasteMarkdown';
+import { insertedPiece, parsePastedText, worthSplitting, type ParsedBlock } from '../utils/pasteBlocks';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { rightClick } from '../utils/rightClick';
@@ -1492,6 +1494,8 @@ function FreeBlockInput({
         autoFocus
         multiline
         disableFullscreenUI
+        // A paste out of a rendered page keeps its lists and headings here too (utils/pasteMarkdown).
+        {...({ dataSet: { noteblock: '1' } } as object)}
         value={card.text ?? ''}
         placeholder={kind === 'heading' ? 'Заголовок' : 'Текст…'}
         placeholderTextColor={faint}
@@ -2528,7 +2532,9 @@ export default function BoardScreen() {
   inlineBlockIdRef.current = inlineBlockId;
   const inlineKbSeenRef = useRef(false);
   const [editingText, setEditingText] = useState('');
+  useEffect(() => installPasteMarkdown(), []);
   const [renamingTitle, setRenamingTitle] = useState(false);
+  const [renamingCardTitle, setRenamingCardTitle] = useState(false);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
   // The column a carried card is currently over - lit while it is, so the
   // magnet is seen and felt before the finger lifts.
@@ -4265,7 +4271,62 @@ export default function BoardScreen() {
     });
   }
   function inlineText(id: string, text: string) {
+    // A PASTE with several paragraphs / list items (the Mac, 2026-10-21, the user: five points copied from a chat came in as ONE block):
+    // read it with the note's own splitter and lay the pieces out as glued blocks, one under another.
+    const here = cards.find((c) => c.id === id);
+    const ins = here ? insertedPiece(here.text ?? '', text) : null;
+    if (here && ins && /[\n\t]/.test(ins.piece)) {
+      const parsed = parsePastedText(ins.piece);
+      if (worthSplitting(parsed)) {
+        inlinePaste(here, ins, parsed);
+        return;
+      }
+    }
     setCards((prev) => prev.map((c) => (c.id === id ? { ...c, text } : c)));
+  }
+  function inlinePaste(card: BoardCard, ins: { head: string; tail: string }, parsed: ParsedBlock[]) {
+    // What a free block can be: text, heading, task, list. A numbered item stays text with its number in it.
+    let counter = 0;
+    const pieces = parsed.map((piece) => {
+      counter = piece.type === 'numbered' ? counter + 1 : 0;
+      const type: 'paragraph' | 'heading' | 'checkbox' | 'bulleted' =
+        piece.type === 'heading' || piece.type === 'checkbox' || piece.type === 'bulleted' ? piece.type : 'paragraph';
+      const text = piece.type === 'numbered' ? `${counter}. ${piece.text}` : piece.type === 'table' ? (piece.tableRows ?? []).map((r) => r.cells.join(' | ')).join('\n') : piece.text;
+      // A free block shows its text as it is: bold/italic marks would stand there as stars, so they go.
+      return { type, text: text.replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/\*([^*\n]+)\*/g, '$1'), checked: piece.checked, headingLevel: piece.headingLevel };
+    });
+    const [first, ...rest] = pieces;
+    const lastText = rest.length ? rest[rest.length - 1].text + ins.tail : null;
+    const gid = card.glueId ?? generateId();
+    const order = card.glueOrder ?? 0;
+    const fresh: BoardCard[] = rest.map((piece, i) => ({
+      id: generateId(),
+      text: i === rest.length - 1 && lastText !== null ? lastText : piece.text,
+      type: piece.type,
+      ...(piece.checked ? { checked: true } : null),
+      ...(piece.type === 'heading' ? { headingLevel: 2 } : null),
+      freeBlock: true,
+      createdAt: Date.now(),
+      x: card.x,
+      y: card.y + heightOf(card, cardHeights) * (i + 1),
+      width: card.width,
+      glueId: gid,
+      glueOrder: order + 1 + i,
+    }));
+    setCards((prev) => {
+      const next = prev.map((c) => {
+        if (c.id === card.id) {
+          const emptyHead = ins.head.trim() === '';
+          const merged: BoardCard = { ...c, text: `${ins.head}${first.text}${rest.length ? '' : ins.tail}`, glueId: gid, glueOrder: order };
+          if (emptyHead && first.type !== 'paragraph') merged.type = first.type;
+          return merged;
+        }
+        if (card.glueId && c.glueId === gid && (c.glueOrder ?? 0) > order) return { ...c, glueOrder: (c.glueOrder ?? 0) + fresh.length };
+        return c;
+      });
+      return reflowGlue([...next, ...fresh], cardHeights);
+    });
+    if (fresh.length) setInlineBlockId(fresh[fresh.length - 1].id);
   }
   // Two Enters: the next block, glued under this one, typed in at once. A
   // list or a task carries on as a list or a task, as in a note.
@@ -7059,10 +7120,14 @@ export default function BoardScreen() {
   const leaveOrClosePane = () => (isTwoPane && paneDocId !== null ? closePane() : navigation.goBack());
   useDockLeave('easel-outline', leaveOrClosePane, !bar);
   useTopBack(leaveOrClosePane, bar);
+  // A note opened FULL SCREEN from the board (the Mac, 2026-10-21, the user: «не можу закрити після редагування»): the board's
+  // bar is gone and the note publishes nothing the toolbar can draw, so the way back is the board's name here - it closes the note.
   usePublishToolbarTitle(
     macBoard && !(paneDocOpen && paneFullscreen)
       ? { parent: 'Дошки', title: title || 'Без назви', onParent: leaveOrClosePane, onRename: () => setRenamingTitle(true) }
-      : null
+      : macBoard && paneDocOpen && paneFullscreen
+        ? { parent: title || 'Без назви', title: 'Нотатка', onParent: closePane }
+        : null
   );
   // V Рух · H Рука · S Вибір · C Зв'язок · N Додати - the keys of every canvas (Figma, Miro), only while nothing is being
   // typed and no modifier is held (⌘C / ⌘V / ⌘D / ⌘A are useBoardKeys').
@@ -8904,6 +8969,21 @@ export default function BoardScreen() {
         />
 
         <RenamePrompt
+          visible={renamingCardTitle}
+          title="Назва нотатки"
+          initialValue={cardWindow?.title ?? ''}
+          onCancel={() => setRenamingCardTitle(false)}
+          onSave={(value) => {
+            setRenamingCardTitle(false);
+            const name = value.trim();
+            if (!name || !cardWindow) return;
+            cardEditorRef.current?.setDocumentTitle(name);
+            setCardWindow((w) => (w ? { ...w, title: name } : w));
+            setCards((prev) => prev.map((c) => (c.id === cardWindow.cardId ? { ...c, documentTitle: name } : c)));
+          }}
+        />
+
+        <RenamePrompt
           visible={renamingTitle}
           title="Назва дошки"
           initialValue={title}
@@ -9248,6 +9328,8 @@ export default function BoardScreen() {
             <Text
               style={[styles.refLabel, styles.paperDocTitle, { color: theme.paper.ink, fontSize: 12 * cardWindow.zoom }]}
               numberOfLines={1}
+              // The Mac: a click on the name renames the note right here, without opening it full screen.
+              {...(macBoard && cardWindow.live ? ({ onPress: () => setRenamingCardTitle(true), suppressHighlighting: true } as object) : null)}
             >
               {cardWindow.title}
             </Text>
