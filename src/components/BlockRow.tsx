@@ -4,6 +4,7 @@ import { HIGHLIGHT_COLORS } from './EditorToolbar';
 import { foldOf } from '../utils/toggleBlocks';
 import SketchLayer from './SketchLayer';
 import { INK, drawingViewBox } from '../utils/sketchGeometry';
+import { rememberTableTap } from '../utils/tableTap';
 import { ComponentProps, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -215,6 +216,7 @@ export default function BlockRow({
   // TextInput to compete with, a swipe anywhere reaches the ScrollView
   // just like it already did over the icon column.
   const canEditText = isActive && !isSelectMode;
+  const tableBoxRef = useRef({ width: 0, height: 0 });
 
   // THE FORMATTING WHILE TYPING (features.liveFormat): the field's text as styled runs - the block's own runs, so the
   // field shows what the block shows at rest. Not for code (never parsed) nor an empty block. A link to a note nested
@@ -565,7 +567,17 @@ export default function BlockRow({
     content = canEditText ? (
       table
     ) : (
-      <Pressable onPress={() => (isSelectMode ? onToggleSelected(item.id) : onActivate(item.id))}>
+      <Pressable
+        onLayout={(e) => {
+          tableBoxRef.current = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height };
+        }}
+        onPress={(e) => {
+          if (isSelectMode) return onToggleSelected(item.id);
+          // See utils/tableTap: the live table needs to know which cell this tap was for.
+          rememberTableTap({ blockId: item.id, x: e.nativeEvent.locationX, y: e.nativeEvent.locationY, ...tableBoxRef.current });
+          onActivate(item.id);
+        }}
+      >
         <View pointerEvents="none">{table}</View>
       </Pressable>
     );

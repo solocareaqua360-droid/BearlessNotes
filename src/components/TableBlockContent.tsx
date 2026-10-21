@@ -13,6 +13,7 @@ import { columnLetter, displayValueOf, parseFormattedText } from '../utils/docum
 import { ask } from './surfaces/Ask';
 import { usePublishEditorAccessory } from './editorAccessory';
 import FormattedText from './FormattedText';
+import { takeTableTap } from '../utils/tableTap';
 
 // A table in a note, in TWO faces.
 //
@@ -542,6 +543,27 @@ export default function TableBlockContent({
     // refs, which do not change.
     [canEdit, formulaMode, draftText, selectedRaw, selected?.r, selected?.c]
   );
+
+  // WAKING UP from a tap on the locked table (see utils/tableTap): select the cell that tap was for and take the focus ourselves. Mounted live
+  // with a tap waiting = that tap; the column is read off the widths, the row off an even share of the height (rows are near enough alike).
+  useEffect(() => {
+    if (!canEdit) return;
+    const tap = takeTableTap(block.id);
+    if (!tap) return;
+    let c = 0;
+    let x = tap.x;
+    while (c < columnCount - 1 && x > widthOf(c)) {
+      x -= widthOf(c);
+      c += 1;
+    }
+    const r = Math.max(0, Math.min(rows.length - 1, Math.floor(tap.y / Math.max(1, tap.height / rows.length))));
+    setSelected({ r, c });
+    setSpan('cell');
+    selectOnlyRef.current = true;
+    const timer = setTimeout(() => cellRefs.current.get(`${r}:${c}`)?.focus(), 40);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit]);
 
   // ---- READING ----------------------------------------------------
   if (!canEdit) {
