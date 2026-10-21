@@ -560,8 +560,14 @@ export default function TableBlockContent({
     setSelected({ r, c });
     setSpan('cell');
     selectOnlyRef.current = true;
-    const timer = setTimeout(() => cellRefs.current.get(`${r}:${c}`)?.focus(), 40);
-    return () => clearTimeout(timer);
+    // More than once: the field that held the keyboard before is being locked in the same moments, and the focus Android hands out when it
+    // goes can land after a single early attempt.
+    const timers = [40, 160, 360].map((ms) =>
+      setTimeout(() => {
+        if (focusedCellRef.current !== `${r}:${c}`) cellRefs.current.get(`${r}:${c}`)?.focus();
+      }, ms)
+    );
+    return () => timers.forEach(clearTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit]);
 
