@@ -9263,6 +9263,18 @@ export default function BoardScreen() {
             }}
             onClose={closePane}
           />
+          {macBoard && (
+            // The note beside the board had NO close on the Mac (the user, 2026-10-21): the bar's ‹ leaves the whole board.
+            <Pressable
+              onPress={closePane}
+              accessibilityLabel="Закрити нотатку"
+              hitSlop={6}
+              style={{ position: 'absolute', top: 12, right: 14, zIndex: 50, width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.canvas.card }}
+              {...({ className: undefined } as object)}
+            >
+              <Ionicons name="close-outline" size={18} color={theme.paper.ink} />
+            </Pressable>
+          )}
         </View>
       )}
       {inlineBlockId !== null && (keyboardHeight > 0 || pointerDensity) && (
