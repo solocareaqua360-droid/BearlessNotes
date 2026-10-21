@@ -23,8 +23,8 @@ type BlockListProps = {
   // what the screen shows first and the rest a moment later (the editor's
   // renderAll). Absent = all of them.
   renderCount?: number;
-  // Toggles in the «peek» view that are hiding blocks (utils/toggleBlocks.peekMoreIds): the foot of their frame says so.
-  peekMore?: Set<string>;
+  // A closed toggle's faint first line (utils/toggleBlocks.foldHints), by toggle id.
+  foldHints?: Map<string, string>;
   blocks: Block[];
   onReorder: (blocks: Block[]) => void;
   // A hold that never went anywhere. The drag gesture already waits out
@@ -176,7 +176,7 @@ function BlockList({
   searchHighlight,
   flashBlockId,
   renderCount,
-  peekMore,
+  foldHints,
 }: BlockListProps, ref: ForwardedRef<BlockListHandle>) {
   const styles = useStyles(makeStyles);
   const [draggingIds, setDraggingIds] = useState<string[] | null>(null);
@@ -636,7 +636,7 @@ function BlockList({
           flash={flashBlockId === item.id}
           indented={rowIndented}
           toggleRole={toggleRole}
-          peekMore={!!peekMore && !!frameToggleId && peekMore.has(frameToggleId) && (toggleRole === 'foot' || toggleRole === 'solo')}
+          foldHint={item.type === 'toggle' ? foldHints?.get(item.id) : undefined}
           isSelected={selectedIds.has(item.id)}
           isSelectMode={isSelectMode}
           isActive={focusedBlockId === item.id}

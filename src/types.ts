@@ -217,10 +217,9 @@ export interface Block {
   // 'toggle' blocks only: folded, so what follows it is not drawn. Kept in step with foldMode ('closed' = true) so an older
   // client, and every consumer that only knows this flag, still reads a closed toggle as closed.
   collapsed?: boolean;
-  // 'toggle' blocks only (2026-10-21): the block's view - 'closed', 'peek' (the title and its first lines, the rest hidden) or
-  // 'open'. Absent = read from `collapsed`. foldView is what the chevron opens it to again (the view the user chose with «···»).
+  // 'toggle' blocks only (2026-10-21): 'closed' or 'open'. Absent = read from `collapsed`. ('peek', the title and its first lines,
+  // was tried and dropped on 2026-10-22 - it left the user unsure what was shown and editable; a saved 'peek' reads as closed.)
   foldMode?: 'closed' | 'peek' | 'open';
-  foldView?: 'peek' | 'open';
   // 'toggle' blocks only: the fill of the block's HEADER (a pale wash from the note's muted set), like a table's header row.
   headColor?: string;
   // Any block: marks where a toggle's section ends by hand rather than

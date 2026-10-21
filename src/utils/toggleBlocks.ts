@@ -9,45 +9,55 @@ import type { Block } from '../types';
 // page made small, the day's own miniature on the calendar - or a card
 // would show what its page hides, and the two would stop being the same
 // picture.
-// How many of a toggle's blocks the «peek» view shows under its title.
-export const PEEK_BLOCKS = 3;
-
-// The view a toggle is in, whichever way it was saved (older blocks only know `collapsed`).
-export function foldOf(block: Block): 'closed' | 'peek' | 'open' {
-  return block.foldMode ?? (block.collapsed ? 'closed' : 'open');
+// The view a toggle is in, whichever way it was saved: two states, closed or open. (An older «first lines» block, saved as 'peek',
+// reads as closed - that view was dropped on 2026-10-22 because it left the user unsure what was shown and what could be edited.)
+export function foldOf(block: Block): 'closed' | 'open' {
+  if (block.foldMode === 'closed' || block.foldMode === 'peek') return 'closed';
+  if (block.foldMode === 'open') return 'open';
+  return block.collapsed ? 'closed' : 'open';
 }
 
-export function visibleBlocks(blocks: Block[]): Block[] {
-  // Nothing folded is the common case, and it costs a single pass to
-  // find out rather than a new array every render.
-  if (!blocks.some((b) => b.type === 'toggle' && foldOf(b) !== 'open')) return blocks;
+// The toggle that HOLDS the block `id` (null for a toggle's own title, a block outside any toggle, or an unknown id).
+export function ownerToggleId(blocks: Block[], id: string): string | null {
+  const i = blocks.findIndex((b) => b.id === id);
+  if (i <= 0) return null;
+  if (blocks[i].type === 'toggle' || blocks[i].exitsToggle) return null;
+  for (let k = i - 1; k >= 0; k--) {
+    if (blocks[k].type === 'toggle') return blocks[k].id;
+    if (blocks[k].exitsToggle) return null;
+  }
+  return null;
+}
+
+// `openId`: a toggle that is being WRITTEN IN shows everything it holds - the line the caret is on must never be hidden.
+export function visibleBlocks(blocks: Block[], openId?: string | null): Block[] {
+  if (!blocks.some((b) => b.type === 'toggle' && b.id !== openId && foldOf(b) === 'closed')) return blocks;
   const out: Block[] = [];
-  let mode: 'closed' | 'peek' | 'open' = 'open';
-  let shownHeld = 0;
+  let folded = false;
   for (const block of blocks) {
     if (block.type === 'toggle') {
-      mode = foldOf(block);
-      shownHeld = 0;
+      folded = block.id !== openId && foldOf(block) === 'closed';
       out.push(block);
       continue;
     }
-    // Stepped back out before this block is drawn - it and everything
-    // after it show even while the toggle above stays collapsed.
-    if (block.exitsToggle) mode = 'open';
-    if (mode === 'open') out.push(block);
-    else if (mode === 'peek' && shownHeld < PEEK_BLOCKS) {
-      shownHeld += 1;
-      out.push(block);
-    }
+    // Stepped back out before this block is drawn - it and everything after it show even while the toggle above stays closed.
+    if (block.exitsToggle) folded = false;
+    if (!folded) out.push(block);
   }
   return out;
 }
 
-// The toggles in «peek» that are hiding something: the foot of their frame shows the sign that there is more.
-export function peekMoreIds(blocks: Block[]): Set<string> {
-  const out = new Set<string>();
+// What a CLOSED toggle shows under its title: the first line of what it holds, faint, with «…» - a sign that something is inside
+// (and no counter: a text note is not a table). Only for closed toggles that hold something with text.
+export function foldHints(blocks: Block[]): Map<string, string> {
+  const out = new Map<string, string>();
   for (const b of blocks) {
-    if (b.type === 'toggle' && foldOf(b) === 'peek' && foldedUnder(blocks, b.id).length > PEEK_BLOCKS) out.add(b.id);
+    if (b.type !== 'toggle' || foldOf(b) !== 'closed') continue;
+    const held = foldedUnder(blocks, b.id);
+    const first = held.find((h) => (h.text ?? '').replace(/\{[^}]*\}|\*|_|~/g, '').trim() !== '');
+    if (!first) continue;
+    const plain = (first.text ?? '').replace(/\{[^}]*\}|\*\*|\*|__|~~/g, '').replace(/\s+/g, ' ').trim();
+    out.set(b.id, `${plain.length > 60 ? plain.slice(0, 60).trimEnd() : plain}…`);
   }
   return out;
 }
@@ -100,7 +110,7 @@ export function mergeVisibleOrder(all: Block[], visibleOrder: Block[]): Block[] 
       pending = [];
     }
     out.push(block);
-    if (block.type === 'toggle' && foldOf(block) !== 'open') pending = hiddenOf(block);
+    if (block.type === 'toggle' && foldOf(block) === 'closed') pending = hiddenOf(block);
   }
   out.push(...pending);
   return out;

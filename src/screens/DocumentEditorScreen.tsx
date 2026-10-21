@@ -110,7 +110,7 @@ import TextSelection from '../components/TextSelection';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { createFlashcardsFromNote } from '../utils/flashcardsFromNote';
 import { clipBlocksToNote, clippedBlock } from '../utils/copyToNote';
-import { isUnderToggle, mergeVisibleOrder, peekMoreIds, visibleBlocks } from '../utils/toggleBlocks';
+import { isUnderToggle, mergeVisibleOrder, foldHints, ownerToggleId, visibleBlocks } from '../utils/toggleBlocks';
 import { blockMatchesQuery } from '../utils/documentPreview';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
@@ -1080,8 +1080,20 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // What a folded section hides - see visibleBlocks. The PAGE draws this;
   // `blocks` stays whole, so nothing is lost by folding and the merge
   // below can always put a reorder back over the real thing.
-  const shownBlocks = useMemo(() => visibleBlocks(liveBlocks), [liveBlocks]);
-  const peekMore = useMemo(() => peekMoreIds(liveBlocks), [liveBlocks]);
+  // A toggle being WRITTEN IN shows everything it holds (a closed one opens under the caret).
+  const [writingToggle, setWritingToggle] = useState<string | null>(null);
+  useEffect(() => {
+    const id = focusIdRef.current ?? focusedBlockId;
+    const owner = id ? ownerToggleId(liveBlocks, id) : null;
+    if (owner) {
+      setWritingToggle(owner);
+      return;
+    }
+    const timer = setTimeout(() => setWritingToggle(null), 450);
+    return () => clearTimeout(timer);
+  }, [liveBlocks, focusedBlockId]);
+  const shownBlocks = useMemo(() => visibleBlocks(liveBlocks, writingToggle), [liveBlocks, writingToggle]);
+  const foldHintMap = useMemo(() => foldHints(liveBlocks), [liveBlocks]);
   // A link whose title couldn't be fetched automatically (a raw-coordinates
   // Maps link, or any page with no fetchable title) pauses the conversion
   // here instead of silently landing in the `links` mirror unnamed - an
@@ -4039,7 +4051,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           const index = prev.findIndex((b) => b.id === id);
           if (index === -1) return prev;
           const next = [...prev];
-          next[index] = { ...next[index], text: before, collapsed: false, foldMode: 'open', foldView: next[index].foldView ?? 'open' };
+          next[index] = { ...next[index], text: before, collapsed: false, foldMode: 'open' };
           next.splice(index + 1, 0, created);
           return next;
         });
@@ -6691,7 +6703,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // live value must never be written back into the document as
           // though someone had typed it.
           blocks={shownBlocks}
-          peekMore={peekMore}
+          foldHints={foldHintMap}
           onReorder={handleReorderBlocks}
           onHoldWithoutDrag={selectFromHold}
           onSelectRange={selectBlocks}
