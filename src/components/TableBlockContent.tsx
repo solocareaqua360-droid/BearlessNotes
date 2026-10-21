@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // Deliberately gesture-handler's ScrollView, not react-native's - see the
 // same note in DocumentEditorScreen.tsx (this component moved out of that
 // file on 2026-09-19): the grid needs to sit inside that file's own
@@ -221,6 +221,10 @@ export default function TableBlockContent({
     if (editing || already) {
       setEditing(true);
       setTimeout(() => cellRefs.current.get(`${r}:${c}`)?.focus(), 60);
+    } else {
+      // Selecting only: let go of whatever field held the keyboard. Left alone, Android hands that focus to the FIRST field on the page
+      // (the folder box under the title) - the «курсор зіскакує на поле папки» bug the user reported the same day.
+      Keyboard.dismiss();
     }
   }
 
