@@ -2783,6 +2783,9 @@ export default function BoardScreen() {
       canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
     const rawLeft =
       canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
+    // THE MAC: the window is exactly the card, wherever the card is - no keyboard to rise above, no foot to sink to, no glide
+    // (the user, 2026-10-21: «при натисканні на картку її вікно стрибає вниз»).
+    if (macBoard) return { top: rawTop, left: rawLeft, width: w, height: winH.value };
     if (cardWindowTyping.value) {
       const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - cardBarFoot;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
@@ -2815,6 +2818,7 @@ export default function BoardScreen() {
       canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
     const rawLeft =
       canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
+    if (macBoard) return { top: rawTop - buttonsLift, left: rawLeft, width: w };
     if (cardWindowTyping.value) {
       const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - cardBarFoot;
       const h = Math.min(winH.value, barTop - cardWindowMinTop);
@@ -2834,6 +2838,7 @@ export default function BoardScreen() {
   });
   // The painted card while writing: its own height, ending on the bar.
   const cardWindowOutlineStyle = useAnimatedStyle(() => {
+    if (macBoard) return { height: winH.value };
     const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - cardBarFoot;
     const rawTop =
       canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
