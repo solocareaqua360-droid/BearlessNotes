@@ -988,7 +988,8 @@ export default function BlockRow({
             // Grey and quiet: the choice of the block's view, behind three dots so the header carries no buttons.
             <Pressable
               hitSlop={8}
-              style={[styles.toggleMark, { opacity: 0.55, paddingHorizontal: 4 }]}
+              // At a pointer the row's own drag handle floats at the right edge: the dots keep clear of it (they overlapped, 2026-10-21).
+              style={[styles.toggleMark, { opacity: 0.55, paddingHorizontal: 4, marginRight: pointer ? 30 : 0 }]}
               accessibilityLabel="Вигляд блока"
               onPress={async () => {
                 const now = foldOf(item);
@@ -998,8 +999,24 @@ export default function BlockRow({
                     { id: 'closed', label: now === 'closed' ? 'Згорнуто  ✓' : 'Згорнуто', icon: 'chevron-forward' },
                     { id: 'peek', label: now === 'peek' ? 'Перші рядки  ✓' : 'Перші рядки', icon: 'reorder-three-outline' },
                     { id: 'open', label: now === 'open' ? 'Повністю  ✓' : 'Повністю', icon: 'chevron-down' },
+                    { id: 'color', label: 'Колір заголовка…', icon: 'color-palette-outline' },
                   ],
                 });
+                if (choice === 'color') {
+                  // The title's colour, written as the note's own colour marker around the whole title (the same one the text colour
+                  // button writes), so it survives sync, search and export like any coloured text.
+                  const names = ['Звичайний', 'Червоний', 'Помаранчевий', 'Зелений', 'Синій', 'Фіолетовий'];
+                  const palette = ['#111827', '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6'];
+                  const picked = await ask({
+                    title: 'Колір заголовка',
+                    actions: names.map((name, i) => ({ id: String(i), label: name, icon: 'ellipse' as const })),
+                  });
+                  const at = Number(picked);
+                  if (!Number.isInteger(at) || at < 0 || at >= palette.length) return;
+                  const plain = (item.text ?? '').replace(/\{c:#[0-9A-Fa-f]{6}\}|\{\/c\}/g, '');
+                  onUpdateBlock(item.id, { text: at === 0 || !plain ? plain : `{c:${palette[at]}}${plain}{/c}` });
+                  return;
+                }
                 if (choice !== 'closed' && choice !== 'peek' && choice !== 'open') return;
                 // «Перші рядки» and «Повністю» are remembered as what the chevron opens it to; «Згорнуто» keeps that memory.
                 onUpdateBlock(item.id, choice === 'closed' ? { foldMode: 'closed', collapsed: true } : { foldMode: choice, foldView: choice, collapsed: false });
