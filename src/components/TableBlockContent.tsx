@@ -76,14 +76,9 @@ export default function TableBlockContent({
   const rows = block.tableRows && block.tableRows.length > 0 ? block.tableRows : [{ cells: ['', ''] }];
   const columnCount = rows[0]?.cells.length ?? 0;
   const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
-  // THE EDGE PLUS (the user, 2026-10-22: no permanent «+ Рядок / + Колонка»): a tap on the table's bottom, right or left edge shows a «+»
-  // there; the «+» adds a row / a column, and fades by itself. Filling a table stays clean.
-  const [edge, setEdge] = useState<'bottom' | 'right' | 'left' | null>(null);
-  useEffect(() => {
-    if (!edge) return;
-    const timer = setTimeout(() => setEdge(null), 4000);
-    return () => clearTimeout(timer);
-  }, [edge]);
+  // What the selection covers: the cell itself, or the whole row / column it stands in (picked from the cell's menu, the way Craft's «Виділити клітинки» does).
+  // The menu then speaks of the row or the column, and the cells of it are tinted.
+  const [span, setSpan] = useState<'cell' | 'row' | 'col'>('cell');
   // Reading: the short view («шапка й 3 рядки») can be opened for this visit without changing what was saved.
   const [openedShort, setOpenedShort] = useState(false);
   const lastRowAdd = useRef(0);
@@ -138,6 +133,7 @@ export default function TableBlockContent({
 
   function selectCell(r: number, c: number) {
     setSelected({ r, c });
+    setSpan('cell');
     formulaInputRef.current?.focus();
   }
 
@@ -203,10 +199,12 @@ export default function TableBlockContent({
       lastRowAdd.current = Date.now();
       addRow();
       setSelected({ r, c });
+      setSpan('cell');
       setTimeout(() => cellRefs.current.get(`${r}:${c}`)?.focus(), 60);
       return;
     }
     setSelected({ r, c });
+    setSpan('cell');
     cellRefs.current.get(`${r}:${c}`)?.focus();
   }
 
@@ -252,15 +250,26 @@ export default function TableBlockContent({
   }
 
   function addRow() {
-    onUpdate({
-      tableRows: [...rows.map((row) => ({ cells: [...row.cells] })), { cells: Array(columnCount).fill('') }],
-    });
+    insertRow(rows.length);
   }
 
-  function addColumn(atStart = false) {
+  // A row / column made AT a place (the menu's «Вставити»), not only at the end.
+  function insertRow(at: number) {
+    const next = rows.map((row) => ({ cells: [...row.cells] }));
+    next.splice(at, 0, { cells: Array(columnCount).fill('') });
+    onUpdate({ tableRows: next });
+  }
+
+  function insertColumn(at: number) {
     onUpdate({
-      tableRows: rows.map((row) => ({ cells: atStart ? ['', ...row.cells] : [...row.cells, ''] })),
-      ...(atStart && block.tableColumnWidths?.length ? { tableColumnWidths: [DEFAULT_COLUMN_WIDTH, ...block.tableColumnWidths] } : null),
+      tableRows: rows.map((row) => {
+        const cells = [...row.cells];
+        cells.splice(at, 0, '');
+        return { cells };
+      }),
+      ...(block.tableColumnWidths?.length
+        ? { tableColumnWidths: (() => { const w = Array.from({ length: columnCount }, (_, i) => widthOf(i)); w.splice(at, 0, DEFAULT_COLUMN_WIDTH); return w; })() }
+        : null),
     });
   }
 
@@ -273,7 +282,7 @@ export default function TableBlockContent({
       [out[c], out[to]] = [out[to], out[c]];
       return out;
     };
-    setSelected(null);
+    if (selected?.c === c) setSelected({ r: selected.r, c: to });
     onUpdate({
       tableRows: rows.map((row) => ({ cells: swap(row.cells) })),
       ...(block.tableColumnWidths?.length ? { tableColumnWidths: swap(Array.from({ length: columnCount }, (_, i) => widthOf(i))) } : null),
@@ -285,36 +294,108 @@ export default function TableBlockContent({
     if (to < 0 || to >= rows.length) return;
     const next = rows.map((row) => ({ cells: [...row.cells] }));
     [next[r], next[to]] = [next[to], next[r]];
-    setSelected(null);
+    if (selected?.r === r) setSelected({ r: to, c: selected.c });
     onUpdate({ tableRows: next });
   }
 
-  async function openColumnMenu(c: number) {
-    const chosen = await ask({
-      title: `Колонка ${columnLetter(c)}`,
-      actions: [
-        ...(c > 0 ? [{ id: 'left', label: 'Пересунути ліворуч', icon: 'chevron-back' as const }] : []),
-        ...(c < columnCount - 1 ? [{ id: 'right', label: 'Пересунути праворуч', icon: 'chevron-forward' as const }] : []),
-        ...(columnCount > 1 ? [{ id: 'del', label: 'Видалити колонку', tone: 'danger' as const, icon: 'trash-outline' as const }] : []),
-      ],
-    });
-    if (chosen === 'left') moveColumn(c, -1);
-    if (chosen === 'right') moveColumn(c, 1);
-    if (chosen === 'del') removeColumn(c);
-  }
-
-  async function openRowMenu(r: number) {
-    const chosen = await ask({
-      title: `Рядок ${r + 1}`,
-      actions: [
-        ...(r > 0 ? [{ id: 'up', label: 'Пересунути вгору', icon: 'chevron-up' as const }] : []),
-        ...(r < rows.length - 1 ? [{ id: 'down', label: 'Пересунути вниз', icon: 'chevron-down' as const }] : []),
-        ...(rows.length > 1 ? [{ id: 'del', label: 'Видалити рядок', tone: 'danger' as const, icon: 'trash-outline' as const }] : []),
-      ],
-    });
+  // THE CELL'S MENU - behind the three dots of the selected cell (the user, 2026-10-22: «функціонал в основному через контекстне меню,
+  // щоб не засмічувати навколо таблиці всякими додатковими знаками»). It speaks of what is selected: a cell, a row or a column.
+  async function openCellMenu() {
+    if (!selected) return;
+    const { r, c } = selected;
+    const lastRow = rows.length - 1;
+    const lastCol = columnCount - 1;
+    const rowActions = (): { id: string; label: string; icon?: any; tone?: 'danger' }[] => [
+      { id: 'rowAbove', label: 'Вставити рядок вище', icon: 'add' },
+      { id: 'rowBelow', label: 'Вставити рядок нижче', icon: 'add' },
+      ...(r > 0 ? [{ id: 'up', label: 'Пересунути вгору', icon: 'chevron-up' }] : []),
+      ...(r < lastRow ? [{ id: 'down', label: 'Пересунути вниз', icon: 'chevron-down' }] : []),
+      { id: 'clearRow', label: 'Очистити рядок' },
+      ...(rows.length > 1 ? [{ id: 'delRow', label: 'Видалити рядок', tone: 'danger' as const, icon: 'trash-outline' }] : []),
+    ];
+    const colActions = (): { id: string; label: string; icon?: any; tone?: 'danger' }[] => [
+      { id: 'colLeft', label: 'Вставити колонку ліворуч', icon: 'add' },
+      { id: 'colRight', label: 'Вставити колонку праворуч', icon: 'add' },
+      ...(c > 0 ? [{ id: 'left', label: 'Пересунути ліворуч', icon: 'chevron-back' }] : []),
+      ...(c < lastCol ? [{ id: 'right', label: 'Пересунути праворуч', icon: 'chevron-forward' }] : []),
+      { id: 'clearCol', label: 'Очистити колонку' },
+      ...(columnCount > 1 ? [{ id: 'delCol', label: 'Видалити колонку', tone: 'danger' as const, icon: 'trash-outline' }] : []),
+    ];
+    let chosen: string;
+    if (span === 'row') chosen = await ask({ title: 'Рядок', actions: rowActions() });
+    else if (span === 'col') chosen = await ask({ title: 'Колонка', actions: colActions() });
+    else {
+      chosen = await ask({
+        title: 'Клітинка',
+        actions: [
+          { id: 'insert', label: 'Вставити…', icon: 'add' },
+          { id: 'move', label: 'Пересунути…', icon: 'swap-vertical' },
+          { id: 'selRow', label: 'Виділити рядок' },
+          { id: 'selCol', label: 'Виділити колонку' },
+          { id: 'head', label: 'Шапка й підсумки…' },
+          { id: 'resetWidths', label: 'Скинути ширину колонок' },
+          { id: 'clearCell', label: 'Очистити клітинку' },
+          { id: 'del', label: 'Видалити…', tone: 'danger', icon: 'trash-outline' },
+        ],
+      });
+      if (chosen === 'insert') {
+        chosen = await ask({
+          title: 'Вставити',
+          actions: [
+            { id: 'rowAbove', label: 'Рядок вище' },
+            { id: 'rowBelow', label: 'Рядок нижче' },
+            { id: 'colLeft', label: 'Колонку ліворуч' },
+            { id: 'colRight', label: 'Колонку праворуч' },
+          ],
+        });
+      } else if (chosen === 'move') {
+        chosen = await ask({
+          title: 'Пересунути',
+          actions: [
+            ...(r > 0 ? [{ id: 'up', label: 'Рядок вгору', icon: 'chevron-up' as const }] : []),
+            ...(r < lastRow ? [{ id: 'down', label: 'Рядок вниз', icon: 'chevron-down' as const }] : []),
+            ...(c > 0 ? [{ id: 'left', label: 'Колонку ліворуч', icon: 'chevron-back' as const }] : []),
+            ...(c < lastCol ? [{ id: 'right', label: 'Колонку праворуч', icon: 'chevron-forward' as const }] : []),
+          ],
+        });
+      } else if (chosen === 'del') {
+        chosen = await ask({
+          title: 'Видалити',
+          actions: [
+            ...(rows.length > 1 ? [{ id: 'delRow', label: 'Рядок', tone: 'danger' as const }] : []),
+            ...(columnCount > 1 ? [{ id: 'delCol', label: 'Колонку', tone: 'danger' as const }] : []),
+          ],
+        });
+      } else if (chosen === 'head') {
+        chosen = await ask({
+          title: 'Шапка й підсумки',
+          actions: [
+            { id: 'headerRow', label: headerRow ? 'Прибрати шапку-рядок' : 'Перший рядок — шапка' },
+            { id: 'headerCol', label: headerColumn ? 'Прибрати шапку-колонку' : 'Перша колонка — шапка' },
+            { id: 'sum', label: 'Рядок підсумків' },
+          ],
+        });
+      }
+    }
+    if (chosen === 'selRow') setSpan('row');
+    if (chosen === 'selCol') setSpan('col');
+    if (chosen === 'rowAbove') insertRow(r);
+    if (chosen === 'rowBelow') insertRow(r + 1);
+    if (chosen === 'colLeft') insertColumn(c);
+    if (chosen === 'colRight') insertColumn(c + 1);
     if (chosen === 'up') moveRow(r, -1);
     if (chosen === 'down') moveRow(r, 1);
-    if (chosen === 'del') removeRow(r);
+    if (chosen === 'left') moveColumn(c, -1);
+    if (chosen === 'right') moveColumn(c, 1);
+    if (chosen === 'delRow') removeRow(r);
+    if (chosen === 'delCol') removeColumn(c);
+    if (chosen === 'clearCell') setCell(r, c, '');
+    if (chosen === 'clearRow') onUpdate({ tableRows: rows.map((row, i) => (i === r ? { cells: row.cells.map(() => '') } : { cells: [...row.cells] })) });
+    if (chosen === 'clearCol') onUpdate({ tableRows: rows.map((row) => ({ cells: row.cells.map((cell, i) => (i === c ? '' : cell)) })) });
+    if (chosen === 'headerRow') onUpdate({ tableHeaderRow: !headerRow });
+    if (chosen === 'headerCol') onUpdate({ tableHeaderColumn: !headerColumn });
+    if (chosen === 'sum') addSumRow();
+    if (chosen === 'resetWidths') onUpdate({ tableColumnWidths: [] });
   }
 
   function removeRow(r: number) {
@@ -524,30 +605,13 @@ export default function TableBlockContent({
   }
 
   // ---- EDITING ----------------------------------------------------
+  // The grid is just cells. No letters, no numbers: they only mean something inside a formula, so they appear INSIDE the cells (a small
+  // address in the corner) from the moment "=" is typed, and nowhere else (the user, 2026-10-22). The selected cell has a frame, three
+  // dots in its right corner (its menu) and, on its right edge, the grip that sets the column's width.
   return (
     <View style={styles.tableBlock}>
-
-
       <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingRight: SCROLL_PAST }}>
         <View style={styles.tableFrame}>
-          <View style={styles.tableHeaderRow}>
-            <View style={styles.tableGutterCell} />
-            {Array.from({ length: columnCount }, (_, c) => (
-              <View key={c} style={[styles.tableColumnHeaderCell, { width: widthOf(c) }]}>
-                {/* A tap on the letter opens the column's small menu: move left / right, delete. */}
-                <Pressable onPress={() => openColumnMenu(c)} hitSlop={4}>
-                  <Text style={styles.tableColumnHeaderText}>{columnLetter(c)}</Text>
-                </Pressable>
-                {/* The boundary itself is the handle, which is where a
-                    hand already reaches for it. */}
-                <GestureDetector gesture={resizeGesture(c)}>
-                  <View style={styles.tableResizeHandle} hitSlop={8}>
-                    <View style={styles.tableResizeGrip} />
-                  </View>
-                </GestureDetector>
-              </View>
-            ))}
-          </View>
           {/* The guide. Inside the frame, so it scrolls with the grid and
               is clipped by it; drawn over everything, because it is
               standing on the boundary it is about to move. */}
@@ -561,11 +625,9 @@ export default function TableBlockContent({
                 headerRow && r === 0 && styles.tableGridHeaderRow,
               ]}
             >
-              <Pressable style={[styles.tableGridCell, styles.tableGutterCell]} onPress={() => openRowMenu(r)}>
-                <Text style={styles.tableGutterText}>{r + 1}</Text>
-              </Pressable>
               {row.cells.map((_, c) => {
                 const isSelected = selected?.r === r && selected?.c === c;
+                const inSpan = !!selected && ((span === 'row' && r === selected.r) || (span === 'col' && c === selected.c));
                 // In formula mode every OTHER cell stops being a field
                 // and becomes an address to tap. Only the cell the
                 // formula lives in stays editable, and even it is typed
@@ -579,69 +641,71 @@ export default function TableBlockContent({
                 // working". The formula itself is seen in the bar, once
                 // the cell is chosen.
                 const showsResult = !isSelected && (row.cells[c] ?? '').trim().startsWith('=');
+                const cellBox = [
+                  styles.tableGridCell,
+                  c === row.cells.length - 1 && styles.tableGridCellLast,
+                  headerColumn && c === 0 && styles.tableGridHeaderCell,
+                  { width: widthOf(c) },
+                  inSpan && { backgroundColor: theme.paper.selected },
+                  isSelected && styles.tableCellSelected,
+                ];
+                const addressTag = formulaMode ? (
+                  <Text pointerEvents="none" style={{ position: 'absolute', right: 4, top: 1, fontSize: 9, color: theme.paper.inkFaint }}>
+                    {columnLetter(c)}
+                    {r + 1}
+                  </Text>
+                ) : null;
                 if (!asAddress && !showsResult) {
                   const raw = row.cells[c] ?? '';
                   return (
-                    <TextInput
-                      // Re-seeded when the STORED value changes (a
-                      // formula recomputing, the other device writing) -
-                      // never on every keystroke, which is the whole
-                      // point of leaving it uncontrolled.
-                      key={`${c}:${raw}`}
-                      ref={(node) => {
-                        cellRefs.current.set(`${r}:${c}`, node);
-                      }}
-                      style={[
-                        styles.tableGridCell,
-                        styles.tableCellInput,
-                        c === row.cells.length - 1 && styles.tableGridCellLast,
-                        headerColumn && c === 0 && styles.tableGridHeaderCell,
-                        { width: widthOf(c) },
-                        isSelected && styles.tableCellSelected,
-                      ]}
-                      defaultValue={raw}
-                      editable={!formulaMode}
-                      onFocus={() => {
-                        setSelected({ r, c });
-                        setDraftText(raw);
-                      }}
-                      onChangeText={(value) => setDraftText(value)}
-                      onEndEditing={(e) => {
-                        setCell(r, c, e.nativeEvent.text);
-                        setDraftText(null);
-                      }}
-                      onKeyPress={(e) => {
-                        const native = e.nativeEvent as unknown as {
-                          key: string;
-                          shiftKey?: boolean;
-                          preventDefault?: () => void;
-                        };
-                        if (handleCellKey(native.key, !!native.shiftKey)) {
-                          // Tab would otherwise leave the table entirely,
-                          // and Enter would put a newline in a cell.
-                          native.preventDefault?.();
-                        }
-                      }}
-                      // Enter on a phone keyboard: on to the cell below, and at the foot a new row - instead of closing the keyboard.
-                      blurOnSubmit={false}
-                      onSubmitEditing={() => moveSelection(1, 0)}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
+                    <View key={c} style={[cellBox, { paddingHorizontal: 0, paddingVertical: 0 }]}>
+                      <TextInput
+                        // Re-seeded when the STORED value changes (a
+                        // formula recomputing, the other device writing) -
+                        // never on every keystroke, which is the whole
+                        // point of leaving it uncontrolled.
+                        key={raw}
+                        ref={(node) => {
+                          cellRefs.current.set(`${r}:${c}`, node);
+                        }}
+                        style={[styles.tableCellInput, isSelected && !formulaMode && { paddingRight: 30 }]}
+                        defaultValue={raw}
+                        editable={!formulaMode}
+                        onFocus={() => {
+                          setSelected({ r, c });
+                          setSpan('cell');
+                          setDraftText(raw);
+                        }}
+                        onChangeText={(value) => setDraftText(value)}
+                        onEndEditing={(e) => {
+                          setCell(r, c, e.nativeEvent.text);
+                          setDraftText(null);
+                        }}
+                        onKeyPress={(e) => {
+                          const native = e.nativeEvent as unknown as {
+                            key: string;
+                            shiftKey?: boolean;
+                            preventDefault?: () => void;
+                          };
+                          if (handleCellKey(native.key, !!native.shiftKey)) {
+                            // Tab would otherwise leave the table entirely,
+                            // and Enter would put a newline in a cell.
+                            native.preventDefault?.();
+                          }
+                        }}
+                        // Enter on a phone keyboard: on to the cell below, and at the foot a new row - instead of closing the keyboard.
+                        blurOnSubmit={false}
+                        onSubmitEditing={() => moveSelection(1, 0)}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                      {isSelected && !formulaMode && <CellDots onPress={openCellMenu} />}
+                      {addressTag}
+                    </View>
                   );
                 }
                 return (
-                  <Pressable
-                    key={c}
-                    style={[
-                      styles.tableGridCell,
-                      c === row.cells.length - 1 && styles.tableGridCellLast,
-                      headerColumn && c === 0 && styles.tableGridHeaderCell,
-                      { width: widthOf(c) },
-                      isSelected && styles.tableCellSelected,
-                    ]}
-                    onPress={() => handleCellPress(r, c)}
-                  >
+                  <Pressable key={c} style={cellBox} onPress={() => handleCellPress(r, c)}>
                     <CellText
                       rows={rows}
                       r={r}
@@ -651,68 +715,25 @@ export default function TableBlockContent({
                       strongStyle={styles.tableReadStrong}
                       ink={theme.paper.ink}
                     />
+                    {addressTag}
                   </Pressable>
                 );
               })}
             </View>
           ))}
+          {/* The column's width grip: on the right edge of the selected cell's column, the whole height of the table. */}
+          {!!selected && !formulaMode && (
+            <GestureDetector gesture={resizeGesture(selected.c)}>
+              <View style={{ position: 'absolute', left: boundaryX(selected.c) - 10, top: 0, bottom: 0, width: 20, alignItems: 'center', justifyContent: 'center', zIndex: 3 }}>
+                <View style={styles.tableResizeGrip} />
+              </View>
+            </GestureDetector>
+          )}
         </View>
       </ScrollView>
 
-      {/* THE EDGES: a thin strip under the table, one on each side. A tap shows a «+» (and it fades by itself); the plus adds. */}
-      <Pressable onPress={() => setEdge(edge === 'bottom' ? null : 'bottom')} style={{ height: 18, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Нижній край таблиці">
-        {edge === 'bottom' && (
-          <Pressable
-            onPress={() => {
-              addRow();
-              setEdge(null);
-            }}
-            hitSlop={10}
-            style={tablePlus}
-            accessibilityLabel="Додати рядок"
-          >
-            <Ionicons name="add" size={14} color="#fff" />
-          </Pressable>
-        )}
-      </Pressable>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Pressable onPress={() => setEdge(edge === 'left' ? null : 'left')} hitSlop={6} accessibilityLabel="Лівий край таблиці">
-            {edge === 'left' ? (
-              <Pressable
-                onPress={() => {
-                  addColumn(true);
-                  setEdge(null);
-                }}
-                hitSlop={10}
-                style={tablePlus}
-                accessibilityLabel="Додати колонку ліворуч"
-              >
-                <Ionicons name="add" size={14} color="#fff" />
-              </Pressable>
-            ) : (
-              <Ionicons name="chevron-back" size={13} color="#C0BDB5" />
-            )}
-          </Pressable>
-          <Pressable onPress={() => setEdge(edge === 'right' ? null : 'right')} hitSlop={6} accessibilityLabel="Правий край таблиці">
-            {edge === 'right' ? (
-              <Pressable
-                onPress={() => {
-                  addColumn(false);
-                  setEdge(null);
-                }}
-                hitSlop={10}
-                style={tablePlus}
-                accessibilityLabel="Додати колонку праворуч"
-              >
-                <Ionicons name="add" size={14} color="#fff" />
-              </Pressable>
-            ) : (
-              <Ionicons name="chevron-forward" size={13} color="#C0BDB5" />
-            )}
-          </Pressable>
-        </View>
-        {/* Everything else behind one quiet button. */}
+      {/* Everything about the WHOLE table behind one quiet button. */}
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
         <Pressable style={styles.tableControlBtn} onPress={openTableMenu} hitSlop={8}>
           <Ionicons name="ellipsis-horizontal" size={14} color="#A8A59D" />
         </Pressable>
@@ -796,20 +817,28 @@ function CellText({
   );
 }
 
+// Three dots, one above the other, in the selected cell's right corner: the cell's menu. Drawn, not an icon - there is no vertical ellipsis in
+// the icon set, and three small discs are all it is.
+function CellDots({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityLabel="Меню клітинки"
+      style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 30, alignItems: 'center', justifyContent: 'center', gap: 3 }}
+    >
+      {[0, 1, 2].map((i) => (
+        <View key={i} style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#8A867E' }} />
+      ))}
+    </Pressable>
+  );
+}
+
 // Wide enough for a short word plus its padding, narrow enough that
 // three fit on a phone.
-const tablePlus = {
-  width: 22,
-  height: 22,
-  borderRadius: 11,
-  backgroundColor: '#24211D',
-  alignItems: 'center',
-  justifyContent: 'center',
-} as const;
 const DEFAULT_COLUMN_WIDTH = 110;
-// Must match tableGutterCell's own width - the guide is positioned in
-// the grid's coordinates and the row-number column comes first.
-const GUTTER_WIDTH = 28;
+// No row-number column any more (the numbers live inside the cells while a formula is typed); kept as 0 so the guide's maths stays one line.
+const GUTTER_WIDTH = 0;
 // The table scrolls this far PAST its last column, so the last column's edge is not pinned to the screen's (its width stays adjustable).
 const SCROLL_PAST = 64;
 const MIN_COLUMN_WIDTH = 56;
