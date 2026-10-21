@@ -730,7 +730,7 @@ export default function TableBlockContent({
                         autoCorrect={false}
                       />
                       {!formulaMode && !(editing && isSelected) && (
-                        <Pressable onPress={() => tapCell(r, c)} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} accessibilityLabel="Клітинка" />
+                        <Pressable focusable={false} onPress={() => tapCell(r, c)} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} accessibilityLabel="Клітинка" />
                       )}
                       {spanRule}
                       {selFrame}
@@ -739,7 +739,7 @@ export default function TableBlockContent({
                   );
                 }
                 return (
-                  <Pressable key={c} style={cellBox} onPress={() => (formulaMode ? handleCellPress(r, c) : tapCell(r, c))}>
+                  <Pressable key={c} focusable={false} style={cellBox} onPress={() => (formulaMode ? handleCellPress(r, c) : tapCell(r, c))}>
                     <CellText
                       rows={rows}
                       r={r}
@@ -855,6 +855,7 @@ function CellText({
 function CellDots({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
+      focusable={false}
       onPress={onPress}
       hitSlop={6}
       accessibilityLabel="Меню клітинки"
