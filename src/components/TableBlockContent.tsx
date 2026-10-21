@@ -232,6 +232,18 @@ export default function TableBlockContent({
     }
   }
 
+  // The tap on a cell is a gesture-handler Tap, not a Pressable: the grid scrolls sideways inside a gesture-handler ScrollView, and a
+  // Pressable's press did not reach JS on the FIRST tap while another block held the keyboard - Android gave the caret to the folder field
+  // instead (the user's «курсор зіскакує на поле папки», 2026-10-22).
+  function cellTapGesture(r: number, c: number) {
+    return Gesture.Tap()
+      .runOnJS(true)
+      .maxDistance(10)
+      .onEnd((_e, success) => {
+        if (success) tapCell(r, c);
+      });
+  }
+
   function handleCellKey(key: string, shift: boolean): boolean {
     if (key === 'Tab') {
       moveSelection(0, shift ? -1 : 1);
@@ -730,7 +742,9 @@ export default function TableBlockContent({
                         autoCorrect={false}
                       />
                       {!formulaMode && !(editing && isSelected) && (
-                        <Pressable focusable={false} onPress={() => tapCell(r, c)} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} accessibilityLabel="Клітинка" />
+                        <GestureDetector gesture={cellTapGesture(r, c)}>
+                          <View collapsable={false} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} accessibilityLabel="Клітинка" />
+                        </GestureDetector>
                       )}
                       {spanRule}
                       {selFrame}
