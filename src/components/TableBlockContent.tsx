@@ -79,6 +79,11 @@ export default function TableBlockContent({
   // What the selection covers: the cell itself, or the whole row / column it stands in (picked from the cell's menu, the way Craft's «Виділити клітинки» does).
   // The menu then speaks of the row or the column, and the cells of it are tinted.
   const [span, setSpan] = useState<'cell' | 'row' | 'col'>('cell');
+  // THE TWO TAPS (the user, 2026-10-22): the first tap on a cell only SELECTS it (frame + the three dots, no keyboard); the second tap on the
+  // selected cell starts TYPING. From then on, while a cell holds the cursor, a tap on another cell moves the cursor there and the keyboard
+  // stays up. `editing` is that second state; a transparent catcher over every cell that is not being typed in turns taps into the above.
+  const [editing, setEditing] = useState(false);
+  const focusedCellRef = useRef<string | null>(null);
   // Reading: the short view («шапка й 3 рядки») can be opened for this visit without changing what was saved.
   const [openedShort, setOpenedShort] = useState(false);
   const lastRowAdd = useRef(0);
@@ -206,6 +211,16 @@ export default function TableBlockContent({
     setSelected({ r, c });
     setSpan('cell');
     cellRefs.current.get(`${r}:${c}`)?.focus();
+  }
+
+  function tapCell(r: number, c: number) {
+    const already = selected?.r === r && selected?.c === c && span === 'cell';
+    setSelected({ r, c });
+    setSpan('cell');
+    if (editing || already) {
+      setEditing(true);
+      setTimeout(() => cellRefs.current.get(`${r}:${c}`)?.focus(), 0);
+    }
   }
 
   function handleCellKey(key: string, shift: boolean): boolean {
@@ -425,37 +440,6 @@ export default function TableBlockContent({
       return `=SUM(${letter}1:${letter}${lastRow})`;
     });
     onUpdate({ tableRows: [...rows.map((row) => ({ cells: [...row.cells] })), { cells: sumCells }] });
-  }
-
-  async function openTableMenu() {
-    const here = selected;
-    const chosen = await ask({
-      title: 'Таблиця',
-      message: here ? `Виділено ${columnLetter(here.c)}${here.r + 1}` : undefined,
-      actions: [
-        ...(here && rows.length > 1
-          ? [{ id: 'delRow', label: `Видалити рядок ${here.r + 1}`, tone: 'danger' as const }]
-          : []),
-        ...(here && columnCount > 1
-          ? [{ id: 'delCol', label: `Видалити колонку ${columnLetter(here.c)}`, tone: 'danger' as const }]
-          : []),
-        { id: 'sum', label: 'Рядок підсумків' },
-        { id: 'headerRow', label: headerRow ? 'Прибрати шапку-рядок' : 'Перший рядок — шапка' },
-        { id: 'headerCol', label: headerColumn ? 'Прибрати шапку-колонку' : 'Перша колонка — шапка' },
-        { id: 'short', label: block.tableShort ? 'Показувати всю таблицю' : 'Показувати шапку й 3 рядки' },
-        { id: 'resetWidths', label: 'Скинути ширину колонок' },
-      ],
-    });
-    if (chosen === 'delRow' && here) removeRow(here.r);
-    if (chosen === 'delCol' && here) removeColumn(here.c);
-    if (chosen === 'sum') addSumRow();
-    if (chosen === 'headerRow') onUpdate({ tableHeaderRow: !headerRow });
-    if (chosen === 'headerCol') onUpdate({ tableHeaderColumn: !headerColumn });
-    if (chosen === 'short') {
-      setOpenedShort(false);
-      onUpdate({ tableShort: !block.tableShort });
-    }
-    if (chosen === 'resetWidths') onUpdate({ tableColumnWidths: [] });
   }
 
   const selectedRaw = selected ? rows[selected.r]?.cells[selected.c] ?? '' : '';
@@ -686,9 +670,18 @@ export default function TableBlockContent({
                         defaultValue={raw}
                         editable={!formulaMode}
                         onFocus={() => {
+                          focusedCellRef.current = `${r}:${c}`;
+                          setEditing(true);
                           setSelected({ r, c });
                           setSpan('cell');
                           setDraftText(raw);
+                        }}
+                        onBlur={() => {
+                          focusedCellRef.current = null;
+                          // Focus passing to another cell is not the end of typing: only when nobody holds it a moment later.
+                          setTimeout(() => {
+                            if (!focusedCellRef.current) setEditing(false);
+                          }, 150);
                         }}
                         onChangeText={(value) => setDraftText(value)}
                         onEndEditing={(e) => {
@@ -713,6 +706,9 @@ export default function TableBlockContent({
                         autoCapitalize="none"
                         autoCorrect={false}
                       />
+                      {!formulaMode && !(editing && isSelected) && (
+                        <Pressable onPress={() => tapCell(r, c)} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} accessibilityLabel="Клітинка" />
+                      )}
                       {selFrame}
                       {isSelected && !formulaMode && <CellDots onPress={openCellMenu} />}
                     </View>
@@ -746,12 +742,6 @@ export default function TableBlockContent({
         </View>
       </ScrollView>
 
-      {/* Everything about the WHOLE table behind one quiet button. */}
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-        <Pressable style={styles.tableControlBtn} onPress={openTableMenu} hitSlop={8}>
-          <Ionicons name="ellipsis-horizontal" size={14} color="#A8A59D" />
-        </Pressable>
-      </View>
     </View>
   );
 
