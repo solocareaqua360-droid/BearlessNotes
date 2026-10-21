@@ -84,6 +84,7 @@ export default function TableBlockContent({
   // stays up. `editing` is that second state; a transparent catcher over every cell that is not being typed in turns taps into the above.
   const [editing, setEditing] = useState(false);
   const focusedCellRef = useRef<string | null>(null);
+  const formulaBarFocusRef = useRef(false);
   // Reading: the short view («шапка й 3 рядки») can be opened for this visit without changing what was saved.
   const [openedShort, setOpenedShort] = useState(false);
   const lastRowAdd = useRef(0);
@@ -219,7 +220,7 @@ export default function TableBlockContent({
     setSpan('cell');
     if (editing || already) {
       setEditing(true);
-      setTimeout(() => cellRefs.current.get(`${r}:${c}`)?.focus(), 0);
+      setTimeout(() => cellRefs.current.get(`${r}:${c}`)?.focus(), 60);
     }
   }
 
@@ -454,7 +455,8 @@ export default function TableBlockContent({
   // tap on a cell is its ADDRESS rather than a place to go - and that
   // is the only state in which a formula field is worth the room it
   // takes.
-  const formulaMode = (draftText ?? selectedRaw).trim().startsWith('=');
+  // A formula cell that is merely SELECTED (first tap) is just a selected cell showing its result; the formula opens with typing.
+  const formulaMode = (editing || formulaFocused) && (draftText ?? selectedRaw).trim().startsWith('=');
   // Entering formula mode hands the keyboard to the bar. Without this
   // the cell keeps focus and has just become non-editable, so typing
   // goes nowhere - which is the worst of the three possible states.
@@ -489,8 +491,14 @@ export default function TableBlockContent({
           value={draftText ?? selectedRaw}
           editable={canEdit}
           onChangeText={setDraftText}
-          onFocus={() => setFormulaFocused(true)}
-          onBlur={() => setFormulaFocused(false)}
+          onFocus={() => {
+            formulaBarFocusRef.current = true;
+            setFormulaFocused(true);
+          }}
+          onBlur={() => {
+            formulaBarFocusRef.current = false;
+            setFormulaFocused(false);
+          }}
           placeholder="=SUM(A1:A3)"
           placeholderTextColor="#9CA3AF"
           autoCapitalize="none"
@@ -641,7 +649,7 @@ export default function TableBlockContent({
                 // showed "=A1+B1", which read as "formulas stopped
                 // working". The formula itself is seen in the bar, once
                 // the cell is chosen.
-                const showsResult = !isSelected && (row.cells[c] ?? '').trim().startsWith('=');
+                const showsResult = !(isSelected && editing) && (row.cells[c] ?? '').trim().startsWith('=');
                 const cellBox = [
                   styles.tableGridCell,
                   c === row.cells.length - 1 && styles.tableGridCellLast,
@@ -680,7 +688,7 @@ export default function TableBlockContent({
                           focusedCellRef.current = null;
                           // Focus passing to another cell is not the end of typing: only when nobody holds it a moment later.
                           setTimeout(() => {
-                            if (!focusedCellRef.current) setEditing(false);
+                            if (!focusedCellRef.current && !formulaBarFocusRef.current) setEditing(false);
                           }, 150);
                         }}
                         onChangeText={(value) => setDraftText(value)}
@@ -715,7 +723,7 @@ export default function TableBlockContent({
                   );
                 }
                 return (
-                  <Pressable key={c} style={cellBox} onPress={() => handleCellPress(r, c)}>
+                  <Pressable key={c} style={cellBox} onPress={() => (formulaMode ? handleCellPress(r, c) : tapCell(r, c))}>
                     <CellText
                       rows={rows}
                       r={r}
@@ -726,6 +734,7 @@ export default function TableBlockContent({
                       ink={theme.paper.ink}
                     />
                     {selFrame}
+                    {isSelected && !formulaMode && <CellDots onPress={openCellMenu} />}
                   </Pressable>
                 );
               })}
