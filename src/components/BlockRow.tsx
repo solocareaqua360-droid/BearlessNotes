@@ -4,7 +4,7 @@ import { HIGHLIGHT_COLORS } from './EditorToolbar';
 import { foldOf } from '../utils/toggleBlocks';
 import SketchLayer from './SketchLayer';
 import { INK, drawingViewBox } from '../utils/sketchGeometry';
-import { rememberTableTap } from '../utils/tableTap';
+import { rememberTableTap, tableScrollX, useTableWide } from '../utils/tableTap';
 import { requestBoardJump } from '../utils/boardMap';
 import { ComponentProps, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -219,6 +219,9 @@ export default function BlockRow({
   // just like it already did over the icon column.
   const canEditText = isActive && !isSelectMode;
   const tableBoxRef = useRef({ width: 0, height: 0 });
+  // A table wider than its place scrolls itself even locked (see utils/tableTap); then the tap that wakes it is read off the page, not off the cell it hit.
+  const tableWide = useTableWide(item.type === 'table' ? item.id : '');
+  const tablePressRef = useRef<View>(null);
 
   // THE FORMATTING WHILE TYPING (features.liveFormat): the field's text as styled runs - the block's own runs, so the
   // field shows what the block shows at rest. Not for code (never parsed) nor an empty block. A link to a note nested
@@ -570,6 +573,7 @@ export default function BlockRow({
       table
     ) : (
       <Pressable
+        ref={tablePressRef}
         onLayout={(e) => {
           tableBoxRef.current = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height };
         }}
@@ -577,12 +581,31 @@ export default function BlockRow({
           if (isSelectMode) return onToggleSelected(item.id);
           // See utils/tableTap: the live table needs to know which cell this tap was for.
           // Phone: locationX/Y. The browser's press event has no such fields, its MouseEvent carries offsetX/Y.
-          const ne = e.nativeEvent as unknown as { locationX?: number; locationY?: number; offsetX?: number; offsetY?: number };
+          const ne = e.nativeEvent as unknown as {
+            locationX?: number;
+            locationY?: number;
+            offsetX?: number;
+            offsetY?: number;
+            pageX?: number;
+            pageY?: number;
+          };
+          if (tableWide && Number.isFinite(ne.pageX) && Number.isFinite(ne.pageY)) {
+            // A wide table has a live scroller under the finger, so the hit cell's own coordinates mean nothing: the tap is measured from the
+            // table's corner on the page, plus how far it is scrolled.
+            const pageX = ne.pageX as number;
+            const pageY = ne.pageY as number;
+            tablePressRef.current?.measureInWindow((wx, wy) => {
+              rememberTableTap({ blockId: item.id, x: pageX - wx + tableScrollX(item.id), y: pageY - wy, ...tableBoxRef.current });
+              onActivate(item.id);
+            });
+            return;
+          }
           rememberTableTap({ blockId: item.id, x: ne.locationX ?? ne.offsetX ?? NaN, y: ne.locationY ?? ne.offsetY ?? NaN, ...tableBoxRef.current });
           onActivate(item.id);
         }}
       >
-        <View pointerEvents="none">{table}</View>
+        {/* The same wrapper either way: a different one would build the table anew each time the flag flips. */}
+        <View pointerEvents={tableWide ? 'auto' : 'none'}>{table}</View>
       </Pressable>
     );
   } else if (type === 'file') {

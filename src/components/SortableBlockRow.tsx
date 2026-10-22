@@ -7,6 +7,7 @@ import { Block, Tag } from '../types';
 import type { colorForDocument } from '../utils/documentColor';
 import BlockRow from './BlockRow';
 import type { DocumentIndex } from '../hooks/useDocumentIndex';
+import { useTableWide } from '../utils/tableTap';
 
 // react-native-draggable-flatlist AND react-native-swipeable-item both
 // have the same underlying assumption: they render their content inside a
@@ -107,6 +108,8 @@ const DRAG_LONG_PRESS_MS = 500;
 // How far left a finger goes before a swipe picks the block - and how far up or down it may go first before the
 // move is the scroll's instead.
 const SWIPE_START = 14;
+// The strip at the left edge of a wide table from which the picking swipe starts (a finger's width).
+const TABLE_PICK_STRIP = 32;
 // The swiped block's words follow the finger a little to the left (the user's: «при свайпі сам текст теж повинен
 // трохи зміщуватись»), at most this far, and spring back when it lifts.
 const NUDGE_MAX = 28;
@@ -224,7 +227,8 @@ function SortableBlockRow({
   // left, gives up if it went up or down or to the right first (the note's scroll keeps every vertical move), and from
   // then on follows the finger up and down over the other blocks. It races the hold: whichever starts first wins.
   const nudge = useSharedValue(0);
-  const sweepGesture = Gesture.Pan()
+  const wideTable = useTableWide(item.type === 'table' ? item.id : '');
+  const sweepBase = Gesture.Pan()
     .enabled(!pointer && !!swipeSelect)
     .activeOffsetX([-SWIPE_START, 10000])
     .failOffsetX([-10000, SWIPE_START])
@@ -240,6 +244,9 @@ function SortableBlockRow({
       nudge.value = withTiming(0, { duration: 120 });
       onSweepEnd?.();
     });
+  // A table wider than its place scrolls sideways by itself, and that swipe goes the same way as this one: here it is picked up only from the
+  // table's left strip (the user, 2026-10-22: the table must scroll AND be pickable, without selecting a cell first).
+  const sweepGesture = wideTable ? sweepBase.hitSlop({ left: 0, width: TABLE_PICK_STRIP }) : sweepBase;
   // The tick strip's own: a move up or down picks along, a tap picks this one.
   const edgeGesture = Gesture.Exclusive(
     Gesture.Pan()
