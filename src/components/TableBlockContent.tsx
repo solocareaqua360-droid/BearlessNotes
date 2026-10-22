@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // Deliberately gesture-handler's ScrollView, not react-native's - see the
 // same note in DocumentEditorScreen.tsx (this component moved out of that
@@ -13,7 +13,7 @@ import { columnLetter, displayValueOf, parseFormattedText } from '../utils/docum
 import { ask } from './surfaces/Ask';
 import { usePublishEditorAccessory } from './editorAccessory';
 import FormattedText from './FormattedText';
-import { holdTable, markTouchInsideTable, setTableMenuOpen, setTableScrollX, setTableWide, tableScrollX, takeTableTap } from '../utils/tableTap';
+import { holdTable, markTouchInsideTable, setTableMenuOpen, takeTableTap } from '../utils/tableTap';
 import TableCellMenu from './TableCellMenu';
 import { useDensity } from '../hooks/useDensity';
 
@@ -95,23 +95,6 @@ export default function TableBlockContent({
   const [tableHover, setTableHover] = useState(false);
   const [railHover, setRailHover] = useState<'col' | 'row' | null>(null);
   const [viewW, setViewW] = useState(0);
-  // How wide the grid is (its scroller's content, minus the room kept past the right edge) - a wider one than its place scrolls on its own.
-  const [contentW, setContentW] = useState(0);
-  const isWide = viewW > 0 && contentW > 0 && contentW - SCROLL_PAST > viewW + 2;
-  const copyId = useId();
-  useEffect(() => {
-    setTableWide(block.id, copyId, isWide);
-    return () => setTableWide(block.id, copyId, false);
-  }, [block.id, copyId, isWide]);
-  // One scroller at a time (reading face or editing face) takes this ref; its offset is remembered per block, so the two faces hand the same
-  // place to each other.
-  const scrollRef = useRef<ScrollView>(null);
-  useEffect(() => {
-    const x = tableScrollX(block.id);
-    if (x <= 0) return;
-    const t = setTimeout(() => scrollRef.current?.scrollTo({ x, animated: false }), 30);
-    return () => clearTimeout(t);
-  }, [canEdit, contentW > 0]);
   const rowHeights = useRef<number[]>([]);
   // The sink brings the keyboard only when it is already up (another block was being written in): then the first tap must not take it down -
   // the editor leaves writing mode the moment it hides. With no keyboard, a first tap only selects, and nothing rises.
@@ -772,14 +755,9 @@ export default function TableBlockContent({
       // The same 4 above and below as the editing face's own (styles.tableBlock): the table must not hop when it is picked up or put down.
       <View style={{ paddingVertical: 4 }}>
       <ScrollView
-        ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingRight: SCROLL_PAST }}
-        onLayout={(e) => setViewW(e.nativeEvent.layout.width)}
-        onContentSizeChange={(w) => setContentW(w)}
-        onScroll={(e) => setTableScrollX(block.id, e.nativeEvent.contentOffset.x)}
-        scrollEventThrottle={16}
       >
         <View style={styles.tableReadFrame}>
           {shownRows.map((row, r) => (
@@ -834,12 +812,8 @@ export default function TableBlockContent({
   return (
     <View style={styles.tableBlock} onTouchStart={(e) => markTouchInsideTable(e.nativeEvent.timestamp)}>
       <ScrollView
-        ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
-        onContentSizeChange={(w) => setContentW(w)}
-        onScroll={(e) => setTableScrollX(block.id, e.nativeEvent.contentOffset.x)}
-        scrollEventThrottle={16}
         keyboardShouldPersistTaps="always"
         // A table that FITS and is only selected does not scroll at all: the native scroller would take the left swipe that picks the whole
         // block (the user, 2026-10-22). Typing, or a table wider than the screen, scrolls as before.
