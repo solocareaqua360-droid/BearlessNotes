@@ -235,6 +235,10 @@ import { ensureDayBoard } from '../utils/dayBoard';
 // own floor and the rest is a column of text still worth reading.
 // How wide a note's column runs at a pointer, in points.
 const DESKTOP_NOTE_MEASURE = 860;
+// The note's dock on the phone is a CAPSULE of three buttons (Полотно, Референси, Зміст) standing 20 from the left edge, each 84 wide with 4 of
+// padding either side - measured off the phone (uiautomator: 53..735 px at 420 dpi). The contents card is exactly that wide, not the dock's whole row.
+const NOTE_DOCK_LEFT = 20;
+const NOTE_DOCK_CAPSULE_W = 3 * 84 + 8;
 const REFERENCES_SPLIT_MIN = 640;
 
 // The project badge's own line: its height (3 of padding above and below
@@ -5971,7 +5975,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         />
       )}
       {tocOpen && dockLive && !notePanelOn && !canvasMode && (
-        <View style={{ position: 'absolute', width: dockRowWidth(windowWidth), left: Math.round((windowWidth - dockRowWidth(windowWidth)) / 2), bottom: menuClearance, maxHeight: Math.min(260, windowHeight - menuClearance - editorInsets.top - 24), borderRadius: 20, padding: 8, backgroundColor: theme.raised, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.edge.hairline, zIndex: 30 }} pointerEvents="box-none">
+        <View style={{ position: 'absolute', width: NOTE_DOCK_CAPSULE_W, left: NOTE_DOCK_LEFT, bottom: menuClearance, maxHeight: Math.min(260, windowHeight - menuClearance - editorInsets.top - 24), borderRadius: 20, padding: 8, backgroundColor: theme.raised, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.edge.hairline, zIndex: 30 }} pointerEvents="box-none">
           <NoteOutline items={outline} currentId={tocCurrent} onPick={pickSection} />
         </View>
       )}
