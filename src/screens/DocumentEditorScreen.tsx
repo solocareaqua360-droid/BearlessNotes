@@ -5971,7 +5971,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         />
       )}
       {tocOpen && dockLive && !notePanelOn && !canvasMode && (
-        <View style={{ position: 'absolute', left: 12, right: 12, bottom: 118, maxHeight: 260, borderRadius: 20, padding: 8, backgroundColor: theme.raised, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.edge.hairline, zIndex: 30 }} pointerEvents="box-none">
+        <View style={{ position: 'absolute', width: dockRowWidth(windowWidth), left: Math.round((windowWidth - dockRowWidth(windowWidth)) / 2), bottom: menuClearance, maxHeight: Math.min(260, windowHeight - menuClearance - editorInsets.top - 24), borderRadius: 20, padding: 8, backgroundColor: theme.raised, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.edge.hairline, zIndex: 30 }} pointerEvents="box-none">
           <NoteOutline items={outline} currentId={tocCurrent} onPick={pickSection} />
         </View>
       )}
