@@ -833,9 +833,9 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
   // The laptop's rails on the selected cell's top and left edge, and the dots at the table's right and bottom edge.
   tableRail: {
     position: 'absolute',
-    borderRadius: 3,
-    backgroundColor: t.accent,
-    opacity: 0.55,
+    borderRadius: 2,
+    backgroundColor: '#7DB8F5',
+    opacity: 0.7,
     zIndex: 4,
     cursor: 'grab',
   } as never,

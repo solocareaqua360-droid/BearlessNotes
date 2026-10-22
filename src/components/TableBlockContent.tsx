@@ -91,7 +91,9 @@ export default function TableBlockContent({
   // A cell that shows a formula's RESULT is not a field, so selecting it has nothing to focus - and the focus Android then hands out goes to the
   // first field on the page (the folder box). This 1pt invisible field is where the focus rests instead.
   const sinkRef = useRef<TextInput>(null);
+  const lastTyped = useRef<string | null>(null);
   const [tableHover, setTableHover] = useState(false);
+  const [railHover, setRailHover] = useState<'col' | 'row' | null>(null);
   const [viewW, setViewW] = useState(0);
   const rowHeights = useRef<number[]>([]);
   // The sink brings the keyboard only when it is already up (another block was being written in): then the first tap must not take it down -
@@ -913,6 +915,7 @@ export default function TableBlockContent({
                         defaultValue={raw}
                         editable={!formulaMode}
                         onFocus={() => {
+                          lastTyped.current = null;
                           focusedCellRef.current = `${r}:${c}`;
                           setEditing(true);
                           setSelected({ r, c });
@@ -920,13 +923,21 @@ export default function TableBlockContent({
                           setDraftText(raw);
                         }}
                         onBlur={() => {
+                          // The browser never calls onEndEditing, so a cell typed into on the Mac was never saved (found 2026-10-22: the text
+                          // was there until the page was reloaded). The blur commits it there; on the phone it repeats what onEndEditing did.
+                          const typed = lastTyped.current;
+                          lastTyped.current = null;
+                          if (typed !== null && typed !== raw) setCell(r, c, typed);
                           focusedCellRef.current = null;
                           // Focus passing to another cell is not the end of typing: only when nobody holds it a moment later.
                           setTimeout(() => {
                             if (!focusedCellRef.current && !formulaBarFocusRef.current) setEditing(false);
                           }, 150);
                         }}
-                        onChangeText={(value) => setDraftText(value)}
+                        onChangeText={(value) => {
+                          lastTyped.current = value;
+                          setDraftText(value);
+                        }}
                         onEndEditing={(e) => {
                           setCell(r, c, e.nativeEvent.text);
                           setDraftText(null);
@@ -960,11 +971,18 @@ export default function TableBlockContent({
                       {selFrame}
                       {isSelected && !formulaMode && pointer && (
                         <>
+                          {/* Craft's rails: barely there - a short break in the border line in the accent colour, only growing under the pointer. */}
                           <GestureDetector gesture={railGesture('col', c)}>
-                            <View style={[styles.tableRail, { top: 0, left: '50%', marginLeft: -14, width: 28, height: 6 }]} {...({ dataSet: { rail: 'col', noMarquee: '1' } } as object)} />
+                            <View
+                              style={[styles.tableRail, railHover === 'col' ? { top: -3, left: '50%', marginLeft: -16, width: 32, height: 6, opacity: 0.85 } : { top: -1, left: '50%', marginLeft: -8, width: 16, height: 3 }]}
+                              {...({ dataSet: { rail: 'col', noMarquee: '1' }, onMouseEnter: () => setRailHover('col'), onMouseLeave: () => setRailHover(null) } as object)}
+                            />
                           </GestureDetector>
                           <GestureDetector gesture={railGesture('row', r)}>
-                            <View style={[styles.tableRail, { left: 0, top: '50%', marginTop: -14, width: 6, height: 28 }]} {...({ dataSet: { rail: 'row', noMarquee: '1' } } as object)} />
+                            <View
+                              style={[styles.tableRail, railHover === 'row' ? { left: -3, top: '50%', marginTop: -16, width: 6, height: 32, opacity: 0.85 } : { left: -1, top: '50%', marginTop: -8, width: 3, height: 16 }]}
+                              {...({ dataSet: { rail: 'row', noMarquee: '1' }, onMouseEnter: () => setRailHover('row'), onMouseLeave: () => setRailHover(null) } as object)}
+                            />
                           </GestureDetector>
                         </>
                       )}
@@ -1006,14 +1024,14 @@ export default function TableBlockContent({
         {pointer && tableHover && !formulaMode && (
           <EdgeBar
             vertical
-            style={{ right: -4, bottom: (rowHeights.current[rows.length - 1] ?? 34) / 2 - 14 }}
+            style={{ right: -2, bottom: (rowHeights.current[rows.length - 1] ?? 34) / 2 - 2 }}
             onPress={() => insertColumn(columnCount)}
             label="Додати колонку"
           />
         )}
         {pointer && tableHover && !!selected && !formulaMode && (
           <EdgeBar
-            style={{ bottom: -4, left: Array.from({ length: selected.c }).reduce<number>((x, _, i) => x + widthOf(i), 0) + widthOf(selected.c) / 2 - 14 }}
+            style={{ bottom: -2, left: Array.from({ length: selected.c }).reduce<number>((x, _, i) => x + widthOf(i), 0) + widthOf(selected.c) / 2 - 2 }}
             onPress={() => addRow()}
             label="Додати рядок"
           />
@@ -1184,7 +1202,7 @@ function CellText({
 // A thin bar on a border of the table that becomes a round «+» under the pointer (Craft's own). Positioned by the caller, which gives the spot
 // the bar is centred on; the circle grows from the same centre.
 function EdgeBar({ vertical, style, onPress, label }: { vertical?: boolean; style: object; onPress: () => void; label: string }) {
-  const styles = useStyles(makeStyles);
+  // Craft's own: at rest a small faint dot sitting ON the border line; under the pointer it grows into a round «+».
   return (
     <Pressable
       focusable={false}
@@ -1194,13 +1212,11 @@ function EdgeBar({ vertical, style, onPress, label }: { vertical?: boolean; styl
         { position: 'absolute', zIndex: 6, alignItems: 'center', justifyContent: 'center' },
         style,
         hovered
-          ? { width: 24, height: 24, borderRadius: 12, marginLeft: vertical ? -8 : 0, marginTop: vertical ? 0 : -8, backgroundColor: '#24211D' }
-          : vertical
-            ? { width: 6, height: 28, borderRadius: 3, backgroundColor: '#B9B4AA' }
-            : { width: 28, height: 6, borderRadius: 3, backgroundColor: '#B9B4AA' },
+          ? { width: 22, height: 22, borderRadius: 11, marginLeft: vertical ? -9 : 0, marginTop: vertical ? 0 : -9, backgroundColor: '#2F8CF3' }
+          : { width: 5, height: 5, borderRadius: 3, backgroundColor: '#8FC1F7' },
       ]}
     >
-      {(state: { hovered?: boolean }) => (state.hovered ? <Text style={{ color: '#fff', fontSize: 16, lineHeight: 18, fontWeight: '600' }}>+</Text> : null)}
+      {(state: { hovered?: boolean }) => (state.hovered ? <Text style={{ color: '#fff', fontSize: 15, lineHeight: 17, fontWeight: '600' }}>+</Text> : null)}
     </Pressable>
   );
 }
