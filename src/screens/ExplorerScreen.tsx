@@ -653,7 +653,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     );
     return m;
   }, [tags]);
-  const focusRoots = useMemo(() => (projectsHere && focusProj !== NO_PROJECT ? [...(rootPathsOf.get(focusProj) ?? [])].sort() : []), [projectsHere, focusProj, rootPathsOf]);
+  const focusRoots = useMemo(() => (projectsOn && focusProj !== NO_PROJECT ? [...(rootPathsOf.get(focusProj) ?? [])].sort() : []), [projectsOn, focusProj, rootPathsOf]);
   const folders = useMemo<FolderEntry[]>(() => {
     if (!projectsHere) return foldersAll;
     const mine = foldersAll.filter((f) => {
@@ -683,7 +683,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           // The root keeps only folders; what is in none is in «Нерозкладене».
           if (path === UNFILED) return paths.length === 0;
           // In a project whose root is a folder, the things lying directly in that folder are the project's loose things.
-          if (!path && focusRoots.length > 0) return focusRoots.some((r) => paths.includes(r));
+          if (!path && projectsHere && focusRoots.length > 0) return focusRoots.some((r) => paths.includes(r));
           return path ? paths.includes(path) : !FEATURES.unfiledFolder && paths.length === 0;
         });
     const num = (item: FolderItem, key: string) => {
@@ -691,7 +691,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       return typeof v === 'number' ? v : undefined;
     };
     return sortItems(list, sortPref, (i) => i.title, (i) => num(i, 'createdAt'), (i) => stamp(i));
-  }, [shown, pathsOf, path, sortPref, inBin, binned, inCleanup, candidateItems, searching, needle, focusRoots]);
+  }, [shown, pathsOf, path, sortPref, inBin, binned, inCleanup, candidateItems, searching, needle, focusRoots, projectsHere]);
 
   // The cards in the order the list draws them - what a swipe's «from here to there» means (components/SwipeSelect).
   const sweepOrderOf = (list: Row[]) =>
