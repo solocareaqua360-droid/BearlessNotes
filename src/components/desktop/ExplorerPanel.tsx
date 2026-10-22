@@ -22,8 +22,8 @@ export type ExplorerPanelProps = {
   onByKind: () => void;
   chipsOn: boolean;
   onChips: () => void;
-  style: 'clean' | 'modern';
-  onStyle: (s: 'clean' | 'modern') => void;
+  style: 'clean' | 'modern' | 'projects';
+  onStyle: (s: 'clean' | 'modern' | 'projects') => void;
   // The folder in the panel: the one chosen with a click, else the one the explorer stands in.
   folder: { label: string; sub: string; chosen: boolean; colorId?: string; onColor?: (id: string) => void; onOpen?: () => void; pin?: { on: boolean; onToggle: () => void } } | null;
   // A thing chosen with a click (a note, a board, a file…).
@@ -100,10 +100,11 @@ export default function ExplorerPanel(p: ExplorerPanelProps) {
         </>
       )}
       {head('Стиль провідника')}
-      {seg<'clean' | 'modern'>(
+      {seg<'clean' | 'modern' | 'projects'>(
         [
           { id: 'clean', label: 'Чистий' },
           { id: 'modern', label: 'Модерний' },
+          { id: 'projects', label: 'Проєкти' },
         ],
         p.style,
         p.onStyle

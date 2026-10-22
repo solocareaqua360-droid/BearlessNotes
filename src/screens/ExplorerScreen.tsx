@@ -58,12 +58,13 @@ import CreateFan from '../components/CreateFan';
 import QuickCreateHost from '../components/QuickCreateHost';
 import CollectionWindow, { type CollectionKind } from '../components/CollectionWindow';
 import ThoughtsFolder from '../components/thoughts/ThoughtsFolder';
+import ProjectsBand, { NO_PROJECT } from '../components/ProjectsBand';
 import CollectionCard, { collectionFaceFor, gustLeadMs, type CollectionCardKind, type CollectionFaceStyle } from '../components/CollectionCard';
 import TurningPressable from '../components/TurningPressable';
 import { listMoved } from '../utils/motionHold';
 import PlaylistWindow, { videoOf, type PlaylistVideo } from '../components/PlaylistWindow';
 import TagEditSheet from '../components/TagEditSheet';
-import { FolderCardSheet } from '../components/FolderStyleSheets';
+import { FolderCardSheet, FolderProjectsSheet } from '../components/FolderStyleSheets';
 import { useCreateFlow } from '../hooks/useCreateFlow';
 import { openCapture } from '../components/CaptureWindow';
 import Animated, { Easing as REasing, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
@@ -336,16 +337,31 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // same folders drawn as the «Проєкти» page drew them (see modernLook below: a look only). Remembered on this device.
   // The Mac/browser opens «Модерний» unless told otherwise (2026-10-16: the explorer came to the Mac to show the phone's
   // look, and its own bar has no «⋯» to pick it with).
-  const [explorerStyle, setExplorerStyle] = useState<'clean' | 'modern'>(Platform.OS === 'web' ? 'modern' : 'clean');
+  // «Проєкти» (2026-10-22): the «Модерний» cards, but the first level opens with the projects band and shows only the folders of the
+  // project in front (components/ProjectsBand); «Без проєкту» is the first stop.
+  const [explorerStyle, setExplorerStyle] = useState<'clean' | 'modern' | 'projects'>(Platform.OS === 'web' ? 'modern' : 'clean');
   useEffect(() => {
     AsyncStorage.getItem('explorerStyle')
-      .then((v) => (v === 'modern' || v === 'clean') && setExplorerStyle(v))
+      .then((v) => (v === 'modern' || v === 'clean' || (v === 'projects' && FEATURES.explorerProjects)) && setExplorerStyle(v))
       .catch(() => {});
   }, []);
-  const changeStyle = (next: 'clean' | 'modern') => {
+  const changeStyle = (next: 'clean' | 'modern' | 'projects') => {
     setExplorerStyle(next);
     AsyncStorage.setItem('explorerStyle', next).catch(() => {});
   };
+  // The project in front in that style ('' = «Без проєкту»); remembered on this device.
+  const [focusProj, setFocusProj] = useState<string>(NO_PROJECT);
+  useEffect(() => {
+    AsyncStorage.getItem('explorerProject')
+      .then((v) => typeof v === 'string' && setFocusProj(v))
+      .catch(() => {});
+  }, []);
+  const changeFocusProj = (id: string) => {
+    setFocusProj(id);
+    AsyncStorage.setItem('explorerProject', id).catch(() => {});
+  };
+  // The folder whose projects are being picked from a card's «у проєкт…».
+  const [projectsFor, setProjectsFor] = useState<Tag | null>(null);
   // The card a folder is opening out of in «Модерний», for the opening's motion (FolderGrow).
   // The folder the opening stepped into has been drawn: the opening may fade.
   // THE CLOSING in «Модерний»: the folder being left, shrinking back into its card one level up (FolderShrink); its
@@ -556,7 +572,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     return m;
   }, [items]);
 
-  const folders = useMemo<FolderEntry[]>(() => {
+  const foldersAll = useMemo<FolderEntry[]>(() => {
     const prefix = path ? `${path}/` : '';
     if (inBin || inCleanup) return [];
     if (searching) {
@@ -604,6 +620,35 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     const unfiled = shown.filter((item) => (pathsOf.get(item.id) ?? []).length === 0).length;
     return unfiled > 0 ? [{ path: UNFILED, name: nameOf(UNFILED), count: unfiled, playlist: false, collection: undefined, size: 'M' as const }, ...list] : list;
   }, [tags, shown, pathsOf, path, inBin, inCleanup, filtering, searching, needle]);
+
+  // THE PROJECTS STYLE'S FIRST LEVEL: only the folders of the project in front (a folder is in a project when a tag of its path
+  // carries the project in groupIds); «Без проєкту» keeps what is in none, with «Нерозкладене».
+  const projectsOn = explorerStyle === 'projects' && FEATURES.explorerProjects;
+  const projectsHere = projectsOn && !path && !inBin && !inCleanup && !searching && !filtering;
+  const projectIdsOf = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    tags.forEach((t) => {
+      if (!t.groupIds?.length) return;
+      const set = m.get(t.path) ?? new Set<string>();
+      t.groupIds.forEach((id) => set.add(id));
+      m.set(t.path, set);
+    });
+    return m;
+  }, [tags]);
+  const folders = useMemo<FolderEntry[]>(() => {
+    if (!projectsHere) return foldersAll;
+    return foldersAll.filter((f) => {
+      const ids = projectIdsOf.get(f.path);
+      if (focusProj === NO_PROJECT) return f.path === UNFILED || !ids || ids.size === 0;
+      return !!ids && ids.has(focusProj);
+    });
+  }, [foldersAll, projectsHere, projectIdsOf, focusProj]);
+  const bandCounts = useMemo(() => {
+    const m = new Map<string, { folders: number }>();
+    foldersAll.forEach((f) => projectIdsOf.get(f.path)?.forEach((id) => m.set(id, { folders: (m.get(id)?.folders ?? 0) + 1 })));
+    return m;
+  }, [foldersAll, projectIdsOf]);
+  const bandNoneCount = useMemo(() => foldersAll.filter((f) => f.path !== UNFILED && !(projectIdsOf.get(f.path)?.size)).length, [foldersAll, projectIdsOf]);
 
   const here = useMemo(() => {
     if (inBin) return binned;
@@ -1617,6 +1662,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       { kind: 'section' as const, label: 'Стиль провідника' },
       { label: 'Чистий', icon: 'reorder-two-outline' as const, checked: explorerStyle === 'clean', onPress: () => changeStyle('clean') },
       { label: 'Модерний', icon: 'albums-outline' as const, checked: explorerStyle === 'modern', onPress: () => changeStyle('modern') },
+      ...(FEATURES.explorerProjects ? [{ label: 'Проєкти', icon: 'folder-open-outline' as const, checked: explorerStyle === 'projects', onPress: () => changeStyle('projects') }] : []),
       { kind: 'rule' as const },
       ...(candidates.length > 0
         ? [{ label: `Кандидати на очищення (${candidates.length})`, icon: 'sparkles-outline' as const, onPress: enterCleanup }]
@@ -1766,7 +1812,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const upPlain = useCallback(() => setPath((p) => p.split('/').slice(0, -1).join('/')), []);
   // Up one level - in «Модерний» the folder folds back into its card on the way (FolderShrink).
   const up = () => {
-    const tag = explorerStyle === 'modern' && path ? cardTagOf(path) : undefined;
+    const tag = (explorerStyle === 'modern' || explorerStyle === 'projects') && path ? cardTagOf(path) : undefined;
     if (tag && !inBin && !inCleanup) {
       // Folding starts AT ONCE, into the place the card was opened from (2026-10-19: it stood still ~0.35 s over an
       // empty page while the level above was drawn and its card measured); the measuring below still runs and, if
@@ -2023,7 +2069,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // same tap into a folder, the same hold menu, carrying and choosing - only each folder is drawn as the card the
   // «Проєкти» page drew (its size, colour, pattern or photo; FolderCard), and an opened folder wears its card as a
   // head (FolderHeader).
-  const modernLook = explorerStyle === 'modern' && !inBin && !inCleanup && !searching;
+  const modernLook = (explorerStyle === 'modern' || explorerStyle === 'projects') && !inBin && !inCleanup && !searching;
   const listTopPad = top + (!inBin && !inCleanup && chipsOn ? CHIPS_H + CHIPS_GAP - CHIPS_UP : 0);
   const { height: winH } = useWindowDimensions();
   const schemeNow = useTheme().scheme;
@@ -2215,7 +2261,16 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const header = (
     <View>
       {/* THE LIVING FOLDER of thoughts, first on the explorer's first level (components/thoughts). */}
-      {FEATURES.thoughts && !path && !inBin && !inCleanup && !searching && !filtering && <ThoughtsFolder />}
+      {projectsHere && (
+        <ProjectsBand
+          groups={groups.filter((g) => !g.archived).sort((a, b) => a.name.localeCompare(b.name))}
+          focusId={focusProj}
+          onFocus={changeFocusProj}
+          counts={bandCounts}
+          noneCount={bandNoneCount}
+        />
+      )}
+      {FEATURES.thoughts && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT) && <ThoughtsFolder />}
       {modernLook && !!path && cardTagOf(path) && (
         // Edge to edge and up under the bar: out of the list's own side and top padding.
         <View style={{ marginHorizontal: -20, marginTop: -listTopPad, marginBottom: 18 }}>
@@ -2287,6 +2342,22 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                     if (f.path !== UNFILED) carrying.carry.registerCard(`folder:${f.path}`, () => carrying.groupFor(folderItem(f)), () => holdFolder(f))(node as never);
                   }}
                 >
+                  {projectsHere && focusProj === NO_PROJECT && f.path !== UNFILED && (
+                    <Pressable
+                      onPress={async () => {
+                        try {
+                          setProjectsFor(await tagForPath(f.path));
+                        } catch (e) {
+                          notify('Не вдалося відкрити', (e as Error).message);
+                        }
+                      }}
+                      hitSlop={6}
+                      accessibilityLabel="Додати до проєкту"
+                      style={{ position: 'absolute', top: 10, left: 10, zIndex: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 11, backgroundColor: S.card, opacity: 0.92 }}
+                    >
+                      <Text style={{ fontSize: 11, color: S.ink2, fontFamily: SOFT_MEDIUM }}>у проєкт…</Text>
+                    </Pressable>
+                  )}
                   <FolderCard
                     tag={tag}
                     half={size !== 'L'}
@@ -2740,6 +2811,22 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             await setFolderAppearance(target.path, { icon, color });
             const renamed = newPath.trim();
             if (renamed && renamed !== target.path) await moveBranch(target.path, renamed);
+          } catch (e) {
+            notify('Не вдалося зберегти', (e as Error).message);
+          }
+        }}
+      />
+      <FolderProjectsSheet
+        visible={projectsFor !== null}
+        folderName={projectsFor ? nameOf(projectsFor.path) : ''}
+        selected={projectsFor?.groupIds ?? []}
+        onClose={() => setProjectsFor(null)}
+        onSave={async (ids) => {
+          const target = projectsFor;
+          setProjectsFor(null);
+          if (!target) return;
+          try {
+            await setTagFields(target.id, { groupIds: ids });
           } catch (e) {
             notify('Не вдалося зберегти', (e as Error).message);
           }

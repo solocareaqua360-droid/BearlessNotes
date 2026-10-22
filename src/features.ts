@@ -4,6 +4,8 @@
 // code stays, and whatever it already made (a sticker block in a note, a
 // timecode in a lesson's text) still shows. One line brings it back.
 export const FEATURES = {
+  // «Проєкти» у «Стилі провідника» (2026-10-22): смуга-гармошка проєктів на першому рівні, папки лише вибраного проєкту, «Без проєкту» першим.
+  explorerProjects: true,
   // The explorer shows photos, videos, geo points and links ONLY when they were put in a folder (by the «+» inside
   // a folder or by «Папки» on the item); unfiled ones stay in their own bases (2026-10-11, the user's step 1).
   // Files and notes are shown as before. One line brings the old behaviour back.
