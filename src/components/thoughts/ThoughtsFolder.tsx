@@ -35,7 +35,9 @@ function useFocusedIfScreen() {
   return focused;
 }
 
-export default function ThoughtsFolder() {
+// `late`: the card stands at once (shadow, name, count) but its balloons - and their rise - come ~450 ms later, after whatever swipe
+// brought it on screen has settled (the projects band, 2026-10-22). An empty card of its own that popped in whole was worse.
+export default function ThoughtsFolder({ late = false }: { late?: boolean } = {}) {
   const S = useSoft();
   const { themes, countOf, loaded } = useThoughts(true);
   const [w, setW] = useState(0);
@@ -51,6 +53,12 @@ export default function ThoughtsFolder() {
   // інерційність - биття о бокову стінку і один одного, і ставання на місце»).
   const focused = useFocusedIfScreen();
   const [launch, setLaunch] = useState(0);
+  const [show, setShow] = useState(!late);
+  useEffect(() => {
+    if (!late) return;
+    const t = setTimeout(() => setShow(true), 450);
+    return () => clearTimeout(t);
+  }, [late]);
   // THE LITTLE PHYSICS: each balloon's push from its place and its speed. A swipe gives them all a sideways shove -
   // the desk moves, they lag behind like light things in a box; they meet the side wall and each other (soft, a third
   // of the speed kept) and a gentle spring draws each back to its place, damped near critical: no swinging to and fro.
@@ -174,6 +182,7 @@ export default function ThoughtsFolder() {
     calm.current = setTimeout(tick, 50);
   };
   useEffect(() => {
+    if (!show) return;
     if (focused && !seen.current) {
       seen.current = true;
       launchWhenCalm();
@@ -181,7 +190,7 @@ export default function ThoughtsFolder() {
     }
     if (seen.current) shove(focused ? -1 : 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focused]);
+  }, [focused, show]);
   return (
     <Pressable
       onPress={() => openThoughtsSpace()}
@@ -194,7 +203,7 @@ export default function ThoughtsFolder() {
       style={[styles.card, { backgroundColor: S.dark ? S.card : FEATURES.ourTones ? '#EFE9DE' : '#FFFDF8', boxShadow: S.popShadow }]}
       accessibilityLabel="Думки"
     >
-      {places.map((p, i) => {
+      {show && places.map((p, i) => {
         const t = fresh.find((x) => x.id === p.id)!;
         return (
           <ThoughtBalloon

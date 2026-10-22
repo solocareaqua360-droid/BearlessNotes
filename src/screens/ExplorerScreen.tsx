@@ -261,20 +261,6 @@ const PROJECT_COVER_COLORS = [
   { name: 'Графіт', hex: '#6B7280' },
 ];
 
-// THE BALLOONS COME AFTER THE SWIPE (the user, 2026-10-22: «кульки вилетять на півсекунди пізніше»): in the projects style, coming back to
-// «Без проєкту» mounted the whole «Думки» card (and its physics and rise) in the very frames the band was still settling. Here the card's place
-// is held by an empty card of the same size, and the real one - balloons and all - is mounted a moment later.
-function LateThoughts() {
-  const S = useSoft();
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setReady(true), 450);
-    return () => clearTimeout(t);
-  }, []);
-  if (ready) return <ThoughtsFolder />;
-  return <View style={{ height: 168, borderRadius: 26, marginBottom: 14, backgroundColor: S.dark ? S.card : FEATURES.ourTones ? '#EFE9DE' : '#FFFDF8' }} />;
-}
-
 // The bin's place among the folder cards of «Модерний» - not a folder path anyone can make (no tag has it).
 const BIN_PATH = '\u0000bin';
 
@@ -2485,7 +2471,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         </View>
       )}
       {FEATURES.thoughts && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT) &&
-        (projectsHere ? <LateThoughts /> : <ThoughtsFolder />)}
+        <ThoughtsFolder late={projectsHere} />}
       {modernLook && !!path && cardTagOf(path) && (
         // Edge to edge and up under the bar: out of the list's own side and top padding.
         <View style={{ marginHorizontal: -20, marginTop: -listTopPad, marginBottom: 18 }}>
