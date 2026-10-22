@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LinearTransition } from 'react-native-reanimated';
 import { useSoft } from '../theme/soft';
@@ -13,7 +14,9 @@ export const NO_PROJECT = '';
 
 export type BandCount = { folders: number };
 
-const BAND_H = 116;
+const THIN_W = 54;
+const GAP = 8;
+const SIDE = 20;
 
 export default function ProjectsBand({
   groups,
@@ -21,19 +24,37 @@ export default function ProjectsBand({
   onFocus,
   counts,
   noneCount,
+  height,
+  topPad,
 }: {
   groups: Group[];
   focusId: string;
   onFocus: (id: string) => void;
   counts: Map<string, BandCount>;
   noneCount: number;
+  // The band stands as tall as an opened folder's cover (the user, 2026-10-22), with `topPad` clear for the top bar.
+  height: number;
+  topPad: number;
 }) {
   const S = useSoft();
+  const { width: winW } = useWindowDimensions();
+  const scroller = useRef<ScrollView>(null);
   const stops: { id: string; name: string; color: string | null; sub: string }[] = [
     { id: NO_PROJECT, name: 'Без проєкту', color: null, sub: word(noneCount) },
     ...groups.map((g) => ({ id: g.id, name: g.name, color: g.color, sub: word(counts.get(g.id)?.folders ?? 0) })),
   ];
   const at = Math.max(0, stops.findIndex((s) => s.id === focusId));
+  // The wide card is most of the screen; the others keep a fixed thin width and run on past the edge - the row is longer than the screen
+  // and slides, instead of squeezing every project into one view.
+  const wideW = Math.round(winW * 0.72);
+  const cardH = Math.max(150, height - topPad - 40);
+  const widths = stops.map((_, i) => (i === at ? wideW : THIN_W));
+  const offsetOf = (i: number) => widths.slice(0, i).reduce((x, w) => x + w + GAP, 0);
+  useEffect(() => {
+    // The previous strip peeks in at the left edge.
+    scroller.current?.scrollTo({ x: Math.max(0, offsetOf(at) - (SIDE + THIN_W + GAP)), animated: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [at, wideW, stops.length]);
   const step = (d: number) => {
     const next = stops[Math.max(0, Math.min(stops.length - 1, at + d))];
     if (next && next.id !== focusId) onFocus(next.id);
@@ -47,31 +68,39 @@ export default function ProjectsBand({
       else if (e.translationX > 40 || e.velocityX > 600) step(-1);
     });
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { height, paddingTop: topPad }]}>
       <GestureDetector gesture={swipe}>
-        <View style={styles.row}>
-          {stops.map((s) => {
-            const on = s.id === focusId;
-            const bg = s.color ? tint(s.color, S.dark ? 0.38 : 0.28, S.card) : S.fill;
-            return (
-              <Animated.View key={s.id || 'none'} layout={LinearTransition.duration(220)} style={on ? styles.wide : styles.thin}>
-                <Pressable
-                  onPress={() => onFocus(s.id)}
-                  accessibilityLabel={s.name}
-                  style={[styles.card, { backgroundColor: bg }, on ? styles.cardWide : styles.cardThin]}
-                >
-                  {on ? (
-                    <View>
-                      <Text numberOfLines={1} style={[styles.name, { color: S.ink }]}>{s.name}</Text>
-                      <Text numberOfLines={1} style={[styles.sub, { color: S.ink2 }]}>{s.sub}</Text>
-                    </View>
-                  ) : (
-                    <Text numberOfLines={1} style={[styles.turned, { color: S.ink }]}>{s.name}</Text>
-                  )}
-                </Pressable>
-              </Animated.View>
-            );
-          })}
+        <View style={{ height: cardH }}>
+          <ScrollView
+            ref={scroller}
+            horizontal
+            scrollEnabled={false}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: SIDE, gap: GAP }}
+          >
+            {stops.map((s, i) => {
+              const on = i === at;
+              const bg = s.color ? tint(s.color, S.dark ? 0.38 : 0.28, S.card) : S.fill;
+              return (
+                <Animated.View key={s.id || 'none'} layout={LinearTransition.duration(220)} style={{ width: widths[i], height: cardH }}>
+                  <Pressable
+                    onPress={() => onFocus(s.id)}
+                    accessibilityLabel={s.name}
+                    style={[styles.card, { backgroundColor: bg }, on ? styles.cardWide : styles.cardThin]}
+                  >
+                    {on ? (
+                      <View>
+                        <Text numberOfLines={2} style={[styles.name, { color: S.ink }]}>{s.name}</Text>
+                        <Text numberOfLines={1} style={[styles.sub, { color: S.ink2 }]}>{s.sub}</Text>
+                      </View>
+                    ) : (
+                      <Text numberOfLines={1} style={[styles.turned, { color: S.ink, width: cardH - 28 }]}>{s.name}</Text>
+                    )}
+                  </Pressable>
+                </Animated.View>
+              );
+            })}
+          </ScrollView>
         </View>
       </GestureDetector>
       <View style={styles.dots}>
@@ -102,16 +131,13 @@ function tint(hex: string, amount: number, base: string): string {
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: 14 },
-  row: { flexDirection: 'row', gap: 6, height: BAND_H },
-  wide: { flex: 1, minWidth: 0 },
-  thin: { width: 34 },
-  card: { flex: 1, borderRadius: 20, overflow: 'hidden' },
-  cardWide: { justifyContent: 'flex-end', padding: 12 },
+  wrap: { marginHorizontal: -20 },
+  card: { flex: 1, borderRadius: 26, overflow: 'hidden' },
+  cardWide: { justifyContent: 'flex-end', padding: 18 },
   cardThin: { alignItems: 'center', justifyContent: 'center' },
-  name: { fontFamily: SOFT_SEMIBOLD, fontSize: 20, letterSpacing: -0.4 },
-  sub: { fontFamily: SOFT_MEDIUM, fontSize: 12, marginTop: 2 },
-  turned: { fontFamily: SOFT_SEMIBOLD, fontSize: 12, width: BAND_H - 20, textAlign: 'center', transform: [{ rotate: '-90deg' }] },
-  dots: { flexDirection: 'row', justifyContent: 'center', gap: 7, paddingTop: 10 },
+  name: { fontFamily: SOFT_SEMIBOLD, fontSize: 30, letterSpacing: -0.6 },
+  sub: { fontFamily: SOFT_MEDIUM, fontSize: 14, marginTop: 3 },
+  turned: { fontFamily: SOFT_SEMIBOLD, fontSize: 14, textAlign: 'center', transform: [{ rotate: '-90deg' }] },
+  dots: { flexDirection: 'row', justifyContent: 'center', gap: 7, paddingTop: 12 },
   dot: { width: 6, height: 6, borderRadius: 3 },
 });

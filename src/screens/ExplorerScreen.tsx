@@ -2269,13 +2269,17 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     <View>
       {/* THE LIVING FOLDER of thoughts, first on the explorer's first level (components/thoughts). */}
       {projectsHere && (
+        <View style={{ marginTop: -listTopPad, marginBottom: 14 }}>
         <ProjectsBand
+          height={folderCoverHeight(winH, insets.top)}
+          topPad={listTopPad}
           groups={groups.filter((g) => !g.archived).sort((a, b) => a.name.localeCompare(b.name))}
           focusId={focusProj}
           onFocus={changeFocusProj}
           counts={bandCounts}
           noneCount={bandNoneCount}
         />
+        </View>
       )}
       {FEATURES.thoughts && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT) && <ThoughtsFolder />}
       {modernLook && !!path && cardTagOf(path) && (
