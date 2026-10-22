@@ -292,9 +292,30 @@ export default function TableBlockContent({
     return false;
   }
 
+  // The check mark / Enter in the formula bar. The keyboard stays up (the user, 2026-10-22: «було б ідеально»): typing goes on in the cell
+  // below, or in the next cell of the row when this was the last row. Only when that cell is itself a formula (it would open the bar again)
+  // is the cell let go, and the keyboard with it - the way it was.
   function confirmFormula() {
     if (selected && draftText !== null) setCell(selected.r, selected.c, draftText);
     setDraftText(null);
+    let next: { r: number; c: number } | null = null;
+    if (selected) {
+      const below = { r: selected.r + 1, c: selected.c };
+      const aside = { r: selected.r, c: selected.c + 1 };
+      const free = (p: { r: number; c: number }) => p.r < rows.length && p.c < columnCount && !(rows[p.r]?.cells[p.c] ?? '').trim().startsWith('=');
+      next = free(below) ? below : free(aside) ? aside : null;
+    }
+    if (next) {
+      setSelected(next);
+      setSpan('cell');
+      const key = `${next.r}:${next.c}`;
+      [60, 200].forEach((ms) =>
+        setTimeout(() => {
+          if (focusedCellRef.current !== key) cellRefs.current.get(key)?.focus();
+        }, ms)
+      );
+      return;
+    }
     // Let the cell go, too. Still selected, it stayed a field showing
     // its own formula, so a finished "=A1+B1" never turned into its
     // answer - exactly what the user saw.
@@ -535,7 +556,7 @@ export default function TableBlockContent({
           autoCorrect={false}
           returnKeyType="done"
           onSubmitEditing={confirmFormula}
-          blurOnSubmit
+          blurOnSubmit={false}
         />
         <Pressable hitSlop={8} onPress={confirmFormula} style={styles.tableFormulaDoneButton}>
           <Ionicons name="checkmark" size={18} color="#fff" />
