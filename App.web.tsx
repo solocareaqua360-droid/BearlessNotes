@@ -5,9 +5,9 @@ import UnderToolbar from './src/components/desktop/UnderToolbar';
 import { inShell } from './src/navigation/desktopTabs';
 import { softTokens } from './src/theme/soft';
 import { IS_POINTER } from './src/utils/pointer';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { CommonActions } from '@react-navigation/native';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
   useFonts,
   Nunito_400Regular,
@@ -47,7 +47,7 @@ import ContextDock from './src/components/ContextDock';
 import DesktopRail from './src/components/DesktopRail';
 import Sidebar from './src/components/desktop/Sidebar';
 import Composer from './src/components/desktop/Composer';
-import { useRailPanel } from './src/navigation/navRail';
+import { useRailPanel, useRailPanelWidth } from './src/navigation/navRail';
 import RightColumn from './src/components/desktop/RightColumn';
 import StartPage, { CreateWatcher } from './src/components/desktop/StartPage';
 import { useStartFront } from './src/navigation/desktopTabs';
@@ -360,9 +360,19 @@ function FrameBHome() {
 
 // FRAME B's right column: what a screen publishes for the rail (the calendar's month + history + the feed of days).
 // The old rail drew it under the folder tree; the sidebar is navigation only, so it stands beside the column.
+const RIGHT_PANEL_W = 340;
 function FrameBRightPanel() {
   const panel = useRailPanel();
   const open = useInspectorOpen();
+  // The column stands at the width its content asks for and moves between widths smoothly (a note inside a tab wants
+  // more than a list of buttons). It never takes more than 45% of the window, so the main pane always keeps its room.
+  const wanted = useRailPanelWidth();
+  const windowW = useWindowDimensions().width;
+  const target = Math.max(RIGHT_PANEL_W, Math.min(wanted ?? RIGHT_PANEL_W, Math.round(windowW * 0.45)));
+  const width = useRef(new Animated.Value(target)).current;
+  useEffect(() => {
+    Animated.timing(width, { toValue: target, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+  }, [target, width]);
   const D = deskColors(softTokens(useTheme().scheme));
   // The panel folds from ITSELF (the user, 2026-10-20: «кнопка згортання повинна бути на самій панелі»): a round handle
   // on its left edge, halfway down, folds it; folded, a slim strip at the window's edge keeps the same handle to open it.
@@ -399,10 +409,10 @@ function FrameBRightPanel() {
     return <View style={{ width: 20, backgroundColor: D.chrome, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: D.line }}>{handle(true)}</View>;
   }
   return (
-    <View style={{ width: 340, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: D.line, paddingTop: 12, backgroundColor: D.chrome }}>
+    <Animated.View style={{ width, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: D.line, paddingTop: 12, backgroundColor: D.chrome }}>
       {panel}
       {handle(false)}
-    </View>
+    </Animated.View>
   );
 }
 

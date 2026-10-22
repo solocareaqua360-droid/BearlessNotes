@@ -103,26 +103,28 @@ export function useRailTree(): RailTree | null {
 // common, and inventing one would mean the rail knowing about both.
 // The claims work exactly as the tree's do.
 
-type PanelClaim = { id: string; value: ReactNode };
+type PanelClaim = { id: string; value: ReactNode; width?: number };
 
 let panelClaims: PanelClaim[] = [];
 const panelListeners = new Set<() => void>();
 
-function publishPanel(id: string, value: ReactNode | null) {
+function publishPanel(id: string, value: ReactNode | null, width?: number) {
   panelClaims =
     value === null
       ? panelClaims.filter((c) => c.id !== id)
-      : [...panelClaims.filter((c) => c.id !== id), { id, value }];
+      : [...panelClaims.filter((c) => c.id !== id), { id, value, width }];
   panelListeners.forEach((l) => l());
 }
 
-export function usePublishRailPanel(value: ReactNode | null): void {
+// `width`: the width this content wants the right column to stand at (a note inside a tab needs more than a list of
+// buttons). Left out, the column keeps its usual one; the column moves between the two smoothly.
+export function usePublishRailPanel(value: ReactNode | null, width?: number): void {
   const id = useId();
   // Only while the screen is in front: the tabs keep every screen mounted,
   // and the calendar's month went on standing in the rail under a board.
   const focused = useIsFocused();
   useEffect(() => {
-    publishPanel(id, focused ? value : null);
+    publishPanel(id, focused ? value : null, width);
   });
   useEffect(() => () => publishPanel(id, null), [id]);
 }
@@ -138,4 +140,17 @@ export function useRailPanel(): ReactNode | null {
     };
   }, []);
   return panel;
+}
+
+export function useRailPanelWidth(): number | undefined {
+  const [width, setWidth] = useState<number | undefined>(() => panelClaims[panelClaims.length - 1]?.width);
+  useEffect(() => {
+    const listener = () => setWidth(panelClaims[panelClaims.length - 1]?.width);
+    panelListeners.add(listener);
+    listener();
+    return () => {
+      panelListeners.delete(listener);
+    };
+  }, []);
+  return width;
 }

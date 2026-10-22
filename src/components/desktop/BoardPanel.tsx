@@ -31,6 +31,7 @@ export default function BoardPanel({
   selectedBadge,
   info,
   map,
+  onMapAdd,
   dbTabs,
   focusSearch,
 }: {
@@ -44,6 +45,8 @@ export default function BoardPanel({
   info?: ReactNode;
   // The board's map: its own tab («Карта дошки»).
   map?: ReactNode;
+  // «＋ ділянка» in the map tab's own header: writes the place now on screen into the map.
+  onMapAdd?: () => void;
   dbTabs?: { id: string; label: string; node: ReactNode; onClose: () => void }[];
   // Counts up each time the bar's «+» is pressed: the search field takes the caret.
   focusSearch?: number;
@@ -125,9 +128,16 @@ export default function BoardPanel({
           {selected}
         </ScrollView>
       ) : tab === 'map' ? (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
+        <View style={{ flex: 1 }}>
+          <View style={[styles.mapHead, { borderBottomColor: D.line }]}>
+            <Text style={[styles.hint, { color: D.ink3, flex: 1 }]}>Карта дошки</Text>
+            <Pressable onPress={onMapAdd} style={(state) => [styles.mapAdd, { backgroundColor: (state as { hovered?: boolean }).hovered ? D.fill : D.card, borderColor: D.line }]}>
+              <Ionicons name="add" size={14} color={D.ink} />
+              <Text style={{ fontSize: 12.5, color: D.ink, fontFamily: FONT_SEMIBOLD }}>ділянка</Text>
+            </Pressable>
+          </View>
           {map}
-        </ScrollView>
+        </View>
       ) : tab === 'info' ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
           {info}
@@ -144,6 +154,8 @@ const makeStyles = (_t: Theme) =>
     host: { flex: 1 },
     tabsScroll: { flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth },
     tabs: { flexDirection: 'row', gap: 2, paddingHorizontal: 10, paddingBottom: 10 },
+    mapHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+    mapAdd: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 28, paddingHorizontal: 10, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
     tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, height: 28, borderRadius: RADIUS.control },
     tabText: { fontSize: TYPE.sm, fontFamily: FONT_REGULAR, maxWidth: 130 },
     dot: { width: 6, height: 6, borderRadius: 3 },

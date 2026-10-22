@@ -155,7 +155,7 @@ import { usePublishRailPanel } from '../navigation/navRail';
 import { inspector } from '../navigation/inspector';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import BoardPanel, { BoardSelection, PanelPickList, type BoardTab } from '../components/desktop/BoardPanel';
-import { ensureBoardMap, mapDocIdOf, onBoardJump, type BoardView } from '../utils/boardMap';
+import { ensureBoardMap, onBoardJump, type BoardView } from '../utils/boardMap';
 import DocumentCardBlocks from '../components/DocumentCardBlocks';
 import { PAGE_H2, PAGE_TEXT, makeStyles as makeEditorStyles } from '../components/documentEditorStyles';
 import PagePreviewRow from '../components/PagePreviewRow';
@@ -2764,24 +2764,19 @@ export default function BoardScreen() {
   // whole viewport term cancels and this is what is left.
   // THE BOARD'S MAP (utils/boardMap): opened in the pane beside the board, «Додати ділянку» writes the place now on screen into it,
   // and the button of such a line (BlockRow) arrives here through onBoardJump.
-  async function openMap() {
-    try {
-      const id = await ensureBoardMap(boardId, title);
-      setPaneFullscreen(false);
-      setPaneDocId(id);
-    } catch (e) {
-      notify('Не вдалося відкрити карту', (e as Error).message);
-    }
-  }
-  async function addMapPlace() {
-    const id = mapDocIdOf(boardId);
-    if (paneDocId !== id) {
-      await openMap();
-      await new Promise((r) => setTimeout(r, 700));
-    }
+  // The map note stands inside the «Карта» tab of the right column (not beside the board): made on first need.
+  const [mapId, setMapId] = useState<string | null>(null);
+  const mapEditorRef = useRef<DocumentEditorHandle | null>(null);
+  useEffect(() => {
+    if (panelTab !== 'map' || mapId) return;
+    ensureBoardMap(boardId, title)
+      .then(setMapId)
+      .catch((e) => notify('Не вдалося відкрити карту', (e as Error).message));
+  }, [panelTab, mapId, boardId, title]);
+  function addMapPlace() {
     const c = viewCenter();
     const view: BoardView = { boardId, x: Math.round(c.x), y: Math.round(c.y), scale: Math.round(scale.value * 100) / 100 };
-    paneEditorRef.current?.appendBlock({ type: 'paragraph', text: 'Ділянка', boardView: view });
+    mapEditorRef.current?.appendBlock({ type: 'paragraph', text: 'Ділянка', boardView: view });
   }
   useEffect(
     () =>
@@ -8036,18 +8031,19 @@ export default function BoardScreen() {
           ) : undefined
         }
         map={
-          <View style={{ gap: 10 }}>
-            <Text style={{ fontSize: 12.5, color: '#9E9B93', lineHeight: 18 }}>
-              Карта дошки: нотатка поруч із дошкою. Додайте ділянку, і в карті з'явиться рядок із кнопкою «Перейти» до цього місця.
-            </Text>
-            <Pressable onPress={openMap} style={{ backgroundColor: '#24211D', borderRadius: 12, paddingVertical: 10, alignItems: 'center' }}>
-              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>{paneDocId === mapDocIdOf(boardId) ? 'Карта відкрита' : 'Відкрити карту'}</Text>
-            </Pressable>
-            <Pressable onPress={addMapPlace} style={{ backgroundColor: '#EFEAE2', borderRadius: 12, paddingVertical: 10, alignItems: 'center' }}>
-              <Text style={{ color: '#24211D', fontSize: 13, fontWeight: '600' }}>Додати ділянку</Text>
-            </Pressable>
-          </View>
+          mapId ? (
+            <DocumentEditorScreen
+              key={mapId}
+              ref={mapEditorRef}
+              embedded
+              documentId={mapId}
+              navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
+            />
+          ) : (
+            <View />
+          )
         }
+        onMapAdd={addMapPlace}
         info={
           <View style={{ gap: 8 }}>
             <View style={{ backgroundColor: '#FFFFFF', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 6 }}>
@@ -8066,7 +8062,9 @@ export default function BoardScreen() {
           </View>
         }
       />
-    ) : null
+    ) : null,
+    // The map is a note and wants room: the column widens for it and returns to its own width on any other tab.
+    panelTab === 'map' ? 560 : undefined
   );
 
   // The fields each database's cards show ON THIS BOARD - see
