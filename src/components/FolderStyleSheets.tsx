@@ -4,8 +4,10 @@ import { ScrollView } from 'react-native-gesture-handler';
 import Sheet from './surfaces/Sheet';
 import { Ionicons } from './icons/Ionicons';
 import { useTheme } from '../theme/ThemeProvider';
-import { onSnapshot } from '../firestore';
-import { ownedQuery } from '../utils/owned';
+import { collection, onSnapshot } from '../firestore';
+import { db } from '../firebase';
+import { addDoc, ownedQuery } from '../utils/owned';
+import { groupKindFields } from '../utils/groups';
 import { listenError } from '../utils/listenError';
 import { CARD_COLORS, CARD_SIZES, FOLDER_CARD_SIZES, type CardSize } from '../constants/cardPalette';
 import type { Group, Tag } from '../types';
@@ -62,10 +64,24 @@ export function FolderProjectsSheet({
     setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
     setRoots((prev) => prev.filter((x) => x !== id));
   };
+  // A project made right here, from the folder's own window (2026-10-22: it could only be made inside a note): it is ticked at once, so
+  // «Готово» files the folder under it. Seen in every base, like one made on the old projects screen.
+  const [newName, setNewName] = useState('');
+  async function createProject() {
+    const name = newName.trim();
+    if (!name) return;
+    setNewName('');
+    const made = await addDoc(collection(db, 'groups'), {
+      name,
+      color: NEW_PROJECT_COLORS[groups.length % NEW_PROJECT_COLORS.length],
+      ...groupKindFields(['document', 'photo', 'file', 'link-video', 'link-geo', 'link-other', 'board', 'task', 'flashcard']),
+    });
+    setPicked((prev) => (prev.includes(made.id) ? prev : [...prev, made.id]));
+  }
   const toggleRoot = (id: string) => setRoots((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   return (
     <Sheet visible={visible} onClose={onClose} title="Проєкти папки" subtitle={folderName}>
-      {groups.length === 0 && <Text style={[styles.hint, { color: theme.ink.faint }]}>Проєктів ще немає. Створи їх у будь-якій базі, у виборі проєкту.</Text>}
+      {groups.length === 0 && <Text style={[styles.hint, { color: theme.ink.faint }]}>Проєктів ще немає. Створіть перший нижче.</Text>}
       <ScrollView style={styles.listBox} showsVerticalScrollIndicator={false}>
       {groups.map((g) => {
         const on = picked.includes(g.id);
@@ -93,6 +109,20 @@ export function FolderProjectsSheet({
         );
       })}
       </ScrollView>
+      <View style={[styles.newRow, { borderColor: theme.edge.hairline }]}>
+        <TextInput
+          style={[styles.newInput, { color: theme.ink.primary }]}
+          value={newName}
+          onChangeText={setNewName}
+          placeholder="Новий проєкт"
+          placeholderTextColor={theme.ink.faint}
+          onSubmitEditing={createProject}
+          returnKeyType="done"
+        />
+        <Pressable hitSlop={8} onPress={createProject} accessibilityLabel="Створити проєкт">
+          <Ionicons name="add-circle" size={28} color={newName.trim() ? theme.accent : theme.ink.faint} />
+        </Pressable>
+      </View>
       <Text style={[styles.hint, { color: theme.ink.faint }]}>
         Папка потрапляє лише в позначені проєкти. «Корінь» робить саму папку проєктом: у ньому одразу видно її підпапки. Папки всередині неї не успадковують їх, їм проєкт призначають окремо.
       </Text>
@@ -107,6 +137,8 @@ export function FolderProjectsSheet({
     </Sheet>
   );
 }
+
+const NEW_PROJECT_COLORS = ['#3B82F6', '#16A34A', '#8B5CF6', '#F97316', '#EC4899', '#14B8A6', '#EAB308'];
 
 const PATTERNS: { id: NonNullable<NonNullable<Tag['card']>['pattern']>; label: string }[] = [
   { id: 'none', label: 'Немає' },
@@ -243,6 +275,8 @@ export function FolderCardSheet({
 
 const styles = StyleSheet.create({
   listBox: { maxHeight: 360 },
+  newRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10, paddingLeft: 14, paddingRight: 8, borderWidth: 1.5, borderRadius: 16, minHeight: 48 },
+  newInput: { flex: 1, fontSize: 15.5, paddingVertical: 10 },
   hint: { fontSize: 12, lineHeight: 17, marginTop: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48 },
   box: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
