@@ -1252,6 +1252,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' as const },
         ...(coll ? [] : [{ id: 'look', label: 'Іконка й колір', icon: 'color-palette-outline' as const }]),
         { id: 'card', label: 'Вигляд картки', icon: 'albums-outline' as const },
+        ...(FEATURES.explorerProjects && !coll ? [{ id: 'projects', label: 'Проєкти…', icon: 'folder-open-outline' as const }] : []),
         ...(coll ? [{ id: 'unplace', label: 'Прибрати з провідника', icon: 'eye-off-outline' as const }] : []),
         { id: 'delete', label: coll ? 'Видалити підбірку' : 'Видалити папку', icon: 'trash-outline' as const, tone: 'danger' as const },
       ],
@@ -1275,7 +1276,13 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       return;
     }
     if (choice === 'rename') setRenamingFolder(f);
-    else if (choice === 'look' || choice === 'card') {
+    else if (choice === 'projects') {
+      try {
+        setProjectsFor(await tagForPath(f.path));
+      } catch (e) {
+        notify('Не вдалося відкрити', (e as Error).message);
+      }
+    } else if (choice === 'look' || choice === 'card') {
       // A folder shown only through the folders under it has no tag of its own yet: make it.
       try {
         const rep = await tagForPath(f.path);
