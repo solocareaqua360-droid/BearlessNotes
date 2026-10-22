@@ -184,6 +184,7 @@ import { usePins } from '../navigation/pinned';
 import NotePanel from '../components/desktop/NotePanel';
 import NoteInspector from '../components/desktop/NoteInspector';
 import NoteOutline from '../components/NoteOutline';
+import { heldTable, touchWasInsideTable } from '../utils/tableTap';
 import { currentSection, noteOutline } from '../utils/noteOutline';
 import FormatPanel, { type FormatBlockKind } from '../components/desktop/FormatPanel';
 import SlashPopup from '../components/desktop/SlashPopup';
@@ -6505,6 +6506,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {!(canvasMode && !embedded) && (
       <ScrollView
         ref={scrollViewRef}
+        // A table that is only selected (no keyboard) lets go of the block when a touch begins anywhere but in it - see utils/tableTap.
+        onTouchStart={(e) => {
+          const held = heldTable();
+          if (held && focusedBlockIdRef.current === held && !touchWasInsideTable(e.nativeEvent.timestamp)) deactivateActiveInput();
+        }}
         // Its content - the sheet - is what a note's card grows into
         // (utils/morph). Not in a pane or embedded: those open in place.
         {...(!embedded && !('pane' in props) ? morphKey(`note:${documentId}`, 'child') : {})}

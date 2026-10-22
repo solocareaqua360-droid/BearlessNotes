@@ -13,7 +13,7 @@ import { columnLetter, displayValueOf, parseFormattedText } from '../utils/docum
 import { ask } from './surfaces/Ask';
 import { usePublishEditorAccessory } from './editorAccessory';
 import FormattedText from './FormattedText';
-import { takeTableTap } from '../utils/tableTap';
+import { holdTable, markTouchInsideTable, takeTableTap } from '../utils/tableTap';
 import TableCellMenu from './TableCellMenu';
 import { useDensity } from '../hooks/useDensity';
 
@@ -94,6 +94,13 @@ export default function TableBlockContent({
   // The sink brings the keyboard only when it is already up (another block was being written in): then the first tap must not take it down -
   // the editor leaves writing mode the moment it hides. With no keyboard, a first tap only selects, and nothing rises.
   const [keyboardUp, setKeyboardUp] = useState(Keyboard.isVisible());
+  // Selected and not typing: this table asks the note to let go of it on a touch that lands elsewhere (see utils/tableTap).
+  const holding = canEdit && !!selected && !editing && !formulaFocused;
+  useEffect(() => {
+    if (!holding) return;
+    holdTable(block.id);
+    return () => holdTable(null);
+  }, [holding, block.id]);
   useEffect(() => {
     const a = Keyboard.addListener('keyboardDidShow', () => { keyboardUpRef.current = true; setKeyboardUp(true); });
     const b = Keyboard.addListener('keyboardDidHide', () => { keyboardUpRef.current = false; setKeyboardUp(false); });
@@ -707,7 +714,7 @@ export default function TableBlockContent({
   // was tried the same day and refused: «жах»). The selected cell has a frame, three
   // dots in its right corner (its menu) and, on its right edge, the grip that sets the column's width.
   return (
-    <View style={styles.tableBlock}>
+    <View style={styles.tableBlock} onTouchStart={(e) => markTouchInsideTable(e.nativeEvent.timestamp)}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingRight: SCROLL_PAST }}>
         <View style={styles.tableFrame}>
           {/* The guide. Inside the frame, so it scrolls with the grid and

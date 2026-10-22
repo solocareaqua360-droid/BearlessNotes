@@ -19,3 +19,22 @@ export function takeTableTap(blockId: string): TableTap | null {
   pending = null;
   return tap;
 }
+
+// A table that is only SELECTED (first tap: a frame and the dots, no keyboard, no typing) has no keyboard whose lowering would hand the block back,
+// so nothing ever deactivated it - the user: «треба тапнути на інше поле, інакше таргетка не збивається» (2026-10-22). It registers here while
+// it is in that state; the note's scroll area looks at every touch, and one that does not begin inside the table releases the block.
+let holder: string | null = null;
+let insideStamp = -1;
+
+export function holdTable(blockId: string | null) {
+  holder = blockId;
+}
+export function heldTable(): string | null {
+  return holder;
+}
+export function markTouchInsideTable(timestamp: number) {
+  insideStamp = timestamp;
+}
+export function touchWasInsideTable(timestamp: number): boolean {
+  return insideStamp === timestamp;
+}

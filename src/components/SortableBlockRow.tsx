@@ -252,7 +252,9 @@ function SortableBlockRow({
       .runOnJS(true)
       .onEnd(() => onToggleSelected(item.id))
   );
-  const gesture = canEditText ? Gesture.Pan().enabled(false) : Gesture.Race(sweepGesture, dragGesture);
+  // A TABLE THAT IS ONLY SELECTED still answers the left swipe that picks a block (the user, 2026-10-22: the whole table must be pickable
+  // without tapping elsewhere first). Its own long press is left to the cells.
+  const gesture = canEditText ? (item.type === 'table' ? sweepGesture : Gesture.Pan().enabled(false)) : Gesture.Race(sweepGesture, dragGesture);
 
   // Every row currently being dragged - whether it's the one lone block or
   // one of several in a multi-select bulk move - eases toward faded and
