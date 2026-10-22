@@ -47,7 +47,7 @@ import type { Block, CustomDatabase, CustomDatabaseRow, FieldDef } from '../type
 
 // The collections the owner check lists, and the four it misses (written
 // with an owner all the same, so the same query reads them).
-const COLLECTIONS = [...OWNED_COLLECTIONS, 'chat', 'linkArticles', 'linkArticleTranslations', 'scheduleCellStatuses', 'chatBoardCopies'];
+const COLLECTIONS = [...OWNED_COLLECTIONS, 'chat', 'linkArticles', 'linkArticleTranslations', 'scheduleCellStatuses', 'chatBoardCopies', 'assistantChats'];
 
 const GOOGLE_DOC = 'application/vnd.google-apps.document';
 // How long a dated copy is kept before it goes to the Drive's bin.
