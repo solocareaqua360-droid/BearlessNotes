@@ -1,3 +1,5 @@
+import { recordGemini } from './geminiUsage';
+
 // Talks to Google's Generative Language API directly from the device,
 // with the user's OWN key (see geminiKey.ts) - this app ships no key of
 // its own, and never will (see the project's "before publishing"
@@ -58,6 +60,8 @@ export async function askGemini(
     const message = (data?.error?.message as string | undefined) ?? `Gemini відповів ${response.status}`;
     throw new GeminiError(message, response.status);
   }
+  // Every answer is counted (the spend counter missed these one-shot calls until 2026-10-22).
+  recordGemini('text', options.model ?? GEMINI_MODEL, data?.usageMetadata);
   const parts = data?.candidates?.[0]?.content?.parts as { text?: string }[] | undefined;
   const text = parts?.map((p) => p.text ?? '').join('').trim();
   if (!text) throw new GeminiError('Gemini не дав відповіді - можливо, запит потрапив під фільтр безпеки');

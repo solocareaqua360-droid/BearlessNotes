@@ -163,6 +163,7 @@ export default function DeskDock({
   searchLabel,
   plusEl,
   extraEl,
+  rootExtraEl,
   multiIcon,
   onMulti,
   backIcon,
@@ -180,6 +181,9 @@ export default function DeskDock({
   searchLabel: string;
   plusEl: ReactElement;
   extraEl?: ReactElement | null;
+  // ON A ROOT DESK, left of «+»: the AI conversation's round button (screens/AssistantScreen, 2026-10-22). Drawn only where
+  // the room between the desks' pill and «+» holds it.
+  rootExtraEl?: ReactElement | null;
   multiIcon: ReactElement;
   onMulti: () => void;
   backIcon: ReactElement;
@@ -411,6 +415,9 @@ export default function DeskDock({
       <Animated.View style={[StyleSheet.absoluteFill, rightCompact]} pointerEvents="box-none" needsOffscreenAlphaCompositing>
       {/* "+": where it stands it never moves - the pill's drop travels to it, and the field grows round it. */}
       <GrowOnTouch style={[styles.slot, { left: plusLeft, top: (H - PLUS) / 2 }]}>{plusEl}</GrowOnTouch>
+      {rootExtraEl && root && extraLeft >= PILL_FULL + 8 && (
+        <GrowOnTouch style={[styles.slot, { left: extraLeft, top: (H - PLUS) / 2 }]}>{rootExtraEl}</GrowOnTouch>
+      )}
       {/* The circle at the far end: multitasking on a desk, the way back inside. */}
       <Animated.View style={[styles.circleWrap, { left: width - BACK, top: (H - BACK) / 2, width: BACK, height: BACK }, circleGrow.style]}>
       <Pressable

@@ -45,6 +45,14 @@ async function load(): Promise<GeminiUsage> {
 
 type Meta = { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number } | undefined;
 
+// What one answer cost, in dollars, by the same price list (the assistant shows it under its field).
+export function costOfGemini(model: string, usage: Meta): number {
+  const price = PRICES[model] ?? FALLBACK;
+  const tokensIn = usage?.promptTokenCount ?? 0;
+  const tokensOut = (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0);
+  return (tokensIn * price.input + tokensOut * price.output) / 1e6;
+}
+
 // One answer from Gemini. Writes are queued one behind another so two answers landing together both count.
 export function recordGemini(kind: 'tts' | 'text', model: string, usage: Meta, ttsSeconds = 0) {
   chain = chain.then(async () => {

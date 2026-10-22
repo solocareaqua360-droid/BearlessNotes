@@ -2438,6 +2438,28 @@ export default function ContextDock() {
                   </Pressable>
                 </SlideOpen>
               }
+              rootExtraEl={
+                FEATURES.assistant ? (
+                  <Pressable
+                    onPress={() => navigationRef.isReady() && (navigationRef.navigate as (name: string) => void)('Assistant')}
+                    accessibilityLabel="Розмова з ШІ"
+                    style={({ pressed }) => [
+                      styles.softFieldCreate,
+                      {
+                        width: DESK_PLUS,
+                        height: DESK_PLUS,
+                        borderRadius: DESK_PLUS / 2,
+                        backgroundColor: pressed ? soft.fillSolid : soft.card,
+                        borderWidth: 2,
+                        borderColor: soft.accent,
+                        boxShadow: soft.shadow,
+                      },
+                    ]}
+                  >
+                    <Ionicons name={'sparkles' as keyof typeof Ionicons.glyphMap} size={20} color={soft.accent} />
+                  </Pressable>
+                ) : null
+              }
               extraEl={
                 right.extra ? (
                   <Pressable

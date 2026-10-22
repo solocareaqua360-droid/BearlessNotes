@@ -87,6 +87,8 @@ export type RootStackParamList = {
   Groups: undefined;
   Explorer: undefined;
   Thoughts: undefined;
+  // The conversation with the AI (screens/AssistantScreen), from the start desks' round button beside «+».
+  Assistant: undefined;
   TagItems: { tagId: string };
   // Absent -> the menu (list of sections, phone-settings style). A
   // section pushes a SECOND instance of this same screen with its own

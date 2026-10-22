@@ -18,6 +18,7 @@ import FlashcardsScreen from './screens/FlashcardsScreen';
 import CustomDatabaseScreen from './screens/CustomDatabaseScreen';
 import TagManageScreen from './screens/TagManageScreen';
 import GroupsScreen from './screens/GroupsScreen';
+import AssistantScreen from './screens/AssistantScreen';
 import ExplorerScreen from './screens/ExplorerScreen';
 import ThoughtsScreen from './screens/ThoughtsScreen';
 import TagItemsScreen from './screens/TagItemsScreen';
@@ -112,6 +113,7 @@ export default function RootNavigator() {
       <Stack.Screen name="Groups" component={GroupsScreen} />
       <Stack.Screen name="Explorer" component={ExplorerScreen} />
       <Stack.Screen name="Thoughts" component={ThoughtsScreen} />
+      <Stack.Screen name="Assistant" component={AssistantScreen} />
       <Stack.Screen name="TagItems" component={TagItemsScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="Search" component={SearchScreen} />

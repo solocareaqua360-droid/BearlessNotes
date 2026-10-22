@@ -4,6 +4,10 @@
 // code stays, and whatever it already made (a sticker block in a note, a
 // timecode in a lesson's text) still shows. One line brings it back.
 export const FEATURES = {
+  // THE AI CONVERSATION, step 1 (2026-10-22, the user's «так»): a round button beside «+» on the start desks opens
+  // screens/AssistantScreen - live Gemini, answers as blocks, a block held is remembered / told in more detail / copied.
+  // Off: the button is gone; the conversation kept on the phone stays.
+  assistant: true,
   // «Проєкти» у «Стилі провідника» (2026-10-22): смуга-гармошка проєктів на першому рівні, папки лише вибраного проєкту, «Без проєкту» першим.
   explorerProjects: true,
   // The explorer shows photos, videos, geo points and links ONLY when they were put in a folder (by the «+» inside
