@@ -8,8 +8,9 @@ import { ask, notify } from '../components/surfaces/Ask';
 import { useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
-import { askAssistant, blocksOf, loadChat, newChat, saveChat, type AssistantChat, type AssistantMessage } from '../utils/assistant';
+import { askAssistant, blocksOf, groupsOf, loadChat, newChat, saveChat, type AssistantChat, type AssistantMessage } from '../utils/assistant';
 import { useGeminiUsage } from '../utils/geminiUsage';
+import { hapticPickUp } from '../utils/haptics';
 import { collection } from '../firestore';
 import { db } from '../firebase';
 import { addDoc } from '../utils/owned';
@@ -17,9 +18,10 @@ import { newBlock } from '../utils/documentBlocks';
 
 // THE CONVERSATION WITH THE AI (step 1, 2026-10-22; the sketch is the canvas DsJtJiEDSEMWdhomAgJreE, frame «2. Розмова»).
 // Opened from the round button beside «+» on the start desks: a thought to talk over comes as suddenly as one for «Думки».
-// Plain talk, no modes and no buttons hanging over it (the user: they «лякають»). Each answer is a stack of BLOCKS; a block
-// held shows its three actions above it - «Запам'ятати», «Детальніше», «Копіювати». What was remembered goes into a note
-// with «В нотатку», at the end of the talk, when the user wants it.
+// Plain talk, no modes and no buttons hanging over it (the user: they «лякають»). Each answer is a stack of BLOCKS.
+// A block HELD starts picking: taps add or take away more blocks (a topic is often told over several of them - the user,
+// the same evening), and while anything is picked the field gives way to the picked blocks' actions: remember them as ONE
+// memory, ask about them in more detail together, copy them. What was remembered goes into a note with «В нотатку».
 
 const blockKey = (messageId: string, index: number) => `${messageId}:${index}`;
 
@@ -32,8 +34,8 @@ export default function AssistantScreen() {
   const [chat, setChat] = useState<AssistantChat | null>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
-  // The block whose actions are showing (held), if any.
-  const [held, setHeld] = useState<string | null>(null);
+  // The blocks picked right now, in the order they were picked.
+  const [picked, setPicked] = useState<string[]>([]);
   const scroll = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -44,14 +46,30 @@ export default function AssistantScreen() {
     saveChat(next);
   };
 
-  const remembered = useMemo(() => new Set(chat?.remembered ?? []), [chat]);
+  const groups = useMemo(() => (chat ? groupsOf(chat) : []), [chat]);
+  // Each remembered block -> its group, and whether it is the last block of it (where «у пам'яті» is written).
+  const memo = useMemo(() => {
+    const m = new Map<string, { last: boolean }>();
+    groups.forEach((g) => g.forEach((k, i) => m.set(k, { last: i === g.length - 1 })));
+    return m;
+  }, [groups]);
+  // Every block's text by its key, in the order of the conversation - picked blocks are read back in that order.
+  const blockTexts = useMemo(() => {
+    const out: { key: string; text: string }[] = [];
+    (chat?.messages ?? []).forEach((m) => {
+      if (m.role !== 'model' || m.error) return;
+      blocksOf(m.text).forEach((text, i) => out.push({ key: blockKey(m.id, i), text }));
+    });
+    return out;
+  }, [chat]);
+  const textsOf = (keys: string[]) => blockTexts.filter((b) => keys.includes(b.key)).map((b) => b.text);
   const lastCost = [...(chat?.messages ?? [])].reverse().find((m) => m.role === 'model' && m.costUsd !== undefined)?.costUsd;
   const chatCost = (chat?.messages ?? []).reduce((sum, m) => sum + (m.costUsd ?? 0), 0);
 
   async function send(text: string) {
     const clean = text.trim();
     if (!clean || !chat || busy) return;
-    setHeld(null);
+    setPicked([]);
     const mine: AssistantMessage = { id: `m${Date.now()}`, role: 'user', text: clean, at: Date.now() };
     const withMine = { ...chat, messages: [...chat.messages, mine] };
     update(withMine);
@@ -67,29 +85,40 @@ export default function AssistantScreen() {
     }
   }
 
-  function toggleRemember(key: string) {
-    if (!chat) return;
-    const has = chat.remembered.includes(key);
-    update({ ...chat, remembered: has ? chat.remembered.filter((k) => k !== key) : [...chat.remembered, key] });
-    setHeld(null);
+  function hold(key: string) {
+    hapticPickUp();
+    setPicked((p) => (p.includes(key) ? p : [...p, key]));
+  }
+  function tap(key: string) {
+    if (picked.length === 0) return;
+    setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]));
   }
 
-  // The remembered blocks in the order they were said.
-  function rememberedTexts(c: AssistantChat): string[] {
-    const out: string[] = [];
-    c.messages.forEach((m) => {
-      if (m.role !== 'model' || m.error) return;
-      blocksOf(m.text).forEach((b, i) => {
-        if (c.remembered.includes(blockKey(m.id, i))) out.push(b);
-      });
-    });
-    return out;
+  // All picked already remembered: forget them. Otherwise they become ONE memory, taken out of any they were in.
+  const allRemembered = picked.length > 0 && picked.every((k) => memo.has(k));
+  function rememberPicked() {
+    if (!chat || picked.length === 0) return;
+    const ordered = blockTexts.map((b) => b.key).filter((k) => picked.includes(k));
+    const rest = groupsOf(chat)
+      .map((g) => g.filter((k) => !picked.includes(k)))
+      .filter((g) => g.length > 0);
+    const next = allRemembered ? rest : [...rest, ordered];
+    update({ ...chat, groups: next, remembered: next.flat() });
+    setPicked([]);
+  }
+  function moreAboutPicked() {
+    const texts = textsOf(picked);
+    if (texts.length === 0) return;
+    setPicked([]);
+    send(texts.length === 1 ? `Розкажи детальніше про це: «${texts[0]}»` : `Розкажи детальніше про це:\n${texts.map((t) => `«${t}»`).join('\n')}`);
+  }
+  function copyPicked() {
+    Clipboard.setStringAsync(textsOf(picked).join('\n\n')).catch(() => {});
+    setPicked([]);
   }
 
   async function toNote() {
-    if (!chat) return;
-    const texts = rememberedTexts(chat);
-    if (texts.length === 0) return;
+    if (!chat || groups.length === 0) return;
     const firstAsk = chat.messages.find((m) => m.role === 'user')?.text ?? 'Розмова';
     const title = firstAsk.length > 60 ? `${firstAsk.slice(0, 57).trim()}…` : firstAsk;
     try {
@@ -98,7 +127,8 @@ export default function AssistantScreen() {
         title,
         createdAt: now,
         updatedAt: now,
-        blocks: texts.map((text) => ({ ...newBlock(), type: 'paragraph', text })),
+        // One memory = one block, its parts as paragraphs of it.
+        blocks: groups.map((g) => ({ ...newBlock(), type: 'paragraph', text: textsOf(g).join('\n\n') })),
       });
       navigation.navigate('Editor', { documentId: ref.id });
     } catch (e) {
@@ -112,15 +142,15 @@ export default function AssistantScreen() {
       actions: [{ id: 'new', label: 'Нова розмова', icon: 'add' as const }],
     });
     if (choice === 'new') {
-      const fresh = newChat();
-      update(fresh);
-      setHeld(null);
+      update(newChat());
+      setPicked([]);
     }
   }
 
   const messages = chat?.messages ?? [];
-  const count = chat?.remembered.length ?? 0;
+  const count = groups.length;
   const styles = useMemo(() => makeStyles(S), [S]);
+  const picking = picked.length > 0;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -145,11 +175,12 @@ export default function AssistantScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
-        onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}
-        onScrollBeginDrag={() => setHeld(null)}
+        onContentSizeChange={() => {
+          if (!picking) scroll.current?.scrollToEnd({ animated: true });
+        }}
       >
         {messages.length === 0 && !busy ? (
-          <Text style={styles.empty}>Про що хочете поговорити? Пишіть як зручно, хоч хаотично. Утримайте абзац відповіді, щоб запам'ятати його.</Text>
+          <Text style={styles.empty}>Про що хочете поговорити? Пишіть як зручно, хоч хаотично. Утримайте абзац відповіді, щоб вибрати його, а тапами додайте ще.</Text>
         ) : null}
         {messages.map((m) =>
           m.role === 'user' ? (
@@ -164,44 +195,24 @@ export default function AssistantScreen() {
             <View key={m.id} style={styles.answer}>
               {blocksOf(m.text).map((b, i) => {
                 const key = blockKey(m.id, i);
-                const on = remembered.has(key);
+                const mem = memo.get(key);
+                const on = picked.includes(key);
                 return (
-                  <View key={key} style={{ position: 'relative' }}>
-                    <Pressable
-                      onLongPress={() => setHeld(key)}
-                      onPress={() => setHeld(null)}
-                      delayLongPress={350}
-                      style={[styles.block, on && styles.blockOn, held === key && styles.blockHeld]}
-                    >
-                      <Text style={styles.blockText}>{b}</Text>
-                      {on ? <Text style={styles.memo}>у пам'яті</Text> : null}
-                    </Pressable>
-                    {held === key ? (
-                      <View style={styles.actions}>
-                        <Pressable onPress={() => toggleRemember(key)} style={styles.actionMain}>
-                          <Text style={styles.actionMainText}>{on ? 'Забути' : "Запам'ятати"}</Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => {
-                            setHeld(null);
-                            send(`Розкажи детальніше про це: «${b}»`);
-                          }}
-                          style={styles.action}
-                        >
-                          <Text style={styles.actionText}>Детальніше</Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => {
-                            Clipboard.setStringAsync(b).catch(() => {});
-                            setHeld(null);
-                          }}
-                          style={styles.action}
-                        >
-                          <Text style={styles.actionText}>Копіювати</Text>
-                        </Pressable>
+                  <Pressable
+                    key={key}
+                    onLongPress={() => hold(key)}
+                    onPress={() => tap(key)}
+                    delayLongPress={350}
+                    style={[styles.block, mem && styles.blockMem, on && styles.blockPicked]}
+                  >
+                    <Text style={styles.blockText}>{b}</Text>
+                    {mem?.last ? <Text style={styles.memo}>у пам'яті</Text> : null}
+                    {on ? (
+                      <View style={styles.tick}>
+                        <Ionicons name="checkmark" size={12} color={S.card} />
                       </View>
                     ) : null}
-                  </View>
+                  </Pressable>
                 );
               })}
             </View>
@@ -214,25 +225,43 @@ export default function AssistantScreen() {
           </View>
         ) : null}
       </ScrollView>
-      <View style={[styles.foot, { paddingBottom: (keyboard > 0 ? keyboard : insets.bottom) + 10 }]}>
-        <View style={styles.field}>
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Пишіть як зручно"
-            placeholderTextColor={S.ink3}
-            style={styles.input}
-            multiline
-          />
-          <Pressable
-            onPress={() => send(draft)}
-            disabled={busy || !draft.trim()}
-            style={[styles.send, (busy || !draft.trim()) && { opacity: 0.35 }]}
-            accessibilityLabel="Надіслати"
-          >
-            <Ionicons name="arrow-up" size={18} color={S.card} />
-          </Pressable>
-        </View>
+      <View style={[styles.foot, { paddingBottom: (keyboard > 0 && !picking ? keyboard : insets.bottom) + 10 }]}>
+        {picking ? (
+          <View style={styles.pickBar}>
+            <Pressable onPress={() => setPicked([])} style={styles.pickClose} accessibilityLabel="Скасувати вибір" hitSlop={6}>
+              <Ionicons name="close" size={16} color={S.card} />
+            </Pressable>
+            <Text style={styles.pickCount}>{`Вибрано ${picked.length}`}</Text>
+            <Pressable onPress={rememberPicked} style={styles.pickMain}>
+              <Text style={styles.pickMainText}>{allRemembered ? 'Забути' : "Запам'ятати"}</Text>
+            </Pressable>
+            <Pressable onPress={moreAboutPicked} style={styles.pickAction}>
+              <Text style={styles.pickActionText}>Детальніше</Text>
+            </Pressable>
+            <Pressable onPress={copyPicked} style={styles.pickAction} accessibilityLabel="Копіювати">
+              <Ionicons name="copy-outline" size={16} color={S.card} />
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.field}>
+            <TextInput
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Пишіть як зручно"
+              placeholderTextColor={S.ink3}
+              style={styles.input}
+              multiline
+            />
+            <Pressable
+              onPress={() => send(draft)}
+              disabled={busy || !draft.trim()}
+              style={[styles.send, (busy || !draft.trim()) && { opacity: 0.35 }]}
+              accessibilityLabel="Надіслати"
+            >
+              <Ionicons name="arrow-up" size={18} color={S.card} />
+            </Pressable>
+          </View>
+        )}
         <Text style={styles.cost}>
           {`${lastCost !== undefined ? `≈ $${lastCost.toFixed(4)} остання відповідь · ` : ''}розмова $${chatCost.toFixed(3)}${usage ? ` · усього $${usage.costUsd.toFixed(2)}` : ''}`}
         </Text>
@@ -253,17 +282,13 @@ function makeStyles(S: ReturnType<typeof useSoft>) {
     empty: { fontSize: 15, lineHeight: 22, color: S.ink2, fontFamily: SOFT_REGULAR, marginTop: 24 },
     mine: { alignSelf: 'flex-end', maxWidth: '82%', backgroundColor: S.fillSolid, borderRadius: 18, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 10 },
     mineText: { fontSize: 15, lineHeight: 21, color: S.ink, fontFamily: SOFT_REGULAR },
-    answer: { gap: 8 },
-    block: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8 },
-    blockOn: { backgroundColor: S.dark ? 'rgba(217,121,63,0.18)' : '#FBEBD9' },
-    blockHeld: { backgroundColor: S.fill },
+    answer: { gap: 6 },
+    block: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8, borderWidth: 1.5, borderColor: 'transparent' },
+    blockMem: { backgroundColor: S.dark ? 'rgba(217,121,63,0.18)' : '#FBEBD9' },
+    blockPicked: { borderColor: S.accent },
     blockText: { fontSize: 15, lineHeight: 22, color: S.ink, fontFamily: SOFT_REGULAR },
     memo: { marginTop: 4, fontSize: 11, color: S.accent, fontFamily: SOFT_SEMIBOLD },
-    actions: { position: 'absolute', right: 0, top: -44, flexDirection: 'row', gap: 4, backgroundColor: S.ink, borderRadius: 18, padding: 5, zIndex: 10, boxShadow: S.popShadow } as never,
-    actionMain: { backgroundColor: S.card, borderRadius: 13, paddingHorizontal: 11, paddingVertical: 7 },
-    actionMainText: { color: S.ink, fontSize: 12.5, fontFamily: SOFT_SEMIBOLD },
-    action: { borderRadius: 13, paddingHorizontal: 10, paddingVertical: 7 },
-    actionText: { color: S.card, fontSize: 12.5, fontFamily: SOFT_MEDIUM },
+    tick: { position: 'absolute', right: -6, top: -6, width: 20, height: 20, borderRadius: 10, backgroundColor: S.accent, alignItems: 'center', justifyContent: 'center' },
     error: { fontSize: 14, lineHeight: 20, color: '#B3402F', fontFamily: SOFT_REGULAR },
     thinking: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     thinkingText: { fontSize: 14, color: S.ink3, fontFamily: SOFT_REGULAR },
@@ -271,6 +296,13 @@ function makeStyles(S: ReturnType<typeof useSoft>) {
     field: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, backgroundColor: S.card, borderRadius: 22, paddingLeft: 14, paddingRight: 6, paddingVertical: 6 },
     input: { flex: 1, maxHeight: 140, fontSize: 15, lineHeight: 21, color: S.ink, fontFamily: SOFT_REGULAR, paddingVertical: 6 },
     send: { width: 36, height: 36, borderRadius: 18, backgroundColor: S.ink, alignItems: 'center', justifyContent: 'center' },
+    pickBar: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: S.ink, borderRadius: 24, padding: 6, minHeight: 48 },
+    pickClose: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+    pickCount: { flex: 1, color: S.card, fontSize: 13, fontFamily: SOFT_MEDIUM },
+    pickMain: { backgroundColor: S.card, borderRadius: 17, paddingHorizontal: 13, paddingVertical: 9 },
+    pickMainText: { color: S.ink, fontSize: 13, fontFamily: SOFT_SEMIBOLD },
+    pickAction: { borderRadius: 17, paddingHorizontal: 11, paddingVertical: 9, alignItems: 'center', justifyContent: 'center' },
+    pickActionText: { color: S.card, fontSize: 13, fontFamily: SOFT_MEDIUM },
     cost: { textAlign: 'center', fontSize: 11.5, color: S.ink3, fontFamily: SOFT_REGULAR },
   });
 }

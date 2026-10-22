@@ -13,7 +13,13 @@ import { costOfGemini, recordGemini } from './geminiUsage';
 // memory that replaces the old part of it is step 2.
 
 export type AssistantMessage = { id: string; role: 'user' | 'model'; text: string; at: number; error?: boolean; costUsd?: number };
-export type AssistantChat = { id: string; startedAt: number; messages: AssistantMessage[]; remembered: string[] };
+// `remembered`: block keys («messageId:index»). `groups`: what was remembered TOGETHER - several blocks picked at once
+// are one memory (one block in the note). A chat kept before groups existed reads each remembered block as its own group.
+export type AssistantChat = { id: string; startedAt: number; messages: AssistantMessage[]; remembered: string[]; groups?: string[][] };
+
+export function groupsOf(chat: AssistantChat): string[][] {
+  return chat.groups ?? chat.remembered.map((k) => [k]);
+}
 
 const KEY = 'assistant.chat.v1';
 const MAX_TURNS = 24;
