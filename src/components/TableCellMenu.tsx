@@ -151,6 +151,8 @@ export default function TableCellMenu(props: Props) {
           { id: 'headerRow', label: 'Перший рядок — шапка', icon: 'head', switchOn: headerRow },
           { id: 'headerCol', label: 'Перша колонка — шапка', icon: 'col', switchOn: headerColumn },
           { id: 'sum', label: 'Рядок підсумків', icon: 'sum' },
+          { id: 'sortUp', label: 'Сортувати колонку А → Я', icon: 'down' },
+          { id: 'sortDown', label: 'Сортувати колонку Я → А', icon: 'up' },
           { id: 'resetWidths', label: 'Скинути ширину колонок', icon: 'width' },
           ...(canFold ? [{ id: 'fold', label: folded ? 'Розгорнути таблицю' : 'Згорнути таблицю', icon: (folded ? 'down' : 'up') as IconName }] : []),
         ])}

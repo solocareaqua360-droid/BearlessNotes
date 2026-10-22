@@ -830,6 +830,34 @@ export const makeStyles = (t: Theme) => snapRadii(StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 8,
   },
+  // The laptop's rails on the selected cell's top and left edge, and the dots at the table's right and bottom edge.
+  tableRail: {
+    position: 'absolute',
+    borderRadius: 3,
+    backgroundColor: t.accent,
+    opacity: 0.55,
+    zIndex: 4,
+    cursor: 'grab',
+  } as never,
+  tableEdgeDot: {
+    width: 12,
+    borderRadius: 6,
+    backgroundColor: t.paper.inkFaint,
+    opacity: 0.45,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  tableEdgeDotOn: {
+    backgroundColor: t.ink.primary,
+    opacity: 1,
+  },
+  tableEdgePlus: {
+    color: t.raised,
+    fontSize: 13,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
   tableCellSelected: {
     borderColor: t.accent,
     borderWidth: 2,

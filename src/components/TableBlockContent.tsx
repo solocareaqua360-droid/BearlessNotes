@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // Deliberately gesture-handler's ScrollView, not react-native's - see the
 // same note in DocumentEditorScreen.tsx (this component moved out of that
 // file on 2026-09-19): the grid needs to sit inside that file's own
@@ -91,16 +91,11 @@ export default function TableBlockContent({
   // A cell that shows a formula's RESULT is not a field, so selecting it has nothing to focus - and the focus Android then hands out goes to the
   // first field on the page (the folder box). This 1pt invisible field is where the focus rests instead.
   const sinkRef = useRef<TextInput>(null);
+  const rowHeights = useRef<number[]>([]);
   // The sink brings the keyboard only when it is already up (another block was being written in): then the first tap must not take it down -
   // the editor leaves writing mode the moment it hides. With no keyboard, a first tap only selects, and nothing rises.
   const [keyboardUp, setKeyboardUp] = useState(Keyboard.isVisible());
-  // Selected and not typing: this table asks the note to let go of it on a touch that lands elsewhere (see utils/tableTap).
-  const holding = canEdit && !!selected && !editing && !formulaFocused;
-  useEffect(() => {
-    if (!holding) return;
-    holdTable(block.id);
-    return () => holdTable(null);
-  }, [holding, block.id]);
+
   useEffect(() => {
     const a = Keyboard.addListener('keyboardDidShow', () => { keyboardUpRef.current = true; setKeyboardUp(true); });
     const b = Keyboard.addListener('keyboardDidHide', () => { keyboardUpRef.current = false; setKeyboardUp(false); });
@@ -123,6 +118,13 @@ export default function TableBlockContent({
   // forever, since every formula's text starts with "=" and there was no
   // way to tell "still composing" from "done, tap normally now".
   const [formulaFocused, setFormulaFocused] = useState(false);
+  // Selected and not typing: this table asks the note to let go of it on a touch that lands elsewhere (see utils/tableTap).
+  const holding = canEdit && !!selected && !editing && !formulaFocused;
+  useEffect(() => {
+    if (!holding) return;
+    holdTable(block.id);
+    return () => holdTable(null);
+  }, [holding, block.id]);
   const formulaInputRef = useRef<TextInput>(null);
   // Where the boundary WILL land, not where it is.
   //
@@ -381,6 +383,86 @@ export default function TableBlockContent({
     onUpdate({ tableRows: next });
   }
 
+  // Moving to ANY place (the laptop's rails drag a whole column or row there); the one-step moves above stay for the menu.
+  function moveColumnTo(from: number, to: number) {
+    to = Math.max(0, Math.min(columnCount - 1, to));
+    if (to === from) return;
+    const shift = <T,>(a: T[]): T[] => {
+      const out = [...a];
+      const [item] = out.splice(from, 1);
+      out.splice(to, 0, item);
+      return out;
+    };
+    setSelected((cur) => (cur && cur.c === from ? { r: cur.r, c: to } : cur));
+    onUpdate({
+      tableRows: rows.map((row) => ({ cells: shift(row.cells) })),
+      ...(block.tableColumnWidths?.length ? { tableColumnWidths: shift(Array.from({ length: columnCount }, (_, i) => widthOf(i))) } : null),
+    });
+  }
+
+  function moveRowTo(from: number, to: number) {
+    to = Math.max(0, Math.min(rows.length - 1, to));
+    if (to === from) return;
+    const next = rows.map((row) => ({ cells: [...row.cells] }));
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    setSelected((cur) => (cur && cur.r === from ? { r: to, c: cur.c } : cur));
+    onUpdate({ tableRows: next });
+  }
+
+  // SORTING by the column of the selected cell. A header row (if the table has one) stays on top; numbers sort as numbers, the rest as words
+  // in the user's language; empty cells go last either way.
+  function sortByColumn(c: number, dir: 1 | -1) {
+    const head = headerRow ? rows.slice(0, 1) : [];
+    const body = headerRow ? rows.slice(1) : rows;
+    const key = (row: TableRow) => displayValueOf(rows, rows.indexOf(row), c).trim();
+    const sorted = [...body].sort((a, b) => {
+      const x = key(a);
+      const y = key(b);
+      if (x === '' && y === '') return 0;
+      if (x === '') return 1;
+      if (y === '') return -1;
+      const nx = Number(x.replace(',', '.'));
+      const ny = Number(y.replace(',', '.'));
+      const cmp = Number.isFinite(nx) && Number.isFinite(ny) ? nx - ny : x.localeCompare(y, 'uk');
+      return cmp * dir;
+    });
+    setSelected(null);
+    onUpdate({ tableRows: [...head, ...sorted].map((row) => ({ cells: [...row.cells] })) });
+  }
+
+  // A RANGE PASTED from a spreadsheet (tabs between cells, a line per row) lands cell by cell from the selected one, growing the table when
+  // it has to - the way every grid does. Only on the web, where a paste has a text with tabs in it.
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !canEdit) return;
+    const onPaste = (e: Event) => {
+      const at = selectedRef.current;
+      const ce = e as ClipboardEvent;
+      const text = ce.clipboardData?.getData('text/plain') ?? '';
+      const target = e.target as HTMLElement | null;
+      const inside = !!at && !!target && Array.from(cellRefs.current.values()).some((n) => n && (n as unknown as { contains?: (x: Node) => boolean }).contains?.(target) || (n as unknown as Node) === (target as unknown as Node));
+      if (!inside || !at || !/[\t\n]/.test(text.replace(/\n$/, ''))) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const grid = text.replace(/\r/g, '').replace(/\n$/, '').split('\n').map((line) => line.split('\t'));
+      const base = rowsRef.current;
+      const needRows = Math.max(base.length, at.r + grid.length);
+      const needCols = Math.max(base[0]?.cells.length ?? 0, at.c + Math.max(...grid.map((g) => g.length)));
+      const next = Array.from({ length: needRows }, (_, r) => ({
+        cells: Array.from({ length: needCols }, (_, c) => base[r]?.cells[c] ?? ''),
+      }));
+      grid.forEach((line, dr) => line.forEach((cell, dc) => (next[at.r + dr].cells[at.c + dc] = cell)));
+      onUpdate({ tableRows: next });
+    };
+    document.addEventListener('paste', onPaste, true);
+    return () => document.removeEventListener('paste', onPaste, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit]);
+
   // THE CELL'S MENU - behind the three dots of the selected cell (the user, 2026-10-22: «функціонал в основному через контекстне меню,
   // щоб не засмічувати навколо таблиці всякими додатковими знаками»). It speaks of what is selected: a cell, a row or a column.
   // The menu opens as a sheet from below on the phone (TableCellMenu) and as the popover beside the dots at a pointer.
@@ -463,6 +545,8 @@ export default function TableBlockContent({
             { id: 'headerRow', label: headerRow ? 'Прибрати шапку-рядок' : 'Перший рядок — шапка' },
             { id: 'headerCol', label: headerColumn ? 'Прибрати шапку-колонку' : 'Перша колонка — шапка' },
             { id: 'sum', label: 'Рядок підсумків' },
+            { id: 'sortUp', label: 'Сортувати колонку А → Я' },
+            { id: 'sortDown', label: 'Сортувати колонку Я → А' },
             ...(rows.length > (headerRow ? 4 : 3) ? [{ id: 'fold', label: block.tableShort ? 'Розгорнути таблицю' : 'Згорнути таблицю' }] : []),
           ],
         });
@@ -494,6 +578,8 @@ export default function TableBlockContent({
     if (chosen === 'headerCol') onUpdate({ tableHeaderColumn: !headerColumn });
     if (chosen === 'sum') addSumRow();
     if (chosen === 'resetWidths') onUpdate({ tableColumnWidths: [] });
+    if (chosen === 'sortUp') sortByColumn(c, 1);
+    if (chosen === 'sortDown') sortByColumn(c, -1);
     if (chosen === 'fold') {
       setOpenedShort(false);
       onUpdate({ tableShort: !block.tableShort });
@@ -715,7 +801,8 @@ export default function TableBlockContent({
   // dots in its right corner (its menu) and, on its right edge, the grip that sets the column's width.
   return (
     <View style={styles.tableBlock} onTouchStart={(e) => markTouchInsideTable(e.nativeEvent.timestamp)}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingRight: SCROLL_PAST }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingRight: SCROLL_PAST, alignItems: 'flex-end' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
         <View style={styles.tableFrame}>
           {/* The guide. Inside the frame, so it scrolls with the grid and
               is clipped by it; drawn over everything, because it is
@@ -735,6 +822,9 @@ export default function TableBlockContent({
           {rows.map((row, r) => (
             <View
               key={r}
+              onLayout={(e) => {
+                rowHeights.current[r] = e.nativeEvent.layout.height;
+              }}
               style={[
                 styles.tableGridRow,
                 r === rows.length - 1 && styles.tableGridRowLast,
@@ -848,6 +938,16 @@ export default function TableBlockContent({
                       )}
                       {spanRule}
                       {selFrame}
+                      {isSelected && !formulaMode && pointer && (
+                        <>
+                          <GestureDetector gesture={railGesture('col', c)}>
+                            <View style={[styles.tableRail, { top: 0, left: '50%', marginLeft: -14, width: 28, height: 6 }]} {...({ dataSet: { rail: 'col' } } as object)} />
+                          </GestureDetector>
+                          <GestureDetector gesture={railGesture('row', r)}>
+                            <View style={[styles.tableRail, { left: 0, top: '50%', marginTop: -14, width: 6, height: 28 }]} {...({ dataSet: { rail: 'row' } } as object)} />
+                          </GestureDetector>
+                        </>
+                      )}
                       {isSelected && !formulaMode && <CellDots onPress={openCellMenu} />}
                     </View>
                   );
@@ -880,7 +980,30 @@ export default function TableBlockContent({
             </GestureDetector>
           )}
         </View>
+        {/* Craft's right edge: a dot beside the LAST row that turns into a «+» under the pointer - a new column. Always there at a pointer. */}
+        {pointer && !formulaMode && (
+          <Pressable
+            focusable={false}
+            onPress={() => addColumn(false)}
+            accessibilityLabel="Додати колонку"
+            style={({ hovered }: { hovered?: boolean }) => [styles.tableEdgeDot, { height: 34, marginLeft: 4 }, hovered && styles.tableEdgeDotOn]}
+          >
+            {(state: { hovered?: boolean }) => (state.hovered ? <Text style={styles.tableEdgePlus}>+</Text> : null)}
+          </Pressable>
+        )}
+        </View>
       </ScrollView>
+      {/* The bottom edge: with a cell selected, a dot under the table that turns into a «+» - a new row. */}
+      {pointer && !!selected && !formulaMode && (
+        <Pressable
+          focusable={false}
+          onPress={() => addRow()}
+          accessibilityLabel="Додати рядок"
+          style={({ hovered }: { hovered?: boolean }) => [styles.tableEdgeDot, { alignSelf: 'center', width: 34, height: 12 }, hovered && styles.tableEdgeDotOn]}
+        >
+          {(state: { hovered?: boolean }) => (state.hovered ? <Text style={styles.tableEdgePlus}>+</Text> : null)}
+        </Pressable>
+      )}
       <TextInput
         ref={sinkRef}
         value=""
@@ -919,6 +1042,45 @@ export default function TableBlockContent({
       )}
     </View>
   );
+
+  // THE LAPTOP'S RAILS (Craft): a small bar on the top edge and on the left edge of the selected cell. A click picks the whole column / row;
+  // dragging it carries the column / row to the place the pointer lets go at.
+  function railGesture(kind: 'col' | 'row', index: number) {
+    return Gesture.Pan()
+      .runOnJS(true)
+      .minDistance(3)
+      .onStart(() => {
+        setSpan(kind);
+      })
+      .onEnd((e) => {
+        if (kind === 'col') {
+          let to = index;
+          let travelled = e.translationX;
+          while (travelled > 0 && to < columnCount - 1 && travelled >= widthOf(to + 1) / 2) {
+            travelled -= widthOf(to + 1);
+            to += 1;
+          }
+          while (travelled < 0 && to > 0 && -travelled >= widthOf(to - 1) / 2) {
+            travelled += widthOf(to - 1);
+            to -= 1;
+          }
+          moveColumnTo(index, to);
+        } else {
+          let to = index;
+          let travelled = e.translationY;
+          const h = (i: number) => rowHeights.current[i] ?? 40;
+          while (travelled > 0 && to < rows.length - 1 && travelled >= h(to + 1) / 2) {
+            travelled -= h(to + 1);
+            to += 1;
+          }
+          while (travelled < 0 && to > 0 && -travelled >= h(to - 1) / 2) {
+            travelled += h(to - 1);
+            to -= 1;
+          }
+          moveRowTo(index, to);
+        }
+      });
+  }
 
   // The width the finger STARTED from, captured when the drag starts and
   // not a moment later.
