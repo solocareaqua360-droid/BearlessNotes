@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { BackHandler, GestureResponderEvent, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, interpolateColor, runOnJS, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from 'react-native-reanimated';
 import { GlassPortal } from './GlassPortal';
@@ -790,6 +790,15 @@ export function FolderCard({
     </Animated.View>
   );
 }
+
+// THE CARD IS DRAWN AGAIN ONLY WHEN WHAT IT SHOWS CHANGED (optimisation evening, 2026-10-22): every render of the explorer -
+// four of them while a folder closes - drew every folder card again, measured on the phone. Its things and names are compared
+// item by item (a changed record is a new object), everything else by identity; the caller gives handlers that stay the same
+// (ExplorerScreen's handlersFor), so a skipped render never keeps a stale one.
+const sameList = <T,>(a?: T[], b?: T[]) => a === b || (!!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]));
+export const FolderCardKept = memo(FolderCard, (a, b) =>
+  a.tag === b.tag && a.half === b.half && a.subs === b.subs && a.navigation === b.navigation && a.onOpen === b.onOpen && a.onHold === b.onHold && sameList(a.mine, b.mine) && sameList(a.subNames, b.subNames)
+);
 
 // THE MIDDLE FOLDER CARD (2026-10-15, the user's sketch, artifact CWewE7V9nE7GSxQvdALFXh; the shape itself is in
 // folderShape.tsx, shared with the collections). What lies in it:

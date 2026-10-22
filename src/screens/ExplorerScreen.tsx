@@ -27,7 +27,7 @@ import { orderSection, viewSection } from '../navigation/topMenu';
 import { useChromeStyle, useDockActions, useDockBeads, useTopBack, useTopExtras, useTopSearch, useWhileFocused, useNavDockPublisher } from '../navigation/navDock';
 import { useSideDrawerActions } from '../navigation/sideDrawers';
 import { GlassPortal } from '../components/GlassPortal';
-import { FolderCard, FolderCover, FolderGrow, FolderShrink, coverPatternJob, folderCoverHeight, type Rect4 } from '../components/ProjectFolders';
+import { FolderCardKept, FolderCover, FolderGrow, FolderShrink, coverPatternJob, folderCoverHeight, type Rect4 } from '../components/ProjectFolders';
 import { PatternWarmup } from '../components/FolderPattern';
 import { useTheme } from '../theme/ThemeProvider';
 import { useDockClearance } from '../navigation/dockGeometry';
@@ -2144,6 +2144,19 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // Each level REMEMBERS where it was scrolled to (2026-10-15, the user's: «папка зміщується вниз після закриття, а не на
   // тому місці, на якому я відкривав її»): a folder still opens at its top, but stepping back up returns the level
   // above to the offset it was left at - the card the folder folds back into then stands where it was opened from.
+  // Handlers that stay the same for a folder card (FolderCardKept is drawn again only when what it shows changed): each
+  // render puts the latest ones here, and the card calls through it.
+  const cardHandlers = useRef(new Map<string, { open: (t: Tag, e?: import('react-native').GestureResponderEvent) => void; hold: () => void }>());
+  const stableHandlers = useRef(new Map<string, { onOpen: (t: Tag, e?: import('react-native').GestureResponderEvent) => void; onHold: () => void }>());
+  const handlersFor = (key: string, open: (t: Tag, e?: import('react-native').GestureResponderEvent) => void, hold: () => void) => {
+    cardHandlers.current.set(key, { open, hold });
+    let stable = stableHandlers.current.get(key);
+    if (!stable) {
+      stable = { onOpen: (t, e) => cardHandlers.current.get(key)?.open(t, e), onHold: () => cardHandlers.current.get(key)?.hold() };
+      stableHandlers.current.set(key, stable);
+    }
+    return stable;
+  };
   const scrollMemory = useRef(new Map<string, number>());
   // Where each opened folder's card stood in the window, and the list offset at that moment - taken AT THE TAP.
   const openedFrom = useRef(new Map<string, Rect4>());
@@ -2617,14 +2630,16 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                       <Text style={{ fontSize: 11, color: S.ink2, fontFamily: SOFT_MEDIUM }}>у проєкт…</Text>
                     </Pressable>
                   )}
-                  <FolderCard
+                  <FolderCardKept
                     tag={tag}
                     half={size !== 'L'}
                     mine={directItemsOf(f.path)}
                     subs={subFoldersOf(f.path)}
                     subNames={subFolderNamesOf(f.path)}
                     navigation={navigation}
-                    onOpen={(t, event) => {
+                    {...handlersFor(
+                      f.path,
+                      (t, event) => {
                       if (explorerSelect && !pickTwice(`folder:${f.path}`, () => openFolderEntry(f))) return;
                       const target = (event as unknown as { flipTarget?: { measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void } } | undefined)?.flipTarget;
                       // The opening FIRST; the folder is stepped into right after it starts (onGrown).
@@ -2651,8 +2666,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                           });
                         });
                       } else openFolderEntry(f);
-                    }}
-                    onHold={() => holdFolder(f)}
+                    },
+                      () => holdFolder(f)
+                    )}
                   />
                 </Animated.View>
               );
