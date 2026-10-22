@@ -1029,14 +1029,14 @@ export default function TableBlockContent({
         {pointer && tableHover && !formulaMode && (
           <EdgeBar
             vertical
-            style={{ right: -2, bottom: (rowHeights.current[rows.length - 1] ?? 34) / 2 - 2 }}
+            style={{ right: -13, bottom: (rowHeights.current[rows.length - 1] ?? 34) / 2 - 13 }}
             onPress={() => insertColumn(columnCount)}
             label="Додати колонку"
           />
         )}
         {pointer && tableHover && !!selected && !formulaMode && (
           <EdgeBar
-            style={{ bottom: -2, left: Array.from({ length: selected.c }).reduce<number>((x, _, i) => x + widthOf(i), 0) + widthOf(selected.c) / 2 - 2 }}
+            style={{ bottom: -13, left: Array.from({ length: selected.c }).reduce<number>((x, _, i) => x + widthOf(i), 0) + widthOf(selected.c) / 2 - 13 }}
             onPress={() => addRow()}
             label="Додати рядок"
           />
@@ -1208,20 +1208,24 @@ function CellText({
 // the bar is centred on; the circle grows from the same centre.
 function EdgeBar({ vertical, style, onPress, label }: { vertical?: boolean; style: object; onPress: () => void; label: string }) {
   // Craft's own: at rest a small faint dot sitting ON the border line; under the pointer it grows into a round «+».
+  // The thing the pointer is over is a FIXED 26pt square; only the picture inside it changes. Letting the pressable itself grow made it
+  // slide from under a pointer that had entered its small dot, and the dot flickered (the user, 2026-10-22: «інколи блимає»).
   return (
     <Pressable
       focusable={false}
       onPress={onPress}
       accessibilityLabel={label}
-      style={({ hovered }: { hovered?: boolean }) => [
-        { position: 'absolute', zIndex: 6, alignItems: 'center', justifyContent: 'center' },
-        style,
-        hovered
-          ? { width: 22, height: 22, borderRadius: 11, marginLeft: vertical ? -9 : 0, marginTop: vertical ? 0 : -9, backgroundColor: '#2F8CF3' }
-          : { width: 5, height: 5, borderRadius: 3, backgroundColor: '#8FC1F7' },
-      ]}
+      style={[{ position: 'absolute', zIndex: 6, width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }, style]}
     >
-      {(state: { hovered?: boolean }) => (state.hovered ? <Text style={{ color: '#fff', fontSize: 15, lineHeight: 17, fontWeight: '600' }}>+</Text> : null)}
+      {(state: { hovered?: boolean }) =>
+        state.hovered ? (
+          <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#2F8CF3', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#fff', fontSize: 15, lineHeight: 17, fontWeight: '600' }}>+</Text>
+          </View>
+        ) : (
+          <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#8FC1F7' }} />
+        )
+      }
     </Pressable>
   );
 }
