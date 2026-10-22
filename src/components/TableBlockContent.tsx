@@ -13,7 +13,7 @@ import { columnLetter, displayValueOf, parseFormattedText } from '../utils/docum
 import { ask } from './surfaces/Ask';
 import { usePublishEditorAccessory } from './editorAccessory';
 import FormattedText from './FormattedText';
-import { holdTable, markTouchInsideTable, takeTableTap } from '../utils/tableTap';
+import { holdTable, markTouchInsideTable, setTableMenuOpen, takeTableTap } from '../utils/tableTap';
 import TableCellMenu from './TableCellMenu';
 import { useDensity } from '../hooks/useDensity';
 
@@ -473,6 +473,9 @@ export default function TableBlockContent({
   function openCellMenu() {
     if (!selected) return;
     if (!pointer) {
+      // The keyboard goes down for the menu (it only gets in the way), without ending the editing session.
+      setTableMenuOpen(true);
+      Keyboard.dismiss();
       setMenuOpen(true);
       return;
     }
@@ -1036,7 +1039,11 @@ export default function TableBlockContent({
       {menuOpen && !!selected && (
         <TableCellMenu
           visible
-          onClose={() => setMenuOpen(false)}
+          onClose={() => {
+            setMenuOpen(false);
+            // Let the deferred «keyboard went away» check see the flag once more before it is cleared.
+            setTimeout(() => setTableMenuOpen(false), 600);
+          }}
           mode={span === 'cell' ? 'cell' : span}
           title={span === 'row' ? `Рядок ${selected.r + 1}` : span === 'col' ? `Колонка ${columnLetter(selected.c)}` : `Клітинка ${columnLetter(selected.c)}${selected.r + 1}`}
           hint={span === 'cell' ? displayValueOf(rows, selected.r, selected.c) : undefined}

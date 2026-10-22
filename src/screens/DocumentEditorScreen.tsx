@@ -184,7 +184,7 @@ import { usePins } from '../navigation/pinned';
 import NotePanel from '../components/desktop/NotePanel';
 import NoteInspector from '../components/desktop/NoteInspector';
 import NoteOutline from '../components/NoteOutline';
-import { heldTable, touchWasInsideTable } from '../utils/tableTap';
+import { heldTable, tableMenuIsOpen, touchWasInsideTable } from '../utils/tableTap';
 import { currentSection, noteOutline } from '../utils/noteOutline';
 import FormatPanel, { type FormatBlockKind } from '../components/desktop/FormatPanel';
 import SlashPopup from '../components/desktop/SlashPopup';
@@ -2099,6 +2099,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // would wipe it the moment the panel appeared. Every other
         // hide still means editing is over.
         if (panelOpenRef.current) return;
+        // A table's menu took the keyboard down on purpose - see utils/tableTap.
+        if (tableMenuIsOpen()) return;
         deactivateActiveInput();
       }, 400);
     });

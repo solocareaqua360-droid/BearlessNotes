@@ -38,3 +38,13 @@ export function markTouchInsideTable(timestamp: number) {
 export function touchWasInsideTable(timestamp: number): boolean {
   return insideStamp === timestamp;
 }
+
+// While a table's menu is open the keyboard is put away (the user, 2026-10-22: «клавіатура лише заважає»), and putting it away must not end
+// the editing session - the menu lives in the table's editing face, which exists only while the block is the active one.
+let menuOpenFlag = false;
+export function setTableMenuOpen(open: boolean) {
+  menuOpenFlag = open;
+}
+export function tableMenuIsOpen(): boolean {
+  return menuOpenFlag;
+}
