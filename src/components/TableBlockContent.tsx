@@ -961,10 +961,10 @@ export default function TableBlockContent({
                       {isSelected && !formulaMode && pointer && (
                         <>
                           <GestureDetector gesture={railGesture('col', c)}>
-                            <View style={[styles.tableRail, { top: 0, left: '50%', marginLeft: -14, width: 28, height: 6 }]} {...({ dataSet: { rail: 'col' } } as object)} />
+                            <View style={[styles.tableRail, { top: 0, left: '50%', marginLeft: -14, width: 28, height: 6 }]} {...({ dataSet: { rail: 'col', noMarquee: '1' } } as object)} />
                           </GestureDetector>
                           <GestureDetector gesture={railGesture('row', r)}>
-                            <View style={[styles.tableRail, { left: 0, top: '50%', marginTop: -14, width: 6, height: 28 }]} {...({ dataSet: { rail: 'row' } } as object)} />
+                            <View style={[styles.tableRail, { left: 0, top: '50%', marginTop: -14, width: 6, height: 28 }]} {...({ dataSet: { rail: 'row', noMarquee: '1' } } as object)} />
                           </GestureDetector>
                         </>
                       )}
