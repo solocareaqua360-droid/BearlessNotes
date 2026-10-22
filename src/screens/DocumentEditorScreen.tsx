@@ -602,6 +602,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // a tab of the right panel (see NoteInspector). `tocCurrent` is the section the reader is in, followed while either is on screen.
   const [tocOpen, setTocOpen] = useState(false);
   const [tocCurrent, setTocCurrent] = useState<string | null>(null);
+  const tocPinRef = useRef<{ id: string; until: number; at: number } | null>(null);
+  const pickSection = (id: string) => {
+    tocPinRef.current = { id, until: Date.now() + 1200, at: scrollOffsetRef.current };
+    setTocCurrent(id);
+    landOnBlock(id);
+  };
   // The page's own drop target, for a record dragged out of that drawer.
   const blockListRef = useRef<BlockListHandle | null>(null);
   // How much room this note actually has - NOT the window's width, which
@@ -3127,7 +3133,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const tocWatched = tocOpen || (notePanelOn && inspectorTab === 'toc' && !referencePanelOpen);
   useEffect(() => {
     if (!tocWatched) return;
-    const follow = () => setTocCurrent(currentSection(outline, (id) => blockListRef.current?.offsetOf(id) ?? null, scrollOffsetRef.current + 140));
+    const follow = () => {
+      // The section just picked stays the current one until the page is scrolled away from where the pick took it: the last sections
+      // of a note cannot reach the top of the screen, and by the reading line the one BEFORE them would win.
+      const pin = tocPinRef.current;
+      if (pin) {
+        if (Date.now() < pin.until) {
+          pin.at = scrollOffsetRef.current;
+          setTocCurrent(pin.id);
+          return;
+        }
+        if (Math.abs(scrollOffsetRef.current - pin.at) < 40) {
+          setTocCurrent(pin.id);
+          return;
+        }
+        tocPinRef.current = null;
+      }
+      setTocCurrent(currentSection(outline, (id) => blockListRef.current?.offsetOf(id) ?? null, scrollOffsetRef.current + 140));
+    };
     follow();
     const timer = setInterval(follow, 350);
     return () => clearInterval(timer);
@@ -3172,7 +3195,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onColor={(which, hex) => applyColorToSelection(which, hex)}
           />
         }
-        toc={<NoteOutline items={outline} currentId={tocCurrent} onPick={(id) => landOnBlock(id)} compact />}
+        toc={<NoteOutline items={outline} currentId={tocCurrent} onPick={pickSection} compact />}
         info={
           <NotePanel
             documentId={documentId}
@@ -5948,7 +5971,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       )}
       {tocOpen && dockLive && !notePanelOn && !canvasMode && (
         <View style={{ position: 'absolute', left: 12, right: 12, bottom: 118, maxHeight: 260, borderRadius: 20, padding: 8, backgroundColor: theme.raised, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.edge.hairline, zIndex: 30 }} pointerEvents="box-none">
-          <NoteOutline items={outline} currentId={tocCurrent} onPick={(id) => landOnBlock(id)} />
+          <NoteOutline items={outline} currentId={tocCurrent} onPick={pickSection} />
         </View>
       )}
       {!embedded && (referencePanelOpen || referenceSheet) && !notePanelOn && (
