@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
   card: { flex: 1, borderRadius: 20, overflow: 'hidden' },
   cardWide: { justifyContent: 'flex-end', padding: 12 },
   cardThin: { alignItems: 'center', justifyContent: 'center' },
-  name: { fontFamily: SOFT_SEMIBOLD, fontSize: 22, letterSpacing: -0.4 },
+  name: { fontFamily: SOFT_SEMIBOLD, fontSize: 20, letterSpacing: -0.4 },
   sub: { fontFamily: SOFT_MEDIUM, fontSize: 12, marginTop: 2 },
   turned: { fontFamily: SOFT_SEMIBOLD, fontSize: 12, width: BAND_H - 20, textAlign: 'center', transform: [{ rotate: '-90deg' }] },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: 7, paddingTop: 10 },

@@ -2192,7 +2192,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     const CARD_MIN_W = 200;
     const queue: FolderEntry[] = [...folders];
     // The bin stays on the first level even when empty - an empty basket (BinCard).
-    const binEntry = !path && !filtering ? ({ path: BIN_PATH, name: 'Кошик', count: binned.length } as FolderEntry) : null;
+    const binEntry = !path && !filtering && (!projectsHere || focusProj === NO_PROJECT) ? ({ path: BIN_PATH, name: 'Кошик', count: binned.length } as FolderEntry) : null;
     // AS MANY COLUMNS AS FIT (2026-10-16, the Mac): the phone's two, and on a wide screen as many cards of about a
     // phone card's width (~220) as the width holds - two there stretched every card to half the screen.
     // AS MANY COLUMNS AS CARDS OF 200..260 FIT: a rule, not a share of the window (2026-10-19) - a wider window gets
@@ -2596,7 +2596,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           keyExtractor={(row) => (isHeader(row) || isCells(row) || isStrip(row) ? row.key : row.id)}
           ListHeaderComponent={header}
           ListEmptyComponent={
-            stage === 'all' && folders.length === 0 ? <Text style={[styles.hint, { color: S.ink3 }]}>{searching ? 'Нічого не знайдено.' : path ? 'У цій папці ще порожньо.' : 'Ще нічого немає.'}</Text> : null
+            stage === 'all' && folders.length === 0 ? <Text style={[styles.hint, { color: S.ink3 }]}>{searching ? 'Нічого не знайдено.' : path ? 'У цій папці ще порожньо.' : projectsHere && focusProj !== NO_PROJECT ? 'У цьому проєкті ще немає папок. Додати: «Без проєкту» → «у проєкт…».' : 'Ще нічого немає.'}</Text> : null
           }
           renderItem={({ item: row, index: rowIndex }) => withArrival(rowIndex, (() => {
             if (isHeader(row)) {
