@@ -14,6 +14,8 @@ import { ask } from './surfaces/Ask';
 import { usePublishEditorAccessory } from './editorAccessory';
 import FormattedText from './FormattedText';
 import { takeTableTap } from '../utils/tableTap';
+import TableCellMenu from './TableCellMenu';
+import { useDensity } from '../hooks/useDensity';
 
 // A table in a note, in TWO faces.
 //
@@ -374,7 +376,19 @@ export default function TableBlockContent({
 
   // THE CELL'S MENU - behind the three dots of the selected cell (the user, 2026-10-22: «функціонал в основному через контекстне меню,
   // щоб не засмічувати навколо таблиці всякими додатковими знаками»). It speaks of what is selected: a cell, a row or a column.
-  async function openCellMenu() {
+  // The menu opens as a sheet from below on the phone (TableCellMenu) and as the popover beside the dots at a pointer.
+  const pointer = useDensity() === 'pointer';
+  const [menuOpen, setMenuOpen] = useState(false);
+  function openCellMenu() {
+    if (!selected) return;
+    if (!pointer) {
+      setMenuOpen(true);
+      return;
+    }
+    openCellPopover();
+  }
+
+  async function openCellPopover() {
     if (!selected) return;
     const { r, c } = selected;
     const lastRow = rows.length - 1;
@@ -386,6 +400,7 @@ export default function TableBlockContent({
       ...(r < lastRow ? [{ id: 'down', label: 'Пересунути вниз', icon: 'chevron-down' }] : []),
       { id: 'clearRow', label: 'Очистити рядок' },
       ...(rows.length > 1 ? [{ id: 'delRow', label: 'Видалити рядок', tone: 'danger' as const, icon: 'trash-outline' }] : []),
+      ...(columnCount > 1 ? [{ id: 'delCol', label: 'Видалити колонку', tone: 'danger' as const, icon: 'trash-outline' }] : []),
     ];
     const colActions = (): { id: string; label: string; icon?: any; tone?: 'danger' }[] => [
       { id: 'colLeft', label: 'Вставити колонку ліворуч', icon: 'add' },
@@ -394,6 +409,7 @@ export default function TableBlockContent({
       ...(c < lastCol ? [{ id: 'right', label: 'Пересунути праворуч', icon: 'chevron-forward' }] : []),
       { id: 'clearCol', label: 'Очистити колонку' },
       ...(columnCount > 1 ? [{ id: 'delCol', label: 'Видалити колонку', tone: 'danger' as const, icon: 'trash-outline' }] : []),
+      ...(rows.length > 1 ? [{ id: 'delRow', label: 'Видалити рядок', tone: 'danger' as const, icon: 'trash-outline' }] : []),
     ];
     let chosen: string;
     if (span === 'row') chosen = await ask({ title: 'Рядок', actions: rowActions() });
@@ -444,6 +460,13 @@ export default function TableBlockContent({
         });
       }
     }
+    applyAction(chosen);
+  }
+
+  // What an answer from the menu does - the same for the popover and for the sheet.
+  function applyAction(chosen: string) {
+    if (!selected) return;
+    const { r, c } = selected;
     if (chosen === 'selRow') setSpan('row');
     if (chosen === 'selCol') setSpan('col');
     if (chosen === 'rowAbove') insertRow(r);
@@ -862,6 +885,24 @@ export default function TableBlockContent({
         importantForAccessibility="no"
         style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, opacity: 0 }}
       />
+      {menuOpen && !!selected && (
+        <TableCellMenu
+          visible
+          onClose={() => setMenuOpen(false)}
+          mode={span === 'cell' ? 'cell' : span}
+          title={span === 'row' ? `Рядок ${selected.r + 1}` : span === 'col' ? `Колонка ${columnLetter(selected.c)}` : `Клітинка ${columnLetter(selected.c)}${selected.r + 1}`}
+          hint={span === 'cell' ? displayValueOf(rows, selected.r, selected.c) : undefined}
+          headerRow={headerRow}
+          headerColumn={headerColumn}
+          canUp={selected.r > 0}
+          canDown={selected.r < rows.length - 1}
+          canLeft={selected.c > 0}
+          canRight={selected.c < columnCount - 1}
+          canDelRow={rows.length > 1}
+          canDelCol={columnCount > 1}
+          onPick={applyAction}
+        />
+      )}
     </View>
   );
 
