@@ -91,6 +91,7 @@ export default function TableBlockContent({
   // A cell that shows a formula's RESULT is not a field, so selecting it has nothing to focus - and the focus Android then hands out goes to the
   // first field on the page (the folder box). This 1pt invisible field is where the focus rests instead.
   const sinkRef = useRef<TextInput>(null);
+  const [tableHover, setTableHover] = useState(false);
   const rowHeights = useRef<number[]>([]);
   // The sink brings the keyboard only when it is already up (another block was being written in): then the first tap must not take it down -
   // the editor leaves writing mode the moment it hides. With no keyboard, a first tap only selects, and nothing rises.
@@ -801,8 +802,11 @@ export default function TableBlockContent({
   // dots in its right corner (its menu) and, on its right edge, the grip that sets the column's width.
   return (
     <View style={styles.tableBlock} onTouchStart={(e) => markTouchInsideTable(e.nativeEvent.timestamp)}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingRight: SCROLL_PAST, alignItems: 'flex-end' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingRight: SCROLL_PAST, paddingBottom: pointer ? 14 : 0 }}>
+        <View
+          style={{ position: 'relative' }}
+          {...(pointer ? ({ onMouseEnter: () => setTableHover(true), onMouseLeave: () => setTableHover(false) } as object) : {})}
+        >
         <View style={styles.tableFrame}>
           {/* The guide. Inside the frame, so it scrolls with the grid and
               is clipped by it; drawn over everything, because it is
@@ -980,30 +984,26 @@ export default function TableBlockContent({
             </GestureDetector>
           )}
         </View>
-        {/* Craft's right edge: a dot beside the LAST row that turns into a «+» under the pointer - a new column. Always there at a pointer. */}
-        {pointer && !formulaMode && (
-          <Pressable
-            focusable={false}
+        {/* CRAFT'S EDGES (the user, 2026-10-22): nothing is there until the pointer is over the table; then a thin bar sits ON the border
+            line - on the right edge beside the last row (a new column) and, with a cell selected, on the bottom edge under that cell (a new
+            row). Under the pointer the bar becomes a round «+». */}
+        {pointer && tableHover && !formulaMode && (
+          <EdgeBar
+            vertical
+            style={{ right: -4, bottom: (rowHeights.current[rows.length - 1] ?? 34) / 2 - 14 }}
             onPress={() => addColumn(false)}
-            accessibilityLabel="Додати колонку"
-            style={({ hovered }: { hovered?: boolean }) => [styles.tableEdgeDot, { height: 34, marginLeft: 4 }, hovered && styles.tableEdgeDotOn]}
-          >
-            {(state: { hovered?: boolean }) => (state.hovered ? <Text style={styles.tableEdgePlus}>+</Text> : null)}
-          </Pressable>
+            label="Додати колонку"
+          />
+        )}
+        {pointer && tableHover && !!selected && !formulaMode && (
+          <EdgeBar
+            style={{ bottom: -4, left: Array.from({ length: selected.c }).reduce<number>((x, _, i) => x + widthOf(i), 0) + widthOf(selected.c) / 2 - 14 }}
+            onPress={() => addRow()}
+            label="Додати рядок"
+          />
         )}
         </View>
       </ScrollView>
-      {/* The bottom edge: with a cell selected, a dot under the table that turns into a «+» - a new row. */}
-      {pointer && !!selected && !formulaMode && (
-        <Pressable
-          focusable={false}
-          onPress={() => addRow()}
-          accessibilityLabel="Додати рядок"
-          style={({ hovered }: { hovered?: boolean }) => [styles.tableEdgeDot, { alignSelf: 'center', width: 34, height: 12 }, hovered && styles.tableEdgeDotOn]}
-        >
-          {(state: { hovered?: boolean }) => (state.hovered ? <Text style={styles.tableEdgePlus}>+</Text> : null)}
-        </Pressable>
-      )}
       <TextInput
         ref={sinkRef}
         value=""
@@ -1158,6 +1158,30 @@ function CellText({
         <FormattedText segments={parseFormattedText(raw)} defaultColor={ink} />
       )}
     </Text>
+  );
+}
+
+// A thin bar on a border of the table that becomes a round «+» under the pointer (Craft's own). Positioned by the caller, which gives the spot
+// the bar is centred on; the circle grows from the same centre.
+function EdgeBar({ vertical, style, onPress, label }: { vertical?: boolean; style: object; onPress: () => void; label: string }) {
+  const styles = useStyles(makeStyles);
+  return (
+    <Pressable
+      focusable={false}
+      onPress={onPress}
+      accessibilityLabel={label}
+      style={({ hovered }: { hovered?: boolean }) => [
+        { position: 'absolute', zIndex: 6, alignItems: 'center', justifyContent: 'center' },
+        style,
+        hovered
+          ? { width: 24, height: 24, borderRadius: 12, marginLeft: vertical ? -8 : 0, marginTop: vertical ? 0 : -8, backgroundColor: '#24211D' }
+          : vertical
+            ? { width: 6, height: 28, borderRadius: 3, backgroundColor: '#B9B4AA' }
+            : { width: 28, height: 6, borderRadius: 3, backgroundColor: '#B9B4AA' },
+      ]}
+    >
+      {(state: { hovered?: boolean }) => (state.hovered ? <Text style={{ color: '#fff', fontSize: 16, lineHeight: 18, fontWeight: '600' }}>+</Text> : null)}
+    </Pressable>
   );
 }
 
