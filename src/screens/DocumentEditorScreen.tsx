@@ -183,6 +183,8 @@ import { windowUrlFor } from '../navigation/paneTargetInfo';
 import { usePins } from '../navigation/pinned';
 import NotePanel from '../components/desktop/NotePanel';
 import NoteInspector from '../components/desktop/NoteInspector';
+import NoteOutline from '../components/NoteOutline';
+import { currentSection, noteOutline } from '../utils/noteOutline';
 import FormatPanel, { type FormatBlockKind } from '../components/desktop/FormatPanel';
 import SlashPopup from '../components/desktop/SlashPopup';
 import { caretPoint } from '../utils/caretRect';
@@ -596,6 +598,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // note either way and the same drawer over it - only what a drop MEANS
   // changes (a point on the surface there, a gap between blocks here).
   const [referencePanelOpen, setReferencePanelOpen] = useState(false);
+  // «Зміст» (2026-10-22): the note's headings as a list that jumps to them. The phone opens it as a card over the dock; the Mac keeps it as
+  // a tab of the right panel (see NoteInspector). `tocCurrent` is the section the reader is in, followed while either is on screen.
+  const [tocOpen, setTocOpen] = useState(false);
+  const [tocCurrent, setTocCurrent] = useState<string | null>(null);
   // The page's own drop target, for a record dragged out of that drawer.
   const blockListRef = useRef<BlockListHandle | null>(null);
   // How much room this note actually has - NOT the window's width, which
@@ -3029,7 +3035,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // THE NOTE'S RIGHT PANEL: Вставити (pictures of the blocks, a click inserts at the caret) · Інфо · Джерела.
   // The tile is pressed with the mouse, so the text field has already lost focus: the block to act on is the one
   // that last had it.
-  const [inspectorTab, setInspectorTab] = useState<'insert' | 'format' | 'info'>('insert');
+  const [inspectorTab, setInspectorTab] = useState<'insert' | 'format' | 'toc' | 'info'>('insert');
   // The «/» popup (Mac): the block it was opened in and where it stands on the screen.
   const [slash, setSlash] = useState<{ id: string; left: number; top: number } | null>(null);
   const slashText = slash ? blocks.find((b) => b.id === slash.id)?.text ?? null : null;
@@ -3117,6 +3123,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const target = live ?? (lastCaretBlockRef.current && blocks.some((b) => b.id === lastCaretBlockRef.current) ? lastCaretBlockRef.current : blocks[blocks.length - 1]?.id);
     if (target) insertTile(key, target);
   };
+  const outline = useMemo(() => noteOutline(blocks), [blocks]);
+  const tocWatched = tocOpen || (notePanelOn && inspectorTab === 'toc' && !referencePanelOpen);
+  useEffect(() => {
+    if (!tocWatched) return;
+    const follow = () => setTocCurrent(currentSection(outline, (id) => blockListRef.current?.offsetOf(id) ?? null, scrollOffsetRef.current + 140));
+    follow();
+    const timer = setInterval(follow, 350);
+    return () => clearInterval(timer);
+  }, [tocWatched, outline]);
   usePublishRailPanel(
     notePanelOn ? (
       <NoteInspector
@@ -3157,6 +3172,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onColor={(which, hex) => applyColorToSelection(which, hex)}
           />
         }
+        toc={<NoteOutline items={outline} currentId={tocCurrent} onPick={(id) => landOnBlock(id)} compact />}
         info={
           <NotePanel
             documentId={documentId}
@@ -3334,6 +3350,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             active: referencePanelOpen,
             onPress: () => setReferencePanelOpen((v) => !v),
           },
+          // «Зміст»: the headings as a list that jumps to them (a card over the dock, see below). Only on the page.
+          ...(!canvasMode
+            ? [{ key: 'toc', icon: 'list-outline', label: 'Зміст', active: tocOpen, onPress: () => setTocOpen((v) => !v) }]
+            : []),
           // The third slot: the board's own "Скинути дошку?" on the
           // canvas (free dragging needs a way back to the default layout
           // without undoing every card one at a time; nothing to reset
@@ -5925,6 +5945,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             insertTile(action, id);
           }}
         />
+      )}
+      {tocOpen && dockLive && !notePanelOn && !canvasMode && (
+        <View style={{ position: 'absolute', left: 12, right: 12, bottom: 118, maxHeight: 260, borderRadius: 20, padding: 8, backgroundColor: theme.raised, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.edge.hairline, zIndex: 30 }} pointerEvents="box-none">
+          <NoteOutline items={outline} currentId={tocCurrent} onPick={(id) => landOnBlock(id)} />
+        </View>
       )}
       {!embedded && (referencePanelOpen || referenceSheet) && !notePanelOn && (
         <View

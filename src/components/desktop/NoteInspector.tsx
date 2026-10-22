@@ -12,13 +12,14 @@ import { INSERT_GROUPS, TILE_LABELS, type TileKey } from './insertCatalogue';
 // «Вставити» (what a block can become or hold, drawn as pictures of the result), «Інфо» (where the note stands, its
 // links), «Джерела» (the files, photos, links and records to drag in). The tab's content comes in as props: this
 // only draws the frame and the insert catalogue.
-export type InspectorTab = 'insert' | 'format' | 'info' | 'refs';
+export type InspectorTab = 'insert' | 'format' | 'toc' | 'info' | 'refs';
 
 export default function NoteInspector({
   tab,
   onTab,
   onInsert,
   format,
+  toc,
   info,
   refs,
 }: {
@@ -26,6 +27,7 @@ export default function NoteInspector({
   onTab: (t: InspectorTab) => void;
   onInsert: (key: TileKey) => void;
   format: ReactNode;
+  toc: ReactNode;
   info: ReactNode;
   refs: ReactNode;
 }) {
@@ -45,6 +47,7 @@ export default function NoteInspector({
   const tabs: { id: InspectorTab; label: string }[] = [
     { id: 'insert', label: 'Вставити' },
     { id: 'format', label: 'Формат' },
+    { id: 'toc', label: 'Зміст' },
     { id: 'info', label: 'Інфо' },
     { id: 'refs', label: 'Джерела' },
   ];
@@ -100,6 +103,8 @@ export default function NoteInspector({
         </ScrollView>
       ) : tab === 'format' ? (
         <View style={{ flex: 1 }}>{format}</View>
+      ) : tab === 'toc' ? (
+        <View style={{ flex: 1, paddingHorizontal: 8, paddingTop: 10 }}>{toc}</View>
       ) : tab === 'info' ? (
         <View style={{ flex: 1, paddingTop: 12 }}>{info}</View>
       ) : (
