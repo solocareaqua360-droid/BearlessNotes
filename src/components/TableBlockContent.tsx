@@ -971,18 +971,23 @@ export default function TableBlockContent({
                       {selFrame}
                       {isSelected && !formulaMode && pointer && (
                         <>
-                          {/* Craft's rails: barely there - a short break in the border line in the accent colour, only growing under the pointer. */}
+                          {/* Craft's rails: barely there - a short break in the border line in a light blue, only growing under the pointer. The grabbable
+                              area is bigger than the dash. */}
                           <GestureDetector gesture={railGesture('col', c)}>
                             <View
-                              style={[styles.tableRail, railHover === 'col' ? { top: -3, left: '50%', marginLeft: -16, width: 32, height: 6, opacity: 0.85 } : { top: -1, left: '50%', marginLeft: -8, width: 16, height: 3 }]}
+                              style={{ position: 'absolute', top: -7, left: '50%', marginLeft: -22, width: 44, height: 14, alignItems: 'center', justifyContent: 'center', zIndex: 4, cursor: 'grab' } as never}
                               {...({ dataSet: { rail: 'col', noMarquee: '1' }, onMouseEnter: () => setRailHover('col'), onMouseLeave: () => setRailHover(null) } as object)}
-                            />
+                            >
+                              <View style={{ width: railHover === 'col' ? 32 : 16, height: railHover === 'col' ? 6 : 3, borderRadius: 3, backgroundColor: '#7DB8F5', opacity: railHover === 'col' ? 0.9 : 0.7 }} />
+                            </View>
                           </GestureDetector>
                           <GestureDetector gesture={railGesture('row', r)}>
                             <View
-                              style={[styles.tableRail, railHover === 'row' ? { left: -3, top: '50%', marginTop: -16, width: 6, height: 32, opacity: 0.85 } : { left: -1, top: '50%', marginTop: -8, width: 3, height: 16 }]}
+                              style={{ position: 'absolute', left: -7, top: '50%', marginTop: -22, width: 14, height: 44, alignItems: 'center', justifyContent: 'center', zIndex: 4, cursor: 'grab' } as never}
                               {...({ dataSet: { rail: 'row', noMarquee: '1' }, onMouseEnter: () => setRailHover('row'), onMouseLeave: () => setRailHover(null) } as object)}
-                            />
+                            >
+                              <View style={{ width: railHover === 'row' ? 6 : 3, height: railHover === 'row' ? 32 : 16, borderRadius: 3, backgroundColor: '#7DB8F5', opacity: railHover === 'row' ? 0.9 : 0.7 }} />
+                            </View>
                           </GestureDetector>
                         </>
                       )}
