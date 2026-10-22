@@ -6,6 +6,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming } fro
 import { Block, Tag } from '../types';
 import type { colorForDocument } from '../utils/documentColor';
 import BlockRow from './BlockRow';
+import { useTableWide } from '../utils/tableTap';
 import type { DocumentIndex } from '../hooks/useDocumentIndex';
 
 // react-native-draggable-flatlist AND react-native-swipeable-item both
@@ -224,8 +225,11 @@ function SortableBlockRow({
   // left, gives up if it went up or down or to the right first (the note's scroll keeps every vertical move), and from
   // then on follows the finger up and down over the other blocks. It races the hold: whichever starts first wins.
   const nudge = useSharedValue(0);
+  // A table wider than its place scrolls sideways by itself when locked, and the sideways swipe is its own: the block is picked there by dragging the
+  // table on past its right end (TableBlockContent's pull), not by this gesture.
+  const wideTable = useTableWide(item.type === 'table' ? item.id : '');
   const sweepGesture = Gesture.Pan()
-    .enabled(!pointer && !!swipeSelect)
+    .enabled(!pointer && !!swipeSelect && !(wideTable && !canEditText))
     .activeOffsetX([-SWIPE_START, 10000])
     .failOffsetX([-10000, SWIPE_START])
     .failOffsetY([-SWIPE_START, SWIPE_START])
@@ -297,6 +301,10 @@ function SortableBlockRow({
         <Animated.View style={compressStyle}>
           <BlockRow
             item={item}
+            onPullSelect={() => {
+              onSweepStart?.();
+              onSweepEnd?.();
+            }}
             hideHandle={hideHandle}
             handleGesture={handleGesture}
             searchHighlight={searchHighlight}

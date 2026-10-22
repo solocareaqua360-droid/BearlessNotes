@@ -4,7 +4,7 @@ import { HIGHLIGHT_COLORS } from './EditorToolbar';
 import { foldOf } from '../utils/toggleBlocks';
 import SketchLayer from './SketchLayer';
 import { INK, drawingViewBox } from '../utils/sketchGeometry';
-import { rememberTableTap } from '../utils/tableTap';
+import { rememberTableTap, useTableWide } from '../utils/tableTap';
 import { requestBoardJump } from '../utils/boardMap';
 import { ComponentProps, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -108,6 +108,8 @@ type BlockRowProps = {
   // cursorIndex: DISPLAY-text position to place the cursor at (from a tap on
   // the locked text); omitted = end of the text.
   onActivate: (id: string, cursorIndex?: number) => void;
+  // A wide table dragged past its right end and let go: pick this block (the same as a swipe left on a block that fits).
+  onPullSelect?: () => void;
   onBlur: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
   onBackspaceEmpty: (id: string) => void;
@@ -175,6 +177,7 @@ export default function BlockRow({
   searchHighlight,
   textVersion,
   onActivate,
+  onPullSelect,
   onBlur,
   onChangeText,
   onBackspaceEmpty,
@@ -219,6 +222,8 @@ export default function BlockRow({
   // just like it already did over the icon column.
   const canEditText = isActive && !isSelectMode;
   const tableBoxRef = useRef({ width: 0, height: 0 });
+  // A table wider than its place scrolls itself even locked (see TableBlockContent): its cells take the taps then, and the wrapper lets touches through.
+  const tableWide = useTableWide(item.type === 'table' ? item.id : '');
 
   // THE FORMATTING WHILE TYPING (features.liveFormat): the field's text as styled runs - the block's own runs, so the
   // field shows what the block shows at rest. Not for code (never parsed) nor an empty block. A link to a note nested
@@ -562,6 +567,12 @@ export default function BlockRow({
         block={item}
         canEdit={canEditText}
         onUpdate={(patch) => onUpdateBlock(item.id, patch)}
+        onPullSelect={onPullSelect}
+        onWakeAt={(r, c, scrollX) => {
+          if (isSelectMode) return onToggleSelected(item.id);
+          rememberTableTap({ blockId: item.id, x: NaN, y: NaN, ...tableBoxRef.current, cell: { r, c }, scrollX });
+          onActivate(item.id);
+        }}
       />
     );
     // Locked, the table is display-only that a swipe scrolls through (its
@@ -582,7 +593,8 @@ export default function BlockRow({
           onActivate(item.id);
         }}
       >
-        <View pointerEvents="none">{table}</View>
+        {/* The same wrapper either way: a different one would build the table anew each time the flag flips. */}
+        <View pointerEvents={tableWide ? 'auto' : 'none'}>{table}</View>
       </Pressable>
     );
   } else if (type === 'file') {

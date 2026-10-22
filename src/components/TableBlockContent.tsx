@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 // Deliberately gesture-handler's ScrollView, not react-native's - see the
 // same note in DocumentEditorScreen.tsx (this component moved out of that
@@ -13,7 +13,8 @@ import { columnLetter, displayValueOf, parseFormattedText } from '../utils/docum
 import { ask } from './surfaces/Ask';
 import { usePublishEditorAccessory } from './editorAccessory';
 import FormattedText from './FormattedText';
-import { holdTable, markTouchInsideTable, setTableMenuOpen, takeTableTap } from '../utils/tableTap';
+import { holdTable, markTouchInsideTable, setTableMenuOpen, setTableWide, takeTableTap } from '../utils/tableTap';
+import { hapticSweepTick } from '../utils/haptics';
 import TableCellMenu from './TableCellMenu';
 import { useDensity } from '../hooks/useDensity';
 
@@ -50,10 +51,17 @@ export default function TableBlockContent({
   block,
   canEdit,
   onUpdate,
+  onPullSelect,
+  onWakeAt,
 }: {
   block: Block;
   canEdit: boolean;
   onUpdate: (patch: Partial<Block>) => void;
+  // Locked and WIDER than its place, the table scrolls itself; dragged on past its right end and let go, it asks for the whole block to be picked
+  // (the same pull that opens search from the top of a list). A table that fits has no scroll to share, and its swipe picks at once as before.
+  onPullSelect?: () => void;
+  // Locked and wide, its cells take the taps themselves: the cell that was hit and how far the table was scrolled.
+  onWakeAt?: (r: number, c: number, scrollX: number) => void;
 }) {
   const styles = useStyles(makeStyles);
   const theme = useTheme();
@@ -95,6 +103,20 @@ export default function TableBlockContent({
   const [tableHover, setTableHover] = useState(false);
   const [railHover, setRailHover] = useState<'col' | 'row' | null>(null);
   const [viewW, setViewW] = useState(0);
+  // How wide the grid is (its scroller's content, minus the room kept past the right edge): wider than its place, it scrolls on its own.
+  const [contentW, setContentW] = useState(0);
+  const isWide = viewW > 0 && contentW > 0 && contentW - SCROLL_PAST > viewW + 2;
+  const copyId = useId();
+  useEffect(() => {
+    setTableWide(block.id, copyId, isWide);
+    return () => setTableWide(block.id, copyId, false);
+  }, [block.id, copyId, isWide]);
+  const readScroll = useRef<ScrollView>(null);
+  const liveScroll = useRef<ScrollView>(null);
+  const scrollXRef = useRef(0);
+  const pullRef = useRef({ start: 0, armed: false });
+  const sizesRef = useRef({ view: 0, content: 0 });
+  sizesRef.current = { view: viewW, content: contentW };
   const rowHeights = useRef<number[]>([]);
   // The sink brings the keyboard only when it is already up (another block was being written in): then the first tap must not take it down -
   // the editor leaves writing mode the moment it hides. With no keyboard, a first tap only selects, and nothing rises.
@@ -716,6 +738,20 @@ export default function TableBlockContent({
   useEffect(() => {
     if (!canEdit) return;
     const tap = takeTableTap(block.id);
+    if (tap?.cell) {
+      // The locked table's own cell took the tap: no geometry to read, and the scroll it stood at is handed over.
+      const { r, c } = tap.cell;
+      setSelected({ r, c });
+      setSpan('cell');
+      const x = tap.scrollX ?? 0;
+      const timers = [0, 60, 200].map((ms) =>
+        setTimeout(() => {
+          if (x > 0) liveScroll.current?.scrollTo({ x, animated: false });
+          if (ms > 0 && !focusedCellRef.current) focusTarget(r, c);
+        }, ms)
+      );
+      return () => timers.forEach(clearTimeout);
+    }
     if (!tap || !Number.isFinite(tap.x) || !Number.isFinite(tap.y) || !(tap.height > 0)) return;
     let c = 0;
     let x = tap.x;
@@ -742,6 +778,36 @@ export default function TableBlockContent({
     // THE SHORT VIEW (a choice in «···»): the header row and three rows below it - or the first three when there is no header - and
     // the rest only behind the chevron. Never while editing: what is being written in is always shown whole.
     const keep = headerRow ? 4 : 3;
+    // THE PULL: a drag that has run out of table and goes on to the left. The scroller keeps its own swipe (this pan runs BESIDE it, not over it); what
+    // it adds is how far the finger has gone past the point where the table could follow. Far enough, a tick says so, and letting go picks the block.
+    const pullState = pullRef.current;
+    const pull = Gesture.Pan()
+      .enabled(isWide && !!onPullSelect)
+      .simultaneousWithExternalGesture(readScroll)
+      .activeOffsetX([-10, 10])
+      .failOffsetY([-14, 14])
+      .runOnJS(true)
+      .onStart(() => {
+        pullState.start = scrollXRef.current;
+        pullState.armed = false;
+      })
+      .onUpdate((e) => {
+        const { view, content } = sizesRef.current;
+        const room = Math.max(0, content - view - pullState.start);
+        const extra = -e.translationX - room;
+        if (!pullState.armed && extra >= PULL_TO_PICK) {
+          pullState.armed = true;
+          hapticSweepTick();
+        } else if (pullState.armed && extra < PULL_TO_PICK - 14) {
+          pullState.armed = false;
+        }
+      })
+      .onEnd(() => {
+        if (pullState.armed) {
+          pullState.armed = false;
+          onPullSelect?.();
+        }
+      });
     const short = !!block.tableShort && !openedShort && rows.length > keep;
     const shownRows = short ? rows.slice(0, keep) : rows;
     const hidden = rows.length - shownRows.length;
@@ -754,10 +820,18 @@ export default function TableBlockContent({
     return (
       // The same 4 above and below as the editing face's own (styles.tableBlock): the table must not hop when it is picked up or put down.
       <View style={{ paddingVertical: 4 }}>
+      <GestureDetector gesture={pull}>
       <ScrollView
+        ref={readScroll}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingRight: SCROLL_PAST }}
+        onLayout={(e) => setViewW(e.nativeEvent.layout.width)}
+        onContentSizeChange={(w) => setContentW(w)}
+        onScroll={(e) => {
+          scrollXRef.current = e.nativeEvent.contentOffset.x;
+        }}
+        scrollEventThrottle={16}
       >
         <View style={styles.tableReadFrame}>
           {shownRows.map((row, r) => (
@@ -770,8 +844,10 @@ export default function TableBlockContent({
               ]}
             >
               {row.cells.map((_, c) => (
-                <View
+                <Pressable
                   key={c}
+                  disabled={!onWakeAt}
+                  onPress={() => onWakeAt?.(r, c, scrollXRef.current)}
                   style={[
                     styles.tableGridCell,
                     c === row.cells.length - 1 && styles.tableGridCellLast,
@@ -788,12 +864,13 @@ export default function TableBlockContent({
                     strongStyle={styles.tableReadStrong}
                     ink={theme.paper.ink}
                   />
-                </View>
+                </Pressable>
               ))}
             </View>
           ))}
         </View>
       </ScrollView>
+      </GestureDetector>
       {hidden > 0 && (
         // The SIGN OF MORE under a short table: faint, a chevron and an ellipsis; a tap opens it for this visit.
         <Pressable onPress={() => setOpenedShort(true)} hitSlop={8} style={{ alignItems: 'center', paddingTop: 2 }} accessibilityLabel="Показати всю таблицю">
@@ -812,6 +889,8 @@ export default function TableBlockContent({
   return (
     <View style={styles.tableBlock} onTouchStart={(e) => markTouchInsideTable(e.nativeEvent.timestamp)}>
       <ScrollView
+        ref={liveScroll}
+        onContentSizeChange={(w) => setContentW(w)}
         horizontal
         showsHorizontalScrollIndicator={false}
         keyboardShouldPersistTaps="always"
@@ -1257,6 +1336,8 @@ const DEFAULT_COLUMN_WIDTH = 110;
 const GUTTER_WIDTH = 0;
 // The table scrolls this far PAST its last column, so the last column's edge is not pinned to the screen's (its width stays adjustable).
 const SCROLL_PAST = 64;
+// How far past its right end a wide table is dragged to pick the block (dp, beyond the room it had to scroll).
+const PULL_TO_PICK = 56;
 const MIN_COLUMN_WIDTH = 56;
 // Past this a column is a paragraph, and a paragraph belongs in a
 // paragraph.
