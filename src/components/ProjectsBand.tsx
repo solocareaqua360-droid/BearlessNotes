@@ -28,6 +28,7 @@ export default function ProjectsBand({
   topPad,
   rootFor,
   onRootPress,
+  onHold,
 }: {
   groups: Group[];
   focusId: string;
@@ -40,6 +41,8 @@ export default function ProjectsBand({
   // The name of the folder that IS the front project (its root), if any; a tap opens that folder's project settings.
   rootFor?: (projectId: string) => string | null;
   onRootPress?: (projectId: string) => void;
+  // A long press on the front card: the project's own settings (rename, cover colour, root folder, archive, delete).
+  onHold?: (projectId: string) => void;
 }) {
   const S = useSoft();
   const { width: winW } = useWindowDimensions();
@@ -90,6 +93,8 @@ export default function ProjectsBand({
                 <Animated.View key={s.id || 'none'} layout={LinearTransition.duration(220)} style={{ width: widths[i], height: cardH }}>
                   <Pressable
                     onPress={() => onFocus(s.id)}
+                    onLongPress={on && s.id !== NO_PROJECT ? () => onHold?.(s.id) : undefined}
+                    delayLongPress={350}
                     accessibilityLabel={s.name}
                     style={[styles.card, { backgroundColor: bg }, on ? styles.cardWide : styles.cardThin]}
                   >

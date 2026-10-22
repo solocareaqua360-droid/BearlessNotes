@@ -242,6 +242,18 @@ function matchesNeedle(item: FolderItem, needle: string): boolean {
 // A FOLDER'S THINGS ARRIVING (2026-10-12, the user's: «якщо ми вміст показуємо пізніше, то давай вже анімацію...
 // розширення з якогось кутка, картки по черзі»): each card grows out of the top-left, a little after the one
 // before it. Only on stepping into a folder through its opening - never for cards scrolled into view.
+// The colours a project's cover can be (a soft wash of these is what the band draws).
+const PROJECT_COVER_COLORS = [
+  { name: 'Блакитний', hex: '#3B82F6' },
+  { name: 'Зелений', hex: '#16A34A' },
+  { name: 'Фіолетовий', hex: '#8B5CF6' },
+  { name: 'Помаранчевий', hex: '#F97316' },
+  { name: 'Рожевий', hex: '#EC4899' },
+  { name: 'Бірюзовий', hex: '#14B8A6' },
+  { name: 'Жовтий', hex: '#EAB308' },
+  { name: 'Графіт', hex: '#6B7280' },
+];
+
 // The bin's place among the folder cards of «Модерний» - not a folder path anyone can make (no tag has it).
 const BIN_PATH = '\u0000bin';
 
@@ -1250,6 +1262,62 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // is NOT lost - it goes to the root, and subfolders go with the folder).
   // One hold, one menu: a held card is heard both by its own long press and by the carry's hold, and the second
   // menu waited under the first and came back after «Вигляд картки» was done (2026-10-12).
+  // THE PROJECT'S OWN SETTINGS - a long press on the front card of the projects band (the user, 2026-10-22).
+  const [renamingProject, setRenamingProject] = useState<Group | null>(null);
+  async function holdProject(id: string) {
+    const g = groups.find((x) => x.id === id);
+    if (!g) return;
+    const hasRoot = (rootPathsOf.get(id)?.size ?? 0) > 0;
+    const choice = await ask({
+      title: g.name,
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' as const },
+        { id: 'color', label: 'Колір обкладинки', icon: 'color-palette-outline' as const },
+        { id: 'root', label: hasRoot ? 'Папка-корінь…' : 'Зробити папку коренем…', icon: 'folder-open-outline' as const },
+        { id: 'archive', label: g.archived ? 'Повернути з архіву' : 'Архівувати', icon: 'archive-outline' as const },
+        { id: 'delete', label: 'Видалити проєкт', icon: 'trash-outline' as const, tone: 'danger' as const },
+      ],
+    });
+    if (choice === 'rename') setRenamingProject(g);
+    else if (choice === 'color') {
+      const pick = await ask({
+        title: 'Колір обкладинки',
+        actions: PROJECT_COVER_COLORS.map((c) => ({ id: c.hex, label: c.name, icon: 'ellipse' as const })),
+      });
+      if (pick !== 'cancel') await updateDoc(doc(db, 'groups', g.id), { color: pick }).catch((e) => notify('Не вдалося зберегти', (e as Error).message));
+    } else if (choice === 'root') {
+      const current = [...(rootPathsOf.get(id) ?? [])][0];
+      if (current) {
+        try {
+          setProjectsFor(await tagForPath(current));
+        } catch (e) {
+          notify('Не вдалося відкрити', (e as Error).message);
+        }
+        return;
+      }
+      const top = foldersAll.filter((f) => f.path !== UNFILED && !f.collection && !f.playlist);
+      if (top.length === 0) {
+        notify('Немає папок', 'Спершу створіть папку на першому рівні провідника.');
+        return;
+      }
+      const which = await ask({ title: 'Яка папка є проєктом?', actions: top.map((f) => ({ id: f.path, label: f.name, icon: 'folder-outline' as const })) });
+      if (which === 'cancel') return;
+      try {
+        const t = await tagForPath(which);
+        await setTagFields(t.id, { groupIds: [...new Set([...(t.groupIds ?? []), id])], projectRoots: [...new Set([...(t.projectRoots ?? []), id])] });
+      } catch (e) {
+        notify('Не вдалося зберегти', (e as Error).message);
+      }
+    } else if (choice === 'archive') {
+      await updateDoc(doc(db, 'groups', g.id), { archived: !g.archived }).catch(() => {});
+      changeFocusProj(NO_PROJECT);
+    } else if (choice === 'delete') {
+      const yes = await confirm({ title: 'Видалити проєкт?', message: `«${g.name}». Папки й записи лишаться на місці.`, confirmLabel: 'Видалити' });
+      if (!yes) return;
+      changeFocusProj(NO_PROJECT);
+      await deleteDoc(doc(db, 'groups', g.id)).catch((e) => notify('Не вдалося видалити', (e as Error).message));
+    }
+  }
   async function holdFolder(f: FolderEntry) {
     // The Finder rule (Mac): a right click CHOOSES the card first, then asks.
     if (explorerSelect) {
@@ -2317,6 +2385,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             const r = [...(rootPathsOf.get(id) ?? [])];
             return r.length ? r.map((x) => nameOf(x)).join(', ') : null;
           }}
+          onHold={holdProject}
           onRootPress={async (id) => {
             const r = [...(rootPathsOf.get(id) ?? [])][0];
             if (!r) return;
@@ -2873,6 +2942,17 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           } catch (e) {
             notify('Не вдалося зберегти', (e as Error).message);
           }
+        }}
+      />
+      <RenamePrompt
+        visible={renamingProject !== null}
+        title="Назва проєкту"
+        initialValue={renamingProject?.name ?? ''}
+        onCancel={() => setRenamingProject(null)}
+        onSave={async (name) => {
+          const g = renamingProject;
+          setRenamingProject(null);
+          if (g && name.trim()) await updateDoc(doc(db, 'groups', g.id), { name: name.trim() }).catch(() => {});
         }}
       />
       <FolderProjectsSheet
