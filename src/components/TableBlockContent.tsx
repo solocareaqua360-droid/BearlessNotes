@@ -92,6 +92,7 @@ export default function TableBlockContent({
   // first field on the page (the folder box). This 1pt invisible field is where the focus rests instead.
   const sinkRef = useRef<TextInput>(null);
   const [tableHover, setTableHover] = useState(false);
+  const [viewW, setViewW] = useState(0);
   const rowHeights = useRef<number[]>([]);
   // The sink brings the keyboard only when it is already up (another block was being written in): then the first tap must not take it down -
   // the editor leaves writing mode the moment it hides. With no keyboard, a first tap only selects, and nothing rises.
@@ -616,6 +617,8 @@ export default function TableBlockContent({
     onUpdate({ tableRows: [...rows.map((row) => ({ cells: [...row.cells] })), { cells: sumCells }] });
   }
 
+  const framesW = Array.from({ length: columnCount }, (_, i) => widthOf(i)).reduce((a, b) => a + b, 0);
+  const fitsView = viewW > 0 && framesW + 4 <= viewW;
   const selectedRaw = selected ? rows[selected.r]?.cells[selected.c] ?? '' : '';
   // THE rule of this component, and the user's own words for it: "поки
   // ти не ввів равно, ти просто перемикаєшся між клітинками, все
@@ -802,7 +805,16 @@ export default function TableBlockContent({
   // dots in its right corner (its menu) and, on its right edge, the grip that sets the column's width.
   return (
     <View style={styles.tableBlock} onTouchStart={(e) => markTouchInsideTable(e.nativeEvent.timestamp)}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingRight: SCROLL_PAST, paddingBottom: pointer ? 14 : 0 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="always"
+        // A table that FITS and is only selected does not scroll at all: the native scroller would take the left swipe that picks the whole
+        // block (the user, 2026-10-22). Typing, or a table wider than the screen, scrolls as before.
+        scrollEnabled={pointer || editing || !fitsView}
+        onLayout={(e) => setViewW(e.nativeEvent.layout.width)}
+        contentContainerStyle={{ paddingRight: SCROLL_PAST, paddingBottom: pointer ? 14 : 0 }}
+      >
         <View
           style={{ position: 'relative' }}
           {...(pointer ? ({ onMouseEnter: () => setTableHover(true), onMouseLeave: () => setTableHover(false) } as object) : {})}
