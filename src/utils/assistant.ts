@@ -1,4 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { doc, getDoc, getDocs } from '../firestore';
+import { db } from '../firebase';
+import { ownedQuery, setDoc } from './owned';
 import { GEMINI_MODEL, GeminiError } from './gemini';
 import { getGeminiKey } from './geminiKey';
 import { costOfGemini, recordGemini } from './geminiUsage';
@@ -8,7 +11,10 @@ import { costOfGemini, recordGemini } from './geminiUsage';
 // is remembered, asked about in more detail or copied. One conversation, no modes: the AI follows the tone itself -
 // clear and structured when the user plans, warm and attentive when he shares what he feels.
 //
-// Kept on THIS phone for now (AsyncStorage): the trial is the phone's, where the Gemini key is.
+// KEPT LIKE A NOTE (2026-10-23, the user: «мені страшно зараз створити новий чат... для того я і створюю застосунок
+// нотаток»): every conversation is a document of its own in `assistantChats` (Firestore, so it survives a reinstall and is in
+// the backups' reach), and the one open now is also kept on the phone for an instant, offline start. «Нова розмова» never
+// deletes anything: the old one stays in the list of earlier conversations.
 // Only the last messages go to Gemini each time (MAX_TURNS) - the rest of the conversation stays here; the topic
 // memory that replaces the old part of it is step 2.
 
@@ -22,6 +28,7 @@ export function groupsOf(chat: AssistantChat): string[][] {
 }
 
 const KEY = 'assistant.chat.v1';
+const COLLECTION = 'assistantChats';
 const MAX_TURNS = 24;
 
 const SYSTEM = `Ти співрозмовник у застосунку нотаток цієї людини. Говори українською, просто й по-людськи, як уважний розумний друг.
@@ -37,15 +44,81 @@ export function newChat(): AssistantChat {
 export async function loadChat(): Promise<AssistantChat> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
-    if (raw) return { ...newChat(), ...(JSON.parse(raw) as AssistantChat) };
+    if (raw) {
+      const chat = { ...newChat(), ...(JSON.parse(raw) as AssistantChat) };
+      // A conversation kept only on the phone (before 2026-10-23) reaches the database the moment it is opened.
+      saveChat(chat);
+      return chat;
+    }
   } catch {
     // A broken record: start afresh rather than not at all.
   }
   return newChat();
 }
 
+export function titleOf(chat: AssistantChat): string {
+  const first = chat.messages.find((m) => m.role === 'user')?.text ?? '';
+  const clean = first.replace(/\s+/g, ' ').trim();
+  return !clean ? 'Нова розмова' : clean.length > 70 ? `${clean.slice(0, 67).trim()}…` : clean;
+}
+
+// Firestore keeps no arrays inside arrays and no `undefined`: the groups are stored as {keys}, the messages without empty fields.
+function toStored(chat: AssistantChat) {
+  return {
+    title: titleOf(chat),
+    startedAt: chat.startedAt,
+    updatedAt: Date.now(),
+    messages: chat.messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      text: m.text,
+      at: m.at,
+      ...(m.error ? { error: true } : {}),
+      ...(m.costUsd !== undefined ? { costUsd: m.costUsd } : {}),
+    })),
+    remembered: chat.remembered,
+    groups: groupsOf(chat).map((keys) => ({ keys })),
+  };
+}
+function fromStored(id: string, data: Record<string, unknown>): AssistantChat {
+  const groups = (data.groups as { keys: string[] }[] | undefined)?.map((g) => g.keys);
+  return {
+    id,
+    startedAt: (data.startedAt as number) ?? Date.now(),
+    messages: (data.messages as AssistantMessage[]) ?? [],
+    remembered: (data.remembered as string[]) ?? [],
+    ...(groups ? { groups } : {}),
+  };
+}
+
 export function saveChat(chat: AssistantChat): void {
   AsyncStorage.setItem(KEY, JSON.stringify(chat)).catch(() => {});
+  // An empty conversation is not worth a document.
+  if (chat.messages.length === 0) return;
+  setDoc(doc(db, COLLECTION, chat.id), toStored(chat)).catch(() => {});
+}
+
+export type ChatSummary = { id: string; title: string; updatedAt: number; count: number };
+
+export async function listChats(): Promise<ChatSummary[]> {
+  const snap = await getDocs(ownedQuery(COLLECTION));
+  return snap.docs
+    .map((d) => {
+      const data = d.data() as Record<string, unknown>;
+      return {
+        id: d.id,
+        title: (data.title as string) || 'Розмова',
+        updatedAt: (data.updatedAt as number) ?? 0,
+        count: ((data.messages as unknown[]) ?? []).length,
+      };
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function loadChatById(id: string): Promise<AssistantChat | null> {
+  const snap = await getDoc(doc(db, COLLECTION, id));
+  if (!snap.exists()) return null;
+  return fromStored(id, snap.data() as Record<string, unknown>);
 }
 
 // An answer as its blocks: split on empty lines; what Markdown slips through is taken off, the words stay.

@@ -8,7 +8,7 @@ import { ask, notify } from '../components/surfaces/Ask';
 import { useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
-import { askAssistant, blocksOf, groupsOf, loadChat, newChat, saveChat, type AssistantChat, type AssistantMessage } from '../utils/assistant';
+import { askAssistant, blocksOf, groupsOf, listChats, loadChat, loadChatById, newChat, saveChat, type AssistantChat, type AssistantMessage } from '../utils/assistant';
 import { useGeminiUsage } from '../utils/geminiUsage';
 import { hapticPickUp } from '../utils/haptics';
 import { collection } from '../firestore';
@@ -139,11 +139,44 @@ export default function AssistantScreen() {
   async function menu() {
     const choice = await ask({
       title: 'Розмова',
-      actions: [{ id: 'new', label: 'Нова розмова', icon: 'add' as const }],
+      actions: [
+        { id: 'new', label: 'Нова розмова', icon: 'add' as const },
+        { id: 'history', label: 'Попередні розмови', icon: 'time-outline' as const },
+      ],
     });
     if (choice === 'new') {
+      // The one open now is kept (saveChat writes it to the database); nothing is deleted.
+      if (chat) saveChat(chat);
       update(newChat());
       setPicked([]);
+    } else if (choice === 'history') {
+      openHistory();
+    }
+  }
+
+  async function openHistory() {
+    try {
+      const list = (await listChats()).filter((c) => c.id !== chat?.id).slice(0, 30);
+      if (list.length === 0) {
+        notify('Попередніх розмов ще немає', 'Нова розмова не стирає стару: вона з\'явиться тут.');
+        return;
+      }
+      const id = await ask({
+        title: 'Попередні розмови',
+        actions: list.map((c) => ({
+          id: c.id,
+          label: `${c.title} · ${new Date(c.updatedAt).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })}`,
+          icon: 'chatbubble-outline' as const,
+        })),
+      });
+      if (!id || id === 'cancel') return;
+      const loaded = await loadChatById(id);
+      if (!loaded) return;
+      if (chat) saveChat(chat);
+      update(loaded);
+      setPicked([]);
+    } catch (e) {
+      notify('Не вдалося відкрити історію', (e as Error).message);
     }
   }
 
