@@ -129,14 +129,15 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
   const paths = useMemo(() => {
     const placed = tags.filter((t) => t.baseOnly && t.inExplorer).map((t) => t.path);
     const isPlaced = (path: string) => placed.some((p) => path === p || path.startsWith(`${p}/`));
-    return tags.filter((t) => !t.baseOnly || isPlaced(t.path)).map((t) => t.path);
+    // A real folder named exactly like the built-in «Нерозкладене» is not a folder (see the explorer's own rule).
+    return tags.filter((t) => (!t.baseOnly || isPlaced(t.path)) && t.path !== UNFILED).map((t) => t.path);
   }, [tags]);
   const roots = useMemo(() => buildTree(paths), [paths]);
   // What is in no folder - the count on «Нерозкладене» (the same rule as the explorer's: notes, boards, files;
   // photos and links in no folder live in their own bases).
   const unfiled = useMemo(
-    () => items.filter((i) => i.kind !== 'row' && !(i.raw as { deletedAt?: unknown } | undefined)?.deletedAt && i.tagIds.length === 0 && i.kind !== 'photo' && i.kind !== 'link').length,
-    [items]
+    () => items.filter((i) => i.kind !== 'row' && !(i.raw as { deletedAt?: unknown } | undefined)?.deletedAt && i.tagIds.every((id) => tags.find((t) => t.id === id)?.path === UNFILED) && i.kind !== 'photo' && i.kind !== 'link').length,
+    [items, tags]
   );
   const countIn = (path: string) => items.filter((i) => i.tagIds.some((id) => tags.find((t) => t.id === id)?.path === path)).length;
 

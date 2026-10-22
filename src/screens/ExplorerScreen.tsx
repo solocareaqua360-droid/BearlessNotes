@@ -338,7 +338,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     const placed = allTags.filter((t) => t.baseOnly && t.inExplorer).map((t) => t.path);
     const isPlaced = (path: string) => placed.some((p) => path === p || path.startsWith(`${p}/`));
     // Only the collections themselves are left out: an explorer folder of the same name stays.
-    return allTags.filter((t) => !t.baseOnly || isPlaced(t.path));
+    // A real folder named exactly like the built-in «Нерозкладене» (made before writers were guarded, see UNFILED) is not a folder: it drew
+    // a second «Нерозкладене» card (the user, 2026-10-22), and what it holds counts as unfiled.
+    return allTags.filter((t) => (!t.baseOnly || isPlaced(t.path)) && t.path !== UNFILED);
   }, [allTags]);
   // The same «Порядок» the bases have (alphabet / created / changed, ↑↓), kept for this screen.
   const { sortPref, selectSortField } = useSortPref('explorerSort');
@@ -550,6 +552,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     items.forEach((item) => m.set(item.id, item.tagIds.map((id) => tagById.get(id)?.path).filter((p): p is string => !!p)));
     return m;
   }, [items, tagById]);
+  // «НЕРОЗКЛАДЕНЕ» = in no folder AND in no collection of its base: a photo put in a base's collection is put somewhere (2026-10-22: the 22 photos
+  // of «Слеш панель» landed in «Нерозкладене» the moment their old folder went).
+  const collectionIds = useMemo(() => new Set(allTags.filter((t) => t.baseOnly).map((t) => t.id)), [allTags]);
+  const isUnfiled = (item: FolderItem) => (pathsOf.get(item.id) ?? []).length === 0 && !item.tagIds.some((id) => collectionIds.has(id));
 
   // THE FILTER CHIPS (the one plan, step 4): a kind and a project narrow what the level shows;
   // folders that hold none of it step aside while a filter is on. Nothing is saved yet.
@@ -642,7 +648,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     const list = entriesFor(path);
     if (!FEATURES.unfiledFolder || path) return list;
     // «Нерозкладене» first, while there is anything in it.
-    const unfiled = shown.filter((item) => (pathsOf.get(item.id) ?? []).length === 0).length;
+    const unfiled = shown.filter(isUnfiled).length;
     return unfiled > 0 ? [{ path: UNFILED, name: nameOf(UNFILED), count: unfiled, playlist: false, collection: undefined, size: 'M' as const }, ...list] : list;
   }, [tags, shown, pathsOf, path, inBin, inCleanup, filtering, searching, needle]);
 
@@ -736,7 +742,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       : shown.filter((item) => {
           const paths = pathsOf.get(item.id) ?? [];
           // The root keeps only folders; what is in none is in «Нерозкладене».
-          if (path === UNFILED) return paths.length === 0;
+          if (path === UNFILED) return isUnfiled(item);
           // In a project whose root is a folder, the things lying directly in that folder are the project's loose things.
           if (!path && projectsHere && focusRoots.length > 0) return focusRoots.some((r) => paths.includes(r));
           return path ? paths.includes(path) : !FEATURES.unfiledFolder && paths.length === 0;
@@ -2310,7 +2316,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const cardTagOf = (p: string) =>
     p === UNFILED ? UNFILED_TAG : tags.filter((t) => t.path === p).find((t) => t.card) ?? tags.find((t) => t.path === p);
   const directItemsOf = (p: string) =>
-    p === UNFILED ? items.filter((i) => (pathsOf.get(i.id) ?? []).length === 0) : items.filter((i) => (pathsOf.get(i.id) ?? []).includes(p));
+    p === UNFILED ? items.filter(isUnfiled) : items.filter((i) => (pathsOf.get(i.id) ?? []).includes(p));
   const subFolderNamesOf = (p: string) => [...new Set(tags.filter((t) => t.path.startsWith(`${p}/`)).map((t) => t.path.slice(p.length + 1).split('/')[0]))];
   const subFoldersOf = (p: string) => subFolderNamesOf(p).length;
   // THE INSPECTOR (frame B): view, order, switches, style; the chosen thing or folder, else the folder stood in; actions.
