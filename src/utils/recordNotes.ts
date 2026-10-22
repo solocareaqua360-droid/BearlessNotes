@@ -18,7 +18,9 @@ export type DocOwner =
   | { kind: 'row'; id: string; databaseId: string }
   | { kind: 'link'; id: string }
   | { kind: 'note'; id: string }
-  | { kind: 'chat'; id: string };
+  | { kind: 'chat'; id: string }
+  // A board's map (utils/boardMap).
+  | { kind: 'board'; id: string };
 
 // The record's main note («Розбір») has an id of its own, the way a day's
 // note does (day_<date>): found without a query, never made twice.

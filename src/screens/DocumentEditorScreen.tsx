@@ -405,6 +405,8 @@ export type DocumentEditorHandle = {
   requestBack: () => boolean;
   // Rename from outside (the board's card window header).
   setDocumentTitle: (text: string) => void;
+  // A line added at the foot from outside (a board's map: «Додати ділянку»).
+  appendBlock: (fields: Partial<Block>) => void;
 };
 
 // How far past the last block the page can scroll while the keyboard is
@@ -5675,7 +5677,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   // The board's card window renames the note from its own header; the editor then saves it like any typed title.
-  useImperativeHandle(ref, () => ({ toggleSelectMode, requestBack, startWriting, setDocumentTitle: (text: string) => setTitle(text) }));
+  useImperativeHandle(ref, () => ({
+    toggleSelectMode,
+    requestBack,
+    startWriting,
+    setDocumentTitle: (text: string) => setTitle(text),
+    appendBlock: (fields: Partial<Block>) => {
+      snapshotBeforeChange();
+      const created = { ...newBlock(), ...fields } as Block;
+      setBlocks((prev) => [...prev, isUnderToggle(prev, prev.length) ? { ...created, exitsToggle: true } : created]);
+    },
+  }));
 
   useEffect(() => {
     onSelectModeChange?.(isSelectMode);

@@ -11,7 +11,7 @@ import BlockMiniature from '../BlockMiniature';
 // «+» sheet, the layers drawer and the dock's selection buttons stands in one column with tabs - Вставити (the kinds of
 // card as pictures), Шари, Обране (what to do with what is chosen), Інфо, and one tab per open database window. A tab
 // whose content is not given is not drawn. Everything here only DRAWS; the board owns the functions.
-export type BoardTab = 'insert' | 'layers' | 'selected' | 'info' | string;
+export type BoardTab = 'insert' | 'layers' | 'selected' | 'info' | 'map' | string;
 
 export type InsertGroup = { title: string; tiles: { key: string; label: string; onPress: () => void }[] };
 
@@ -30,6 +30,7 @@ export default function BoardPanel({
   selected,
   selectedBadge,
   info,
+  map,
   dbTabs,
   focusSearch,
 }: {
@@ -41,6 +42,8 @@ export default function BoardPanel({
   // «Обране» carries a dot while something is chosen.
   selectedBadge?: boolean;
   info?: ReactNode;
+  // The board's map: its own tab («Карта дошки»).
+  map?: ReactNode;
   dbTabs?: { id: string; label: string; node: ReactNode; onClose: () => void }[];
   // Counts up each time the bar's «+» is pressed: the search field takes the caret.
   focusSearch?: number;
@@ -63,6 +66,7 @@ export default function BoardPanel({
     { id: 'insert', label: 'Вставити' },
     ...(layers ? [{ id: 'layers', label: 'Шари' }] : []),
     ...(selected ? [{ id: 'selected', label: 'Обране', badge: selectedBadge }] : []),
+    ...(map ? [{ id: 'map', label: 'Карта' }] : []),
     ...(info ? [{ id: 'info', label: 'Інфо' }] : []),
     ...(dbTabs ?? []).map((d) => ({ id: d.id, label: d.label, close: d.onClose })),
   ];
@@ -119,6 +123,10 @@ export default function BoardPanel({
       ) : tab === 'selected' ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
           {selected}
+        </ScrollView>
+      ) : tab === 'map' ? (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
+          {map}
         </ScrollView>
       ) : tab === 'info' ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>

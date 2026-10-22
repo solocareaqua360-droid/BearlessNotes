@@ -5,6 +5,7 @@ import { foldOf } from '../utils/toggleBlocks';
 import SketchLayer from './SketchLayer';
 import { INK, drawingViewBox } from '../utils/sketchGeometry';
 import { rememberTableTap } from '../utils/tableTap';
+import { requestBoardJump } from '../utils/boardMap';
 import { ComponentProps, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -1142,6 +1143,21 @@ export default function BlockRow({
       ]}
     >
       {content}
+      {!!item.boardView && (
+        // «Перейти»: the board on screen goes to the place this line remembers (utils/boardMap).
+        <Pressable
+          onPress={() => {
+            if (!requestBoardJump(item.boardView!)) ask({ title: 'Дошка не відкрита', message: 'Відкрийте цю дошку поруч, щоб перейти до ділянки.', actions: [], cancelLabel: 'Зрозуміло' });
+          }}
+          hitSlop={6}
+          accessibilityLabel="Перейти до ділянки дошки"
+          style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, marginLeft: 4, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 13, backgroundColor: theme.paper.tint }}
+          {...({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}
+        >
+          <Ionicons name="locate" size={14} color={theme.paper.inkMuted} />
+          <Text style={{ fontSize: 12.5, color: theme.paper.inkMuted, fontWeight: '600' }}>Перейти</Text>
+        </Pressable>
+      )}
       {/* On the right. Hidden where the sheet runs under the rail (the
           calendar's daily note) - but never while selecting: there it is
           the checkbox, and the only thing showing what is picked.

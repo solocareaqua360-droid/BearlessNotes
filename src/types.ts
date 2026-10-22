@@ -382,6 +382,9 @@ export interface Block {
   tableHeaderColumn?: boolean;
   // 'table' blocks only (2026-10-22): reading shows the header and a few rows with a sign that there is more (editing always shows all).
   tableShort?: boolean;
+  // Any text block of a board's MAP (utils/boardMap): the place on the board this line points at - centre and zoom. The block draws a «Перейти»
+  // button that takes that board back there.
+  boardView?: { boardId: string; x: number; y: number; scale: number };
 }
 
 export interface TableRow {

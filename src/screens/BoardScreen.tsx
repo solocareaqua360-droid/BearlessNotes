@@ -155,6 +155,7 @@ import { usePublishRailPanel } from '../navigation/navRail';
 import { inspector } from '../navigation/inspector';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import BoardPanel, { BoardSelection, PanelPickList, type BoardTab } from '../components/desktop/BoardPanel';
+import { ensureBoardMap, mapDocIdOf, onBoardJump, type BoardView } from '../utils/boardMap';
 import DocumentCardBlocks from '../components/DocumentCardBlocks';
 import { PAGE_H2, PAGE_TEXT, makeStyles as makeEditorStyles } from '../components/documentEditorStyles';
 import PagePreviewRow from '../components/PagePreviewRow';
@@ -2761,6 +2762,41 @@ export default function BoardScreen() {
   // The inverse of the screen-to-world conversion the taps use, taken at
   // the centre of the screen - where `e.x` is viewport.width / 2, the
   // whole viewport term cancels and this is what is left.
+  // THE BOARD'S MAP (utils/boardMap): opened in the pane beside the board, «Додати ділянку» writes the place now on screen into it,
+  // and the button of such a line (BlockRow) arrives here through onBoardJump.
+  async function openMap() {
+    try {
+      const id = await ensureBoardMap(boardId, title);
+      setPaneFullscreen(false);
+      setPaneDocId(id);
+    } catch (e) {
+      notify('Не вдалося відкрити карту', (e as Error).message);
+    }
+  }
+  async function addMapPlace() {
+    const id = mapDocIdOf(boardId);
+    if (paneDocId !== id) {
+      await openMap();
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    const c = viewCenter();
+    const view: BoardView = { boardId, x: Math.round(c.x), y: Math.round(c.y), scale: Math.round(scale.value * 100) / 100 };
+    paneEditorRef.current?.appendBlock({ type: 'paragraph', text: 'Ділянка', boardView: view });
+  }
+  useEffect(
+    () =>
+      onBoardJump((view) => {
+        if (view.boardId !== boardId) return false;
+        const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale));
+        scale.value = withTiming(next, { duration: 380 });
+        translateX.value = withTiming(-(view.x - WORLD_CENTER) * next, { duration: 380 });
+        translateY.value = withTiming(-(view.y - WORLD_CENTER) * next, { duration: 380 });
+        return true;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [boardId]
+  );
+
   function viewCenter(): { x: number; y: number } {
     return {
       x: WORLD_CENTER - translateX.value / scale.value,
@@ -7998,6 +8034,19 @@ export default function BoardScreen() {
               }
             />
           ) : undefined
+        }
+        map={
+          <View style={{ gap: 10 }}>
+            <Text style={{ fontSize: 12.5, color: '#9E9B93', lineHeight: 18 }}>
+              Карта дошки: нотатка поруч із дошкою. Додайте ділянку, і в карті з'явиться рядок із кнопкою «Перейти» до цього місця.
+            </Text>
+            <Pressable onPress={openMap} style={{ backgroundColor: '#24211D', borderRadius: 12, paddingVertical: 10, alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>{paneDocId === mapDocIdOf(boardId) ? 'Карта відкрита' : 'Відкрити карту'}</Text>
+            </Pressable>
+            <Pressable onPress={addMapPlace} style={{ backgroundColor: '#EFEAE2', borderRadius: 12, paddingVertical: 10, alignItems: 'center' }}>
+              <Text style={{ color: '#24211D', fontSize: 13, fontWeight: '600' }}>Додати ділянку</Text>
+            </Pressable>
+          </View>
         }
         info={
           <View style={{ gap: 8 }}>
