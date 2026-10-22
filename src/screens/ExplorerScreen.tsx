@@ -102,8 +102,9 @@ import { askWhatToKeep } from '../components/DeleteContentsHost';
 import { describeBoards, removeItems, type PlanItem } from '../utils/deletionPlan';
 import { readBoardPart } from '../utils/boardStorage';
 import type { BoardItem, BoardCard, BoardColumn } from '../types';
-import { arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, getDocs, onSnapshot, updateDoc } from '../firestore';
+import { arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, getDocs, onSnapshot, updateDoc, where } from '../firestore';
 import { addDoc, ownedQuery } from '../utils/owned';
+import { isGone } from '../utils/isGone';
 import { listenError } from '../utils/listenError';
 import { kindsOf } from '../utils/groups';
 import type { Group } from '../types';
@@ -246,6 +247,9 @@ function matchesNeedle(item: FolderItem, needle: string): boolean {
 // розширення з якогось кутка, картки по черзі»): each card grows out of the top-left, a little after the one
 // before it. Only on stepping into a folder through its opening - never for cards scrolled into view.
 // The colours a project's cover can be (a soft wash of these is what the band draws).
+// Every collection whose records can still carry a project (Group) of their own.
+const GROUP_COLLECTIONS = ['documents', 'photos', 'files', 'links', 'boards', 'tasks', 'flashcards', 'customDatabaseRows'];
+
 const PROJECT_COVER_COLORS = [
   { name: 'Блакитний', hex: '#3B82F6' },
   { name: 'Зелений', hex: '#16A34A' },
@@ -1348,7 +1352,20 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       const paths = [...new Set(carrying.map((t) => t.path))];
       const toNone = paths.filter((p) => !tags.some((t) => t.path === p && (t.groupIds ?? []).some((x) => x !== g.id)));
       const staying = paths.length - toNone.length;
-      const things = items.filter((i) => ((i.raw ?? {}) as Record<string, unknown>).groupId === g.id).length;
+      // Things filed straight under the project, in EVERY database - standard or the user's own (the user, 2026-10-22: a record of a
+      // base must not carry a project at all; only folders and collections do). Read from the collections, not from the explorer's list.
+      const thingRefs: { collection: string; id: string }[] = [];
+      try {
+        for (const coll of GROUP_COLLECTIONS) {
+          const snap = await getDocs(ownedQuery(coll, where('groupId', '==', g.id)));
+          snap.docs.forEach((d) => {
+            if (!isGone(d.data())) thingRefs.push({ collection: coll, id: d.id });
+          });
+        }
+      } catch {
+        // Counting is a courtesy; the cleanup below tries again.
+      }
+      const things = thingRefs.length;
       const lines = [
         `Нічого не видаляється: усі папки й записи лишаться на місці.`,
         toNone.length > 0 ? `Папок, що перейдуть у «Без проєкту»: ${toNone.length}.` : null,
@@ -1366,6 +1383,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             setTagFields(t.id, { groupIds: (t.groupIds ?? []).filter((x) => x !== g.id), projectRoots: (t.projectRoots ?? []).filter((x) => x !== g.id) })
           )
         );
+        await Promise.all(thingRefs.map((r) => updateDoc(doc(db, r.collection, r.id), { groupId: deleteField() }).catch(() => {})));
         await deleteDoc(doc(db, 'groups', g.id));
       } catch (e) {
         notify('Не вдалося видалити', (e as Error).message);

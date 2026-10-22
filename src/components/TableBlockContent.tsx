@@ -1217,8 +1217,8 @@ function EdgeBar({ vertical, style, onPress, label }: { vertical?: boolean; styl
       accessibilityLabel={label}
       style={[{ position: 'absolute', zIndex: 6, width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }, style]}
     >
-      {(state: { hovered?: boolean }) =>
-        state.hovered ? (
+      {(state) =>
+        (state as { hovered?: boolean }).hovered ? (
           <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#2F8CF3', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: '#fff', fontSize: 15, lineHeight: 17, fontWeight: '600' }}>+</Text>
           </View>
