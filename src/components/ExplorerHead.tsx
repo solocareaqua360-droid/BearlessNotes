@@ -31,6 +31,7 @@ export default function ExplorerHead({
   columns,
   folderRef,
   faceOf,
+  builtIn = [],
 }: {
   path: string;
   folders: ExplorerFolder[];
@@ -56,6 +57,8 @@ export default function ExplorerHead({
   // over; null keeps the ordinary folder row. Faced folders stand together above the rest, so a tall face never
   // stretches a short row beside it.
   faceOf?: (folder: ExplorerFolder) => { node: ReactNode; wide: boolean } | null;
+  // Built-in faces that stand FIRST among the collections, sized like them (the Photos base's «З камери»): not folders, just a card and a tap.
+  builtIn?: { key: string; node: ReactNode; onPress: () => void }[];
 }) {
   const theme = useTheme();
   // Soft (a database's chrome says so - see SoftSurfaceContext): the same
@@ -77,7 +80,7 @@ export default function ExplorerHead({
 
   // Nothing above the list unless there is something to put there. The
   // path used to count as something; it lives in the dock now.
-  if (folders.length === 0 && !trash) return null;
+  if (folders.length === 0 && !trash && builtIn.length === 0) return null;
   const faced: { folder: ExplorerFolder; face: ReactNode; wide: boolean }[] = [];
   const plain: ExplorerFolder[] = [];
   folders.forEach((folder) => {
@@ -91,8 +94,15 @@ export default function ExplorerHead({
 
   return (
     <View style={styles.head} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-      {faced.length > 0 && (
+      {faced.length + builtIn.length > 0 && (
         <View style={[styles.folderGrid, { alignItems: 'flex-start', marginBottom: plain.length > 0 || (!!trash && trash.count > 0 && path === '') ? FOLDER_GAP : 0 }]}>
+          {builtIn.map((b) => (
+            <View key={b.key} style={faceWidth !== undefined && { width: faceWidth }}>
+              <Pressable {...lift()} onPress={b.onPress}>
+                {b.node}
+              </Pressable>
+            </View>
+          ))}
           {faced.map(({ folder, face, wide }) => (
             <View key={folder.fullPath} ref={folderRef?.(folder.fullPath)} collapsable={false} style={wide ? { width: '100%' } : faceWidth !== undefined && { width: faceWidth }}>
               <Pressable

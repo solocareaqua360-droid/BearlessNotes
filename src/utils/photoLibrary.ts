@@ -31,7 +31,8 @@ export async function compressPickedImage(uri: string, width: number, height: nu
 // "+" and a link card's photo button alike. `imageUri` is already the
 // final, compressed file. Backed up to Drive in the background, same as
 // any photo.
-export async function writePhotoRecord(imageUri: string, options: { groupId?: string } = {}): Promise<NewPhoto> {
+// `fromCamera`: the mark the Photos base's built-in «З камери» reads (it replaced the service project «Фото», 2026-10-22).
+export async function writePhotoRecord(imageUri: string, options: { groupId?: string; fromCamera?: boolean } = {}): Promise<NewPhoto> {
   const now = Date.now();
   const id = generateId();
   const data: Record<string, unknown> = {
@@ -42,6 +43,7 @@ export async function writePhotoRecord(imageUri: string, options: { groupId?: st
     usedInDocuments: {},
   };
   if (options.groupId) data.groupId = options.groupId;
+  if (options.fromCamera) data.fromCamera = true;
   await setDoc(doc(db, 'photos', id), data, { merge: true });
   backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
     if (uploaded) updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });

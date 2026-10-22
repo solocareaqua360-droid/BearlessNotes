@@ -104,6 +104,8 @@ type PhotoItem = {
   documentIds: string[];
   tagIds: string[];
   groupId?: string;
+  // Taken with the camera - see «З камери» below.
+  fromCamera?: boolean;
   driveFileId?: string;
   driveBytes?: number;
   updatedAt: number;
@@ -275,6 +277,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             documentIds: Object.keys(data.usedInDocuments ?? {}),
             tagIds: data.tagIds ?? [],
             groupId: data.groupId,
+            fromCamera: !!data.fromCamera,
             driveFileId: data.driveFileId,
             driveBytes: data.driveBytes,
             updatedAt: data.updatedAt ?? 0,
@@ -292,16 +295,14 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     }, listenError('PhotosScreen:photos'));
   }, []);
 
-  // The fixed "Фото" group every camera capture lands in (see
-  // syncPhotosForDocument in DocumentEditorScreen) has to exist as a real
-  // group document for it to show up as a tab/option at all - {merge:true}
-  // makes this a harmless no-op on every mount after the first.
+  // «З КАМЕРИ» (2026-10-22, the user chose it over an undeletable collection): every photo taken with the camera, in one built-in
+  // collection of this base. It is not a folder and not a project - a filter on a mark the photo carries (`fromCamera`); the photos that
+  // were put in the old service project «Фото» before count as marked. Nothing to delete, nothing written twice, and a photo can still go
+  // into any collection. The service project itself is gone: its document is removed (it was re-created here on every visit).
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const cameraPhotos = useMemo(() => photos.filter((p) => p.fromCamera || p.groupId === CAMERA_PHOTOS_GROUP_ID), [photos]);
   useEffect(() => {
-    setDoc(
-      doc(db, 'groups', CAMERA_PHOTOS_GROUP_ID),
-      { name: 'Фото', color: '#EC4899', kind: 'photo' },
-      { merge: true }
-    );
+    deleteDoc(doc(db, 'groups', CAMERA_PHOTOS_GROUP_ID)).catch(() => {});
   }, []);
 
   const viewerPhoto = viewerPhotoId ? photos.find((p) => p.id === viewerPhotoId) ?? null : null;
@@ -486,9 +487,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
     height: number,
     source?: 'gallery' | 'camera'
   ): Promise<JustAddedPhoto> {
-    const added = await writePhotoRecord(imageUri, {
-      groupId: source === 'camera' ? CAMERA_PHOTOS_GROUP_ID : undefined,
-    });
+    const added = await writePhotoRecord(imageUri, { fromCamera: source === 'camera' });
     // Made inside a folder, it belongs to that folder - see useExplorer.
     await explorer.assignToCurrentFolder(added.id);
     if (!source) setJustAddedPhoto(added);
@@ -938,7 +937,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       }}
       // The canvas is a surface that moves on its own: no pull-to-search,
       // no readable-column cap.
-      fullWidth={viewMode === 'canvas' && !trashOpen}
+      fullWidth={viewMode === 'canvas' && !trashOpen && !cameraOpen}
       // No folders of its own here under mediaWithoutFolders: no folder switch, no «Нова папка».
       explorer={FEATURES.mediaWithoutFolders && !FEATURES.baseCollections ? undefined : {
         newFolderLabel: FEATURES.baseCollections ? 'Нова підбірка' : undefined,
@@ -1161,7 +1160,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
           <View style={styles.emptyState}>
             <ActivityIndicator color="#fff" />
           </View>
-        ) : viewMode === 'canvas' && !trashOpen ? (
+        ) : viewMode === 'canvas' && !trashOpen && !cameraOpen ? (
           // «Полотно» - the photos poured out on a table with the folder
           // tree on it (see PhotoCanvas).
           <FolderCanvas
@@ -1179,7 +1178,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             onPhotoMenu={(photo) => openPhotoMenu(photo as PhotoItem)}
             topPad={listTopPad}
           />
-        ) : !trashOpen && itemsHere.length === 0 && explorer.folders.length === 0 ? (
+        ) : !trashOpen && !cameraOpen && itemsHere.length === 0 && explorer.folders.length === 0 && cameraPhotos.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons name="image-outline" size={32} color={accent} />
@@ -1201,8 +1200,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             // on a single column outright.
             // The column count is part of the key: FlatList cannot be
             // told a new one in place.
-            key={`${viewMode}-${photoColumns}-${trashOpen ? 'trash' : 'list'}`}
-            data={trashOpen ? trashedPhotos : itemsHere}
+            key={`${viewMode}-${photoColumns}-${trashOpen ? 'trash' : cameraOpen ? 'camera' : 'list'}`}
+            data={trashOpen ? trashedPhotos : cameraOpen ? cameraPhotos : itemsHere}
             keyExtractor={(photo) => photo.id}
             numColumns={viewMode === 'list' ? 1 : photoColumns}
             columnWrapperStyle={viewMode === 'list' ? undefined : styles.gridRow}
@@ -1246,6 +1245,16 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                     Затисни фото, щоб відновити або видалити назавжди. Через 30 днів кошик очищається сам.
                   </Text>
                 </View>
+              ) : cameraOpen ? (
+                <View style={styles.trashHead}>
+                  <View style={styles.trashHeadRow}>
+                    <Pressable hitSlop={8} onPress={() => setCameraOpen(false)} style={styles.trashBack} accessibilityLabel="Назад">
+                      <Ionicons name="chevron-back" size={18} color={theme.ink.primary} />
+                    </Pressable>
+                    <Text style={styles.trashTitle}>З камери · {cameraPhotos.length}</Text>
+                  </View>
+                  <Text style={styles.trashHint}>Усі фото, зняті камерою. Ця підбірка вбудована: її не видалити, а фото з неї можна класти й в інші підбірки.</Text>
+                </View>
               ) : list.explorerMode ? (
                 <ExplorerHead
                   columns={pointerFolders}
@@ -1264,12 +1273,35 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                   trash={{ count: trashedPhotos.length, onOpen: () => setTrashOpen(true) }}
                   // A collection shows its photos (CollectionCard); a folder that is only a step of a path keeps its row.
                   faceOf={collectionFace}
+                  // The built-in «З камери» - only at the base's top level, only when there is something in it.
+                  builtIn={
+                    !explorer.path && needle === '' && cameraPhotos.length > 0
+                      ? [
+                          {
+                            key: 'camera',
+                            onPress: () => setCameraOpen(true),
+                            node: (
+                              <CollectionCard
+                                kind="photo"
+                                name="З камери"
+                                count={cameraPhotos.length}
+                                previews={[...cameraPhotos]
+                                  .sort((x, y) => (y.createdAt ?? 0) - (x.createdAt ?? 0))
+                                  .slice(0, 6)
+                                  .map((p) => ({ id: p.id, title: p.title ?? '', uri: p.imageUri, driveFileId: p.driveFileId }))}
+                                face={collectionFaceFor(undefined, 'grid').face}
+                              />
+                            ),
+                          },
+                        ]
+                      : []
+                  }
                 />
               ) : null
             }
             // What else is in this group - see GroupSections.
             ListFooterComponent={
-              trashOpen ? null : <GroupSections groupId={list.selectedGroupId} currentKind="photo" tags={tags} />
+              trashOpen || cameraOpen ? null : <GroupSections groupId={list.selectedGroupId} currentKind="photo" tags={tags} />
             }
             renderItem={({ item: photo }) => {
               const shared = trashOpen
@@ -1293,7 +1325,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                   };
               // Only the explorer carries; the bin never does.
               const carried =
-                !trashOpen && explorer.active ? carrying.cardProps(photo, () => openPhotoMenu(photo)) : {};
+                !trashOpen && !cameraOpen && explorer.active ? carrying.cardProps(photo, () => openPhotoMenu(photo)) : {};
               return viewMode === 'list' ? (
                 trashOpen ? (
                   <PhotoRow {...shared} {...carried} />

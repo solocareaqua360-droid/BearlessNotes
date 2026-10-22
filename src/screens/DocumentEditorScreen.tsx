@@ -113,7 +113,7 @@ import { clipBlocksToNote, clippedBlock } from '../utils/copyToNote';
 import { isUnderToggle, mergeVisibleOrder, foldHints, ownerToggleId, visibleBlocks } from '../utils/toggleBlocks';
 import { blockMatchesQuery } from '../utils/documentPreview';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
-import GroupPickerSheet, { CAMERA_PHOTOS_GROUP_ID } from '../components/GroupPickerSheet';
+import GroupPickerSheet from '../components/GroupPickerSheet';
 import { useTags } from '../hooks/useTags';
 import { measureNode } from '../utils/measureNode';
 import { setSelection } from '../utils/setSelection';
@@ -1641,7 +1641,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (isNewPhoto && b.imageTitle) photoDoc.title = b.imageTitle;
       if (b.imageFit) photoDoc.imageFit = b.imageFit;
       if (b.createdAt) photoDoc.createdAt = b.createdAt;
-      if (isNewPhoto && b.imageSource === 'camera') photoDoc.groupId = CAMERA_PHOTOS_GROUP_ID;
+      // A camera photo is MARKED, not put in a project: the Photos base shows them all in its built-in «З камери».
+      if (isNewPhoto && b.imageSource === 'camera') photoDoc.fromCamera = true;
       // A drawing made on this block (see onDrawOverImage) mirrors into the
       // photos database too - same rule as the title above, just without
       // the isNewPhoto guard: drawing is additive, never something a later
