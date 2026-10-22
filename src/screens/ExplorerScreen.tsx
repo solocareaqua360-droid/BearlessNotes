@@ -1342,10 +1342,34 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       await updateDoc(doc(db, 'groups', g.id), { archived: !g.archived }).catch(() => {});
       changeFocusProj(NO_PROJECT);
     } else if (choice === 'delete') {
-      const yes = await confirm({ title: 'Видалити проєкт?', message: `«${g.name}». Папки й записи лишаться на місці.`, confirmLabel: 'Видалити' });
+      // What the deletion touches: the folders that carry this project (those with no other one go to «Без проєкту») and the
+      // things filed straight under it (a thing has ONE project, so all of those go there). Nothing is deleted.
+      const carrying = tags.filter((t) => t.groupIds?.includes(g.id));
+      const paths = [...new Set(carrying.map((t) => t.path))];
+      const toNone = paths.filter((p) => !tags.some((t) => t.path === p && (t.groupIds ?? []).some((x) => x !== g.id)));
+      const staying = paths.length - toNone.length;
+      const things = items.filter((i) => ((i.raw ?? {}) as Record<string, unknown>).groupId === g.id).length;
+      const lines = [
+        `Нічого не видаляється: усі папки й записи лишаться на місці.`,
+        toNone.length > 0 ? `Папок, що перейдуть у «Без проєкту»: ${toNone.length}.` : null,
+        staying > 0 ? `Папок, що лишаться в інших своїх проєктах: ${staying}.` : null,
+        things > 0 ? `Записів, що перейдуть у «Без проєкту»: ${things}.` : null,
+        toNone.length + staying + things === 0 ? 'У цьому проєкті нічого немає.' : null,
+      ].filter(Boolean);
+      const yes = await confirm({ title: `Видалити проєкт «${g.name}»?`, message: lines.join('\n'), confirmLabel: 'Видалити' });
       if (!yes) return;
       changeFocusProj(NO_PROJECT);
-      await deleteDoc(doc(db, 'groups', g.id)).catch((e) => notify('Не вдалося видалити', (e as Error).message));
+      try {
+        // The project is taken off its folders first, so no folder keeps a project that no longer exists.
+        await Promise.all(
+          carrying.map((t) =>
+            setTagFields(t.id, { groupIds: (t.groupIds ?? []).filter((x) => x !== g.id), projectRoots: (t.projectRoots ?? []).filter((x) => x !== g.id) })
+          )
+        );
+        await deleteDoc(doc(db, 'groups', g.id));
+      } catch (e) {
+        notify('Не вдалося видалити', (e as Error).message);
+      }
     }
   }
   async function holdFolder(f: FolderEntry) {
