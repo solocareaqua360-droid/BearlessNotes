@@ -1,5 +1,4 @@
-import * as ImageManipulator from 'expo-image-manipulator';
-import { SaveFormat } from 'expo-image-manipulator';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
 // A project's cover picture (2026-10-22). Kept INSIDE the project's own document as a small JPEG data-URL, not as a file: a file would
 // exist on one device only, and the user works on the phone and the Mac. ~700 px at quality 0.6 is some 60-120 KB, far under a document's
