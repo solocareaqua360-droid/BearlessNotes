@@ -21,7 +21,7 @@ export type ParsedBlock = {
 // A fence: ``` on its own line, optionally naming the language.
 const FENCE = /^\s*```\s*([A-Za-z0-9+#.-]*)\s*$/;
 // "# ", "## ", "### " - a heading, and its level is how many hashes.
-const HEADING = /^\s*(#{1,3})\s+(.*)$/;
+const HEADING = /^\s*(#{1,6})\s+(.*)$/;
 // A line that is only a rule.
 const DIVIDER = /^\s*([-*_])\1{2,}\s*$/;
 // "- ", "* ", "• " - and the checkbox forms that start the same way.
@@ -164,6 +164,17 @@ export function parsePastedText(raw: string): ParsedBlock[] {
     paragraph.push(line);
   }
   flush();
+  // THE TOP HEADING OF WHAT WAS PASTED IS THE NOTE'S «ЗАГОЛОВОК 2» (the user, 2026-10-22: headings from a chat answer must arrive
+  // sensibly). A chat answer is written under its own title, so its sections start at "##" and its subsections are "###" - read by hash
+  // count they landed one and two levels too deep (and a "####" was lost altogether). The shallowest level in the paste becomes the first
+  // level, the rest keep their distance from it, and anything deeper than the editor's three levels stays at the third.
+  const hashLevels = out.filter((b) => b.type === 'heading').map((b) => b.headingLevel ?? 1);
+  if (hashLevels.length > 0) {
+    const shift = Math.min(...hashLevels) - 1;
+    out.forEach((b) => {
+      if (b.type === 'heading') b.headingLevel = Math.min(3, Math.max(1, (b.headingLevel ?? 1) - shift));
+    });
+  }
   return out;
 }
 

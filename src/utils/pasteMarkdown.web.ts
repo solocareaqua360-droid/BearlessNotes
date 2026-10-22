@@ -20,7 +20,7 @@ function inline(node: Node): string {
 function block(el: Element, out: string[], listType: 'ul' | 'ol' | null, index: { n: number }): void {
   const tag = el.tagName.toLowerCase();
   if (/^h[1-6]$/.test(tag)) {
-    const level = Math.min(3, Number(tag[1]));
+    const level = Number(tag[1]);
     out.push(`${'#'.repeat(level)} ${inline(el).trim()}`, '');
     return;
   }

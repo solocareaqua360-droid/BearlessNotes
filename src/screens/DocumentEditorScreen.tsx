@@ -3351,7 +3351,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onPress: () => setReferencePanelOpen((v) => !v),
           },
           // «Зміст»: the headings as a list that jumps to them (a card over the dock, see below). Only on the page.
-          ...(!canvasMode
+          ...(!canvasMode && !notePanelOn
             ? [{ key: 'toc', icon: 'list-outline', label: 'Зміст', active: tocOpen, onPress: () => setTocOpen((v) => !v) }]
             : []),
           // The third slot: the board's own "Скинути дошку?" on the

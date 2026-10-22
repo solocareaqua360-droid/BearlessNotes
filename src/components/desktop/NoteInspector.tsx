@@ -117,8 +117,8 @@ export default function NoteInspector({
 const makeStyles = (_t: Theme) =>
   StyleSheet.create({
     host: { flex: 1 },
-    tabs: { flexDirection: 'row', gap: 2, paddingHorizontal: 12, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-    tab: { paddingHorizontal: 10, height: 28, borderRadius: RADIUS.control, justifyContent: 'center' },
+    tabs: { flexDirection: 'row', gap: 0, paddingHorizontal: 8, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+    tab: { paddingHorizontal: 7, height: 28, borderRadius: RADIUS.control, justifyContent: 'center' },
     tabText: { fontSize: TYPE.sm, fontFamily: FONT_REGULAR },
     content: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 24, gap: 12 },
     hint: { fontSize: TYPE.xs, fontFamily: FONT_REGULAR },
