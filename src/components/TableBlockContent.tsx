@@ -747,7 +747,8 @@ export default function TableBlockContent({
     // SortableBlockRow, about this same editor, in September. A
     // horizontal scroller takes its height from what is inside it.
     return (
-      <View>
+      // The same 4 above and below as the editing face's own (styles.tableBlock): the table must not hop when it is picked up or put down.
+      <View style={{ paddingVertical: 4 }}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
