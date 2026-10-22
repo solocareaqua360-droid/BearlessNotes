@@ -8,12 +8,13 @@ import { ask, notify } from '../components/surfaces/Ask';
 import { useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
-import { askAssistant, blocksOf, groupsOf, listChats, loadChat, loadChatById, newChat, saveChat, type AssistantChat, type AssistantMessage } from '../utils/assistant';
+import { askAssistant, blocksOf, groupsOf, listChats, loadChat, loadChatById, newChat, saveChat, titleOf, type AssistantChat, type AssistantMessage } from '../utils/assistant';
+import type { Block } from '../types';
 import { useGeminiUsage } from '../utils/geminiUsage';
 import { hapticPickUp } from '../utils/haptics';
-import { collection } from '../firestore';
+import { collection, doc, getDoc, getDocs, updateDoc, where } from '../firestore';
 import { db } from '../firebase';
-import { addDoc } from '../utils/owned';
+import { addDoc, ownedQuery } from '../utils/owned';
 import { newBlock } from '../utils/documentBlocks';
 
 // THE CONVERSATION WITH THE AI (step 1, 2026-10-22; the sketch is the canvas DsJtJiEDSEMWdhomAgJreE, frame «2. Розмова»).
@@ -117,22 +118,64 @@ export default function AssistantScreen() {
     setPicked([]);
   }
 
+  // Each memory as the text it becomes in the note: its blocks as paragraphs of ONE block.
+  const pieces = groups.map((g) => textsOf(g).join('\n\n')).filter(Boolean);
+  const notedSet = useMemo(() => new Set((chat?.noted ?? []).map((t) => t.trim())), [chat]);
+  const freshCount = pieces.filter((p) => !notedSet.has(p.trim())).length;
+
+  // ONE NOTE PER CONVERSATION (2026-10-23, the user found two copies): the first press makes it, the next ones add only what
+  // is new to it - judged by the text, so nothing is written twice. A note in the bin or gone: a new one. A conversation
+  // from before this rule finds the note it made by its title (the newest of that name) instead of making another.
   async function toNote() {
-    if (!chat || groups.length === 0) return;
-    const firstAsk = chat.messages.find((m) => m.role === 'user')?.text ?? 'Розмова';
-    const title = firstAsk.length > 60 ? `${firstAsk.slice(0, 57).trim()}…` : firstAsk;
+    if (!chat || pieces.length === 0) return;
+    const title = titleOf(chat);
     try {
+      let noteId = chat.noteId;
+      let existing: Block[] | null = null;
+      const readNote = async (id: string) => {
+        const snap = await getDoc(doc(db, 'documents', id));
+        const data = snap.exists() ? (snap.data() as { blocks?: Block[]; deletedAt?: number }) : null;
+        return data && !data.deletedAt ? data.blocks ?? [] : null;
+      };
+      if (noteId) existing = await readNote(noteId);
+      if (!existing) {
+        noteId = undefined;
+        // The title as notes were named before 2026-10-23 too (cut at 60), so the copies made then are found.
+        const firstAsk = chat.messages.find((m) => m.role === 'user')?.text ?? 'Розмова';
+        const oldTitle = firstAsk.length > 60 ? `${firstAsk.slice(0, 57).trim()}…` : firstAsk;
+        const same = await getDocs(ownedQuery('documents', where('title', 'in', Array.from(new Set([title, oldTitle])))));
+        const newest = same.docs
+          .map((d) => ({ id: d.id, data: d.data() as { blocks?: Block[]; deletedAt?: number; updatedAt?: number } }))
+          .filter((d) => !d.data.deletedAt)
+          .sort((x, y) => (y.data.updatedAt ?? 0) - (x.data.updatedAt ?? 0))[0];
+        if (newest) {
+          noteId = newest.id;
+          existing = newest.data.blocks ?? [];
+        }
+      }
       const now = Date.now();
-      const ref = await addDoc(collection(db, 'documents'), {
-        title,
-        createdAt: now,
-        updatedAt: now,
-        // One memory = one block, its parts as paragraphs of it.
-        blocks: groups.map((g) => ({ ...newBlock(), type: 'paragraph', text: textsOf(g).join('\n\n') })),
-      });
-      navigation.navigate('Editor', { documentId: ref.id });
+      if (noteId && existing) {
+        const have = new Set(existing.map((bl) => (bl.text ?? '').trim()));
+        const add = pieces.filter((p) => !have.has(p.trim()));
+        if (add.length > 0) {
+          await updateDoc(doc(db, 'documents', noteId), {
+            blocks: [...existing, ...add.map((text) => ({ ...newBlock(), type: 'paragraph', text }))],
+            updatedAt: now,
+          });
+        }
+      } else {
+        const ref = await addDoc(collection(db, 'documents'), {
+          title,
+          createdAt: now,
+          updatedAt: now,
+          blocks: pieces.map((text) => ({ ...newBlock(), type: 'paragraph', text })),
+        });
+        noteId = ref.id;
+      }
+      update({ ...chat, noteId, noted: pieces });
+      navigation.navigate('Editor', { documentId: noteId });
     } catch (e) {
-      notify('Не вдалося створити нотатку', (e as Error).message);
+      notify('Не вдалося записати в нотатку', (e as Error).message);
     }
   }
 
@@ -195,8 +238,10 @@ export default function AssistantScreen() {
           Розмова
         </Text>
         {count > 0 ? (
-          <Pressable onPress={toNote} style={styles.toNote} accessibilityLabel="Відібране в нотатку">
-            <Text style={styles.toNoteText}>{`В нотатку (${count})`}</Text>
+          <Pressable onPress={toNote} style={[styles.toNote, freshCount === 0 && styles.toNoteDone]} accessibilityLabel="Відібране в нотатку">
+            <Text style={[styles.toNoteText, freshCount === 0 && styles.toNoteDoneText]}>
+              {freshCount > 0 ? (chat?.noteId ? `В нотатку (+${freshCount})` : `В нотатку (${freshCount})`) : 'Нотатка'}
+            </Text>
           </Pressable>
         ) : null}
         <Pressable onPress={() => navigation.goBack()} style={styles.round} accessibilityLabel="Закрити" hitSlop={6}>
@@ -311,6 +356,8 @@ function makeStyles(S: ReturnType<typeof useSoft>) {
     title: { flex: 1, textAlign: 'center', fontSize: 16, fontFamily: SOFT_SEMIBOLD, color: S.ink },
     toNote: { height: 36, borderRadius: 18, paddingHorizontal: 14, backgroundColor: S.ink, alignItems: 'center', justifyContent: 'center' },
     toNoteText: { color: S.card, fontSize: 13, fontFamily: SOFT_SEMIBOLD },
+    toNoteDone: { backgroundColor: S.card, boxShadow: S.shadow } as never,
+    toNoteDoneText: { color: S.ink },
     list: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24, gap: 14 },
     empty: { fontSize: 15, lineHeight: 22, color: S.ink2, fontFamily: SOFT_REGULAR, marginTop: 24 },
     mine: { alignSelf: 'flex-end', maxWidth: '82%', backgroundColor: S.fillSolid, borderRadius: 18, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 10 },

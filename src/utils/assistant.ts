@@ -21,7 +21,17 @@ import { costOfGemini, recordGemini } from './geminiUsage';
 export type AssistantMessage = { id: string; role: 'user' | 'model'; text: string; at: number; error?: boolean; costUsd?: number };
 // `remembered`: block keys («messageId:index»). `groups`: what was remembered TOGETHER - several blocks picked at once
 // are one memory (one block in the note). A chat kept before groups existed reads each remembered block as its own group.
-export type AssistantChat = { id: string; startedAt: number; messages: AssistantMessage[]; remembered: string[]; groups?: string[][] };
+// `noteId`: the ONE note this conversation's memories go into (2026-10-23: each «В нотатку» made a new copy); `noted`: the
+// memory texts already written there, so the button counts only what is new.
+export type AssistantChat = {
+  id: string;
+  startedAt: number;
+  messages: AssistantMessage[];
+  remembered: string[];
+  groups?: string[][];
+  noteId?: string;
+  noted?: string[];
+};
 
 export function groupsOf(chat: AssistantChat): string[][] {
   return chat.groups ?? chat.remembered.map((k) => [k]);
@@ -78,6 +88,8 @@ function toStored(chat: AssistantChat) {
     })),
     remembered: chat.remembered,
     groups: groupsOf(chat).map((keys) => ({ keys })),
+    ...(chat.noteId ? { noteId: chat.noteId } : {}),
+    noted: chat.noted ?? [],
   };
 }
 function fromStored(id: string, data: Record<string, unknown>): AssistantChat {
@@ -88,6 +100,8 @@ function fromStored(id: string, data: Record<string, unknown>): AssistantChat {
     messages: (data.messages as AssistantMessage[]) ?? [],
     remembered: (data.remembered as string[]) ?? [],
     ...(groups ? { groups } : {}),
+    ...(data.noteId ? { noteId: data.noteId as string } : {}),
+    noted: (data.noted as string[]) ?? [],
   };
 }
 
