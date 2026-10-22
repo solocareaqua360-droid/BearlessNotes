@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import Sheet from './surfaces/Sheet';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -37,6 +37,7 @@ export default function TableCellMenu(props: Props) {
   const { visible, onClose, mode, title, hint, headerRow, headerColumn, canUp, canDown, canLeft, canRight, canDelRow, canDelCol, onPick } = props;
   const styles = useStyles(makeStyles);
   const theme = useTheme();
+  const { height: windowHeight } = useWindowDimensions();
   const [step, setStep] = useState<Step>('main');
   useEffect(() => {
     if (visible) setStep('main');
@@ -155,7 +156,7 @@ export default function TableCellMenu(props: Props) {
   }
 
   return (
-    <Sheet visible={visible} onClose={onClose} anchor="bottom" scroll maxHeight="75%" priority={100}>
+    <Sheet visible={visible} onClose={onClose} anchor="bottom" scroll maxHeight={Math.round(windowHeight * 0.8)} priority={100}>
       <View style={styles.head}>
         {step !== 'main' ? (
           <Pressable onPress={() => setStep('main')} hitSlop={10} style={styles.back} accessibilityLabel="Назад">
