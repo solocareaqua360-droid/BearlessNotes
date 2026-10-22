@@ -384,7 +384,7 @@ export interface Block {
   tableShort?: boolean;
   // Any text block of a board's MAP (utils/boardMap): the place on the board this line points at - centre and zoom. The block draws a «Перейти»
   // button that takes that board back there.
-  boardView?: { boardId: string; x: number; y: number; scale: number };
+  boardView?: { boardId: string; x: number; y: number; scale: number; w?: number; h?: number };
 }
 
 export interface TableRow {

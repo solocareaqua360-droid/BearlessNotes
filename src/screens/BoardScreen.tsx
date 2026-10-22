@@ -155,7 +155,7 @@ import { usePublishRailPanel } from '../navigation/navRail';
 import { inspector } from '../navigation/inspector';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import BoardPanel, { BoardSelection, PanelPickList, type BoardTab } from '../components/desktop/BoardPanel';
-import { ensureBoardMap, onBoardJump, type BoardView } from '../utils/boardMap';
+import { ensureBoardMap, onBoardJump, publishBoardLive, type BoardView } from '../utils/boardMap';
 import DocumentCardBlocks from '../components/DocumentCardBlocks';
 import { PAGE_H2, PAGE_TEXT, makeStyles as makeEditorStyles } from '../components/documentEditorStyles';
 import PagePreviewRow from '../components/PagePreviewRow';
@@ -2773,11 +2773,29 @@ export default function BoardScreen() {
       .then(setMapId)
       .catch((e) => notify('Не вдалося відкрити карту', (e as Error).message));
   }, [panelTab, mapId, boardId, title]);
-  function addMapPlace() {
+  // The place on screen now: centre, zoom, and how much of the board the screen holds at that zoom (what the picture of the place draws).
+  function currentView(): BoardView {
     const c = viewCenter();
-    const view: BoardView = { boardId, x: Math.round(c.x), y: Math.round(c.y), scale: Math.round(scale.value * 100) / 100 };
-    mapEditorRef.current?.appendBlock({ type: 'paragraph', text: 'Ділянка', boardView: view });
+    const k = scale.value || 1;
+    return {
+      boardId,
+      x: Math.round(c.x),
+      y: Math.round(c.y),
+      scale: Math.round(k * 100) / 100,
+      w: Math.round(viewportWidthSV.value / k),
+      h: Math.round(viewportHeightSV.value / k),
+    };
   }
+  function addMapPlace() {
+    mapEditorRef.current?.appendBlock({ type: 'paragraph', text: 'Ділянка', boardView: currentView() });
+  }
+  // The board's data for the pictures in its map; the map reads it through utils/boardMap while this board is open.
+  const currentViewRef = useRef(currentView);
+  currentViewRef.current = currentView;
+  useEffect(() => {
+    publishBoardLive(boardId, { cards, columns, connections, shapes, containers, currentView: () => currentViewRef.current() });
+  }, [boardId, cards, columns, connections, shapes, containers]);
+  useEffect(() => () => publishBoardLive(boardId, null), [boardId]);
   useEffect(
     () =>
       onBoardJump((view) => {

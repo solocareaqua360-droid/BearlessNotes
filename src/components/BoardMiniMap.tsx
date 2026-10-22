@@ -32,6 +32,7 @@ export default function BoardMiniMap({
   height,
   showText,
   detailed,
+  region,
 }: {
   cards: BoardCard[];
   columns?: BoardColumn[];
@@ -60,6 +61,8 @@ export default function BoardMiniMap({
   // and the shapes - readable in a screenshot that is drawn once, too
   // much extra drawing to redo on every list render of every board.
   detailed?: boolean;
+  // Draw only this part of the board (a saved place on a board's map), not the whole of it.
+  region?: { x: number; y: number; width: number; height: number };
 }) {
   const lanes = (columns ?? []).map((column) => ({
     x: column.x,
@@ -86,12 +89,12 @@ export default function BoardMiniMap({
     height: container.height,
   }));
   const all = [...lanes, ...boxes, ...shapeBoxes, ...containerBoxes];
-  if (all.length === 0) return <View style={{ width, height }} />;
+  if (all.length === 0 && !region) return <View style={{ width, height }} />;
 
-  const minX = Math.min(...all.map((b) => b.x));
-  const minY = Math.min(...all.map((b) => b.y));
-  const maxX = Math.max(...all.map((b) => b.x + b.width));
-  const maxY = Math.max(...all.map((b) => b.y + b.height));
+  const minX = region ? region.x : Math.min(...all.map((b) => b.x));
+  const minY = region ? region.y : Math.min(...all.map((b) => b.y));
+  const maxX = region ? region.x + region.width : Math.max(...all.map((b) => b.x + b.width));
+  const maxY = region ? region.y + region.height : Math.max(...all.map((b) => b.y + b.height));
   // One scale for both axes, so the board keeps its proportions instead of
   // being stretched into whatever box it's drawn in.
   const scale = Math.min((width - 8) / Math.max(maxX - minX, 1), (height - 8) / Math.max(maxY - minY, 1));

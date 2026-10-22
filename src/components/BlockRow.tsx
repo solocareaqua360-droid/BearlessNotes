@@ -32,6 +32,7 @@ import { Block, Tag } from '../types';
 import { useAttachmentSource } from '../hooks/useAttachmentSource';
 import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { useStyles, useTextScale, useTheme } from '../theme/ThemeProvider';
+import BoardPlaceSnap from './BoardPlaceSnap';
 import { makeStyles, PAGE_H1, PAGE_H2, PAGE_H3, PAGE_TEXT } from './documentEditorStyles';
 import { SoftCheck, SoftTaskCheck } from './SoftIcon';
 import { softCursor, softTokens } from '../theme/soft';
@@ -1142,21 +1143,18 @@ export default function BlockRow({
         rowPaperColor && !isSelected && { backgroundColor: 'transparent' },
       ]}
     >
-      {content}
-      {!!item.boardView && (
-        // «Перейти»: the board on screen goes to the place this line remembers (utils/boardMap).
-        <Pressable
-          onPress={() => {
-            if (!requestBoardJump(item.boardView!)) ask({ title: 'Дошка не відкрита', message: 'Відкрийте цю дошку поруч, щоб перейти до ділянки.', actions: [], cancelLabel: 'Зрозуміло' });
-          }}
-          hitSlop={6}
-          accessibilityLabel="Перейти до ділянки дошки"
-          style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, marginLeft: 4, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 13, backgroundColor: theme.paper.tint }}
-          {...({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object)}
-        >
-          <Ionicons name="locate" size={14} color={theme.paper.inkMuted} />
-          <Text style={{ fontSize: 12.5, color: theme.paper.inkMuted, fontWeight: '600' }}>Перейти</Text>
-        </Pressable>
+      {item.boardView ? (
+        // The line and its picture stand one under the other, the whole width (the row itself lays things side by side).
+        <View style={{ flex: 1, minWidth: 0 }}>
+          {content}
+          <BoardPlaceSnap
+            view={item.boardView}
+            onRefresh={(next) => onUpdateBlock(item.id, { boardView: next })}
+            onMissing={() => ask({ title: 'Дошка не відкрита', message: 'Відкрийте цю дошку поруч, щоб працювати з ділянкою.', actions: [], cancelLabel: 'Зрозуміло' })}
+          />
+        </View>
+      ) : (
+        content
       )}
       {/* On the right. Hidden where the sheet runs under the rail (the
           calendar's daily note) - but never while selecting: there it is
