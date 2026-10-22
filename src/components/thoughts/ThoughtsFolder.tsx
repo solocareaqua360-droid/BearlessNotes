@@ -37,7 +37,7 @@ function useFocusedIfScreen() {
 
 export default function ThoughtsFolder() {
   const S = useSoft();
-  const { themes, countOf } = useThoughts(true);
+  const { themes, countOf, loaded } = useThoughts(true);
   const [w, setW] = useState(0);
   const fresh = useMemo(() => [...themes].sort((a, b) => b.touchedAt - a.touchedAt).slice(0, SHOWN), [themes]);
   const loose = countOf(null);
@@ -211,7 +211,7 @@ export default function ThoughtsFolder() {
           />
         );
       })}
-      {fresh.length === 0 && (
+      {loaded && fresh.length === 0 && (
         <View style={styles.empty}>
           <Text style={[styles.emptyText, { color: S.ink3 }]}>Затисни, щоб зловити першу думку</Text>
         </View>

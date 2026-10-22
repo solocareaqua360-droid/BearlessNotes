@@ -110,18 +110,22 @@ function sourceOf(raw: unknown): ThoughtSource | undefined {
 export function useThoughts(enabled = true) {
   const [themes, setThemes] = useState<ThoughtTheme[]>([]);
   const [thoughts, setThoughts] = useState<Thought[]>([]);
+  // The first answer of the themes has come: before it, «no themes» only means «not heard yet» (the folder showed its empty line for a blink).
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     if (!enabled) return;
     const offThemes = onSnapshot(
       ownedQuery('thoughtThemes'),
-      (snap) =>
+      (snap) => {
+        setLoaded(true);
         setThemes(
           snap.docs.map((d) => {
             const x = d.data();
             const createdAt = num(x.createdAt);
             return { id: d.id, name: str(x.name) || 'Без назви', hue: num(x.hue), createdAt, touchedAt: num(x.touchedAt, createdAt), conclusion: str(x.conclusion) };
           })
-        ),
+        );
+      },
       listenError('thoughtThemes')
     );
     const offThoughts = onSnapshot(
@@ -164,7 +168,7 @@ export function useThoughts(enabled = true) {
     thoughts.forEach((t) => m.set(t.themeId, (m.get(t.themeId) ?? 0) + 1));
     return (id: string | null) => m.get(id) ?? 0;
   }, [thoughts]);
-  return { themes, thoughts, countOf };
+  return { themes, thoughts, countOf, loaded };
 }
 
 export async function createTheme(name: string, hue: number): Promise<string> {
