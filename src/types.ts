@@ -547,6 +547,10 @@ export interface Tag {
   // allowed, and NOT inherited - a folder under it is in the project only
   // if it was assigned too. A project is still a `Group`.
   groupIds?: string[];
+  // Of those projects, the ones THIS folder is the ROOT of (2026-10-22, the user: «РЕР» the folder and «РЕР» the project are one
+  // thing): in that project's tab of the explorer the folder is not drawn as a card - its own subfolders and loose things stand at
+  // the top level instead. A subset of groupIds.
+  projectRoots?: string[];
   // How the folder looks as a card on the project screen: size, one of the
   // legal swatches (constants/cardPalette), an outer description (on the
   // card) and an inner one (at the top of the opened folder).

@@ -572,6 +572,35 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     return m;
   }, [items]);
 
+  // The folder cards of one LEVEL (a path; '' = the root): what hangs one step under it, counted over what the filters leave.
+  const entriesFor = (levelPath: string): FolderEntry[] => {
+    const prefix = levelPath ? `${levelPath}/` : '';
+    const names = new Map<string, Tag | undefined>();
+    tags.forEach((t) => {
+      if (levelPath ? !t.path.startsWith(prefix) : false) return;
+      const rest = levelPath ? t.path.slice(prefix.length) : t.path;
+      const first = rest.split('/')[0];
+      if (!first) return;
+      const full = prefix + first;
+      if (!names.has(full) || t.path === full) names.set(full, t.path === full ? t : names.get(full));
+    });
+    return Array.from(names.entries())
+      .map(([full, tag]) => {
+        const inside = shown.filter((item) => (pathsOf.get(item.id) ?? []).some((p) => p === full || p.startsWith(`${full}/`)));
+        // A folder with ONLY «YouTube / TikTok» ticked is a PLAYLIST: it is drawn as a card and opens its own window.
+        const leaf = !tags.some((t) => t.path.startsWith(`${full}/`));
+        const only = !!tag && (tag.types ?? []).length === 1 ? tag.types[0] : null;
+        const playlist = leaf && only === 'link-video';
+        // A folder of only photos / only geo points is a COLLECTION (2026-10-14): it opens its own window, as a playlist does.
+        // 2026-10-15: only a REAL collection (made in its base, Tag.baseOnly) - an explorer folder that happens to hold
+        // nothing but photos stays a folder («концепти» opened as a collection window).
+        const collection: CollectionKind | undefined = FEATURES.collections && leaf && tag?.baseOnly ? (only === 'photo' ? 'photo' : only === 'link-geo' ? 'geo' : undefined) : undefined;
+        return { path: full, name: nameOf(full), color: tag?.color, icon: tag?.icon, count: inside.length, playlist, collection, size: collection ? tag?.card?.size ?? 'M' : folderCardSize(tag?.card) };
+      })
+      .filter((f) => !filtering || f.count > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  };
+
   const foldersAll = useMemo<FolderEntry[]>(() => {
     const prefix = path ? `${path}/` : '';
     if (inBin || inCleanup) return [];
@@ -591,30 +620,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         }))
         .sort((x, y) => x.name.localeCompare(y.name));
     }
-    const names = new Map<string, Tag | undefined>();
-    tags.forEach((t) => {
-      if (path ? !t.path.startsWith(prefix) : false) return;
-      const rest = path ? t.path.slice(prefix.length) : t.path;
-      const first = rest.split('/')[0];
-      if (!first) return;
-      const full = prefix + first;
-      if (!names.has(full) || t.path === full) names.set(full, t.path === full ? t : names.get(full));
-    });
-    const list = Array.from(names.entries())
-      .map(([full, tag]) => {
-        const inside = shown.filter((item) => (pathsOf.get(item.id) ?? []).some((p) => p === full || p.startsWith(`${full}/`)));
-        // A folder with ONLY «YouTube / TikTok» ticked is a PLAYLIST: it is drawn as a card and opens its own window.
-        const leaf = !tags.some((t) => t.path.startsWith(`${full}/`));
-        const only = !!tag && (tag.types ?? []).length === 1 ? tag.types[0] : null;
-        const playlist = leaf && only === 'link-video';
-        // A folder of only photos / only geo points is a COLLECTION (2026-10-14): it opens its own window, as a playlist does.
-        // 2026-10-15: only a REAL collection (made in its base, Tag.baseOnly) - an explorer folder that happens to hold
-        // nothing but photos stays a folder («концепти» opened as a collection window).
-        const collection: CollectionKind | undefined = FEATURES.collections && leaf && tag?.baseOnly ? (only === 'photo' ? 'photo' : only === 'link-geo' ? 'geo' : undefined) : undefined;
-        return { path: full, name: nameOf(full), color: tag?.color, icon: tag?.icon, count: inside.length, playlist, collection, size: collection ? tag?.card?.size ?? 'M' : folderCardSize(tag?.card) };
-      })
-      .filter((f) => !filtering || f.count > 0)
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const list = entriesFor(path);
     if (!FEATURES.unfiledFolder || path) return list;
     // «Нерозкладене» first, while there is anything in it.
     const unfiled = shown.filter((item) => (pathsOf.get(item.id) ?? []).length === 0).length;
@@ -635,14 +641,31 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     });
     return m;
   }, [tags]);
+  // The folders that ARE a project (Tag.projectRoots): project id -> their paths.
+  const rootPathsOf = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    tags.forEach((t) =>
+      t.projectRoots?.forEach((id) => {
+        const set = m.get(id) ?? new Set<string>();
+        set.add(t.path);
+        m.set(id, set);
+      })
+    );
+    return m;
+  }, [tags]);
+  const focusRoots = useMemo(() => (projectsHere && focusProj !== NO_PROJECT ? [...(rootPathsOf.get(focusProj) ?? [])].sort() : []), [projectsHere, focusProj, rootPathsOf]);
   const folders = useMemo<FolderEntry[]>(() => {
     if (!projectsHere) return foldersAll;
-    return foldersAll.filter((f) => {
+    const mine = foldersAll.filter((f) => {
       const ids = projectIdsOf.get(f.path);
       if (focusProj === NO_PROJECT) return f.path === UNFILED || !ids || ids.size === 0;
-      return !!ids && ids.has(focusProj);
+      return !!ids && ids.has(focusProj) && !focusRoots.includes(f.path);
     });
-  }, [foldersAll, projectsHere, projectIdsOf, focusProj]);
+    // A root folder is the project itself: its own subfolders stand here, the folder is not a card.
+    const fromRoots = focusRoots.flatMap((r) => entriesFor(r));
+    return [...mine, ...fromRoots].sort((a, b) => a.name.localeCompare(b.name));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foldersAll, projectsHere, projectIdsOf, focusProj, focusRoots, tags, shown, pathsOf, filtering]);
   const bandCounts = useMemo(() => {
     const m = new Map<string, { folders: number }>();
     foldersAll.forEach((f) => projectIdsOf.get(f.path)?.forEach((id) => m.set(id, { folders: (m.get(id)?.folders ?? 0) + 1 })));
@@ -659,6 +682,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           const paths = pathsOf.get(item.id) ?? [];
           // The root keeps only folders; what is in none is in «Нерозкладене».
           if (path === UNFILED) return paths.length === 0;
+          // In a project whose root is a folder, the things lying directly in that folder are the project's loose things.
+          if (!path && focusRoots.length > 0) return focusRoots.some((r) => paths.includes(r));
           return path ? paths.includes(path) : !FEATURES.unfiledFolder && paths.length === 0;
         });
     const num = (item: FolderItem, key: string) => {
@@ -666,7 +691,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       return typeof v === 'number' ? v : undefined;
     };
     return sortItems(list, sortPref, (i) => i.title, (i) => num(i, 'createdAt'), (i) => stamp(i));
-  }, [shown, pathsOf, path, sortPref, inBin, binned, inCleanup, candidateItems, searching, needle]);
+  }, [shown, pathsOf, path, sortPref, inBin, binned, inCleanup, candidateItems, searching, needle, focusRoots]);
 
   // The cards in the order the list draws them - what a swipe's «from here to there» means (components/SwipeSelect).
   const sweepOrderOf = (list: Row[]) =>
@@ -1816,7 +1841,17 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     if (choice !== 'cancel') (navigation as unknown as { navigate: (n: string, p: object) => void }).navigate('Editor', { documentId: choice });
   }
 
-  const upPlain = useCallback(() => setPath((p) => p.split('/').slice(0, -1).join('/')), []);
+  // Up from a folder that stands straight under a PROJECT ROOT leaves to the project's level, not into the root folder itself.
+  const focusRootsRef = useRef<string[]>([]);
+  focusRootsRef.current = focusRoots;
+  const upPlain = useCallback(
+    () =>
+      setPath((p) => {
+        const parent = p.split('/').slice(0, -1).join('/');
+        return parent && focusRootsRef.current.includes(parent) ? '' : parent;
+      }),
+    []
+  );
   // Up one level - in «Модерний» the folder folds back into its card on the way (FolderShrink).
   const up = () => {
     const tag = (explorerStyle === 'modern' || explorerStyle === 'projects') && path ? cardTagOf(path) : undefined;
@@ -2831,13 +2866,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         visible={projectsFor !== null}
         folderName={projectsFor ? nameOf(projectsFor.path) : ''}
         selected={projectsFor?.groupIds ?? []}
+        selectedRoots={projectsFor?.projectRoots ?? []}
         onClose={() => setProjectsFor(null)}
-        onSave={async (ids) => {
+        onSave={async (ids, roots) => {
           const target = projectsFor;
           setProjectsFor(null);
           if (!target) return;
           try {
-            await setTagFields(target.id, { groupIds: ids });
+            await setTagFields(target.id, { groupIds: ids, projectRoots: roots });
           } catch (e) {
             notify('Не вдалося зберегти', (e as Error).message);
           }

@@ -111,6 +111,7 @@ export function useTags() {
             // Project assignment and card look (2026-10-10). Left out here the
             // first time round - the fields were saved and never came back.
             ...(Array.isArray(data.groupIds) ? { groupIds: data.groupIds as string[] } : {}),
+            ...(Array.isArray(data.projectRoots) ? { projectRoots: data.projectRoots as string[] } : {}),
             ...(data.card ? { card: data.card as Tag['card'] } : {}),
           };
         })
@@ -347,7 +348,7 @@ export function useTags() {
     await Promise.all(affected.map((t) => updateDoc(doc(db, 'tags', t.id), { inExplorer: deleteField() })));
   }
 
-  async function setTagFields(tagId: string, fields: { groupIds?: string[]; card?: Tag['card'] }) {
+  async function setTagFields(tagId: string, fields: { groupIds?: string[]; projectRoots?: string[]; card?: Tag['card'] }) {
     // Firestore refuses `undefined` anywhere in a value, and the card sheet
     // sends undefined for an empty description or no colour - the whole save
     // failed without a word and the new size never stuck. An empty field is

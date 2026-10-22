@@ -206,9 +206,10 @@ export function useFolderHold({
             visible={projectsFor !== null}
             folderName={projectsFor ? nameOf(projectsFor.path) : ''}
             selected={projectsFor?.groupIds ?? []}
+            selectedRoots={projectsFor?.projectRoots ?? []}
             onClose={() => setProjectsFor(null)}
-            onSave={(groupIds) => {
-              if (projectsFor) setTagFields(projectsFor.id, { groupIds });
+            onSave={(groupIds, projectRoots) => {
+              if (projectsFor) setTagFields(projectsFor.id, { groupIds, projectRoots });
               setProjectsFor(null);
             }}
           />

@@ -20,20 +20,28 @@ export function FolderProjectsSheet({
   visible,
   folderName,
   selected,
+  selectedRoots = [],
   onSave,
   onClose,
 }: {
   visible: boolean;
   folderName: string;
   selected: string[];
-  onSave: (groupIds: string[]) => void;
+  // The projects this folder is the ROOT of (its subfolders stand at that project's top level instead of the folder itself).
+  selectedRoots?: string[];
+  onSave: (groupIds: string[], projectRoots: string[]) => void;
   onClose: () => void;
 }) {
   const theme = useTheme();
   const [groups, setGroups] = useState<Group[]>([]);
   const [picked, setPicked] = useState<string[]>(selected);
+  const [roots, setRoots] = useState<string[]>(selectedRoots);
   useEffect(() => {
-    if (visible) setPicked(selected);
+    if (visible) {
+      setPicked(selected);
+      setRoots(selectedRoots);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, selected]);
   useEffect(
     () =>
@@ -50,7 +58,11 @@ export function FolderProjectsSheet({
       ),
     []
   );
-  const toggle = (id: string) => setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const toggle = (id: string) => {
+    setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setRoots((prev) => prev.filter((x) => x !== id));
+  };
+  const toggleRoot = (id: string) => setRoots((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   return (
     <Sheet visible={visible} onClose={onClose} title="Проєкти папки" subtitle={folderName}>
       {groups.length === 0 && <Text style={[styles.hint, { color: theme.ink.faint }]}>Проєктів ще немає. Створи їх у будь-якій базі, у виборі проєкту.</Text>}
@@ -66,18 +78,29 @@ export function FolderProjectsSheet({
             <Text style={[styles.rowText, { color: theme.ink.primary }]} numberOfLines={1}>
               {g.name}
             </Text>
+            {on && (
+              // «Це корінь проєкту»: the folder is the project itself, not a card inside it.
+              <Pressable
+                onPress={() => toggleRoot(g.id)}
+                hitSlop={8}
+                accessibilityLabel="Це корінь проєкту"
+                style={[styles.rootPill, { borderColor: roots.includes(g.id) ? theme.accent : theme.edge.hairline, backgroundColor: roots.includes(g.id) ? theme.accent : 'transparent' }]}
+              >
+                <Text style={{ fontSize: 12, color: roots.includes(g.id) ? theme.onAccent : theme.ink.faint }}>корінь</Text>
+              </Pressable>
+            )}
           </Pressable>
         );
       })}
       </ScrollView>
       <Text style={[styles.hint, { color: theme.ink.faint }]}>
-        Папка потрапляє лише в позначені проєкти. Папки всередині неї не успадковують їх, їм проєкт призначають окремо.
+        Папка потрапляє лише в позначені проєкти. «Корінь» робить саму папку проєктом: у ньому одразу видно її підпапки. Папки всередині неї не успадковують їх, їм проєкт призначають окремо.
       </Text>
       <View style={styles.buttons}>
         <Pressable onPress={onClose} style={[styles.button, { borderColor: theme.edge.hairline, borderWidth: 1.5 }]}>
           <Text style={[styles.buttonText, { color: theme.ink.primary }]}>Скасувати</Text>
         </Pressable>
-        <Pressable onPress={() => onSave(picked)} style={[styles.button, { backgroundColor: theme.accent }]}>
+        <Pressable onPress={() => onSave(picked, roots.filter((id) => picked.includes(id)))} style={[styles.button, { backgroundColor: theme.accent }]}>
           <Text style={[styles.buttonText, { color: theme.onAccent }]}>Готово</Text>
         </Pressable>
       </View>
@@ -225,6 +248,7 @@ const styles = StyleSheet.create({
   box: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   dot: { width: 12, height: 12, borderRadius: 6 },
   rowText: { flex: 1, fontSize: 15.5 },
+  rootPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1.5 },
   label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.6, marginTop: 12, marginBottom: 6 },
   seg: { flexDirection: 'row', borderRadius: 14, padding: 3, gap: 3 },
   segItem: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 11 },
