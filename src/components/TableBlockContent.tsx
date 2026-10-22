@@ -270,7 +270,11 @@ export default function TableBlockContent({
     cellRefs.current.get(`${r}:${c}`)?.focus();
   }
 
+  // The three dots sit INSIDE the selected cell, so a tap on them is also a tap on the cell - which, on an already selected cell, means «start typing»
+  // and raises the keyboard just after the menu put it away (the user, 2026-10-22). A touch that began on the dots is the menu's alone.
+  const dotsDownAt = useRef(0);
   function tapCell(r: number, c: number) {
+    if (Date.now() - dotsDownAt.current < 700) return;
     const already = selected?.r === r && selected?.c === c && span === 'cell';
     setSelected({ r, c });
     setSpan('cell');
@@ -1070,7 +1074,7 @@ export default function TableBlockContent({
                           </GestureDetector>
                         </>
                       )}
-                      {isSelected && !formulaMode && <CellDots onPress={openCellMenu} />}
+                      {isSelected && !formulaMode && <CellDots onPress={openCellMenu} onDown={() => { dotsDownAt.current = Date.now(); }} />}
                     </View>
                   );
                 }
@@ -1087,7 +1091,7 @@ export default function TableBlockContent({
                     />
                     {spanRule}
                     {selFrame}
-                    {isSelected && !formulaMode && <CellDots onPress={openCellMenu} />}
+                    {isSelected && !formulaMode && <CellDots onPress={openCellMenu} onDown={() => { dotsDownAt.current = Date.now(); }} />}
                   </Pressable>
                 );
               })}
@@ -1311,10 +1315,11 @@ function EdgeBar({ vertical, style, onPress, label }: { vertical?: boolean; styl
 
 // Three dots, one above the other, in the selected cell's right corner: the cell's menu. Drawn, not an icon - there is no vertical ellipsis in
 // the icon set, and three small discs are all it is.
-function CellDots({ onPress }: { onPress: () => void }) {
+function CellDots({ onPress, onDown }: { onPress: () => void; onDown: () => void }) {
   return (
     <Pressable
       focusable={false}
+      onPressIn={onDown}
       onPress={onPress}
       hitSlop={6}
       accessibilityLabel="Меню клітинки"
