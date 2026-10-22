@@ -673,23 +673,59 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     return m;
   }, [tags]);
   const focusRoots = useMemo(() => (projectsOn && focusProj !== NO_PROJECT ? [...(rootPathsOf.get(focusProj) ?? [])].sort() : []), [projectsOn, focusProj, rootPathsOf]);
+  // The project's top-level folders: assigned (or root) folders with no assigned folder above them, roots themselves left out (their
+  // children stand in their place).
+  const focusTops = useMemo(() => {
+    if (!projectsHere || focusProj === NO_PROJECT) return [] as string[];
+    const assignedHere = [...new Set(tags.filter((t) => t.groupIds?.includes(focusProj)).map((t) => t.path))];
+    const set = new Set(assignedHere);
+    return assignedHere
+      .filter((p) => !focusRoots.includes(p))
+      .filter((p) => {
+        const parts = p.split('/');
+        for (let i = 1; i < parts.length; i += 1) if (set.has(parts.slice(0, i).join('/'))) return false;
+        return true;
+      })
+      .sort();
+  }, [projectsHere, focusProj, tags, focusRoots]);
   const folders = useMemo<FolderEntry[]>(() => {
     if (!projectsHere) return foldersAll;
-    const mine = foldersAll.filter((f) => {
-      const ids = projectIdsOf.get(f.path);
-      if (focusProj === NO_PROJECT) return f.path === UNFILED || !ids || ids.size === 0;
-      return !!ids && ids.has(focusProj) && !focusRoots.includes(f.path);
-    });
+    const mine =
+      focusProj === NO_PROJECT
+        ? foldersAll.filter((f) => {
+            const ids = projectIdsOf.get(f.path);
+            return f.path === UNFILED || !ids || ids.size === 0;
+          })
+        : // EVERY folder carrying the project stands at its top level, nested or not (the user, 2026-10-22: a folder inside another
+          // must not need to be a «корінь» to show). Only those with no assigned folder above them: what lies deeper is inside them.
+          focusTops.flatMap((path) => {
+            const parent = path.split('/').slice(0, -1).join('/');
+            const entry = entriesFor(parent).find((e) => e.path === path);
+            return entry ? [entry] : [];
+          });
     // A root folder is the project itself: its own subfolders stand here, the folder is not a card.
     const fromRoots = focusRoots.flatMap((r) => entriesFor(r));
     return [...mine, ...fromRoots].sort((a, b) => a.name.localeCompare(b.name));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [foldersAll, projectsHere, projectIdsOf, focusProj, focusRoots, tags, shown, pathsOf, filtering]);
+  }, [foldersAll, projectsHere, projectIdsOf, focusProj, focusRoots, focusTops, tags, shown, pathsOf, filtering]);
+  // How many folders each project's tab shows: its top-level assigned folders (roots count by their children).
   const bandCounts = useMemo(() => {
     const m = new Map<string, { folders: number }>();
-    foldersAll.forEach((f) => projectIdsOf.get(f.path)?.forEach((id) => m.set(id, { folders: (m.get(id)?.folders ?? 0) + 1 })));
+    const byProject = new Map<string, Set<string>>();
+    tags.forEach((t) => t.groupIds?.forEach((id) => byProject.set(id, (byProject.get(id) ?? new Set<string>()).add(t.path))));
+    byProject.forEach((set, id) => {
+      const roots = rootPathsOf.get(id) ?? new Set<string>();
+      let count = 0;
+      set.forEach((p) => {
+        const parts = p.split('/');
+        for (let i = 1; i < parts.length; i += 1) if (set.has(parts.slice(0, i).join('/'))) return;
+        count += roots.has(p) ? entriesFor(p).length : 1;
+      });
+      m.set(id, { folders: count });
+    });
     return m;
-  }, [foldersAll, projectIdsOf]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tags, rootPathsOf, shown, pathsOf, filtering]);
   const bandNoneCount = useMemo(() => foldersAll.filter((f) => f.path !== UNFILED && !(projectIdsOf.get(f.path)?.size)).length, [foldersAll, projectIdsOf]);
 
   const here = useMemo(() => {
@@ -1984,10 +2020,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // Up from a folder that stands straight under a PROJECT ROOT leaves to the project's level, not into the root folder itself.
   const focusRootsRef = useRef<string[]>([]);
   focusRootsRef.current = focusRoots;
+  const focusTopsRef = useRef<string[]>([]);
+  focusTopsRef.current = focusTops;
   const upPlain = useCallback(
     () =>
       setPath((p) => {
         const parent = p.split('/').slice(0, -1).join('/');
+        // A project's top folder (nested or not) goes up to the project's level, not into the folder it happens to sit in.
+        if (focusTopsRef.current.includes(p)) return '';
         return parent && focusRootsRef.current.includes(parent) ? '' : parent;
       }),
     []
