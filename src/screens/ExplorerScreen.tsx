@@ -2313,6 +2313,19 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           onFocus={changeFocusProj}
           counts={bandCounts}
           noneCount={bandNoneCount}
+          rootFor={(id) => {
+            const r = [...(rootPathsOf.get(id) ?? [])];
+            return r.length ? r.map((x) => nameOf(x)).join(', ') : null;
+          }}
+          onRootPress={async (id) => {
+            const r = [...(rootPathsOf.get(id) ?? [])][0];
+            if (!r) return;
+            try {
+              setProjectsFor(await tagForPath(r));
+            } catch (e) {
+              notify('Не вдалося відкрити', (e as Error).message);
+            }
+          }}
         />
         </View>
       )}

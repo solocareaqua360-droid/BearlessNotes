@@ -26,6 +26,8 @@ export default function ProjectsBand({
   noneCount,
   height,
   topPad,
+  rootFor,
+  onRootPress,
 }: {
   groups: Group[];
   focusId: string;
@@ -35,6 +37,9 @@ export default function ProjectsBand({
   // The band stands as tall as an opened folder's cover (the user, 2026-10-22), with `topPad` clear for the top bar.
   height: number;
   topPad: number;
+  // The name of the folder that IS the front project (its root), if any; a tap opens that folder's project settings.
+  rootFor?: (projectId: string) => string | null;
+  onRootPress?: (projectId: string) => void;
 }) {
   const S = useSoft();
   const { width: winW } = useWindowDimensions();
@@ -88,6 +93,18 @@ export default function ProjectsBand({
                     accessibilityLabel={s.name}
                     style={[styles.card, { backgroundColor: bg }, on ? styles.cardWide : styles.cardThin]}
                   >
+                    {on && !!rootFor?.(s.id) && (
+                      <Pressable
+                        onPress={() => onRootPress?.(s.id)}
+                        hitSlop={8}
+                        accessibilityLabel="Папка-корінь проєкту"
+                        style={{ position: 'absolute', top: 14, left: 16, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 13, backgroundColor: S.card, opacity: 0.9 }}
+                      >
+                        <Text style={{ fontSize: 12, color: S.ink2, fontFamily: SOFT_MEDIUM }} numberOfLines={1}>
+                          папка «{rootFor?.(s.id)}» · змінити
+                        </Text>
+                      </Pressable>
+                    )}
                     {on ? (
                       <View>
                         <Text numberOfLines={2} style={[styles.name, { color: S.ink }]}>{s.name}</Text>
