@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LinearTransition } from 'react-native-reanimated';
 import { useSoft } from '../theme/soft';
@@ -47,9 +47,9 @@ export default function ProjectsBand({
   const S = useSoft();
   const { width: winW } = useWindowDimensions();
   const scroller = useRef<ScrollView>(null);
-  const stops: { id: string; name: string; color: string | null; sub: string }[] = [
-    { id: NO_PROJECT, name: 'Без проєкту', color: null, sub: word(noneCount) },
-    ...groups.map((g) => ({ id: g.id, name: g.name, color: g.color, sub: word(counts.get(g.id)?.folders ?? 0) })),
+  const stops: { id: string; name: string; color: string | null; cover?: string; sub: string }[] = [
+    { id: NO_PROJECT, name: 'Без проєкту', color: null, cover: undefined as string | undefined, sub: word(noneCount) },
+    ...groups.map((g) => ({ id: g.id, name: g.name, color: g.color, cover: g.cover, sub: word(counts.get(g.id)?.folders ?? 0) })),
   ];
   const at = Math.max(0, stops.findIndex((s) => s.id === focusId));
   // The wide card is most of the screen; the others keep a fixed thin width and run on past the edge - the row is longer than the screen
@@ -98,6 +98,13 @@ export default function ProjectsBand({
                     accessibilityLabel={s.name}
                     style={[styles.card, { backgroundColor: bg }, on ? styles.cardWide : styles.cardThin]}
                   >
+                    {!!s.cover && (
+                      <>
+                        <Image source={{ uri: s.cover }} resizeMode="cover" style={StyleSheet.absoluteFill} />
+                        {/* A scrim under the text, so a picture never swallows the name. */}
+                        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: on ? 'rgba(0,0,0,0.28)' : 'rgba(0,0,0,0.38)' }]} />
+                      </>
+                    )}
                     {on && !!rootFor?.(s.id) && (
                       <Pressable
                         onPress={() => onRootPress?.(s.id)}
@@ -112,11 +119,11 @@ export default function ProjectsBand({
                     )}
                     {on ? (
                       <View>
-                        <Text numberOfLines={2} style={[styles.name, { color: S.ink }]}>{s.name}</Text>
-                        <Text numberOfLines={1} style={[styles.sub, { color: S.ink2 }]}>{s.sub}</Text>
+                        <Text numberOfLines={2} style={[styles.name, { color: s.cover ? '#fff' : S.ink }]}>{s.name}</Text>
+                        <Text numberOfLines={1} style={[styles.sub, { color: s.cover ? 'rgba(255,255,255,0.85)' : S.ink2 }]}>{s.sub}</Text>
                       </View>
                     ) : (
-                      <Text numberOfLines={1} style={[styles.turned, { color: S.ink, width: cardH - 28 }]}>{s.name}</Text>
+                      <Text numberOfLines={1} style={[styles.turned, { color: s.cover ? '#fff' : S.ink, width: cardH - 28 }]}>{s.name}</Text>
                     )}
                   </Pressable>
                 </Animated.View>

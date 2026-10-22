@@ -491,6 +491,8 @@ export interface Group {
   // its items' groupId, so archiving is reversible and nothing is lost -
   // it stays visible under "Архівні" on the Groups screen.
   archived?: boolean;
+  // The project's cover picture (2026-10-22): a small JPEG data-URL (utils/projectCover) drawn on its card in the explorer's projects band.
+  cover?: string;
   // Flashcards only: this group is being LEARNED - its cards carry
   // «Знаю» / «Ще вчу», and the learned ones can be left out. Off for every
   // other group; the user's own rule, "як опція для певної групи карток".

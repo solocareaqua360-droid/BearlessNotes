@@ -45,6 +45,9 @@ import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRo
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { hapticSelectItem, hapticSelectTap } from '../utils/haptics';
 import RenamePrompt from '../components/RenamePrompt';
+import StockPhotoPicker from '../components/StockPhotoPicker';
+import * as ImagePicker from 'expo-image-picker';
+import { coverDataUrl } from '../utils/projectCover';
 import ItemFoldersSheet from '../components/ItemFoldersSheet';
 import LinkCardHost from '../components/LinkCardHost';
 import DocumentQuickLook, { quickLookKindFor, type QuickLookKind } from '../components/DocumentQuickLook';
@@ -1264,6 +1267,11 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // menu waited under the first and came back after «Вигляд картки» was done (2026-10-12).
   // THE PROJECT'S OWN SETTINGS - a long press on the front card of the projects band (the user, 2026-10-22).
   const [renamingProject, setRenamingProject] = useState<Group | null>(null);
+  const [coverSearchFor, setCoverSearchFor] = useState<string | null>(null);
+  async function setProjectCover(groupId: string, uri: string) {
+    const url = await coverDataUrl(uri);
+    await updateDoc(doc(db, 'groups', groupId), { cover: url });
+  }
   async function holdProject(id: string) {
     const g = groups.find((x) => x.id === id);
     if (!g) return;
@@ -1273,6 +1281,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       actions: [
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' as const },
         { id: 'color', label: 'Колір обкладинки', icon: 'color-palette-outline' as const },
+        { id: 'image', label: g.cover ? 'Змінити зображення' : 'Зображення обкладинки', icon: 'image-outline' as const },
         { id: 'root', label: hasRoot ? 'Папка-корінь…' : 'Зробити папку коренем…', icon: 'folder-open-outline' as const },
         { id: 'archive', label: g.archived ? 'Повернути з архіву' : 'Архівувати', icon: 'archive-outline' as const },
         { id: 'delete', label: 'Видалити проєкт', icon: 'trash-outline' as const, tone: 'danger' as const },
@@ -1285,6 +1294,27 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         actions: PROJECT_COVER_COLORS.map((c) => ({ id: c.hex, label: c.name, icon: 'ellipse' as const })),
       });
       if (pick !== 'cancel') await updateDoc(doc(db, 'groups', g.id), { color: pick }).catch((e) => notify('Не вдалося зберегти', (e as Error).message));
+    } else if (choice === 'image') {
+      const way = await ask({
+        title: 'Зображення обкладинки',
+        actions: [
+          { id: 'gallery', label: 'З галереї', icon: 'images-outline' as const },
+          { id: 'stock', label: 'Пошук зображень', icon: 'search-outline' as const },
+          ...(g.cover ? [{ id: 'remove', label: 'Прибрати зображення', icon: 'trash-outline' as const, tone: 'danger' as const }] : []),
+        ],
+      });
+      if (way === 'gallery') {
+        try {
+          const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!permission.granted && Platform.OS !== 'web') return;
+          const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+          if (result.canceled || !result.assets[0]) return;
+          await setProjectCover(g.id, result.assets[0].uri);
+        } catch (e) {
+          notify('Не вдалося поставити зображення', (e as Error).message);
+        }
+      } else if (way === 'stock') setCoverSearchFor(g.id);
+      else if (way === 'remove') await updateDoc(doc(db, 'groups', g.id), { cover: deleteField() }).catch(() => {});
     } else if (choice === 'root') {
       const current = [...(rootPathsOf.get(id) ?? [])][0];
       if (current) {
@@ -2941,6 +2971,20 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             if (renamed && renamed !== target.path) await moveBranch(target.path, renamed);
           } catch (e) {
             notify('Не вдалося зберегти', (e as Error).message);
+          }
+        }}
+      />
+      <StockPhotoPicker
+        visible={coverSearchFor !== null}
+        onClose={() => setCoverSearchFor(null)}
+        onPicked={async (uri) => {
+          const id = coverSearchFor;
+          setCoverSearchFor(null);
+          if (!id) return;
+          try {
+            await setProjectCover(id, uri);
+          } catch (e) {
+            notify('Не вдалося поставити зображення', (e as Error).message);
           }
         }}
       />
