@@ -1004,6 +1004,18 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const { flatten: flattenPhoto, node: flattenPhotoNode } = useFlattenPhoto();
   const { downloadToast, showDownloadToast, dismissDownloadToast } = useDownloadToast();
   const [groups, setGroups] = useState<Group[]>([]);
+  // THE BAND SHOWS ONLY PROJECTS THAT HAVE A FOLDER (the user, 2026-10-22): a project is its folders here; one made of tasks alone lives in
+  // «Справи» and appears in the band the moment a folder is given to it. One with nothing at all should not exist.
+  const bandGroups = useMemo(() => {
+    const withFolder = new Set<string>();
+    tags.forEach((t) => t.groupIds?.forEach((id) => withFolder.add(id)));
+    return groups.filter((g) => !g.archived && withFolder.has(g.id)).sort((a, b) => a.name.localeCompare(b.name));
+  }, [groups, tags]);
+  // A project that has left the band (its last folder went) does not stay in front, empty.
+  useEffect(() => {
+    if (focusProj !== NO_PROJECT && groups.length > 0 && tags.length > 0 && !bandGroups.some((g) => g.id === focusProj)) changeFocusProj(NO_PROJECT);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bandGroups, focusProj]);
   useEffect(
     () =>
       onSnapshot(
@@ -2488,7 +2500,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         <ProjectsBand
           height={folderCoverHeight(winH, insets.top)}
           topPad={listTopPad}
-          groups={groups.filter((g) => !g.archived).sort((a, b) => a.name.localeCompare(b.name))}
+          groups={bandGroups}
           focusId={focusProj}
           onFocus={changeFocusProj}
           counts={bandCounts}
