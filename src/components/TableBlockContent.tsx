@@ -991,7 +991,7 @@ export default function TableBlockContent({
           <EdgeBar
             vertical
             style={{ right: -4, bottom: (rowHeights.current[rows.length - 1] ?? 34) / 2 - 14 }}
-            onPress={() => addColumn(false)}
+            onPress={() => insertColumn(columnCount)}
             label="Додати колонку"
           />
         )}
