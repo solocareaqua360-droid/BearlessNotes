@@ -83,6 +83,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
+import { useFileInExplorer } from '../hooks/useFileInExplorer';
 import { listenError } from '../utils/listenError';
 import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
 
@@ -304,6 +305,14 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
     attachTag: list.attachTag,
     detachTag: list.detachTag,
   });
+  // «У провідник…», the same list photos and links have: every folder there is, ticked where the file already stands - so a file that sits in
+  // an old folder can be taken out of it (the user, 2026-10-22: it could only be deleted).
+  const fileInExplorer = useFileInExplorer({
+    tags: list.tags,
+    attachTag: list.attachTag as never,
+    detachTag: list.detachTag as never,
+    createFolderTag: list.createFolderTag as never,
+  });
   // Sent here standing in a folder (the start desk's «Робочі столи»).
   useFolderArrival('file', list.explorerMode, list.setListMode, explorer.setPath);
   const filesHere = explorer.visibleItems;
@@ -453,6 +462,14 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       // Where the drag-and-drop lands a card, for anyone who would rather
       // pick the folder from a list - and the only way to reach a folder
       // that is not on screen.
+      {
+        icon: 'folder-open-outline',
+        label: 'У провідник…',
+        onPress: () => {
+          close();
+          fileInExplorer.open([{ id: file.id, tagKind: 'file', collection: 'files', tagIds: file.tagIds }]);
+        },
+      },
       {
         icon: 'folder-outline',
         label: 'Перемістити в папку',
@@ -988,6 +1005,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
             icon="document-outline"
             onEnterFolder={(path) => explorer.setPath(path)}
           />
+
+          {fileInExplorer.node}
 
           {/* The per-card "..." - rename, and the documents this file sits
               in when it sits in any. */}
