@@ -451,11 +451,12 @@ export default function TableBlockContent({
         });
       } else if (chosen === 'head') {
         chosen = await ask({
-          title: 'Шапка й підсумки',
+          title: 'Шапка, підсумки, вигляд',
           actions: [
             { id: 'headerRow', label: headerRow ? 'Прибрати шапку-рядок' : 'Перший рядок — шапка' },
             { id: 'headerCol', label: headerColumn ? 'Прибрати шапку-колонку' : 'Перша колонка — шапка' },
             { id: 'sum', label: 'Рядок підсумків' },
+            ...(rows.length > (headerRow ? 4 : 3) ? [{ id: 'fold', label: block.tableShort ? 'Розгорнути таблицю' : 'Згорнути таблицю' }] : []),
           ],
         });
       }
@@ -486,6 +487,10 @@ export default function TableBlockContent({
     if (chosen === 'headerCol') onUpdate({ tableHeaderColumn: !headerColumn });
     if (chosen === 'sum') addSumRow();
     if (chosen === 'resetWidths') onUpdate({ tableColumnWidths: [] });
+    if (chosen === 'fold') {
+      setOpenedShort(false);
+      onUpdate({ tableShort: !block.tableShort });
+    }
   }
 
   function removeRow(r: number) {
@@ -894,6 +899,8 @@ export default function TableBlockContent({
           hint={span === 'cell' ? displayValueOf(rows, selected.r, selected.c) : undefined}
           headerRow={headerRow}
           headerColumn={headerColumn}
+          canFold={rows.length > (headerRow ? 4 : 3)}
+          folded={!!block.tableShort}
           canUp={selected.r > 0}
           canDown={selected.r < rows.length - 1}
           canLeft={selected.c > 0}

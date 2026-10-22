@@ -21,6 +21,9 @@ type Props = {
   hint?: string;
   headerRow: boolean;
   headerColumn: boolean;
+  // «Згорнути таблицю»: shown only for a table longer than the folded view; `folded` says which way the switch points.
+  canFold: boolean;
+  folded: boolean;
   canUp: boolean;
   canDown: boolean;
   canLeft: boolean;
@@ -34,7 +37,7 @@ type Step = 'main' | 'insert' | 'move' | 'select';
 type IconName = 'plus' | 'move' | 'select' | 'row' | 'col' | 'head' | 'sum' | 'width' | 'clear' | 'trash' | 'up' | 'down' | 'left' | 'right' | 'chev' | 'back';
 
 export default function TableCellMenu(props: Props) {
-  const { visible, onClose, mode, title, hint, headerRow, headerColumn, canUp, canDown, canLeft, canRight, canDelRow, canDelCol, onPick } = props;
+  const { visible, onClose, mode, title, hint, headerRow, headerColumn, canFold, folded, canUp, canDown, canLeft, canRight, canDelRow, canDelCol, onPick } = props;
   const styles = useStyles(makeStyles);
   const theme = useTheme();
   const { height: windowHeight } = useWindowDimensions();
@@ -149,6 +152,7 @@ export default function TableCellMenu(props: Props) {
           { id: 'headerCol', label: 'Перша колонка — шапка', icon: 'col', switchOn: headerColumn },
           { id: 'sum', label: 'Рядок підсумків', icon: 'sum' },
           { id: 'resetWidths', label: 'Скинути ширину колонок', icon: 'width' },
+          ...(canFold ? [{ id: 'fold', label: folded ? 'Розгорнути таблицю' : 'Згорнути таблицю', icon: (folded ? 'down' : 'up') as IconName }] : []),
         ])}
         {group([{ id: 'clearCell', label: 'Очистити клітинку', icon: 'clear' }, ...del])}
       </>
