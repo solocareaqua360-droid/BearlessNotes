@@ -216,3 +216,90 @@ export async function writeMemoryTree(chat: AssistantChat): Promise<TreeResult> 
     created,
   };
 }
+
+// THE CONVERSATION AS ONE ORDINARY NOTE (FEATURES.assistantTree off, 2026-10-23): the main topic's memories at the top, each
+// branch a heading over its own memories - a branch of a branch one level lower - so the note reads as a document and its
+// «Зміст» is the tree. No board, no nested notes. A press writes only what is new: a memory already in the note (by its
+// first line) is not written again; a new memory goes at the end of its own section, a new branch after its parent's.
+export type NoteResult = Pick<AssistantChat, 'noteId' | 'topicHeadings' | 'noted'> & { rootNoteId: string };
+
+export async function writeMemoryNote(chat: AssistantChat): Promise<NoteResult> {
+  const now = Date.now();
+  const topics = new Map<string, AssistantTopic>((chat.topics ?? []).map((t) => [t.id, t]));
+  const parentOf = (id: string) => (id === ROOT_TOPIC ? null : topics.get(id)?.parentId ?? ROOT_TOPIC);
+  const titleFor = (id: string) => topics.get(id)?.title ?? 'Гілка';
+  const depthOf = (id: string) => {
+    let d = 0;
+    let at = parentOf(id);
+    while (at && d < 20) {
+      d += 1;
+      at = parentOf(at);
+    }
+    return d;
+  };
+
+  const textByKey = new Map<string, string>();
+  const topicOfMessage = new Map<string, string>();
+  chat.messages.forEach((m) => {
+    topicOfMessage.set(m.id, m.topicId ?? ROOT_TOPIC);
+    if (m.role !== 'model' || m.error) return;
+    blocksOf(m.text).forEach((t, i) => textByKey.set(`${m.id}:${i}`, t));
+  });
+  const memories = groupsOf(chat)
+    .map((g) => ({ text: g.map((k) => textByKey.get(k)).filter(Boolean).join('\n\n'), topic: topicOfMessage.get(g[0].split(':')[0]) ?? ROOT_TOPIC }))
+    .filter((m) => m.text);
+
+  let noteId = chat.noteId;
+  const known = await readNote(noteId).catch(() => null);
+  let blocks: Block[] = known ? [...known.blocks] : [];
+  if (!known) {
+    noteId = doc(collection(db, 'documents')).id;
+    await setDoc(doc(db, 'documents', noteId), { title: titleOf(chat), createdAt: now, updatedAt: now, blocks: [] });
+  }
+  const headings: Record<string, string> = { ...(chat.topicHeadings ?? {}) };
+  const levelOf = (t: string) => Math.min(3, depthOf(t) + 1);
+  const isHeading = (b: Block) => (b.type ?? 'paragraph') === 'heading';
+  const indexOfHeading = (t: string) => (headings[t] ? blocks.findIndex((b) => b.id === headings[t]) : -1);
+  // Where a topic's own memories end: just before the next heading (its first sub-branch, or the next section).
+  const ownEnd = (t: string) => {
+    const start = t === ROOT_TOPIC ? -1 : indexOfHeading(t);
+    for (let i = start + 1; i < blocks.length; i++) if (isHeading(blocks[i])) return i;
+    return blocks.length;
+  };
+  // Where a topic's whole section ends, its sub-branches included: the next heading of its own level or higher.
+  const sectionEnd = (t: string) => {
+    if (t === ROOT_TOPIC) return blocks.length;
+    const start = indexOfHeading(t);
+    const level = levelOf(t);
+    for (let i = start + 1; i < blocks.length; i++) if (isHeading(blocks[i]) && (blocks[i].headingLevel ?? 2) <= level) return i;
+    return blocks.length;
+  };
+  // Every branch that holds a memory, with its parents - parents first.
+  const needed = new Set<string>();
+  memories.forEach((m) => {
+    let at: string | null = m.topic;
+    while (at && at !== ROOT_TOPIC && !needed.has(at)) {
+      needed.add(at);
+      at = parentOf(at);
+    }
+  });
+  Array.from(needed)
+    .sort((a, b) => depthOf(a) - depthOf(b))
+    .forEach((t) => {
+      if (indexOfHeading(t) !== -1) return;
+      const parent = parentOf(t) ?? ROOT_TOPIC;
+      const at = sectionEnd(parent);
+      const heading = { ...buildBlock(generateId(), 'heading', titleFor(t)), headingLevel: levelOf(t) };
+      blocks.splice(at, 0, heading);
+      headings[t] = heading.id;
+    });
+  const have = new Set(blocks.map((b) => (b.text ?? '').trim()));
+  memories.forEach((m) => {
+    const made = blocksOfMemory(m.text);
+    if (made.length === 0 || have.has(firstLine(made))) return;
+    have.add(firstLine(made));
+    blocks.splice(ownEnd(m.topic), 0, ...made);
+  });
+  await updateDoc(doc(db, 'documents', noteId!), { blocks, linksTo: documentLinksIn(blocks), updatedAt: now });
+  return { rootNoteId: noteId!, noteId, topicHeadings: headings, noted: memories.map((m) => m.text) };
+}

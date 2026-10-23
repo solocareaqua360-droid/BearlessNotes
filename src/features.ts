@@ -8,6 +8,11 @@ export const FEATURES = {
   // screens/AssistantScreen - live Gemini, answers as blocks, a block held is remembered / told in more detail / copied.
   // Off: the button is gone; the conversation kept on the phone stays.
   assistant: true,
+  // «В нотатку» as a TREE: a nested note per branch + a board that shows them (2026-10-23 night). Put away the next day
+  // (the user: «їй на даний момент треба вернути форму звичайного документа, без всяких дошок... я тільки розбираюсь»):
+  // off = ONE ordinary note, each branch a heading in it (utils/assistantTree writeMemoryNote). Notes and boards made as a
+  // tree stay as they are.
+  assistantTree: false,
   // «Проєкти» у «Стилі провідника» (2026-10-22): смуга-гармошка проєктів на першому рівні, папки лише вибраного проєкту, «Без проєкту» першим.
   explorerProjects: true,
   // The explorer shows photos, videos, geo points and links ONLY when they were put in a folder (by the «+» inside

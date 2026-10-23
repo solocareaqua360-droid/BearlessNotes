@@ -40,6 +40,8 @@ export type AssistantChat = {
   topicNotes?: Record<string, string>;
   boardId?: string;
   boardCards?: Record<string, string>;
+  // One-note form (FEATURES.assistantTree off): the heading block that opens each branch's section in `noteId`.
+  topicHeadings?: Record<string, string>;
   // THE CONVERSATION'S MEMORY (step 2): what the AI wrote down of the older part of the talk, and how many messages it covers.
   summary?: string;
   summarizedCount?: number;

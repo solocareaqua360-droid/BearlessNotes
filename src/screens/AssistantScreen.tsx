@@ -27,7 +27,8 @@ import {
   type AssistantChat,
   type AssistantMessage,
 } from '../utils/assistant';
-import { writeMemoryTree } from '../utils/assistantTree';
+import { writeMemoryNote, writeMemoryTree } from '../utils/assistantTree';
+import { FEATURES } from '../features';
 import { speakThoughts, stopVoice, subscribeVoice } from '../utils/thoughtVoice';
 import { useGeminiUsage } from '../utils/geminiUsage';
 import { hapticPickUp } from '../utils/haptics';
@@ -211,9 +212,10 @@ export default function AssistantScreen() {
           .sort((x, y) => (y.data.updatedAt ?? 0) - (x.data.updatedAt ?? 0))[0];
         if (newest) current = { ...current, noteId: newest.id };
       }
-      const result = await writeMemoryTree(current);
-      const { rootNoteId, created, ...kept } = result;
-      void created;
+      // One ordinary note with a heading per branch, or (FEATURES.assistantTree) the tree of nested notes and its board.
+      const result = FEATURES.assistantTree ? await writeMemoryTree(current) : await writeMemoryNote(current);
+      const { rootNoteId, ...kept } = result as { rootNoteId: string; created?: number } & Partial<typeof current>;
+      delete (kept as { created?: number }).created;
       update({ ...(chatRef.current ?? current), ...kept });
       navigation.navigate('Editor', { documentId: rootNoteId });
     } catch (e) {
@@ -239,7 +241,7 @@ export default function AssistantScreen() {
         { id: 'new', label: 'Нова розмова', icon: 'add' as const },
         { id: 'history', label: 'Попередні розмови', icon: 'time-outline' as const },
         { id: 'memory', label: "Що ти пам'ятаєш?", icon: 'bulb-outline' as const },
-        ...(c?.boardId ? [{ id: 'tree', label: 'Дерево на дошці', icon: 'git-network-outline' as const }] : []),
+        ...(FEATURES.assistantTree && c?.boardId ? [{ id: 'tree', label: 'Дерево на дошці', icon: 'git-network-outline' as const }] : []),
       ],
     });
     if (choice === 'new') {
