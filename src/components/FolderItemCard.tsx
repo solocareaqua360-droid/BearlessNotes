@@ -76,6 +76,7 @@ function FolderTile({
         project={null}
         coverImageUri={str(raw.coverImageUri)}
         coverDriveFileId={str(raw.coverDriveFileId)}
+        coverFrame={raw.coverFrame as never}
         width={picW}
         height={picH}
       />
@@ -306,6 +307,7 @@ function FolderItemCardInner({
             tags: own,
             coverImageUri: str(raw.coverImageUri),
             coverDriveFileId: str(raw.coverDriveFileId),
+            coverFrame: raw.coverFrame as never,
             paperColorEnabled: !!raw.paperColorEnabled,
           }}
           project={null}
@@ -447,6 +449,7 @@ function FolderItemCardInner({
             project={null}
             coverImageUri={str(raw.coverImageUri)}
             coverDriveFileId={str(raw.coverDriveFileId)}
+        coverFrame={raw.coverFrame as never}
             width={104}
             height={78}
           />

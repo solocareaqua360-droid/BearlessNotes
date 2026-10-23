@@ -235,6 +235,8 @@ import { blocksToMarkdown } from '../utils/blocksText';
 import { holdBlocks, takeHeldBlocks } from '../utils/blockClipboard';
 import { startNaming } from '../utils/docRefNaming';
 import SelectModeSheet, { type LookKind } from '../components/SelectModeSheet';
+import ImageFrameEditor from '../components/ImageFrameEditor';
+import type { ImageFrame } from '../utils/imageFrame';
 
 // Below this, a note has no room to stand beside «Референси» and the
 // drawer lies over it instead - see referencesSplit. 300 is the drawer's
@@ -703,6 +705,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // The chosen cover gradient's id - see theme/covers. Saved beside the
   // cover picture and synced the same way.
   const [coverGradient, setCoverGradient] = useState<string | undefined>(undefined);
+  // The part of the cover picture shown (utils/imageFrame, chosen in ImageFrameEditor) - written on its own the moment it is
+  // chosen, and with every save from the ref; read from every snapshot of the note.
+  const [coverFrame, setCoverFrameState] = useState<ImageFrame | undefined>(undefined);
+  const coverFrameRef = useRef<ImageFrame | undefined>(undefined);
+  const setCoverFrame = (f: ImageFrame | undefined) => {
+    coverFrameRef.current = f;
+    setCoverFrameState(f);
+  };
+  // The picture whose frame is being chosen.
+  const [framingCover, setFramingCover] = useState<string | null>(null);
   // "Пошук зображень" from the cover menu - see StockPhotoPicker.
   const [searchingCover, setSearchingCover] = useState(false);
   // A note created and then left untouched shouldn't be kept. Gated on
@@ -1349,6 +1361,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           : undefined
       );
       setCoverGradient(data?.coverGradient);
+      setCoverFrame((data?.coverFrame as ImageFrame | undefined) ?? undefined);
       setPaperColorEnabled(!!data?.paperColorEnabled);
       setGroupId(data?.groupId ?? null);
       setSourceBoardId(data?.boardId ?? null);
@@ -1469,6 +1482,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const data = snapshot.data();
       if (!data) return;
       const remote = shapeFrom(data, (data.blocks as Block[]) ?? []);
+      const frameThere = (data.coverFrame as ImageFrame | undefined) ?? undefined;
+      if (stableStringify(frameThere) !== stableStringify(coverFrameRef.current)) setCoverFrame(frameThere);
       // The same version we already hold - our own write, arrived back
       // from the server - changes nothing.
       if (serverRef.current && sameAsServer({ ...remote, blocks: remote.blocks })) {
@@ -1891,6 +1906,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           coverDriveFileId: coverDrive?.fileId ?? deleteField(),
           coverDriveBytes: coverDrive?.bytes ?? deleteField(),
           coverGradient: coverGradient || deleteField(),
+          coverFrame: coverFrameRef.current ?? deleteField(),
           groupId: groupId ?? deleteField(),
           // A map written under merge:true MERGES its keys - a link
           // removed here simply stayed on the server, and the other
@@ -5050,12 +5066,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         // - see StockPhotoPicker. No duotone here: that step belongs to
         // the tile board's own colour-matching, not to a note's cover.
         { id: 'stock', label: 'Пошук зображень', icon: 'search-outline' },
+        ...(coverImageUri ? [{ id: 'frame', label: 'Кадрувати', icon: 'crop-outline' as const }] : []),
         ...(coverImageUri
           ? [{ id: 'remove', label: 'Прибрати заставку', tone: 'danger' as const, icon: 'trash-outline' as const }]
           : []),
       ],
     }).then((answer) => {
-      if (answer === 'gallery' || answer === 'camera') pickCoverImage(answer);
+      if (answer === 'frame' && coverImageUri) setFramingCover(coverImageUri);
+      else if (answer === 'gallery' || answer === 'camera') pickCoverImage(answer);
       else if (answer === 'stock') setSearchingCover(true);
       else if (answer === 'remove') applyCover(undefined);
     });
@@ -5081,6 +5099,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const previous = coverDrive;
     setCoverImageUri(uri);
     setCoverDrive(undefined);
+    // A new picture starts from the plain middle; its frame is chosen next (pickCover* open the editor).
+    setCoverFrame(undefined);
 
     // The old copy goes - unless a block in this note is looking at the
     // same one. A cover CAN be a picture that is also in the text, and
@@ -5109,6 +5129,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       async (width, height) => {
         const compressed = await compressPickedImage(uri, width, height);
         applyCover(compressed);
+        setFramingCover(compressed);
         setCoverGradient(undefined);
       },
       () => notify('Не вдалося встановити заставку', 'Не визначився розмір зображення')
@@ -5129,6 +5150,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const asset = result.assets[0];
     const uri = await compressPickedImage(asset.uri, asset.width, asset.height);
     applyCover(uri);
+    setFramingCover(uri);
     // A picture is the cover now; a gradient chosen earlier lets go, or
     // it would keep winning over the picture in the card.
     setCoverGradient(undefined);
@@ -6220,6 +6242,25 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           ]}
         />
       )}
+      <ImageFrameEditor
+        visible={!!framingCover}
+        uri={framingCover}
+        // The band's shape on this screen (styles.coverImage: the page's width, 180 tall).
+        aspect={Math.max(1, noteWidth) / 180}
+        // The same band on the user's other screens (the folded phone's page ~451 wide, the unfolded one and the Mac ~700):
+        // whichever differs from this one is outlined, so a frame chosen here can be checked there.
+        also={[
+          { aspect: 451 / 180, label: 'складений телефон' },
+          { aspect: 700 / 180, label: 'розгорнутий і Мак' },
+        ].filter((o) => Math.abs(o.aspect / (Math.max(1, noteWidth) / 180) - 1) > 0.12)}
+        initial={framingCover === coverImageUri ? coverFrame : null}
+        onCancel={() => setFramingCover(null)}
+        onDone={(f) => {
+          setFramingCover(null);
+          setCoverFrame(f);
+          updateDoc(doc(db, 'documents', documentId), { coverFrame: f }).catch(() => {});
+        }}
+      />
       {tocOpen && dockLive && !notePanelOn && !canvasMode && (
         <View style={{ position: 'absolute', width: NOTE_DOCK_CAPSULE_W, left: NOTE_DOCK_LEFT, bottom: menuClearance, maxHeight: Math.min(260, windowHeight - menuClearance - editorInsets.top - 24), borderRadius: 20, padding: 8, backgroundColor: theme.raised, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.edge.hairline, zIndex: 30 }} pointerEvents="box-none">
           <NoteOutline items={outline} currentId={tocCurrent} onPick={pickSection} />
@@ -6903,6 +6944,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               }
               style={styles.coverImage}
               paper={paperColor?.background}
+              frame={coverFrame}
               countsAsUse
             />
           </Pressable>

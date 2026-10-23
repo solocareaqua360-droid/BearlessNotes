@@ -2,7 +2,8 @@ import { useId, useState } from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeProvider';
-import AttachmentImage from './AttachmentImage';
+import FramedImage from './FramedImage';
+import type { ImageFrame } from '../utils/imageFrame';
 
 // A NOTE'S COVER, ENDING RATHER THAN STOPPING.
 //
@@ -74,6 +75,7 @@ export default function PageCover({
   style,
   countsAsUse,
   paper,
+  frame,
 }: {
   uri: string;
   driveFileId?: string;
@@ -85,6 +87,8 @@ export default function PageCover({
   // is, here and in a miniature alike.
   style?: StyleProp<ViewStyle>;
   countsAsUse?: boolean;
+  // The part of the picture shown (utils/imageFrame); none = its middle, as `cover`.
+  frame?: ImageFrame | null;
 }) {
   const theme = useTheme();
   const into = paper ?? theme.paper.fill;
@@ -106,12 +110,7 @@ export default function PageCover({
         setBox((prev) => (prev.w === width && prev.h === height ? prev : { w: width, h: height }));
       }}
     >
-      <AttachmentImage
-        uri={uri}
-        driveFileId={driveFileId}
-        style={StyleSheet.absoluteFill}
-        countsAsUse={countsAsUse}
-      />
+      <FramedImage uri={uri} driveFileId={driveFileId} frame={frame} countsAsUse={countsAsUse} />
       {box.w > 0 && box.h > 0 && (
         <Svg
           width={Math.ceil(box.w) + BLEED}

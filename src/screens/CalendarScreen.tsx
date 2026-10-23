@@ -391,6 +391,7 @@ export default function CalendarScreen() {
               coverImageUri: data.coverImageUri as string | undefined,
               coverGradient: data.coverGradient as string | undefined,
               coverDriveFileId: data.coverDriveFileId as string | undefined,
+              coverFrame: data.coverFrame,
               updatedAt: (data.updatedAt as number) ?? 0,
             };
           })

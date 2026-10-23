@@ -1,3 +1,4 @@
+import type { ImageFrame } from '../utils/imageFrame';
 import { lift } from '../utils/lift';
 import { markHeld } from '../utils/heldNode';
 import Animated from 'react-native-reanimated';
@@ -356,6 +357,7 @@ type Props = {
     tags: Tag[];
     coverImageUri?: string;
     coverDriveFileId?: string;
+    coverFrame?: ImageFrame;
     paperColorEnabled?: boolean;
   };
   // What every tile in this grid stands at - see gridHeight.
@@ -421,6 +423,7 @@ function PageBody({
     tags: Tag[];
     coverImageUri?: string;
     coverDriveFileId?: string;
+    coverFrame?: ImageFrame;
     paperColorEnabled?: boolean;
   };
   project?: { name: string; color: string } | null;
@@ -458,6 +461,7 @@ function PageBody({
           project={project ?? null}
           coverImageUri={page.coverImageUri}
           coverDriveFileId={page.coverDriveFileId}
+          coverFrame={page.coverFrame}
           paperColor={paperColor}
           width={width}
           height={Math.max(0, height - PAGE_LINE_H)}
@@ -898,6 +902,7 @@ export default function DocumentCard({
               project={null}
               coverImageUri={page.coverImageUri}
               coverDriveFileId={page.coverDriveFileId}
+          coverFrame={page.coverFrame}
               width={dense ? ROW_SHEET_W_DENSE : ROW_SHEET_W}
               height={dense ? ROW_SHEET_H_DENSE : ROW_SHEET_H}
               offsetY={PAGE_HEADER_BAND}

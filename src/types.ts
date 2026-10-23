@@ -956,6 +956,8 @@ export interface DocumentItem {
   // other device drew an empty frame where it should be. Absent on any
   // cover set before this shipped.
   coverDriveFileId?: string;
+  // The part of the cover picture shown (utils/imageFrame).
+  coverFrame?: import('./utils/imageFrame').ImageFrame;
   coverDriveBytes?: number;
   // Every other document this one points at, kept up to date on save the
   // same way its tasks, links and photos are (see

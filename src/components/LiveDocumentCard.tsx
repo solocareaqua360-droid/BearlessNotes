@@ -1,3 +1,4 @@
+import type { ImageFrame } from '../utils/imageFrame';
 import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from '../firestore';
 import { db } from '../firebase';
@@ -26,6 +27,7 @@ function faceOf(data: Record<string, unknown>): Face {
     tagIds: (data.tagIds as string[]) ?? [],
     coverImageUri: data.coverImageUri as string | undefined,
     coverDriveFileId: data.coverDriveFileId as string | undefined,
+    coverFrame: data.coverFrame as ImageFrame | undefined,
     coverGradient: data.coverGradient as string | undefined,
     paperColorEnabled: data.paperColorEnabled as boolean | undefined,
     deletedAt: data.deletedAt as number | undefined,
@@ -39,6 +41,7 @@ type Face = {
   tagIds: string[];
   coverImageUri?: string;
   coverDriveFileId?: string;
+  coverFrame?: ImageFrame;
   coverGradient?: string;
   paperColorEnabled?: boolean;
   deletedAt?: number;
@@ -111,6 +114,7 @@ export default function LiveDocumentCard({ documentId, fallbackTitle, index, tag
         tags,
         coverImageUri: face.coverImageUri,
         coverDriveFileId: face.coverDriveFileId,
+        coverFrame: face.coverFrame,
         paperColorEnabled: !!face.paperColorEnabled,
       }}
       soft={soft}

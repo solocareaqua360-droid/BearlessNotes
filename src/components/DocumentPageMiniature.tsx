@@ -1,3 +1,4 @@
+import type { ImageFrame } from '../utils/imageFrame';
 import { memo } from 'react';
 import { IS_POINTER } from '../utils/pointer';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -54,6 +55,7 @@ function DocumentPageMiniature({
   project,
   coverImageUri,
   coverDriveFileId,
+  coverFrame,
   paperColor = null,
   width,
   height,
@@ -73,6 +75,7 @@ function DocumentPageMiniature({
   project: { name: string; color: string } | null;
   coverImageUri?: string;
   coverDriveFileId?: string;
+  coverFrame?: ImageFrame;
   // The note's OWN paper, where it has one: the sheet, the ink of every
   // block on it, and what its cover fades into are all that colour then.
   paperColor?: { background: string; text: string; textMuted: string } | null;
@@ -142,6 +145,7 @@ function DocumentPageMiniature({
           <PageCover
             uri={coverImageUri}
             driveFileId={coverDriveFileId}
+            frame={coverFrame}
             style={editorStyles.coverImage}
             paper={paperColor?.background}
           />

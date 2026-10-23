@@ -1,3 +1,4 @@
+import type { ImageFrame } from '../utils/imageFrame';
 import { useEffect, useState } from 'react';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
@@ -22,6 +23,7 @@ export type IndexedDocument = {
   title: string;
   coverImageUri?: string;
   coverDriveFileId?: string;
+  coverFrame?: ImageFrame;
   coverGradient?: string;
   updatedAt?: number;
   // In the bin. Kept in the index rather than filtered out here, because
@@ -88,6 +90,7 @@ function startListening() {
           title: (data.title as string) ?? '',
           coverImageUri: data.coverImageUri as string | undefined,
           coverDriveFileId: data.coverDriveFileId as string | undefined,
+          coverFrame: data.coverFrame as ImageFrame | undefined,
           coverGradient: data.coverGradient as string | undefined,
           updatedAt: data.updatedAt as number | undefined,
           deletedAt: data.deletedAt as number | undefined,

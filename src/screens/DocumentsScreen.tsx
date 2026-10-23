@@ -228,9 +228,10 @@ const DocumentListCard = memo(function DocumentListCard({
       tags,
       coverImageUri: item.coverImageUri,
       coverDriveFileId: item.coverDriveFileId,
+      coverFrame: item.coverFrame,
       paperColorEnabled: !!item.paperColorEnabled,
     }),
-    [tagIds, tags, item.coverImageUri, item.coverDriveFileId, item.paperColorEnabled]
+    [tagIds, tags, item.coverImageUri, item.coverDriveFileId, item.coverFrame, item.paperColorEnabled]
   );
   return (
     <DocumentCard
@@ -1235,6 +1236,7 @@ export default function DocumentsScreen({
           createdAt: docSnapshot.data().createdAt,
           coverImageUri: docSnapshot.data().coverImageUri,
           coverDriveFileId: docSnapshot.data().coverDriveFileId as string | undefined,
+          coverFrame: docSnapshot.data().coverFrame,
           coverGradient: docSnapshot.data().coverGradient as string | undefined,
           wideCard: docSnapshot.data().wideCard as boolean | undefined,
           // A note's own paper colour is a property of the PAGE, so a
@@ -1951,6 +1953,7 @@ export default function DocumentsScreen({
                       tags,
                       coverImageUri: item.coverImageUri,
                       coverDriveFileId: item.coverDriveFileId,
+                      coverFrame: item.coverFrame,
                       paperColorEnabled: !!item.paperColorEnabled,
                     }}
                     project={groups.find((g) => g.id === item.groupId) ?? null}
