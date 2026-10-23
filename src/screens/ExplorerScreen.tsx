@@ -1,4 +1,4 @@
-import { type ComponentProps, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { usePins } from '../navigation/pinned';
 import ExplorerPanel from '../components/desktop/ExplorerPanel';
@@ -2575,8 +2575,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         : 0;
     return <Animated.View entering={coming ? cornerIn(Math.min(cardsBefore + rowIndex, 12) * 32) : undefined}>{el}</Animated.View>;
   };
-  const header = (
-    <View>
+  const headerBody = (
+    <>
       {/* THE LIVING FOLDER of thoughts, first on the explorer's first level (components/thoughts). */}
       {projectsHere && (
         <View style={{ marginTop: -listTopPad, marginBottom: 14 }}>
@@ -2836,6 +2836,20 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       )}
       {!path && !inBin && !inCleanup && here.length > 0 && <Text style={[styles.sectionLabel, { color: S.ink3 }]}>{`Без папки · ${here.length}`}</Text>}
       {inCleanup && <Text style={[styles.sectionLabel, { color: S.ink3 }]}>{`Кандидати на очищення · ${here.length}`}</Text>}
+    </>
+  );
+  // THE FIRST LEVEL STAYS BUILT while a folder is open (perf evening 2026-10-23: closing a folder rebuilt the band, the
+  // «Думки» card and every folder card from nothing - 3 of the 4 stalls of a closing, ~150 ms). It is hidden, not taken
+  // away: on the way back the same components come back into view, and React only updates them.
+  const atFirstLevel = !path && !inBin && !inCleanup && !searching;
+  const firstLevelKept = useRef<ReactNode>(null);
+  if (atFirstLevel) firstLevelKept.current = headerBody;
+  const header = (
+    <View>
+      <View key="first" style={atFirstLevel ? undefined : styles.keptAway}>
+        {firstLevelKept.current}
+      </View>
+      {!atFirstLevel && <View key="level">{headerBody}</View>}
     </View>
   );
 
@@ -3324,6 +3338,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
 }
 
 const styles = StyleSheet.create({
+  keptAway: { display: 'none' },
   container: { flex: 1 },
   modernLines: { gap: 10, marginBottom: 12 },
   // A shorter column floats in the middle of its line, not pinned to the top (the user, 2026-10-12: «центруй їх по
