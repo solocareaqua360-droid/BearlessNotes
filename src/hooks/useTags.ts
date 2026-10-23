@@ -1,3 +1,4 @@
+import { ALL_FOLDER_KINDS } from '../constants/folderKinds';
 import { useEffect, useState } from 'react';
 import { noteFolderUsed } from '../utils/recentFolders';
 import {
@@ -357,6 +358,19 @@ export function useTags() {
     // Only a plain object is cleaned; the delete sentinel is passed through as is.
     if (fields.card && Object.getPrototypeOf(fields.card) === Object.prototype) {
       clean.card = Object.fromEntries(Object.entries(fields.card).filter(([, v]) => v !== undefined));
+    }
+    // A folder that was only the way to deeper ones has no tag yet (the explorer's stand-in «implied:<path>»): the first
+    // change gives it one, at that path, carrying the change.
+    if (tagId.startsWith('implied:')) {
+      const path = tagId.slice('implied:'.length);
+      const real = tags.find((t) => t.path === path);
+      if (real) {
+        await updateDoc(doc(db, 'tags', real.id), clean);
+        return;
+      }
+      const tagRef = doc(tagsCollection);
+      await setDoc(tagRef, { path, icon: 'folder-outline', color: '#DAA587', types: ALL_FOLDER_KINDS, usedIn: {}, keep: true, ...clean, ownerId: auth.currentUser?.uid ?? null });
+      return;
     }
     await updateDoc(doc(db, 'tags', tagId), clean);
   }

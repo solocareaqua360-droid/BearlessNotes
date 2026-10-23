@@ -362,15 +362,35 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // look, and its own bar has no «⋯» to pick it with).
   // «Проєкти» (2026-10-22): the «Модерний» cards, but the first level opens with the projects band and shows only the folders of the
   // project in front (components/ProjectsBand); «Без проєкту» is the first stop.
-  const [explorerStyle, setExplorerStyle] = useState<'clean' | 'modern' | 'projects'>(Platform.OS === 'web' ? 'modern' : 'clean');
+  // 2026-10-23 (the user): «Проєкти» is no longer a third style but a switch of its own - «Провідник» / «Проєкти» - and
+  // either look (Чистий / Модерний) goes with either. A device that had chosen the old «Проєкти» style keeps the projects
+  // with the modern look it had.
+  const [explorerStyle, setExplorerStyle] = useState<'clean' | 'modern'>(Platform.OS === 'web' ? 'modern' : 'clean');
+  const [explorerMode, setExplorerMode] = useState<'explorer' | 'projects'>('explorer');
   useEffect(() => {
-    AsyncStorage.getItem('explorerStyle')
-      .then((v) => (v === 'modern' || v === 'clean' || (v === 'projects' && FEATURES.explorerProjects)) && setExplorerStyle(v))
+    AsyncStorage.multiGet(['explorerStyle', 'explorerMode'])
+      .then(([[, v], [, m]]) => {
+        if (v === 'modern' || v === 'clean') setExplorerStyle(v);
+        if (v === 'projects') {
+          // Written down at once: a later change of the look must not lose the projects it came with.
+          setExplorerStyle('modern');
+          AsyncStorage.setItem('explorerStyle', 'modern').catch(() => {});
+          if (!m && FEATURES.explorerProjects) {
+            setExplorerMode('projects');
+            AsyncStorage.setItem('explorerMode', 'projects').catch(() => {});
+          }
+        }
+        if ((m === 'projects' || m === 'explorer') && FEATURES.explorerProjects) setExplorerMode(m);
+      })
       .catch(() => {});
   }, []);
-  const changeStyle = (next: 'clean' | 'modern' | 'projects') => {
+  const changeStyle = (next: 'clean' | 'modern') => {
     setExplorerStyle(next);
     AsyncStorage.setItem('explorerStyle', next).catch(() => {});
+  };
+  const changeMode = (next: 'explorer' | 'projects') => {
+    setExplorerMode(next);
+    AsyncStorage.setItem('explorerMode', next).catch(() => {});
   };
   // The project in front in that style ('' = «Без проєкту»); remembered on this device.
   const [focusProj, setFocusProj] = useState<string>(NO_PROJECT);
@@ -656,7 +676,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
 
   // THE PROJECTS STYLE'S FIRST LEVEL: only the folders of the project in front (a folder is in a project when a tag of its path
   // carries the project in groupIds); «Без проєкту» keeps what is in none, with «Нерозкладене».
-  const projectsOn = explorerStyle === 'projects' && FEATURES.explorerProjects;
+  const projectsOn = explorerMode === 'projects' && FEATURES.explorerProjects;
   const projectsHere = projectsOn && !path && !inBin && !inCleanup && !searching && !filtering;
   const projectIdsOf = useMemo(() => {
     const m = new Map<string, Set<string>>();
@@ -1916,10 +1936,16 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       ...orderSection(sortPref, selectSortField),
       { label: 'Групувати за типом', icon: 'layers-outline' as const, checked: byKind, onPress: toggleByKind },
       { label: 'Фільтри (тип, проєкт)', icon: 'filter-outline' as const, checked: chipsOn, onPress: toggleChips },
+      ...(FEATURES.explorerProjects
+        ? [
+            { kind: 'section' as const, label: 'Показувати' },
+            { label: 'Провідник', icon: 'folder-outline' as const, checked: explorerMode === 'explorer', onPress: () => changeMode('explorer') },
+            { label: 'Проєкти', icon: 'folder-open-outline' as const, checked: explorerMode === 'projects', onPress: () => changeMode('projects') },
+          ]
+        : []),
       { kind: 'section' as const, label: 'Стиль провідника' },
       { label: 'Чистий', icon: 'reorder-two-outline' as const, checked: explorerStyle === 'clean', onPress: () => changeStyle('clean') },
       { label: 'Модерний', icon: 'albums-outline' as const, checked: explorerStyle === 'modern', onPress: () => changeStyle('modern') },
-      ...(FEATURES.explorerProjects ? [{ label: 'Проєкти', icon: 'folder-open-outline' as const, checked: explorerStyle === 'projects', onPress: () => changeStyle('projects') }] : []),
       { kind: 'rule' as const },
       ...(candidates.length > 0
         ? [{ label: `Кандидати на очищення (${candidates.length})`, icon: 'sparkles-outline' as const, onPress: enterCleanup }]
@@ -2083,7 +2109,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   );
   // Up one level - in «Модерний» the folder folds back into its card on the way (FolderShrink).
   const up = () => {
-    const tag = (explorerStyle === 'modern' || explorerStyle === 'projects') && path ? cardTagOf(path) : undefined;
+    const tag = explorerStyle === 'modern' && path ? cardTagOf(path) : undefined;
     if (tag && !inBin && !inCleanup) {
       // Folding starts AT ONCE, into the place the card was opened from (2026-10-19: it stood still ~0.35 s over an
       // empty page while the level above was drawn and its card measured); the measuring below still runs and, if
@@ -2353,12 +2379,17 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // same tap into a folder, the same hold menu, carrying and choosing - only each folder is drawn as the card the
   // «Проєкти» page drew (its size, colour, pattern or photo; FolderCard), and an opened folder wears its card as a
   // head (FolderHeader).
-  const modernLook = (explorerStyle === 'modern' || explorerStyle === 'projects') && !inBin && !inCleanup && !searching;
+  const modernLook = explorerStyle === 'modern' && !inBin && !inCleanup && !searching;
   const listTopPad = top + (!inBin && !inCleanup && chipsOn ? CHIPS_H + CHIPS_GAP - CHIPS_UP : 0);
   const { height: winH } = useWindowDimensions();
   const schemeNow = useTheme().scheme;
-  const cardTagOf = (p: string) =>
-    p === UNFILED ? UNFILED_TAG : tags.filter((t) => t.path === p).find((t) => t.card) ?? tags.find((t) => t.path === p);
+  // A folder that exists only as the way to deeper ones («Служба/автослужба/техніка» when only «…/техніка/X» is a tag) has no
+  // tag of its own: «Модерний» dropped it (the user saw «техніка» in «Чистий» and not in «Модерний», 2026-10-23). It is drawn
+  // from a stand-in; a hold or a change makes it real (tagForPath).
+  const cardTagOf = (p: string): Tag =>
+    p === UNFILED
+      ? UNFILED_TAG
+      : tags.filter((t) => t.path === p).find((t) => t.card) ?? tags.find((t) => t.path === p) ?? ({ id: `implied:${p}`, path: p, icon: 'folder-outline', color: '#DAA587', types: [], usedIn: {} } as Tag);
   const directItemsOf = (p: string) =>
     p === UNFILED ? items.filter(isUnfiled) : items.filter((i) => (pathsOf.get(i.id) ?? []).includes(p));
   const subFolderNamesOf = (p: string) => [...new Set(tags.filter((t) => t.path.startsWith(`${p}/`)).map((t) => t.path.slice(p.length + 1).split('/')[0]))];
@@ -2401,6 +2432,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         onChips={toggleChips}
         style={explorerStyle}
         onStyle={changeStyle}
+        mode={explorerMode}
+        onMode={changeMode}
         folder={chosenFolderPath !== null ? folderForPanel(chosenFolderPath, true) : folderForPanel(path, false)}
         chosen={
           chosenItem
@@ -2763,7 +2796,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           </Pressable>
           );
         })}
-        {!modernLook && !path && !inBin && !inCleanup && !filtering && !searching && binned.length > 0 && (
+        {!modernLook && !path && !inBin && !inCleanup && !filtering && !searching && binned.length > 0 && (!projectsHere || focusProj === NO_PROJECT) && (
           <Pressable onPress={enterBin} style={[styles.folder, { backgroundColor: S.card, boxShadow: S.popShadow }]}>
             <View style={[styles.seat, { backgroundColor: S.bg }]}>
               <Ionicons name="trash-outline" size={22} color={S.ink2} />
