@@ -793,34 +793,13 @@ export default function BlockRow({
     // instead of navigating away from it.
     content = (
       <View style={styles.dbRowBlock} pointerEvents={isSelectMode ? 'none' : 'auto'}>
-        {naming && (
-          <TextInput
-            autoFocus
-            placeholder="Назва нотатки"
-            placeholderTextColor={theme.ink.faint}
-            returnKeyType="done"
-            blurOnSubmit
-            onSubmitEditing={(e) => finishNaming(item.id, e.nativeEvent.text)}
-            onEndEditing={(e) => finishNaming(item.id, e.nativeEvent.text)}
-            style={{
-              fontSize: PAGE_TEXT.size,
-              lineHeight: PAGE_TEXT.line,
-              color: theme.ink.primary,
-              borderWidth: 1,
-              borderColor: theme.accent,
-              borderRadius: 14,
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              marginBottom: 6,
-            }}
-          />
-        )}
         <LiveDocumentCard
           documentId={item.docRefId}
           fallbackTitle={item.docRefTitle}
           index={documentIndex ?? EMPTY_DOCUMENT_INDEX}
           tags={allTags}
           onOpen={(id) => onOpenDocument?.(id)}
+          editTitle={naming ? { onDone: (title) => finishNaming(item.id, title) } : undefined}
         />
       </View>
     );

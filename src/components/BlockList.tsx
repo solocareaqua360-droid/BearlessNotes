@@ -325,9 +325,9 @@ function BlockList({
       ? computeInsertIndex(layout.y + layout.height / 2, draggingSet)
       : 0;
     setInsertIndex(currentIndex);
-    const startY = layout ? layout.y + (fingerY ?? layout.height / 2) : 0;
     const atEnd = atSectionEnd(currentIndex, draggingSet);
-    leaveToggleRef.current = atEnd && startY > sectionEndY(currentIndex, draggingSet);
+    // Picked up, it is still on the side it stands on: a hold on a toggle's last block (to select it) must not let it out.
+    leaveToggleRef.current = atEnd && !ownerToggleId(blocksRef.current, anchorId);
     lineYRef.current = lineYFor(currentIndex, draggingSet);
     dropLineY.value = lineYRef.current;
     lineInsetRef.current = atEnd ? (leaveToggleRef.current ? 0 : 26) : 14;
@@ -349,7 +349,8 @@ function BlockList({
     // decides - over the lower half of the last held block it stays inside (the orange line indented), below that block's
     // bottom edge it steps out (the line the full width). No extra gesture: the line shows what the drop will do.
     const atEnd = atSectionEnd(targetIndex, draggingSet);
-    const out = atEnd && currentY > sectionEndY(targetIndex, draggingSet);
+    // Until the finger has really moved, the block keeps its side (see handleDragStart).
+    const out = dragMovedRef.current ? atEnd && currentY > sectionEndY(targetIndex, draggingSet) : leaveToggleRef.current;
     leaveToggleRef.current = out;
     const inset = atEnd ? (out ? 0 : 26) : 14;
     if (inset !== lineInsetRef.current) {
@@ -403,7 +404,8 @@ function BlockList({
   function commitReorder(ids: string[]) {
     const targetIndex = insertIndexRef.current;
     const list = blocksRef.current;
-    if (targetIndex !== null) {
+    // A hold that never moved changes nothing - not even a block's side of a toggle.
+    if (targetIndex !== null && dragMovedRef.current) {
       const draggingSet = new Set(ids);
       const draggedBlocks = list.filter((b) => draggingSet.has(b.id));
       const remaining = list.filter((b) => !draggingSet.has(b.id));

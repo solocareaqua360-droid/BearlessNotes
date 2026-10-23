@@ -5474,6 +5474,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     });
     setSelectedIds(new Set());
     setIsSelectMode(false);
+    // The card near the top, so the keyboard that opens for its name does not cover it.
+    let tries = 0;
+    const reveal = () => {
+      const y = blockListRef.current?.offsetOf(card.id);
+      if (y === null || y === undefined) {
+        if (++tries < 6) setTimeout(reveal, 150);
+        return;
+      }
+      scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+    };
+    setTimeout(reveal, 150);
     startNaming(card.id, (name) => {
       if (!name) return;
       updateDoc(doc(db, 'documents', id), { title: name, updatedAt: Date.now() }).catch((e) => notify('Назва не збереглася', (e as Error).message));

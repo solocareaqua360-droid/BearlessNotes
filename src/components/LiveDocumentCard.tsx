@@ -14,6 +14,8 @@ type Props = {
   index: DocumentIndex;
   tags: Tag[];
   onOpen: (documentId: string) => void;
+  // A note just made from chosen blocks: its title is a field to name it in (DocumentCard's editTitle).
+  editTitle?: { onDone: (title: string) => void };
 };
 
 function faceOf(data: Record<string, unknown>): Face {
@@ -51,7 +53,7 @@ type Face = {
 // the miniature is made of; this card reads its one note live. A note in
 // the bin, or gone, falls back to the old card, which already knows how to
 // say so.
-export default function LiveDocumentCard({ documentId, fallbackTitle, index, tags, onOpen }: Props) {
+export default function LiveDocumentCard({ documentId, fallbackTitle, index, tags, onOpen, editTitle }: Props) {
   const soft = useSoft();
   // From the document index's own copy at once (peekDocument): waiting for
   // this card's listener drew the old card for a frame first - the blink
@@ -100,6 +102,7 @@ export default function LiveDocumentCard({ documentId, fallbackTitle, index, tag
       coverGradient={face.coverGradient}
       blocks={face.blocks}
       onPress={() => onOpen(documentId)}
+      editTitle={editTitle}
       layout="list"
       // The note's own column already gives it its edges.
       flush

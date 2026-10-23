@@ -8,7 +8,7 @@ import { flipId } from '../utils/flipId';
 import { dataSets, morphKey, setCardBand } from '../utils/morph';
 import { IS_POINTER } from '../utils/pointer';
 import { rightClick } from '../utils/rightClick';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CoverGradientView, coverById, defaultCoverFor } from '../theme/covers';
 import { useRecordColour, useTextScale, useTheme } from '../theme/ThemeProvider';
 import { useDensity } from '../hooks/useDensity';
@@ -308,6 +308,9 @@ type Props = {
   // is marked on the page, and the page slides down to the first one -
   // see DocumentPageMiniature.
   search?: string;
+  // Given, the title is a FIELD with the caret in it - a note just made from chosen blocks, to be named where its name stands
+  // (the user, 2026-10-23: not a separate line above the card). `onDone` gets what was typed when the field is left.
+  editTitle?: { onDone: (title: string) => void };
   onPress: () => void;
   // Held down: the card's own menu (move, rename, bin) - see the documents
   // screen. Optional, because the other screens that draw this card have
@@ -498,6 +501,7 @@ export default function DocumentCard({
   titleMatch,
   bodyMatch,
   search,
+  editTitle,
   onPress,
   onLongPress,
   isSelectMode,
@@ -596,7 +600,24 @@ export default function DocumentCard({
   const gradient = chosen ?? (imageUri ? undefined : defaultCoverFor(id));
   const noImage = false;
 
-  const titleNode = titleMatch ? (
+  const titleStyle = [isGrid ? styles.titleCompact : styles.title, { color: text }, scaledTitle, soft && styles.softTitle];
+  const titleNode = editTitle ? (
+    <TextInput
+      autoFocus
+      defaultValue={title}
+      placeholder="Без назви"
+      placeholderTextColor={textMuted}
+      returnKeyType="done"
+      blurOnSubmit
+      // The keyboard goes first: a focused field that disappears hands its focus to the note's title (the grey band seen there).
+      onSubmitEditing={(e) => {
+        Keyboard.dismiss();
+        editTitle.onDone(e.nativeEvent.text);
+      }}
+      onEndEditing={(e) => editTitle.onDone(e.nativeEvent.text)}
+      style={[titleStyle, { padding: 0, margin: 0 }]}
+    />
+  ) : titleMatch ? (
     <HighlightedLine
       match={titleMatch}
       style={[isGrid ? styles.titleCompact : styles.title, { color: text }, scaledTitle, soft && styles.softTitle]}
