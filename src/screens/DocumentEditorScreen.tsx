@@ -232,6 +232,7 @@ import { ensureDayBoard } from '../utils/dayBoard';
 import { copyNoteWithNested } from '../utils/copyNote';
 import { DESK_PILL_W } from '../components/DeskDock';
 import { blocksToMarkdown } from '../utils/blocksText';
+import { holdBlocks, takeHeldBlocks } from '../utils/blockClipboard';
 import { startNaming } from '../utils/docRefNaming';
 import SelectModeSheet, { type LookKind } from '../components/SelectModeSheet';
 
@@ -4085,6 +4086,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
     if (!['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
       const inserted = insertedPiece(current?.text ?? '', text);
+      // Blocks copied or cut in the app come back whole, not as their text.
+      const whole = inserted ? takeHeldBlocks(inserted.piece) : null;
+      if (inserted && whole && whole.length > 0) {
+        pasteWholeBlocks(id, inserted.head, whole, inserted.tail);
+        return;
+      }
       if (inserted && /[\n\t]/.test(inserted.piece)) {
         const parsed = parsePastedText(inserted.piece);
         if (worthSplitting(parsed)) {
@@ -4212,6 +4219,27 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the end of a sentence continues that sentence), the rest become
   // blocks of their own after it, and whatever stood after the caret
   // ends up at the end - the text around a paste is the user's own.
+  // The blocks themselves, where the paste landed: the words before it stay in the block, the words after it go on below; an
+  // empty line is replaced by them. A block whose id is already in this note gets a fresh one (a copy pasted beside its
+  // original). They take the place's side of a toggle; what stood outside stays outside (keepSides).
+  function pasteWholeBlocks(id: string, head: string, pasted: Block[], tail: string) {
+    snapshotBeforeChange();
+    bumpTextVersion(id);
+    setBlocks((prev) => {
+      const index = prev.findIndex((b) => b.id === id);
+      if (index === -1) return prev;
+      const taken = new Set(prev.map((b) => b.id));
+      const made = pasted.map((b) => (taken.has(b.id) ? { ...b, id: generateId() } : b));
+      const host = prev[index];
+      const placed: Block[] = [];
+      const keepHost = head.trim() !== '';
+      if (keepHost) placed.push({ ...host, text: head.trimEnd() });
+      placed.push(...made.map((b, i) => (i === 0 && !keepHost && host.exitsToggle ? { ...b, exitsToggle: true } : b)));
+      if (tail.trim()) placed.push(buildBlock(generateId(), 'paragraph', tail.trimStart()));
+      return keepSides(prev, [...prev.slice(0, index), ...placed, ...prev.slice(index + 1)]);
+    });
+  }
+
   function applyPaste(
     id: string,
     currentType: BlockType,
@@ -5417,18 +5445,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
   }
 
+  // Whole blocks (utils/blockClipboard): pasted in the app they come back as the same blocks; anywhere else, as text.
   async function copySelectedBlocks() {
     const ordered = blocks.filter((b) => selectedIds.has(b.id));
-    const text = ordered
-      .map((b) => {
-        if ((b.type ?? 'paragraph') === 'table') {
-          const rows = b.tableRows ?? [];
-          return rows.map((row, r) => row.cells.map((_, c) => displayValueOf(rows, r, c)).join('\t')).join('\n');
-        }
-        return plainTextOf(b.text);
-      })
-      .join('\n');
+    const text = blocksToMarkdown(ordered);
+    if (!text) return;
     await Clipboard.setStringAsync(text);
+    holdBlocks(text, ordered, false);
+    if (Platform.OS === 'web') notify('Скопійовано', `Блоків: ${ordered.length}. Вставте там, де треба.`);
   }
 
   // «У вкладену нотатку» (2026-10-23, the user, from Craft: «виділити декілька блоків і швидко створити з них вкладену нотатку,
@@ -5486,11 +5510,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const ordered = blocks.filter((b) => selectedIds.has(b.id));
     if (ordered.length === 0) return;
     const text = blocksToMarkdown(ordered);
-    if (!text) {
-      notify('Нічого вирізати', 'Картинки, файли й малюнки не вирізаються текстом - перенесіть їх перетягуванням.');
-      return;
-    }
+    if (!text) return;
     await Clipboard.setStringAsync(text);
+    holdBlocks(text, ordered, true);
     snapshotBeforeChange();
     setBlocks((prev) => {
       const next = keepSides(prev, prev.filter((block) => !selectedIds.has(block.id)));
@@ -5498,7 +5520,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     });
     setSelectedIds(new Set());
     setIsSelectMode(false);
-    notify('Вирізано', `Блоків: ${ordered.length}. Вставте там, де треба: у цій нотатці чи в іншій.`);
+    // No dialog: the blocks leaving the page and the phone's own «Скопійовано» say it (a browser says nothing, so it is told).
+    if (Platform.OS === 'web') notify('Вирізано', `Блоків: ${ordered.length}. Вставте там, де треба.`);
   }
 
   // The chosen blocks as a note of their own, named after this one. Asked
@@ -6114,7 +6137,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onClose={() => setSelectSheet(null)}
           onLook={applyLookToSelected}
           more={[
-            { key: 'copy', label: 'Копіювати', hint: 'текстом, без типів блоків', icon: 'copy-outline', onPress: copySelectedBlocks },
+            { key: 'copy', label: 'Копіювати', hint: 'цілими блоками', icon: 'copy-outline', onPress: copySelectedBlocks },
             { key: 'clip', label: 'В окрему нотатку', hint: 'не вкладену: копією або перенести', icon: 'document-text-outline', onPress: clipSelectedToNote },
             {
               key: 'cards',
