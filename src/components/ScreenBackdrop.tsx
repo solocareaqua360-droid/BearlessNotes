@@ -1,3 +1,4 @@
+import { framedRect } from '../utils/imageFrame';
 import { useState } from 'react';
 import { localPathFor } from '../utils/localPath';
 import { Image, StyleSheet, useWindowDimensions, View } from 'react-native';
@@ -116,8 +117,8 @@ export default function ScreenBackdrop({
         <Image
           source={{ uri: localPathFor(override.uri, override.driveFileId) as string }}
           blurRadius={Math.round((override.blur / 100) * 30)}
-          resizeMode="cover"
-          style={StyleSheet.absoluteFill}
+          resizeMode={override.frame ? 'stretch' : 'cover'}
+          style={override.frame ? { position: 'absolute', ...framedRect(override.frame, width, height) } : StyleSheet.absoluteFill}
         />
       )}
       {!(override?.type === 'image') && (

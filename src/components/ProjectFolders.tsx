@@ -1,3 +1,5 @@
+import ImageFrameEditor from './ImageFrameEditor';
+import { framedRect, type ImageFrame } from '../utils/imageFrame';
 import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { BackHandler, GestureResponderEvent, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, interpolateColor, runOnJS, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from 'react-native-reanimated';
@@ -109,6 +111,9 @@ export default function ProjectFolders({
   const theme = useTheme();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const { width: winW, height: winH } = useWindowDimensions();
+  // The folder whose photo background's frame is being chosen.
+  const [framingTag, setFramingTag] = useState<{ tag: Tag; uri: string; frame?: ImageFrame } | null>(null);
   const tagApi = useTags();
   const { tags, setTagFields, createFolderTag, attachTag } = tagApi;
   const assigned = useMemo(() => {
@@ -269,14 +274,16 @@ export default function ProjectFolders({
       actions: [
         { id: 'look', label: 'Вигляд картки', icon: 'color-palette-outline' },
         { id: 'photo', label: tag.card?.bg ? 'Змінити фото-фон' : 'Фото-фон', icon: 'image-outline' },
+        ...(tag.card?.bg ? [{ id: 'frame', label: 'Кадрувати фото-фон', icon: 'crop-outline' as const }] : []),
         ...(tag.card?.bg ? [{ id: 'nophoto', label: 'Прибрати фото-фон', icon: 'trash-outline' as const }] : []),
         ...(scope === 'group' ? [{ id: 'remove', label: 'Прибрати з проєкту', icon: 'close-circle-outline' as const, tone: 'danger' as const }] : []),
       ],
     });
     if (choice === 'look') setStyling(tag);
     if (choice === 'photo') pickPhoto(tag);
+    if (choice === 'frame' && tag.card?.bg) setFramingTag({ tag, uri: tag.card.bg.light, frame: tag.card.bgFrame });
     if (choice === 'nophoto') {
-      const { bg: _gone, ...rest } = tag.card ?? {};
+      const { bg: _gone, bgFrame: _frame, ...rest } = tag.card ?? {};
       setTagFields(tag.id, { card: rest });
     }
     if (choice === 'remove' && groupId) setTagFields(tag.id, { groupIds: (tag.groupIds ?? []).filter((id) => id !== groupId) });
@@ -423,6 +430,23 @@ export default function ProjectFolders({
         }}
       />
       )}
+      <ImageFrameEditor
+        visible={!!framingTag}
+        uri={framingTag?.uri ?? null}
+        // The opened folder's cover is the large shape; the card the small one.
+        aspect={winW / folderCoverHeight(winH, insets.top)}
+        also={[
+          { aspect: (winW - 40) / FOLDER_M_H, label: 'широка картка' },
+          { aspect: (winW - 52) / 2 / FOLDER_M_H, label: 'картка' },
+        ]}
+        initial={framingTag?.frame}
+        onCancel={() => setFramingTag(null)}
+        onDone={(frame) => {
+          const t = framingTag?.tag;
+          setFramingTag(null);
+          if (t) setTagFields(t.id, { card: { ...(tags.find((x) => x.id === t.id)?.card ?? t.card ?? {}), bgFrame: frame } });
+        }}
+      />
       <BackgroundStylist
         request={
           job
@@ -436,7 +460,10 @@ export default function ProjectFolders({
             if (job.stage === 'light') {
               setJob({ ...job, stage: 'dark', light: kept });
             } else {
-              setTagFields(job.tag.id, { card: { ...(job.tag.card ?? {}), bg: { light: job.light as string, dark: kept } } });
+              const { bgFrame: _old, ...card } = job.tag.card ?? {};
+              setTagFields(job.tag.id, { card: { ...card, bg: { light: job.light as string, dark: kept } } });
+              // Then its frame, as with every cover (ImageFrameEditor).
+              setFramingTag({ tag: job.tag, uri: job.light as string, frame: undefined });
               setJob(null);
             }
           } catch (e) {
@@ -456,7 +483,7 @@ export default function ProjectFolders({
         onClose={() => setStyling(null)}
         onSave={(card) => {
           // The sheet knows nothing of the photo: it is carried over.
-          if (styling) setTagFields(styling.id, { card: card ? { ...card, ...(styling.card?.bg ? { bg: styling.card.bg } : {}) } : (deleteField() as never) });
+          if (styling) setTagFields(styling.id, { card: card ? { ...card, ...(styling.card?.bg ? { bg: styling.card.bg } : {}), ...(styling.card?.bgFrame ? { bgFrame: styling.card.bgFrame } : {}) } : (deleteField() as never) });
           setStyling(null);
         }}
       />
@@ -626,7 +653,7 @@ function FolderPane({ tag, depth, ctx, from, onClose }: { tag: Tag; depth: numbe
     <Animated.View style={[{ overflow: 'hidden', backgroundColor: theme.raised }, frameStyle]}>
       <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 40, minHeight: H + heroLimit }}>
         <Animated.View style={[{ backgroundColor: coverBg, justifyContent: 'flex-end', paddingBottom: 18, overflow: 'hidden' }, heroStyle]}>
-          {photo && <CardPhoto uri={photo} color={coverBg} />}
+          {photo && <CardPhoto uri={photo} frame={tag.card?.bgFrame} color={coverBg} />}
           {!photo && density !== 'none' && sw && <FolderPattern kinds={kinds} color={sw.pattern} density={density} />}
           <Text style={[styles.eyebrow, { color: ink }]}>{`${n} ${n === 1 ? 'предмет' : 'предметів'}${kids.length ? ` · ${kids.length} ${kids.length === 1 ? 'папка' : 'папок'}` : ''}`}</Text>
           <Text
@@ -759,7 +786,7 @@ export function FolderCard({
         onLayout={big ? undefined : (e) => setCardW(Math.round(e.nativeEvent.layout.width))}
         style={[big ? styles.cardL : small ? styles.cardStackS : styles.cardStack, { backgroundColor: bg, boxShadow: S.shadow }]}
       >
-        {photo && <CardPhoto uri={photo} color={bg} />}
+        {photo && <CardPhoto uri={photo} frame={tag.card?.bgFrame} color={bg} />}
         {/* As ONE PICTURE once photographed (2026-10-16): drawn live, each card's ~50 tilted icons, each with its own
             opacity, were drawn again on every frame of a scroll - «Модерний» stuttered in a fling, the plain list not. */}
         {!photo && density !== 'none' && sw && (big || cardW > 0) && (
@@ -900,7 +927,7 @@ export function FolderHeader({ tag, mine, subs }: { tag: Tag; mine: FolderItem[]
   const n = mine.length;
   return (
     <View style={[styles.head2, { backgroundColor: bg }]}>
-      {photo && <CardPhoto uri={photo} color={bg} />}
+      {photo && <CardPhoto uri={photo} frame={tag.card?.bgFrame} color={bg} />}
       {!photo && density !== 'none' && sw && <FolderPattern kinds={kinds} color={sw.pattern} density={density} />}
       <Text style={[styles.eyebrow, { color: ink }]}>{`${n} ${n === 1 ? 'предмет' : 'предметів'}`}</Text>
       <Text style={[styles.titleL, { color: ink }]} numberOfLines={2}>{nameOf(tag.path)}</Text>
@@ -975,7 +1002,7 @@ export function FolderCover({
   }, [patterned]);
   return (
     <View style={{ height, backgroundColor: coverBg, justifyContent: 'flex-end', paddingBottom: 18, paddingTop: topInset + 16, paddingHorizontal: 20, overflow: 'hidden' }}>
-      {photo && <CardPhoto uri={photo} color={coverBg} />}
+      {photo && <CardPhoto uri={photo} frame={tag.card?.bgFrame} color={coverBg} />}
       {patterned && sw && <FolderPattern kinds={kinds} color={sw.pattern} density={density} size={{ w: coverW, h: height }} shot onShown={onReady} />}
       <Text style={[styles.eyebrow, { color: ink }]}>{`${n} ${n === 1 ? 'предмет' : 'предметів'}${subs ? ` · ${subs} ${subs === 1 ? 'папка' : 'папок'}` : ''}`}</Text>
       <Text style={[styles.coverTitle, { color: ink }]} numberOfLines={3}>
@@ -1182,7 +1209,7 @@ export function FolderGrow({
     >
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: ground }, groundStyle]} />
       <Animated.View style={[{ justifyContent: 'flex-end', paddingBottom: 18, paddingHorizontal: 20, overflow: 'hidden' }, heroStyle]}>
-        {photo && <CardPhoto uri={photo} color={coverBg} />}
+        {photo && <CardPhoto uri={photo} frame={tag.card?.bgFrame} color={coverBg} />}
         {/* The pattern laid at the cover's FINAL size from the first frame, the growing frame only uncovering it:
             laid in the growing box it re-tiled at every size and handed over a different picture. */}
         {!photo && density !== 'none' && sw && (
@@ -1334,7 +1361,7 @@ export function FolderShrink({
   return (
     <Animated.View pointerEvents="none" needsOffscreenAlphaCompositing renderToHardwareTextureAndroid style={[{ overflow: 'hidden', backgroundColor: ground }, frameStyle]}>
       <Animated.View style={[{ justifyContent: 'flex-end', paddingBottom: 18, paddingHorizontal: 20, overflow: 'hidden' }, heroStyle]}>
-        {photo && <CardPhoto uri={photo} color={coverBg} />}
+        {photo && <CardPhoto uri={photo} frame={tag.card?.bgFrame} color={coverBg} />}
         {!photo && density !== 'none' && sw && (
           <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: W, height: coverH }}>
             <FolderPattern kinds={kinds} color={sw.pattern} density={density} size={{ w: W, h: coverH }} shot />
@@ -1355,12 +1382,16 @@ export function FolderShrink({
 
 // The toned photo behind a card, under a wash of the card's own colour at the
 // top and bottom so the words always read.
-function CardPhoto({ uri, color }: { uri: string; color: string }) {
+function CardPhoto({ uri, color, frame }: { uri: string; color: string; frame?: ImageFrame }) {
   const [box, setBox] = useState({ w: 0, h: 0 });
   const id = `wash${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill} onLayout={(e) => setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
-      <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      {frame ? (
+        box.w > 0 && <Image source={{ uri }} style={{ position: 'absolute', ...framedRect(frame, box.w, box.h) }} resizeMode="stretch" />
+      ) : (
+        <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      )}
       {box.w > 0 && (
         <Svg width={box.w} height={box.h} style={StyleSheet.absoluteFill}>
           <Defs>

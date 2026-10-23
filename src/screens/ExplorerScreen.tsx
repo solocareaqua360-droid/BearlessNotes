@@ -61,7 +61,8 @@ import CreateFan from '../components/CreateFan';
 import QuickCreateHost from '../components/QuickCreateHost';
 import CollectionWindow, { type CollectionKind } from '../components/CollectionWindow';
 import ThoughtsFolder from '../components/thoughts/ThoughtsFolder';
-import ProjectsBand, { NO_PROJECT } from '../components/ProjectsBand';
+import ImageFrameEditor from '../components/ImageFrameEditor';
+import ProjectsBand, { NO_PROJECT, projectCardShape } from '../components/ProjectsBand';
 import CollectionCard, { collectionFaceFor, gustLeadMs, type CollectionCardKind, type CollectionFaceStyle } from '../components/CollectionCard';
 import TurningPressable from '../components/TurningPressable';
 import { listMoved } from '../utils/motionHold';
@@ -1329,8 +1330,12 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const [coverSearchFor, setCoverSearchFor] = useState<string | null>(null);
   async function setProjectCover(groupId: string, uri: string) {
     const url = await coverDataUrl(uri);
-    await updateDoc(doc(db, 'groups', groupId), { cover: url });
+    await updateDoc(doc(db, 'groups', groupId), { cover: url, coverFrame: deleteField() });
+    // Then its frame, as with every cover (ImageFrameEditor).
+    setFramingProject({ id: groupId, uri: url });
   }
+  // The project whose picture's frame is being chosen.
+  const [framingProject, setFramingProject] = useState<{ id: string; uri: string } | null>(null);
   async function holdProject(id: string) {
     const g = groups.find((x) => x.id === id);
     if (!g) return;
@@ -1341,12 +1346,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' as const },
         { id: 'color', label: 'Колір обкладинки', icon: 'color-palette-outline' as const },
         { id: 'image', label: g.cover ? 'Змінити зображення' : 'Зображення обкладинки', icon: 'image-outline' as const },
+        ...(g.cover ? [{ id: 'frame', label: 'Кадрувати зображення', icon: 'crop-outline' as const }] : []),
         { id: 'root', label: hasRoot ? 'Папка-корінь…' : 'Зробити папку коренем…', icon: 'folder-open-outline' as const },
         { id: 'archive', label: g.archived ? 'Повернути з архіву' : 'Архівувати', icon: 'archive-outline' as const },
         { id: 'delete', label: 'Видалити проєкт', icon: 'trash-outline' as const, tone: 'danger' as const },
       ],
     });
-    if (choice === 'rename') setRenamingProject(g);
+    if (choice === 'frame' && g.cover) setFramingProject({ id: g.id, uri: g.cover });
+    else if (choice === 'rename') setRenamingProject(g);
     else if (choice === 'color') {
       const pick = await ask({
         title: 'Колір обкладинки',
@@ -3100,6 +3107,21 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           }
         }}
       />
+      <ImageFrameEditor
+        visible={!!framingProject}
+        uri={framingProject?.uri ?? null}
+        aspect={(() => {
+          const c = projectCardShape(winW, folderCoverHeight(winH, insets.top), listTopPad);
+          return c.w / c.h;
+        })()}
+        initial={framingProject ? groups.find((x) => x.id === framingProject.id)?.coverFrame : null}
+        onCancel={() => setFramingProject(null)}
+        onDone={(f) => {
+          const id = framingProject?.id;
+          setFramingProject(null);
+          if (id) updateDoc(doc(db, 'groups', id), { coverFrame: f }).catch((e) => notify('Не вдалося зберегти', (e as Error).message));
+        }}
+      />
       <StockPhotoPicker
         visible={coverSearchFor !== null}
         onClose={() => setCoverSearchFor(null)}
@@ -3155,7 +3177,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           try {
             // Every tag of the folder's path carries the same look; a photo background stays where it is.
             for (const t of tags.filter((x) => x.path === target.path)) {
-              await setTagFields(t.id, { card: card ? { ...card, ...(t.card?.bg ? { bg: t.card.bg } : {}) } : (deleteField() as never) });
+              await setTagFields(t.id, { card: card ? { ...card, ...(t.card?.bg ? { bg: t.card.bg } : {}), ...(t.card?.bgFrame ? { bgFrame: t.card.bgFrame } : {}) } : (deleteField() as never) });
             }
           } catch (e) {
             notify('Не вдалося зберегти', (e as Error).message);

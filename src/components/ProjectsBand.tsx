@@ -1,3 +1,4 @@
+import { framedRect, type ImageFrame } from '../utils/imageFrame';
 import { useEffect } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -22,6 +23,11 @@ const THIN_W = 54;
 const GAP = 8;
 const SIDE = 20;
 const NAME_H = 28;
+
+// The front card's size - the box a project's picture is framed for (ImageFrameEditor opens at this shape).
+export function projectCardShape(winW: number, height: number, topPad: number): { w: number; h: number } {
+  return { w: Math.round(winW * 0.72), h: Math.max(150, height - topPad - 40) };
+}
 
 export default function ProjectsBand({
   groups,
@@ -51,14 +57,13 @@ export default function ProjectsBand({
 }) {
   const S = useSoft();
   const { width: winW } = useWindowDimensions();
-  const stops: { id: string; name: string; color: string | null; cover?: string; sub: string }[] = [
+  const stops: { id: string; name: string; color: string | null; cover?: string; coverFrame?: ImageFrame; sub: string }[] = [
     { id: NO_PROJECT, name: 'Без проєкту', color: null, cover: undefined as string | undefined, sub: word(noneCount) },
-    ...groups.map((g) => ({ id: g.id, name: g.name, color: g.color, cover: g.cover, sub: word(counts.get(g.id)?.folders ?? 0) })),
+    ...groups.map((g) => ({ id: g.id, name: g.name, color: g.color, cover: g.cover, coverFrame: g.coverFrame, sub: word(counts.get(g.id)?.folders ?? 0) })),
   ];
   const n = stops.length;
   const at = Math.max(0, stops.findIndex((s) => s.id === focusId));
-  const wideW = Math.round(winW * 0.72);
-  const cardH = Math.max(150, height - topPad - 40);
+  const { w: wideW, h: cardH } = projectCardShape(winW, height, topPad);
   const inner = winW;
   const focus = useSharedValue(at);
   const start = useSharedValue(at);
@@ -117,6 +122,7 @@ export default function ProjectsBand({
                 name={s.name}
                 sub={s.sub}
                 cover={s.cover}
+                coverFrame={s.coverFrame}
                 bg={s.color ? tint(s.color, S.dark ? 0.38 : 0.28, S.card) : S.fill}
                 ink={s.cover ? '#fff' : S.ink}
                 ink2={s.cover ? 'rgba(255,255,255,0.85)' : S.ink2}
@@ -154,6 +160,7 @@ function BandCard({
   name,
   sub,
   cover,
+  coverFrame,
   bg,
   ink,
   ink2,
@@ -169,6 +176,7 @@ function BandCard({
   name: string;
   sub: string;
   cover?: string;
+  coverFrame?: ImageFrame;
   bg: string;
   ink: string;
   ink2: string;
@@ -198,7 +206,11 @@ function BandCard({
           <>
             {/* A fixed-width picture, centred: a thin card is a slit onto it. */}
             <View style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: wideW, marginLeft: -wideW / 2 }} pointerEvents="none">
-              <Image source={{ uri: cover }} resizeMode="cover" style={StyleSheet.absoluteFill} />
+              {coverFrame ? (
+                <Image source={{ uri: cover }} resizeMode="stretch" style={{ position: 'absolute', ...framedRect(coverFrame, wideW, cardH) }} />
+              ) : (
+                <Image source={{ uri: cover }} resizeMode="cover" style={StyleSheet.absoluteFill} />
+              )}
             </View>
             <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.3)' }]} />
           </>

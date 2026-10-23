@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import ImageFrameEditor from '../components/ImageFrameEditor';
+import { useEffect, useRef, useState } from 'react';
 import BackupCard from '../components/BackupCard';
 import { useTheme, useStyles, useWallpaperVeil } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
@@ -252,6 +253,9 @@ export default function SettingsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickingBackdropImage]);
   const [backdropBusy, setBackdropBusy] = useState(false);
+  const [framingBackdrop, setFramingBackdrop] = useState(false);
+  // The frame chosen for a picture still uploading: the upload's own save below must not drop it.
+  const backdropFrameRef = useRef<import('../utils/imageFrame').ImageFrame | undefined>(undefined);
   // Kept in sync with whatever's already saved, so re-opening Settings
   // shows the real picture rather than the mode's own placeholder.
   useEffect(() => {
@@ -321,13 +325,16 @@ export default function SettingsScreen() {
       };
       setBackdropSettings({ ...backdropSettings, override });
       setBackdropMode('image');
+      // Then its frame, as with every cover (ImageFrameEditor).
+      backdropFrameRef.current = undefined;
+      setFramingBackdrop(true);
       // Backed up quietly, after the picture is already on screen - the
       // same order tile backgrounds and photo uploads already use.
       backupFileToDrive(stableUri, 'app-backdrop.jpg', 'image/jpeg', 'Files').then((uploaded) => {
         if (uploaded) {
           setBackdropSettings({
             ...backdropSettings,
-            override: { ...override, driveFileId: uploaded.fileId },
+            override: { ...override, driveFileId: uploaded.fileId, ...(backdropFrameRef.current ? { frame: backdropFrameRef.current } : {}) },
           });
         }
       });
@@ -1126,6 +1133,27 @@ export default function SettingsScreen() {
                   >
                     <Text style={styles.checkLabel}>Змінити зображення</Text>
                   </Pressable>
+                  <Pressable style={styles.checkButton} onPress={() => setFramingBackdrop(true)} disabled={backdropBusy}>
+                    <Text style={styles.checkLabel}>Кадрувати</Text>
+                  </Pressable>
+                  <ImageFrameEditor
+                    visible={framingBackdrop}
+                    uri={backdropSettings.override.uri}
+                    aspect={windowWidth / windowHeight}
+                    // The other screen of the foldable (cover 475x751, inner 704x933): its shape outlined too.
+                    also={[
+                      { aspect: 475 / 751, label: 'зовнішній екран' },
+                      { aspect: 704 / 933, label: 'внутрішній екран' },
+                    ].filter((o) => Math.abs(o.aspect / (windowWidth / windowHeight) - 1) > 0.08)}
+                    initial={backdropSettings.override.frame}
+                    onCancel={() => setFramingBackdrop(false)}
+                    onDone={(frame) => {
+                      setFramingBackdrop(false);
+                      const o = backdropSettings.override;
+                      backdropFrameRef.current = frame;
+                      if (o?.type === 'image') setBackdropSettings({ ...backdropSettings, override: { ...o, frame } });
+                    }}
+                  />
                 </>
               ) : (
                 <Pressable

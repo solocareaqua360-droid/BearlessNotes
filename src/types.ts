@@ -496,6 +496,8 @@ export interface Group {
   archived?: boolean;
   // The project's cover picture (2026-10-22): a small JPEG data-URL (utils/projectCover) drawn on its card in the explorer's projects band.
   cover?: string;
+  // The part of `cover` the card shows (utils/imageFrame).
+  coverFrame?: import('./utils/imageFrame').ImageFrame;
   // Flashcards only: this group is being LEARNED - its cards carry
   // «Знаю» / «Ще вчу», and the learned ones can be left out. Off for every
   // other group; the user's own rule, "як опція для певної групи карток".
@@ -565,7 +567,9 @@ export interface Tag {
     face?: 'stack' | 'spread';
     // A photo behind the card, already toned to the swatch (one file per theme,
     // this device only - see ProjectFolders).
-    bg?: { light: string; dark: string } };
+    bg?: { light: string; dark: string };
+    // The part of `bg` shown (utils/imageFrame) - the same for both toned copies, which share the picture's size.
+    bgFrame?: import('./utils/imageFrame').ImageFrame };
 }
 
 // A card on a 'Дошка' (board) canvas. Deliberately just a `Block` (the same

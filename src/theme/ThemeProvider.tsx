@@ -105,6 +105,8 @@ export type BackdropOverride =
       // 0-100, how much of the theme's ground lies over the picture in the
       // soft style (see useWallpaperVeil); absent = 45.
       veil?: number;
+      // The part of the picture the screen shows (utils/imageFrame); absent = its middle.
+      frame?: import('../utils/imageFrame').ImageFrame;
     };
 
 export type BackdropSettings = {
