@@ -48,19 +48,26 @@ export default function ImageFrameEditor({
   const zoom = useSharedValue(1);
   const lastPinch = useSharedValue(1);
 
+  // The picture's size starts everything: from the frame already chosen, else read from the file - and, when that cannot
+  // be read (a picture kept inside its document as data, as a project's is), from the picture once it has loaded. Without
+  // it «Готово» had nothing to compute and stayed dead (the user, 2026-10-23).
+  const startedFor = useSharedValue('');
+  function start(w: number, h: number) {
+    if (!uri || startedFor.value === uri || !w || !h) return;
+    startedFor.value = uri;
+    setNatural({ w, h });
+    const c = Math.max(frameW / w, frameH / h);
+    const z = initial ? Math.min(MAX_ZOOM, Math.max(1, initial.zoom)) : 1;
+    zoom.value = z;
+    x.value = initial ? (0.5 - initial.cx) * w * c * z : 0;
+    y.value = initial ? (0.5 - initial.cy) * h * c * z : 0;
+  }
   useEffect(() => {
     if (!visible || !uri) return;
+    startedFor.value = '';
     setNatural(null);
-    const start = (w: number, h: number) => {
-      setNatural({ w, h });
-      const c = Math.max(frameW / w, frameH / h);
-      const z = initial ? Math.min(MAX_ZOOM, Math.max(1, initial.zoom)) : 1;
-      zoom.value = z;
-      x.value = initial ? (0.5 - initial.cx) * w * c * z : 0;
-      y.value = initial ? (0.5 - initial.cy) * h * c * z : 0;
-    };
     if (initial?.w && initial?.h) start(initial.w, initial.h);
-    else Image.getSize(uri, start, () => setNatural(null));
+    else Image.getSize(uri, start, () => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, uri]);
 
@@ -123,7 +130,17 @@ export default function ImageFrameEditor({
         <GestureDetector gesture={Gesture.Simultaneous(pan, pinch)}>
           <View style={[styles.surface, { height: surfaceH }]}>
             <View style={styles.center} pointerEvents="none">
-              {uri && <Animated.Image source={{ uri }} style={imageStyle} resizeMode="cover" />}
+              {uri && (
+                <Animated.Image
+                  source={{ uri }}
+                  style={imageStyle}
+                  resizeMode="cover"
+                  onLoad={(e) => {
+                    const src = (e.nativeEvent as { source?: { width?: number; height?: number } }).source;
+                    if (src?.width && src?.height) start(src.width, src.height);
+                  }}
+                />
+              )}
             </View>
             {/* Outside the frame: dimmed, still seen. */}
             <View pointerEvents="none" style={[styles.dim, { left: 0, right: 0, top: 0, height: frameTop }]} />
