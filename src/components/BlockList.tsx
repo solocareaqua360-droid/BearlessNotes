@@ -10,6 +10,7 @@ import SortableBlockRow from './SortableBlockRow';
 import type { DocumentIndex } from '../hooks/useDocumentIndex';
 import { useBlockMarquee } from '../hooks/useBlockMarquee';
 import { useDensity } from '../hooks/useDensity';
+import { isUnderToggle, ownerToggleId } from '../utils/toggleBlocks';
 
 // Pulled out of DocumentEditorScreen.tsx (2026-09-19) alongside BlockRow/
 // SortableBlockRow - a plain, prop-only component.
@@ -186,6 +187,8 @@ function BlockList({
   const [dragAnchorId, setDragAnchorId] = useState<string | null>(null);
   const [insertIndex, setInsertIndexState] = useState<number | null>(null);
   const insertIndexRef = useRef<number | null>(null);
+  const leaveToggleRef = useRef(false);
+  const lineInsetRef = useRef(14);
   const dropLineY = useSharedValue(0);
   // Extra horizontal inset applied to the drop line while it's actively
   // being dragged between gaps (making it "trохи коротшою" / a bit
@@ -310,6 +313,7 @@ function BlockList({
     // TextInput's own handling is composed in), and a drag does not
     // survive its own gesture being rebuilt under it.
     dragMovedRef.current = false;
+    leaveToggleRef.current = false;
     hapticPickUp();
     setDraggingIds(ids);
     setDragAnchorId(anchorId);
@@ -320,6 +324,7 @@ function BlockList({
       : 0;
     setInsertIndex(currentIndex);
     dropLineY.value = gapYFor(currentIndex, draggingSet);
+    lineInsetRef.current = 14;
     dropLineInset.value = withTiming(14, { duration: 150 });
   }
 
@@ -331,7 +336,19 @@ function BlockList({
     const draggingSet = new Set(ids);
     const currentY = layout.y + translationY + layout.height / 2;
     const targetIndex = computeInsertIndex(currentY, draggingSet);
-    if (targetIndex !== insertIndexRef.current) {
+    // The end of a toggle's section is the one gap that is both «last inside» and «first outside»: where the block's middle is
+    // decides - over the lower half of the last held block it stays inside (the orange line indented), below that block's
+    // bottom edge it steps out (the line the full width). No extra gesture: the line shows what the drop will do.
+    const atEnd = atSectionEnd(targetIndex, draggingSet);
+    const out = atEnd && currentY > sectionEndY(targetIndex, draggingSet);
+    const sideChanged = out !== leaveToggleRef.current;
+    leaveToggleRef.current = out;
+    const inset = atEnd ? (out ? 0 : 26) : 14;
+    if (inset !== lineInsetRef.current) {
+      lineInsetRef.current = inset;
+      dropLineInset.value = withTiming(inset, { duration: 150 });
+    }
+    if (targetIndex !== insertIndexRef.current || sideChanged) {
       hapticSnapTick();
       setInsertIndex(targetIndex);
       // overshootClamping stops it swinging past the target and settling
@@ -339,12 +356,36 @@ function BlockList({
       // eased, springy deceleration on the way there. The little bounce the
       // user actually wants only happens once, at the very end of the drag
       // (see handleDragEnd), not on every one of these mid-drag snaps.
-      dropLineY.value = withSpring(gapYFor(targetIndex, draggingSet), {
+      dropLineY.value = withSpring(lineYFor(targetIndex, draggingSet), {
         damping: 26,
         stiffness: 260,
         overshootClamping: true,
       });
     }
+  }
+
+  // Whether the gap at `index` (among the blocks that are not being dragged) closes a toggle's section: the block above is
+  // held by a toggle (or is one) and the block below is outside it or there is none.
+  function atSectionEnd(index: number, draggingSet: Set<string>): boolean {
+    const rest = blocksRef.current.filter((b) => !draggingSet.has(b.id));
+    if (index <= 0 || !(rest[index - 1].type === 'toggle' || isUnderToggle(rest, index))) return false;
+    const below = rest[index];
+    return !below || below.type === 'toggle' || !!below.exitsToggle;
+  }
+
+  // Where the line is drawn for a gap. At a section's end the gap IS the frame's bottom edge, and a line drawn there read as the
+  // frame itself (the user, 2026-10-23: «риска невидима»): inside, it is drawn within the frame, above its edge and indented
+  // like the held blocks; outside, below the edge, the full width.
+  function lineYFor(index: number, draggingSet: Set<string>): number {
+    const y = gapYFor(index, draggingSet);
+    if (!atSectionEnd(index, draggingSet)) return y;
+    return leaveToggleRef.current ? y + 8 : y - 8;
+  }
+
+  function sectionEndY(index: number, draggingSet: Set<string>): number {
+    const last = blocksRef.current.filter((b) => !draggingSet.has(b.id))[index - 1];
+    const rl = last && rowLayouts.current[last.id];
+    return rl ? rl.y + rl.height : 0;
   }
 
   function commitReorder(ids: string[]) {
@@ -355,14 +396,49 @@ function BlockList({
       const draggedBlocks = list.filter((b) => draggingSet.has(b.id));
       const remaining = list.filter((b) => !draggingSet.has(b.id));
       const next = [...remaining];
-      next.splice(targetIndex, 0, ...draggedBlocks);
-      const changed = next.some((b, i) => b.id !== list[i]?.id);
+      // Which toggle the blocks land in is where they stand (utils/toggleBlocks); two marks make it explicit. Dropped at a
+      // section's end with the block below the last held one, the first one steps out (exitsToggle). Dropped anywhere inside, a mark it
+      // carried from an old place is cleared - or it would cut the rest of the section off.
+      const leaves = leaveToggleRef.current && atSectionEnd(targetIndex, draggingSet);
+      const underAt = targetIndex > 0 && (remaining[targetIndex - 1].type === 'toggle' || isUnderToggle(remaining, targetIndex));
+      const placed = draggedBlocks.map((b, i) => {
+        if (b.type === 'toggle') return b;
+        if (i === 0 && leaves) return b.exitsToggle ? b : { ...b, exitsToggle: true };
+        if (underAt && b.exitsToggle) {
+          const { exitsToggle: _drop, ...rest } = b;
+          return rest as Block;
+        }
+        return b;
+      });
+      next.splice(targetIndex, 0, ...placed);
+      // Every block that was NOT dragged keeps its side: one that stood outside a toggle stays outside. (The bug of 2026-10-23:
+      // the first block after a toggle carries the «stepped out» mark; dragged into the toggle, it took the mark along and
+      // everything below fell in.) The first of them that would now fall inside gets the mark.
+      const wasOutside = new Set(list.filter((b, i) => !draggingSet.has(b.id) && (b.type === 'toggle' || !ownerToggleId(list, b.id) || i === 0)).map((b) => b.id));
+      let under = false;
+      for (let i = 0; i < next.length; i++) {
+        const b = next[i];
+        if (b.type === 'toggle') {
+          under = true;
+          continue;
+        }
+        if (b.exitsToggle) {
+          under = false;
+          continue;
+        }
+        if (under && !draggingSet.has(b.id) && wasOutside.has(b.id)) {
+          next[i] = { ...b, exitsToggle: true };
+          under = false;
+        }
+      }
+      const changed = next.some((b, i) => b.id !== list[i]?.id || b !== list[i]);
       if (changed) {
         hapticDrop();
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         onReorder(next);
       }
     }
+    leaveToggleRef.current = false;
     setDraggingIds(null);
     setDragAnchorId(null);
     setInsertIndex(null);
@@ -496,7 +572,7 @@ function BlockList({
     const targetIndex = insertIndexRef.current;
     const draggingSet = new Set(ids);
     dropLineY.value = withSpring(
-      gapYFor(targetIndex ?? 0, draggingSet),
+      lineYFor(targetIndex ?? 0, draggingSet),
       { damping: 12, stiffness: 300, velocity: 260 },
       (finished) => {
         if (finished) runOnJS(commitReorder)(ids);

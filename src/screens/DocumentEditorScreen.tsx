@@ -231,6 +231,7 @@ import DayTasksBlock from '../components/DayTasksBlock';
 import { ensureDayBoard } from '../utils/dayBoard';
 import { copyNoteWithNested } from '../utils/copyNote';
 import { DESK_PILL_W } from '../components/DeskDock';
+import { blocksToMarkdown } from '../utils/blocksText';
 
 // Below this, a note has no room to stand beside «Референси» and the
 // drawer lies over it instead - see referencesSplit. 300 is the drawer's
@@ -3326,6 +3327,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             label: 'Жирна лінія',
             onPress: () => convertSelectedToDivider('bold'),
           },
+          // Cut: the chosen blocks out of the note and onto the clipboard as text that pastes back as the same kinds of blocks.
+          {
+            key: 'cut',
+            icon: 'cut-outline',
+            label: 'Вирізати',
+            onPress: cutSelectedBlocks,
+          },
           {
             key: 'copy',
             icon: 'copy-outline',
@@ -4787,6 +4795,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           return retype(b, nextType);
         })
       );
+      // A block made a toggle holds NOTHING at first (the user, 2026-10-23: everything below it went inside): the block after it
+      // is marked as outside, and what he wants in it he drags or pastes in.
+      if (type === 'toggle') {
+        setBlocks((prev) => {
+          const index = prev.findIndex((b) => b.id === id);
+          const after = prev[index + 1];
+          if (index === -1 || (prev[index].type ?? 'paragraph') !== 'toggle' || !after || after.type === 'toggle' || after.exitsToggle) return prev;
+          return prev.map((b, i) => (i === index + 1 ? { ...b, exitsToggle: true } : b));
+        });
+      }
     }
   }
 
@@ -5416,6 +5434,28 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       })
       .join('\n');
     await Clipboard.setStringAsync(text);
+  }
+
+  // «Вирізати» (2026-10-23, the user: no cut for what is chosen): the chosen blocks go onto the clipboard as text that pastes
+  // back as blocks of the same kinds (utils/blocksText + pasteBlocks) - in this note, in another, or into a toggle - and are taken
+  // out here, one step of undo.
+  async function cutSelectedBlocks() {
+    const ordered = blocks.filter((b) => selectedIds.has(b.id));
+    if (ordered.length === 0) return;
+    const text = blocksToMarkdown(ordered);
+    if (!text) {
+      notify('Нічого вирізати', 'Картинки, файли й малюнки не вирізаються текстом - перенесіть їх перетягуванням.');
+      return;
+    }
+    await Clipboard.setStringAsync(text);
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const next = prev.filter((block) => !selectedIds.has(block.id));
+      return next.length > 0 ? next : [newBlock()];
+    });
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+    notify('Вирізано', `Блоків: ${ordered.length}. Вставте там, де треба: у цій нотатці чи в іншій.`);
   }
 
   // The chosen blocks as a note of their own, named after this one. Asked
