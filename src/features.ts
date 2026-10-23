@@ -125,6 +125,12 @@ export const FEATURES = {
   // base, the lens leaves the pill as a drop, joins "+" and the search field grows out to the left. Off: the old
   // dock (the search field with "+" inside, the multitasking circle beside it).
   deskDock: true,
+  // THE OPEN DESKS AS PICTURES (the tab switcher: the dock's right circle on a root desk, a tap on the desk in front in the
+  // top pill, a pull-and-hold). REMOVED 2026-10-23 - the user's verdict: «красиве, але не знадобилось»; with only three
+  // desks (threeDesks) there is no multitasking left to switch between, and the desks were photographed in the
+  // background (navigation/deskShots, captureRef of a whole screen) - theoretically a cost on the thread that takes taps.
+  // Off: no captures, no switcher, no circle on a root desk (an empty place there for now). The code stays.
+  deskSwitcher: false,
   // EXPERIMENT (2026-10-19, the user's): only the three desks. No sideways swipe between them (the dock's beads
   // switch), no extra windows - every base, the documents and the boards too, opens inside, over the Бази desk. The
   // freed swipe is to become selection (swipe left, like Craft). Phone only; the stored list of extra desks is left

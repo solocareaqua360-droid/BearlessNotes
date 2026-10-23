@@ -1,3 +1,4 @@
+import { FEATURES } from '../features';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from './icons/Ionicons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
@@ -131,7 +132,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   useEffect(() => {
     // Not while the panel is out: the desks it steps through are being
     // shown in it, and photographing each as it passes only churns them.
-    if (!deskControl || !currentDesk || switcherOpen) return;
+    if (!FEATURES.deskSwitcher || !deskControl || !currentDesk || switcherOpen) return;
     const timer = setTimeout(() => {
       if (deskPull.value < 0.02) captureDesk(currentDesk);
     }, 900);
@@ -154,7 +155,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
       wasOpen.current = true;
       return;
     }
-    if (!wasOpen.current || !currentDesk) return;
+    if (!FEATURES.deskSwitcher || !wasOpen.current || !currentDesk) return;
     wasOpen.current = false;
     const timer = setTimeout(() => {
       if (deskPull.value < 0.02) captureDesk(currentDesk);
@@ -244,7 +245,8 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         // перейду").
         onPress: () => {
           const h = barHandlers.current;
-          if (deskControl && liveIndex === index) h.openSwitcher();
+          if (FEATURES.deskSwitcher && deskControl && liveIndex === index) h.openSwitcher();
+          else if (deskControl && liveIndex === index) return;
           else h.desks[index]?.onPress();
         },
         // "хрестик на вкладці" - the desk in front can be closed, the
@@ -262,8 +264,12 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   const switcherReachable = barUp && !!deskControl;
   useEffect(() => {
     if (!switcherReachable) return;
-    registerDeskSwitcher(() => openSwitcherRef.current());
-    deskPullEnabled.value = true;
+    // Registered even with the switcher off: the dock reads «the desks are in front» from it (ContextDock's multitask ->
+    // the desk dock); the opener then does nothing and the pull-and-hold stays off.
+    registerDeskSwitcher(() => {
+      if (FEATURES.deskSwitcher) openSwitcherRef.current();
+    });
+    deskPullEnabled.value = FEATURES.deskSwitcher;
     return () => {
       registerDeskSwitcher(null);
       deskPullEnabled.value = false;
@@ -322,6 +328,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
       // as it comes in.
       fadeWithDrawer
     />
+    {FEATURES.deskSwitcher && (
     <DeskSwitcher
       visible={switcherOpen}
       onDismiss={() => setSwitcherOpen(false)}
@@ -335,6 +342,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         onClose: deskControl && !FIXED_DESKS.includes(route.name) ? () => closeDesk(index) : undefined,
       }))}
     />
+    )}
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { FEATURES } from '../features';
 import { useEffect, useState } from 'react';
 
 // THE TAB SWITCHER'S DOOR FOR THE DOCK (an experiment, 2026-10-03): the
@@ -29,7 +30,8 @@ export function registerDeskSwitcher(open: (() => void) | null) {
 
 // True if there was a switcher to open (the desks are in front).
 export function openDeskSwitcher(): boolean {
-  if (!opener) return false;
+  // The switcher is put away (FEATURES.deskSwitcher): nothing opens, and a pull or a press falls through to what else it does.
+  if (!opener || !FEATURES.deskSwitcher) return false;
   opener();
   return true;
 }

@@ -329,6 +329,7 @@ export default function DeskDock({
     return { left: xr - w, width: w, opacity: interpolate(p.value, [0.26, 0.4], [0, 1], Extrapolation.CLAMP) };
   });
   const wordStyle = useAnimatedStyle(() => ({ opacity: interpolate(p.value, [0.78, 1], [0, 1], Extrapolation.CLAMP) }));
+  const circleShown = useAnimatedStyle(() => ({ opacity: q.value }));
   const multiStyle = useAnimatedStyle(() => ({
     opacity: interpolate(q.value, [0.3, 0.6], [1, 0], Extrapolation.CLAMP),
     transform: [{ rotate: `${-90 * ease(q.value / 0.8)}deg` }],
@@ -422,8 +423,12 @@ export default function DeskDock({
       {rootExtraEl && root && extraLeft >= PILL_FULL + 8 && (
         <GrowOnTouch style={[styles.slot, { left: extraLeft, top: (H - PLUS) / 2 }]}>{rootExtraEl}</GrowOnTouch>
       )}
-      {/* The circle at the far end: multitasking on a desk, the way back inside. */}
-      <Animated.View style={[styles.circleWrap, { left: width - BACK, top: (H - BACK) / 2, width: BACK, height: BACK }, circleGrow.style]}>
+      {/* The circle at the far end: multitasking on a desk, the way back inside. Without the switcher (FEATURES.deskSwitcher
+          off, 2026-10-23) a root desk has no circle - an empty place - and it comes in only as the way back. */}
+      <Animated.View
+        pointerEvents={!FEATURES.deskSwitcher && !backOnCircle ? 'none' : 'auto'}
+        style={[styles.circleWrap, { left: width - BACK, top: (H - BACK) / 2, width: BACK, height: BACK }, circleGrow.style, !FEATURES.deskSwitcher && circleShown]}
+      >
       <Pressable
         onPress={backOnCircle ? onBack : onMulti}
         onPressIn={circleGrow.on}
