@@ -329,15 +329,22 @@ export default function DeskDock({
     return { left: xr - w, width: w, opacity: interpolate(p.value, [0.26, 0.4], [0, 1], Extrapolation.CLAMP) };
   });
   const wordStyle = useAnimatedStyle(() => ({ opacity: interpolate(p.value, [0.78, 1], [0, 1], Extrapolation.CLAMP) }));
-  const circleShown = useAnimatedStyle(() => ({ opacity: q.value }));
+  // Without the switcher the circle is only the way back: it simply comes in (fades up, grows a little) with the arrow
+  // already in place - no turning out of a multitasking sign that is no longer there (the user, 2026-10-23).
+  const circleShown = useAnimatedStyle(() => ({ opacity: q.value, transform: [{ scale: 0.85 + 0.15 * q.value }] }));
   const multiStyle = useAnimatedStyle(() => ({
     opacity: interpolate(q.value, [0.3, 0.6], [1, 0], Extrapolation.CLAMP),
     transform: [{ rotate: `${-90 * ease(q.value / 0.8)}deg` }],
   }));
-  const backStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(q.value, [0.4, 0.7], [0, 1], Extrapolation.CLAMP),
-    transform: [{ rotate: `${90 * (1 - ease(q.value / 0.8))}deg` }],
-  }));
+  const switcherOn = FEATURES.deskSwitcher;
+  const backStyle = useAnimatedStyle(() =>
+    switcherOn
+      ? {
+          opacity: interpolate(q.value, [0.4, 0.7], [0, 1], Extrapolation.CLAMP),
+          transform: [{ rotate: `${90 * (1 - ease(q.value / 0.8))}deg` }],
+        }
+      : { opacity: 1, transform: [{ rotate: '0deg' }] }
+  );
   const beadsStyle = useAnimatedStyle(() => ({
     opacity: interpolate(p.value, [0.02, 0.2], [1, 0], Extrapolation.CLAMP),
     transform: [{ scale: interpolate(p.value, [0.02, 0.2], [1, 0.75], Extrapolation.CLAMP) }],
@@ -437,9 +444,11 @@ export default function DeskDock({
         hitSlop={6}
         style={[styles.circle, surface, { left: 0, top: 0, width: BACK, height: BACK, borderRadius: BACK / 2 }]}
       >
-        <Animated.View style={[styles.icon, multiStyle]} pointerEvents="none">
-          {multiIcon}
-        </Animated.View>
+        {FEATURES.deskSwitcher && (
+          <Animated.View style={[styles.icon, multiStyle]} pointerEvents="none">
+            {multiIcon}
+          </Animated.View>
+        )}
         <Animated.View style={[styles.icon, backStyle]} pointerEvents="none">
           {backIcon}
         </Animated.View>
