@@ -106,6 +106,11 @@ export function morphLanded(_key: string): void {}
 export function morphBack(_key: string, leave: () => void, _opts?: { color?: string; from?: string }): void {
   leave();
 }
+// The browser has no morph: the sheet simply opens (the balloon's journey is the phone's).
+export function morphSheet(_key: string, update: () => void, opts?: { color?: string; toColor?: string; radius?: number; onStart?: () => void }): void {
+  opts?.onStart?.();
+  update();
+}
 export function takeMorphFrom(_key: string): Rect | null {
   return null;
 }

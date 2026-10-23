@@ -19,6 +19,7 @@ import {
   type QuickKind,
 } from '../utils/quickCreate';
 import type { Tag } from '../types';
+import { isChatOwned } from '../utils/chatOwned';
 
 // THE QUICK-CREATE WINDOW, READY TO DROP ON ANY SCREEN (2026-10-13: the explorer's «+» and the calendar's «+» are the
 // same window). It brings its own tags and its own list of notes (read only while the window is open), makes what the
@@ -78,7 +79,7 @@ function Inner({
       (snap) =>
         setDocuments(
           snap.docs
-            .filter((d) => !d.id.startsWith('day_'))
+            .filter((d) => !d.id.startsWith('day_') && !isChatOwned(d.data()))
             .map((d) => ({ id: d.id, title: String((d.data() as { title?: string }).title ?? '') }))
         ),
       listenError('QuickCreateHost:documents')

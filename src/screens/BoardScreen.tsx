@@ -3,12 +3,13 @@ import { TextScaleOverride, useStyles, useTheme } from '../theme/ThemeProvider';
 import { useDeskContent } from '../navigation/useDeskContent';
 import { useNoteOpened } from '../navigation/recentPlaces';
 import { BoardFieldsContext } from '../components/boardFieldsContext';
+import { BoardEmbedContext } from '../components/boardEmbedContext';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import type { BoardDbWindow, CustomDatabase, CustomDatabaseRow } from '../types';
 import BoardDatabaseWindow from '../components/BoardDatabaseWindow';
 import { MONTH_SHORT, WEEKDAY_SHORT, addDays, dateKey, formatShortDate, mondayIndex, parseDateKey } from '../utils/dateLocale';
 import { mutedForTheme, type Theme } from '../theme/tokens';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -165,6 +166,7 @@ import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockWide
 import TopNavBar, { useTopNavOn } from '../components/TopNavBar';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { listenError } from '../utils/listenError';
+import { isChatOwned } from '../utils/chatOwned';
 
 const AUTOSAVE_DELAY_MS = 600;
 // How many steps back undo keeps - a plain cap on a session-only stack,
@@ -2467,8 +2469,12 @@ export default function BoardScreen() {
   const { boardId, openDocumentId, focusCardIds } = params;
   // The board is what the boards desk's picture shows while it is open.
   const deskContentRef = useDeskContent();
-  // In front: the start desk's recents.
-  useNoteOpened('board', boardId, useIsFocused());
+  // Drawn inside a window (the AI chat's draft board) rather than as a screen: null on every other path.
+  const embed = useContext(BoardEmbedContext);
+  // A window shows a whole tree small: it may zoom out further than the full screen does.
+  const minScaleNow = embed ? 0.15 : MIN_SCALE;
+  // In front: the start desk's recents - not for a board that is only a window.
+  useNoteOpened('board', boardId, useIsFocused() && !embed?.noRecents);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { isTwoPane } = useResponsiveLayout();
   // A document card opened beside the board instead of over it: the board
@@ -2800,7 +2806,7 @@ export default function BoardScreen() {
     () =>
       onBoardJump((view) => {
         if (view.boardId !== boardId) return false;
-        const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale));
+        const next = Math.min(MAX_SCALE, Math.max(minScaleNow, view.scale));
         scale.value = withTiming(next, { duration: 380 });
         translateX.value = withTiming(-(view.x - WORLD_CENTER) * next, { duration: 380 });
         translateY.value = withTiming(-(view.y - WORLD_CENTER) * next, { duration: 380 });
@@ -3675,10 +3681,17 @@ export default function BoardScreen() {
         // the first real edit). A board merely opened and closed gets no
         // capture, no upload - the boards list keeps drawing BoardMiniMap
         // live for it, which already reflects whatever it already had.
-        if (canUndoRef.current) capturePreview();
+        if (canUndoRef.current && !embed?.noPreviewCapture) capturePreview();
       };
-    }, [isLoaded, refreshDocumentPreviews, refreshBoardCardTitles, capturePreview])
+    }, [isLoaded, refreshDocumentPreviews, refreshBoardCardTitles, capturePreview, embed?.noPreviewCapture])
   );
+
+  // In a window nothing hands focus back after a card's note was written (see boardEmbedContext), so the owner says so.
+  const embedTick = embed?.previewsTick;
+  useEffect(() => {
+    if (embedTick === undefined || !isLoaded) return;
+    refreshDocumentPreviews();
+  }, [embedTick, isLoaded, refreshDocumentPreviews]);
 
   // Positions and measured heights outlive the cards they belong to
   // otherwise - both are keyed by card id in structures React doesn't
@@ -3737,7 +3750,7 @@ export default function BoardScreen() {
       if (e.numberOfTouches < 2) state.end();
     })
     .onUpdate((e) => {
-      const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, savedScale.value * e.scale));
+      const nextScale = Math.min(MAX_SCALE, Math.max(minScaleNow, savedScale.value * e.scale));
       scale.value = nextScale;
       translateX.value = e.focalX - viewport.width / 2 - (pinchFocalWorldX.value - WORLD_CENTER) * nextScale;
       translateY.value = e.focalY - viewport.height / 2 - (pinchFocalWorldY.value - WORLD_CENTER) * nextScale;
@@ -3954,7 +3967,7 @@ export default function BoardScreen() {
       (viewport.width * ISOLATE_FIT_FRACTION) / boxWidth,
       (viewport.height * ISOLATE_FIT_FRACTION) / boxHeight
     );
-    const nextScale = Math.min(ISOLATE_MAX_SCALE, Math.max(MIN_SCALE, fitScale));
+    const nextScale = Math.min(ISOLATE_MAX_SCALE, Math.max(minScaleNow, fitScale));
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
     scale.value = withTiming(nextScale, { duration: 320 });
@@ -4089,14 +4102,17 @@ export default function BoardScreen() {
   // nothing would just reset the view.
   const focusedIdsRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!isLoaded || !focusCardIds || focusCardIds.length === 0) return;
-    const key = focusCardIds.join(',');
+    if (!isLoaded) return;
+    // A board in a window (the AI chat's draft) opens showing ALL of its cards, once.
+    const wanted = focusCardIds && focusCardIds.length > 0 ? focusCardIds : embed?.fitAll ? cards.map((c) => c.id) : null;
+    if (!wanted || wanted.length === 0) return;
+    const key = embed?.fitAll && !(focusCardIds && focusCardIds.length > 0) ? `fit-all-${embed.fitTick ?? 0}` : wanted.join(',');
     if (focusedIdsRef.current === key) return;
-    const here = focusCardIds.filter((id) => cards.some((c) => c.id === id));
+    const here = wanted.filter((id) => cards.some((c) => c.id === id));
     if (here.length === 0) return;
     focusedIdsRef.current = key;
     fitViewToBounds(new Set(here));
-  }, [isLoaded, focusCardIds, cards]);
+  }, [isLoaded, focusCardIds, cards, embed]);
 
   const clearSelection = useCallback(() => {
     // A tap on the board beside an open card window closes it, as in
@@ -4113,6 +4129,15 @@ export default function BoardScreen() {
     setSelectedConnectionId(null);
     setCanvasTool('move');
   }, []);
+
+  // The window draws its own bar for what is selected (see boardEmbedContext); a ref keeps this off the owner's re-renders.
+  const embedSelectionRef = useRef(embed?.onSelection);
+  embedSelectionRef.current = embed?.onSelection;
+  const embedded = !!embed;
+  useEffect(() => {
+    if (!embedded) return;
+    embedSelectionRef.current?.(Array.from(selectedCardIds), clearSelection);
+  }, [embedded, selectedCardIds, clearSelection]);
 
   function deleteConnection(id: string) {
     // Every line between the same two ends goes, not only this id - a copy of it (made by an old sync or
@@ -4237,7 +4262,7 @@ export default function BoardScreen() {
     savedTranslateX,
     savedTranslateY,
     viewport,
-    minScale: MIN_SCALE,
+    minScale: minScaleNow,
     maxScale: MAX_SCALE,
   });
 
@@ -4793,7 +4818,7 @@ export default function BoardScreen() {
       snapshot.docs
         // Not this one: a board holding a card of itself is a loop with
         // nothing at the end of it.
-        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt)
+        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt && !isChatOwned(d.data()))
         .map((d) => ({ id: d.id, title: (d.data().title as string)?.trim() || 'Без назви' }))
         .sort((a, b) => a.title.localeCompare(b.title))
     );
@@ -4903,7 +4928,7 @@ export default function BoardScreen() {
     const snapshot = await getDocs(ownedQuery('boards'));
     setPickableBoards(
       snapshot.docs
-        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt)
+        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt && !isChatOwned(d.data()))
         .map((d) => ({ id: d.id, title: (d.data().title as string)?.trim() || 'Без назви' }))
         .sort((a, b) => a.title.localeCompare(b.title))
     );
@@ -5186,7 +5211,7 @@ export default function BoardScreen() {
     } else if (type === 'document') {
       // Every board now, not only a day's (2026-10-18, the user's «робимо»): a document is the same paper card that
       // comes alive in place wherever it lies.
-      if (FEATURES.cardWindow && card.documentId) {
+      if (FEATURES.cardWindow && card.documentId && !embed?.noCardWindow) {
         // The SAME card becomes live: the window lies exactly over it, at
         // its size and the board's zoom - unless it is opened out, which
         // only shows its buttons (too tall to write in on a phone).
@@ -7214,7 +7239,7 @@ export default function BoardScreen() {
   // A note filling the window keeps the old arrangement: the board is
   // hidden then and the note's own controls hold the dock.
   const topNavOn = useTopNavOn();
-  const bar = topNavOn && !(paneDocOpen && paneFullscreen);
+  const bar = topNavOn && !embed && !(paneDocOpen && paneFullscreen);
   // The names of the user's databases, for the panel's tabs of open database windows.
   const { customDatabases: boardDatabases } = useDatabaseTiles();
   const dbNames: Record<string, string> = Object.fromEntries(boardDatabases.map((d) => [d.id, d.name || 'База']));
@@ -8563,7 +8588,7 @@ export default function BoardScreen() {
         {/* Only the board's name stays up here - it needs the width. The
             way back and the tool button stand on the dock with everything
             else. */}
-        {bar ? (
+        {embed ? null : bar ? (
           boardFocused && (
             <TopNavBar
               title={{ icon: 'easel-outline', label: title || 'Без назви', onPress: () => setRenamingTitle(true) }}

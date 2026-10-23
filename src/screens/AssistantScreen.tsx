@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
+import BalloonMark from '../components/BalloonMark';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
@@ -15,18 +17,39 @@ import {
   blocksOf,
   foldOlder,
   groupsOf,
+  deleteChat,
   listChats,
   loadChat,
   loadChatById,
+  routeFirstMessage,
+  updateChatFields,
+  type ChatSummary,
   memoryTexts,
   newChat,
   ROOT_TOPIC,
   saveChat,
+  splitStructure,
   titleOf,
   topicPath,
   type AssistantChat,
   type AssistantMessage,
+  type AssistantStructure,
 } from '../utils/assistant';
+import { createChatBoard, listChatObjects, promoteChatObject } from '../utils/chatObjects';
+import ChatsSheet from '../components/ChatsSheet';
+import ChatFolderSheet from '../components/ChatFolderSheet';
+import ChatInstructionSheet from '../components/ChatInstructionSheet';
+import ChatInstructionChip from '../components/ChatInstructionChip';
+import ChatRouteCard from '../components/ChatRouteCard';
+import ChatMaterialsSheet from '../components/ChatMaterialsSheet';
+import ChatOutlineSheet from '../components/ChatOutlineSheet';
+import { useBoardCardCount } from '../utils/chatStructureRead';
+import { folderOfPointer, folderOptions, type FolderOption } from '../utils/chatFolders';
+import { useTags } from '../hooks/useTags';
+import { branchCard, currentOutline, deepenCard, mergeStructure } from '../utils/chatBoardOps';
+import { nodesFromOutline } from '../utils/chatOwned';
+import ChatBoardWindow from '../components/ChatBoardWindow';
+import ThinkingEffect, { nextThinkingVariant, thinkingVariantLabel, useThinkingVariant } from '../components/ThinkingEffect';
 import { writeMemoryNote, writeMemoryTree } from '../utils/assistantTree';
 import { shortTitle } from '../utils/assistant';
 import { FEATURES } from '../features';
@@ -56,6 +79,45 @@ const plainOf = (text: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// THE COST RING (sketch 2026-10-23): the conversation's total in dollars, always rounded UP to the next tenth, and the ring
+// fills as that tenth is used. A tap opens the three sums. Nothing here is a budget - the app has none.
+const tenthsOf = (usd: number) => Math.max(0.1, Math.ceil(usd * 10 - 1e-9) / 10);
+const money = (usd: number, digits: number) => usd.toFixed(digits).replace('.', ',');
+function CostRing({ usd, onPress, color, track, ink }: { usd: number; onPress: () => void; color: string; track: string; ink: string }) {
+  const r = 13;
+  const c = 2 * Math.PI * r;
+  const tenths = usd * 10;
+  const used = tenths <= 0 ? 0 : tenths - Math.floor(tenths - 1e-9);
+  const arc = Math.max(0.06, Math.min(1, used)) * c;
+  return (
+    <Pressable onPress={onPress} accessibilityLabel={`Вартість розмови ${money(tenthsOf(usd), 1)} доларів`} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={36} height={36} viewBox="0 0 36 36">
+        <Circle cx={18} cy={18} r={r} fill="none" stroke={track} strokeWidth={3} />
+        <Circle cx={18} cy={18} r={r} fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" strokeDasharray={`${arc} ${c}`} transform="rotate(-90 18 18)" />
+      </Svg>
+      <Text style={{ position: 'absolute', fontSize: 9.5, fontFamily: SOFT_SEMIBOLD, color: ink }}>{money(tenthsOf(usd), 1)}</Text>
+    </Pressable>
+  );
+}
+
+// «N карток» of the draft board, live (the number kept in the message is only what the AI made at first).
+function StructCount({ boardId, fallback, style }: { boardId: string; fallback: number; style: object }) {
+  const n = useBoardCardCount(boardId);
+  return <Text style={style}>{`дошка · чернетка · ${n ?? fallback} карток`}</Text>;
+}
+
+// What the empty conversation offers: a tap only starts the sentence in the field, it sends nothing.
+const STARTERS: { label: string; text: string }[] = [
+  { label: 'Розкласти тему з думок', text: 'Розклади тему: ' },
+  { label: 'Дослідити тему', text: 'Досліди тему: ' },
+  { label: 'Адаптувати думку', text: 'Адаптуй цю думку під читача: ' },
+];
+
+// «Кожен запуск застосунку - нова розмова» (the user, 2026-10-24): the first time the conversation is opened since the app
+// started it is a NEW one (an empty one is never kept in the list - saveChat writes nothing of it to the database); moving
+// around the app and coming back finds the same one, the last. The older ones wait in the list of conversations.
+let conversationStartedThisRun = false;
+
 export default function AssistantScreen() {
   const S = useSoft();
   const insets = useSafeAreaInsets();
@@ -72,6 +134,26 @@ export default function AssistantScreen() {
   const [topic, setTopic] = useState<string>(ROOT_TOPIC);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState<string | null>(null);
+  const [costOpen, setCostOpen] = useState(false);
+  // The draft board open in its window over the conversation.
+  const [boardOpen, setBoardOpen] = useState<AssistantStructure | null>(null);
+  // What the AI is doing to the board's cards right now, and the way to take its last change back.
+  const [opBusy, setOpBusy] = useState(false);
+  const [lastOp, setLastOp] = useState<{ summary: string; undo: () => Promise<void> } | null>(null);
+  const [boardTick, setBoardTick] = useState(0);
+  const [fitTick, setFitTick] = useState(0);
+  const [thinkingVariant, setThinkingVariant] = useThinkingVariant();
+  const { tags, attachTag, createAndAttachTag } = useTags();
+  const folders = useMemo(() => folderOptions(tags), [tags]);
+  const [chatsOpen, setChatsOpen] = useState(false);
+  const [chatList, setChatList] = useState<ChatSummary[]>([]);
+  const [folderFor, setFolderFor] = useState<{ chatId: string; purpose: 'chat' | 'save' } | null>(null);
+  const [instructionFor, setInstructionFor] = useState<string | null>(null);
+  const [materialsOpen, setMaterialsOpen] = useState(false);
+  const [outlineBoard, setOutlineBoard] = useState<string | null>(null);
+  const [routeOffer, setRouteOffer] = useState<{ text: string; chatId: string; title: string } | null>(null);
+  const [materialsCount, setMaterialsCount] = useState(0);
+  const inputRef = useRef<TextInput>(null);
   const committed = useRef('');
   const scroll = useRef<ScrollView>(null);
 
@@ -84,7 +166,15 @@ export default function AssistantScreen() {
     };
   }, []);
   useEffect(() => {
-    loadChat().then((c) => {
+    const firstOpen = !conversationStartedThisRun;
+    conversationStartedThisRun = true;
+    const start = firstOpen
+      ? Promise.resolve(newChat()).then((fresh) => {
+          saveChat(fresh); // only the phone's own copy: it is what «the last one» means from now on
+          return fresh;
+        })
+      : loadChat();
+    start.then((c) => {
       chatRef.current = c;
       setChat(c);
       // Back to the branch the last message was said in.
@@ -105,6 +195,17 @@ export default function AssistantScreen() {
     },
     []
   );
+
+  // The draft board the conversation made last (what «Зберегти» and «Матеріали» are about).
+  const structure = useMemo(() => [...(chat?.messages ?? [])].reverse().find((m) => m.structure)?.structure ?? null, [chat]);
+  const hasStructure = !!structure;
+  useEffect(() => {
+    if (!chat?.id || !hasStructure) {
+      setMaterialsCount(0);
+      return;
+    }
+    return listChatObjects(chat.id, (objects) => setMaterialsCount(objects.filter((o) => !o.partOfBoard).length), () => {});
+  }, [chat?.id, hasStructure]);
 
   const groups = useMemo(() => (chat ? groupsOf(chat) : []), [chat]);
   // Each remembered block -> whether it is the last block of its memory (where «у пам'яті» is written).
@@ -127,10 +228,29 @@ export default function AssistantScreen() {
   const chatCost = (chat?.messages ?? []).reduce((sum, m) => sum + (m.costUsd ?? 0), 0);
 
   // `branch`: the answer opens a new branch under `parent` (null = the main topic) with this title.
-  async function send(text: string, branch?: { title: string; parent: string }) {
+  async function send(text: string, branch?: { title: string; parent: string }, skipRoute?: boolean) {
     const base = chatRef.current;
     const clean = text.trim();
     if (!clean || !base || busy) return;
+    // The FIRST message of a conversation is checked against the others: if it looks like a continuation of one, the person
+    // is offered to go there (nothing is sent until they choose). Any doubt, no key or no network sends it as usual.
+    if (!branch && !skipRoute && base.messages.length === 0) {
+      setBusy(true);
+      try {
+        const others = (await listChats()).filter((c) => c.id !== base.id);
+        const routed = await routeFirstMessage(clean, others);
+        if (routed.chatId) {
+          const target = others.find((c) => c.id === routed.chatId);
+          setRouteOffer({ text: clean, chatId: routed.chatId, title: target?.title ?? 'Розмова' });
+          setDraft('');
+          setBusy(false);
+          return;
+        }
+      } catch {
+        // Routing is a courtesy: never a reason not to answer.
+      }
+      setBusy(false);
+    }
     setPicked([]);
     let here = topic;
     let withTopics = base;
@@ -145,10 +265,46 @@ export default function AssistantScreen() {
     setDraft('');
     setBusy(true);
     try {
-      const { text: answer, costUsd } = await askAssistant(withMine, here);
+      // A conversation that already has a scheme shows it to the AI, so a request to add to it is an UPDATE of that board.
+      const known = [...withMine.messages].reverse().find((m) => m.structure)?.structure;
+      let outlineNow: string | undefined;
+      if (known) outlineNow = await currentOutline(known.boardId).catch(() => undefined);
+      const { text: raw, costUsd } = await askAssistant(withMine, here, outlineNow);
+      // A topic laid out: the scheme in the answer becomes a draft board that lives in this conversation.
+      let { text: answer, outline } = splitStructure(raw);
+      let structure: AssistantStructure | undefined;
+      if (outline) {
+        try {
+          const nodes = nodesFromOutline(outline);
+          if (nodes.length >= 2 && known && outlineNow) {
+            // An update: merged into the board the conversation already has.
+            const merged = await mergeStructure(withMine.id, known.boardId, nodes);
+            structure = { ...known, cards: known.cards + merged.added };
+            answer = `${answer}\n\n${merged.summary}`.trim();
+            setBoardTick((n) => n + 1);
+            setTimeout(() => setFitTick((n) => n + 1), 500);
+          } else if (nodes.length >= 2) {
+            const made = await createChatBoard(withMine.id, nodes);
+            structure = { boardId: made.boardId, title: made.title, cards: nodes.length };
+          } else answer = `${answer}\n\n${outline}`.trim();
+        } catch (e) {
+          answer = `${answer}\n\nНе вдалося створити дошку: ${(e as Error).message}`.trim();
+        }
+      }
       const answered = {
         ...withMine,
-        messages: [...withMine.messages, { id: `a${Date.now()}`, role: 'model' as const, text: answer, at: Date.now(), costUsd, ...(here !== ROOT_TOPIC ? { topicId: here } : {}) }],
+        messages: [
+          ...withMine.messages,
+          {
+            id: `a${Date.now()}`,
+            role: 'model' as const,
+            text: answer || (structure ? `Розклав на ${structure.cards} карток.` : raw),
+            at: Date.now(),
+            costUsd,
+            ...(structure ? { structure } : {}),
+            ...(here !== ROOT_TOPIC ? { topicId: here } : {}),
+          },
+        ],
       };
       update(answered);
       // The older part is folded into the summary now and then, off to the side of the answer.
@@ -234,6 +390,160 @@ export default function AssistantScreen() {
     }
   }
 
+  // «Поглибити» / «Розгалузити» on the picked cards of the open board: one request each, the result written into the board,
+  // the exchange kept in the conversation (so it counts in the cost and the AI remembers it), the change undoable.
+  async function runBoardOp(kind: 'deepen' | 'branch', ids: string[], clear: () => void) {
+    const base = chatRef.current;
+    if (!base || !boardOpen || opBusy || ids.length === 0) return;
+    setOpBusy(true);
+    clear();
+    const label = kind === 'deepen' ? 'Поглибити' : 'Розгалузити';
+    const asked: AssistantMessage = { id: `m${Date.now()}`, role: 'user', text: ids.length > 1 ? `${label} (${ids.length} картки)` : label, at: Date.now() };
+    const undos: (() => Promise<void>)[] = [];
+    const lines: string[] = [];
+    let cost = 0;
+    try {
+      for (const id of ids) {
+        const r = kind === 'deepen' ? await deepenCard(boardOpen.boardId, id) : await branchCard(base.id, boardOpen.boardId, id);
+        undos.push(r.undo);
+        lines.push(r.summary);
+        cost += r.costUsd;
+      }
+    } catch (e) {
+      lines.push((e as Error).message);
+      if (undos.length === 0) {
+        const current = chatRef.current ?? base;
+        update({ ...current, messages: [...current.messages, asked, { id: `e${Date.now()}`, role: 'model', text: lines.join(' '), at: Date.now(), error: true }] });
+        setOpBusy(false);
+        return;
+      }
+    }
+    const current = chatRef.current ?? base;
+    update({ ...current, messages: [...current.messages, asked, { id: `a${Date.now()}`, role: 'model', text: lines.join('\n\n'), at: Date.now(), costUsd: cost }] });
+    setBoardTick((n) => n + 1);
+    if (kind === 'branch') setTimeout(() => setFitTick((n) => n + 1), 500);
+    setLastOp({
+      summary: lines[0] ?? '',
+      undo: async () => {
+        for (const u of [...undos].reverse()) await u();
+      },
+    });
+    setOpBusy(false);
+  }
+  async function undoLastOp() {
+    const op = lastOp;
+    if (!op) return;
+    setLastOp(null);
+    try {
+      await op.undo();
+      setBoardTick((n) => n + 1);
+      setTimeout(() => setFitTick((n) => n + 1), 500);
+    } catch (e) {
+      notify('Не вдалося скасувати', (e as Error).message);
+    }
+  }
+
+  // THE LIST OF CONVERSATIONS and what is done to its rows (sketches 8-12).
+  async function refreshChats() {
+    try {
+      setChatList(await listChats());
+    } catch {
+      // The list stays as it was.
+    }
+  }
+  function openChatsSheet() {
+    refreshChats();
+    setChatsOpen(true);
+  }
+  function newConversation(keepOld = true) {
+    const old = chatRef.current;
+    if (old && keepOld) saveChat(old);
+    const fresh = newChat();
+    chatRef.current = fresh;
+    setChat(fresh);
+    saveChat(fresh);
+    setTopic(ROOT_TOPIC);
+    setPicked([]);
+    setBoardOpen(null);
+    setRouteOffer(null);
+    setLastOp(null);
+  }
+  async function openChat(id: string) {
+    const loaded = await loadChatById(id);
+    if (!loaded) return;
+    if (chatRef.current) saveChat(chatRef.current);
+    chatRef.current = loaded;
+    setChat(loaded);
+    saveChat(loaded);
+    setTopic(ROOT_TOPIC);
+    setPicked([]);
+    setBoardOpen(null);
+    setRouteOffer(null);
+    setLastOp(null);
+    setChatsOpen(false);
+  }
+  // A folder, an instruction or a new name for ANY conversation: the open one goes through update(), another only to the database.
+  async function setChatFields(chatId: string, fields: { instruction?: string; folderId?: string; customTitle?: string }) {
+    const open = chatRef.current;
+    if (open && open.id === chatId) {
+      const merged: AssistantChat = { ...open };
+      (Object.keys(fields) as (keyof typeof fields)[]).forEach((k) => {
+        if (fields[k] === undefined || fields[k] === '') delete merged[k];
+        else merged[k] = fields[k] as string;
+      });
+      update(merged);
+    } else {
+      try {
+        await updateChatFields(chatId, fields);
+      } catch (e) {
+        notify('Не вдалося зберегти', (e as Error).message);
+      }
+    }
+    refreshChats();
+  }
+  async function removeChat(chatId: string) {
+    try {
+      await deleteChat(chatId);
+    } catch (e) {
+      notify('Не вдалося видалити розмову', (e as Error).message);
+      return;
+    }
+    if (chatRef.current?.id === chatId) newConversation(false);
+    refreshChats();
+  }
+  const fieldOf = (chatId: string, key: 'instruction' | 'folderId') =>
+    chatRef.current?.id === chatId ? chatRef.current?.[key] : chatList.find((c) => c.id === chatId)?.[key];
+
+  // «Зберегти»: the draft board stops belonging to the conversation and is an ordinary board, in the conversation's folder if it
+  // has one, else in the folder chosen now, else in «Без проєкту».
+  async function saveStructureTo(folder: FolderOption | null) {
+    const s = structure;
+    if (!s) return;
+    try {
+      await promoteChatObject('board', s.boardId, {
+        attachTo: folder
+          ? async (id) => {
+              const tag = tags.find((t) => t.id === folder.id);
+              if (tag) await attachTag(tag, 'board', id, 'boards');
+              else await createAndAttachTag(folder.path, 'folder-outline', S.accent, 'board', id, 'boards');
+            }
+          : undefined,
+      });
+      setBoardOpen(null);
+      setMaterialsOpen(false);
+      notify('Збережено', folder ? `Дошка «${s.title}» тепер у папці «${folder.name}».` : `Дошка «${s.title}» тепер у «Без проєкту».`);
+    } catch (e) {
+      notify('Не вдалося зберегти', (e as Error).message);
+    }
+  }
+  function saveStructureFlow() {
+    const c = chatRef.current;
+    if (!structure || !c) return;
+    const folder = folderOfPointer(folders, c.folderId);
+    if (folder) saveStructureTo(folder);
+    else setFolderFor({ chatId: c.id, purpose: 'save' });
+  }
+
   async function showMemory() {
     const c = chatRef.current;
     if (!c) return;
@@ -246,27 +556,30 @@ export default function AssistantScreen() {
 
   async function menu() {
     const c = chatRef.current;
+    const folder = folderOfPointer(folders, c?.folderId);
     const choice = await ask({
       title: 'Розмова',
       actions: [
         { id: 'new', label: 'Нова розмова', icon: 'add' as const },
-        { id: 'history', label: 'Попередні розмови', icon: 'time-outline' as const },
+        { id: 'chats', label: 'Розмови', icon: 'chatbubble-outline' as const },
+        { id: 'instruction', label: c?.instruction ? 'Інструкція розмови ✓' : 'Інструкція розмови', icon: 'book-outline' as const },
+        { id: 'folder', label: folder ? `Папка: ${folder.name}` : 'Папка розмови', icon: 'folder-outline' as const },
         { id: 'memory', label: "Що ти пам'ятаєш?", icon: 'bulb-outline' as const },
+        { id: 'effect', label: `Світіння, поки ШІ думає: ${thinkingVariantLabel(thinkingVariant)}`, icon: 'sparkles-outline' as const },
+        ...(c && c.messages.length > 0 ? [{ id: 'delete', label: 'Видалити розмову', icon: 'trash-outline' as const }] : []),
         ...(FEATURES.assistantTree && c?.boardId ? [{ id: 'tree', label: 'Дерево на дошці', icon: 'git-network-outline' as const }] : []),
       ],
     });
-    if (choice === 'new') {
-      // The one open now is kept (saveChat writes it to the database); nothing is deleted.
-      if (c) saveChat(c);
-      const fresh = newChat();
-      chatRef.current = fresh;
-      setChat(fresh);
-      saveChat(fresh);
-      setTopic(ROOT_TOPIC);
-      setPicked([]);
-    } else if (choice === 'history') openHistory();
+    if (choice === 'new') newConversation();
+    else if (choice === 'chats') openChatsSheet();
+    else if (choice === 'instruction' && c) setInstructionFor(c.id);
+    else if (choice === 'folder' && c) setFolderFor({ chatId: c.id, purpose: 'chat' });
     else if (choice === 'memory') showMemory();
-    else if (choice === 'tree' && c?.boardId) navigation.navigate('BoardCopy', { boardId: c.boardId });
+    else if (choice === 'effect') setThinkingVariant(nextThinkingVariant(thinkingVariant));
+    else if (choice === 'delete' && c) {
+      const sure = await ask({ title: 'Видалити розмову?', actions: [{ id: 'yes', label: 'Видалити разом з її дошкою й нотатками', icon: 'trash-outline' as const }] });
+      if (sure === 'yes') removeChat(c.id);
+    } else if (choice === 'tree' && c?.boardId) navigation.navigate('BoardCopy', { boardId: c.boardId });
   }
 
   async function openHistory() {
@@ -368,12 +681,29 @@ export default function AssistantScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Pressable onPress={menu} style={styles.round} accessibilityLabel="Меню розмови" hitSlop={6}>
-          <Ionicons name="ellipsis-horizontal" size={18} color={S.ink} />
+          <Ionicons name="ellipsis-horizontal" size={20} color={S.ink} />
         </Pressable>
-        <Text style={styles.title} numberOfLines={1}>
-          Розмова
-        </Text>
-        {count > 0 ? (
+        <View style={styles.titleBox}>
+          <Text style={styles.title} numberOfLines={1}>
+            {chat && messages.length > 0 ? titleOf(chat) : 'Нова розмова'}
+          </Text>
+          {messages.length > 0 ? <Text style={styles.sub}>{`розмова · ${thoughtsWord(messages.filter((m) => m.role === 'user').length)}`}</Text> : null}
+        </View>
+        {structure ? (
+          <Pressable onPress={() => setMaterialsOpen(true)} style={styles.round} accessibilityLabel="Матеріали розмови" hitSlop={6}>
+            <Ionicons name="layers-outline" size={21} color={S.ink} />
+            {materialsCount > 0 ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{materialsCount}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        ) : null}
+        {structure ? (
+          <Pressable onPress={saveStructureFlow} style={styles.toNote} accessibilityLabel="Зберегти структуру">
+            <Text style={styles.toNoteText}>Зберегти</Text>
+          </Pressable>
+        ) : count > 0 ? (
           <Pressable onPress={toNote} style={[styles.toNote, freshCount === 0 && styles.toNoteDone]} accessibilityLabel="Відібране в нотатку">
             <Text style={[styles.toNoteText, freshCount === 0 && styles.toNoteDoneText]}>
               {freshCount > 0 ? (chat?.noteId ? `В нотатку (+${freshCount})` : `В нотатку (${freshCount})`) : 'Нотатка'}
@@ -384,6 +714,7 @@ export default function AssistantScreen() {
           <Ionicons name="close" size={18} color={S.ink} />
         </Pressable>
       </View>
+      {chat?.instruction ? <ChatInstructionChip instruction={chat.instruction} onPress={() => setInstructionFor(chat.id)} /> : null}
       {path.length > 0 ? (
         <Pressable onPress={() => parentTopic !== null && setTopic(parentTopic)} style={styles.crumbs} accessibilityLabel="Вийти з гілки">
           <Ionicons name="chevron-back" size={14} color={S.ink2} />
@@ -401,8 +732,14 @@ export default function AssistantScreen() {
           if (!picking) scroll.current?.scrollToEnd({ animated: true });
         }}
       >
-        {messages.length === 0 && !busy ? (
-          <Text style={styles.empty}>Про що хочете поговорити? Пишіть як зручно, хоч хаотично. Утримайте абзац відповіді, щоб вибрати його, а тапами додайте ще.</Text>
+        {messages.length === 0 && !busy && !routeOffer ? (
+          <View style={styles.emptyBox}>
+            <View style={styles.emptyBall}>
+              <BalloonMark size={38} color={S.accent} />
+            </View>
+            <Text style={styles.emptyTitle}>Про що поговоримо?</Text>
+            <Text style={styles.empty}>{'Пиши або кажи голосом. Утримай абзац відповіді,\nщоб вибрати його, а тапами додай ще.'}</Text>
+          </View>
         ) : null}
         {messages.map((m) => {
           const t = m.topicId ?? ROOT_TOPIC;
@@ -448,6 +785,22 @@ export default function AssistantScreen() {
                       </Pressable>
                     );
                   })}
+                  {m.structure ? (
+                    <Pressable onPress={() => setBoardOpen(m.structure!)} style={styles.structCard} accessibilityLabel="Відкрити дошку">
+                      <View style={styles.structIcon}>
+                        <Ionicons name="grid-outline" size={26} color={S.accent} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                        <Text style={styles.structTitle} numberOfLines={1}>
+                          {m.structure.title}
+                        </Text>
+                        <StructCount boardId={m.structure.boardId} fallback={m.structure.cards} style={styles.structSub} />
+                      </View>
+                      <View style={styles.structOpen}>
+                        <Text style={styles.structOpenText}>Відкрити</Text>
+                      </View>
+                    </Pressable>
+                  ) : null}
                   <Pressable onPress={() => listen(m)} style={styles.listen} hitSlop={8} accessibilityLabel="Послухати відповідь">
                     <Ionicons name={speaking === m.id ? 'stop-circle-outline' : 'volume-high-outline'} size={16} color={S.ink3} />
                     <Text style={styles.listenText}>{speaking === m.id ? 'Зупинити' : 'Послухати'}</Text>
@@ -457,6 +810,28 @@ export default function AssistantScreen() {
             </View>
           );
         })}
+        {routeOffer ? (
+          <View style={{ gap: 14 }}>
+            <View style={styles.mine}>
+              <Text style={styles.mineText}>{routeOffer.text}</Text>
+            </View>
+            <ChatRouteCard
+              title={routeOffer.title}
+              onContinue={async () => {
+                const offer = routeOffer;
+                setRouteOffer(null);
+                await openChat(offer.chatId);
+                send(offer.text, undefined, true);
+              }}
+              onStay={() => {
+                const offer = routeOffer;
+                setRouteOffer(null);
+                send(offer.text, undefined, true);
+              }}
+            />
+            <Text style={styles.thinkingText}>Відповідь прийде після вибору</Text>
+          </View>
+        ) : null}
         {busy ? (
           <View style={styles.thinking}>
             <ActivityIndicator size="small" color={S.ink3} />
@@ -464,7 +839,45 @@ export default function AssistantScreen() {
           </View>
         ) : null}
       </ScrollView>
-      <View style={[styles.foot, { paddingBottom: (keyboard > 0 && !picking ? keyboard : insets.bottom) + 10 }]}>
+      {messages.length === 0 && !busy && !picking && draft.length === 0 && !routeOffer ? (
+        <View style={styles.starters}>
+          {STARTERS.map((st) => (
+            <Pressable
+              key={st.label}
+              onPress={() => {
+                setDraft(st.text);
+                inputRef.current?.focus();
+              }}
+              style={styles.starter}
+            >
+              <Text style={styles.starterText}>{st.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {costOpen ? (
+        <>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setCostOpen(false)} accessibilityLabel="Закрити вартість" />
+          <View style={[styles.costCard, { bottom: (keyboard > 0 && !picking ? keyboard : insets.bottom) + 84 }]}>
+            <Text style={styles.costHead}>ВАРТІСТЬ</Text>
+            <View style={styles.costRow}>
+              <Text style={styles.costText}>Остання відповідь</Text>
+              <Text style={styles.costText}>{lastCost !== undefined ? `$${money(lastCost, 4)}` : '—'}</Text>
+            </View>
+            <View style={styles.costRow}>
+              <Text style={styles.costText}>Ця розмова</Text>
+              <Text style={styles.costText}>{`$${money(chatCost, 3)}`}</Text>
+            </View>
+            <View style={styles.costRow}>
+              <Text style={[styles.costText, { fontFamily: SOFT_SEMIBOLD }]}>Усього досі</Text>
+              <Text style={[styles.costText, { fontFamily: SOFT_SEMIBOLD }]}>{usage ? `$${money(usage.costUsd, 2)}` : '—'}</Text>
+            </View>
+            <Text style={styles.costNote}>У кільці — сума розмови, завжди вгору до наступної десятої долара. Воно заповнюється, поки ця десята використовується.</Text>
+          </View>
+        </>
+      ) : null}
+      <ThinkingEffect active={busy || opBusy} variant={thinkingVariant} bottom={(keyboard > 0 && !picking ? keyboard : insets.bottom) + 14} />
+      <View style={[styles.foot, { paddingBottom: (keyboard > 0 && !picking ? keyboard : insets.bottom) + 14 }]}>
         {picking ? (
           <View style={styles.pickBar}>
             <Pressable onPress={() => setPicked([])} style={styles.pickClose} accessibilityLabel="Скасувати вибір" hitSlop={6}>
@@ -484,9 +897,10 @@ export default function AssistantScreen() {
         ) : (
           <View style={styles.field}>
             <TextInput
+              ref={inputRef}
               value={draft}
               onChangeText={setDraft}
-              placeholder="Пишіть як зручно"
+              placeholder={messages.length === 0 ? 'Запитай або скажи…' : 'Продовжуй…'}
               placeholderTextColor={S.ink3}
               style={styles.input}
               multiline
@@ -496,46 +910,185 @@ export default function AssistantScreen() {
               style={[styles.mic, listening && styles.micOn]}
               accessibilityLabel={listening ? 'Зупинити диктування' : 'Диктувати'}
             >
-              <Ionicons name={listening ? 'stop' : 'mic-outline'} size={17} color={listening ? S.card : S.ink2} />
+              <Ionicons name={listening ? 'stop' : 'mic-outline'} size={21} color={listening ? S.card : S.ink2} />
             </Pressable>
-            <Pressable
-              onPress={() => {
-                if (listening) stopListening();
-                send(draft);
-              }}
-              disabled={busy || !draft.trim()}
-              style={[styles.send, (busy || !draft.trim()) && { opacity: 0.35 }]}
-              accessibilityLabel="Надіслати"
-            >
-              <Ionicons name="arrow-up" size={18} color={S.card} />
-            </Pressable>
+            {draft.trim() ? (
+              <Pressable
+                onPress={() => {
+                  if (listening) stopListening();
+                  send(draft);
+                }}
+                disabled={busy}
+                style={[styles.send, busy && { opacity: 0.35 }]}
+                accessibilityLabel="Надіслати"
+              >
+                <Ionicons name="arrow-up" size={19} color={S.card} />
+              </Pressable>
+            ) : (
+              <CostRing usd={chatCost} onPress={() => setCostOpen((v) => !v)} color={S.accent} track={S.line} ink={S.ink} />
+            )}
           </View>
         )}
-        <Text style={styles.cost}>
-          {`${lastCost !== undefined ? `≈ $${lastCost.toFixed(4)} остання відповідь · ` : ''}розмова $${chatCost.toFixed(3)}${usage ? ` · усього $${usage.costUsd.toFixed(2)}` : ''}`}
-        </Text>
       </View>
+      {boardOpen ? (
+        <ChatBoardWindow
+          boardId={boardOpen.boardId}
+          title="Дошка"
+          subtitle={opBusy ? 'ШІ працює…' : lastOp ? 'змінено' : 'чернетка'}
+          subtitleAction={!opBusy && lastOp ? { label: 'Скасувати', onPress: undoLastOp } : undefined}
+          refreshTick={boardTick}
+          fitTick={fitTick}
+          onClose={() => {
+            setBoardOpen(null);
+            setLastOp(null);
+          }}
+          onSave={saveStructureFlow}
+          renderSelectionBar={(ids, clear) => (
+            <View style={styles.selBar}>
+              {opBusy ? (
+                <View style={styles.selBusy}>
+                  <ActivityIndicator size="small" color={S.card} />
+                  <Text style={styles.selActionText}>ШІ працює…</Text>
+                </View>
+              ) : (
+                <>
+                  <Pressable onPress={() => runBoardOp('deepen', ids, clear)} style={styles.selMain} accessibilityLabel="Поглибити вибрані картки">
+                    <Text style={styles.selMainText}>Поглибити</Text>
+                  </Pressable>
+                  <Pressable onPress={() => runBoardOp('branch', ids, clear)} style={styles.selAction} accessibilityLabel="Розгалузити вибрані картки">
+                    <Text style={styles.selActionText}>Розгалузити</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          )}
+        />
+      ) : null}
+      {materialsOpen && chat ? (
+        <ChatMaterialsSheet
+          chatId={chat.id}
+          board={structure ? { boardId: structure.boardId, title: structure.title } : null}
+          onClose={() => setMaterialsOpen(false)}
+          onOpenBoard={() => {
+            setMaterialsOpen(false);
+            if (structure) setBoardOpen(structure);
+          }}
+          onOpenOutline={(id) => {
+            setMaterialsOpen(false);
+            setOutlineBoard(id);
+          }}
+          onOpenNote={(id) => navigation.navigate('Editor', { documentId: id })}
+          onSave={saveStructureFlow}
+        />
+      ) : null}
+      {outlineBoard ? <ChatOutlineSheet boardId={outlineBoard} refreshTick={boardTick} onClose={() => setOutlineBoard(null)} /> : null}
+      <ChatsSheet
+        visible={chatsOpen}
+        chats={chatList}
+        currentId={chat?.id}
+        folders={folders}
+        onClose={() => setChatsOpen(false)}
+        onOpen={openChat}
+        onNew={() => {
+          setChatsOpen(false);
+          newConversation();
+        }}
+        onFolder={(id) => {
+          setChatsOpen(false);
+          setFolderFor({ chatId: id, purpose: 'chat' });
+        }}
+        onInstruction={(id) => {
+          setChatsOpen(false);
+          setInstructionFor(id);
+        }}
+        onRename={(id, title) => setChatFields(id, { customTitle: title.trim() })}
+        onDelete={removeChat}
+      />
+      <ChatFolderSheet
+        visible={folderFor !== null}
+        chatTitle={folderFor?.purpose === 'save' ? `Куди зберегти «${structure?.title ?? 'дошку'}»` : chatList.find((c) => c.id === folderFor?.chatId)?.title ?? (chat ? titleOf(chat) : 'Розмова')}
+        folders={folders}
+        currentId={folderFor ? (fieldOf(folderFor.chatId, 'folderId') as string | undefined) : undefined}
+        onClose={() => setFolderFor(null)}
+        onPick={(id) => {
+          const target = folderFor;
+          setFolderFor(null);
+          if (!target) return;
+          if (target.purpose === 'save') saveStructureTo(id ? folders.find((f) => f.id === id) ?? null : null);
+          else setChatFields(target.chatId, { folderId: id ?? '' });
+        }}
+      />
+      <ChatInstructionSheet
+        visible={instructionFor !== null}
+        value={instructionFor ? (fieldOf(instructionFor, 'instruction') as string | undefined) : undefined}
+        onClose={() => setInstructionFor(null)}
+        onSave={(text) => {
+          const id = instructionFor;
+          setInstructionFor(null);
+          if (id) setChatFields(id, { instruction: text.trim() });
+        }}
+        onClear={() => {
+          const id = instructionFor;
+          setInstructionFor(null);
+          if (id) setChatFields(id, { instruction: '' });
+        }}
+      />
     </View>
   );
+}
+
+// «6 думок»: the number of the user's own turns, with the Ukrainian plural.
+function thoughtsWord(n: number): string {
+  const last = n % 10;
+  const tens = n % 100;
+  const word = tens >= 11 && tens <= 14 ? 'думок' : last === 1 ? 'думка' : last >= 2 && last <= 4 ? 'думки' : 'думок';
+  return `${n} ${word}`;
 }
 
 function makeStyles(S: ReturnType<typeof useSoft>) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: S.bg },
-    header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
-    round: { width: 40, height: 40, borderRadius: 20, backgroundColor: S.card, alignItems: 'center', justifyContent: 'center', boxShadow: S.shadow } as never,
-    title: { flex: 1, textAlign: 'center', fontSize: 16, fontFamily: SOFT_SEMIBOLD, color: S.ink },
-    toNote: { height: 36, borderRadius: 18, paddingHorizontal: 14, backgroundColor: S.ink, alignItems: 'center', justifyContent: 'center' },
-    toNoteText: { color: S.card, fontSize: 13, fontFamily: SOFT_SEMIBOLD },
+    header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 12 },
+    round: { width: 48, height: 48, borderRadius: 24, backgroundColor: S.card, alignItems: 'center', justifyContent: 'center', boxShadow: S.shadow } as never,
+    titleBox: { flex: 1, minWidth: 0, alignItems: 'center' },
+    title: { textAlign: 'center', fontSize: 16, fontFamily: SOFT_SEMIBOLD, color: S.ink },
+    sub: { fontSize: 12, color: S.ink2, fontFamily: SOFT_REGULAR },
+    toNote: { height: 40, borderRadius: 20, paddingHorizontal: 16, backgroundColor: S.ink, alignItems: 'center', justifyContent: 'center' },
+    toNoteText: { color: S.card, fontSize: 15, fontFamily: SOFT_MEDIUM },
     toNoteDone: { backgroundColor: S.card, boxShadow: S.shadow } as never,
     toNoteDoneText: { color: S.ink },
     crumbs: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 18, paddingBottom: 6 },
     crumbsText: { flex: 1, fontSize: 12.5, color: S.ink2, fontFamily: SOFT_MEDIUM },
     list: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24, gap: 14 },
-    empty: { fontSize: 15, lineHeight: 22, color: S.ink2, fontFamily: SOFT_REGULAR, marginTop: 24 },
+    emptyBox: { alignItems: 'center', gap: 12, marginTop: 90, paddingHorizontal: 6 },
+    emptyBall: { width: 64, height: 64, borderRadius: 32, backgroundColor: S.dark ? '#534034' : '#F9EAE0', alignItems: 'center', justifyContent: 'center' },
+    emptyTitle: { fontSize: 22, fontFamily: SOFT_SEMIBOLD, color: S.ink },
+    empty: { fontSize: 14, lineHeight: 21, color: S.ink2, fontFamily: SOFT_REGULAR, textAlign: 'center' },
+    starters: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, paddingHorizontal: 14, paddingBottom: 6 },
+    starter: { height: 40, borderRadius: 20, paddingHorizontal: 16, backgroundColor: S.card, alignItems: 'center', justifyContent: 'center', boxShadow: S.shadow } as never,
+    starterText: { fontSize: 15, color: S.ink, fontFamily: SOFT_MEDIUM },
+    selBar: { flexDirection: 'row', alignItems: 'center', gap: 2, padding: 4, borderRadius: 28, backgroundColor: S.ink, boxShadow: S.shadow } as never,
+    selMain: { height: 40, borderRadius: 20, paddingHorizontal: 16, backgroundColor: S.card, alignItems: 'center', justifyContent: 'center' },
+    selMainText: { fontSize: 15, color: S.ink, fontFamily: SOFT_MEDIUM },
+    selAction: { height: 40, borderRadius: 20, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+    selActionText: { fontSize: 15, color: S.card, fontFamily: SOFT_MEDIUM },
+    selBusy: { height: 40, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    badge: { position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: S.accent, alignItems: 'center', justifyContent: 'center' },
+    badgeText: { fontSize: 11, color: '#FFFFFF', fontFamily: SOFT_SEMIBOLD },
+    structCard: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 76, borderRadius: 22, backgroundColor: S.card, paddingLeft: 12, paddingRight: 14, marginTop: 4, boxShadow: S.shadow } as never,
+    structIcon: { width: 52, height: 52, borderRadius: 16, backgroundColor: S.dark ? '#534034' : '#F9EAE0', alignItems: 'center', justifyContent: 'center' },
+    structTitle: { fontSize: 16, color: S.ink, fontFamily: SOFT_SEMIBOLD },
+    structSub: { fontSize: 12.5, color: S.ink2, fontFamily: SOFT_REGULAR },
+    structOpen: { height: 40, borderRadius: 20, paddingHorizontal: 16, backgroundColor: S.ink, alignItems: 'center', justifyContent: 'center' },
+    structOpenText: { fontSize: 15, color: S.card, fontFamily: SOFT_MEDIUM },
+    costCard: { position: 'absolute', right: 14, width: 270, borderRadius: 22, backgroundColor: S.card, padding: 16, gap: 2, boxShadow: S.shadow } as never,
+    costHead: { fontSize: 11.5, letterSpacing: 0.4, color: S.ink2, fontFamily: SOFT_SEMIBOLD, paddingBottom: 4 },
+    costRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
+    costText: { fontSize: 14, color: S.ink, fontFamily: SOFT_REGULAR },
+    costNote: { marginTop: 6, fontSize: 12, lineHeight: 17, color: S.ink2, fontFamily: SOFT_REGULAR },
     branchMark: { alignSelf: 'flex-start', backgroundColor: S.fillSolid, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4, maxWidth: '100%' },
     branchMarkText: { fontSize: 11.5, color: S.ink2, fontFamily: SOFT_MEDIUM },
-    mine: { alignSelf: 'flex-end', maxWidth: '82%', backgroundColor: S.fillSolid, borderRadius: 18, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 10 },
+    mine: { alignSelf: 'flex-end', maxWidth: '82%', backgroundColor: S.card, borderRadius: 22, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 11, boxShadow: S.shadow } as never,
     mineText: { fontSize: 15, lineHeight: 21, color: S.ink, fontFamily: SOFT_REGULAR },
     answer: { gap: 6 },
     block: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8, borderWidth: 1.5, borderColor: 'transparent' },
@@ -549,12 +1102,12 @@ function makeStyles(S: ReturnType<typeof useSoft>) {
     error: { fontSize: 14, lineHeight: 20, color: '#B3402F', fontFamily: SOFT_REGULAR },
     thinking: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     thinkingText: { fontSize: 14, color: S.ink3, fontFamily: SOFT_REGULAR },
-    foot: { paddingHorizontal: 12, paddingTop: 8, gap: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: S.line, backgroundColor: S.bg },
-    field: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, backgroundColor: S.card, borderRadius: 22, paddingLeft: 14, paddingRight: 6, paddingVertical: 6 },
-    input: { flex: 1, maxHeight: 140, fontSize: 15, lineHeight: 21, color: S.ink, fontFamily: SOFT_REGULAR, paddingVertical: 6 },
-    mic: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+    foot: { paddingHorizontal: 10, paddingTop: 6, gap: 6, backgroundColor: S.bg },
+    field: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, backgroundColor: S.card, borderRadius: 28, minHeight: 56, paddingLeft: 18, paddingRight: 8, paddingVertical: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: S.line, boxShadow: S.shadow } as never,
+    input: { flex: 1, maxHeight: 140, fontSize: 16.5, lineHeight: 22, color: S.ink, fontFamily: SOFT_REGULAR, paddingVertical: 5 },
+    mic: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
     micOn: { backgroundColor: S.accent },
-    send: { width: 36, height: 36, borderRadius: 18, backgroundColor: S.ink, alignItems: 'center', justifyContent: 'center' },
+    send: { width: 40, height: 40, borderRadius: 20, backgroundColor: S.ink, alignItems: 'center', justifyContent: 'center' },
     pickBar: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: S.ink, borderRadius: 24, padding: 6, minHeight: 48 },
     pickClose: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
     pickCount: { flex: 1, color: S.card, fontSize: 13, fontFamily: SOFT_MEDIUM },
@@ -562,6 +1115,5 @@ function makeStyles(S: ReturnType<typeof useSoft>) {
     pickMainText: { color: S.ink, fontSize: 13, fontFamily: SOFT_SEMIBOLD },
     pickAction: { borderRadius: 17, paddingHorizontal: 11, paddingVertical: 9, alignItems: 'center', justifyContent: 'center' },
     pickActionText: { color: S.card, fontSize: 13, fontFamily: SOFT_MEDIUM },
-    cost: { textAlign: 'center', fontSize: 11.5, color: S.ink3, fontFamily: SOFT_REGULAR },
   });
 }

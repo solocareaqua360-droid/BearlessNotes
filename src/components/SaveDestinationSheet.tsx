@@ -15,6 +15,7 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { listenError } from '../utils/listenError';
+import { isChatOwned } from '../utils/chatOwned';
 
 type PickableDocument = { id: string; title: string };
 type PickableBoard = { id: string; title: string };
@@ -93,7 +94,7 @@ export default function SaveDestinationSheet({
     return onSnapshot(ownedQuery('boards'), (snapshot) => {
       setBoards(
         [...snapshot.docs]
-          .filter((d) => !d.data().calendarDate && !d.data().deletedAt && !d.data().trashed)
+          .filter((d) => !d.data().calendarDate && !d.data().deletedAt && !d.data().trashed && !isChatOwned(d.data()))
           .sort((a, b) => ((b.data().updatedAt as number) ?? 0) - ((a.data().updatedAt as number) ?? 0))
           .map((d) => ({ id: d.id, title: d.data().title }))
       );

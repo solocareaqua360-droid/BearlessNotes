@@ -4,6 +4,7 @@ import { ownedQuery } from '../utils/owned';
 import { listenError } from '../utils/listenError';
 import { categoryFromSiteName } from '../utils/linkCategory';
 import type { Block, Tag } from '../types';
+import { isChatOwned } from '../utils/chatOwned';
 
 // EVERYTHING THAT IS IN A FOLDER, from every database at once - the
 // folders' own canvas (the folders rework, step 1, 2026-10-02: folders
@@ -95,7 +96,7 @@ const SOURCES: Source[] = [
   {
     collection: 'boards',
     // A day's own board (utils/dayBoard) belongs to its day, not to the boards.
-    make: (id, d) => (d.calendarDate ? null : { ...base('boards', id, d, 'board', 'board', str(d.title) || str(d.name) || 'Дошка') }),
+    make: (id, d) => (d.calendarDate || isChatOwned(d) ? null : { ...base('boards', id, d, 'board', 'board', str(d.title) || str(d.name) || 'Дошка') }),
   },
   {
     // A SHORTCUT («ярлик-програма», the one plan's part 2): a record that opens a base's
