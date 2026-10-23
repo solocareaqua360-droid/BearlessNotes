@@ -15,6 +15,7 @@ import CarriesBackMarker from './CarriesBackMarker';
 import { FEATURES } from '../features';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Rect } from 'react-native-svg';
+import BalloonMark from './BalloonMark';
 import { GlassPortal } from './GlassPortal';
 import DockFrost from './DockFrost';
 import { topBarFrame } from './TopNavBar';
@@ -2204,7 +2205,7 @@ export default function ContextDock() {
                       },
                     ]}
                   >
-                    <Ionicons name={'sparkles' as keyof typeof Ionicons.glyphMap} size={20} color={soft.accent} />
+                    <BalloonMark size={27} color={soft.accent} />
                   </Pressable>
                   <View style={{ width: DESK_ASSIST_GAP }} pointerEvents="none" />
                 </>
@@ -2481,7 +2482,7 @@ export default function ContextDock() {
                       },
                     ]}
                   >
-                    <Ionicons name={'sparkles' as keyof typeof Ionicons.glyphMap} size={20} color={soft.accent} />
+                    <BalloonMark size={27} color={soft.accent} />
                   </Pressable>
                 ) : null
               }
