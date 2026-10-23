@@ -696,13 +696,24 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       })
       .sort();
   }, [projectsHere, focusProj, tags, focusRoots]);
+  // A folder that holds nothing of its own and whose every subfolder is already in a project (or, deeper, is such a folder
+  // itself) is all projects inside: «Без проєкту» leaves it out (the user, 2026-10-23: «Служба» kept standing there only because
+  // «РЕР» and «автослужба» live in it). Its place in the tree stays - it still opens from a path, a search, a project's crumbs.
+  const coveredByProjects = (path: string, depth = 0): boolean => {
+    if (depth > 12) return false;
+    if (shown.some((item) => (pathsOf.get(item.id) ?? []).includes(path))) return false;
+    const prefix = `${path}/`;
+    const children = [...new Set(tags.filter((t) => t.path.startsWith(prefix)).map((t) => prefix + t.path.slice(prefix.length).split('/')[0]))];
+    if (children.length === 0) return false;
+    return children.every((c) => (projectIdsOf.get(c)?.size ?? 0) > 0 || tags.some((t) => t.path === c && (t.projectRoots?.length ?? 0) > 0) || coveredByProjects(c, depth + 1));
+  };
   const folders = useMemo<FolderEntry[]>(() => {
     if (!projectsHere) return foldersAll;
     const mine =
       focusProj === NO_PROJECT
         ? foldersAll.filter((f) => {
             const ids = projectIdsOf.get(f.path);
-            return f.path === UNFILED || !ids || ids.size === 0;
+            return f.path === UNFILED || ((!ids || ids.size === 0) && !coveredByProjects(f.path));
           })
         : // EVERY folder carrying the project stands at its top level, nested or not (the user, 2026-10-22: a folder inside another
           // must not need to be a «корінь» to show). Only those with no assigned folder above them: what lies deeper is inside them.
@@ -734,7 +745,11 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tags, rootPathsOf, shown, pathsOf, filtering]);
-  const bandNoneCount = useMemo(() => foldersAll.filter((f) => f.path !== UNFILED && !(projectIdsOf.get(f.path)?.size)).length, [foldersAll, projectIdsOf]);
+  const bandNoneCount = useMemo(
+    () => foldersAll.filter((f) => f.path !== UNFILED && !(projectIdsOf.get(f.path)?.size) && !coveredByProjects(f.path)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [foldersAll, projectIdsOf, tags, shown, pathsOf]
+  );
 
   const here = useMemo(() => {
     if (inBin) return binned;

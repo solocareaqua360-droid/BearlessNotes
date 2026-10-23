@@ -82,8 +82,19 @@ export async function loadChat(): Promise<AssistantChat> {
 
 export function titleOf(chat: AssistantChat): string {
   const first = chat.messages.find((m) => m.role === 'user')?.text ?? '';
-  const clean = first.replace(/\s+/g, ' ').trim();
-  return !clean ? 'Нова розмова' : clean.length > 70 ? `${clean.slice(0, 67).trim()}…` : clean;
+  return shortTitle(first, 70) || 'Нова розмова';
+}
+
+// A name made from a text: its first sentence, and if that is still long, cut at the last WHOLE word with «…» (the user,
+// 2026-10-23: a branch named «…та містит» - cut in the middle of a word).
+export function shortTitle(text: string, max = 56): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  const sentence = clean.match(/^(.+?[.!?])(\s|$)/)?.[1] ?? clean;
+  const one = sentence.replace(/[.!?]+$/, '').trim();
+  if (one.length <= max) return one;
+  const cut = one.slice(0, max);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > max * 0.5 ? cut.slice(0, space) : cut).replace(/[,;:—–-]+$/, '').trim()}…`;
 }
 
 // Firestore keeps no arrays inside arrays and no `undefined`: the groups are stored as {keys}, the messages without empty fields.

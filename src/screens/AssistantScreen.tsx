@@ -28,6 +28,7 @@ import {
   type AssistantMessage,
 } from '../utils/assistant';
 import { writeMemoryNote, writeMemoryTree } from '../utils/assistantTree';
+import { shortTitle } from '../utils/assistant';
 import { FEATURES } from '../features';
 import { speakThoughts, stopVoice, subscribeVoice } from '../utils/thoughtVoice';
 import { useGeminiUsage } from '../utils/geminiUsage';
@@ -179,7 +180,7 @@ export default function AssistantScreen() {
     const texts = textsOf(picked);
     if (texts.length === 0) return;
     const first = blockInfo.find((b) => b.key === picked[0]);
-    const title = plainOf(texts[0]).slice(0, 44).trim() || 'Гілка';
+    const title = shortTitle(plainOf(texts[0])) || 'Гілка';
     send(
       texts.length === 1 ? `Розкажи детальніше про це: «${plainOf(texts[0])}»` : `Розкажи детальніше про це:\n${texts.map((t) => `«${plainOf(t)}»`).join('\n')}`,
       { title, parent: first?.topic ?? ROOT_TOPIC }
