@@ -233,6 +233,7 @@ import { copyNoteWithNested } from '../utils/copyNote';
 import { DESK_PILL_W } from '../components/DeskDock';
 import { blocksToMarkdown } from '../utils/blocksText';
 import { startNaming } from '../utils/docRefNaming';
+import SelectModeSheet, { type LookKind } from '../components/SelectModeSheet';
 
 // Below this, a note has no room to stand beside «Референси» and the
 // drawer lies over it instead - see referencesSplit. 300 is the drawer's
@@ -3254,6 +3255,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // Whatever the count, including none: the way OUT of select mode is
   // the first of those buttons, and the daily note had no other.
   const embeddedSelect = embedded && isSelectMode;
+  // The card open over the select-mode dock (SelectModeSheet), if any.
+  const [selectSheet, setSelectSheet] = useState<'look' | 'more' | null>(null);
+  useEffect(() => {
+    if (!isSelectMode) setSelectSheet(null);
+  }, [isSelectMode]);
   // ...and the dock turns to them as they are picked, since on the
   // calendar that card exists for nothing else: "док нам буде потрібен
   // тільки при виділенні блоків". Drawn as a swipe, the same as stepping
@@ -3282,60 +3288,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               toggleSelectMode();
             },
           },
-          // Formatting stays ONE tap, on the same card. Five buttons
-          // past the four a card fits, so the row scrolls - which is the
-          // honest way to admit there are more than fit, and far better
-          // than the alternative that was on the table: a «Тип» button
-          // opening a sheet, i.e. two taps for the thing the user
-          // explicitly asked to be able to do while picking blocks
-          // ("інколи блоки треба просто форматувати, наприклад зробити
-          // пронумерований список"). The long names are cut to one word
-          // each - a quarter of a card is no place for "Нумерований
-          // список".
-          // Every block at once, or none again - the same pair a
-          // database's selection has.
-          blocks.length > 0 && blocks.every((b) => selectedIds.has(b.id))
-            ? {
-                key: 'none',
-                icon: 'remove-circle-outline',
-                label: 'Зняти всі',
-                onPress: () => setSelectedIds(new Set()),
-              }
-            : {
-                key: 'all',
-                icon: 'checkmark-done-outline',
-                label: 'Вибрати всі',
-                onPress: () => setSelectedIds(new Set(blocks.map((b) => b.id))),
-              },
-          ...SELECT_FORMAT_ACTIONS.map((entry) => ({
-            key: `type:${entry.key}`,
-            icon: entry.family === 'material-community' ? `mc:${entry.icon}` : entry.icon,
-            label: SELECT_FORMAT_LABELS[entry.key] ?? entry.label,
-            onPress: () => convertSelectedBlocks(entry.key as BlockType),
-          })),
-          // The two lines cards are cut by (see flashcardsFromNote): a
-          // thin one between a term and its explanation, a bold one
-          // between two cards. The chosen blocks BECOME the line.
+          // SIX BUTTONS, NO SCROLLING (2026-10-23, the user's sketch V8yysG1eFMHLTRBXWYJA7T: the row had grown to sixteen). What
+          // the chosen blocks become is one card («Вигляд», pictures of the result); the two things the user does most - fold
+          // them into a nested note, cut them - stay a tap; the rest is «Ще». The old rule here was «formatting in one tap»; the
+          // user chose two taps and no scrolling over it.
           {
-            key: 'divider-thin',
-            icon: 'remove-outline',
-            label: 'Тонка лінія',
-            onPress: () => convertSelectedToDivider('solid'),
+            key: 'look',
+            icon: 'grid-outline',
+            label: 'Вигляд',
+            active: selectSheet === 'look',
+            onPress: () => setSelectSheet((v) => (v === 'look' ? null : 'look')),
           },
-          {
-            key: 'divider-bold',
-            icon: 'mc:minus-thick',
-            label: 'Жирна лінія',
-            onPress: () => convertSelectedToDivider('bold'),
-          },
-          // The chosen blocks as a note nested in this one, their place taken by its card (as in Craft).
           {
             key: 'nest',
             icon: 'document-text-outline',
             label: 'Вкладена',
             onPress: nestSelectedBlocks,
           },
-          // Cut: the chosen blocks out of the note and onto the clipboard as text that pastes back as the same kinds of blocks.
           {
             key: 'cut',
             icon: 'cut-outline',
@@ -3343,32 +3312,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onPress: cutSelectedBlocks,
           },
           {
-            key: 'copy',
-            icon: 'copy-outline',
-            label: 'Копія',
-            onPress: copySelectedBlocks,
-          },
-          // One block: an address to it, for a word in another note.
-          ...(selectedIds.size === 1
-            ? [{ key: 'link', icon: 'link-outline', label: 'Посилання', onPress: copyBlockAddress }]
-            : []),
-          {
-            key: 'clip',
-            icon: 'document-text-outline',
-            label: 'В нотатку',
-            onPress: clipSelectedToNote,
-          },
-          // Only the chosen blocks become cards - "якщо щось виділено, то
-          // з виділеного"; the "⋯" row does the whole note.
-          {
-            key: 'cards',
-            icon: 'albums-outline',
-            label: 'Картки',
-            onPress: () => {
-              const chosen = blocks.filter((b) => selectedIds.has(b.id));
-              toggleSelectMode();
-              makeFlashcards(chosen);
-            },
+            key: 'more',
+            icon: 'ellipsis-horizontal',
+            label: 'Ще',
+            active: selectSheet === 'more',
+            onPress: () => setSelectSheet((v) => (v === 'more' ? null : 'more')),
           },
           {
             key: 'delete',
@@ -5765,6 +5713,25 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     );
   }
 
+  // «Вигляд»: the chosen blocks as one kind. Everything else a block carries stays (retype keeps its side of a toggle); a
+  // block that is already that kind is left as it is - the card says what they become, not a switch.
+  function applyLookToSelected(kind: LookKind) {
+    if (selectedIds.size === 0) return;
+    snapshotBeforeChange();
+    // keepSides: what stood outside a toggle stays outside - a block made a toggle holds nothing at first.
+    setBlocks((prev) =>
+      keepSides(
+        prev,
+        prev.map((b) => {
+          if (!selectedIds.has(b.id)) return b;
+          if (kind === 'h1' || kind === 'h2' || kind === 'h3') return { ...retype(b, 'heading'), headingLevel: kind === 'h1' ? 1 : kind === 'h2' ? 2 : 3 };
+          if ((b.type ?? 'paragraph') === kind) return b;
+          return retype(b, kind as BlockType);
+        })
+      )
+    );
+  }
+
   function convertSelectedToDivider(style: 'solid' | 'bold') {
     if (selectedIds.size === 0) return;
     snapshotBeforeChange();
@@ -6098,6 +6065,34 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             setBlocks((prev) => prev.map((b) => (b.id === id && b.text.startsWith('/') ? { ...b, text: '' } : b)));
             insertTile(action, id);
           }}
+        />
+      )}
+      {isSelectMode && (dockLive || embeddedSelect) && (
+        <SelectModeSheet
+          open={selectSheet}
+          count={selectedIds.size}
+          bottom={menuClearance}
+          onClose={() => setSelectSheet(null)}
+          onLook={applyLookToSelected}
+          more={[
+            { key: 'copy', label: 'Копіювати', hint: 'текстом, без типів блоків', icon: 'copy-outline', onPress: copySelectedBlocks },
+            { key: 'clip', label: 'В окрему нотатку', hint: 'не вкладену: копією або перенести', icon: 'document-text-outline', onPress: clipSelectedToNote },
+            {
+              key: 'cards',
+              label: 'Картки',
+              hint: 'термін і пояснення',
+              icon: 'albums-outline',
+              onPress: () => {
+                const chosen = blocks.filter((b) => selectedIds.has(b.id));
+                toggleSelectMode();
+                makeFlashcards(chosen);
+              },
+            },
+            ...(selectedIds.size === 1 ? [{ key: 'link', label: 'Посилання на блок', hint: 'для слова в іншій нотатці', icon: 'link-outline', onPress: copyBlockAddress }] : []),
+            blocks.length > 0 && blocks.every((b) => selectedIds.has(b.id))
+              ? { key: 'none', label: 'Зняти всі', icon: 'remove-circle-outline', onPress: () => setSelectedIds(new Set()) }
+              : { key: 'all', label: 'Вибрати всі', icon: 'checkmark-done-outline', onPress: () => setSelectedIds(new Set(blocks.map((b) => b.id))) },
+          ]}
         />
       )}
       {tocOpen && dockLive && !notePanelOn && !canvasMode && (

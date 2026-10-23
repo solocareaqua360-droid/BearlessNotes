@@ -1979,9 +1979,9 @@ export default function ContextDock() {
     // as wide as its buttons and no wider, centred, with a hairline
     // between them so it reads as so many buttons ("скільки для них
     // місця треба, стільки хай буде"; spread over the whole strip they
-    // were three buttons lost in a plank). A LONG one (choosing blocks:
-    // nine) keeps the whole strip and scrolls, five to a view.
-    const short = actions.length <= 5;
+    // were three buttons lost in a plank). A LONG one keeps the whole strip and scrolls, five to a view. Six still fit
+    // without scrolling (2026-10-23: choosing blocks is six now - Вийти · Вигляд · Вкладена · Вирізати · Ще · Видалити).
+    const short = actions.length <= 6;
     // Never wider than the bar above it, even when short: five at full
     // width is wider than a phone's bar.
     const buttonW = short
