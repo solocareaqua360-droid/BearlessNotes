@@ -68,6 +68,7 @@ import { listMoved } from '../utils/motionHold';
 import PlaylistWindow, { videoOf, type PlaylistVideo } from '../components/PlaylistWindow';
 import TagEditSheet from '../components/TagEditSheet';
 import { FolderCardSheet, FolderProjectsSheet } from '../components/FolderStyleSheets';
+import { copyNoteWithNested } from '../utils/copyNote';
 import { useCreateFlow } from '../hooks/useCreateFlow';
 import { openCapture } from '../components/CaptureWindow';
 import Animated, { Easing as REasing, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
@@ -1855,6 +1856,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' as const },
         { id: 'folders', label: 'Папки', icon: 'pricetag-outline' as const },
         { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' as const },
+        ...(item.kind === 'document' ? [{ id: 'duplicate', label: 'Створити копію', icon: 'copy-outline' as const }] : []),
         ...(canShare ? [{ id: 'share', label: 'Поділитись', icon: 'share-social-outline' as const }] : []),
         { id: 'select', label: 'Вибрати', icon: 'checkmark-circle-outline' as const },
         ...(canBin ? [{ id: 'delete', label: isReference(item) ? 'Прибрати з папки' : 'Видалити', icon: 'trash-outline' as const, tone: 'danger' as const }] : []),
@@ -1863,7 +1865,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     if (choice === 'rename') setRenaming(item);
     else if (choice === 'folders') setFoldersFor([item]);
     else if (choice === 'share') shareItem(item);
-    else if (choice === 'select') {
+    else if (choice === 'duplicate') {
+      try {
+        const { count } = await copyNoteWithNested(item.docId);
+        notify('Копію створено', count > 1 ? `Разом із вкладеними нотатками: ${count}. Вона в «Нерозкладене».` : 'Вона в «Нерозкладене».');
+      } catch (e) {
+        notify('Не вдалося створити копію', (e as Error).message);
+      }
+    } else if (choice === 'select') {
       setSelecting(true);
       setSelected(new Set([item.id]));
     } else if (choice === 'move') {

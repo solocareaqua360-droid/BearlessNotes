@@ -229,6 +229,7 @@ import { useRenderTimer } from '../utils/perfWatch';
 import { FEATURES } from '../features';
 import DayTasksBlock from '../components/DayTasksBlock';
 import { ensureDayBoard } from '../utils/dayBoard';
+import { copyNoteWithNested } from '../utils/copyNote';
 
 // Below this, a note has no room to stand beside «Референси» and the
 // drawer lies over it instead - see referencesSplit. 300 is the drawer's
@@ -3005,6 +3006,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             { label: 'Проект', icon: 'folder-outline', checked: !!groupId, onPress: () => setGroupPickerVisible(true) },
             { label: 'Експорт', icon: 'share-outline', onPress: askExport },
             { label: 'Копіювати посилання', icon: 'link-outline', onPress: copyNoteAddress },
+            { label: 'Створити копію', icon: 'copy-outline', onPress: makeCopyOfNote },
             // The Mac: this note in a window of its own (the shell opens the same app at an address that says
             // what to open - see App.web's `open` parameter).
             ...(notePanelOn
@@ -3595,6 +3597,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   // ---- words that link to notes ---------------------------------------
+  // «Створити копію»: this note with everything nested in it, as new notes (utils/copyNote) - to be reworked without touching
+  // the original; opened at once.
+  async function makeCopyOfNote() {
+    try {
+      const { id, count } = await copyNoteWithNested(documentId);
+      notify('Копію створено', count > 1 ? `Разом із вкладеними нотатками: ${count}.` : 'Вона в «Нерозкладене».');
+      navigation.navigate('Editor', { documentId: id });
+    } catch (e) {
+      notify('Не вдалося створити копію', (e as Error).message);
+    }
+  }
+
   async function copyNoteAddress() {
     await Clipboard.setStringAsync(noteAddress(documentId));
     notify('Посилання скопійовано', 'Встав його в іншу нотатку - воно стане словом-посиланням на цю.');
