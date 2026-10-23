@@ -173,7 +173,7 @@ import AddExistingItemModal from '../components/AddExistingItemModal';
 import DocumentPickerModal from '../components/DocumentPickerModal';
 import RelatedDocuments from '../components/RelatedDocuments';
 import NestedDocuments from '../components/NestedDocuments';
-import { createOwnedNote, makeOrdinary } from '../utils/recordNotes';
+import { createOwnedNote, makeOrdinary, startOwnedNote } from '../utils/recordNotes';
 import { binNoteAsking } from '../utils/deleteNote';
 import { SHOW_OPEN_REPORTS, SLOW_OPEN_MS, takeOpenMarks } from '../utils/openTiming';
 import { logReport, markEditorGone, perfSummary } from '../utils/perfWatch';
@@ -950,6 +950,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // ⋯ «Зробити вкладеною»: choosing the note this one moves into.
   const [nestPickerOpen, setNestPickerOpen] = useState(false);
   const [noteLinkRetarget, setNoteLinkRetarget] = useState<{ blockId: string; documentId: string; label: string } | null>(null);
+  // The last words chosen in a field - kept past the moment the choice collapses, because a key typed over them reports the
+  // new caret BEFORE the new text (see the «@» over chosen words in handleBlockChange, which checks it matches exactly).
+  const lastRangeRef = useRef<{ blockId: string; start: number; end: number } | null>(null);
   const atQuery = useMemo(() => {
     if (!caret || caret.blockId !== focusedBlockId) return null;
     const block = blocks.find((b) => b.id === caret.blockId);
@@ -3558,6 +3561,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         return;
       } else if (start === pending.index && start > 0) pendingCaretRef.current = null;
     }
+    if (start !== end) lastRangeRef.current = { blockId: id, start, end };
     setActiveSelection(start === end ? null : { blockId: id, start, end });
     setCaret(start === end ? { blockId: id, pos: start } : null);
   }
@@ -4062,6 +4066,32 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         const spans = noteLinkSpans(text);
         const pos = spans.length ? spans[spans.length - 1].displayEnd : 0;
         setTimeout(() => setSelection(inputRefs.current[id], pos, pos), 40);
+      }
+    }
+    // «@» OVER CHOSEN WORDS (2026-10-23, the user, from Craft: «виділити текст, поставити перед ним собачку, і весь текст ставав
+    // вкладеною нотаткою»): the words become the title of a new note nested in this one, and a word linking to it stands where
+    // they were. Recognised only when the new text is EXACTLY the old one with the chosen range swapped for «@».
+    {
+      const range = lastRangeRef.current;
+      const before = blocks.find((b) => b.id === id);
+      const oldRaw = before?.text ?? '';
+      if (range && range.blockId === id && before && (before.type ?? 'paragraph') !== 'code') {
+        const bounds = displayBoundaries(oldRaw);
+        const rawStart = bounds[range.start];
+        const rawEnd = bounds[range.end];
+        const chosen = rawStart !== undefined && rawEnd !== undefined ? oldRaw.slice(rawStart, rawEnd) : '';
+        const name = plainTextOf(chosen).replace(/\s+/g, ' ').trim();
+        if (name && !chosen.includes('{n:') && text === oldRaw.slice(0, rawStart) + '@' + oldRaw.slice(rawEnd)) {
+          lastRangeRef.current = null;
+          const nestedId = startOwnedNote({ kind: 'note', id: documentId }, name);
+          const markup = noteLinkMarkup(nestedId, name);
+          snapshotBeforeChange();
+          setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, text: oldRaw.slice(0, rawStart) + markup + oldRaw.slice(rawEnd) } : b)));
+          bumpTextVersion(id);
+          const pos = range.start + LINK_GLYPH.length + name.length;
+          setTimeout(() => setSelection(inputRefs.current[id], pos, pos), 40);
+          return;
+        }
       }
     }
     snapshotForTyping();

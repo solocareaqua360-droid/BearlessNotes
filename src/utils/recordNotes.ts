@@ -46,6 +46,15 @@ export async function createOwnedNote(owner: DocOwner, title: string, blocks: Bl
   return ref.id;
 }
 
+// The same, with its id known AT ONCE (the write goes on in the background): a word that links to it can stand in the line in
+// the same keystroke that made it («@» over chosen words, 2026-10-23) - an addDoc waits for the server before it says the id.
+export function startOwnedNote(owner: DocOwner, title: string): string {
+  const ref = doc(collection(db, 'documents'));
+  const now = Date.now();
+  setDoc(ref, { title, blocks: [], linksTo: [], owner, createdAt: now, updatedAt: now }).catch(() => {});
+  return ref.id;
+}
+
 // «Зробити звичайною»: into the documents list, with what it holds.
 export async function makeOrdinary(docId: string): Promise<void> {
   await updateDoc(doc(db, 'documents', docId), { owner: deleteField(), ownerMain: deleteField() });
