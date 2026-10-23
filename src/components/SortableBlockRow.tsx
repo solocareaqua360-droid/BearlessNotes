@@ -49,7 +49,8 @@ type SortableBlockRowProps = {
   foldHint?: string;
   textVersion: number;
   onLayout: (e: LayoutChangeEvent) => void;
-  onDragStart: () => void;
+  // `y`: where the finger is in the row when the drag starts - the place among the blocks follows the FINGER, not the row's middle.
+  onDragStart: (y?: number) => void;
   onDragUpdate: (translationY: number) => void;
   onDragEnd: () => void;
   // At a pointer: a click on the handle, without a drag.
@@ -186,7 +187,7 @@ function SortableBlockRow({
     .enabled(!pointer)
     .activateAfterLongPress(DRAG_LONG_PRESS_MS)
     .runOnJS(true)
-    .onStart(() => onDragStart())
+    .onStart((e) => onDragStart(e.y))
     .onUpdate((e) => onDragUpdate(e.translationY))
     .onEnd(() => onDragEnd());
 
@@ -196,7 +197,7 @@ function SortableBlockRow({
         Gesture.Pan()
           .minDistance(3)
           .runOnJS(true)
-          .onStart(() => onDragStart())
+          .onStart((e) => onDragStart(e.y))
           .onUpdate((e) => onDragUpdate(e.translationY))
           .onEnd(() => onDragEnd()),
         Gesture.Tap()

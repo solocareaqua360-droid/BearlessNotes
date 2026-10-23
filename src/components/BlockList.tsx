@@ -188,7 +188,9 @@ function BlockList({
   const [insertIndex, setInsertIndexState] = useState<number | null>(null);
   const insertIndexRef = useRef<number | null>(null);
   const leaveToggleRef = useRef(false);
+  const fingerInRowRef = useRef<number | null>(null);
   const lineInsetRef = useRef(14);
+  const lineYRef = useRef(0);
   const dropLineY = useSharedValue(0);
   // Extra horizontal inset applied to the drop line while it's actively
   // being dragged between gaps (making it "trохи коротшою" / a bit
@@ -269,12 +271,11 @@ function BlockList({
     const remaining = blocksRef.current.filter((b) => !draggingSet.has(b.id));
     if (remaining.length === 0) return 0;
     if (index <= 0) return rowLayouts.current[remaining[0].id]?.y ?? 0;
-    if (index >= remaining.length) {
-      const last = remaining[remaining.length - 1];
-      const rl = rowLayouts.current[last.id];
-      return rl ? rl.y + rl.height : 0;
-    }
-    return rowLayouts.current[remaining[index].id]?.y ?? 0;
+    // The bottom of the block ABOVE the gap, not the top of the one below: when the dragged block itself stands between
+    // the two, the top of the one below is under it - often off the screen, and the line was not seen (2026-10-23).
+    const above = rowLayouts.current[remaining[Math.min(index, remaining.length) - 1].id];
+    if (above) return above.y + above.height;
+    return index < remaining.length ? rowLayouts.current[remaining[index].id]?.y ?? 0 : 0;
   }
 
   // How many non-dragged blocks have their midpoint above this Y - i.e.
@@ -305,7 +306,7 @@ function BlockList({
     return [anchorId];
   }
 
-  function handleDragStart(anchorId: string, ids: string[]) {
+  function handleDragStart(anchorId: string, ids: string[], fingerY?: number) {
     // Reset per gesture - see onHoldWithoutDrag. Deliberately NOT a state
     // update: select mode is entered on RELEASE, not here, because
     // turning it on mid-gesture re-renders the row and recomposes the
@@ -314,6 +315,7 @@ function BlockList({
     // survive its own gesture being rebuilt under it.
     dragMovedRef.current = false;
     leaveToggleRef.current = false;
+    fingerInRowRef.current = fingerY ?? null;
     hapticPickUp();
     setDraggingIds(ids);
     setDragAnchorId(anchorId);
@@ -323,9 +325,13 @@ function BlockList({
       ? computeInsertIndex(layout.y + layout.height / 2, draggingSet)
       : 0;
     setInsertIndex(currentIndex);
-    dropLineY.value = gapYFor(currentIndex, draggingSet);
-    lineInsetRef.current = 14;
-    dropLineInset.value = withTiming(14, { duration: 150 });
+    const startY = layout ? layout.y + (fingerY ?? layout.height / 2) : 0;
+    const atEnd = atSectionEnd(currentIndex, draggingSet);
+    leaveToggleRef.current = atEnd && startY > sectionEndY(currentIndex, draggingSet);
+    lineYRef.current = lineYFor(currentIndex, draggingSet);
+    dropLineY.value = lineYRef.current;
+    lineInsetRef.current = atEnd ? (leaveToggleRef.current ? 0 : 26) : 14;
+    dropLineInset.value = withTiming(lineInsetRef.current, { duration: 150 });
   }
 
   function handleDragUpdate(anchorId: string, ids: string[], translationY: number) {
@@ -334,29 +340,35 @@ function BlockList({
     const layout = rowLayouts.current[anchorId];
     if (!layout) return;
     const draggingSet = new Set(ids);
-    const currentY = layout.y + translationY + layout.height / 2;
+    // The FINGER's place in the list, not the row's middle (the user, 2026-10-23: with a tall paragraph the line ran far from
+    // the finger). The middle only when the row did not say where it was held.
+    const fingerInRow = fingerInRowRef.current;
+    const currentY = layout.y + translationY + (fingerInRow !== null ? Math.max(0, Math.min(layout.height, fingerInRow)) : layout.height / 2);
     const targetIndex = computeInsertIndex(currentY, draggingSet);
     // The end of a toggle's section is the one gap that is both «last inside» and «first outside»: where the block's middle is
     // decides - over the lower half of the last held block it stays inside (the orange line indented), below that block's
     // bottom edge it steps out (the line the full width). No extra gesture: the line shows what the drop will do.
     const atEnd = atSectionEnd(targetIndex, draggingSet);
     const out = atEnd && currentY > sectionEndY(targetIndex, draggingSet);
-    const sideChanged = out !== leaveToggleRef.current;
     leaveToggleRef.current = out;
     const inset = atEnd ? (out ? 0 : 26) : 14;
     if (inset !== lineInsetRef.current) {
       lineInsetRef.current = inset;
       dropLineInset.value = withTiming(inset, { duration: 150 });
     }
-    if (targetIndex !== insertIndexRef.current || sideChanged) {
+    // The line moves whenever where it should be drawn changes - a new gap, or the same gap's inside/outside side. (Moving
+    // only on a new gap left it on the frame's edge, unseen, until the block had travelled one block's height.)
+    const lineY = lineYFor(targetIndex, draggingSet);
+    if (targetIndex !== insertIndexRef.current || lineY !== lineYRef.current) {
       hapticSnapTick();
+      lineYRef.current = lineY;
       setInsertIndex(targetIndex);
       // overshootClamping stops it swinging past the target and settling
       // back - the "rocking like a boat" feeling - while keeping the same
       // eased, springy deceleration on the way there. The little bounce the
       // user actually wants only happens once, at the very end of the drag
       // (see handleDragEnd), not on every one of these mid-drag snaps.
-      dropLineY.value = withSpring(lineYFor(targetIndex, draggingSet), {
+      dropLineY.value = withSpring(lineY, {
         damping: 26,
         stiffness: 260,
         overshootClamping: true,
@@ -647,7 +659,7 @@ function BlockList({
   }, []);
   type RowFns = {
     onLayout: (e: LayoutChangeEvent) => void;
-    onDragStart: () => void;
+    onDragStart: (y?: number) => void;
     onDragUpdate: (translationY: number) => void;
     onDragEnd: () => void;
     onHandleClick: () => void;
@@ -663,7 +675,7 @@ function BlockList({
       const group = () => (call('dragGroupFor')?.(id) as string[]);
       fns = {
         onLayout: (e) => call('handleRowLayout')?.(id, e),
-        onDragStart: () => call('handleDragStart')?.(id, group()),
+        onDragStart: (y) => call('handleDragStart')?.(id, group(), y),
         onDragUpdate: (translationY) => call('handleDragUpdate')?.(id, group(), translationY),
         onDragEnd: () => call('handleDragEnd')?.(id, group()),
         onHandleClick: () => call('onHoldWithoutDrag')?.(id),
