@@ -1,6 +1,8 @@
 import { collection, deleteField, doc, getDoc, updateDoc } from '../firestore';
 import { db } from '../firebase';
 import { addDoc, setDoc } from './owned';
+import { documentLinksIn } from './documentLinks';
+import type { Block } from '../types';
 
 // TECHNICAL NOTES (the user's, 2026-10-02): notes that belong to a record -
 // an app's «Розбір» and its other notes, later a video lesson's note - and
@@ -37,9 +39,10 @@ export async function ensureMainNote(owner: DocOwner, title: string): Promise<st
   return id;
 }
 
-export async function createOwnedNote(owner: DocOwner, title: string): Promise<string> {
+// `blocks`: what it holds from the start (the chosen blocks of «У вкладену нотатку»).
+export async function createOwnedNote(owner: DocOwner, title: string, blocks: Block[] = []): Promise<string> {
   const now = Date.now();
-  const ref = await addDoc(collection(db, 'documents'), { title, blocks: [], owner, createdAt: now, updatedAt: now });
+  const ref = await addDoc(collection(db, 'documents'), { title, blocks, linksTo: documentLinksIn(blocks), owner, createdAt: now, updatedAt: now });
   return ref.id;
 }
 

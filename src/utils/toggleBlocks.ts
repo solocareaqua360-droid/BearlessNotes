@@ -115,3 +115,22 @@ export function mergeVisibleOrder(all: Block[], visibleOrder: Block[]): Block[] 
   out.push(...pending);
   return out;
 }
+
+// After blocks were taken out or put in: every block that stood OUTSIDE a toggle before stays outside (the first of them
+// that would now fall under one is marked `exitsToggle`). The «stepped out» mark rides on one block; when that block leaves,
+// what was below it must not fall into the toggle above (2026-10-23, the user's bug).
+export function keepSides(before: Block[], after: Block[]): Block[] {
+  const outside = new Set(before.filter((b) => b.type === 'toggle' || !ownerToggleId(before, b.id)).map((b) => b.id));
+  const out = [...after];
+  let under = false;
+  for (let i = 0; i < out.length; i++) {
+    const b = out[i];
+    if (b.type === 'toggle') under = true;
+    else if (b.exitsToggle) under = false;
+    else if (under && outside.has(b.id)) {
+      out[i] = { ...b, exitsToggle: true };
+      under = false;
+    }
+  }
+  return out;
+}

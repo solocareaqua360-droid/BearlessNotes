@@ -110,7 +110,7 @@ import TextSelection from '../components/TextSelection';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { createFlashcardsFromNote } from '../utils/flashcardsFromNote';
 import { clipBlocksToNote, clippedBlock } from '../utils/copyToNote';
-import { isUnderToggle, mergeVisibleOrder, foldHints, ownerToggleId, visibleBlocks } from '../utils/toggleBlocks';
+import { isUnderToggle, keepSides, mergeVisibleOrder, foldHints, ownerToggleId, visibleBlocks } from '../utils/toggleBlocks';
 import { blockMatchesQuery } from '../utils/documentPreview';
 import DocumentQuickLook, { QuickLookKind, quickLookKindFor } from '../components/DocumentQuickLook';
 import GroupPickerSheet from '../components/GroupPickerSheet';
@@ -232,6 +232,7 @@ import { ensureDayBoard } from '../utils/dayBoard';
 import { copyNoteWithNested } from '../utils/copyNote';
 import { DESK_PILL_W } from '../components/DeskDock';
 import { blocksToMarkdown } from '../utils/blocksText';
+import { startNaming } from '../utils/docRefNaming';
 
 // Below this, a note has no room to stand beside «Референси» and the
 // drawer lies over it instead - see referencesSplit. 300 is the drawer's
@@ -3327,6 +3328,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             label: 'Жирна лінія',
             onPress: () => convertSelectedToDivider('bold'),
           },
+          // The chosen blocks as a note nested in this one, their place taken by its card (as in Craft).
+          {
+            key: 'nest',
+            icon: 'document-text-outline',
+            label: 'Вкладена',
+            onPress: nestSelectedBlocks,
+          },
           // Cut: the chosen blocks out of the note and onto the clipboard as text that pastes back as the same kinds of blocks.
           {
             key: 'cut',
@@ -5436,6 +5444,43 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     await Clipboard.setStringAsync(text);
   }
 
+  // «У вкладену нотатку» (2026-10-23, the user, from Craft: «виділити декілька блоків і швидко створити з них вкладену нотатку,
+  // залишалось тільки задати назву»): the chosen blocks MOVE into a new note nested in this one (in «Вкладені» at the foot), and
+  // where the first of them stood its card stands now, with a field and the caret in it for the name. One step of undo puts the
+  // blocks back (the nested note stays, empty of nothing - it is the user's to delete).
+  async function nestSelectedBlocks() {
+    const ordered = blocks.filter((b) => selectedIds.has(b.id));
+    if (ordered.length === 0) return;
+    let id: string;
+    try {
+      id = await createOwnedNote({ kind: 'note', id: documentId }, '', ordered.map((b) => clippedBlock(b, true)));
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+      return;
+    }
+    const card = blockFromDocument({ id });
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const at = prev.findIndex((b) => selectedIds.has(b.id));
+      const first = prev[at];
+      // The card takes the first block's side of a toggle: inside stays inside, a block that stepped out keeps the card out.
+      const placed = first?.exitsToggle ? { ...card, exitsToggle: true } : card;
+      const next: Block[] = [];
+      prev.forEach((b, i) => {
+        if (i === at) next.push(placed);
+        if (!selectedIds.has(b.id)) next.push(b);
+      });
+      return keepSides(prev, next);
+    });
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+    startNaming(card.id, (name) => {
+      if (!name) return;
+      updateDoc(doc(db, 'documents', id), { title: name, updatedAt: Date.now() }).catch((e) => notify('Назва не збереглася', (e as Error).message));
+      setBlocks((prev) => prev.map((b) => (b.id === card.id ? { ...b, docRefTitle: name } : b)));
+    });
+  }
+
   // «Вирізати» (2026-10-23, the user: no cut for what is chosen): the chosen blocks go onto the clipboard as text that pastes
   // back as blocks of the same kinds (utils/blocksText + pasteBlocks) - in this note, in another, or into a toggle - and are taken
   // out here, one step of undo.
@@ -5450,7 +5495,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     await Clipboard.setStringAsync(text);
     snapshotBeforeChange();
     setBlocks((prev) => {
-      const next = prev.filter((block) => !selectedIds.has(block.id));
+      const next = keepSides(prev, prev.filter((block) => !selectedIds.has(block.id)));
       return next.length > 0 ? next : [newBlock()];
     });
     setSelectedIds(new Set());

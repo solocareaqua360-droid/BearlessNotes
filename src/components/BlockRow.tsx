@@ -5,6 +5,7 @@ import { foldOf } from '../utils/toggleBlocks';
 import SketchLayer from './SketchLayer';
 import { INK, drawingViewBox } from '../utils/sketchGeometry';
 import { rememberTableTap, useTableWide } from '../utils/tableTap';
+import { finishNaming, useNamingBlock } from '../utils/docRefNaming';
 import { requestBoardJump } from '../utils/boardMap';
 import { ComponentProps, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -224,6 +225,8 @@ export default function BlockRow({
   const tableBoxRef = useRef({ width: 0, height: 0 });
   // A table wider than its place scrolls itself even locked (see TableBlockContent): its cells take the taps then, and the wrapper lets touches through.
   const tableWide = useTableWide(item.type === 'table' ? item.id : '');
+  // A note just made from chosen blocks asks for its name in its own card (utils/docRefNaming) - on the page, not in a preview.
+  const naming = useNamingBlock(item.type === 'docRef' && !preview ? item.id : '');
 
   // THE FORMATTING WHILE TYPING (features.liveFormat): the field's text as styled runs - the block's own runs, so the
   // field shows what the block shows at rest. Not for code (never parsed) nor an empty block. A link to a note nested
@@ -790,6 +793,28 @@ export default function BlockRow({
     // instead of navigating away from it.
     content = (
       <View style={styles.dbRowBlock} pointerEvents={isSelectMode ? 'none' : 'auto'}>
+        {naming && (
+          <TextInput
+            autoFocus
+            placeholder="Назва нотатки"
+            placeholderTextColor={theme.ink.faint}
+            returnKeyType="done"
+            blurOnSubmit
+            onSubmitEditing={(e) => finishNaming(item.id, e.nativeEvent.text)}
+            onEndEditing={(e) => finishNaming(item.id, e.nativeEvent.text)}
+            style={{
+              fontSize: PAGE_TEXT.size,
+              lineHeight: PAGE_TEXT.line,
+              color: theme.ink.primary,
+              borderWidth: 1,
+              borderColor: theme.accent,
+              borderRadius: 14,
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              marginBottom: 6,
+            }}
+          />
+        )}
         <LiveDocumentCard
           documentId={item.docRefId}
           fallbackTitle={item.docRefTitle}
