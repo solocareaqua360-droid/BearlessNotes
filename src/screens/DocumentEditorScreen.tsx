@@ -230,6 +230,7 @@ import { FEATURES } from '../features';
 import DayTasksBlock from '../components/DayTasksBlock';
 import { ensureDayBoard } from '../utils/dayBoard';
 import { copyNoteWithNested } from '../utils/copyNote';
+import { DESK_PILL_W } from '../components/DeskDock';
 
 // Below this, a note has no room to stand beside «Референси» and the
 // drawer lies over it instead - see referencesSplit. 300 is the drawer's
@@ -239,7 +240,7 @@ const DESKTOP_NOTE_MEASURE = 860;
 // The note's dock on the phone is a CAPSULE of three buttons (Полотно, Референси, Зміст) standing 20 from the left edge, each 84 wide with 4 of
 // padding either side - measured off the phone (uiautomator: 53..735 px at 420 dpi). The contents card is exactly that wide, not the dock's whole row.
 const NOTE_DOCK_LEFT = 20;
-const NOTE_DOCK_CAPSULE_W = 3 * 84 + 8;
+const NOTE_DOCK_CAPSULE_W = DESK_PILL_W;
 const REFERENCES_SPLIT_MIN = 640;
 
 // The project badge's own line: its height (3 of padding above and below

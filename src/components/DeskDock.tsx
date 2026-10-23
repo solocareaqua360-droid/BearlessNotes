@@ -40,6 +40,10 @@ const PILL_PAD = 4;
 // The pill without its lens zone, and with it.
 const PILL_CORE = 185;
 const PILL_FULL = 237;
+// The desks' capsule as drawn at rest - the note's dock capsule is the same width, so the two docks stand alike (2026-10-23).
+export const DESK_PILL_W = PILL_FULL;
+// The round button for the AI conversation: the same size as «+», 4 to its left.
+export const DESK_ASSIST_GAP = 4;
 const LENS_ZONE = PILL_FULL - PILL_CORE;
 const LENS_ROOT = PILL_CORE + LENS_ZONE / 2 - 2;
 const LENS_IN = 28;

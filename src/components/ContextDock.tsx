@@ -10,7 +10,7 @@ import { Ionicons } from './icons/Ionicons';
 import { openCapture } from './CaptureWindow';
 import { openDeskSwitcher, useDeskSwitcherAvailable, useDeskSwitcherRight } from '../navigation/deskSwitcherBus';
 import { useDeskBeads, useDeskReach, useDockDesksWanted } from '../navigation/deskBeadsBus';
-import DeskDock, { DESK_PLUS } from './DeskDock';
+import DeskDock, { DESK_ASSIST_GAP, DESK_PILL_W, DESK_PLUS } from './DeskDock';
 import CarriesBackMarker from './CarriesBackMarker';
 import { FEATURES } from '../features';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -2158,7 +2158,8 @@ export default function ContextDock() {
       if (primary && beads.right) {
         const rest = actions.filter((a) => a !== primary);
         const NOTE_SIDE = 48;
-        const noteButtonW = Math.min(STRIP_BUTTON_W, Math.floor((frame.width - NOTE_SIDE * 2 - 16 - 16 - 8) / Math.max(1, rest.length)));
+        // The capsule is the desks' own width (DESK_PILL_W), its buttons share it equally.
+        const noteButtonW = Math.floor((DESK_PILL_W - 8) / Math.max(1, rest.length));
         const back = beads.right;
         return (
           <DockPortal>
@@ -2168,7 +2169,7 @@ export default function ContextDock() {
               style={[styles.twoBeads, { bottom: softRest, left: frame.left, width: frame.width, height: TWO_BEAD, alignItems: 'center' }]}
             >
               {rest.length > 0 && (
-                <View style={[surface, { height: 60, borderRadius: 30, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center' }]}>
+                <View style={[surface, { width: DESK_PILL_W, height: 60, borderRadius: 30, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center' }]}>
                   {rest.map((action) => (
                     <ActionButton
                       key={action.key}
@@ -2184,6 +2185,30 @@ export default function ContextDock() {
                 </View>
               )}
               <View style={{ flex: 1 }} pointerEvents="none" />
+              {FEATURES.assistant && (
+                // The same round button as on the start desks, left of the pencil where it stands left of «+».
+                <>
+                  <Pressable
+                    onPress={() => navigationRef.isReady() && (navigationRef.navigate as (name: string) => void)('Assistant')}
+                    accessibilityLabel="Розмова з ШІ"
+                    style={({ pressed }) => [
+                      styles.softButton,
+                      {
+                        width: NOTE_SIDE,
+                        height: NOTE_SIDE,
+                        borderRadius: NOTE_SIDE / 2,
+                        backgroundColor: pressed ? soft.fillSolid : soft.card,
+                        borderWidth: 2,
+                        borderColor: soft.accent,
+                        boxShadow: soft.shadow,
+                      },
+                    ]}
+                  >
+                    <Ionicons name={'sparkles' as keyof typeof Ionicons.glyphMap} size={20} color={soft.accent} />
+                  </Pressable>
+                  <View style={{ width: DESK_ASSIST_GAP }} pointerEvents="none" />
+                </>
+              )}
               <Pressable
                 onPress={primary.onPress}
                 onLongPress={primary.onLongPress}
