@@ -3680,13 +3680,52 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         { id: 'open', label: 'Відкрити нотатку', icon: 'document-text-outline' },
         { id: 'rename', label: 'Змінити назву', icon: 'pencil-outline' },
         { id: 'retarget', label: 'Інша нотатка…', icon: 'swap-horizontal-outline' },
+        { id: 'card', label: 'Показати карткою', icon: 'albums-outline' },
         { id: 'unlink', label: 'Прибрати посилання', icon: 'close-circle-outline', tone: 'danger' },
       ],
     });
-    if (choice === 'open') openNoteLink(target);
+    if (choice === 'card') linkToCard(blockId, target, label);
+    else if (choice === 'open') openNoteLink(target);
     else if (choice === 'rename') setNoteLinkRename({ blockId, documentId: target, label });
     else if (choice === 'retarget') setNoteLinkRetarget({ blockId, documentId: target, label });
     else if (choice === 'unlink') replaceNoteLink(blockId, target, label, (span) => span.label);
+  }
+
+  // WORD <-> CARD (2026-10-23, the user, from Craft: «перетворення слова посилання на вкладену нотатку і назад - це по факту
+  // лише зміна вигляду»): the same note, met as a word in a line or as a card standing on its own. The word becomes a card
+  // under the words before it (the words after it go on below the card); a card becomes a line holding just its word.
+  function linkToCard(blockId: string, target: string, label: string) {
+    const documentId = parseNoteRef(target).documentId;
+    const card = blockFromDocument({ id: documentId, title: documentIndex.get(documentId)?.title || label });
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const at = prev.findIndex((b) => b.id === blockId);
+      const b = prev[at];
+      if (!b) return prev;
+      const raw = b.text ?? '';
+      const span = noteLinkSpans(raw).find((sp) => sp.documentId === target && sp.label === label);
+      if (!span) return prev;
+      const before = raw.slice(0, span.rawStart).trimEnd();
+      const after = raw.slice(span.rawEnd).trimStart();
+      const placed: Block[] = [];
+      if (before) placed.push({ ...b, text: before });
+      placed.push(!before && b.exitsToggle ? { ...card, exitsToggle: true } : card);
+      if (after) placed.push(buildBlock(generateId(), 'paragraph', after));
+      return keepSides(prev, [...prev.slice(0, at), ...placed, ...prev.slice(at + 1)]);
+    });
+    bumpTextVersion(blockId);
+  }
+
+  function cardToLink(blockId: string) {
+    snapshotBeforeChange();
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b.id !== blockId || b.type !== 'docRef' || !b.docRefId) return b;
+        const name = (documentIndex.get(b.docRefId)?.title || b.docRefTitle || '').trim() || 'Без назви';
+        return { ...retype(b, 'paragraph'), text: noteLinkMarkup(b.docRefId, name) };
+      })
+    );
+    bumpTextVersion(blockId);
   }
 
   // The same words, now leading to another note. A label that was simply
@@ -6088,6 +6127,39 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 makeFlashcards(chosen);
               },
             },
+            ...(selectedIds.size === 1 && blocks.find((b) => selectedIds.has(b.id))?.type === 'docRef'
+              ? [
+                  {
+                    key: 'asword',
+                    label: 'Показати словом',
+                    hint: 'та сама нотатка, посиланням у рядку',
+                    icon: 'text-outline',
+                    onPress: () => {
+                      const id = blocks.find((b) => selectedIds.has(b.id))?.id;
+                      toggleSelectMode();
+                      if (id) cardToLink(id);
+                    },
+                  },
+                ]
+              : []),
+            // One block with a word linking to a note: the same note as a card (the way back from «Показати словом»).
+            ...(() => {
+              const one = selectedIds.size === 1 ? blocks.find((b) => selectedIds.has(b.id)) : undefined;
+              const span = one && one.type !== 'docRef' ? noteLinkSpans(one.text ?? '')[0] : undefined;
+              if (!one || !span) return [];
+              return [
+                {
+                  key: 'ascard',
+                  label: 'Показати карткою',
+                  hint: `«${span.label}» окремою карткою`,
+                  icon: 'albums-outline',
+                  onPress: () => {
+                    toggleSelectMode();
+                    linkToCard(one.id, span.documentId, span.label);
+                  },
+                },
+              ];
+            })(),
             ...(selectedIds.size === 1 ? [{ key: 'link', label: 'Посилання на блок', hint: 'для слова в іншій нотатці', icon: 'link-outline', onPress: copyBlockAddress }] : []),
             blocks.length > 0 && blocks.every((b) => selectedIds.has(b.id))
               ? { key: 'none', label: 'Зняти всі', icon: 'remove-circle-outline', onPress: () => setSelectedIds(new Set()) }
