@@ -14,7 +14,7 @@ export function blocksToMarkdown(blocks: Block[]): string {
     const text = b.text ?? '';
     switch (type) {
       case 'heading':
-        out.push(`${'#'.repeat(Math.min(3, Math.max(1, (b.headingLevel ?? 2) - 1)))} ${text}`);
+        out.push(`${'#'.repeat(Math.min(3, Math.max(1, b.headingLevel ?? 2)))} ${text}`);
         return;
       case 'bulleted':
         out.push(`- ${text}`);
