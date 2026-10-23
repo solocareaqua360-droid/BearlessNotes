@@ -113,7 +113,8 @@ export default function RootNavigator() {
       <Stack.Screen name="Groups" component={GroupsScreen} />
       <Stack.Screen name="Explorer" component={ExplorerScreen} />
       <Stack.Screen name="Thoughts" component={ThoughtsScreen} />
-      <Stack.Screen name="Assistant" component={AssistantScreen} />
+      {/* No slide of its own: it opens and closes under the sheet that grows out of the balloon (utils/assistMorph). */}
+      <Stack.Screen name="Assistant" component={AssistantScreen} options={{ animation: 'none' }} />
       <Stack.Screen name="TagItems" component={TagItemsScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="Search" component={SearchScreen} />

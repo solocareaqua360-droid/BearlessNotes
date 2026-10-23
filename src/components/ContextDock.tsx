@@ -16,6 +16,7 @@ import { FEATURES } from '../features';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Rect } from 'react-native-svg';
 import BalloonMark from './BalloonMark';
+import { assistDockCover, openAssistant } from '../utils/assistMorph';
 import { GlassPortal } from './GlassPortal';
 import DockFrost from './DockFrost';
 import { topBarFrame } from './TopNavBar';
@@ -2464,27 +2465,20 @@ export default function ContextDock() {
                   </Pressable>
                 </SlideOpen>
               }
-              rootExtraEl={
-                FEATURES.assistant ? (
-                  <Pressable
-                    onPress={() => navigationRef.isReady() && (navigationRef.navigate as (name: string) => void)('Assistant')}
-                    accessibilityLabel="Розмова з ШІ"
-                    style={({ pressed }) => [
-                      styles.softFieldCreate,
-                      {
-                        width: DESK_PLUS,
-                        height: DESK_PLUS,
-                        borderRadius: DESK_PLUS / 2,
-                        backgroundColor: pressed ? soft.fillSolid : soft.card,
-                        borderWidth: 2,
-                        borderColor: soft.accent,
-                        boxShadow: soft.shadow,
-                      },
-                    ]}
-                  >
-                    <BalloonMark size={27} color={soft.accent} />
-                  </Pressable>
-                ) : null
+              // The AI conversation: the balloon among the places, opening a window out of itself (utils/assistMorph);
+              // the round button left of «+» it replaced is gone (2026-10-23, the user's sketch «Кулька серед місць»).
+              assist={
+                FEATURES.assistant
+                  ? {
+                      // The sheet starts as the orange of the capsule it grows out of, and the window comes up through it.
+                      onOpen: () =>
+                        openAssistant(
+                          () => navigationRef.isReady() && (navigationRef.navigate as (name: string) => void)('Assistant'),
+                          soft.dark ? '#3D2B20' : '#FBE7D8',
+                          soft.bg
+                        ),
+                    }
+                  : undefined
               }
               extraEl={
                 right.extra ? (
@@ -3218,7 +3212,7 @@ function DockPortal({ children }: { children: ReactNode }) {
     // Under the chrome morph's stand-in (utils/chromeMorph) it is hidden
     // at once - the stand-in draws its picture in exactly its place.
     () => ({
-      opacity: (active && progress ? 1 - Math.max(progress.left.value, progress.right.value) : 1) * (1 - chromeCover.value),
+      opacity: (active && progress ? 1 - Math.max(progress.left.value, progress.right.value) : 1) * (1 - chromeCover.value) * (1 - assistDockCover.value),
     }),
     [active, progress]
   );

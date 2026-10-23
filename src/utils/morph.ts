@@ -30,8 +30,9 @@ export type Rect = { x: number; y: number; width: number; height: number };
 // inner screen, where a note opens in a pane beside the list. That node
 // only exists once the note is open, so it is measured after `update`.
 type Driver = {
-  open: (from: Rect, radius: number, color: string | undefined, key: string, update: () => void, into?: string) => void;
-  back: (key: string, color: string | undefined, leave: () => void, from?: string) => void;
+  // `toColor`: the sheet turns into this colour on its way (the AI's orange circle becoming the conversation's paper).
+  open: (from: Rect, radius: number, color: string | undefined, key: string, update: () => void, into?: string, slow?: boolean, toColor?: string) => void;
+  back: (key: string, color: string | undefined, leave: () => void, from?: string, toColor?: string) => void;
 };
 
 let driver: Driver | null = null;
@@ -182,15 +183,34 @@ export function morph(
   });
 }
 
+// A SHEET GROWN OUT OF A SMALL THING that is not a card of a page (2026-10-23: the AI conversation opening out of its
+// balloon in the dock): the plain sheet of MorphHost grows from the registered node to the full screen, the screen is
+// opened under it, and the sheet fades once the screen says it is drawn (morphLanded) - the same move a note in a pane
+// makes. No node, no driver: it simply opens.
+export function morphSheet(key: string, update: () => void, opts?: { color?: string; toColor?: string; radius?: number }): void {
+  const run = driver;
+  if (!run) {
+    update();
+    return;
+  }
+  measureCard(key).then((from) => {
+    if (!from) {
+      update();
+      return;
+    }
+    run.open(from, opts?.radius ?? Math.min(from.width, from.height) / 2, opts?.color, key, update, undefined, true, opts?.toColor);
+  });
+}
+
 // The page is left: the sheet comes up over it, `leave` takes the screen
 // away under the sheet, and the sheet folds onto the card (or fades, with
 // no card on screen to fold onto).
-export function morphBack(key: string, leave: () => void, opts?: { color?: string; from?: string }): void {
+export function morphBack(key: string, leave: () => void, opts?: { color?: string; toColor?: string; from?: string }): void {
   if (!driver) {
     leave();
     return;
   }
-  driver.back(key, opts?.color, leave, opts?.from);
+  driver.back(key, opts?.color, leave, opts?.from, opts?.toColor);
 }
 
 // Several dataSet markers on one element - the web's concern; nothing here.

@@ -1,4 +1,4 @@
-import { ReactElement, ReactNode, useEffect, useRef } from 'react';
+import { ReactElement, ReactNode, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { Ionicons } from './icons/Ionicons';
@@ -8,6 +8,9 @@ import { SOFT_REGULAR } from '../utils/fonts';
 import { chromeCompact, useChromeCompactFlag } from '../navigation/chromeScroll';
 import { setDockCarriesBack, useExtraDeskCount } from '../navigation/deskBeadsBus';
 import { FEATURES } from '../features';
+import { morphCardRef } from '../utils/morph';
+import { ASSIST_KEY, assistFlown, assistHeld, onAssistHeld } from '../utils/assistMorph';
+import BalloonMark from './BalloonMark';
 
 // THE DESK DOCK (2026-10-12, the user's sketch and words: «лупа відривається, як крапля, і приєднується до плюса»).
 //
@@ -135,7 +138,7 @@ function GrowOnTouch({ style, children }: { style: object; children: ReactNode }
     </Animated.View>
   );
 }
-function DeskBeadButton({ d, i, soft, onPick }: { d: DeskBead; i: number; soft: SoftTokens; onPick: (i: number) => void }) {
+function DeskBeadButton({ d, i, soft, onPick, active }: { d: DeskBead; i: number; soft: SoftTokens; onPick: (i: number) => void; active?: boolean }) {
   const g = useGrow();
   return (
     <Pressable
@@ -149,7 +152,29 @@ function DeskBeadButton({ d, i, soft, onPick }: { d: DeskBead; i: number; soft: 
       style={[styles.bead, { left: PILL_PAD + i * BEAD_W, top: (PILL_H - BEAD_H) / 2, width: BEAD_W, height: BEAD_H }]}
     >
       <Animated.View style={g.style}>
-        <Ionicons name={d.icon as keyof typeof Ionicons.glyphMap} size={24} color={soft.ink} />
+        <Ionicons name={d.icon as keyof typeof Ionicons.glyphMap} size={24} color={active ? soft.accent : soft.ink} />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// The balloon among the places: drawn like a desk, the window it opens grows out of it (utils/assistMorph).
+function AssistBead({ i, soft, active, onPress }: { i: number; soft: SoftTokens; active: boolean; onPress: () => void }) {
+  const g = useGrow();
+  // Flown out into its window: the place stands empty (utils/assistMorph).
+  const away = useAnimatedStyle(() => ({ opacity: 1 - assistFlown.value }));
+  return (
+    <Pressable
+      ref={morphCardRef(ASSIST_KEY) as never}
+      collapsable={false}
+      onPress={onPress}
+      onPressIn={g.on}
+      onPressOut={g.off}
+      accessibilityLabel="Розмова з ШІ"
+      style={[styles.bead, { left: PILL_PAD + i * BEAD_W, top: (PILL_H - BEAD_H) / 2, width: BEAD_W, height: BEAD_H }]}
+    >
+      <Animated.View style={[g.style, away]}>
+        <BalloonMark size={26} color={active ? soft.accent : soft.ink} />
       </Animated.View>
     </Pressable>
   );
@@ -173,7 +198,10 @@ export default function DeskDock({
   backIcon,
   onBack,
   circleBack,
+  assist,
 }: {
+  // THE BALLOON among the places (the AI conversation): opens a window out of itself; `back` is called once it is shut.
+  assist?: { onOpen: () => void };
   state: 'root' | 'inside';
   width: number;
   soft: SoftTokens;
@@ -197,6 +225,11 @@ export default function DeskDock({
   circleBack?: boolean;
 }) {
   const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow };
+  // With the balloon the places are one bead more, and the pill as much wider; the search lens stays at its end.
+  const assistIndex = assist ? desks.length : -1;
+  const pillCore = PILL_CORE + (assist ? BEAD_W : 0);
+  const pillFull = PILL_FULL + (assist ? BEAD_W : 0);
+  const lensRoot = pillCore + LENS_ZONE / 2 - 2;
   const xr = width - BACK - GAP;
   const plusLeft = xr - INSET - PLUS;
   const extraLeft = plusLeft - INSET - PLUS;
@@ -208,12 +241,20 @@ export default function DeskDock({
   }, []);
   const extraDesks = Math.min(useExtraDeskCount(), 5);
   // The current desk's capsule: its two edges, each on its own spring.
-  const activeIndex = desks.findIndex((d) => d.active);
+  const deskIndex = desks.findIndex((d) => d.active);
+  // While the balloon's window opens, stands and folds back, the place in front is the balloon (utils/assistMorph).
+  const heldNow = !!assist && assistHeld();
+  const activeIndex = heldNow ? desks.length : deskIndex;
+  // Which bead wears the accent: the desk in front, or the balloon while its window opens and stands.
+  const [shownIndex, setShownIndex] = useState(activeIndex);
+  useEffect(() => setShownIndex(activeIndex), [activeIndex]);
+  const desksRef = useRef(desks);
+  desksRef.current = desks;
   // The capsule is a journey (from, to) and a clock (ms into it); at rest from === to and the clock stands at its end.
   const born = (() => {
     const m = capFresh();
     if (m) return { from: m.from, to: m.to, t: Date.now() - m.at };
-    const i = lastDeskIndex >= 0 && lastDeskIndex < desks.length ? lastDeskIndex : Math.max(0, activeIndex);
+    const i = heldNow ? desks.length : lastDeskIndex >= 0 && lastDeskIndex < desks.length ? lastDeskIndex : Math.max(0, activeIndex);
     return { from: i, to: i, t: CAP_END };
   })();
   const capFrom = useSharedValue(born.from);
@@ -222,6 +263,7 @@ export default function DeskDock({
   // The journey this dock is already running - never restarted: the same dock lives on through the hand-over now, and a
   // restart by the JS clock pulled the capsule back ~40 px (the UI's run had started later than the tap).
   const running = useRef<string | null>(born.t < CAP_END ? `${born.from}>${born.to}` : null);
+  const runCapsuleRef = useRef<(from: number, to: number, e: number) => void>(() => {});
   const runCapsule = (from: number, to: number, e: number) => {
     running.current = `${from}>${to}`;
     capFrom.value = from;
@@ -229,6 +271,7 @@ export default function DeskDock({
     capT.value = e;
     capT.value = withTiming(CAP_END, { duration: Math.max(0, CAP_END - e), easing: Easing.linear });
   };
+  runCapsuleRef.current = runCapsule;
   // A desk tapped on THIS dock: off at once.
   const pick = (i: number) => {
     const from = lastDeskIndex >= 0 ? lastDeskIndex : activeIndex;
@@ -264,9 +307,32 @@ export default function DeskDock({
     runCapsule(from, activeIndex, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex]);
+  // The window has folded back into the balloon: the capsule slides home to the desk in front.
+  useEffect(() => {
+    if (!assist) return;
+    return onAssistHeld((h) => {
+      if (h) return;
+      const home = desksRef.current.findIndex((d) => d.active);
+      if (home < 0) return;
+      capMotion = { from: desks.length, to: home, at: Date.now() };
+      lastDeskIndex = home;
+      runCapsuleRef.current(desks.length, home, 0);
+      setShownIndex(home);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!assist, desks.length]);
   const capStyle = useAnimatedStyle(() => {
     const c = capAt(capFrom.value, capTo.value, capT.value);
-    return { left: c.L, width: Math.max(0, c.R - c.L), top: (PILL_H - c.H) / 2, height: c.H, borderRadius: c.H / 2 };
+    // On the balloon while it has flown out, the circle has gone with it.
+    const onBalloon = assistIndex >= 0 && capTo.value === assistIndex;
+    return {
+      left: c.L,
+      width: Math.max(0, c.R - c.L),
+      top: (PILL_H - c.H) / 2,
+      height: c.H,
+      borderRadius: c.H / 2,
+      opacity: onBalloon ? 1 - assistFlown.value : 1,
+    };
   });
   const lensGrow = useGrow();
   // The pill's own answer to a touch: 0 at rest, 1 held.
@@ -301,13 +367,13 @@ export default function DeskDock({
     'worklet';
     if (v < 0.4) {
       const to = xr - BODY_START + 28;
-      return LENS_ROOT + (to - LENS_ROOT) * easeInOut(v / 0.4);
+      return lensRoot + (to - lensRoot) * easeInOut(v / 0.4);
     }
     return xr - bodyWidth(v) + LENS_IN;
   };
 
   const pillStyle = useAnimatedStyle(() => ({
-    width: interpolate(p.value, [0, 0.12, 0.4, 0.85], [PILL_FULL, PILL_CORE, PILL_CORE, 0], Extrapolation.CLAMP),
+    width: interpolate(p.value, [0, 0.12, 0.4, 0.85], [pillFull, pillCore, pillCore, 0], Extrapolation.CLAMP),
     opacity: interpolate(p.value, [0.5, 0.85], [1, 0], Extrapolation.CLAMP),
   }));
   const dropStyle = useAnimatedStyle(() => {
@@ -322,7 +388,7 @@ export default function DeskDock({
   });
   const lensStyle = useAnimatedStyle(() => {
     const x = lensX(p.value);
-    return { left: x - 14, transform: [{ rotate: `${(x - LENS_ROOT) * (360 / (LENS_IN - LENS_ROOT))}deg` }, { scale: lensGrow.s.value }] };
+    return { left: x - 14, transform: [{ rotate: `${(x - lensRoot) * (360 / (LENS_IN - lensRoot))}deg` }, { scale: lensGrow.s.value }] };
   });
   const bodyStyle = useAnimatedStyle(() => {
     const w = bodyWidth(p.value);
@@ -375,17 +441,32 @@ export default function DeskDock({
         {/* Lighter while touched: a white veil over the pill's own surface (shows on the dark theme; on the light one
             the pill is white already and only grows). */}
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF' }, pillGlowStyle]} />
-        <Animated.View style={[styles.beads, beadsStyle]} pointerEvents={root ? 'box-none' : 'none'}>
+        <Animated.View style={[styles.beads, { width: pillCore }, beadsStyle]} pointerEvents={root ? 'box-none' : 'none'}>
           {activeIndex >= 0 && (
             <Animated.View
               pointerEvents="none"
-              style={[styles.capsule, { backgroundColor: soft.fillSolid }, capStyle]}
+              // «Where you are» is the accent now (the user, 2026-10-23): the orange that used to ring the AI button marks
+              // the place in front - the balloon too, while its window is open.
+              style={[styles.capsule, { backgroundColor: assist ? (soft.dark ? 'rgba(217,121,63,0.24)' : 'rgba(217,121,63,0.16)') : soft.fillSolid }, capStyle]}
             />
           )}
           {desks.map((d, i) => (
-            <DeskBeadButton key={d.key} d={d} i={i} soft={soft} onPick={pick} />
+            <DeskBeadButton key={d.key} d={d} i={i} soft={soft} onPick={pick} active={!!assist && i === shownIndex} />
           ))}
-          <View style={[styles.hairline, { left: PILL_PAD + desks.length * BEAD_W + 4, backgroundColor: soft.line }]} />
+          {assist && (
+            <AssistBead
+              i={assistIndex}
+              soft={soft}
+              active={shownIndex === assistIndex}
+              onPress={() => {
+                pick(assistIndex);
+                setShownIndex(assistIndex);
+                // The capsule lands on the balloon; then the two lift off together and the window grows out of them.
+                setTimeout(() => assist.onOpen(), CAP_END - 20);
+              }}
+            />
+          )}
+          <View style={[styles.hairline, { left: PILL_PAD + (desks.length + (assist ? 1 : 0)) * BEAD_W + 4, backgroundColor: soft.line }]} />
         </Animated.View>
       </Animated.View>
       {/* The body that forms round the "+" and grows to the left - the search field. */}
@@ -419,7 +500,7 @@ export default function DeskDock({
           }}
           disabled={searchDisabled}
           accessibilityLabel={searchLabel}
-          style={{ position: 'absolute', left: PILL_CORE, top: (H - PILL_H) / 2, width: LENS_ZONE, height: PILL_H }}
+          style={{ position: 'absolute', left: pillCore, top: (H - PILL_H) / 2, width: LENS_ZONE, height: PILL_H }}
         />
       )}
       {extraEl && !root && <Animated.View style={[styles.slot, { left: extraLeft, top: (H - PLUS) / 2 }, wordStyle]}>{extraEl}</Animated.View>}
@@ -427,7 +508,7 @@ export default function DeskDock({
       <Animated.View style={[StyleSheet.absoluteFill, rightCompact]} pointerEvents="box-none" needsOffscreenAlphaCompositing>
       {/* "+": where it stands it never moves - the pill's drop travels to it, and the field grows round it. */}
       <GrowOnTouch style={[styles.slot, { left: plusLeft, top: (H - PLUS) / 2 }]}>{plusEl}</GrowOnTouch>
-      {rootExtraEl && root && extraLeft >= PILL_FULL + 8 && (
+      {rootExtraEl && root && extraLeft >= pillFull + 8 && (
         <GrowOnTouch style={[styles.slot, { left: extraLeft, top: (H - PLUS) / 2 }]}>{rootExtraEl}</GrowOnTouch>
       )}
       {/* The circle at the far end: multitasking on a desk, the way back inside. Without the switcher (FEATURES.deskSwitcher

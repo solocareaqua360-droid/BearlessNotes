@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, useWindowDimensions } from 'react-native';
-import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, Extrapolation, interpolate, interpolateColor, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import BalloonMark from './BalloonMark';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeProvider';
 import { PAGE_SHEET_INSET } from './documentEditorStyles';
@@ -20,6 +21,9 @@ const EASE = Easing.bezier(0.22, 1, 0.36, 1);
 // Growing out, and folding back. Out is slower: it is the move that has
 // something to say. The same numbers as the laptop's (desktopTheme MOTION).
 const OUT_MS = 340;
+// The balloon's window (utils/assistMorph): longer, on an even in-out curve.
+const SLOW_OUT_MS = 420;
+const EVEN = Easing.bezier(0.45, 0, 0.2, 1);
 const BACK_MS = 300;
 // The card's picture fading into paper, and the page coming up off it.
 const COVER_MS = 100;
@@ -40,6 +44,13 @@ export default function MorphHost() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [color, setColor] = useState<string | null>(null);
+  // The colour the sheet turns into on its way (none: it keeps `color`), and how far it has turned (0..1).
+  const [toColor, setToColor] = useState<string | null>(null);
+  const tc = useSharedValue(0);
+  // The AI's balloon, drawn in the middle of its sheet while the sheet is still small (utils/assistMorph).
+  const [glyph, setGlyph] = useState(false);
+  const accent = useRef(theme.accent);
+  accent.current = theme.accent;
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const w = useSharedValue(0);
@@ -65,6 +76,8 @@ export default function MorphHost() {
     const finish = () => {
       clearTimeout(watchdog);
       setColor(null);
+      setToColor(null);
+      setGlyph(false);
       busy.current = false;
     };
     // Whatever goes wrong on the way (a callback that never comes, an
@@ -84,7 +97,7 @@ export default function MorphHost() {
       r.value = radius;
     };
     const moveTo = (rect: Rect, radius: number, ms: number, done: () => void) => {
-      const cfg = { duration: ms, easing: EASE };
+      const cfg = { duration: ms, easing: ms === SLOW_OUT_MS ? EVEN : EASE };
       x.value = withTiming(rect.x, cfg);
       y.value = withTiming(rect.y, cfg);
       w.value = withTiming(rect.width, cfg);
@@ -102,7 +115,7 @@ export default function MorphHost() {
     const afterPaint = (then: () => void) => requestAnimationFrame(() => requestAnimationFrame(then));
 
     setMorphDriver({
-      open(from, radius, tint, key, update, into) {
+      open(from, radius, tint, key, update, into, slow, turnTo) {
         if (busy.current) {
           update();
           return;
@@ -112,6 +125,9 @@ export default function MorphHost() {
         place(from, radius);
         o.value = 0;
         setColor(tint ?? paper.current);
+        setToColor(turnTo ?? null);
+        setGlyph(key === 'assistant');
+        tc.value = 0;
         // The page comes up off the sheet once BOTH are true: the sheet
         // has arrived, and the editor has drawn the note.
         let arrived = false;
@@ -130,8 +146,12 @@ export default function MorphHost() {
         if (!into) {
           // A pushed screen: the sheet grows to where the page will stand,
           // and the screen is opened under it once it is there.
-          o.value = withTiming(1, { duration: COVER_MS });
-          moveTo(sheet.current, SHEET_RADIUS, OUT_MS, () => {
+          o.value = withTiming(1, { duration: slow ? 60 : COVER_MS });
+          // A small round thing (the AI's balloon) grows on an even curve and a little longer: on the card's quick ease
+          // it was full-size in the first ~100 ms and read as a flash, not as the circle opening (2026-10-23).
+          // Its colour turns on the way, so the full screen is already the conversation's paper (no orange-to-white cut).
+          if (turnTo) tc.value = withTiming(1, { duration: SLOW_OUT_MS, easing: EVEN });
+          moveTo(sheet.current, SHEET_RADIUS, slow ? SLOW_OUT_MS : OUT_MS, () => {
             update();
             land();
             setTimeout(() => morphLanded(key), LAND_WAIT_MS);
@@ -159,7 +179,7 @@ export default function MorphHost() {
           });
         }
       },
-      back(key, tint, leave, from) {
+      back(key, tint, leave, from, turnTo) {
         if (busy.current) {
           leave();
           return;
@@ -170,6 +190,9 @@ export default function MorphHost() {
           place(rect, radius);
           o.value = 0;
           setColor(tint ?? paper.current);
+          setToColor(turnTo ?? null);
+          setGlyph(key === 'assistant');
+          tc.value = 0;
           o.value = withTiming(1, { duration: COVER_MS }, (finished) => {
             if (finished) runOnJS(covered)();
           });
@@ -181,15 +204,20 @@ export default function MorphHost() {
         }
         function covered() {
           leave();
-          afterPaint(() => {
+          // The card may be drawn a moment after the screen is gone (the AI balloon lives in a dock that comes back with
+          // the desks): asked again a few times before the sheet gives up and only fades.
+          const fold = (tries: number) =>
             measureCard(key).then((card) => {
               if (!card) {
-                fadeOut(REVEAL_MS);
+                if (tries > 0) setTimeout(() => fold(tries - 1), 60);
+                else fadeOut(REVEAL_MS);
                 return;
               }
-              moveTo(card, 22, BACK_MS, () => fadeOut(COVER_MS + 40));
+              const round = key === 'assistant' ? Math.min(card.width, card.height) / 2 : 22;
+              if (turnTo) tc.value = withTiming(1, { duration: BACK_MS, easing: EASE });
+              moveTo(card, round, BACK_MS, () => fadeOut(COVER_MS + 40));
             });
-          });
+          afterPaint(() => fold(4));
         }
       },
     });
@@ -198,21 +226,41 @@ export default function MorphHost() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const style = useAnimatedStyle(() => ({
-    left: x.value,
-    top: y.value,
-    width: w.value,
-    height: h.value,
-    borderRadius: r.value,
-    opacity: o.value,
+  const from = color ?? '#FFFFFF';
+  const to = toColor ?? from;
+  const style = useAnimatedStyle(
+    () => ({
+      left: x.value,
+      top: y.value,
+      width: w.value,
+      height: h.value,
+      borderRadius: r.value,
+      opacity: o.value,
+      backgroundColor: interpolateColor(tc.value, [0, 1], [from, to]),
+    }),
+    [from, to]
+  );
+  // The balloon: whole while the sheet is about its own size, gone by the time the sheet is a few times wider.
+  const glyphStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(w.value, [70, 200], [1, 0], Extrapolation.CLAMP),
+    transform: [{ scale: interpolate(w.value, [40, 200], [1, 1.5], Extrapolation.CLAMP) }],
   }));
 
   if (!color) return null;
-  return <Animated.View pointerEvents="none" style={[styles.sheet, { backgroundColor: color }, style]} />;
+  return (
+    <Animated.View pointerEvents="none" style={[styles.sheet, styles.center, style]}>
+      {glyph && (
+        <Animated.View style={glyphStyle}>
+          <BalloonMark size={26} color={accent.current} />
+        </Animated.View>
+      )}
+    </Animated.View>
+  );
 }
 
 const styles = StyleSheet.create({
   sheet: {
     position: 'absolute',
   },
+  center: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
 });
