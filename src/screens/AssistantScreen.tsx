@@ -30,7 +30,7 @@ import {
 import { writeMemoryNote, writeMemoryTree } from '../utils/assistantTree';
 import { shortTitle } from '../utils/assistant';
 import { FEATURES } from '../features';
-import { ASSIST_KEY, assistReturned, closeAssistant } from '../utils/assistMorph';
+import { ASSIST_KEY, assistReturned, assistWash, closeAssistant } from '../utils/assistMorph';
 import { morphLanded } from '../utils/morph';
 import { speakThoughts, stopVoice, subscribeVoice } from '../utils/thoughtVoice';
 import { useGeminiUsage } from '../utils/geminiUsage';
@@ -380,7 +380,7 @@ export default function AssistantScreen() {
             </Text>
           </Pressable>
         ) : null}
-        <Pressable onPress={() => closeAssistant(() => navigation.goBack(), S.bg, S.dark ? '#3D2B20' : '#FBE7D8')} style={styles.round} accessibilityLabel="Закрити" hitSlop={6}>
+        <Pressable onPress={() => closeAssistant(() => navigation.goBack(), S.bg, assistWash(S.dark))} style={styles.round} accessibilityLabel="Закрити" hitSlop={6}>
           <Ionicons name="close" size={18} color={S.ink} />
         </Pressable>
       </View>

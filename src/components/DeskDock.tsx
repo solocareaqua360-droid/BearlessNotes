@@ -9,7 +9,7 @@ import { chromeCompact, useChromeCompactFlag } from '../navigation/chromeScroll'
 import { setDockCarriesBack, useExtraDeskCount } from '../navigation/deskBeadsBus';
 import { FEATURES } from '../features';
 import { morphCardRef } from '../utils/morph';
-import { ASSIST_KEY, assistFlown, assistHeld, onAssistHeld } from '../utils/assistMorph';
+import { ASSIST_KEY, assistFlown, assistHeld, assistWash, onAssistHeld } from '../utils/assistMorph';
 import BalloonMark from './BalloonMark';
 
 // THE DESK DOCK (2026-10-12, the user's sketch and words: «лупа відривається, як крапля, і приєднується до плюса»).
@@ -447,7 +447,7 @@ export default function DeskDock({
               pointerEvents="none"
               // «Where you are» is the accent now (the user, 2026-10-23): the orange that used to ring the AI button marks
               // the place in front - the balloon too, while its window is open.
-              style={[styles.capsule, { backgroundColor: assist ? (soft.dark ? 'rgba(217,121,63,0.24)' : 'rgba(217,121,63,0.16)') : soft.fillSolid }, capStyle]}
+              style={[styles.capsule, { backgroundColor: assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
             />
           )}
           {desks.map((d, i) => (

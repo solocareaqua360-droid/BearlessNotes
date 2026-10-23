@@ -11,7 +11,7 @@ import { morphBack, morphSheet } from './morph';
 // put the capsule on the desk at once and then jumped (the user: «підвисання» on the way to the balloon and back).
 export const ASSIST_KEY = 'assistant';
 // The fold back into the balloon takes this long (MorphHost: the cover, then the sheet's way back).
-const FOLD_MS = 420;
+const FOLD_MS = 560;
 let held = false;
 const listeners = new Set<(held: boolean) => void>();
 
@@ -38,9 +38,14 @@ export const assistDockCover = makeMutable(0);
 // folded back into that place.
 export const assistFlown = makeMutable(0);
 
+// The orange of «where you are», as a solid colour (the accent laid on the dock's own surface): the capsule wears it, and
+// the sheet starts in it - so the circle that lifts off IS the capsule, not a second one.
+export function assistWash(dark: boolean): string {
+  return dark ? '#534034' : '#F9EAE0';
+}
+
 export function openAssistant(navigate: () => void, color?: string, toColor?: string) {
   held = true;
-  assistFlown.value = 1;
   // The rest of the dock steps away while the circle is half grown - at the hand-over it was still fading and the screen-
   // less dock of the conversation showed through it for a frame.
   assistDockCover.value = withDelay(140, withTiming(1, { duration: 160 }));
@@ -49,7 +54,14 @@ export function openAssistant(navigate: () => void, color?: string, toColor?: st
     () => {
       navigate();
     },
-    { color, toColor }
+    {
+      color,
+      toColor,
+      // The sheet stands on the capsule: the capsule and the balloon go from under it - the place is empty.
+      onStart: () => {
+        assistFlown.value = 1;
+      },
+    }
   );
 }
 
@@ -61,7 +73,7 @@ export function assistReturned() {
   if (assistDockCover.value !== 0) assistDockCover.value = withTiming(0, { duration: 120 });
   clearTimeout(releaseTimer);
   releaseTimer = setTimeout(() => {
-    // The window has landed in the balloon's place: it is back, and then the capsule slides home.
+    // The window has landed in the balloon's place (or went without a fold): it is back, and then the capsule goes home.
     assistFlown.value = 0;
     setHeld(false);
   }, FOLD_MS);
@@ -70,5 +82,12 @@ export function assistReturned() {
 // Its cross: the window folds into the balloon.
 export function closeAssistant(leave: () => void, color?: string, toColor?: string) {
   assistDockCover.value = withTiming(0, { duration: 120 });
-  morphBack(ASSIST_KEY, leave, { color, toColor });
+  morphBack(ASSIST_KEY, leave, {
+    color,
+    toColor,
+    // Folded onto its place: the balloon and the circle are back under the sheet before it fades.
+    onLanded: () => {
+      assistFlown.value = 0;
+    },
+  });
 }

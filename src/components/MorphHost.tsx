@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, useWindowDimensions } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, interpolateColor, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import BalloonMark from './BalloonMark';
+import { softTokens } from '../theme/soft';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeProvider';
 import { PAGE_SHEET_INSET } from './documentEditorStyles';
@@ -22,7 +23,7 @@ const EASE = Easing.bezier(0.22, 1, 0.36, 1);
 // something to say. The same numbers as the laptop's (desktopTheme MOTION).
 const OUT_MS = 340;
 // The balloon's window (utils/assistMorph): longer, on an even in-out curve.
-const SLOW_OUT_MS = 420;
+const SLOW_OUT_MS = 520;
 const EVEN = Easing.bezier(0.45, 0, 0.2, 1);
 const BACK_MS = 300;
 // The card's picture fading into paper, and the page coming up off it.
@@ -49,14 +50,22 @@ export default function MorphHost() {
   const tc = useSharedValue(0);
   // The AI's balloon, drawn in the middle of its sheet while the sheet is still small (utils/assistMorph).
   const [glyph, setGlyph] = useState(false);
-  const accent = useRef(theme.accent);
-  accent.current = theme.accent;
+  // The dock's own orange (theme/soft), the one the balloon wears there.
+  const accent = useRef(softTokens(theme.scheme).accent);
+  accent.current = softTokens(theme.scheme).accent;
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const w = useSharedValue(0);
   const h = useSharedValue(0);
   const r = useSharedValue(0);
   const o = useSharedValue(0);
+  // THE ROUND JOURNEY (the AI's balloon, 2026-10-23: «натяку на коло немає» - the rounded rectangle went straight to the
+  // screen's shape). `sp` 0 = the small thing, 1 = the sheet; up to the middle a true CIRCLE grows out of the small thing
+  // and rises to the sheet's centre, from there the circle opens into the sheet. Used while `shaped` is 1.
+  const shaped = useSharedValue(0);
+  const sp = useSharedValue(0);
+  const small = useSharedValue({ x: 0, y: 0, width: 0, height: 0 });
+  const big = useSharedValue({ x: 0, y: 0, width: 0, height: 0 });
   const busy = useRef(false);
 
   // Where the editor's sheet stands on a phone: its side insets, below the
@@ -78,6 +87,7 @@ export default function MorphHost() {
       setColor(null);
       setToColor(null);
       setGlyph(false);
+      shaped.value = 0;
       busy.current = false;
     };
     // Whatever goes wrong on the way (a callback that never comes, an
@@ -106,6 +116,15 @@ export default function MorphHost() {
         if (finished) runOnJS(done)();
       });
     };
+    const roundTo = (from: Rect, to: Rect, toBig: boolean, ms: number, done: () => void) => {
+      small.value = toBig ? from : to;
+      big.value = toBig ? to : from;
+      shaped.value = 1;
+      sp.value = toBig ? 0 : 1;
+      sp.value = withTiming(toBig ? 1 : 0, { duration: ms, easing: EVEN }, (finished) => {
+        if (finished) runOnJS(done)();
+      });
+    };
     const fadeOut = (ms: number) => {
       o.value = withTiming(0, { duration: ms }, (finished) => {
         if (finished) runOnJS(finish)();
@@ -115,7 +134,7 @@ export default function MorphHost() {
     const afterPaint = (then: () => void) => requestAnimationFrame(() => requestAnimationFrame(then));
 
     setMorphDriver({
-      open(from, radius, tint, key, update, into, slow, turnTo) {
+      open(from, radius, tint, key, update, into, slow, turnTo, onStart) {
         if (busy.current) {
           update();
           return;
@@ -146,16 +165,23 @@ export default function MorphHost() {
         if (!into) {
           // A pushed screen: the sheet grows to where the page will stand,
           // and the screen is opened under it once it is there.
-          o.value = withTiming(1, { duration: slow ? 60 : COVER_MS });
+          // The balloon's sheet is there at once, in the very colour and shape of the circle it takes over (which then
+          // hides under it): no fade-in, or for a frame neither was seen.
+          if (slow) {
+            o.value = 1;
+            onStart?.();
+          } else o.value = withTiming(1, { duration: COVER_MS });
           // A small round thing (the AI's balloon) grows on an even curve and a little longer: on the card's quick ease
           // it was full-size in the first ~100 ms and read as a flash, not as the circle opening (2026-10-23).
           // Its colour turns on the way, so the full screen is already the conversation's paper (no orange-to-white cut).
           if (turnTo) tc.value = withTiming(1, { duration: SLOW_OUT_MS, easing: EVEN });
-          moveTo(sheet.current, SHEET_RADIUS, slow ? SLOW_OUT_MS : OUT_MS, () => {
+          const opened = () => {
             update();
             land();
             setTimeout(() => morphLanded(key), LAND_WAIT_MS);
-          });
+          };
+          if (slow) roundTo(from, sheet.current, true, SLOW_OUT_MS, opened);
+          else moveTo(sheet.current, SHEET_RADIUS, OUT_MS, opened);
           return;
         }
         // A pane beside the list (the Fold's inner screen): it only exists
@@ -179,7 +205,7 @@ export default function MorphHost() {
           });
         }
       },
-      back(key, tint, leave, from, turnTo) {
+      back(key, tint, leave, from, turnTo, onLanded) {
         if (busy.current) {
           leave();
           return;
@@ -214,8 +240,19 @@ export default function MorphHost() {
                 return;
               }
               const round = key === 'assistant' ? Math.min(card.width, card.height) / 2 : 22;
-              if (turnTo) tc.value = withTiming(1, { duration: BACK_MS, easing: EASE });
-              moveTo(card, round, BACK_MS, () => fadeOut(COVER_MS + 40));
+              const landed = () => {
+                // Landed on the circle it came out of: that circle is put back under it, and the sheet goes.
+                onLanded?.();
+                afterPaint(() => fadeOut(COVER_MS));
+              };
+              if (key === 'assistant') {
+                // The way out the same way in: the sheet closes into a circle, the circle shrinks onto the balloon.
+                if (turnTo) tc.value = withTiming(1, { duration: SLOW_OUT_MS, easing: EVEN });
+                roundTo(sheet.current, card, false, SLOW_OUT_MS, landed);
+              } else {
+                if (turnTo) tc.value = withTiming(1, { duration: BACK_MS, easing: EASE });
+                moveTo(card, round, BACK_MS, landed);
+              }
             });
           afterPaint(() => fold(4));
         }
@@ -228,23 +265,54 @@ export default function MorphHost() {
 
   const from = color ?? '#FFFFFF';
   const to = toColor ?? from;
-  const style = useAnimatedStyle(
-    () => ({
-      left: x.value,
-      top: y.value,
-      width: w.value,
-      height: h.value,
-      borderRadius: r.value,
-      opacity: o.value,
-      backgroundColor: interpolateColor(tc.value, [0, 1], [from, to]),
-    }),
-    [from, to]
-  );
+  const screenW = width;
+  const style = useAnimatedStyle(() => {
+    const bg = interpolateColor(tc.value, [0, 1], [from, to]);
+    if (shaped.value === 1) {
+      const a = small.value;
+      const b = big.value;
+      const k = sp.value;
+      // The circle at the turn: as wide as the screen, standing on the sheet's centre.
+      const D = screenW * 0.92;
+      const acx = a.x + a.width / 2;
+      const acy = a.y + a.height / 2;
+      const bcx = b.x + b.width / 2;
+      const bcy = b.y + b.height / 2;
+      if (k < 0.5) {
+        const t = k / 0.5;
+        const d0 = Math.min(a.width, a.height);
+        const d = d0 + (D - d0) * t;
+        // Off the small thing's own shape (a capsule 56x52) into a circle within the first stretch.
+        const round = Math.min(1, t * 3);
+        const sw = a.width + (d - a.width) * round;
+        const sh = a.height + (d - a.height) * round;
+        const cx = acx + (bcx - acx) * t;
+        const cy = acy + (bcy - acy) * t;
+        return { left: cx - sw / 2, top: cy - sh / 2, width: sw, height: sh, borderRadius: Math.min(sw, sh) / 2, opacity: o.value, backgroundColor: bg };
+      }
+      const t = (k - 0.5) / 0.5;
+      const ww = D + (b.width - D) * t;
+      const hh = D + (b.height - D) * t;
+      return {
+        left: bcx - ww / 2,
+        top: bcy - hh / 2,
+        width: ww,
+        height: hh,
+        borderRadius: D / 2 + (SHEET_RADIUS - D / 2) * t,
+        opacity: o.value,
+        backgroundColor: bg,
+      };
+    }
+    return { left: x.value, top: y.value, width: w.value, height: h.value, borderRadius: r.value, opacity: o.value, backgroundColor: bg };
+  }, [from, to, screenW]);
   // The balloon: whole while the sheet is about its own size, gone by the time the sheet is a few times wider.
-  const glyphStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(w.value, [70, 200], [1, 0], Extrapolation.CLAMP),
-    transform: [{ scale: interpolate(w.value, [40, 200], [1, 1.5], Extrapolation.CLAMP) }],
-  }));
+  const glyphStyle = useAnimatedStyle(() => {
+    const k = shaped.value === 1 ? sp.value : interpolate(w.value, [64, 200], [0, 0.3], Extrapolation.CLAMP);
+    return {
+      opacity: interpolate(k, [0, 0.22], [1, 0], Extrapolation.CLAMP),
+      transform: [{ scale: interpolate(k, [0, 0.3], [1, 1.6], Extrapolation.CLAMP) }],
+    };
+  });
 
   if (!color) return null;
   return (
@@ -261,6 +329,10 @@ export default function MorphHost() {
 const styles = StyleSheet.create({
   sheet: {
     position: 'absolute',
+    // Over the portal layer the dock lives in (GlassPortalHost is zIndex 1000): the sheet grows out of the dock and
+    // folds back ONTO it, never behind it (the user, 2026-10-23).
+    zIndex: 1001,
+    elevation: 1001,
   },
   center: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
 });

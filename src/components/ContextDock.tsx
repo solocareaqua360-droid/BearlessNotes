@@ -16,7 +16,7 @@ import { FEATURES } from '../features';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Rect } from 'react-native-svg';
 import BalloonMark from './BalloonMark';
-import { assistDockCover, openAssistant } from '../utils/assistMorph';
+import { assistDockCover, assistWash, openAssistant } from '../utils/assistMorph';
 import { GlassPortal } from './GlassPortal';
 import DockFrost from './DockFrost';
 import { topBarFrame } from './TopNavBar';
@@ -2474,7 +2474,7 @@ export default function ContextDock() {
                       onOpen: () =>
                         openAssistant(
                           () => navigationRef.isReady() && (navigationRef.navigate as (name: string) => void)('Assistant'),
-                          soft.dark ? '#3D2B20' : '#FBE7D8',
+                          assistWash(soft.dark),
                           soft.bg
                         ),
                     }
