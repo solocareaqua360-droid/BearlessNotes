@@ -52,6 +52,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import {
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocFromCache,
@@ -2555,7 +2556,7 @@ export default function BoardScreen() {
   const [movePickerOpen, setMovePickerOpen] = useState(false);
   const [moving, setMoving] = useState(false);
   const [pickableBoards, setPickableBoards] = useState<{ id: string; title: string }[]>([]);
-  const [newFlashcardPrompt, setNewFlashcardPrompt] = useState(false);
+  const [freshFlashcardId, setFreshFlashcardId] = useState<string | null>(null);
   // The card of «Картки» whose two fields are being written (a card just made, or an unfolded one tapped again).
   const [editFlashcardId, setEditFlashcardId] = useState<string | null>(null);
   const [newRecordFor, setNewRecordFor] = useState<{ databaseId: string; fieldId: string; name: string } | null>(null);
@@ -4818,10 +4819,9 @@ export default function BoardScreen() {
 
   // «КАРТКА» (2026-10-24): a NEW card of the «Картки» base - the term typed here, the explanation filled in on the card - made
   // right on the board, as a «Документ» is.
-  async function createFlashcard(term: string) {
-    setNewFlashcardPrompt(false);
-    const name = term.trim();
-    if (!name) return;
+  async function createFlashcard() {
+    setAddSheetVisible(false);
+    const name = '';
     const id = generateId();
     const now = Date.now();
     try {
@@ -4831,7 +4831,22 @@ export default function BoardScreen() {
       return;
     }
     addExistingCard(blockFromFlashcard({ id, term: name, explanation: '', images: [] }));
+    setFreshFlashcardId(id);
     setEditFlashcardId(id);
+  }
+  // The sheet closed: a card made a moment ago and left empty is not kept (cancelling must leave nothing on the board).
+  async function closeFlashcardSheet(saved: boolean) {
+    const id = editFlashcardId;
+    setEditFlashcardId(null);
+    if (!id || id !== freshFlashcardId) return;
+    setFreshFlashcardId(null);
+    if (saved) return;
+    setCards((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await deleteDoc(doc(db, 'flashcards', id));
+    } catch {
+      // An empty card left behind in the base is harmless.
+    }
   }
 
   // «ЗАПИС БАЗИ» (the panel's / «+» sheet's tile, restored 2026-10-24): a NEW row of one of the user's own databases, made right
@@ -7704,7 +7719,7 @@ export default function BoardScreen() {
         tiles: [
           { key: 'doc', icon: 'document-text-outline', label: 'Документ', onPress: createDocumentCard },
           // A new card of the «Картки» base, made here like a document.
-          { key: 'flashcard', icon: 'albums-outline', label: 'Картка', onPress: () => { setAddSheetVisible(false); setNewFlashcardPrompt(true); } },
+          { key: 'flashcard', icon: 'albums-outline', label: 'Картка', onPress: createFlashcard },
           // «Наліпка», not «Текст» - a bare text label with no
           // card under it is a SHAPE and is already called
           // Текст; two things under one word is the confusion
@@ -9101,15 +9116,7 @@ export default function BoardScreen() {
           </Pressable>
         </Modal>
 
-        <FlashcardQuickSheet id={editFlashcardId} onClose={() => setEditFlashcardId(null)} />
-        <RenamePrompt
-          visible={newFlashcardPrompt}
-          title="Нова картка"
-          initialValue=""
-          placeholder="Термін"
-          onCancel={() => setNewFlashcardPrompt(false)}
-          onSave={createFlashcard}
-        />
+        <FlashcardQuickSheet id={editFlashcardId} onClose={closeFlashcardSheet} />
         <RenamePrompt
           visible={newRecordFor !== null}
           title={newRecordFor ? `Новий запис у «${newRecordFor.name}»` : 'Новий запис'}

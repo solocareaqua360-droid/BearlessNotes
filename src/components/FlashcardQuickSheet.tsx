@@ -12,7 +12,7 @@ import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 // THE TWO FIELDS OF A CARD FROM «КАРТКИ», FILLED WHERE IT STANDS (the board, 2026-10-24: a card made on the board had nowhere
 // to be written in). Term and explanation, saved into the card itself; pictures, folders and the rest stay in the base's own
 // editor. Opened by the board for a card it has just made, and by a second tap on one that is already unfolded.
-export default function FlashcardQuickSheet({ id, onClose }: { id: string | null; onClose: () => void }) {
+export default function FlashcardQuickSheet({ id, onClose }: { id: string | null; onClose: (saved: boolean) => void }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const card = useFlashcardLive(id ?? undefined, { id: id ?? '', term: '', explanation: '', images: [] });
@@ -39,11 +39,11 @@ export default function FlashcardQuickSheet({ id, onClose }: { id: string | null
     } catch {
       // The card keeps what it had; the sheet closes all the same.
     }
-    onClose();
+    onClose(true);
   }
 
   return (
-    <Sheet visible={id !== null} onClose={onClose} title="Картка" maxHeight="90%">
+    <Sheet visible={id !== null} onClose={() => onClose(false)} title="Картка" maxHeight="90%">
       <Text style={styles.label}>Термін</Text>
       <StableTextInput style={[styles.input, { minHeight: 48, maxHeight: 96 }]} value={term} onChangeText={setTerm} placeholder="Що це" placeholderTextColor={theme.field.placeholder} multiline />
       <Text style={styles.label}>Пояснення</Text>
@@ -57,7 +57,7 @@ export default function FlashcardQuickSheet({ id, onClose }: { id: string | null
         textAlignVertical="top"
       />
       <View style={styles.row}>
-        <Pressable style={styles.side} onPress={onClose}>
+        <Pressable style={styles.side} onPress={() => onClose(false)}>
           <Text style={styles.sideText}>Скасувати</Text>
         </Pressable>
         <Pressable style={styles.main} onPress={save}>
