@@ -17,6 +17,10 @@ import type { SoftTokens } from '../theme/soft';
 const BLUR = 60;
 const TINT = 0.55;
 const FLAT = 0.97;
+// The lit edge, as a share of the theme's own specular. And lit from ABOVE, the same along the whole top - not from the
+// top-left corner as GlassDrop's round drops: on a long capsule a corner light lit the whole left end and the dock read as
+// narrower on the left (the user, 2026-10-24: «док перекошений, тобто менший ліворуч»).
+const SPEC = 0.7;
 
 export default function DockGlassFill({ soft }: { soft: SoftTokens }) {
   const theme = useTheme();
@@ -52,17 +56,17 @@ export default function DockGlassFill({ soft }: { soft: SoftTokens }) {
       )}
       <View style={[StyleSheet.absoluteFill, { backgroundColor: soft.chrome, opacity: blur ? TINT : FLAT }]} />
       {/* THE RIM (the user, 2026-10-24, over a photo of the old rail capsule: «Питання в обідку») - GlassDrop's three layers,
-          lit from one side: an outer specular brightest at the top-left and gone by the middle, an inner rim a little way in
-          brightest at the bottom-right (the thickness of the glass), and a soft vignette reaching in from the edge. */}
+          lit from one side: an outer specular along the top edge, gone by the middle, an inner rim a little way in
+          brightest along the bottom (the thickness of the glass), and a soft vignette reaching in from the edge. */}
       {w > 0 && h > 0 && (
         <Svg width={w} height={h} style={StyleSheet.absoluteFill}>
           <Defs>
-            <LinearGradient id={`${uid}-spec`} x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor={g.specular} stopOpacity={g.specularIntensity} />
-              <Stop offset="0.35" stopColor={g.specular} stopOpacity={g.specularIntensity * 0.35} />
+            <LinearGradient id={`${uid}-spec`} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={g.specular} stopOpacity={g.specularIntensity * SPEC} />
+              <Stop offset="0.35" stopColor={g.specular} stopOpacity={g.specularIntensity * SPEC * 0.35} />
               <Stop offset="0.7" stopColor={g.specular} stopOpacity={0} />
             </LinearGradient>
-            <LinearGradient id={`${uid}-rim`} x1="1" y1="1" x2="0.2" y2="0.1">
+            <LinearGradient id={`${uid}-rim`} x1="0" y1="1" x2="0" y2="0">
               <Stop offset="0" stopColor={g.rim} stopOpacity={g.rimOpacity} />
               <Stop offset="0.45" stopColor={g.rim} stopOpacity={g.rimOpacity * 0.4} />
               <Stop offset="1" stopColor={g.rim} stopOpacity={0} />
