@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { openMark } from '../utils/openTiming';
 import { backMarkPop } from '../utils/perfWatch';
 import { chromeAbort, chromeBackBegin, chromeEnd, chromeOpenArrive, chromeT } from '../utils/chromeMorph';
-import { cardBand, measureCard, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
+import { cardBand, measureCard, setFoldingInto, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
 import { foldTransforms } from './foldGeometry';
 import { captureRef, releaseCapture } from 'react-native-view-shot';
 import { endPageFold, startPageFold } from '../utils/pageFold';
@@ -233,6 +233,7 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
         let foldId: number | null = null;
         const onFolded = () => {
           folded = true;
+          setFoldingInto(null);
           if (foldId !== null) endPageFold(foldId);
           // Folded as itself, the page goes AT ONCE: the list's own card is
           // right under it, in the same place. It used to stay up until the
@@ -242,6 +243,7 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
           else leaveWhenChromeIs();
         };
         setLeaving(true);
+        setFoldingInto(morphKey);
         if (rolling && scroller) {
           // AT THE TOP WELL BEFORE IT LANDS, however long the note (the user, 2026-10-25: «регулювати швидкість прокрутки
           // назад в залежності від довжини документу, щоб він встигав докручуватись до початку; вихід швидкий, ривка ніхто

@@ -75,6 +75,26 @@ export function cardBand(key: string): number {
   return bands.get(key) ?? 0;
 }
 
+// THE LINE COMES BACK SLOWLY (2026-10-25, the user: «в момент стиковки самої картки і плашки з датою це видно… плашка з датою
+// буде повільно проявлятись поверх картки»): while a page folds back into its card, that card's own line (date, project)
+// is away; once the page has landed it fades in over the card. MorphFrame says which card is being folded into.
+let foldingInto: string | null = null;
+const foldListeners = new Set<() => void>();
+export function setFoldingInto(key: string | null): void {
+  if (foldingInto === key) return;
+  foldingInto = key;
+  foldListeners.forEach((l) => l());
+}
+export function subscribeFoldingInto(l: () => void): () => void {
+  foldListeners.add(l);
+  return () => {
+    foldListeners.delete(l);
+  };
+}
+export function foldingIntoNow(): string | null {
+  return foldingInto;
+}
+
 export function measureCard(key: string): Promise<Rect | null> {
   const node = cards.get(key);
   if (!node) return Promise.resolve(null);

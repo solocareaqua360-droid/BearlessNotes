@@ -1,12 +1,12 @@
 import type { ImageFrame } from '../utils/imageFrame';
 import { lift } from '../utils/lift';
 import { markHeld } from '../utils/heldNode';
-import Animated from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { usePressSettle } from '../hooks/usePressSettle';
 import { cardRadius } from '../theme/scale';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { flipId } from '../utils/flipId';
-import { dataSets, morphKey, setCardBand } from '../utils/morph';
+import { dataSets, foldingIntoNow, morphKey, setCardBand, subscribeFoldingInto } from '../utils/morph';
 import { IS_POINTER } from '../utils/pointer';
 import { rightClick } from '../utils/rightClick';
 import { Image, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -440,6 +440,13 @@ function PageBody({
   // The card's own muted ink: its line stands on the card, under the page.
   lineInk: string;
 }) {
+  // Away while the page folds back into this card, then fading in over it once the page has landed (utils/morph).
+  const folding = useSyncExternalStore(subscribeFoldingInto, foldingIntoNow, foldingIntoNow) === `note:${id}`;
+  const lineShown = useSharedValue(1);
+  useEffect(() => {
+    lineShown.value = folding ? 0 : withTiming(1, { duration: 450 });
+  }, [folding, lineShown]);
+  const lineFade = useAnimatedStyle(() => ({ opacity: lineShown.value }));
   const [width, setWidth] = useState(0);
   return (
     <View
@@ -476,15 +483,15 @@ function PageBody({
           its card tore away from it and stuck back on at the end: the
           line is the card's, so it stands apart from the page, and the
           page grows out of - and folds back into - the picture alone. */}
-      <View
-        style={[styles.pageLine, soft && styles.softDateRow]}
+      <Animated.View
+        style={[styles.pageLine, soft && styles.softDateRow, lineFade]}
         pointerEvents="box-none"
         // Its height, told to the card-to-page move (utils/morph's band).
         onLayout={(e) => setCardBand(`note:${id}`, e.nativeEvent.layout.height)}
       >
         <Text style={[styles.dateCompact, { color: lineInk }, soft && styles.softText]}>{formatUpdatedAt(updatedAt)}</Text>
         {onProjectPress && <ProjectBadge project={project} onPress={onProjectPress} glass soft={soft ? softTokens('light') : null} softSize={11} />}
-      </View>
+      </Animated.View>
     </View>
   );
 }
