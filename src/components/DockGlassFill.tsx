@@ -24,7 +24,7 @@ const SPEC = 0.7;
 // The light theme's milk: plain white, not the theme's cream (#FDFAF4) - cream over the warm ground read as stale white.
 const LIGHT_MILK = '#FFFFFF';
 
-export default function DockGlassFill({ soft, paused: still }: { soft: SoftTokens; paused?: boolean }) {
+export default function DockGlassFill({ soft, paused: still, radius }: { soft: SoftTokens; paused?: boolean; radius?: number }) {
   const theme = useTheme();
   const g = theme.glass;
   const target = useBlurTarget();
@@ -38,8 +38,9 @@ export default function DockGlassFill({ soft, paused: still }: { soft: SoftToken
   const [box, setBox] = useState<{ w: number; h: number } | null>(null);
   const w = box?.w ?? 0;
   const h = box?.h ?? 0;
-  // Every piece of the dock is a capsule or a circle: its radius is half its short side.
-  const r = Math.min(w, h) / 2;
+  // A piece of the dock is a capsule or a circle (half its short side); a menu or a window says its own corner radius - the
+  // rim of a rounded RECTANGLE drawn as a capsule ran round it as an oval (the user, 2026-10-24).
+  const r = Math.min(radius ?? Infinity, Math.min(w, h) / 2);
   return (
     <View
       style={StyleSheet.absoluteFill}

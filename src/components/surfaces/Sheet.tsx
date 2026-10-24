@@ -11,7 +11,6 @@ import { useKeyboardRide } from '../../hooks/useKeyboardRide';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { SHEET_FRAME, SHEET_WINDOW, PHONE_ONLY } from '../../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../../utils/fonts';
-import { KeyboardEvents } from 'react-native-keyboard-controller';
 import DockGlassFill, { useDockSurface } from '../DockGlassFill';
 import { useSoft } from '../../theme/soft';
 
@@ -57,7 +56,8 @@ export default function Sheet({
   glass,
   children,
 }: {
-  // «Скло» (utils/dockGlass): the window wears the dock's glass - live only while the keyboard and the window stand.
+  // «Скло» (utils/dockGlass): the window wears the dock's glass, live from the first frame (the user: «спочатку біла, а
+  // потім стає скляна, а не одразу»).
   glass?: boolean;
   // See GlassLayer's own.
   priority?: number;
@@ -101,26 +101,6 @@ export default function Sheet({
   const ride = useAnimatedStyle(() => ({ transform: [{ translateY: Math.min(0, keyboard.height.value) }] }));
   const S = useSoft();
   const glassSurface = useDockSurface(S, !!glass);
-  // The glass of a window that rides the keyboard: flat while the keyboard moves and while the window itself grows in.
-  const [glassStill, setGlassStill] = useState(false);
-  useEffect(() => {
-    if (!glass || !visible) {
-      setGlassStill(false);
-      return;
-    }
-    let moving = false;
-    const settle = setTimeout(() => !moving && setGlassStill(true), 420);
-    const subs = [
-      KeyboardEvents.addListener('keyboardWillShow', () => ((moving = true), setGlassStill(false))),
-      KeyboardEvents.addListener('keyboardWillHide', () => ((moving = true), setGlassStill(false))),
-      KeyboardEvents.addListener('keyboardDidShow', () => ((moving = false), setGlassStill(true))),
-      KeyboardEvents.addListener('keyboardDidHide', () => ((moving = false), setGlassStill(true))),
-    ];
-    return () => {
-      clearTimeout(settle);
-      subs.forEach((x) => x.remove());
-    };
-  }, [glass, visible]);
   const scrollY = useRef(0);
   const viewportH = useRef(0);
   const contentH = useRef(0);
@@ -187,7 +167,7 @@ export default function Sheet({
       <View style={[styles.frame, { paddingBottom: keyboardHeight }, anchor === 'bottom' && { justifyContent: 'flex-end', paddingBottom: 24 }]} pointerEvents="box-none">
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <Animated.View style={[anchor === 'bottom' && ride, styles.window, glass && glassSurface, inset !== undefined && { paddingHorizontal: inset, paddingTop: inset, paddingBottom: inset }, maxHeight !== undefined && !scroll && { maxHeight }]}>
-          {glass && <DockGlassFill soft={S} paused={!glassStill} />}
+          {glass && <DockGlassFill soft={S} radius={SHEET_WINDOW.borderRadius} />}
           {handle && <View style={styles.handle} />}
           {!!title && <Text style={styles.title}>{title}</Text>}
           {!!subtitle && (

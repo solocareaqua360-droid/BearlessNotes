@@ -112,7 +112,7 @@ export default function Menu({
           style,
         ]}
       >
-        {soft && glassOn && <DockGlassFill soft={soft} />}
+        {soft && glassOn && <DockGlassFill soft={soft} radius={cardRadius(24)} />}
         {!soft && (
           <BlurView
             intensity={60}
