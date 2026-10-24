@@ -1,5 +1,5 @@
 import { ReactElement, ReactNode, useEffect, useRef, useState } from 'react';
-import DockGlassFill, { useDockSurface } from './DockGlassFill';
+import DockGlassFill, { dockInk, useDockSurface } from './DockGlassFill';
 import { useDockGlass } from '../utils/dockGlass';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming } from 'react-native-reanimated';
@@ -142,6 +142,7 @@ function GrowOnTouch({ style, children }: { style: object; children: ReactNode }
   );
 }
 function DeskBeadButton({ d, i, soft, onPick, active }: { d: DeskBead; i: number; soft: SoftTokens; onPick: (i: number) => void; active?: boolean }) {
+  const glassOn = useDockGlass();
   const g = useGrow();
   return (
     <Pressable
@@ -155,7 +156,7 @@ function DeskBeadButton({ d, i, soft, onPick, active }: { d: DeskBead; i: number
       style={[styles.bead, { left: PILL_PAD + i * BEAD_W, top: (PILL_H - BEAD_H) / 2, width: BEAD_W, height: BEAD_H }]}
     >
       <Animated.View style={g.style}>
-        <Ionicons name={d.icon as keyof typeof Ionicons.glyphMap} size={24} color={active ? soft.accent : soft.ink} />
+        <Ionicons name={d.icon as keyof typeof Ionicons.glyphMap} size={24} color={active ? soft.accent : dockInk(soft, glassOn)} />
       </Animated.View>
     </Pressable>
   );
@@ -163,6 +164,7 @@ function DeskBeadButton({ d, i, soft, onPick, active }: { d: DeskBead; i: number
 
 // The balloon among the places: drawn like a desk, the window it opens grows out of it (utils/assistMorph).
 function AssistBead({ i, soft, active, onPress }: { i: number; soft: SoftTokens; active: boolean; onPress: () => void }) {
+  const glassOn = useDockGlass();
   const g = useGrow();
   // Flown out into its window: the place stands empty (utils/assistMorph).
   const away = useAnimatedStyle(() => ({ opacity: 1 - assistFlown.value }));
@@ -177,7 +179,7 @@ function AssistBead({ i, soft, active, onPress }: { i: number; soft: SoftTokens;
       style={[styles.bead, { left: PILL_PAD + i * BEAD_W, top: (PILL_H - BEAD_H) / 2, width: BEAD_W, height: BEAD_H }]}
     >
       <Animated.View style={[g.style, away]}>
-        <BalloonMark size={26} color={active ? soft.accent : soft.ink} />
+        <BalloonMark size={26} color={active ? soft.accent : dockInk(soft, glassOn)} />
       </Animated.View>
     </Pressable>
   );

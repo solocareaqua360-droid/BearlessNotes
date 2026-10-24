@@ -56,7 +56,7 @@ import {
 } from '../navigation/navDock';
 import SoftIcon, { SoftIconName } from './SoftIcon';
 import { SoftTokens, useSoft } from '../theme/soft';
-import DockGlassFill, { useDockSurface } from './DockGlassFill';
+import DockGlassFill, { dockInk, useDockSurface } from './DockGlassFill';
 import { useDockGlass } from '../utils/dockGlass';
 import { useRenderTimer } from '../utils/perfWatch';
 
@@ -696,6 +696,7 @@ export default function ContextDock() {
   // The glass dock, while its switch is on (utils/dockGlass): every soft piece below takes this surface and a DockGlassFill.
   const glassOn = useDockGlass();
   const dockSurface = useDockSurface(soft, glassOn);
+  const iconInk = dockInk(soft, glassOn);
   const { width: windowW } = useWindowDimensions();
   const { isTwoPane } = useResponsiveLayout();
   // Kept as its own name rather than `isTwoPane` read directly
@@ -2122,7 +2123,7 @@ export default function ContextDock() {
       const softSlot = (bead: typeof beads.left) => {
         if (!bead) return <View style={{ width: TWO_BEAD }} />;
         const own = SOFT_DOCK_GLYPHS[bead.icon];
-        const ink = bead.active ? soft.accent : soft.ink;
+        const ink = bead.active ? soft.accent : iconInk;
         return (
           <Pressable
             onPress={bead.onPress}
@@ -2235,7 +2236,7 @@ export default function ContextDock() {
                 <Ionicons
                   name={primary.icon as keyof typeof Ionicons.glyphMap}
                   size={21}
-                  color={primary.primary === 'quiet' ? soft.ink : soft.chrome}
+                  color={primary.primary === 'quiet' ? iconInk : soft.chrome}
                 />
               </Pressable>
               <View style={{ width: 16 }} pointerEvents="none" />
@@ -2248,7 +2249,7 @@ export default function ContextDock() {
                 style={[styles.softButton, surface, { width: NOTE_SIDE, height: NOTE_SIDE, borderRadius: NOTE_SIDE / 2, opacity: back.dimmed ? 0.5 : 1 }]}
               >
                   {glassOn && <DockGlassFill soft={soft} />}
-                <Ionicons name={back.icon as keyof typeof Ionicons.glyphMap} size={22} color={soft.ink} />
+                <Ionicons name={back.icon as keyof typeof Ionicons.glyphMap} size={22} color={iconInk} />
               </Pressable>
             </View>
           </DockPortal>
@@ -2277,7 +2278,7 @@ export default function ContextDock() {
                     accessibilityLabel="Назад"
                     style={[styles.softButton, { width: SOFT_BACK_W, height: TWO_BEAD - 4 }]}
                   >
-                    <SoftIcon name="back" size={22} color={soft.ink} />
+                    <SoftIcon name="back" size={22} color={iconInk} />
                   </Pressable>
                 )}
                 {actions.map((action) => (
@@ -2353,7 +2354,7 @@ export default function ContextDock() {
     const roundBead = (bead: typeof beads.left) => {
       if (!bead) return <View style={{ width: TWO_BEAD }} />;
       const own = SOFT_DOCK_GLYPHS[bead.icon];
-      const ink = bead.active ? soft.accent : soft.ink;
+      const ink = bead.active ? soft.accent : iconInk;
       return (
         <Pressable
           onPress={bead.onPress}
@@ -2431,7 +2432,7 @@ export default function ContextDock() {
               style={[styles.softButton, surface, { width: TWO_BEAD }]}
             >
                 {glassOn && <DockGlassFill soft={soft} />}
-              <Ionicons name="copy-outline" size={21} color={soft.ink} />
+              <Ionicons name="copy-outline" size={21} color={iconInk} />
             </Pressable>
           )}
           {deskDockOn && left && right ? (
@@ -2513,7 +2514,7 @@ export default function ContextDock() {
                     <Ionicons
                       name={right.extra.icon as keyof typeof Ionicons.glyphMap}
                       size={20}
-                      color={right.extra.filled && right.extra.active ? soft.card : soft.ink}
+                      color={right.extra.filled && right.extra.active ? soft.card : iconInk}
                     />
                     {right.extra.active && !right.extra.filled && <View style={[styles.fieldDot, { backgroundColor: soft.accent, borderColor: soft.chrome }]} />}
                     {!!right.extra.count && (
@@ -2524,9 +2525,9 @@ export default function ContextDock() {
                   </Pressable>
                 ) : null
               }
-              multiIcon={<Ionicons name="copy-outline" size={21} color={soft.ink} />}
+              multiIcon={<Ionicons name="copy-outline" size={21} color={iconInk} />}
               onMulti={openDeskSwitcher}
-              backIcon={<Ionicons name={(topBack?.icon ?? 'chevron-back') as keyof typeof Ionicons.glyphMap} size={22} color={soft.ink} />}
+              backIcon={<Ionicons name={(topBack?.icon ?? 'chevron-back') as keyof typeof Ionicons.glyphMap} size={22} color={iconInk} />}
               onBack={topBack?.onPress ?? (() => {})}
             />
           ) : merged && left ? (
@@ -2573,7 +2574,7 @@ export default function ContextDock() {
                     <Ionicons
                       name={right.extra.icon as keyof typeof Ionicons.glyphMap}
                       size={20}
-                      color={right.extra.filled && right.extra.active ? soft.card : soft.ink}
+                      color={right.extra.filled && right.extra.active ? soft.card : iconInk}
                     />
                     {right.extra.active && !right.extra.filled && <View style={[styles.fieldDot, { backgroundColor: soft.accent, borderColor: soft.chrome }]} />}
                     {!!right.extra.count && (
@@ -2630,7 +2631,7 @@ export default function ContextDock() {
                   style={[styles.softButton, surface, { width: TWO_BEAD }]}
                 >
                     {glassOn && <DockGlassFill soft={soft} />}
-                  <Ionicons name="copy-outline" size={21} color={soft.ink} />
+                  <Ionicons name="copy-outline" size={21} color={iconInk} />
                 </Pressable>
               ) : topBack ? (
                 <Pressable
@@ -2639,7 +2640,7 @@ export default function ContextDock() {
                   style={[styles.softButton, surface, { width: TWO_BEAD }]}
                 >
                     {glassOn && <DockGlassFill soft={soft} />}
-                  <Ionicons name={(topBack.icon ?? 'chevron-back') as keyof typeof Ionicons.glyphMap} size={22} color={soft.ink} />
+                  <Ionicons name={(topBack.icon ?? 'chevron-back') as keyof typeof Ionicons.glyphMap} size={22} color={iconInk} />
                 </Pressable>
               ) : null}
             </>
@@ -2657,7 +2658,7 @@ export default function ContextDock() {
                 style={[styles.softButton, surface, { width: TWO_BEAD }, left.active && { backgroundColor: soft.ink }]}
               >
                   {glassOn && !left.active && <DockGlassFill soft={soft} />}
-                <Ionicons name={left.icon as keyof typeof Ionicons.glyphMap} size={21} color={left.active ? soft.card : soft.ink} />
+                <Ionicons name={left.icon as keyof typeof Ionicons.glyphMap} size={21} color={left.active ? soft.card : iconInk} />
               </Pressable>
               <View style={{ flex: 1 }} />
             </>
@@ -2692,7 +2693,7 @@ export default function ContextDock() {
               <Ionicons
                 name={right.extra.icon as keyof typeof Ionicons.glyphMap}
                 size={21}
-                color={right.extra.active ? soft.card : soft.ink}
+                color={right.extra.active ? soft.card : iconInk}
               />
               {!!right.extra.count && (
                 <View style={[styles.fieldCount, { backgroundColor: soft.accent, borderColor: soft.chrome }]}>
@@ -2711,9 +2712,9 @@ export default function ContextDock() {
             >
                 {glassOn && <DockGlassFill soft={soft} />}
               {rightIcon ? (
-                <SoftIcon name={rightIcon} size={23} color={soft.ink} />
+                <SoftIcon name={rightIcon} size={23} color={iconInk} />
               ) : (
-                <Ionicons name={right.icon as keyof typeof Ionicons.glyphMap} size={21} color={soft.ink} />
+                <Ionicons name={right.icon as keyof typeof Ionicons.glyphMap} size={21} color={iconInk} />
               )}
             </Pressable>
           )}
@@ -3093,7 +3094,8 @@ export function ActionButton({
   // style's own icon where it has one, Inter for the word.
   soft?: SoftTokens | null;
 }) {
-  const ink = soft ? (action.active ? soft.accent : soft.ink) : action.active ? theme.accent : theme.glass.ink;
+  const glassOn = useDockGlass();
+  const ink = soft ? (action.active ? soft.accent : dockInk(soft, glassOn)) : action.active ? theme.accent : theme.glass.ink;
   const ownIcon = soft ? SOFT_DOCK_GLYPHS[action.icon] : undefined;
   // THE STRONG ONE: a dark circle of its own in the strip, no word under
   // it - set apart from the tools by contrast, as "+" is everywhere else.

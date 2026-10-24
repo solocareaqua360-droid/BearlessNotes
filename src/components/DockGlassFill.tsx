@@ -125,3 +125,10 @@ export function useDockSurface(soft: SoftTokens, glass: boolean) {
       : '0px 6px 18px rgba(0,0,0,0.08)';
   return { backgroundColor: 'transparent', overflow: 'hidden' as const, boxShadow: light };
 }
+
+// The icons on the glass dock in the light theme: a soft grey rather than near-black (the user, 2026-10-24: «колір іконок
+// зробити менш чорним, більш сірим, тільки для білого»). Dark, or the glass off: the soft ink as it was.
+export const LIGHT_GLASS_INK = '#5C5B57';
+export function dockInk(soft: SoftTokens, glass: boolean): string {
+  return glass && !soft.dark ? LIGHT_GLASS_INK : soft.ink;
+}
