@@ -47,14 +47,22 @@ export default function DockGlassFill({ soft }: { soft: SoftTokens }) {
     >
       {blur && (
         <BlurView
-          intensity={BLUR}
-          tint={soft.dark ? 'dark' : 'default'}
+          intensity={soft.dark ? BLUR : g.blur}
+          tint={soft.dark ? 'dark' : g.blurTint}
           blurMethod="dimezisBlurView"
           blurTarget={target ?? undefined}
           style={StyleSheet.absoluteFill}
         />
       )}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: soft.chrome, opacity: blur ? TINT : FLAT }]} />
+      {/* Dark: the drawer's material (the dock's own colour at 55%). Light: the white theme's own milk glass, chosen with it
+          in September - a thinner blur and a milk at a third, so what passes under the dock still reads (the user, 2026-10-24:
+          «в білому варіанті хотілось би трохи більше прозорості»). */}
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          soft.dark ? { backgroundColor: soft.chrome, opacity: blur ? TINT : FLAT } : { backgroundColor: g.body, opacity: blur ? g.opacity : FLAT },
+        ]}
+      />
       {/* THE RIM (the user, 2026-10-24, over a photo of the old rail capsule: «Питання в обідку») - GlassDrop's three layers,
           lit from one side: an outer specular along the top edge, gone by the middle, an inner rim a little way in
           brightest along the bottom (the thickness of the glass), and a soft vignette reaching in from the edge. */}
@@ -86,7 +94,7 @@ export default function DockGlassFill({ soft }: { soft: SoftTokens }) {
               strokeWidth={ring.width}
             />
           ))}
-          <Rect x={2.5} y={2.5} width={Math.max(0, w - 5)} height={Math.max(0, h - 5)} rx={Math.max(0, r - 2.5)} fill="none" stroke={`url(#${uid}-rim)`} strokeWidth={1.2} />
+          <Rect x={2.5} y={2.5} width={Math.max(0, w - 5)} height={Math.max(0, h - 5)} rx={Math.max(0, r - 2.5)} fill="none" stroke={`url(#${uid}-rim)`} strokeOpacity={soft.dark ? 1 : 0.45} strokeWidth={1.2} />
           <Rect x={0.6} y={0.6} width={Math.max(0, w - 1.2)} height={Math.max(0, h - 1.2)} rx={Math.max(0, r - 0.6)} fill="none" stroke={`url(#${uid}-spec)`} strokeWidth={1.2} />
         </Svg>
       )}
@@ -94,13 +102,11 @@ export default function DockGlassFill({ soft }: { soft: SoftTokens }) {
   );
 }
 
-// GlassDrop's vignette: tight and strong at the edge, wide and faint as it reaches the middle.
-const RINGS = [
-  { inset: 0.5, width: 1, opacity: 1 },
-  { inset: 2, width: 2, opacity: 0.55 },
-  { inset: 4.5, width: 3, opacity: 0.28 },
-  { inset: 8, width: 4, opacity: 0.12 },
-];
+// The vignette reaching in from the edge: TEN rings of a pixel, each a little fainter (a smooth curve), not GlassDrop's four
+// wide ones - on the light theme those four read as separate stripes round the dock, steps where there should be a fade
+// (the user, 2026-10-24: «ореоли по контуру ідуть двома явно видимими смужками… сходинки замість плавності»). The same
+// amount of shade in all, spread evenly.
+const RINGS = Array.from({ length: 10 }, (_, i) => ({ inset: 0.5 + i, width: 1.2, opacity: 0.85 * Math.pow(1 - i / 10, 2.2) }));
 
 // The piece's own style while the glass is on: no fill of its own (the glass is), clipped to its shape, and
 // the theme's own light round it - the black theme's glow (two shadows: a tight bright one at the edge, a wide soft one
