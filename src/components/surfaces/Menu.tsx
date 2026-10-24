@@ -49,7 +49,9 @@ export type MenuEntry =
       onPress: () => void;
     };
 
-export const MENU_WIDTH = 210;
+// Wide enough for the longest rows the menus carry («Групувати за типом», «Фільтри (тип, проєкт)») - at 210 they were cut
+// to «Групувати за ...» (the user, 2026-10-24).
+export const MENU_WIDTH = 256;
 
 export default function Menu({
   visible,

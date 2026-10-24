@@ -49,7 +49,8 @@ import { useTags } from '../hooks/useTags';
 import { branchCard, currentOutline, deepenCard, mergeStructure } from '../utils/chatBoardOps';
 import { nodesFromOutline } from '../utils/chatOwned';
 import ChatBoardWindow from '../components/ChatBoardWindow';
-import ThinkingEffect, { nextThinkingVariant, thinkingVariantLabel, useThinkingVariant } from '../components/ThinkingEffect';
+import ThinkingEffect, { useThinkingVariant } from '../components/ThinkingEffect';
+import Menu, { type MenuEntry } from '../components/surfaces/Menu';
 import { writeMemoryNote, writeMemoryTree } from '../utils/assistantTree';
 import { shortTitle } from '../utils/assistant';
 import { FEATURES } from '../features';
@@ -554,32 +555,44 @@ export default function AssistantScreen() {
     notify('Що я пам\'ятаю', parts.join('\n'));
   }
 
-  async function menu() {
+  // THE CONVERSATION'S «⋯»: the same drop-down the explorer and the start desk open under their «⋯» (sections, ticks, a red
+  // delete), not a sheet in the middle of the screen (the user, 2026-10-24: «краще як в провіднику»).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menu = () => setMenuOpen(true);
+  function menuEntries(): MenuEntry[] {
     const c = chatRef.current;
     const folder = folderOfPointer(folders, c?.folderId);
-    const choice = await ask({
-      title: 'Розмова',
-      actions: [
-        { id: 'new', label: 'Нова розмова', icon: 'add' as const },
-        { id: 'chats', label: 'Розмови', icon: 'chatbubble-outline' as const },
-        { id: 'instruction', label: c?.instruction ? 'Інструкція розмови ✓' : 'Інструкція розмови', icon: 'book-outline' as const },
-        { id: 'folder', label: folder ? `Папка: ${folder.name}` : 'Папка розмови', icon: 'folder-outline' as const },
-        { id: 'memory', label: "Що ти пам'ятаєш?", icon: 'bulb-outline' as const },
-        { id: 'effect', label: `Світіння, поки ШІ думає: ${thinkingVariantLabel(thinkingVariant)}`, icon: 'sparkles-outline' as const },
-        ...(c && c.messages.length > 0 ? [{ id: 'delete', label: 'Видалити розмову', icon: 'trash-outline' as const }] : []),
-        ...(FEATURES.assistantTree && c?.boardId ? [{ id: 'tree', label: 'Дерево на дошці', icon: 'git-network-outline' as const }] : []),
-      ],
-    });
-    if (choice === 'new') newConversation();
-    else if (choice === 'chats') openChatsSheet();
-    else if (choice === 'instruction' && c) setInstructionFor(c.id);
-    else if (choice === 'folder' && c) setFolderFor({ chatId: c.id, purpose: 'chat' });
-    else if (choice === 'memory') showMemory();
-    else if (choice === 'effect') setThinkingVariant(nextThinkingVariant(thinkingVariant));
-    else if (choice === 'delete' && c) {
-      const sure = await ask({ title: 'Видалити розмову?', actions: [{ id: 'yes', label: 'Видалити разом з її дошкою й нотатками', icon: 'trash-outline' as const }] });
-      if (sure === 'yes') removeChat(c.id);
-    } else if (choice === 'tree' && c?.boardId) navigation.navigate('BoardCopy', { boardId: c.boardId });
+    const run = (f: () => void) => () => {
+      setMenuOpen(false);
+      f();
+    };
+    return [
+      { label: 'Нова розмова', icon: 'add', onPress: run(() => newConversation()) },
+      { label: 'Розмови', icon: 'chatbubble-outline', onPress: run(openChatsSheet) },
+      { kind: 'section', label: 'Ця розмова' },
+      { label: 'Інструкція', icon: 'book-outline', checked: !!c?.instruction, onPress: run(() => c && setInstructionFor(c.id)) },
+      { label: folder ? `Папка: ${folder.name}` : 'Папка', icon: 'folder-outline', checked: !!folder, onPress: run(() => c && setFolderFor({ chatId: c.id, purpose: 'chat' })) },
+      { label: "Що ти пам'ятаєш?", icon: 'bulb-outline', onPress: run(showMemory) },
+      ...(FEATURES.assistantTree && c?.boardId ? [{ label: 'Дерево на дошці', icon: 'git-network-outline' as const, onPress: run(() => navigation.navigate('BoardCopy', { boardId: c.boardId })) }] : []),
+      { kind: 'section', label: 'Поки ШІ думає' },
+      { label: 'Вогнище', icon: 'flame-outline', checked: thinkingVariant === 'fire', onPress: run(() => setThinkingVariant('fire')) },
+      { label: 'Кульки', icon: 'ellipse-outline', checked: thinkingVariant === 'balloons', onPress: run(() => setThinkingVariant('balloons')) },
+      { label: 'Нічого', icon: 'remove-outline', checked: thinkingVariant === 'off', onPress: run(() => setThinkingVariant('off')) },
+      ...(c && c.messages.length > 0
+        ? [
+            { kind: 'rule' as const },
+            {
+              label: 'Видалити розмову',
+              icon: 'trash-outline' as const,
+              tone: 'danger' as const,
+              onPress: run(async () => {
+                const sure = await ask({ title: 'Видалити розмову?', actions: [{ id: 'yes', label: 'Видалити разом з її дошкою й нотатками', icon: 'trash-outline' as const }] });
+                if (sure === 'yes') removeChat(c.id);
+              }),
+            },
+          ]
+        : []),
+    ];
   }
 
   async function openHistory() {
@@ -964,6 +977,14 @@ export default function AssistantScreen() {
           )}
         />
       ) : null}
+      <Menu
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        entries={menuOpen ? menuEntries() : []}
+        style={{ position: 'absolute', left: 10, top: insets.top + 12 + 48 + 8 }}
+        accent={S.accent}
+        soft={S}
+      />
       {materialsOpen && chat ? (
         <ChatMaterialsSheet
           chatId={chat.id}
