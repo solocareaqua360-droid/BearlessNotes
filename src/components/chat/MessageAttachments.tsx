@@ -4,7 +4,7 @@ import { useSoft } from '../../theme/soft';
 import { SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
 import { chatColours } from './chatTokens';
 
-export type SentAttachment = { kind: 'photo' | 'file' | 'note' | 'folder'; name: string; sub: string; uri?: string };
+export type SentAttachment = { kind: 'photo' | 'file' | 'note' | 'folder' | 'link'; name: string; sub: string; uri?: string };
 
 const TAGS: Record<string, string> = { PDF: '#C2410C', DOCX: '#2563EB', DOC: '#2563EB', XLSX: '#15803D', XLS: '#15803D', CSV: '#15803D' };
 
@@ -32,7 +32,7 @@ export default function MessageAttachments({ items, onOpen }: { items: SentAttac
               {tag ? (
                 <Text style={[styles.tag, { color: tag }]}>{ext}</Text>
               ) : (
-                <Ionicons name={a.kind === 'folder' ? 'folder-outline' : a.kind === 'note' ? 'document-text-outline' : 'document-outline'} size={18} color={S.accent} />
+                <Ionicons name={a.kind === 'folder' ? 'folder-outline' : a.kind === 'note' ? 'document-text-outline' : a.kind === 'link' ? 'link-outline' : 'document-outline'} size={18} color={S.accent} />
               )}
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>

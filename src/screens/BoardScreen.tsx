@@ -169,6 +169,7 @@ import TopNavBar, { useTopNavOn } from '../components/TopNavBar';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { listenError } from '../utils/listenError';
 import { isChatOwned } from '../utils/chatOwned';
+import { rad } from '../utils/angle';
 
 const AUTOSAVE_DELAY_MS = 600;
 // How many steps back undo keeps - a plain cap on a session-only stack,
@@ -809,7 +810,7 @@ function ConnectDraftLine({
       transform: [
         { translateX: (startX.value + endX.value) / 2 - length / 2 },
         { translateY: (startY.value + endY.value) / 2 - 1 },
-        { rotateZ: `${Math.atan2(dy, dx)}rad` },
+        { rotateZ: rad(Math.atan2(dy, dx)) },
       ],
     };
   });
@@ -884,7 +885,7 @@ function LiveConnectionLine({ from, to }: { from: LiveEndpoint; to: LiveEndpoint
       transform: [
         { translateX: (x1 + x2) / 2 - length / 2 },
         { translateY: (y1 + y2) / 2 - 1 },
-        { rotateZ: `${Math.atan2(dy, dx)}rad` },
+        { rotateZ: rad(Math.atan2(dy, dx)) },
       ],
     };
   });

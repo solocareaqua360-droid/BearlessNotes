@@ -67,6 +67,7 @@ import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { useRenderTimer } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
+import { deg } from '../utils/angle';
 
 const DANGER = '#EF4444';
 const SIDE = 12;
@@ -833,7 +834,7 @@ function ProjectCard({
       // slivers stand at the edges.
       // Side names stay with their cards; the front one hands over to the flying name.
       opacity: 1 - t * Math.min(1, q.c * 7),
-      transform: [{ rotate: `${-90 * (1 - t)}deg` }],
+      transform: [{ rotate: deg(-90 * (1 - t)) }],
     };
   });
   return (

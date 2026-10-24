@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { extractArticle, type ArticleBlock, type SavedArticle } from './articleReader';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
@@ -8,7 +9,7 @@ import { db } from '../firebase';
 import { ownedQuery, setDoc } from './owned';
 import { compressPickedImage } from './photoLibrary';
 import { blocksToMarkdown } from './blocksText';
-import { GEMINI_MODEL } from './gemini';
+import { GEMINI_MODEL, READ_BY_URL, READ_BY_URL_TOKENS } from './gemini';
 import { getGeminiKey } from './geminiKey';
 import { INPUT_PRICE_PER_M } from './geminiUsage';
 import { listenError } from './listenError';
@@ -22,7 +23,7 @@ import type { Block } from '../types';
 
 export type ChatAttachment = {
   id: string;
-  kind: 'photo' | 'pdf' | 'text' | 'docx' | 'xlsx' | 'note' | 'folder';
+  kind: 'photo' | 'pdf' | 'text' | 'docx' | 'xlsx' | 'note' | 'folder' | 'link';
   // What the chip says under the name: «12 стор.», «нотатка», «папка · 26».
   name: string;
   sub: string;
@@ -31,6 +32,9 @@ export type ChatAttachment = {
   documentId?: string;
   folderPath?: string;
   sizeBytes?: number;
+  // A link of the links base: its page is what the AI reads (the saved reader copy, else the page fetched now).
+  url?: string;
+  linkId?: string;
 };
 
 // One part of a Gemini request, as the REST API takes it.
@@ -55,7 +59,7 @@ export function kindOfFile(name: string, mime?: string): ChatAttachment['kind'] 
   return null;
 }
 
-const SUB: Record<ChatAttachment['kind'], string> = { photo: 'фото', pdf: 'PDF', text: 'текст', docx: 'Word', xlsx: 'Excel', note: 'нотатка', folder: 'папка' };
+const SUB: Record<ChatAttachment['kind'], string> = { photo: 'фото', pdf: 'PDF', text: 'текст', docx: 'Word', xlsx: 'Excel', note: 'нотатка', folder: 'папка', link: 'посилання' };
 
 async function photosFrom(result: ImagePicker.ImagePickerResult): Promise<ChatAttachment[]> {
   if (result.canceled) return [];
@@ -96,6 +100,34 @@ export async function pickFile(): Promise<ChatAttachment[]> {
 
 export function noteAttachment(d: { id: string; title: string }): ChatAttachment {
   return { id: newId(), kind: 'note', name: d.title || 'Без назви', sub: SUB.note, documentId: d.id };
+}
+
+export function linkAttachment(l: { id: string; url: string; title?: string; siteName?: string }): ChatAttachment {
+  return { id: newId(), kind: 'link', name: l.title || l.siteName || l.url, sub: l.siteName || hostOf(l.url), url: l.url, linkId: l.id };
+}
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host.replace(/^www\./, '');
+  } catch {
+    return 'посилання';
+  }
+};
+
+// The page of a link as text: the copy saved «для читання» (linkArticles/<id>) when there is one - it opens offline and is
+// what the user read - else the article fetched now through the same reader (menus, ads and comments left out).
+async function linkText(a: ChatAttachment): Promise<string> {
+  const asText = (blocks: ArticleBlock[]) => blocks.map((b) => (b.kind === 'h' ? `## ${b.text}` : b.kind === 'li' ? `- ${b.text}` : b.text)).join('\n');
+  if (a.linkId) {
+    try {
+      const snap = await getDoc(doc(db, 'linkArticles', a.linkId));
+      const saved = snap.data() as SavedArticle | undefined;
+      if (saved?.blocks?.length) return `${saved.title ?? a.name}\n\n${asText(saved.blocks)}`;
+    } catch {
+      // Not saved, or not readable: fetched below.
+    }
+  }
+  const article = await extractArticle(a.url ?? '');
+  return `${article.title ?? a.name}\n\n${asText(article.blocks)}`;
 }
 
 export function folderAttachment(f: { path: string; name: string; count: number }): ChatAttachment {
@@ -222,6 +254,12 @@ export async function attachmentParts(list: ChatAttachment[]): Promise<{ parts: 
         parts.push({ text: `Файл «${a.name}» (Word):\n${docxText(await readBase64(a.uri))}` });
       } else if (a.kind === 'xlsx' && a.uri) {
         parts.push({ text: `Файл «${a.name}» (Excel):\n${xlsxText(await readBase64(a.uri))}` });
+      } else if (a.kind === 'link' && a.url) {
+        // Read on the phone when it can be (the saved article, or Readability); a page that holds no text for that is left
+        // to Gemini to open itself.
+        const text = await linkText(a).catch(() => '');
+        if (text.length - (a.name?.length ?? 0) > 300) parts.push({ text: `Сторінка «${a.name}» (${a.url}):\n${text.slice(0, MAX_FOLDER_CHARS)}` });
+        else parts.push({ text: `Сторінка «${a.name}»: ${a.url}\n${READ_BY_URL}` });
       } else if (a.kind === 'note' && a.documentId) {
         const note = await noteMarkdown(a.documentId);
         if (note) parts.push({ text: `Нотатка «${note.title}»:\n${note.text}` });
@@ -271,10 +309,13 @@ export async function countTokens(parts: GeminiPart[], textBefore: string): Prom
     });
     const data = await response.json().catch(() => null);
     const total = data?.totalTokens;
-    return response.ok && typeof total === 'number' ? total : estimate(parts, textBefore);
+    return (response.ok && typeof total === 'number' ? total : estimate(parts, textBefore)) + byUrlTokens(parts);
   } catch {
-    return estimate(parts, textBefore);
+    return estimate(parts, textBefore) + byUrlTokens(parts);
   }
+}
+function byUrlTokens(parts: GeminiPart[]): number {
+  return parts.filter((p) => 'text' in p && p.text.includes(READ_BY_URL)).length * READ_BY_URL_TOKENS;
 }
 
 export function priceOfTokens(tokens: number): number {

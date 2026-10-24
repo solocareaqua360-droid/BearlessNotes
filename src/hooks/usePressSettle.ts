@@ -1,5 +1,6 @@
 import { useAnimatedStyle, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import { flipKey, flipProgress } from '../utils/flipOpen';
+import { deg } from '../utils/angle';
 
 // A CARD THAT SETTLES under the finger (the soft motion's press, on the
 // phone - the laptop's is one CSS rule, see the .web sibling): a touch
@@ -27,7 +28,7 @@ export function usePressSettle(cardKey?: string, dimmed = false) {
     const k = Math.min(1, p * 2);
     return {
       opacity: (dimmed ? 0.4 : 1) * (mine && p >= 0.5 ? 0 : 1),
-      transform: [{ perspective: PERSPECTIVE }, { rotateY: `${k * 90}deg` }, { scale: scale.value * (1 + 0.06 * k) }],
+      transform: [{ perspective: PERSPECTIVE }, { rotateY: deg(k * 90) }, { scale: scale.value * (1 + 0.06 * k) }],
     };
   }, [cardKey, dimmed]);
   const handlers = {

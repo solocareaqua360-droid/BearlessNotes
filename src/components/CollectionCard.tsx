@@ -8,6 +8,7 @@ import { Ionicons } from './icons/Ionicons';
 import { useSoft } from '../theme/soft';
 import { SOFT_BOLD, SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import type { FolderItem } from '../hooks/useAllFolderItems';
+import { deg } from '../utils/angle';
 
 // THE FACE OF A COLLECTION (the user, 2026-10-15: «зовнішній вигляд картки підбірки повинен відрізнятись від папки... 2
 // стилі список і сітка + для режиму модерн» - and, shown the sketch, «хочу все»). A folder is an icon; a collection's
@@ -129,7 +130,7 @@ function useGust(blowing: boolean, g: Gust) {
       rx = 20 * e;
     }
     return {
-      transform: [{ perspective: 600 }, { translateX: tx }, { translateY: ty }, { rotate: `${rot}deg` }, { rotateY: `${ry}deg` }, { rotateX: `${rx}deg` }],
+      transform: [{ perspective: 600 }, { translateX: tx }, { translateY: ty }, { rotate: deg(rot) }, { rotateY: deg(ry) }, { rotateX: deg(rx) }],
     };
   });
 }
@@ -142,8 +143,8 @@ function useFlap(blowing: boolean, side: -1 | 1) {
   }, [blowing]);
   return useAnimatedStyle(() => {
     const v = t.value;
-    const deg = (side < 0 ? 30 : 26) * (0.5 - 0.5 * Math.cos(v * Math.PI * 2 * (side < 0 ? 1.6 : 1.8))) + 10 * v;
-    return { transform: [{ perspective: 500 }, { rotateY: `${side < 0 ? -deg : deg}deg` }] };
+    const turn = (side < 0 ? 30 : 26) * (0.5 - 0.5 * Math.cos(v * Math.PI * 2 * (side < 0 ? 1.6 : 1.8))) + 10 * v;
+    return { transform: [{ perspective: 500 }, { rotateY: deg(side < 0 ? -turn : turn) }] };
   });
 }
 function GustView({ blowing, g, style, children }: { blowing: boolean; g: Gust; style: object; children?: ReactNode }) {

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { deleteDoc, deleteField, doc, getDoc, getDocs } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery, setDoc } from './owned';
-import { GEMINI_MODEL, GeminiError, askGemini } from './gemini';
+import { GEMINI_MODEL, GeminiError, READ_BY_URL, askGemini } from './gemini';
 import { getGeminiKey } from './geminiKey';
 import { costOfGemini, recordGemini } from './geminiUsage';
 import { deleteChatObjects } from './chatObjects';
@@ -25,7 +25,7 @@ import { deleteChatObjects } from './chatObjects';
 // shows it as a card with «Відкрити» (2026-10-24).
 export type AssistantStructure = { boardId: string; title: string; cards: number };
 // `attachments`: what was given with this message to read (utils/chatAttachments) - shown over it, kept as names and a local picture.
-export type AssistantAttachment = { kind: 'photo' | 'pdf' | 'text' | 'docx' | 'xlsx' | 'note' | 'folder'; name: string; sub: string; uri?: string };
+export type AssistantAttachment = { kind: 'photo' | 'pdf' | 'text' | 'docx' | 'xlsx' | 'note' | 'folder' | 'link'; name: string; sub: string; uri?: string; url?: string };
 export type AssistantMessage = { id: string; role: 'user' | 'model'; text: string; at: number; error?: boolean; costUsd?: number; topicId?: string; structure?: AssistantStructure; attachments?: AssistantAttachment[] };
 export type AssistantTopic = { id: string; parentId: string | null; title: string; fromKey?: string };
 export const ROOT_TOPIC = 'root';
@@ -317,8 +317,14 @@ export async function askAssistant(
         systemInstruction: { parts: [{ text: memory ? `${SYSTEM}\n\n${memory}` : SYSTEM }] },
         contents: turns.map((m, i) => ({
           role: m.role,
-          parts: i === turns.length - 1 && m.role === 'user' && extraParts?.length ? [{ text: m.text }, ...extraParts] : [{ text: m.text }],
+          parts:
+            i === turns.length - 1 && m.role === 'user' && extraParts?.length
+              ? [{ text: m.text }, ...extraParts]
+              : // A page given earlier is only its address now: the talk about it goes on with Gemini opening it again.
+                [{ text: m.text + pagesOf(m) }],
         })),
+        // A page given as an address (now, or earlier in the talk): Gemini opens it itself.
+        ...(extraParts?.some((p) => 'text' in p && p.text.includes(READ_BY_URL)) || turns.some((m) => pagesOf(m)) ? { tools: [{ url_context: {} }] } : {}),
       }),
     });
   } catch {
@@ -332,6 +338,11 @@ export async function askAssistant(
   const text = parts?.map((p) => p.text ?? '').join('').trim();
   if (!text) throw new GeminiError('Gemini не дав відповіді - можливо, запит потрапив під фільтр безпеки');
   return { text, costUsd: costOfGemini(GEMINI_MODEL, usage) };
+}
+
+function pagesOf(m: AssistantMessage): string {
+  const pages = (m.attachments ?? []).filter((a) => a.kind === 'link' && a.url);
+  return pages.length ? `\n\n(Додані сторінки: ${pages.map((a) => `«${a.name}» ${a.url}`).join(', ')})` : '';
 }
 
 // A one-shot request (no conversation) with its price, for what the board window asks of the AI: deepen a card, branch it.

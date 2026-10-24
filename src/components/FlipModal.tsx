@@ -3,6 +3,7 @@ import { Modal, Platform, StyleSheet, View, useWindowDimensions, type ModalProps
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useLeaving } from '../hooks/useLeaving';
 import { FLIP_MS, flipProgress, type FlipFrom } from '../utils/flipOpen';
+import { deg } from '../utils/angle';
 
 // A FULL-SCREEN WINDOW OPENED FROM A CARD (a photo's viewer, a file's
 // quick look) - the native-Modal twin of GlassLayer's flip (utils/flipOpen).
@@ -96,7 +97,7 @@ function FlipBack({ from, leaving, children }: { from: FlipFrom; leaving: boolea
         { perspective: PERSPECTIVE },
         { translateX: (rx - ox.value + rw / 2 - cw.value / 2) * (1 - q) },
         { translateY: (ry - oy.value + rh / 2 - ch.value / 2) * (1 - q) },
-        { rotateY: `${-90 * (1 - q)}deg` },
+        { rotateY: deg(-90 * (1 - q)) },
         { scale: s },
       ],
     };

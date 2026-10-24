@@ -17,6 +17,7 @@ export default function ChatAttachSheet({
   onFile,
   onNote,
   onFolder,
+  onLink,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -25,10 +26,12 @@ export default function ChatAttachSheet({
   onFile: () => void;
   onNote: () => void;
   onFolder: () => void;
+  // A link of the links base (2026-10-24: «щоб я міг додати посилання з моєї бази»).
+  onLink: () => void;
 }) {
   const S = useSoft();
   const C = chatColours(S);
-  const quick = (label: string, icon: 'camera-outline' | 'images-outline', onPress: () => void, dark: boolean) => (
+  const quick = (label: string, icon: 'camera-outline' | 'images-outline' | 'link-outline', onPress: () => void, dark: boolean) => (
     <Pressable onPress={onPress} accessibilityLabel={label} style={[styles.quick, { backgroundColor: dark ? C.darkBtn : S.card, boxShadow: dark ? undefined : S.shadow } as never]}>
       <Ionicons name={icon} size={22} color={dark ? C.darkBtnInk : S.ink} />
       <Text style={[styles.quickLabel, { color: dark ? C.darkBtnInk : S.ink }]}>{label}</Text>
@@ -83,6 +86,7 @@ export default function ChatAttachSheet({
       <View style={styles.quickRow}>
         {quick('Камера', 'camera-outline', onCamera, true)}
         {quick('Галерея', 'images-outline', onGallery, false)}
+        {quick('Посилання', 'link-outline', onLink, false)}
       </View>
       <View style={styles.row}>
         <PictureTile picture={filePic} title="Файл з телефона" sub="PDF, Word, Excel, текст" onPress={onFile} />

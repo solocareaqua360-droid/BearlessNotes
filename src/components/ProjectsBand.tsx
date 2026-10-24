@@ -6,6 +6,7 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming
 import { useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import type { Group } from '../types';
+import { deg } from '../utils/angle';
 
 // THE PROJECTS BAND (2026-10-22, the user: «зверху гармошка проєктів... свайп листає лише у цьому верхньому полі»): the explorer's first level
 // in the «Проєкти» style opens with one wide card (the project in front) between thin strips with the other names, and dots under them.
@@ -194,7 +195,7 @@ function BandCard({
     return {
       left: 18 + (1 - t) * (shut - 18),
       width: (cardH - 36) * (1 - t) + Math.max(0, w - 36) * t,
-      transform: [{ rotate: `${-90 * (1 - t)}deg` }],
+      transform: [{ rotate: deg(-90 * (1 - t)) }],
     };
   });
   const subStyle = useAnimatedStyle(() => ({ opacity: Math.max(0, 1 - Math.abs(focus.value - index) * 2.2) }));

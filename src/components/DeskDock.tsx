@@ -11,6 +11,7 @@ import { FEATURES } from '../features';
 import { morphCardRef } from '../utils/morph';
 import { ASSIST_KEY, assistFlown, assistHeld, assistWash, onAssistHeld } from '../utils/assistMorph';
 import BalloonMark from './BalloonMark';
+import { deg } from '../utils/angle';
 
 // THE DESK DOCK (2026-10-12, the user's sketch and words: «лупа відривається, як крапля, і приєднується до плюса»).
 //
@@ -388,7 +389,7 @@ export default function DeskDock({
   });
   const lensStyle = useAnimatedStyle(() => {
     const x = lensX(p.value);
-    return { left: x - 14, transform: [{ rotate: `${(x - lensRoot) * (360 / (LENS_IN - lensRoot))}deg` }, { scale: lensGrow.s.value }] };
+    return { left: x - 14, transform: [{ rotate: deg((x - lensRoot) * (360 / (LENS_IN - lensRoot))) }, { scale: lensGrow.s.value }] };
   });
   const bodyStyle = useAnimatedStyle(() => {
     const w = bodyWidth(p.value);
@@ -400,14 +401,14 @@ export default function DeskDock({
   const circleShown = useAnimatedStyle(() => ({ opacity: q.value, transform: [{ scale: 0.85 + 0.15 * q.value }] }));
   const multiStyle = useAnimatedStyle(() => ({
     opacity: interpolate(q.value, [0.3, 0.6], [1, 0], Extrapolation.CLAMP),
-    transform: [{ rotate: `${-90 * ease(q.value / 0.8)}deg` }],
+    transform: [{ rotate: deg(-90 * ease(q.value / 0.8)) }],
   }));
   const switcherOn = FEATURES.deskSwitcher;
   const backStyle = useAnimatedStyle(() =>
     switcherOn
       ? {
           opacity: interpolate(q.value, [0.4, 0.7], [0, 1], Extrapolation.CLAMP),
-          transform: [{ rotate: `${90 * (1 - ease(q.value / 0.8))}deg` }],
+          transform: [{ rotate: deg(90 * (1 - ease(q.value / 0.8))) }],
         }
       : { opacity: 1, transform: [{ rotate: '0deg' }] }
   );

@@ -8,7 +8,7 @@ import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
 import { chatColours } from './chatTokens';
 import HintBalloon from './HintBalloon';
 
-export type ComposerAttachment = { id: string; kind: 'photo' | 'file' | 'note' | 'folder'; name: string; sub: string; uri?: string };
+export type ComposerAttachment = { id: string; kind: 'photo' | 'file' | 'note' | 'folder' | 'link'; name: string; sub: string; uri?: string };
 
 const STRIP_H = 56;
 const ROW_H = 44;
@@ -117,7 +117,7 @@ export default function ChatComposer({
             ) : (
               <View key={a.id} style={[styles.fileChip, { backgroundColor: C.tileGround }]}>
                 <View style={[styles.fileIcon, { backgroundColor: C.wash }]}>
-                  <Ionicons name={a.kind === 'folder' ? 'folder-outline' : a.kind === 'note' ? 'document-text-outline' : 'document-outline'} size={18} color={S.accent} />
+                  <Ionicons name={a.kind === 'folder' ? 'folder-outline' : a.kind === 'note' ? 'document-text-outline' : a.kind === 'link' ? 'link-outline' : 'document-outline'} size={18} color={S.accent} />
                 </View>
                 <View style={{ maxWidth: 110 }}>
                   <Text numberOfLines={1} style={[styles.fileName, { color: S.ink }]}>

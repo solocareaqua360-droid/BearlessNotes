@@ -16,6 +16,7 @@ import type { SharedValue } from 'react-native-reanimated';
 import { SOFT_SEMIBOLD } from '../../utils/fonts';
 import { onListMoved } from '../../utils/motionHold';
 import type { CloudLook, CloudPlace } from './ThemeClouds';
+import { deg } from '../../utils/angle';
 
 // THE THEMES AS BALLOONS (2026-10-15, the user's, «поприколу»: «домалюй думкам (кулям) знизу трикутник і нитку, щоб
 // було схоже на надувну кульку, і нехай кожного разу вони вилітають з-за меж нижньої частини папки думки.
@@ -117,7 +118,7 @@ export default function ThoughtBalloon({
         { translateX: n ? n.x : 0 },
         { translateY: (1 - rise.value) * from - lift.value * 4 + bob.value * 2.5 + (n ? n.y : 0) },
         // Leaning a little as it climbs (the air pushing the top back), upright as it arrives; then the slow tilt.
-        { rotate: `${side * (1 - rise.value) * 5 + bob.value * 2 * side + lean}deg` },
+        { rotate: deg(side * (1 - rise.value) * 5 + bob.value * 2 * side + lean) },
       ],
     };
   });

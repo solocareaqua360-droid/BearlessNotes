@@ -64,6 +64,7 @@ import {
   attachmentParts,
   countTokens,
   folderAttachment,
+  linkAttachment,
   noteAttachment,
   pickCamera,
   pickFile,
@@ -165,6 +166,7 @@ export default function AssistantScreen() {
   const [attachOpen, setAttachOpen] = useState(false);
   const [notePickerOpen, setNotePickerOpen] = useState(false);
   const [folderPickOpen, setFolderPickOpen] = useState(false);
+  const [linkChoices, setLinkChoices] = useState<{ id: string; title: string; url: string; siteName?: string }[] | null>(null);
   const [hintsOpen, setHintsOpen] = useState(false);
   const [dockH, setDockH] = useState(56);
   const [estimate, setEstimate] = useState<{ tokens: number; usd: number; rows: CostRow[] } | null>(null);
@@ -639,6 +641,25 @@ export default function AssistantScreen() {
       notify('Не вдалося додати', (e as Error).message);
     }
   }
+  // The links base, read once when asked for (a listener kept open for a sheet opened now and then would be for nothing).
+  async function openLinkChoices() {
+    try {
+      const snap = await getDocs(ownedQuery('links'));
+      const rows = snap.docs
+        .map((d: { id: string; data: () => Record<string, unknown> }) => ({ id: d.id, data: d.data() }))
+        .filter((r: { data: Record<string, unknown> }) => !r.data.deletedAt && typeof r.data.url === 'string')
+        .sort((x: { data: Record<string, unknown> }, y: { data: Record<string, unknown> }) => ((y.data.updatedAt as number) ?? 0) - ((x.data.updatedAt as number) ?? 0))
+        .map((r: { id: string; data: Record<string, unknown> }) => ({
+          id: r.id,
+          url: r.data.url as string,
+          title: ((r.data.title as string) || (r.data.siteName as string) || (r.data.url as string)).trim(),
+          siteName: r.data.siteName as string | undefined,
+        }));
+      setLinkChoices(rows);
+    } catch (e) {
+      notify('Не вдалося відкрити посилання', (e as Error).message);
+    }
+  }
   function sendFromDock() {
     if (listening) stopListening();
     const text = draft;
@@ -654,7 +675,7 @@ export default function AssistantScreen() {
     }
     const parts = list.flatMap((a) => weighed.current.get(a.id)?.parts ?? []);
     const unread = list.flatMap((a) => weighed.current.get(a.id)?.notes ?? []);
-    const meta = list.map((a) => ({ kind: a.kind, name: a.name, sub: a.sub, ...(a.uri && a.kind === 'photo' ? { uri: a.uri } : {}) }));
+    const meta = list.map((a) => ({ kind: a.kind, name: a.name, sub: a.sub, ...(a.uri && a.kind === 'photo' ? { uri: a.uri } : {}), ...(a.url ? { url: a.url } : {}) }));
     const go = () => {
       setWarning(null);
       setAttached([]);
@@ -905,7 +926,7 @@ export default function AssistantScreen() {
               {m.role === 'user' ? (
                 <View style={{ gap: 6 }}>
                   {m.attachments?.length ? (
-                    <MessageAttachments items={m.attachments.map((a) => ({ kind: a.kind === 'photo' ? 'photo' : a.kind === 'note' ? 'note' : a.kind === 'folder' ? 'folder' : 'file', name: a.name, sub: a.sub, uri: a.uri }))} />
+                    <MessageAttachments items={m.attachments.map((a) => ({ kind: a.kind === 'photo' ? 'photo' : a.kind === 'note' ? 'note' : a.kind === 'folder' ? 'folder' : a.kind === 'link' ? 'link' : 'file', name: a.name, sub: a.sub, uri: a.uri }))} />
                   ) : null}
                   <View style={styles.mine}>
                     <Text style={styles.mineText}>{m.text}</Text>
@@ -1053,7 +1074,7 @@ export default function AssistantScreen() {
           onPlus={() => setAttachOpen(true)}
           hintsOpen={hintsOpen}
           onHints={() => setHintsOpen((v) => !v)}
-          attachments={attached.map((a) => ({ id: a.id, kind: a.kind === 'photo' ? 'photo' : a.kind === 'note' ? 'note' : a.kind === 'folder' ? 'folder' : 'file', name: a.name, sub: a.sub, uri: a.uri }))}
+          attachments={attached.map((a) => ({ id: a.id, kind: a.kind === 'photo' ? 'photo' : a.kind === 'note' ? 'note' : a.kind === 'folder' ? 'folder' : a.kind === 'link' ? 'link' : 'file', name: a.name, sub: a.sub, uri: a.uri }))}
           onRemoveAttachment={(id) => {
             weighed.current.delete(id);
             setAttached((list) => list.filter((a) => a.id !== id));
@@ -1080,6 +1101,22 @@ export default function AssistantScreen() {
           setAttachOpen(false);
           setFolderPickOpen(true);
         }}
+        onLink={() => {
+          setAttachOpen(false);
+          openLinkChoices();
+        }}
+      />
+      <DocumentPickerModal
+        visible={linkChoices !== null}
+        title="Посилання до розмови"
+        icon="link-outline"
+        documents={(linkChoices ?? []).map((l) => ({ id: l.id, title: l.title }))}
+        onPick={(id) => {
+          const l = linkChoices?.find((x) => x.id === id);
+          setLinkChoices(null);
+          if (l) setAttached((list) => [...list, linkAttachment(l)]);
+        }}
+        onClose={() => setLinkChoices(null)}
       />
       <DocumentPickerModal
         visible={notePickerOpen}

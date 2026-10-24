@@ -36,6 +36,7 @@ import { hapticDrop } from '../utils/haptics';
 import { FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import type { SoftTokens } from '../theme/soft';
 import SoftIcon from './SoftIcon';
+import { rad } from '../utils/angle';
 
 // The canvas's colours come from `theme.canvas` now, not from here.
 //
@@ -1164,7 +1165,7 @@ function LiveLine({ from, to, colour }: { from: LiveEnd; to: LiveEnd; colour: st
       transform: [
         { translateX: WORLD_HALF + (x1 + x2) / 2 - length / 2 },
         { translateY: WORLD_HALF + (y1 + y2) / 2 - 1 },
-        { rotateZ: `${Math.atan2(dy, dx)}rad` },
+        { rotateZ: rad(Math.atan2(dy, dx)) },
       ],
     };
   });
@@ -1198,7 +1199,7 @@ function DraftLine({
       transform: [
         { translateX: WORLD_HALF + (startX.value + endX.value) / 2 - length / 2 },
         { translateY: WORLD_HALF + (startY.value + endY.value) / 2 - 1 },
-        { rotateZ: `${Math.atan2(dy, dx)}rad` },
+        { rotateZ: rad(Math.atan2(dy, dx)) },
       ],
     };
   });

@@ -17,6 +17,11 @@ import { recordGemini } from './geminiUsage';
 // that live message over anything written here, since a model's
 // lifespan runs well past this file's own knowledge of it.
 export const GEMINI_MODEL = 'gemini-3.6-flash';
+// A page the phone could not read itself (one built by JavaScript, like Google's PAIR guidebook: its HTML holds no text) goes
+// to Gemini as its address with this line; a request carrying it lets Gemini open the address itself (the url_context tool).
+export const READ_BY_URL = '(Текст цієї сторінки телефон не зміг дістати - відкрий її за адресою вище і прочитай сам.)';
+// What such a page is guessed to weigh for the price shown before sending: Gemini counts it only once it has read it.
+export const READ_BY_URL_TOKENS = 6000;
 const endpointFor = (model: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 

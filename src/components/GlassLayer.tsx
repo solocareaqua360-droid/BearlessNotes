@@ -11,6 +11,7 @@ import { GlassPortal } from './GlassPortal';
 import { GLASS_BACKDROP } from '../constants/glass';
 import { useDensity } from '../hooks/useDensity';
 import { useSoft } from '../theme/soft';
+import { deg } from '../utils/angle';
 
 // What a bottom sheet sits in, now that a sheet is a layer rather than a
 // window. The reason is the blur: on Android it blurs what is inside ITS
@@ -219,7 +220,7 @@ function FlipIn({
         { perspective: PERSPECTIVE },
         { translateX: (rx + rw / 2 - ww / 2) * (1 - q) },
         { translateY: (ry + rh / 2 - wh / 2) * (1 - q) },
-        { rotateY: `${-90 * (1 - q)}deg` },
+        { rotateY: deg(-90 * (1 - q)) },
         { scale: s },
       ],
     };

@@ -22,6 +22,7 @@ import { useSoft } from '../theme/soft';
 import { SOFT_SEMIBOLD } from '../utils/fonts';
 import { deskPull } from '../navigation/deskPull';
 import { copyWindowRect, supportsWindowCopy } from '../utils/mindevaNative';
+import { deg } from '../utils/angle';
 
 type Live = Readonly<{ value: number }>;
 
@@ -363,7 +364,7 @@ function Card({
     const shut = (w + NAME_H) / 2;
     return {
       left: 12 + (1 - t) * (shut - 12),
-      transform: [{ rotate: `${-90 * (1 - t)}deg` }],
+      transform: [{ rotate: deg(-90 * (1 - t)) }],
       opacity: morph.value,
     };
   });
