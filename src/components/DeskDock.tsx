@@ -13,6 +13,7 @@ import { FEATURES } from '../features';
 import { morphCardRef } from '../utils/morph';
 import { ASSIST_KEY, assistFlown, assistHeld, assistWash, onAssistHeld } from '../utils/assistMorph';
 import BalloonMark from './BalloonMark';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { deg } from '../utils/angle';
 
 // THE DESK DOCK (2026-10-12, the user's sketch and words: «лупа відривається, як крапля, і приєднується до плюса»).
@@ -43,6 +44,9 @@ const PILL_H = 60;
 const BEAD_W = 56;
 const BEAD_H = 52;
 const PILL_PAD = 4;
+// The lens under a held place (see onLens): wider than a place, taller than the dock.
+const LENS_W = 92;
+const LENS_H = 88;
 // The pill without its lens zone, and with it.
 const PILL_CORE = 185;
 const PILL_FULL = 237;
@@ -141,7 +145,7 @@ function GrowOnTouch({ style, children }: { style: object; children: ReactNode }
     </Animated.View>
   );
 }
-function DeskBeadButton({ d, i, soft, onPick, active }: { d: DeskBead; i: number; soft: SoftTokens; onPick: (i: number) => void; active?: boolean }) {
+function DeskBeadButton({ d, i, soft, onPick, active, onLens }: { d: DeskBead; i: number; soft: SoftTokens; onPick: (i: number) => void; active?: boolean; onLens: (i: number | null) => void }) {
   const glassOn = useDockGlass();
   const g = useGrow();
   return (
@@ -150,8 +154,14 @@ function DeskBeadButton({ d, i, soft, onPick, active }: { d: DeskBead; i: number
         onPick(i);
         d.onPress();
       }}
-      onPressIn={g.on}
-      onPressOut={g.off}
+      onPressIn={() => {
+        g.on();
+        onLens(i);
+      }}
+      onPressOut={() => {
+        g.off();
+        onLens(null);
+      }}
       accessibilityLabel={d.label}
       style={[styles.bead, { left: PILL_PAD + i * BEAD_W, top: (PILL_H - BEAD_H) / 2, width: BEAD_W, height: BEAD_H }]}
     >
@@ -163,7 +173,7 @@ function DeskBeadButton({ d, i, soft, onPick, active }: { d: DeskBead; i: number
 }
 
 // The balloon among the places: drawn like a desk, the window it opens grows out of it (utils/assistMorph).
-function AssistBead({ i, soft, active, onPress }: { i: number; soft: SoftTokens; active: boolean; onPress: () => void }) {
+function AssistBead({ i, soft, active, onPress, onLens }: { i: number; soft: SoftTokens; active: boolean; onPress: () => void; onLens: (i: number | null) => void }) {
   const glassOn = useDockGlass();
   const g = useGrow();
   // Flown out into its window: the place stands empty (utils/assistMorph).
@@ -173,8 +183,14 @@ function AssistBead({ i, soft, active, onPress }: { i: number; soft: SoftTokens;
       ref={morphCardRef(ASSIST_KEY) as never}
       collapsable={false}
       onPress={onPress}
-      onPressIn={g.on}
-      onPressOut={g.off}
+      onPressIn={() => {
+        g.on();
+        onLens(i);
+      }}
+      onPressOut={() => {
+        g.off();
+        onLens(null);
+      }}
       accessibilityLabel="Розмова з ШІ"
       style={[styles.bead, { left: PILL_PAD + i * BEAD_W, top: (PILL_H - BEAD_H) / 2, width: BEAD_W, height: BEAD_H }]}
     >
@@ -329,6 +345,29 @@ export default function DeskDock({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!assist, desks.length]);
+  // THE LENS UNDER THE FINGER (2026-10-24, the user's screenshots of Craft: «треба повторити ефект в обох темах»): while a
+  // place is held its filled capsule gives way to a clear lens of liquid glass a little larger than the dock - out past its
+  // top and bottom - with a thin iridescent rim; let go, it sinks back into the capsule.
+  const press = useSharedValue(0);
+  const pressAt = useSharedValue(0);
+  const onLens = (i: number | null) => {
+    if (i !== null) {
+      pressAt.value = i;
+      press.value = withSpring(1, { damping: 15, stiffness: 280, mass: 0.6 });
+    } else {
+      press.value = withTiming(0, { duration: 280, easing: Easing.out(Easing.cubic) });
+    }
+  };
+  const lensPressStyle = useAnimatedStyle(() => {
+    const k = press.value;
+    const cx = PILL_PAD + pressAt.value * BEAD_W + BEAD_W / 2;
+    return {
+      opacity: Math.min(1, k * 1.8),
+      left: cx - LENS_W / 2,
+      top: H / 2 - LENS_H / 2,
+      transform: [{ scaleX: (BEAD_W + (LENS_W - BEAD_W) * k) / LENS_W }, { scaleY: (BEAD_H + (LENS_H - BEAD_H) * k) / LENS_H }],
+    };
+  });
   const capStyle = useAnimatedStyle(() => {
     const c = capAt(capFrom.value, capTo.value, capT.value);
     // On the balloon while it has flown out, the circle has gone with it.
@@ -339,7 +378,8 @@ export default function DeskDock({
       top: (PILL_H - c.H) / 2,
       height: c.H,
       borderRadius: c.H / 2,
-      opacity: onBalloon ? 1 - assistFlown.value : 1,
+      // Gives way to the lens while a place is held.
+      opacity: (onBalloon ? 1 - assistFlown.value : 1) * (1 - 0.9 * press.value),
     };
   });
   const lensGrow = useGrow();
@@ -462,13 +502,14 @@ export default function DeskDock({
             />
           )}
           {desks.map((d, i) => (
-            <DeskBeadButton key={d.key} d={d} i={i} soft={soft} onPick={pick} active={!!assist && i === shownIndex} />
+            <DeskBeadButton key={d.key} d={d} i={i} soft={soft} onPick={pick} active={!!assist && i === shownIndex} onLens={onLens} />
           ))}
           {assist && (
             <AssistBead
               i={assistIndex}
               soft={soft}
               active={shownIndex === assistIndex}
+              onLens={onLens}
               onPress={() => {
                 pick(assistIndex);
                 setShownIndex(assistIndex);
@@ -479,6 +520,26 @@ export default function DeskDock({
           )}
           <View style={[styles.hairline, { left: PILL_PAD + (desks.length + (assist ? 1 : 0)) * BEAD_W + 4, backgroundColor: soft.line }]} />
         </Animated.View>
+      </Animated.View>
+      {/* The lens (see onLens): outside the pill, which clips, so it can stand out past the dock's edge. */}
+      <Animated.View pointerEvents="none" style={[styles.pressLens, { boxShadow: soft.dark ? '0px 10px 26px rgba(0,0,0,0.45)' : '0px 10px 24px rgba(0,0,0,0.12)' } as never, lensPressStyle]}>
+        <Svg width={LENS_W} height={LENS_H}>
+          <Defs>
+            <LinearGradient id="pressLensRim" x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.95} />
+              <Stop offset="0.3" stopColor="#B9E2FF" stopOpacity={0.75} />
+              <Stop offset="0.55" stopColor="#D9BCFF" stopOpacity={0.6} />
+              <Stop offset="0.8" stopColor="#C6FFD9" stopOpacity={0.7} />
+              <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0.9} />
+            </LinearGradient>
+            <LinearGradient id="pressLensBody" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#FFFFFF" stopOpacity={soft.dark ? 0.1 : 0.16} />
+              <Stop offset="1" stopColor="#FFFFFF" stopOpacity={soft.dark ? 0.03 : 0.04} />
+            </LinearGradient>
+          </Defs>
+          <Rect x={1} y={1} width={LENS_W - 2} height={LENS_H - 2} rx={(LENS_H - 2) / 2} fill="url(#pressLensBody)" stroke="url(#pressLensRim)" strokeWidth={1.6} />
+          <Rect x={3.5} y={3.5} width={LENS_W - 7} height={LENS_H - 7} rx={(LENS_H - 7) / 2} fill="none" stroke="#FFFFFF" strokeOpacity={soft.dark ? 0.18 : 0.5} strokeWidth={1} />
+        </Svg>
       </Animated.View>
       {/* The body that forms round the "+" and grows to the left - the search field. */}
       <Animated.View pointerEvents="none" style={[styles.body, surface, { height: H, borderRadius: H / 2 }, bodyStyle]}>
@@ -576,6 +637,7 @@ const styles = StyleSheet.create({
   circleWrap: { position: 'absolute' },
   hairline: { position: 'absolute', top: (PILL_H - 26) / 2, width: 1, height: 26 },
   drop: { position: 'absolute' },
+  pressLens: { position: 'absolute', width: LENS_W, height: LENS_H, borderRadius: LENS_H / 2 },
   body: { position: 'absolute', top: 0 },
   searchHit: { position: 'absolute', left: 0, flexDirection: 'row', alignItems: 'center', paddingLeft: LENS_IN + 10 + 10 },
   word: { flex: 1, fontSize: 15, fontFamily: SOFT_REGULAR },
