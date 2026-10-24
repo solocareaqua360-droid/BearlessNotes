@@ -86,6 +86,10 @@ import { hapticPickUp } from '../utils/haptics';
 import { getDocs, where } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { parseFormattedText } from '../utils/documentBlocks';
+import { GlassPortal } from '../components/GlassPortal';
+import { useIsFocused } from '@react-navigation/native';
+import DockGlassFill, { useDockSurface } from '../components/DockGlassFill';
+import { useDockGlass } from '../utils/dockGlass';
 
 // THE CONVERSATION WITH THE AI (the sketch is the canvas DsJtJiEDSEMWdhomAgJreE; built 2026-10-22/23).
 // Opened from the round button beside «+» on the start desks: a thought to talk over comes as suddenly as one for «Думки».
@@ -144,6 +148,11 @@ export default function AssistantScreen() {
   const [chat, setChat] = useState<AssistantChat | null>(null);
   const chatRef = useRef<AssistantChat | null>(null);
   const [draft, setDraft] = useState('');
+  // «Скло» (utils/dockGlass): the top capsule and the composer are glass over the conversation, their blur's target.
+  const chatFocused = useIsFocused();
+  const [topH, setTopH] = useState(76);
+  const glassOn = useDockGlass();
+  const topGlass = useDockSurface(S, glassOn);
   const [busy, setBusy] = useState(false);
   // The blocks picked right now, in the order they were picked.
   const [picked, setPicked] = useState<string[]>([]);
@@ -845,48 +854,13 @@ export default function AssistantScreen() {
   let shownTopic: string | undefined;
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Pressable onPress={menu} style={styles.round} accessibilityLabel="Меню розмови" hitSlop={6}>
-          <Ionicons name="ellipsis-horizontal" size={20} color={S.ink} />
-        </Pressable>
-        <View style={styles.titleBox}>
-          <Text style={styles.title} numberOfLines={1}>
-            {chat && messages.length > 0 ? titleOf(chat) : 'Нова розмова'}
-          </Text>
-          {/* The conversation's price lives here, under its name (2026-10-24: the header had no room for a ring of its own). */}
-          <Pressable onPress={() => setCostOpen((v) => !v)} hitSlop={8} accessibilityLabel="Вартість розмови" style={styles.subRow}>
-            <Text style={styles.sub}>{messages.length > 0 ? `розмова · ${thoughtsWord(messages.filter((m) => m.role === 'user').length)} · ` : 'нова · '}</Text>
-            <MiniRing usd={chatCost} color={S.accent} track={S.line} />
-            <Text style={styles.subCost}>{`$${money(tenthsOf(chatCost), 1)}`}</Text>
-          </Pressable>
-        </View>
-        {structure ? (
-          <Pressable onPress={() => setMaterialsOpen(true)} style={styles.round} accessibilityLabel="Матеріали розмови" hitSlop={6}>
-            <Ionicons name="layers-outline" size={21} color={S.ink} />
-            {materialsCount > 0 ? (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{materialsCount}</Text>
-              </View>
-            ) : null}
-          </Pressable>
-        ) : null}
-        <Pressable onPress={() => closeAssistant(() => navigation.goBack(), S.bg, assistWash(S.dark))} style={styles.round} accessibilityLabel="Закрити" hitSlop={6}>
-          <Ionicons name="close" size={18} color={S.ink} />
-        </Pressable>
-      </View>
-      {chat?.instruction ? <ChatInstructionChip instruction={chat.instruction} onPress={() => setInstructionFor(chat.id)} /> : null}
-      {path.length > 0 ? (
-        <Pressable onPress={() => parentTopic !== null && setTopic(parentTopic)} style={styles.crumbs} accessibilityLabel="Вийти з гілки">
-          <Ionicons name="chevron-back" size={14} color={S.ink2} />
-          <Text style={styles.crumbsText} numberOfLines={1}>
-            {`${path.map((t) => t.title).join(' › ')}`}
-          </Text>
-        </Pressable>
-      ) : null}
+      {/* THE CONVERSATION RUNS UNDER GLASS (2026-10-25, the user's «робимо»): the list is the blur's own target, under the
+          status bar no more; the top capsule (⋯, the name, ×) and the composer float over it (see after the list). */}
+      <View style={[StyleSheet.absoluteFill, { top: insets.top }]}>
       <ScrollView
         ref={scroll}
         style={{ flex: 1 }}
-        contentContainerStyle={[styles.list, { paddingBottom: (picking ? 24 : (keyboard > 0 ? keyboard + 8 : insets.bottom + 14) + dockH + 18 + (hintsOpen ? HINTS_STRIP_H : 0)) }]}
+        contentContainerStyle={[styles.list, { paddingTop: topH + 8, paddingBottom: (picking ? 24 : (keyboard > 0 ? keyboard + 8 : insets.bottom + 14) + dockH + 18 + (hintsOpen ? HINTS_STRIP_H : 0)) }]}
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => {
           if (!picking) scroll.current?.scrollToEnd({ animated: true });
@@ -1011,6 +985,56 @@ export default function AssistantScreen() {
           </View>
         ) : null}
       </ScrollView>
+      </View>
+      {/* Through the glass portal (above the app's blur target, as the dock and the bar): only there does a blur see what
+          is under it - a nested target did not blur at all. Only while this screen is in front. */}
+      {chatFocused && (
+      <GlassPortal name="chatTop">
+        <View style={[styles.topBlock, { top: insets.top }]} onLayout={(e) => setTopH(Math.round(e.nativeEvent.layout.height))} pointerEvents="box-none">
+          <View style={[styles.header, styles.topCapsule, topGlass]}>
+            {glassOn && <DockGlassFill soft={S} dense radius={28} />}
+          <Pressable onPress={menu} style={styles.roundBare} accessibilityLabel="Меню розмови" hitSlop={6}>
+            <Ionicons name="ellipsis-horizontal" size={20} color={S.ink} />
+          </Pressable>
+          <View style={styles.titleBox}>
+            <Text style={styles.title} numberOfLines={1}>
+              {chat && messages.length > 0 ? titleOf(chat) : 'Нова розмова'}
+            </Text>
+            {/* The conversation's price lives here, under its name (2026-10-24: the header had no room for a ring of its own). */}
+            <Pressable onPress={() => setCostOpen((v) => !v)} hitSlop={8} accessibilityLabel="Вартість розмови" style={styles.subRow}>
+              <Text style={styles.sub}>{messages.length > 0 ? `розмова · ${thoughtsWord(messages.filter((m) => m.role === 'user').length)} · ` : 'нова · '}</Text>
+              <MiniRing usd={chatCost} color={S.accent} track={S.line} />
+              <Text style={styles.subCost}>{`$${money(tenthsOf(chatCost), 1)}`}</Text>
+            </Pressable>
+          </View>
+          {structure ? (
+            <Pressable onPress={() => setMaterialsOpen(true)} style={styles.roundBare} accessibilityLabel="Матеріали розмови" hitSlop={6}>
+              <Ionicons name="layers-outline" size={21} color={S.ink} />
+              {materialsCount > 0 ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{materialsCount}</Text>
+                </View>
+              ) : null}
+            </Pressable>
+          ) : null}
+          <Pressable onPress={() => closeAssistant(() => navigation.goBack(), S.bg, assistWash(S.dark))} style={styles.roundBare} accessibilityLabel="Закрити" hitSlop={6}>
+            <Ionicons name="close" size={18} color={S.ink} />
+          </Pressable>
+        </View>
+        {chat?.instruction ? <ChatInstructionChip instruction={chat.instruction} onPress={() => setInstructionFor(chat.id)} /> : null}
+        {path.length > 0 ? (
+          <Pressable onPress={() => parentTopic !== null && setTopic(parentTopic)} style={styles.crumbs} accessibilityLabel="Вийти з гілки">
+            <Ionicons name="chevron-back" size={14} color={S.ink2} />
+            <Text style={styles.crumbsText} numberOfLines={1}>
+              {`${path.map((t) => t.title).join(' › ')}`}
+            </Text>
+          </Pressable>
+        ) : null}
+        </View>
+      </GlassPortal>
+      )}
+      {/* What follows the list in the flow (the picking bar) keeps the screen's foot. */}
+      <View style={{ flex: 1 }} pointerEvents="none" />
       {costOpen ? (
         <>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setCostOpen(false)} accessibilityLabel="Закрити вартість" />
@@ -1063,7 +1087,9 @@ export default function AssistantScreen() {
           </View>
         </View>
       ) : (
-        <ChatComposer
+        chatFocused ? (
+        <GlassPortal name="chatComposer">
+          <ChatComposer
           value={draft}
           onChangeText={setDraft}
           onSend={sendFromDock}
@@ -1085,6 +1111,8 @@ export default function AssistantScreen() {
           inputRef={inputRef}
           onHeight={setDockH}
         />
+        </GlassPortal>
+        ) : null
       )}
       <ChatAttachSheet
         visible={attachOpen}
@@ -1286,7 +1314,11 @@ function thoughtsWord(n: number): string {
 function makeStyles(S: ReturnType<typeof useSoft>) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: S.bg },
+    topBlock: { position: 'absolute', left: 0, right: 0, gap: 6 },
     header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 12 },
+    // One capsule across the top, as the bar on every other screen: ⋯, the name, × on it.
+    topCapsule: { marginHorizontal: 10, marginTop: 6, height: 60, borderRadius: 30, paddingVertical: 0, paddingHorizontal: 6, backgroundColor: S.card, boxShadow: S.shadow } as never,
+    roundBare: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
     round: { width: 48, height: 48, borderRadius: 24, backgroundColor: S.card, alignItems: 'center', justifyContent: 'center', boxShadow: S.shadow } as never,
     titleBox: { flex: 1, minWidth: 0, alignItems: 'center' },
     title: { textAlign: 'center', fontSize: 16, fontFamily: SOFT_SEMIBOLD, color: S.ink },
@@ -1297,7 +1329,7 @@ function makeStyles(S: ReturnType<typeof useSoft>) {
     toNoteText: { color: S.card, fontSize: 15, fontFamily: SOFT_MEDIUM },
     toNoteDone: { backgroundColor: S.card, boxShadow: S.shadow } as never,
     toNoteDoneText: { color: S.ink },
-    crumbs: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 18, paddingBottom: 6 },
+    crumbs: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, height: 30, marginHorizontal: 14, borderRadius: 15, backgroundColor: S.card },
     crumbsText: { flex: 1, fontSize: 12.5, color: S.ink2, fontFamily: SOFT_MEDIUM },
     list: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24, gap: 14 },
     emptyBox: { alignItems: 'center', gap: 12, marginTop: 90, paddingHorizontal: 6 },

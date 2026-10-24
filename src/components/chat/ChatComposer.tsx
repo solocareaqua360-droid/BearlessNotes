@@ -7,6 +7,8 @@ import { useSoft } from '../../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
 import { chatColours } from './chatTokens';
 import HintBalloon from './HintBalloon';
+import DockGlassFill, { useDockSurface } from '../DockGlassFill';
+import { useDockGlass } from '../../utils/dockGlass';
 
 export type ComposerAttachment = { id: string; kind: 'photo' | 'file' | 'note' | 'folder' | 'link'; name: string; sub: string; uri?: string };
 
@@ -57,6 +59,9 @@ export default function ChatComposer({
 }) {
   const S = useSoft();
   const C = chatColours(S);
+  // «Скло» (utils/dockGlass): glass over the conversation (its blur target - AssistantScreen).
+  const glassOn = useDockGlass();
+  const glassSurface = useDockSurface(S, glassOn);
   const [focused, setFocused] = useState(false);
   // Android's back gesture puts the keyboard away WITHOUT blurring the field: the card stayed open over an empty field. The
   // keyboard going down ends the writing.
@@ -100,10 +105,12 @@ export default function ChatComposer({
       style={[
         styles.dock,
         { bottom, backgroundColor: C.dockCard, borderColor: S.line, boxShadow: S.dark ? '0px 10px 34px rgba(0,0,0,0.55)' : '0px 10px 34px rgba(0,0,0,0.16)' } as never,
+        glassOn && ([glassSurface, { borderWidth: 0 }] as never),
         frame,
         lift,
       ]}
     >
+      {glassOn && <DockGlassFill soft={S} dense radius={28} />}
       {open && attachments.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} keyboardShouldPersistTaps="handled">
           {attachments.map((a) =>

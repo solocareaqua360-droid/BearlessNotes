@@ -24,7 +24,7 @@ const SPEC = 0.7;
 // The light theme's milk: plain white, not the theme's cream (#FDFAF4) - cream over the warm ground read as stale white.
 const LIGHT_MILK = '#FFFFFF';
 
-export default function DockGlassFill({ soft, paused: still, radius }: { soft: SoftTokens; paused?: boolean; radius?: number }) {
+export default function DockGlassFill({ soft, paused: still, radius, dense }: { soft: SoftTokens; paused?: boolean; radius?: number; dense?: boolean }) {
   const theme = useTheme();
   const g = theme.glass;
   const target = useBlurTarget();
@@ -65,7 +65,8 @@ export default function DockGlassFill({ soft, paused: still, radius }: { soft: S
       <View
         style={[
           StyleSheet.absoluteFill,
-          soft.dark ? { backgroundColor: soft.chrome, opacity: blur ? TINT : FLAT } : { backgroundColor: LIGHT_MILK, opacity: blur ? g.opacity : FLAT },
+          // `dense`: glass with TEXT on it over moving text (the chat's top capsule) - a thicker coat, so the words read.
+          soft.dark ? { backgroundColor: soft.chrome, opacity: blur ? (dense ? 0.75 : TINT) : FLAT } : { backgroundColor: LIGHT_MILK, opacity: blur ? (dense ? 0.72 : g.opacity) : FLAT },
         ]}
       />
       {/* THE RIM (the user, 2026-10-24, over a photo of the old rail capsule: «Питання в обідку») - GlassDrop's three layers,
