@@ -350,12 +350,19 @@ export default function DeskDock({
   // top and bottom - with a thin iridescent rim; let go, it sinks back into the capsule.
   const press = useSharedValue(0);
   const pressAt = useSharedValue(0);
+  // The filled capsule's own fade, apart from the lens's growth (the user, 2026-10-24: one shared value made the orange
+  // vanish at the lens's spring speed, and on release the capsule was still nearly clear while it flowed to its new place,
+  // so the flow could not be seen): under the lens it fades slowly and only part way, and let go it is back in a moment -
+  // before its flow (CAP_LAG) begins.
+  const capHide = useSharedValue(0);
   const onLens = (i: number | null) => {
     if (i !== null) {
       pressAt.value = i;
       press.value = withSpring(1, { damping: 15, stiffness: 280, mass: 0.6 });
+      capHide.value = withTiming(0.65, { duration: 260, easing: Easing.inOut(Easing.quad) });
     } else {
-      press.value = withTiming(0, { duration: 280, easing: Easing.out(Easing.cubic) });
+      press.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
+      capHide.value = withTiming(0, { duration: 90, easing: Easing.out(Easing.quad) });
     }
   };
   const lensPressStyle = useAnimatedStyle(() => {
@@ -379,7 +386,7 @@ export default function DeskDock({
       height: c.H,
       borderRadius: c.H / 2,
       // Gives way to the lens while a place is held.
-      opacity: (onBalloon ? 1 - assistFlown.value : 1) * (1 - 0.9 * press.value),
+      opacity: (onBalloon ? 1 - assistFlown.value : 1) * (1 - capHide.value),
     };
   });
   const lensGrow = useGrow();
