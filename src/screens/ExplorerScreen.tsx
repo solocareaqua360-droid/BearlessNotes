@@ -136,6 +136,9 @@ import { useDockDesksHere } from '../navigation/deskBeadsBus';
 // Custom-database rows and task lists are not here (step 6: shortcuts).
 
 const FOLDER_GAP = 10;
+// How many folders stand beside the square «Думки» (the user: «або поставити три папки, якщо вони влізуть») - it is as tall
+// as they are, nearly square.
+const SIDE_FOLDERS = 3;
 const nameOf = (path: string) => path.split('/').pop() ?? path;
 const stamp = (item: FolderItem) => {
   const raw = (item.raw ?? {}) as Record<string, unknown>;
@@ -2609,6 +2612,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const thoughtsSquare =
     FEATURES.thoughts && !modernLook && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT);
   const squareSide = Math.floor((contentW - FOLDER_GAP) / 2);
+  // The two folders beside «Думки» keep a list row's own height; the card is as tall as the two of them.
+  const [sideH, setSideH] = useState(0);
   // One folder of the clean look's list (a pill: its icon, name and count); `extra` sizes it beside the square «Думки».
   const folderPill = (f: FolderEntry, extra?: object) => (
           <Pressable
@@ -2837,19 +2842,19 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           the list under them. */}
       {thoughtsSquare && (
         <View style={[styles.folders, { flexWrap: 'nowrap', marginBottom: FOLDER_GAP }]}>
-          <ThoughtsSquare size={squareSide} />
-          <View style={{ flex: 1, gap: FOLDER_GAP }}>
+          <ThoughtsSquare size={squareSide} height={sideH || undefined} />
+          <View style={{ flex: 1, gap: FOLDER_GAP }} onLayout={(e) => setSideH(Math.round(e.nativeEvent.layout.height))}>
             {folders
               .filter((f) => !collKindOf(f))
-              .slice(0, 2)
-              .map((f) => folderPill(f, { width: '100%', height: (squareSide - FOLDER_GAP) / 2, flexGrow: 0 }))}
+              .slice(0, SIDE_FOLDERS)
+              .map((f) => folderPill(f, { width: '100%', flexGrow: 0 }))}
           </View>
         </View>
       )}
       <View style={styles.folders}>
         {(modernLook ? [] : folders)
           .filter((f) => !collKindOf(f))
-          .slice(thoughtsSquare ? 2 : 0)
+          .slice(thoughtsSquare ? SIDE_FOLDERS : 0)
           .map((f) => folderPill(f))}
         {!modernLook && !path && !inBin && !inCleanup && !filtering && !searching && binned.length > 0 && (!projectsHere || focusProj === NO_PROJECT) && (
           <Pressable onPress={enterBin} style={[styles.folder, { backgroundColor: S.card, boxShadow: S.popShadow }]}>

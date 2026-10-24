@@ -20,7 +20,9 @@ const TITLE_ROOM = 58; // the name and the count at the foot: the circles bounce
 
 type Ball = { x: number; y: number; vx: number; vy: number; d: number };
 
-export default function ThoughtsSquare({ size }: { size: number }) {
+// `height`: as tall as the two folders beside it (the user: a square made them «непропорційно широкими») - a rectangle.
+export default function ThoughtsSquare({ size, height }: { size: number; height?: number }) {
+  const tall = height ?? size;
   const S = useSoft();
   const { themes, countOf, loaded } = useThoughts(true);
   const fresh = useMemo(() => [...themes].sort((a, b) => b.touchedAt - a.touchedAt).slice(0, SHOWN), [themes]);
@@ -28,17 +30,17 @@ export default function ThoughtsSquare({ size }: { size: number }) {
   // A circle's size grows a little with how much its theme holds.
   const diameters = useMemo(() => fresh.map((t) => Math.round(Math.min(46, 22 + 4 * Math.sqrt(countOf(t.id))))), [fresh, countOf]);
   const balls = useSharedValue<Ball[]>([]);
-  const room = useSharedValue({ w: size, h: size - TITLE_ROOM });
+  const room = useSharedValue({ w: size, h: tall - TITLE_ROOM });
   useEffect(() => {
-    room.value = { w: size, h: size - TITLE_ROOM };
+    room.value = { w: size, h: tall - TITLE_ROOM };
     balls.value = diameters.map((d, i) => ({
       d,
       x: 10 + ((i * 41) % Math.max(1, size - d - 20)),
-      y: 8 + ((i * 29) % Math.max(1, size - TITLE_ROOM - d - 16)),
+      y: 8 + ((i * 29) % Math.max(1, tall - TITLE_ROOM - d - 16)),
       vx: (i % 2 ? 1 : -1) * (9 + i * 2),
       vy: (i % 3 ? 1 : -1) * (7 + i * 1.6),
     }));
-  }, [diameters, size, balls, room]);
+  }, [diameters, size, tall, balls, room]);
   const frame = useFrameCallback((f) => {
     'worklet';
     const dt = Math.min(f.timeSincePreviousFrame ?? 16, 40) / 1000;
@@ -120,10 +122,10 @@ export default function ThoughtsSquare({ size }: { size: number }) {
       }}
       delayLongPress={350}
       accessibilityLabel="Думки"
-      style={[styles.card, { width: size, height: size, backgroundColor: S.dark ? S.card : FEATURES.ourTones ? '#EFE9DE' : '#FFFDF8', boxShadow: S.popShadow } as never]}
+      style={[styles.card, { width: size, height: tall, backgroundColor: S.dark ? S.card : FEATURES.ourTones ? '#EFE9DE' : '#FFFDF8', boxShadow: S.popShadow } as never]}
     >
       {fresh.map((t, i) => (
-        <Circle key={t.id} index={i} balls={balls} color={hueOf(t, S.dark).from} />
+        <Circle key={t.id} index={i} balls={balls} color={hueOf(t, S.dark).to} />
       ))}
       {loaded && fresh.length === 0 && (
         <View style={styles.empty} pointerEvents="none">
@@ -144,9 +146,10 @@ function Circle({ index, balls, color }: { index: number; balls: SharedValue<Bal
     if (!b) return { opacity: 0 };
     return { opacity: 1, width: b.d, height: b.d, borderRadius: b.d / 2, transform: [{ translateX: b.x }, { translateY: b.y }] };
   });
-  // A pale circle on the pale card would vanish: a soft shadow under each, on the light theme.
+  // A pale circle on the pale card vanished («білі кульки майже не видно»): the deeper end of its hue, a soft shadow
+  // and a hairline edge, on the light theme.
   const S = useSoft();
-  return <Animated.View pointerEvents="none" style={[styles.circle, { backgroundColor: color, boxShadow: S.dark ? undefined : '0px 3px 8px rgba(60,40,20,0.16)' } as never, style]} />;
+  return <Animated.View pointerEvents="none" style={[styles.circle, { backgroundColor: color, boxShadow: S.dark ? undefined : '0px 3px 9px rgba(60,40,20,0.22)', borderWidth: S.dark ? 0 : 1, borderColor: 'rgba(60,40,20,0.16)' } as never, style]} />;
 }
 
 const styles = StyleSheet.create({
