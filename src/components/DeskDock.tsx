@@ -406,7 +406,12 @@ export default function DeskDock({
       height: c.H,
       borderRadius: c.H / 2,
       // Gives way to the lens while a place is held.
-      opacity: (onBalloon ? 1 - assistFlown.value : 1) * (1 - capHide.value),
+      // The capsule BECOMES the ball (the user: «кулька надувається з-під рожевої, а рожева нікуди не зникає»): on its way it
+      // melts into the lens as the lens swells - clear at the peak half way - and comes back as the lens shrinks on landing.
+      opacity:
+        (onBalloon ? 1 - assistFlown.value : 1) *
+        (1 - capHide.value) *
+        (capFrom.value !== capTo.value && capT.value < CAP_END ? 1 - 0.92 * Math.sin(Math.PI * Math.min(1, Math.max(0, capT.value / CAP_END))) : 1),
     };
   });
   const lensGrow = useGrow();
