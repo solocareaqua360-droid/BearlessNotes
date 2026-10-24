@@ -355,8 +355,12 @@ export default function DeskDock({
   // so the flow could not be seen): under the lens it fades slowly and only part way, and let go it is back in a moment -
   // before its flow (CAP_LAG) begins.
   const capHide = useSharedValue(0);
+  // ONE BALL (the user, next: «видно що це дві різні кульки… кулька надувалась між двома іконками, пік посередині переходу,
+  // повністю здулась вже на іншому місці»): held on the place you are at, the lens swells there; tapped on ANOTHER place,
+  // nothing swells under the finger - the lens rides the capsule on its way (lensPressStyle), and the press does nothing.
   const onLens = (i: number | null) => {
     if (i !== null) {
+      if (i !== capTo.value) return;
       pressAt.value = i;
       press.value = withSpring(1, { damping: 15, stiffness: 280, mass: 0.6 });
       capHide.value = withTiming(0.65, { duration: 260, easing: Easing.inOut(Easing.quad) });
@@ -366,13 +370,29 @@ export default function DeskDock({
     }
   };
   const lensPressStyle = useAnimatedStyle(() => {
-    const k = press.value;
-    const cx = PILL_PAD + pressAt.value * BEAD_W + BEAD_W / 2;
+    // On the way from one place to another: round the travelling capsule, as wide as it is stretched, swelling to its peak
+    // half way and gone on landing - by the same clock as the capsule, so a dock born mid-way draws the same ball.
+    const e = capT.value;
+    let k = 0;
+    let cx = 0;
+    let span = BEAD_W;
+    if (capFrom.value !== capTo.value && e < CAP_END) {
+      const c = capAt(capFrom.value, capTo.value, e);
+      k = Math.sin(Math.PI * Math.min(1, Math.max(0, e / CAP_END)));
+      cx = (c.L + c.R) / 2;
+      span = Math.max(BEAD_W, c.R - c.L);
+    }
+    // Held on the place you are at: swells there.
+    if (press.value > k) {
+      k = press.value;
+      cx = PILL_PAD + pressAt.value * BEAD_W + BEAD_W / 2;
+      span = BEAD_W;
+    }
     return {
-      opacity: Math.min(1, k * 1.8),
+      opacity: Math.min(1, k * 2),
       left: cx - LENS_W / 2,
       top: H / 2 - LENS_H / 2,
-      transform: [{ scaleX: (BEAD_W + (LENS_W - BEAD_W) * k) / LENS_W }, { scaleY: (BEAD_H + (LENS_H - BEAD_H) * k) / LENS_H }],
+      transform: [{ scaleX: (span + (LENS_W - BEAD_W) * k) / LENS_W }, { scaleY: (BEAD_H + (LENS_H - BEAD_H) * k) / LENS_H }],
     };
   });
   const capStyle = useAnimatedStyle(() => {
