@@ -196,6 +196,7 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import {
   useDockActions,
+  useTopSearch,
   useDockBeads,
   useDockOpensOnActions,
   useDockShowContext,
@@ -616,6 +617,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // «Зміст» (2026-10-22): the note's headings as a list that jumps to them. The phone opens it as a card over the dock; the Mac keeps it as
   // a tab of the right panel (see NoteInspector). `tocCurrent` is the section the reader is in, followed while either is on screen.
   const [tocOpen, setTocOpen] = useState(false);
+  // SEARCH INSIDE THIS NOTE (2026-10-24, the user: a search button in the note's dock that looks through the note's own content):
+  // the bar's name plate opens out into the field; every match on the page is marked and the page lands on the first one.
+  const [noteSearchOpen, setNoteSearchOpen] = useState(false);
+  const noteSearchOpenRef = useRef(false);
+  noteSearchOpenRef.current = noteSearchOpen;
   const [tocCurrent, setTocCurrent] = useState<string | null>(null);
   const tocPinRef = useRef<{ id: string; until: number; at: number } | null>(null);
   const pickSection = (id: string) => {
@@ -872,10 +878,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
     };
     scrollTimer = setTimeout(attempt, 250);
-    const fadeTimer = setTimeout(() => setSearchFlash(undefined), 5000);
+    const fadeTimer = noteSearchOpenRef.current ? undefined : setTimeout(() => setSearchFlash(undefined), 5000);
     return () => {
       clearTimeout(scrollTimer);
-      clearTimeout(fadeTimer);
+      if (fadeTimer) clearTimeout(fadeTimer);
     };
     // Once per landing: the blocks arriving is the event, not every edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3001,6 +3007,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     else navigation.goBack();
   };
   useTopBack(embedded ? null : leaveNote, !embedded);
+  // The search field of «Пошук» in the dock: typing marks the matches and the page lands on the first.
+  useTopSearch(
+    noteSearchOpen
+      ? {
+          placeholder: 'Знайти в нотатці',
+          initialQuery: '',
+          onChangeQuery: (q) => setSearchFlash(q.trim() || undefined),
+          onClose: () => {
+            setNoteSearchOpen(false);
+            setSearchFlash(undefined);
+          },
+        }
+      : null,
+    !embedded && !pointerDensity
+  );
   // THE WAY BACK IS THE DOCK'S RIGHT CIRCLE here too (2026-10-15, the user's: «на документі треба зробити кнопку
   // назад в правому нижньому куті як всюди»): the bar at the top then drops its own (CarriesBackMarker), and its
   // left edge is free for the voice player's capsule.
@@ -3373,6 +3394,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // «Зміст»: the headings as a list that jumps to them (a card over the dock, see below). Only on the page.
           ...(!canvasMode && !notePanelOn
             ? [{ key: 'toc', icon: 'list-outline', label: 'Зміст', active: tocOpen, onPress: () => setTocOpen((v) => !v) }]
+            : []),
+          ...(!canvasMode && !embedded
+            ? [{ key: 'find', icon: 'search-outline', label: 'Пошук', active: noteSearchOpen, onPress: () => setNoteSearchOpen((v) => !v) }]
             : []),
           // The third slot: the board's own "Скинути дошку?" on the
           // canvas (free dragging needs a way back to the default layout

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSoft } from '../theme/soft';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SoftSearchField } from '../components/ContextDock';
 import { useKeyboardRide } from '../hooks/useKeyboardRide';
 import { DOCK_BOTTOM } from '../navigation/dockGeometry';
@@ -13,7 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation';
 import ContentColumn from '../components/ContentColumn';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
-import { TextMatch } from '../utils/documentPreview';
+import { TextMatch, extractPreview, findBodyMatch, findTitleMatch, EXPANDED_PREVIEW_LENGTH } from '../utils/documentPreview';
+import DocumentCard from '../components/DocumentCard';
+import { useTags } from '../hooks/useTags';
 import { SearchHit, SearchTarget, groupHits, useGlobalSearch } from '../hooks/useGlobalSearch';
 
 // One search over every database (see useGlobalSearch) - reached from the
@@ -31,6 +33,9 @@ export default function SearchScreen() {
     transform: [{ translateY: Math.min(0, keyboard.height.value - 10 + restBottom) }],
   }));
   const hits = useGlobalSearch(needle);
+  const { tags } = useTags();
+  const { width: screenWidth } = useWindowDimensions();
+  const cardWidth = Math.max(220, Math.min(screenWidth, 640) - 32);
   const groups = groupHits(hits);
   // Documents are the priority: a search for a common word turns up a
   // dozen links and buries the three notes that were actually wanted. So
@@ -43,10 +48,11 @@ export default function SearchScreen() {
   const [showOthers, setShowOthers] = useState(false);
   const othersOpen = showOthers || documentGroups.length === 0;
 
-  function open(target: SearchTarget) {
+  function open(target: SearchTarget, query?: string) {
     switch (target.kind) {
       case 'document':
-        navigation.navigate('Editor', { documentId: target.documentId });
+        // The note opens on the first found place, the words marked.
+        navigation.navigate('Editor', { documentId: target.documentId, ...(query ? { searchQuery: query } : {}) });
         return;
       case 'links':
         navigation.navigate('Links', { category: target.category });
@@ -130,7 +136,50 @@ export default function SearchScreen() {
           <Text style={[styles.groupLabel, { color: group.section.color }]}>{group.section.label}</Text>
           <Text style={[styles.groupCount, { color: S.ink3 }]}>{group.hits.length}</Text>
         </View>
-        {group.hits.map((hit: SearchHit) => (
+        {group.hits.map((hit: SearchHit) =>
+          hit.doc ? (
+            // A note is the same card as in the Documents base: its page, the found words marked on it.
+            (() => {
+              const doc = hit.doc;
+              const q = needle.trim();
+              const titleMatch = findTitleMatch(hit.title, q);
+              const bodyMatch = titleMatch ? null : findBodyMatch(doc.blocks, q);
+              const preview = extractPreview(doc.blocks, doc.coverImageUri, EXPANDED_PREVIEW_LENGTH, doc.coverDriveFileId);
+              return (
+                <DocumentCard
+                  key={hit.key}
+                  id={hit.target.kind === 'document' ? hit.target.documentId : hit.key}
+                  title={hit.title}
+                  updatedAt={hit.updatedAt}
+                  imageUri={preview.imageUri}
+                  imageDriveFileId={preview.imageDriveFileId}
+                  imageUris={preview.imageUris}
+                  imageDriveFileIds={preview.imageDriveFileIds}
+                  previewText={preview.previewText}
+                  previewTail={preview.previewTail}
+                  blocks={doc.blocks}
+                  checklistItems={preview.checklistItems}
+                  titleMatch={titleMatch}
+                  bodyMatch={bodyMatch}
+                  search={q}
+                  onPress={() => open(hit.target, q)}
+                  layout="grid"
+                  wide
+                  gridWidth={cardWidth}
+                  flush
+                  page={{
+                    tagIds: doc.tagIds,
+                    tags,
+                    coverImageUri: doc.coverImageUri,
+                    coverDriveFileId: doc.coverDriveFileId,
+                    coverFrame: doc.coverFrame as never,
+                    paperColorEnabled: doc.paperColorEnabled,
+                  }}
+                  soft={S}
+                />
+              );
+            })()
+          ) : (
           <Pressable
             key={hit.key}
             style={[styles.row, { backgroundColor: S.card, boxShadow: S.shadow }]}
@@ -146,7 +195,8 @@ export default function SearchScreen() {
               {hit.match && <Highlighted match={hit.match} ink={S.ink} muted={S.ink2} />}
             </View>
           </Pressable>
-        ))}
+          )
+        )}
       </View>
     ));
   }

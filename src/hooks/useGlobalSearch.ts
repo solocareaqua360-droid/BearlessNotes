@@ -45,6 +45,16 @@ export type SearchHit = {
   match: TextMatch | null;
   updatedAt: number;
   target: SearchTarget;
+  // A document hit carries the note itself, so the result can be drawn as the same card the Documents base draws (the page, the
+  // matches marked on it).
+  doc?: {
+    blocks: Block[];
+    tagIds: string[];
+    coverImageUri?: string;
+    coverDriveFileId?: string;
+    coverFrame?: unknown;
+    paperColorEnabled?: boolean;
+  };
 };
 
 const SECTIONS: Record<string, SearchSection> = {
@@ -134,6 +144,14 @@ export function useGlobalSearch(rawQuery: string) {
         match: findTitleMatch(title, needle) ?? findBodyMatch(blocks, needle),
         updatedAt: asNumber(d.updatedAt),
         target: { kind: 'document', documentId: d.id },
+        doc: {
+          blocks,
+          tagIds: (d.tagIds as string[] | undefined) ?? [],
+          coverImageUri: asString(d.coverImageUri),
+          coverDriveFileId: asString(d.coverDriveFileId),
+          coverFrame: d.coverFrame,
+          paperColorEnabled: !!d.paperColorEnabled,
+        },
       });
     }
 
