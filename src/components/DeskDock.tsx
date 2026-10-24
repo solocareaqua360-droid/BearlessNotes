@@ -44,9 +44,6 @@ const PILL_H = 60;
 const BEAD_W = 56;
 const BEAD_H = 52;
 const PILL_PAD = 4;
-// EXPERIMENT (2026-10-24, the user: «чисто заради експерименту… помаранчева кулька стане сіренькою, якщо що - відкатиш»): the
-// capsule under the place you are at is grey; the icon keeps its orange. false = the orange wash as before.
-const CAP_GREY = true;
 // The lens under a held place (see onLens): wider than a place, taller than the dock.
 const LENS_W = 92;
 const LENS_H = 88;
@@ -402,19 +399,41 @@ export default function DeskDock({
     const c = capAt(capFrom.value, capTo.value, capT.value);
     // On the balloon while it has flown out, the circle has gone with it.
     const onBalloon = assistIndex >= 0 && capTo.value === assistIndex;
+    const base = onBalloon ? 1 - assistFlown.value : 1;
+    const e = capT.value;
+    if (capFrom.value !== capTo.value && e < CAP_END) {
+      // ON ITS WAY THE CAPSULE IS THE BALL (the user, 2026-10-24: «на етапі зменшення бульбашки почав проявлятись колір… і
+      // помаранчева повинна бути трохи більшою, щоб на момент повної проявки стала своїм стандартним розміром»): it has the
+      // lens's own size, just inside its rim, and its colour runs on the journey - melting into the lens on the way out,
+      // gone at the peak half way, coming back as the lens shrinks, whole exactly when it is its own size again on landing.
+      const p = Math.min(1, Math.max(0, e / CAP_END));
+      const k = Math.sin(Math.PI * p);
+      const smooth = (x: number) => {
+        const t = Math.min(1, Math.max(0, x));
+        return t * t * (3 - 2 * t);
+      };
+      const shown = p < 0.5 ? 1 - smooth(p / 0.4) : smooth((p - 0.5) / 0.5);
+      const cx = (c.L + c.R) / 2;
+      const span = Math.max(BEAD_W, c.R - c.L);
+      const w = span + (LENS_W - 8 - BEAD_W) * k;
+      const h = BEAD_H + (LENS_H - 8 - BEAD_H) * k;
+      return {
+        left: cx - w / 2,
+        width: w,
+        top: (PILL_H - h) / 2,
+        height: h,
+        borderRadius: h / 2,
+        opacity: base * shown,
+      };
+    }
     return {
       left: c.L,
       width: Math.max(0, c.R - c.L),
       top: (PILL_H - c.H) / 2,
       height: c.H,
       borderRadius: c.H / 2,
-      // Gives way to the lens while a place is held.
-      // The capsule BECOMES the ball (the user: «кулька надувається з-під рожевої, а рожева нікуди не зникає»): on its way it
-      // melts into the lens as the lens swells - clear at the peak half way - and comes back as the lens shrinks on landing.
-      opacity:
-        (onBalloon ? 1 - assistFlown.value : 1) *
-        (1 - capHide.value) *
-        (capFrom.value !== capTo.value && capT.value < CAP_END ? 1 - 0.92 * Math.sin(Math.PI * Math.min(1, Math.max(0, capT.value / CAP_END))) : 1),
+      // Gives way to the lens while the place you are at is held.
+      opacity: base * (1 - capHide.value),
     };
   });
   const lensGrow = useGrow();
@@ -533,7 +552,7 @@ export default function DeskDock({
               pointerEvents="none"
               // «Where you are» is the accent now (the user, 2026-10-23): the orange that used to ring the AI button marks
               // the place in front - the balloon too, while its window is open.
-              style={[styles.capsule, { backgroundColor: CAP_GREY ? (soft.dark ? 'rgba(255,255,255,0.13)' : '#E6E5E1') : assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
+              style={[styles.capsule, { backgroundColor: assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
             />
           )}
           {desks.map((d, i) => (
