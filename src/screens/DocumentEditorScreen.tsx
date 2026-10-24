@@ -239,6 +239,7 @@ import { blocksToMarkdown } from '../utils/blocksText';
 import { holdBlocks, takeHeldBlocks } from '../utils/blockClipboard';
 import { startNaming } from '../utils/docRefNaming';
 import SelectModeSheet, { type LookKind } from '../components/SelectModeSheet';
+import AiEditSheet from '../components/AiEditSheet';
 import ImageFrameEditor from '../components/ImageFrameEditor';
 import type { ImageFrame } from '../utils/imageFrame';
 
@@ -457,6 +458,9 @@ function printHtmlInFrame(html: string) {
   };
   document.body.appendChild(frame);
 }
+
+// Blocks the AI window leaves alone (it works on text; a table is text too - utils/blocksText writes it out).
+const AI_SKIPS = ['image', 'file', 'sketch', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'];
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   // Temporary diagnosis - see utils/perfWatch.
@@ -3362,6 +3366,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const embeddedSelect = embedded && isSelectMode;
   // The card open over the select-mode dock (SelectModeSheet), if any.
   const [selectSheet, setSelectSheet] = useState<'look' | 'more' | null>(null);
+  // THE AI ON THE CHOSEN BLOCKS (sketch V4, components/AiEditSheet): what was chosen, as Markdown, while the window is open, and
+  // which blocks it was made of (only the TEXT ones - a photo, a file, a record chosen with them stays where it is).
+  const [aiSource, setAiSource] = useState<string | null>(null);
+  const aiIdsRef = useRef<string[]>([]);
   useEffect(() => {
     if (!isSelectMode) setSelectSheet(null);
   }, [isSelectMode]);
@@ -3397,6 +3405,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           // the chosen blocks become is one card («Вигляд», pictures of the result); the two things the user does most - fold
           // them into a nested note, cut them - stay a tap; the rest is «Ще». The old rule here was «formatting in one tap»; the
           // user chose two taps and no scrolling over it.
+          // The AI on what is chosen (sketch V4): its window takes the dock's place.
+          ...(FEATURES.assistant ? [{ key: 'ai', icon: 'sparkles', label: 'ШІ', active: aiSource !== null, onPress: openAiOnSelected }] : []),
           {
             key: 'look',
             icon: 'grid-outline',
@@ -5643,6 +5653,46 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     });
   }
 
+  function openAiOnSelected() {
+    const ordered = blocks.filter((b) => selectedIds.has(b.id) && !AI_SKIPS.includes(b.type ?? 'paragraph'));
+    if (ordered.length === 0) {
+      notify('Немає тексту', 'ШІ працює з текстом: виберіть блоки з текстом або таблицю.');
+      return;
+    }
+    aiIdsRef.current = ordered.map((b) => b.id);
+    setSelectSheet(null);
+    setAiSource(blocksToMarkdown(ordered));
+    setDockAway(true);
+  }
+  function closeAi() {
+    setAiSource(null);
+    setDockAway(false);
+  }
+  // «Залишити»: the new version takes the place of the chosen text blocks, where the first of them stood - one step of undo.
+  function keepAiEdit(parsed: ParsedBlock[]) {
+    const ids = new Set(aiIdsRef.current);
+    const made = parsed.map((piece) => {
+      const block = buildBlock(generateId(), piece.type, piece.text);
+      if (piece.checked) block.checked = true;
+      if (piece.headingLevel) block.headingLevel = piece.headingLevel;
+      if (piece.codeLanguage) block.codeLanguage = piece.codeLanguage;
+      if (piece.tableRows) block.tableRows = piece.tableRows;
+      return block;
+    });
+    snapshotBeforeChange();
+    setBlocks((prev) => {
+      const at = prev.findIndex((b) => ids.has(b.id));
+      if (at === -1) return prev;
+      const kept = prev.filter((b) => !ids.has(b.id));
+      const place = prev.slice(0, at).filter((b) => !ids.has(b.id)).length;
+      const next = keepSides(prev, [...kept.slice(0, place), ...made, ...kept.slice(place)]);
+      return next.length > 0 ? next : [newBlock()];
+    });
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+    closeAi();
+  }
+
   // «Вирізати» (2026-10-23, the user: no cut for what is chosen): the chosen blocks go onto the clipboard as text that pastes
   // back as blocks of the same kinds (utils/blocksText + pasteBlocks) - in this note, in another, or into a toggle - and are taken
   // out here, one step of undo.
@@ -6269,6 +6319,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           }}
         />
       )}
+      {aiSource !== null && <AiEditSheet visible source={aiSource} bottomInset={editorInsets.bottom} onClose={closeAi} onKeep={keepAiEdit} />}
       {isSelectMode && (dockLive || embeddedSelect) && (
         <SelectModeSheet
           open={selectSheet}
