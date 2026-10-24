@@ -3,7 +3,7 @@ import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
 import { ReactNode, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { Animated as RNAnimated } from 'react-native';
 import { Keyboard, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput, useWindowDimensions, View, ViewStyle } from 'react-native';
-import Animated, { Easing, Extrapolation, FadeIn, FadeOut, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, Extrapolation, FadeIn, FadeOut, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost, { FlatFrostContext } from './DockFrost';
 import { GlassPortal } from './GlassPortal';
@@ -222,6 +222,17 @@ function TopNavBar({
   const S = useSoft();
   const glassOn = useDockGlass();
   const glassSurface = useDockSurface(S, glassOn);
+  // THE BAR ANSWERS A TOUCH (2026-10-25, the user: «висвітлення та невелике збільшення верхньої стрічки при натисканні»): a
+  // hair bigger and lighter while a finger is on it, as the dock's pill is.
+  const barTouch = useSharedValue(0);
+  const barOn = () => {
+    barTouch.value = withSpring(1, { damping: 18, stiffness: 420 });
+  };
+  const barOff = () => {
+    barTouch.value = withSpring(0, { damping: 22, stiffness: 300 });
+  };
+  const barPress = useAnimatedStyle(() => ({ transform: [{ scale: 1 + 0.035 * barTouch.value }] }));
+  const barGlow = useAnimatedStyle(() => ({ opacity: (S.dark ? 0.16 : 0.5) * barTouch.value }));
   const gap = soft ? 0 : GAP;
   const ink = soft ? S.ink : theme.glass.ink;
   const inkMuted = soft ? S.ink2 : theme.glass.inkMuted;
@@ -446,7 +457,10 @@ function TopNavBar({
         ref={!inline && desks?.length ? chromeNodeRef('bar', 'list') : !inline && trail ? chromeNodeRef('bar', 'note') : undefined}
         collapsable={false}
         pointerEvents={fading && cover?.open ? 'none' : 'box-none'}
-        style={[styles.row, { top: barTop, left: frame.left, width: frame.width, gap }, fadeStyle]}
+        onTouchStart={soft ? barOn : undefined}
+        onTouchEnd={soft ? barOff : undefined}
+        onTouchCancel={soft ? barOff : undefined}
+        style={[styles.row, { top: barTop, left: frame.left, width: frame.width, gap }, fadeStyle, soft ? barPress : undefined]}
       >
         {soft && (
           <>
@@ -462,6 +476,8 @@ function TopNavBar({
               ]}
             >
               {glassOn && <DockGlassFill soft={S} />}
+              {/* Lighter while touched - the dock's pill does the same. */}
+              <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF', borderRadius: TOP_NAV_H / 2 }, barGlow]} />
             </Animated.View>
             {/* Folded: no fill at all, only the rim - drawn the moment the fill goes. */}
             {!inline && FEATURES.chromeCompact && (

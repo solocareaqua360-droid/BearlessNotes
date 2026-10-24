@@ -1,5 +1,6 @@
 import { cardRadius, controlRadius, deskSize } from '../../theme/scale';
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
+import Animated, { Easing, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useLift, useTheme } from '../../theme/ThemeProvider';
 import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
 import { Ionicons } from '../icons/Ionicons';
@@ -99,17 +100,41 @@ export default function Menu({
   const glassOn = useDockGlass();
   const softNow = useSoft();
   const glassSurface = useDockSurface(soft ?? softNow, glassOn);
-  if (!visible || !isFocused) return null;
+  // THE MENU GROWS OUT OF ITS BUTTON (2026-10-25, the user: «морфінг меню трьох крапок… в стилі Apple»): from the corner it
+  // stands against - the «⋯» it hangs from - it swells to its size on a soft spring, its rows showing as it nears it; closed,
+  // it shrinks back into that corner before it goes.
+  const [mounted, setMounted] = useState(visible);
+  const grow = useSharedValue(visible ? 1 : 0);
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      grow.value = withSpring(1, { damping: 20, stiffness: 300, mass: 0.7 });
+    } else {
+      grow.value = withTiming(0, { duration: 170, easing: Easing.in(Easing.quad) }, (finished) => {
+        if (finished) runOnJS(setMounted)(false);
+      });
+    }
+  }, [visible, grow]);
+  const placed = StyleSheet.flatten(style) ?? {};
+  const origin = `${placed.right !== undefined && placed.left === undefined ? 'right' : 'left'} ${placed.bottom !== undefined && placed.top === undefined ? 'bottom' : 'top'}`;
+  const panelGrow = useAnimatedStyle(() => ({
+    opacity: Math.min(1, grow.value * 2),
+    transform: [{ scale: 0.25 + 0.75 * grow.value }],
+  }));
+  const rowsShow = useAnimatedStyle(() => ({ opacity: interpolate(grow.value, [0.55, 1], [0, 1], 'clamp') }));
+  if (!mounted || !isFocused) return null;
   return (
     <GlassPortal name="Menu">
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View
+      <Animated.View
         style={[
           styles.panel,
           { width },
           { maxHeight: maxHeight ?? windowHeight * 0.6 },
           soft ? [styles.softPanel, glassOn ? glassSurface : { backgroundColor: soft.chrome, boxShadow: soft.popShadow }] : lift,
           style,
+          { transformOrigin: origin },
+          panelGrow,
         ]}
       >
         {soft && glassOn && <DockGlassFill soft={soft} radius={cardRadius(24)} />}
@@ -123,7 +148,7 @@ export default function Menu({
             pointerEvents="none"
           />
         )}
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <Animated.ScrollView style={rowsShow} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           {entries.map((entry, index) => {
             if (entry.kind === 'section') {
               return (
@@ -167,8 +192,8 @@ export default function Menu({
             );
           })}
           {children}
-        </ScrollView>
-      </View>
+        </Animated.ScrollView>
+      </Animated.View>
     </GlassPortal>
   );
 }
