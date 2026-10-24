@@ -1,4 +1,5 @@
 import { ReactNode, useLayoutEffect, useMemo, useEffect, useRef, useState } from 'react';
+import { dockAwayCover, useDockAway } from '../utils/dockAway';
 import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useKeyboardRide } from '../hooks/useKeyboardRide';
@@ -3206,13 +3207,14 @@ function ActionGroups({
 // the screen in front: a note pushed from the calendar keeps its dock.
 function DockPortal({ children }: { children: ReactNode }) {
   const cover = useNavDrawerCover();
+  const away = useDockAway();
   const active = !!cover?.active;
   const progress = cover?.progress;
   const fade = useAnimatedStyle(
     // Under the chrome morph's stand-in (utils/chromeMorph) it is hidden
     // at once - the stand-in draws its picture in exactly its place.
     () => ({
-      opacity: (active && progress ? 1 - Math.max(progress.left.value, progress.right.value) : 1) * (1 - chromeCover.value) * (1 - assistDockCover.value),
+      opacity: (active && progress ? 1 - Math.max(progress.left.value, progress.right.value) : 1) * (1 - chromeCover.value) * (1 - assistDockCover.value) * (1 - dockAwayCover.value),
     }),
     [active, progress]
   );
@@ -3220,7 +3222,7 @@ function DockPortal({ children }: { children: ReactNode }) {
     <GlassPortal name="ContextDock">
       <Animated.View
         style={[StyleSheet.absoluteFill, fade]}
-        pointerEvents={active && cover?.open ? 'none' : 'box-none'}
+        pointerEvents={away || (active && cover?.open) ? 'none' : 'box-none'}
       >
         {children}
       </Animated.View>

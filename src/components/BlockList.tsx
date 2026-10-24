@@ -18,6 +18,8 @@ type BlockListProps = {
   // Passed straight through to every row - see BlockRow's own hideHandle.
   hideHandle?: boolean;
   searchHighlight?: string;
+  // The match the search stands on now: its block and which of that block's matches it is.
+  searchCurrent?: { blockId: string; nth: number } | null;
   // The block a link just landed on - see SortableBlockRow's flash.
   flashBlockId?: string | null;
   // Only the first this-many rows are drawn - a long note's opening draws
@@ -118,6 +120,9 @@ export type BlockListHandle = {
   // Where a block sits inside the list, for scrolling to it. Null until
   // that row has been laid out - the caller is expected to ask again.
   offsetOf: (blockId: string) => number | null;
+  // Where the block stands on the screen now (window coordinates) - what a scroll that must put something above the
+  // keyboard measures against, since the list's own offsets ignore everything above the list (the title, the cover).
+  windowRectOf: (blockId: string) => Promise<{ y: number; height: number } | null>;
   // The note scrolled under a finger that stands still: the sweep reads where it now is.
   sweepRefresh: () => void;
 };
@@ -175,6 +180,7 @@ function BlockList({
   paperColor,
   hideHandle,
   searchHighlight,
+  searchCurrent,
   flashBlockId,
   renderCount,
   foldHints,
@@ -248,6 +254,13 @@ function BlockList({
     // editor's focusLinkTo. Null while that row has not been laid out
     // yet, which is the first frame after opening a long note.
     offsetOf: (blockId: string) => rowLayouts.current[blockId]?.y ?? null,
+    windowRectOf: (blockId: string) =>
+      new Promise((resolve) => {
+        const row = rowLayouts.current[blockId];
+        const node = containerRef.current;
+        if (!row || !node) return resolve(null);
+        node.measureInWindow((_x, y) => resolve({ y: y + row.y, height: row.height }));
+      }),
     sweepRefresh: () => {
       const sweep = sweepRef.current;
       if (sweep && sweep.lastY !== null) handleSweepUpdate(sweep.anchor, sweep.lastY, 0);
@@ -723,6 +736,7 @@ function BlockList({
           item={item}
           hideHandle={hideHandle}
           searchHighlight={searchHighlight}
+          searchCurrent={searchCurrent && searchCurrent.blockId === item.id ? searchCurrent.nth : undefined}
           flash={flashBlockId === item.id}
           indented={rowIndented}
           toggleRole={toggleRole}

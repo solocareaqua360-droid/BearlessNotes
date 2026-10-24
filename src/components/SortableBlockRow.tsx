@@ -30,6 +30,7 @@ type SortableBlockRowProps = {
   item: Block;
   hideHandle?: boolean;
   searchHighlight?: string;
+  searchCurrent?: number;
   // Under a toggle's section - see BlockList's own indented computation
   // and BlockRow, which is the one place this actually draws anything.
   indented?: boolean;
@@ -134,6 +135,7 @@ function SortableBlockRow({
   textVersion,
   hideHandle,
   searchHighlight,
+  searchCurrent,
   indented,
   onLayout,
   onDragStart,
@@ -309,6 +311,7 @@ function SortableBlockRow({
             hideHandle={hideHandle}
             handleGesture={handleGesture}
             searchHighlight={searchHighlight}
+            searchCurrent={searchCurrent}
             indented={indented}
             isSelected={isSelected}
             isSelectMode={isSelectMode}

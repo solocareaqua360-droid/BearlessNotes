@@ -22,6 +22,26 @@ function splitByTimecode(text: string): { text: string; seconds?: number }[] {
 // `highlight`), so a match looks the same on a card's line and on a page.
 export const SEARCH_HIGHLIGHT = '#FEF08A';
 const SEARCH_INK = '#111827';
+// The match the search stands on now (the arrows step through them, «3 з 7»): the same mark, stronger.
+export const SEARCH_CURRENT = '#FB923C';
+
+// How many matches FormattedText marks in a text - counted the way it marks them (segment by segment; a note link and a
+// timecode run are not marked), so a counter built from this agrees with what is on the page.
+export function searchMatchCount(segments: TextSegment[], query: string, withTimecodes = false): number {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+  let n = 0;
+  for (const seg of segments) {
+    if (seg.noteLink) continue;
+    if (withTimecodes && TIMECODE_PATTERN.test(seg.text)) {
+      TIMECODE_PATTERN.lastIndex = 0;
+      continue;
+    }
+    TIMECODE_PATTERN.lastIndex = 0;
+    n += splitByQuery(seg.text, q).filter((r) => r.match).length;
+  }
+  return n;
+}
 
 // A segment's text cut into plain and matching runs, case-insensitively.
 // A match that straddles two differently formatted segments is found in
@@ -70,6 +90,7 @@ export default function FormattedText({
   segments,
   defaultColor,
   search,
+  searchCurrent,
   onTimecode,
   timecodeColor,
   onNoteLink,
@@ -83,6 +104,8 @@ export default function FormattedText({
   segments: TextSegment[];
   defaultColor: string;
   search?: string;
+  // Which of this text's matches is the current one (0-based), if any.
+  searchCurrent?: number;
   // Given (a note that has a video to seek), every "04:32" in the text is
   // a link that plays the video from there.
   onTimecode?: (seconds: number) => void;
@@ -105,6 +128,7 @@ export default function FormattedText({
   linkGlyph?: (ref: string) => string;
 }) {
   const query = search?.trim().toLowerCase() ?? '';
+  let seen = 0;
   return (
     <>
       {segments.map((seg, i) => {
@@ -188,7 +212,7 @@ export default function FormattedText({
           <Text key={i} style={style}>
             {splitByQuery(seg.text, query).map((run, j) =>
               run.match ? (
-                <Text key={j} style={{ backgroundColor: SEARCH_HIGHLIGHT, color: SEARCH_INK }}>
+                <Text key={j} style={{ backgroundColor: seen++ === searchCurrent ? SEARCH_CURRENT : SEARCH_HIGHLIGHT, color: SEARCH_INK }}>
                   {run.text}
                 </Text>
               ) : (

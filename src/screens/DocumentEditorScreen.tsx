@@ -1,4 +1,5 @@
 import NoteLinkPicker from '../components/NoteLinkPicker';
+import CarriesBackMarker from '../components/CarriesBackMarker';
 import { frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { RADIUS } from '../theme/scale';
 import { whenDeskIsThere } from '../navigation/deskRegistry';
@@ -7,7 +8,7 @@ import ScreenGround from '../components/ScreenGround';
 import { IN_SHELL } from '../utils/shell';
 import { morphKey, morphLanded } from '../utils/morph';
 import { dragSelectJustEnded } from '../hooks/useBlockMarquee';
-import { ForwardedRef, Fragment, forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ForwardedRef, Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -218,7 +219,10 @@ import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../components/EditorToolbar';
 import { useBlurTarget } from '../components/GlassTarget';
 import { GLASS_DANGER, GLASS_TEXT, GLASS_TEXT_FAINT } from '../constants/glass';
 import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
-import { dockRowWidth, useDockClearance } from '../navigation/dockGeometry';
+import { DOCK_BOTTOM, dockRowWidth, useDockClearance } from '../navigation/dockGeometry';
+import NoteSearchBar from '../components/NoteSearchBar';
+import { setDockAway } from '../utils/dockAway';
+import { searchMatchCount } from '../components/FormattedText';
 import SaveRing from '../components/SaveRing';
 import ProjectBadge from '../components/ProjectBadge';
 import { DESKTOP_TOOLBAR_HEIGHT } from '../components/DesktopToolbar';
@@ -246,6 +250,8 @@ const DESKTOP_NOTE_MEASURE = 860;
 // The note's dock on the phone is a CAPSULE of three buttons (Полотно, Референси, Зміст) standing 20 from the left edge, each 84 wide with 4 of
 // padding either side - measured off the phone (uiautomator: 53..735 px at 420 dpi). The contents card is exactly that wide, not the dock's whole row.
 const NOTE_DOCK_LEFT = 20;
+// Blocks the page does not draw as marked text - the note's search does not count matches in them.
+const NOT_SEARCHED_TYPES = new Set(['image', 'file', 'link', 'sketch', 'table', 'dbRow', 'dbView', 'flashcard', 'code', 'divider']);
 const NOTE_DOCK_CAPSULE_W = DESK_PILL_W;
 const REFERENCES_SPLIT_MIN = 640;
 
@@ -620,10 +626,30 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the bar's name plate opens out into the field; every match on the page is marked and the page lands on the first one.
   const [noteSearchOpen, setNoteSearchOpen] = useState(false);
   const [noteSearchText, setNoteSearchText] = useState('');
+  const [noteSearchClosing, setNoteSearchClosing] = useState(false);
+  const [noteMatchAt, setNoteMatchAt] = useState(0);
   const noteSearchOpenRef = useRef(false);
   noteSearchOpenRef.current = noteSearchOpen;
   const [tocCurrent, setTocCurrent] = useState<string | null>(null);
   const tocPinRef = useRef<{ id: string; until: number; at: number } | null>(null);
+  // THE NOTE'S SEARCH (NoteSearchBar): open, close, the matches in reading order, and the scroll that brings the current one
+  // into the part of the page the keyboard and the bar leave free.
+  function openNoteSearch() {
+    setNoteSearchText('');
+    setNoteMatchAt(0);
+    setNoteSearchClosing(false);
+    setDockAway(true);
+    setNoteSearchOpen(true);
+  }
+  const closeNoteSearch = useCallback(() => {
+    setNoteSearchOpen(false);
+    setNoteSearchClosing(false);
+    setNoteSearchText('');
+    setSearchFlash(undefined);
+    setDockAway(false);
+  }, []);
+  // Leaving the note with the search open must not leave the dock away.
+  useEffect(() => () => setDockAway(false), []);
   const pickSection = (id: string) => {
     tocPinRef.current = { id, until: Date.now() + 1200, at: scrollOffsetRef.current };
     setTocCurrent(id);
@@ -863,7 +889,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setSearchFlash(searchQuery || undefined);
   }, [searchQuery, documentId]);
   useEffect(() => {
-    if (!isLoaded || !searchFlash) return;
+    if (!isLoaded || !searchFlash || noteSearchOpenRef.current) return;
     const needle = searchFlash.toLowerCase();
     const target = blocks.find((b) => blockMatchesQuery(b, needle));
     let tries = 0;
@@ -1139,6 +1165,56 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     return () => clearTimeout(timer);
   }, [liveBlocks, focusedBlockId]);
   const shownBlocks = useMemo(() => visibleBlocks(liveBlocks, writingToggle), [liveBlocks, writingToggle]);
+  // Every match of the note's search, in reading order - counted the way the page marks them (FormattedText), over the blocks
+  // that are drawn (a folded toggle's insides are not), with where in its block each one roughly stands (for the scroll).
+  const noteMatches = useMemo(() => {
+    const q = noteSearchOpen ? noteSearchText.trim().toLowerCase() : '';
+    if (!q) return [] as { blockId: string; nth: number; ratio: number }[];
+    const out: { blockId: string; nth: number; ratio: number }[] = [];
+    for (const b of shownBlocks) {
+      if (!b.text || NOT_SEARCHED_TYPES.has(b.type ?? 'paragraph')) continue;
+      const segments = parseFormattedText(b.text);
+      const n = searchMatchCount(segments, q);
+      if (n === 0) continue;
+      const plain = segments.map((sg) => (sg.noteLink ? '' : sg.text)).join('').toLowerCase();
+      let at = -1;
+      for (let k = 0; k < n; k++) {
+        at = plain.indexOf(q, at + 1);
+        out.push({ blockId: b.id, nth: k, ratio: plain.length > 0 && at >= 0 ? at / plain.length : 0 });
+      }
+    }
+    return out;
+  }, [shownBlocks, noteSearchOpen, noteSearchText]);
+  const noteMatch = noteMatches.length ? noteMatches[Math.min(noteMatchAt, noteMatches.length - 1)] : null;
+  // The current match, brought into the free part of the page - between the top bar and the search bar standing on the keyboard.
+  // Measured on the screen (BlockList.windowRectOf), so the title and the cover above the list are counted; nothing moves if it
+  // is already in view.
+  useEffect(() => {
+    if (!noteMatch) return;
+    let cancelled = false;
+    let tries = 0;
+    const attempt = async () => {
+      const rect = await blockListRef.current?.windowRectOf(noteMatch.blockId);
+      if (cancelled) return;
+      if (!rect) {
+        if (++tries < 8) setTimeout(attempt, 120);
+        return;
+      }
+      const y = rect.y + Math.min(rect.height - 24, rect.height * noteMatch.ratio + 12);
+      const top = editorInsets.top + TOP_NAV_SPACE + 8;
+      const bottom = windowHeight - Math.max(keyboardSV.value, editorInsets.bottom + DOCK_BOTTOM) - 56 - 28;
+      if (y > top + 16 && y < bottom - 16) return;
+      const target = top + (bottom - top) * 0.4;
+      scrollViewRef.current?.scrollTo({ y: Math.max(0, scrollOffsetRef.current + (y - target)), animated: true });
+    };
+    // A beat later: the marks are drawn, and the keyboard has finished rising when the bar has just opened.
+    const t = setTimeout(attempt, 160);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteMatch?.blockId, noteMatch?.nth, noteSearchText]);
   const foldHintMap = useMemo(() => foldHints(liveBlocks), [liveBlocks]);
   // A link whose title couldn't be fetched automatically (a raw-coordinates
   // Maps link, or any page with no fetchable title) pauses the conversion
@@ -3016,7 +3092,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // ...nor while the panel stands where the keyboard was (2026-10-19, the user: «кнопка назад поверх слеш панелі»).
   useDockBeads(
     null,
-    !embedded && softPage && FEATURES.deskDock && keyboardHeight === 0 && panelSection === null && !panelClosing
+    // While the search stands there it stays published, the dock being away: the top bar would otherwise grow a back of its own
+    // each time the keyboard rose and drop it as it fell - a button jumping in and out behind the search.
+    !embedded && softPage && FEATURES.deskDock && (keyboardHeight === 0 || noteSearchOpen) && panelSection === null && !panelClosing
       ? { icon: 'chevron-back', onPress: leaveNote }
       : null
   );
@@ -3266,7 +3344,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // ...nor while «Референси» stands there as a sheet: it takes the foot
   // of the screen, and its own grabber and ✕ are the way back.
   const dockLive =
-    !embedded && editorFocused && !keyboardOpen && !noteSearchOpen && panelSection === null && !panelClosing &&
+    !embedded && editorFocused && !keyboardOpen && panelSection === null && !panelClosing &&
     !(referenceSheet && referencePanelOpen);
   // THE DAILY NOTE'S SELECT MODE REACHES THE DOCK TOO, though the note
   // itself has no card there (the calendar owns the dock's context).
@@ -3382,7 +3460,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             ? [{ key: 'toc', icon: 'list-outline', label: 'Зміст', active: tocOpen, onPress: () => setTocOpen((v) => !v) }]
             : []),
           ...(!canvasMode && !embedded
-            ? [{ key: 'find', icon: 'search-outline', label: 'Пошук', active: noteSearchOpen, onPress: () => setNoteSearchOpen((v) => !v) }]
+            ? [{ key: 'find', icon: 'search-outline', label: 'Пошук', active: noteSearchOpen, onPress: openNoteSearch }]
             : []),
           // The third slot: the board's own "Скинути дошку?" on the
           // canvas (free dragging needs a way back to the default layout
@@ -6271,40 +6349,29 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           updateDoc(doc(db, 'documents', documentId), { coverFrame: f }).catch(() => {});
         }}
       />
+      {/* While searching the dock is away; the bar at the top must not take the way back over meanwhile. */}
+      {noteSearchOpen && !embedded && <CarriesBackMarker />}
       {noteSearchOpen && !embedded && !canvasMode && (
-        // THE NOTE'S OWN SEARCH FIELD (2026-10-24). It first rode in the dock's search plate - and shook: the editor takes its
-        // dock away whenever the keyboard is up (dockLive), the plate went with it, the keyboard fell, the dock came back, and
-        // round again. A field of the note's own stands where the keyboard ends and nothing else here depends on it.
-        <View
-          style={{ position: 'absolute', left: 10, right: 10, bottom: keyboardHeight > 0 ? keyboardHeight + 8 : menuClearance, height: 56, borderRadius: 28, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 16, paddingRight: 8, backgroundColor: soft?.card ?? theme.raised, boxShadow: soft?.shadow, zIndex: 40 } as never}
-        >
-          <Ionicons name="search-outline" size={19} color={theme.ink.muted} />
-          <TextInput
-            autoFocus
-            value={noteSearchText}
-            onChangeText={(t) => {
-              setNoteSearchText(t);
-              setSearchFlash(t.trim() || undefined);
-            }}
-            placeholder="Знайти в нотатці"
-            placeholderTextColor={theme.ink.muted}
-            style={{ flex: 1, fontSize: 16.5, color: theme.ink.primary, paddingVertical: 0 }}
-            returnKeyType="search"
-            autoCorrect={false}
-          />
-          <Pressable
-            hitSlop={8}
-            accessibilityLabel="Закрити пошук"
-            onPress={() => {
-              setNoteSearchOpen(false);
-              setNoteSearchText('');
-              setSearchFlash(undefined);
-            }}
-            style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Ionicons name="close" size={18} color={theme.ink.primary} />
-          </Pressable>
-        </View>
+        <NoteSearchBar
+          closing={noteSearchClosing}
+          query={noteSearchText}
+          onChangeQuery={(t) => {
+            setNoteSearchText(t);
+            setNoteMatchAt(0);
+            setSearchFlash(t.trim() || undefined);
+          }}
+          count={noteMatches.length}
+          index={Math.min(noteMatchAt, Math.max(0, noteMatches.length - 1))}
+          onStep={(d) => noteMatches.length && setNoteMatchAt((i) => (i + d + noteMatches.length) % noteMatches.length)}
+          onClose={() => setNoteSearchClosing(true)}
+          onClosed={closeNoteSearch}
+          keyboard={keyboardSV}
+          restBottom={editorInsets.bottom + DOCK_BOTTOM}
+          left={NOTE_DOCK_LEFT}
+          right={NOTE_DOCK_LEFT}
+          startWidth={NOTE_DOCK_CAPSULE_W}
+          windowWidth={windowWidth}
+        />
       )}
       {tocOpen && dockLive && !notePanelOn && !canvasMode && (
         <View style={{ position: 'absolute', width: NOTE_DOCK_CAPSULE_W, left: NOTE_DOCK_LEFT, bottom: menuClearance, maxHeight: Math.min(260, windowHeight - menuClearance - editorInsets.top - 24), borderRadius: 20, padding: 8, backgroundColor: theme.raised, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.edge.hairline, zIndex: 30 }} pointerEvents="box-none">
@@ -7082,6 +7149,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <BlockList
           ref={blockListRef}
           searchHighlight={searchFlash}
+          searchCurrent={noteSearchOpen && noteMatch ? { blockId: noteMatch.blockId, nth: noteMatch.nth } : null}
           flashBlockId={flashBlockId}
           // Landing on a place lower down needs it drawn from the start.
           renderCount={renderAll || focusLinkTo || focusBlock || searchFlash ? undefined : renderUpTo}

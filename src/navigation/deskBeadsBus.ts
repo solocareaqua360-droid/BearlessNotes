@@ -111,17 +111,22 @@ let carries = false;
 let carriesTimer: ReturnType<typeof setTimeout> | null = null;
 const carriesListeners = new Set<() => void>();
 
+// Counted, not a flag: several holders can say so at once (the dock's circle, and the note's search, which keeps the bar steady
+// while the dock is away) - one letting go must not take it from the others.
+let carriesHolders = 0;
 export function setDockCarriesBack(on: boolean) {
+  carriesHolders = Math.max(0, carriesHolders + (on ? 1 : -1));
+  const next = carriesHolders > 0;
   if (carriesTimer) {
     clearTimeout(carriesTimer);
     carriesTimer = null;
   }
   const apply = () => {
-    if (carries === on) return;
-    carries = on;
+    if (carries === next) return;
+    carries = next;
     carriesListeners.forEach((l) => l());
   };
-  if (on) apply();
+  if (next) apply();
   else carriesTimer = setTimeout(apply, 350);
 }
 

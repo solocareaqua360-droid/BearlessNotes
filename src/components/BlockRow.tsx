@@ -105,6 +105,8 @@ type BlockRowProps = {
   // edited - the search results' page miniatures, and a note opened
   // from a search result.
   searchHighlight?: string;
+  // Which of this block's matches the search stands on (see FormattedText's searchCurrent).
+  searchCurrent?: number;
   textVersion: number;
   // cursorIndex: DISPLAY-text position to place the cursor at (from a tap on
   // the locked text); omitted = end of the text.
@@ -176,6 +178,7 @@ export default function BlockRow({
   showBoundary,
   listNumber,
   searchHighlight,
+  searchCurrent,
   textVersion,
   onActivate,
   onPullSelect,
@@ -949,6 +952,7 @@ export default function BlockRow({
               segments={parseFormattedText(item.text)}
               defaultColor={item.isSticker ? STICKER_INK : (rowPaperColor?.text ?? theme.paper.ink)}
               search={searchHighlight}
+              searchCurrent={searchCurrent}
               onTimecode={onTimecode && !isSelectMode ? (seconds) => onTimecode(item.id, seconds) : undefined}
               timecodeColor={theme.accent}
               onNoteLink={onNoteLink && !isSelectMode ? onNoteLink : undefined}
