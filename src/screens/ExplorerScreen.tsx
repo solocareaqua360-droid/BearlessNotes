@@ -14,6 +14,9 @@ import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ZoomableImageViewer, { type ViewerAction } from '../components/ZoomableImageViewer';
+import PhotoTextReader from '../components/PhotoTextReader';
+import type { RecognizeRequest } from '../components/TextRecognizer';
+import { ensureLocalFile } from '../utils/googleDrive';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import ScreenGround from '../components/ScreenGround';
@@ -289,6 +292,16 @@ function cornerIn(delay: number) {
 // the screen draws none of its own (one over every layer was the 2026-10-11 mishap), and at its root has no way back.
 // A `data-*` attribute for the DOM (the Finder rule's ground-click test); nothing on the phone.
 const webData = (d: Record<string, string>): object => (Platform.OS === 'web' ? { dataSet: d } : {});
+
+// «Текст» in the viewer: the picture is made a file on the phone first (one restored from Drive may not be there yet), then read.
+async function readPhotoText(uri: string, driveFileId: string | undefined, start: (r: RecognizeRequest) => void) {
+  const here = await ensureLocalFile(uri, driveFileId).catch(() => false);
+  if (!here) {
+    notify('Фото ще не на телефоні', 'Відкрийте його ще раз, коли завантажиться, і спробуйте знову.');
+    return;
+  }
+  start({ uris: [uri] });
+}
 
 export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; desk?: boolean } = {}) {
   const S = useSoft();
@@ -861,6 +874,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // one and closing it dropped you into the Photos base, one more step back).
   // It pages through the pictures of THIS folder, not the whole base.
   const [viewerId, setViewerId] = useState<string | null>(null);
+  // The picture whose text is being read (PhotoTextReader), from the viewer's «Текст».
+  const [ocrRequest, setOcrRequest] = useState<RecognizeRequest | null>(null);
   const photosHere = useMemo(() => here.filter((i) => i.kind === 'photo' && typeof (i.raw as Record<string, unknown> | undefined)?.imageUri === 'string'), [here]);
   const viewerIndex = viewerId ? photosHere.findIndex((i) => i.id === viewerId) : -1;
   const viewerItem = viewerIndex >= 0 ? photosHere[viewerIndex] : null;
@@ -2039,6 +2054,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         onPress: () => openUsedIn(item),
       },
       { key: 'draw', icon: 'brush-outline', label: 'Малювати', onPress: () => setSketching(item) },
+      { key: 'ocr', icon: 'text-outline', label: 'Текст', onPress: () => readPhotoText(uri, drive, setOcrRequest) },
       { key: 'share', icon: 'share-social-outline', label: 'Поділитись', onPress: () => shareImageFile(uri, drive, item.title) },
       { key: 'copy', icon: 'copy-outline', label: 'Копіювати', onPress: () => copyImageFile(uri, drive) },
       {
@@ -3081,6 +3097,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
               driveFileId={typeof viewerRaw.driveFileId === 'string' ? viewerRaw.driveFileId : undefined}
               onClose={() => setViewerId(null)}
               actions={viewerActions(viewerItem)}
+              place={path ? path.split('/').pop() : 'Провідник'}
+              title={viewerItem.title}
+              position={viewerIndex >= 0 ? { index: viewerIndex, count: photosHere.length } : undefined}
               onPrev={viewerIndex > 0 ? () => setViewerId(photosHere[viewerIndex - 1].id) : undefined}
               onNext={viewerIndex < photosHere.length - 1 ? () => setViewerId(photosHere[viewerIndex + 1].id) : undefined}
               sketchElements={viewerRaw.sketchElements as never}
@@ -3090,6 +3109,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           </GestureHandlerRootView>
         )}
       </Modal>
+      <PhotoTextReader request={ocrRequest} onDone={() => setOcrRequest(null)} />
       <VideoPlayerModal url={videoUrl} onClose={() => setVideoUrl(null)} />
       <FilePreviewWorker />
       <DocumentQuickLook

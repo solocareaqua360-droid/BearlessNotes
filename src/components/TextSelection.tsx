@@ -24,11 +24,16 @@ export default function TextSelection({
   pages,
   onClose,
   onInsert,
+  insertLabel = 'У нотатку',
+  insertIcon = 'arrow-down-outline',
 }: {
   // null closes it.
   pages: RecognizedPage[] | null;
   onClose: () => void;
   onInsert: (text: string) => void;
+  // What the picked words become: «У нотатку» in a note, «Копіювати» where there is no note to put them in.
+  insertLabel?: string;
+  insertIcon?: keyof typeof Ionicons.glyphMap;
 }) {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -178,8 +183,8 @@ export default function TextSelection({
                 style={[styles.pickedAction, styles.pickedActionPrimary]}
                 onPress={() => onInsert(selected)}
               >
-                <Ionicons name="arrow-down-outline" size={18} color="#171310" />
-                <Text style={[styles.pickedActionLabel, styles.pickedActionPrimaryLabel]}>У нотатку</Text>
+                <Ionicons name={insertIcon} size={18} color="#171310" />
+                <Text style={[styles.pickedActionLabel, styles.pickedActionPrimaryLabel]}>{insertLabel}</Text>
               </Pressable>
             </View>
           </View>

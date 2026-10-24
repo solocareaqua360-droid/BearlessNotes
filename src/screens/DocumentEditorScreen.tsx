@@ -108,6 +108,7 @@ import TextRecognizer, {
   RecognizedPage,
 } from '../components/TextRecognizer';
 import TextSelection from '../components/TextSelection';
+import { tidyRecognized } from '../utils/recognizedText';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { createFlashcardsFromNote } from '../utils/flashcardsFromNote';
 import { clipBlocksToNote, clippedBlock } from '../utils/copyToNote';
@@ -6167,16 +6168,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // and opened onto a crossed-out cloud.
   const viewerBlock = viewerImageId ? liveBlocks.find((b) => b.id === viewerImageId) : null;
 
-  // The page's text, under the page itself. Tesseract reads the number
-  // sign as "Мо"/"Ме"/"Хо" almost every time - that one is worth fixing
-  // here rather than leaving in every scanned document.
-  function tidyRecognized(text: string): string {
-    return text
-      .replace(/\b[МХ][ое]\s?(?=\d)/g, '№ ')
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-  }
 
   // The pages come back with every word and the box it sits in, so the
   // next step is not "here is the text" but "choose what you want off the
@@ -7379,6 +7370,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               uri={viewerBlock.imageUri}
               driveFileId={viewerBlock.driveFileId}
               onClose={() => setViewerImageId(null)}
+              place={title.trim() || 'Без назви'}
               actions={[
                 {
                   key: 'rename',

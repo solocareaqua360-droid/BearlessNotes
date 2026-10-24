@@ -263,3 +263,13 @@ export function joinWords(words: RecognizedWord[]): string {
   });
   return out.trim();
 }
+
+// The page's text as it goes somewhere. Tesseract reads the number sign as "Мо"/"Ме"/"Хо" almost every time - that one is
+// worth fixing here rather than leaving in every scanned document.
+export function tidyRecognized(text: string): string {
+  return text
+    .replace(/\b[МХ][ое]\s?(?=\d)/g, '№ ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}

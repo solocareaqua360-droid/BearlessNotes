@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { INK } from '../utils/sketchGeometry';
 import SketchLayer from './SketchLayer';
 import { Ionicons } from './icons/Ionicons';
@@ -9,7 +9,9 @@ import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
+import { FONT_BOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import { useSoft } from '../theme/soft';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SketchElement } from '../types';
 
 export type ViewerAction = {
@@ -52,7 +54,18 @@ type Props = {
   sketchElements?: SketchElement[];
   sketchWidth?: number;
   sketchHeight?: number;
+  // The top capsule (sketch VVSA5sAqHLfsbJmmDM8btC, 2026-10-24): where the picture lives («Тест», a note's name), its own
+  // name, and which of how many it is when there is a side to page to.
+  place?: string;
+  title?: string;
+  position?: { index: number; count: number };
 };
+
+// THE FOUR IN THE DOCK (the user's «ок підходить» to the sketch): share, draw, read the text, folders - whichever of them the
+// screen offers, in this order. Everything else goes under «⋯», «Видалити» last, after a line.
+const PRIMARY = ['share', 'draw', 'ocr', 'folders', 'tags'];
+const ICON: Record<string, keyof typeof Ionicons.glyphMap> = { folders: 'folder-outline', tags: 'folder-outline' };
+const LABEL: Record<string, string> = { document: 'У документах', tags: 'Папки', ocr: 'Текст' };
 
 // Full-screen viewer opened by tapping an image (a block in a document, or a
 // grid cell in the Photos database) - pinch to zoom in, drag around once
@@ -70,6 +83,9 @@ export default function ZoomableImageViewer({
   sketchElements,
   sketchWidth,
   sketchHeight,
+  place,
+  title,
+  position,
 }: Props) {
   // PAGING WITHOUT BLACK (the user, 2026-10-10: «між перегортаннями блимає
   // проміжний кадр»): the new picture is decoded at full size and for a moment
@@ -83,13 +99,40 @@ export default function ZoomableImageViewer({
     return () => clearTimeout(slow);
   }, [uri]);
   const settled = under.uri === uri;
-  // The backdrop, icons and action bar stay dark chrome in every theme -
-  // a photo viewer, like a camera app, is deliberately theme-invariant
-  // (the same reasoning as the canvas being paper in every theme). Only
-  // the badge, which stands for "in the app" rather than "on the
-  // photo", takes the scheme's own accent.
+  // The soft chrome of the rest of the app (the sketch's frames 1 and 4): black under the picture in the dark theme, the
+  // app's own paper in the light one, the capsules in the card tone.
   const theme = useTheme();
   const styles = useStyles(makeStyles);
+  const S = useSoft();
+  const insets = useSafeAreaInsets();
+  const ground = S.dark ? '#000000' : S.bg;
+  const surface = { backgroundColor: S.card, boxShadow: S.dark ? undefined : '0px 6px 22px rgba(30,30,28,0.12)' } as never;
+  // A tap on the picture puts all of it away - only the picture and the dots (frame 3); a second tap brings it back.
+  const [chromeOn, setChromeOn] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const chromeFade = useSharedValue(1);
+  useEffect(() => {
+    chromeFade.value = withTiming(chromeOn ? 1 : 0, { duration: 180 });
+  }, [chromeOn, chromeFade]);
+  const chromeStyle = useAnimatedStyle(() => ({ opacity: chromeFade.value }));
+  const toggleChrome = () => {
+    setMenuOpen(false);
+    setChromeOn((v) => !v);
+  };
+  const list = actions ?? [];
+  const primary = PRIMARY.map((k) => list.find((a) => a.key === k)).filter((a): a is ViewerAction => !!a).slice(0, 4);
+  const rest = list.filter((a) => !primary.includes(a) && a.key !== 'delete');
+  const remove = list.find((a) => a.key === 'delete');
+  // The viewer closes ITSELF before the action runs, and that is the whole rule, kept here rather than in every caller.
+  //
+  // This is a Modal - its own native window on Android - and almost everything an action opens is not: the app's question
+  // windows, RenamePrompt, the tag picker, the "saved to..." toast are all layers drawn inside the screen. Opened from here
+  // they land UNDERNEATH and surface only when the picture is dismissed, which reads as a window arriving on the wrong tap.
+  const run = (action: ViewerAction) => {
+    setMenuOpen(false);
+    onClose();
+    action.onPress();
+  };
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -147,7 +190,13 @@ export default function ZoomableImageViewer({
       swipeX.value = withTiming(0, { duration: 160 });
     });
 
-  const gesture = Gesture.Simultaneous(pinchGesture, panGesture);
+  const tapGesture = Gesture.Tap()
+    .maxDuration(250)
+    .onEnd((_e, ok) => {
+      if (ok) runOnJS(toggleChrome)();
+    });
+
+  const gesture = Gesture.Simultaneous(pinchGesture, panGesture, tapGesture);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -157,11 +206,11 @@ export default function ZoomableImageViewer({
     ],
   }));
 
+  const ink = S.ink;
+  const showDots = !!position && position.count > 1 && !chromeOn;
+  const dots = showDots ? dotWindow(position!.index, position!.count) : [];
   return (
-    <View style={styles.backdrop}>
-      <Pressable style={styles.closeButton} hitSlop={12} onPress={onClose}>
-        <Ionicons name="close" size={28} color="#fff" />
-      </Pressable>
+    <View style={[styles.backdrop, { backgroundColor: ground }]}>
       <GestureDetector gesture={gesture}>
         <Animated.View style={[styles.imageWrap, animatedStyle]}>
           {/* The one picture that must NOT be decoded down to its frame:
@@ -196,94 +245,119 @@ export default function ZoomableImageViewer({
           )}
         </Animated.View>
       </GestureDetector>
-      {/* The arrows, for a finger that would rather tap - and the one
-          sign on screen that there is anything either side. */}
-      {!!onPrev && (
-        <Pressable style={[styles.pageButton, styles.pagePrev]} hitSlop={10} onPress={onPrev}>
-          <Ionicons name="chevron-back" size={26} color="#fff" />
-        </Pressable>
-      )}
-      {!!onNext && (
-        <Pressable style={[styles.pageButton, styles.pageNext]} hitSlop={10} onPress={onNext}>
-          <Ionicons name="chevron-forward" size={26} color="#fff" />
-        </Pressable>
-      )}
 
-      {!!actions?.length && (
-        <View style={styles.actionBar}>
-          {actions.map((action) => (
-            <Pressable
-              key={action.key}
-              style={styles.actionButton}
-              // The viewer closes ITSELF before the action runs, and that
-              // is the whole rule, kept here rather than in every caller.
-              //
-              // This is a Modal - its own native window on Android - and
-              // almost everything an action opens is not: the app's
-              // question windows, RenamePrompt, the tag picker, the "saved
-              // to..." toast are all layers drawn inside the screen. Opened
-              // from here they land UNDERNEATH and surface only when the
-              // picture is dismissed, which reads as a window arriving on
-              // the wrong tap.
-              //
-              // Two screens build their own action lists for this viewer,
-              // so the rule was remembered in one and forgotten in the
-              // other - which is exactly why it cannot live in the lists.
-              onPress={() => {
-                onClose();
-                action.onPress();
-              }}
-            >
-              <View>
-                <Ionicons name={action.icon} size={20} color={action.color ?? '#fff'} />
-                {!!action.badge && action.badge > 1 && (
-                  <View style={[styles.actionBadge, { backgroundColor: theme.accent }]}>
-                    <Text style={[styles.actionBadgeLabel, { color: theme.onAccent }]}>{action.badge}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.actionLabel, action.color && { color: action.color }]}>{action.label}</Text>
-            </Pressable>
+      {/* Which of how many, while everything else is away. */}
+      {showDots && (
+        <View pointerEvents="none" style={[styles.dots, { bottom: insets.bottom + 24 }]}>
+          {dots.map((d) => (
+            <View key={d.i} style={[styles.dot, { width: d.current ? 18 : 6, backgroundColor: S.dark ? (d.current ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.3)') : d.current ? 'rgba(30,30,28,0.75)' : 'rgba(30,30,28,0.22)' }]} />
           ))}
         </View>
       )}
+
+      {/* Clear of the status bar and the gesture bar by the app's own insets - a fixed number. (A native SafeAreaView here,
+          inside the Modal's window, kept re-measuring and the top capsule jumped without end, 2026-10-24.) */}
+      <Animated.View pointerEvents={chromeOn ? 'box-none' : 'none'} style={[StyleSheet.absoluteFill, chromeStyle]}>
+        {/* THE TOP CAPSULE: the way the note's own top bar reads - where, what, and «⋯». */}
+        <View style={[styles.pill, surface, { top: insets.top + 8 }]}>
+          <Ionicons name="image-outline" size={17} color={S.ink2} />
+          {!!place && (
+            <>
+              <Text numberOfLines={1} style={[styles.place, { color: S.ink2 }]}>
+                {place}
+              </Text>
+              <Text style={[styles.place, { color: S.ink3 }]}>›</Text>
+            </>
+          )}
+          <Text numberOfLines={1} style={[styles.title, { color: ink }]}>
+            {title || 'Зображення'}
+          </Text>
+          {!!position && position.count > 1 && <Text style={[styles.count, { color: S.ink2 }]}>{`${position.index + 1} з ${position.count}`}</Text>}
+          {rest.length + (remove ? 1 : 0) > 0 && (
+            <Pressable
+              onPress={() => setMenuOpen((v) => !v)}
+              accessibilityLabel="Ще дії"
+              hitSlop={6}
+              style={[styles.more, menuOpen && { backgroundColor: S.dark ? '#3A3A3D' : S.fillSolid }]}
+            >
+              <Ionicons name="ellipsis-horizontal" size={20} color={ink} />
+            </Pressable>
+          )}
+        </View>
+
+        {/* «⋯»: the explorer's own drop-down - the rest of the actions, «Видалити» last after a line. Drawn here, inside the
+            viewer's window: the app's own menus draw under a Modal. */}
+        {menuOpen && (
+          <>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuOpen(false)} accessible={false} />
+            <View style={[styles.menu, { top: insets.top + 64,  backgroundColor: S.dark ? '#2C2C2F' : S.card, boxShadow: S.dark ? '0px 12px 36px rgba(0,0,0,0.55)' : '0px 12px 36px rgba(30,30,28,0.16)' } as never]}>
+              {rest.map((a) => (
+                <Pressable key={a.key} onPress={() => run(a)} style={({ pressed }) => [styles.menuRow, pressed && { backgroundColor: S.dark ? '#3A3A3D' : S.fillSolid }]}>
+                  <Ionicons name={ICON[a.key] ?? a.icon} size={19} color={a.color ?? ink} />
+                  <Text style={[styles.menuText, { color: a.color ?? ink }]}>{LABEL[a.key] ?? a.label}</Text>
+                  {!!a.badge && a.badge > 0 && <Text style={[styles.menuBadge, { color: S.ink2 }]}>{a.badge}</Text>}
+                </Pressable>
+              ))}
+              {!!remove && (
+                <>
+                  {rest.length > 0 && <View style={[styles.menuLine, { backgroundColor: S.line }]} />}
+                  <Pressable onPress={() => run(remove)} style={({ pressed }) => [styles.menuRow, pressed && { backgroundColor: S.dark ? '#3A3A3D' : S.fillSolid }]}>
+                    <Ionicons name={remove.icon} size={19} color="#F87171" />
+                    <Text style={[styles.menuText, { color: '#F87171' }]}>{remove.label}</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* THE DOCK: the four, and the way back on the right - where it is everywhere else. */}
+        <View style={[styles.dockRow, { bottom: insets.bottom + 12 }]} pointerEvents="box-none">
+          {primary.length > 0 ? (
+            <View style={[styles.dock, surface]}>
+              {primary.map((a) => (
+                <Pressable key={a.key} onPress={() => run(a)} style={styles.dockButton} accessibilityLabel={LABEL[a.key] ?? a.label}>
+                  <View>
+                    <Ionicons name={ICON[a.key] ?? a.icon} size={21} color={a.color ?? ink} />
+                    {!!a.badge && a.badge > 1 && (
+                      <View style={[styles.actionBadge, { backgroundColor: theme.accent }]}>
+                        <Text style={[styles.actionBadgeLabel, { color: theme.onAccent }]}>{a.badge}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text numberOfLines={1} style={[styles.dockLabel, { color: a.color ?? ink }]}>
+                    {LABEL[a.key] ?? a.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <View style={{ flex: 1 }} />
+          )}
+          <Pressable onPress={onClose} accessibilityLabel="Назад" style={[styles.back, surface]}>
+            <Ionicons name="chevron-back" size={24} color={ink} />
+          </Pressable>
+        </View>
+      </Animated.View>
     </View>
   );
+}
+
+// Seven dots at most, the current one among them: a long row of pictures shows the stretch around where you are.
+function dotWindow(index: number, count: number): { i: number; current: boolean }[] {
+  const size = Math.min(7, count);
+  const start = Math.max(0, Math.min(count - size, index - Math.floor(size / 2)));
+  return Array.from({ length: size }, (_, k) => ({ i: start + k, current: start + k === index }));
 }
 
 // Far enough that a pinch that drifted sideways is not a page turn.
 const SWIPE_DISTANCE = 70;
 
 const makeStyles = (t: Theme) => StyleSheet.create({
-  pageButton: {
-    position: 'absolute',
-    top: '46%',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    zIndex: 5,
-  },
-  pagePrev: {
-    left: 12,
-  },
-  pageNext: {
-    right: 12,
-  },
   backdrop: {
     flex: 1,
-    backgroundColor: '#000',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 48,
-    right: 20,
-    zIndex: 1,
-    padding: 8,
   },
   imageWrap: {
     width: '100%',
@@ -295,28 +369,35 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  actionBar: {
+  pill: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(20,20,20,0.92)',
-    paddingTop: 14,
-    paddingBottom: 30,
-    paddingHorizontal: 24,
+    left: 12,
+    right: 12,
+    top: 14,
+    height: 48,
+    borderRadius: 24,
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'center',
+    gap: 8,
+    paddingLeft: 16,
+    paddingRight: 4,
   },
-  actionButton: {
-    alignItems: 'center',
-    gap: 6,
-  },
-  actionLabel: {
-    fontSize: 11,
-    fontFamily: FONT_REGULAR,
-    color: '#D4D4D8',
-  },
+  place: { fontSize: 14, fontFamily: SOFT_REGULAR, maxWidth: 110 },
+  title: { flex: 1, minWidth: 0, fontSize: 14.5, fontFamily: SOFT_SEMIBOLD },
+  count: { fontSize: 12.5, fontFamily: SOFT_MEDIUM },
+  more: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  menu: { position: 'absolute', right: 12, top: 70, width: 256, borderRadius: 20, padding: 6 },
+  menuRow: { height: 46, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12 },
+  menuText: { flex: 1, fontSize: 15, fontFamily: SOFT_REGULAR },
+  menuBadge: { fontSize: 12.5, fontFamily: SOFT_MEDIUM },
+  menuLine: { height: StyleSheet.hairlineWidth, marginVertical: 4, marginHorizontal: 10 },
+  dockRow: { position: 'absolute', left: 12, right: 12, bottom: 18, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dock: { flex: 1, height: 64, borderRadius: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 6 },
+  dockButton: { minWidth: 64, height: 56, alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 4 },
+  dockLabel: { fontSize: 11, fontFamily: SOFT_MEDIUM },
+  back: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  dots: { position: 'absolute', bottom: 30, alignSelf: 'center', flexDirection: 'row', gap: 6 },
+  dot: { height: 6, borderRadius: 3 },
   actionBadge: {
     position: 'absolute',
     top: -4,

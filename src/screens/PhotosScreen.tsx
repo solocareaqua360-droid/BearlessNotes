@@ -46,6 +46,9 @@ import { db } from '../firebase';
 import { Block, SketchElement, Tag } from '../types';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer, { ViewerAction } from '../components/ZoomableImageViewer';
+import PhotoTextReader from '../components/PhotoTextReader';
+import type { RecognizeRequest } from '../components/TextRecognizer';
+import { ensureLocalFile } from '../utils/googleDrive';
 import SketchEditor from '../components/SketchEditor';
 import { useFlattenPhoto } from '../hooks/useFlattenPhoto';
 import RenamePrompt from '../components/RenamePrompt';
@@ -124,6 +127,16 @@ type PhotoItem = {
   deletedAt?: number;
 };
 
+// «Текст» in the viewer: the picture is made a file on the phone first (one restored from Drive may not be there yet), then read.
+async function readPhotoText(uri: string, driveFileId: string | undefined, start: (r: RecognizeRequest) => void) {
+  const here = await ensureLocalFile(uri, driveFileId).catch(() => false);
+  if (!here) {
+    notify('Фото ще не на телефоні', 'Відкрийте його ще раз, коли завантажиться, і спробуйте знову.');
+    return;
+  }
+  start({ uris: [uri] });
+}
+
 export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   // The three desks stay in the dock inside a base (deskBeadsBus's useDockDesksHere).
   useDockDesksWhileFocused(!inPane);
@@ -142,6 +155,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   const [trashOpen, setTrashOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
+  // The picture whose text is being read (PhotoTextReader), from the viewer's «Текст».
+  const [ocrRequest, setOcrRequest] = useState<RecognizeRequest | null>(null);
   // Sent here to open one photo (utils/openRequest - the folders' canvas).
   useOpenRequest('photos', photos.map((p) => p.id), (id) => setViewerPhotoId(id));
   // The card the viewer was opened from (utils/flipOpen): it turns over
@@ -806,6 +821,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
         label: 'Малювати',
         onPress: () => setSketchPhotoId(photo.id),
       },
+      { key: 'ocr', icon: 'text-outline', label: 'Текст', onPress: () => readPhotoText(photo.imageUri, photo.driveFileId, setOcrRequest) },
       { key: 'share', icon: 'share-social-outline', label: 'Поділитись', onPress: () => shareImage(photo) },
       { key: 'copy', icon: 'copy-outline', label: 'Копіювати', onPress: () => copyImage(photo) },
       {
@@ -999,6 +1015,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
 
           {/* Always there, shown by `visible`: opened from its card the
               viewer turns back into it on the way out (FlipModal). */}
+          <PhotoTextReader request={ocrRequest} onDone={() => setOcrRequest(null)} />
           <FlipModal
             visible={viewerPhoto !== null}
             flipFrom={photoFlip}
@@ -1013,6 +1030,9 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                   driveFileId={viewerPhoto.driveFileId}
                   onClose={() => setViewerPhotoId(null)}
                   actions={viewerActionsFor(viewerPhoto)}
+                  place="Фото"
+                  title={viewerPhoto.title}
+                  position={viewerIndex >= 0 ? { index: viewerIndex, count: itemsHere.length } : undefined}
                   onPrev={viewerPrevId ? () => showOtherPhoto(viewerPrevId) : undefined}
                   onNext={viewerNextId ? () => showOtherPhoto(viewerNextId) : undefined}
                   sketchElements={viewerPhoto.sketchElements}
