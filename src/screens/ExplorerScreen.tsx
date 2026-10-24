@@ -139,6 +139,8 @@ const FOLDER_GAP = 10;
 // How many folders stand beside the square «Думки» (the user: «або поставити три папки, якщо вони влізуть») - it is as tall
 // as they are, nearly square.
 const SIDE_FOLDERS = 3;
+// The modern look's «Думки», standing among the folder cards as one of them.
+const THOUGHTS_PATH = '\u0000thoughts';
 const nameOf = (path: string) => path.split('/').pop() ?? path;
 const stamp = (item: FolderItem) => {
   const raw = (item.raw ?? {}) as Record<string, unknown>;
@@ -2575,6 +2577,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         place(queue.splice(pick, 1)[0]);
       }
     };
+    // «Думки» first, a middle card of the first column (the same square as the clean look's, 2026-10-25).
+    if (FEATURES.thoughts && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT)) place({ path: THOUGHTS_PATH, name: 'Думки', count: 0 } as FolderEntry);
     while (queue.length) {
       const f = queue.shift()!;
       if (sizeOf(f) === 'L') {
@@ -2609,9 +2613,12 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     return <Animated.View entering={coming ? cornerIn(Math.min(cardsBefore + rowIndex, 12) * 32) : undefined}>{el}</Animated.View>;
   };
   // The clean look's first level shows «Думки» as a square (ThoughtsSquare) - where the wide card stood.
-  const thoughtsSquare =
-    FEATURES.thoughts && !modernLook && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT);
+  const thoughtsHere = FEATURES.thoughts && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT);
+  const thoughtsSquare = thoughtsHere && !modernLook;
   const squareSide = Math.floor((contentW - FOLDER_GAP) / 2);
+  // A modern column's width (two on the phone; capped at 260 where there are more).
+  const modernCols = touchDensity ? 2 : Math.max(2, Math.floor((contentW + 10) / 210));
+  const modernColW = Math.min(touchDensity ? Infinity : 260, Math.floor((contentW - 10 * (modernCols - 1)) / modernCols));
   // The two folders beside «Думки» keep a list row's own height; the card is as tall as the two of them.
   const [sideH, setSideH] = useState(0);
   // One folder of the clean look's list (a pill: its icon, name and count); `extra` sizes it beside the square «Думки».
@@ -2691,7 +2698,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         </View>
       )}
       {FEATURES.thoughts && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT) &&
-        !thoughtsSquare && <ThoughtsFolder late={projectsHere} />}
+        !thoughtsSquare && !modernLook && <ThoughtsFolder late={projectsHere} />}
       {modernLook && !!path && cardTagOf(path) && (
         // Edge to edge and up under the bar: out of the list's own side and top padding.
         <View style={{ marginHorizontal: -20, marginTop: -listTopPad, marginBottom: 18 }}>
@@ -2717,6 +2724,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             let order = 0;
             const card = (f: FolderEntry) => {
               const n = order++;
+              if (f.path === THOUGHTS_PATH) return <ThoughtsSquare key={THOUGHTS_PATH} size={modernColW} height={200} />;
               if (f.path === BIN_PATH) {
                 return <BinCard key={BIN_PATH} count={binned.length} kinds={binned.slice(0, 15).map((i) => i.kind)} onPress={enterBin} />;
               }
