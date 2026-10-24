@@ -10,6 +10,9 @@ import { GlassPortal } from '../GlassPortal';
 import { FONT_BOLD, FONT_REGULAR, SOFT_MEDIUM, SOFT_REGULAR } from '../../utils/fonts';
 import type { SoftTokens } from '../../theme/soft';
 import { GLASS_DANGER, GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../../constants/glass';
+import DockGlassFill, { useDockSurface } from '../DockGlassFill';
+import { useDockGlass } from '../../utils/dockGlass';
+import { useSoft } from '../../theme/soft';
 
 // «Меню» - a short list of commands, beside the thing it acts on.
 //
@@ -92,6 +95,10 @@ export default function Menu({
   // behind its own isFocused; this is the same rule, made once here rather
   // than at each of the six places a menu is opened.
   const isFocused = useIsFocused();
+  // «Скло» (utils/dockGlass): the soft menu wears the dock's glass too.
+  const glassOn = useDockGlass();
+  const softNow = useSoft();
+  const glassSurface = useDockSurface(soft ?? softNow, glassOn);
   if (!visible || !isFocused) return null;
   return (
     <GlassPortal name="Menu">
@@ -101,10 +108,11 @@ export default function Menu({
           styles.panel,
           { width },
           { maxHeight: maxHeight ?? windowHeight * 0.6 },
-          soft ? [styles.softPanel, { backgroundColor: soft.chrome, boxShadow: soft.popShadow }] : lift,
+          soft ? [styles.softPanel, glassOn ? glassSurface : { backgroundColor: soft.chrome, boxShadow: soft.popShadow }] : lift,
           style,
         ]}
       >
+        {soft && glassOn && <DockGlassFill soft={soft} />}
         {!soft && (
           <BlurView
             intensity={60}

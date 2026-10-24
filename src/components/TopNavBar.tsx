@@ -7,6 +7,8 @@ import Animated, { Easing, Extrapolation, FadeIn, FadeOut, interpolate, runOnJS,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost, { FlatFrostContext } from './DockFrost';
 import { GlassPortal } from './GlassPortal';
+import DockGlassFill, { useDockSurface } from './DockGlassFill';
+import { useDockGlass } from '../utils/dockGlass';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { CHROME_TOP } from '../constants/rail';
 import { DOCK_PIECE_RADIUS, dockCardHeight } from '../navigation/dockGeometry';
@@ -218,6 +220,8 @@ function TopNavBar({
   // above read as two things that disagree.
   const liveSearch = inline ? searchOverride ?? null : soft ? null : publishedSearch;
   const S = useSoft();
+  const glassOn = useDockGlass();
+  const glassSurface = useDockSurface(S, glassOn);
   const gap = soft ? 0 : GAP;
   const ink = soft ? S.ink : theme.glass.ink;
   const inkMuted = soft ? S.ink2 : theme.glass.inkMuted;
@@ -450,11 +454,15 @@ function TopNavBar({
               pointerEvents="none"
               style={[
                 StyleSheet.absoluteFill,
-                { backgroundColor: S.chrome, borderRadius: TOP_NAV_H / 2, boxShadow: S.shadow },
+                // «Скло» (utils/dockGlass): the bar's capsule wears the dock's glass too.
+                glassOn ? glassSurface : { backgroundColor: S.chrome, boxShadow: S.shadow },
+                { borderRadius: TOP_NAV_H / 2 },
                 !inline && FEATURES.chromeCompact ? compactBg : undefined,
                 !inline && FEATURES.chromeCompact ? compactFill : undefined,
               ]}
-            />
+            >
+              {glassOn && <DockGlassFill soft={S} />}
+            </Animated.View>
             {/* Folded: no fill at all, only the rim - drawn the moment the fill goes. */}
             {!inline && FEATURES.chromeCompact && (
               <Animated.View

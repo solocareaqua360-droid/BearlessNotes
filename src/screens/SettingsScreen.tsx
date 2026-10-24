@@ -627,14 +627,14 @@ export default function SettingsScreen() {
             conversion: the switch works and is remembered; the screens
             themselves are converted to the contract after it, one weight
             at a time. */}
-        {/* «Скляний док» (utils/dockGlass): this phone only, off by default - the glass the user picked in September, on the
-            dock alone, to be looked at first and measured after. */}
+        {/* «Скло» (utils/dockGlass): this phone only, off by default - the glass the user picked in September, on the dock, the
+            bar at the top, the «⋯» menus and the quick-create window; to be looked at first and measured after. */}
         {section === 'appearance' && (
           <View style={styles.card}>
             <View style={[styles.cardHeader, { justifyContent: 'space-between' }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
                 <Ionicons name="water-outline" size={22} color={accent} />
-                <Text style={styles.cardTitle}>Скляний док</Text>
+                <Text style={styles.cardTitle}>Скло</Text>
               </View>
               <Switch value={dockGlass} onValueChange={setDockGlass} />
             </View>

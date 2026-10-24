@@ -8,6 +8,7 @@ import { ask, notify } from './surfaces/Ask';
 import { useSoft } from '../theme/soft';
 import { MONTH_FULL, MONTH_SHORT, addDays, dateKey, getMonthGrid, parseDateKey } from '../utils/dateLocale';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import { useDockGlass } from '../utils/dockGlass';
 import {
   discardAttachments,
   pickFileAttachments,
@@ -82,6 +83,7 @@ export default function QuickCreate({
   ) => Promise<void> | void;
 }) {
   const S = useSoft();
+  const glassOn = useDockGlass();
   // The window rides the keyboard (Sheet anchor), so a LIST in it is capped in points - a share of the screen that
   // leaves room for the keyboard under it.
   const { height: windowH } = useWindowDimensions();
@@ -486,7 +488,7 @@ export default function QuickCreate({
   }
 
   return (
-    <Sheet visible={visible} onClose={onClose} handle={false} header={header} scroll={scroll} maxHeight={level === 'day' || level === 'compose' ? undefined : Math.round(windowH * 0.38)} anchor="bottom" inset={16}>
+    <Sheet glass={glassOn} visible={visible} onClose={onClose} handle={false} header={header} scroll={scroll} maxHeight={level === 'day' || level === 'compose' ? undefined : Math.round(windowH * 0.38)} anchor="bottom" inset={16}>
       {body}
     </Sheet>
   );

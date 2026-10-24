@@ -24,13 +24,15 @@ const SPEC = 0.7;
 // The light theme's milk: plain white, not the theme's cream (#FDFAF4) - cream over the warm ground read as stale white.
 const LIGHT_MILK = '#FFFFFF';
 
-export default function DockGlassFill({ soft }: { soft: SoftTokens }) {
+export default function DockGlassFill({ soft, paused: still }: { soft: SoftTokens; paused?: boolean }) {
   const theme = useTheme();
   const g = theme.glass;
   const target = useBlurTarget();
   const inside = useInsideBlurTarget();
   const paused = useFrostPaused();
-  const blur = !!target && !inside && !paused;
+  // `still`: the owner's own pause - a window riding the keyboard has a live blur only while the keyboard stands (a blur
+  // on a surface that moves every frame froze the app once - android_live_blur_moving_surface).
+  const blur = !!target && !inside && !paused && !still;
   const uid = useId();
   // The rim is drawn in real coordinates (a stroke cannot be inset by a percentage), so the piece measures itself.
   const [box, setBox] = useState<{ w: number; h: number } | null>(null);
