@@ -21,6 +21,8 @@ const FLAT = 0.97;
 // top-left corner as GlassDrop's round drops: on a long capsule a corner light lit the whole left end and the dock read as
 // narrower on the left (the user, 2026-10-24: «док перекошений, тобто менший ліворуч»).
 const SPEC = 0.7;
+// The light theme's milk: plain white, not the theme's cream (#FDFAF4) - cream over the warm ground read as stale white.
+const LIGHT_MILK = '#FFFFFF';
 
 export default function DockGlassFill({ soft }: { soft: SoftTokens }) {
   const theme = useTheme();
@@ -60,7 +62,7 @@ export default function DockGlassFill({ soft }: { soft: SoftTokens }) {
       <View
         style={[
           StyleSheet.absoluteFill,
-          soft.dark ? { backgroundColor: soft.chrome, opacity: blur ? TINT : FLAT } : { backgroundColor: g.body, opacity: blur ? g.opacity : FLAT },
+          soft.dark ? { backgroundColor: soft.chrome, opacity: blur ? TINT : FLAT } : { backgroundColor: LIGHT_MILK, opacity: blur ? g.opacity : FLAT },
         ]}
       />
       {/* THE RIM (the user, 2026-10-24, over a photo of the old rail capsule: «Питання в обідку») - GlassDrop's three layers,
@@ -80,7 +82,9 @@ export default function DockGlassFill({ soft }: { soft: SoftTokens }) {
               <Stop offset="1" stopColor={g.rim} stopOpacity={0} />
             </LinearGradient>
           </Defs>
-          {RINGS.map((ring, i) => (
+          {/* Dark only: on white a dark edge reads as dirt, not as the thickness of the glass - white glass is LIGHTER at its
+              edge than in its middle (the user, 2026-10-24: «в білому виглядає бруднувато»). */}
+          {soft.dark && RINGS.map((ring, i) => (
             <Rect
               key={i}
               x={ring.inset}
@@ -94,7 +98,7 @@ export default function DockGlassFill({ soft }: { soft: SoftTokens }) {
               strokeWidth={ring.width}
             />
           ))}
-          <Rect x={2.5} y={2.5} width={Math.max(0, w - 5)} height={Math.max(0, h - 5)} rx={Math.max(0, r - 2.5)} fill="none" stroke={`url(#${uid}-rim)`} strokeOpacity={soft.dark ? 1 : 0.45} strokeWidth={1.2} />
+          <Rect x={2.5} y={2.5} width={Math.max(0, w - 5)} height={Math.max(0, h - 5)} rx={Math.max(0, r - 2.5)} fill="none" stroke={`url(#${uid}-rim)`} strokeOpacity={soft.dark ? 1 : 0.7} strokeWidth={1.2} />
           <Rect x={0.6} y={0.6} width={Math.max(0, w - 1.2)} height={Math.max(0, h - 1.2)} rx={Math.max(0, r - 0.6)} fill="none" stroke={`url(#${uid}-spec)`} strokeWidth={1.2} />
         </Svg>
       )}
@@ -116,8 +120,8 @@ export function useDockSurface(soft: SoftTokens, glass: boolean) {
   if (!glass) return { backgroundColor: soft.chrome, boxShadow: soft.shadow };
   const g = theme.glow;
   const light =
-    theme.lift === 'glow'
+    soft.dark && theme.lift === 'glow'
       ? `0px 0px ${g.nearRadius * 2}px ${g.near}, 0px ${g.drop}px ${g.farRadius}px ${g.far}`
-      : '0px 8px 22px rgba(30,30,28,0.14)';
+      : '0px 6px 18px rgba(0,0,0,0.08)';
   return { backgroundColor: 'transparent', overflow: 'hidden' as const, boxShadow: light };
 }
