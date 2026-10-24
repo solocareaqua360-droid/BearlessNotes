@@ -917,6 +917,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       morph(`note:${item.docId}`, (morphing) =>
         (navigation as unknown as { navigate: (name: string, params?: object) => void }).navigate('Editor', {
           documentId: item.docId,
+          // Found by a search: the note lands on the first match and marks the words.
+          ...(searching && searchText.trim() ? { searchQuery: searchText.trim() } : {}),
           ...(morphing ? { morph: true } : {}),
         })
       );
@@ -2968,6 +2970,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                   item={item}
                   tags={tags}
                   mode={tile ? 'grid' : 'list'}
+                  search={searching ? searchText.trim() : undefined}
                   tileWidth={strip ?? (tile ? tileW : contentW)}
                   columns={strip !== undefined ? 1 : gridCols}
                   onPress={(e) => {

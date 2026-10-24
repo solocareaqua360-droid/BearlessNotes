@@ -14,7 +14,7 @@ import DocumentCard from './DocumentCard';
 import { PAGE_HEIGHT_RATIO } from './folderCardMetrics';
 import AttachmentImage from './AttachmentImage';
 import TagChips from './TagChips';
-import { formatAddedOn } from '../utils/documentPreview';
+import { findBodyMatch, findTitleMatch, formatAddedOn } from '../utils/documentPreview';
 import BoardPreviewImage from './BoardPreviewImage';
 import DocumentPageMiniature from './DocumentPageMiniature';
 import BoardMiniMap from './BoardMiniMap';
@@ -186,12 +186,15 @@ function FolderItemCardInner({
   isSelected,
   onToggleSelect,
   noCount,
+  search,
 }: {
   item: FolderItem;
   tags: Tag[];
   // A small copy of the thing (a leaf on a folder's card) keeps its picture and name and drops the count line - the
   // count belongs to the original card (the user, 2026-10-13).
   noCount?: boolean;
+  // While the list is searched: a note shows where the words are - marked on its page and in its line (as the Documents base).
+  search?: string;
   // The press event goes through: a card that opens by turning over is measured from it.
   onPress: (event?: import('react-native').GestureResponderEvent) => void;
   onLongPress?: () => void;
@@ -293,6 +296,9 @@ function FolderItemCardInner({
           previewTail={preview.previewTail}
           blocks={blocks}
           checklistItems={preview.checklistItems}
+          titleMatch={search ? findTitleMatch(item.title, search) : null}
+          bodyMatch={search && !findTitleMatch(item.title, search) ? findBodyMatch(blocks, search) : null}
+          search={search}
           onPress={onPress}
           onLongPress={onLongPress}
           isSelectMode={isSelectMode}
@@ -452,13 +458,24 @@ function FolderItemCardInner({
         coverFrame={raw.coverFrame as never}
             width={104}
             height={78}
+            highlight={search}
           />
         </View>
         <View style={styles.body}>
           <Text style={[styles.title, { color: S.ink }]} numberOfLines={2}>{item.title}</Text>
-          {!!preview.previewText && (
-            <Text style={[styles.sub, { color: S.ink3 }]} numberOfLines={2}>{preview.previewText}</Text>
-          )}
+          {(() => {
+            const found = search ? findBodyMatch(blocks, search) : null;
+            if (found) {
+              return (
+                <Text style={[styles.sub, { color: S.ink3 }]} numberOfLines={2}>
+                  {found.before}
+                  <Text style={{ color: S.ink, backgroundColor: 'rgba(250, 204, 21, 0.45)' }}>{found.match}</Text>
+                  {found.after}
+                </Text>
+              );
+            }
+            return !!preview.previewText && <Text style={[styles.sub, { color: S.ink3 }]} numberOfLines={2}>{preview.previewText}</Text>;
+          })()}
           {!!when && <Text style={[styles.sub, { color: S.ink3 }]}>{formatAddedOn(when, true)}</Text>}
           {own.length > 0 && <TagChips tags={own} onPress={() => {}} glass max={2} />}
         </View>
