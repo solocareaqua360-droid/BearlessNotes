@@ -191,7 +191,7 @@ export default function App() {
           <NavDockProvider>
           <GlassPortalHost>
             <ThemedStatusBar />
-            <GlassTargetProvider>
+            <GlassTargetProvider recedes>
             {/* «Питання» - every confirmation in the app, drawn once here
                 so that asking is a function call anywhere else. INSIDE the
                 blur target: what it blurs is the screens, and from outside

@@ -5,7 +5,8 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { BackHandler, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FLIP_MS, flipProgress, type FlipFrom } from '../utils/flipOpen';
 import { BlurView } from 'expo-blur';
-import Animated, { Easing, SharedValue, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, SharedValue, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { holdRecede } from '../utils/recede';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
 import { GLASS_BACKDROP } from '../constants/glass';
@@ -29,8 +30,12 @@ export default function GlassLayer({
   intensity = 50,
   flipFrom,
   softDim,
+  rise,
   priority = 0,
 }: {
+  // A SHEET FROM THE BOTTOM (the four windows, 2026-10-25): the window rises from below the screen on a spring and goes
+  // back down; the app behind steps back while it stands (utils/recede). The phone only.
+  rise?: boolean;
   visible: boolean;
   onClose: () => void;
   children: ReactNode;
@@ -137,7 +142,11 @@ export default function GlassLayer({
         flip ? (
           <FlipIn leaving={leaving} from={flip} p={flipT}>{leaving ? lastChildren.current : children}</FlipIn>
         ) : (
-          <GrowIn leaving={leaving}>{leaving ? lastChildren.current : children}</GrowIn>
+          rise ? (
+            <RiseIn leaving={leaving}>{leaving ? lastChildren.current : children}</RiseIn>
+          ) : (
+            <GrowIn leaving={leaving}>{leaving ? lastChildren.current : children}</GrowIn>
+          )
         )
       )}
     </View>
@@ -162,6 +171,27 @@ function GrowIn({ leaving, children }: { leaving: boolean; children: ReactNode }
     opacity: shown.value,
     transform: [{ scale: SMALL + (1 - SMALL) * shown.value }],
   }));
+  return (
+    <Animated.View style={[styles.content, style]} pointerEvents={leaving ? 'none' : 'box-none'}>
+      {children}
+    </Animated.View>
+  );
+}
+
+// THE SHEET RISING (see `rise`): up from below the screen on a soft spring with a hair of overshoot, down on a quick ease.
+function RiseIn({ leaving, children }: { leaving: boolean; children: ReactNode }) {
+  const { height } = useWindowDimensions();
+  const y = useSharedValue(height);
+  useEffect(() => {
+    if (leaving) {
+      y.value = withTiming(height, { duration: MOTION.out + 60, easing: Easing.in(Easing.cubic) });
+      return;
+    }
+    y.value = withSpring(0, { damping: 24, stiffness: 240, mass: 0.9 });
+    const release = holdRecede();
+    return release;
+  }, [leaving, y, height]);
+  const style = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }] }));
   return (
     <Animated.View style={[styles.content, style]} pointerEvents={leaving ? 'none' : 'box-none'}>
       {children}

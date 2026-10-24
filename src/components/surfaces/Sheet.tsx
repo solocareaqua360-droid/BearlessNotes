@@ -8,7 +8,11 @@ import EdgeFade from '../EdgeFade';
 import type { Theme } from '../../theme/tokens';
 import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
 import { useKeyboardRide } from '../../hooks/useKeyboardRide';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useDensity } from '../../hooks/useDensity';
+import { useDockGlass } from '../../utils/dockGlass';
 import { SHEET_FRAME, SHEET_WINDOW, PHONE_ONLY } from '../../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../../utils/fonts';
 import DockGlassFill, { useDockSurface } from '../DockGlassFill';
@@ -100,7 +104,9 @@ export default function Sheet({
   const keyboard = useKeyboardRide();
   const ride = useAnimatedStyle(() => ({ transform: [{ translateY: Math.min(0, keyboard.height.value) }] }));
   const S = useSoft();
-  const glassSurface = useDockSurface(S, !!glass);
+  const insets = useSafeAreaInsets();
+  const desk = useDensity() === 'pointer';
+  const glassOn = useDockGlass();
   const scrollY = useRef(0);
   const viewportH = useRef(0);
   const contentH = useRef(0);
@@ -162,14 +168,66 @@ export default function Sheet({
     scrollView
   );
 
+  // THE SHEET FROM THE BOTTOM (the four windows, 2026-10-25): on the phone every sheet stands on the bottom edge, full width,
+  // rises on a spring with the app stepping back behind it, and is dragged down by its top to close. A sheet opened from a
+  // card still turns out of it (flipFrom); the Mac keeps its window in the middle.
+  const fromBottom = !desk && !flipFrom;
+  const anchored = anchor === 'bottom' || fromBottom;
+  const glassy = !!glass || (fromBottom && glassOn);
+  const sheetGlass = useDockSurface(S, glassy);
+  const drag = useSharedValue(0);
+  const dragStyle = useAnimatedStyle(() => ({ transform: [{ translateY: drag.value }] }));
+  const close = () => onClose();
+  const grab = Gesture.Pan()
+    .activeOffsetY(6)
+    .onUpdate((e) => {
+      drag.value = Math.max(0, e.translationY);
+    })
+    .onEnd((e) => {
+      if (e.translationY > 110 || e.velocityY > 900) runOnJS(close)();
+      else drag.value = withSpring(0, { damping: 22, stiffness: 300 });
+    });
+  useEffect(() => {
+    if (visible) drag.value = 0;
+  }, [visible, drag]);
   return (
-    <GlassLayer visible={visible} onClose={onClose} flipFrom={flipFrom} softDim={anchor === 'bottom'} priority={priority}>
-      <View style={[styles.frame, { paddingBottom: keyboardHeight }, anchor === 'bottom' && { justifyContent: 'flex-end', paddingBottom: 24 }]} pointerEvents="box-none">
+    <GlassLayer visible={visible} onClose={onClose} flipFrom={flipFrom} softDim={anchor === 'bottom'} rise={fromBottom} priority={priority}>
+      <View
+        style={[
+          styles.frame,
+          { paddingBottom: keyboardHeight },
+          anchor === 'bottom' && { justifyContent: 'flex-end', paddingBottom: 24 },
+          fromBottom && { justifyContent: 'flex-end', paddingBottom: 0, paddingHorizontal: 0 },
+        ]}
+        pointerEvents="box-none"
+      >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <Animated.View style={[anchor === 'bottom' && ride, styles.window, glass && glassSurface, inset !== undefined && { paddingHorizontal: inset, paddingTop: inset, paddingBottom: inset }, maxHeight !== undefined && !scroll && { maxHeight }]}>
-          {glass && <DockGlassFill soft={S} radius={SHEET_WINDOW.borderRadius} />}
-          {handle && <View style={styles.handle} />}
-          {!!title && <Text style={styles.title}>{title}</Text>}
+        <Animated.View
+          style={[
+            anchored && ride,
+            fromBottom && dragStyle,
+            styles.window,
+            fromBottom && [styles.bottomWindow, { paddingBottom: insets.bottom + 16 }],
+            glassy && sheetGlass,
+            fromBottom && glassy && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+            inset !== undefined && { paddingHorizontal: inset, paddingTop: inset, paddingBottom: fromBottom ? insets.bottom + inset : inset },
+            maxHeight !== undefined && !scroll && { maxHeight },
+          ]}
+        >
+          {glassy && <DockGlassFill soft={S} radius={SHEET_WINDOW.borderRadius} />}
+          {fromBottom ? (
+            <GestureDetector gesture={grab}>
+              <View style={styles.grab} collapsable={false}>
+                <View style={styles.handle} />
+                {!!title && <Text style={styles.title}>{title}</Text>}
+              </View>
+            </GestureDetector>
+          ) : (
+            <>
+              {handle && <View style={styles.handle} />}
+              {!!title && <Text style={styles.title}>{title}</Text>}
+            </>
+          )}
           {!!subtitle && (
             <Text style={styles.subtitle} numberOfLines={1}>
               {subtitle}
@@ -194,6 +252,10 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 24,
   },
+  // The phone's sheet: on the bottom edge, its top corners round, its bottom square.
+  bottomWindow: { maxWidth: '100%', borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderWidth: 0 },
+  // The top of a bottom sheet, the part a finger drags it down by.
+  grab: { paddingTop: 2, marginTop: -8, paddingBottom: 2 },
   handle: {
     ...PHONE_ONLY,
     width: 36,

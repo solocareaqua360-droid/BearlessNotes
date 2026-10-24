@@ -1,6 +1,8 @@
 import { createContext, ReactNode, RefObject, useContext, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { BlurTargetView } from 'expo-blur';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { recede } from '../utils/recede';
 
 // What the blur blurs. On Android expo-blur needs to be told WHICH view to
 // blur - without that ref it silently falls back to "none", which is a
@@ -19,13 +21,22 @@ const BlurTargetContext = createContext<RefObject<View | null> | null>(null);
 // the target and blurred itself. Everything that blurs asks this first.
 const InsideTargetContext = createContext(false);
 
-export function GlassTargetProvider({ children }: { children: ReactNode }) {
+export function GlassTargetProvider({ children, recedes }: { children: ReactNode; recedes?: boolean }) {
   const ref = useRef<View>(null);
+  // The app's own target steps back under a sheet (utils/recede).
+  const back = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - 0.06 * recede.value }],
+    borderRadius: 28 * recede.value,
+    overflow: recede.value > 0.01 ? 'hidden' : 'visible',
+  }));
+  // Black behind the stepped-back screens (the window would show the phone's wallpaper there).
+  const behind = useAnimatedStyle(() => ({ opacity: recede.value }));
   return (
     <BlurTargetContext.Provider value={ref}>
       <InsideTargetContext.Provider value={true}>
         <BlurTargetView ref={ref} style={styles.fill}>
-          {children}
+          {recedes && <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#000000' }, behind]} />}
+          {recedes ? <Animated.View style={[styles.fill, back]}>{children}</Animated.View> : children}
         </BlurTargetView>
       </InsideTargetContext.Provider>
     </BlurTargetContext.Provider>
