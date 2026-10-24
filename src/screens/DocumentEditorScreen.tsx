@@ -64,6 +64,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useEditorKeyboard, useKeyboardState } from '../hooks/useEditorKeyboard';
+import { registerPageScroll } from '../utils/pageScroll';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   collection,
@@ -1110,6 +1111,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // its ref to) - gesture-handler's own `ScrollView` type is the component.
   const scrollViewRef = useAnimatedRef<RNScrollView>();
   const scrollOffsetRef = useRef(0);
+  // The fold back into the card rolls the note to its top on the fold's own clock (utils/pageScroll, MorphFrame): only a
+  // note that is a screen of its own - not one in a pane or embedded in another.
+  const rollFrom = useSharedValue(0);
+  const rollT = useSharedValue(-1);
+  useAnimatedReaction(
+    () => rollT.value,
+    (v) => {
+      if (v >= 0) scrollTo(scrollViewRef, 0, rollFrom.value * v, false);
+    }
+  );
+  const ownScreen = !('embedded' in props) && !('pane' in props);
+  useEffect(() => {
+    if (!ownScreen) return;
+    return registerPageScroll(`note:${documentId}`, { offset: () => scrollOffsetRef.current, from: rollFrom, roll: rollT });
+  }, [ownScreen, documentId, rollFrom, rollT]);
   // Same offset, readable from a worklet - the synced scroll needs to know
   // where the list was the moment the keyboard started moving.
   const scrollOffsetSV = useSharedValue(0);

@@ -9,6 +9,7 @@ import { cardBand, measureCard, takeMorphFrom, whenLanded, type Rect } from '../
 import { foldTransforms } from './foldGeometry';
 import { captureRef, releaseCapture } from 'react-native-view-shot';
 import { endPageFold, startPageFold } from '../utils/pageFold';
+import { pageScroller } from '../utils/pageScroll';
 
 // THE PAGE THAT GROWS OUT OF ITS CARD (utils/morph tells the whole story).
 // Wraps a pushed note. Opened from a card, it lays the page out at its full
@@ -159,9 +160,15 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
       // A growth that had not started yet must not start under the fold.
       started.current = true;
       const frame = box.current;
+      // A note scrolled away from its top folds LIVE, rolling back to the top on the fold's own clock (utils/pageScroll):
+      // a photograph would fold the scrolled page and land as it stood, then blink into the card's top. Such a page keeps
+      // the screen to the end of the fold (no picture to hand over to).
+      const scroller = pageScroller(morphKey);
+      const scrolledBy = scroller?.offset() ?? 0;
+      const rolling = !!scroller && scrolledBy > 2;
       // The page as it stands, photographed alongside the bar and the dock
       // (components/PageFold: the picture folds, the screen goes at once).
-      const pagePicture = pageRef.current
+      const pagePicture = !rolling && pageRef.current
         ? captureRef(pageRef.current, { format: 'jpg', quality: 0.92, result: 'tmpfile' }).catch(() => null)
         : Promise.resolve(null);
       const chromeCarried = chromeBackBegin();
@@ -233,6 +240,11 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
           else leaveWhenChromeIs();
         };
         setLeaving(true);
+        if (rolling && scroller) {
+          scroller.from.value = scrolledBy;
+          scroller.roll.value = 1;
+          scroller.roll.value = withTiming(0, { duration: BACK_MS, easing: EASE });
+        }
         t.value = withTiming(0, { duration: BACK_MS, easing: EASE }, (finished) => {
           if (finished) shown.value = 0;
           runOnJS(onFolded)();
