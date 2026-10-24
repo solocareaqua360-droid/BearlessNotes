@@ -1,4 +1,5 @@
 import { Pressable, Text } from 'react-native';
+import MenuLabel from './MenuLabel';
 import { Ionicons } from './icons/Ionicons';
 import { menuStyles } from './DatabaseChrome';
 
@@ -31,7 +32,7 @@ export default function BinRestoreRows({
           }}
         >
           <Ionicons name="arrow-undo-outline" size={17} color={ink} />
-          <Text style={menuStyles.menuRowLabel}>{`Відновити останнє видалення (${lastCount})`}</Text>
+          <MenuLabel>{`Відновити останнє видалення (${lastCount})`}</MenuLabel>
         </Pressable>
       )}
       {allCount > lastCount && (
@@ -43,7 +44,7 @@ export default function BinRestoreRows({
           }}
         >
           <Ionicons name="arrow-undo-outline" size={17} color={ink} />
-          <Text style={menuStyles.menuRowLabel}>{`Відновити все з кошика (${allCount})`}</Text>
+          <MenuLabel>{`Відновити все з кошика (${allCount})`}</MenuLabel>
         </Pressable>
       )}
     </>

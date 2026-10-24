@@ -103,12 +103,13 @@ import {
 } from '../utils/boardLayout';
 import AddExistingItemModal from '../components/AddExistingItemModal';
 import RenamePrompt from '../components/RenamePrompt';
+import FlashcardQuickSheet from '../components/FlashcardQuickSheet';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import InlineVideoPlayer from '../components/InlineVideoPlayer';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { linkDocId } from '../utils/linkId';
-import { blockFromFile, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
+import { blockFromCustomRow, blockFromFile, blockFromFlashcard, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
 import { backupFileToDrive } from '../utils/googleDrive';
 import { captureBoardPreview } from '../components/BoardMiniature';
 import ShapeBody, { SHAPE_STROKE, SHAPE_TEXT_SIZE_DEFAULT, SHAPE_LABEL_SIZE_DEFAULT } from '../components/BoardShapeBody';
@@ -2554,6 +2555,10 @@ export default function BoardScreen() {
   const [movePickerOpen, setMovePickerOpen] = useState(false);
   const [moving, setMoving] = useState(false);
   const [pickableBoards, setPickableBoards] = useState<{ id: string; title: string }[]>([]);
+  const [newFlashcardPrompt, setNewFlashcardPrompt] = useState(false);
+  // The card of «Картки» whose two fields are being written (a card just made, or an unfolded one tapped again).
+  const [editFlashcardId, setEditFlashcardId] = useState<string | null>(null);
+  const [newRecordFor, setNewRecordFor] = useState<{ databaseId: string; fieldId: string; name: string } | null>(null);
   const [existingItemPickerVisible, setExistingItemPickerVisible] = useState(false);
   // «Вікно бази» on the Mac: the user's databases to choose from, shown as a tab of the right panel (null = not asking).
   const [dbChoices, setDbChoices] = useState<{ id: string; name: string }[] | null>(null);
@@ -4809,6 +4814,59 @@ export default function BoardScreen() {
   function addExistingCard(block: Block) {
     setExistingItemPickerVisible(false);
     setCards((prev) => [...prev, cardFromExistingBlock(block, prev.length, viewCenter())]);
+  }
+
+  // «КАРТКА» (2026-10-24): a NEW card of the «Картки» base - the term typed here, the explanation filled in on the card - made
+  // right on the board, as a «Документ» is.
+  async function createFlashcard(term: string) {
+    setNewFlashcardPrompt(false);
+    const name = term.trim();
+    if (!name) return;
+    const id = generateId();
+    const now = Date.now();
+    try {
+      await setDoc(doc(db, 'flashcards', id), { term: name, explanation: '', short: false, images: [], tagIds: [], createdAt: now, updatedAt: now });
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+      return;
+    }
+    addExistingCard(blockFromFlashcard({ id, term: name, explanation: '', images: [] }));
+    setEditFlashcardId(id);
+  }
+
+  // «ЗАПИС БАЗИ» (the panel's / «+» sheet's tile, restored 2026-10-24): a NEW row of one of the user's own databases, made right
+  // here and standing on the board as its card - the database is asked for (when there is more than one), then the record's name.
+  async function addDatabaseRecord() {
+    setAddSheetVisible(false);
+    try {
+      const snap = await getDocs(ownedQuery('customDatabases'));
+      const bases = snap.docs
+        .map((d) => ({ id: d.id, name: ((d.data().name as string) || 'Без назви').trim(), fieldId: ((d.data().fields as { id: string }[] | undefined) ?? [])[0]?.id ?? '' }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      if (bases.length === 0) {
+        notify('Ще немає баз', 'Створіть власну базу у «Базах» - і її записи можна буде створювати тут.');
+        return;
+      }
+      const picked = bases.length === 1 ? bases[0].id : await ask({ title: 'У якій базі', actions: bases.map((b) => ({ id: b.id, label: b.name, icon: 'albums-outline' as const })) });
+      const base = bases.find((b) => b.id === picked);
+      if (base) setNewRecordFor({ databaseId: base.id, fieldId: base.fieldId, name: base.name });
+    } catch (e) {
+      notify('Не вдалося', (e as Error).message);
+    }
+  }
+  async function createDatabaseRecord(target: { databaseId: string; fieldId: string }, name: string) {
+    setNewRecordFor(null);
+    const title = name.trim();
+    if (!title || !target.fieldId) return;
+    const id = generateId();
+    const now = Date.now();
+    try {
+      await setDoc(doc(db, 'customDatabaseRows', id), { databaseId: target.databaseId, values: { [target.fieldId]: title }, tagIds: [], createdAt: now, updatedAt: now });
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+      return;
+    }
+    addExistingCard(blockFromCustomRow({ id, databaseId: target.databaseId, title, createdAt: now }));
   }
 
   async function openBoardPicker() {
@@ -7466,6 +7524,10 @@ export default function BoardScreen() {
               : []),
           ]
         : []),
+      // A card of «Картки»: its two fields are written here (a tap only folds the explanation).
+      ...(onlySelectedCard?.type === 'flashcard'
+        ? [{ key: 'editFlashcard', icon: 'create-outline', label: 'Редагувати', onPress: () => setEditFlashcardId(onlySelectedCard.id) }]
+        : []),
       ...(onlySelectedDocumentCard
         ? [
             {
@@ -7641,6 +7703,8 @@ export default function BoardScreen() {
         title: 'Картки',
         tiles: [
           { key: 'doc', icon: 'document-text-outline', label: 'Документ', onPress: createDocumentCard },
+          // A new card of the «Картки» base, made here like a document.
+          { key: 'flashcard', icon: 'albums-outline', label: 'Картка', onPress: () => { setAddSheetVisible(false); setNewFlashcardPrompt(true); } },
           // «Наліпка», not «Текст» - a bare text label with no
           // card under it is a SHAPE and is already called
           // Текст; two things under one word is the confusion
@@ -7655,6 +7719,8 @@ export default function BoardScreen() {
           { key: 'file', icon: 'document-outline', label: 'Файл', onPress: createFileCard },
           { key: 'board', icon: 'easel-outline', label: 'Дошка', onPress: openBoardPicker },
           { key: 'existing', icon: 'search-outline', label: 'З бази', onPress: openExistingItemPicker },
+          // A NEW record of one of the user's own databases, as a card.
+          { key: 'record', icon: 'albums-outline', label: 'Запис бази', onPress: addDatabaseRecord },
         ],
       },
       {
@@ -8819,6 +8885,9 @@ export default function BoardScreen() {
                         icon: 'scan-outline' as const,
                         onPress: () => isolateSelectedCard(cardMenu.card.id),
                       },
+                  ...(cardMenu.card.type === 'flashcard'
+                    ? [{ label: 'Редагувати', icon: 'create-outline' as const, onPress: () => setEditFlashcardId(cardMenu.card.id) }]
+                    : []),
                   ...((cardMenu.card.type ?? 'paragraph') === 'document'
                     ? [
                         {
@@ -9032,6 +9101,25 @@ export default function BoardScreen() {
           </Pressable>
         </Modal>
 
+        <FlashcardQuickSheet id={editFlashcardId} onClose={() => setEditFlashcardId(null)} />
+        <RenamePrompt
+          visible={newFlashcardPrompt}
+          title="Нова картка"
+          initialValue=""
+          placeholder="Термін"
+          onCancel={() => setNewFlashcardPrompt(false)}
+          onSave={createFlashcard}
+        />
+        <RenamePrompt
+          visible={newRecordFor !== null}
+          title={newRecordFor ? `Новий запис у «${newRecordFor.name}»` : 'Новий запис'}
+          initialValue=""
+          placeholder="Назва"
+          onCancel={() => setNewRecordFor(null)}
+          onSave={(name) => {
+            if (newRecordFor) createDatabaseRecord(newRecordFor, name);
+          }}
+        />
         {/* The week's start, typed - see openWeekMenu. */}
         <RenamePrompt
           visible={weekDateEditing !== null}

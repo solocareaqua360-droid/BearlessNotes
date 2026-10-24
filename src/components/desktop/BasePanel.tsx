@@ -7,6 +7,7 @@ import { useStyles } from '../../theme/ThemeProvider';
 import type { Theme } from '../../theme/tokens';
 import { FIELD_LABELS, FIELD_ORDER } from '../SortMenuRows';
 import type { SortField, SortPref } from '../../utils/sortItems';
+import { MenuOnLight } from '../MenuLabel';
 
 // THE BASE'S PANEL (the Mac's frame B, 2026-10-21): what the bases' pill and its «⋯» keep (the view, the order, the smart
 // folders, choosing, the screen's own rows) as live controls in the right panel, one column, the same dress as the explorer's.
@@ -60,17 +61,24 @@ export default function BasePanel({
           })}
         </View>
       </View>
-      {head('Вигляд і добір')}
-      <View style={[styles.card, { backgroundColor: D.card, borderColor: D.line, paddingHorizontal: 6 }]}>
-        {!!shape && action('shape', shape.icon, 'Змінити вигляд', shape.onToggle)}
-        {!!tags && action('tags', 'pricetag-outline', 'Смартпапки', tags.onOpen, tags.on)}
-        {!!select && action('select', 'checkmark-circle-outline', 'Вибрати кілька', select.onToggle, select.on)}
-        {!!folder && action('folder', 'folder-open-outline', folder.label, folder.onPress)}
-      </View>
+      {/* An empty card is not drawn (the stickers had a bare white bar under this heading). */}
+      {(!!shape || !!tags || !!select || !!folder) && (
+        <>
+          {head('Вигляд і добір')}
+          <View style={[styles.card, { backgroundColor: D.card, borderColor: D.line, paddingHorizontal: 6 }]}>
+            {!!shape && action('shape', shape.icon, 'Змінити вигляд', shape.onToggle)}
+            {!!tags && action('tags', 'pricetag-outline', 'Смартпапки', tags.onOpen, tags.on)}
+            {!!select && action('select', 'checkmark-circle-outline', 'Вибрати кілька', select.onToggle, select.on)}
+            {!!folder && action('folder', 'folder-open-outline', folder.label, folder.onPress)}
+          </View>
+        </>
+      )}
       {!!extra && (
         <>
           {head('Ще')}
-          <View style={[styles.card, { backgroundColor: D.card, borderColor: D.line, paddingHorizontal: 6 }]}>{extra}</View>
+          <MenuOnLight.Provider value>
+            <View style={[styles.card, { backgroundColor: D.card, borderColor: D.line, paddingHorizontal: 6 }]}>{extra}</View>
+          </MenuOnLight.Provider>
         </>
       )}
     </ScrollView>

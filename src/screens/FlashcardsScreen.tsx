@@ -1,4 +1,5 @@
 import { useFolderArrival } from '../navigation/folderArrival';
+import MenuLabel from '../components/MenuLabel';
 import { SwipeSelectItem } from '../components/SwipeSelect';
 import { useExplorer, nameOf } from '../hooks/useExplorer';
 import ExplorerHead from '../components/ExplorerHead';
@@ -327,7 +328,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
                   size={17}
                   color={theme.ink.primary}
                 />
-                <Text style={menuStyles.menuRowLabel}>Режим навчання</Text>
+                <MenuLabel>Режим навчання</MenuLabel>
               </Pressable>
             )}
             {anyLearning && (
@@ -339,7 +340,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
                 }}
               >
                 <Ionicons name={hideKnown ? 'eye-outline' : 'eye-off-outline'} size={17} color={theme.ink.primary} />
-                <Text style={menuStyles.menuRowLabel}>{hideKnown ? 'Показати вивчені' : 'Сховати вивчені'}</Text>
+                <MenuLabel>{hideKnown ? 'Показати вивчені' : 'Сховати вивчені'}</MenuLabel>
               </Pressable>
             )}
             {activeGroup?.flashcardLearning && (
@@ -351,7 +352,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
                 }}
               >
                 <Ionicons name="refresh-outline" size={17} color={theme.ink.primary} />
-                <Text style={menuStyles.menuRowLabel}>Почати заново</Text>
+                <MenuLabel>Почати заново</MenuLabel>
               </Pressable>
             )}
           </>

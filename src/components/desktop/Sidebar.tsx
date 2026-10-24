@@ -59,19 +59,22 @@ function buildTree(paths: string[]): Node[] {
 }
 
 // Where the navigator stands: the deepest route's name; the explorer's path comes from the explorer itself.
-function useWhere(): { route: string; path: string } {
+function useWhere(): { route: string; path: string; params: Record<string, unknown> } {
   const [route, setRoute] = useState('');
+  const [params, setParams] = useState<Record<string, unknown>>({});
   useEffect(() => {
     const read = () => {
       if (!navigationRef.isReady()) return;
       // The deepest route: inside the Tabs container that is the tab's own name (Календар), not «Tabs».
-      setRoute((navigationRef.getCurrentRoute()?.name as string) ?? '');
+      const current = navigationRef.getCurrentRoute();
+      setRoute((current?.name as string) ?? '');
+      setParams((current?.params as Record<string, unknown> | undefined) ?? {});
     };
     read();
     return navigationRef.addListener('state', read);
   }, []);
   const path = useExplorerPath();
-  return { route, path };
+  return { route, path, params };
 }
 
 function go(name: string, params?: Record<string, unknown>) {
@@ -314,7 +317,11 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
         </Pressable>
         {basesOpen && (
           <>
-            {builtIn.map((t) => row({ key: t.key, icon: iconFor(t.key, t.icon), label: t.label, on: false, onPress: () => openTile(t) }))}
+            {builtIn.map((t) => {
+              // The row of the base you are in is marked (it never was: «on» was always false).
+              const on = t.opensBoardsTab ? where.route === 'BoardsCopy' : t.linkCategory ? where.route === 'Links' && where.params.category === t.linkCategory : t.route ? where.route === t.route : false;
+              return row({ key: t.key, icon: iconFor(t.key, t.icon), label: t.label, on, onPress: () => openTile(t) });
+            })}
             {customDatabases
               .slice()
               .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
@@ -323,7 +330,7 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
                   key: `db:${d.id}`,
                   icon: (d.icon as string | undefined) ?? 'grid-outline',
                   label: d.name || 'Без назви',
-                  on: false,
+                  on: where.route === 'CustomDatabase' && where.params.databaseId === d.id,
                   onPress: () => goSection('CustomDatabase', { databaseId: d.id }),
                 })
               )}

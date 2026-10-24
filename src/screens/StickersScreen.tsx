@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import MenuLabel from '../components/MenuLabel';
 import { useTileOpened } from '../navigation/recentPlaces';
 import { INK } from '../utils/sketchGeometry';
 import SketchLayer from '../components/SketchLayer';
@@ -266,7 +267,7 @@ export default function StickersScreen({
           }}
         >
           <Ionicons name={viewingTrash ? 'reader-outline' : 'trash-outline'} size={17} color={theme.ink.primary} />
-          <Text style={menuStyles.menuRowLabel}>{viewingTrash ? 'Стікери' : 'Смітник'}</Text>
+          <MenuLabel>{viewingTrash ? 'Стікери' : 'Смітник'}</MenuLabel>
         </Pressable>
       )}
       overlay={

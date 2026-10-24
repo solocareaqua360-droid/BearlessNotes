@@ -1,4 +1,5 @@
 import { doc, updateDoc } from '../firestore';
+import { folderPathFromName } from '../utils/folderName';
 import { db } from '../firebase';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
@@ -73,7 +74,7 @@ export type ExplorerOptions<T extends { id: string }> = {
   // What a folder is called here (a collection, a playlist).
 };
 
-const cleanName = (name: string) => name.trim().replace(/\//g, ' ');
+const cleanName = (name: string) => folderPathFromName(name);
 export const parentOf = (path: string) => path.split('/').slice(0, -1).join('/');
 export const nameOf = (path: string) => path.split('/').pop() ?? path;
 const randomColor = () => TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];

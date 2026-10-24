@@ -17,8 +17,8 @@ export type InsertGroup = { title: string; tiles: { key: string; label: string; 
 
 // A tile's picture: the shared miniatures (blockMiniatures.json), the board's own kinds prefixed «b-».
 const PICTURE: Record<string, string> = {
-  doc: 'b-doc', sticky: 'b-sticky', block: 'b-block', link: 'link', video: 'b-video', geo: 'b-geo', image: 'image', file: 'file',
-  board: 'b-board', existing: 'existing', project: 'b-project', tasks: 'b-tasks', window: 'b-dbwin', outline: 'b-maptext',
+  doc: 'b-doc', flashcard: 'b-doc', sticky: 'b-sticky', block: 'b-block', link: 'link', video: 'b-video', geo: 'b-geo', image: 'image', file: 'file',
+  board: 'b-board', existing: 'existing', record: 'b-dbwin', project: 'b-project', tasks: 'b-tasks', window: 'b-dbwin', outline: 'b-maptext',
   'outline-cards': 'b-mapcards', column: 'b-column', strip: 'b-strip', week: 'b-week', area: 'b-area', shape: 'b-shape',
 };
 

@@ -1,4 +1,5 @@
 import ImageFrameEditor from './ImageFrameEditor';
+import { folderPathFromName } from '../utils/folderName';
 import { framedRect, type ImageFrame } from '../utils/imageFrame';
 import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { BackHandler, GestureResponderEvent, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -405,7 +406,7 @@ export default function ProjectFolders({
         onSave={async (name) => {
           const parent = newSubOf;
           setNewSubOf(null);
-          const clean = name.trim().replace(/\//g, '-');
+          const clean = folderPathFromName(name);
           if (!parent || !clean) return;
           const isRoot = parent === ROOT_MARK;
           const id = await createFolderTag(isRoot ? clean : `${parent.path}/${clean}`, FEATURES.universalFolders ? ALL_FOLDER_KINDS : 'document', isRoot ? '#DAA587' : parent.color || '#DAA587');

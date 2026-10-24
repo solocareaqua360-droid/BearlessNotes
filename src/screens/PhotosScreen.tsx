@@ -1,4 +1,5 @@
 import { useFolderArrival } from '../navigation/folderArrival';
+import MenuLabel from '../components/MenuLabel';
 import { SwipeSelectItem } from '../components/SwipeSelect';
 import { useEffect, useMemo, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
@@ -889,9 +890,9 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
             }}
           >
             <Ionicons name={showRecordPhotos ? 'eye-off-outline' : 'eye-outline'} size={17} color={theme.ink.primary} />
-            <Text style={menuStyles.menuRowLabel}>
+            <MenuLabel>
               {showRecordPhotos ? 'Сховати вкладення записів' : `Показати вкладення записів (${recordPhotoCount})`}
-            </Text>
+            </MenuLabel>
           </Pressable>
           )}
           {/* Undoing a deletion in one go - the last one, or the whole bin. */}
@@ -904,7 +905,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               }}
             >
               <Ionicons name="arrow-undo-outline" size={17} color={theme.ink.primary} />
-              <Text style={menuStyles.menuRowLabel}>{`Відновити останнє видалення (${bin.lastBatch.length})`}</Text>
+              <MenuLabel>{`Відновити останнє видалення (${bin.lastBatch.length})`}</MenuLabel>
             </Pressable>
           )}
           {bin.trashed.length > bin.lastBatch.length && (
@@ -916,7 +917,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
               }}
             >
               <Ionicons name="arrow-undo-outline" size={17} color={theme.ink.primary} />
-              <Text style={menuStyles.menuRowLabel}>{`Відновити все з кошика (${bin.trashed.length})`}</Text>
+              <MenuLabel>{`Відновити все з кошика (${bin.trashed.length})`}</MenuLabel>
             </Pressable>
           )}
           </>

@@ -1,4 +1,5 @@
 import { useFolderArrival } from '../navigation/folderArrival';
+import MenuLabel from '../components/MenuLabel';
 import { SwipeSelectItem } from '../components/SwipeSelect';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
@@ -891,9 +892,9 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
                 }}
               >
                 <Ionicons name={showRecordFiles ? 'eye-off-outline' : 'eye-outline'} size={17} color={theme.ink.primary} />
-                <Text style={menuStyles.menuRowLabel}>
+                <MenuLabel>
                   {showRecordFiles ? 'Сховати вкладення записів' : `Показати вкладення записів (${technicalFileIds.size})`}
-                </Text>
+                </MenuLabel>
               </Pressable>)}
               <BinRestoreRows
                 lastCount={bin.lastBatch.length}

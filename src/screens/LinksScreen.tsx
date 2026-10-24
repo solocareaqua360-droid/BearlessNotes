@@ -1,4 +1,5 @@
 import { useFolderArrival } from '../navigation/folderArrival';
+import MenuLabel from '../components/MenuLabel';
 import { SwipeSelectItem } from '../components/SwipeSelect';
 import { useEffect, useRef, useState } from 'react';
 import { useTileOpened } from '../navigation/recentPlaces';
@@ -1164,9 +1165,9 @@ export default function LinksScreen({
                 }}
               >
                 <Ionicons name={showRecordLinks ? 'eye-off-outline' : 'eye-outline'} size={17} color={theme.ink.primary} />
-                <Text style={menuStyles.menuRowLabel}>
+                <MenuLabel>
                   {showRecordLinks ? 'Сховати вкладення записів' : `Показати вкладення записів (${recordLinkCount})`}
-                </Text>
+                </MenuLabel>
               </Pressable>)}
               <BinRestoreRows
                 lastCount={bin.lastBatch.length}

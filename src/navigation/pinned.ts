@@ -8,7 +8,7 @@ import { listenError } from '../utils/listenError';
 // a note, one of the user's bases, a folder. Kept in the account's settings, the same place the desks live.
 export type Pin = { kind: 'note'; id: string } | { kind: 'custom'; id: string } | { kind: 'folder'; path: string };
 
-const pinnedDoc = doc(db, 'settings', 'pinned');
+const pinnedDoc = doc(db, 'settings', 'pinnedItems');
 export const pinKey = (p: Pin) => (p.kind === 'folder' ? `folder:${p.path}` : `${p.kind}:${p.id}`);
 
 // One listener for every reader (the sidebar, the note's menu, a base's menu).

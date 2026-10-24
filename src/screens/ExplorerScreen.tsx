@@ -1,4 +1,5 @@
 import { type ComponentProps, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { folderPathFromName } from '../utils/folderName';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { usePins } from '../navigation/pinned';
 import ExplorerPanel from '../components/desktop/ExplorerPanel';
@@ -1342,7 +1343,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const pickAndMoveRef = useRef<() => void>(() => {});
   const deleteSelectedRef = useRef<() => void>(() => {});
   async function makeFolder(name: string, thenMove: boolean) {
-    const clean = name.trim().replace(/\//g, '-');
+    const clean = folderPathFromName(name);
     if (!clean) return;
     const full = folderOf(path) ? `${path}/${clean}` : clean;
     try {
@@ -1582,7 +1583,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   async function renameFolderTo(name: string) {
     const f = renamingFolder;
     setRenamingFolder(null);
-    const clean = name.trim().replace(/\//g, '-');
+    const clean = folderPathFromName(name);
     if (!f || !clean) return;
     const parent = f.path.split('/').slice(0, -1).join('/');
     const next = parent ? `${parent}/${clean}` : clean;
