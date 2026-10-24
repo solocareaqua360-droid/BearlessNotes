@@ -928,6 +928,15 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       });
     }
     // A note is PAPER: its card grows into the page (utils/morph), it does not turn.
+    // A LIST ROW slides in from the right and leaves to the left (components/SlideFrame); the grid's card grows (below).
+    else if (viewMode === 'list' && (item.kind === 'document' || item.kind === 'board')) {
+      (navigation as unknown as { navigate: (name: string, params?: object) => void }).navigate(
+        item.kind === 'document' ? 'Editor' : 'BoardCopy',
+        item.kind === 'document'
+          ? { documentId: item.docId, slide: true, ...(searching && searchText.trim() ? { searchQuery: searchText.trim() } : {}) }
+          : { boardId: item.docId, slide: true }
+      );
+    }
     else if (item.kind === 'document') {
       morph(`note:${item.docId}`, (morphing) =>
         (navigation as unknown as { navigate: (name: string, params?: object) => void }).navigate('Editor', {

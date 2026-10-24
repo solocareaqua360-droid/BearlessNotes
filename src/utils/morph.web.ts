@@ -114,3 +114,12 @@ export function morphSheet(_key: string, update: () => void, opts?: { color?: st
 export function takeMorphFrom(_key: string): Rect | null {
   return null;
 }
+
+// The browser has no fold into a card: the card's line is never away.
+export function setFoldingInto(_key: string | null): void {}
+export function subscribeFoldingInto(_l: () => void): () => void {
+  return () => {};
+}
+export function foldingIntoNow(): string | null {
+  return null;
+}

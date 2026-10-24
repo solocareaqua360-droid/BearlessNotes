@@ -40,7 +40,7 @@ export type RootStackParamList = {
   // clipping bar in DocumentEditorScreen.
   // A file looked at in a tab of its own - the laptop's (FileViewScreen).
   FileView: { fileId: string };
-  Editor: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean; focusLinkTo?: string; focusBlock?: string; searchQuery?: string; morph?: boolean };
+  Editor: { documentId: string; autoFocusTitle?: boolean; offerBoard?: boolean; focusLinkTo?: string; focusBlock?: string; searchQuery?: string; morph?: boolean; slide?: boolean };
   // Same DocumentEditorScreen as `Editor`, registered a second time purely
   // for its App.tsx presentation style (slide-up modal, swipe-down to
   // dismiss) - used when opening a document FROM the board, so editing it
@@ -63,7 +63,7 @@ export type RootStackParamList = {
   BoardsCopy: undefined;
   // One board, opened FROM the boards copy - the root stack has no Board
   // route of its own, that lives in the tab's nested stack.
-  BoardCopy: { boardId: string; openDocumentId?: string; focusCardIds?: string[]; zoom?: boolean };
+  BoardCopy: { boardId: string; openDocumentId?: string; focusCardIds?: string[]; zoom?: boolean; slide?: boolean };
   // Geo/video/other links all live in the one `links` mirror collection
   // (see DocumentEditorScreen's fetchLinkPreview) - this param is what
   // splits LinksScreen's one query into three separate-looking databases.

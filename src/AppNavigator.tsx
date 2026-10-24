@@ -26,6 +26,7 @@ import SettingsScreen from './screens/SettingsScreen';
 import SearchScreen from './screens/SearchScreen';
 import DiaryScreen from './screens/DiaryScreen';
 import DocumentEditorScreen from './screens/DocumentEditorScreen';
+import SlideFrame from './components/SlideFrame';
 import { RootStackParamList } from './navigation';
 
 // Every screen the app has, in one place, for both builds.
@@ -48,6 +49,13 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 // A note, inside the frame it grows out of its card in (utils/morph) -
 // which is just the note unless it was opened from a card.
 function EditorScreen(props: NativeStackScreenProps<RootStackParamList, 'Editor'>) {
+  if (props.route.params.slide) {
+    return (
+      <SlideFrame navigation={props.navigation as never}>
+        <DocumentEditorScreen {...props} />
+      </SlideFrame>
+    );
+  }
   return (
     <MorphFrame morphKey={`note:${props.route.params.documentId}`} navigation={props.navigation as never}>
       <DocumentEditorScreen {...props} />
@@ -58,6 +66,7 @@ function EditorScreen(props: NativeStackScreenProps<RootStackParamList, 'Editor'
 // A board opened from its card in the explorer zooms in (utils/boardZoom); any other way it is just the board.
 function BoardCopyScreen(props: NativeStackScreenProps<RootStackParamList, 'BoardCopy'>) {
   const screen = <BoardScreen {...(props as unknown as Record<string, never>)} />;
+  if (props.route.params.slide) return <SlideFrame navigation={props.navigation as never}>{screen}</SlideFrame>;
   if (!props.route.params.zoom) return screen;
   return (
     <BoardZoomFrame boardId={props.route.params.boardId} navigation={props.navigation as never}>
@@ -87,7 +96,9 @@ export default function RootNavigator() {
         options={({ route }) =>
           (route.params as { morph?: boolean } | undefined)?.morph
             ? { animation: 'none', presentation: 'transparentModal' }
-            : {}
+            : (route.params as { slide?: boolean } | undefined)?.slide
+              ? { animation: 'slide_from_right', presentation: 'transparentModal' }
+              : {}
         }
       />
       <Stack.Screen name="EditorModal" component={DocumentEditorScreen} options={{ presentation: 'modal' }} />
@@ -100,7 +111,11 @@ export default function RootNavigator() {
         name="BoardCopy"
         component={BoardCopyScreen}
         options={({ route }) =>
-          (route.params as { zoom?: boolean } | undefined)?.zoom ? { animation: 'none', presentation: 'transparentModal' } : {}
+          (route.params as { zoom?: boolean } | undefined)?.zoom
+            ? { animation: 'none', presentation: 'transparentModal' }
+            : (route.params as { slide?: boolean } | undefined)?.slide
+              ? { animation: 'slide_from_right', presentation: 'transparentModal' }
+              : {}
         }
       />
       <Stack.Screen name="Links" component={LinksScreen} />
