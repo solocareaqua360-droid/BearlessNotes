@@ -56,6 +56,8 @@ import {
 } from '../navigation/navDock';
 import SoftIcon, { SoftIconName } from './SoftIcon';
 import { SoftTokens, useSoft } from '../theme/soft';
+import DockGlassFill, { useDockSurface } from './DockGlassFill';
+import { useDockGlass } from '../utils/dockGlass';
 import { useRenderTimer } from '../utils/perfWatch';
 
 // The dock, when it is holding a CONTEXT rather than the four desks.
@@ -691,6 +693,9 @@ export default function ContextDock() {
   // front, the Documents desk for now.
   const chromeStyle = useNavChromeStyle();
   const soft = useSoft();
+  // The glass dock, while its switch is on (utils/dockGlass): every soft piece below takes this surface and a DockGlassFill.
+  const glassOn = useDockGlass();
+  const dockSurface = useDockSurface(soft, glassOn);
   const { width: windowW } = useWindowDimensions();
   const { isTwoPane } = useResponsiveLayout();
   // Kept as its own name rather than `isTwoPane` read directly
@@ -2005,8 +2010,9 @@ export default function ContextDock() {
               // The note's dock, as the chrome morph photographs it.
               ref={chromeNodeRef('dock', 'note')}
               collapsable={false}
-              style={{ width: stripW, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, backgroundColor: soft.chrome, boxShadow: soft.shadow, overflow: 'hidden' }}
+              style={{ width: stripW, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, ...dockSurface, overflow: 'hidden' }}
             >
+                {glassOn && <DockGlassFill soft={soft} />}
               <ScrollView
                 horizontal
                 scrollEnabled={!short}
@@ -2109,7 +2115,7 @@ export default function ContextDock() {
       // The same row in the soft material: round quiet buttons either side
       // and one soft capsule of tools, no glass, no hairlines - "док не
       // змінився" on the board.
-      const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow };
+      const surface = dockSurface;
       const backRoom = leave ? SOFT_BACK_W : 0;
       const softButtonW = Math.min(STRIP_BUTTON_W, Math.floor((room - backRoom) / actions.length));
       const softStripW = backRoom + softButtonW * actions.length;
@@ -2124,6 +2130,7 @@ export default function ContextDock() {
             disabled={bead.dimmed}
             style={[styles.softButton, surface, { width: TWO_BEAD, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, opacity: bead.dimmed ? 0.5 : 1 }]}
           >
+              {glassOn && <DockGlassFill soft={soft} />}
             {own ? (
               <SoftIcon name={own} size={23} color={ink} />
             ) : (
@@ -2174,6 +2181,7 @@ export default function ContextDock() {
             >
               {rest.length > 0 && (
                 <View style={[surface, { width: DESK_PILL_W, height: 60, borderRadius: 30, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center' }]}>
+                  {glassOn && <DockGlassFill soft={soft} />}
                   {rest.map((action) => (
                     <ActionButton
                       key={action.key}
@@ -2223,6 +2231,7 @@ export default function ContextDock() {
                   { width: NOTE_SIDE, height: NOTE_SIDE, borderRadius: NOTE_SIDE / 2, opacity: pressed ? 0.8 : 1 },
                 ]}
               >
+                    {glassOn && primary.primary === 'quiet' && <DockGlassFill soft={soft} />}
                 <Ionicons
                   name={primary.icon as keyof typeof Ionicons.glyphMap}
                   size={21}
@@ -2238,6 +2247,7 @@ export default function ContextDock() {
                 hitSlop={6}
                 style={[styles.softButton, surface, { width: NOTE_SIDE, height: NOTE_SIDE, borderRadius: NOTE_SIDE / 2, opacity: back.dimmed ? 0.5 : 1 }]}
               >
+                  {glassOn && <DockGlassFill soft={soft} />}
                 <Ionicons name={back.icon as keyof typeof Ionicons.glyphMap} size={22} color={soft.ink} />
               </Pressable>
             </View>
@@ -2256,6 +2266,7 @@ export default function ContextDock() {
           >
             {softSlot(beads.left)}
             <View style={[surface, { width: softStripW, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, overflow: 'hidden' }]}>
+              {glassOn && <DockGlassFill soft={soft} />}
               <View style={[styles.stripActions, { flexDirection: 'row' }]}>
                 {/* The way out of a screen that has no bar at the top (the
                     chat): at the capsule's own start, as the glass dock
@@ -2338,7 +2349,7 @@ export default function ContextDock() {
   // below, which assumes the left bead IS search ("старий док").
   if (softRow && !compactMiddle && !actions?.length && (!!beads.left || !!beads.right)) {
     const frame = topBarFrame(windowW);
-    const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow };
+    const surface = dockSurface;
     const roundBead = (bead: typeof beads.left) => {
       if (!bead) return <View style={{ width: TWO_BEAD }} />;
       const own = SOFT_DOCK_GLYPHS[bead.icon];
@@ -2350,6 +2361,7 @@ export default function ContextDock() {
           disabled={bead.dimmed}
           style={[styles.softButton, surface, { width: TWO_BEAD, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, opacity: bead.dimmed ? 0.5 : 1 }]}
         >
+            {glassOn && <DockGlassFill soft={soft} />}
           {own ? (
             <SoftIcon name={own} size={23} color={ink} />
           ) : (
@@ -2372,7 +2384,7 @@ export default function ContextDock() {
   }
   if (compactMiddle && !actions?.length && chromeStyle === 'soft') {
     const frame = topBarFrame(windowW);
-    const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow, height: TWO_BEAD, borderRadius: TWO_BEAD / 2 };
+    const surface = { ...dockSurface, height: TWO_BEAD, borderRadius: TWO_BEAD / 2 };
     const left = beads.left;
     const right = beads.right;
     const leftIcon = left ? SOFT_DOCK_GLYPHS[left.icon] : undefined;
@@ -2418,6 +2430,7 @@ export default function ContextDock() {
               accessibilityLabel="Відкриті вкладки"
               style={[styles.softButton, surface, { width: TWO_BEAD }]}
             >
+                {glassOn && <DockGlassFill soft={soft} />}
               <Ionicons name="copy-outline" size={21} color={soft.ink} />
             </Pressable>
           )}
@@ -2519,6 +2532,7 @@ export default function ContextDock() {
           ) : merged && left ? (
             <>
               <View style={[styles.softField, surface, { paddingLeft: 0, paddingRight: 0, gap: 0 }]}>
+                {glassOn && <DockGlassFill soft={soft} />}
                 <Pressable
                   onPress={left.onPress}
                   onLongPress={left.onLongPress}
@@ -2615,6 +2629,7 @@ export default function ContextDock() {
                   accessibilityLabel="Відкриті вкладки"
                   style={[styles.softButton, surface, { width: TWO_BEAD }]}
                 >
+                    {glassOn && <DockGlassFill soft={soft} />}
                   <Ionicons name="copy-outline" size={21} color={soft.ink} />
                 </Pressable>
               ) : topBack ? (
@@ -2623,6 +2638,7 @@ export default function ContextDock() {
                   accessibilityLabel="Назад"
                   style={[styles.softButton, surface, { width: TWO_BEAD }]}
                 >
+                    {glassOn && <DockGlassFill soft={soft} />}
                   <Ionicons name={(topBack.icon ?? 'chevron-back') as keyof typeof Ionicons.glyphMap} size={22} color={soft.ink} />
                 </Pressable>
               ) : null}
@@ -2640,6 +2656,7 @@ export default function ContextDock() {
                 accessibilityLabel={left.label}
                 style={[styles.softButton, surface, { width: TWO_BEAD }, left.active && { backgroundColor: soft.ink }]}
               >
+                  {glassOn && !left.active && <DockGlassFill soft={soft} />}
                 <Ionicons name={left.icon as keyof typeof Ionicons.glyphMap} size={21} color={left.active ? soft.card : soft.ink} />
               </Pressable>
               <View style={{ flex: 1 }} />
@@ -2652,6 +2669,7 @@ export default function ContextDock() {
               accessibilityLabel={left.label ?? (left.active ? 'Закрити пошук' : 'Пошук')}
               style={[styles.softField, surface]}
             >
+                {glassOn && <DockGlassFill soft={soft} />}
               {leftIcon ? (
                 <SoftIcon name={leftIcon} size={20} color={soft.ink2} />
               ) : (
@@ -2670,6 +2688,7 @@ export default function ContextDock() {
               accessibilityLabel={right.extra.label}
               style={[styles.softButton, surface, { width: TWO_BEAD }, right.extra.active && { backgroundColor: soft.ink }]}
             >
+                {glassOn && !right.extra.active && <DockGlassFill soft={soft} />}
               <Ionicons
                 name={right.extra.icon as keyof typeof Ionicons.glyphMap}
                 size={21}
@@ -2690,6 +2709,7 @@ export default function ContextDock() {
               accessibilityLabel="Новий документ"
               style={[styles.softButton, surface, { width: TWO_BEAD }]}
             >
+                {glassOn && <DockGlassFill soft={soft} />}
               {rightIcon ? (
                 <SoftIcon name={rightIcon} size={23} color={soft.ink} />
               ) : (

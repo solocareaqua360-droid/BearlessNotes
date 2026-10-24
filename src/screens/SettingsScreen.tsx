@@ -19,8 +19,10 @@ import {
   Text,
   useWindowDimensions,
   View,
+  Switch,
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
+import { setDockGlass, useDockGlass } from '../utils/dockGlass';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -152,6 +154,7 @@ export default function SettingsScreen() {
   // navigation.ts's own comment on why this is one screen, not five.
   const section = useRoute<RouteProp<RootStackParamList, 'Settings'>>().params?.section;
   const { themeKey, setThemeKey } = useThemeChoice();
+  const dockGlass = useDockGlass();
   const [accountEmail, setAccountEmail] = useState<string | null>(auth.currentUser?.email ?? null);
   const [authBusy, setAuthBusy] = useState(false);
   const [claimStatus, setClaimStatus] = useState('');
@@ -624,6 +627,19 @@ export default function SettingsScreen() {
             conversion: the switch works and is remembered; the screens
             themselves are converted to the contract after it, one weight
             at a time. */}
+        {/* «Скляний док» (utils/dockGlass): this phone only, off by default - the glass the user picked in September, on the
+            dock alone, to be looked at first and measured after. */}
+        {section === 'appearance' && (
+          <View style={styles.card}>
+            <View style={[styles.cardHeader, { justifyContent: 'space-between' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <Ionicons name="water-outline" size={22} color={accent} />
+                <Text style={styles.cardTitle}>Скляний док</Text>
+              </View>
+              <Switch value={dockGlass} onValueChange={setDockGlass} />
+            </View>
+          </View>
+        )}
         {section === 'appearance' && (
         <View style={styles.card}>
           <View style={styles.cardHeader}>

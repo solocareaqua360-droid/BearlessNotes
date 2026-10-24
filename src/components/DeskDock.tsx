@@ -1,4 +1,6 @@
 import { ReactElement, ReactNode, useEffect, useRef, useState } from 'react';
+import DockGlassFill, { useDockSurface } from './DockGlassFill';
+import { useDockGlass } from '../utils/dockGlass';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { Ionicons } from './icons/Ionicons';
@@ -225,7 +227,10 @@ export default function DeskDock({
   // back - not multitasking.
   circleBack?: boolean;
 }) {
-  const surface = { backgroundColor: soft.chrome, boxShadow: soft.shadow };
+  // The glass dock, while its switch is on (utils/dockGlass).
+  const glassOn = useDockGlass();
+  const surface = useDockSurface(soft, glassOn);
+  const glass = glassOn ? <DockGlassFill soft={soft} /> : null;
   // With the balloon the places are one bead more, and the pill as much wider; the search lens stays at its end.
   const assistIndex = assist ? desks.length : -1;
   const pillCore = PILL_CORE + (assist ? BEAD_W : 0);
@@ -430,7 +435,9 @@ export default function DeskDock({
       <Animated.View
         pointerEvents="none"
         style={[styles.drop, surface, { top: (H - 52) / 2, height: 52, borderRadius: 26 }, dropStyle]}
-      />
+      >
+        {glass}
+      </Animated.View>
       {/* The pill, with the desks in it. */}
       <Animated.View
         pointerEvents={root ? 'box-none' : 'none'}
@@ -439,6 +446,7 @@ export default function DeskDock({
         onTouchCancel={pillOff}
         style={[styles.pill, surface, { top: (H - PILL_H) / 2, height: PILL_H, borderRadius: PILL_H / 2 }, pillStyle, pillPressStyle]}
       >
+        {glass}
         {/* Lighter while touched: a white veil over the pill's own surface (shows on the dark theme; on the light one
             the pill is white already and only grows). */}
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF' }, pillGlowStyle]} />
@@ -471,7 +479,9 @@ export default function DeskDock({
         </Animated.View>
       </Animated.View>
       {/* The body that forms round the "+" and grows to the left - the search field. */}
-      <Animated.View pointerEvents="none" style={[styles.body, surface, { height: H, borderRadius: H / 2 }, bodyStyle]} />
+      <Animated.View pointerEvents="none" style={[styles.body, surface, { height: H, borderRadius: H / 2 }, bodyStyle]}>
+        {glass}
+      </Animated.View>
       {/* Inside: the search field is a tap target across the body, up to the buttons at its end. */}
       {!root && (
         <Pressable
@@ -526,6 +536,7 @@ export default function DeskDock({
         hitSlop={6}
         style={[styles.circle, surface, { left: 0, top: 0, width: BACK, height: BACK, borderRadius: BACK / 2 }]}
       >
+        {glass}
         {FEATURES.deskSwitcher && (
           <Animated.View style={[styles.icon, multiStyle]} pointerEvents="none">
             {multiIcon}
