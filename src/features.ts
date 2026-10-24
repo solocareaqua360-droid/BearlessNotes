@@ -192,4 +192,8 @@ export const FEATURES = {
   itemLook: true,
   quickCreate: true,
   createFan: false,
+  // THE PROJECTS ACCORDION (components/ProjectsBand: a big front card, thin strips that slide, the multitask menu's motion).
+  // ARCHIVED 2026-10-25 - the user: it came out well, without problems, but was not needed; the projects are now a row of
+  // capsules (components/ProjectCapsules). true brings the accordion back.
+  projectsAccordion: false,
 } as const;

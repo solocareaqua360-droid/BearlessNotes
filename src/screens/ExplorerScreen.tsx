@@ -67,6 +67,7 @@ import CollectionWindow, { type CollectionKind } from '../components/CollectionW
 import ThoughtsFolder from '../components/thoughts/ThoughtsFolder';
 import ImageFrameEditor from '../components/ImageFrameEditor';
 import ProjectsBand, { NO_PROJECT, projectCardShape } from '../components/ProjectsBand';
+import ProjectCapsules from '../components/ProjectCapsules';
 import CollectionCard, { collectionFaceFor, gustLeadMs, type CollectionCardKind, type CollectionFaceStyle } from '../components/CollectionCard';
 import TurningPressable from '../components/TurningPressable';
 import { listMoved } from '../utils/motionHold';
@@ -2606,7 +2607,12 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const headerBody = (
     <>
       {/* THE LIVING FOLDER of thoughts, first on the explorer's first level (components/thoughts). */}
-      {projectsHere && (
+      {projectsHere && !FEATURES.projectsAccordion && (
+        <View style={{ marginBottom: 12 }}>
+          <ProjectCapsules groups={bandGroups} focusId={focusProj} onFocus={changeFocusProj} onHold={holdProject} />
+        </View>
+      )}
+      {projectsHere && FEATURES.projectsAccordion && (
         <View style={{ marginTop: -listTopPad, marginBottom: 14 }}>
         <ProjectsBand
           height={folderCoverHeight(winH, insets.top)}
