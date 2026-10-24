@@ -44,6 +44,9 @@ const PILL_H = 60;
 const BEAD_W = 56;
 const BEAD_H = 52;
 const PILL_PAD = 4;
+// EXPERIMENT (2026-10-24, the user: «чисто заради експерименту… помаранчева кулька стане сіренькою, якщо що - відкатиш»): the
+// capsule under the place you are at is grey; the icon keeps its orange. false = the orange wash as before.
+const CAP_GREY = true;
 // The lens under a held place (see onLens): wider than a place, taller than the dock.
 const LENS_W = 92;
 const LENS_H = 88;
@@ -530,7 +533,7 @@ export default function DeskDock({
               pointerEvents="none"
               // «Where you are» is the accent now (the user, 2026-10-23): the orange that used to ring the AI button marks
               // the place in front - the balloon too, while its window is open.
-              style={[styles.capsule, { backgroundColor: assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
+              style={[styles.capsule, { backgroundColor: CAP_GREY ? (soft.dark ? 'rgba(255,255,255,0.13)' : '#E6E5E1') : assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
             />
           )}
           {desks.map((d, i) => (
