@@ -28,19 +28,21 @@ import { useSoft } from '../theme/soft';
 export type ThinkingVariant = 'fire' | 'balloons' | 'off';
 
 const KEY = 'assistant.thinking.variant';
-const ORDER: ThinkingVariant[] = ['fire', 'balloons', 'off'];
+// «Вогнище» is no longer offered (the user, 2026-10-25: «вогнище в чаті можна прибирати, залишаємо лише кульки»); its
+// drawing stays in this file, and a phone that had it chosen gets the balloons.
+const ORDER: ThinkingVariant[] = ['balloons', 'off'];
 
 export const nextThinkingVariant = (v: ThinkingVariant): ThinkingVariant => ORDER[(ORDER.indexOf(v) + 1) % ORDER.length];
 export const thinkingVariantLabel = (v: ThinkingVariant): string => (v === 'fire' ? 'Вогнище' : v === 'balloons' ? 'Кульки' : 'Вимкнено');
 
 // The chosen effect, kept on the phone. Starts as 'fire' and takes the saved one when it has been read - never blocks a render.
 export function useThinkingVariant(): [ThinkingVariant, (v: ThinkingVariant) => void] {
-  const [variant, setVariant] = useState<ThinkingVariant>('fire');
+  const [variant, setVariant] = useState<ThinkingVariant>('balloons');
   useEffect(() => {
     let alive = true;
     AsyncStorage.getItem(KEY)
       .then((raw) => {
-        if (alive && (raw === 'fire' || raw === 'balloons' || raw === 'off')) setVariant(raw);
+        if (alive && (raw === 'balloons' || raw === 'off')) setVariant(raw);
       })
       .catch(() => {});
     return () => {

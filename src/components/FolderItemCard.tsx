@@ -28,6 +28,9 @@ import type { FolderItem } from '../hooks/useAllFolderItems';
 import { SHORTCUT_ICON, type ShortcutSource } from '../utils/shortcuts';
 import type { Block, Tag } from '../types';
 
+// The rows' folder capsules: off (see the rows below).
+const LIST_FOLDER_CHIPS = false;
+
 // A RECORD IN A FOLDER, drawn as the card its own database draws it (the user,
 // 2026-10-10: "всі файли відображались своїми картками, а не стрічками без
 // превʼю") - a photo as its picture, a note as its page, a link with its
@@ -136,7 +139,7 @@ function FolderTile({
         <Text style={[styles.title, { color: S.ink }]} numberOfLines={wide ? 3 : 2}>{item.title}</Text>
         {wide && !!blurb && <Text style={[styles.sub, { color: S.ink3 }]} numberOfLines={3}>{blurb}</Text>}
         {!!sub && <Text style={[styles.sub, { color: S.ink3 }]} numberOfLines={1}>{sub}</Text>}
-        {wide && own.length > 0 && <TagChips tags={own} onPress={() => {}} glass max={2} />}
+        {LIST_FOLDER_CHIPS && wide && own.length > 0 && <TagChips tags={own} onPress={() => {}} glass max={2} />}
       </View>
     </HoldPressable>
   );
@@ -477,7 +480,9 @@ function FolderItemCardInner({
             return !!preview.previewText && <Text style={[styles.sub, { color: S.ink3 }]} numberOfLines={2}>{preview.previewText}</Text>;
           })()}
           {!!when && <Text style={[styles.sub, { color: S.ink3 }]}>{formatAddedOn(when, true)}</Text>}
-          {own.length > 0 && <TagChips tags={own} onPress={() => {}} glass max={2} />}
+          {/* No folder capsules on a row (the user, 2026-10-25: «в режимі списку не треба показувати капсули
+              приналежності до якоїсь папки, достатньо інформації всередині документа»). */}
+          {LIST_FOLDER_CHIPS && own.length > 0 && <TagChips tags={own} onPress={() => {}} glass max={2} />}
         </View>
       </HoldPressable>
     );
@@ -508,7 +513,9 @@ function FolderItemCardInner({
         <View style={styles.body}>
           <Text style={[styles.title, { color: S.ink }]} numberOfLines={2}>{item.title}</Text>
           {!noCount && <Text style={[styles.sub, { color: S.ink3 }]}>{`${cards.length} ${cards.length === 1 ? 'картка' : 'карток'}`}</Text>}
-          {own.length > 0 && <TagChips tags={own} onPress={() => {}} glass max={2} />}
+          {/* No folder capsules on a row (the user, 2026-10-25: «в режимі списку не треба показувати капсули
+              приналежності до якоїсь папки, достатньо інформації всередині документа»). */}
+          {LIST_FOLDER_CHIPS && own.length > 0 && <TagChips tags={own} onPress={() => {}} glass max={2} />}
         </View>
       </HoldPressable>
     );
@@ -556,7 +563,9 @@ function FolderItemCardInner({
             <Text style={[styles.sub, { color: S.ink2, fontSize: 13, lineHeight: 18 }]} numberOfLines={2}>{plainPreview(String(raw.explanation))}</Text>
           )}
           {!!when && <Text style={[styles.sub, { color: S.ink3 }]}>{(FEATURES.itemLook ? 'Картка · ' : '') + formatAddedOn(when, true)}</Text>}
-          {own.length > 0 && <TagChips tags={own} onPress={() => {}} glass max={2} />}
+          {/* No folder capsules on a row (the user, 2026-10-25: «в режимі списку не треба показувати капсули
+              приналежності до якоїсь папки, достатньо інформації всередині документа»). */}
+          {LIST_FOLDER_CHIPS && own.length > 0 && <TagChips tags={own} onPress={() => {}} glass max={2} />}
         </View>
       </TurningHold>
     );

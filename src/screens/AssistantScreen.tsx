@@ -729,7 +729,6 @@ export default function AssistantScreen() {
       { label: threshold === null ? 'Поріг ціни: не питати' : `Поріг ціни: $${money(threshold, 2)}`, icon: 'pricetag-outline', onPress: run(() => setThresholdOpen(true)) },
       ...(FEATURES.assistantTree && c?.boardId ? [{ label: 'Дерево на дошці', icon: 'git-network-outline' as const, onPress: run(() => navigation.navigate('BoardCopy', { boardId: c.boardId })) }] : []),
       { kind: 'section', label: 'Поки ШІ думає' },
-      { label: 'Вогнище', icon: 'flame-outline', checked: thinkingVariant === 'fire', onPress: run(() => setThinkingVariant('fire')) },
       { label: 'Кульки', icon: 'ellipse-outline', checked: thinkingVariant === 'balloons', onPress: run(() => setThinkingVariant('balloons')) },
       { label: 'Нічого', icon: 'remove-outline', checked: thinkingVariant === 'off', onPress: run(() => setThinkingVariant('off')) },
       ...(c && c.messages.length > 0
