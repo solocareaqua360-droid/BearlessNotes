@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, BackHandler, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
@@ -69,6 +69,16 @@ export default function AiEditSheet({
     setShowChanges(false);
     setCostOpen(false);
   }, [visible, source]);
+  // Android's «back» closes the window too (it was only «Скасувати», after an answer - the user, 2026-10-24: before one there
+  // was no way out but the edge swipe).
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, onClose]);
   const ride = useKeyboardRide();
   const rest = bottomInset + 12;
   const lift = useAnimatedStyle(() => ({ transform: [{ translateY: Math.min(0, ride.height.value - 8 + rest) }] }));
@@ -189,6 +199,9 @@ export default function AiEditSheet({
         )}
         <View style={[styles.line, card]}>
           <View style={styles.inputRow}>
+            <Pressable onPress={onClose} accessibilityLabel="Закрити" hitSlop={4} style={[styles.circle, { backgroundColor: C.circle }]}>
+              <Ionicons name="close" size={19} color={S.ink} />
+            </Pressable>
             <TextInput
               value={ask}
               onChangeText={setAsk}
