@@ -23,6 +23,12 @@ function load() {
     .catch(() => {});
 }
 
+// Outside React (utils/chromeMorph asks before photographing the chrome).
+export function dockGlassOn(): boolean {
+  load();
+  return on;
+}
+
 export function setDockGlass(next: boolean): void {
   on = next;
   listeners.forEach((l) => l());

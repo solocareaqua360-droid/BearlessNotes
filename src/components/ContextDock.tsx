@@ -2182,9 +2182,17 @@ export default function ContextDock() {
         const back = beads.right;
         const quiet = primary.primary === 'quiet';
         return (
+          // THE SAME TREE AS THE LIST'S DOCK below (the user, 2026-10-24: «ефект повинен бути безшовний перехід»): the same
+          // element types in the same places, so React keeps the ONE DeskDock (and its live glass) from the folder into the
+          // note and only its buttons change - nothing is torn down and built again, nothing blinks.
           <DockPortal>
-            {back.icon === 'chevron-back' && <CarriesBackMarker />}
-            <View pointerEvents="box-none" style={[styles.twoBeads, { bottom: softRest, left: frame.left, width: frame.width, gap: 10 }]}>
+            <Animated.View
+              ref={chromeNodeRef('dock', 'note')}
+              collapsable={false}
+              pointerEvents="box-none"
+              style={[styles.twoBeads, { bottom: softRest, left: frame.left, width: frame.width, gap: 10 }, softRide]}
+            >
+              {false}
               <DeskDock
                 state="root"
                 tools
@@ -2228,7 +2236,10 @@ export default function ContextDock() {
                 backIcon={<Ionicons name={back.icon as keyof typeof Ionicons.glyphMap} size={22} color={iconInk} />}
                 onBack={back.onPress}
               />
-            </View>
+              {false}
+              {false}
+            </Animated.View>
+            {back.icon === 'chevron-back' && <CarriesBackMarker />}
           </DockPortal>
         );
       }
