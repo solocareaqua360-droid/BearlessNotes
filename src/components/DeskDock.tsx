@@ -256,9 +256,18 @@ export default function DeskDock({
   const glass = glassOn ? <DockGlassFill soft={soft} /> : null;
   // Only what is SEEN blurs (a hidden live blur still blurs every frame - project_pending_blur_optimization): the desks'
   // pill on a desk, the search body inside a base; the drop that carries the lens across is never still, so never live.
-  const glassPill = glassOn ? <DockGlassFill soft={soft} paused={state !== 'root'} /> : null;
-  const glassBody = glassOn ? <DockGlassFill soft={soft} paused={state === 'root'} /> : null;
-  const glassDrop = glassOn ? <DockGlassFill soft={soft} paused /> : null;
+  // ...but WHILE the dock changes shape (desks <-> the search field, the drop carrying the lens) every piece is live: a
+  // paused piece is a solid plate, and the shrinking search field drawn solid read as a white plate blinking behind the
+  // dock out to the pencil (the user, 2026-10-24). The hidden ones rest only once the dock has stood still a moment.
+  const [settledState, setSettledState] = useState(state);
+  useEffect(() => {
+    const t = setTimeout(() => setSettledState(state), 700);
+    return () => clearTimeout(t);
+  }, [state]);
+  const shaping = settledState !== state;
+  const glassPill = glassOn ? <DockGlassFill soft={soft} paused={!shaping && state !== 'root'} /> : null;
+  const glassBody = glassOn ? <DockGlassFill soft={soft} paused={!shaping && state === 'root'} /> : null;
+  const glassDrop = glassOn ? <DockGlassFill soft={soft} paused={!shaping} /> : null;
   // With the balloon the places are one bead more, and the pill as much wider; the search lens stays at its end.
   const assistIndex = assist ? desks.length : -1;
   const pillCore = PILL_CORE + (assist ? BEAD_W : 0);
@@ -579,7 +588,7 @@ export default function DeskDock({
             />
           )}
           {desks.map((d, i) => (
-            <DeskBeadButton key={d.key} d={d} i={i} soft={soft} onPick={pick} active={!!assist && i === shownIndex} onLens={onLens} />
+            <DeskBeadButton key={d.key} d={d} i={i} soft={soft} onPick={pick} active={tools ? d.active : !!assist && i === shownIndex} onLens={onLens} />
           ))}
           {assist && (
             <AssistBead

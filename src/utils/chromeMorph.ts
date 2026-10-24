@@ -5,6 +5,8 @@ import { captureRef, releaseCapture } from 'react-native-view-shot';
 import type { Rect } from './morph';
 import { dockGlassOn } from './dockGlass';
 
+const PHOTOGRAPHED_CHROME = false;
+
 // THE DOCK AND THE TOP BAR MOVING WITH THE PAGE (the phone's card-to-page
 // morph, utils/morph + components/MorphFrame). Both belong to whichever
 // screen is focused, and the focus changes at one instant of the move - so
@@ -206,10 +208,12 @@ let generation = 0;
 
 export async function chromeOpenBegin(): Promise<boolean> {
   carrying = false;
-  // GLASS CANNOT BE PHOTOGRAPHED (2026-10-24): view-shot does not capture a live blur, so the glass dock's and bar's
-  // pictures came out as white plates moving over the page - a white dock behind the dock, the note's dock white for a
-  // moment. With «Скло» on the chrome is left alone: it changes at the push, as it did before this morph.
-  if (dockGlassOn()) return false;
+  // NOT ANY MORE (2026-10-24): the note's dock is now the very same DeskDock as the list's (ContextDock keeps the one
+  // instance across the push), so there is nothing to carry over - only its buttons change. The photographs had become
+  // wrong both ways: with «Скло» on view-shot cannot capture a live blur (white plates), and without it the note's dock
+  // node is the whole row, so the stand-in drew ONE capsule from the desks out past the pencil («ніби їх щось об'єднує»).
+  // The bar changes at the push too (its name blinks out for two frames). Kept, switched off, in case it is wanted back.
+  if (!PHOTOGRAPHED_CHROME || dockGlassOn()) return false;
   if (tooSoon()) return false;
   const mine = ++generation;
   // Nothing is on screen between two moves, so whatever the last ones took
@@ -243,7 +247,7 @@ export async function chromeOpenArrive(): Promise<void> {
 // photographed now, the list's comes from the way in.
 export async function chromeBackBegin(): Promise<boolean> {
   carrying = false;
-  if (dockGlassOn()) return false;
+  if (!PHOTOGRAPHED_CHROME || dockGlassOn()) return false;
   if (tooSoon()) return false;
   if (!listKept.bar || !listKept.dock) return false;
   const [bar, dock] = await Promise.all([grab('bar', 'note'), grab('dock', 'note')]);
