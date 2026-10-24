@@ -249,6 +249,11 @@ export default function DeskDock({
   const glassOn = useDockGlass();
   const surface = useDockSurface(soft, glassOn);
   const glass = glassOn ? <DockGlassFill soft={soft} /> : null;
+  // Only what is SEEN blurs (a hidden live blur still blurs every frame - project_pending_blur_optimization): the desks'
+  // pill on a desk, the search body inside a base; the drop that carries the lens across is never still, so never live.
+  const glassPill = glassOn ? <DockGlassFill soft={soft} paused={state !== 'root'} /> : null;
+  const glassBody = glassOn ? <DockGlassFill soft={soft} paused={state === 'root'} /> : null;
+  const glassDrop = glassOn ? <DockGlassFill soft={soft} paused /> : null;
   // With the balloon the places are one bead more, and the pill as much wider; the search lens stays at its end.
   const assistIndex = assist ? desks.length : -1;
   const pillCore = PILL_CORE + (assist ? BEAD_W : 0);
@@ -532,7 +537,7 @@ export default function DeskDock({
         pointerEvents="none"
         style={[styles.drop, surface, { top: (H - 52) / 2, height: 52, borderRadius: 26 }, dropStyle]}
       >
-        {glass}
+        {glassDrop}
       </Animated.View>
       {/* The pill, with the desks in it. */}
       <Animated.View
@@ -542,7 +547,7 @@ export default function DeskDock({
         onTouchCancel={pillOff}
         style={[styles.pill, surface, { top: (H - PILL_H) / 2, height: PILL_H, borderRadius: PILL_H / 2 }, pillStyle, pillPressStyle]}
       >
-        {glass}
+        {glassPill}
         {/* Lighter while touched: a white veil over the pill's own surface (shows on the dark theme; on the light one
             the pill is white already and only grows). */}
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#FFFFFF' }, pillGlowStyle]} />
@@ -597,7 +602,7 @@ export default function DeskDock({
       </Animated.View>
       {/* The body that forms round the "+" and grows to the left - the search field. */}
       <Animated.View pointerEvents="none" style={[styles.body, surface, { height: H, borderRadius: H / 2 }, bodyStyle]}>
-        {glass}
+        {glassBody}
       </Animated.View>
       {/* Inside: the search field is a tap target across the body, up to the buttons at its end. */}
       {!root && (
