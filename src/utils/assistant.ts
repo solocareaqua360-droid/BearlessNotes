@@ -24,7 +24,9 @@ import { deleteChatObjects } from './chatObjects';
 // `structure`: this answer laid a topic out as a draft BOARD that lives in the conversation (utils/chatObjects) - the answer
 // shows it as a card with «Відкрити» (2026-10-24).
 export type AssistantStructure = { boardId: string; title: string; cards: number };
-export type AssistantMessage = { id: string; role: 'user' | 'model'; text: string; at: number; error?: boolean; costUsd?: number; topicId?: string; structure?: AssistantStructure };
+// `attachments`: what was given with this message to read (utils/chatAttachments) - shown over it, kept as names and a local picture.
+export type AssistantAttachment = { kind: 'photo' | 'pdf' | 'text' | 'docx' | 'xlsx' | 'note' | 'folder'; name: string; sub: string; uri?: string };
+export type AssistantMessage = { id: string; role: 'user' | 'model'; text: string; at: number; error?: boolean; costUsd?: number; topicId?: string; structure?: AssistantStructure; attachments?: AssistantAttachment[] };
 export type AssistantTopic = { id: string; parentId: string | null; title: string; fromKey?: string };
 export const ROOT_TOPIC = 'root';
 // `remembered`: block keys («messageId:index»). `groups`: what was remembered TOGETHER - several blocks picked at once
@@ -142,6 +144,7 @@ function toStored(chat: AssistantChat) {
       ...(m.costUsd !== undefined ? { costUsd: m.costUsd } : {}),
       ...(m.topicId ? { topicId: m.topicId } : {}),
       ...(m.structure ? { structure: m.structure } : {}),
+      ...(m.attachments?.length ? { attachments: m.attachments.map((a) => ({ kind: a.kind, name: a.name, sub: a.sub, ...(a.uri ? { uri: a.uri } : {}) })) } : {}),
     })),
     remembered: chat.remembered,
     groups: groupsOf(chat).map((keys) => ({ keys })),
@@ -277,7 +280,13 @@ ${part}`;
 
 // The next answer to this conversation: the memory (summary of the older part + what the person picked) goes with the system
 // words; then the messages past the summary, the last MAX_TURNS of them. Throws GeminiError with a message to show as it is.
-export async function askAssistant(chat: AssistantChat, topicId?: string, structureOutline?: string): Promise<{ text: string; costUsd: number }> {
+export async function askAssistant(
+  chat: AssistantChat,
+  topicId?: string,
+  structureOutline?: string,
+  // What was attached to the last message (utils/chatAttachments.attachmentParts): it goes with that turn.
+  extraParts?: ({ text: string } | { inlineData: { mimeType: string; data: string } })[]
+): Promise<{ text: string; costUsd: number }> {
   const key = await getGeminiKey();
   if (!key) throw new GeminiError('Немає ключа Gemini на цьому пристрої. Додайте його в Налаштуваннях.');
   const turns = chat.messages
@@ -306,7 +315,10 @@ export async function askAssistant(chat: AssistantChat, topicId?: string, struct
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: memory ? `${SYSTEM}\n\n${memory}` : SYSTEM }] },
-        contents: turns.map((m) => ({ role: m.role, parts: [{ text: m.text }] })),
+        contents: turns.map((m, i) => ({
+          role: m.role,
+          parts: i === turns.length - 1 && m.role === 'user' && extraParts?.length ? [{ text: m.text }, ...extraParts] : [{ text: m.text }],
+        })),
       }),
     });
   } catch {

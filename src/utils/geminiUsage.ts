@@ -15,6 +15,8 @@ const PRICES: Record<string, { input: number; output: number }> = {
   'gemini-3.6-flash': { input: 0.75, output: 3.75 },
 };
 const FALLBACK = PRICES['gemini-3.6-flash'];
+// The input price of the chat's model, per million tokens - what a request's attachments cost to send (utils/chatAttachments).
+export const INPUT_PRICE_PER_M = FALLBACK.input;
 
 export type GeminiUsage = {
   since: number;

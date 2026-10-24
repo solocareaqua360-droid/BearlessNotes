@@ -17,7 +17,10 @@ export default function ChatFolderSheet({
   currentId,
   onPick,
   onClose,
+  attach,
 }: {
+  // Choosing a folder whose notes go INTO the conversation (the «+»), not the conversation's own folder.
+  attach?: boolean;
   visible: boolean;
   chatTitle: string;
   folders: FolderOption[];
@@ -45,19 +48,19 @@ export default function ChatFolderSheet({
   return (
     <ChatSheetFrame visible={visible} onClose={onClose} top={130}>
       <View style={{ paddingHorizontal: 4 }}>
-        <Text style={styles.title}>Папка для розмови</Text>
-        <Text style={styles.sub} numberOfLines={1}>{`«${chatTitle}» · папки зі «Старту»`}</Text>
+        <Text style={styles.title}>{attach ? 'Додати папку' : 'Папка для розмови'}</Text>
+        <Text style={styles.sub} numberOfLines={1}>{attach ? 'ШІ прочитає всі нотатки в ній' : `«${chatTitle}» · папки зі «Старту»`}</Text>
       </View>
       <View style={styles.search}>
         <Ionicons name="search" size={18} color={S.ink3} />
         <TextInput value={query} onChangeText={setQuery} placeholder="Знайти папку" placeholderTextColor={S.ink3} style={styles.searchInput} />
       </View>
       <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 2, paddingBottom: 8 }}>
-        {!needle ? row('none', 'Без папки', 0, !currentId, () => onPick(null), true) : null}
+        {!needle && !attach ? row('none', 'Без папки', 0, !currentId, () => onPick(null), true) : null}
         {shown.map((f) => row(f.id, needle ? f.path.split('/').join(' › ') : f.name, needle ? 0 : f.depth, f.id === currentId, () => onPick(f.id)))}
         {shown.length === 0 && needle ? <Text style={styles.empty}>Такої папки немає</Text> : null}
       </ScrollView>
-      <Text style={styles.note}>Розмова лишається у своєму списку. Папка лише мітка.</Text>
+      {!attach && <Text style={styles.note}>Розмова лишається у своєму списку. Папка лише мітка.</Text>}
     </ChatSheetFrame>
   );
 }

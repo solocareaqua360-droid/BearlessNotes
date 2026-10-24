@@ -46,10 +46,33 @@ import ChatOutlineSheet from '../components/ChatOutlineSheet';
 import { useBoardCardCount } from '../utils/chatStructureRead';
 import { folderOfPointer, folderOptions, type FolderOption } from '../utils/chatFolders';
 import { useTags } from '../hooks/useTags';
+import { peekDocument, useDocumentIndex } from '../hooks/useDocumentIndex';
 import { branchCard, currentOutline, deepenCard, mergeStructure } from '../utils/chatBoardOps';
 import { nodesFromOutline } from '../utils/chatOwned';
 import ChatBoardWindow from '../components/ChatBoardWindow';
 import ThinkingEffect, { useThinkingVariant } from '../components/ThinkingEffect';
+import ChatComposer from '../components/chat/ChatComposer';
+import ChatHintsStrip, { HINTS_STRIP_H } from '../components/chat/ChatHintsStrip';
+import ChatStarterTiles from '../components/chat/ChatStarterTiles';
+import ChatAttachSheet from '../components/chat/ChatAttachSheet';
+import ChatCostWarning, { type CostRow } from '../components/chat/ChatCostWarning';
+import ChatThresholdSheet from '../components/chat/ChatThresholdSheet';
+import MessageAttachments from '../components/chat/MessageAttachments';
+import type { HintKind } from '../components/chat/HintPicture';
+import DocumentPickerModal from '../components/DocumentPickerModal';
+import {
+  attachmentParts,
+  countTokens,
+  folderAttachment,
+  noteAttachment,
+  pickCamera,
+  pickFile,
+  pickGallery,
+  priceOfTokens,
+  useCostThreshold,
+  type ChatAttachment,
+  type GeminiPart,
+} from '../utils/chatAttachments';
 import Menu, { type MenuEntry } from '../components/surfaces/Menu';
 import { writeMemoryNote, writeMemoryTree } from '../utils/assistantTree';
 import { shortTitle } from '../utils/assistant';
@@ -84,22 +107,6 @@ const plainOf = (text: string) =>
 // fills as that tenth is used. A tap opens the three sums. Nothing here is a budget - the app has none.
 const tenthsOf = (usd: number) => Math.max(0.1, Math.ceil(usd * 10 - 1e-9) / 10);
 const money = (usd: number, digits: number) => usd.toFixed(digits).replace('.', ',');
-function CostRing({ usd, onPress, color, track, ink }: { usd: number; onPress: () => void; color: string; track: string; ink: string }) {
-  const r = 13;
-  const c = 2 * Math.PI * r;
-  const tenths = usd * 10;
-  const used = tenths <= 0 ? 0 : tenths - Math.floor(tenths - 1e-9);
-  const arc = Math.max(0.06, Math.min(1, used)) * c;
-  return (
-    <Pressable onPress={onPress} accessibilityLabel={`Вартість розмови ${money(tenthsOf(usd), 1)} доларів`} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={36} height={36} viewBox="0 0 36 36">
-        <Circle cx={18} cy={18} r={r} fill="none" stroke={track} strokeWidth={3} />
-        <Circle cx={18} cy={18} r={r} fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" strokeDasharray={`${arc} ${c}`} transform="rotate(-90 18 18)" />
-      </Svg>
-      <Text style={{ position: 'absolute', fontSize: 9.5, fontFamily: SOFT_SEMIBOLD, color: ink }}>{money(tenthsOf(usd), 1)}</Text>
-    </Pressable>
-  );
-}
 
 // «N карток» of the draft board, live (the number kept in the message is only what the AI made at first).
 function StructCount({ boardId, fallback, style }: { boardId: string; fallback: number; style: object }) {
@@ -107,12 +114,20 @@ function StructCount({ boardId, fallback, style }: { boardId: string; fallback: 
   return <Text style={style}>{`дошка · чернетка · ${n ?? fallback} карток`}</Text>;
 }
 
-// What the empty conversation offers: a tap only starts the sentence in the field, it sends nothing.
-const STARTERS: { label: string; text: string }[] = [
-  { label: 'Розкласти тему з думок', text: 'Розклади тему: ' },
-  { label: 'Дослідити тему', text: 'Досліди тему: ' },
-  { label: 'Адаптувати думку', text: 'Адаптуй цю думку під читача: ' },
-];
+// The ring under the conversation's name: the tenth of a dollar being used, small enough to stand in a line of text.
+function MiniRing({ usd, color, track }: { usd: number; color: string; track: string }) {
+  const r = 5.5;
+  const c = 2 * Math.PI * r;
+  const tenths = usd * 10;
+  const used = tenths <= 0 ? 0 : tenths - Math.floor(tenths - 1e-9);
+  return (
+    <Svg width={15} height={15} viewBox="0 0 15 15">
+      <Circle cx={7.5} cy={7.5} r={r} fill="none" stroke={track} strokeWidth={2} />
+      <Circle cx={7.5} cy={7.5} r={r} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeDasharray={`${Math.max(0.06, Math.min(1, used)) * c} ${c}`} transform="rotate(-90 7.5 7.5)" />
+    </Svg>
+  );
+}
+
 
 // «Кожен запуск застосунку - нова розмова» (the user, 2026-10-24): the first time the conversation is opened since the app
 // started it is a NEW one (an empty one is never kept in the list - saveChat writes nothing of it to the database); moving
@@ -144,7 +159,20 @@ export default function AssistantScreen() {
   const [boardTick, setBoardTick] = useState(0);
   const [fitTick, setFitTick] = useState(0);
   const [thinkingVariant, setThinkingVariant] = useThinkingVariant();
+  // THE DOCK (sketches 2-9 of 2026-10-24): what is attached to the next message, the «+» sheet, the hints under the «?»,
+  // the price check before sending, and the dock's own drawn height (the chat is kept clear of it).
+  const [attached, setAttached] = useState<ChatAttachment[]>([]);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [notePickerOpen, setNotePickerOpen] = useState(false);
+  const [folderPickOpen, setFolderPickOpen] = useState(false);
+  const [hintsOpen, setHintsOpen] = useState(false);
+  const [dockH, setDockH] = useState(56);
+  const [estimate, setEstimate] = useState<{ tokens: number; usd: number; rows: CostRow[] } | null>(null);
+  const [warning, setWarning] = useState<{ cost: number; rows: CostRow[]; go: () => void } | null>(null);
+  const [thresholdOpen, setThresholdOpen] = useState(false);
+  const [threshold, setThreshold] = useCostThreshold();
   const { tags, attachTag, createAndAttachTag } = useTags();
+  const docIndex = useDocumentIndex();
   const folders = useMemo(() => folderOptions(tags), [tags]);
   const [chatsOpen, setChatsOpen] = useState(false);
   const [chatList, setChatList] = useState<ChatSummary[]>([]);
@@ -229,9 +257,14 @@ export default function AssistantScreen() {
   const chatCost = (chat?.messages ?? []).reduce((sum, m) => sum + (m.costUsd ?? 0), 0);
 
   // `branch`: the answer opens a new branch under `parent` (null = the main topic) with this title.
-  async function send(text: string, branch?: { title: string; parent: string }, skipRoute?: boolean) {
+  async function send(
+    text: string,
+    branch?: { title: string; parent: string },
+    skipRoute?: boolean,
+    withAttached?: { parts: GeminiPart[]; meta: NonNullable<AssistantMessage['attachments']> }
+  ) {
     const base = chatRef.current;
-    const clean = text.trim();
+    const clean = text.trim() || (withAttached ? 'Подивись вкладене.' : '');
     if (!clean || !base || busy) return;
     // The FIRST message of a conversation is checked against the others: if it looks like a continuation of one, the person
     // is offered to go there (nothing is sent until they choose). Any doubt, no key or no network sends it as usual.
@@ -260,7 +293,14 @@ export default function AssistantScreen() {
       withTopics = { ...base, topics: [...(base.topics ?? []), { id: here, parentId: branch.parent, title: branch.title }] };
       setTopic(here);
     }
-    const mine: AssistantMessage = { id: `m${Date.now()}`, role: 'user', text: clean, at: Date.now(), ...(here !== ROOT_TOPIC ? { topicId: here } : {}) };
+    const mine: AssistantMessage = {
+      id: `m${Date.now()}`,
+      role: 'user',
+      text: clean,
+      at: Date.now(),
+      ...(here !== ROOT_TOPIC ? { topicId: here } : {}),
+      ...(withAttached && withAttached.meta.length ? { attachments: withAttached.meta } : {}),
+    };
     const withMine = { ...withTopics, messages: [...withTopics.messages, mine] };
     update(withMine);
     setDraft('');
@@ -270,7 +310,7 @@ export default function AssistantScreen() {
       const known = [...withMine.messages].reverse().find((m) => m.structure)?.structure;
       let outlineNow: string | undefined;
       if (known) outlineNow = await currentOutline(known.boardId).catch(() => undefined);
-      const { text: raw, costUsd } = await askAssistant(withMine, here, outlineNow);
+      const { text: raw, costUsd } = await askAssistant(withMine, here, outlineNow, withAttached?.parts);
       // A topic laid out: the scheme in the answer becomes a draft board that lives in this conversation.
       let { text: answer, outline } = splitStructure(raw);
       let structure: AssistantStructure | undefined;
@@ -559,6 +599,97 @@ export default function AssistantScreen() {
   // delete), not a sheet in the middle of the screen (the user, 2026-10-24: «краще як в провіднику»).
   const [menuOpen, setMenuOpen] = useState(false);
   const menu = () => setMenuOpen(true);
+  // ATTACHMENTS: what each one weighs is asked of Gemini as soon as it is added (the count is free), so the dock shows the
+  // price before anything is sent and the check at «надіслати» needs no second read.
+  const kindForRow = (k: ChatAttachment['kind']): CostRow['kind'] => (k === 'photo' ? 'photo' : k === 'note' ? 'note' : k === 'folder' ? 'folder' : 'file');
+  const weighed = useRef(new Map<string, { parts: GeminiPart[]; tokens: number; notes: string[] }>());
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const a of attached) {
+        if (weighed.current.has(a.id)) continue;
+        try {
+          const { parts, notes } = await attachmentParts([a]);
+          const tokens = await countTokens(parts, '');
+          weighed.current.set(a.id, { parts, tokens, notes });
+        } catch (e) {
+          weighed.current.set(a.id, { parts: [], tokens: 0, notes: [(e as Error).message] });
+        }
+        if (cancelled) return;
+      }
+      if (cancelled) return;
+      if (attached.length === 0) {
+        setEstimate(null);
+        return;
+      }
+      const rows: CostRow[] = attached.map((a) => ({ kind: kindForRow(a.kind), label: `${a.name}${a.sub ? ` · ${a.sub}` : ''}`, tokens: weighed.current.get(a.id)?.tokens ?? 0 }));
+      const tokens = rows.reduce((n, r) => n + r.tokens, 0);
+      setEstimate({ tokens, usd: priceOfTokens(tokens), rows });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [attached]);
+  async function addAttachments(pick: () => Promise<ChatAttachment[]>) {
+    setAttachOpen(false);
+    try {
+      const got = await pick();
+      if (got.length) setAttached((list) => [...list, ...got]);
+    } catch (e) {
+      notify('Не вдалося додати', (e as Error).message);
+    }
+  }
+  function sendFromDock() {
+    if (listening) stopListening();
+    const text = draft;
+    if (attached.length === 0) {
+      send(text);
+      return;
+    }
+    const list = attached;
+    const ready = list.every((a) => weighed.current.has(a.id));
+    if (!ready) {
+      notify('Ще рахую', 'Вкладене ще читається - за мить можна надсилати.');
+      return;
+    }
+    const parts = list.flatMap((a) => weighed.current.get(a.id)?.parts ?? []);
+    const unread = list.flatMap((a) => weighed.current.get(a.id)?.notes ?? []);
+    const meta = list.map((a) => ({ kind: a.kind, name: a.name, sub: a.sub, ...(a.uri && a.kind === 'photo' ? { uri: a.uri } : {}) }));
+    const go = () => {
+      setWarning(null);
+      setAttached([]);
+      setEstimate(null);
+      weighed.current.clear();
+      if (unread.length) notify('Не все прочитано', unread.join('\n'));
+      send(text, undefined, true, { parts, meta });
+    };
+    const cost = estimate?.usd ?? 0;
+    if (threshold !== null && cost > threshold) {
+      setWarning({ cost, rows: estimate?.rows ?? [], go });
+      return;
+    }
+    go();
+  }
+  // The hints under «?»: each one a request about the last answer, sent at once.
+  const HINT_ASK: Partial<Record<HintKind, string>> = {
+    table: 'Покажи цю відповідь таблицею.',
+    board: 'Розклади цю відповідь дошкою.',
+    short: 'Скажи те саме коротше.',
+    plan: 'Зроби з цього план дій.',
+    more: 'Розкажи про це детальніше.',
+    simple: 'Поясни це простіше.',
+  };
+  const STARTER_TEXT: Partial<Record<HintKind, string>> = {
+    board: 'Розклади тему: ',
+    research: 'Досліди тему: ',
+    sum: 'Підсумуй: ',
+    adapt: 'Адаптуй цю думку під читача: ',
+  };
+  useEffect(() => {
+    const t = setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 60);
+    return () => clearTimeout(t);
+  }, [hintsOpen]);
+
   function menuEntries(): MenuEntry[] {
     const c = chatRef.current;
     const folder = folderOfPointer(folders, c?.folderId);
@@ -573,6 +704,8 @@ export default function AssistantScreen() {
       { label: 'Інструкція', icon: 'book-outline', checked: !!c?.instruction, onPress: run(() => c && setInstructionFor(c.id)) },
       { label: folder ? `Папка: ${folder.name}` : 'Папка', icon: 'folder-outline', checked: !!folder, onPress: run(() => c && setFolderFor({ chatId: c.id, purpose: 'chat' })) },
       { label: "Що ти пам'ятаєш?", icon: 'bulb-outline', onPress: run(showMemory) },
+      ...(count > 0 ? [{ label: freshCount > 0 ? `Відібране в нотатку (${freshCount})` : 'Відкрити нотатку', icon: 'document-text-outline' as const, onPress: run(toNote) }] : []),
+      { label: threshold === null ? 'Поріг ціни: не питати' : `Поріг ціни: $${money(threshold, 2)}`, icon: 'pricetag-outline', onPress: run(() => setThresholdOpen(true)) },
       ...(FEATURES.assistantTree && c?.boardId ? [{ label: 'Дерево на дошці', icon: 'git-network-outline' as const, onPress: run(() => navigation.navigate('BoardCopy', { boardId: c.boardId })) }] : []),
       { kind: 'section', label: 'Поки ШІ думає' },
       { label: 'Вогнище', icon: 'flame-outline', checked: thinkingVariant === 'fire', onPress: run(() => setThinkingVariant('fire')) },
@@ -700,7 +833,12 @@ export default function AssistantScreen() {
           <Text style={styles.title} numberOfLines={1}>
             {chat && messages.length > 0 ? titleOf(chat) : 'Нова розмова'}
           </Text>
-          {messages.length > 0 ? <Text style={styles.sub}>{`розмова · ${thoughtsWord(messages.filter((m) => m.role === 'user').length)}`}</Text> : null}
+          {/* The conversation's price lives here, under its name (2026-10-24: the header had no room for a ring of its own). */}
+          <Pressable onPress={() => setCostOpen((v) => !v)} hitSlop={8} accessibilityLabel="Вартість розмови" style={styles.subRow}>
+            <Text style={styles.sub}>{messages.length > 0 ? `розмова · ${thoughtsWord(messages.filter((m) => m.role === 'user').length)} · ` : 'нова · '}</Text>
+            <MiniRing usd={chatCost} color={S.accent} track={S.line} />
+            <Text style={styles.subCost}>{`$${money(tenthsOf(chatCost), 1)}`}</Text>
+          </Pressable>
         </View>
         {structure ? (
           <Pressable onPress={() => setMaterialsOpen(true)} style={styles.round} accessibilityLabel="Матеріали розмови" hitSlop={6}>
@@ -710,17 +848,6 @@ export default function AssistantScreen() {
                 <Text style={styles.badgeText}>{materialsCount}</Text>
               </View>
             ) : null}
-          </Pressable>
-        ) : null}
-        {structure ? (
-          <Pressable onPress={saveStructureFlow} style={styles.toNote} accessibilityLabel="Зберегти структуру">
-            <Text style={styles.toNoteText}>Зберегти</Text>
-          </Pressable>
-        ) : count > 0 ? (
-          <Pressable onPress={toNote} style={[styles.toNote, freshCount === 0 && styles.toNoteDone]} accessibilityLabel="Відібране в нотатку">
-            <Text style={[styles.toNoteText, freshCount === 0 && styles.toNoteDoneText]}>
-              {freshCount > 0 ? (chat?.noteId ? `В нотатку (+${freshCount})` : `В нотатку (${freshCount})`) : 'Нотатка'}
-            </Text>
           </Pressable>
         ) : null}
         <Pressable onPress={() => closeAssistant(() => navigation.goBack(), S.bg, assistWash(S.dark))} style={styles.round} accessibilityLabel="Закрити" hitSlop={6}>
@@ -739,7 +866,7 @@ export default function AssistantScreen() {
       <ScrollView
         ref={scroll}
         style={{ flex: 1 }}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: (picking ? 24 : (keyboard > 0 ? keyboard + 8 : insets.bottom + 14) + dockH + 18 + (hintsOpen ? HINTS_STRIP_H : 0)) }]}
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => {
           if (!picking) scroll.current?.scrollToEnd({ animated: true });
@@ -751,7 +878,14 @@ export default function AssistantScreen() {
               <BalloonMark size={38} color={S.accent} />
             </View>
             <Text style={styles.emptyTitle}>Про що поговоримо?</Text>
-            <Text style={styles.empty}>{'Пиши або кажи голосом. Утримай абзац відповіді,\nщоб вибрати його, а тапами додай ще.'}</Text>
+            <View style={{ alignSelf: 'stretch', marginTop: 12 }}>
+              <ChatStarterTiles
+                onPick={(k) => {
+                  setDraft(STARTER_TEXT[k] ?? '');
+                  inputRef.current?.focus();
+                }}
+              />
+            </View>
           </View>
         ) : null}
         {messages.map((m) => {
@@ -769,8 +903,13 @@ export default function AssistantScreen() {
             <View key={m.id} style={{ gap: 14 }}>
               {marker}
               {m.role === 'user' ? (
-                <View style={styles.mine}>
-                  <Text style={styles.mineText}>{m.text}</Text>
+                <View style={{ gap: 6 }}>
+                  {m.attachments?.length ? (
+                    <MessageAttachments items={m.attachments.map((a) => ({ kind: a.kind === 'photo' ? 'photo' : a.kind === 'note' ? 'note' : a.kind === 'folder' ? 'folder' : 'file', name: a.name, sub: a.sub, uri: a.uri }))} />
+                  ) : null}
+                  <View style={styles.mine}>
+                    <Text style={styles.mineText}>{m.text}</Text>
+                  </View>
                 </View>
               ) : m.error ? (
                 <Text style={styles.error}>{m.text}</Text>
@@ -852,26 +991,10 @@ export default function AssistantScreen() {
           </View>
         ) : null}
       </ScrollView>
-      {messages.length === 0 && !busy && !picking && draft.length === 0 && !routeOffer ? (
-        <View style={styles.starters}>
-          {STARTERS.map((st) => (
-            <Pressable
-              key={st.label}
-              onPress={() => {
-                setDraft(st.text);
-                inputRef.current?.focus();
-              }}
-              style={styles.starter}
-            >
-              <Text style={styles.starterText}>{st.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
       {costOpen ? (
         <>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setCostOpen(false)} accessibilityLabel="Закрити вартість" />
-          <View style={[styles.costCard, { bottom: (keyboard > 0 && !picking ? keyboard : insets.bottom) + 84 }]}>
+          <View style={[styles.costCard, { top: insets.top + 66, left: 60 }]}>
             <Text style={styles.costHead}>ВАРТІСТЬ</Text>
             <View style={styles.costRow}>
               <Text style={styles.costText}>Остання відповідь</Text>
@@ -885,13 +1008,24 @@ export default function AssistantScreen() {
               <Text style={[styles.costText, { fontFamily: SOFT_SEMIBOLD }]}>Усього досі</Text>
               <Text style={[styles.costText, { fontFamily: SOFT_SEMIBOLD }]}>{usage ? `$${money(usage.costUsd, 2)}` : '—'}</Text>
             </View>
-            <Text style={styles.costNote}>У кільці — сума розмови, завжди вгору до наступної десятої долара. Воно заповнюється, поки ця десята використовується.</Text>
+            <Text style={styles.costNote}>Під назвою — сума розмови, завжди вгору до наступної десятої долара; кільце заповнюється, поки ця десята використовується.</Text>
           </View>
         </>
       ) : null}
-      <ThinkingEffect active={busy || opBusy} variant={thinkingVariant} bottom={(keyboard > 0 && !picking ? keyboard : insets.bottom) + 14} />
-      <View style={[styles.foot, { paddingBottom: (keyboard > 0 && !picking ? keyboard : insets.bottom) + 14 }]}>
-        {picking ? (
+      {!picking && (
+        <ChatHintsStrip
+          visible={hintsOpen && !busy}
+          bottom={(keyboard > 0 ? keyboard + 8 : insets.bottom + 14) + dockH + 8}
+          onPick={(k) => {
+            setHintsOpen(false);
+            const q = HINT_ASK[k];
+            if (q) send(q);
+          }}
+        />
+      )}
+      <ThinkingEffect active={busy || opBusy} variant={thinkingVariant} bottom={keyboard > 0 ? keyboard + 8 : insets.bottom + 14} height={dockH} />
+      {picking ? (
+        <View style={[styles.foot, { paddingBottom: insets.bottom + 14 }]}>
           <View style={styles.pickBar}>
             <Pressable onPress={() => setPicked([])} style={styles.pickClose} accessibilityLabel="Скасувати вибір" hitSlop={6}>
               <Ionicons name="close" size={16} color={S.card} />
@@ -907,42 +1041,89 @@ export default function AssistantScreen() {
               <Ionicons name="copy-outline" size={16} color={S.card} />
             </Pressable>
           </View>
-        ) : (
-          <View style={styles.field}>
-            <TextInput
-              ref={inputRef}
-              value={draft}
-              onChangeText={setDraft}
-              placeholder={messages.length === 0 ? 'Запитай або скажи…' : 'Продовжуй…'}
-              placeholderTextColor={S.ink3}
-              style={styles.input}
-              multiline
-            />
-            <Pressable
-              onPress={listening ? stopListening : startListening}
-              style={[styles.mic, listening && styles.micOn]}
-              accessibilityLabel={listening ? 'Зупинити диктування' : 'Диктувати'}
-            >
-              <Ionicons name={listening ? 'stop' : 'mic-outline'} size={21} color={listening ? S.card : S.ink2} />
-            </Pressable>
-            {draft.trim() ? (
-              <Pressable
-                onPress={() => {
-                  if (listening) stopListening();
-                  send(draft);
-                }}
-                disabled={busy}
-                style={[styles.send, busy && { opacity: 0.35 }]}
-                accessibilityLabel="Надіслати"
-              >
-                <Ionicons name="arrow-up" size={19} color={S.card} />
-              </Pressable>
-            ) : (
-              <CostRing usd={chatCost} onPress={() => setCostOpen((v) => !v)} color={S.accent} track={S.line} ink={S.ink} />
-            )}
-          </View>
-        )}
-      </View>
+        </View>
+      ) : (
+        <ChatComposer
+          value={draft}
+          onChangeText={setDraft}
+          onSend={sendFromDock}
+          sending={busy}
+          listening={listening}
+          onMic={listening ? stopListening : startListening}
+          onPlus={() => setAttachOpen(true)}
+          hintsOpen={hintsOpen}
+          onHints={() => setHintsOpen((v) => !v)}
+          attachments={attached.map((a) => ({ id: a.id, kind: a.kind === 'photo' ? 'photo' : a.kind === 'note' ? 'note' : a.kind === 'folder' ? 'folder' : 'file', name: a.name, sub: a.sub, uri: a.uri }))}
+          onRemoveAttachment={(id) => {
+            weighed.current.delete(id);
+            setAttached((list) => list.filter((a) => a.id !== id));
+          }}
+          estimate={estimate ? { text: `≈ ${estimate.tokens.toLocaleString('uk-UA')} ток. · ${estimate.usd < 0.01 ? '<$0,01' : `$${money(estimate.usd, 2)}`}`, warn: threshold !== null && estimate.usd > threshold } : null}
+          placeholder={attached.length ? 'Спитай про вкладене…' : messages.length === 0 ? 'Запитай або скажи…' : 'Продовжуй…'}
+          keyboardHeight={keyboard}
+          bottomInset={insets.bottom}
+          inputRef={inputRef}
+          onHeight={setDockH}
+        />
+      )}
+      <ChatAttachSheet
+        visible={attachOpen}
+        onClose={() => setAttachOpen(false)}
+        onCamera={() => addAttachments(pickCamera)}
+        onGallery={() => addAttachments(pickGallery)}
+        onFile={() => addAttachments(pickFile)}
+        onNote={() => {
+          setAttachOpen(false);
+          setNotePickerOpen(true);
+        }}
+        onFolder={() => {
+          setAttachOpen(false);
+          setFolderPickOpen(true);
+        }}
+      />
+      <DocumentPickerModal
+        visible={notePickerOpen}
+        title="Нотатка до розмови"
+        // Only the user's own notes: not ones that belong to something (a board's cards, a nested note, a conversation).
+        documents={[...docIndex.values()].filter((d) => !d.deletedAt && !(peekDocument(d.id) as { owner?: unknown } | undefined)?.owner).sort((x, y) => (y.updatedAt ?? 0) - (x.updatedAt ?? 0)).map((d) => ({ id: d.id, title: d.title || 'Без назви' }))}
+        onPick={(id) => {
+          setNotePickerOpen(false);
+          const d = docIndex.get(id);
+          setAttached((list) => [...list, noteAttachment({ id, title: d?.title || 'Без назви' })]);
+        }}
+        onClose={() => setNotePickerOpen(false)}
+      />
+      <ChatFolderSheet
+        visible={folderPickOpen}
+        attach
+        chatTitle=""
+        folders={folders}
+        onClose={() => setFolderPickOpen(false)}
+        onPick={(id) => {
+          setFolderPickOpen(false);
+          const f = id ? folders.find((x) => x.id === id) : null;
+          if (!f) return;
+          const tag = tags.find((t) => t.id === f.id);
+          setAttached((list) => [...list, folderAttachment({ path: f.path, name: f.name, count: tag ? Object.keys(tag.usedIn ?? {}).length : 0 })]);
+        }}
+      />
+      <ChatCostWarning
+        visible={warning !== null}
+        cost={warning?.cost ?? 0}
+        threshold={threshold ?? 0}
+        rows={warning?.rows ?? []}
+        onCancel={() => setWarning(null)}
+        onSend={() => warning?.go()}
+      />
+      <ChatThresholdSheet
+        visible={thresholdOpen}
+        value={threshold}
+        onPick={(v) => {
+          setThreshold(v);
+          setThresholdOpen(false);
+        }}
+        onClose={() => setThresholdOpen(false)}
+      />
       {boardOpen ? (
         <ChatBoardWindow
           boardId={boardOpen.boardId}
@@ -1074,6 +1255,8 @@ function makeStyles(S: ReturnType<typeof useSoft>) {
     titleBox: { flex: 1, minWidth: 0, alignItems: 'center' },
     title: { textAlign: 'center', fontSize: 16, fontFamily: SOFT_SEMIBOLD, color: S.ink },
     sub: { fontSize: 12, color: S.ink2, fontFamily: SOFT_REGULAR },
+    subRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    subCost: { fontSize: 12, color: S.ink, fontFamily: SOFT_SEMIBOLD },
     toNote: { height: 40, borderRadius: 20, paddingHorizontal: 16, backgroundColor: S.ink, alignItems: 'center', justifyContent: 'center' },
     toNoteText: { color: S.card, fontSize: 15, fontFamily: SOFT_MEDIUM },
     toNoteDone: { backgroundColor: S.card, boxShadow: S.shadow } as never,
@@ -1102,7 +1285,7 @@ function makeStyles(S: ReturnType<typeof useSoft>) {
     structSub: { fontSize: 12.5, color: S.ink2, fontFamily: SOFT_REGULAR },
     structOpen: { height: 40, borderRadius: 20, paddingHorizontal: 16, backgroundColor: S.ink, alignItems: 'center', justifyContent: 'center' },
     structOpenText: { fontSize: 15, color: S.card, fontFamily: SOFT_MEDIUM },
-    costCard: { position: 'absolute', right: 14, width: 270, borderRadius: 22, backgroundColor: S.card, padding: 16, gap: 2, boxShadow: S.shadow } as never,
+    costCard: { position: 'absolute', width: 270, borderRadius: 22, backgroundColor: S.card, padding: 16, gap: 2, boxShadow: S.shadow } as never,
     costHead: { fontSize: 11.5, letterSpacing: 0.4, color: S.ink2, fontFamily: SOFT_SEMIBOLD, paddingBottom: 4 },
     costRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
     costText: { fontSize: 14, color: S.ink, fontFamily: SOFT_REGULAR },
