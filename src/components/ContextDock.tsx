@@ -56,6 +56,7 @@ import {
 } from '../navigation/navDock';
 import SoftIcon, { SoftIconName } from './SoftIcon';
 import { SoftTokens, useSoft } from '../theme/soft';
+import type { DeskBead } from '../navigation/deskBeadsBus';
 import DockGlassFill, { dockInk, useDockSurface } from './DockGlassFill';
 import { useDockGlass } from '../utils/dockGlass';
 import { useRenderTimer } from '../utils/perfWatch';
@@ -2168,89 +2169,65 @@ export default function ContextDock() {
       // on the left where the desks stand, the pencil as the black circle where "+" stands, back at the right edge.
       const primary = FEATURES.deskDock && !beads.left && beads.right ? actions.find((a) => a.primary) : undefined;
       if (primary && beads.right) {
+        // THE SAME DOCK AS ON THE START DESK (2026-10-24, the user: «док всередині нотатки таким самим по розмірам як і на
+        // стартовому екрані; заміняться лише три кнопки столів на три функціональні кнопки нотатки, пошук і кулька є на
+        // обох екранах»): DeskDock in its tools mode - the note's three tools where the desks stand, the balloon and the
+        // search lens where they stand on a desk, the pencil as the black circle where «+» stands, back at the right edge.
         const rest = actions.filter((a) => a !== primary);
-        const NOTE_SIDE = 48;
-        // The capsule is the desks' own width (DESK_PILL_W), its buttons share it equally.
-        const noteButtonW = Math.floor((DESK_PILL_W - 8) / Math.max(1, rest.length));
+        const find = rest.find((a) => a.key === 'find');
+        const toolBeads: DeskBead[] = rest
+          .filter((a) => a !== find)
+          .slice(0, 3)
+          .map((a) => ({ key: a.key, label: a.label ?? '', icon: a.icon, active: !!a.active, onPress: a.onPress }));
         const back = beads.right;
+        const quiet = primary.primary === 'quiet';
         return (
           <DockPortal>
             {back.icon === 'chevron-back' && <CarriesBackMarker />}
-            <View
-              pointerEvents="box-none"
-              style={[styles.twoBeads, { bottom: softRest, left: frame.left, width: frame.width, height: TWO_BEAD, alignItems: 'center' }]}
-            >
-              {rest.length > 0 && (
-                <View style={[surface, { width: DESK_PILL_W, height: 60, borderRadius: 30, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center' }]}>
-                  {glassOn && <DockGlassFill soft={soft} />}
-                  {rest.map((action) => (
-                    <ActionButton
-                      key={action.key}
-                      action={action}
-                      width={noteButtonW}
-                      height={52}
-                      iconSize={ACT_ICON}
-                      theme={theme}
-                      onDone={() => {}}
-                      soft={soft}
-                    />
-                  ))}
-                </View>
-              )}
-              <View style={{ flex: 1 }} pointerEvents="none" />
-              {FEATURES.assistant && (
-                // The same round button as on the start desks, left of the pencil where it stands left of «+».
-                <>
+            <View pointerEvents="box-none" style={[styles.twoBeads, { bottom: softRest, left: frame.left, width: frame.width, gap: 10 }]}>
+              <DeskDock
+                state="root"
+                tools
+                circleBack
+                width={frame.width}
+                soft={soft}
+                desks={toolBeads}
+                onSearch={find ? find.onPress : () => {}}
+                searchDisabled={!find}
+                searchIcon={<SoftIcon name="search" size={20} color={soft.ink2} />}
+                searchLabel={find?.label ?? 'Пошук'}
+                plusEl={
                   <Pressable
-                    onPress={() => navigationRef.isReady() && (navigationRef.navigate as (name: string) => void)('Assistant')}
-                    accessibilityLabel="Розмова з ШІ"
+                    onPress={primary.onPress}
+                    onLongPress={primary.onLongPress}
+                    accessibilityLabel={primary.label}
                     style={({ pressed }) => [
-                      styles.softButton,
-                      {
-                        width: NOTE_SIDE,
-                        height: NOTE_SIDE,
-                        borderRadius: NOTE_SIDE / 2,
-                        backgroundColor: pressed ? soft.fillSolid : soft.card,
-                        borderWidth: 2,
-                        borderColor: soft.accent,
-                        boxShadow: soft.shadow,
-                      },
+                      styles.softFieldCreate,
+                      quiet ? surface : { backgroundColor: soft.ink },
+                      { width: DESK_PLUS, height: DESK_PLUS, borderRadius: DESK_PLUS / 2, opacity: pressed ? 0.8 : 1 },
                     ]}
                   >
-                    <BalloonMark size={27} color={soft.accent} />
+                    {glassOn && quiet && <DockGlassFill soft={soft} />}
+                    <Ionicons name={primary.icon as keyof typeof Ionicons.glyphMap} size={21} color={quiet ? iconInk : soft.chrome} />
                   </Pressable>
-                  <View style={{ width: DESK_ASSIST_GAP }} pointerEvents="none" />
-                </>
-              )}
-              <Pressable
-                onPress={primary.onPress}
-                onLongPress={primary.onLongPress}
-                accessibilityLabel={primary.label}
-                style={({ pressed }) => [
-                  styles.softButton,
-                  primary.primary === 'quiet' ? surface : { backgroundColor: soft.ink },
-                  { width: NOTE_SIDE, height: NOTE_SIDE, borderRadius: NOTE_SIDE / 2, opacity: pressed ? 0.8 : 1 },
-                ]}
-              >
-                    {glassOn && primary.primary === 'quiet' && <DockGlassFill soft={soft} />}
-                <Ionicons
-                  name={primary.icon as keyof typeof Ionicons.glyphMap}
-                  size={21}
-                  color={primary.primary === 'quiet' ? iconInk : soft.chrome}
-                />
-              </Pressable>
-              <View style={{ width: 16 }} pointerEvents="none" />
-              <Pressable
-                onPress={back.onPress}
-                onLongPress={back.onLongPress}
-                disabled={back.dimmed}
-                accessibilityLabel="Назад"
-                hitSlop={6}
-                style={[styles.softButton, surface, { width: NOTE_SIDE, height: NOTE_SIDE, borderRadius: NOTE_SIDE / 2, opacity: back.dimmed ? 0.5 : 1 }]}
-              >
-                  {glassOn && <DockGlassFill soft={soft} />}
-                <Ionicons name={back.icon as keyof typeof Ionicons.glyphMap} size={22} color={iconInk} />
-              </Pressable>
+                }
+                assist={
+                  FEATURES.assistant
+                    ? {
+                        onOpen: () =>
+                          openAssistant(
+                            () => navigationRef.isReady() && (navigationRef.navigate as (name: string) => void)('Assistant'),
+                            assistWash(soft.dark),
+                            soft.bg
+                          ),
+                      }
+                    : undefined
+                }
+                multiIcon={<Ionicons name="copy-outline" size={21} color={iconInk} />}
+                onMulti={() => {}}
+                backIcon={<Ionicons name={back.icon as keyof typeof Ionicons.glyphMap} size={22} color={iconInk} />}
+                onBack={back.onPress}
+              />
             </View>
           </DockPortal>
         );

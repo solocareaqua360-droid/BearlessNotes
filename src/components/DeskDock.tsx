@@ -220,7 +220,12 @@ export default function DeskDock({
   onBack,
   circleBack,
   assist,
+  tools,
 }: {
+  // THE NOTE'S DOCK (2026-10-24, the user: «док всередині нотатки таким самим по розмірам як і на стартовому екрані»): the
+  // places are the note's TOOLS (Полотно, Референси, Зміст) - a tap does not move the «you are here» capsule, and the
+  // desks' memory (lastDeskIndex, capMotion) is not touched; a held tool swells the lens where it is.
+  tools?: boolean;
   // THE BALLOON among the places (the AI conversation): opens a window out of itself; `back` is called once it is shut.
   assist?: { onOpen: () => void };
   state: 'root' | 'inside';
@@ -286,6 +291,12 @@ export default function DeskDock({
     const i = heldNow ? desks.length : lastDeskIndex >= 0 && lastDeskIndex < desks.length ? lastDeskIndex : Math.max(0, activeIndex);
     return { from: i, to: i, t: CAP_END };
   })();
+  if (tools) {
+    const i = Math.max(0, activeIndex);
+    born.from = i;
+    born.to = i;
+    born.t = CAP_END;
+  }
   const capFrom = useSharedValue(born.from);
   const capTo = useSharedValue(born.to);
   const capT = useSharedValue(born.t);
@@ -303,6 +314,7 @@ export default function DeskDock({
   runCapsuleRef.current = runCapsule;
   // A desk tapped on THIS dock: off at once.
   const pick = (i: number) => {
+    if (tools) return;
     const from = lastDeskIndex >= 0 ? lastDeskIndex : activeIndex;
     if (from < 0 || i === from) return;
     capMotion = { from, to: i, at: Date.now() };
@@ -312,6 +324,12 @@ export default function DeskDock({
   const capShown = useRef(lastDeskIndex >= 0);
   useEffect(() => {
     if (activeIndex < 0) return;
+    if (tools) {
+      capFrom.value = activeIndex;
+      capTo.value = activeIndex;
+      capT.value = CAP_END;
+      return;
+    }
     const m = capFresh();
     if (m && m.to === activeIndex) {
       // The journey a tap began (on this dock or the one before): carry on from where it is - unless it is this very
@@ -365,10 +383,10 @@ export default function DeskDock({
   // nothing swells under the finger - the lens rides the capsule on its way (lensPressStyle), and the press does nothing.
   const onLens = (i: number | null) => {
     if (i !== null) {
-      if (i !== capTo.value) return;
+      if (!tools && i !== capTo.value) return;
       pressAt.value = i;
       press.value = withSpring(1, { damping: 15, stiffness: 280, mass: 0.6 });
-      capHide.value = withTiming(0.65, { duration: 260, easing: Easing.inOut(Easing.quad) });
+      if (i === capTo.value) capHide.value = withTiming(0.65, { duration: 260, easing: Easing.inOut(Easing.quad) });
     } else {
       press.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
       capHide.value = withTiming(0, { duration: 90, easing: Easing.out(Easing.quad) });
