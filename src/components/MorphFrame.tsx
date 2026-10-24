@@ -22,6 +22,8 @@ import { pageScroller } from '../utils/pageScroll';
 
 const EASE = Easing.bezier(0.22, 1, 0.36, 1);
 const OUT_MS = 360;
+// How far from its top a folding note may still roll; farther, it jumps to here first (see the fold below).
+const ROLL_FAR = 1400;
 const BACK_MS = 300;
 // The card's corner, the sheet's inset and the band above the title the
 // card's picture does not have (the title used to jump up by it at the last
@@ -241,9 +243,14 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
         };
         setLeaving(true);
         if (rolling && scroller) {
-          scroller.from.value = scrolledBy;
+          // AT THE TOP WELL BEFORE IT LANDS, however long the note (the user, 2026-10-25: «регулювати швидкість прокрутки
+          // назад в залежності від довжини документу, щоб він встигав докручуватись до початку; вихід швидкий, ривка ніхто
+          // не помітить»): the roll is done by 60% of the fold, and a note scrolled far jumps at once to a screen and a half
+          // from its top and rolls only that - the page is already small by then, the jump is not seen.
+          const start = Math.min(scrolledBy, ROLL_FAR);
+          scroller.from.value = start;
           scroller.roll.value = 1;
-          scroller.roll.value = withTiming(0, { duration: BACK_MS, easing: EASE });
+          scroller.roll.value = withTiming(0, { duration: Math.round(BACK_MS * 0.6), easing: Easing.out(Easing.cubic) });
         }
         t.value = withTiming(0, { duration: BACK_MS, easing: EASE }, (finished) => {
           if (finished) shown.value = 0;
