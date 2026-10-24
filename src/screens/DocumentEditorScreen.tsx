@@ -196,7 +196,6 @@ import { BlurView } from 'expo-blur';
 import { useIsFocused } from '@react-navigation/native';
 import {
   useDockActions,
-  useTopSearch,
   useDockBeads,
   useDockOpensOnActions,
   useDockShowContext,
@@ -620,6 +619,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // SEARCH INSIDE THIS NOTE (2026-10-24, the user: a search button in the note's dock that looks through the note's own content):
   // the bar's name plate opens out into the field; every match on the page is marked and the page lands on the first one.
   const [noteSearchOpen, setNoteSearchOpen] = useState(false);
+  const [noteSearchText, setNoteSearchText] = useState('');
   const noteSearchOpenRef = useRef(false);
   noteSearchOpenRef.current = noteSearchOpen;
   const [tocCurrent, setTocCurrent] = useState<string | null>(null);
@@ -3007,21 +3007,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     else navigation.goBack();
   };
   useTopBack(embedded ? null : leaveNote, !embedded);
-  // The search field of «Пошук» in the dock: typing marks the matches and the page lands on the first.
-  useTopSearch(
-    noteSearchOpen
-      ? {
-          placeholder: 'Знайти в нотатці',
-          initialQuery: '',
-          onChangeQuery: (q) => setSearchFlash(q.trim() || undefined),
-          onClose: () => {
-            setNoteSearchOpen(false);
-            setSearchFlash(undefined);
-          },
-        }
-      : null,
-    !embedded && !pointerDensity
-  );
+
   // THE WAY BACK IS THE DOCK'S RIGHT CIRCLE here too (2026-10-15, the user's: «на документі треба зробити кнопку
   // назад в правому нижньому куті як всюди»): the bar at the top then drops its own (CarriesBackMarker), and its
   // left edge is free for the voice player's capsule.
@@ -3280,7 +3266,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // ...nor while «Референси» stands there as a sheet: it takes the foot
   // of the screen, and its own grabber and ✕ are the way back.
   const dockLive =
-    !embedded && editorFocused && !keyboardOpen && panelSection === null && !panelClosing &&
+    !embedded && editorFocused && !keyboardOpen && !noteSearchOpen && panelSection === null && !panelClosing &&
     !(referenceSheet && referencePanelOpen);
   // THE DAILY NOTE'S SELECT MODE REACHES THE DOCK TOO, though the note
   // itself has no card there (the calendar owns the dock's context).
@@ -6285,6 +6271,41 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           updateDoc(doc(db, 'documents', documentId), { coverFrame: f }).catch(() => {});
         }}
       />
+      {noteSearchOpen && !embedded && !canvasMode && (
+        // THE NOTE'S OWN SEARCH FIELD (2026-10-24). It first rode in the dock's search plate - and shook: the editor takes its
+        // dock away whenever the keyboard is up (dockLive), the plate went with it, the keyboard fell, the dock came back, and
+        // round again. A field of the note's own stands where the keyboard ends and nothing else here depends on it.
+        <View
+          style={{ position: 'absolute', left: 10, right: 10, bottom: keyboardHeight > 0 ? keyboardHeight + 8 : menuClearance, height: 56, borderRadius: 28, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 16, paddingRight: 8, backgroundColor: soft?.card ?? theme.raised, boxShadow: soft?.shadow, zIndex: 40 } as never}
+        >
+          <Ionicons name="search-outline" size={19} color={theme.ink.muted} />
+          <TextInput
+            autoFocus
+            value={noteSearchText}
+            onChangeText={(t) => {
+              setNoteSearchText(t);
+              setSearchFlash(t.trim() || undefined);
+            }}
+            placeholder="Знайти в нотатці"
+            placeholderTextColor={theme.ink.muted}
+            style={{ flex: 1, fontSize: 16.5, color: theme.ink.primary, paddingVertical: 0 }}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          <Pressable
+            hitSlop={8}
+            accessibilityLabel="Закрити пошук"
+            onPress={() => {
+              setNoteSearchOpen(false);
+              setNoteSearchText('');
+              setSearchFlash(undefined);
+            }}
+            style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="close" size={18} color={theme.ink.primary} />
+          </Pressable>
+        </View>
+      )}
       {tocOpen && dockLive && !notePanelOn && !canvasMode && (
         <View style={{ position: 'absolute', width: NOTE_DOCK_CAPSULE_W, left: NOTE_DOCK_LEFT, bottom: menuClearance, maxHeight: Math.min(260, windowHeight - menuClearance - editorInsets.top - 24), borderRadius: 20, padding: 8, backgroundColor: theme.raised, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.edge.hairline, zIndex: 30 }} pointerEvents="box-none">
           <NoteOutline items={outline} currentId={tocCurrent} onPick={pickSection} />
