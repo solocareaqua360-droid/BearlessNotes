@@ -64,6 +64,7 @@ import { GestureDetector } from 'react-native-gesture-handler';
 import CreateFan from '../components/CreateFan';
 import QuickCreateHost from '../components/QuickCreateHost';
 import CollectionWindow, { type CollectionKind } from '../components/CollectionWindow';
+import ThoughtsSquare from '../components/thoughts/ThoughtsSquare';
 import ThoughtsFolder from '../components/thoughts/ThoughtsFolder';
 import ImageFrameEditor from '../components/ImageFrameEditor';
 import ProjectsBand, { NO_PROJECT, projectCardShape } from '../components/ProjectsBand';
@@ -2604,6 +2605,51 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         : 0;
     return <Animated.View entering={coming ? cornerIn(Math.min(cardsBefore + rowIndex, 12) * 32) : undefined}>{el}</Animated.View>;
   };
+  // The clean look's first level shows «Думки» as a square (ThoughtsSquare) - where the wide card stood.
+  const thoughtsSquare =
+    FEATURES.thoughts && !modernLook && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT);
+  const squareSide = Math.floor((contentW - FOLDER_GAP) / 2);
+  // One folder of the clean look's list (a pill: its icon, name and count); `extra` sizes it beside the square «Думки».
+  const folderPill = (f: FolderEntry, extra?: object) => (
+          <Pressable
+            key={f.path}
+            ref={(node) => {
+              carrying.carry.registerFolder(f.path)(node as never);
+              if (f.path !== UNFILED) carrying.carry.registerCard(`folder:${f.path}`, () => carrying.groupFor(folderItem(f)), () => holdFolder(f))(node as never);
+            }}
+            collapsable={false}
+            onPress={() => {
+              closeSearch();
+              if (f.playlist) setPlaylistPath(f.path);
+              else if (f.collection) setCollectionOpen({ path: f.path, kind: f.collection });
+              else setPath(f.path);
+            }}
+            style={[styles.folder, { backgroundColor: S.card, boxShadow: S.popShadow }, f.playlist && styles.playlistCard, extra]}
+          >
+            {f.playlist ? (
+              <PlaylistFace
+                videos={items
+                  .filter((i) => i.kind === 'link' && i.linkCategory === 'video' && (pathsOf.get(i.id) ?? []).includes(f.path))
+                  .slice(0, 3)
+                  .map(videoOf)}
+                name={f.name}
+                count={f.count}
+              />
+            ) : (
+            <>
+            <View style={[styles.seat, { backgroundColor: S.bg }]}>
+              <Ionicons name={(f.icon as never) || ("folder-outline" as never)} size={22} color={f.color ?? S.ink2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.folderName, { color: S.ink }]} numberOfLines={1}>
+                {f.name}
+              </Text>
+              <Text style={[styles.folderCount, { color: S.ink3 }]}>{f.count}</Text>
+            </View>
+            </>
+            )}
+          </Pressable>
+  );
   const headerBody = (
     <>
       {/* THE LIVING FOLDER of thoughts, first on the explorer's first level (components/thoughts). */}
@@ -2640,7 +2686,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         </View>
       )}
       {FEATURES.thoughts && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT) &&
-        <ThoughtsFolder late={projectsHere} />}
+        !thoughtsSquare && <ThoughtsFolder late={projectsHere} />}
       {modernLook && !!path && cardTagOf(path) && (
         // Edge to edge and up under the bar: out of the list's own side and top padding.
         <View style={{ marginHorizontal: -20, marginTop: -listTopPad, marginBottom: 18 }}>
@@ -2787,49 +2833,24 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           })()}
         </View>
       )}
+      {/* THE SQUARE «ДУМКИ» (sketch XCmYdqyLVpvVDxGWqyVm8b): a folder's square with two of the folders beside it, the rest of
+          the list under them. */}
+      {thoughtsSquare && (
+        <View style={[styles.folders, { flexWrap: 'nowrap', marginBottom: FOLDER_GAP }]}>
+          <ThoughtsSquare size={squareSide} />
+          <View style={{ flex: 1, gap: FOLDER_GAP }}>
+            {folders
+              .filter((f) => !collKindOf(f))
+              .slice(0, 2)
+              .map((f) => folderPill(f, { width: '100%', height: (squareSide - FOLDER_GAP) / 2, flexGrow: 0 }))}
+          </View>
+        </View>
+      )}
       <View style={styles.folders}>
-        {(modernLook ? [] : folders).filter((f) => !collKindOf(f)).map((f) => {
-          return (
-          <Pressable
-            key={f.path}
-            ref={(node) => {
-              carrying.carry.registerFolder(f.path)(node as never);
-              if (f.path !== UNFILED) carrying.carry.registerCard(`folder:${f.path}`, () => carrying.groupFor(folderItem(f)), () => holdFolder(f))(node as never);
-            }}
-            collapsable={false}
-            onPress={() => {
-              closeSearch();
-              if (f.playlist) setPlaylistPath(f.path);
-              else if (f.collection) setCollectionOpen({ path: f.path, kind: f.collection });
-              else setPath(f.path);
-            }}
-            style={[styles.folder, { backgroundColor: S.card, boxShadow: S.popShadow }, f.playlist && styles.playlistCard]}
-          >
-            {f.playlist ? (
-              <PlaylistFace
-                videos={items
-                  .filter((i) => i.kind === 'link' && i.linkCategory === 'video' && (pathsOf.get(i.id) ?? []).includes(f.path))
-                  .slice(0, 3)
-                  .map(videoOf)}
-                name={f.name}
-                count={f.count}
-              />
-            ) : (
-            <>
-            <View style={[styles.seat, { backgroundColor: S.bg }]}>
-              <Ionicons name={(f.icon as never) || ("folder-outline" as never)} size={22} color={f.color ?? S.ink2} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.folderName, { color: S.ink }]} numberOfLines={1}>
-                {f.name}
-              </Text>
-              <Text style={[styles.folderCount, { color: S.ink3 }]}>{f.count}</Text>
-            </View>
-            </>
-            )}
-          </Pressable>
-          );
-        })}
+        {(modernLook ? [] : folders)
+          .filter((f) => !collKindOf(f))
+          .slice(thoughtsSquare ? 2 : 0)
+          .map((f) => folderPill(f))}
         {!modernLook && !path && !inBin && !inCleanup && !filtering && !searching && binned.length > 0 && (!projectsHere || focusProj === NO_PROJECT) && (
           <Pressable onPress={enterBin} style={[styles.folder, { backgroundColor: S.card, boxShadow: S.popShadow }]}>
             <View style={[styles.seat, { backgroundColor: S.bg }]}>
