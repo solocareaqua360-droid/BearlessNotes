@@ -911,12 +911,27 @@ export default function BlockRow({
         {...softCursor(theme.scheme)}
         onSelectionChange={({ nativeEvent }) => {
           const { start, end } = nativeEvent.selection;
+          const before = lastSelectionRef.current;
           lastSelectionRef.current = { start, end };
-          // The caret never stands inside a note link: landing there is a
-          // tap on it - its menu, and the caret put after it.
+          // The caret never stands inside a note link. Stepping into it a letter at a time - the keyboard's space-bar
+          // drag, its arrows - carries it ACROSS to the other side (the user, 2026-10-25: no way to get in front of a
+          // word-link); landing in it by a jump is a tap on it - its menu, and the caret put after it.
           if (type !== 'code' && start === end && onNoteLinkMenu) {
             const span = noteLinkSpans(item.text).find((s) => start > s.displayStart && start < s.displayEnd);
             if (span) {
+              const from = before && before.start === before.end ? before.start : null;
+              if (from !== null && from >= span.displayEnd && start >= from - 2) {
+                setSelection(localInputRef.current, span.displayStart, span.displayStart);
+                lastSelectionRef.current = { start: span.displayStart, end: span.displayStart };
+                onSelectionChange(item.id, span.displayStart, span.displayStart);
+                return;
+              }
+              if (from !== null && from <= span.displayStart && start <= from + 2) {
+                setSelection(localInputRef.current, span.displayEnd, span.displayEnd);
+                lastSelectionRef.current = { start: span.displayEnd, end: span.displayEnd };
+                onSelectionChange(item.id, span.displayEnd, span.displayEnd);
+                return;
+              }
               setSelection(localInputRef.current, span.displayEnd, span.displayEnd);
               onNoteLinkMenu(item.id, span.documentId, span.label);
               return;
