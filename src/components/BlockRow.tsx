@@ -292,6 +292,9 @@ export default function BlockRow({
   const lastSelectionRef = useRef<{ start: number; end: number } | null>(null);
   // For the note-link caret rule (onSelectionChange): when a letter was last typed, and the text as it now stands.
   const typedAtRef = useRef(0);
+  // When a finger last touched the field, and the last caret place outside every link (which way the caret was going).
+  const touchedAtRef = useRef(0);
+  const outsideCaretRef = useRef<number | null>(null);
   const latestTextRef = useRef(item.text ?? '');
   latestTextRef.current = item.text ?? '';
   // The panel blurs the field to take the keyboard down, and a blurred field draws no selection. Once the keyboard
@@ -913,34 +916,32 @@ export default function BlockRow({
         }
         onFocus={() => onFocus(item.id)}
         onBlur={() => onBlur(item.id)}
+        onPressIn={() => (touchedAtRef.current = Date.now())}
         {...softCursor(theme.scheme)}
         onSelectionChange={({ nativeEvent }) => {
           const { start, end } = nativeEvent.selection;
-          const before = lastSelectionRef.current;
           lastSelectionRef.current = { start, end };
-          // The caret never stands inside a note link. Stepping into it a letter at a time - the keyboard's space-bar
-          // drag, its arrows - carries it ACROSS to the other side (the user, 2026-10-25: no way to get in front of a
-          // word-link); landing in it by a jump is a tap on it - its menu, and the caret put after it.
-          // Checked a beat LATER, against the text as it is by then, and never while typing: Android reports the caret
-          // moved before it reports the letter typed, so typing in front of a link read as stepping into it (the user:
-          // «працює лише введення двох символів далі відкривається вікно»).
+          // The caret never stands inside a note link. Put there by a FINGER on the text it is a tap on the link - its
+          // menu, the caret after it; moved there by the keyboard (the space-bar drag, its arrows) it is carried ACROSS
+          // to the side it was heading for (the user, 2026-10-25: a word before the link made the drag open the menu).
+          // Checked a beat later, against the text as it then is, and never right after a letter is typed: Android
+          // tells the caret moved before it tells the letter came.
           if (type !== 'code' && start === end && onNoteLinkMenu) {
+            if (!noteLinkSpans(latestTextRef.current).some((sp) => start > sp.displayStart && start < sp.displayEnd)) outsideCaretRef.current = start;
             setTimeout(() => {
               if (Date.now() - typedAtRef.current < 400) return;
               const now = lastSelectionRef.current;
               if (!now || now.start !== start || now.end !== end) return;
               const span = noteLinkSpans(latestTextRef.current).find((sp) => start > sp.displayStart && start < sp.displayEnd);
               if (!span) return;
-              const from = before && before.start === before.end ? before.start : null;
-              const to =
-                from !== null && from >= span.displayEnd && start >= from - 2
-                  ? span.displayStart
-                  : span.displayEnd;
+              const byFinger = Date.now() - touchedAtRef.current < 700;
+              const from = outsideCaretRef.current;
+              const to = !byFinger && from !== null && from >= span.displayEnd ? span.displayStart : span.displayEnd;
               setSelection(localInputRef.current, to, to);
               lastSelectionRef.current = { start: to, end: to };
+              outsideCaretRef.current = to;
               onSelectionChange(item.id, to, to);
-              const stepped = from !== null && ((from >= span.displayEnd && start >= from - 2) || (from <= span.displayStart && start <= from + 2));
-              if (!stepped) onNoteLinkMenu(item.id, span.documentId, span.label);
+              if (byFinger) onNoteLinkMenu(item.id, span.documentId, span.label);
             }, 60);
           }
           onSelectionChange(item.id, start, end);
