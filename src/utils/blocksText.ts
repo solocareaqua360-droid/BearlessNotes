@@ -51,6 +51,9 @@ export function blocksToMarkdown(blocks: Block[]): string {
       case 'sketch':
         out.push('[Малюнок]');
         return;
+      case 'dbTable':
+        out.push('[Таблиця з бази]');
+        return;
       case 'docRef':
         out.push(`[Нотатка: ${b.docRefTitle || 'без назви'}]`);
         return;

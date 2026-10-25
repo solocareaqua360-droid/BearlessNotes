@@ -45,6 +45,11 @@ export type BlockType =
   // as 'dbRow', one level up: the block shows whichever rows currently
   // match the view's filter, not a fixed list picked at insert time.
   | 'dbView'
+  // A TABLE OF A DATABASE'S RECORDS (2026-10-25, the user's: «таблиця, яка просто показує елементи бази»): looks like the
+  // note's own table, and every setting - which records (a condition + ones added or taken out by hand), columns and their
+  // order, the order of rows, how many show - lives IN the block (Block.dbTable), not in a saved view of the base: copying
+  // the block is how it is reused. The records themselves are live.
+  | 'dbTable'
   // Another DOCUMENT, embedded as a card. The user's own words: "вставити
   // в документ картку іншого документа (як посилання)".
   //
@@ -242,6 +247,9 @@ export interface Block {
   // loaded) and a fallback name for while it loads or after it's deleted.
   dbViewDatabaseId?: string;
   dbViewTitle?: string;
+  // 'dbTable' blocks only - see the 'dbTable' type and DbTableSettings.
+  dbTableDatabaseId?: string;
+  dbTable?: DbTableSettings;
   // 'checkbox' blocks only - standard properties of the "справа" object
   // type (hardcoded, unlike a future user-defined type's properties).
   // References a doc in the shared 'groups' collection (see Group) - a
@@ -1290,4 +1298,22 @@ export interface CustomDatabaseRow {
   usedInDocuments?: Record<string, boolean>;
   createdAt: number;
   updatedAt: number;
+}
+
+// A 'dbTable' block's own settings (see that block type). Every field optional: absent = the default.
+export interface DbTableSettings {
+  // Which records: 'filter' (default) = the condition below; 'manual' = none but the ones added by hand.
+  source?: 'filter' | 'manual';
+  // The condition (utils/customRowQuery RowFilter shape); empty = every record.
+  filters?: { fieldId: string; op: 'any' | 'filled' | 'empty'; values?: string[] }[];
+  // Records added by hand (shown whatever the condition says) and taken out by hand (hidden here only).
+  added?: string[];
+  removed?: string[];
+  // The row order: 'title' / 'createdAt' / 'updatedAt' or a field id.
+  sortField?: string;
+  sortDir?: 'asc' | 'desc';
+  // The columns, in their order (field ids). Absent = the base's visible fields, first five.
+  columns?: string[];
+  // How many rows show folded; 0 = all. Absent = 5.
+  rows?: number;
 }

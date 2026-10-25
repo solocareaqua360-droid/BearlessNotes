@@ -256,7 +256,7 @@ const DESKTOP_NOTE_MEASURE = 860;
 // padding either side - measured off the phone (uiautomator: 53..735 px at 420 dpi). The contents card is exactly that wide, not the dock's whole row.
 const NOTE_DOCK_LEFT = 20;
 // Blocks the page does not draw as marked text - the note's search does not count matches in them.
-const NOT_SEARCHED_TYPES = new Set(['image', 'file', 'link', 'sketch', 'table', 'dbRow', 'dbView', 'flashcard', 'code', 'divider']);
+const NOT_SEARCHED_TYPES = new Set(['image', 'file', 'link', 'sketch', 'table', 'dbRow', 'dbView', 'dbTable', 'flashcard', 'code', 'divider']);
 const NOTE_DOCK_CAPSULE_W = DESK_PILL_W;
 const REFERENCES_SPLIT_MIN = 640;
 
@@ -464,7 +464,7 @@ function printHtmlInFrame(html: string) {
 }
 
 // Blocks the AI window leaves alone (it works on text; a table is text too - utils/blocksText writes it out).
-const AI_SKIPS = ['image', 'file', 'sketch', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'];
+const AI_SKIPS = ['image', 'file', 'sketch', 'dbRow', 'dbView', 'dbTable', 'docRef', 'link', 'divider', 'flashcard'];
 
 function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHandle>) {
   // Temporary diagnosis - see utils/perfWatch.
@@ -519,6 +519,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         !!b.sketchElements?.length ||
         !!b.dbRowDatabaseId ||
         !!b.dbViewDatabaseId ||
+        !!b.dbTableDatabaseId ||
         !!b.docRefId ||
         b.type === 'divider' ||
         b.type === 'table'
@@ -4328,7 +4329,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       return;
     }
 
-    if (!['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
+    if (!['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'dbTable', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
       const inserted = insertedPiece(current?.text ?? '', text);
       // Blocks copied or cut in the app come back whole, not as their text.
       const whole = inserted ? takeHeldBlocks(inserted.piece) : null;
@@ -4346,13 +4347,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
     // A slash typed into an EMPTY block, and only then - a "/" in the
     // middle of a sentence is a slash.
-    if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType) && notePanelOn) {
+    if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'dbTable', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType) && notePanelOn) {
       // The Mac: a flat list under the caret that filters as the word after the slash is typed (SlashPopup).
       const at = caretPoint();
       const below = at ? at.top + at.height + 6 : 200;
       const room = typeof window !== 'undefined' ? window.innerHeight - below : 400;
       setSlash({ id, left: at ? Math.max(8, at.left - 6) : 200, top: room < 270 && at ? Math.max(8, at.top - 262) : below });
-    } else if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
+    } else if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'dbTable', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
       openSlashMenu(id);
     }
 

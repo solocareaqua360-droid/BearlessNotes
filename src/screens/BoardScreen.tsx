@@ -137,7 +137,7 @@ import Menu, { MENU_WIDTH } from '../components/surfaces/Menu';
 import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import {
-  GLASS_BODY_BLURRED,
+  GLASS_BODY,
   GLASS_CARD,
   GLASS_EDGE,
   GLASS_ISLAND,
@@ -10455,7 +10455,7 @@ const makeStyles = (theme: Theme) =>
     // since the panel's own background can't paint over its BlurView
     // child (a parent's fill draws BEHIND what it renders, not on top).
     layersPanelTint: {
-      backgroundColor: GLASS_BODY_BLURRED,
+      backgroundColor: GLASS_BODY, // a rising sheet has no blur behind it (GlassLayer `rise`): the 0.55 body let the page show through
     },
     layersHeader: {
       flexDirection: 'row',

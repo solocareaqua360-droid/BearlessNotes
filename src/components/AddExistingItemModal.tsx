@@ -1,4 +1,6 @@
 import { useStyles, useTheme } from '../theme/ThemeProvider';
+import { ask } from './surfaces/Ask';
+import { blockForDbTable } from '../utils/dbTable';
 import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -25,7 +27,7 @@ import { rowTitleOf } from '../utils/customRowDisplay';
 import { labelForBlock } from '../utils/objectClipboard';
 import {
   GLASS_BACKDROP,
-  GLASS_BODY_BLURRED,
+  GLASS_BODY,
   GLASS_LINE,
   GLASS_TEXT,
   GLASS_TEXT_FAINT,
@@ -216,7 +218,10 @@ export default function AddExistingItemModal({
   // still wins).
   const deskSoft = useSoft();
   const pointer = useDensity() === 'pointer';
-  const soft = softProp ?? (pointer ? deskSoft : undefined);
+  // The phone wears it too now (2026-10-25): its dark body under the theme's dark ink was unreadable once the rising
+  // sheet lost the blur behind it - the soft card is the same white as every other sheet.
+  const soft = softProp ?? deskSoft;
+  void pointer;
   const baseStyles = useStyles(makeStyles);
   // Soft: the same browser in the soft material - the quiet ground, pill
   // tabs, a capsule search, icons in ink rather than the accent. Laid
@@ -678,6 +683,18 @@ export default function AddExistingItemModal({
                     {openDatabase.name || 'База'}
                   </Text>
                 </Pressable>
+                {/* A TABLE of this base's records, its settings its own (DbTableBlock) - first, it is what a note most
+                    often wants of a base. */}
+                <View ref={rowRef?.(`table-${openDatabase.id}`, () => blockForDbTable(openDatabase.id), 'Таблиця')} collapsable={false}>
+                <Pressable style={styles.row} onPress={() => onPick(blockForDbTable(openDatabase.id))}>
+                  <View style={styles.docIcon}>
+                    <Ionicons name="grid-outline" size={18} color={accent} />
+                  </View>
+                  <Text style={styles.rowText} numberOfLines={1}>
+                    Таблиця з записів бази
+                  </Text>
+                </Pressable>
+                </View>
                 {/* Saved views first, under their own label - a live,
                     filtered slice of the database is a coarser, more
                     useful thing to embed than one row, so it leads. */}
@@ -694,7 +711,21 @@ export default function AddExistingItemModal({
                         });
                       return (
                       <View key={v.id} ref={rowRef?.(`view-${v.id}`, build, v.name || 'Вигляд')} collapsable={false}>
-                      <Pressable style={styles.row} onPress={() => onPick(build())}>
+                      <Pressable
+                        style={styles.row}
+                        onPress={async () => {
+                          // A view goes in as a TABLE (its condition and order copied into the block) or as the live cards it was.
+                          const how = await ask({
+                            title: v.name || 'Вигляд',
+                            actions: [
+                              { id: 'table', label: 'Таблицею', hint: 'Умову й порядок скопійовано - далі налаштовується тут', icon: 'grid-outline' },
+                              { id: 'cards', label: 'Картками', hint: 'Живий вигляд бази', icon: 'albums-outline' },
+                            ],
+                          });
+                          if (how === 'table') onPick(blockForDbTable(openDatabase.id, { filters: v.filters, sortField: v.sortField, sortDir: v.sortDir }));
+                          else if (how === 'cards') onPick(build());
+                        }}
+                      >
                         <View style={styles.docIcon}>
                           <Ionicons name="bookmark-outline" size={18} color={accent} />
                         </View>
@@ -838,7 +869,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   sheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: GLASS_BODY, // a rising sheet has no blur behind it (GlassLayer `rise`): the 0.55 body let the page show through
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
     paddingTop: 12,

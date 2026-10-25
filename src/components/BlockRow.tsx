@@ -1,4 +1,5 @@
 import FlashcardBlockCard from './FlashcardBlockCard';
+import DbTableBlock from './DbTableBlock';
 import { ask } from './surfaces/Ask';
 import { HIGHLIGHT_COLORS } from './EditorToolbar';
 import { foldOf } from '../utils/toggleBlocks';
@@ -808,6 +809,13 @@ export default function BlockRow({
           onOpen={(id) => onOpenDocument?.(id)}
           editTitle={naming ? { onDone: (title) => finishNaming(item.id, title) } : undefined}
         />
+      </View>
+    );
+  } else if (type === 'dbTable') {
+    // A table of a base's records, every setting its own (DbTableBlock).
+    content = (
+      <View style={styles.dbRowBlock}>
+        <DbTableBlock block={item} disabled={isSelectMode} onUpdate={(patch) => onUpdateBlock(item.id, patch)} onOpenRow={onOpenCustomRow} />
       </View>
     );
   } else if (type === 'dbView') {

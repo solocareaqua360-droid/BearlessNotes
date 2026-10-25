@@ -64,7 +64,7 @@ import {
 } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
 import {
-  GLASS_BODY_BLURRED,
+  GLASS_BODY,
   GLASS_CARD,
   GLASS_DANGER,
   GLASS_LINE,
@@ -305,9 +305,12 @@ export default function CustomDatabaseScreen({
     databaseId?: string;
     openRowId?: string;
     openViewId?: string;
+    // Opened from a note's table (DbTableBlock «Відкрити в базі»): only these records, until «Усі записи».
+    onlyRowIds?: string[];
   };
   const databaseId = databaseIdProp ?? params.databaseId ?? '';
   const { openRowId, openViewId } = params;
+  const [onlyRows, setOnlyRows] = useState<string[] | null>(params.onlyRowIds ?? null);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   // In front: the start desk's recents.
@@ -1279,7 +1282,9 @@ export default function CustomDatabaseScreen({
     return { ...display, chips: display.chips.filter((c) => !hiddenFieldIds.includes(c.field.id)) };
   }
 
-  const pendingFilteredRows = filterPending(rows);
+  // Not a hook: this stands below the «!database» early return.
+  const onlySet = onlyRows ? new Set(onlyRows) : null;
+  const pendingFilteredRows = onlySet ? filterPending(rows).filter((r) => onlySet.has(r.id)) : filterPending(rows);
   const groupFilteredRows =
     groupFilter === null
       ? pendingFilteredRows
@@ -5101,6 +5106,16 @@ export default function CustomDatabaseScreen({
       />
 
       {toast && <UndoToast message={toast.message} onUndo={() => undo(toast.id)} />}
+      {/* Opened from a note's table: only its records - one tap shows the whole base again. */}
+      {onlySet && (
+        <Pressable
+          onPress={() => setOnlyRows(null)}
+          style={[styles.onlyRowsPill, { bottom: insets.bottom + 96, backgroundColor: softDb ? softDb.ink : '#111827' }]}
+        >
+          <Text style={[styles.onlyRowsText, { color: softDb ? softDb.card : '#FFFFFF' }]}>{`Записи з нотатки · ${onlySet.size}`}</Text>
+          <Text style={[styles.onlyRowsText, { color: softDb ? softDb.card : '#FFFFFF', opacity: 0.7 }]}>Показати всі</Text>
+        </Pressable>
+      )}
     </View>
     </SoftSurfaceContext.Provider>
   );
@@ -5918,7 +5933,7 @@ const makeMiniStyles = (t: Theme) => StyleSheet.create({
     // the calendar's own original 340, and were clipping their last
     // button off the edge.
     maxWidth: 430,
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: GLASS_BODY, // a rising sheet has no blur behind it (GlassLayer `rise`): the 0.55 body let the page show through
     overflow: 'hidden',
     padding: 16,
   },
@@ -6479,6 +6494,8 @@ const softCustomDatabase = (S: SoftTokens) =>
   }) as Record<string, object>;
 
 const makeStyles = (t: Theme) => StyleSheet.create({
+  onlyRowsPill: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', gap: 12, alignItems: 'center', height: 40, paddingHorizontal: 18, borderRadius: 20 },
+  onlyRowsText: { fontSize: 14, fontWeight: '600' },
   container: {
     flex: 1,
   },
@@ -6709,7 +6726,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   pageContainer: {
     ...SHEET_WINDOW,
     maxHeight: '85%',
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: GLASS_BODY, // a rising sheet has no blur behind it (GlassLayer `rise`): the 0.55 body let the page show through
     overflow: 'hidden',
   },
   pageHeader: {
@@ -7296,7 +7313,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   sheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: GLASS_BODY, // a rising sheet has no blur behind it (GlassLayer `rise`): the 0.55 body let the page show through
     overflow: 'hidden',
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
@@ -7307,7 +7324,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   // The parameters window: the same box as the record form, so the two
   // read as one family of windows rather than two inventions.
   paramsSheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: GLASS_BODY, // a rising sheet has no blur behind it (GlassLayer `rise`): the 0.55 body let the page show through
     overflow: 'hidden',
     ...SHEET_WINDOW,
     paddingBottom: 10,
@@ -7517,7 +7534,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     color: '#fff',
   },
   editorSheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: GLASS_BODY, // a rising sheet has no blur behind it (GlassLayer `rise`): the 0.55 body let the page show through
     overflow: 'hidden',
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
@@ -7720,7 +7737,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     ...SHEET_BACKDROP,
   },
   cardMenuSheet: {
-    backgroundColor: GLASS_BODY_BLURRED,
+    backgroundColor: GLASS_BODY, // a rising sheet has no blur behind it (GlassLayer `rise`): the 0.55 body let the page show through
     overflow: 'hidden',
     ...SHEET_WINDOW,
     paddingHorizontal: 20,
