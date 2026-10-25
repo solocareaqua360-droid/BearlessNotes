@@ -5,7 +5,7 @@ import { useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_BACKDROP, SHEET_WINDOW } from '../constants/glass';
 import type { CustomDatabase, CustomDatabaseRow } from '../types';
-import { displayFieldValue, rowTitleOf, visibleFieldsOf, type RowDisplayContext } from '../utils/customRowDisplay';
+import { displayFieldValue, rowTitleOf, type RowDisplayContext } from '../utils/customRowDisplay';
 import type { FlipFrom } from '../utils/flipOpen';
 
 // A RECORD OVER THE NOTE (the user, 2026-10-25: «по запису відкривав картку поверх документу»): a row of a note's
@@ -27,7 +27,8 @@ export default function DbRecordCard({
   onEdit: (rowId: string) => void;
 }) {
   const S = useSoft();
-  const fields = visibleFieldsOf(database).slice(1);
+  // Every field, hidden ones too - hiding is the list's, the record page shows them all; a section is a heading, no value.
+  const fields = (database?.fields ?? []).slice(1).filter((f) => f.type !== 'section');
   return (
     <GlassLayer visible={!!row} onClose={onClose} flipFrom={flipFrom}>
       <View style={SHEET_BACKDROP} pointerEvents="box-none">
