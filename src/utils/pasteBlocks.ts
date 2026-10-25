@@ -14,6 +14,8 @@ export type ParsedBlock = {
   text: string;
   checked?: boolean;
   headingLevel?: number;
+  // A list item's nesting in the pasted text: two spaces (or a tab) a step, as Markdown writes it (Block.indent).
+  indent?: number;
   codeLanguage?: string;
   tableRows?: TableRow[];
 };
@@ -25,6 +27,12 @@ const HEADING = /^\s*(#{1,6})\s+(.*)$/;
 // A line that is only a rule.
 const DIVIDER = /^\s*([-*_])\1{2,}\s*$/;
 // "- ", "* ", "• " - and the checkbox forms that start the same way.
+// How far a list line stands in: two spaces or a tab a step, up to four.
+function stepsOf(line: string): { indent?: number } {
+  const lead = (line.match(/^[ \t]*/)?.[0] ?? '').replace(/\t/g, '  ').length;
+  const steps = Math.min(4, Math.floor(lead / 2));
+  return steps > 0 ? { indent: steps } : {};
+}
 const BULLET = /^\s*[-*•]\s+(.*)$/;
 const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
 // "[ ] ", "[x] ", and the same behind a bullet: "- [ ] ".
@@ -146,19 +154,19 @@ export function parsePastedText(raw: string): ParsedBlock[] {
     const checkbox = line.match(CHECKBOX);
     if (checkbox) {
       flush();
-      out.push({ type: 'checkbox', text: inlineMarkdown(checkbox[2]), checked: checkbox[1].toLowerCase() === 'x' });
+      out.push({ type: 'checkbox', text: inlineMarkdown(checkbox[2]), checked: checkbox[1].toLowerCase() === 'x', ...stepsOf(line) });
       continue;
     }
     const numbered = line.match(NUMBERED);
     if (numbered) {
       flush();
-      out.push({ type: 'numbered', text: inlineMarkdown(numbered[1]) });
+      out.push({ type: 'numbered', text: inlineMarkdown(numbered[1]), ...stepsOf(line) });
       continue;
     }
     const bullet = line.match(BULLET);
     if (bullet) {
       flush();
-      out.push({ type: 'bulleted', text: inlineMarkdown(bullet[1]) });
+      out.push({ type: 'bulleted', text: inlineMarkdown(bullet[1]), ...stepsOf(line) });
       continue;
     }
     paragraph.push(line);

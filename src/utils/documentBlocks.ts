@@ -43,7 +43,43 @@ export function retype(block: Block, type: BlockType): Block {
   if (block.canvas) next.canvas = block.canvas;
   if (block.canvasGroup) next.canvasGroup = block.canvasGroup;
   if (block.exitsToggle) next.exitsToggle = true;
+  if (block.indent) next.indent = block.indent;
   return next;
+}
+
+// THE INDENT (Block.indent): one step's width on the page, and how deep it goes.
+export const INDENT_STEP = 24;
+export const MAX_INDENT = 4;
+export const indentOf = (block: Block): number => Math.max(0, Math.min(MAX_INDENT, Math.round(block.indent ?? 0)));
+// The block one step in or out; 0 drops the field (Firestore takes no undefined, and none is shorter than a 0).
+export function withIndent(block: Block, delta: number): Block {
+  const next = Math.max(0, Math.min(MAX_INDENT, indentOf(block) + delta));
+  if (next === indentOf(block)) return block;
+  if (next === 0) {
+    const { indent: _gone, ...rest } = block;
+    return rest as Block;
+  }
+  return { ...block, indent: next };
+}
+// A list item's mark by its step: a dot, a ring, a square, then round again - so a sub-list reads as one at a glance.
+export function bulletFor(level: number): string {
+  return ['•', '◦', '▪'][level % 3];
+}
+// THE NUMBERS of a page's numbered items, step-aware: each step counts on its own, a deeper item (of any list kind, or an
+// indented line) does not break the run above it, and anything at a shallower step - or any unindented non-numbered
+// block - ends the runs below it. Index-aligned with `blocks`; 0 for a block that is not numbered.
+export function listNumbers(blocks: Block[]): number[] {
+  const counts: number[] = [];
+  return blocks.map((block) => {
+    const level = indentOf(block);
+    if ((block.type ?? 'paragraph') === 'numbered') {
+      counts.length = Math.min(counts.length, level + 1);
+      counts[level] = (counts[level] ?? 0) + 1;
+      return counts[level];
+    }
+    counts.length = Math.min(counts.length, level);
+    return 0;
+  });
 }
 
 export function newBlock(): Block {

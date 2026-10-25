@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { listNumbers } from '../utils/documentBlocks';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -58,9 +59,11 @@ function DayPageMiniature({
   const height = pageHeight * scale;
   let runningNumber = 0;
   let indented = false;
+
   // A folded section is folded here too - see visibleBlocks. A card that
   // showed what its page hides would stop being the same picture.
   const shown = visibleBlocks(blocks).slice(0, MAX_ROWS);
+  const shownNumbers = listNumbers(shown);
   const depth = useContext(PreviewDepthContext);
   const textScale = useTextScale();
   return (
@@ -107,11 +110,7 @@ function DayPageMiniature({
             than the page it stands for. */}
         <View style={editorStyles.blockListContainer}>
         {shown.map((item, index) => {
-          if (item.type === 'numbered') {
-            runningNumber = index > 0 && shown[index - 1].type === 'numbered' ? runningNumber + 1 : 1;
-          } else {
-            runningNumber = 0;
-          }
+          runningNumber = shownNumbers[index];
           // Same run as BlockList's own - the miniature draws the same
           // indent the editor does, or a card would show a flatter page
           // than the one it stands for.

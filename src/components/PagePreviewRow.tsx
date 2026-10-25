@@ -3,7 +3,7 @@ import { Ionicons } from './icons/Ionicons';
 import FormattedText from './FormattedText';
 import { SoftTaskCheck } from './SoftIcon';
 import { LINK_BLUE, LINK_BLUE_DARK } from './BlockRow';
-import { formatReminderBadge, parseFormattedText, STICKER_INK } from '../utils/documentBlocks';
+import { bulletFor, formatReminderBadge, indentOf, INDENT_STEP, parseFormattedText, STICKER_INK } from '../utils/documentBlocks';
 import { PAGE_H1, PAGE_H2, PAGE_H3, PAGE_TEXT, makeStyles } from './documentEditorStyles';
 import { withAlpha } from '../utils/color';
 import type { Block } from '../types';
@@ -79,7 +79,7 @@ export default function PagePreviewRow({
   if (type === 'bulleted' || type === 'numbered') {
     content = (
       <View style={styles.prefixedRow}>
-        <Text style={styles.bulletMark}>{type === 'numbered' ? `${listNumber ?? 1}.` : '•'}</Text>
+        <Text style={styles.bulletMark}>{type === 'numbered' ? `${listNumber ?? 1}.` : bulletFor(indentOf(item))}</Text>
         {textField}
       </View>
     );
@@ -123,6 +123,7 @@ export default function PagePreviewRow({
       style={[
         styles.blockRow,
         indented && styles.blockRowIndented,
+        indentOf(item) > 0 && { marginLeft: (indented ? 16 : 0) + indentOf(item) * INDENT_STEP },
         item.isSticker && styles.blockRowSticker,
         rowPaperColor && { backgroundColor: 'transparent' },
       ]}

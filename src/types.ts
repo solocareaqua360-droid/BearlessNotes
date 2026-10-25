@@ -346,6 +346,10 @@ export interface Block {
   // 'heading' blocks only: 1, 2 or 3. Absent means 2, which is what a
   // heading typed rather than pasted starts as.
   headingLevel?: number;
+  // THE INDENT (the user, 2026-10-25: «відступ ... можна застосувати декілька разів»): how many steps the block stands
+  // in from the left, 1-4 (absent = none). Any text-like block; a list item at a deeper step is a sub-item - its own
+  // bullet glyph and its own numbering (utils/documentBlocks listNumbers).
+  indent?: number;
   // 'code' blocks only: what was written after the opening fence of a
   // pasted block, kept so it can be shown and, one day, coloured.
   codeLanguage?: string;

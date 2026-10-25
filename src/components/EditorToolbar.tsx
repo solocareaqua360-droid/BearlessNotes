@@ -4,6 +4,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 // two rows were rendered with that same component before they moved here.
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from './icons/Ionicons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BLOCK_ACTIONS, BlockAction, BlockActionIcon } from './blockActions';
 import DockFrost from './DockFrost';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -117,6 +118,8 @@ type Props = {
   // that acts on the card you are already typing in: undo/redo, the
   // type conversions, and the whole format row.
   canvas?: boolean;
+  // One step in or out (Block.indent) for the block holding the caret.
+  onIndent?: (delta: 1 | -1) => void;
 };
 
 // The editor's one toolbar, pinned above the keyboard whenever a block is
@@ -152,6 +155,7 @@ export default function EditorToolbar({
   onApplyMarker,
   onApplyColor,
   canvas,
+  onIndent,
 }: Props) {
   // Same glass pill as the docDock below the block list - the
   // navigation redesign's second step, folding what used to be a flat
@@ -237,6 +241,17 @@ export default function EditorToolbar({
           >
             <Ionicons name="arrow-redo-outline" size={22} color={canRedo ? theme.glass.ink : theme.glass.inkMuted} />
           </Pressable>
+          {!canvas && onIndent && (
+            <>
+              <View style={styles.divider} />
+              <Pressable style={styles.iconButton} accessibilityLabel="Відступ менше" accessibilityRole="button" onPress={() => onIndent(-1)}>
+                <MaterialCommunityIcons name="format-indent-decrease" size={22} color={theme.glass.ink} />
+              </Pressable>
+              <Pressable style={styles.iconButton} accessibilityLabel="Відступ більше" accessibilityRole="button" onPress={() => onIndent(1)}>
+                <MaterialCommunityIcons name="format-indent-increase" size={22} color={theme.glass.ink} />
+              </Pressable>
+            </>
+          )}
           <View style={styles.divider} />
           {(canvas ? CANVAS_ACTIONS : BLOCK_ACTIONS).filter((a) => Platform.OS !== 'web' || a.key !== 'scan').map((action) => (
             <Pressable

@@ -56,6 +56,9 @@ import {
   noteLinkSpans,
   STICKER_INK,
   type TextLayoutLine,
+  bulletFor,
+  indentOf,
+  INDENT_STEP,
 } from '../utils/documentBlocks';
 import FormattedText from './FormattedText';
 import { setSelection } from '../utils/setSelection';
@@ -994,7 +997,7 @@ export default function BlockRow({
     } else if (type === 'bulleted' || type === 'numbered') {
       content = (
         <View style={styles.prefixedRow}>
-          <Text style={styles.bulletMark}>{type === 'numbered' ? `${listNumber ?? 1}.` : '•'}</Text>
+          <Text style={styles.bulletMark}>{type === 'numbered' ? `${listNumber ?? 1}.` : bulletFor(indentOf(item))}</Text>
           {textField}
         </View>
       );
@@ -1126,6 +1129,8 @@ export default function BlockRow({
       style={[
         styles.blockRow,
         indented && !toggleRole && styles.blockRowIndented,
+        // Block.indent: its steps in from the left, on top of a toggle's own (blockRowIndented's 16).
+        indentOf(item) > 0 && { marginLeft: (indented && !toggleRole ? 16 : 0) + indentOf(item) * INDENT_STEP },
         // The toggle's FRAME, row by row: one rounded box from the title down to the last held row (2026-10-21).
         !!toggleRole && {
           borderColor: theme.paper.edge,

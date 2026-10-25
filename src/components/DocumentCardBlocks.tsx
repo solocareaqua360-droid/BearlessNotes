@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { listNumbers } from '../utils/documentBlocks';
 import { StyleSheet, Text, View } from 'react-native';
 import { doc, onSnapshot } from '../firestore';
 import { db } from '../firebase';
@@ -40,11 +41,12 @@ export default function DocumentCardBlocks({ documentId }: { documentId: string 
   // Empty rows are left out: on a card an empty line is only a gap.
   const all = visibleBlocks(blocks).filter((b) => !(isLightRow(b) && !b.text?.trim()));
   let numbered = 0;
+  const numbers = listNumbers(all);
   let indented = false;
   return (
     <View style={styles.wrap} pointerEvents="none">
       {all.map((item, index) => {
-        numbered = item.type === 'numbered' ? (all[index - 1]?.type === 'numbered' ? numbered + 1 : 1) : 0;
+        numbered = numbers[index];
         if (item.exitsToggle) indented = false;
         const rowIndented = indented;
         if (item.type === 'toggle') indented = true;

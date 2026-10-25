@@ -1,5 +1,5 @@
 import type { Block } from '../types';
-import { displayValueOf } from './documentBlocks';
+import { displayValueOf, indentOf, listNumbers } from './documentBlocks';
 
 // THE CHOSEN BLOCKS AS TEXT (2026-10-23, «Вирізати»/«Копіювати»): headings, lists, checkboxes, code, lines and tables keep
 // their kind through the clipboard - utils/pasteBlocks reads exactly these marks - and a blank line stands between blocks.
@@ -8,24 +8,24 @@ import { displayValueOf } from './documentBlocks';
 // back whole.
 export function blocksToMarkdown(blocks: Block[]): string {
   const out: string[] = [];
-  let number = 0;
-  blocks.forEach((b) => {
+  // Step-aware numbering, and a sub-item two spaces in per step (Block.indent) - Markdown's own nesting.
+  const numbers = listNumbers(blocks);
+  blocks.forEach((b, index) => {
     const type = b.type ?? 'paragraph';
-    if (type !== 'numbered') number = 0;
+    const pad = '  '.repeat(indentOf(b));
     const text = b.text ?? '';
     switch (type) {
       case 'heading':
         out.push(`${'#'.repeat(Math.min(3, Math.max(1, b.headingLevel ?? 2)))} ${text}`);
         return;
       case 'bulleted':
-        out.push(`- ${text}`);
+        out.push(`${pad}- ${text}`);
         return;
       case 'numbered':
-        number += 1;
-        out.push(`${number}. ${text}`);
+        out.push(`${pad}${numbers[index]}. ${text}`);
         return;
       case 'checkbox':
-        out.push(`- [${b.checked ? 'x' : ' '}] ${text}`);
+        out.push(`${pad}- [${b.checked ? 'x' : ' '}] ${text}`);
         return;
       case 'code':
         out.push(`\`\`\`${b.codeLanguage ?? ''}\n${text}\n\`\`\``);

@@ -167,7 +167,7 @@ import {
   parseNoteRef,
   plainTextOf,
   rawIndexForDisplayIndex,
-  sanitizeFileName, applyExclusiveStyle, type InlineStyleKey } from '../utils/documentBlocks';
+  sanitizeFileName, applyExclusiveStyle, type InlineStyleKey, indentOf, withIndent } from '../utils/documentBlocks';
 import type { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
@@ -2621,6 +2621,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     },
     {
       section: 'text',
+      title: 'Відступ',
+      items: [
+        { key: 'indentMore', label: 'Більше', family: 'material-community', icon: 'format-indent-increase', onPress: onBlock((id) => shiftIndent(id, 1)) },
+        { key: 'indentLess', label: 'Менше', family: 'material-community', icon: 'format-indent-decrease', onPress: onBlock((id) => shiftIndent(id, -1)) },
+      ],
+    },
+    {
+      section: 'text',
       title: 'Розмір тексту',
       // The user's own names: the note's title is the first heading, so
       // the body's run from 2. They are the block's levels 1, 2 and 3.
@@ -4339,10 +4347,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         const before = text.slice(0, newlineIndex);
         const after = text.slice(newlineIndex + 1);
         if (before === '') {
+          // An empty sub-item steps one level out first; only at the top does Enter leave the list.
+          if (current && indentOf(current) > 0) {
+            bumpTextVersion(id);
+            setBlocks((prev) => prev.map((b) => (b.id === id ? { ...withIndent(b, -1), text: after } : b)));
+            return;
+          }
           setBlocks((prev) => prev.map((b) => (b.id === id ? buildBlock(b.id, 'paragraph', after) : b)));
           return;
         }
         const created = buildBlock(generateId(), currentType, after);
+        if (current && indentOf(current) > 0) created.indent = indentOf(current);
         focusIdRef.current = created.id;
         bumpTextVersion(id);
         setBlocks((prev) => {
@@ -4391,6 +4406,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const before = text.slice(0, doubleNewlineIndex);
     const after = text.slice(doubleNewlineIndex + 2);
     const created: Block = { ...newBlock(), text: after };
+    // The next line stands where this one does (Block.indent).
+    const fromBlock = blocks.find((b) => b.id === id);
+    if (fromBlock && indentOf(fromBlock) > 0) created.indent = indentOf(fromBlock);
     focusIdRef.current = created.id;
     bumpTextVersion(id);
     setBlocks((prev) => {
@@ -4441,6 +4459,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const block = buildBlock(generateId(), piece.type, piece.text);
       if (piece.checked) block.checked = true;
       if (piece.headingLevel) block.headingLevel = piece.headingLevel;
+      if (piece.indent) block.indent = piece.indent;
       if (piece.codeLanguage) block.codeLanguage = piece.codeLanguage;
       if (piece.tableRows) block.tableRows = piece.tableRows;
       return block;
@@ -4674,6 +4693,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // - the same Backspace that opened the way out now behaves like any
     // other empty line's does.
     const block = blocks[index];
+    // An indented empty line steps one level out before it is deleted (Block.indent).
+    if (indentOf(block) > 0) {
+      snapshotBeforeChange();
+      setBlocks((prev) => prev.map((b) => (b.id === id ? withIndent(b, -1) : b)));
+      return;
+    }
     if (block.type !== 'toggle' && !block.exitsToggle && isUnderToggle(blocks, index)) {
       snapshotBeforeChange();
       setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, exitsToggle: true } : b)));
@@ -4889,6 +4914,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // block keeps its text either way. The three levels were there all
   // along - a pasted "##" became one - but nothing in the interface could
   // choose between them: the old bar had one «Заголовок» button.
+  // ONE STEP IN OR OUT (Block.indent; the user, 2026-10-25): the block the caret is in, or every picked block.
+  function shiftIndent(id: string, delta: 1 | -1) {
+    const ids = isSelectMode && selectedIds.size > 0 ? selectedIds : new Set([id]);
+    snapshotBeforeChange();
+    focusIdRef.current = id;
+    setBlocks((prev) => prev.map((b) => (ids.has(b.id) ? withIndent(b, delta) : b)));
+  }
+
   function setHeadingLevel(id: string, level: 1 | 2 | 3 | null) {
     snapshotBeforeChange();
     focusIdRef.current = id;
@@ -5720,6 +5753,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const block = buildBlock(generateId(), piece.type, piece.text);
       if (piece.checked) block.checked = true;
       if (piece.headingLevel) block.headingLevel = piece.headingLevel;
+      if (piece.indent) block.indent = piece.indent;
       if (piece.codeLanguage) block.codeLanguage = piece.codeLanguage;
       if (piece.tableRows) block.tableRows = piece.tableRows;
       return block;
@@ -6575,6 +6609,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onRedo={redo}
             onApplyMarker={applyMarkerToSelection}
             onApplyColor={applyColorToSelection}
+            onIndent={(delta) => toolbarBlockId && shiftIndent(toolbarBlockId, delta)}
           />
           ))}
         </Animated.View>

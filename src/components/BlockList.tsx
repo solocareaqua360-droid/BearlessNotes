@@ -1,4 +1,5 @@
 import { ForwardedRef, forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { listNumbers } from '../utils/documentBlocks';
 import { LayoutAnimation, LayoutChangeEvent, TextInput, View } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { Block, Tag } from '../types';
@@ -616,6 +617,8 @@ function BlockList({
   // Numbering restarts after any non-numbered block breaks the run, like a
   // real numbered list rather than a permanently incrementing counter.
   let runningNumber = 0;
+  // Step-aware (Block.indent): a sub-list counts on its own and does not break the one above it.
+  const numbers = listNumbers(blocks);
   // The same run isUnderToggle answers one position at a time, done once
   // for the whole list instead of once per row - "важко орієнтуватись
   // який блок вкладений": nothing drew this before, so the only way to
@@ -707,11 +710,7 @@ function BlockList({
   return (
     <View ref={containerRef} collapsable={false} style={styles.blockListContainer}>
       {(renderCount !== undefined && renderCount < blocks.length ? blocks.slice(0, renderCount) : blocks).map((item, index) => {
-        if (item.type === 'numbered') {
-          runningNumber = index > 0 && blocks[index - 1].type === 'numbered' ? runningNumber + 1 : 1;
-        } else {
-          runningNumber = 0;
-        }
+        runningNumber = numbers[index];
         // A toggle's own row is never indented - it is the section's
         // header, not its content - so this reads the state left over
         // from BEFORE it and only then turns indenting on for what

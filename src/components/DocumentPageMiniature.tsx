@@ -1,4 +1,5 @@
 import type { ImageFrame } from '../utils/imageFrame';
+import { listNumbers } from '../utils/documentBlocks';
 import { memo } from 'react';
 import { IS_POINTER } from '../utils/pointer';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -114,9 +115,10 @@ function DocumentPageMiniature({
   const from = firstMatch >= SLIDE_FROM ? firstMatch - LEAD_BLOCKS : 0;
   // The skipped blocks still carry their list numbering and toggle indent
   // into the first ones shown.
+  const numbers = listNumbers(all);
   for (let i = 0; i < from; i++) {
     const item = all[i];
-    numbered = item.type === 'numbered' ? (all[i - 1]?.type === 'numbered' ? numbered + 1 : 1) : 0;
+    numbered = numbers[i];
     if (item.exitsToggle) indented = false;
     if (item.type === 'toggle') indented = true;
   }
@@ -174,11 +176,7 @@ function DocumentPageMiniature({
         <ScrollView scrollEnabled={false} contentContainerStyle={styles.rows}>
           <View style={editorStyles.blockListContainer}>
             {shown.map((item, index) => {
-              if (item.type === 'numbered') {
-                numbered = all[from + index - 1]?.type === 'numbered' ? numbered + 1 : 1;
-              } else {
-                numbered = 0;
-              }
+              numbered = numbers[from + index];
               // Same run as BlockList's own - the miniature draws the
               // same indent the editor does, or a card would show a
               // flatter page than the one it stands for.
