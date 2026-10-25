@@ -1,4 +1,5 @@
 import ImageFrameEditor from '../components/ImageFrameEditor';
+import { APP_FONTS, chooseAppFont, readAppFont, type AppFont } from '../utils/appFont';
 import { useEffect, useRef, useState } from 'react';
 import BackupCard from '../components/BackupCard';
 import { useTheme, useStyles, useWallpaperVeil } from '../theme/ThemeProvider';
@@ -146,6 +147,10 @@ function GeminiUsageCard({ styles, accent }: { styles: ReturnType<typeof makeSty
 }
 
 export default function SettingsScreen() {
+  const [appFont, setAppFontState] = useState<AppFont | null>(null);
+  useEffect(() => {
+    readAppFont().then(setAppFontState);
+  }, []);
   const theme = useTheme();
   const accent = theme.sections.settings;
   const styles = useStyles(makeStyles);
@@ -639,6 +644,32 @@ export default function SettingsScreen() {
               <Switch value={dockGlass} onValueChange={setDockGlass} />
             </View>
           </View>
+        )}
+        {/* THE APP'S FACE (utils/appFont): taken at start, so a choice restarts the app. */}
+        {section === 'appearance' && (
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="text-outline" size={22} color={accent} />
+            <Text style={styles.cardTitle}>Шрифт</Text>
+          </View>
+          <View style={styles.themeRow}>
+            {APP_FONTS.map((f) => (
+              <Pressable
+                key={f.id}
+                style={[styles.themeChip, appFont === f.id && styles.themeChipOn]}
+                onPress={() => {
+                  if (appFont === f.id) return;
+                  confirm({ title: `Шрифт «${f.label}»`, message: `${f.hint}. Застосунок перезапуститься.`, confirmLabel: 'Застосувати', tone: 'primary' }).then((yes) => {
+                    if (yes) chooseAppFont(f.id);
+                  });
+                }}
+              >
+                <Text style={[styles.themeChipLabel, appFont === f.id && styles.themeChipLabelOn, { fontFamily: undefined }]}>{f.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.cardHint}>Шрифт нотаток, карток і м'яких екранів. Для окремої нотатки можна буде вибрати інший.</Text>
+        </View>
         )}
         {section === 'appearance' && (
         <View style={styles.card}>

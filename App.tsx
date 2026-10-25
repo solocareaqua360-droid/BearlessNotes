@@ -9,7 +9,8 @@ import {
   Nunito_700Bold,
   Nunito_800ExtraBold,
 } from '@expo-google-fonts/nunito';
-import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import * as Font from 'expo-font';
+import { appFontFiles, readAppFont, type AppFont } from './src/utils/appFont';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -113,19 +114,26 @@ export default function App() {
   // they share) reference these family names in their own styles - the
   // rest of the app keeps the system font, matching how this whole visual
   // pass has stayed scoped rather than becoming an app-wide reskin.
-  const [fontsLoaded] = useFonts({
+  // The soft face is the user's choice (utils/appFont): loaded under the Inter names whatever it is.
+  const [appFont, setAppFont] = useState<AppFont | null>(null);
+  useEffect(() => {
+    readAppFont().then(setAppFont);
+  }, []);
+  const [baseLoaded] = useFonts({
     Nunito_400Regular,
     Nunito_500Medium,
     Nunito_600SemiBold,
     Nunito_700Bold,
     Nunito_800ExtraBold,
-    // The soft style's face (see theme/soft), tried on the Documents
-    // desk first.
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
   });
+  const [softLoaded, setSoftLoaded] = useState(false);
+  useEffect(() => {
+    if (!appFont) return;
+    Font.loadAsync(appFontFiles(appFont))
+      .catch(() => Font.loadAsync(appFontFiles('inter')))
+      .finally(() => setSoftLoaded(true));
+  }, [appFont]);
+  const fontsLoaded = baseLoaded && softLoaded;
   const [signedIn, setSignedIn] = useState(false);
   useEffect(() => {
     ensureSignedIn().then(() => setSignedIn(true));
