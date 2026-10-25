@@ -6,9 +6,11 @@ import {
   Keyboard,
   Platform,
   Pressable,
+  StyleProp,
   StyleSheet,
   Text,
   TextInput,
+  TextStyle,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -31,6 +33,7 @@ import { useCanvasWheel } from '../hooks/useCanvasWheel';
 import { setSelection } from '../utils/setSelection';
 import Svg, { Path } from 'react-native-svg';
 import { Block, CanvasLink } from '../types';
+import { parseFormattedText, rawIndexForDisplayIndex } from '../utils/documentBlocks';
 import { anchorCanvasLinks, canvasGroups, orderByCanvasLinks, sequenceLinkIds } from '../utils/canvasOrder';
 import { hapticDrop } from '../utils/haptics';
 import { FONT_REGULAR, FONT_SEMIBOLD, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
@@ -213,7 +216,8 @@ export type CanvasPatch = { id: string; set?: Partial<Block>; unset?: ('canvas' 
 function approximateHeight(block: Block): number {
   const type = block.type ?? 'paragraph';
   if (type === 'image' || type === 'sketch') return 180;
-  if (type === 'file' || type === 'link' || type === 'dbRow' || type === 'dbView' || type === 'flashcard') return 96;
+  if (type === 'file' || type === 'link' || type === 'dbRow' || type === 'dbView' || type === 'dbTable' || type === 'flashcard') return 96;
+  if (type === 'table' && block.tableRows?.length) return 32 + Math.min(block.tableRows.length, 4) * 22 + (block.tableRows.length > 4 ? 18 : 0);
   // Text: a card shows ALL of it, so this only has to be close - it is
   // replaced by the measured height on the next frame. Roughly 28
   // characters to a line at this width, 19pt a line, plus the padding.
@@ -760,6 +764,7 @@ function DocumentCanvasInner({
   function armLinkNear(x: number, y: number) {
     const threshold = 18 / scale.value;
     let best: { id: string; distance: number } | null = null;
+    let onCross = false;
     for (const [id, link] of Object.entries(anchoredLinks)) {
       const fromIndex = blocks.findIndex((b) => b.id === link.from);
       const toIndex = blocks.findIndex((b) => b.id === link.to);
@@ -770,6 +775,8 @@ function DocumentCanvasInner({
       );
       // The same curve curvePath draws: control points pushed straight
       // out sideways from each end.
+      // The tap that pressed the cross itself must not arm the arrow again.
+      if (id === armedLinkId && Math.hypot((x1 + x2) / 2 - x, (y1 + y2) / 2 - y) <= 26 / scale.value) onCross = true;
       const bend = Math.max(30, Math.abs(x2 - x1) / 2);
       const direction = x2 >= x1 ? 1 : -1;
       const cx1 = x1 + bend * direction;
@@ -783,6 +790,7 @@ function DocumentCanvasInner({
         if (distance <= threshold && (!best || distance < best.distance)) best = { id, distance };
       }
     }
+    if (onCross) return;
     setArmedLinkId(best ? best.id : null);
   }
 
@@ -794,10 +802,16 @@ function DocumentCanvasInner({
       runOnJS(armLinkNear)(at.x, at.y);
     });
 
+  // A tap on bare canvas puts the selection down (browser), and a tap ON
+  // an arrow puts a cross on it (the user, 2026-10-26: the hold was a
+  // struggle, one tap is what he wants). A tap that hits no arrow takes
+  // the cross away.
   const clearSelectionGesture = Gesture.Tap()
-    .enabled(DRAG_SELECTS)
-    .onEnd(() => {
-      runOnJS(setSelectedIds)(new Set());
+    .maxDistance(12)
+    .onEnd((e) => {
+      const at = toSurface(e.x, e.y);
+      if (DRAG_SELECTS) runOnJS(setSelectedIds)(new Set());
+      runOnJS(armLinkNear)(at.x, at.y);
     });
 
   const canvasGesture = Gesture.Simultaneous(
@@ -869,8 +883,9 @@ function DocumentCanvasInner({
               <Pressable
                 style={styles.stopEditingCatcher}
                 onPress={() => {
+                  // The cross is put away (or moved) by the surface's own
+                  // tap, which knows where the finger fell.
                   stopEditing();
-                  disarmLink();
                 }}
               />
             )}
@@ -1355,8 +1370,10 @@ function CanvasCard({
     // had already pointed. Null on a phone - there is no document to ask
     // - and the field then does what it always did.
     const fromDom = caretIndexFromDom(textNodeRef.current, pageX, pageY);
+    const segments = parseFormattedText(block.text ?? '');
+    const shown = segments.map((seg) => seg.text).join('');
     if (fromDom !== null) {
-      onEdit(block.id, x, y, fromDom);
+      onEdit(block.id, x, y, rawIndexForDisplayIndex(segments, block.text ?? '', fromDom));
       return;
     }
     // The phone: the same reconstruction the page's blocks use - the line
@@ -1376,8 +1393,8 @@ function CanvasCard({
     // the zoom the error grew along the line - the caret obeyed a tap
     // at the start of a line and barely moved for one at its end.
     const zoom = canvasScale.value || 1;
-    const index = displayIndexForTouch(linesRef.current, block.text ?? '', (pageX - box.x) / zoom, (pageY - box.y) / zoom);
-    onEdit(block.id, x, y, index);
+    const index = displayIndexForTouch(linesRef.current, shown, (pageX - box.x) / zoom, (pageY - box.y) / zoom);
+    onEdit(block.id, x, y, rawIndexForDisplayIndex(segments, block.text ?? '', index));
   }
 
   const dragGesture = Gesture.Pan()
@@ -1613,7 +1630,10 @@ function CardBody({
     return <View style={styles.cardDivider} />;
   }
   if (type === 'table') {
-    return <CardRow icon="grid-outline" label={block.text || 'Таблиця'} />;
+    return block.tableRows?.length ? <CardTable block={block} /> : <CardRow icon="grid-outline" label={block.text || 'Таблиця'} />;
+  }
+  if (type === 'dbTable') {
+    return <CardRow icon="grid-outline" label="Таблиця записів бази" />;
   }
   if (type === 'bulleted' || type === 'numbered') {
     return (
@@ -1623,9 +1643,7 @@ function CardBody({
           size={type === 'bulleted' ? 7 : 16}
           color={theme.canvas.inkMuted}
         />
-        <Text style={styles.cardText}>
-          {block.text || ' '}
-        </Text>
+        <CardText text={block.text} style={styles.cardText} />
       </View>
     );
   }
@@ -1637,16 +1655,80 @@ function CardBody({
           size={18}
           color={block.checked ? theme.canvas.inkMuted : theme.canvas.inkFaint}
         />
-        <Text style={[styles.cardText, block.checked && styles.cardTextDone]}>
-          {block.text || 'Пункт'}
-        </Text>
+        <CardText text={block.text || 'Пункт'} style={[styles.cardText, block.checked && styles.cardTextDone]} />
       </View>
     );
   }
+  return <CardText text={block.text} style={styles.cardText} textNode={textNode} onTextLayout={onTextLayout} />;
+}
+
+// A card's words the way the page shows them: bold, italic, colours and
+// note links are drawn, never their markers (the user, 2026-10-26: links
+// came out as {n:id}label{/n}). Plain nested runs and no chip views, so the
+// displayed string is exactly the segments' text - which is what lets a tap
+// be mapped back to a place in the raw text (rawIndexForDisplayIndex).
+function CardText({
+  text,
+  style,
+  textNode,
+  onTextLayout,
+}: {
+  text?: string;
+  style: StyleProp<TextStyle>;
+  textNode?: React.Ref<Text>;
+  onTextLayout?: (e: { nativeEvent: { lines: CaretLine[] } }) => void;
+}) {
+  const theme = useTheme();
+  const segments = useMemo(() => parseFormattedText(text ?? ''), [text]);
+  const linkInk = theme.scheme === 'dark' ? '#60A5FA' : '#2563EB';
   return (
-    <Text ref={textNode} onTextLayout={onTextLayout} style={styles.cardText}>
-      {block.text || ' '}
+    <Text ref={textNode} onTextLayout={onTextLayout} style={style}>
+      {segments.length === 0
+        ? ' '
+        : segments.map((seg, i) => {
+            const decorations = [seg.underline && 'underline', seg.strikethrough && 'line-through'].filter(Boolean).join(' ');
+            const run: TextStyle = {};
+            if (seg.bold) run.fontWeight = '700';
+            if (seg.italic) run.fontStyle = 'italic';
+            if (decorations) run.textDecorationLine = decorations as TextStyle['textDecorationLine'];
+            if (seg.noteLink) run.color = linkInk;
+            else if (seg.color) run.color = seg.color;
+            if (seg.highlight) run.backgroundColor = seg.highlight;
+            return (
+              <Text key={i} style={run}>
+                {seg.text}
+              </Text>
+            );
+          })}
     </Text>
+  );
+}
+
+// A note's own table on its card: the first rows and columns as written,
+// enough to see that it is that table and what is in it. A formula shows
+// as a dot - evaluating it is the page's job.
+function CardTable({ block }: { block: Block }) {
+  const theme = useTheme();
+  const styles = useCanvasStyles();
+  const rows = (block.tableRows ?? []).slice(0, 4);
+  const more = (block.tableRows?.length ?? 0) - rows.length;
+  return (
+    <View style={{ gap: 4 }}>
+      {rows.map((row, r) => (
+        <View key={r} style={{ flexDirection: 'row', gap: 8 }}>
+          {row.cells.slice(0, 3).map((cell, c) => (
+            <Text
+              key={c}
+              numberOfLines={1}
+              style={[styles.cardText, { flex: 1, fontSize: 13, lineHeight: 18 }, r === 0 && { color: theme.canvas.inkMuted }]}
+            >
+              {cell.startsWith('=') ? '·' : cell || ' '}
+            </Text>
+          ))}
+        </View>
+      ))}
+      {more > 0 && <Text style={[styles.cardText, { fontSize: 12, color: theme.canvas.inkFaint }]}>ще {more}</Text>}
+    </View>
   );
 }
 
@@ -1902,12 +1984,13 @@ const makeStyles = (theme: Theme) =>
     // card must not shout.
     handle: {
       position: 'absolute',
-      right: 2,
+      right: 0,
       top: '50%',
-      marginTop: -9,
-      width: 18,
-      height: 18,
-      alignItems: 'center',
+      marginTop: -28,
+      width: 36,
+      height: 56,
+      alignItems: 'flex-end',
+      paddingRight: 6,
       justifyContent: 'center',
       zIndex: 2,
     },
