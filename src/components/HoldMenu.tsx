@@ -8,6 +8,8 @@ import { GlassPortal } from './GlassPortal';
 import { useBlurTarget } from './GlassTarget';
 import { Ionicons } from './icons/Ionicons';
 import SoftIcon from './SoftIcon';
+import DockGlassFill, { useDockSurface } from './DockGlassFill';
+import { useDockGlass } from '../utils/dockGlass';
 import { useSoft } from '../theme/soft';
 import { SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 
@@ -128,6 +130,10 @@ export default function HoldMenu({
   };
 
   const blurTarget = useBlurTarget();
+  // The menu is glass too, like every other menu (surfaces/Menu): a blur of the app under the blur behind - it was left
+  // white (the user, 2026-10-25: «меню папки досі біле»). The chat capsule's `dense` milk: what is behind is a smear already, but a dark card there still greyed the rows.
+  const glassOn = useDockGlass();
+  const glassSurface = useDockSurface(S, glassOn);
   useEffect(() => {
     if (!anchor) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -240,13 +246,14 @@ export default function HoldMenu({
               left: place.menuLeft,
               width: MENU_W,
               maxHeight: menuH,
-              backgroundColor: S.card,
-              boxShadow: S.popShadow,
+              ...(glassOn ? {} : { backgroundColor: S.card, boxShadow: S.popShadow }),
               transformOrigin: menuBelow ? 'right top' : 'right bottom',
             },
+            glassOn && glassSurface,
             menuMotion,
           ]}
         >
+          {glassOn && <DockGlassFill soft={S} radius={24} dense />}
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <Animated.View key={pageKey ?? 'root'} entering={(forward ? SlideInRight : SlideInLeft).duration(200)}>
               {content}
