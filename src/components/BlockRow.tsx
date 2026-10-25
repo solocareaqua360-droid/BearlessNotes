@@ -334,7 +334,9 @@ export default function BlockRow({
             ? PAGE_H3
             : PAGE_H2
         : PAGE_TEXT;
-    return { fontSize: Math.round(base.size * textScale), lineHeight: Math.round(base.line * textScale) };
+    // A face with small lowercase (the handwriting) is set larger, its lines a little less so (utils/noteFont).
+    const fs = (blockType !== 'code' && noteFaces?.scale) || 1;
+    return { fontSize: Math.round(base.size * textScale * fs), lineHeight: Math.round(base.line * textScale * (1 + (fs - 1) * 0.6)) };
   })();
 
   // Kept alongside the ref the screen collects, purely so the field can be

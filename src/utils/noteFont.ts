@@ -14,11 +14,13 @@ export const NOTE_FONTS: { id: NoteFont; label: string; hint: string }[] = [
 ];
 export const asNoteFont = (v: unknown): NoteFont => (v === 'mono' || v === 'serif' || v === 'hand' ? v : 'default');
 
-type Faces = { regular: string; strong: string };
+// `scale`: a face's lowercase is smaller than the app's (Caveat's x-height is 0.40 against 0.52): its text is set this much
+// larger so the page does not read tiny (the user, 2026-10-25: «аномально дрібним»).
+type Faces = { regular: string; strong: string; scale: number };
 const FACES: Record<Exclude<NoteFont, 'default'>, Faces> = {
-  mono: { regular: 'NoteMono_400', strong: 'NoteMono_700' },
-  serif: { regular: 'NoteSerif_400', strong: 'NoteSerif_700' },
-  hand: { regular: 'NoteHand_400', strong: 'NoteHand_700' },
+  mono: { regular: 'NoteMono_400', strong: 'NoteMono_700', scale: 1 },
+  serif: { regular: 'NoteSerif_400', strong: 'NoteSerif_700', scale: 1.04 },
+  hand: { regular: 'NoteHand_400', strong: 'NoteHand_700', scale: 1.3 },
 };
 const FILES: Record<string, number> = {
   NoteMono_400: require('../../assets/fonts/RobotoMono-400.ttf'),

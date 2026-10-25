@@ -56,7 +56,8 @@ export default function PagePreviewRow({
   const headingStyle =
     type === 'heading' ? (item.headingLevel === 1 ? styles.heading1 : item.headingLevel === 3 ? styles.heading3 : styles.heading2) : null;
   const base = type === 'heading' ? (item.headingLevel === 1 ? PAGE_H1 : item.headingLevel === 3 ? PAGE_H3 : PAGE_H2) : PAGE_TEXT;
-  const scaledTextStyle = { fontSize: Math.round(base.size * textScale), lineHeight: Math.round(base.line * textScale) };
+  const fs = (type !== 'code' && noteFaces?.scale) || 1;
+  const scaledTextStyle = { fontSize: Math.round(base.size * textScale * fs), lineHeight: Math.round(base.line * textScale * (1 + (fs - 1) * 0.6)) };
   const linkInk = theme.scheme === 'dark' ? LINK_BLUE_DARK : LINK_BLUE;
 
   const textField = (

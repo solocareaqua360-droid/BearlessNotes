@@ -785,6 +785,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // The note's own face (utils/noteFont).
   const [noteFont, setNoteFont] = useState<NoteFont>('default');
   const noteFace = useNoteFaceFor(noteFont);
+  // The title in that face, set larger where the face's lowercase is small (utils/noteFont).
+  const titleFace = noteFace
+    ? (() => {
+        const t = StyleSheet.flatten(styles.titleInput);
+        return { fontFamily: noteFace.strong, fontSize: Math.round((t.fontSize ?? 34) * noteFace.scale), lineHeight: Math.round((t.lineHeight ?? 41) * (1 + (noteFace.scale - 1) * 0.6)) };
+      })()
+    : null;
   // The same object while nothing about it changes: every block row takes
   // it, and a fresh one per render re-rendered all of them (see BlockList).
   const paperColor = useMemo(
@@ -7356,7 +7363,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           placeholder={dayName ?? 'Без назви'}
           placeholderTextColor={paperColor?.textMuted ?? theme.paper.inkFaint}
           {...softCursor(theme.scheme)}
-          style={[styles.titleInput, paperColor && { color: paperColor.text }, noteFace && { fontFamily: noteFace.strong }]}
+          style={[styles.titleInput, paperColor && { color: paperColor.text }, titleFace]}
           multiline
         />
         )}
@@ -7367,7 +7374,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           <Text
             style={[
               styles.titleInput,
-              noteFace && { fontFamily: noteFace.strong },
+              titleFace,
               paperColor && { color: paperColor.text },
               // A day's date is its NAME, not a placeholder standing in
               // for one - so it is not drawn in the faint colour an
