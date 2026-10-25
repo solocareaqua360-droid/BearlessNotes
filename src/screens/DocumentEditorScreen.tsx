@@ -1705,6 +1705,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // needs to be included once - re-sending the same value every sync is
       // harmless.
       if (b.createdAt) linkDocData.createdAt = b.createdAt;
+      unbinIfBinnedHere('links', linkId, linkDocData);
       setDoc(doc(db, 'links', linkId), linkDocData, { merge: true });
     });
     knownLinkIdsRef.current.forEach((linkId) => {
@@ -1716,22 +1717,35 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   // This document no longer has any block for this record - clear just this
-  // document's own flag (other documents may still reference it), and if
-  // that was the last one, delete the now-unused record entirely instead of
-  // leaving an orphaned, invisible entry in Firestore. Shared by links,
-  // photos, and files - they all use the same `usedInDocuments` map shape.
+  // document's own flag (other documents may still reference it). If that
+  // was the last one, the record used to be deleteDoc'd on the spot, for
+  // good - which, since files/photos/links live in folders and the explorer,
+  // erased a filed thing with its folder place and no bin (the user,
+  // 2026-10-25: «так»). Now: a record in a folder or a project stays as it
+  // is; any other goes to the BIN (deletedAt - its base's 30 days, restorable).
+  // Shared by links, photos, and files - the same `usedInDocuments` shape.
+  // `binnedHere`: what this editor binned, so an undo that brings the block
+  // back takes the record out of the bin again (the syncs below).
+  const binnedHereRef = useRef<Set<string>>(new Set());
   async function removeDocumentUsage(collectionName: string, recordId: string) {
     try {
       await updateDoc(doc(db, collectionName, recordId), { [`usedInDocuments.${documentId}`]: deleteField() });
       const snapshot = await getDoc(doc(db, collectionName, recordId));
-      const remaining = (snapshot.data()?.usedInDocuments ?? {}) as Record<string, boolean>;
-      if (Object.keys(remaining).length === 0) {
-        await deleteDoc(doc(db, collectionName, recordId));
-      }
+      const data = snapshot.data() ?? {};
+      const remaining = (data.usedInDocuments ?? {}) as Record<string, boolean>;
+      if (Object.keys(remaining).length > 0) return;
+      const filed = ((data.tagIds as string[] | undefined) ?? []).length > 0 || !!data.groupId;
+      if (filed || data.deletedAt) return;
+      await updateDoc(doc(db, collectionName, recordId), { deletedAt: Date.now() });
+      binnedHereRef.current.add(`${collectionName}:${recordId}`);
     } catch {
       // Already gone - most likely deleted directly from that database screen.
     }
   }
+  // A block that came back (undo) after this editor binned its record.
+  const unbinIfBinnedHere = (collectionName: string, recordId: string, data: Record<string, unknown>) => {
+    if (binnedHereRef.current.delete(`${collectionName}:${recordId}`)) data.deletedAt = deleteField();
+  };
 
   // 'image' and 'file' blocks are database objects too, mirrored the same
   // way as links - but unlike links, there's no meaningful "same content" to
@@ -1779,6 +1793,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         photoDoc.sketchWidth = b.sketchWidth;
         photoDoc.sketchHeight = b.sketchHeight;
       }
+      unbinIfBinnedHere('photos', b.id, photoDoc);
       setDoc(doc(db, 'photos', b.id), photoDoc, { merge: true });
       // A genuinely new photo (not one already mirrored before this
       // render) also gets backed up to Google Drive, if connected -
@@ -1822,6 +1837,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // to arrange, only this one to stop.
       if (isNewFile && b.fileTitle) fileDoc.title = b.fileTitle;
       if (b.createdAt) fileDoc.createdAt = b.createdAt;
+      unbinIfBinnedHere('files', b.id, fileDoc);
       setDoc(doc(db, 'files', b.id), fileDoc, { merge: true });
       // !b.driveFileId - see syncPhotosForDocument's identical guard: stops
       // a reference to an already-backed-up file (a different document's
