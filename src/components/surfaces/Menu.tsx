@@ -57,6 +57,10 @@ export type MenuEntry =
 // to «Групувати за ...» (the user, 2026-10-24).
 export const MENU_WIDTH = 256;
 
+// The grown panel as a plain style (see «DEAD PRESSES WHILE IT GROWS»).
+export const STILL_PANEL = { opacity: 1, transform: [{ scale: 1 }] };
+export const RELEASE_ANYWHERE = { top: 2000, bottom: 2000, left: 2000, right: 2000 };
+
 export default function Menu({
   visible,
   onClose,
@@ -105,11 +109,21 @@ export default function Menu({
   // it shrinks back into that corner before it goes.
   const [mounted, setMounted] = useState(visible);
   const grow = useSharedValue(visible ? 1 : 0);
+  // DEAD PRESSES WHILE IT GROWS (the user, 2026-10-25: «пункти можна вибрати тільки через секунду-дві»; found with a log of
+  // the rows' press-in/out): the grow runs on the UI thread only (ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS), so React's own
+  // picture of the panel stays at the quarter-size it started from - a press measured its row against that, and every
+  // release counted as «outside the row», for about two seconds, until something wrote the real size back. A React
+  // re-render does not (the animated values never pass through it). So once the spring is still the panel takes a plain
+  // style of its full size, which React does write; and the spring is called still sooner (energyThreshold).
+  const [still, setStill] = useState(false);
   useEffect(() => {
     if (visible) {
       setMounted(true);
-      grow.value = withSpring(1, { damping: 20, stiffness: 300, mass: 0.7 });
+      grow.value = withSpring(1, { damping: 20, stiffness: 300, mass: 0.7, energyThreshold: 1e-4 }, (finished) => {
+        if (finished) runOnJS(setStill)(true);
+      });
     } else {
+      setStill(false);
       grow.value = withTiming(0, { duration: 170, easing: Easing.in(Easing.quad) }, (finished) => {
         if (finished) runOnJS(setMounted)(false);
       });
@@ -134,7 +148,7 @@ export default function Menu({
           soft ? [styles.softPanel, glassOn ? glassSurface : { backgroundColor: soft.chrome, boxShadow: soft.popShadow }] : lift,
           style,
           { transformOrigin: origin },
-          panelGrow,
+          still ? STILL_PANEL : panelGrow,
         ]}
       >
         {soft && glassOn && <DockGlassFill soft={soft} radius={cardRadius(24)} />}
@@ -148,7 +162,7 @@ export default function Menu({
             pointerEvents="none"
           />
         )}
-        <Animated.ScrollView style={rowsShow} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <Animated.ScrollView style={still ? undefined : rowsShow} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           {entries.map((entry, index) => {
             if (entry.kind === 'section') {
               return (
@@ -162,6 +176,10 @@ export default function Menu({
             return (
               <Pressable
                 key={`${entry.label}${index}`}
+                // A press begun while the panel still grew was measured against the small panel, and the moment it stood
+                // still that measure no longer matched anything (a press at ~0.3 s was lost): a release anywhere counts as on
+                // the row - a menu is left by its backdrop or a scroll, never by sliding off a row.
+                pressRetentionOffset={RELEASE_ANYWHERE}
                 style={({ pressed }) => [styles.row, pressed && (soft ? { backgroundColor: soft.fill } : styles.rowPressed)]}
                 onPress={() => {
                   // Closed first, always: a menu that stays up while the

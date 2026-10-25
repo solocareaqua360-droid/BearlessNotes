@@ -11,6 +11,7 @@ import SoftIcon from './SoftIcon';
 import DockGlassFill, { useDockSurface } from './DockGlassFill';
 import { useDockGlass } from '../utils/dockGlass';
 import { useSoft } from '../theme/soft';
+import { RELEASE_ANYWHERE, STILL_PANEL } from './surfaces/Menu';
 import { SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 
 // SOMETHING HELD - the chat's gesture (ChatMessageMenu), for anything
@@ -102,13 +103,20 @@ export default function HoldMenu({
   // The menu's own growth, out of the corner nearest the card, on the soft spring every Menu uses (the four windows,
   // 2026-10-25: «меню виростає з об'єкта») - the card keeps its timed lift.
   const grow = useSharedValue(0);
+  // Still: the spring has come to rest and the menu wears a plain full-size style - the same dead-press cure as
+  // surfaces/Menu («DEAD PRESSES WHILE IT GROWS»): React never sees the UI-thread scale, so until then a held press was
+  // measured against the quarter-size menu and dropped.
+  const [still, setStill] = useState(false);
   useEffect(() => {
     if (!anchor) return;
+    setStill(false);
     closing.value = 0;
     progress.value = 0;
     grow.value = 0;
     progress.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) });
-    grow.value = withSpring(1, { damping: 20, stiffness: 300, mass: 0.7 });
+    grow.value = withSpring(1, { damping: 20, stiffness: 300, mass: 0.7, energyThreshold: 1e-4 }, (finished) => {
+      if (finished) runOnJS(setStill)(true);
+    });
   }, [anchor, progress, closing, grow]);
   const travel = anchor && place ? anchor.y - place.cardTop : 0;
   const menuBelow = anchor && place ? place.menuTop > place.cardTop : true;
@@ -123,6 +131,7 @@ export default function HoldMenu({
   const close = () => {
     if (closing.value) return;
     closing.value = 1;
+    setStill(false);
     grow.value = withTiming(0, { duration: 180, easing: Easing.in(Easing.cubic) });
     progress.value = withTiming(0, { duration: 200, easing: Easing.in(Easing.cubic) }, (done) => {
       if (done) runOnJS(onClose)();
@@ -150,7 +159,7 @@ export default function HoldMenu({
   if (!anchor || !place) return null;
 
   const row = (key: string, icon: ReactNode, label: string, onPress: () => void, opts: { danger?: boolean; trailing?: ReactNode; strong?: boolean; dim?: boolean } = {}) => (
-    <Pressable key={key} onPress={onPress} style={({ pressed }) => [styles.row, pressed && { backgroundColor: S.fill }]}>
+    <Pressable key={key} onPress={onPress} pressRetentionOffset={RELEASE_ANYWHERE} style={({ pressed }) => [styles.row, pressed && { backgroundColor: S.fill }]}>
       <View style={styles.rowIcon}>{icon}</View>
       <Text
         style={[
@@ -250,7 +259,7 @@ export default function HoldMenu({
               transformOrigin: menuBelow ? 'right top' : 'right bottom',
             },
             glassOn && glassSurface,
-            menuMotion,
+            still ? STILL_PANEL : menuMotion,
           ]}
         >
           {glassOn && <DockGlassFill soft={S} radius={24} dense />}

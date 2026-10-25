@@ -5,7 +5,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { BackHandler, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FLIP_MS, flipProgress, type FlipFrom } from '../utils/flipOpen';
 import { BlurView } from 'expo-blur';
-import Animated, { Easing, SharedValue, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, SharedValue, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { holdRecede } from '../utils/recede';
 import { useBlurTarget } from './GlassTarget';
 import { GlassPortal } from './GlassPortal';
@@ -182,21 +182,29 @@ function GrowIn({ leaving, children }: { leaving: boolean; children: ReactNode }
 }
 
 // THE SHEET RISING (see `rise`): up from below the screen on a soft spring with a hair of overshoot, down on a quick ease.
+const RISEN = { transform: [{ translateY: 0 }] };
 function RiseIn({ leaving, children }: { leaving: boolean; children: ReactNode }) {
   const { height } = useWindowDimensions();
   const y = useSharedValue(height);
+  // Risen, the animated transform is DROPPED, as FlipIn does: React never sees the UI-thread translate, so it still
+  // thought the sheet stood below the screen, and a held press on any of its controls was dropped as «released outside»
+  // for the first second or two (the user, 2026-10-25: «вибрати можна тільки через секунду-дві»).
+  const [risen, setRisen] = useState(false);
   useEffect(() => {
     if (leaving) {
+      setRisen(false);
       y.value = withTiming(height, { duration: MOTION.out + 60, easing: Easing.in(Easing.cubic) });
       return;
     }
-    y.value = withSpring(0, { damping: 24, stiffness: 240, mass: 0.9 });
+    y.value = withSpring(0, { damping: 24, stiffness: 240, mass: 0.9, energyThreshold: 1e-4 }, (finished) => {
+      if (finished) runOnJS(setRisen)(true);
+    });
     const release = holdRecede();
     return release;
   }, [leaving, y, height]);
   const style = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }] }));
   return (
-    <Animated.View style={[styles.content, style]} pointerEvents={leaving ? 'none' : 'box-none'}>
+    <Animated.View style={[styles.content, risen ? RISEN : style]} pointerEvents={leaving ? 'none' : 'box-none'}>
       {children}
     </Animated.View>
   );
