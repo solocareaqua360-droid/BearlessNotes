@@ -4,6 +4,8 @@ import { Ionicons } from './icons/Ionicons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
+import { useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import { confirm, notify } from './surfaces/Ask';
@@ -38,6 +40,7 @@ export default function GeoOfflineRegionsSheet({
   currentBounds: [number, number, number, number] | null;
   onClose: () => void;
 }) {
+  const b = useBottomSheet(visible, onClose);
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [regions, setRegions] = useState<OfflineRegion[]>([]);
@@ -118,9 +121,12 @@ export default function GeoOfflineRegionsSheet({
   }
 
   return (
-    <GlassLayer visible={visible} onClose={onClose} intensity={60}>
-      <View style={styles.frame} pointerEvents="box-none">
-        <View style={styles.card}>
+    <GlassLayer visible={visible} onClose={onClose} intensity={60} rise={b.on}>
+      <View style={[styles.frame, b.frame]} pointerEvents="box-none">
+        <Animated.View style={[styles.card, b.window, b.padBottom(20)]}>
+          {b.fill}
+          {b.grab}
+          {b.on && <View style={{ height: 12 }} />}
           <View style={styles.header}>
             <Text style={styles.title}>Офлайн-райони</Text>
             <Pressable hitSlop={8} onPress={onClose}>
@@ -229,7 +235,7 @@ export default function GeoOfflineRegionsSheet({
               )}
             </>
           )}
-        </View>
+        </Animated.View>
       </View>
       <GeoAreaPicker
         visible={areaPickerVisible}

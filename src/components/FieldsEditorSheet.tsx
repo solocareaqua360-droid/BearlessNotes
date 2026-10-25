@@ -23,6 +23,8 @@ import { TAG_COLORS } from '../constants/tags';
 
 import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import Animated from 'react-native-reanimated';
+import { useBottomSheet } from './surfaces/bottomSheet';
 import { LINK_CATEGORY_INFO, LinkCategory } from '../utils/linkCategory';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 
@@ -110,6 +112,7 @@ export default function FieldsEditorSheet({
   onSave,
   onClose,
 }: Props) {
+  const b = useBottomSheet(visible, onClose);
   const theme = useTheme();
   const accent = theme.accent;
   const styles = useStyles(makeStyles);
@@ -279,21 +282,25 @@ export default function FieldsEditorSheet({
   }
 
   return (
-    <GlassLayer visible={visible} onClose={onClose}>
-      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
+    <GlassLayer visible={visible} onClose={onClose} rise={b.on}>
+      <View style={[styles.backdrop, b.frame, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         {/* Same keyboard-aware height as the row editor: sheet + keyboard
             must fit the screen, or the top of the list ends up above the
             screen edge with nothing able to scroll it back. */}
-        <View
+        <Animated.View
           style={[
             styles.sheet,
             {
               maxHeight: Math.min(windowHeight * 0.8, windowHeight - keyboardHeight - 48),
             },
+            b.window,
+            b.padBottom(28),
           ]}
         >
-          <View style={styles.handle} />
+          {b.fill}
+          {b.grab}
+          <View style={[styles.handle, b.on && { opacity: 0 }]} />
           <Text style={styles.title}>Поля</Text>
 
           {/* Without keyboardShouldPersistTaps, the first tap on anything
@@ -605,7 +612,7 @@ export default function FieldsEditorSheet({
               <Text style={styles.saveLabel}>Зберегти</Text>
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );

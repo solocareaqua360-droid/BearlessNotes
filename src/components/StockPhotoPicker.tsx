@@ -12,6 +12,8 @@ import {
 import { Ionicons } from './icons/Ionicons';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import GlassLayer from './GlassLayer';
+import { useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import { getPexelsKey, subscribeToPexelsKey } from '../utils/pexelsKey';
 import { StockPhoto, StockSource, searchStockPhotos } from '../utils/stockPhotos';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
@@ -39,6 +41,7 @@ export default function StockPhotoPicker({
   // A local file, handed back exactly like a gallery pick would be.
   onPicked: (uri: string) => void;
 }) {
+  const b = useBottomSheet(visible, onClose);
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
@@ -113,9 +116,12 @@ export default function StockPhotoPicker({
   }
 
   return (
-    <GlassLayer visible={visible} onClose={onClose} intensity={60}>
-      <View style={[styles.frame, { paddingBottom: keyboardHeight }]} pointerEvents="box-none">
-      <View style={styles.sheet}>
+    <GlassLayer visible={visible} onClose={onClose} intensity={60} rise={b.on}>
+      <View style={[styles.frame, b.frame, { paddingBottom: keyboardHeight }]} pointerEvents="box-none">
+      <Animated.View style={[styles.sheet, b.window, b.padBottom(0)]}>
+        {b.fill}
+        {b.grab}
+        {b.on && <View style={{ height: 12 }} />}
         <View style={styles.header}>
           <Text style={styles.title}>Пошук зображень</Text>
           <Pressable hitSlop={10} onPress={onClose}>
@@ -206,7 +212,7 @@ export default function StockPhotoPicker({
             )}
           />
         )}
-      </View>
+      </Animated.View>
       </View>
     </GlassLayer>
   );

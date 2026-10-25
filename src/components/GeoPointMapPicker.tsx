@@ -5,6 +5,8 @@ import { Ionicons } from './icons/Ionicons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
+import { useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import GeoHouseNumbers from './GeoHouseNumbers';
 import { MAP_STYLE_URL } from '../utils/geoMapStyle';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
@@ -36,6 +38,7 @@ export default function GeoPointMapPicker({
   onCancel: () => void;
   onSave: (point: LatLng) => void;
 }) {
+  const b = useBottomSheet(visible, onCancel);
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [point, setPoint] = useState<LatLng | null>(initialPoint ?? null);
@@ -47,9 +50,12 @@ export default function GeoPointMapPicker({
   const center = initialPoint ?? initialCenter ?? DEFAULT_CENTER;
 
   return (
-    <GlassLayer visible={visible} onClose={onCancel} intensity={60}>
-      <View style={styles.frame} pointerEvents="box-none">
-        <View style={styles.card}>
+    <GlassLayer visible={visible} onClose={onCancel} intensity={60} rise={b.on}>
+      <View style={[styles.frame, b.frame]} pointerEvents="box-none">
+        <Animated.View style={[styles.card, b.window, b.padBottom(20)]}>
+          {b.fill}
+          {b.grab}
+          {b.on && <View style={{ height: 12 }} />}
           <View style={styles.header}>
             <Text style={styles.title}>Вкажіть точку на мапі</Text>
             <Pressable hitSlop={8} onPress={onCancel}>
@@ -89,7 +95,7 @@ export default function GeoPointMapPicker({
               <Text style={styles.saveLabel}>Зберегти</Text>
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );

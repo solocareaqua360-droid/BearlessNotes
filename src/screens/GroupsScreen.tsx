@@ -10,7 +10,6 @@ import { addDoc } from '../utils/owned';
 import { useIsFocused } from '@react-navigation/native';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -68,6 +67,9 @@ import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { useRenderTimer } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
 import { deg } from '../utils/angle';
+import GlassLayer from '../components/GlassLayer';
+// The four windows (2026-10-25): on the phone these windows stand on the bottom edge and rise (surfaces/bottomSheet).
+import { BOTTOM_FRAME, BottomWindow, RISES } from '../components/surfaces/bottomSheet';
 
 const DANGER = '#EF4444';
 const SIDE = 12;
@@ -583,11 +585,10 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
           </GestureDetector>
         )}
 
-        <Modal visible={openGroup !== null} transparent animationType="fade" onRequestClose={() => setOpenGroupId(null)}>
-          <View style={styles.backdrop}>
+        <GlassLayer visible={openGroup !== null} onClose={() => setOpenGroupId(null)} rise={RISES}>
+          <View style={[styles.backdrop, BOTTOM_FRAME]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpenGroupId(null)} />
-            <View style={styles.sheet}>
-              <View style={styles.handle} />
+            <BottomWindow visible={openGroup !== null} onClose={() => setOpenGroupId(null)} style={styles.sheet} pad={28}>
               {openGroup && (
                 <>
                   <View style={styles.sheetTitleRow}>
@@ -626,20 +627,14 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
 
                 </>
               )}
-            </View>
+            </BottomWindow>
           </View>
-        </Modal>
+        </GlassLayer>
 
-        <Modal
-          visible={kindsEditorGroup !== null}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setKindsEditorGroup(null)}
-        >
-          <View style={styles.backdrop}>
+        <GlassLayer visible={kindsEditorGroup !== null} onClose={() => setKindsEditorGroup(null)} rise={RISES}>
+          <View style={[styles.backdrop, BOTTOM_FRAME]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setKindsEditorGroup(null)} />
-            <View style={styles.sheet}>
-              <View style={styles.handle} />
+            <BottomWindow visible={kindsEditorGroup !== null} onClose={() => setKindsEditorGroup(null)} style={styles.sheet} pad={28}>
               <Text style={styles.sheetTitle}>У яких базах показувати</Text>
               <ScrollView style={styles.itemList}>
                 {[
@@ -671,9 +666,9 @@ export default function GroupsScreen({ inPane }: { inPane?: boolean } = {}) {
                   );
                 })}
               </ScrollView>
-            </View>
+            </BottomWindow>
           </View>
-        </Modal>
+        </GlassLayer>
 
         <GroupImportSheet
           visible={importingGroup !== null}

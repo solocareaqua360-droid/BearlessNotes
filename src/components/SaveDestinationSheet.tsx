@@ -13,6 +13,8 @@ import { ownedQuery } from '../utils/owned';
 import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
+import { useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { listenError } from '../utils/listenError';
 import { isChatOwned } from '../utils/chatOwned';
@@ -68,6 +70,7 @@ export default function SaveDestinationSheet({
   onPickExistingBoard,
   onClose,
 }: Props) {
+  const b = useBottomSheet(visible, onClose);
   const theme = useTheme();
   const accent = theme.accent;
   const styles = useStyles(makeStyles);
@@ -120,15 +123,17 @@ export default function SaveDestinationSheet({
     : boards;
 
   return (
-    <GlassLayer visible={visible} onClose={onClose}>
+    <GlassLayer visible={visible} onClose={onClose} rise={b.on}>
       {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
           parent it took the RN touch responder for every drag that did
           not land on a deeper child, which is what kept the list from
           scrolling. A tap outside still closes it. */}
-      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
+      <View style={[styles.backdrop, b.frame, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <Animated.View style={[styles.sheet, b.window, b.padBottom(28)]}>
+          {b.fill}
+          {b.grab}
+          <View style={[styles.handle, b.on && { opacity: 0 }]} />
           <Text style={styles.title}>{title}</Text>
 
           <ScrollView keyboardShouldPersistTaps="handled">
@@ -226,7 +231,7 @@ export default function SaveDestinationSheet({
             </>
             )}
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );

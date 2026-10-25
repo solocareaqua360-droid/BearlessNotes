@@ -34,6 +34,8 @@ import {
   SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
+import { useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import ReferenceBlockPreview from './ReferenceBlockPreview';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft, type SoftTokens } from '../theme/soft';
@@ -206,6 +208,8 @@ export default function AddExistingItemModal({
   allowedTabs,
   soft: softProp,
 }: Props) {
+  // Its own dark body stays (white words on it) - no milk glass.
+  const b = useBottomSheet(visible, onClose, false);
   const theme = useTheme();
   // At a pointer the window wears the soft style on its own - the dark glass
   // it was written in belongs to a phone (a caller that passes its own
@@ -744,15 +748,17 @@ export default function AddExistingItemModal({
   }
 
   return (
-    <GlassLayer visible={visible} onClose={onClose}>
+    <GlassLayer visible={visible} onClose={onClose} rise={b.on}>
       {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
           parent it took the RN touch responder for every drag that did
           not land on a deeper child, which is what kept the list from
           scrolling. A tap outside still closes it. */}
-      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
+      <View style={[styles.backdrop, b.frame, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <Animated.View style={[styles.sheet, b.window, b.padBottom(28)]}>
+          {b.fill}
+          {b.grab}
+          <View style={[styles.handle, b.on && { opacity: 0 }]} />
           {/* A way out that is a BUTTON. Tapping outside and dragging the
               handle both close it, but neither says so - and with the
               keyboard up there is hardly any "outside" left to tap. */}
@@ -763,7 +769,7 @@ export default function AddExistingItemModal({
             </Pressable>
           </View>
           {body}
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );

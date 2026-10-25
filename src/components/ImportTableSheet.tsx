@@ -28,6 +28,8 @@ import { FIELD_TYPE_LABEL } from './FieldsEditorSheet';
 import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
+import Animated from 'react-native-reanimated';
+import { useBottomSheet } from './surfaces/bottomSheet';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureLocalFile } from '../utils/googleDrive';
 import { notify } from './surfaces/Ask';
@@ -62,6 +64,10 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
   const accent = theme.accent;
   const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
+  const b = useBottomSheet(visible, () => {
+    reset();
+    onClose();
+  });
   const [sheets, setSheets] = useState<ParsedSheet[] | null>(null);
   const [sheetIndex, setSheetIndex] = useState(0);
   const [hasHeaderRow, setHasHeaderRow] = useState(true);
@@ -340,11 +346,12 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
         reset();
         onClose();
       }}
+      rise={b.on}
     >
       {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
           parent it took the RN touch responder for every drag that did not
           land on a deeper child. A tap outside still closes it. */}
-      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
+      <View style={[styles.backdrop, b.frame, { paddingBottom: keyboardHeight }]}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={() => {
@@ -352,8 +359,10 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
             onClose();
           }}
         />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <Animated.View style={[styles.sheet, b.window, b.padBottom(28)]}>
+          {b.fill}
+          {b.grab}
+          <View style={[styles.handle, b.on && { opacity: 0 }]} />
           <Text style={styles.title}>
             {targetDatabase ? `Імпорт у "${targetDatabase.name}"` : 'Імпорт таблиці'}
           </Text>
@@ -576,7 +585,7 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
               </Pressable>
             </ScrollView>
           )}
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );

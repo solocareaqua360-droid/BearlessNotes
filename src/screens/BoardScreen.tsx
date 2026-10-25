@@ -17,7 +17,6 @@ import {
   Keyboard,
   Image,
   Linking,
-  Modal,
   PixelRatio,
   Platform,
   Pressable,
@@ -170,6 +169,9 @@ import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { listenError } from '../utils/listenError';
 import { isChatOwned } from '../utils/chatOwned';
 import { rad } from '../utils/angle';
+import GlassLayer from '../components/GlassLayer';
+// The four windows (2026-10-25): on the phone these windows stand on the bottom edge and rise (surfaces/bottomSheet).
+import { BOTTOM_FRAME, BottomWindow, RISES } from '../components/surfaces/bottomSheet';
 
 const AUTOSAVE_DELAY_MS = 600;
 // How many steps back undo keeps - a plain cap on a session-only stack,
@@ -8930,15 +8932,9 @@ export default function BoardScreen() {
           }
         />
 
-        <Modal
-          visible={groupPickerVisible && !macBoard}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setGroupPickerVisible(false)}
-        >
-          <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }]} onPress={() => setGroupPickerVisible(false)}>
-            <Pressable style={styles.sheet} onPress={() => {}}>
-              <View style={styles.sheetHandle} />
+        <GlassLayer visible={groupPickerVisible && !macBoard} onClose={() => setGroupPickerVisible(false)} rise={RISES}>
+          <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]} onPress={() => setGroupPickerVisible(false)}>
+            <BottomWindow visible={groupPickerVisible && !macBoard} onClose={() => setGroupPickerVisible(false)} style={styles.sheet} pad={28} catchTaps>
               <Text style={styles.sheetTitle}>З якого проекту</Text>
               <ScrollView style={styles.groupList}>
                 {groups
@@ -8966,31 +8962,28 @@ export default function BoardScreen() {
                   <Text style={styles.groupEmpty}>Поки немає жодного проекту.</Text>
                 )}
               </ScrollView>
-            </Pressable>
+            </BottomWindow>
           </Pressable>
-        </Modal>
+        </GlassLayer>
 
         {/* "Проект справ" - a live column, not a snapshot (see the sheet
             row's own comment). Two steps: which project, then the whole
             thing or one of its own lists - a project can hold several. */}
-        <Modal
-          visible={taskColumnPickerVisible && !macBoard}
-          transparent
-          animationType="fade"
-          onRequestClose={() => {
+        <GlassLayer visible={taskColumnPickerVisible && !macBoard} onClose={() => {
             setTaskColumnPickerVisible(false);
             setTaskColumnProject(null);
-          }}
-        >
+          }} rise={RISES}>
           <Pressable
-            style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }]}
+            style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]}
             onPress={() => {
               setTaskColumnPickerVisible(false);
               setTaskColumnProject(null);
             }}
           >
-            <Pressable style={styles.sheet} onPress={() => {}}>
-              <View style={styles.sheetHandle} />
+            <BottomWindow visible={taskColumnPickerVisible && !macBoard} onClose={() => {
+            setTaskColumnPickerVisible(false);
+            setTaskColumnProject(null);
+          }} style={styles.sheet} pad={28} catchTaps>
               {taskColumnProject === null ? (
                 <>
                   <Text style={styles.sheetTitle}>З якого проекту</Text>
@@ -9044,9 +9037,9 @@ export default function BoardScreen() {
                   </ScrollView>
                 </>
               )}
-            </Pressable>
+            </BottomWindow>
           </Pressable>
-        </Modal>
+        </GlassLayer>
 
         <GroupImportSheet
           visible={importingGroup !== null}
@@ -9061,10 +9054,9 @@ export default function BoardScreen() {
           }}
         />
 
-        <Modal visible={addSheetVisible} transparent animationType="fade" onRequestClose={() => setAddSheetVisible(false)}>
-          <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }]} onPress={() => setAddSheetVisible(false)}>
-            <Pressable style={styles.sheet} onPress={() => {}}>
-              <View style={styles.sheetHandle} />
+        <GlassLayer visible={addSheetVisible} onClose={() => setAddSheetVisible(false)} rise={RISES}>
+          <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]} onPress={() => setAddSheetVisible(false)}>
+            <BottomWindow visible={addSheetVisible} onClose={() => setAddSheetVisible(false)} style={styles.sheet} pad={28} catchTaps>
               {/* WHAT CAN BE ADDED, as sections of icon tiles rather than one
                   long list of words - the user's own ask: orientation by
                   icons and sections, compact ("як під клавіатурне меню").
@@ -9089,20 +9081,14 @@ export default function BoardScreen() {
                   ));
                 })()}
               </ScrollView>
-            </Pressable>
+            </BottomWindow>
           </Pressable>
-        </Modal>
+        </GlassLayer>
         {/* Which piece of furniture. A short list of shapes and one
             loose label - see BoardShape for why none of them is a card. */}
-        <Modal
-          visible={shapeSheetVisible && !macBoard}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShapeSheetVisible(false)}
-        >
-          <Pressable style={styles.sheetBackdrop} onPress={() => setShapeSheetVisible(false)}>
-            <Pressable style={styles.sheet} onPress={() => {}}>
-              <View style={styles.sheetHandle} />
+        <GlassLayer visible={shapeSheetVisible && !macBoard} onClose={() => setShapeSheetVisible(false)} rise={RISES}>
+          <Pressable style={[styles.sheetBackdrop, BOTTOM_FRAME]} onPress={() => setShapeSheetVisible(false)}>
+            <BottomWindow visible={shapeSheetVisible && !macBoard} onClose={() => setShapeSheetVisible(false)} style={styles.sheet} pad={28} catchTaps>
               {SHAPE_MENU.map((entry) => (
                 <Pressable key={entry.kind} style={styles.sheetRow} onPress={() => addShape(entry.kind)}>
                   <MaterialCommunityIcons
@@ -9113,9 +9099,9 @@ export default function BoardScreen() {
                   <Text style={styles.sheetRowLabel}>{entry.label}</Text>
                 </Pressable>
               ))}
-            </Pressable>
+            </BottomWindow>
           </Pressable>
-        </Modal>
+        </GlassLayer>
 
         <FlashcardQuickSheet id={editFlashcardId} onClose={closeFlashcardSheet} />
         <RenamePrompt

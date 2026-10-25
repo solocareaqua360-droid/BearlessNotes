@@ -8,6 +8,7 @@ import {
 } from 'expo-speech-recognition';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
+import { useBottomSheet } from './surfaces/bottomSheet';
 import { SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { FONT_BOLD, FONT_REGULAR } from '../utils/fonts';
 import { ChatMessage, editChatMessage, markChatMessagesUsed, sendChatMessage } from '../utils/chat';
@@ -52,6 +53,8 @@ export default function CaptureWindow({ onOpenChat, onOpenNote }: { onOpenChat: 
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [visible, setVisible] = useState(false);
+  // An arrow, not `close` itself: that is declared further down, and is only CALLED once the drag ends.
+  const b = useBottomSheet(visible, () => close());
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   // The window stands at the foot of the screen, so the keyboard would
@@ -274,11 +277,13 @@ export default function CaptureWindow({ onOpenChat, onOpenNote }: { onOpenChat: 
   const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 
   return (
-    <GlassLayer visible={visible} onClose={close}>
-      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
+    <GlassLayer visible={visible} onClose={close} rise={b.on}>
+      <View style={[styles.backdrop, b.frame, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={close} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <Animated.View style={[styles.sheet, b.window, b.padBottom(24)]}>
+          {b.fill}
+          {b.grab}
+          <View style={[styles.handle, b.on && { opacity: 0 }]} />
 
           <View style={styles.headRow}>
             <Text style={styles.title}>
@@ -442,7 +447,7 @@ export default function CaptureWindow({ onOpenChat, onOpenNote }: { onOpenChat: 
               />
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );

@@ -24,7 +24,11 @@ const SPEC = 0.7;
 // The light theme's milk: plain white, not the theme's cream (#FDFAF4) - cream over the warm ground read as stale white.
 const LIGHT_MILK = '#FFFFFF';
 
-export default function DockGlassFill({ soft, paused: still, radius, dense }: { soft: SoftTokens; paused?: boolean; radius?: number; dense?: boolean }) {
+// `coat`: the milk's own strength over the blur, for a window that is mostly words and fields (a bottom sheet) - thicker
+// than `dense`, so a card behind cannot show through a label (the user, 2026-10-25: «вже погано вікно відображається»).
+// `intensity`: a stronger blur for the same reason - what passes behind a sheet must read as a smear, not as cards (the
+// user, 2026-10-25: «зливається текст блюр повинен бути сильнішим фон просвічує»).
+export default function DockGlassFill({ soft, paused: still, radius, dense, coat, intensity }: { soft: SoftTokens; paused?: boolean; radius?: number; dense?: boolean; coat?: number; intensity?: number }) {
   const theme = useTheme();
   const g = theme.glass;
   const target = useBlurTarget();
@@ -52,7 +56,7 @@ export default function DockGlassFill({ soft, paused: still, radius, dense }: { 
     >
       {blur && (
         <BlurView
-          intensity={soft.dark ? BLUR : g.blur}
+          intensity={intensity ?? (soft.dark ? BLUR : g.blur)}
           tint={soft.dark ? 'dark' : g.blurTint}
           blurMethod="dimezisBlurView"
           blurTarget={target ?? undefined}
@@ -66,7 +70,7 @@ export default function DockGlassFill({ soft, paused: still, radius, dense }: { 
         style={[
           StyleSheet.absoluteFill,
           // `dense`: glass with TEXT on it over moving text (the chat's top capsule) - a thicker coat, so the words read.
-          soft.dark ? { backgroundColor: soft.chrome, opacity: blur ? (dense ? 0.75 : TINT) : FLAT } : { backgroundColor: LIGHT_MILK, opacity: blur ? (dense ? 0.72 : g.opacity) : FLAT },
+          soft.dark ? { backgroundColor: soft.chrome, opacity: blur ? (coat ?? (dense ? 0.75 : TINT)) : FLAT } : { backgroundColor: LIGHT_MILK, opacity: blur ? (coat ?? (dense ? 0.72 : g.opacity)) : FLAT },
         ]}
       />
       {/* THE RIM (the user, 2026-10-24, over a photo of the old rail capsule: «Питання в обідку») - GlassDrop's three layers,

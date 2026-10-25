@@ -207,14 +207,15 @@ export default function Sheet({
             anchored && ride,
             fromBottom && dragStyle,
             styles.window,
-            fromBottom && [styles.bottomWindow, { paddingBottom: insets.bottom + 16 }],
+            fromBottom && [styles.bottomWindow, { paddingBottom: insets.bottom + 16 + BELOW, marginBottom: -BELOW }],
             glassy && sheetGlass,
-            fromBottom && glassy && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
-            inset !== undefined && { paddingHorizontal: inset, paddingTop: inset, paddingBottom: fromBottom ? insets.bottom + inset : inset },
+            inset !== undefined && { paddingHorizontal: inset, paddingTop: inset, paddingBottom: fromBottom ? insets.bottom + inset + BELOW : inset },
             maxHeight !== undefined && !scroll && { maxHeight },
           ]}
         >
-          {glassy && <DockGlassFill soft={S} radius={SHEET_WINDOW.borderRadius} />}
+          {/* A sheet holds words and fields over a busy screen: the thicker coat, so they read (the label over a card behind
+              was lost, 2026-10-25). */}
+          {glassy && <DockGlassFill soft={S} radius={SHEET_WINDOW.borderRadius} coat={fromBottom ? 0.88 : 0.72} intensity={100} />}
           {fromBottom ? (
             <GestureDetector gesture={grab}>
               <View style={styles.grab} collapsable={false}>
@@ -241,6 +242,10 @@ export default function Sheet({
   );
 }
 
+// A bottom sheet reaches this far BELOW the screen: its lower corners stay round (and so does the glass rim drawn round
+// them), only out of sight - square corners left the rim curving in at the foot, a lit line running off the screen.
+const BELOW = 48;
+
 const makeStyles = (t: Theme) => StyleSheet.create({
   frame: {
     ...SHEET_FRAME,
@@ -253,7 +258,7 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     paddingBottom: 24,
   },
   // The phone's sheet: on the bottom edge, its top corners round, its bottom square.
-  bottomWindow: { maxWidth: '100%', borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderWidth: 0 },
+  bottomWindow: { maxWidth: '100%', borderWidth: 0 },
   // The top of a bottom sheet, the part a finger drags it down by.
   grab: { paddingTop: 2, marginTop: -8, paddingBottom: 2 },
   handle: {

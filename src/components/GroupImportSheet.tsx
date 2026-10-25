@@ -9,6 +9,8 @@ import { ImportableItem, MAX_CARDS_PER_COLUMN } from '../utils/importGroupToBoar
 import { hapticSelectItem, hapticWarning } from '../utils/haptics';
 import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { listenError } from '../utils/listenError';
 import { isChatOwned } from '../utils/chatOwned';
@@ -43,6 +45,7 @@ export default function GroupImportSheet({
   onCancel,
   onConfirm,
 }: Props) {
+  const b = useBottomSheet(visible, onCancel);
   const theme = useTheme();
   const accent = theme.accent;
   const styles = useStyles(makeStyles);
@@ -113,11 +116,13 @@ export default function GroupImportSheet({
   const chosenItems = items.filter((i) => selected.has(keyOf(i)));
 
   return (
-    <GlassLayer visible={visible} onClose={onCancel}>
-      <View style={styles.backdrop}>
+    <GlassLayer visible={visible} onClose={onCancel} rise={b.on}>
+      <View style={[styles.backdrop, b.frame]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <Animated.View style={[styles.sheet, b.window, b.padBottom(28)]}>
+          {b.fill}
+          {b.grab}
+          <View style={[styles.handle, b.on && { opacity: 0 }]} />
           <Text style={styles.title}>
             {step === 'items' ? `Що імпортувати з "${groupName}"` : 'На яку дошку'}
           </Text>
@@ -211,7 +216,7 @@ export default function GroupImportSheet({
               ))}
             </ScrollView>
           )}
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );

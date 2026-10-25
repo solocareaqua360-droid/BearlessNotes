@@ -15,6 +15,8 @@ import { useHiddenTags } from '../hooks/useHiddenTags';
 import RenamePrompt from './RenamePrompt';
 import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import GlassLayer from './GlassLayer';
+import { useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { TAG_KIND_LABELS as KIND_LABELS } from '../constants/tagKinds';
 
@@ -72,6 +74,7 @@ export default function TagPicker({
   plain = false,
   words = { title: 'Папки', create: 'Створити папку', newTitle: 'Нова папка', nameTitle: 'Назва папки' },
 }: Props) {
+  const b = useBottomSheet(visible, onClose);
   const theme = useTheme();
   const accent = theme.accent;
   // The colours offered are the theme's own card palette, so a tag
@@ -173,15 +176,17 @@ export default function TagPicker({
       : TAG_ICONS.filter((name) => name.includes(iconQuery.trim().toLowerCase()));
 
   return (
-    <GlassLayer visible={visible} onClose={onClose}>
+    <GlassLayer visible={visible} onClose={onClose} rise={b.on}>
       {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
           parent it took the RN touch responder for every drag that did not
           land on a deeper child, which is what kept the list from
           scrolling. A tap outside still closes it. */}
-      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
+      <View style={[styles.backdrop, b.frame, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <Animated.View style={[styles.sheet, b.window, b.padBottom(28)]}>
+          {b.fill}
+          {b.grab}
+          <View style={[styles.handle, b.on && { opacity: 0 }]} />
 
           {mode === 'list' ? (
             <>
@@ -334,7 +339,7 @@ export default function TagPicker({
               </View>
             </>
           )}
-        </View>
+        </Animated.View>
       </View>
 
       <RenamePrompt

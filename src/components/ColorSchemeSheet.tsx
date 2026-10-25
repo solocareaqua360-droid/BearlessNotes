@@ -3,6 +3,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
+import { useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import GradientSlider from './GradientSlider';
 import ColorWheel from './ColorWheel';
 import { useLift, useStyles } from '../theme/ThemeProvider';
@@ -54,6 +56,7 @@ export default function ColorSchemeSheet({
   onCancel: () => void;
   onSave: (colors: string[]) => void;
 }) {
+  const b = useBottomSheet(visible, onCancel);
   const styles = useStyles(makeStyles);
   const lift = useLift();
   const [scheme, setScheme] = useState<SchemeKind>('complementary');
@@ -109,9 +112,12 @@ export default function ColorSchemeSheet({
   const pureHue = hslToHex(hueAt(selected), 100, 50);
 
   return (
-    <GlassLayer visible={visible} onClose={onCancel} intensity={60}>
-      <View style={SHEET_FRAME} pointerEvents="box-none">
-        <View style={[styles.card, lift]}>
+    <GlassLayer visible={visible} onClose={onCancel} intensity={60} rise={b.on}>
+      <View style={[SHEET_FRAME, b.frame]} pointerEvents="box-none">
+        <Animated.View style={[styles.card, lift, b.window, b.padBottom(18)]}>
+          {b.fill}
+          {b.grab}
+          {b.on && <View style={{ height: 12 }} />}
           <Text style={styles.title}>Схема кольорів</Text>
 
           {/* Scrolls, and the buttons below it do NOT - the wheel plus
@@ -219,7 +225,7 @@ export default function ColorSchemeSheet({
               <Text style={[styles.buttonLabel, styles.buttonLabelPrimary]}>Застосувати</Text>
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );

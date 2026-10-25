@@ -5,7 +5,7 @@ import { APPS_TEMPLATE_NAME, APPS_TEMPLATE_RATES, appsTemplateFields } from '../
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import { type Theme } from '../theme/tokens';
 import { useRecordColour } from '../theme/ThemeProvider';
-import { BackHandler, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
@@ -77,6 +77,9 @@ import { CHROME_TOP } from '../constants/rail';
 import { listenError } from '../utils/listenError';
 import { useRenderTimer } from '../utils/perfWatch';
 import { FEATURES } from '../features';
+import GlassLayer from '../components/GlassLayer';
+// The four windows (2026-10-25): on the phone these windows stand on the bottom edge and rise (surfaces/bottomSheet).
+import { BOTTOM_FRAME, BottomWindow, RISES } from '../components/surfaces/bottomSheet';
 
 // THE BASES ARE A LIST (2026-10-12). They were a board of tiles - sizes,
 // folders, dividers, carried by the finger - and the user stopped using it:
@@ -808,9 +811,9 @@ export default function DatabasesScreen() {
 
       {/* A base's colour, chosen from a row's hold menu: the same palette
           the tile's menu offered, written where it always was (pickColor). */}
-      <Modal visible={colorPickerFor !== null} transparent animationType="fade" onRequestClose={() => setColorPickerFor(null)}>
-        <Pressable style={styles.colorMenuBackdrop} onPress={() => setColorPickerFor(null)}>
-          <Pressable style={styles.colorMenuCard} onPress={(e) => e.stopPropagation()}>
+      <GlassLayer visible={colorPickerFor !== null} onClose={() => setColorPickerFor(null)} rise={RISES}>
+        <Pressable style={[styles.colorMenuBackdrop, BOTTOM_FRAME]} onPress={() => setColorPickerFor(null)}>
+          <BottomWindow visible={colorPickerFor !== null} onClose={() => setColorPickerFor(null)} style={styles.colorMenuCard} pad={20} catchTaps>
             <Text style={styles.colorMenuTitle}>Колір бази</Text>
             <View style={styles.colorMenuRow}>
               {theme.cards.map((color) => (
@@ -819,21 +822,16 @@ export default function DatabasesScreen() {
                 </Pressable>
               ))}
             </View>
-          </Pressable>
+          </BottomWindow>
         </Pressable>
-      </Modal>
+      </GlassLayer>
 
       {/* What else can go in the list: the groups (a theme of the
           period) and the smart folders (a saved filter). Both already
           know their own colour and how many they hold. */}
-      <Modal
-        visible={pinSheetVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPinSheetVisible(false)}
-      >
-        <Pressable style={styles.colorMenuBackdrop} onPress={() => setPinSheetVisible(false)}>
-          <Pressable style={styles.pinCard} onPress={(e) => e.stopPropagation()}>
+      <GlassLayer visible={pinSheetVisible} onClose={() => setPinSheetVisible(false)} rise={RISES}>
+        <Pressable style={[styles.colorMenuBackdrop, BOTTOM_FRAME]} onPress={() => setPinSheetVisible(false)}>
+          <BottomWindow visible={pinSheetVisible} onClose={() => setPinSheetVisible(false)} style={styles.pinCard} pad={16} catchTaps>
             <Text style={styles.colorMenuTitle}>Закріпити в базах</Text>
             <ScrollView style={styles.pinList}>
               <Text style={styles.pinSection}>Проекти</Text>
@@ -874,9 +872,9 @@ export default function DatabasesScreen() {
                 );
               })}
             </ScrollView>
-          </Pressable>
+          </BottomWindow>
         </Pressable>
-      </Modal>
+      </GlassLayer>
 
       <IconPickerSheet
         visible={iconPickerFor !== null}

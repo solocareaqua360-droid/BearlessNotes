@@ -3,6 +3,8 @@ import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, Vi
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
+import { BELOW, useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import GeoPointMapPicker from './GeoPointMapPicker';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
@@ -45,6 +47,7 @@ export default function GeoPointEntrySheet({
   onCancel: () => void;
   onSave: (params: { title: string; point: LatLng }) => void;
 }) {
+  const b = useBottomSheet(visible, onCancel);
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [title, setTitle] = useState('');
@@ -143,9 +146,12 @@ export default function GeoPointEntrySheet({
   }, []);
 
   return (
-    <GlassLayer visible={visible} onClose={onCancel} intensity={60}>
-      <View style={styles.frame} pointerEvents="box-none">
-        <View style={[styles.card, { marginBottom: keyboardHeight }]}>
+    <GlassLayer visible={visible} onClose={onCancel} intensity={60} rise={b.on}>
+      <View style={[styles.frame, b.frame]} pointerEvents="box-none">
+        <Animated.View style={[styles.card, b.window, { marginBottom: keyboardHeight - (b.on ? BELOW : 0) }, b.padBottom(20)]}>
+          {b.fill}
+          {b.grab}
+          {b.on && <View style={{ height: 12 }} />}
           <Text style={styles.title}>Нова геоточка</Text>
           <TextInput
             value={title}
@@ -259,7 +265,7 @@ export default function GeoPointEntrySheet({
               <Text style={styles.saveLabel}>Зберегти</Text>
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
       </View>
       <GeoPointMapPicker
         visible={mapPickerVisible}

@@ -88,11 +88,14 @@ export default function GlassLayer({
   // вимкнули") and went off only after the card had settled.
   const flipT = flipProgress;
   const backdropStyle = useAnimatedStyle(() => ({ opacity: flipT.value }));
+  // A rising sheet fades a plain dim too, never a blur: the app behind it steps back, and a live blur over a moving
+  // surface is what froze this app before. A light DARKENING, not the whitening, or the step back cannot be seen.
+  const fadeDim = !!softDim || !!rise;
   const dimShown = useSharedValue(0);
   useEffect(() => {
-    if (!softDim) return;
+    if (!fadeDim) return;
     dimShown.value = leaving ? withTiming(0, { duration: MOTION.out, easing: Easing.in(Easing.quad) }) : withTiming(1, { duration: 320, easing: Easing.out(Easing.quad) });
-  }, [softDim, leaving, dimShown]);
+  }, [fadeDim, leaving, dimShown]);
   const softDimStyle = useAnimatedStyle(() => ({ opacity: dimShown.value }));
   const lastChildren = useRef(children);
   if (visible) lastChildren.current = children;
@@ -105,7 +108,7 @@ export default function GlassLayer({
           beside a sheet is as much "behind the glass" as what is under it,
           and blurring only the sheet's own rectangle looks like a cut-out. */}
       <Animated.View style={[StyleSheet.absoluteFill, flip ? backdropStyle : null]} pointerEvents="box-none">
-      {!pointer && !softDim && (
+      {!pointer && !fadeDim && (
       <BlurView
         intensity={intensity}
         tint="dark"
@@ -119,10 +122,10 @@ export default function GlassLayer({
           its parent: as a parent it took the touch responder for every drag
           that didn't land on a deeper child, which is what used to keep
           these lists from scrolling. */}
-      {softDim && !pointer ? (
+      {fadeDim && !pointer ? (
         <Animated.View style={[StyleSheet.absoluteFill, softDimStyle]} pointerEvents="box-none">
           <Pressable
-            style={[StyleSheet.absoluteFill, { backgroundColor: soft.dark ? 'rgba(0,0,0,0.62)' : 'rgba(246,245,242,0.84)' }]}
+            style={[StyleSheet.absoluteFill, { backgroundColor: rise ? (soft.dark ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.22)') : soft.dark ? 'rgba(0,0,0,0.62)' : 'rgba(246,245,242,0.84)' }]}
             onPress={onClose}
           />
         </Animated.View>

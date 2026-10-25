@@ -14,6 +14,8 @@ import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
 import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import GlassLayer from './GlassLayer';
+import Animated from 'react-native-reanimated';
+import { useBottomSheet } from './surfaces/bottomSheet';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { TAG_KIND_CHOICES } from '../constants/tagKinds';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
@@ -36,6 +38,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
   const swatches = useTheme().cards;
   const styles = useStyles(makeStyles);
   const keyboardHeight = useKeyboardHeight();
+  const b = useBottomSheet(visible, onCancel);
   const [path, setPath] = useState('');
   const [iconQuery, setIconQuery] = useState('');
   const [selectedIcon, setSelectedIcon] = useState(TAG_ICONS[0]);
@@ -81,15 +84,17 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
   }
 
   return (
-    <GlassLayer visible={visible} onClose={onCancel}>
+    <GlassLayer visible={visible} onClose={onCancel} rise={b.on}>
       {/* Backdrop as a SIBLING behind the sheet, not its parent - as a
           parent it took the RN touch responder for every drag that did
           not land on a deeper child, which is what kept the list from
           scrolling. A tap outside still closes it. */}
-      <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
+      <View style={[styles.backdrop, b.frame, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <Animated.View style={[styles.sheet, b.window, b.padBottom(28)]}>
+          {b.fill}
+          {b.grab}
+          <View style={[styles.handle, b.on && { opacity: 0 }]} />
 
           <View style={styles.headerRow}>
             <Pressable onPress={onCancel}>
@@ -174,7 +179,7 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
               )}
             />
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );

@@ -90,6 +90,9 @@ import { rightClick } from '../utils/rightClick';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { pickPhotosFromDevice } from '../utils/photoLibrary';
 import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
+import GlassLayer from '../components/GlassLayer';
+// The four windows (2026-10-25): on the phone these windows stand on the bottom edge and rise (surfaces/bottomSheet).
+import { BOTTOM_FRAME, BottomWindow, RISES } from '../components/surfaces/bottomSheet';
 
 // The foot the list keeps clear for the dock - the same reckoning
 // DatabaseChrome makes.
@@ -1890,9 +1893,9 @@ export default function TasksScreen() {
     const task = tasks.find((t) => t.id === closeDay.queue[closeDay.at]);
     const finished = !task;
     return (
-      <Modal visible transparent animationType="fade" onRequestClose={() => setCloseDay(null)}>
-        <View style={styles.cdBackdrop}>
-          <View style={[styles.cdCard, { backgroundColor: soft.card, boxShadow: soft.popShadow }]}>
+      <GlassLayer visible onClose={() => setCloseDay(null)} rise={RISES}>
+        <View style={[styles.cdBackdrop, BOTTOM_FRAME]}>
+          <BottomWindow visible={true} onClose={() => setCloseDay(null)} style={[styles.cdCard, { backgroundColor: soft.card, boxShadow: soft.popShadow }]} pad={20}>
             <View style={styles.cdHead}>
               <Text style={[styles.cdTitle, { color: soft.ink }]}>Закрити день</Text>
               <Pressable hitSlop={10} onPress={() => setCloseDay(null)}>
@@ -1932,9 +1935,9 @@ export default function TasksScreen() {
                 </Pressable>
               </>
             )}
-          </View>
+          </BottomWindow>
         </View>
-      </Modal>
+      </GlassLayer>
     );
   }
 
@@ -3190,18 +3193,12 @@ export default function TasksScreen() {
             ? taskLists.filter((l) => l.groupId === listPickerGroupId)
             : [];
           return (
-            <Modal
-              visible={listPickerTaskId !== null}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setListPickerTaskId(null)}
-            >
+            <GlassLayer visible={listPickerTaskId !== null} onClose={() => setListPickerTaskId(null)} rise={RISES}>
               <Pressable
-                style={[styles.modalBackdrop, { paddingBottom: keyboardHeight }]}
+                style={[styles.modalBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]}
                 onPress={() => setListPickerTaskId(null)}
               >
-                <Pressable style={styles.modalSheet} onPress={() => {}}>
-                  <View style={styles.modalHandle} />
+                <BottomWindow visible={listPickerTaskId !== null} onClose={() => setListPickerTaskId(null)} style={styles.modalSheet} pad={28} catchTaps>
                   <Text style={styles.modalTitle}>
                     {listPickerTaskId === BULK ? `Список для ${selectedIds.size}` : 'Оберіть список'}
                   </Text>
@@ -3265,21 +3262,15 @@ export default function TasksScreen() {
                       </View>
                     </>
                   )}
-                </Pressable>
+                </BottomWindow>
               </Pressable>
-            </Modal>
+            </GlassLayer>
           );
         })()}
 
-        <Modal
-          visible={recurrenceTaskId !== null}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setRecurrenceTaskId(null)}
-        >
-          <Pressable style={styles.modalBackdrop} onPress={() => setRecurrenceTaskId(null)}>
-            <Pressable style={styles.modalSheet} onPress={() => {}}>
-              <View style={styles.modalHandle} />
+        <GlassLayer visible={recurrenceTaskId !== null} onClose={() => setRecurrenceTaskId(null)} rise={RISES}>
+          <Pressable style={[styles.modalBackdrop, BOTTOM_FRAME]} onPress={() => setRecurrenceTaskId(null)}>
+            <BottomWindow visible={recurrenceTaskId !== null} onClose={() => setRecurrenceTaskId(null)} style={styles.modalSheet} pad={28} catchTaps>
               <Text style={styles.modalTitle}>Повторення</Text>
               {(() => {
                 const task = tasks.find((t) => t.id === recurrenceTaskId);
@@ -3318,9 +3309,9 @@ export default function TasksScreen() {
                   </>
                 );
               })()}
-            </Pressable>
+            </BottomWindow>
           </Pressable>
-        </Modal>
+        </GlassLayer>
 
         {renderCloseDay()}
         <RenamePrompt

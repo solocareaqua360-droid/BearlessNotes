@@ -78,6 +78,8 @@ import { TAG_COLORS, TAG_ICONS } from '../constants/tags';
 import { LINK_CATEGORY_INFO, LinkCategory, categoryFromSiteName } from '../utils/linkCategory';
 import { refreshLinkPreviewIfExpired } from '../utils/linkPreviewRefresh';
 import GlassLayer from '../components/GlassLayer';
+// The four windows (2026-10-25): on the phone every hand-built window here stands on the bottom edge and rises.
+import { BOTTOM_FLUSH, BOTTOM_FRAME, BottomWindow, RISES } from '../components/surfaces/bottomSheet';
 import RecordPanel from '../components/desktop/RecordPanel';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { usePins } from '../navigation/pinned';
@@ -3793,11 +3795,11 @@ export default function CustomDatabaseScreen({
           one tap and no thinking. Filtering keeps its two levels inside
           its own tab: fields, then that field's values, with the back
           step in the tab's own header rather than the window's. */}
-      <GlassLayer visible={openParam === 'params'} onClose={closeParamList}>
-        <View style={styles.layerBackdrop}>
+      <GlassLayer visible={openParam === 'params'} onClose={closeParamList} rise={RISES}>
+        <View style={[styles.layerBackdrop, BOTTOM_FRAME]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeParamList} />
           {/* Not the whole width (the user's, 2026-10-16: «аномально витягнуте»): a window of its own size. */}
-          <View style={[styles.paramsSheet, { maxWidth: 380, maxHeight: Math.min(windowHeight * 0.7, 560) }]}>
+          <BottomWindow visible={openParam === 'params'} onClose={closeParamList} style={[styles.paramsSheet, { maxWidth: 380, maxHeight: Math.min(windowHeight * 0.7, 560) }]} pad={10} glass={false}>
             {/* Only while "редагувати" (startEditView) brought us here -
                 a reminder that changes on every tab below now write
                 straight back into this saved view (see persistParam's own
@@ -4118,7 +4120,7 @@ export default function CustomDatabaseScreen({
                 );
               })}
             </ScrollView>
-          </View>
+          </BottomWindow>
         </View>
       </GlassLayer>
 
@@ -4315,10 +4317,10 @@ export default function CustomDatabaseScreen({
       {/* A faster way to hide/show a property than opening a saved view's
           own editor first - operates on whatever capsule is active (see
           toggleHiddenField's own comment on where that lands). */}
-      <GlassLayer visible={quickHiddenSheetVisible} onClose={() => setQuickHiddenSheetVisible(false)}>
-        <View style={styles.layerBackdrop}>
+      <GlassLayer visible={quickHiddenSheetVisible} onClose={() => setQuickHiddenSheetVisible(false)} rise={RISES}>
+        <View style={[styles.layerBackdrop, BOTTOM_FRAME]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setQuickHiddenSheetVisible(false)} />
-          <View style={[styles.paramsSheet, { maxHeight: Math.min(windowHeight * 0.6, 520) }]}>
+          <BottomWindow visible={quickHiddenSheetVisible} onClose={() => setQuickHiddenSheetVisible(false)} style={[styles.paramsSheet, { maxHeight: Math.min(windowHeight * 0.6, 520) }]} pad={10} glass={false}>
             <View style={styles.paramsTabs}>
               <Text style={styles.paramsSheetTitle}>Показати, приховати властивості</Text>
               <Pressable hitSlop={8} style={styles.paramsClose} onPress={() => setQuickHiddenSheetVisible(false)}>
@@ -4347,17 +4349,17 @@ export default function CustomDatabaseScreen({
                   );
                 })}
             </ScrollView>
-          </View>
+          </BottomWindow>
         </View>
       </GlassLayer>
 
       {/* Every saved view, with its own edit/delete/rename/project icons -
           "Поточні зміни" isn't listed, since it's not a named, manageable
           thing the way a saved view is. */}
-      <GlassLayer visible={viewsManagerVisible} onClose={() => setViewsManagerVisible(false)}>
-        <View style={styles.layerBackdrop}>
+      <GlassLayer visible={viewsManagerVisible} onClose={() => setViewsManagerVisible(false)} rise={RISES}>
+        <View style={[styles.layerBackdrop, BOTTOM_FRAME]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setViewsManagerVisible(false)} />
-          <View style={[styles.paramsSheet, { maxHeight: Math.min(windowHeight * 0.6, 520) }]}>
+          <BottomWindow visible={viewsManagerVisible} onClose={() => setViewsManagerVisible(false)} style={[styles.paramsSheet, { maxHeight: Math.min(windowHeight * 0.6, 520) }]} pad={10} glass={false}>
             <View style={styles.paramsTabs}>
               <Text style={styles.paramsSheetTitle}>Налаштування виглядів</Text>
               <Pressable hitSlop={8} style={styles.paramsClose} onPress={() => setViewsManagerVisible(false)}>
@@ -4411,16 +4413,16 @@ export default function CustomDatabaseScreen({
                 </View>
               ))}
             </ScrollView>
-          </View>
+          </BottomWindow>
         </View>
       </GlassLayer>
 
       {/* Icon choice, part of "редагування" (see the banner inside Подача
           above) - a curated set, same one tags already use. */}
-      <GlassLayer visible={iconPickerVisible} onClose={() => setIconPickerVisible(false)}>
-        <View style={styles.layerBackdrop}>
+      <GlassLayer visible={iconPickerVisible} onClose={() => setIconPickerVisible(false)} rise={RISES}>
+        <View style={[styles.layerBackdrop, BOTTOM_FRAME]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setIconPickerVisible(false)} />
-          <View style={[styles.paramsSheet, { maxHeight: Math.min(windowHeight * 0.6, 520) }]}>
+          <BottomWindow visible={iconPickerVisible} onClose={() => setIconPickerVisible(false)} style={[styles.paramsSheet, { maxHeight: Math.min(windowHeight * 0.6, 520) }]} pad={10} glass={false}>
             <View style={styles.paramsTabs}>
               <Text style={styles.paramsSheetTitle}>Іконка вигляду</Text>
               <Pressable hitSlop={8} style={styles.paramsClose} onPress={() => setIconPickerVisible(false)}>
@@ -4454,7 +4456,7 @@ export default function CustomDatabaseScreen({
                 ))}
               </View>
             </ScrollView>
-          </View>
+          </BottomWindow>
         </View>
       </GlassLayer>
 
@@ -4478,10 +4480,10 @@ export default function CustomDatabaseScreen({
       {/* THE CURRENCIES (a database with a price role): which one the
           totals are in, and what each of the others is worth in it. */}
       {ratesOpen && database && (
-        <GlassLayer visible onClose={() => setRatesOpen(false)}>
-          <View style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]}>
+        <GlassLayer visible onClose={() => setRatesOpen(false)} rise={RISES}>
+          <View style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setRatesOpen(false)} />
-            <View style={[styles.pageContainer, { maxHeight: 520 }]}>
+            <BottomWindow visible={true} onClose={() => setRatesOpen(false)} style={[styles.pageContainer, { maxHeight: 520 }]} pad={0} glass={false}>
               <View style={styles.pageHeader}>
                 <Pressable hitSlop={10} onPress={() => setRatesOpen(false)}>
                   <Ionicons name="close" size={24} color={sInk(GLASS_TEXT)} />
@@ -4533,7 +4535,7 @@ export default function CustomDatabaseScreen({
                   );
                 })}
               </GestureScrollView>
-            </View>
+            </BottomWindow>
           </View>
         </GlassLayer>
       )}
@@ -4746,7 +4748,7 @@ export default function CustomDatabaseScreen({
           appearing BEHIND the form, which read as "+ Поле does nothing". As
           a layer the form is in the screen with them, and whatever it opens
           mounts after it and so draws above it. */}
-      <GlassLayer visible={rowEditor !== null} onClose={cancelRowEditor}>
+      <GlassLayer visible={rowEditor !== null} onClose={cancelRowEditor} rise={RISES}>
         {/* The dimmed backdrop is a SIBLING behind the sheet, not its
             parent. As a parent (a Pressable wrapping everything, only there
             to stop a tap from closing the sheet) it took the RN touch
@@ -4754,15 +4756,14 @@ export default function CustomDatabaseScreen({
             which is exactly what kept the field list from scrolling. With
             it behind instead, nothing above the list claims touches, and a
             tap outside the sheet still closes it. */}
-        <View style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]}>
+        <View style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={cancelRowEditor} />
           {/* maxHeight has to account for the keyboard this sheet is
               lifted above: at a flat 85% of the screen, sheet + keyboard
               added up to more than the screen, and the top of the form
               (title, first fields) ended up above the screen edge with no
               way to scroll back to it. */}
-          <View
-            style={[
+          <BottomWindow visible={rowEditor !== null} onClose={cancelRowEditor} style={[
               styles.editorSheet,
               {
                 // Small, and deliberately so. It was 85% of the screen,
@@ -4774,9 +4775,7 @@ export default function CustomDatabaseScreen({
                 // screen.
                 maxHeight: Math.min(windowHeight * 0.55, windowHeight - keyboardHeight - 48),
               },
-            ]}
-          >
-            <View style={styles.handle} />
+            ]} pad={28} glass={false}>
             <Text style={styles.title}>{rowEditor?.mode === 'new' ? 'Новий запис' : 'Редагувати запис'}</Text>
             {/* keyboardShouldPersistTaps: without it, tapping "Теги" (or
                 any other control here) while the keyboard is up only
@@ -4825,7 +4824,7 @@ export default function CustomDatabaseScreen({
                 <Text style={styles.saveLabel}>Зберегти</Text>
               </Pressable>
             </View>
-          </View>
+          </BottomWindow>
         </View>
       </GlassLayer>
 
@@ -5032,10 +5031,9 @@ export default function CustomDatabaseScreen({
           rows={rowMenuRow ? rowMenuRows(rowMenuRow) : []}
         />
       )}
-      <GlassLayer visible={!rowMenuPointer && rowMenuRow !== null} onClose={() => setRowMenuId(null)}>
-        <Pressable style={styles.layerBackdrop} onPress={() => setRowMenuId(null)}>
-          <Pressable style={styles.cardMenuSheet} onPress={() => {}}>
-            <View style={styles.handle} />
+      <GlassLayer visible={!rowMenuPointer && rowMenuRow !== null} onClose={() => setRowMenuId(null)} rise={RISES}>
+        <Pressable style={[styles.layerBackdrop, BOTTOM_FRAME]} onPress={() => setRowMenuId(null)}>
+          <BottomWindow visible={!rowMenuPointer && rowMenuRow !== null} onClose={() => setRowMenuId(null)} style={styles.cardMenuSheet} pad={28} glass={false} catchTaps>
             <Pressable
               style={styles.cardMenuRow}
               onPress={() => {
@@ -5087,7 +5085,7 @@ export default function CustomDatabaseScreen({
               <Ionicons name="trash-outline" size={18} color={DANGER} />
               <Text style={[styles.cardMenuRowLabel, { color: DANGER }]}>Видалити</Text>
             </Pressable>
-          </Pressable>
+          </BottomWindow>
         </Pressable>
       </GlassLayer>
 
@@ -5163,10 +5161,9 @@ function OptionPickerSheet({
   }
 
   return (
-    <GlassLayer visible onClose={onClose}>
-      <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
-          <View style={styles.handle} />
+    <GlassLayer visible onClose={onClose} rise={RISES}>
+      <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]} onPress={onClose}>
+        <BottomWindow visible={true} onClose={onClose} style={styles.sheet} pad={28} glass={false} catchTaps>
           <Text style={styles.title}>{field.name}</Text>
           {/* The list is built by typing into it, the way the relation
               picker builds rows: a field created from the record form has
@@ -5227,7 +5224,7 @@ function OptionPickerSheet({
               <Text style={styles.saveLabel}>Готово</Text>
             </Pressable>
           )}
-        </Pressable>
+        </BottomWindow>
       </Pressable>
     </GlassLayer>
   );
@@ -5322,10 +5319,9 @@ function RelationPickerSheet({
       : categoryLinks;
     const looksLikeUrl = /^(https?:\/\/)?[^\s/]+\.[^\s]{2,}/i.test(search.trim()) && !links.some((l) => l.url === search.trim());
     return (
-      <GlassLayer visible onClose={onClose}>
-        <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
-            <View style={styles.handle} />
+      <GlassLayer visible onClose={onClose} rise={RISES}>
+        <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]} onPress={onClose}>
+          <BottomWindow visible={true} onClose={onClose} style={styles.sheet} pad={28} glass={false} catchTaps>
             <Text style={styles.title}>{field.name}</Text>
             <TextInput
               style={styles.relationSearchInput}
@@ -5388,7 +5384,7 @@ function RelationPickerSheet({
                 <Text style={styles.relationDoneLabel}>Готово · {selectedIds.length}</Text>
               </Pressable>
             )}
-          </Pressable>
+          </BottomWindow>
         </Pressable>
       </GlassLayer>
     );
@@ -5403,10 +5399,9 @@ function RelationPickerSheet({
       ? files.filter((f) => nameOf(f).toLowerCase().includes(needle))
       : files;
     return (
-      <GlassLayer visible onClose={onClose}>
-        <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
-            <View style={styles.handle} />
+      <GlassLayer visible onClose={onClose} rise={RISES}>
+        <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]} onPress={onClose}>
+          <BottomWindow visible={true} onClose={onClose} style={styles.sheet} pad={28} glass={false} catchTaps>
             <Text style={styles.title}>{field.name}</Text>
             <TextInput
               style={styles.relationSearchInput}
@@ -5437,7 +5432,7 @@ function RelationPickerSheet({
                 <Text style={styles.relationDoneLabel}>Готово · {selectedIds.length}</Text>
               </Pressable>
             )}
-          </Pressable>
+          </BottomWindow>
         </Pressable>
       </GlassLayer>
     );
@@ -5446,10 +5441,9 @@ function RelationPickerSheet({
   if (isPhotos) {
     const filtered = needle ? photos.filter((p) => (p.title ?? '').toLowerCase().includes(needle)) : photos;
     return (
-      <GlassLayer visible onClose={onClose}>
-        <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
-            <View style={styles.handle} />
+      <GlassLayer visible onClose={onClose} rise={RISES}>
+        <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]} onPress={onClose}>
+          <BottomWindow visible={true} onClose={onClose} style={styles.sheet} pad={28} glass={false} catchTaps>
             <Text style={styles.title}>{field.name}</Text>
             <TextInput
               style={styles.relationSearchInput}
@@ -5479,7 +5473,7 @@ function RelationPickerSheet({
                 <Text style={styles.relationDoneLabel}>Готово · {selectedIds.length}</Text>
               </Pressable>
             )}
-          </Pressable>
+          </BottomWindow>
         </Pressable>
       </GlassLayer>
     );
@@ -5495,10 +5489,9 @@ function RelationPickerSheet({
     !relatedRows.some((r) => String(r.values[titleFieldId ?? ''] ?? '').trim().toLowerCase() === needle);
 
   return (
-    <GlassLayer visible onClose={onClose}>
-      <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
-          <View style={styles.handle} />
+    <GlassLayer visible onClose={onClose} rise={RISES}>
+      <Pressable style={[styles.layerBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]} onPress={onClose}>
+        <BottomWindow visible={true} onClose={onClose} style={styles.sheet} pad={28} glass={false} catchTaps>
           <Text style={styles.title}>{field.name}</Text>
           <TextInput
             style={styles.relationSearchInput}
@@ -5551,7 +5544,7 @@ function RelationPickerSheet({
               <Text style={styles.relationDoneLabel}>Готово · {selectedIds.length}</Text>
             </Pressable>
           )}
-        </Pressable>
+        </BottomWindow>
       </Pressable>
     </GlassLayer>
   );
@@ -5749,9 +5742,9 @@ function MiniDatePicker({
   })();
 
   return (
-    <GlassLayer visible onClose={onClose}>
-      <Pressable style={miniStyles.backdrop} onPress={onClose}>
-        <Pressable style={miniStyles.card} onPress={() => {}}>
+    <GlassLayer visible onClose={onClose} rise={RISES}>
+      <Pressable style={[miniStyles.backdrop, BOTTOM_FRAME, BOTTOM_FLUSH]} onPress={onClose}>
+        <BottomWindow visible={true} onClose={onClose} style={miniStyles.card} pad={16} glass={false} catchTaps>
           <View style={miniStyles.navRow}>
             <Pressable hitSlop={10} onPress={() => changeMonth(-1)}>
               <Ionicons name="chevron-back" size={18} color={GLASS_TEXT} />
@@ -5901,7 +5894,7 @@ function MiniDatePicker({
               <Text style={miniStyles.confirmButtonLabel}>Ок</Text>
             </Pressable>
           </View>
-        </Pressable>
+        </BottomWindow>
       </Pressable>
     </GlassLayer>
   );
@@ -6224,9 +6217,9 @@ function ScheduleViewSetupSheet({
   if (!visible) return null;
 
   return (
-    <GlassLayer visible={visible} onClose={onCancel}>
-      <Pressable style={miniStyles.backdrop} onPress={onCancel}>
-        <Pressable style={miniStyles.card} onPress={() => {}}>
+    <GlassLayer visible={visible} onClose={onCancel} rise={RISES}>
+      <Pressable style={[miniStyles.backdrop, BOTTOM_FRAME, BOTTOM_FLUSH]} onPress={onCancel}>
+        <BottomWindow visible={visible} onClose={onCancel} style={miniStyles.card} pad={16} glass={false} catchTaps>
           <Text style={miniStyles.scheduleTitle}>{editingView ? 'Редагувати графік' : 'Новий графік'}</Text>
           <Text style={miniStyles.scheduleSectionLabel}>Рядки за полем</Text>
           {relationFields.map((field) => (
@@ -6340,7 +6333,7 @@ function ScheduleViewSetupSheet({
               <Text style={miniStyles.confirmButtonLabel}>{editingView ? 'Зберегти' : 'Створити'}</Text>
             </Pressable>
           </View>
-        </Pressable>
+        </BottomWindow>
       </Pressable>
     </GlassLayer>
   );

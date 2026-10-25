@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { GLASS_TEXT_FAINT, SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
@@ -15,6 +15,9 @@ import { SketchElement } from '../types';
 import { backupFileToDrive } from '../utils/googleDrive';
 import SketchEditor from './SketchEditor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
+import GlassLayer from './GlassLayer';
+// The four windows (2026-10-25): on the phone these windows stand on the bottom edge and rise (surfaces/bottomSheet).
+import { BOTTOM_FRAME, BottomWindow, RISES } from './surfaces/bottomSheet';
 
 const STICKER_TEXT_LIMIT = 140;
 
@@ -149,10 +152,9 @@ export default function StickerComposer({ visible, onClose, editingTextSticker }
 
   return (
     <>
-      <Modal visible={visible && step === 'choose'} transparent animationType="fade" onRequestClose={onClose}>
-        <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }]} onPress={onClose}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
-            <View style={styles.handle} />
+      <GlassLayer visible={visible && step === 'choose'} onClose={onClose} rise={RISES}>
+        <Pressable style={[styles.backdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]} onPress={onClose}>
+          <BottomWindow visible={visible && step === 'choose'} onClose={onClose} style={styles.sheet} pad={28} catchTaps>
             <Text style={styles.title}>Новий стікер</Text>
             <Pressable style={styles.row} onPress={() => setStep('text')}>
               <Ionicons name="reader-outline" size={18} color="#111827" />
@@ -170,13 +172,13 @@ export default function StickerComposer({ visible, onClose, editingTextSticker }
               <Ionicons name="brush-outline" size={18} color="#111827" />
               <Text style={styles.rowLabel}>Малюнок</Text>
             </Pressable>
-          </Pressable>
+          </BottomWindow>
         </Pressable>
-      </Modal>
+      </GlassLayer>
 
-      <Modal visible={visible && step === 'text'} transparent animationType="fade" onRequestClose={onClose}>
-        <View style={styles.textBackdrop}>
-          <View style={styles.textCard}>
+      <GlassLayer visible={visible && step === 'text'} onClose={onClose} rise={RISES}>
+        <View style={[styles.textBackdrop, BOTTOM_FRAME]}>
+          <BottomWindow visible={visible && step === 'text'} onClose={onClose} style={styles.textCard} pad={18}>
             <Text style={styles.title}>{editingTextSticker ? 'Редагувати стікер' : 'Текстовий стікер'}</Text>
             <TextInput
               autoFocus
@@ -203,9 +205,9 @@ export default function StickerComposer({ visible, onClose, editingTextSticker }
                 <Text style={styles.saveLabel}>Зберегти</Text>
               </Pressable>
             </View>
-          </View>
+          </BottomWindow>
         </View>
-      </Modal>
+      </GlassLayer>
 
       <SketchEditor
         visible={sketchVisible}

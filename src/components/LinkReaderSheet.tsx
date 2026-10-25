@@ -4,6 +4,8 @@ import { Ionicons } from './icons/Ionicons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
+import { useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import ArticleBody, { type ArticleBodyHandle } from './ArticleBody';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
@@ -27,6 +29,7 @@ export default function LinkReaderSheet({
   onClose: () => void;
   onAddFragment: (text: string) => Promise<void>;
 }) {
+  const b = useBottomSheet(link !== null, onClose);
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const bodyRef = useRef<ArticleBodyHandle>(null);
@@ -117,9 +120,12 @@ export default function LinkReaderSheet({
   }
 
   return (
-    <GlassLayer visible={link !== null} onClose={onClose} intensity={60}>
-      <View style={styles.frame} pointerEvents="box-none">
-        <View style={styles.card}>
+    <GlassLayer visible={link !== null} onClose={onClose} intensity={60} rise={b.on}>
+      <View style={[styles.frame, b.frame]} pointerEvents="box-none">
+        <Animated.View style={[styles.card, b.window, b.padBottom(0)]}>
+          {b.fill}
+          {b.grab}
+          {b.on && <View style={{ height: 12 }} />}
           <View style={styles.header}>
             <Text style={styles.title} numberOfLines={1}>
               {displayed?.title || link?.title || 'Стаття'}
@@ -192,7 +198,7 @@ export default function LinkReaderSheet({
               {added ? 'Фрагмент додано до картки' : 'Виділіть текст, щоб додати фрагмент до картки'}
             </Text>
           )}
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );

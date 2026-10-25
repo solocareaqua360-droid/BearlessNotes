@@ -11,6 +11,8 @@ import { Ionicons } from './icons/Ionicons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
+import { useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import GeoAreaFrame, { type ScreenFrame } from './GeoAreaFrame';
 import GeoHouseNumbers from './GeoHouseNumbers';
 import { MAP_STYLE_URL } from '../utils/geoMapStyle';
@@ -41,6 +43,7 @@ export default function GeoAreaPicker({
   onCancel: () => void;
   onConfirm: (bounds: LngLatBounds) => void;
 }) {
+  const b = useBottomSheet(visible, onCancel);
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const mapRef = useRef<MapRef>(null);
@@ -89,9 +92,12 @@ export default function GeoAreaPicker({
   }
 
   return (
-    <GlassLayer visible={visible} onClose={onCancel} intensity={60}>
-      <View style={styles.frame} pointerEvents="box-none">
-        <View style={styles.card}>
+    <GlassLayer visible={visible} onClose={onCancel} intensity={60} rise={b.on}>
+      <View style={[styles.frame, b.frame]} pointerEvents="box-none">
+        <Animated.View style={[styles.card, b.window, b.padBottom(20)]}>
+          {b.fill}
+          {b.grab}
+          {b.on && <View style={{ height: 12 }} />}
           <View style={styles.header}>
             <Text style={styles.title}>Виберіть ділянку</Text>
             <Pressable hitSlop={8} onPress={onCancel}>
@@ -143,7 +149,7 @@ export default function GeoAreaPicker({
               )}
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </GlassLayer>
   );
