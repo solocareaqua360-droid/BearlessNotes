@@ -1,4 +1,5 @@
 import { type ComponentProps, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { confirmFates, FATE, type FateEntry, type FateKind } from '../utils/deleteFates';
 import { folderPathFromName } from '../utils/folderName';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { usePins } from '../navigation/pinned';
@@ -1301,6 +1302,22 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     chosen.splice(0, chosen.length, ...chosen.filter((i) => !isReference(i)));
     const binnable = chosen.filter((i) => i.kind !== 'row');
     const skipped = chosen.length - binnable.length;
+    // THE FATES first (the user, 2026-10-25): where each thing goes, kind by kind, then one more yes.
+    if (refs.length + binnable.length === 0) return;
+    const onlyRefs = binnable.length === 0;
+    const first = refs[0] ?? binnable[0];
+    const total = refs.length + binnable.length;
+    const sure = await confirmFates({
+      title: onlyRefs
+        ? total === 1 ? `Прибрати «${first.title || 'Без назви'}» з папки?` : `Прибрати з папки (${total})?`
+        : total === 1 ? `Видалити «${first.title || 'Без назви'}»?` : `Видалити (${total})?`,
+      entries: [
+        ...refs.map((r) => ({ kind: kindKey(r) as FateKind, tone: 'stays' as const, fate: `прибираються з папки, ${FATE.stays(kindKey(r) as FateKind)}` })),
+        ...binnable.map((i) => ({ kind: kindKey(i) as FateKind, tone: 'bin' as const, fate: FATE.bin })),
+      ],
+      confirmLabel: onlyRefs ? 'Прибрати' : 'Видалити',
+    });
+    if (!sure) return;
     if (refs.length > 0) {
       const taken: { tag: Tag; item: FolderItem }[] = [];
       for (const r of refs) {
@@ -1313,7 +1330,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       setToast({
         id: at,
         message: refs.length === 1 ? 'Прибрано з папки (оригінал лишився в базі)' : `Прибрано з папки: ${refs.length} (оригінали лишились у базі)`,
-        left: 10,
+        left: 5,
         undo: () => {
           taken.forEach(({ tag, item }) => attachTag(tag, item.tagKind, item.docId, item.collection).catch(() => {}));
           setToast(null);
@@ -1361,7 +1378,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     setToast({
       id: now,
       message: `Видалено: ${binnable.length}${skipped ? ` (${skipped} дошок/карток лишилось)` : ''}`,
-      left: 10,
+      left: 5,
       undo: () => {
         binnable.forEach((i) => {
           (i.kind === 'document' ? restoreNote(i.docId) : updateDoc(doc(db, i.collection, i.docId), { deletedAt: deleteField() })).catch(() => {});
@@ -1566,9 +1583,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       return;
     }
     if (choice === 'delete' && coll) {
-      const yes = await confirm({
+      const branch = new Set(tags.filter((t) => t.path === f.path || t.path.startsWith(`${f.path}/`)).map((t) => t.id));
+      const inIt = all.filter((i) => i.kind !== 'row' && !(i.raw as Record<string, unknown> | undefined)?.deletedAt && i.tagIds.some((id) => branch.has(id)));
+      const yes = await confirmFates({
         title: `Видалити підбірку «${f.name}»?`,
-        message: `Підбірка зникне і з провідника, і з бази. ${f.count > 0 ? `${f.count} речей у ній лишаться в базі.` : ''}`.trim(),
+        entries: [
+          { kind: 'collection', tone: 'forever', fate: 'видаляється і з Провідника, і з бази' },
+          ...inIt.map((i) => ({ kind: kindKey(i) as FateKind, tone: 'stays' as const, fate: FATE.stays(kindKey(i) as FateKind) })),
+        ],
         confirmLabel: 'Видалити підбірку',
       });
       if (!yes) return;
@@ -1606,11 +1628,23 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       if (dest === 'cancel') return;
       await moveFolderTo(f.path, dest === 'root' ? null : dest.slice(2)).catch(() => {});
     } else if (choice === 'delete') {
-      const yes = await confirm({
-        title: `Видалити папку «${f.name}»?`,
-        message: f.count > 0 ? `Папка зникне, а ${f.count} речей у ній підуть у корінь (нічого не видаляється).` : 'Папка порожня.',
-        confirmLabel: 'Видалити папку',
-      });
+      // What lies in the branch, and where each goes once its folders are gone: a thing filed elsewhere too stays there;
+      // a note, file, board or card with no other folder goes to «Нерозкладене»; a photo/video/link/geo point with none
+      // leaves the explorer (it is shown only where it was put) and stays in its base.
+      const inBranch = (p: string) => p === f.path || p.startsWith(`${f.path}/`);
+      const entries: FateEntry[] = [];
+      const subfolders = folderPaths.filter((p) => p.startsWith(`${f.path}/`)).length;
+      for (let n = 0; n < 1 + subfolders; n++) entries.push({ kind: 'folder', tone: 'forever', fate: 'видаляються, але речі в них - ні' });
+      for (const i of items) {
+        const paths = pathsOf.get(i.id) ?? [];
+        if (!paths.some(inBranch)) continue;
+        const k = kindKey(i) as FateKind;
+        const elsewhere = paths.find((p) => !inBranch(p));
+        if (elsewhere) entries.push({ kind: k, tone: 'stays', fate: 'лишаються в інших своїх папках' });
+        else if (i.kind === 'photo' || i.kind === 'link') entries.push({ kind: k, tone: 'stays', fate: `зникають з Провідника, ${FATE.stays(k)}` });
+        else entries.push({ kind: k, tone: 'stays', fate: 'переходять у «Нерозкладене»' });
+      }
+      const yes = await confirmFates({ title: `Видалити папку «${f.name}»?`, entries, confirmLabel: 'Видалити папку' });
       if (!yes) return;
       try {
         for (const tag of tags.filter((t) => t.path === f.path || t.path.startsWith(`${f.path}/`))) {
@@ -1664,9 +1698,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   async function purgeSelected() {
     const chosen = binned.filter((i) => selected.has(i.id));
     if (chosen.length === 0) return;
-    const yes = await confirm({
+    const yes = await confirmFates({
       title: `Видалити назавжди (${chosen.length})?`,
       message: 'Це не можна скасувати. Копії на Google Диску не чіпаю.',
+      entries: chosen.map((i) => ({ kind: kindKey(i) as FateKind, tone: 'forever' as const, fate: FATE.forever })),
       confirmLabel: 'Видалити назавжди',
     });
     if (!yes) return;
@@ -1727,7 +1762,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       setToast({
         id: now,
         message: `Прибрано вкладень закритих справ: ${mine.length}`,
-        left: 10,
+        left: 5,
         undo: () => {
           mine.forEach((c) => updateDoc(doc(db, c.item.collection, c.item.docId), { deletedAt: deleteField(), autoBinned: deleteField(), keep: true }).catch(() => {}));
           setToast(null);
@@ -2093,7 +2128,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             setToast({
               id: Date.now(),
               message: 'Прибрано з папки (оригінал лишився в базі)',
-              left: 10,
+              left: 5,
               undo: () => {
                 taken.forEach((t) => attachTag(t, item.tagKind, item.docId, item.collection).catch(() => {}));
                 setToast(null);
@@ -2106,7 +2141,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           setToast({
             id: now,
             message: 'Зображення видалено',
-            left: 10,
+            left: 5,
             undo: () => {
               updateDoc(doc(db, item.collection, item.docId), { deletedAt: deleteField() }).catch(() => {});
               setToast(null);

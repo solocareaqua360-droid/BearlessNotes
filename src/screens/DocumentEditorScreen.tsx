@@ -133,6 +133,8 @@ import { assembleWithDivider } from '../utils/canvasOrder';
 import { stableStringify } from '../utils/stableStringify';
 import { hapticSelectTap, hapticSuccess, hapticToggle } from '../utils/haptics';
 import { linkDocId } from '../utils/linkId';
+import { categoryFromSiteName } from '../utils/linkCategory';
+import { confirmFates, FATE, type FateEntry, type FateKind } from '../utils/deleteFates';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { type VideoSeek } from '../components/InlineVideoPlayer';
 import NoteVideoPanel from '../components/NoteVideoPanel';
@@ -1705,7 +1707,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // needs to be included once - re-sending the same value every sync is
       // harmless.
       if (b.createdAt) linkDocData.createdAt = b.createdAt;
-      unbinIfBinnedHere('links', linkId, linkDocData);
+      if (!knownLinkIdsRef.current.has(linkId)) reclaimFromBin('links', linkId);
       setDoc(doc(db, 'links', linkId), linkDocData, { merge: true });
     });
     knownLinkIdsRef.current.forEach((linkId) => {
@@ -1714,6 +1716,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       }
     });
     knownLinkIdsRef.current = linkIdsInThisDoc;
+    syncedOnceRef.current.add('links');
   }
 
   // This document no longer has any block for this record - clear just this
@@ -1724,9 +1727,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // 2026-10-25: «так»). Now: a record in a folder or a project stays as it
   // is; any other goes to the BIN (deletedAt - its base's 30 days, restorable).
   // Shared by links, photos, and files - the same `usedInDocuments` shape.
-  // `binnedHere`: what this editor binned, so an undo that brings the block
-  // back takes the record out of the bin again (the syncs below).
-  const binnedHereRef = useRef<Set<string>>(new Set());
+  // `binnedByNote` marks a record a note put in the bin this way: when a block of it turns up in a note again (undo
+  // here, or the cut blocks pasted into another note), the record comes back out of the bin (reclaimFromBin). One
+  // binned in its own base carries no mark and stays binned.
   async function removeDocumentUsage(collectionName: string, recordId: string) {
     try {
       await updateDoc(doc(db, collectionName, recordId), { [`usedInDocuments.${documentId}`]: deleteField() });
@@ -1736,16 +1739,23 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (Object.keys(remaining).length > 0) return;
       const filed = ((data.tagIds as string[] | undefined) ?? []).length > 0 || !!data.groupId;
       if (filed || data.deletedAt) return;
-      await updateDoc(doc(db, collectionName, recordId), { deletedAt: Date.now() });
-      binnedHereRef.current.add(`${collectionName}:${recordId}`);
+      await updateDoc(doc(db, collectionName, recordId), { deletedAt: Date.now(), binnedByNote: true });
     } catch {
       // Already gone - most likely deleted directly from that database screen.
     }
   }
-  // A block that came back (undo) after this editor binned its record.
-  const unbinIfBinnedHere = (collectionName: string, recordId: string, data: Record<string, unknown>) => {
-    if (binnedHereRef.current.delete(`${collectionName}:${recordId}`)) data.deletedAt = deleteField();
-  };
+  // A block that appeared after the note's first sync (the first one is just the note opening - every block is
+  // «new» then, and reading each record on every open would be waste).
+  const syncedOnceRef = useRef(new Set<string>());
+  function reclaimFromBin(collectionName: string, recordId: string) {
+    if (!syncedOnceRef.current.has(collectionName)) return;
+    getDoc(doc(db, collectionName, recordId))
+      .then((snap) => {
+        const data = snap.data();
+        if (data?.binnedByNote && data.deletedAt) return updateDoc(doc(db, collectionName, recordId), { deletedAt: deleteField(), binnedByNote: deleteField() });
+      })
+      .catch(() => {});
+  }
 
   // 'image' and 'file' blocks are database objects too, mirrored the same
   // way as links - but unlike links, there's no meaningful "same content" to
@@ -1793,7 +1803,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         photoDoc.sketchWidth = b.sketchWidth;
         photoDoc.sketchHeight = b.sketchHeight;
       }
-      unbinIfBinnedHere('photos', b.id, photoDoc);
+      if (isNewPhoto) reclaimFromBin('photos', b.id);
       setDoc(doc(db, 'photos', b.id), photoDoc, { merge: true });
       // A genuinely new photo (not one already mirrored before this
       // render) also gets backed up to Google Drive, if connected -
@@ -1814,6 +1824,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       }
     });
     knownPhotoBlockIdsRef.current = currentIds;
+    syncedOnceRef.current.add('photos');
   }
 
   const knownFileBlockIdsRef = useRef<Set<string>>(new Set());
@@ -1837,7 +1848,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // to arrange, only this one to stop.
       if (isNewFile && b.fileTitle) fileDoc.title = b.fileTitle;
       if (b.createdAt) fileDoc.createdAt = b.createdAt;
-      unbinIfBinnedHere('files', b.id, fileDoc);
+      if (isNewFile) reclaimFromBin('files', b.id);
       setDoc(doc(db, 'files', b.id), fileDoc, { merge: true });
       // !b.driveFileId - see syncPhotosForDocument's identical guard: stops
       // a reference to an already-backed-up file (a different document's
@@ -1856,6 +1867,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       }
     });
     knownFileBlockIdsRef.current = currentIds;
+    syncedOnceRef.current.add('files');
   }
 
   // Unlike removeDocumentUsage (shared by links/photos/files, which
@@ -5803,7 +5815,51 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     }
   }
 
-  function deleteSelectedBlocks() {
+  // THE FATES of what a delete takes out of the note (the user, 2026-10-25: «у всьому що видаляється ... вікно»): a
+  // picture, file or link stays in its base when another note uses it or it lies in a folder/project, else goes to the
+  // bin with the block (removeDocumentUsage); a checklist line is a task and goes for good. Plain text asks nothing -
+  // «Назад» brings it back.
+  async function fatesOfBlocks(going: Block[]): Promise<FateEntry[]> {
+    const goingIds = new Set(going.map((b) => b.id));
+    const staying = blocks.filter((b) => !goingIds.has(b.id));
+    const seen = new Set<string>();
+    const entries: FateEntry[] = [];
+    for (const b of going) {
+      const t = b.type ?? 'paragraph';
+      if (t === 'checkbox' && b.text.trim() !== '') {
+        entries.push({ kind: 'task', tone: 'forever', fate: FATE.forever });
+        continue;
+      }
+      const coll = t === 'image' && b.imageUri ? 'photos' : t === 'file' && b.fileUri ? 'files' : t === 'link' && b.linkUrl ? 'links' : null;
+      if (!coll) continue;
+      const id = coll === 'links' ? linkDocId(b.linkUrl!) : b.id;
+      if (seen.has(`${coll}:${id}`)) continue;
+      seen.add(`${coll}:${id}`);
+      const data = ((await getDoc(doc(db, coll, id)).catch(() => null))?.data() ?? {}) as Record<string, unknown>;
+      const kind: FateKind = coll === 'photos' ? 'photo' : coll === 'files' ? 'file' : (`link-${categoryFromSiteName(typeof data.siteName === 'string' ? data.siteName : '')}` as FateKind);
+      const otherNotes = Object.keys((data.usedInDocuments as Record<string, boolean>) ?? {}).filter((d) => d !== documentId);
+      const twinHere = coll === 'links' && staying.some((o) => (o.type ?? 'paragraph') === 'link' && !!o.linkUrl && linkDocId(o.linkUrl) === id);
+      const filed = ((data.tagIds as string[] | undefined) ?? []).length > 0 || !!data.groupId;
+      if (twinHere) entries.push({ kind, tone: 'stays', fate: 'лишаються в цій нотатці (є ще такий самий блок)' });
+      else if (otherNotes.length > 0) entries.push({ kind, tone: 'stays', fate: `${FATE.stays(kind)} - є в інших нотатках` });
+      else if (filed) entries.push({ kind, tone: 'stays', fate: `${FATE.stays(kind)} і в своїй папці` });
+      else entries.push({ kind, tone: 'bin', fate: FATE.bin });
+    }
+    return entries;
+  }
+  async function confirmBlocksGo(going: Block[]): Promise<boolean> {
+    const entries = await fatesOfBlocks(going);
+    if (entries.length === 0) return true;
+    const text = going.length - entries.length;
+    return confirmFates({
+      title: going.length === 1 ? 'Видалити блок?' : `Видалити блоки (${going.length})?`,
+      message: text > 0 ? `Ще ${text} - текст: він просто зникає з нотатки (поверне «Назад»).` : undefined,
+      entries,
+    });
+  }
+
+  async function deleteSelectedBlocks() {
+    if (!(await confirmBlocksGo(blocks.filter((b) => selectedIds.has(b.id))))) return;
     snapshotBeforeChange();
     setBlocks((prev) => {
       const next = prev.filter((block) => !selectedIds.has(block.id));
@@ -6185,7 +6241,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // opened from the full-screen viewer instead of selecting the block first.
   // No separate undo-toast here: the existing undo/redo (header arrows)
   // already covers reverting this, same as any other block deletion.
-  function deleteImageBlockFromViewer(id: string) {
+  async function deleteImageBlockFromViewer(id: string) {
+    const block = blocks.find((b) => b.id === id);
+    // The viewer is a Modal and a question draws UNDER a Modal (ask_under_modal): it closes first.
+    setViewerImageId(null);
+    if (block && !(await confirmBlocksGo([block]))) return;
     snapshotBeforeChange();
     setBlocks((prev) => {
       const next = prev.filter((b) => b.id !== id);

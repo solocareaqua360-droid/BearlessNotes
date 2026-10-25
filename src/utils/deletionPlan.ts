@@ -75,7 +75,7 @@ function firstLine(text?: string): string | undefined {
   return line.length > 90 ? `${line.slice(0, 90)}…` : line;
 }
 
-function refOf(card: BoardCard): Ref | null {
+export function refOf(card: BoardCard): Ref | null {
   const type = card.type as string | undefined;
   if (type === 'image') {
     return {

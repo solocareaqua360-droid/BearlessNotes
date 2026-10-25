@@ -1,4 +1,5 @@
 import { grabScreenFrame, startScreenCapture, stopScreenCapture, supportsScreenCapture } from '../utils/mindevaNative';
+import { boardCardFate, confirmFates } from '../utils/deleteFates';
 import { TextScaleOverride, useStyles, useTheme } from '../theme/ThemeProvider';
 import { useDeskContent } from '../navigation/useDeskContent';
 import { useNoteOpened } from '../navigation/recentPlaces';
@@ -6646,9 +6647,9 @@ export default function BoardScreen() {
   function deleteCards(ids: Set<string>) {
     const count = ids.size;
     if (count === 0) return;
-    confirm({
+    confirmFates({
       title: count === 1 ? 'Видалити картку?' : `Видалити картки (${count})?`,
-      confirmLabel: 'Видалити',
+      entries: cards.filter((c) => ids.has(c.id)).map(boardCardFate),
     }).then((yes) => {
       if (!yes) return;
       // Reflowed after the removal so a column closes the gap its
@@ -6678,9 +6679,12 @@ export default function BoardScreen() {
     const shapeIds = selectedShapeIds;
     const count = cardIds.size + shapeIds.size;
     if (count === 0) return Promise.resolve();
-    return confirm({
+    return confirmFates({
       title: count === 1 ? 'Видалити обʼєкт?' : `Видалити обʼєкти (${count})?`,
-      confirmLabel: 'Видалити',
+      entries: [
+        ...cards.filter((c) => cardIds.has(c.id)).map(boardCardFate),
+        ...[...shapeIds].map(() => ({ kind: 'shape' as const, tone: 'forever' as const, fate: 'зникають з дошки (поверне лише «Назад»)' })),
+      ],
     }).then((yes) => {
       if (!yes) return;
       if (cardIds.size > 0) {

@@ -21,7 +21,7 @@ import {
 import { hapticButtonDown } from '../../utils/haptics';
 import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
 import { useNavChromeStyle } from '../../navigation/navDock';
-import { useSoft } from '../../theme/soft';
+import { useSoft, type SoftTokens } from '../../theme/soft';
 import { takeRecentClickPoint, takeRecentContextPoint, type ContextPoint } from '../../utils/contextPoint';
 import { useWindowDimensions } from 'react-native';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
@@ -55,9 +55,16 @@ export type AskAction = {
   icon?: keyof typeof Ionicons.glyphMap;
 };
 
+// THE FATE OF EACH THING (the user, 2026-10-25: «у всьому що видаляється ... вікно яке засвідчить що файл видаляється
+// назавжди або що файл лишається в базі ... сповістити долю кожного»): a delete lists, kind by kind, where each goes -
+// for good, into the bin, or nowhere (it stays in its base / folder). Only says; nothing here is switched.
+export type AskFateTone = 'forever' | 'bin' | 'stays';
+export type AskFate = { icon: string; label: string; fate: string; tone: AskFateTone };
+
 export type AskOptions = {
   title: string;
   message?: string;
+  fates?: AskFate[];
   actions: AskAction[];
   // The row that closes it without doing anything. Left out entirely by
   // passing null - for a question that cannot be walked away from.
@@ -176,7 +183,7 @@ export function AskHost() {
   const isConfirmation = current.actions.length <= 2 && current.actions.every((a) => !a.icon && !a.hint);
   // Asked by a right click: not a window over the whole screen but a small
   // menu at the cursor.
-  if (current.anchor && !(pointer && isConfirmation)) {
+  if (current.anchor && !current.fates?.length && !(pointer && isConfirmation)) {
     return (
       // Over every window: a question asked from inside one (a record's
       // page) stood UNDER it on the laptop and could not be seen.
@@ -195,7 +202,7 @@ export function AskHost() {
   }
   // At a pointer, a question with a list of answers is a menu too: beside
   // the click that asked it, or, asked by nothing on screen, in the middle.
-  if (pointer && !isConfirmation) {
+  if (pointer && !isConfirmation && !current.fates?.length) {
     return (
       // Over every window: a question asked from inside one (a record's
       // page) stood UNDER it on the laptop and could not be seen.
@@ -215,7 +222,7 @@ export function AskHost() {
   const cancelLabel = current.cancelLabel === undefined ? 'Скасувати' : current.cancelLabel;
   // At a pointer, a confirmation - one or two plain answers, no icons, no
   // hints - is a Mac's alert, not a phone's sheet.
-  if (pointer && isConfirmation) {
+  if (pointer && (isConfirmation || !!current.fates?.length)) {
     return (
       // Over every window: a question asked from inside one (a record's
       // page) stood UNDER it on the laptop and could not be seen.
@@ -223,6 +230,7 @@ export function AskHost() {
       <MacAlert
         title={current.title}
         message={current.message}
+        fates={current.fates}
         actions={current.actions}
         cancelLabel={cancelLabel}
         onAnswer={answer}
@@ -256,6 +264,7 @@ export function AskHost() {
             <Text selectable style={[styles.message, S && { fontFamily: SOFT_REGULAR, color: S.ink2 }]}>{current.message}</Text>
           </ScrollView>
         )}
+        {!!current.fates?.length && <FateRows fates={current.fates} S={S} danger={softDanger ?? GLASS_DANGER} maxHeight={Math.round(windowHeight * 0.45)} />}
 
         {/* Scrolls once there are more answers than fit. The rows were a
             plain column, which is right for the four or five a question
@@ -347,6 +356,34 @@ export function AskHost() {
   );
 }
 
+// The fates, one row a kind: its icon, «Файли · 2», and under it where they go - red when it is for good.
+function FateRows({ fates, S, danger, maxHeight }: { fates: AskFate[]; S: SoftTokens | null; danger: string; maxHeight: number }) {
+  const ink = S ? S.ink : GLASS_TEXT;
+  const quiet = S ? S.ink2 : GLASS_TEXT_MUTED;
+  return (
+    <ScrollView style={{ maxHeight, flexGrow: 0, marginTop: 10 }} nestedScrollEnabled>
+      {fates.map((f, i) => {
+        const tone = f.tone === 'forever' ? danger : quiet;
+        const mark = f.tone === 'forever' ? 'trash-outline' : f.tone === 'bin' ? 'time-outline' : 'checkmark-circle-outline';
+        return (
+          <View key={i} style={styles.fateRow}>
+            <Ionicons name={f.icon as never} size={20} color={quiet} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[styles.fateLabel, { color: ink }, S && { fontFamily: SOFT_MEDIUM, fontWeight: 'normal' }]} numberOfLines={1}>
+                {f.label}
+              </Text>
+              <View style={styles.fateLine}>
+                <Ionicons name={mark as never} size={14} color={tone} />
+                <Text style={[styles.fateText, { color: tone }, S && { fontFamily: SOFT_REGULAR }]}>{f.fate}</Text>
+              </View>
+            </View>
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 // A MAC'S ALERT (the laptop's confirmation): a small window over a barely
 // dimmed app - no blur, nothing drawn edge to edge - its answers as buttons
 // in a row at the bottom right, the way macOS lays them out: the way out
@@ -356,6 +393,7 @@ export function AskHost() {
 function MacAlert({
   title,
   message,
+  fates,
   actions,
   cancelLabel,
   onAnswer,
@@ -364,6 +402,7 @@ function MacAlert({
 }: {
   title: string;
   message?: string;
+  fates?: AskFate[];
   actions: AskAction[];
   cancelLabel: string | null;
   onAnswer: (id: string) => void;
@@ -417,6 +456,7 @@ function MacAlert({
       >
         <Text style={[styles.alertTitle, { color: S.ink }]}>{title}</Text>
         {!!message && <Text style={[styles.alertMessage, { color: S.ink2 }]}>{message}</Text>}
+        {!!fates?.length && <FateRows fates={fates} S={S} danger={S.dark ? '#FF7A6E' : '#C8452F'} maxHeight={360} />}
         <View style={styles.alertButtons}>
           {cancelLabel !== null && actions.length > 0 && button('cancel', cancelLabel, 'cancel')}
           {actions.map((a) => button(a.id, a.label, a.tone ?? 'normal'))}
@@ -561,6 +601,28 @@ const styles = StyleSheet.create({
   },
   actionsScroll: {
     flexGrow: 0,
+  },
+  fateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  fateLabel: {
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+  },
+  fateLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  fateText: {
+    flex: 1,
+    fontSize: 13.5,
+    lineHeight: 18,
+    fontFamily: FONT_REGULAR,
   },
   actions: {
     gap: 6,
