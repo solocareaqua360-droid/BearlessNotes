@@ -72,6 +72,7 @@ function FolderTile({
   if (item.kind === 'document') {
     picture = (
       <DocumentPageMiniature
+        font={raw.noteFont}
         title={item.title}
         blocks={(raw.blocks as Block[]) ?? []}
         tagIds={[]}
@@ -451,6 +452,7 @@ function FolderItemCardInner({
       <HoldPressable onPress={onPress} onLongPress={onLongPress} style={[styles.row, { backgroundColor: S.card, boxShadow: S.shadow, alignItems: 'flex-start' }]}>
         <View style={[styles.noteThumb, { backgroundColor: S.fill }]}>
           <DocumentPageMiniature
+            font={raw.noteFont}
             title={item.title}
             blocks={blocks}
             tagIds={[]}

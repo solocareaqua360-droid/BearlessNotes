@@ -1,4 +1,5 @@
 import NoteLinkPicker from '../components/NoteLinkPicker';
+import { NOTE_FONTS, NoteFontContext, asNoteFont, useNoteFaceFor, type NoteFont } from '../utils/noteFont';
 import CarriesBackMarker from '../components/CarriesBackMarker';
 import { frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { RADIUS } from '../theme/scale';
@@ -781,6 +782,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // separately-picked color, so a document always has exactly one color
   // identity across the whole app.
   const [paperColorEnabled, setPaperColorEnabled] = useState(false);
+  // The note's own face (utils/noteFont).
+  const [noteFont, setNoteFont] = useState<NoteFont>('default');
+  const noteFace = useNoteFaceFor(noteFont);
   // The same object while nothing about it changes: every block row takes
   // it, and a fresh one per render re-rendered all of them (see BlockList).
   const paperColor = useMemo(
@@ -1272,6 +1276,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     coverDrive: { fileId: string; bytes: number } | undefined;
     coverGradient: string | undefined;
     paperColorEnabled: boolean;
+    noteFont: NoteFont;
     groupId: string | null;
     canvasLinks: Record<string, CanvasLink>;
   };
@@ -1302,6 +1307,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         : undefined,
       coverGradient: (data?.coverGradient as string | undefined) || undefined,
       paperColorEnabled: !!data?.paperColorEnabled,
+      noteFont: asNoteFont(data?.noteFont),
       groupId: (data?.groupId as string | undefined) ?? null,
       canvasLinks: (data?.canvasLinks as Record<string, CanvasLink> | undefined) ?? {},
     };
@@ -1315,6 +1321,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       stableStringify(server.coverDrive) === stableStringify(shape.coverDrive) &&
       server.coverGradient === shape.coverGradient &&
       server.paperColorEnabled === shape.paperColorEnabled &&
+      server.noteFont === shape.noteFont &&
       server.groupId === shape.groupId &&
       stableStringify(server.canvasLinks) === stableStringify(shape.canvasLinks) &&
       server.blocks.length === shape.blocks.length &&
@@ -1374,6 +1381,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setCoverDrive(remote.coverDrive);
     if (server && server.coverGradient === coverGradient) setCoverGradient(remote.coverGradient);
     if (server && server.paperColorEnabled === paperColorEnabled) setPaperColorEnabled(remote.paperColorEnabled);
+    if (server && server.noteFont === noteFont) setNoteFont(remote.noteFont);
     if (server && server.groupId === groupId) setGroupId(remote.groupId);
     // Arrows are a keyed map, so both sides' additions survive: what
     // changed here since the last write stays, the rest takes the
@@ -1469,6 +1477,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setCoverGradient(data?.coverGradient);
       setCoverFrame((data?.coverFrame as ImageFrame | undefined) ?? undefined);
       setPaperColorEnabled(!!data?.paperColorEnabled);
+      setNoteFont(asNoteFont(data?.noteFont));
       setGroupId(data?.groupId ?? null);
       setSourceBoardId(data?.boardId ?? null);
       setCanvasLinks(data?.canvasLinks ?? {});
@@ -1983,7 +1992,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // which is the case the moment a note has been opened, and the case
     // when another device's version has just been merged in. See
     // serverRef.
-    const shape: ServerShape = { title, blocks, coverImageUri: coverImageUri || undefined, coverDrive, coverGradient: coverGradient || undefined, paperColorEnabled, groupId, canvasLinks };
+    const shape: ServerShape = { title, blocks, coverImageUri: coverImageUri || undefined, coverDrive, coverGradient: coverGradient || undefined, paperColorEnabled, noteFont, groupId, canvasLinks };
     if (sameAsServer(shape)) return;
     syncLog('will save: differs from server', {
       dirtyBlocks: blocks.filter((b) => serverBlockRef.current.get(b.id) !== stableStringify(b)).map((b) => b.id.slice(-4)).join(','),
@@ -2025,6 +2034,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           blocks,
           updatedAt: Date.now(),
           paperColorEnabled,
+          noteFont,
           // deleteField() rather than omitting the key or writing undefined
           // (which Firestore rejects outright) - a cover removed after
           // having been set has to actually clear the field, not leave the
@@ -2059,7 +2069,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       )
       )
         .then(() => {
-          rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, coverDrive, coverGradient: coverGradient || undefined, paperColorEnabled, groupId, canvasLinks });
+          rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, coverDrive, coverGradient: coverGradient || undefined, paperColorEnabled, noteFont, groupId, canvasLinks });
           setSaveStatus('saved');
           syncLog('saved', { blocks: blocks.length });
         })
@@ -2087,7 +2097,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, blocks, coverImageUri, coverDrive, coverGradient, paperColorEnabled, groupId, canvasLinks, isLoaded]);
+  }, [title, blocks, coverImageUri, coverDrive, coverGradient, paperColorEnabled, noteFont, groupId, canvasLinks, isLoaded]);
 
   // Whoever set focusIdRef wants that block to be the live input next. A
   // block only has a TextInput while it's the active one, so this first
@@ -6974,6 +6984,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             <Text style={styles.exportMenuRowLabel}>Колір паперу</Text>
             {paperColorEnabled && <Ionicons name="checkmark" size={18} color={theme.accent} />}
           </Pressable>
+          <Pressable
+            style={styles.exportMenuRow}
+            onPress={async () => {
+              setExportMenuOpen(false);
+              const pick = await ask({
+                title: 'Шрифт нотатки',
+                actions: NOTE_FONTS.map((f) => ({ id: f.id, label: f.label, hint: f.hint, icon: f.id === noteFont ? ('checkmark' as const) : undefined })),
+              });
+              if (pick !== 'cancel') setNoteFont(asNoteFont(pick));
+            }}
+          >
+            <Ionicons name="text-outline" size={17} color={GLASS_TEXT} />
+            <Text style={styles.exportMenuRowLabel}>Шрифт нотатки</Text>
+            <Text style={[styles.exportMenuRowLabel, { flex: 0, opacity: 0.6 }]}>{NOTE_FONTS.find((f) => f.id === noteFont)?.label}</Text>
+          </Pressable>
           <Text style={styles.exportMenuLabel}>Організація</Text>
           <Pressable
             style={styles.exportMenuRow}
@@ -7331,7 +7356,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           placeholder={dayName ?? 'Без назви'}
           placeholderTextColor={paperColor?.textMuted ?? theme.paper.inkFaint}
           {...softCursor(theme.scheme)}
-          style={[styles.titleInput, paperColor && { color: paperColor.text }]}
+          style={[styles.titleInput, paperColor && { color: paperColor.text }, noteFace && { fontFamily: noteFace.strong }]}
           multiline
         />
         )}
@@ -7342,6 +7367,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           <Text
             style={[
               styles.titleInput,
+              noteFace && { fontFamily: noteFace.strong },
               paperColor && { color: paperColor.text },
               // A day's date is its NAME, not a placeholder standing in
               // for one - so it is not drawn in the faint colour an
@@ -8039,12 +8065,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {flattenNode}
     </Animated.View>
   );
-  if (!sheetPage) return page;
+  // Every block below draws in the note's own face (utils/noteFont).
+  const pageInFont = <NoteFontContext.Provider value={noteFont}>{page}</NoteFontContext.Provider>;
+  if (!sheetPage) return pageInFont;
   return (
     <View style={styles.sheetRoot}>
       {/* The soft ground: one quiet colour, not the drifting backdrop. */}
       <ScreenGround color={soft.bg} />
-      {page}
+      {pageInFont}
       {/* What runs off the top and the bottom melts into the ground under
           the bar and the dock, as in every list (the user's, 2026-10-02).
           At rest the top one lies over the sheet's empty top margin. */}

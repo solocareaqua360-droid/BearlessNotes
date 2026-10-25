@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { useNoteFace } from '../utils/noteFont';
 import { Ionicons } from './icons/Ionicons';
 import FormattedText from './FormattedText';
 import { SoftTaskCheck } from './SoftIcon';
@@ -49,6 +50,8 @@ export default function PagePreviewRow({
   noReminder?: boolean;
 }) {
   const type = item.type ?? 'paragraph';
+  const noteFaces = useNoteFace();
+  const noteFace = noteFaces && type !== 'code' ? { fontFamily: type === 'heading' ? noteFaces.strong : noteFaces.regular } : null;
   const rowPaperColor = item.isSticker ? null : paperColor;
   const headingStyle =
     type === 'heading' ? (item.headingLevel === 1 ? styles.heading1 : item.headingLevel === 3 ? styles.heading3 : styles.heading2) : null;
@@ -58,7 +61,7 @@ export default function PagePreviewRow({
 
   const textField = (
     <View style={styles.blockInput}>
-      <Text style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText, scaledTextStyle, alignStyleOf(item)]}>
+      <Text style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText, scaledTextStyle, alignStyleOf(item), noteFace]}>
         {item.text ? (
           <FormattedText
             segments={parseFormattedText(item.text)}

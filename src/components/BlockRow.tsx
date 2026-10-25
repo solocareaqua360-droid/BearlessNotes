@@ -1,4 +1,5 @@
 import FlashcardBlockCard from './FlashcardBlockCard';
+import { useNoteFace } from '../utils/noteFont';
 import DbTableBlock from './DbTableBlock';
 import { ask } from './surfaces/Ask';
 import { HIGHLIGHT_COLORS } from './EditorToolbar';
@@ -242,6 +243,9 @@ export default function BlockRow({
   // runs rebuilt on every render handed the field its text anew each time, and that dropped a selection (opening the
   // panel under the keyboard re-renders the row - the user: «скидається виділення тексту»).
   const blockType = item.type ?? 'paragraph';
+  // The note's own face (utils/noteFont), none for code (it keeps its mono) and none for the app's own.
+  const noteFaces = useNoteFace();
+  const noteFace = noteFaces && blockType !== 'code' ? { fontFamily: blockType === 'heading' ? noteFaces.strong : noteFaces.regular } : null;
   const liveRuns = useMemo(
     () =>
       // Native only: RN-web's field draws no children and, with no value, stood EMPTY under the caret (the Mac note and the
@@ -966,6 +970,7 @@ export default function BlockRow({
           item.isSticker && styles.stickerInk,
           type !== 'code' && scaledTextStyle,
           type !== 'code' && alignStyleOf(item),
+          noteFace,
         ]}
         multiline
       >
@@ -991,7 +996,7 @@ export default function BlockRow({
           onTextLayout={(e) => {
             lockedLinesRef.current = e.nativeEvent.lines;
           }}
-          style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText, scaledTextStyle, alignStyleOf(item)]}
+          style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText, scaledTextStyle, alignStyleOf(item), noteFace]}
         >
           {item.text ? (
             <FormattedText
@@ -1006,7 +1011,7 @@ export default function BlockRow({
               linkGlyph={isNestedLink ? (ref) => (isNestedLink(ref) ? NESTED_GLYPH : LINK_GLYPH) : undefined}
               linkInk={theme.scheme === 'dark' ? LINK_BLUE_DARK : LINK_BLUE}
               linkTint={withAlpha(theme.scheme === 'dark' ? LINK_BLUE_DARK : LINK_BLUE, 0.14)}
-              linkTextStyle={StyleSheet.flatten([styles.blockDisplayText, headingStyle, scaledTextStyle])}
+              linkTextStyle={StyleSheet.flatten([styles.blockDisplayText, headingStyle, scaledTextStyle, noteFace])}
               linkMaxWidth={lineWidth || undefined}
             />
           ) : (
