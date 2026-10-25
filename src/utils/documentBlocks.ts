@@ -44,6 +44,7 @@ export function retype(block: Block, type: BlockType): Block {
   if (block.canvasGroup) next.canvasGroup = block.canvasGroup;
   if (block.exitsToggle) next.exitsToggle = true;
   if (block.indent) next.indent = block.indent;
+  if (block.align) next.align = block.align;
   return next;
 }
 
@@ -61,6 +62,22 @@ export function withIndent(block: Block, delta: number): Block {
   }
   return { ...block, indent: next };
 }
+// THE ALIGNMENT (Block.align): 'left' drops the field - left is what a block with none already is.
+export type BlockAlign = 'left' | 'center' | 'right' | 'justify';
+export const alignOf = (block: Block): BlockAlign => block.align ?? 'left';
+export function withAlign(block: Block, align: BlockAlign): Block {
+  if (alignOf(block) === align) return block;
+  if (align === 'left') {
+    const { align: _gone, ...rest } = block;
+    return rest as Block;
+  }
+  return { ...block, align };
+}
+// The text style it means, or null for left.
+// Justified, the page's slight negative letterSpacing goes: Android stretches a line by its measure WITHOUT the spacing,
+// and the last letter of every stretched line fell past the edge, cut (seen on the phone, 2026-10-25).
+export const alignStyleOf = (block: Block) =>
+  block.align === 'justify' ? { textAlign: 'justify' as const, letterSpacing: 0 } : block.align ? { textAlign: block.align } : null;
 // A list item's mark by its step: a dot, a ring, a square, then round again - so a sub-list reads as one at a glance.
 export function bulletFor(level: number): string {
   return ['•', '◦', '▪'][level % 3];

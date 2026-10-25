@@ -3,7 +3,7 @@ import { Ionicons } from './icons/Ionicons';
 import FormattedText from './FormattedText';
 import { SoftTaskCheck } from './SoftIcon';
 import { LINK_BLUE, LINK_BLUE_DARK } from './BlockRow';
-import { bulletFor, formatReminderBadge, indentOf, INDENT_STEP, parseFormattedText, STICKER_INK } from '../utils/documentBlocks';
+import { alignStyleOf, bulletFor, formatReminderBadge, indentOf, INDENT_STEP, parseFormattedText, STICKER_INK } from '../utils/documentBlocks';
 import { PAGE_H1, PAGE_H2, PAGE_H3, PAGE_TEXT, makeStyles } from './documentEditorStyles';
 import { withAlpha } from '../utils/color';
 import type { Block } from '../types';
@@ -58,7 +58,7 @@ export default function PagePreviewRow({
 
   const textField = (
     <View style={styles.blockInput}>
-      <Text style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText, scaledTextStyle]}>
+      <Text style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText, scaledTextStyle, alignStyleOf(item)]}>
         {item.text ? (
           <FormattedText
             segments={parseFormattedText(item.text)}

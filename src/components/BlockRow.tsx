@@ -57,6 +57,7 @@ import {
   STICKER_INK,
   type TextLayoutLine,
   bulletFor,
+  alignStyleOf,
   indentOf,
   INDENT_STEP,
 } from '../utils/documentBlocks';
@@ -923,6 +924,7 @@ export default function BlockRow({
           // even where the paper's ink has gone white.
           item.isSticker && styles.stickerInk,
           type !== 'code' && scaledTextStyle,
+          type !== 'code' && alignStyleOf(item),
         ]}
         multiline
       >
@@ -948,7 +950,7 @@ export default function BlockRow({
           onTextLayout={(e) => {
             lockedLinesRef.current = e.nativeEvent.lines;
           }}
-          style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText, scaledTextStyle]}
+          style={[styles.blockDisplayText, headingStyle, item.checked && styles.checkedText, scaledTextStyle, alignStyleOf(item)]}
         >
           {item.text ? (
             <FormattedText

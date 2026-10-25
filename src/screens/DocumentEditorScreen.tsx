@@ -167,7 +167,7 @@ import {
   parseNoteRef,
   plainTextOf,
   rawIndexForDisplayIndex,
-  sanitizeFileName, applyExclusiveStyle, type InlineStyleKey, indentOf, withIndent } from '../utils/documentBlocks';
+  sanitizeFileName, applyExclusiveStyle, type InlineStyleKey, indentOf, withIndent, alignOf, withAlign, type BlockAlign } from '../utils/documentBlocks';
 import type { colorForDocument } from '../utils/documentColor';
 import { useDownloadToast } from '../hooks/useDownloadToast';
 import DownloadToast from '../components/DownloadToast';
@@ -2621,6 +2621,25 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     },
     {
       section: 'text',
+      title: 'Розташування',
+      items: (
+        [
+          ['left', 'Ліворуч', 'format-align-left'],
+          ['center', 'По центру', 'format-align-center'],
+          ['right', 'Праворуч', 'format-align-right'],
+          ['justify', 'По ширині', 'format-align-justify'],
+        ] as const
+      ).map(([key, label, icon]) => ({
+        key: `align-${key}`,
+        label,
+        family: 'material-community' as const,
+        icon,
+        active: !!panelBlock && alignOf(panelBlock) === key,
+        onPress: onBlock((id) => setAlign(id, key)),
+      })),
+    },
+    {
+      section: 'text',
       title: 'Відступ',
       items: [
         { key: 'indentMore', label: 'Більше', family: 'material-community', icon: 'format-indent-increase', onPress: onBlock((id) => shiftIndent(id, 1)) },
@@ -3236,6 +3255,22 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // only its text). Only while a BLOCK field has the caret - the title keeps the browser's own.
   const keysRef = useRef({ mark: (_o: string, _c: string) => {}, undo: () => {}, redo: () => {}, block: false, canUndo: false, canRedo: false });
   keysRef.current = { mark: applyMarkerToSelection, undo, redo, block: focusedBlockId !== null, canUndo, canRedo };
+  // Tab / Shift+Tab: one step in or out (Block.indent), the way every editor on a Mac does it - instead of the browser
+  // moving the focus to the next field.
+  const indentKeyRef = useRef<(delta: 1 | -1) => void>(() => {});
+  indentKeyRef.current = (delta) => {
+    if (focusedBlockId) shiftIndent(focusedBlockId, delta);
+  };
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || e.metaKey || e.ctrlKey || e.altKey || !keysRef.current.block) return;
+      e.preventDefault();
+      indentKeyRef.current(e.shiftKey ? -1 : 1);
+    };
+    window.addEventListener('keydown', onTab);
+    return () => window.removeEventListener('keydown', onTab);
+  }, []);
   useEffect(() => {
     if (!notePanelOn || !editorFocused || typeof window === 'undefined') return;
     const onKey = (e: KeyboardEvent) => {
@@ -3371,6 +3406,18 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             onRedo={redo}
             onStyle={(st) => applyMarkerToSelection(st === 'bold' ? '**' : st === 'italic' ? '*' : st === 'underline' ? '__' : '~~', st === 'bold' ? '**' : st === 'italic' ? '*' : st === 'underline' ? '__' : '~~')}
             onColor={(which, hex) => applyColorToSelection(which, hex)}
+            align={(() => {
+              const b = blocks.find((x) => x.id === (focusedBlockId ?? lastCaretBlockRef.current));
+              return b ? alignOf(b) : null;
+            })()}
+            onAlign={(a) => {
+              const id = focusedBlockId ?? lastCaretBlockRef.current;
+              if (id) setAlign(id, a);
+            }}
+            onIndent={(d) => {
+              const id = focusedBlockId ?? lastCaretBlockRef.current;
+              if (id) shiftIndent(id, d);
+            }}
           />
         }
         toc={<NoteOutline items={outline} currentId={tocCurrent} onPick={pickSection} compact />}
@@ -4358,6 +4405,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         }
         const created = buildBlock(generateId(), currentType, after);
         if (current && indentOf(current) > 0) created.indent = indentOf(current);
+        if (current?.align) created.align = current.align;
         focusIdRef.current = created.id;
         bumpTextVersion(id);
         setBlocks((prev) => {
@@ -4409,6 +4457,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // The next line stands where this one does (Block.indent).
     const fromBlock = blocks.find((b) => b.id === id);
     if (fromBlock && indentOf(fromBlock) > 0) created.indent = indentOf(fromBlock);
+    if (fromBlock?.align) created.align = fromBlock.align;
     focusIdRef.current = created.id;
     bumpTextVersion(id);
     setBlocks((prev) => {
@@ -4920,6 +4969,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     snapshotBeforeChange();
     focusIdRef.current = id;
     setBlocks((prev) => prev.map((b) => (ids.has(b.id) ? withIndent(b, delta) : b)));
+  }
+
+  // WHERE THE LINES STAND (Block.align): the block the caret is in, or every picked block.
+  function setAlign(id: string, align: BlockAlign) {
+    const ids = isSelectMode && selectedIds.size > 0 ? selectedIds : new Set([id]);
+    snapshotBeforeChange();
+    focusIdRef.current = id;
+    setBlocks((prev) => prev.map((b) => (ids.has(b.id) ? withAlign(b, align) : b)));
   }
 
   function setHeadingLevel(id: string, level: 1 | 2 | 3 | null) {

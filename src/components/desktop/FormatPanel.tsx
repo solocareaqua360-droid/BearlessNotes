@@ -1,4 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import type { BlockAlign } from '../../utils/documentBlocks';
 import { Ionicons } from '../icons/Ionicons';
 import { RADIUS, TYPE, useDeskColors } from '../../theme/desktopTheme';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../../utils/fonts';
@@ -34,6 +36,13 @@ const STYLES: { id: 'bold' | 'italic' | 'underline' | 'strike'; label: string; c
 // The mouse must not move focus off the text field.
 const keepFocus = { onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object;
 
+const ALIGNS: { id: BlockAlign; label: string; icon: string }[] = [
+  { id: 'left', label: 'Ліворуч', icon: 'format-align-left' },
+  { id: 'center', label: 'По центру', icon: 'format-align-center' },
+  { id: 'right', label: 'Праворуч', icon: 'format-align-right' },
+  { id: 'justify', label: 'По ширині', icon: 'format-align-justify' },
+];
+
 export default function FormatPanel({
   kind,
   hasSelection,
@@ -44,6 +53,9 @@ export default function FormatPanel({
   canRedo,
   onUndo,
   onRedo,
+  align,
+  onAlign,
+  onIndent,
 }: {
   kind: FormatBlockKind | null;
   hasSelection: boolean;
@@ -54,6 +66,10 @@ export default function FormatPanel({
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  // Where the lines stand, and a step in or out (Block.align / Block.indent) - for the block the caret is in.
+  align?: BlockAlign | null;
+  onAlign?: (a: BlockAlign) => void;
+  onIndent?: (delta: 1 | -1) => void;
 }) {
   const styles = useStyles(makeStyles);
   const D = useDeskColors();
@@ -87,6 +103,32 @@ export default function FormatPanel({
           );
         })}
       </View>
+      {onAlign && head('Розташування')}
+      {onAlign && (
+        <View style={[styles.styleRow, kind === null && { opacity: 0.45 }]}>
+          {ALIGNS.map((a) => {
+            const on = align === a.id;
+            return (
+              <Pressable key={a.id} onPress={() => onAlign(a.id)} {...keepFocus} accessibilityLabel={a.label} style={[styles.styleBtn, { backgroundColor: on ? D.ink : D.card, borderColor: on ? D.ink : D.line }]}>
+                <MaterialCommunityIcons name={a.icon as never} size={18} color={on ? D.card : D.ink} />
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+      {onIndent && head('Відступ · Tab / ⇧Tab')}
+      {onIndent && (
+        <View style={[styles.styleRow, kind === null && { opacity: 0.45 }]}>
+          <Pressable onPress={() => onIndent(-1)} {...keepFocus} accessibilityLabel="Відступ менше" style={[styles.styleBtn, { backgroundColor: D.card, borderColor: D.line, flexDirection: 'row', gap: 6 }]}>
+            <MaterialCommunityIcons name="format-indent-decrease" size={18} color={D.ink} />
+            <Text style={[{ fontSize: TYPE.sm, color: D.ink }]}>Менше</Text>
+          </Pressable>
+          <Pressable onPress={() => onIndent(1)} {...keepFocus} accessibilityLabel="Відступ більше" style={[styles.styleBtn, { backgroundColor: D.card, borderColor: D.line, flexDirection: 'row', gap: 6 }]}>
+            <MaterialCommunityIcons name="format-indent-increase" size={18} color={D.ink} />
+            <Text style={[{ fontSize: TYPE.sm, color: D.ink }]}>Більше</Text>
+          </Pressable>
+        </View>
+      )}
       {head('Текст')}
       <View style={[styles.styleRow, !hasSelection && { opacity: 0.45 }]}>
         {STYLES.map((s) => (

@@ -350,6 +350,8 @@ export interface Block {
   // in from the left, 1-4 (absent = none). Any text-like block; a list item at a deeper step is a sub-item - its own
   // bullet glyph and its own numbering (utils/documentBlocks listNumbers).
   indent?: number;
+  // THE ALIGNMENT (2026-10-25): where the block's lines stand - absent = left, as text always did.
+  align?: 'center' | 'right' | 'justify';
   // 'code' blocks only: what was written after the opening fence of a
   // pasted block, kept so it can be shown and, one day, coloured.
   codeLanguage?: string;
