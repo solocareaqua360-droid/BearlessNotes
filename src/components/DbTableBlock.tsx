@@ -148,16 +148,19 @@ export default function DbTableBlock({
       const choice = await ask({
         title: 'Вигляд таблиці',
         actions: [
-          { id: 'totals', label: 'Підсумки', hint: 'Рядок унизу; тап по клітинці - що рахувати', icon: mark(cur.totals) },
+          { id: 'totals', label: 'Підсумки…', hint: cur.totals ? 'Показуються · які стовпці рахувати' : 'Не показуються', icon: mark(cur.totals) },
           { id: 'header', label: 'Шапка кольором', hint: cur.headerColor ? 'Змінити колір' : undefined, icon: mark(!!cur.headerColor) },
           { id: 'numbers', label: 'Нумерація рядків', icon: mark(cur.rowNumbers) },
-          { id: 'wrap', label: 'Переносити текст', hint: 'Інакше - в один рядок, зайве за «…»', icon: mark(cur.wrap) },
+          { id: 'wrap', label: 'Переносити текст', hint: cur.wrap ? 'Увесь текст, рядок росте' : 'Зараз - в один рядок, зайве за «…»', icon: mark(cur.wrap) },
         ],
         cancelLabel: 'Готово',
       });
       if (choice === 'cancel') return;
       let patch: DbTableSettings = {};
-      if (choice === 'totals') patch = { totals: !cur.totals };
+      if (choice === 'totals') {
+        cur = await pickTotals(cur);
+        continue;
+      }
       else if (choice === 'numbers') patch = { rowNumbers: !cur.rowNumbers };
       else if (choice === 'wrap') patch = { wrap: !cur.wrap };
       else if (choice === 'header') {
@@ -170,6 +173,43 @@ export default function DbTableBlock({
         patch = { headerColor: c === 'none' ? undefined : c };
       }
       cur = clean({ ...cur, ...patch });
+      onUpdate({ dbTable: cur });
+    }
+  }
+
+  // «ПІДСУМКИ»: whether the row shows at all, and for each column what it counts - a column set to «Нічого» shows nothing.
+  async function pickTotals(start: DbTableSettings = s): Promise<DbTableSettings> {
+    let cur = start;
+    for (;;) {
+      const ops = cur.totalOps ?? {};
+      const choice = await ask({
+        title: 'Підсумки',
+        message: 'Рахується вся таблиця, а не тільки видимі рядки.',
+        actions: [
+          { id: 'show', label: 'Показувати рядок підсумків', icon: cur.totals ? ('checkmark-circle' as const) : ('ellipse-outline' as const) },
+          ...columns.map((f) => ({
+            id: `c:${f.id}`,
+            label: f.name,
+            hint: OP_LABEL[ops[f.id] ?? 'none'],
+            icon: (isNumber(f) ? 'calculator-outline' : 'text-outline') as never,
+          })),
+        ],
+        cancelLabel: 'Готово',
+      });
+      if (choice === 'cancel') return cur;
+      if (choice === 'show') cur = clean({ ...cur, totals: !cur.totals });
+      else {
+        const f = columns.find((x) => x.id === choice.slice(2));
+        if (!f) continue;
+        const list = (isNumber(f) ? ['none', 'sum', 'avg', 'min', 'max', 'count'] : ['none', 'count']) as (keyof typeof OP_LABEL)[];
+        const op = await ask({
+          title: `Підсумок · ${f.name}`,
+          actions: list.map((o) => ({ id: o, label: OP_LABEL[o], icon: o === (ops[f.id] ?? 'none') ? ('checkmark' as const) : undefined })),
+        });
+        if (op === 'cancel') continue;
+        // Choosing what a column counts turns the row on - that is what it is for.
+        cur = clean({ ...cur, totals: op === 'none' ? cur.totals : true, totalOps: { ...ops, [f.id]: op as keyof typeof OP_LABEL } });
+      }
       onUpdate({ dbTable: cur });
     }
   }
@@ -264,7 +304,8 @@ export default function DbTableBlock({
   }
   // THE TOTALS ROW: over every row the table holds (not only the ones showing).
   const isNumber = (f: FieldDef) => f.type === 'number';
-  const opOf = (f: FieldDef) => s.totalOps?.[f.id] ?? (isNumber(f) ? 'sum' : 'none');
+  // Nothing is counted until chosen (the user, 2026-10-25: a year summed into 114602 means nothing).
+  const opOf = (f: FieldDef) => s.totalOps?.[f.id] ?? 'none';
   function totalOf(f: FieldDef): string {
     const op = opOf(f);
     if (op === 'none') return '';
@@ -276,7 +317,7 @@ export default function DbTableBlock({
     return Number.isInteger(v) ? String(v) : v.toFixed(2);
   }
   async function pickOp(f: FieldDef) {
-    const ops = (isNumber(f) ? ['sum', 'avg', 'min', 'max', 'count', 'none'] : ['count', 'none']) as (keyof typeof OP_LABEL)[];
+    const ops = (isNumber(f) ? ['none', 'sum', 'avg', 'min', 'max', 'count'] : ['none', 'count']) as (keyof typeof OP_LABEL)[];
     const choice = await ask({
       title: `Підсумок · ${f.name}`,
       actions: ops.map((o) => ({ id: o, label: OP_LABEL[o], icon: o === opOf(f) ? ('checkmark' as const) : undefined })),
