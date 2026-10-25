@@ -1,5 +1,6 @@
 import NoteLinkPicker from '../components/NoteLinkPicker';
-import { NOTE_FONTS, NoteFontContext, asNoteFont, noteTextSize, useNoteFaceFor, type NoteFont } from '../utils/noteFont';
+import NoteLookSheet from '../components/NoteLookSheet';
+import { BlocksFontContext, FONT_GLYPH_FAMILY, useAllNoteFaces, NOTE_FONTS, NoteFontContext, asNoteFont, asNoteFontMode, noteTextSize, resolveNoteFont, useNoteFaceFor, type NoteFont, type NoteFontMode } from '../utils/noteFont';
 import CarriesBackMarker from '../components/CarriesBackMarker';
 import { frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { RADIUS } from '../theme/scale';
@@ -528,7 +529,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   function confirmDeleteDocument() {
-    setExportMenuOpen(false);
+    setLookOpen(false);
     // Into the bin, not gone: the tags, mirrors and arrows stay as they
     // are so a restored note is the whole note. Throwing it away for
     // good is the bin's job - see the documents screen. What is nested in
@@ -784,7 +785,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [paperColorEnabled, setPaperColorEnabled] = useState(false);
   // The note's own face (utils/noteFont).
   const [noteFont, setNoteFont] = useState<NoteFont>('default');
-  const noteFace = useNoteFaceFor(noteFont);
+  const [noteFontModeRaw, setNoteFontMode] = useState<NoteFontMode | null>(null);
+  // Notes from before the modes have none: «Свій» if they had a font, else «Системний» (utils/noteFont).
+  const noteFontMode = asNoteFontMode(noteFontModeRaw, noteFont);
+  const effectiveFont = resolveNoteFont(noteFont, noteFontMode);
+  const noteFace = useNoteFaceFor(effectiveFont.font);
   // The title in that face, set larger where the face's lowercase is small (utils/noteFont).
   const titleFace = noteFace
     ? (() => {
@@ -1078,7 +1083,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // The two «Створити в базі» prompts - which block is waiting for what.
   const [newRowTarget, setNewRowTarget] = useState<NewRowTarget | null>(null);
   const [newNoteTarget, setNewNoteTarget] = useState<string | null>(null);
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [lookOpen, setLookOpen] = useState(false);
+  // The faces' files are loaded when something shows them: the look sheet, or a note in «По блоках».
+  useAllNoteFaces(lookOpen || effectiveFont.blocks);
   // Set on a document generated from a board (see boardToDocument.ts).
   // The board is where the connections and the comment cards stayed - the
   // reasoning behind what this document says - so the document keeps a way
@@ -1284,6 +1291,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     coverGradient: string | undefined;
     paperColorEnabled: boolean;
     noteFont: NoteFont;
+    noteFontMode: NoteFontMode | null;
     groupId: string | null;
     canvasLinks: Record<string, CanvasLink>;
   };
@@ -1315,6 +1323,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       coverGradient: (data?.coverGradient as string | undefined) || undefined,
       paperColorEnabled: !!data?.paperColorEnabled,
       noteFont: asNoteFont(data?.noteFont),
+      noteFontMode: data?.noteFontMode ? asNoteFontMode(data.noteFontMode, data?.noteFont) : null,
       groupId: (data?.groupId as string | undefined) ?? null,
       canvasLinks: (data?.canvasLinks as Record<string, CanvasLink> | undefined) ?? {},
     };
@@ -1329,6 +1338,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       server.coverGradient === shape.coverGradient &&
       server.paperColorEnabled === shape.paperColorEnabled &&
       server.noteFont === shape.noteFont &&
+      server.noteFontMode === shape.noteFontMode &&
       server.groupId === shape.groupId &&
       stableStringify(server.canvasLinks) === stableStringify(shape.canvasLinks) &&
       server.blocks.length === shape.blocks.length &&
@@ -1389,6 +1399,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (server && server.coverGradient === coverGradient) setCoverGradient(remote.coverGradient);
     if (server && server.paperColorEnabled === paperColorEnabled) setPaperColorEnabled(remote.paperColorEnabled);
     if (server && server.noteFont === noteFont) setNoteFont(remote.noteFont);
+    if (server && server.noteFontMode === noteFontModeRaw) setNoteFontMode(remote.noteFontMode);
     if (server && server.groupId === groupId) setGroupId(remote.groupId);
     // Arrows are a keyed map, so both sides' additions survive: what
     // changed here since the last write stays, the rest takes the
@@ -1485,6 +1496,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       setCoverFrame((data?.coverFrame as ImageFrame | undefined) ?? undefined);
       setPaperColorEnabled(!!data?.paperColorEnabled);
       setNoteFont(asNoteFont(data?.noteFont));
+      setNoteFontMode(data?.noteFontMode ? asNoteFontMode(data.noteFontMode, data?.noteFont) : null);
       setGroupId(data?.groupId ?? null);
       setSourceBoardId(data?.boardId ?? null);
       setCanvasLinks(data?.canvasLinks ?? {});
@@ -1999,7 +2011,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // which is the case the moment a note has been opened, and the case
     // when another device's version has just been merged in. See
     // serverRef.
-    const shape: ServerShape = { title, blocks, coverImageUri: coverImageUri || undefined, coverDrive, coverGradient: coverGradient || undefined, paperColorEnabled, noteFont, groupId, canvasLinks };
+    const shape: ServerShape = { title, blocks, coverImageUri: coverImageUri || undefined, coverDrive, coverGradient: coverGradient || undefined, paperColorEnabled, noteFont, noteFontMode: noteFontModeRaw, groupId, canvasLinks };
     if (sameAsServer(shape)) return;
     syncLog('will save: differs from server', {
       dirtyBlocks: blocks.filter((b) => serverBlockRef.current.get(b.id) !== stableStringify(b)).map((b) => b.id.slice(-4)).join(','),
@@ -2042,6 +2054,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           updatedAt: Date.now(),
           paperColorEnabled,
           noteFont,
+          // deleteField(), not undefined: Firestore refuses undefined, and a note still on the old shape has none to write.
+          noteFontMode: noteFontModeRaw ?? deleteField(),
           // deleteField() rather than omitting the key or writing undefined
           // (which Firestore rejects outright) - a cover removed after
           // having been set has to actually clear the field, not leave the
@@ -2076,7 +2090,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       )
       )
         .then(() => {
-          rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, coverDrive, coverGradient: coverGradient || undefined, paperColorEnabled, noteFont, groupId, canvasLinks });
+          rememberServer({ title, blocks, coverImageUri: coverImageUri || undefined, coverDrive, coverGradient: coverGradient || undefined, paperColorEnabled, noteFont, noteFontMode: noteFontModeRaw, groupId, canvasLinks });
           setSaveStatus('saved');
           syncLog('saved', { blocks: blocks.length });
         })
@@ -2104,7 +2118,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, blocks, coverImageUri, coverDrive, coverGradient, paperColorEnabled, noteFont, groupId, canvasLinks, isLoaded]);
+  }, [title, blocks, coverImageUri, coverDrive, coverGradient, paperColorEnabled, noteFont, noteFontModeRaw, groupId, canvasLinks, isLoaded]);
 
   // Whoever set focusIdRef wants that block to be the live input next. A
   // block only has a TextInput while it's the active one, so this first
@@ -2603,6 +2617,30 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         { key: 'toggle', label: 'Розкривний', family: 'ionicons', icon: 'chevron-down-circle-outline', onPress: action('toggle') },
       ],
     },
+    ...(effectiveFont.blocks
+      ? [
+          {
+            section: 'text' as const,
+            title: 'Шрифт цього блока',
+            items: (
+              [
+                ['default', 'Системний', 'Аа'],
+                ['mono', 'Машинка', 'Аа'],
+                ['serif', 'Книжковий', 'Аа'],
+                ['hand', 'Рукописний', 'Аа'],
+              ] as const
+            ).map(([id, label, text]) => ({
+              key: `font-${id}`,
+              label,
+              icon: '',
+              glyph: { text, fontFamily: FONT_GLYPH_FAMILY[id], size: id === 'hand' ? 32 : 24 },
+              // What this block is drawn in now: its own, else the note's.
+              active: (panelBlock?.font ?? effectiveFont.font) === id,
+              onPress: onBlock((blockId) => setBlockFont(blockId, id)),
+            })),
+          },
+        ]
+      : []),
     {
       section: 'text',
       title: 'Форматування',
@@ -3205,9 +3243,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             { label: 'Видалити', icon: 'trash-outline', tone: 'danger', onPress: confirmDeleteDocument },
           ]
         : [
-            { label: 'Вигляд', icon: 'color-palette-outline', onPress: () => setExportMenuOpen(true) },
+            { label: 'Вигляд', icon: 'color-palette-outline', onPress: () => setLookOpen(true) },
             { label: 'Проект', icon: 'folder-outline', checked: !!groupId, onPress: () => setGroupPickerVisible(true) },
             { label: 'Експорт', icon: 'share-outline', onPress: askExport },
+            // The board this note was made from (it was in the old Вигляд window).
+            ...(sourceBoardId
+              ? [{ label: 'Показати дошку', icon: 'grid-outline' as const, onPress: () => navigation.navigate('BoardCopy', { boardId: sourceBoardId, openDocumentId: documentId }) }]
+              : []),
             { label: 'Копіювати посилання', icon: 'link-outline', onPress: copyNoteAddress },
             { label: 'Створити копію', icon: 'copy-outline', onPress: makeCopyOfNote },
             // The Mac: this note in a window of its own (the shell opens the same app at an address that says
@@ -4424,6 +4466,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         const created = buildBlock(generateId(), currentType, after);
         if (current && indentOf(current) > 0) created.indent = indentOf(current);
         if (current?.align) created.align = current.align;
+        if (current?.font) created.font = current.font;
         focusIdRef.current = created.id;
         bumpTextVersion(id);
         setBlocks((prev) => {
@@ -4476,6 +4519,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const fromBlock = blocks.find((b) => b.id === id);
     if (fromBlock && indentOf(fromBlock) > 0) created.indent = indentOf(fromBlock);
     if (fromBlock?.align) created.align = fromBlock.align;
+    if (fromBlock?.font) created.font = fromBlock.font;
     focusIdRef.current = created.id;
     bumpTextVersion(id);
     setBlocks((prev) => {
@@ -4848,7 +4892,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   async function exportAsPdf() {
-    setExportMenuOpen(false);
+    setLookOpen(false);
     const html = await buildDocumentHtml(title, blocks);
     if (Platform.OS === 'web') {
       // expo-print's web version prints the WHOLE APP PAGE. The note goes
@@ -4864,7 +4908,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   async function exportAsTxt() {
-    setExportMenuOpen(false);
+    setLookOpen(false);
     const text = buildDocumentText(title, blocks);
     if (Platform.OS === 'web') {
       const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
@@ -4995,6 +5039,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     snapshotBeforeChange();
     focusIdRef.current = id;
     setBlocks((prev) => prev.map((b) => (ids.has(b.id) ? withAlign(b, align) : b)));
+  }
+
+  // A BLOCK'S OWN FACE (the note's «По блоках» mode): the block where the caret is. Kept on the block whichever mode the note is in.
+  function setBlockFont(id: string, font: NoteFont) {
+    snapshotBeforeChange();
+    focusIdRef.current = id;
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, font } : b)));
   }
 
   function setHeadingLevel(id: string, level: 1 | 2 | 3 | null) {
@@ -5304,7 +5355,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // record and no Drive backup, exactly like a cover has nowhere else in
   // the app to show up.
   function openCoverImageOptions() {
-    setExportMenuOpen(false);
+    setLookOpen(false);
     // Five answers when there is already a cover - which is exactly two
     // more than Android's own dialog will show, and it drops the extra
     // without a word. Here they are rows, so all of them fit.
@@ -6911,163 +6962,30 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           the user explicitly asked to be able to do while picking blocks.
           A scrolling row admits there are more than fit; a sheet hides
           them. */}
-      {exportMenuOpen && <Pressable style={styles.exportMenuBackdrop} onPress={() => setExportMenuOpen(false)} />}
-      {exportMenuOpen && (
-        <GlassPortal name="DocumentEditorScreen">
-        // Beside the rail rather than under the old header corner: its
-        // top lines up with the rail's, and it stops short of it.
-        <View
-          style={[
-            styles.exportMenuPanel,
-            {
-              // As wide as the dock, and standing on it. The user's own
-              // proposal - "панель буде випадати шириною в док... щоб
-              // було гармонійно" - and the width is READ from the dock's
-              // own geometry rather than measured by eye, because two
-              // things only read as one object while they agree to the
-              // pixel. It used to hang off the rail in the top-right
-              // corner, which is where its button used to be.
-              width: dockRowWidth(windowWidth),
-              left: Math.round((windowWidth - dockRowWidth(windowWidth)) / 2),
-              bottom: menuClearance,
-              // Never taller than the room above the dock. The rows it
-              // holds are what you set ONCE, so scrolling to them costs
-              // nothing - being clipped by a panel with overflow hidden
-              // would cost everything below the fold.
-              maxHeight: windowHeight - menuClearance - editorInsets.top - 24,
-            },
-          ]}
-        >
-          <BlurView
-            intensity={60}
-            tint="dark"
-            blurMethod="dimezisBlurView"
-            blurTarget={editorBlurTarget ?? undefined}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
-          <RNScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.exportMenuScroll}
-          >
-          <Text style={styles.exportMenuLabel}>Вигляд</Text>
-          {/* «Полотно»/«Сторінка» and «Референси» used to stand here.
-              They are the two things you press many times in one sitting,
-              and they were lying deeper than the choice of paper colour -
-              so they moved to the dock at the foot of the screen, where
-              they are one press away. What stays in this menu is what you
-              set once. */}
-          <Text style={styles.exportMenuLabel}>Оформлення</Text>
-          <Pressable style={styles.exportMenuRow} onPress={openCoverImageOptions}>
-            <Ionicons name="image-outline" size={17} color={GLASS_TEXT} />
-            <Text style={styles.exportMenuRowLabel}>
-              {coverImageUri ? 'Змінити заставку' : 'Додати заставку'}
-            </Text>
-          </Pressable>
-          {/* The cover's gradients, right under the row that sets a
-              picture: tap one to make it the cover (and let go of any
-              picture), tap the chosen one again to fall back to the
-              note's own default. */}
-          <View style={styles.coverSwatches}>
-            {COVER_GRADIENTS.map((g) => {
-              const on = coverGradient === g.id;
-              return (
-                <Pressable
-                  key={g.id}
-                  hitSlop={4}
-                  onPress={() => {
-                    setCoverGradient(on ? undefined : g.id);
-                    if (!on) applyCover(undefined);
-                  }}
-                  style={[styles.coverSwatch, on && styles.coverSwatchOn]}
-                >
-                  <CoverGradientView gradient={g} style={styles.coverSwatchFill} />
-                </Pressable>
-              );
-            })}
-          </View>
-          <Pressable style={styles.exportMenuRow} onPress={() => setPaperColorEnabled((v) => !v)}>
-            <Ionicons name="color-palette-outline" size={17} color={GLASS_TEXT} />
-            <Text style={styles.exportMenuRowLabel}>Колір паперу</Text>
-            {paperColorEnabled && <Ionicons name="checkmark" size={18} color={theme.accent} />}
-          </Pressable>
-          <Pressable
-            style={styles.exportMenuRow}
-            onPress={async () => {
-              setExportMenuOpen(false);
-              const pick = await ask({
-                title: 'Шрифт нотатки',
-                actions: NOTE_FONTS.map((f) => ({ id: f.id, label: f.label, hint: f.hint, icon: f.id === noteFont ? ('checkmark' as const) : undefined })),
-              });
-              if (pick !== 'cancel') setNoteFont(asNoteFont(pick));
-            }}
-          >
-            <Ionicons name="text-outline" size={17} color={GLASS_TEXT} />
-            <Text style={styles.exportMenuRowLabel}>Шрифт нотатки</Text>
-            <Text style={[styles.exportMenuRowLabel, { flex: 0, opacity: 0.6 }]}>{NOTE_FONTS.find((f) => f.id === noteFont)?.label}</Text>
-          </Pressable>
-          <Text style={styles.exportMenuLabel}>Організація</Text>
-          <Pressable
-            style={styles.exportMenuRow}
-            onPress={() => {
-              setExportMenuOpen(false);
-              setGroupPickerVisible(true);
-            }}
-          >
-            <Ionicons name="folder-outline" size={17} color={GLASS_TEXT} />
-            <Text style={styles.exportMenuRowLabel}>
-              {groups.find((g) => g.id === groupId)?.name ?? 'Додати в проект'}
-            </Text>
-          </Pressable>
-          {!!sourceBoardId && (
-            <>
-              <Text style={styles.exportMenuLabel}>Джерело</Text>
-              <Pressable
-                style={styles.exportMenuRow}
-                onPress={() => {
-                  setExportMenuOpen(false);
-                  // On its own, not through the boards' desk, which the
-                  // user may have closed (see navigation/desks).
-                  navigation.navigate('BoardCopy', { boardId: sourceBoardId, openDocumentId: documentId });
-                }}
-              >
-                <Ionicons name="grid-outline" size={17} color={GLASS_TEXT} />
-                <Text style={styles.exportMenuRowLabel}>Показати дошку</Text>
-              </Pressable>
-            </>
-          )}
-          <Text style={styles.exportMenuLabel}>Експорт</Text>
-          <Pressable style={styles.exportMenuRow} onPress={exportAsPdf}>
-            <Ionicons name="document-text-outline" size={17} color={GLASS_TEXT} />
-            <Text style={styles.exportMenuRowLabel}>У PDF</Text>
-          </Pressable>
-          <Pressable style={styles.exportMenuRow} onPress={exportAsTxt}>
-            <Ionicons name="reader-outline" size={17} color={GLASS_TEXT} />
-            <Text style={styles.exportMenuRowLabel}>У TXT</Text>
-          </Pressable>
-          <View style={styles.exportMenuRule} />
-          <Pressable
-            style={styles.exportMenuRow}
-            onPress={() => {
-              setExportMenuOpen(false);
-              toggleSelectMode();
-            }}
-          >
-            <Ionicons
-              name={isSelectMode ? 'close-outline' : 'ellipse-outline'}
-              size={17}
-              color={GLASS_TEXT}
-            />
-            <Text style={styles.exportMenuRowLabel}>{isSelectMode ? 'Скасувати вибір' : 'Вибрати'}</Text>
-          </Pressable>
-          <Pressable style={styles.exportMenuRow} onPress={confirmDeleteDocument}>
-            <Ionicons name="trash-outline" size={17} color={GLASS_DANGER} />
-            <Text style={[styles.exportMenuRowLabel, { color: GLASS_DANGER }]}>Видалити документ</Text>
-          </Pressable>
-          </RNScrollView>
-        </View>
-        </GlassPortal>
-      )}
+      {/* «Вигляд сторінки»: the cover, the paper's colour and the font in three modes (components/NoteLookSheet). It replaced the old
+          dark window that also held the project, the export, «Вибрати» and the delete - the «⋯» menu has those. */}
+      <NoteLookSheet
+        visible={lookOpen}
+        onClose={() => setLookOpen(false)}
+        coverImage={!!coverImageUri}
+        coverGradient={coverGradient}
+        onCoverImage={() => {
+          setLookOpen(false);
+          openCoverImageOptions();
+        }}
+        onGradient={(id) => {
+          setCoverGradient(id);
+          if (id) applyCover(undefined);
+        }}
+        paperColor={paperColorEnabled}
+        onPaperColor={setPaperColorEnabled}
+        mode={noteFontMode}
+        onMode={setNoteFontMode}
+        noteFont={noteFont}
+        onNoteFont={setNoteFont}
+        blocksWithFont={blocks.filter((x) => !!x.font).length}
+        blocksTotal={blocks.length}
+      />
 
       {/* Embedded (CalendarScreen): the select-mode toggle and save
           checkmark both live in CalendarScreen's own header capsule now,
@@ -8073,7 +7991,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     </Animated.View>
   );
   // Every block below draws in the note's own face (utils/noteFont).
-  const pageInFont = <NoteFontContext.Provider value={noteFont}>{page}</NoteFontContext.Provider>;
+  const pageInFont = (
+    <NoteFontContext.Provider value={effectiveFont.font}>
+      <BlocksFontContext.Provider value={effectiveFont.blocks}>{page}</BlocksFontContext.Provider>
+    </NoteFontContext.Provider>
+  );
   if (!sheetPage) return pageInFont;
   return (
     <View style={styles.sheetRoot}>

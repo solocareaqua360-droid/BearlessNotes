@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { noteTextSize, useNoteFace } from '../utils/noteFont';
+import { noteTextSize, useBlockFace } from '../utils/noteFont';
 import { Ionicons } from './icons/Ionicons';
 import FormattedText from './FormattedText';
 import { SoftTaskCheck } from './SoftIcon';
@@ -50,7 +50,7 @@ export default function PagePreviewRow({
   noReminder?: boolean;
 }) {
   const type = item.type ?? 'paragraph';
-  const noteFaces = useNoteFace();
+  const noteFaces = useBlockFace(item.font);
   const noteFace = noteFaces && type !== 'code' ? { fontFamily: type === 'heading' ? noteFaces.strong : noteFaces.regular } : null;
   const rowPaperColor = item.isSticker ? null : paperColor;
   const headingStyle =

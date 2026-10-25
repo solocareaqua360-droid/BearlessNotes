@@ -45,6 +45,7 @@ export function retype(block: Block, type: BlockType): Block {
   if (block.exitsToggle) next.exitsToggle = true;
   if (block.indent) next.indent = block.indent;
   if (block.align) next.align = block.align;
+  if (block.font) next.font = block.font;
   return next;
 }
 

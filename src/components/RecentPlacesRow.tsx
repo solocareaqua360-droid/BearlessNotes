@@ -114,11 +114,11 @@ const NO_IDS: string[] = [];
 const NO_TAGS: Tag[] = [];
 
 const RecentDocument = memo(function RecentDocument({ id, onPress }: { id: string; onPress: () => void }) {
-  const data = useRecord<{ title?: string; blocks?: Block[]; noteFont?: string }>('documents', id);
+  const data = useRecord<{ title?: string; blocks?: Block[]; noteFont?: string; noteFontMode?: string }>('documents', id);
   if (!data) return null;
   return (
     <RecentFrame onPress={onPress} label={data.title?.trim() || 'Без назви'} icon="document-text-outline">
-      <DocumentPageMiniature font={data.noteFont} title={data.title ?? ''} blocks={data.blocks ?? NONE} tagIds={NO_IDS} tags={NO_TAGS} project={null} width={CARD_W} height={PIC_H} />
+      <DocumentPageMiniature font={data.noteFont} fontMode={data.noteFontMode} title={data.title ?? ''} blocks={data.blocks ?? NONE} tagIds={NO_IDS} tags={NO_TAGS} project={null} width={CARD_W} height={PIC_H} />
     </RecentFrame>
   );
 });

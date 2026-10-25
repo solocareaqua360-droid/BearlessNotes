@@ -1,5 +1,5 @@
 import type { ImageFrame } from '../utils/imageFrame';
-import { NoteFontContext, asNoteFont } from '../utils/noteFont';
+import { BlocksFontContext, NoteFontContext, resolveNoteFont } from '../utils/noteFont';
 import { listNumbers } from '../utils/documentBlocks';
 import { memo } from 'react';
 import { IS_POINTER } from '../utils/pointer';
@@ -263,10 +263,13 @@ function DocumentPageMiniature({
 // A wall of these re-renders whenever the list's own state moves; a page
 // only changes when its document does.
 // The note's own face reaches the rows drawn inside (utils/noteFont): `font` is the document's `noteFont`.
-function DocumentPageMiniatureInFont({ font, ...rest }: React.ComponentProps<typeof DocumentPageMiniature> & { font?: unknown }) {
+function DocumentPageMiniatureInFont({ font, fontMode, ...rest }: React.ComponentProps<typeof DocumentPageMiniature> & { font?: unknown; fontMode?: unknown }) {
+  const r = resolveNoteFont(font, fontMode);
   return (
-    <NoteFontContext.Provider value={asNoteFont(font)}>
-      <DocumentPageMiniature {...rest} />
+    <NoteFontContext.Provider value={r.font}>
+      <BlocksFontContext.Provider value={r.blocks}>
+        <DocumentPageMiniature {...rest} />
+      </BlocksFontContext.Provider>
     </NoteFontContext.Provider>
   );
 }

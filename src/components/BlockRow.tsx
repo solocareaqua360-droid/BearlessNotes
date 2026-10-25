@@ -1,5 +1,5 @@
 import FlashcardBlockCard from './FlashcardBlockCard';
-import { noteTextSize, useNoteFace } from '../utils/noteFont';
+import { noteTextSize, useBlockFace } from '../utils/noteFont';
 import DbTableBlock from './DbTableBlock';
 import { ask } from './surfaces/Ask';
 import { HIGHLIGHT_COLORS } from './EditorToolbar';
@@ -244,7 +244,7 @@ export default function BlockRow({
   // panel under the keyboard re-renders the row - the user: «скидається виділення тексту»).
   const blockType = item.type ?? 'paragraph';
   // The note's own face (utils/noteFont), none for code (it keeps its mono) and none for the app's own.
-  const noteFaces = useNoteFace();
+  const noteFaces = useBlockFace(item.font);
   const noteFace = noteFaces && blockType !== 'code' ? { fontFamily: blockType === 'heading' ? noteFaces.strong : noteFaces.regular } : null;
   const liveRuns = useMemo(
     () =>

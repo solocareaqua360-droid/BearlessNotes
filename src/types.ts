@@ -360,6 +360,9 @@ export interface Block {
   indent?: number;
   // THE ALIGNMENT (2026-10-25): where the block's lines stand - absent = left, as text always did.
   align?: 'center' | 'right' | 'justify';
+  // THE BLOCK'S OWN FACE (2026-10-25, the note's «По блоках» font mode): kept on the block, used only while the note is in that mode, and
+  // kept when the mode is left and came back to. Absent = the note-level face. 'default' = the app's own.
+  font?: 'default' | 'mono' | 'serif' | 'hand';
   // 'code' blocks only: what was written after the opening fence of a
   // pasted block, kept so it can be shown and, one day, coloured.
   codeLanguage?: string;

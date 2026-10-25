@@ -73,6 +73,7 @@ function FolderTile({
     picture = (
       <DocumentPageMiniature
         font={raw.noteFont}
+        fontMode={raw.noteFontMode}
         title={item.title}
         blocks={(raw.blocks as Block[]) ?? []}
         tagIds={[]}
@@ -453,6 +454,7 @@ function FolderItemCardInner({
         <View style={[styles.noteThumb, { backgroundColor: S.fill }]}>
           <DocumentPageMiniature
             font={raw.noteFont}
+        fontMode={raw.noteFontMode}
             title={item.title}
             blocks={blocks}
             tagIds={[]}

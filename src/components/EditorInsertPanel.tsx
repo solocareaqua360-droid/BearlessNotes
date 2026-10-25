@@ -42,6 +42,8 @@ export type PanelItem = {
   icon: string;
   // A swatch instead of an icon: the colour rows.
   swatch?: string;
+  // A tile that shows letters instead of an icon: «Аа» drawn in the face it names (the note font choice).
+  glyph?: { text: string; fontFamily?: string; size?: number };
   onPress: () => void;
   active?: boolean;
 };
@@ -162,7 +164,9 @@ export default function EditorInsertPanel({
                     style={[styles.tile, item.active && styles.tileOn]}
                     onPress={item.onPress}
                   >
-                    {item.family === 'material-community' ? (
+                    {item.glyph ? (
+                      <Text style={{ fontSize: item.glyph.size ?? 24, lineHeight: 30, fontFamily: item.glyph.fontFamily, color: iconColor ?? theme.ink.primary }}>{item.glyph.text}</Text>
+                    ) : item.family === 'material-community' ? (
                       <MaterialCommunityIcons
                         name={item.icon as never}
                         size={19}
