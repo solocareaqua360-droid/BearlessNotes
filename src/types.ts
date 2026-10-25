@@ -563,6 +563,11 @@ export interface Tag {
   // How the folder looks as a card on the project screen: size, one of the
   // legal swatches (constants/cardPalette), an outer description (on the
   // card) and an inner one (at the top of the opened folder).
+  // THE FOLDER'S OWN VIEW (the user, 2026-10-25: «в налаштуванні кожної папки можна буде вибирати вигляд»): a list or a
+  // grid - the canvas stays one for all, it shows every folder. Unset: the explorer's own view.
+  view?: 'list' | 'grid';
+  // PINNED in this folder (2026-10-25): up to three things (FolderItem ids) that stand first whatever the order.
+  pins?: string[];
   card?: { size?: 'L' | 'M' | 'S'; color?: string; outer?: string; inner?: string; pattern?: 'none' | 'light' | 'normal' | 'dense';
     // A COLLECTION's face in the list and the grid (CollectionCard): «Стос» - a stack / a pile of prints; «Розкладка» -
     // a strip / a mosaic. Unset: a stack in the list, a mosaic in the grid.

@@ -114,6 +114,8 @@ export function useTags() {
             ...(Array.isArray(data.groupIds) ? { groupIds: data.groupIds as string[] } : {}),
             ...(Array.isArray(data.projectRoots) ? { projectRoots: data.projectRoots as string[] } : {}),
             ...(data.card ? { card: data.card as Tag['card'] } : {}),
+            ...(data.view === 'list' || data.view === 'grid' ? { view: data.view as Tag['view'] } : {}),
+            ...(Array.isArray(data.pins) ? { pins: data.pins as string[] } : {}),
           };
         })
       );
@@ -349,7 +351,7 @@ export function useTags() {
     await Promise.all(affected.map((t) => updateDoc(doc(db, 'tags', t.id), { inExplorer: deleteField() })));
   }
 
-  async function setTagFields(tagId: string, fields: { groupIds?: string[]; projectRoots?: string[]; card?: Tag['card'] }) {
+  async function setTagFields(tagId: string, fields: { groupIds?: string[]; projectRoots?: string[]; card?: Tag['card']; view?: Tag['view'] | ReturnType<typeof deleteField>; pins?: string[] }) {
     // Firestore refuses `undefined` anywhere in a value, and the card sheet
     // sends undefined for an empty description or no colour - the whole save
     // failed without a word and the new size never stuck. An empty field is

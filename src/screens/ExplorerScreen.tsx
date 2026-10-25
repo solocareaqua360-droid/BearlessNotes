@@ -73,6 +73,7 @@ import ProjectsBand, { NO_PROJECT, projectCardShape } from '../components/Projec
 import ProjectCapsules from '../components/ProjectCapsules';
 import RecentPlacesRow from '../components/RecentPlacesRow';
 import IconPickerSheet from '../components/IconPickerSheet';
+import FolderViewsSheet from '../components/FolderViewsSheet';
 import CollectionCard, { collectionFaceFor, gustLeadMs, type CollectionCardKind, type CollectionFaceStyle } from '../components/CollectionCard';
 import TurningPressable from '../components/TurningPressable';
 import { listMoved } from '../utils/motionHold';
@@ -373,14 +374,20 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const { sortPref, selectSortField } = useSortPref('explorerSort');
   // THE VIEW (the one plan, 2026-10-11): a list of rows, a grid of tiles, or wide cards (one
   // tile a line, bigger picture). Remembered on this device.
-  const [viewMode, setViewMode] = useState<FolderCardMode | 'canvas'>('list');
+  const [globalView, setGlobalView] = useState<FolderCardMode | 'canvas'>('list');
   useEffect(() => {
-    AsyncStorage.getItem('explorerView').then((v) => (v === 'grid' || v === 'canvas') && setViewMode(v)).catch(() => {});
+    AsyncStorage.getItem('explorerView').then((v) => (v === 'grid' || v === 'canvas') && setGlobalView(v)).catch(() => {});
   }, []);
   const changeView = (m: FolderCardMode | 'canvas') => {
-    setViewMode(m);
+    setGlobalView(m);
     AsyncStorage.setItem('explorerView', m).catch(() => {});
   };
+  // EACH FOLDER ITS OWN VIEW (the user, 2026-10-25): a list or a grid kept on the folder (Tag.view); the canvas is one for
+  // all - it shows every folder - so it wins wherever it is on. Unset: the explorer's own view.
+  const folderTagsAt = (p: string) => tags.filter((t) => t.path === p);
+  const folderViewOf = (p: string): 'list' | 'grid' | undefined => folderTagsAt(p).find((t) => t.view)?.view;
+  const pinsOf = (p: string): string[] => folderTagsAt(p).find((t) => t.pins?.length)?.pins ?? [];
+  const viewMode: FolderCardMode | 'canvas' = globalView === 'canvas' || !path ? globalView : folderViewOf(path) ?? globalView;
   // «СТИЛЬ ПРОВІДНИКА» (2026-10-12, the user's): «Чистий» - the folders as this screen draws them; «Модерний» - the
   // same folders drawn as the «Проєкти» page drew them (see modernLook below: a look only). Remembered on this device.
   // The Mac/browser opens «Модерний» unless told otherwise (2026-10-16: the explorer came to the Mac to show the phone's
@@ -823,9 +830,19 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       const v = ((item.raw ?? {}) as Record<string, unknown>)[key];
       return typeof v === 'number' ? v : undefined;
     };
-    return sortItems(list, sortPref, (i) => i.title, (i) => num(i, 'createdAt'), (i) => stamp(i));
-  }, [shown, pathsOf, path, sortPref, inBin, binned, inCleanup, candidateItems, searching, needle, focusRoots, projectsHere]);
+    const sorted = sortItems(list, sortPref, (i) => i.title, (i) => num(i, 'createdAt'), (i) => stamp(i));
+    // PINNED first, in the order they were pinned, whatever the order (the user, 2026-10-25: up to three, with a pin).
+    const pins = path && !searching ? pinsOf(path) : [];
+    if (pins.length === 0) return sorted;
+    const rank = (i: FolderItem) => {
+      const at = pins.indexOf(i.id);
+      return at === -1 ? pins.length : at;
+    };
+    return [...sorted].sort((a, b) => rank(a) - rank(b));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, pathsOf, path, sortPref, inBin, binned, inCleanup, candidateItems, searching, needle, focusRoots, projectsHere, tags]);
 
+  const levelPins = path ? pinsOf(path) : [];
   // The cards in the order the list draws them - what a swipe's «from here to there» means (components/SwipeSelect).
   const sweepOrderOf = (list: Row[]) =>
     list.flatMap((r) => (isHeader(r) ? [] : isCells(r) ? r.cascade.map((i) => i.id) : isStrip(r) ? r.strip.map((i) => i.id) : [r.id]));
@@ -1160,6 +1177,35 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [justMade, items]);
   const folderPaths = useMemo(() => Array.from(new Set(tags.map((t) => t.path))).sort((a, b) => a.localeCompare(b)), [tags]);
+  // A folder's own view and pins live on the tag that already carries them, else on its look's tag (cardTagOf; an
+  // implied folder gets a tag of its own through setTagFields).
+  const [folderViewsOpen, setFolderViewsOpen] = useState(false);
+  const settingsTagOf = (p: string, has: (t: Tag) => boolean) => folderTagsAt(p).find(has) ?? cardTagOf(p);
+  function setFolderView(p: string, view: 'list' | 'grid') {
+    if (p === UNFILED) return;
+    setTagFields(settingsTagOf(p, (t) => !!t.view).id, { view }).catch((e) => notify('Не вдалося зберегти', (e as Error).message));
+  }
+  // PIN (the user, 2026-10-25: «закріпити файл вгорі списку незважаючи на сортування, до трьох ... шпилька»).
+  const MAX_PINS = 3;
+  async function togglePin(item: FolderItem) {
+    if (!path || path === UNFILED) return;
+    const pins = pinsOf(path);
+    let next: string[];
+    if (pins.includes(item.id)) next = pins.filter((id) => id !== item.id);
+    else if (pins.length < MAX_PINS) next = [...pins, item.id];
+    else {
+      // A fourth: which of the three gives up its place.
+      const titleOf = (id: string) => all.find((i) => i.id === id)?.title || 'Без назви';
+      const out = await ask({
+        title: 'Закріпити можна три',
+        message: 'Яку відкріпити, щоб закріпити цю?',
+        actions: pins.map((id) => ({ id, label: titleOf(id), icon: 'pin-outline' as const })),
+      });
+      if (out === 'cancel') return;
+      next = [...pins.filter((id) => id !== out), item.id];
+    }
+    setTagFields(settingsTagOf(path, (t) => !!t.pins?.length).id, { pins: next }).catch((e) => notify('Не вдалося зберегти', (e as Error).message));
+  }
   // The tag that stands for a folder path: an existing one, else a new UNIVERSAL one.
   async function tagForPath(folder: string): Promise<Tag> {
     // Never a folder of that name (see UNFILED): every writer goes through folderOf first.
@@ -2006,11 +2052,15 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' as const },
         ...(item.kind === 'document' ? [{ id: 'duplicate', label: 'Створити копію', icon: 'copy-outline' as const }] : []),
         ...(canShare ? [{ id: 'share', label: 'Поділитись', icon: 'share-social-outline' as const }] : []),
+        ...(path && path !== UNFILED && !searching
+          ? [{ id: 'pin', label: pinsOf(path).includes(item.id) ? 'Відкріпити' : 'Закріпити вгорі', icon: 'pin-outline' as const }]
+          : []),
         { id: 'select', label: 'Вибрати', icon: 'checkmark-circle-outline' as const },
         ...(canBin ? [{ id: 'delete', label: isReference(item) ? 'Прибрати з папки' : 'Видалити', icon: 'trash-outline' as const, tone: 'danger' as const }] : []),
       ],
     });
     if (choice === 'rename') setRenaming(item);
+    else if (choice === 'pin') togglePin(item);
     else if (choice === 'folders') setFoldersFor([item]);
     else if (choice === 'share') shareItem(item);
     else if (choice === 'duplicate') {
@@ -2038,7 +2088,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     // On the Mac (frame B) the panel beside the list says all of this as live controls (ExplorerPanel).
     explorerSelect ? null : [
       // The shared set of the bases' «⋯» (the survey of 2026-10-10): the view, the order, then the folder.
-      ...viewSection(viewMode, (m) => changeView(m), ['list', 'grid', 'canvas']),
+      // Inside a folder a list/grid is THAT folder's own view; the canvas (and the root) is the explorer's.
+      ...viewSection(viewMode, (m) => (path && path !== UNFILED && m !== 'canvas' && globalView !== 'canvas' ? setFolderView(path, m === 'grid' ? 'grid' : 'list') : changeView(m)), ['list', 'grid', 'canvas']),
+      { label: 'Вигляд папок…', icon: 'options-outline' as const, onPress: () => setFolderViewsOpen(true) },
       ...orderSection(sortPref, selectSortField),
       { label: 'Групувати за типом', icon: 'layers-outline' as const, checked: byKind, onPress: toggleByKind },
       { label: 'Фільтри (тип, проєкт)', icon: 'filter-outline' as const, checked: chipsOn, onPress: toggleChips },
@@ -2739,7 +2791,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   );
   const headerBody = (
     <>
-      {desk && recentsOn && (
+      {/* Only on the start desk itself, never inside a folder (the user, 2026-10-25: «нещодавні не показуються всередині папок»). */}
+      {desk && recentsOn && !path && (
         // Edge to edge: the list pads 20 on each side, the row scrolls under that padding.
         <View style={{ marginHorizontal: -20 }}>
           <RecentPlacesRow side={20} />
@@ -3131,6 +3184,13 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                   // own colour was - the user saw mixed ticks, 2026-10-12): none passed down.
                 />
               );
+              // The pin, in the card's top-right corner (where the selection tick is not).
+              const pinned = !!path && !searching && levelPins.includes(item.id);
+              const pin = pinned ? (
+                <View pointerEvents="none" style={[styles.pinBadge, { backgroundColor: S.card, boxShadow: S.shadow } as never]}>
+                  <Ionicons name="pin" size={14} color={S.accent} />
+                </View>
+              ) : null;
               // A native grid cell is a flex item that fills its row: a row the width of the
               // column makes it fill the column.
               if (own && tile) {
@@ -3140,6 +3200,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                     <View style={styles.nativeCell} pointerEvents={selecting ? 'none' : 'auto'}>
                       {card}
                     </View>
+                    {pin}
                     {selecting && (
                       <Pressable style={StyleSheet.absoluteFill} onPress={() => toggle(item.id)}>
                         {selected.has(item.id) && <View pointerEvents="none" style={[styles.pickedFrame, { borderColor: S.ink, borderRadius: 18 }]} />}
@@ -3156,6 +3217,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                 <View key={item.id} ref={(n) => carrying.carry.registerCard(item.id, () => carrying.groupFor(item), () => holdItem(item))(n as never)} collapsable={false} {...webData({ card: item.id })} style={[tile ? { width: tileW } : styles.cardWrap, chosen === item.id && { boxShadow: `0 0 0 2px ${S.ink}`, borderRadius: tile ? 18 : 14 }]}>
                   <SwipeSelectItem id={item.id}>
                   <View pointerEvents={selecting ? 'none' : 'auto'}>{card}</View>
+                  {pin}
                   {selecting && (
                     <Pressable style={StyleSheet.absoluteFill} onPress={() => toggle(item.id)}>
                       {selected.has(item.id) && !tile && <View pointerEvents="none" style={[styles.pickedFrame, { borderColor: S.ink }]} />}
@@ -3325,6 +3387,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             notify('Не вдалося зберегти', (e as Error).message);
           }
         }}
+      />
+      <FolderViewsSheet
+        visible={folderViewsOpen}
+        folders={folderPaths.filter((p) => p !== UNFILED).map((p) => ({ path: p, name: nameOf(p), depth: p.split('/').length - 1, view: folderViewOf(p) }))}
+        fallback={globalView === 'grid' ? 'grid' : 'list'}
+        onSet={setFolderView}
+        onSetAll={(v) => folderPaths.filter((p) => p !== UNFILED).forEach((p) => setFolderView(p, v))}
+        onClose={() => setFolderViewsOpen(false)}
       />
       <IconPickerSheet
         visible={iconProject !== null}
@@ -3531,6 +3601,7 @@ const styles = StyleSheet.create({
   nativeCell: { flexDirection: 'row' },
   chipsBar: { position: 'absolute', left: 0, right: 0, height: 36 + 8, zIndex: 3, justifyContent: 'center' },
   chips: { paddingHorizontal: 20, gap: 8, alignItems: 'center' },
+  pinBadge: { position: 'absolute', top: 8, right: 8, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   chip: { paddingHorizontal: 14, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   chipText: { fontSize: 13.5, fontFamily: SOFT_SEMIBOLD },
   hint: { fontSize: 14, textAlign: 'center', marginTop: 40 },
