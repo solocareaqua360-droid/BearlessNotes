@@ -1,4 +1,5 @@
 import { useFolderArrival } from '../navigation/folderArrival';
+import { askBoardsGo } from '../utils/deleteFates';
 import { SwipeSelectItem } from '../components/SwipeSelect';
 import { useEffect, useRef, useState } from 'react';
 import { markHeld } from '../utils/heldNode';
@@ -119,7 +120,6 @@ export default function BoardsListScreen({
     await setDoc(doc(db, 'settings', 'boardsPrefs'), { viewMode: mode }, { merge: true });
   }
   const [renamingBoard, setRenamingBoard] = useState<BoardItem | null>(null);
-  const [deleting, setDeleting] = useState<{ board: BoardItem; plan: BoardPlan } | null>(null);
   const [tagPickerBoardId, setTagPickerBoardId] = useState<string | null>(null);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
@@ -243,28 +243,12 @@ export default function BoardsListScreen({
 
   async function confirmDeleteSelected() {
     const toDelete = selectedBoards;
-    let chosen: PlanItem[] = [];
-    if (FEATURES.deleteAsksContents) {
-      try {
-        const plan = await describeBoards(toDelete, boards);
-        if (plan.groups.length > 0) {
-          const answer = await askWhatToKeep({
-            title: `Видалити дошки (${toDelete.length})?`,
-            subtitle: toDelete.map((b) => b.title || 'Без назви').join(', '),
-            noun: 'дошки',
-            plan,
-            withIt: 'ними',
-            place: 'цих дошках',
-          });
-          if (!answer) return;
-          chosen = answer;
-        }
-      } catch (e) {
-        console.warn('describeBoards', e);
-      }
-    }
+    // The fates first, as everywhere (utils/deleteFates); into the bin, never deleteDoc'd for good from here any more.
+    const chosen = await askBoardsGo(toDelete, boards).catch(() => [] as PlanItem[]);
+    if (!chosen) return;
     requestDeleteMany(toDelete, `Видалено дощок: ${toDelete.length}`, () => {
-      toDelete.forEach((b) => deleteDoc(doc(db, 'boards', b.id)));
+      const now = Date.now();
+      toDelete.forEach((b) => updateDoc(doc(db, 'boards', b.id), { deletedAt: now }).catch(() => {}));
       if (chosen.length > 0) removeItems(chosen);
     });
     clearSelection();
@@ -405,28 +389,11 @@ export default function BoardsListScreen({
     });
   }
 
-  function confirmDeleteBoard(board: BoardItem) {
-    if (FEATURES.deleteAsksContents) {
-      describeBoard(board, boards)
-        .then((plan) => {
-          if (plan.groups.length === 0) return plainDeleteBoard(board);
-          setDeleting({ board, plan });
-        })
-        .catch(() => plainDeleteBoard(board));
-      return;
-    }
-    plainDeleteBoard(board);
-  }
-
-  function plainDeleteBoard(board: BoardItem) {
-    confirm({
-      title: 'Видалити дошку?',
-      message: board.title || 'Без назви',
-      confirmLabel: 'Видалити',
-    }).then((yes) => {
-      if (!yes) return;
-      deleteDoc(doc(db, 'boards', board.id));
-    });
+  async function confirmDeleteBoard(board: BoardItem) {
+    const chosen = await askBoardsGo([board], boards).catch(() => [] as PlanItem[]);
+    if (!chosen) return;
+    await updateDoc(doc(db, 'boards', board.id), { deletedAt: Date.now() }).catch(() => {});
+    if (chosen.length > 0) removeItems(chosen);
   }
 
   function renderBoardRow(item: BoardItem) {
@@ -716,22 +683,6 @@ export default function BoardsListScreen({
             }}
           />
 
-          {deleting && (
-            <DeleteContentsSheet
-              visible
-              title="Видалити дошку?"
-              subtitle={deleting.board.title || 'Без назви'}
-              noun="дошку"
-              plan={deleting.plan}
-              onCancel={() => setDeleting(null)}
-              onConfirm={(chosen) => {
-                const { board } = deleting;
-                setDeleting(null);
-                deleteDoc(doc(db, 'boards', board.id));
-                if (chosen.length > 0) removeItems(chosen);
-              }}
-            />
-          )}
         </>
       }
     >

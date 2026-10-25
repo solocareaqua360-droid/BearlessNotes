@@ -1,5 +1,5 @@
 import { type ComponentProps, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { confirmFates, FATE, type FateEntry, type FateKind } from '../utils/deleteFates';
+import { askFates, boardContentsFates, confirmFates, FATE, type FateEntry, type FateKind } from '../utils/deleteFates';
 import { folderPathFromName } from '../utils/folderName';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { usePins } from '../navigation/pinned';
@@ -71,6 +71,8 @@ import ThoughtsFolder from '../components/thoughts/ThoughtsFolder';
 import ImageFrameEditor from '../components/ImageFrameEditor';
 import ProjectsBand, { NO_PROJECT, projectCardShape } from '../components/ProjectsBand';
 import ProjectCapsules from '../components/ProjectCapsules';
+import RecentPlacesRow from '../components/RecentPlacesRow';
+import IconPickerSheet from '../components/IconPickerSheet';
 import CollectionCard, { collectionFaceFor, gustLeadMs, type CollectionCardKind, type CollectionFaceStyle } from '../components/CollectionCard';
 import TurningPressable from '../components/TurningPressable';
 import { listMoved } from '../utils/motionHold';
@@ -515,6 +517,16 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         setProjFilter(null);
         setProjOut(null);
       }
+      return !on;
+    });
+  // «Нещодавні» on the start desk (the user, 2026-10-25): on unless switched off in «⋯», remembered on this device.
+  const [recentsOn, setRecentsOn] = useState(true);
+  useEffect(() => {
+    AsyncStorage.getItem('explorerRecents').then((v) => v !== null && setRecentsOn(v === '1')).catch(() => {});
+  }, []);
+  const toggleRecents = () =>
+    setRecentsOn((on) => {
+      AsyncStorage.setItem('explorerRecents', on ? '0' : '1').catch(() => {});
       return !on;
     });
   const toggleByKind = () =>
@@ -1307,17 +1319,28 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     const onlyRefs = binnable.length === 0;
     const first = refs[0] ?? binnable[0];
     const total = refs.length + binnable.length;
-    const sure = await confirmFates({
+    // A board going says what its cards are: records that stay in their bases, its own cards and shapes that go with it.
+    const boardsWhole = binnable
+      .filter((i) => i.kind === 'board' && !inBin)
+      .map((i) => {
+        const r = (i.raw ?? {}) as Record<string, unknown>;
+        return { cards: readBoardPart<BoardCard>(r.cards), shapes: readBoardPart<{ id: string }>(r.shapes) };
+      });
+    const insideBoards = boardContentsFates(boardsWhole);
+    const sureAnswer = await askFates({
       title: onlyRefs
         ? total === 1 ? `Прибрати «${first.title || 'Без назви'}» з папки?` : `Прибрати з папки (${total})?`
         : total === 1 ? `Видалити «${first.title || 'Без назви'}»?` : `Видалити (${total})?`,
       entries: [
         ...refs.map((r) => ({ kind: kindKey(r) as FateKind, tone: 'stays' as const, fate: `прибираються з папки, ${FATE.stays(kindKey(r) as FateKind)}` })),
         ...binnable.map((i) => ({ kind: kindKey(i) as FateKind, tone: 'bin' as const, fate: FATE.bin })),
+        ...insideBoards,
       ],
       confirmLabel: onlyRefs ? 'Прибрати' : 'Видалити',
+      // The board's own choice (the old «Що лишити?»): some of its records can go to the bin with it.
+      extra: insideBoards.some((e) => e.tone === 'stays') ? { id: 'pick', label: 'Вибрати, що з баз теж видалити…' } : undefined,
     });
-    if (!sure) return;
+    if (sureAnswer !== 'ok' && sureAnswer !== 'pick') return;
     if (refs.length > 0) {
       const taken: { tag: Tag; item: FolderItem }[] = [];
       for (const r of refs) {
@@ -1346,7 +1369,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     // that are records of their own - ask which of them go with it (utils/deletionPlan).
     let alsoRemove: PlanItem[] = [];
     const boardsGoing = binnable.filter((i) => i.kind === 'board' && !inBin);
-    if (FEATURES.deleteAsksContents && boardsGoing.length > 0) {
+    if (FEATURES.deleteAsksContents && boardsGoing.length > 0 && sureAnswer === 'pick') {
       try {
         const asBoard = (i: FolderItem): BoardItem => {
           const r = (i.raw ?? {}) as Record<string, unknown>;
@@ -1423,6 +1446,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   }
   // The project whose picture's frame is being chosen.
   const [framingProject, setFramingProject] = useState<{ id: string; uri: string } | null>(null);
+  // The project whose icon is being picked (IconPickerSheet, below).
+  const [iconProject, setIconProject] = useState<Group | null>(null);
   async function holdProject(id: string) {
     const g = groups.find((x) => x.id === id);
     if (!g) return;
@@ -1431,6 +1456,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       title: g.name,
       actions: [
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' as const },
+        { id: 'icon', label: g.icon ? 'Змінити іконку' : 'Іконка', icon: 'happy-outline' as const },
+        ...(g.icon ? [{ id: 'noicon', label: 'Прибрати іконку', icon: 'close-circle-outline' as const }] : []),
         { id: 'color', label: 'Колір обкладинки', icon: 'color-palette-outline' as const },
         { id: 'image', label: g.cover ? 'Змінити зображення' : 'Зображення обкладинки', icon: 'image-outline' as const },
         ...(g.cover ? [{ id: 'frame', label: 'Кадрувати зображення', icon: 'crop-outline' as const }] : []),
@@ -1439,7 +1466,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         { id: 'delete', label: 'Видалити проєкт', icon: 'trash-outline' as const, tone: 'danger' as const },
       ],
     });
-    if (choice === 'frame' && g.cover) setFramingProject({ id: g.id, uri: g.cover });
+    if (choice === 'icon') setIconProject(g);
+    else if (choice === 'noicon') await updateDoc(doc(db, 'groups', g.id), { icon: deleteField() }).catch((e) => notify('Не вдалося зберегти', (e as Error).message));
+    else if (choice === 'frame' && g.cover) setFramingProject({ id: g.id, uri: g.cover });
     else if (choice === 'rename') setRenamingProject(g);
     else if (choice === 'color') {
       const pick = await ask({
@@ -2013,6 +2042,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       ...orderSection(sortPref, selectSortField),
       { label: 'Групувати за типом', icon: 'layers-outline' as const, checked: byKind, onPress: toggleByKind },
       { label: 'Фільтри (тип, проєкт)', icon: 'filter-outline' as const, checked: chipsOn, onPress: toggleChips },
+      // Under a name of its own: straight after «Порядок» it read as one more way to sort.
+      ...(desk ? [{ kind: 'section' as const, label: 'На старті' }, { label: 'Нещодавні', icon: 'time-outline' as const, checked: recentsOn, onPress: toggleRecents }] : []),
       ...(FEATURES.explorerProjects
         ? [
             { kind: 'section' as const, label: 'Показувати' },
@@ -2708,6 +2739,12 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   );
   const headerBody = (
     <>
+      {desk && recentsOn && (
+        // Edge to edge: the list pads 20 on each side, the row scrolls under that padding.
+        <View style={{ marginHorizontal: -20 }}>
+          <RecentPlacesRow side={20} />
+        </View>
+      )}
       {/* THE LIVING FOLDER of thoughts, first on the explorer's first level (components/thoughts). */}
       {projectsHere && !FEATURES.projectsAccordion && (
         <View style={{ marginBottom: 12 }}>
@@ -3287,6 +3324,17 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           } catch (e) {
             notify('Не вдалося зберегти', (e as Error).message);
           }
+        }}
+      />
+      <IconPickerSheet
+        visible={iconProject !== null}
+        title={iconProject ? `Іконка «${iconProject.name}»` : 'Іконка'}
+        selected={iconProject?.icon}
+        onClose={() => setIconProject(null)}
+        onPick={(icon) => {
+          const id = iconProject?.id;
+          setIconProject(null);
+          if (id) updateDoc(doc(db, 'groups', id), { icon }).catch((e) => notify('Не вдалося зберегти', (e as Error).message));
         }}
       />
       <ImageFrameEditor

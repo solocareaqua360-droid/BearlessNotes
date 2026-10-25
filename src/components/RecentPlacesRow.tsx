@@ -1,0 +1,194 @@
+import { memo, useContext, useEffect, useState, type ReactNode } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from './icons/Ionicons';
+import DocumentPageMiniature from './DocumentPageMiniature';
+import BoardPreviewImage from './BoardPreviewImage';
+import { useSoft } from '../theme/soft';
+import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
+import { doc, onSnapshot } from '../firestore';
+import { db } from '../firebase';
+import { useDocumentIndex } from '../hooks/useDocumentIndex';
+import { useRecentPlaces, type RecentPlace } from '../navigation/recentPlaces';
+import { useDeskGate } from '../navigation/deskVisibility';
+import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
+import { DesksControlContext, deskFace } from '../navigation/desks';
+import { GRID_TILES, WIDE_TILES, openDatabaseTile } from '../constants/databaseTiles';
+import { navigationRef } from '../navigationRef';
+import { requestOpen } from '../utils/openRequest';
+import { fileIconColorFor, fileIconFor } from '../utils/fileIcons';
+import { FEATURES } from '../features';
+import type { Block, Tag } from '../types';
+
+// «НЕЩОДАВНІ» (the old start screen's row, brought back to the explorer's start desk - the user, 2026-10-25: «додати
+// нещодавні в стартовий екран перемикачем на показ приховання в трьох крапках»): one row of cards scrolling sideways,
+// a note, a board, a file or a database, each drawn the way its own list draws it. The same pieces screens/StartScreen
+// still carries for itself (switched off behind FEATURES.startIsExplorer).
+
+function go(route: string, params?: Record<string, unknown>) {
+  if (!navigationRef.isReady()) return;
+  (navigationRef.navigate as (name: string, p?: unknown) => void)(route, params);
+}
+
+export default function RecentPlacesRow({ side }: { side: number }) {
+  const S = useSoft();
+  const desksControl = useContext(DesksControlContext);
+  const recent = useRecentPlaces();
+  const index = useDocumentIndex();
+  // A note in the bin is not offered; until the index has arrived, none is judged.
+  const shown = recent
+    .filter((r) => r.kind !== 'document' || index.size === 0 || (index.has(r.ref) && !index.get(r.ref)?.deletedAt))
+    .filter((r) => FEATURES.stickers || r.ref !== 'tile:stickers')
+    .slice(0, 12);
+  if (shown.length === 0) return null;
+  const open = (place: RecentPlace) => {
+    if (place.kind === 'document') go('Editor', { documentId: place.ref });
+    else if (place.kind === 'board') go('BoardCopy', { boardId: place.ref });
+    else if (place.kind === 'file') {
+      requestOpen('files', place.ref);
+      go('Files');
+    } else if (place.ref.startsWith('tile:')) {
+      const tileKey = place.ref.slice('tile:'.length);
+      const key = `db:${tileKey}`;
+      const tile = [...WIDE_TILES, ...GRID_TILES].find((t) => t.key === tileKey);
+      if (desksControl?.desks.includes(key)) go('Tabs', { screen: key });
+      else if (tile && navigationRef.isReady()) openDatabaseTile(navigationRef as never, tile);
+    } else {
+      const key = `db:custom:${place.ref}`;
+      if (desksControl?.desks.includes(key)) go('Tabs', { screen: key });
+      else go('CustomDatabase', { databaseId: place.ref });
+    }
+  };
+  return (
+    <View style={styles.recents}>
+      <Text style={[styles.heading, { color: S.ink3, paddingHorizontal: side + 4 }]}>Нещодавні</Text>
+      <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.recentRow, { paddingHorizontal: side }]}>
+        {shown.map((place) => {
+          const press = () => open(place);
+          if (place.kind === 'document') return <RecentDocument key={`d:${place.ref}`} id={place.ref} onPress={press} />;
+          if (place.kind === 'board') return <RecentBoard key={`b:${place.ref}`} id={place.ref} onPress={press} />;
+          if (place.kind === 'file') return <RecentFile key={`f:${place.ref}`} id={place.ref} onPress={press} />;
+          if (place.ref.startsWith('tile:')) return <RecentTile key={`x:${place.ref}`} tileKey={place.ref.slice(5)} onPress={press} />;
+          return <RecentDatabase key={`x:${place.ref}`} id={place.ref} onPress={press} />;
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+const CARD_W = 150;
+const PIC_H = 118;
+
+function RecentFrame({ label, icon, onPress, children }: { label: string; icon: string; onPress: () => void; children: ReactNode }) {
+  const S = useSoft();
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { backgroundColor: S.card, boxShadow: S.shadow }, pressed && { opacity: 0.75 }]}>
+      <View style={[styles.cardPicture, { backgroundColor: S.fill }]}>{children}</View>
+      <View style={styles.cardFoot}>
+        <Ionicons name={icon as never} size={15} color={S.ink3} />
+        <Text style={[styles.cardLabel, { color: S.ink }]} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+// A record is read live; gone (deleted) it draws nothing. Out of sight (deskVisibility), only the newest version waits.
+function useRecord<T>(collection: string, id: string): T | null {
+  const [data, setData] = useState<T | null>(null);
+  const gated = useDeskGate();
+  useEffect(
+    () =>
+      onSnapshot(
+        doc(db, collection, id),
+        (snapshot) => gated('record', () => setData(snapshot.exists() ? (snapshot.data() as T) : null)),
+        () => setData(null)
+      ),
+    [collection, id, gated]
+  );
+  return data;
+}
+
+const NONE: Block[] = [];
+const NO_IDS: string[] = [];
+const NO_TAGS: Tag[] = [];
+
+const RecentDocument = memo(function RecentDocument({ id, onPress }: { id: string; onPress: () => void }) {
+  const data = useRecord<{ title?: string; blocks?: Block[] }>('documents', id);
+  if (!data) return null;
+  return (
+    <RecentFrame onPress={onPress} label={data.title?.trim() || 'Без назви'} icon="document-text-outline">
+      <DocumentPageMiniature title={data.title ?? ''} blocks={data.blocks ?? NONE} tagIds={NO_IDS} tags={NO_TAGS} project={null} width={CARD_W} height={PIC_H} />
+    </RecentFrame>
+  );
+});
+
+const RecentBoard = memo(function RecentBoard({ id, onPress }: { id: string; onPress: () => void }) {
+  const S = useSoft();
+  const data = useRecord<{ title?: string; previewImageUri?: string; previewDriveFileId?: string; deletedAt?: number }>('boards', id);
+  if (!data || data.deletedAt) return null;
+  return (
+    <RecentFrame onPress={onPress} label={data.title?.trim() || 'Дошка'} icon="easel-outline">
+      <BoardPreviewImage
+        boardId={id}
+        uri={data.previewImageUri}
+        driveFileId={data.previewDriveFileId}
+        fallback={
+          <View style={styles.cardCenter}>
+            <Ionicons name="easel-outline" size={34} color={S.ink3} />
+          </View>
+        }
+      />
+    </RecentFrame>
+  );
+});
+
+const RecentFile = memo(function RecentFile({ id, onPress }: { id: string; onPress: () => void }) {
+  const data = useRecord<{ title?: string; fileName?: string; deletedAt?: number }>('files', id);
+  if (!data || data.deletedAt) return null;
+  const name = data.title || data.fileName || 'Файл';
+  return (
+    <RecentFrame onPress={onPress} label={name} icon="document-outline">
+      <View style={styles.cardCenter}>
+        <Ionicons name={fileIconFor(data.fileName ?? name) as never} size={42} color={fileIconColorFor(data.fileName ?? name)} />
+      </View>
+    </RecentFrame>
+  );
+});
+
+const RecentTile = memo(function RecentTile({ tileKey, onPress }: { tileKey: string; onPress: () => void }) {
+  const S = useSoft();
+  const { customDatabases, iconFor } = useDatabaseTiles();
+  const face = deskFace(`db:${tileKey}`, customDatabases, iconFor);
+  return (
+    <RecentFrame onPress={onPress} label={face.label} icon={face.icon}>
+      <View style={styles.cardCenter}>
+        <Ionicons name={face.icon as never} size={40} color={S.ink2} />
+      </View>
+    </RecentFrame>
+  );
+});
+
+const RecentDatabase = memo(function RecentDatabase({ id, onPress }: { id: string; onPress: () => void }) {
+  const S = useSoft();
+  const data = useRecord<{ name?: string; icon?: string; color?: string }>('customDatabases', id);
+  if (!data) return null;
+  return (
+    <RecentFrame onPress={onPress} label={data.name || 'База'} icon={data.icon ?? 'grid-outline'}>
+      <View style={styles.cardCenter}>
+        <Ionicons name={(data.icon ?? 'grid-outline') as never} size={40} color={data.color ?? S.ink2} />
+      </View>
+    </RecentFrame>
+  );
+});
+
+const styles = StyleSheet.create({
+  recents: { marginBottom: 18 },
+  heading: { fontSize: 13, fontFamily: SOFT_SEMIBOLD, letterSpacing: 0.2, marginBottom: 10 },
+  recentRow: { gap: 10, paddingBottom: 6 },
+  card: { width: CARD_W, borderRadius: 20, overflow: 'hidden' },
+  cardPicture: { height: PIC_H, overflow: 'hidden' },
+  cardCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  cardFoot: { height: 40, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12 },
+  cardLabel: { flex: 1, fontSize: 13, fontFamily: SOFT_MEDIUM },
+});

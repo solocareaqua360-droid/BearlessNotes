@@ -495,6 +495,8 @@ export interface Group {
   // it stays visible under "Архівні" on the Groups screen.
   archived?: boolean;
   // The project's cover picture (2026-10-22): a small JPEG data-URL (utils/projectCover) drawn on its card in the explorer's projects band.
+  // The project's icon (the user, 2026-10-25): drawn in its capsule (components/ProjectCapsules) in place of the dot.
+  icon?: string;
   cover?: string;
   // The part of `cover` the card shows (utils/imageFrame).
   coverFrame?: import('./utils/imageFrame').ImageFrame;
