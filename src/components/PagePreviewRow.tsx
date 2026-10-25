@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { useNoteFace } from '../utils/noteFont';
+import { DEFAULT_NOTE_SCALE, useNoteFace } from '../utils/noteFont';
 import { Ionicons } from './icons/Ionicons';
 import FormattedText from './FormattedText';
 import { SoftTaskCheck } from './SoftIcon';
@@ -56,7 +56,7 @@ export default function PagePreviewRow({
   const headingStyle =
     type === 'heading' ? (item.headingLevel === 1 ? styles.heading1 : item.headingLevel === 3 ? styles.heading3 : styles.heading2) : null;
   const base = type === 'heading' ? (item.headingLevel === 1 ? PAGE_H1 : item.headingLevel === 3 ? PAGE_H3 : PAGE_H2) : PAGE_TEXT;
-  const fs = (type !== 'code' && noteFaces?.scale) || 1;
+  const fs = type === 'code' ? 1 : noteFaces?.scale ?? DEFAULT_NOTE_SCALE;
   const scaledTextStyle = { fontSize: Math.round(base.size * textScale * fs), lineHeight: Math.round(base.line * textScale * (1 + (fs - 1) * 0.6)) };
   const linkInk = theme.scheme === 'dark' ? LINK_BLUE_DARK : LINK_BLUE;
 

@@ -12,15 +12,18 @@ export const NOTE_FONTS: { id: NoteFont; label: string; hint: string }[] = [
   { id: 'serif', label: 'Книжковий', hint: 'PT Serif - для довгого читання' },
   { id: 'hand', label: 'Рукописний', hint: 'Caveat, «д» з хвостиком, літери трохи гуляють по висоті' },
 ];
+// The app's own face in a note (M PLUS Rounded: 0.52 x-height, a little smaller than Inter) is set this much larger than the
+// page's base sizes (the user, 2026-10-25: «дрібним ... всім, які шрифти, можна так»). The «Розмір шрифту» slider multiplies on top.
+export const DEFAULT_NOTE_SCALE = 1.08;
 export const asNoteFont = (v: unknown): NoteFont => (v === 'mono' || v === 'serif' || v === 'hand' ? v : 'default');
 
 // `scale`: a face's lowercase is smaller than the app's (Caveat's x-height is 0.40 against 0.52): its text is set this much
 // larger so the page does not read tiny (the user, 2026-10-25: «аномально дрібним»).
 type Faces = { regular: string; strong: string; scale: number };
 const FACES: Record<Exclude<NoteFont, 'default'>, Faces> = {
-  mono: { regular: 'NoteMono_400', strong: 'NoteMono_700', scale: 1 },
-  serif: { regular: 'NoteSerif_400', strong: 'NoteSerif_700', scale: 1.04 },
-  hand: { regular: 'NoteHand_400', strong: 'NoteHand_700', scale: 1.3 },
+  mono: { regular: 'NoteMono_400', strong: 'NoteMono_700', scale: 1.08 },
+  serif: { regular: 'NoteSerif_400', strong: 'NoteSerif_700', scale: 1.12 },
+  hand: { regular: 'NoteHand_400', strong: 'NoteHand_700', scale: 1.5 },
 };
 const FILES: Record<string, number> = {
   NoteMono_400: require('../../assets/fonts/RobotoMono-400.ttf'),

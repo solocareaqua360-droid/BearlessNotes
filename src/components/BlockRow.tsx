@@ -1,5 +1,5 @@
 import FlashcardBlockCard from './FlashcardBlockCard';
-import { useNoteFace } from '../utils/noteFont';
+import { DEFAULT_NOTE_SCALE, useNoteFace } from '../utils/noteFont';
 import DbTableBlock from './DbTableBlock';
 import { ask } from './surfaces/Ask';
 import { HIGHLIGHT_COLORS } from './EditorToolbar';
@@ -335,7 +335,7 @@ export default function BlockRow({
             : PAGE_H2
         : PAGE_TEXT;
     // A face with small lowercase (the handwriting) is set larger, its lines a little less so (utils/noteFont).
-    const fs = (blockType !== 'code' && noteFaces?.scale) || 1;
+    const fs = blockType === 'code' ? 1 : noteFaces?.scale ?? DEFAULT_NOTE_SCALE;
     return { fontSize: Math.round(base.size * textScale * fs), lineHeight: Math.round(base.line * textScale * (1 + (fs - 1) * 0.6)) };
   })();
 
