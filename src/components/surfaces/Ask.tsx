@@ -26,6 +26,8 @@ import { takeRecentClickPoint, takeRecentContextPoint, type ContextPoint } from 
 import { useWindowDimensions } from 'react-native';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
 import { useDensity } from '../../hooks/useDensity';
+import { useDockGlass } from '../../utils/dockGlass';
+import DockGlassFill, { useDockSurface } from '../DockGlassFill';
 
 // «Питання» - the first of the named surfaces.
 //
@@ -129,6 +131,10 @@ export function AskHost() {
   const S = chromeStyle === 'soft' ? softTokens : null;
   const softDanger = S ? (S.dark ? '#FF7A6E' : '#C8452F') : null;
   const pointer = useDensity() === 'pointer';
+  // «Скло» (the four windows, 2026-10-25: «всі типи вікон в склі»): the soft question wears the sheets' glass - the
+  // thick coat, so its words read over whatever is behind.
+  const askGlassOn = useDockGlass() && !pointer;
+  const askGlass = useDockSurface(softTokens, askGlassOn);
   // A long message (the diagnostics) scrolls inside the card instead of
   // running off the screen.
   const { height: windowHeight } = useWindowDimensions();
@@ -238,8 +244,10 @@ export function AskHost() {
         style={[
           styles.card,
           S ? { backgroundColor: S.card, borderWidth: 0, borderRadius: 28, boxShadow: S.popShadow } : lift,
+          S && askGlassOn && askGlass,
         ]}
       >
+        {S && askGlassOn && <DockGlassFill soft={S} radius={28} coat={0.88} intensity={100} />}
         <Text style={[styles.title, S && { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', letterSpacing: -0.3, fontSize: 20, color: S.ink }]}>
           {current.title}
         </Text>

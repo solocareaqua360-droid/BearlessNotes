@@ -3,6 +3,8 @@ import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, Vi
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
+import { BELOW, useBottomSheet } from './surfaces/bottomSheet';
+import Animated from 'react-native-reanimated';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
 import { useDensity } from '../hooks/useDensity';
@@ -59,6 +61,7 @@ export default function RenamePrompt({
   onCancel,
   onSave,
 }: Props) {
+  const b = useBottomSheet(visible, onCancel);
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   // At a pointer the dialog is a Mac's: smaller type, a field and buttons
@@ -110,12 +113,15 @@ export default function RenamePrompt({
   }, [visible, initialValue, title]);
 
   return (
-    <GlassLayer visible={visible} onClose={onCancel} intensity={60}>
+    <GlassLayer visible={visible} onClose={onCancel} intensity={60} rise={b.on}>
       {/* Centred in what the keyboard leaves: the bottom margin is the
           keyboard's height, so the card sits in the middle of the free
           part of the screen rather than under the keys. */}
-      <View style={styles.frame} pointerEvents="box-none">
-      <View style={[styles.card, pointer && styles.cardDesk, { marginBottom: keyboardHeight }]}>
+      <View style={[styles.frame, b.frame]} pointerEvents="box-none">
+      <Animated.View style={[styles.card, pointer && styles.cardDesk, b.window, { marginBottom: keyboardHeight - (b.on ? BELOW : 0) }, b.padBottom(20)]}>
+        {b.fill}
+        {b.grab}
+        {b.on && <View style={{ height: 4 }} />}
         <Text style={[styles.title, pointer && styles.titleDesk]}>{title}</Text>
         <TextInput
           autoFocus
@@ -159,7 +165,7 @@ export default function RenamePrompt({
             </Pressable>
           </View>
         )}
-      </View>
+      </Animated.View>
       </View>
     </GlassLayer>
   );
