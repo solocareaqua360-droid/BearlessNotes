@@ -415,7 +415,7 @@ export default function BlockRow({
     // onActivate), so this is handed over as-is, no conversion needed.
     const fromDom = caretIndexFromDom(textNode, pageX, pageY);
     if (fromDom !== null) {
-      onActivate(item.id, fromDom);
+      onActivate(item.id, outOfLinks(fromDom));
       return;
     }
     if (!canPlaceCaretByTouch) {
@@ -434,7 +434,18 @@ export default function BlockRow({
       pageX - box.x,
       pageY - box.y
     );
-    onActivate(item.id, displayIndex);
+    onActivate(item.id, outOfLinks(displayIndex));
+  }
+  // A tap never puts the caret INSIDE a word linking to a note (the user, 2026-10-25: a line holding only such a word -
+  // a card turned «словом» - could not be written in: a tap beside the word measured into it, and a caret inside a link
+  // opens its menu instead of typing). It lands AFTER the word: the word is drawn as an inline chip the text layout does
+  // not measure, so a tap beside it reads as somewhere in its middle (seen: a tap right of the chip gave index 4 of 3-23),
+  // and a tap on the chip itself never gets here - it opens the note.
+  function outOfLinks(index: number): number {
+    for (const span of noteLinkSpans(item.text ?? '')) {
+      if (index > span.displayStart && index < span.displayEnd) return span.displayEnd;
+    }
+    return index;
   }
 
   // A pointer's rows: the handle shows where the pointer is (and only there) - see below. Read here, before the
