@@ -3264,8 +3264,17 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           // The throttled onScroll misses the last offset of a drag or a fling; these two give it, so a folder
           // opened right after scrolling remembers the place it was really opened from.
           onScrollBeginDrag={() => listMoved()}
-          onScrollEndDrag={(e) => (scrollY.value = e.nativeEvent.contentOffset.y)}
-          onMomentumScrollEnd={(e) => (scrollY.value = e.nativeEvent.contentOffset.y)}
+          // ...and the chrome gets them too: a list that came to rest at the top by a fling left the dock folded
+          // (its last throttled offset was still > 60), and a folded dock takes no touches - the lens under the
+          // finger was a press on the folder behind it (the user, 2026-10-26).
+          onScrollEndDrag={(e) => {
+            scrollY.value = e.nativeEvent.contentOffset.y;
+            if (FEATURES.chromeCompact) chromeScroll(e);
+          }}
+          onMomentumScrollEnd={(e) => {
+            scrollY.value = e.nativeEvent.contentOffset.y;
+            if (FEATURES.chromeCompact) chromeScroll(e);
+          }}
           initialNumToRender={8}
           windowSize={7}
           removeClippedSubviews

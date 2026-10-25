@@ -250,6 +250,13 @@ const CalendarRiver = forwardRef<CalendarRiverHandle, { navigation: unknown }>(f
         onScrollBeginDrag={() => {
           handMoved.current = true;
         }}
+        // The rest position too (see ExplorerScreen): a folded dock must unfold when the list stops at the top.
+        onScrollEndDrag={(e) => {
+          if (handMoved.current) chromeScroll?.(e);
+        }}
+        onMomentumScrollEnd={(e) => {
+          if (handMoved.current) chromeScroll?.(e);
+        }}
         style={StyleSheet.absoluteFill}
         contentContainerStyle={{ paddingTop: top, paddingBottom: dockClear + insets.bottom + 40, paddingHorizontal: 16 }}
         showsVerticalScrollIndicator={false}

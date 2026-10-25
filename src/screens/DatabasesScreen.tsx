@@ -580,6 +580,9 @@ export default function DatabasesScreen() {
   const listView = (
     <ScrollView
       onScroll={inPanel ? undefined : chromeScroll}
+      // The rest position too (see ExplorerScreen): a folded dock must unfold when the list stops at the top.
+      onScrollEndDrag={inPanel ? undefined : chromeScroll}
+      onMomentumScrollEnd={inPanel ? undefined : chromeScroll}
       scrollEventThrottle={64}
       contentContainerStyle={
         inPanel
