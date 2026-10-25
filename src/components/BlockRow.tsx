@@ -290,6 +290,10 @@ export default function BlockRow({
   // The last selection the field reported, put back when the panel under the keyboard opens or closes: the field is
   // re-rendered then, and Android let a selected RANGE collapse (bold, colour then had nothing to act on).
   const lastSelectionRef = useRef<{ start: number; end: number } | null>(null);
+  // For the note-link caret rule (onSelectionChange): when a letter was last typed, and the text as it now stands.
+  const typedAtRef = useRef(0);
+  const latestTextRef = useRef(item.text ?? '');
+  latestTextRef.current = item.text ?? '';
   // The panel blurs the field to take the keyboard down, and a blurred field draws no selection. Once the keyboard
   // is gone and the field no longer asks for one (showSoftInputOnFocus off), focus comes back WITHOUT a keyboard
   // and the picked words are lit again.
@@ -901,6 +905,7 @@ export default function BlockRow({
                 : plainTextOf(item.text)
         }
         onChangeText={(displayText) =>
+          (typedAtRef.current = Date.now()) &&
           onChangeText(
             item.id,
             type === 'code' ? displayText : applyDisplayEdit(item.text, displayWithLinkGlyphs(displayText))
@@ -916,26 +921,27 @@ export default function BlockRow({
           // The caret never stands inside a note link. Stepping into it a letter at a time - the keyboard's space-bar
           // drag, its arrows - carries it ACROSS to the other side (the user, 2026-10-25: no way to get in front of a
           // word-link); landing in it by a jump is a tap on it - its menu, and the caret put after it.
+          // Checked a beat LATER, against the text as it is by then, and never while typing: Android reports the caret
+          // moved before it reports the letter typed, so typing in front of a link read as stepping into it (the user:
+          // «працює лише введення двох символів далі відкривається вікно»).
           if (type !== 'code' && start === end && onNoteLinkMenu) {
-            const span = noteLinkSpans(item.text).find((s) => start > s.displayStart && start < s.displayEnd);
-            if (span) {
+            setTimeout(() => {
+              if (Date.now() - typedAtRef.current < 400) return;
+              const now = lastSelectionRef.current;
+              if (!now || now.start !== start || now.end !== end) return;
+              const span = noteLinkSpans(latestTextRef.current).find((sp) => start > sp.displayStart && start < sp.displayEnd);
+              if (!span) return;
               const from = before && before.start === before.end ? before.start : null;
-              if (from !== null && from >= span.displayEnd && start >= from - 2) {
-                setSelection(localInputRef.current, span.displayStart, span.displayStart);
-                lastSelectionRef.current = { start: span.displayStart, end: span.displayStart };
-                onSelectionChange(item.id, span.displayStart, span.displayStart);
-                return;
-              }
-              if (from !== null && from <= span.displayStart && start <= from + 2) {
-                setSelection(localInputRef.current, span.displayEnd, span.displayEnd);
-                lastSelectionRef.current = { start: span.displayEnd, end: span.displayEnd };
-                onSelectionChange(item.id, span.displayEnd, span.displayEnd);
-                return;
-              }
-              setSelection(localInputRef.current, span.displayEnd, span.displayEnd);
-              onNoteLinkMenu(item.id, span.documentId, span.label);
-              return;
-            }
+              const to =
+                from !== null && from >= span.displayEnd && start >= from - 2
+                  ? span.displayStart
+                  : span.displayEnd;
+              setSelection(localInputRef.current, to, to);
+              lastSelectionRef.current = { start: to, end: to };
+              onSelectionChange(item.id, to, to);
+              const stepped = from !== null && ((from >= span.displayEnd && start >= from - 2) || (from <= span.displayStart && start <= from + 2));
+              if (!stepped) onNoteLinkMenu(item.id, span.documentId, span.label);
+            }, 60);
           }
           onSelectionChange(item.id, start, end);
         }}
