@@ -60,6 +60,7 @@ import FlashcardReader from '../components/FlashcardReader';
 import FlashcardEditor from '../components/FlashcardEditor';
 import { ensureFileIsHere, openFileExternally, shareFile } from '../utils/openFileExternally';
 import { holdAsk } from '../components/surfaces/HoldAsk';
+import { markHeld } from '../utils/heldNode';
 import { GestureDetector } from 'react-native-gesture-handler';
 import CreateFan from '../components/CreateFan';
 import QuickCreateHost from '../components/QuickCreateHost';
@@ -1521,7 +1522,12 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       }
     }
   }
+  // Each folder card's own view, so its menu can lift THAT card whichever way the hold reached here (the carry's,
+  // the card's own long press - not every one of them says which node it was).
+  const folderNodes = useRef(new Map<string, View>());
   async function holdFolder(f: FolderEntry) {
+    const held = folderNodes.current.get(f.path);
+    if (held) markHeld(held);
     // The Finder rule (Mac): a right click CHOOSES the card first, then asks.
     if (explorerSelect) {
       chosenOpen.current = () => openFolderEntry(f);
@@ -1541,7 +1547,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     // A BASE'S COLLECTION placed here (2026-10-15): it has no icon or colour of its own (its face is its content), it can
     // be taken back out of the explorer - it stays in its base - and deleting it deletes the collection itself.
     const coll = !!f.collection;
-    const choice = await ask({
+    // The menu of the four windows (2026-10-25): a folder held lifts over the blur and its menu grows beside it, as
+    // every other card's does (holdAsk); opened any other way it is the plain question.
+    const choice = await holdAsk({
       title: f.name,
       actions: [
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' as const },
@@ -2628,6 +2636,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             ref={(node) => {
               carrying.carry.registerFolder(f.path)(node as never);
               if (f.path !== UNFILED) carrying.carry.registerCard(`folder:${f.path}`, () => carrying.groupFor(folderItem(f)), () => holdFolder(f))(node as never);
+              if (node) folderNodes.current.set(f.path, node as never);
             }}
             collapsable={false}
             onPress={() => {
@@ -2742,6 +2751,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                     ref={(node: View | null) => {
                       carrying.carry.registerFolder(f.path)(node as never);
                       if (f.path !== UNFILED) carrying.carry.registerCard(`folder:${f.path}`, () => carrying.groupFor(folderItem(f)), () => holdFolder(f))(node as never);
+              if (node) folderNodes.current.set(f.path, node as never);
                     }}
                   >
                     <TurningPressable
@@ -2769,6 +2779,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                     else cardNodes.current.delete(f.path);
                     carrying.carry.registerFolder(f.path)(node as never);
                     if (f.path !== UNFILED) carrying.carry.registerCard(`folder:${f.path}`, () => carrying.groupFor(folderItem(f)), () => holdFolder(f))(node as never);
+              if (node) folderNodes.current.set(f.path, node as never);
                   }}
                 >
                   {projectsHere && focusProj === NO_PROJECT && f.path !== UNFILED && (
@@ -2888,6 +2899,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                 ref={(node) => {
                   carrying.carry.registerFolder(f.path)(node as never);
                   if (f.path !== UNFILED) carrying.carry.registerCard(`folder:${f.path}`, () => carrying.groupFor(folderItem(f)), () => holdFolder(f))(node as never);
+              if (node) folderNodes.current.set(f.path, node as never);
                 }}
                 collapsable={false}
                 // The hold is the carrying's (registerCard), as on the folders.

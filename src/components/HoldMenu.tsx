@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { NO_WINDOW_DRAG } from '../utils/windowDrag';
 import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import Animated, { Easing, SlideInLeft, SlideInRight, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, SlideInLeft, SlideInRight, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { GlassPortal } from './GlassPortal';
@@ -97,25 +97,31 @@ export default function HoldMenu({
 
   const progress = useSharedValue(0);
   const closing = useSharedValue(0);
+  // The menu's own growth, out of the corner nearest the card, on the soft spring every Menu uses (the four windows,
+  // 2026-10-25: «меню виростає з об'єкта») - the card keeps its timed lift.
+  const grow = useSharedValue(0);
   useEffect(() => {
     if (!anchor) return;
     closing.value = 0;
     progress.value = 0;
+    grow.value = 0;
     progress.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) });
-  }, [anchor, progress, closing]);
+    grow.value = withSpring(1, { damping: 20, stiffness: 300, mass: 0.7 });
+  }, [anchor, progress, closing, grow]);
   const travel = anchor && place ? anchor.y - place.cardTop : 0;
   const menuBelow = anchor && place ? place.menuTop > place.cardTop : true;
   const cardMotion = useAnimatedStyle(() => ({
     transform: [{ translateY: travel * (1 - progress.value) }, { scale: 1 + 0.03 * progress.value }],
   }));
   const menuMotion = useAnimatedStyle(() => ({
-    opacity: Math.min(1, progress.value * 1.6),
-    transform: [{ scale: 0.55 + 0.45 * progress.value }],
+    opacity: Math.min(1, grow.value * 2),
+    transform: [{ scale: 0.25 + 0.75 * grow.value }],
   }));
   const dimMotion = useAnimatedStyle(() => ({ opacity: progress.value }));
   const close = () => {
     if (closing.value) return;
     closing.value = 1;
+    grow.value = withTiming(0, { duration: 180, easing: Easing.in(Easing.cubic) });
     progress.value = withTiming(0, { duration: 200, easing: Easing.in(Easing.cubic) }, (done) => {
       if (done) runOnJS(onClose)();
     });
