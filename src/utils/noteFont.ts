@@ -5,24 +5,29 @@ import * as Font from 'expo-font';
 // reading; the handwriting still undecided). Per NOTE, kept on the document (`noteFont`); 'default' is the app's own face
 // (utils/appFont). The files ride in the app (assets/fonts, ~70-180 KB each) and are loaded the first time a note asks,
 // so a phone that never uses them pays nothing.
-export type NoteFont = 'default' | 'mono' | 'serif';
+export type NoteFont = 'default' | 'mono' | 'serif' | 'hand';
 export const NOTE_FONTS: { id: NoteFont; label: string; hint: string }[] = [
   { id: 'default', label: 'Як у застосунку', hint: 'Шрифт з налаштувань' },
   { id: 'mono', label: 'Машинка', hint: 'Roboto Mono - усі літери однієї ширини' },
   { id: 'serif', label: 'Книжковий', hint: 'PT Serif - для довгого читання' },
+  { id: 'hand', label: 'Рукописний', hint: 'Caveat, «д» з хвостиком, літери трохи гуляють по висоті' },
 ];
-export const asNoteFont = (v: unknown): NoteFont => (v === 'mono' || v === 'serif' ? v : 'default');
+export const asNoteFont = (v: unknown): NoteFont => (v === 'mono' || v === 'serif' || v === 'hand' ? v : 'default');
 
 type Faces = { regular: string; strong: string };
 const FACES: Record<Exclude<NoteFont, 'default'>, Faces> = {
   mono: { regular: 'NoteMono_400', strong: 'NoteMono_700' },
   serif: { regular: 'NoteSerif_400', strong: 'NoteSerif_700' },
+  hand: { regular: 'NoteHand_400', strong: 'NoteHand_700' },
 };
 const FILES: Record<string, number> = {
   NoteMono_400: require('../../assets/fonts/RobotoMono-400.ttf'),
   NoteMono_700: require('../../assets/fonts/RobotoMono-700.ttf'),
   NoteSerif_400: require('../../assets/fonts/PTSerif-Regular.ttf'),
   NoteSerif_700: require('../../assets/fonts/PTSerif-Bold.ttf'),
+  // Caveat made by hand (OFL, renamed «MindEva Hand»): «д» with a tail, and a `calt` cycle of four slightly different heights.
+  NoteHand_400: require('../../assets/fonts/Hand-400.ttf'),
+  NoteHand_700: require('../../assets/fonts/Hand-700.ttf'),
 };
 
 let loading: Promise<void> | null = null;

@@ -294,7 +294,7 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ========================================================================
-Caveat (not shipped yet; planned handwriting face)
+Caveat, changed and renamed «MindEva Hand» (assets/fonts/Hand-*.ttf: «д» redrawn from its «g», four height variants of each letter)
 ========================================================================
 Copyright 2014 The Caveat Project Authors (https://github.com/googlefonts/caveat)
 
