@@ -1,5 +1,5 @@
 import NoteLinkPicker from '../components/NoteLinkPicker';
-import { NOTE_FONTS, NoteFontContext, asNoteFont, useNoteFaceFor, type NoteFont } from '../utils/noteFont';
+import { NOTE_FONTS, NoteFontContext, asNoteFont, noteTextSize, useNoteFaceFor, type NoteFont } from '../utils/noteFont';
 import CarriesBackMarker from '../components/CarriesBackMarker';
 import { frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { RADIUS } from '../theme/scale';
@@ -789,7 +789,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const titleFace = noteFace
     ? (() => {
         const t = StyleSheet.flatten(styles.titleInput);
-        return { fontFamily: noteFace.strong, fontSize: Math.round((t.fontSize ?? 34) * noteFace.scale), lineHeight: Math.round((t.lineHeight ?? 41) * (1 + (noteFace.scale - 1) * 0.6)) };
+        return { fontFamily: noteFace.strong, ...noteTextSize(t.fontSize ?? 34, t.lineHeight ?? 41, 1, noteFace) };
       })()
     : null;
   // The same object while nothing about it changes: every block row takes

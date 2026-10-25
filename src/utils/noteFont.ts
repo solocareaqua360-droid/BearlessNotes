@@ -15,15 +15,25 @@ export const NOTE_FONTS: { id: NoteFont; label: string; hint: string }[] = [
 // The app's own face in a note (M PLUS Rounded: 0.52 x-height, a little smaller than Inter) is set this much larger than the
 // page's base sizes (the user, 2026-10-25: «дрібним ... всім, які шрифти, можна так»). The «Розмір шрифту» slider multiplies on top.
 export const DEFAULT_NOTE_SCALE = 1.08;
+// The size and line height of a note's text in a face: the page's base, the user's text scale, the face's own scale, never a line
+// shorter than the face needs (utils/noteFont Faces).
+export function noteTextSize(baseSize: number, baseLine: number, textScale: number, faces: { scale: number; minLine: number } | null) {
+  const fs = faces?.scale ?? DEFAULT_NOTE_SCALE;
+  const fontSize = Math.round(baseSize * textScale * fs);
+  const lineHeight = Math.max(Math.round(baseLine * textScale * (1 + (fs - 1) * 0.6)), Math.round(fontSize * (faces?.minLine ?? 0)));
+  return { fontSize, lineHeight };
+}
 export const asNoteFont = (v: unknown): NoteFont => (v === 'mono' || v === 'serif' || v === 'hand' ? v : 'default');
 
 // `scale`: a face's lowercase is smaller than the app's (Caveat's x-height is 0.40 against 0.52): its text is set this much
 // larger so the page does not read tiny (the user, 2026-10-25: «аномально дрібним»).
-type Faces = { regular: string; strong: string; scale: number };
+// `minLine`: the shortest line box, as a multiple of the type size - a script face's tails run well past the usual line (Caveat's ink spans
+// 1.15 em) and a view cuts what leaves its box (the user's screenshot: the title's descenders cut off).
+type Faces = { regular: string; strong: string; scale: number; minLine: number };
 const FACES: Record<Exclude<NoteFont, 'default'>, Faces> = {
-  mono: { regular: 'NoteMono_400', strong: 'NoteMono_700', scale: 1.08 },
-  serif: { regular: 'NoteSerif_400', strong: 'NoteSerif_700', scale: 1.12 },
-  hand: { regular: 'NoteHand_400', strong: 'NoteHand_700', scale: 1.5 },
+  mono: { regular: 'NoteMono_400', strong: 'NoteMono_700', scale: 1.08, minLine: 0 },
+  serif: { regular: 'NoteSerif_400', strong: 'NoteSerif_700', scale: 1.12, minLine: 0 },
+  hand: { regular: 'NoteHand_400', strong: 'NoteHand_700', scale: 1.5, minLine: 1.32 },
 };
 const FILES: Record<string, number> = {
   NoteMono_400: require('../../assets/fonts/RobotoMono-400.ttf'),
