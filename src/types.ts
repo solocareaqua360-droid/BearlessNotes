@@ -1316,4 +1316,13 @@ export interface DbTableSettings {
   columns?: string[];
   // How many rows show folded; 0 = all. Absent = 5.
   rows?: number;
+  // STEP 2 (2026-10-25), all behind «⋯»: a totals row (and what each column counts: 'sum' | 'avg' | 'min' | 'max' |
+  // 'count'; a number column without one sums), the header's fill, a row-number column, wrapped cells, and each
+  // column's width in points (absent = the default).
+  totals?: boolean;
+  totalOps?: Record<string, 'sum' | 'avg' | 'min' | 'max' | 'count' | 'none'>;
+  headerColor?: string;
+  rowNumbers?: boolean;
+  wrap?: boolean;
+  widths?: Record<string, number>;
 }

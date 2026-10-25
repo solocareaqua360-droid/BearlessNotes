@@ -23,6 +23,11 @@ import { displayFieldValue, rowTitleOf, visibleFieldsOf } from '../utils/customR
 import { BUILT_IN_SORT_LABELS, sortableFieldsOf } from '../utils/customRowQuery';
 import { DB_TABLE_DEFAULT_ROWS, dbTableColumns, dbTableCounts, dbTableRows } from '../utils/dbTable';
 import { generateId } from '../utils/documentBlocks';
+import DbRecordCard from './DbRecordCard';
+import { prepareFlip, endFlip, type FlipFrom } from '../utils/flipOpen';
+import { HIGHLIGHT_COLORS } from './EditorToolbar';
+import { useWindowDimensions } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 
 // THE TABLE OF A DATABASE'S RECORDS (the 'dbTable' block; the user, 2026-10-25): drawn as the note's own table and
 // nothing more - no base name over it, no counter (a heading is the note's own text). The one thing that tells it
@@ -30,6 +35,8 @@ import { generateId } from '../utils/documentBlocks';
 // Every setting is the BLOCK's (Block.dbTable); the records are live.
 
 const FIRST_W = 160;
+const NUM_W = 40;
+const OP_LABEL = { sum: 'Сума', avg: 'Середнє', min: 'Мінімум', max: 'Максимум', count: 'Кількість', none: 'Нічого' } as const;
 const COL_W = 140;
 
 export default function DbTableBlock({
@@ -51,6 +58,10 @@ export default function DbTableBlock({
   const [expanded, setExpanded] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [naming, setNaming] = useState(false);
+  const [widthsOpen, setWidthsOpen] = useState(false);
+  // The record a row turned over into, over the note (DbRecordCard).
+  const [card, setCard] = useState<{ id: string; flip: FlipFrom | null } | null>(null);
+  const { width: winW } = useWindowDimensions();
 
   const save = (patch: DbTableSettings) => onUpdate({ dbTable: clean({ ...s, ...patch }) });
   const rows = dbTableRows(raw, s, database, context);
@@ -81,7 +92,7 @@ export default function DbTableBlock({
         { id: 'out', label: 'Прибрати з таблиці', hint: 'У базі запис лишається', icon: 'eye-off-outline' },
       ],
     });
-    if (choice === 'open' && databaseId) onOpenRow(databaseId, rowId);
+    if (choice === 'open') openCard(rowId);
     else if (choice === 'out')
       save({ removed: [...new Set([...(s.removed ?? []), rowId])], added: (s.added ?? []).filter((id) => id !== rowId) });
   }
@@ -101,6 +112,8 @@ export default function DbTableBlock({
         { id: 'condition', label: 'Умова', hint: conditionName, icon: 'funnel-outline' },
         { id: 'sort', label: 'Порядок', hint: `${sortName} ${s.sortDir === 'desc' ? '↓' : '↑'}`, icon: 'swap-vertical-outline' },
         { id: 'rows', label: 'Видно рядків', hint: limit === 0 ? 'Усі' : String(limit), icon: 'reorder-four-outline' },
+        { id: 'look', label: 'Вигляд', hint: [s.totals && 'підсумки', s.headerColor && 'шапка', s.rowNumbers && 'нумерація', s.wrap && 'перенос'].filter(Boolean).join(', ') || 'Підсумки, шапка, нумерація, перенос', icon: 'color-palette-outline' },
+        { id: 'widths', label: 'Ширина стовпців', icon: 'resize-outline' },
         { id: 'add', label: 'Додати запис з бази', icon: 'add-outline' },
         { id: 'new', label: 'Новий запис', icon: 'add-circle-outline' },
         ...(counts.removed > 0 ? [{ id: 'back', label: `Повернути прибрані (${counts.removed})`, icon: 'eye-outline' as const }] : []),
@@ -117,11 +130,48 @@ export default function DbTableBlock({
         actions: [3, 5, 10, 0].map((v) => ({ id: String(v), label: v === 0 ? 'Усі' : String(v), icon: v === limit ? ('checkmark' as const) : undefined })),
       });
       if (n !== 'cancel') save({ rows: Number(n) });
-    } else if (choice === 'add') pickRecord();
+    }
+    else if (choice === 'look') pickLook();
+    else if (choice === 'widths') setWidthsOpen(true);
+    else if (choice === 'add') pickRecord();
     else if (choice === 'new') setNaming(true);
     else if (choice === 'back') save({ removed: [] });
     else if (choice === 'base' && navigationRef.isReady())
       navigationRef.dispatch(StackActions.push('CustomDatabase', { databaseId, onlyRowIds: rows.map((r) => r.id) }));
+  }
+
+  // The four look switches, one question: a tap flips one and the question comes back, so several can be set in a row.
+  async function pickLook() {
+    let cur = s;
+    for (;;) {
+      const mark = (on: boolean | undefined) => (on ? ('checkmark-circle' as const) : ('ellipse-outline' as const));
+      const choice = await ask({
+        title: 'Вигляд таблиці',
+        actions: [
+          { id: 'totals', label: 'Підсумки', hint: 'Рядок унизу; тап по клітинці - що рахувати', icon: mark(cur.totals) },
+          { id: 'header', label: 'Шапка кольором', hint: cur.headerColor ? 'Змінити колір' : undefined, icon: mark(!!cur.headerColor) },
+          { id: 'numbers', label: 'Нумерація рядків', icon: mark(cur.rowNumbers) },
+          { id: 'wrap', label: 'Переносити текст', hint: 'Інакше - в один рядок, зайве за «…»', icon: mark(cur.wrap) },
+        ],
+        cancelLabel: 'Готово',
+      });
+      if (choice === 'cancel') return;
+      let patch: DbTableSettings = {};
+      if (choice === 'totals') patch = { totals: !cur.totals };
+      else if (choice === 'numbers') patch = { rowNumbers: !cur.rowNumbers };
+      else if (choice === 'wrap') patch = { wrap: !cur.wrap };
+      else if (choice === 'header') {
+        const names = ['Пісок', 'Шавлія', 'Глина'];
+        const c = await ask({
+          title: 'Шапка кольором',
+          actions: [{ id: 'none', label: 'Без кольору' }, ...HIGHLIGHT_COLORS.map((hex, i) => ({ id: hex, label: names[i] ?? hex, icon: 'ellipse' as const }))],
+        });
+        if (c === 'cancel') continue;
+        patch = { headerColor: c === 'none' ? undefined : c };
+      }
+      cur = clean({ ...cur, ...patch });
+      onUpdate({ dbTable: cur });
+    }
   }
 
   async function pickCondition() {
@@ -192,16 +242,59 @@ export default function DbTableBlock({
     }
   }
 
-  const widthOf = (i: number) => (i === 0 ? FIRST_W : COL_W);
+  async function openCard(rowId: string, e?: GestureResponderEvent) {
+    const flip = await prepareFlip(`dbt:${rowId}`, e);
+    setCard({ id: rowId, flip });
+  }
+  const closeCard = () => {
+    setCard(null);
+    endFlip();
+  };
+
+  const widthOf = (i: number) => s.widths?.[columns[i]?.id] ?? (i === 0 ? FIRST_W : COL_W);
+  // «Підігнати під текст»: each column as wide as its longest text (an estimate - 8.3 points a letter), between 72 and
+  // half the screen.
+  function fitWidths() {
+    const next: Record<string, number> = {};
+    columns.forEach((f, i) => {
+      const longest = Math.max(f.name.length, ...rows.map((r) => valueOf(f, i, r).length));
+      next[f.id] = Math.round(Math.max(72, Math.min(winW * 0.5, longest * 8.3 + 26)));
+    });
+    save({ widths: next });
+  }
+  // THE TOTALS ROW: over every row the table holds (not only the ones showing).
+  const isNumber = (f: FieldDef) => f.type === 'number';
+  const opOf = (f: FieldDef) => s.totalOps?.[f.id] ?? (isNumber(f) ? 'sum' : 'none');
+  function totalOf(f: FieldDef): string {
+    const op = opOf(f);
+    if (op === 'none') return '';
+    if (op === 'count') return String(rows.filter((r) => r.values[f.id] !== undefined && r.values[f.id] !== '').length);
+    const nums = rows.map((r) => Number(r.values[f.id])).filter((n) => Number.isFinite(n));
+    if (nums.length === 0) return '';
+    const v =
+      op === 'sum' ? nums.reduce((a, b) => a + b, 0) : op === 'avg' ? nums.reduce((a, b) => a + b, 0) / nums.length : op === 'min' ? Math.min(...nums) : Math.max(...nums);
+    return Number.isInteger(v) ? String(v) : v.toFixed(2);
+  }
+  async function pickOp(f: FieldDef) {
+    const ops = (isNumber(f) ? ['sum', 'avg', 'min', 'max', 'count', 'none'] : ['count', 'none']) as (keyof typeof OP_LABEL)[];
+    const choice = await ask({
+      title: `Підсумок · ${f.name}`,
+      actions: ops.map((o) => ({ id: o, label: OP_LABEL[o], icon: o === opOf(f) ? ('checkmark' as const) : undefined })),
+    });
+    if (choice !== 'cancel') save({ totalOps: { ...(s.totalOps ?? {}), [f.id]: choice as keyof typeof OP_LABEL } });
+  }
+  const headFill = s.headerColor ? { backgroundColor: s.headerColor } : null;
+  const lines = s.wrap ? undefined : 1;
   return (
     <View pointerEvents={disabled ? 'none' : 'auto'}>
       <View style={styles.tableFrame}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
           <View>
-            <View style={styles.tableGridRow}>
+            <View style={[styles.tableGridRow, headFill]}>
+              {s.rowNumbers && <View style={[styles.tableGridCell, { width: NUM_W }]} />}
               {columns.map((f, i) => (
                 <View key={f.id} style={[styles.tableGridCell, i === columns.length - 1 && styles.tableGridCellLast, { width: widthOf(i) }]}>
-                  <Text style={[local.headText, { color: quiet }]} numberOfLines={1}>
+                  <Text style={[local.headText, { color: s.headerColor ? ink : quiet }]} numberOfLines={lines}>
                     {f.name}
                   </Text>
                 </View>
@@ -210,13 +303,18 @@ export default function DbTableBlock({
             {shown.map((row, r) => (
               <Pressable
                 key={row.id}
-                onPress={() => databaseId && onOpenRow(databaseId, row.id)}
+                onPress={(e: GestureResponderEvent) => openCard(row.id, e)}
                 onLongPress={() => holdRow(row.id)}
-                style={({ pressed }) => [styles.tableGridRow, r === shown.length - 1 && styles.tableGridRowLast, pressed && { backgroundColor: theme.paper.tint }]}
+                style={({ pressed }) => [styles.tableGridRow, r === shown.length - 1 && !s.totals && styles.tableGridRowLast, pressed && { backgroundColor: theme.paper.tint }]}
               >
+                {s.rowNumbers && (
+                  <View style={[styles.tableGridCell, { width: NUM_W }]}>
+                    <Text style={[local.cellText, { color: quiet }]}>{r + 1}</Text>
+                  </View>
+                )}
                 {columns.map((f, i) => (
                   <View key={f.id} style={[styles.tableGridCell, i === columns.length - 1 && styles.tableGridCellLast, { width: widthOf(i) }]}>
-                    <Text style={[local.cellText, { color: ink }]} numberOfLines={1}>
+                    <Text style={[local.cellText, { color: ink }]} numberOfLines={lines}>
                       {valueOf(f, i, row)}
                     </Text>
                   </View>
@@ -228,6 +326,21 @@ export default function DbTableBlock({
                 <View style={[styles.tableGridCell, styles.tableGridCellLast, { width: columns.reduce((sum, _f, i) => sum + widthOf(i), 0) }]}>
                   <Text style={[local.cellText, { color: quiet }]}>{loaded ? 'Немає записів' : '…'}</Text>
                 </View>
+              </View>
+            )}
+            {s.totals && shown.length > 0 && (
+              <View style={[styles.tableGridRow, styles.tableGridRowLast]}>
+                {s.rowNumbers && <View style={[styles.tableGridCell, { width: NUM_W }]} />}
+                {columns.map((f, i) => {
+                  const t = totalOf(f);
+                  return (
+                    <Pressable key={f.id} onPress={() => pickOp(f)} style={[styles.tableGridCell, i === columns.length - 1 && styles.tableGridCellLast, { width: widthOf(i) }]}>
+                      <Text style={[local.totalText, { color: t ? ink : theme.paper.inkFaint }]} numberOfLines={1}>
+                        {t ? (opOf(f) === 'sum' ? t : `${OP_LABEL[opOf(f)].toLowerCase()}: ${t}`) : i === 0 ? 'Підсумок' : ''}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             )}
           </View>
@@ -255,6 +368,25 @@ export default function DbTableBlock({
           onClose={() => setColumnsOpen(false)}
         />
       )}
+      <DbRecordCard
+        database={database}
+        row={card ? raw.find((r) => r.id === card.id) ?? null : null}
+        context={context}
+        flipFrom={card?.flip ?? null}
+        onClose={closeCard}
+        onEdit={(rowId) => {
+          closeCard();
+          if (databaseId) onOpenRow(databaseId, rowId);
+        }}
+      />
+      <WidthsSheet
+        visible={widthsOpen}
+        columns={columns.map((f, i) => ({ id: f.id, name: f.name, width: widthOf(i) }))}
+        onChange={(id, w) => save({ widths: { ...(s.widths ?? {}), [id]: w } })}
+        onFit={fitWidths}
+        onReset={() => save({ widths: undefined })}
+        onClose={() => setWidthsOpen(false)}
+      />
       <RenamePrompt visible={naming} title={`Новий запис · ${database?.name ?? ''}`} initialValue="" placeholder="Назва" onCancel={() => setNaming(false)} onSave={createRecord} />
     </View>
   );
@@ -344,9 +476,71 @@ function ColumnsSheet({
   );
 }
 
+// «ШИРИНА СТОВПЦІВ»: each column narrower or wider by a step, or all fitted to their text at once.
+function WidthsSheet({
+  visible,
+  columns,
+  onChange,
+  onFit,
+  onReset,
+  onClose,
+}: {
+  visible: boolean;
+  columns: { id: string; name: string; width: number }[];
+  onChange: (id: string, width: number) => void;
+  onFit: () => void;
+  onReset: () => void;
+  onClose: () => void;
+}) {
+  const S = useSoft();
+  const b = useBottomSheet(visible, onClose);
+  const STEP = 20;
+  return (
+    <GlassLayer visible={visible} onClose={onClose} intensity={60} rise={b.on}>
+      <View style={[SHEET_FRAME, b.frame]} pointerEvents="box-none">
+        <Animated.View style={[local.sheet, { backgroundColor: S.card }, b.window, b.padBottom(14)]}>
+          {b.fill}
+          {b.grab}
+          {b.on && <View style={{ height: 12 }} />}
+          <Text style={[local.sheetTitle, { color: S.ink }]}>Ширина стовпців</Text>
+          <View style={local.fitRow}>
+            <Pressable onPress={onFit} style={[local.fitBtn, { backgroundColor: S.ink }]}>
+              <Text style={[local.fitText, { color: S.card }]}>Підігнати під текст</Text>
+            </Pressable>
+            <Pressable onPress={onReset} style={[local.fitBtn, { backgroundColor: S.fill }]}>
+              <Text style={[local.fitText, { color: S.ink }]}>Як було</Text>
+            </Pressable>
+          </View>
+          <ScrollView style={{ flexGrow: 0 }}>
+            {columns.map((c) => (
+              <View key={c.id} style={local.fieldRow}>
+                <Text style={[local.fieldName, { color: S.ink }]} numberOfLines={1}>
+                  {c.name}
+                </Text>
+                <Pressable hitSlop={6} onPress={() => onChange(c.id, Math.max(60, c.width - STEP))} style={[local.arrow, { backgroundColor: S.fill, borderRadius: 18 }]} accessibilityLabel="Вужче">
+                  <Ionicons name="remove" size={18} color={S.ink2} />
+                </Pressable>
+                <Text style={[local.widthText, { color: S.ink2 }]}>{c.width}</Text>
+                <Pressable hitSlop={6} onPress={() => onChange(c.id, Math.min(600, c.width + STEP))} style={[local.arrow, { backgroundColor: S.fill, borderRadius: 18 }]} accessibilityLabel="Ширше">
+                  <Ionicons name="add" size={18} color={S.ink2} />
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </GlassLayer>
+  );
+}
+
 const local = StyleSheet.create({
+  fitRow: { flexDirection: 'row', gap: 8, marginVertical: 10 },
+  fitBtn: { flex: 1, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  fitText: { fontSize: 14.5, fontFamily: SOFT_MEDIUM },
+  widthText: { width: 40, textAlign: 'center', fontSize: 14, fontFamily: SOFT_REGULAR },
   headText: { fontSize: 13.5, fontFamily: SOFT_MEDIUM },
   cellText: { fontSize: 14.5, fontFamily: SOFT_REGULAR },
+  totalText: { fontSize: 14, fontFamily: SOFT_SEMIBOLD },
   missing: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 },
   foot: { height: 34, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingLeft: 12, paddingRight: 4 },
   more: { flex: 1, height: 34, justifyContent: 'center' },
