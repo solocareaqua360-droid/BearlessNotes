@@ -13,6 +13,7 @@ import { useDensity } from '../hooks/useDensity';
 import { useTheme, useStyles } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { SHEET_BACKDROP, SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import {
   ActivityIndicator,
   BackHandler,
@@ -3080,7 +3081,13 @@ export default function TasksScreen() {
             )}
           </>
         ) : (
-        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad + 8 }]}>
+        // A field inside a task (a new subtask, a comment) comes up ABOVE the keyboard: the list scrolls it there (the user,
+        // 2026-10-26: «клавіатура підіймається і закриває цю справу»). keyboard-controller's own scroll view does it.
+        <KeyboardAwareScrollView
+          bottomOffset={24}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad + 8 }]}
+        >
           {todayTasks.length > 0 &&
             renderSection({
               key: '__today__',
@@ -3154,7 +3161,7 @@ export default function TasksScreen() {
           {filteredTasks.length === 0 && (
             <Text style={styles.emptyFilterLabel}>Немає справ із цим фільтром</Text>
           )}
-        </ScrollView>
+        </KeyboardAwareScrollView>
         )}
 
         {/* What runs off the top and the bottom melts into the ground under

@@ -2406,7 +2406,9 @@ export default function ContextDock() {
           style={[
             styles.twoBeads,
             { bottom: softRest, left: frame.left, width: frame.width, gap: 10 },
-            softRide,
+            // No ride on the keyboard here (2026-10-26, the user: «разом з клавіатурою чомусь підіймається док»): this dock
+            // holds no field of its own - its search is the branch above, which rides - so a keyboard opened by a field in
+            // the page (a subtask, a comment) leaves the dock where it rests, under the keyboard.
           ]}
         >
           {/* THE OPEN DESKS (an experiment, user 2026-10-03): the same round
