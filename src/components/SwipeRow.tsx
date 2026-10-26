@@ -50,6 +50,8 @@ export default function SwipeRow({
   const tx = useSharedValue(0);
   const width = useSharedValue(1);
   const armed = useSharedValue(0);
+  // Where the card stood when the finger came down (an open row starts from its open place, not from 0).
+  const startX = useSharedValue(0);
   const leadW = leading.length * BUTTON_W;
   const trailW = trailing.length * BUTTON_W;
   const hasLongL = longLeading ? 1 : 0;
@@ -75,9 +77,17 @@ export default function SwipeRow({
     .enabled(enabled)
     .activeOffsetX([-14, 14])
     .failOffsetY([-12, 12])
+    .onStart(() => {
+      'worklet';
+      startX.value = tx.value;
+    })
     .onUpdate((e) => {
       'worklet';
-      let next = e.translationX;
+      let next = startX.value + e.translationX;
+      // An open row swiped back only CLOSES (the user, 2026-10-26: swiping the open «Сьогодні / Завтра» away brought up
+      // the delete side at once, even over the card): it stops at its place, the other side needs a gesture of its own.
+      if (startX.value > 0 && next < 0) next = 0;
+      if (startX.value < 0 && next > 0) next = 0;
       if (next > 0 && leadW === 0) next = 0;
       if (next < 0 && trailW === 0) next = 0;
       tx.value = next;
