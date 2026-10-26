@@ -195,7 +195,7 @@ export default function EditorInsertPanel({
   );
 }
 
-const THREE_UP = { width: '31.9%', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 6 } as const;
+const THREE_UP = { width: '31.9%', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 6, paddingVertical: 9 } as const;
 
 // The soft overlay, key by key (see AddExistingItemModal's own).
 type PanelStyles = ReturnType<typeof makeStyles>;
