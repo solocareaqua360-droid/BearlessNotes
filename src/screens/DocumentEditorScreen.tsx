@@ -199,6 +199,7 @@ import { heldTable, tableMenuIsOpen, touchWasInsideTable } from '../utils/tableT
 import { currentSection, noteOutline } from '../utils/noteOutline';
 import FormatPanel, { type FormatBlockKind } from '../components/desktop/FormatPanel';
 import SlashPopup from '../components/desktop/SlashPopup';
+import SlashMenu, { type SlashKey } from '../components/SlashMenu';
 import { caretPoint } from '../utils/caretRect';
 import type { TileKey } from '../components/desktop/insertCatalogue';
 import { blockFromCustomRow, blockFromDocument } from '../utils/copyToNote';
@@ -1037,6 +1038,29 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (!m) return null;
     return { blockId: block.id, start: caret.pos - m[1].length - 1, end: caret.pos, q: m[1] };
   }, [caret, focusedBlockId, blocks]);
+  // «/» on the phone (SlashMenu): the same rule as «@» - a slash that starts a word (at the start of the line or after a
+  // space; in «a/b» it is just a slash), and what is typed after it narrows the menu. The Mac keeps its own popup.
+  const slashQuery = useMemo(() => {
+    // The Mac's own popup (notePanelOn, decided further down) has the same condition: a wide browser with frame B.
+    if ((FEATURES.macFrameB && Platform.OS === 'web' && !embedded && !('pane' in props)) || !caret || caret.blockId !== focusedBlockId) return null;
+    const block = blocks.find((b) => b.id === caret.blockId);
+    if (!block || (block.type ?? 'paragraph') === 'code') return null;
+    const before = plainTextOf(block.text ?? '').slice(0, caret.pos);
+    const m = before.match(/(?:^|\s)\/([^\s/]{0,30})$/);
+    if (!m) return null;
+    return { blockId: block.id, start: caret.pos - m[1].length - 1, end: caret.pos, q: m[1] };
+  }, [caret, focusedBlockId, blocks]);
+  // The category open in it (null = the list of categories).
+  const [slashSub, setSlashSub] = useState<string | null>(null);
+  const slashKey = slashQuery ? `${slashQuery.blockId}:${slashQuery.start}` : null;
+  useEffect(() => {
+    if (!slashKey) setSlashSub(null);
+  }, [slashKey]);
+  // Kept for the ⌫ inside a submenu (handleBlockChange): a step back, not a letter.
+  const slashLiveRef = useRef({ query: slashQuery, sub: slashSub });
+  slashLiveRef.current = { query: slashQuery, sub: slashSub };
+  // Where the window stands: above the caret's block when there is room there, under it otherwise.
+  const [slashPlace, setSlashPlace] = useState<{ top?: number; bottom?: number; maxHeight: number } | null>(null);
   const [viewerImageId, setViewerImageId] = useState<string | null>(null);
   // Reading the text off a page - see TextRecognizer. `after` is the block
   // the result is put under, so a scan and its text stay together.
@@ -4046,6 +4070,77 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   // The «@query» being typed, replaced by a word that links to the note.
+  // Placing the «/» window by the block that has the caret (measured on screen).
+  useEffect(() => {
+    if (!slashKey || !slashQuery) {
+      setSlashPlace(null);
+      return;
+    }
+    const node = inputRefs.current[slashQuery.blockId] as unknown as { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null;
+    const barTop = windowHeight - keyboardHeight - 56;
+    const topLimit = editorInsets.top + 76;
+    if (!node?.measureInWindow) {
+      setSlashPlace({ bottom: windowHeight - barTop + 6, maxHeight: 300 });
+      return;
+    }
+    node.measureInWindow((_x, y, _w, h) => {
+      const above = y - topLimit;
+      const below = barTop - (y + h);
+      if (above >= 220 || above > below) setSlashPlace({ bottom: windowHeight - y + 6, maxHeight: Math.min(320, above - 8) });
+      else setSlashPlace({ top: y + h + 6, maxHeight: Math.min(320, below - 12) });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slashKey, keyboardHeight]);
+
+  // A choice from the «/» window: the «/word» goes, then the block becomes what was chosen - or, when the line still holds
+  // words, what is added comes as a new block under it.
+  function pickSlash(key: SlashKey) {
+    const q = slashQuery;
+    if (!q) return;
+    const block = blocks.find((b) => b.id === q.blockId);
+    if (!block) return;
+    const raw = block.text ?? '';
+    const bounds = displayBoundaries(raw);
+    setSlashSub(null);
+    if (key === 'mention') {
+      // The slash becomes an «@» - and the «@» window opens as the name is typed.
+      const next = raw.slice(0, bounds[q.start]) + '@' + raw.slice(bounds[q.end]);
+      setBlocks((prev) => prev.map((b) => (b.id === q.blockId ? { ...b, text: next } : b)));
+      const at = q.start + 1;
+      setTimeout(() => setSelection(inputRefs.current[q.blockId], at, at), 40);
+      return;
+    }
+    const rest = (raw.slice(0, bounds[q.start]) + raw.slice(bounds[q.end])).replace(/\s+$/, '');
+    const empty = !plainTextOf(rest).trim();
+    setBlocks((prev) => prev.map((b) => (b.id === q.blockId ? { ...b, text: rest } : b)));
+    setCaret(null);
+    const TYPES: SlashKey[] = ['text', 'h2', 'h3', 'h4', 'code', 'bulleted', 'numbered', 'checkbox', 'toggle'];
+    const RULES: Partial<Record<SlashKey, 'solid' | 'dotted' | 'bold'>> = { 'rule-solid': 'solid', 'rule-dotted': 'dotted', 'rule-bold': 'bold' };
+    if (key === 'text') setHeadingLevel(q.blockId, null);
+    else if (key === 'h2') setHeadingLevel(q.blockId, 1);
+    else if (key === 'h3') setHeadingLevel(q.blockId, 2);
+    else if (key === 'h4') setHeadingLevel(q.blockId, 3);
+    else if (TYPES.includes(key)) convertBlockType(q.blockId, key as BlockType);
+    else if (RULES[key]) insertDivider(q.blockId, RULES[key]!);
+    else if (key === 'link') openLinkPrompt(q.blockId);
+    else {
+      // A picture, a file, a table... takes a whole block: this one when it is empty, a new one under it otherwise.
+      let target = q.blockId;
+      if (!empty) {
+        const fresh = newBlock();
+        target = fresh.id;
+        setBlocks((prev) => {
+          const i = prev.findIndex((b) => b.id === q.blockId);
+          if (i === -1) return prev;
+          const next = [...prev];
+          next.splice(i + 1, 0, fresh);
+          return next;
+        });
+      }
+      handleBlockAction(key as BlockAction, target);
+    }
+  }
+
   function insertNoteLink(target: string, title: string) {
     const at = atQuery;
     if (!at) return;
@@ -4337,36 +4432,20 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     });
   }
 
-  // "/" in an empty block opens the menu of things a block can become or
-  // hold - the way every notes app on a laptop does it, and what the user
-  // asked for: on a laptop the toolbar is a long way from the caret, and
-  // "/" is right under the fingers. The same list the toolbar's "+" has,
-  // and the same handler behind it; only the way in is new. Picking
-  // clears the "/" first, so the block does not keep a stray slash in
-  // front of a picture; walking away leaves the "/" as typed.
-  async function openSlashMenu(id: string) {
-    const offered = BLOCK_ACTIONS.filter((entry) => Platform.OS !== 'web' || entry.key !== 'scan');
-    const picked = (await ask({
-      title: 'Що вставити?',
-      actions: offered.map((entry) => ({
-        id: entry.key,
-        label: entry.label,
-        // «Питання» draws Ionicons; the two list glyphs come from another
-        // family and take the nearest Ionicons stand-ins here.
-        icon:
-          entry.family === 'ionicons'
-            ? entry.icon
-            : entry.key === 'numbered'
-              ? 'list-circle-outline'
-              : 'list-outline',
-      })),
-    })) as BlockAction | 'cancel';
-    if (picked === 'cancel') return;
-    setBlocks((prev) => prev.map((b) => (b.id === id && b.text === '/' ? { ...b, text: '' } : b)));
-    handleBlockAction(picked, id);
-  }
 
   function handleBlockChange(id: string, rawText: string) {
+    // ⌫ with a submenu of «/» open: back to the categories, the typed text stays as it was.
+    const live = slashLiveRef.current;
+    if (live.sub && live.query && live.query.blockId === id && !live.query.q) {
+      const old = blocks.find((b) => b.id === id)?.text ?? '';
+      if (plainTextOf(rawText).length === plainTextOf(old).length - 1) {
+        setSlashSub(null);
+        setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, text: old } : b)));
+        const at = live.query.end;
+        setTimeout(() => setSelection(inputRefs.current[id], at, at), 30);
+        return;
+      }
+    }
     pendingCaretRef.current = null;
     // A note's address pasted in (from «Копіювати посилання») becomes a
     // word linking to that note, named as the note is - and the caret goes
@@ -4480,8 +4559,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const below = at ? at.top + at.height + 6 : 200;
       const room = typeof window !== 'undefined' ? window.innerHeight - below : 400;
       setSlash({ id, left: at ? Math.max(8, at.left - 6) : 200, top: room < 270 && at ? Math.max(8, at.top - 262) : below });
-    } else if (text === '/' && (current?.text ?? '') === '' && !['image', 'file', 'sketch', 'table', 'dbRow', 'dbView', 'dbTable', 'docRef', 'link', 'divider', 'flashcard'].includes(currentType)) {
-      openSlashMenu(id);
     }
 
     // A toggle is a one-line heading for what follows it, so a single
@@ -7833,6 +7910,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           if (r) replaceNoteLink(r.blockId, r.documentId, r.label, () => noteLinkMarkup(r.documentId, name));
         }}
       />
+      {slashQuery && slashPlace && (
+        <SlashMenu query={slashQuery.q} sub={slashSub} onSub={setSlashSub} onPick={pickSlash} place={slashPlace} soft={soft} />
+      )}
       {atQuery && (
         <NoteLinkPicker
           query={atQuery.q}
