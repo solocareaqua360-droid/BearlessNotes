@@ -4104,6 +4104,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const raw = block.text ?? '';
     const bounds = displayBoundaries(raw);
     setSlashSub(null);
+    slashLiveRef.current = { ...slashLiveRef.current, sub: null };
     if (key === 'mention') {
       // The slash becomes an «@» - and the «@» window opens as the name is typed.
       const next = raw.slice(0, bounds[q.start]) + '@' + raw.slice(bounds[q.end]);
@@ -4438,11 +4439,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function handleBlockChange(id: string, rawText: string) {
     // ⌫ with a submenu of «/» open: back to the categories, the typed text stays as it was.
     const live = slashLiveRef.current;
-    if (live.sub && live.query && live.query.blockId === id && !live.query.q && Date.now() - live.at < 1500) {
+    if (live.sub && live.query && live.query.blockId === id && !live.query.q) {
       slashLiveRef.current = { ...live, sub: null };
       // The text as the menu last saw it - this handler can be an older render's (the block list keeps it stable).
       const old = live.text;
-      if (plainTextOf(rawText).length === plainTextOf(old).length - 1) {
+      const shown = plainTextOf(old);
+      // Exactly the menu's own «/» taken away - nothing else counts as the step back.
+      if (plainTextOf(rawText) === shown.slice(0, live.query.start) + shown.slice(live.query.end)) {
         setSlashSub(null);
         setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, text: old } : b)));
         const at = live.query.end;
