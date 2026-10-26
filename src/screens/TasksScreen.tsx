@@ -3059,7 +3059,7 @@ export default function TasksScreen() {
   return (
     <View style={styles.container} ref={rootNode} collapsable={false}>
       {orderLine !== null && (
-        <View pointerEvents="none" style={{ position: 'absolute', left: 22, right: 22, top: orderLine, height: 3, borderRadius: 2, backgroundColor: accent, zIndex: 50 }} />
+        <View pointerEvents="none" style={{ position: 'absolute', left: 22, right: 22, top: orderLine, height: 3, borderRadius: 2, backgroundColor: softDb ? softDb.accent : accent, zIndex: 50 }} />
       )}
       {softDb ? (
         <ScreenGround color={softDb.bg} />
