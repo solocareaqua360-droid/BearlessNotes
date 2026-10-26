@@ -3168,15 +3168,6 @@ export default function TasksScreen() {
             {view === 'home' ? (isSearching && searchQuery.trim() ? renderSearchResults() : renderHome()) : renderViewList()}
           </ScrollView>
         ) : null}
-        {v2 && swipeToast && (
-          <UndoToast
-            message={swipeToast.message}
-            onUndo={() => {
-              swipeToast.undo();
-              setSwipeToast(null);
-            }}
-          />
-        )}
         {v2 && (view === 'home' || (isWindowList && !kanbanMode)) ? null : kanbanMode ? (
           <>
             {/* Kept in place (only dimmed away) while a card is carried: taking it out moved the columns up under the finger. */}
@@ -3288,6 +3279,17 @@ export default function TasksScreen() {
             <Text style={styles.emptyFilterLabel}>Немає справ із цим фільтром</Text>
           )}
         </KeyboardAwareScrollView>
+        )}
+        {/* After every list, so it stands OVER the tasks: placed before a project's list it was drawn under it, and showed
+            through behind the rows as a dark band (the user, 2026-10-26: «артефакт провалюється за справи»). */}
+        {v2 && swipeToast && (
+          <UndoToast
+            message={swipeToast.message}
+            onUndo={() => {
+              swipeToast.undo();
+              setSwipeToast(null);
+            }}
+          />
         )}
 
         {/* What runs off the top and the bottom melts into the ground under
