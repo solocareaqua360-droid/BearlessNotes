@@ -244,7 +244,7 @@ import { DESK_PILL_W } from '../components/DeskDock';
 import { blocksToMarkdown } from '../utils/blocksText';
 import { holdBlocks, takeHeldBlocks } from '../utils/blockClipboard';
 import { startNaming } from '../utils/docRefNaming';
-import SelectModeSheet, { type LookKind } from '../components/SelectModeSheet';
+import SelectModeSheet, { type ExtraLook, type LookKind } from '../components/SelectModeSheet';
 import AiEditSheet from '../components/AiEditSheet';
 import ImageFrameEditor from '../components/ImageFrameEditor';
 import type { ImageFrame } from '../utils/imageFrame';
@@ -3574,17 +3574,19 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
             active: selectSheet === 'look',
             onPress: () => setSelectSheet((v) => (v === 'look' ? null : 'look')),
           },
+          // 2026-10-26: «Вкладена» (dock) and «В окрему нотатку» («Ще») were one idea under two names - one button now, which
+          // asks where; and «Копіювати» comes out of «Ще» onto the dock, «Вирізати» goes into «Ще» in its place.
           {
-            key: 'nest',
+            key: 'tonote',
             icon: 'document-text-outline',
-            label: 'Вкладена',
-            onPress: nestSelectedBlocks,
+            label: 'У нотатку',
+            onPress: selectedToNote,
           },
           {
-            key: 'cut',
-            icon: 'cut-outline',
-            label: 'Вирізати',
-            onPress: cutSelectedBlocks,
+            key: 'copy',
+            icon: 'copy-outline',
+            label: 'Копіювати',
+            onPress: copySelectedBlocks,
           },
           {
             key: 'more',
@@ -6216,6 +6218,39 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
 
   // «Вигляд»: the chosen blocks as one kind. Everything else a block carries stays (retype keeps its side of a toggle); a
   // block that is already that kind is left as it is - the card says what they become, not a switch.
+  // One chosen block that is, or holds, a note: the two ways that note can stand - a word in the line or a card - as tiles of
+  // «Вигляд» (they used to be «Показати словом» / «Показати карткою» in «Ще»).
+  function noteLooksOfSelection(): ExtraLook[] {
+    const one = selectedIds.size === 1 ? blocks.find((b) => selectedIds.has(b.id)) : undefined;
+    if (!one) return [];
+    if (one.type === 'docRef') {
+      return [
+        { key: 'asword', label: 'Слово в рядку', mini: 'mention', onPress: () => { toggleSelectMode(); cardToLink(one.id); } },
+        { key: 'ascard', label: 'Картка', mini: 'document', active: true, onPress: () => {} },
+      ];
+    }
+    const span = noteLinkSpans(one.text ?? '')[0];
+    if (!span) return [];
+    return [
+      { key: 'asword', label: 'Слово в рядку', mini: 'mention', active: true, onPress: () => {} },
+      { key: 'ascard', label: 'Картка', mini: 'document', onPress: () => { toggleSelectMode(); linkToCard(one.id, span.documentId, span.label); } },
+    ];
+  }
+
+  // «У нотатку» (2026-10-26): what used to be two buttons - a nested note in place (with its card here) or a separate note
+  // (copied or moved) - asked once.
+  async function selectedToNote() {
+    const where = await ask({
+      title: 'У нотатку',
+      actions: [
+        { id: 'nest', label: 'Вкладену (лишити тут карткою)', icon: 'document-text-outline' },
+        { id: 'clip', label: 'Окрему (копією або перенести)', icon: 'documents-outline' },
+      ],
+    });
+    if (where === 'nest') nestSelectedBlocks();
+    else if (where === 'clip') clipSelectedToNote();
+  }
+
   function applyLookToSelected(kind: LookKind) {
     if (selectedIds.size === 0) return;
     snapshotBeforeChange();
@@ -6570,9 +6605,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           bottom={menuClearance}
           onClose={() => setSelectSheet(null)}
           onLook={applyLookToSelected}
+          extraLooks={noteLooksOfSelection()}
           more={[
-            { key: 'copy', label: 'Копіювати', hint: 'цілими блоками', icon: 'copy-outline', onPress: copySelectedBlocks },
-            { key: 'clip', label: 'В окрему нотатку', hint: 'не вкладену: копією або перенести', icon: 'document-text-outline', onPress: clipSelectedToNote },
+            { key: 'cut', label: 'Вирізати', hint: 'вставити деінде цілими блоками', icon: 'cut-outline', onPress: cutSelectedBlocks },
             {
               key: 'cards',
               label: 'Картки',
@@ -6584,39 +6619,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 makeFlashcards(chosen);
               },
             },
-            ...(selectedIds.size === 1 && blocks.find((b) => selectedIds.has(b.id))?.type === 'docRef'
-              ? [
-                  {
-                    key: 'asword',
-                    label: 'Показати словом',
-                    hint: 'та сама нотатка, посиланням у рядку',
-                    icon: 'text-outline',
-                    onPress: () => {
-                      const id = blocks.find((b) => selectedIds.has(b.id))?.id;
-                      toggleSelectMode();
-                      if (id) cardToLink(id);
-                    },
-                  },
-                ]
-              : []),
-            // One block with a word linking to a note: the same note as a card (the way back from «Показати словом»).
-            ...(() => {
-              const one = selectedIds.size === 1 ? blocks.find((b) => selectedIds.has(b.id)) : undefined;
-              const span = one && one.type !== 'docRef' ? noteLinkSpans(one.text ?? '')[0] : undefined;
-              if (!one || !span) return [];
-              return [
-                {
-                  key: 'ascard',
-                  label: 'Показати карткою',
-                  hint: `«${span.label}» окремою карткою`,
-                  icon: 'albums-outline',
-                  onPress: () => {
-                    toggleSelectMode();
-                    linkToCard(one.id, span.documentId, span.label);
-                  },
-                },
-              ];
-            })(),
             ...(selectedIds.size === 1 ? [{ key: 'link', label: 'Посилання на блок', hint: 'для слова в іншій нотатці', icon: 'link-outline', onPress: copyBlockAddress }] : []),
             blocks.length > 0 && blocks.every((b) => selectedIds.has(b.id))
               ? { key: 'none', label: 'Зняти всі', icon: 'remove-circle-outline', onPress: () => setSelectedIds(new Set()) }

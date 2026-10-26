@@ -14,17 +14,22 @@ export type LookKind = 'paragraph' | 'h1' | 'h2' | 'h3' | 'toggle' | 'bulleted' 
 
 const LOOKS: { kind: LookKind; label: string; mini: string }[] = [
   { kind: 'paragraph', label: 'Текст', mini: 'paragraph' },
-  { kind: 'h1', label: 'Заголовок 1', mini: 'h2' },
-  { kind: 'h2', label: 'Заголовок 2', mini: 'h3' },
-  { kind: 'h3', label: 'Заголовок 3', mini: 'h4' },
-  { kind: 'toggle', label: 'Випадаючий', mini: 'toggle' },
+  // The SAME names as the «Тт» panel and «/» (2026-10-26: «Заголовок 1/2/3» here and «2/3/4» there; «Випадаючий» here and
+  // «Розкривний» there) - the note's title is its first heading, so the body's run from 2.
+  { kind: 'h1', label: 'Заголовок 2', mini: 'h2' },
+  { kind: 'h2', label: 'Заголовок 3', mini: 'h3' },
+  { kind: 'h3', label: 'Заголовок 4', mini: 'h4' },
+  { kind: 'toggle', label: 'Розкривний', mini: 'toggle' },
   { kind: 'bulleted', label: 'Список', mini: 'bulleted' },
-  { kind: 'numbered', label: 'Нумерація', mini: 'numbered' },
+  { kind: 'numbered', label: 'Нумерований', mini: 'numbered' },
   { kind: 'checkbox', label: 'Чекбокс', mini: 'checkbox' },
   { kind: 'code', label: 'Код', mini: 'code' },
 ];
 
 export type MoreItem = { key: string; label: string; hint?: string; icon: string; onPress: () => void };
+// A look that is not a block type: a note shown as a word in the line or as a card (2026-10-26, the user: «це ж теж
+// вигляд, а він поміщений в Ще»). Drawn after the type tiles, each with its own miniature; `active` = how it stands now.
+export type ExtraLook = { key: string; label: string; mini: string; active?: boolean; onPress: () => void };
 
 type Props = {
   open: 'look' | 'more' | null;
@@ -34,6 +39,7 @@ type Props = {
   onClose: () => void;
   onLook: (kind: LookKind) => void;
   more: MoreItem[];
+  extraLooks?: ExtraLook[];
 };
 
 // The dock's own strip (ContextDock's short soft strip): six buttons of at most 84, centred on the top bar's frame, a
@@ -44,7 +50,7 @@ const DOCK_BUTTON_W = 84;
 const DOCK_H = 56;
 const PAD = 10;
 
-export default function SelectModeSheet({ open, count, bottom, onClose, onLook, more }: Props) {
+export default function SelectModeSheet({ open, count, bottom, onClose, onLook, more, extraLooks = [] }: Props) {
   const theme = useTheme();
   const soft = useSoft();
   const { width: windowW } = useWindowDimensions();
@@ -74,6 +80,28 @@ export default function SelectModeSheet({ open, count, bottom, onClose, onLook, 
                 }}
               >
                 <View style={[styles.tileFace, { borderColor: theme.edge.hairline, backgroundColor: soft.card, borderRadius: radius - PAD }]}>
+                  <BlockMiniature kind={l.mini} width={62} />
+                </View>
+                <Text style={[styles.tileLabel, { color: theme.ink.primary }]} numberOfLines={1}>
+                  {l.label}
+                </Text>
+              </Pressable>
+            ))}
+            {extraLooks.map((l) => (
+              <Pressable
+                key={l.key}
+                style={styles.tile}
+                onPress={() => {
+                  onClose();
+                  l.onPress();
+                }}
+              >
+                <View
+                  style={[
+                    styles.tileFace,
+                    { borderColor: l.active ? soft.ink : theme.edge.hairline, borderWidth: l.active ? 1.5 : StyleSheet.hairlineWidth, backgroundColor: soft.card, borderRadius: radius - PAD },
+                  ]}
+                >
                   <BlockMiniature kind={l.mini} width={62} />
                 </View>
                 <Text style={[styles.tileLabel, { color: theme.ink.primary }]} numberOfLines={1}>
