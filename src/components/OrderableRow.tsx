@@ -57,6 +57,8 @@ export default function OrderableRow({
   const pan = Gesture.Pan()
     .enabled(enabled)
     .activateAfterLongPress(320)
+    // A sideways move is a row's own swipe (SwipeRow inside), never a drag: let go of it at once.
+    .failOffsetX([-10, 10])
     .onStart(() => {
       lift.value = withTiming(1, { duration: 120 });
       runOnJS(begin)();
