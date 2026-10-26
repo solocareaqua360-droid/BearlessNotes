@@ -55,6 +55,8 @@ export type PanelGroup = {
   // Colours are square chips in a row, not full-width tiles with a
   // label - a colour IS its label.
   compact?: boolean;
+  // Three to a row, the icon over its label (2026-10-26, «Вставка»: everything fits the keyboard's height, no scrolling).
+  columns?: 3;
 };
 
 export default function EditorInsertPanel({
@@ -161,7 +163,7 @@ export default function EditorInsertPanel({
                 ) : (
                   <Pressable
                     key={item.key}
-                    style={[styles.tile, item.active && styles.tileOn]}
+                    style={[styles.tile, group.columns === 3 && THREE_UP, item.active && styles.tileOn]}
                     onPress={item.onPress}
                   >
                     {item.glyph ? (
@@ -175,7 +177,7 @@ export default function EditorInsertPanel({
                     ) : (
                       <Ionicons name={item.icon as never} size={19} color={iconColor ?? theme.ink.primary} />
                     )}
-                    <Text style={styles.tileLabel} numberOfLines={2}>
+                    <Text style={[styles.tileLabel, group.columns === 3 && { textAlign: 'center' }]} numberOfLines={2}>
                       {item.label}
                     </Text>
                   </Pressable>
@@ -192,6 +194,8 @@ export default function EditorInsertPanel({
     </View>
   );
 }
+
+const THREE_UP = { width: '31.9%', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 6 } as const;
 
 // The soft overlay, key by key (see AddExistingItemModal's own).
 type PanelStyles = ReturnType<typeof makeStyles>;

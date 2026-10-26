@@ -2728,17 +2728,27 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         { key: 'bold', label: 'Жирна', family: 'material-community', icon: 'minus-thick', onPress: onBlock((id) => insertDivider(id, 'bold')) },
       ],
     },
+    // «ВСТАВКА» (2026-10-26, sketch reports/insert-portion-2): only what is ADDED as an object of its own - the formatting lives
+    // behind «Списки», «Тт», «Лінії» - in two shelves, three to a row, so the whole of it fits the keyboard's height.
     {
       section: 'insert',
-      title: 'Вставка',
+      title: 'Створити',
+      columns: 3,
       items: [
-        { key: 'image', label: 'Зображення', family: 'ionicons', icon: 'image-outline', onPress: action('image') },
-        { key: 'camera', label: 'Фото', family: 'ionicons', icon: 'camera-outline', onPress: action('camera') },
         { key: 'sketch', label: 'Малюнок', family: 'ionicons', icon: 'brush-outline', onPress: action('sketch') },
         { key: 'table', label: 'Таблиця', family: 'ionicons', icon: 'grid-outline', onPress: action('table') },
         { key: 'code', label: 'Код', family: 'ionicons', icon: 'code-slash-outline', onPress: action('code') },
-        { key: 'file', label: 'Файл', family: 'ionicons', icon: 'document-outline', onPress: action('file') },
+      ],
+    },
+    {
+      section: 'insert',
+      title: 'Додати',
+      columns: 3,
+      items: [
+        { key: 'image', label: 'Зображення', family: 'ionicons', icon: 'image-outline', onPress: action('image') },
+        { key: 'camera', label: 'Фото', family: 'ionicons', icon: 'camera-outline', onPress: action('camera') },
         { key: 'scan', label: 'Сканкопія', family: 'ionicons', icon: 'scan-outline', onPress: action('scan') },
+        { key: 'file', label: 'Файл', family: 'ionicons', icon: 'document-outline', onPress: action('file') },
         { key: 'link', label: 'Посилання', family: 'ionicons', icon: 'link-outline', onPress: onBlock((id) => openLinkPrompt(id)) },
       ],
     },
@@ -6722,8 +6732,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               onOpenSection={openPanel}
               onShowKeyboard={closePanel}
               onLowerAll={lowerAll}
-              onPickFromDatabase={() => action('existing')()}
-              onCreateInDatabase={onBlock((id) => createInDatabase(id))}
+              // «Референси»: the keyboard goes down and the references rise - the same as the dock's own button.
+              onPickFromDatabase={() => {
+                lowerAll();
+                setReferencePanelOpen(true);
+              }}
+              // «Нова нотатка»: a note by its name, linked here - no choice between a note and a record of a base.
+              onCreateInDatabase={onBlock((id) => createDocumentInto(id))}
             />
           ) : (
           <EditorToolbar

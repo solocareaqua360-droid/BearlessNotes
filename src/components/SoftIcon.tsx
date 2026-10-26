@@ -34,6 +34,7 @@ export type SoftIconName =
   | 'rule'
   | 'insert'
   | 'databaseAdd'
+  | 'docPlus'
   | 'keyboard'
   | 'down';
 
@@ -136,6 +137,12 @@ export default function SoftIcon({
           <Path d="M18.2 7v4" {...line} />
           <Path d="M5.4 12c0 1.5 2.9 2.6 6.4 2.6" {...line} />
           <Path d="M17.6 14.6v5.4M14.9 17.3h5.4" {...line} />
+        </>
+      )}
+      {name === 'docPlus' && (
+        <>
+          <Path d="M7.5 3.5h5.8l5.2 5.2v9.3a2.5 2.5 0 0 1-2.5 2.5h-8.5A2.5 2.5 0 0 1 5 18V6a2.5 2.5 0 0 1 2.5-2.5z" {...line} />
+          <Path d="M12 10.6v6M9 13.6h6" {...line} />
         </>
       )}
       {name === 'keyboard' && (

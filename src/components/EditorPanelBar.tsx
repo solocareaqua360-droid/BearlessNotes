@@ -133,16 +133,19 @@ export default function EditorPanelBar({
 
       <View style={[styles.divider, { backgroundColor: inkMuted }, soft && { opacity: 0.35 }]} />
 
-      <Pressable style={[styles.button, soft && styles.softButton]} hitSlop={4} accessibilityLabel="З бази даних" onPress={onPickFromDatabase}>
-        {glyph('search', <Ionicons name="search-outline" size={20} color={ink} />)}
+      {/* «Референси» (2026-10-26): this was a lens labelled «З бази даних» - a lens says «search», and what it opened was a
+          choice of things that already exist. Now it is the dock's own «Референси», the same stack and the same sheet. */}
+      <Pressable style={[styles.button, soft && styles.softButton]} hitSlop={4} accessibilityLabel="Референси" onPress={onPickFromDatabase}>
+        <Ionicons name="albums-outline" size={soft ? 22 : 20} color={ink} />
       </Pressable>
       <Pressable
         style={[styles.button, soft && styles.softButton]}
         hitSlop={4}
-        accessibilityLabel="Створити в базі"
+        accessibilityLabel="Нова нотатка"
         onPress={onCreateInDatabase}
       >
-        {glyph('databaseAdd', <MaterialCommunityIcons name="database-plus-outline" size={20} color={ink} />)}
+        {/* «Нова нотатка» - only a note, by its name (2026-10-26: a record of a base is made from its base). */}
+        {glyph('docPlus', <Ionicons name="document-outline" size={20} color={ink} />)}
       </Pressable>
 
       {/* Two slots at the right edge that are ALWAYS there, so nothing
