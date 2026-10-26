@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -20,6 +20,8 @@ export default function OrderableRow({
   ids,
   ctl,
   enabled = true,
+  radius = 16,
+  outline = 'rgba(30,30,28,0.28)',
   children,
 }: {
   id: string;
@@ -27,17 +29,31 @@ export default function OrderableRow({
   ids: string[];
   ctl: OrderControl;
   enabled?: boolean;
+  // The row's own corner and the colour of the dashed outline left where it stood (the user, 2026-10-26: «не дірку, а
+  // пунктирну обводку по розміру цього блока справи»).
+  radius?: number;
+  outline?: string;
   children: ReactNode;
 }) {
+  const [carried, setCarried] = useState(false);
   const lift = useSharedValue(0);
   const ty = useSharedValue(0);
   // The latest list, read when the drag starts (the gesture is built once per render, the ids change with the data).
   const live = useRef({ ids, ctl });
   live.current = { ids, ctl };
-  const begin = () => live.current.ctl.begin(id, live.current.ids);
+  const begin = () => {
+    setCarried(true);
+    live.current.ctl.begin(id, live.current.ids);
+  };
   const move = (y: number) => live.current.ctl.move(y);
-  const end = () => live.current.ctl.end();
-  const cancel = () => live.current.ctl.cancel();
+  const end = () => {
+    setCarried(false);
+    live.current.ctl.end();
+  };
+  const cancel = () => {
+    setCarried(false);
+    live.current.ctl.cancel();
+  };
   const pan = Gesture.Pan()
     .enabled(enabled)
     .activateAfterLongPress(320)
@@ -63,10 +79,18 @@ export default function OrderableRow({
     opacity: 1 - lift.value * 0.15,
   }));
   return (
-    <GestureDetector gesture={pan}>
-      <Animated.View style={style} ref={(node: unknown) => ctl.register(id, node as View | null)} collapsable={false}>
-        {children}
-      </Animated.View>
-    </GestureDetector>
+    <View>
+      {carried && (
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: radius, borderWidth: 1.5, borderStyle: 'dashed', borderColor: outline }}
+        />
+      )}
+      <GestureDetector gesture={pan}>
+        <Animated.View style={style} ref={(node: unknown) => ctl.register(id, node as View | null)} collapsable={false}>
+          {children}
+        </Animated.View>
+      </GestureDetector>
+    </View>
   );
 }

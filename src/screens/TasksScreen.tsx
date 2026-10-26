@@ -2017,7 +2017,7 @@ export default function TasksScreen() {
   function orderable(list: Task[], render: (t: Task) => ReactNode): ReactNode {
     const ids = list.map((t) => t.id);
     return list.map((t) => (
-      <OrderableRow key={t.id} id={t.id} ids={ids} ctl={orderCtl} enabled={!isSelectMode && !expandedTaskIds.has(t.id)}>
+      <OrderableRow key={t.id} id={t.id} ids={ids} ctl={orderCtl} enabled={!isSelectMode && !expandedTaskIds.has(t.id)} radius={softDb ? 18 : 16} outline={softDb ? softDb.ink3 : theme.ink.faint}>
         {render(t)}
       </OrderableRow>
     ));
