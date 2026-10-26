@@ -4,7 +4,7 @@ import { useTileOpened } from '../navigation/recentPlaces';
 import ScreenGround from '../components/ScreenGround';
 import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import EdgeFade from '../components/EdgeFade';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -45,6 +45,8 @@ import {
 } from '../firestore';
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
+import OrderableRow, { type OrderControl } from '../components/OrderableRow';
+import { hapticDrop } from '../utils/haptics';
 import { Block, Group, Recurrence, Subtask, TaskList } from '../types';
 import { nextRecurrenceDate, recurrenceLabel } from '../utils/recurrence';
 import AddExistingItemModal from '../components/AddExistingItemModal';
@@ -142,9 +144,23 @@ type Task = {
   subtasks?: Subtask[];
   attachments?: Block[];
   recurrence?: Recurrence;
+  // The place the user put it in by hand (OrderableRow) - absent until a task is first dragged in its list.
+  order?: number;
   updatedAt: number;
   createdAt?: number;
 };
+
+// A list in the order the user put it in by hand (OrderableRow): the tasks never dragged stay first, in the order they
+// came (newest first by default - a new task shows at the top), then the placed ones by their place.
+function byHand(list: Task[]): Task[] {
+  if (!list.some((t) => t.order != null)) return list;
+  return [...list].sort((a, b) => {
+    if (a.order == null && b.order == null) return 0;
+    if (a.order == null) return -1;
+    if (b.order == null) return 1;
+    return a.order - b.order;
+  });
+}
 
 // A task counts as "today" either because it was quick-starred, or because
 // its own reminder date is today - the two are meant to read as the same
@@ -621,6 +637,7 @@ export default function TasksScreen() {
         subtasks: docSnapshot.data().subtasks,
         attachments: docSnapshot.data().attachments,
         recurrence: docSnapshot.data().recurrence,
+        order: docSnapshot.data().order,
         updatedAt: docSnapshot.data().updatedAt ?? 0,
         createdAt: docSnapshot.data().createdAt,
       }));
@@ -721,12 +738,14 @@ export default function TasksScreen() {
     // Sorted once here rather than per-section below - every downstream
     // .filter() (today/unfinished/completed/kanban column) preserves
     // relative order, so this one sort is what all of them end up showing.
-    return sortItems(
-      found,
-      sortPref,
-      (t) => t.text || 'Без назви',
-      (t) => t.createdAt,
-      (t) => t.updatedAt
+    return byHand(
+      sortItems(
+        found,
+        sortPref,
+        (t) => t.text || 'Без назви',
+        (t) => t.createdAt,
+        (t) => t.updatedAt
+      )
     );
   }, [tasks, projectFilter, sortPref, searchQuery]);
 
@@ -1767,7 +1786,7 @@ export default function TasksScreen() {
     );
     if (v === 'upcoming') return [...list].sort((a, b) => String(a.reminderDate).localeCompare(String(b.reminderDate)));
     if (v === 'logbook') return [...list].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 200);
-    list = sortItems(list, sortPref, (t) => t.text || 'Без назви', (t) => t.createdAt, (t) => t.updatedAt);
+    list = byHand(sortItems(list, sortPref, (t) => t.text || 'Без назви', (t) => t.createdAt, (t) => t.updatedAt));
     return list;
   }
 
@@ -1940,6 +1959,68 @@ export default function TasksScreen() {
         </View>
       </GlassLayer>
     );
+  }
+
+  // ORDER BY HAND (OrderableRow): the rows of the list being dragged in, measured on screen when the drag starts; the line
+  // stands where the row will land, and on release every task of that list gets its place (order 0..n-1).
+  const orderNodes = useRef<Record<string, View | null>>({});
+  const orderDrag = useRef<{ id: string; ids: string[]; rects: { id: string; top: number; bottom: number }[]; index: number } | null>(null);
+  const rootNode = useRef<View | null>(null);
+  const rootTop = useRef(0);
+  const [orderLine, setOrderLine] = useState<number | null>(null);
+  const orderCtl: OrderControl = {
+    register: (id, node) => {
+      orderNodes.current[id] = node;
+    },
+    begin: (id, ids) => {
+      hapticDrop();
+      setOpenSwipeId(null);
+      orderDrag.current = { id, ids, rects: [], index: ids.indexOf(id) };
+      rootNode.current?.measureInWindow((_x, y) => (rootTop.current = y));
+      ids.forEach((one) => {
+        orderNodes.current[one]?.measureInWindow((_x, y, _w, h) => {
+          const d = orderDrag.current;
+          if (!d) return;
+          d.rects = [...d.rects.filter((r) => r.id !== one), { id: one, top: y, bottom: y + h }].sort((a, b) => a.top - b.top);
+        });
+      });
+    },
+    move: (y) => {
+      const d = orderDrag.current;
+      if (!d) return;
+      const others = d.rects.filter((r) => r.id !== d.id);
+      if (others.length === 0) return;
+      const index = others.filter((r) => (r.top + r.bottom) / 2 < y).length;
+      d.index = index;
+      const lineY = index === 0 ? others[0].top - 4 : others[index - 1].bottom + 4;
+      setOrderLine(lineY - rootTop.current);
+    },
+    end: () => {
+      const d = orderDrag.current;
+      orderDrag.current = null;
+      setOrderLine(null);
+      if (!d) return;
+      const rest = d.ids.filter((one) => one !== d.id);
+      const next = [...rest.slice(0, d.index), d.id, ...rest.slice(d.index)];
+      if (next.every((one, i) => one === d.ids[i])) return;
+      const placed = new Map(next.map((one, i) => [one, i]));
+      setTasks((prev) => prev.map((t) => (placed.has(t.id) ? { ...t, order: placed.get(t.id) } : t)));
+      next.forEach((one, i) => {
+        updateDoc(doc(db, 'tasks', one), { order: i }).catch(() => {});
+      });
+    },
+    cancel: () => {
+      orderDrag.current = null;
+      setOrderLine(null);
+    },
+  };
+  function orderable(list: Task[], render: (t: Task) => ReactNode): ReactNode {
+    const ids = list.map((t) => t.id);
+    return list.map((t) => (
+      <OrderableRow key={t.id} id={t.id} ids={ids} ctl={orderCtl} enabled={!isSelectMode && !expandedTaskIds.has(t.id)}>
+        {render(t)}
+      </OrderableRow>
+    ));
   }
 
   function renderV2Row(item: Task) {
@@ -2315,7 +2396,7 @@ export default function TasksScreen() {
         <>
           {filterLine}
           <Text style={styles.v2Hint}>{tasksWord(list.length)} розбору</Text>
-          {list.map(renderV2Row)}
+          {orderable(list, renderV2Row)}
         </>
       );
     if (v === 'today') {
@@ -2337,7 +2418,7 @@ export default function TasksScreen() {
           )}
           {list.length === 0 && <Text style={styles.v2Hint}>{EMPTY_TEXT.today}</Text>}
           {main.length > 0 && <Text style={styles.v2Section}>Протягом дня</Text>}
-          {main.map(renderV2Row)}
+          {orderable(main, renderV2Row)}
           <Text style={styles.v2Section}>Шкала дня</Text>
           <DayTimeline
             items={[...timed, ...doneTimed].map((t) => ({
@@ -2353,7 +2434,7 @@ export default function TasksScreen() {
             onPressHour={askForHour}
           />
           {evening.length > 0 && <Text style={styles.v2Section}>Ввечері</Text>}
-          {evening.map(renderV2Row)}
+          {orderable(evening, renderV2Row)}
         </>
       );
     }
@@ -2378,7 +2459,7 @@ export default function TasksScreen() {
         </>
       );
     }
-    return <>{list.map(renderV2Row)}</>;
+    return <>{v === 'someday' ? orderable(list, renderV2Row) : list.map(renderV2Row)}</>;
   }
 
   function renderTaskRow(item: Task, opts: { showProjectChip: boolean; showListChip: boolean }) {
@@ -2706,7 +2787,7 @@ export default function TasksScreen() {
             )}
           </>
         )}
-        {section.unfinished.map((task) => renderTaskRow(task, rowOpts))}
+        {orderable(section.unfinished, (task) => renderTaskRow(task, rowOpts))}
         {section.completed.length > 0 && (
           <>
             <Pressable style={styles.collapseToggle} onPress={() => toggleGroupExpanded(section.key)}>
@@ -2976,7 +3057,10 @@ export default function TasksScreen() {
           : { icon: VIEW_META[view as 'inbox'].icon as never, label: VIEW_META[view as 'inbox'].label };
   const topPad = headerHeight || insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) + 52;
   return (
-    <View style={styles.container}>
+    <View style={styles.container} ref={rootNode} collapsable={false}>
+      {orderLine !== null && (
+        <View pointerEvents="none" style={{ position: 'absolute', left: 22, right: 22, top: orderLine, height: 3, borderRadius: 2, backgroundColor: accent, zIndex: 50 }} />
+      )}
       {softDb ? (
         <ScreenGround color={softDb.bg} />
       ) : (
