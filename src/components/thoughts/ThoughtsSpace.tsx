@@ -16,6 +16,7 @@ import { DOCK_BOTTOM } from '../../navigation/dockGeometry';
 import { readable } from './ThoughtCapture';
 import ThemeCanvas from './ThemeCanvas';
 import LiveSurface from './LiveSurface';
+import ThoughtsNetwork from './ThoughtsNetwork';
 import ThoughtView from './ThoughtView';
 import { speakThoughts } from '../../utils/thoughtVoice';
 import { cardTitle, voiceTextOf } from './thoughtText';
@@ -28,6 +29,11 @@ import { CHROME_TOP } from '../../constants/rail';
 // cloud of their own. A tap opens the theme: for now the list of what is in it (its own canvas is the next step).
 
 const LOOSE = '__loose__';
+
+// Two lenses over the same themes (2026-10-27): the clouds, and the network of neurons (ThoughtsNetwork - Skia, so
+// the phone only for now). The last one chosen is kept for the session; the clouds stay until the user says otherwise.
+type Lens = 'clouds' | 'network';
+let lastLens: Lens = Platform.OS === 'web' ? 'clouds' : 'network';
 
 // The space over the phone's desk lives in the glass layer; on the Mac (frame B, 2026-10-19) it is a screen of the
 // stack in the main column, so it draws where it is put, with no layer and no phone chrome.
@@ -86,6 +92,12 @@ export default function ThoughtsSpace({
   // The theme whose canvas is open (sketch 4); the loose thoughts keep their list.
   const [canvasId, setCanvasId] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
+  const [lens, setLensState] = useState<Lens>(lastLens);
+  const setLens = (l: Lens) => {
+    lastLens = l;
+    setLensState(l);
+  };
+  const sky = lens === 'network' && !inline;
   const shown = useSharedValue(0);
 
   useEffect(() => {
@@ -155,8 +167,11 @@ export default function ThoughtsSpace({
     <Shell inline={inline}>
       <Animated.View
         onLayout={inline ? (e) => setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height }) : undefined}
-        style={[StyleSheet.absoluteFill, { backgroundColor: S.bg === 'transparent' ? '#F6F5F2' : S.bg }, look]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: sky ? '#05060B' : S.bg === 'transparent' ? '#F6F5F2' : S.bg }, look]}
       >
+        {sky && (
+          <ThoughtsNetwork width={W} height={H} top={insets.top + CHROME_TOP + TOP_NAV_H} themes={themes} thoughts={thoughts} onOpen={setReading} />
+        )}
         {inline ? (
           <View style={styles.inlineHead}>
             <Text style={[styles.inlineTitle, { color: S.ink }]}>Думки</Text>
@@ -177,12 +192,15 @@ export default function ThoughtsSpace({
           )}
           <Text style={[styles.barTitle, { color: S.ink }]}>Думки</Text>
         </View>
+        {!sky && (
         <Text style={[styles.hint, { top: insets.top + 60, color: S.ink3 }]}>
           {themes.length === 0 && loose === 0 ? 'Тут житимуть твої теми' : 'Більша — більше думок · бліда — давно не чіпав'}
         </Text>
+        )}
           </>
         )}
 
+        {!sky && (
         <View style={[styles.area, { top, height: areaH }]}>
           {/* Moved by a finger, zoomed by two - never off where the themes are (LiveSurface). */}
           <LiveSurface width={W} height={areaH}>
@@ -236,6 +254,18 @@ export default function ThoughtsSpace({
           />
           </LiveSurface>
         </View>
+        )}
+
+        {/* The lens switch: left of the dock's pair, where the desk dock keeps its own left bead. */}
+        {Platform.OS !== 'web' && !inline && (
+          <Pressable
+            onPress={() => setLens(sky ? 'clouds' : 'network')}
+            accessibilityLabel={sky ? 'Хмари' : 'Мережа думок'}
+            style={[styles.dockRound, { left: 20, bottom: insets.bottom + DOCK_BOTTOM + 4, backgroundColor: S.card, boxShadow: S.popShadow }]}
+          >
+            <Ionicons name={(sky ? 'lc:cloud' : 'lc:share-2') as never} size={21} color={S.ink} />
+          </Pressable>
+        )}
 
         <Pressable
           onPress={() => onCatch()}
