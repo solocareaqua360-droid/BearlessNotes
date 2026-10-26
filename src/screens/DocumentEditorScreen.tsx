@@ -1059,8 +1059,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // Kept for the ⌫ inside a submenu (handleBlockChange): a step back, not a letter. The LAST open state, with its time:
   // Android reports the caret's move before the text's change, so by the time the deletion arrives the menu has already
   // read the caret and let go.
-  const slashLiveRef = useRef<{ query: typeof slashQuery; sub: string | null; at: number }>({ query: null, sub: null, at: 0 });
-  if (slashQuery) slashLiveRef.current = { query: slashQuery, sub: slashSub, at: Date.now() };
+  const slashLiveRef = useRef<{ query: typeof slashQuery; sub: string | null; at: number; text: string }>({ query: null, sub: null, at: 0, text: '' });
+  if (slashQuery) slashLiveRef.current = { query: slashQuery, sub: slashSub, at: Date.now(), text: blocks.find((b) => b.id === slashQuery.blockId)?.text ?? '' };
   // Where the window stands: above the caret's block when there is room there, under it otherwise.
   const [slashPlace, setSlashPlace] = useState<{ top?: number; bottom?: number; maxHeight: number } | null>(null);
   const [viewerImageId, setViewerImageId] = useState<string | null>(null);
@@ -4440,7 +4440,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const live = slashLiveRef.current;
     if (live.sub && live.query && live.query.blockId === id && !live.query.q && Date.now() - live.at < 1500) {
       slashLiveRef.current = { ...live, sub: null };
-      const old = blocks.find((b) => b.id === id)?.text ?? '';
+      // The text as the menu last saw it - this handler can be an older render's (the block list keeps it stable).
+      const old = live.text;
       if (plainTextOf(rawText).length === plainTextOf(old).length - 1) {
         setSlashSub(null);
         setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, text: old } : b)));
