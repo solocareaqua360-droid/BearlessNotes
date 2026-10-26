@@ -80,7 +80,8 @@ import {
   query,
   updateDoc,
 } from '../firestore';
-import { ownedQuery, setDoc } from '../utils/owned';
+import { addDoc as ownedAddDoc, ownedQuery, setDoc } from '../utils/owned';
+import { requestOpen } from '../utils/openRequest';
 
 // What «Створити в базі» is waiting on while its name is being typed.
 type NewRowTarget = { placeholderId: string; databaseId: string; fieldId: string; name: string };
@@ -165,6 +166,9 @@ import {
   noteAddress,
   noteLinkMarkup,
   noteLinkSpans,
+  linkTarget,
+  boardRef,
+  fileRef,
   parseFormattedText,
   parseNoteRef,
   plainTextOf,
@@ -3915,6 +3919,17 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   function openNoteLink(ref: string) {
+    // A board or a file (2026-10-26) - opened where it lives.
+    const kind = linkTarget(ref);
+    if (kind.kind === 'board') {
+      navigation.navigate('BoardCopy', { boardId: kind.id });
+      return;
+    }
+    if (kind.kind === 'file') {
+      requestOpen('files', kind.id, {});
+      navigation.navigate('Files');
+      return;
+    }
     const { documentId: target, blockId } = parseNoteRef(ref);
     if (target === documentId && blockId) {
       if (blocks.some((b) => b.id === blockId)) landOnBlock(blockId);
@@ -3965,13 +3980,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   }
 
   async function noteLinkMenu(blockId: string, target: string, label: string) {
+    // A board or a file (see linkTarget) opens and renames like a note's word, but has no card of a note to become.
+    const kind = linkTarget(target).kind;
     const choice = await ask({
       title: label,
       actions: [
-        { id: 'open', label: 'Відкрити нотатку', icon: 'document-text-outline' },
+        { id: 'open', label: kind === 'board' ? 'Відкрити дошку' : kind === 'file' ? 'Відкрити файл' : 'Відкрити нотатку', icon: 'document-text-outline' },
         { id: 'rename', label: 'Змінити назву', icon: 'pencil-outline' },
-        { id: 'retarget', label: 'Інша нотатка…', icon: 'swap-horizontal-outline' },
-        { id: 'card', label: 'Показати карткою', icon: 'albums-outline' },
+        ...(kind === 'note' ? [{ id: 'retarget', label: 'Інша нотатка…', icon: 'swap-horizontal-outline' as const }, { id: 'card', label: 'Показати карткою', icon: 'albums-outline' as const }] : []),
         { id: 'unlink', label: 'Прибрати посилання', icon: 'close-circle-outline', tone: 'danger' },
       ],
     });
@@ -4063,6 +4079,46 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // «Нова нотатка» from the @ window: nested in this one (the user's) -
   // its home is the «Вкладені» at this note's foot, the word only a way
   // there.
+  // «@ → дошка»: a new board of that name, and the word leads to it.
+  async function createBoardForLink(title: string) {
+    try {
+      const now = Date.now();
+      const ref = await ownedAddDoc(collection(db, 'boards'), { title: title.trim() || 'Без назви', cards: {}, createdAt: now, updatedAt: now });
+      insertNoteLink(boardRef(ref.id), title);
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+    }
+  }
+
+  // Boards and files for the «@» window, read once when it opens (a listener kept for a window opened now and then is
+  // a listener kept for nothing).
+  const [atOthers, setAtOthers] = useState<{ ref: string; kind: 'board' | 'file'; title: string }[]>([]);
+  const atOpen = !!atQuery;
+  useEffect(() => {
+    if (!atOpen) return;
+    let alive = true;
+    Promise.all([getDocs(ownedQuery('boards')), getDocs(ownedQuery('files'))])
+      .then(([boards, files]) => {
+        if (!alive) return;
+        const out: { ref: string; kind: 'board' | 'file'; title: string }[] = [];
+        boards.docs.forEach((d: { id: string; data: () => Record<string, unknown> }) => {
+          const x = d.data();
+          if (x.deletedAt || x.calendarDate || x.chatId) return;
+          out.push({ ref: boardRef(d.id), kind: 'board', title: String(x.title || x.name || 'Дошка') });
+        });
+        files.docs.forEach((d: { id: string; data: () => Record<string, unknown> }) => {
+          const x = d.data();
+          if (x.deletedAt) return;
+          out.push({ ref: fileRef(d.id), kind: 'file', title: String(x.title || x.fileName || 'Файл') });
+        });
+        setAtOthers(out);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [atOpen]);
+
   async function createNoteForLink(title: string) {
     try {
       const id = await createOwnedNote({ kind: 'note', id: documentId }, title);
@@ -6240,7 +6296,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       ];
     }
     const span = noteLinkSpans(one.text ?? '')[0];
-    if (!span) return [];
+    if (!span || linkTarget(span.documentId).kind !== 'note') return [];
     return [
       { key: 'asword', label: 'Слово в рядку', mini: 'mention', active: true, onPress: () => {} },
       { key: 'ascard', label: 'Картка', mini: 'document', onPress: () => { toggleSelectMode(); linkToCard(one.id, span.documentId, span.label); } },
@@ -7786,6 +7842,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           soft={soft}
           onPick={insertNoteLink}
           onCreate={createNoteForLink}
+          others={atOthers}
+          onCreateBoard={createBoardForLink}
           anchor={(() => {
             // The Mac: under the field that has the caret, not at the foot of the window (there is no keyboard to stand over).
             if (!notePanelOn || typeof document === 'undefined') return undefined;

@@ -177,7 +177,22 @@ export const HIGHLIGHT_CLOSE = '{/h}';
 // The target can also be one BLOCK of that note: `{n:<documentId>#<blockId>}`
 // - a "ref" (noteRef / parseNoteRef). The links carry the ref whole, so a
 // rename or an unlink keeps the place it leads to without knowing of it.
-export const NOTE_LINK_OPEN = /^\{n:([A-Za-z0-9_-]+(?:#[A-Za-z0-9_-]+)?)\}/;
+// A word can also lead to a BOARD or a FILE (2026-10-26, the user: «@ посилається тільки на нотатку, дошку і файл»): the ref
+// then carries a kind prefix - `{n:b:<boardId>}`, `{n:f:<fileId>}` (see linkTarget).
+export const NOTE_LINK_OPEN = /^\{n:((?:[bf]:)?[A-Za-z0-9_-]+(?:#[A-Za-z0-9_-]+)?)\}/;
+
+export type LinkTargetKind = 'note' | 'board' | 'file';
+export function linkTarget(ref: string): { kind: LinkTargetKind; id: string } {
+  if (ref.startsWith('b:')) return { kind: 'board', id: ref.slice(2) };
+  if (ref.startsWith('f:')) return { kind: 'file', id: ref.slice(2) };
+  return { kind: 'note', id: ref };
+}
+export function boardRef(id: string): string {
+  return `b:${id}`;
+}
+export function fileRef(id: string): string {
+  return `f:${id}`;
+}
 export const NOTE_LINK_CLOSE = '{/n}';
 export const LINK_GLYPH = '↗\u2009';
 // The same place for a note NESTED in this one (the user's: the arrow down

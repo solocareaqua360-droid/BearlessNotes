@@ -17,6 +17,7 @@ import type { Block } from '../types';
 // This is deliberately the one place that knows what counts as a link: a
 // card of a note ('docRef'), and a word in the text that links to one
 // ({n:<id>}label{/n} - see documentBlocks' NOTE_LINK_OPEN).
+// A note only - a board or a file link carries a `b:` / `f:` prefix and is not matched here.
 const WORD_LINK = /\{n:([A-Za-z0-9_-]+)(?:#[A-Za-z0-9_-]+)?\}/g;
 
 export function documentLinksIn(blocks: Block[] | undefined): string[] {

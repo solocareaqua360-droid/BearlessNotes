@@ -25,6 +25,8 @@ export default function NoteLinkPicker({
   onPick,
   onCreate,
   anchor,
+  others = [],
+  onCreateBoard,
 }: {
   query: string;
   index: DocumentIndex;
@@ -35,6 +37,9 @@ export default function NoteLinkPicker({
   soft: SoftTokens;
   onPick: (documentId: string, title: string) => void;
   onCreate: (title: string) => void;
+  // Boards and files to link to as well (2026-10-26). `ref` is what goes into the word (see documentBlocks' linkTarget).
+  others?: { ref: string; kind: 'board' | 'file'; title: string }[];
+  onCreateBoard?: (title: string) => void;
   // The Mac (no keyboard to stand over): under the caret's block, in screen coordinates, with the arrows and Enter to choose.
   anchor?: { left: number; top: number };
 }) {
@@ -68,6 +73,13 @@ export default function NoteLinkPicker({
 
   // The rows in order: «Нова нотатка» (when something is typed), then the notes found.
   const noteRows = found.map((d) => ({ id: d.id, title: d.title || 'Без назви' }));
+  // Notes, boards and files in one list (phone): what starts with the typed word first; no more than a screenful.
+  const otherFound = others
+    .filter((o) => !needle || o.title.toLowerCase().includes(needle))
+    .map((o) => ({ ref: o.ref, kind: o.kind as 'board' | 'file' | 'note', title: o.title || 'Без назви' }));
+  const mixed = [...found.map((d) => ({ ref: d.id, kind: 'note' as const, title: d.title || 'Без назви' })), ...otherFound]
+    .sort((x, y) => (needle ? (x.title.toLowerCase().startsWith(needle) ? 0 : 1) - (y.title.toLowerCase().startsWith(needle) ? 0 : 1) : 0))
+    .slice(0, ROWS + 2);
   const createRow = query.trim() ? [{ create: query.trim() }] : [];
   const rows: ({ create: string } | { id: string; title: string })[] = anchor ? [...noteRows, ...createRow] : [...createRow, ...noteRows];
   const [hot, setHot] = useState(0);
@@ -140,34 +152,41 @@ export default function NoteLinkPicker({
         <View style={[styles.head, { borderBottomColor: soft.line }]}>
           <Ionicons name="document-text-outline" size={14} color={soft.ink3} />
           <Text style={[styles.headText, { color: soft.ink3 }]} numberOfLines={1}>
-            {query ? query : 'Почни вводити назву нотатки'}
+            {query ? query : 'Нотатка, дошка або файл'}
           </Text>
         </View>
+        {/* ONE row to create (2026-10-26, the user: a second «+» row only took the room back): the name, then which kind. */}
         {!!query.trim() && (
-          <Pressable
-            onPress={() => onCreate(query.trim())}
-            style={({ pressed }) => [styles.row, pressed && { backgroundColor: soft.fill }]}
-          >
+          <View style={[styles.row, { gap: 8 }]}>
             <Ionicons name="add" size={17} color={soft.accent} />
-            <Text style={[styles.rowText, { color: soft.accent, fontFamily: SOFT_SEMIBOLD }]} numberOfLines={1}>
-              Нова нотатка «{query.trim()}»
+            <Text style={[styles.rowText, { color: soft.ink, fontFamily: SOFT_SEMIBOLD }]} numberOfLines={1}>
+              «{query.trim()}»
             </Text>
-          </Pressable>
+            <Pressable onPress={() => onCreate(query.trim())} hitSlop={6} style={[styles.kindPill, { backgroundColor: soft.ink }]}>
+              <Text style={[styles.kindPillText, { color: soft.chrome }]}>нотатка</Text>
+            </Pressable>
+            {!!onCreateBoard && (
+              <Pressable onPress={() => onCreateBoard(query.trim())} hitSlop={6} style={[styles.kindPill, { backgroundColor: soft.fill }]}>
+                <Text style={[styles.kindPillText, { color: soft.ink }]}>дошка</Text>
+              </Pressable>
+            )}
+          </View>
         )}
-        {found.map((d) => (
+        {mixed.map((d) => (
           <Pressable
-            key={d.id}
-            onPress={() => onPick(d.id, d.title || 'Без назви')}
+            key={d.ref}
+            onPress={() => onPick(d.ref, d.title)}
             style={({ pressed }) => [styles.row, { borderTopColor: soft.line, borderTopWidth: StyleSheet.hairlineWidth }, pressed && { backgroundColor: soft.fill }]}
           >
-            <Ionicons name="document-text-outline" size={16} color={soft.ink2} />
+            <Ionicons name={d.kind === 'board' ? 'easel-outline' : d.kind === 'file' ? 'document-outline' : 'document-text-outline'} size={16} color={soft.ink2} />
             <Text style={[styles.rowText, { color: soft.ink }]} numberOfLines={1}>
-              {marked(d.title || '')}
+              {marked(d.title)}
             </Text>
+            {d.kind !== 'note' && <Text style={[styles.kindHint, { color: soft.ink3 }]}>{d.kind === 'board' ? 'дошка' : 'файл'}</Text>}
           </Pressable>
         ))}
-        {found.length === 0 && !query.trim() && (
-          <Text style={[styles.empty, { color: soft.ink3 }]}>Ще немає нотаток</Text>
+        {mixed.length === 0 && !query.trim() && (
+          <Text style={[styles.empty, { color: soft.ink3 }]}>Ще нічого немає</Text>
         )}
       </View>
     </>
@@ -178,8 +197,8 @@ const styles = StyleSheet.create({
   window: {
     position: 'absolute',
     left: 12,
-    width: '72%',
-    maxWidth: 300,
+    width: '86%',
+    maxWidth: 360,
     borderRadius: 16,
     overflow: 'hidden',
   },
@@ -194,6 +213,9 @@ const styles = StyleSheet.create({
   label: { fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', fontFamily: SOFT_MEDIUM, paddingHorizontal: 10, paddingTop: 6, paddingBottom: 4 },
   wideRow: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 40, paddingHorizontal: 10, borderRadius: 10 },
   headText: { flex: 1, fontSize: 12, fontFamily: SOFT_MEDIUM },
+  kindPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  kindPillText: { fontSize: 12.5, fontFamily: SOFT_SEMIBOLD },
+  kindHint: { fontSize: 11.5, fontFamily: SOFT_MEDIUM },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
