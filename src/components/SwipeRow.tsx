@@ -130,6 +130,12 @@ export default function SwipeRow({
     tx.value = withTiming(0, { duration: 160 });
     onOpenChange(null);
   };
+  // OPEN, the buttons stand ABOVE the card (2026-10-26: a tap on «Завтра» opened the task's note instead). The card's
+  // slide is a UI-thread transform, and React still hit-tests it where it stood before the swipe
+  // (reanimated_ui_props_dead_press) - over the buttons. Raised while open (and only then: closed, they are see-through
+  // and must not catch a touch), they get the tap; nothing is hidden, the card has moved off them.
+  const isOpen = openId === id;
+  const raised = isOpen ? { zIndex: 3, elevation: 3 } : null;
 
   return (
     <View
@@ -138,7 +144,7 @@ export default function SwipeRow({
         width.value = e.nativeEvent.layout.width;
       }}
     >
-      <Animated.View style={[styles.side, styles.left, leadShow]}>
+      <Animated.View style={[styles.side, styles.left, leadShow, raised]} pointerEvents={isOpen ? 'auto' : 'none'}>
         {leading.map((a) => (
           <Pressable
             key={a.key}
@@ -155,7 +161,7 @@ export default function SwipeRow({
           </Pressable>
         ))}
       </Animated.View>
-      <Animated.View style={[styles.side, styles.right, trailShow]}>
+      <Animated.View style={[styles.side, styles.right, trailShow, raised]} pointerEvents={isOpen ? 'auto' : 'none'}>
         {trailing.map((a) => (
           <Pressable
             key={a.key}
