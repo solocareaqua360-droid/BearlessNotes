@@ -253,16 +253,24 @@ export default function ThoughtsNetwork({
   const pz0 = useSharedValue(1);
   const fx = useSharedValue(0);
   const fy = useSharedValue(0);
+  const sx0 = useSharedValue(0);
+  const sy0 = useSharedValue(0);
   const gesture = useMemo(() => {
+    // One finger moves the sky; two are the pinch's alone. The finger is measured from where THIS gesture started, not
+    // from where it first touched down: after a pinch the remaining finger has drifted all along, and translationX would
+    // bring that drift in as a jump (the board's own cure, BoardScreen's panGesture).
     const pan = Gesture.Pan()
-      .averageTouches(true)
-      .onStart(() => {
+      .minPointers(1)
+      .maxPointers(1)
+      .onStart((e) => {
         panX.value = camX.value;
         panY.value = camY.value;
+        sx0.value = e.absoluteX;
+        sy0.value = e.absoluteY;
       })
       .onUpdate((e) => {
-        camX.value = panX.value - e.translationX / camZ.value;
-        camY.value = panY.value - e.translationY / camZ.value;
+        camX.value = panX.value - (e.absoluteX - sx0.value) / camZ.value;
+        camY.value = panY.value - (e.absoluteY - sy0.value) / camZ.value;
       });
     const pinch = Gesture.Pinch()
       .onStart((e) => {
@@ -276,8 +284,11 @@ export default function ThoughtsNetwork({
         camZ.value = z;
         camX.value = fx.value - (e.focalX - width / 2) / z;
         camY.value = fy.value - (e.focalY - height / 2) / z;
-        panX.value = camX.value;
-        panY.value = camY.value;
+      })
+      // The moment one finger lifts, Android recomputes the focal from the finger left - a jump in one ordinary frame.
+      // The pinch ends on that touch-up, before it can read it (as the board's pinch does).
+      .onTouchesUp((e, state) => {
+        if (e.numberOfTouches < 2) state.end();
       });
     const tap = Gesture.Tap()
       .maxDistance(10)
