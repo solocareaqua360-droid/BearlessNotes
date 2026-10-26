@@ -4439,7 +4439,6 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function handleBlockChange(id: string, rawText: string) {
     // ⌫ with a submenu of «/» open: back to the categories, the typed text stays as it was.
     const live = slashLiveRef.current;
-    console.log('SLASHDBG change', JSON.stringify({ id, rawText, sub: live.sub, q: live.query, text: live.text }));
     if (live.sub && live.query && live.query.blockId === id && !live.query.q) {
       slashLiveRef.current = { ...live, sub: null };
       // The text as the menu last saw it - this handler can be an older render's (the block list keeps it stable).
@@ -4448,9 +4447,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       // Exactly the menu's own «/» taken away - nothing else counts as the step back.
       if (plainTextOf(rawText) === shown.slice(0, live.query.start) + shown.slice(live.query.end)) {
         setSlashSub(null);
+        // The field already shows the shortened text and the state still holds the old one - React sees nothing to
+        // change and the field would keep the deletion. A fresh field (bumpTextVersion) is mounted with the old text.
+        bumpTextVersion(id);
+        focusIdRef.current = id;
         setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, text: old } : b)));
         const at = live.query.end;
-        setTimeout(() => setSelection(inputRefs.current[id], at, at), 30);
+        setTimeout(() => setSelection(inputRefs.current[id], at, at), 60);
+        setTimeout(() => setCaret({ blockId: id, pos: at }), 70);
         return;
       }
     }
