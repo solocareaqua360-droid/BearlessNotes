@@ -124,9 +124,15 @@ export default function Sheet({
   // (the user's word). Resolved to points against the screen here, it no
   // longer depends on whatever the ScrollView happens to sit in.
   const { height: windowHeight } = useWindowDimensions();
+  // ...and WITHOUT fadeEdges the same thing happened the other way: a percentage against a window whose height is its own
+  // content resolved to far less than the screen had room for, and the last rows (the reminder's «Скасувати» /
+  // «Зберегти», the user 2026-10-26: «їх закриває плашка, а місця вистачає») stood under the sheet's own bottom padding,
+  // reachable only by scrolling. So a percentage is always points of the screen here, less the sheet's own title and
+  // bottom room, which stand outside the scroll.
+  const sheetChrome = (title ? 56 : 24) + (!desk && !flipFrom ? insets.bottom + 28 : 24);
   const scrollMaxHeight =
-    fadeEdges && typeof maxHeight === 'string' && maxHeight.endsWith('%')
-      ? (parseFloat(maxHeight) / 100) * (windowHeight - keyboardHeight)
+    typeof maxHeight === 'string' && maxHeight.endsWith('%')
+      ? (parseFloat(maxHeight) / 100) * (windowHeight - keyboardHeight) - (fadeEdges ? 0 : sheetChrome)
       : maxHeight;
   const scrollView = scroll ? (
     <ScrollView
