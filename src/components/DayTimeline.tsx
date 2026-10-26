@@ -78,7 +78,8 @@ export default function DayTimeline({
                 top: top(start) + 2,
                 height,
                 backgroundColor: item.warn ? '#FBF1DC' : '#E4ECFA',
-                borderLeftColor: item.warn ? '#D9A441' : '#4A7BD0',
+                // A frame all round, not a bar down the left edge (the user's standing rule, applied here 2026-10-26).
+                borderColor: item.warn ? 'rgba(217,164,65,0.55)' : 'rgba(74,123,208,0.45)',
                 opacity: item.done ? 0.5 : 1,
               },
             ]}
@@ -130,7 +131,7 @@ const styles = StyleSheet.create({
     left: LABEL_W + 4,
     right: 0,
     borderRadius: 10,
-    borderLeftWidth: 3,
+    borderWidth: 1.5,
     paddingHorizontal: 10,
     paddingVertical: 5,
     justifyContent: 'center',
