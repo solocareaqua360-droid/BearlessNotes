@@ -2010,6 +2010,11 @@ export default function TasksScreen() {
               </Text>
             )}
           </Pressable>
+          {!!item.recurrence && !isSelectMode && (
+            <Pressable hitSlop={8} onPress={() => setRecurrenceTaskId(item.id)} accessibilityLabel={`Повторюється: ${recurrenceLabel(item.recurrence)}`}>
+              <Ionicons name="repeat-outline" size={18} color={accent} />
+            </Pressable>
+          )}
           {isExpanded && !isSelectMode && (
             <Pressable hitSlop={10} onPress={() => toggleTaskExpanded(item.id)} accessibilityLabel="Згорнути">
               <Ionicons name="chevron-up" size={20} color={theme.ink.faint} />
@@ -2473,6 +2478,13 @@ export default function TasksScreen() {
               )}
             </View>
           </Pressable>
+          {/* A REPEATING task says so on its row (2026-10-26, the user: «одразу на справі мати значок, який би затверджував,
+              що справа повторювана»); a tap opens its repeat rule. */}
+          {!!item.recurrence && (
+            <Pressable hitSlop={8} onPress={() => setRecurrenceTaskId(item.id)} accessibilityLabel={`Повторюється: ${recurrenceLabel(item.recurrence)}`}>
+              <Ionicons name="repeat-outline" size={19} color={accent} />
+            </Pressable>
+          )}
           <Pressable
             hitSlop={8}
             onPress={() => toggleToday(item)}
