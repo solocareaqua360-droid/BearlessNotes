@@ -4439,6 +4439,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   function handleBlockChange(id: string, rawText: string) {
     // ⌫ with a submenu of «/» open: back to the categories, the typed text stays as it was.
     const live = slashLiveRef.current;
+    console.log('SLASHDBG change', JSON.stringify({ id, rawText, sub: live.sub, q: live.query, text: live.text }));
     if (live.sub && live.query && live.query.blockId === id && !live.query.q) {
       slashLiveRef.current = { ...live, sub: null };
       // The text as the menu last saw it - this handler can be an older render's (the block list keeps it stable).
