@@ -52,8 +52,10 @@ export default function SwipeRow({
   const armed = useSharedValue(0);
   // Where the card stood when the finger came down (an open row starts from its open place, not from 0).
   const startX = useSharedValue(0);
-  // While the finger moves the card, the buttons go back UNDER it (raised, they lay over the card being swiped shut).
-  const [dragging, setDragging] = useState(false);
+  // AT REST, the card's place is a plain style React knows (not only the UI thread's transform): React hit-tests by its
+  // own idea of where the card is, and with the animated one alone it still thought the card covered the buttons
+  // (reanimated_ui_props_dead_press) - a tap on «Завтра» opened the task. A new touch hands the card back to the animation.
+  const [still, setStill] = useState<number | null>(null);
   const leadW = leading.length * BUTTON_W;
   const trailW = trailing.length * BUTTON_W;
   const hasLongL = longLeading ? 1 : 0;
@@ -72,7 +74,10 @@ export default function SwipeRow({
 
   // Another row opened: this one goes back.
   useEffect(() => {
-    if (openId !== id && tx.value !== 0) tx.value = withTiming(0, { duration: 180 });
+    if (openId !== id && tx.value !== 0) {
+      setStill(null);
+      tx.value = withTiming(0, { duration: 180 });
+    }
   }, [openId, id, tx]);
 
   const pan = Gesture.Pan()
@@ -82,11 +87,7 @@ export default function SwipeRow({
     .onStart(() => {
       'worklet';
       startX.value = tx.value;
-      runOnJS(setDragging)(true);
-    })
-    .onFinalize(() => {
-      'worklet';
-      runOnJS(setDragging)(false);
+      runOnJS(setStill)(null);
     })
     .onUpdate((e) => {
       'worklet';
@@ -126,10 +127,14 @@ export default function SwipeRow({
       }
       armed.value = 0;
       if (tx.value > leadW * 0.5) {
-        tx.value = withTiming(leadW, { duration: 160 });
+        tx.value = withTiming(leadW, { duration: 160 }, (done) => {
+          if (done) runOnJS(setStill)(leadW);
+        });
         runOnJS(opened)(1);
       } else if (tx.value < -trailW * 0.5) {
-        tx.value = withTiming(-trailW, { duration: 160 });
+        tx.value = withTiming(-trailW, { duration: 160 }, (done) => {
+          if (done) runOnJS(setStill)(-trailW);
+        });
         runOnJS(opened)(1);
       } else {
         tx.value = withTiming(0, { duration: 160 });
@@ -144,6 +149,7 @@ export default function SwipeRow({
   const trailShow = useAnimatedStyle(() => ({ opacity: tx.value < -2 ? interpolate(-tx.value, [0, 24], [0, 1]) : 0 }));
 
   const close = () => {
+    setStill(null);
     tx.value = withTiming(0, { duration: 160 });
     onOpenChange(null);
   };
@@ -151,8 +157,7 @@ export default function SwipeRow({
   // slide is a UI-thread transform, and React still hit-tests it where it stood before the swipe
   // (reanimated_ui_props_dead_press) - over the buttons. Raised while open (and only then: closed, they are see-through
   // and must not catch a touch), they get the tap; nothing is hidden, the card has moved off them.
-  const isOpen = openId === id;
-  const raised = isOpen && !dragging ? { zIndex: 3, elevation: 3 } : null;
+
 
   return (
     <View
@@ -161,7 +166,7 @@ export default function SwipeRow({
         width.value = e.nativeEvent.layout.width;
       }}
     >
-      <Animated.View style={[styles.side, styles.left, leadShow, raised]} pointerEvents={isOpen && !dragging ? 'auto' : 'none'}>
+      <Animated.View style={[styles.side, styles.left, leadShow]}>
         {leading.map((a) => (
           <Pressable
             key={a.key}
@@ -178,7 +183,7 @@ export default function SwipeRow({
           </Pressable>
         ))}
       </Animated.View>
-      <Animated.View style={[styles.side, styles.right, trailShow, raised]} pointerEvents={isOpen && !dragging ? 'auto' : 'none'}>
+      <Animated.View style={[styles.side, styles.right, trailShow]}>
         {trailing.map((a) => (
           <Pressable
             key={a.key}
@@ -211,7 +216,7 @@ export default function SwipeRow({
         </Animated.View>
       )}
       <GestureDetector gesture={pan}>
-        <Animated.View style={rowStyle}>{children}</Animated.View>
+        <Animated.View style={still !== null ? { transform: [{ translateX: still }] } : rowStyle}>{children}</Animated.View>
       </GestureDetector>
     </View>
   );

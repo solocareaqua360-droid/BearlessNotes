@@ -1855,24 +1855,22 @@ export default function TasksScreen() {
     } satisfies Record<string, SwipeAction>;
     switch (view) {
       case 'inbox':
-        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.someday, A.remove], longLeading: A.today, longTrailing: A.someday };
+        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.someday, A.remove] };
       case 'today':
         return {
           leading: item.kanbanStatus === 'inProgress' ? [A.done] : [A.start, A.done],
           trailing: [A.tomorrow, A.when],
-          longLeading: A.done,
-          longTrailing: A.tomorrow,
         };
       case 'upcoming':
-        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.someday, A.noDate], longLeading: A.today, longTrailing: A.someday };
+        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.someday, A.noDate] };
       case 'someday':
-        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.remove], longLeading: A.today };
+        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.remove] };
       case 'logbook':
-        return { leading: [A.back], trailing: [A.remove], longLeading: A.back };
+        return { leading: [A.back], trailing: [A.remove] };
       default:
         // A project's own list (2026-10-26: a day is planned from a project too, not only from Вхідні).
-        if (item.checked) return { leading: [A.back], trailing: [A.remove], longLeading: A.back };
-        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.someday, A.remove], longLeading: A.today, longTrailing: A.someday };
+        if (item.checked) return { leading: [A.back], trailing: [A.remove] };
+        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.someday, A.remove] };
     }
   }
 
