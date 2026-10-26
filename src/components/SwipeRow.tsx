@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -52,6 +52,8 @@ export default function SwipeRow({
   const armed = useSharedValue(0);
   // Where the card stood when the finger came down (an open row starts from its open place, not from 0).
   const startX = useSharedValue(0);
+  // While the finger moves the card, the buttons go back UNDER it (raised, they lay over the card being swiped shut).
+  const [dragging, setDragging] = useState(false);
   const leadW = leading.length * BUTTON_W;
   const trailW = trailing.length * BUTTON_W;
   const hasLongL = longLeading ? 1 : 0;
@@ -80,6 +82,11 @@ export default function SwipeRow({
     .onStart(() => {
       'worklet';
       startX.value = tx.value;
+      runOnJS(setDragging)(true);
+    })
+    .onFinalize(() => {
+      'worklet';
+      runOnJS(setDragging)(false);
     })
     .onUpdate((e) => {
       'worklet';
@@ -145,7 +152,7 @@ export default function SwipeRow({
   // (reanimated_ui_props_dead_press) - over the buttons. Raised while open (and only then: closed, they are see-through
   // and must not catch a touch), they get the tap; nothing is hidden, the card has moved off them.
   const isOpen = openId === id;
-  const raised = isOpen ? { zIndex: 3, elevation: 3 } : null;
+  const raised = isOpen && !dragging ? { zIndex: 3, elevation: 3 } : null;
 
   return (
     <View
@@ -154,7 +161,7 @@ export default function SwipeRow({
         width.value = e.nativeEvent.layout.width;
       }}
     >
-      <Animated.View style={[styles.side, styles.left, leadShow, raised]} pointerEvents={isOpen ? 'auto' : 'none'}>
+      <Animated.View style={[styles.side, styles.left, leadShow, raised]} pointerEvents={isOpen && !dragging ? 'auto' : 'none'}>
         {leading.map((a) => (
           <Pressable
             key={a.key}
@@ -171,7 +178,7 @@ export default function SwipeRow({
           </Pressable>
         ))}
       </Animated.View>
-      <Animated.View style={[styles.side, styles.right, trailShow, raised]} pointerEvents={isOpen ? 'auto' : 'none'}>
+      <Animated.View style={[styles.side, styles.right, trailShow, raised]} pointerEvents={isOpen && !dragging ? 'auto' : 'none'}>
         {trailing.map((a) => (
           <Pressable
             key={a.key}
