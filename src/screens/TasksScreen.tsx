@@ -84,7 +84,7 @@ import { FEATURES } from '../features';
 import { saveHandoffFiles, saveHandoffText } from '../utils/handoffExport';
 import { exportHtmlAsPdf } from '../utils/htmlToPdf';
 import { tasksToHtml } from '../utils/tasksHtml';
-import { ageInDays, inView, isDueToday, isOverdue, VIEW_META, whenFields, type TaskView, type WhenChoice } from '../utils/taskViews';
+import { ageInDays, dayAhead, dateKeyPlus, inView, isDueToday, isOverdue, VIEW_META, whenFields, type TaskView, type WhenChoice } from '../utils/taskViews';
 import { useSoft } from '../theme/soft';
 import DayTimeline from '../components/DayTimeline';
 import { GlassPortal } from '../components/GlassPortal';
@@ -1784,7 +1784,7 @@ export default function TasksScreen() {
         (!needle || matchesSearch(t, needle)) &&
         (projectFilter === null || projectFilter === UNASSIGNED_ID || t.groupId === projectFilter)
     );
-    if (v === 'upcoming') return [...list].sort((a, b) => String(a.reminderDate).localeCompare(String(b.reminderDate)));
+    if (v === 'upcoming') return [...list].sort((a, b) => String(dayAhead(a, today)).localeCompare(String(dayAhead(b, today))));
     if (v === 'logbook') return [...list].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 200);
     list = byHand(sortItems(list, sortPref, (t) => t.text || 'Без назви', (t) => t.createdAt, (t) => t.updatedAt));
     return list;
@@ -1848,13 +1848,14 @@ export default function TasksScreen() {
       remove: { key: 'remove', label: 'Прибрати', icon: 'trash-outline', color: '#D5564B', onPress: () => confirmRemoveTask(item) },
       start: { key: 'start', label: 'Почати', icon: 'play-outline', color: '#3E8E5E', onPress: () => startWithUndo(item) },
       done: { key: 'done', label: 'Готово', icon: 'checkmark-done-outline', color: '#22A06B', onPress: () => doneWithUndo(item) },
-      tomorrow: { key: 'tomorrow', label: 'Завтра', icon: 'calendar-outline', color: '#8C8A7E', onPress: () => moveWithUndo(item, 'tomorrow', 'Завтра') },
+      // Soft (the «місяць»): planned for tomorrow, gone the day after if not done - never a hard, overdue date.
+      tomorrow: { key: 'tomorrow', label: 'Завтра', icon: 'moon-outline', color: '#7C7AA8', onPress: () => moveWithUndo(item, 'tomorrowSoft', 'Завтра') },
       noDate: { key: 'none', label: 'Без дати', icon: 'close-circle-outline', color: '#8C8A7E', onPress: () => moveWithUndo(item, 'none', 'Вхідні') },
       back: { key: 'back', label: 'Повернути', icon: 'arrow-undo-outline', color: '#4A7BD0', onPress: () => doneWithUndo(item) },
     } satisfies Record<string, SwipeAction>;
     switch (view) {
       case 'inbox':
-        return { leading: [A.today, A.when], trailing: [A.someday, A.remove], longLeading: A.today, longTrailing: A.someday };
+        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.someday, A.remove], longLeading: A.today, longTrailing: A.someday };
       case 'today':
         return {
           leading: item.kanbanStatus === 'inProgress' ? [A.done] : [A.start, A.done],
@@ -1863,13 +1864,15 @@ export default function TasksScreen() {
           longTrailing: A.tomorrow,
         };
       case 'upcoming':
-        return { leading: [A.today, A.when], trailing: [A.someday, A.noDate], longLeading: A.today, longTrailing: A.someday };
+        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.someday, A.noDate], longLeading: A.today, longTrailing: A.someday };
       case 'someday':
-        return { leading: [A.today, A.when], trailing: [A.remove], longLeading: A.today };
+        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.remove], longLeading: A.today };
       case 'logbook':
         return { leading: [A.back], trailing: [A.remove], longLeading: A.back };
       default:
-        return { leading: [], trailing: [] };
+        // A project's own list (2026-10-26: a day is planned from a project too, not only from Вхідні).
+        if (item.checked) return { leading: [A.back], trailing: [A.remove], longLeading: A.back };
+        return { leading: [A.today, A.tomorrow, A.when], trailing: [A.someday, A.remove], longLeading: A.today, longTrailing: A.someday };
     }
   }
 
@@ -2094,6 +2097,11 @@ export default function TasksScreen() {
           {!!item.recurrence && !isSelectMode && (
             <Pressable hitSlop={8} onPress={() => setRecurrenceTaskId(item.id)} accessibilityLabel={`Повторюється: ${recurrenceLabel(item.recurrence)}`}>
               <Ionicons name="repeat-outline" size={18} color={theme.ink.muted} />
+            </Pressable>
+          )}
+          {!item.checked && item.todayMarkedDate === dateKeyPlus(today, 1) && !isSelectMode && (
+            <Pressable hitSlop={8} onPress={() => moveWithUndo(item, 'none', 'Без дати')} accessibilityLabel="На завтра - зняти">
+              <Ionicons name="moon" size={17} color="#7C7AA8" />
             </Pressable>
           )}
           {isExpanded && !isSelectMode && (
@@ -2441,7 +2449,8 @@ export default function TasksScreen() {
     if (v === 'upcoming') {
       const days: string[] = [];
       list.forEach((t) => {
-        if (t.reminderDate && !days.includes(t.reminderDate)) days.push(t.reminderDate);
+        const d = dayAhead(t, today);
+        if (d && !days.includes(d)) days.push(d);
       });
       return (
         <>
@@ -2452,7 +2461,7 @@ export default function TasksScreen() {
                 <Text style={styles.v2Section}>
                   {WEEKDAY_FULL[(date.getDay() + 6) % 7]}, {formatShortDate(date)}
                 </Text>
-                {list.filter((t) => t.reminderDate === d).map(renderV2Row)}
+                {list.filter((t) => dayAhead(t, today) === d).map(renderV2Row)}
               </View>
             );
           })}
@@ -2470,7 +2479,10 @@ export default function TasksScreen() {
     const reminderLabel = formatReminderBadge(item);
     const isExpanded = expandedTaskIds.has(item.id);
     const subtaskCount = item.subtasks?.length ?? 0;
-    return (
+    // «Місяць»: the soft mark for tomorrow, drawn where the star stands (a tap takes it off, as the star's does).
+    const isTomorrow = !item.checked && item.todayMarkedDate === dateKeyPlus(today, 1);
+    const swipe = swipeActionsFor(item);
+    const row = (
       <View key={item.id} style={styles.row}>
         <View style={styles.rowMain}>
           <Pressable hitSlop={8} onPress={() => toggleTask(item)}>
@@ -2568,10 +2580,14 @@ export default function TasksScreen() {
           )}
           <Pressable
             hitSlop={8}
-            onPress={() => toggleToday(item)}
+            onPress={() => (isTomorrow ? moveWithUndo(item, 'none', 'Без дати') : toggleToday(item))}
             onLongPress={() => openReminderPicker(item.id)}
           >
-            <Ionicons name={isToday ? 'star' : 'star-outline'} size={20} color={isToday ? '#F59E0B' : theme.ink.faint} />
+            {isTomorrow ? (
+              <Ionicons name="moon" size={19} color="#7C7AA8" />
+            ) : (
+              <Ionicons name={isToday ? 'star' : 'star-outline'} size={20} color={isToday ? '#F59E0B' : theme.ink.faint} />
+            )}
           </Pressable>
           {/* Everything below the fold - subtasks, comment, attachments -
               never shows anywhere but here, so a chevron is the only way
@@ -2595,6 +2611,22 @@ export default function TasksScreen() {
         </View>
         {isExpanded && renderTaskDetails(item)}
       </View>
+    );
+    // Swipes here too (2026-10-26: a day is planned from a project, not only from Вхідні) - the same SwipeRow as the windows.
+    return (
+      <SwipeRow
+        key={item.id}
+        id={item.id}
+        openId={openSwipeId}
+        onOpenChange={setOpenSwipeId}
+        enabled={phone && !isSelectMode && !isExpanded}
+        leading={swipe.leading}
+        trailing={swipe.trailing}
+        longLeading={swipe.longLeading}
+        longTrailing={swipe.longTrailing}
+      >
+        {row}
+      </SwipeRow>
     );
   }
 

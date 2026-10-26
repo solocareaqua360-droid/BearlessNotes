@@ -33,6 +33,13 @@ export function isOverdue(t: ViewTask, today: string): boolean {
   return !!d && !(t.todayMarkedDate === today || t.reminderDate === today);
 }
 
+// The later day a task is for: its reminder's date, or the soft «завтра» mark (todayMarkedDate in the future).
+export function dayAhead(t: ViewTask, today: string): string | undefined {
+  if (t.reminderDate && t.reminderDate > today) return t.reminderDate;
+  if (t.todayMarkedDate && t.todayMarkedDate > today) return t.todayMarkedDate;
+  return undefined;
+}
+
 export function hasDay(t: ViewTask): boolean {
   return !!t.todayMarkedDate || !!t.reminderDate;
 }
@@ -44,7 +51,7 @@ export function inView<T extends ViewTask>(view: TaskView, t: T, today: string):
     case 'today':
       return !t.checked && isDueToday(t, today);
     case 'upcoming':
-      return !t.checked && !!t.reminderDate && t.reminderDate > today && !isDueToday(t, today);
+      return !t.checked && !!dayAhead(t, today) && !isDueToday(t, today);
     case 'someday':
       return !t.checked && !!t.someday && !isDueToday(t, today);
     case 'logbook':
@@ -78,7 +85,9 @@ export function dateKeyPlus(today: string, days: number): string {
 // «Коли?» - what each answer writes. `undefined` = the field goes. A timed
 // reminder is let go with the old day (its notification is cancelled by the
 // caller): a new day is a plain day until a time is set again.
-export type WhenChoice = 'today' | 'evening' | 'tomorrow' | 'someday' | 'none' | { date: string };
+// 'tomorrowSoft' (2026-10-26, the user's «місяць»): the star's own soft mark, set for tomorrow - no hard date, nothing
+// overdue if it is not done; tomorrow it is simply the star.
+export type WhenChoice = 'today' | 'evening' | 'tomorrow' | 'tomorrowSoft' | 'someday' | 'none' | { date: string };
 
 export function whenFields(
   choice: WhenChoice,
@@ -86,13 +95,15 @@ export function whenFields(
   t: ViewTask & { postponeCount?: number }
 ): Record<string, string | number | boolean | undefined> {
   const wasDue = isDueToday(t, today);
-  const later = choice === 'tomorrow' || choice === 'someday' || (typeof choice === 'object' && choice.date > today);
+  const later = choice === 'tomorrow' || choice === 'tomorrowSoft' || choice === 'someday' || (typeof choice === 'object' && choice.date > today);
   const postponeCount = wasDue && later ? (t.postponeCount ?? 0) + 1 : t.postponeCount;
   const clearReminder = { reminderTime: undefined, reminderKind: undefined, reminderNotificationId: undefined };
   // No day, no hour: «Колись» and «Без дати» let the planned hour go too.
   const noDay = { planTime: undefined, planMinutes: undefined };
   if (choice === 'today' || choice === 'evening')
     return { todayMarkedDate: today, reminderDate: undefined, ...clearReminder, someday: undefined, evening: choice === 'evening' ? true : undefined, postponeCount };
+  if (choice === 'tomorrowSoft')
+    return { todayMarkedDate: dateKeyPlus(today, 1), reminderDate: undefined, ...clearReminder, someday: undefined, evening: undefined, postponeCount };
   if (choice === 'someday')
     return { todayMarkedDate: undefined, reminderDate: undefined, ...clearReminder, ...noDay, someday: true, evening: undefined, postponeCount };
   if (choice === 'none')
