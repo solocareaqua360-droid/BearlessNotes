@@ -1,4 +1,3 @@
-import { useRenderTimer } from '../utils/perfWatch'; // TEMPORARY
 import { type ComponentProps, type ReactElement, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { askFates, boardContentsFates, confirmFates, FATE, type FateEntry, type FateKind } from '../utils/deleteFates';
 import { folderPathFromName } from '../utils/folderName';
@@ -317,7 +316,6 @@ async function readPhotoText(uri: string, driveFileId: string | undefined, start
 }
 
 export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; desk?: boolean } = {}) {
-  useRenderTimer('Провідник'); // TEMPORARY - optimisation day 2026-10-27
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();

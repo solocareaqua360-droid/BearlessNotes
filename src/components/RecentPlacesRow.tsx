@@ -1,4 +1,4 @@
-import { memo, useContext, useEffect, useState, type ReactNode } from 'react';
+import { memo, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
 import DocumentPageMiniature from './DocumentPageMiniature';
@@ -34,12 +34,36 @@ export default function RecentPlacesRow({ side }: { side: number }) {
   const desksControl = useContext(DesksControlContext);
   const recent = useRecentPlaces();
   const index = useDocumentIndex();
+  // THE CARDS OUT OF SIGHT COME LATER (optimisation day, 2026-10-27): twelve live page miniatures were built in the
+  // first second after a start, each with its own listener - ~200 ms of a frozen app twice over. The row shows the first
+  // few at once; the rest one by one once the start has settled (all at once they froze it 200 ms in one piece), or all
+  // together the moment the hand reaches for them (the row scrolled).
+  const [count, setCount] = useState(FIRST_CARDS);
+  // One press function per card, kept: the cards are memos, and a new arrow each time the row grew redrew every card in
+  // it (2026-10-27). What a press does is read fresh at the tap.
+  const openRef = useRef<(place: RecentPlace) => void>(() => {});
+  const presses = useRef(new Map<string, () => void>());
+  const pressFor = (place: RecentPlace) => {
+    const key = `${place.kind}:${place.ref}`;
+    let fn = presses.current.get(key);
+    if (!fn) {
+      fn = () => openRef.current(place);
+      presses.current.set(key, fn);
+    }
+    return fn;
+  };
+  useEffect(() => {
+    if (count >= 12) return;
+    const timer = setTimeout(() => setCount((n) => n + 1), count === FIRST_CARDS ? 3000 : 250);
+    return () => clearTimeout(timer);
+  }, [count]);
   // A note in the bin is not offered; until the index has arrived, none is judged.
   const shown = recent
     .filter((r) => r.kind !== 'document' || index.size === 0 || (index.has(r.ref) && !index.get(r.ref)?.deletedAt))
     .filter((r) => FEATURES.stickers || r.ref !== 'tile:stickers')
-    .slice(0, 12);
+    .slice(0, count);
   if (shown.length === 0) return null;
+  openRef.current = (place: RecentPlace) => open(place);
   const open = (place: RecentPlace) => {
     if (place.kind === 'document') go('Editor', { documentId: place.ref });
     else if (place.kind === 'board') go('BoardCopy', { boardId: place.ref });
@@ -61,9 +85,9 @@ export default function RecentPlacesRow({ side }: { side: number }) {
   return (
     <View style={styles.recents}>
       <Text style={[styles.heading, { color: S.ink3, paddingHorizontal: side + 4 }]}>Нещодавні</Text>
-      <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.recentRow, { paddingHorizontal: side }]}>
+      <ScrollView horizontal nestedScrollEnabled onScrollBeginDrag={() => setCount(12)} showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.recentRow, { paddingHorizontal: side }]}>
         {shown.map((place) => {
-          const press = () => open(place);
+          const press = pressFor(place);
           if (place.kind === 'document') return <RecentDocument key={`d:${place.ref}`} id={place.ref} onPress={press} />;
           if (place.kind === 'board') return <RecentBoard key={`b:${place.ref}`} id={place.ref} onPress={press} />;
           if (place.kind === 'file') return <RecentFile key={`f:${place.ref}`} id={place.ref} onPress={press} />;
@@ -76,6 +100,8 @@ export default function RecentPlacesRow({ side }: { side: number }) {
 }
 
 const CARD_W = 150;
+// As many as the widest screen shows at once, and one more peeking in.
+const FIRST_CARDS = 4;
 const PIC_H = 118;
 
 function RecentFrame({ label, icon, onPress, children }: { label: string; icon: string; onPress: () => void; children: ReactNode }) {

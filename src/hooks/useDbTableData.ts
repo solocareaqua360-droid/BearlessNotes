@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { doc, onSnapshot } from '../firestore';
+import { doc, onSnapshot, where } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
 import type { CustomDatabase, CustomDatabaseRow } from '../types';
@@ -40,8 +40,11 @@ export function useDbTableData(databaseId: string | undefined): {
   useEffect(() => {
     if (!databaseId) return;
     return onSnapshot(
-      ownedQuery('customDatabaseRows'),
-      (snapshot) => setRows(snapshot.docs.filter((d) => d.data().databaseId === databaseId && !d.data().deletedAt).map((d) => rowFrom(d.id, d.data()))),
+      // Only this base's rows (optimisation day, 2026-10-27): every row of every base used to come and be thrown away
+      // here - ~200 ms frozen whenever a note with a base table was shown, a recents card included. Two equalities need no
+      // composite index.
+      ownedQuery('customDatabaseRows', where('databaseId', '==', databaseId)),
+      (snapshot) => setRows(snapshot.docs.filter((d) => !d.data().deletedAt).map((d) => rowFrom(d.id, d.data()))),
       listenError('useDbTableData:customDatabaseRows')
     );
   }, [databaseId]);
@@ -49,7 +52,7 @@ export function useDbTableData(databaseId: string | undefined): {
   useEffect(() => {
     if (!databaseId) return;
     return onSnapshot(
-      ownedQuery('customDatabaseViews'),
+      ownedQuery('customDatabaseViews', where('databaseId', '==', databaseId)),
       (snapshot) =>
         setViews(
           snapshot.docs
