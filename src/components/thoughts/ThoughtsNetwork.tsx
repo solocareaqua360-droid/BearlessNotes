@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS, useDerivedValue, useSharedValue } from 'react-native-reanimated';
+import { Easing, runOnJS, useDerivedValue, useSharedValue, withTiming } from 'react-native-reanimated';
 import { BlendMode, Canvas, PaintStyle, Picture, Skia, StrokeCap, TileMode, createPicture, matchFont, useClock } from '@shopify/react-native-skia';
 import type { Thought, ThoughtTheme } from '../../hooks/useThoughts';
 import { cardTitle } from './thoughtText';
@@ -31,7 +31,7 @@ const LOOSE_NEBULA = [170, 170, 185];
 
 type Node = { id: string; x: number; y: number; r: number; c: number[]; ph: number; per: number; life: number; label: string; k: number };
 type Edge = { a: number; b: number; bend: number };
-type Cluster = { x: number; y: number; R: number; c: number[]; name: string; heat: number };
+type Cluster = { key: string | null; x: number; y: number; R: number; c: number[]; name: string; heat: number };
 type Net = { nodes: Node[]; edges: Edge[]; clusters: Cluster[]; box: { x0: number; y0: number; x1: number; y1: number } };
 type Spark = { a: number; b: number; t0: number; dur: number };
 type Flash = { i: number; t0: number };
@@ -83,7 +83,7 @@ function layout(themes: ThoughtTheme[], thoughts: Thought[]): Net {
         k: gi,
       });
     });
-    clusters.push({ x: cx, y: cy, R, c: g.c, name: g.name, heat: mine.length ? heat / mine.length : 0 });
+    clusters.push({ key: g.key, x: cx, y: cy, R, c: g.c, name: g.name, heat: mine.length ? heat / mine.length : 0 });
   });
   // Dendrites: the links the user drew on a theme's canvas, what an AI note was made from, and each thought to its two
   // nearest in the same theme - so a cluster is a web, not a scatter.
@@ -124,12 +124,36 @@ const clampZ = (z: number) => {
   return Math.max(0.12, Math.min(3.2, z));
 };
 
+// INTO A THEME (step 4): pinched deep enough into a nebula, the theme opens - its own canvas. How deep counts: the
+// cluster twice as big as the screen, or the zoom near its end (a small theme never gets that big). 1 = in.
+const ENTER_Z = 3;
+const depthOf = (R: number, z: number, room: number) => {
+  'worklet';
+  return Math.max((R * z) / (0.8 * room), z / ENTER_Z);
+};
+// The cluster a point of the sky (world units) lies in, or -1.
+const clusterAt = (clusters: Cluster[], x: number, y: number) => {
+  'worklet';
+  let best = -1;
+  let bd = Infinity;
+  for (let i = 0; i < clusters.length; i++) {
+    const d = Math.hypot(clusters[i].x - x, clusters[i].y - y);
+    if (d < clusters[i].R * 1.15 && d < bd) {
+      bd = d;
+      best = i;
+    }
+  }
+  return best;
+};
+
 export default function ThoughtsNetwork({
   width,
   height,
   themes,
   thoughts,
   onOpen,
+  onEnter,
+  away = false,
   top = 0,
 }: {
   width: number;
@@ -138,6 +162,10 @@ export default function ThoughtsNetwork({
   thoughts: Thought[];
   // A tapped thought: its own card opens (the owner's - the same card as everywhere).
   onOpen: (id: string) => void;
+  // A theme pinched into (null = the loose thoughts): the owner opens its canvas.
+  onEnter?: (themeId: string | null) => void;
+  // Something is open over the sky (that canvas): it stops drawing, and when it closes the camera backs out.
+  away?: boolean;
   // How much of the top the window's own bar covers: the sky is framed below it.
   top?: number;
 }) {
@@ -242,6 +270,34 @@ export default function ThoughtsNetwork({
     }
   };
 
+  // Pinched in: once per dive; the camera is left where it was, so «back» lands on the same place.
+  const entering = useSharedValue(0);
+  const entered = useRef<Cluster | null>(null);
+  const enter = (i: number) => {
+    const k = net.value.clusters[i];
+    if (!k || !onEnter) return;
+    entered.current = k;
+    onEnter(k.key);
+  };
+  // Back from the canvas: the sky flies out of the nebula to where it is whole on the screen again.
+  const [sleeping, setSleeping] = useState(false);
+  useEffect(() => {
+    if (away) {
+      const timer = setTimeout(() => setSleeping(true), 450);
+      return () => clearTimeout(timer);
+    }
+    setSleeping(false);
+    const k = entered.current;
+    entered.current = null;
+    entering.value = 0;
+    if (!k) return;
+    const ease = { duration: 520, easing: Easing.out(Easing.cubic) };
+    camX.value = withTiming(k.x, ease);
+    camY.value = withTiming(k.y + k.R * 0.15, ease);
+    camZ.value = withTiming(Math.max(0.3, Math.min(1.6, (Math.min(width, height - top) * 0.42) / k.R)), ease);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [away]);
+
   const panX = useSharedValue(0);
   const panY = useSharedValue(0);
   const pz0 = useSharedValue(1);
@@ -278,6 +334,13 @@ export default function ThoughtsNetwork({
         camZ.value = z;
         camX.value = fx.value - (e.focalX - width / 2) / z;
         camY.value = fy.value - (e.focalY - height / 2) / z;
+        if (entering.value) return;
+        const { clusters } = net.value;
+        const i = clusterAt(clusters, fx.value, fy.value);
+        if (i >= 0 && depthOf(clusters[i].R, z, Math.min(width, height - top)) >= 1) {
+          entering.value = 1;
+          runOnJS(enter)(i);
+        }
       })
       // The moment one finger lifts, Android recomputes the focal from the finger left - a jump in one ordinary frame.
       // The pinch ends on that touch-up, before it can read it (as the board's pinch does).
@@ -291,7 +354,7 @@ export default function ThoughtsNetwork({
       });
     return Gesture.Race(tap, Gesture.Simultaneous(pan, pinch));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width, height]);
+  }, [width, height, top]);
 
   const picture = useDerivedValue(() => {
     const W = width;
@@ -344,6 +407,14 @@ export default function ThoughtsNetwork({
       for (const k of clusters) {
         const R = (k.R * 2.6 + 60) * z;
         glow(canvas, lit, sx(k.x), sy(k.y), R, k.c, (0.1 + (1 - near) * 0.45) * (0.6 + k.heat * 0.6));
+      }
+      // Diving into a theme: past half way its colour fills the screen and its name comes up - the door opening.
+      const room = Math.min(W, H - top);
+      const ki = clusterAt(clusters, cx, cy + top / 2 / z);
+      const dive = ki >= 0 ? Math.min(1, Math.max(0, (depthOf(clusters[ki].R, z, room) - 0.55) / 0.45)) : 0;
+      if (dive > 0) {
+        const k = clusters[ki];
+        glow(canvas, lit, W / 2, (H + top) / 2, Math.max(W, H) * 0.9, k.c, dive * 0.32);
       }
 
       // Dendrites.
@@ -420,6 +491,12 @@ export default function ThoughtsNetwork({
           canvas.drawText(k.name, x, sy(k.y) + k.R * z * 0.9 + 22, ink, bigFont);
         }
       }
+      if (dive > 0) {
+        const k = clusters[ki];
+        const w = bigFont.getTextWidth(k.name);
+        ink.setColor(col([255, 255, 255], dive * 0.95));
+        canvas.drawText(k.name, Math.max(12, (W - w) / 2), top + 44, ink, bigFont);
+      }
       if (z > 1.1) {
         for (const n of nodes) {
           if (!n.label) continue;
@@ -439,9 +516,11 @@ export default function ThoughtsNetwork({
       <View style={[StyleSheet.absoluteFill, { backgroundColor: '#05060B' }]} collapsable={false}>
         {/* The night sky wants the light status bar, whatever the app's own theme. */}
         <StatusBar style="light" />
-        <Canvas style={{ width, height }}>
-          <Picture picture={picture} />
-        </Canvas>
+        {!sleeping && (
+          <Canvas style={{ width, height }}>
+            <Picture picture={picture} />
+          </Canvas>
+        )}
       </View>
     </GestureDetector>
   );

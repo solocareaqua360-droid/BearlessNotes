@@ -170,7 +170,16 @@ export default function ThoughtsSpace({
         style={[StyleSheet.absoluteFill, { backgroundColor: sky ? '#05060B' : S.bg === 'transparent' ? '#F6F5F2' : S.bg }, look]}
       >
         {sky && (
-          <ThoughtsNetwork width={W} height={H} top={insets.top + CHROME_TOP + TOP_NAV_H} themes={themes} thoughts={thoughts} onOpen={setReading} />
+          <ThoughtsNetwork
+            width={W}
+            height={H}
+            top={insets.top + CHROME_TOP + TOP_NAV_H}
+            themes={themes}
+            thoughts={thoughts}
+            onOpen={setReading}
+            onEnter={(id) => (id === null ? setOpenId(LOOSE) : setCanvasId(id))}
+            away={canvasId !== null || openId !== null}
+          />
         )}
         {inline ? (
           <View style={styles.inlineHead}>

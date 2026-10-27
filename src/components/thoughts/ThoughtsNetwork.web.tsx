@@ -4,6 +4,6 @@ import type { Thought, ThoughtTheme } from '../../hooks/useThoughts';
 
 export { FEELINGS, type Feeling } from './feelings';
 
-export default function ThoughtsNetwork(_: { width: number; height: number; themes: ThoughtTheme[]; thoughts: Thought[]; onOpen: (id: string) => void; top?: number }) {
+export default function ThoughtsNetwork(_: { width: number; height: number; themes: ThoughtTheme[]; thoughts: Thought[]; onOpen: (id: string) => void; onEnter?: (themeId: string | null) => void; away?: boolean; top?: number }) {
   return null;
 }
