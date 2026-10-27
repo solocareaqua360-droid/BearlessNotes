@@ -61,6 +61,7 @@ import {
   query,
   updateDoc,
   writeBatch,
+  where,
 } from '../firestore';
 import { ownedQuery, setDoc } from '../utils/owned';
 import {
@@ -324,10 +325,9 @@ export default function CustomDatabaseScreen({
   // the databases its relations point at both come out of this one read, instead of a second full read of the
   // same collection started only after this database's fields had arrived.
   const [allRows, setAllRows] = useState<CustomDatabaseRow[]>([]);
-  const rows = useMemo(
-    () => allRows.filter((r) => r.databaseId === databaseId).sort((a, b) => b.updatedAt - a.updatedAt),
-    [allRows, databaseId]
-  );
+  const rows = useMemo(() => [...allRows].sort((a, b) => b.updatedAt - a.updatedAt), [allRows]);
+  // The rows of the bases this one's relations point at (or that point at it), by their own query.
+  const [linkedRows, setLinkedRows] = useState<CustomDatabaseRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   // Why the list is empty, when it is empty for a reason other than having
   // nothing in it - see the rows listener's error handler below.
@@ -711,9 +711,9 @@ export default function CustomDatabaseScreen({
   }, []);
 
   useEffect(() => {
-    // Filtered client-side by databaseId, same "avoid a composite index"
-    // tradeoff every other database screen in this app already makes.
-    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
+    // Only this base's rows (optimisation, 2026-10-27): every row of every base used to come and be filtered here. Two
+    // equalities need no composite index. The bases its relations point at are read by their own listener below.
+    return onSnapshot(ownedQuery('customDatabaseRows', where('databaseId', '==', databaseId)), (snapshot) => {
       setAllRows(
         snapshot.docs
           .map((docSnapshot) => {
@@ -870,12 +870,47 @@ export default function CustomDatabaseScreen({
   const relatedRows = useMemo(() => {
     const grouped: Record<string, CustomDatabaseRow[]> = {};
     if (referencedDbIds.length === 0) return grouped;
-    allRows.forEach((row) => {
+    [...allRows, ...linkedRows].forEach((row) => {
       if (referencedDbIds.includes(row.databaseId)) (grouped[row.databaseId] ??= []).push(row);
     });
     return grouped;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allRows, referencedDbIdsKey]);
+  }, [allRows, linkedRows, referencedDbIdsKey]);
+  // Their rows: one `in` query per thirty bases (Firestore's limit), only the ones that are not this base.
+  useEffect(() => {
+    const others = referencedDbIds.filter((id) => id !== databaseId);
+    if (others.length === 0) {
+      setLinkedRows([]);
+      return;
+    }
+    const parts: CustomDatabaseRow[][] = [];
+    const chunks: string[][] = [];
+    for (let i = 0; i < others.length; i += 30) chunks.push(others.slice(i, i + 30));
+    const offs = chunks.map((ids, k) =>
+      onSnapshot(
+        ownedQuery('customDatabaseRows', where('databaseId', 'in', ids)),
+        (snapshot) => {
+          parts[k] = snapshot.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              databaseId: data.databaseId,
+              values: data.values ?? {},
+              tagIds: data.tagIds ?? [],
+              groupId: data.groupId,
+              usedInDocuments: data.usedInDocuments,
+              createdAt: data.createdAt ?? 0,
+              updatedAt: data.updatedAt ?? 0,
+            } as CustomDatabaseRow;
+          });
+          setLinkedRows(parts.flat());
+        },
+        listenError('CustomDatabaseScreen:linkedRows')
+      )
+    );
+    return () => offs.forEach((off) => off());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [referencedDbIdsKey, databaseId]);
 
   // A Modal handled the hardware back button for free; a plain overlay has
   // to claim it, or back would leave the database entirely with the page

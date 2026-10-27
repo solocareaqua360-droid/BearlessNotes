@@ -11,7 +11,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from './icons/Ionicons';
 import AttachmentImage from './AttachmentImage';
-import { doc, onSnapshot } from '../firestore';
+import { doc, onSnapshot, where } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
 import { Block, CustomDatabase, CustomDatabaseRow, CustomDatabaseView, SketchElement } from '../types';
@@ -300,14 +300,12 @@ export default function AddExistingItemModal({
 
   useEffect(() => {
     if (!visible || !openDatabaseId) return;
-    // Filtered client-side by databaseId, same "avoid a composite index"
-    // convention CustomDatabaseScreen's own rows query follows.
-    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
+    // Only this base's rows (2026-10-27; two equalities need no composite index).
+    return onSnapshot(ownedQuery('customDatabaseRows', where('databaseId', '==', openDatabaseId)), (snapshot) => {
       setCustomRows(
         [...snapshot.docs]
           .sort(newestFirst)
           .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) }))
-          .filter((r) => r.databaseId === openDatabaseId)
       );
     }, listenerFailed('customDatabaseRows'));
   }, [visible, openDatabaseId]);

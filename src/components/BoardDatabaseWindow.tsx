@@ -5,7 +5,7 @@ import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from './icons/Ionicons';
 import CustomRowBlockCard from './CustomRowBlockCard';
-import { doc, onSnapshot } from '../firestore';
+import { doc, onSnapshot, where } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
 import { listenError } from '../utils/listenError';
@@ -96,13 +96,9 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
   useEffect(
     () =>
       onSnapshot(
-        ownedQuery('customDatabaseRows'),
-        (snapshot) =>
-          setRows(
-            snapshot.docs
-              .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) }))
-              .filter((r) => r.databaseId === win.databaseId)
-          ),
+        // Only this base's rows (2026-10-27).
+        ownedQuery('customDatabaseRows', where('databaseId', '==', win.databaseId)),
+        (snapshot) => setRows(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) }))),
         listenError('BoardDatabaseWindow:rows')
       ),
     [win.databaseId]

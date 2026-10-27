@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { doc, onSnapshot } from '../firestore';
+import { doc, onSnapshot, where } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
 import { CustomDatabase, CustomDatabaseRow, CustomDatabaseView } from '../types';
@@ -73,14 +73,9 @@ export function useCustomDatabaseViewData(
       setRawRows([]);
       return;
     }
-    // Filtered client-side by databaseId, same "avoid a composite index"
-    // convention CustomDatabaseScreen's own rows query follows.
-    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
-      setRawRows(
-        snapshot.docs
-          .map((d) => rowFrom(d.id, d.data()))
-          .filter((r) => r.databaseId === databaseId)
-      );
+    // Only this base's rows (2026-10-27; two equalities need no composite index).
+    return onSnapshot(ownedQuery('customDatabaseRows', where('databaseId', '==', databaseId)), (snapshot) => {
+      setRawRows(snapshot.docs.map((d) => rowFrom(d.id, d.data())));
     }, listenError('useCustomDatabaseViewData:customDatabaseRows'));
   }, [databaseId]);
 

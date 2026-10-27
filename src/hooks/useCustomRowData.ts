@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { doc, onSnapshot } from '../firestore';
+import { doc, onSnapshot, where } from '../firestore';
 import { db } from '../firebase';
 import { categoryFromSiteName } from '../utils/linkCategory';
 import { ownedQuery } from '../utils/owned';
@@ -136,15 +136,24 @@ export function useRowDisplayContext(database: CustomDatabase | null): RowDispla
       setRelatedRows({});
       return;
     }
-    return onSnapshot(ownedQuery('customDatabaseRows'), (snapshot) => {
-      const grouped: Record<string, CustomDatabaseRow[]> = {};
-      snapshot.docs.forEach((d) => {
-        const data = d.data();
-        if (!referencedDbIds.includes(data.databaseId)) return;
-        (grouped[data.databaseId as string] ??= []).push(rowFrom(d.id, data));
-      });
-      setRelatedRows(grouped);
-    }, listenError('useCustomRowData:customDatabaseRows'));
+    // Only the rows of the bases pointed at (2026-10-27): one `in` query per thirty bases.
+    const parts: Record<string, CustomDatabaseRow[]>[] = [];
+    const offs: (() => void)[] = [];
+    for (let i = 0; i < referencedDbIds.length; i += 30) {
+      const k = offs.length;
+      offs.push(
+        onSnapshot(ownedQuery('customDatabaseRows', where('databaseId', 'in', referencedDbIds.slice(i, i + 30))), (snapshot) => {
+          const grouped: Record<string, CustomDatabaseRow[]> = {};
+          snapshot.docs.forEach((d) => {
+            const data = d.data();
+            (grouped[data.databaseId as string] ??= []).push(rowFrom(d.id, data));
+          });
+          parts[k] = grouped;
+          setRelatedRows(Object.assign({}, ...parts.filter(Boolean)));
+        }, listenError('useCustomRowData:customDatabaseRows'))
+      );
+    }
+    return () => offs.forEach((off) => off());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referencedDbIdsKey]);
 
