@@ -263,9 +263,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
 // `databaseId` as a prop, not only from the route: on a wide screen this
 // screen is rendered INSIDE the tile board's left pane, where the route
 // belongs to the board and knows nothing about which database was opened.
-// How many record cards are drawn at once when a base opens, and how many join them each step after.
-const FIRST_CARDS = 12;
-const MORE_CARDS = 16;
 
 export default function CustomDatabaseScreen({
   databaseId: databaseIdProp,
@@ -330,21 +327,10 @@ export default function CustomDatabaseScreen({
   // same collection started only after this database's fields had arrived.
   const [allRows, setAllRows] = useState<CustomDatabaseRow[]>([]);
   const rows = useMemo(() => [...allRows].sort((a, b) => b.updatedAt - a.updatedAt), [allRows]);
-  // THE RECORDS COME IN STEPS (optimisation, 2026-10-27; here, above every early return - a hook below one crashed the
-  // base once): a base of sixty records drew every card in one piece the moment it opened - two passes of ~180 ms of a
-  // frozen screen. The first screenful is drawn at once and the rest follows in batches a few frames apart; the counts,
-  // groups and totals are always of everything.
-  const [cardBudget, setCardBudget] = useState(FIRST_CARDS);
   // One press / menu / tick function per record, kept between renders (see CustomRowCardKept): what they do is read from
   // `rowActs` at the tap, which the screen refreshes on every render.
   const rowActs = useRef({ press: (_id: string, _e?: GestureResponderEvent) => {}, menu: (_id: string) => {}, tick: (_id: string) => {} });
   const rowFns = useRef(new Map<string, { press: (e?: GestureResponderEvent) => void; menu: () => void; tick: () => void }>());
-  useEffect(() => setCardBudget(FIRST_CARDS), [databaseId]);
-  useEffect(() => {
-    if (cardBudget >= rows.length) return;
-    const timer = setTimeout(() => setCardBudget((n) => n + MORE_CARDS), cardBudget === FIRST_CARDS ? 300 : 70);
-    return () => clearTimeout(timer);
-  }, [cardBudget, rows.length]);
   // The rows of the bases this one's relations point at (or that point at it), by their own query.
   const [linkedRows, setLinkedRows] = useState<CustomDatabaseRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -2613,79 +2599,104 @@ export default function CustomDatabaseScreen({
     );
   }
 
+  // THE CARDS VIEW, drawn only where it is seen (same reason as renderRowsList): a FlatList of group headers and LINES of
+  // tiles (as many to a line as the width takes). What the old grid's `gap`, its 8 of vertical padding and the group's
+  // margin made between things is each entry's own padding, worked out so the screen looks as it did.
   function renderCards() {
-    const cardsGrid = (all: CustomDatabaseRow[]) => (
-      <View style={[styles.cardGrid, { paddingHorizontal: CARD_GRID_PADDING }]}>
-        {withinBudget(all).map((row) => (
-          <CustomRowGridCard
-            key={row.id}
-            rowId={row.id}
-            width={gridTileWidth}
-            display={rowDisplayFor(row)}
-            documentCount={documentIdsOf(row).length}
-            chosen={recordPanelOn && rowPageId === row.id}
-            onPress={(e) => (isSelectMode ? toggleSelected(row.id) : openRowFromCard(row.id, e))}
-            onLongPress={() => setRowMenuId(row.id)}
-            right={
-              isSelectMode ? (
-                <Ionicons
-                  name={selectedIds.has(row.id) ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={22}
-                  color={sInk('#fff')}
-                />
-              ) : (
-                <Pressable hitSlop={8} onPress={() => setRowMenuId(row.id)}>
-                  <Ionicons name="ellipsis-horizontal" size={16} color={sInk2('rgba(255,255,255,0.85)')} />
-                </Pressable>
-              )
-            }
-          />
-        ))}
-      </View>
-    );
-
+    type Entry =
+      | { kind: 'head'; key: string; label: string; count: number; collapsed: boolean; after: number }
+      | { kind: 'line'; rows: CustomDatabaseRow[]; before: number; after: number };
+    const entries: Entry[] = [];
+    const pushLines = (all: CustomDatabaseRow[], lastAfter: number) => {
+      const lines = Math.ceil(all.length / gridColumns);
+      for (let i = 0; i < lines; i++) {
+        entries.push({
+          kind: 'line',
+          rows: all.slice(i * gridColumns, (i + 1) * gridColumns),
+          before: !groupField && i === 0 ? 8 : 0,
+          after: i === lines - 1 ? lastAfter : CARD_GRID_GAP,
+        });
+      }
+    };
     if (!groupField) {
-      return (
-        <ScrollView contentContainerStyle={{ paddingTop: topPad, paddingBottom: dockClear + insets.bottom }}>
-          {renderTotals()}
-          {cardsGrid(displayedRows)}
-        </ScrollView>
-      );
+      pushLines(displayedRows, 8);
+    } else {
+      rowGroups.forEach((group) => {
+        const key = group.key || '__empty__';
+        const collapsed = collapsedGroups.has(key);
+        const open = !collapsed && group.rows.length > 0;
+        entries.push({ kind: 'head', key, label: group.label, count: group.rows.length, collapsed, after: open ? 16 : 28 });
+        if (!collapsed) pushLines(group.rows, 36);
+      });
     }
-
-    // Same grouping as the list and the table - each group its own tile
-    // grid, collapsible the same way.
+    const totals = renderTotals();
     return (
-      <ScrollView contentContainerStyle={[styles.list, { paddingHorizontal: 0, paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
-        {renderTotals()}
-        {rowGroups.map((group) => {
-          const key = group.key || '__empty__';
-          const collapsed = collapsedGroups.has(key);
-          return (
-            <View key={key} style={styles.groupSection}>
-              <Pressable
-                style={[styles.groupHeader, { paddingHorizontal: CARD_GRID_PADDING }]}
-                onPress={() => toggleGroupCollapsed(key)}
-              >
+      <FlatList
+        data={entries}
+        keyExtractor={(e, i) => (e.kind === 'head' ? `h:${e.key}` : `l:${e.rows[0]?.id ?? i}`)}
+        initialNumToRender={4}
+        maxToRenderPerBatch={3}
+        windowSize={7}
+        contentContainerStyle={
+          groupField
+            ? [styles.list, { paddingHorizontal: 0, gap: 0, paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]
+            : { paddingTop: topPad, paddingBottom: dockClear + insets.bottom }
+        }
+        ListHeaderComponent={totals ? <View style={{ paddingBottom: groupField ? 10 : 0 }}>{totals}</View> : null}
+        ListFooterComponent={
+          groupField ? (
+            <View style={[styles.groupTotal, { paddingHorizontal: CARD_GRID_PADDING }]}>
+              <Text style={styles.groupTotalLabel}>Усього</Text>
+              <Text style={styles.groupTotalCount}>{displayedRows.length}</Text>
+            </View>
+          ) : null
+        }
+        renderItem={({ item: e }) =>
+          e.kind === 'head' ? (
+            <View style={{ paddingBottom: e.after }}>
+              <Pressable style={[styles.groupHeader, { paddingHorizontal: CARD_GRID_PADDING }]} onPress={() => toggleGroupCollapsed(e.key)}>
                 <Ionicons
-                  name={collapsed ? 'chevron-forward' : 'chevron-down'}
+                  name={e.collapsed ? 'chevron-forward' : 'chevron-down'}
                   size={14}
                   color={softDb ? softDb.ink3 : "rgba(255,255,255,0.6)"}
                 />
                 <Text style={styles.groupHeaderLabel} numberOfLines={1}>
-                  {group.label}
+                  {e.label}
                 </Text>
-                <Text style={styles.groupHeaderCount}>{group.rows.length}</Text>
+                <Text style={styles.groupHeaderCount}>{e.count}</Text>
               </Pressable>
-              {!collapsed && cardsGrid(group.rows)}
             </View>
-          );
-        })}
-        <View style={[styles.groupTotal, { paddingHorizontal: CARD_GRID_PADDING }]}>
-          <Text style={styles.groupTotalLabel}>Усього</Text>
-          <Text style={styles.groupTotalCount}>{displayedRows.length}</Text>
-        </View>
-      </ScrollView>
+          ) : (
+            <View style={{ flexDirection: 'row', gap: CARD_GRID_GAP, paddingHorizontal: CARD_GRID_PADDING, paddingTop: e.before, paddingBottom: e.after }}>
+              {e.rows.map((row) => (
+                <CustomRowGridCard
+                  key={row.id}
+                  rowId={row.id}
+                  width={gridTileWidth}
+                  display={rowDisplayFor(row)}
+                  documentCount={documentIdsOf(row).length}
+                  chosen={recordPanelOn && rowPageId === row.id}
+                  onPress={(ev) => (isSelectMode ? toggleSelected(row.id) : openRowFromCard(row.id, ev))}
+                  onLongPress={() => setRowMenuId(row.id)}
+                  right={
+                    isSelectMode ? (
+                      <Ionicons
+                        name={selectedIds.has(row.id) ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={22}
+                        color={sInk('#fff')}
+                      />
+                    ) : (
+                      <Pressable hitSlop={8} onPress={() => setRowMenuId(row.id)}>
+                        <Ionicons name="ellipsis-horizontal" size={16} color={sInk2('rgba(255,255,255,0.85)')} />
+                      </Pressable>
+                    )
+                  }
+                />
+              ))}
+            </View>
+          )
+        }
+      />
     );
   }
 
@@ -3710,12 +3721,6 @@ export default function CustomDatabaseScreen({
 
   // The parameters window's four sections, with what each is set to (a line that may wrap) - see paramsFolded.
   const fieldNameOf = (id: string) => database.fields.find((f) => f.id === id)?.name ?? 'Поле';
-  let budgetLeft = cardBudget;
-  const withinBudget = <T,>(list: T[]): T[] => {
-    const part = list.slice(0, Math.max(0, budgetLeft));
-    budgetLeft -= part.length;
-    return part;
-  };
   const sortName =
     (BUILT_IN_SORT_LABELS as Record<string, string>)[sortPref.field] ?? fieldNameOf(sortPref.field);
   const projectName =
@@ -3767,8 +3772,6 @@ export default function CustomDatabaseScreen({
       tab.key === 'filter' ? filterFields.length > 0 || groups.length > 0 : tab.key === 'group' ? groupFields.length > 0 : true
     );
 
-  // What is left to draw this pass: each list takes its share off the front.
-  budgetLeft = cardBudget;
   return (
     <SoftSurfaceContext.Provider value={softDb}>
     <View style={styles.container}>
