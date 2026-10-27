@@ -1690,10 +1690,16 @@ export default function TasksScreen() {
 
   // THE HOUR ON THE DAY'S SCALE - planned, not rung (see Block.planTime).
   async function setPlan(task: Task, time: string | null) {
-    await updateTaskBothSides(task, { planTime: time ?? deleteField() }, (b) => {
+    // «Без часу» takes the length and «фонова» with it: they mean nothing without an hour.
+    const cleared = time ? {} : { planMinutes: deleteField(), planBackground: deleteField() };
+    await updateTaskBothSides(task, { planTime: time ?? deleteField(), ...cleared }, (b) => {
       const next = { ...b };
       if (time) next.planTime = time;
-      else delete next.planTime;
+      else {
+        delete next.planTime;
+        delete next.planMinutes;
+        delete next.planBackground;
+      }
       return next;
     });
   }

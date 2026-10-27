@@ -235,9 +235,11 @@ export default function DayTimeline({
   };
   const carried = (item: TimelineItem, node: React.ReactElement) => {
     if (!onMove || item.done) return node;
+    // Worked out here, on the JS side: a worklet must not call a plain function (it crashed the app, 2026-10-27).
+    const startMin = toMinutes(item.time);
     const g = Gesture.Pan()
       .activateAfterLongPress(300)
-      .onStart(() => runOnJS(carryBegin)(item.id, toMinutes(item.time)))
+      .onStart(() => runOnJS(carryBegin)(item.id, startMin))
       .onUpdate((e) => runOnJS(carry)(item.id, e.translationY, e.absoluteY))
       .onEnd(() => runOnJS(carryEnd)(item.id))
       .onFinalize(() => runOnJS(carryGone)());
@@ -252,17 +254,18 @@ export default function DayTimeline({
     if (unShift.current) unfollow();
     setLive(null);
   };
-  const grip = (item: TimelineItem) => {
+  const grip = (item: TimelineItem, strip = false) => {
     if (!onResize || item.done) return null;
+    const minutes = item.minutes ?? 0;
     const g = Gesture.Pan()
       .activeOffsetY([-3, 3])
-      .onStart(() => runOnJS(begin)(item.id, item.minutes ?? 0))
+      .onStart(() => runOnJS(begin)(item.id, minutes))
       .onUpdate((e) => runOnJS(pull)(item.id, e.translationY, e.absoluteY))
       .onEnd(() => runOnJS(end)(item.id))
       .onFinalize(() => runOnJS(pullGone)());
     return (
       <GestureDetector gesture={g}>
-        <View style={styles.grip} accessibilityLabel="Потягнути, щоб змінити тривалість">
+        <View style={[styles.grip, strip && styles.gripStrip]} accessibilityLabel="Потягнути, щоб змінити тривалість">
           <View style={[styles.gripBar, { backgroundColor: 'rgba(31,35,38,0.28)' }]} />
         </View>
       </GestureDetector>
@@ -271,7 +274,7 @@ export default function DayTimeline({
 
   const label = (i: TimelineItem) => {
     const m = lengthOf(i);
-    const s = toMinutes(i.time);
+    const s = startOf(i);
     return m ? `${hhmm(s)}–${hhmm(s + m)}` : i.time;
   };
 
@@ -354,7 +357,7 @@ export default function DayTimeline({
             {strip ? (
               <Text style={[styles.blockText, { color: '#1F2326', fontSize: 13 }, item.done && styles.done]} numberOfLines={1}>
                 {item.text}
-                <Text style={styles.blockSub}>{`  ${item.time}`}</Text>
+                <Text style={styles.blockSub}>{`  ${hhmm(start)}`}</Text>
               </Text>
             ) : (
               <>
@@ -367,7 +370,7 @@ export default function DayTimeline({
                 </Text>
               </>
             )}
-            {grip(item)}
+            {grip(item, strip)}
             {moving?.id === item.id && <Text style={styles.movingTime}>{hhmm(moving.start)}</Text>}
           </Pressable>
         );
@@ -487,9 +490,11 @@ const styles = StyleSheet.create({
   lifted: { zIndex: 40, elevation: 8, boxShadow: '0 6px 18px rgba(0,0,0,0.22)' } as never,
   movingTime: { position: 'absolute', right: 8, top: 4, fontSize: 12, fontFamily: FONT_SEMIBOLD, color: '#1F2326' },
   drop: { position: 'absolute', left: LABEL_W - 4, right: 0, height: 0, borderTopWidth: 2, borderStyle: 'dashed', borderColor: '#4A7BD0', zIndex: 45 },
-  dropText: { position: 'absolute', left: 6, top: -20, fontSize: 12, fontFamily: FONT_SEMIBOLD, color: '#4A7BD0' },
+  dropText: { position: 'absolute', right: 6, top: 38, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#4A7BD0', color: '#FFFFFF', overflow: 'hidden', fontSize: 12, fontFamily: FONT_SEMIBOLD },
   grip: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 14, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 3 },
   gripBar: { width: 26, height: 3, borderRadius: 2 },
+  // A strip is one line: its handle stands at the right end, clear of the words and the time.
+  gripStrip: { left: undefined, width: 44, right: 0, top: 0, height: undefined, justifyContent: 'center', paddingBottom: 0 },
   now: {
     position: 'absolute',
     left: LABEL_W - 4,
