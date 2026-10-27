@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 
 // A row that can be put in another place by hand (2026-10-26, the user: «треба мати можливість переміщати справи в
 // довільному порядку»): hold it, then drag. The row rides the finger, a line shows where it will land and nothing else
@@ -22,6 +22,7 @@ export default function OrderableRow({
   enabled = true,
   radius = 16,
   outline = 'rgba(30,30,28,0.28)',
+  shift,
   children,
 }: {
   id: string;
@@ -33,11 +34,14 @@ export default function OrderableRow({
   // пунктирну обводку по розміру цього блока справи»).
   radius?: number;
   outline?: string;
+  // How far the list has scrolled under the carry (hooks/useDragScroll): the row in the hand stays under the finger.
+  shift?: SharedValue<number>;
   children: ReactNode;
 }) {
   const [carried, setCarried] = useState(false);
   const lift = useSharedValue(0);
   const ty = useSharedValue(0);
+  const inHand = useSharedValue(0);
   // The latest list, read when the drag starts (the gesture is built once per render, the ids change with the data).
   const live = useRef({ ids, ctl });
   live.current = { ids, ctl };
@@ -60,6 +64,7 @@ export default function OrderableRow({
     // A sideways move is a row's own swipe (SwipeRow inside), never a drag: let go of it at once.
     .failOffsetX([-10, 10])
     .onStart(() => {
+      inHand.value = 1;
       lift.value = withTiming(1, { duration: 120 });
       runOnJS(begin)();
     })
@@ -72,11 +77,12 @@ export default function OrderableRow({
     })
     .onFinalize((_e, success) => {
       if (!success) runOnJS(cancel)();
+      inHand.value = 0;
       ty.value = 0;
       lift.value = withTiming(0, { duration: 120 });
     });
   const style = useAnimatedStyle(() => ({
-    transform: [{ translateY: ty.value }, { scale: 1 + lift.value * 0.02 }],
+    transform: [{ translateY: ty.value + (inHand.value && shift ? shift.value : 0) }, { scale: 1 + lift.value * 0.02 }],
     zIndex: lift.value > 0 ? 10 : 0,
     opacity: 1 - lift.value * 0.15,
   }));

@@ -6,6 +6,7 @@ import { Ionicons } from './icons/Ionicons';
 import { useTheme } from '../theme/ThemeProvider';
 import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { hapticSnapTick } from '../utils/haptics';
+import type { DragScroll } from '../hooks/useDragScroll';
 
 // THE DAY AS A SCALE OF HOURS - «Сьогодні» in «Справи» v2 (the user's sketch,
 // 2026-10-09): a task with a time stands on its hour, as tall as it is long,
@@ -85,6 +86,7 @@ export default function DayTimeline({
   scaleRef,
   onFirstHour,
   dropAt = null,
+  dragScroll,
   showNow = true,
 }: {
   items: TimelineItem[];
@@ -103,6 +105,8 @@ export default function DayTimeline({
   scaleRef?: (node: View | null) => void;
   onFirstHour?: (hour: number) => void;
   dropAt?: number | null;
+  // The list the scale lies in, scrolled by the edge or a second finger while a block is carried or pulled.
+  dragScroll?: DragScroll;
   showNow?: boolean;
 }) {
   const theme = useTheme();
@@ -159,13 +163,32 @@ export default function DayTimeline({
   // THE PULL: the finger's travel turned into minutes, in quarter-hour steps; written once it lets go.
   const base = useRef(0);
   const lastStep = useRef(0);
+  // The finger's last travel, and the list's scroll since the carry began: a block keeps up with a list that scrolls
+  // under a still finger.
+  const lastDy = useRef(0);
+  const unShift = useRef<(() => void) | null>(null);
+  const follow = (fn: () => void) => {
+    dragScroll?.begin();
+    unShift.current?.();
+    unShift.current = dragScroll ? dragScroll.onShift(fn) : null;
+  };
+  const unfollow = () => {
+    dragScroll?.end();
+    unShift.current?.();
+    unShift.current = null;
+  };
+  const travel = (dy: number) => dy + (dragScroll?.shiftNow() ?? 0);
   const begin = (id: string, minutes: number) => {
     base.current = minutes;
     lastStep.current = minutes;
+    lastDy.current = 0;
     setLive({ id, minutes });
+    follow(() => pull(id, lastDy.current));
   };
-  const pull = (id: string, dy: number) => {
-    const m = Math.max(STEP, Math.round((base.current + (dy / HOUR_H) * 60) / STEP) * STEP);
+  const pull = (id: string, dy: number, absY?: number) => {
+    lastDy.current = dy;
+    if (absY !== undefined) dragScroll?.move(absY);
+    const m = Math.max(STEP, Math.round((base.current + (travel(dy) / HOUR_H) * 60) / STEP) * STEP);
     if (m !== lastStep.current) {
       lastStep.current = m;
       hapticSnapTick();
@@ -173,6 +196,7 @@ export default function DayTimeline({
     }
   };
   const end = (id: string) => {
+    unfollow();
     const m = lastStep.current;
     setLive(null);
     if (m !== base.current) onResize?.(id, m);
@@ -184,10 +208,14 @@ export default function DayTimeline({
     hapticSnapTick();
     carryBase.current = start;
     carryStep.current = start;
+    lastDy.current = 0;
     setMoving({ id, start });
+    follow(() => carry(id, lastDy.current));
   };
-  const carry = (id: string, dy: number) => {
-    const m = Math.min(24 * 60 - STEP, Math.max(0, Math.round((carryBase.current + (dy / HOUR_H) * 60) / STEP) * STEP));
+  const carry = (id: string, dy: number, absY?: number) => {
+    lastDy.current = dy;
+    if (absY !== undefined) dragScroll?.move(absY);
+    const m = Math.min(24 * 60 - STEP, Math.max(0, Math.round((carryBase.current + (travel(dy) / HOUR_H) * 60) / STEP) * STEP));
     if (m !== carryStep.current) {
       carryStep.current = m;
       hapticSnapTick();
@@ -195,18 +223,24 @@ export default function DayTimeline({
     }
   };
   const carryEnd = (id: string) => {
+    unfollow();
     const m = carryStep.current;
     setMoving(null);
     if (m !== carryBase.current) onMove?.(id, hhmm(m));
+  };
+  // A carry that ended without a release (cancelled): nothing written, the list let go.
+  const carryGone = () => {
+    if (unShift.current) unfollow();
+    setMoving(null);
   };
   const carried = (item: TimelineItem, node: React.ReactElement) => {
     if (!onMove || item.done) return node;
     const g = Gesture.Pan()
       .activateAfterLongPress(300)
       .onStart(() => runOnJS(carryBegin)(item.id, toMinutes(item.time)))
-      .onUpdate((e) => runOnJS(carry)(item.id, e.translationY))
+      .onUpdate((e) => runOnJS(carry)(item.id, e.translationY, e.absoluteY))
       .onEnd(() => runOnJS(carryEnd)(item.id))
-      .onFinalize(() => runOnJS(setMoving)(null));
+      .onFinalize(() => runOnJS(carryGone)());
     return (
       <GestureDetector key={item.id} gesture={g}>
         {node}
@@ -214,13 +248,18 @@ export default function DayTimeline({
     );
   };
 
+  const pullGone = () => {
+    if (unShift.current) unfollow();
+    setLive(null);
+  };
   const grip = (item: TimelineItem) => {
     if (!onResize || item.done) return null;
     const g = Gesture.Pan()
       .activeOffsetY([-3, 3])
       .onStart(() => runOnJS(begin)(item.id, item.minutes ?? 0))
-      .onUpdate((e) => runOnJS(pull)(item.id, e.translationY))
-      .onEnd(() => runOnJS(end)(item.id));
+      .onUpdate((e) => runOnJS(pull)(item.id, e.translationY, e.absoluteY))
+      .onEnd(() => runOnJS(end)(item.id))
+      .onFinalize(() => runOnJS(pullGone)());
     return (
       <GestureDetector gesture={g}>
         <View style={styles.grip} accessibilityLabel="Потягнути, щоб змінити тривалість">

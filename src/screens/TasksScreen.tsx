@@ -46,6 +46,8 @@ import {
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import OrderableRow, { type OrderControl } from '../components/OrderableRow';
+import DragScrollOverlay from '../components/DragScrollOverlay';
+import { useDragScroll } from '../hooks/useDragScroll';
 import { hapticDrop, hapticSnapTick } from '../utils/haptics';
 import { Block, Group, Recurrence, Subtask, TaskList } from '../types';
 import { nextRecurrenceDate, recurrenceLabel } from '../utils/recurrence';
@@ -2028,6 +2030,11 @@ export default function TasksScreen() {
     scaleFirst.current = h;
   }, []);
   const [scaleDrop, setScaleDrop] = useState<number | null>(null);
+  // The list scrolls under a carry - by the edge, or by a second finger (hooks/useDragScroll); what was measured when the
+  // carry began is read through how far it has gone since.
+  const dragScroll = useDragScroll();
+  const lastOrderY = useRef(0);
+  const unShift = useRef<(() => void) | null>(null);
   const scaleDropRef = useRef<number | null>(null);
   const setDrop = (m: number | null) => {
     if (m !== scaleDropRef.current) {
@@ -2047,6 +2054,9 @@ export default function TasksScreen() {
       rootNode.current?.measureInWindow((_x, y) => (rootTop.current = y));
       scaleBox.current = null;
       scaleNode.current?.measureInWindow((_x, y, _w, h) => (scaleBox.current = { top: y, bottom: y + h }));
+      dragScroll.begin();
+      unShift.current?.();
+      unShift.current = dragScroll.onShift(() => orderCtl.move(lastOrderY.current));
       ids.forEach((one) => {
         orderNodes.current[one]?.measureInWindow((_x, y, _w, h) => {
           const d = orderDrag.current;
@@ -2055,9 +2065,14 @@ export default function TasksScreen() {
         });
       });
     },
-    move: (y) => {
+    move: (fingerY) => {
       const d = orderDrag.current;
       if (!d) return;
+      lastOrderY.current = fingerY;
+      dragScroll.move(fingerY);
+      // In the coordinates everything was measured in when the carry began.
+      const shiftNow = dragScroll.shiftNow();
+      const y = fingerY + shiftNow;
       const box = scaleBox.current;
       if (box && y >= box.top && y <= box.bottom) {
         const m = scaleFirst.current * 60 + ((y - box.top) / SCALE_HOUR_H) * 60;
@@ -2071,7 +2086,7 @@ export default function TasksScreen() {
       const index = others.filter((r) => (r.top + r.bottom) / 2 < y).length;
       d.index = index;
       const lineY = index === 0 ? others[0].top - 4 : others[index - 1].bottom + 4;
-      setOrderLine(lineY - rootTop.current);
+      setOrderLine(lineY - shiftNow - rootTop.current);
     },
     end: () => {
       const d = orderDrag.current;
@@ -2079,6 +2094,9 @@ export default function TasksScreen() {
       setOrderLine(null);
       const drop = scaleDropRef.current;
       setDrop(null);
+      dragScroll.end();
+      unShift.current?.();
+      unShift.current = null;
       if (!d) return;
       if (drop !== null) {
         const task = tasks.find((t) => t.id === d.id);
@@ -2098,12 +2116,15 @@ export default function TasksScreen() {
       orderDrag.current = null;
       setOrderLine(null);
       setDrop(null);
+      dragScroll.end();
+      unShift.current?.();
+      unShift.current = null;
     },
   };
   function orderable(list: Task[], render: (t: Task) => ReactNode): ReactNode {
     const ids = list.map((t) => t.id);
     return list.map((t) => (
-      <OrderableRow key={t.id} id={t.id} ids={ids} ctl={orderCtl} enabled={!isSelectMode && !expandedTaskIds.has(t.id)} radius={softDb ? 18 : 16} outline={softDb ? softDb.ink3 : theme.ink.faint}>
+      <OrderableRow key={t.id} id={t.id} ids={ids} ctl={orderCtl} shift={dragScroll.shift} enabled={!isSelectMode && !expandedTaskIds.has(t.id)} radius={softDb ? 18 : 16} outline={softDb ? softDb.ink3 : theme.ink.faint}>
         {render(t)}
       </OrderableRow>
     ));
@@ -2579,6 +2600,7 @@ export default function TasksScreen() {
             scaleRef={(node) => (scaleNode.current = node)}
             onFirstHour={onScaleFirstHour}
             dropAt={scaleDrop}
+            dragScroll={dragScroll}
           />
           {evening.length > 0 && <Text style={styles.v2Section}>Ввечері</Text>}
           {orderable(evening, renderV2Row)}
@@ -3304,6 +3326,7 @@ export default function TasksScreen() {
 
         {v2 && (view === 'home' || (isWindowList && !kanbanMode)) ? (
           <ScrollView
+            {...dragScroll.listProps}
             keyboardDismissMode="on-drag"
             contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad + 8 }]}
           >
@@ -3312,6 +3335,7 @@ export default function TasksScreen() {
             {view === 'home' ? (isSearching && searchQuery.trim() ? renderSearchResults() : renderHome()) : renderViewList()}
           </ScrollView>
         ) : null}
+        <DragScrollOverlay active={dragScroll.active} onScrollBy={dragScroll.scrollBy} />
         {v2 && (view === 'home' || (isWindowList && !kanbanMode)) ? null : kanbanMode ? (
           <>
             {/* Kept in place (only dimmed away) while a card is carried: taking it out moved the columns up under the finger. */}
