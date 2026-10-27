@@ -19,7 +19,7 @@ import EdgeFade from '../components/EdgeFade';
 import CustomDatabaseKanban from '../components/CustomDatabaseKanban';
 import { SoftSurfaceContext, softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRecordColour, useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import { withAlpha } from '../utils/color';
@@ -46,6 +46,7 @@ import {
 // Everything else on this screen stays on the RN ScrollView it already
 // scrolled fine with.
 import { ScrollView as GestureScrollView } from 'react-native-gesture-handler';
+import Animated, { useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, type SharedValue } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { Ionicons } from '../components/icons/Ionicons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -217,6 +218,13 @@ const SCHEDULE_ON_TRIP = '__trip__';
 const SCHEDULE_FREE = '__free__';
 // The card grid's own padding and gap, as numbers because the tile width is
 // computed from them (see gridTileWidth) as well as applied in the style.
+// A part of a table row that stays where it is while the table scrolls sideways: it shifts itself by the scroller's own
+// offset, so it is drawn over what slides under it (the caller gives it the ground's colour).
+function StickyLeft({ x, style, children }: { x: SharedValue<number>; style?: object; children: ReactNode }) {
+  const shift = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
+  return <Animated.View style={[style, shift, { zIndex: 2 }]}>{children}</Animated.View>;
+}
+
 const CARD_GRID_PADDING = 20;
 const CARD_GRID_GAP = 12;
 const TABLE_COLUMN_WIDTH = 150;
@@ -594,9 +602,12 @@ export default function CustomDatabaseScreen({
   // Whether that list has ANSWERED. Until it has, a database it should hold is not «not found»: the schedule of the
   // road sheets said so for a second on every opening, while the base of its rows was on its way.
   const [databasesAnswered, setDatabasesAnswered] = useState(false);
-  // The header scrolls sideways only as a mirror of the body's own offset.
-  const headerScrollRef = useRef<ScrollView>(null);
-  const bodyScrollRef = useRef<ScrollView>(null);
+  // The table's sideways offset: the whole table (header and rows) is ONE horizontal scroller, and the frozen first
+  // column stays put by shifting itself by this much (StickyLeft).
+  const tableScrollX = useSharedValue(0);
+  const tableScrollHandler = useAnimatedScrollHandler((e) => {
+    tableScrollX.value = e.contentOffset.x;
+  });
   // Same mirroring for the schedule grid's own date header vs. its
   // horizontally-scrolling body - see renderSchedule.
   const scheduleHeaderScrollRef = useRef<ScrollView>(null);
@@ -2497,104 +2508,108 @@ export default function CustomDatabaseScreen({
           return collapsed ? [header] : [header, ...group.rows.map((row) => ({ kind: 'row' as const, row }))];
         })
       : displayedRows.map((row) => ({ kind: 'row' as const, row }));
+    // THE TABLE, drawn only where it is seen (optimisation, 2026-10-27: every cell is a live TextInput - sixty records of
+    // ten fields were ~600 of them at once, a 45%-janky opening). One horizontal scroller carries the header and a vertical
+    // FlatList of rows (all of one fixed height, so the list knows exactly where each stands); the frozen first column is
+    // not a second list kept in step but a part of each row that shifts itself by the sideways offset (StickyLeft), on
+    // the ground's own colour so what scrolls under it is hidden.
+    const frozenW = TABLE_HANDLE_WIDTH + titleWidth;
+    const totalW = frozenW + restFields.length * TABLE_COLUMN_WIDTH;
+    const ground = softDb ? softDb.bg : '#000000';
+    const headerFill = StyleSheet.flatten(styles.tableHeaderRow).backgroundColor;
     return (
       <View style={styles.tableWrap}>
-        <View style={styles.tableHeaderRow}>
-          <View style={[styles.tableFrozenHeader, { width: TABLE_HANDLE_WIDTH + titleWidth }]}>
-            <View style={styles.tableRowHandle} />
-            <View style={[styles.tableHeaderCell, { width: titleWidth }]}>
-              <Ionicons name={FIELD_TYPE_ICON[firstField.type]} size={12} color={sInk2('rgba(255,255,255,0.65)')} />
-              <Text style={styles.tableHeaderLabel} numberOfLines={1}>
-                {firstField.name}
-              </Text>
-            </View>
-          </View>
-          <ScrollView horizontal ref={headerScrollRef} scrollEnabled={false} showsHorizontalScrollIndicator={false}>
-            {restFields.map((field) => (
-              <View key={field.id} style={[styles.tableHeaderCell, { width: TABLE_COLUMN_WIDTH }]}>
-                <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color={sInk2('rgba(255,255,255,0.65)')} />
-                <Text style={styles.tableHeaderLabel} numberOfLines={1}>
-                  {field.name}
-                </Text>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.tableBody}>
-          <View style={styles.tableBodyRow}>
-            <View style={[styles.tableFrozenColumn, { width: TABLE_HANDLE_WIDTH + titleWidth }]}>
-              {tableItems.map((item) =>
-                item.kind === 'group' ? (
-                  <Pressable
-                    key={item.key}
-                    style={styles.tableGroupHeader}
-                    onPress={() => toggleGroupCollapsed(item.key)}
-                  >
-                    <Ionicons
-                      name={item.collapsed ? 'chevron-forward' : 'chevron-down'}
-                      size={13}
-                      color={softDb ? softDb.ink3 : "rgba(255,255,255,0.6)"}
-                    />
-                    <Text style={styles.groupHeaderLabel} numberOfLines={1}>
-                      {item.label}
+        <Animated.ScrollView
+          horizontal
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          onScroll={tableScrollHandler}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ width: totalW }}
+        >
+          <View style={{ width: totalW, flex: 1 }}>
+            <View style={[styles.tableHeaderRow, { paddingVertical: 0 }]}>
+              <StickyLeft x={tableScrollX} style={{ width: frozenW, backgroundColor: ground }}>
+                <View style={[styles.tableFrozenHeader, { paddingVertical: 10, backgroundColor: headerFill }]}>
+                  <View style={styles.tableRowHandle} />
+                  <View style={[styles.tableHeaderCell, { width: titleWidth }]}>
+                    <Ionicons name={FIELD_TYPE_ICON[firstField.type]} size={12} color={sInk2('rgba(255,255,255,0.65)')} />
+                    <Text style={styles.tableHeaderLabel} numberOfLines={1}>
+                      {firstField.name}
                     </Text>
-                    <Text style={styles.groupHeaderCount}>{item.count}</Text>
-                  </Pressable>
+                  </View>
+                </View>
+              </StickyLeft>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}>
+                {restFields.map((field) => (
+                  <View key={field.id} style={[styles.tableHeaderCell, { width: TABLE_COLUMN_WIDTH }]}>
+                    <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color={sInk2('rgba(255,255,255,0.65)')} />
+                    <Text style={styles.tableHeaderLabel} numberOfLines={1}>
+                      {field.name}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <FlatList
+              data={tableItems}
+              keyExtractor={(item) => (item.kind === 'group' ? `g:${item.key}` : item.row.id)}
+              getItemLayout={(_, index) => ({ length: TABLE_ROW_HEIGHT, offset: TABLE_ROW_HEIGHT * index, index })}
+              initialNumToRender={12}
+              maxToRenderPerBatch={6}
+              windowSize={5}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.tableBody}
+              renderItem={({ item }) =>
+                item.kind === 'group' ? (
+                  <View style={{ height: TABLE_ROW_HEIGHT, width: totalW }}>
+                    <StickyLeft x={tableScrollX} style={{ width: frozenW }}>
+                      <Pressable style={styles.tableGroupHeader} onPress={() => toggleGroupCollapsed(item.key)}>
+                        <Ionicons
+                          name={item.collapsed ? 'chevron-forward' : 'chevron-down'}
+                          size={13}
+                          color={softDb ? softDb.ink3 : "rgba(255,255,255,0.6)"}
+                        />
+                        <Text style={styles.groupHeaderLabel} numberOfLines={1}>
+                          {item.label}
+                        </Text>
+                        <Text style={styles.groupHeaderCount}>{item.count}</Text>
+                      </Pressable>
+                    </StickyLeft>
+                  </View>
                 ) : (
-                  <View key={item.row.id} style={styles.tableRow}>
-                    {/* Tapping a cell edits that one cell; this button is the
-                        way to open the whole row as a card, per the user's own
-                        "a cell for one value, the card when I want them all". */}
-                    <Pressable
-                      style={styles.tableRowHandle}
-                      onPress={() => (isSelectMode ? toggleSelected(item.row.id) : setRowPageId(item.row.id))}
-                      onLongPress={() => setRowMenuId(item.row.id)}
-                    >
-                      <Ionicons
-                        name={
-                          isSelectMode
-                            ? selectedIds.has(item.row.id)
-                              ? 'checkmark-circle'
-                              : 'ellipse-outline'
-                            : 'open-outline'
-                        }
-                        size={16}
-                        color={sInk2('rgba(255,255,255,0.75)')}
-                      />
-                    </Pressable>
-                    {renderTableCell(item.row, firstField, titleWidth)}
+                  <View style={[styles.tableRow, { width: totalW }]}>
+                    <StickyLeft x={tableScrollX} style={{ width: frozenW, flexDirection: 'row', backgroundColor: ground }}>
+                      {/* Tapping a cell edits that one cell; this button is the
+                          way to open the whole row as a card, per the user's own
+                          "a cell for one value, the card when I want them all". */}
+                      <Pressable
+                        style={styles.tableRowHandle}
+                        onPress={() => (isSelectMode ? toggleSelected(item.row.id) : setRowPageId(item.row.id))}
+                        onLongPress={() => setRowMenuId(item.row.id)}
+                      >
+                        <Ionicons
+                          name={
+                            isSelectMode
+                              ? selectedIds.has(item.row.id)
+                                ? 'checkmark-circle'
+                                : 'ellipse-outline'
+                              : 'open-outline'
+                          }
+                          size={16}
+                          color={sInk2('rgba(255,255,255,0.75)')}
+                        />
+                      </Pressable>
+                      {renderTableCell(item.row, firstField, titleWidth)}
+                    </StickyLeft>
+                    {restFields.map((field) => renderTableCell(item.row, field))}
                   </View>
                 )
-              )}
-            </View>
-
-            <ScrollView
-              horizontal
-              ref={bodyScrollRef}
-              keyboardShouldPersistTaps="handled"
-              scrollEventThrottle={16}
-              onScroll={(e) =>
-                headerScrollRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false })
               }
-            >
-              <View>
-                {tableItems.map((item) =>
-                  item.kind === 'group' ? (
-                    // Blank on this side - the frozen column already
-                    // carries the group's own label, and this only has to
-                    // match its height to stay lined up with it.
-                    <View key={item.key} style={styles.tableGroupHeaderSpacer} />
-                  ) : (
-                    <View key={item.row.id} style={styles.tableRow}>
-                      {restFields.map((field) => renderTableCell(item.row, field))}
-                    </View>
-                  )
-                )}
-              </View>
-            </ScrollView>
+            />
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
       </View>
     );
   }
