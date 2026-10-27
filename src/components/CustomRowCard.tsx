@@ -1,6 +1,6 @@
 import { lift } from '../utils/lift';
 import { markHeld } from '../utils/heldNode';
-import { ReactNode, useRef } from 'react';
+import { ReactNode, memo, useRef } from 'react';
 import Animated from 'react-native-reanimated';
 import { usePressSettle } from '../hooks/usePressSettle';
 import { withFlipTarget } from '../utils/flipOpen';
@@ -90,6 +90,9 @@ type Props = {
   // The trailing control - the select checkbox / "..." menu on the database
   // screen, nothing when the card is embedded elsewhere.
   right?: ReactNode;
+  // Only for CustomRowCardKept: whatever the card's `right` and handlers depend on that is not in the other props (the
+  // select mode, ticked or not, the colours) - the card is drawn again when it changes.
+  stamp?: string;
 };
 
 // One custom-database row as a card. Deliberately one shared component
@@ -387,3 +390,22 @@ const gridStyles = StyleSheet.create({
     right: 6,
   },
 });
+
+// THE CARD THAT IS NOT DRAWN AGAIN FOR NOTHING (optimisation, 2026-10-27): the base's records come in steps, and every
+// step used to draw the ones already there once more. The handlers and `right` are the screen's stable ones (they read
+// what they need at the tap), so only what the card SHOWS decides: the row's display, its tags, its count, whether it
+// is ringed and the screen's stamp.
+function displayKey(d: RowDisplay): string {
+  return `${d.title}|${d.cover === undefined ? '-' : d.cover === null ? '0' : `${d.cover.thumbUri ?? ''}#${d.cover.driveFileId ?? ''}`}|${d.chips.map((c) => `${c.field.id}=${c.shown}`).join(';')}`;
+}
+export const CustomRowCardKept = memo(
+  CustomRowCard,
+  (a, b) =>
+    a.rowId === b.rowId &&
+    a.documentCount === b.documentCount &&
+    a.chosen === b.chosen &&
+    a.stamp === b.stamp &&
+    a.tags.length === b.tags.length &&
+    a.tags.every((t, i) => t.id === b.tags[i].id && t.path === b.tags[i].path && t.color === b.tags[i].color) &&
+    displayKey(a.display) === displayKey(b.display)
+);

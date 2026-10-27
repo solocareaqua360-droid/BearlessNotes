@@ -100,7 +100,7 @@ import {
 } from '../types';
 import { groupAppliesTo } from '../utils/groups';
 import { hapticSelectItem, hapticSnapTick, hapticSuccess, hapticToggle } from '../utils/haptics';
-import CustomRowCard, { CustomRowGridCard, RelationThumb } from '../components/CustomRowCard';
+import CustomRowCard, { CustomRowCardKept, CustomRowGridCard, RelationThumb } from '../components/CustomRowCard';
 import {
   buildRowDisplay,
   coverFieldOf,
@@ -263,6 +263,10 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CustomDatabase'>;
 // `databaseId` as a prop, not only from the route: on a wide screen this
 // screen is rendered INSIDE the tile board's left pane, where the route
 // belongs to the board and knows nothing about which database was opened.
+// How many record cards are drawn at once when a base opens, and how many join them each step after.
+const FIRST_CARDS = 12;
+const MORE_CARDS = 16;
+
 export default function CustomDatabaseScreen({
   databaseId: databaseIdProp,
   inPane,
@@ -326,6 +330,21 @@ export default function CustomDatabaseScreen({
   // same collection started only after this database's fields had arrived.
   const [allRows, setAllRows] = useState<CustomDatabaseRow[]>([]);
   const rows = useMemo(() => [...allRows].sort((a, b) => b.updatedAt - a.updatedAt), [allRows]);
+  // THE RECORDS COME IN STEPS (optimisation, 2026-10-27; here, above every early return - a hook below one crashed the
+  // base once): a base of sixty records drew every card in one piece the moment it opened - two passes of ~180 ms of a
+  // frozen screen. The first screenful is drawn at once and the rest follows in batches a few frames apart; the counts,
+  // groups and totals are always of everything.
+  const [cardBudget, setCardBudget] = useState(FIRST_CARDS);
+  // One press / menu / tick function per record, kept between renders (see CustomRowCardKept): what they do is read from
+  // `rowActs` at the tap, which the screen refreshes on every render.
+  const rowActs = useRef({ press: (_id: string, _e?: GestureResponderEvent) => {}, menu: (_id: string) => {}, tick: (_id: string) => {} });
+  const rowFns = useRef(new Map<string, { press: (e?: GestureResponderEvent) => void; menu: () => void; tick: () => void }>());
+  useEffect(() => setCardBudget(FIRST_CARDS), [databaseId]);
+  useEffect(() => {
+    if (cardBudget >= rows.length) return;
+    const timer = setTimeout(() => setCardBudget((n) => n + MORE_CARDS), cardBudget === FIRST_CARDS ? 300 : 70);
+    return () => clearTimeout(timer);
+  }, [cardBudget, rows.length]);
   // The rows of the bases this one's relations point at (or that point at it), by their own query.
   const [linkedRows, setLinkedRows] = useState<CustomDatabaseRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -2341,29 +2360,38 @@ export default function CustomDatabaseScreen({
   const relationPickerField = database.fields.find((f) => f.id === relationPickerFieldId) ?? null;
   const backlinkPickerField = database.fields.find((f) => f.id === backlinkPickerFieldId) ?? null;
 
+  rowActs.current = {
+    press: (id, e) => (isSelectMode ? toggleSelected(id) : openRowFromCard(id, e)),
+    menu: (id) => setRowMenuId(id),
+    tick: (id) => toggleSelected(id),
+  };
   function renderRowCard(item: CustomDatabaseRow) {
     const { text, textMuted } = recordColour(item.id);
+    const id = item.id;
+    let fns = rowFns.current.get(id);
+    if (!fns) {
+      fns = { press: (e) => rowActs.current.press(id, e), menu: () => rowActs.current.menu(id), tick: () => rowActs.current.tick(id) };
+      rowFns.current.set(id, fns);
+    }
+    const ticked = isSelectMode && selectedIds.has(id);
     return (
-      <CustomRowCard
-        key={item.id}
-        rowId={item.id}
+      <CustomRowCardKept
+        key={id}
+        rowId={id}
         display={rowDisplayFor(item)}
         tags={tags.filter((t) => (item.tagIds ?? []).includes(t.id))}
         documentCount={documentIdsOf(item).length}
-        chosen={recordPanelOn && rowPageId === item.id}
-        onPress={(e) => (isSelectMode ? toggleSelected(item.id) : openRowFromCard(item.id, e))}
-        onLongPress={() => setRowMenuId(item.id)}
+        chosen={recordPanelOn && rowPageId === id}
+        stamp={`${isSelectMode ? (ticked ? 'on' : 'off') : 'view'}|${text}|${textMuted}`}
+        onPress={fns.press}
+        onLongPress={fns.menu}
         right={
           isSelectMode ? (
-            <Pressable hitSlop={8} onPress={() => toggleSelected(item.id)} style={styles.rowActionButton}>
-              <Ionicons
-                name={selectedIds.has(item.id) ? 'checkmark-circle' : 'ellipse-outline'}
-                size={22}
-                color={selectedIds.has(item.id) ? text : textMuted}
-              />
+            <Pressable hitSlop={8} onPress={fns.tick} style={styles.rowActionButton}>
+              <Ionicons name={ticked ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={ticked ? text : textMuted} />
             </Pressable>
           ) : (
-            <Pressable hitSlop={8} onPress={() => setRowMenuId(item.id)} style={styles.rowActionButton}>
+            <Pressable hitSlop={8} onPress={fns.menu} style={styles.rowActionButton}>
               <Ionicons name="ellipsis-horizontal" size={16} color={textMuted} />
             </Pressable>
           )
@@ -2512,9 +2540,9 @@ export default function CustomDatabaseScreen({
   }
 
   function renderCards() {
-    const cardsGrid = (rows: CustomDatabaseRow[]) => (
+    const cardsGrid = (all: CustomDatabaseRow[]) => (
       <View style={[styles.cardGrid, { paddingHorizontal: CARD_GRID_PADDING }]}>
-        {rows.map((row) => (
+        {withinBudget(all).map((row) => (
           <CustomRowGridCard
             key={row.id}
             rowId={row.id}
@@ -3608,6 +3636,12 @@ export default function CustomDatabaseScreen({
 
   // The parameters window's four sections, with what each is set to (a line that may wrap) - see paramsFolded.
   const fieldNameOf = (id: string) => database.fields.find((f) => f.id === id)?.name ?? 'Поле';
+  let budgetLeft = cardBudget;
+  const withinBudget = <T,>(list: T[]): T[] => {
+    const part = list.slice(0, Math.max(0, budgetLeft));
+    budgetLeft -= part.length;
+    return part;
+  };
   const sortName =
     (BUILT_IN_SORT_LABELS as Record<string, string>)[sortPref.field] ?? fieldNameOf(sortPref.field);
   const projectName =
@@ -3659,6 +3693,8 @@ export default function CustomDatabaseScreen({
       tab.key === 'filter' ? filterFields.length > 0 || groups.length > 0 : tab.key === 'group' ? groupFields.length > 0 : true
     );
 
+  // What is left to draw this pass: each list takes its share off the front.
+  budgetLeft = cardBudget;
   return (
     <SoftSurfaceContext.Provider value={softDb}>
     <View style={styles.container}>
@@ -4234,7 +4270,7 @@ export default function CustomDatabaseScreen({
                   </Text>
                   <Text style={styles.groupHeaderCount}>{group.rows.length}</Text>
                 </Pressable>
-                {!collapsed && group.rows.map(swipeRow)}
+                {!collapsed && withinBudget(group.rows).map(swipeRow)}
               </View>
             );
           })}
@@ -4257,7 +4293,7 @@ export default function CustomDatabaseScreen({
         >
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
           {renderTotals()}
-          {displayedRows.map(swipeRow)}
+          {withinBudget(displayedRows).map(swipeRow)}
         </ScrollView>
         </SwipeSelectArea>
       )}
