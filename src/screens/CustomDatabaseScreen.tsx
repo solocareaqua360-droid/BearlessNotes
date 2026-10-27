@@ -225,6 +225,17 @@ function StickyLeft({ x, style, children }: { x: SharedValue<number>; style?: ob
   return <Animated.View style={[style, shift, { zIndex: 2 }]}>{children}</Animated.View>;
 }
 
+// The schedule's grid lines and today / cursor columns, drawn ONCE behind the rows and cut where the rows end (they scroll
+// up out of the way with the list: its own offset `y` shortens the layer, the parent clips it to the screen).
+function ScheduleGridLayer({ y, contentH, left, width, children }: { y: SharedValue<number>; contentH: number; left: number; width: number; children: ReactNode }) {
+  const style = useAnimatedStyle(() => ({ height: Math.max(0, contentH - y.value) }), [contentH]);
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left, top: 0, bottom: 0, width, overflow: 'hidden' }}>
+      <Animated.View style={[{ width }, style]}>{children}</Animated.View>
+    </View>
+  );
+}
+
 const CARD_GRID_PADDING = 20;
 const CARD_GRID_GAP = 12;
 const TABLE_COLUMN_WIDTH = 150;
@@ -608,10 +619,23 @@ export default function CustomDatabaseScreen({
   const tableScrollHandler = useAnimatedScrollHandler((e) => {
     tableScrollX.value = e.contentOffset.x;
   });
-  // Same mirroring for the schedule grid's own date header vs. its
-  // horizontally-scrolling body - see renderSchedule.
-  const scheduleHeaderScrollRef = useRef<ScrollView>(null);
+  // The schedule grid is one sideways scroller too (header and rows together), with its own offset for the frozen
+  // row titles - see renderSchedule.
+  const scheduleScrollX = useSharedValue(0);
+  const scheduleScrollHandler = useAnimatedScrollHandler((e) => {
+    scheduleScrollX.value = e.contentOffset.x;
+  });
   const scheduleBodyScrollRef = useRef<ScrollView>(null);
+  const scheduleScrollY = useSharedValue(0);
+  const scheduleYHandler = useAnimatedScrollHandler((e) => {
+    scheduleScrollY.value = e.contentOffset.y;
+  });
+  // A scroller that mounts again starts at its left edge; its shared offset has to start there too.
+  useEffect(() => {
+    tableScrollX.value = 0;
+    scheduleScrollX.value = 0;
+    scheduleScrollY.value = 0;
+  }, [viewMode, tableScrollX, scheduleScrollX, scheduleScrollY]);
   // Which date the schedule's own visible window starts at - "today" the
   // first time it's opened this session, deliberately not persisted (a
   // schedule always opens on today, the same way a calendar does).
@@ -652,7 +676,6 @@ export default function CustomDatabaseScreen({
     const x = Math.max(0, (index - 1) * SCHEDULE_DAY_WIDTH);
     const frame = requestAnimationFrame(() => {
       scheduleBodyScrollRef.current?.scrollTo({ x, animated: false });
-      scheduleHeaderScrollRef.current?.scrollTo({ x, animated: false });
     });
     return () => cancelAnimationFrame(frame);
     // Not on the cursor itself: tapping a date must not move the grid
@@ -3334,26 +3357,40 @@ export default function CustomDatabaseScreen({
     // (a trip) or a manual status (a repair) both make a day busy, which
     // is also the rule the cells themselves already follow: a day with
     // either is not tappable to add a status.
+    // THE SCHEDULE IS DRAWN ONLY WHERE IT IS SEEN (optimisation, 2026-10-27: 70 vehicles x 60 days = 4200 pressable cells,
+    // every one of them live through every scroll frame - 35% janky). Whose events and whose statuses are looked up ONCE
+    // here (they were filtered out of every record again for every row, and again for the grouping).
+    const eventsByRow = new Map<string, CustomDatabaseRow[]>();
+    rows.forEach((r) => {
+      const owner = r.values[config.rowRelationFieldId];
+      if (typeof owner !== 'string') return;
+      const list = eventsByRow.get(owner);
+      if (list) list.push(r);
+      else eventsByRow.set(owner, [r]);
+    });
+    const statusesByRow = new Map<string, typeof scheduleCellStatuses>();
+    scheduleCellStatuses.forEach((st) => {
+      if (st.viewId !== viewId || !st.startDate) return;
+      const list = statusesByRow.get(st.rowId);
+      if (list) list.push(st);
+      else statusesByRow.set(st.rowId, [st]);
+    });
     const rowBusy = new Map<string, { events: Set<number>; statuses: Set<number> }>();
     rowRecords.forEach((row) => {
       const events = new Set<number>();
-      rows
-        .filter((r) => r.values[config.rowRelationFieldId] === row.id)
-        .forEach((eventRow) => {
-          const range = dateRangeOf(eventRow.values[config.dateFieldId]);
-          if (!range) return;
-          const s = Math.max(0, dayOffset(range.start));
-          const e = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(range.end ?? range.start));
-          for (let i = s; i <= e; i++) events.add(i);
-        });
+      (eventsByRow.get(row.id) ?? []).forEach((eventRow) => {
+        const range = dateRangeOf(eventRow.values[config.dateFieldId]);
+        if (!range) return;
+        const s = Math.max(0, dayOffset(range.start));
+        const e = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(range.end ?? range.start));
+        for (let i = s; i <= e; i++) events.add(i);
+      });
       const statuses = new Set<number>();
-      scheduleCellStatuses
-        .filter((s) => s.viewId === viewId && s.rowId === row.id && !!s.startDate)
-        .forEach((status) => {
-          const s = Math.max(0, dayOffset(status.startDate));
-          const e = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(status.endDate ?? status.startDate));
-          for (let i = s; i <= e; i++) statuses.add(i);
-        });
+      (statusesByRow.get(row.id) ?? []).forEach((status) => {
+        const s = Math.max(0, dayOffset(status.startDate));
+        const e = Math.min(SCHEDULE_WINDOW_DAYS - 1, dayOffset(status.endDate ?? status.startDate));
+        for (let i = s; i <= e; i++) statuses.add(i);
+      });
       rowBusy.set(row.id, { events, statuses });
     });
     // How many rows have nothing at all on each day - see
@@ -3379,19 +3416,13 @@ export default function CustomDatabaseScreen({
     const cursorKey = scheduleCursor;
     const statusOptions = config.manualStatuses ?? [];
     const groupOf = (row: CustomDatabaseRow): string => {
-      const onTrip = rows.some((r) => {
-        if (r.values[config.rowRelationFieldId] !== row.id) return false;
+      const onTrip = (eventsByRow.get(row.id) ?? []).some((r) => {
         const range = dateRangeOf(r.values[config.dateFieldId]);
         return !!range && range.start <= cursorKey && cursorKey <= (range.end ?? range.start);
       });
       if (onTrip) return SCHEDULE_ON_TRIP;
-      const status = scheduleCellStatuses.find(
-        (st) =>
-          st.viewId === viewId &&
-          st.rowId === row.id &&
-          !!st.startDate &&
-          st.startDate <= cursorKey &&
-          cursorKey <= (st.endDate ?? st.startDate)
+      const status = (statusesByRow.get(row.id) ?? []).find(
+        (st) => st.startDate <= cursorKey && cursorKey <= (st.endDate ?? st.startDate)
       );
       if (status && statusOptions.some((o) => o.id === status.statusId)) return status.statusId;
       return SCHEDULE_FREE;
@@ -3440,6 +3471,15 @@ export default function CustomDatabaseScreen({
     }
 
     const lastDay = days[days.length - 1];
+    const totalW = rowHeaderWidth + days.length * SCHEDULE_DAY_WIDTH;
+    const ground = softDb ? softDb.bg : '#000000';
+    const headerFill = StyleSheet.flatten(styles.tableHeaderRow).backgroundColor;
+    const lineHeights = lines.map((line) => (line.kind === 'group' ? SCHEDULE_GROUP_HEIGHT : rowHeight));
+    const lineOffsets: number[] = [];
+    lineHeights.reduce((sum, h, i) => {
+      lineOffsets[i] = sum;
+      return sum + h;
+    }, 0);
     return (
       <View style={styles.tableWrap}>
         {/* Which stretch of days is on screen, and the way to move it -
@@ -3481,180 +3521,155 @@ export default function CustomDatabaseScreen({
           )}
         </View>
 
-        <View style={styles.tableHeaderRow}>
-          <View style={[styles.tableFrozenHeader, { width: rowHeaderWidth }]}>
-            {showTotals && (
-              <Text style={styles.scheduleTotalsRowLabel} numberOfLines={1}>
-                Вільні
-              </Text>
-            )}
-          </View>
-          <ScrollView
-            horizontal
-            ref={scheduleHeaderScrollRef}
-            scrollEnabled={false}
-            showsHorizontalScrollIndicator={false}
-          >
-            {/* Dates and the totals line are ONE column inside one
-                scroller, not two scrollers kept in step - they share the
-                same columns, so sharing the same scroll offset is not a
-                thing that can drift. */}
-            <View>
-              <View style={styles.scheduleHeaderDatesRow}>
-                {days.map((d) => {
-                  const key = dateKey(d);
-                  const isToday = key === todayKey;
-                  const isCursor = key === cursorKey;
-                  // A tap puts the cursor here: the rows regroup by
-                  // what each is doing on this day.
-                  return (
-                    <Pressable
-                      key={key}
-                      onPress={() => setScheduleCursor(key)}
-                      style={[
-                        styles.scheduleDateHeaderCell,
-                        isToday && styles.scheduleDateHeaderCellToday,
-                        isCursor && { backgroundColor: accent, borderRadius: 10 },
-                        { width: SCHEDULE_DAY_WIDTH },
-                      ]}
-                    >
-                      <Text style={[styles.scheduleDateHeaderWeekday, isCursor && { color: '#FFFFFF' }]}>
-                        {WEEKDAY_SHORT[(d.getDay() + 6) % 7]}
-                      </Text>
-                      <Text style={[styles.scheduleDateHeaderNum, isCursor && { color: '#FFFFFF' }]}>{d.getDate()}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {showTotals && (
+        <Animated.ScrollView
+          horizontal
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          ref={scheduleBodyScrollRef as never}
+          onScroll={scheduleScrollHandler}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ width: totalW }}
+        >
+          <View style={{ width: totalW, flex: 1 }}>
+            <View style={[styles.tableHeaderRow, { paddingVertical: 0 }]}>
+              <StickyLeft x={scheduleScrollX} style={{ width: rowHeaderWidth, backgroundColor: ground, alignSelf: 'stretch' }}>
+                <View style={[styles.tableFrozenHeader, { width: rowHeaderWidth, flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: headerFill }]}>
+                  {showTotals && (
+                    <Text style={[styles.scheduleTotalsRowLabel, { alignSelf: 'center' }]} numberOfLines={1}>
+                      Вільні
+                    </Text>
+                  )}
+                </View>
+              </StickyLeft>
+              {/* Dates and the totals line are ONE column, so they share the same columns and cannot drift. */}
+              <View style={{ paddingVertical: 10 }}>
                 <View style={styles.scheduleHeaderDatesRow}>
-                  {days.map((d, i) => {
-                    const free = freePerDay[i];
+                  {days.map((d) => {
+                    const key = dateKey(d);
+                    const isToday = key === todayKey;
+                    const isCursor = key === cursorKey;
+                    // A tap puts the cursor here: the rows regroup by what each is doing on this day.
                     return (
-                      <View key={dateKey(d)} style={[styles.scheduleTotalsCell, { width: SCHEDULE_DAY_WIDTH }]}>
-                        <Text style={[styles.scheduleTotalsValue, free === 0 && styles.scheduleTotalsValueNone]}>
-                          {free}
+                      <Pressable
+                        key={key}
+                        onPress={() => setScheduleCursor(key)}
+                        style={[
+                          styles.scheduleDateHeaderCell,
+                          isToday && styles.scheduleDateHeaderCellToday,
+                          isCursor && { backgroundColor: accent, borderRadius: 10 },
+                          { width: SCHEDULE_DAY_WIDTH },
+                        ]}
+                      >
+                        <Text style={[styles.scheduleDateHeaderWeekday, isCursor && { color: '#FFFFFF' }]}>
+                          {WEEKDAY_SHORT[(d.getDay() + 6) % 7]}
                         </Text>
-                      </View>
+                        <Text style={[styles.scheduleDateHeaderNum, isCursor && { color: '#FFFFFF' }]}>{d.getDate()}</Text>
+                      </Pressable>
                     );
                   })}
                 </View>
-              )}
+                {showTotals && (
+                  <View style={styles.scheduleHeaderDatesRow}>
+                    {days.map((d, i) => {
+                      const free = freePerDay[i];
+                      return (
+                        <View key={dateKey(d)} style={[styles.scheduleTotalsCell, { width: SCHEDULE_DAY_WIDTH }]}>
+                          <Text style={[styles.scheduleTotalsValue, free === 0 && styles.scheduleTotalsValueNone]}>{free}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
             </View>
-          </ScrollView>
-        </View>
 
-        <ScrollView contentContainerStyle={styles.tableBody}>
-          <View style={styles.tableBodyRow}>
-            <View style={[styles.tableFrozenColumn, { width: rowHeaderWidth }]}>
-              {lines.map((line) =>
-                line.kind === 'group' ? (
-                  <Pressable
-                    key={`g:${line.key}`}
-                    style={[styles.scheduleGroupHeader, { width: rowHeaderWidth, height: SCHEDULE_GROUP_HEIGHT }]}
-                    onPress={() => toggleGroup(line.key)}
-                  >
-                    <Ionicons name={line.collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={sInk2('rgba(255,255,255,0.6)')} />
-                    <View style={[styles.scheduleGroupDot, { backgroundColor: line.color }]} />
-                    <Text style={styles.scheduleGroupLabel} numberOfLines={1}>
-                      {line.label}
-                    </Text>
-                    <Text style={styles.scheduleGroupCount}>{line.count}</Text>
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    key={line.row.id}
-                    style={[styles.scheduleRowHeaderCell, { width: rowHeaderWidth, height: rowHeight }]}
-                    onPress={() => navigation.navigate('CustomDatabase', { databaseId: config.rowDatabaseId, openRowId: line.row.id })}
-                  >
-                    <Text style={styles.scheduleRowHeaderLabel} numberOfLines={1}>
-                      {rowTitleOf(rowDatabase, line.row)}
-                    </Text>
-                  </Pressable>
-                )
-              )}
-              {rowRecords.length === 0 && (
+            <View style={{ flex: 1 }}>
+            {/* The grid lines and the today / cursor columns, once for the whole body, behind the rows. */}
+            <ScheduleGridLayer y={scheduleScrollY} contentH={lineOffsets.length ? lineOffsets[lineOffsets.length - 1] + lineHeights[lineHeights.length - 1] : 0} left={rowHeaderWidth} width={days.length * SCHEDULE_DAY_WIDTH}>
+              {days.map((d, i) => {
+                const key = dateKey(d);
+                return (
+                  <View
+                    key={key}
+                    style={[
+                      styles.scheduleGridLine,
+                      key === todayKey && styles.scheduleDayCellToday,
+                      key === cursorKey && { backgroundColor: withAlpha(accent, 0.12) },
+                      { left: i * SCHEDULE_DAY_WIDTH, width: SCHEDULE_DAY_WIDTH },
+                    ]}
+                  />
+                );
+              })}
+            </ScheduleGridLayer>
+            <Animated.FlatList
+              data={lines}
+              onScroll={scheduleYHandler}
+              scrollEventThrottle={16}
+              keyExtractor={(line) => (line.kind === 'group' ? `g:${line.key}` : line.row.id)}
+              getItemLayout={(_, index) => ({ length: lineHeights[index], offset: lineOffsets[index], index })}
+              initialNumToRender={12}
+              maxToRenderPerBatch={6}
+              windowSize={5}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.tableBody}
+              ListEmptyComponent={
                 <View style={styles.scheduleRowHeaderCell}>
                   <Text style={styles.emptyHint}>Немає записів</Text>
                 </View>
-              )}
-            </View>
-
-            <ScrollView
-              horizontal
-              ref={scheduleBodyScrollRef}
-              scrollEventThrottle={16}
-              onScroll={(e) =>
-                scheduleHeaderScrollRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false })
               }
-            >
-              <View>
-                {lines.map((line) => {
-                  if (line.kind === 'group') {
-                    // The group's line across the days: empty, the same
-                    // height as its header in the frozen column.
-                    return (
-                      <View
-                        key={`g:${line.key}`}
-                        style={[styles.scheduleGroupTrack, { width: days.length * SCHEDULE_DAY_WIDTH, height: SCHEDULE_GROUP_HEIGHT }]}
-                      />
-                    );
-                  }
-                  const row = line.row;
-                  // Every row of THIS database (Дорожній лист) whose own
-                  // relation field points at this record - never
-                  // `displayedRows`, which carries whatever sort/filter
-                  // was last set for list/table/cards and has nothing to
-                  // do with a schedule (see scheduleConfig's own comment).
-                  const events = rows.filter((r) => r.values[config.rowRelationFieldId] === row.id);
-                  // Which days this row already has something on, worked
-                  // out once for the whole grid (see rowBusy): an event's
-                  // days, and a manual status's days. A manual status
-                  // only ever applies to a day with nothing of its own to
-                  // say already (see BoardLayer's own hide-vs-lock
-                  // comment for the same "two things that could both
-                  // apply, so decide which wins" shape).
-                  const busy = rowBusy.get(row.id);
-                  const coveredDays = busy?.events ?? new Set<number>();
-                  const statusDays = busy?.statuses ?? new Set<number>();
-                  // `startDate` guards against a doc from before manual
-                  // statuses became periods (the old, now-gone `dateKey`
-                  // shape) - silently skipped rather than crashing the
-                  // whole grid on an undefined date, same as if it had
-                  // just been deleted.
-                  const statusesForRow = scheduleCellStatuses.filter(
-                    (s) => s.viewId === viewId && s.rowId === row.id && !!s.startDate
-                  );
+              renderItem={({ item: line }) => {
+                if (line.kind === 'group') {
                   return (
-                    <View key={row.id} style={[styles.scheduleRowTrack, { height: rowHeight }]}>
-                      {days.map((d, i) => {
-                        const key = dateKey(d);
-                        if (coveredDays.has(i) || statusDays.has(i)) {
-                          return (
-                            <View
-                              key={key}
-                              style={[
-                                styles.scheduleDayCell,
-                                key === todayKey && styles.scheduleDayCellToday,
-                                key === cursorKey && { backgroundColor: withAlpha(accent, 0.12) },
-                                { width: SCHEDULE_DAY_WIDTH, height: rowHeight },
-                              ]}
-                            />
-                          );
-                        }
-                        return (
-                          <Pressable
-                            key={key}
-                            style={[
-                              styles.scheduleDayCell,
-                              key === todayKey && styles.scheduleDayCellToday,
-                              key === cursorKey && { backgroundColor: withAlpha(accent, 0.12) },
-                              { width: SCHEDULE_DAY_WIDTH, height: rowHeight },
-                            ]}
-                            onPress={() => openScheduleStatusPicker(viewId, config, row, key, undefined)}
-                          />
-                        );
-                      })}
+                    <View style={{ flexDirection: 'row', width: totalW, height: SCHEDULE_GROUP_HEIGHT }}>
+                      <StickyLeft x={scheduleScrollX} style={{ width: rowHeaderWidth, backgroundColor: ground }}>
+                        <Pressable
+                          style={[styles.scheduleGroupHeader, { width: rowHeaderWidth, height: SCHEDULE_GROUP_HEIGHT }]}
+                          onPress={() => toggleGroup(line.key)}
+                        >
+                          <Ionicons name={line.collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={sInk2('rgba(255,255,255,0.6)')} />
+                          <View style={[styles.scheduleGroupDot, { backgroundColor: line.color }]} />
+                          <Text style={styles.scheduleGroupLabel} numberOfLines={1}>
+                            {line.label}
+                          </Text>
+                          <Text style={styles.scheduleGroupCount}>{line.count}</Text>
+                        </Pressable>
+                      </StickyLeft>
+                      {/* The group's line across the days: empty, the same height as its header. */}
+                      <View style={[styles.scheduleGroupTrack, { width: days.length * SCHEDULE_DAY_WIDTH, height: SCHEDULE_GROUP_HEIGHT }]} />
+                    </View>
+                  );
+                }
+                const row = line.row;
+                const events = eventsByRow.get(row.id) ?? [];
+                const busy = rowBusy.get(row.id);
+                const coveredDays = busy?.events ?? new Set<number>();
+                const statusDays = busy?.statuses ?? new Set<number>();
+                const statusesForRow = statusesByRow.get(row.id) ?? [];
+                return (
+                  <View style={{ flexDirection: 'row', width: totalW, height: rowHeight }}>
+                    <StickyLeft x={scheduleScrollX} style={{ width: rowHeaderWidth, backgroundColor: ground }}>
+                      <Pressable
+                        style={[styles.scheduleRowHeaderCell, { width: rowHeaderWidth, height: rowHeight }]}
+                        onPress={() => navigation.navigate('CustomDatabase', { databaseId: config.rowDatabaseId, openRowId: row.id })}
+                      >
+                        <Text style={styles.scheduleRowHeaderLabel} numberOfLines={1}>
+                          {rowTitleOf(rowDatabase, row)}
+                        </Text>
+                      </Pressable>
+                    </StickyLeft>
+                    <View style={[styles.scheduleRowTrack, { height: rowHeight, width: days.length * SCHEDULE_DAY_WIDTH }]}>
+                      {/* ONE press layer over the row works out the day from where the finger landed (a pressable cell
+                          per day made 4200 live touch targets); a day with something on it is not tappable, as
+                          before - what covers it is the bar over it. The grid lines are drawn once for the whole
+                          body (see below), not per row. */}
+                      <Pressable
+                        style={StyleSheet.absoluteFill}
+                        onPress={(e) => {
+                          const i = Math.floor(e.nativeEvent.locationX / SCHEDULE_DAY_WIDTH);
+                          if (i < 0 || i >= days.length || coveredDays.has(i) || statusDays.has(i)) return;
+                          openScheduleStatusPicker(viewId, config, row, dateKey(days[i]), undefined);
+                        }}
+                      />
                       {statusesForRow.map((status) => {
                         const statusOption = (config.manualStatuses ?? []).find((o) => o.id === status.statusId);
                         if (!statusOption) return null;
@@ -3724,12 +3739,13 @@ export default function CustomDatabaseScreen({
                         );
                       })}
                     </View>
-                  );
-                })}
-              </View>
-            </ScrollView>
+                  </View>
+                );
+              }}
+            />
+            </View>
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
       </View>
     );
   }
@@ -6535,6 +6551,8 @@ const softCustomDatabaseWindows = (S: SoftTokens) =>
     scheduleDateHeaderWeekday: { color: S.ink2 },
     scheduleDateHeaderNum: { color: S.ink },
     scheduleDayCell: { borderColor: S.line },
+    scheduleGridLine: { borderColor: S.line },
+    scheduleRowTrack: { borderBottomColor: S.line },
     scheduleDayCellToday: { backgroundColor: S.fill },
     tableCellEmpty: { color: S.ink3 },
     tableCellInput: { color: S.ink },
@@ -7346,6 +7364,13 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
   },
+  scheduleGridLine: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    borderRightWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
   scheduleDayCellToday: {
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
@@ -7357,6 +7382,8 @@ const makeStyles = (t: Theme) => StyleSheet.create({
     flexDirection: 'row',
     position: 'relative',
     height: SCHEDULE_ROW_HEIGHT,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
   },
   scheduleEventCard: {
     position: 'absolute',
