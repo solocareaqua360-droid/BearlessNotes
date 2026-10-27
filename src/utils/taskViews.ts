@@ -1,3 +1,6 @@
+import type { Recurrence } from '../types';
+import { nextRecurrenceDate } from './recurrence';
+
 // THE WINDOWS OF «СПРАВИ» (2026-10-09, the user's sketch «Шлях справи», after
 // Things 3): the tasks are no longer one list under project tabs but a few
 // separate windows, each asking one question of every task - has it been
@@ -112,4 +115,25 @@ export function whenFields(
   if (date <= today)
     return { todayMarkedDate: today, reminderDate: undefined, ...clearReminder, someday: undefined, evening: undefined, postponeCount };
   return { todayMarkedDate: undefined, reminderDate: date, ...clearReminder, someday: undefined, evening: undefined, postponeCount };
+}
+
+// A RECURRING TASK'S NEXT TIMES, AHEAD (2026-10-26, the user's «повторювані справи видно і в наступні дні»): the dates its
+// following occurrences fall on - every one within a week from today, and at least the next one however far it is (a
+// monthly task shows next month). Worked out on the fly, never stored: completing the real one still makes the next one
+// (taskToggle), these only show where the repeats will stand. Today and earlier are left out - today shows the real task.
+export const ECHO_DAYS = 7;
+export function recurrenceEchoes(t: { checked: boolean; recurrence?: Recurrence; reminderDate?: string }, today: string): string[] {
+  if (t.checked || !t.recurrence || !t.reminderDate) return [];
+  const horizon = dateKeyPlus(today, ECHO_DAYS);
+  const out: string[] = [];
+  let d = t.reminderDate;
+  for (let i = 0; i < 400; i++) {
+    d = nextRecurrenceDate(t.recurrence, d);
+    if (d <= today) continue;
+    // Past the week: one more only when nothing ahead shows yet (the real task itself, on a later day, already does).
+    if (d > horizon && (out.length > 0 || t.reminderDate > today)) break;
+    out.push(d);
+    if (d > horizon) break;
+  }
+  return out;
 }

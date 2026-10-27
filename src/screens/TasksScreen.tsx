@@ -84,7 +84,7 @@ import { FEATURES } from '../features';
 import { saveHandoffFiles, saveHandoffText } from '../utils/handoffExport';
 import { exportHtmlAsPdf } from '../utils/htmlToPdf';
 import { tasksToHtml } from '../utils/tasksHtml';
-import { ageInDays, dayAhead, dateKeyPlus, inView, isDueToday, isOverdue, VIEW_META, whenFields, type TaskView, type WhenChoice } from '../utils/taskViews';
+import { ageInDays, dayAhead, dateKeyPlus, inView, isDueToday, isOverdue, recurrenceEchoes, VIEW_META, whenFields, type TaskView, type WhenChoice } from '../utils/taskViews';
 import { useSoft } from '../theme/soft';
 import DayTimeline from '../components/DayTimeline';
 import { GlassPortal } from '../components/GlassPortal';
@@ -136,6 +136,7 @@ type Task = {
   kanbanOrder?: number;
   planTime?: string;
   planMinutes?: number;
+  planBackground?: boolean;
   reminderDate?: string;
   reminderTime?: string;
   reminderKind?: ReminderKind;
@@ -629,6 +630,7 @@ export default function TasksScreen() {
         kanbanOrder: docSnapshot.data().kanbanOrder,
         planTime: docSnapshot.data().planTime,
         planMinutes: docSnapshot.data().planMinutes,
+        planBackground: docSnapshot.data().planBackground,
         reminderDate: docSnapshot.data().reminderDate,
         reminderTime: docSnapshot.data().reminderTime,
         reminderKind: docSnapshot.data().reminderKind,
@@ -1694,6 +1696,47 @@ export default function TasksScreen() {
     });
   }
 
+  // The day scale's own fields - length, «фонова» - on both sides; a field given as null goes.
+  async function setPlanFields(task: Task, fields: { planMinutes?: number | null; planBackground?: boolean | null }) {
+    const mirror: Record<string, unknown> = {};
+    Object.entries(fields).forEach(([k, v]) => (mirror[k] = v === null ? deleteField() : v));
+    await updateTaskBothSides(task, mirror, (b) => {
+      const next = { ...b } as Record<string, unknown>;
+      Object.entries(fields).forEach(([k, v]) => {
+        if (v === null) delete next[k];
+        else next[k] = v;
+      });
+      return next as unknown as Block;
+    });
+  }
+
+  // A step of a background task gets an hour inside its window (quarter hours across the band), or loses it.
+  async function askSubtaskTime(task: Task, subId: string) {
+    const sub = (task.subtasks ?? []).find((x) => x.id === subId);
+    if (!sub || !task.planTime) return;
+    const [h, m] = task.planTime.split(':').map(Number);
+    const startMin = h * 60 + (m || 0);
+    const len = task.planMinutes ?? 120;
+    const slots: string[] = [];
+    for (let t = startMin; t < startMin + len && slots.length < 12; t += len > 180 ? 60 : 30)
+      slots.push(`${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`);
+    const id = await ask({
+      title: sub.text || 'Підзадача',
+      message: 'О котрій?',
+      actions: [
+        ...slots.map((t) => ({ id: t, label: t, icon: 'time-outline' as const })),
+        ...(sub.time ? [{ id: 'clear', label: 'Без часу', icon: 'close-circle-outline' as const }] : []),
+      ],
+    });
+    if (!id || id === 'cancel') return;
+    const next = (task.subtasks ?? []).map((x) => {
+      if (x.id !== subId) return x;
+      const { time: _old, ...rest } = x;
+      return id === 'clear' ? rest : { ...rest, time: id };
+    });
+    updateTaskBothSides(task, { subtasks: next }, (b) => ({ ...b, subtasks: next }));
+  }
+
   // The coming hours, from the next full one to late evening.
   function comingSlots(): string[] {
     const h = new Date().getHours();
@@ -1745,6 +1788,10 @@ export default function TasksScreen() {
         ...(task.kanbanStatus !== 'inProgress' && !task.checked ? [{ id: 'start', label: 'Почати', icon: 'play-outline' as const }] : []),
         { id: 'done', label: task.checked ? 'Не зроблено' : 'Зроблено', icon: 'checkmark-done-outline' },
         { id: 'time', label: 'Інший час', icon: 'time-outline' },
+        // «Фонова»: the task becomes a band under its window (two hours unless it already has a length).
+        task.planBackground
+          ? { id: 'fore', label: 'Звичайна справа', icon: 'square-outline' as const }
+          : { id: 'back', label: 'Фонова справа', icon: 'layers-outline' as const },
         { id: 'when', label: 'Інший день…', icon: 'calendar-outline' },
         { id: 'note', label: 'Нотатка', icon: 'document-text-outline' },
       ],
@@ -1752,6 +1799,8 @@ export default function TasksScreen() {
     if (id === 'start') setTaskStatus(task, 'inProgress');
     else if (id === 'done') toggleTask(task);
     else if (id === 'time') askTime(task);
+    else if (id === 'back') setPlanFields(task, { planBackground: true, ...(task.planMinutes ? {} : { planMinutes: 120 }) });
+    else if (id === 'fore') setPlanFields(task, { planBackground: null });
     else if (id === 'when') askWhen(task);
     else if (id === 'note') navigation.navigate('Editor', { documentId: task.documentId });
   }
@@ -2022,6 +2071,33 @@ export default function TasksScreen() {
         {render(t)}
       </OrderableRow>
     ));
+  }
+
+  // A repeat still to come: the task's words, pale, with the repeat sign instead of a box - it is ticked on its own day.
+  // A tap opens the repeat rule.
+  function renderEchoRow(item: Task, date: string) {
+    return (
+      <Pressable
+        key={`echo-${item.id}-${date}`}
+        onPress={() => setRecurrenceTaskId(item.id)}
+        accessibilityLabel={`Повтор: ${item.text}`}
+        style={[styles.row, { opacity: 0.5 }]}
+      >
+        <View style={styles.rowMain}>
+          <Ionicons name="repeat-outline" size={20} color={theme.ink.faint} />
+          <View style={styles.rowTextTap}>
+            <Text style={styles.rowText} numberOfLines={2}>
+              {item.text}
+            </Text>
+            {!!item.recurrence && (
+              <Text style={styles.v2Meta} numberOfLines={1}>
+                {`повтор · ${recurrenceLabel(item.recurrence).toLowerCase()}`}
+              </Text>
+            )}
+          </View>
+        </View>
+      </Pressable>
+    );
   }
 
   function renderV2Row(item: Task) {
@@ -2388,9 +2464,17 @@ export default function TasksScreen() {
   function renderViewList() {
     const v = view as 'inbox' | 'today' | 'upcoming' | 'someday' | 'logbook';
     const list = viewTasksOf(v);
+    // «Найближчі» also shows where the repeating tasks will stand (recurrenceEchoes): pale, never ticked here.
+    const echoes: { task: Task; date: string }[] = [];
+    if (v === 'upcoming') {
+      const needle = searchQuery.trim().toLowerCase();
+      tasks
+        .filter((t) => (!needle || matchesSearch(t, needle)) && (projectFilter === null || projectFilter === UNASSIGNED_ID || t.groupId === projectFilter))
+        .forEach((t) => recurrenceEchoes(t, today).forEach((date) => echoes.push({ task: t, date })));
+    }
     const filterName = projectFilter && projectFilter !== UNASSIGNED_ID ? projectsById[projectFilter]?.name : undefined;
     const filterLine = filterName ? <Text style={styles.v2Hint}>Проєкт: {filterName} · змінити в «⋯»</Text> : null;
-    if (list.length === 0 && v !== 'today')
+    if (list.length === 0 && echoes.length === 0 && v !== 'today')
       return (
         <>
           {filterLine}
@@ -2432,12 +2516,26 @@ export default function TasksScreen() {
               text: t.text,
               time: t.planTime as string,
               minutes: t.planMinutes,
+              background: !!t.planBackground,
+              subs: t.subtasks,
               done: t.checked,
               warn: (t.postponeCount ?? 0) >= 2,
               sub: t.kanbanStatus === 'inProgress' && !t.checked ? 'у роботі' : projectsById[t.groupId ?? '']?.name,
             }))}
             onPressItem={askTimedTask}
             onPressHour={askForHour}
+            onResize={(id, minutes) => {
+              const task = tasks.find((t) => t.id === id);
+              if (task) setPlanFields(task, { planMinutes: minutes });
+            }}
+            onToggleSub={(id, subId) => {
+              const task = tasks.find((t) => t.id === id);
+              if (task) toggleSubtask(task, subId);
+            }}
+            onSubTime={(id, subId) => {
+              const task = tasks.find((t) => t.id === id);
+              if (task) askSubtaskTime(task, subId);
+            }}
           />
           {evening.length > 0 && <Text style={styles.v2Section}>Ввечері</Text>}
           {orderable(evening, renderV2Row)}
@@ -2450,6 +2548,8 @@ export default function TasksScreen() {
         const d = dayAhead(t, today);
         if (d && !days.includes(d)) days.push(d);
       });
+      echoes.forEach((e) => !days.includes(e.date) && days.push(e.date));
+      days.sort();
       return (
         <>
           {days.map((d) => {
@@ -2460,6 +2560,7 @@ export default function TasksScreen() {
                   {WEEKDAY_FULL[(date.getDay() + 6) % 7]}, {formatShortDate(date)}
                 </Text>
                 {list.filter((t) => dayAhead(t, today) === d).map(renderV2Row)}
+                {echoes.filter((e) => e.date === d).map((e) => renderEchoRow(e.task, e.date))}
               </View>
             );
           })}

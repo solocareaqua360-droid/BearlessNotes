@@ -290,6 +290,9 @@ export interface Block {
   // reminder: nothing rings for it (that is reminderTime's job).
   planTime?: string;
   planMinutes?: number;
+  // A long task done any time in its window while other things happen (accepting road sheets 08-14): drawn on the day
+  // scale as a pale warm band UNDER everything, the other tasks of that window on top of it (2026-10-27).
+  planBackground?: boolean;
   // 'checkbox' blocks only - a richer, optional alternative to just
   // todayMarkedDate: a specific due date, and optionally a time that
   // schedules a local notification (see utils/reminders.ts). Setting this
@@ -414,6 +417,8 @@ export interface Subtask {
   id: string;
   text: string;
   checked: boolean;
+  // HH:mm - a step of a background task done at a set hour: drawn inside its band on the day scale (2026-10-27).
+  time?: string;
 }
 
 // A checkbox task's own repeat rule - see Block.recurrence. `weekday` is

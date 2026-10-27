@@ -21,7 +21,7 @@ import { createTaskOnDate } from '../utils/copyToNote';
 import { toggleTaskEverywhere } from '../utils/taskToggle';
 import { dayBoardId, ensureDayBoard } from '../utils/dayBoard';
 import { groupAppliesTo } from '../utils/groups';
-import { isDueToday, isOverdue } from '../utils/taskViews';
+import { isDueToday, isOverdue, recurrenceEchoes } from '../utils/taskViews';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { TOP_NAV_SPACE, useTopNavOn } from './TopNavBar';
 import type { Block, Group, Recurrence } from '../types';
@@ -54,6 +54,8 @@ type RiverTask = {
   reminderKind?: ReminderKind;
   recurrence?: Recurrence;
   someday?: boolean;
+  // A repeat still to come (utils/taskViews.recurrenceEchoes): drawn pale, ticked only on its own day as the real task.
+  echo?: boolean;
 };
 
 // `plus()`: what the dock's «+» does over the river (the screen owns the dock; the river owns the prompt).
@@ -188,6 +190,7 @@ const CalendarRiver = forwardRef<CalendarRiverHandle, { navigation: unknown }>(f
       if (t.reminderDate) push(t.reminderDate, t);
       // Today gathers what is still open from the days before it, as «Сьогодні» in Справи does.
       if (!t.checked && isDueToday(t, todayKey) && isOverdue(t, todayKey)) push(todayKey, t);
+      recurrenceEchoes(t, todayKey).forEach((d) => push(d, { ...t, id: `echo:${t.id}:${d}`, echo: true }));
     });
     return map;
   }, [tasks, todayKey]);
@@ -509,12 +512,16 @@ function Day({
         </Pressable>
       )}
       {shown.map((t) => (
-        <View key={t.id} style={styles.task}>
-          <Pressable hitSlop={10} onPress={() => onToggleTask(t)} accessibilityLabel={t.checked ? 'Зняти позначку' : 'Позначити зробленим'}>
-            <View style={[styles.box, t.checked && { backgroundColor: S.ink3, borderColor: S.ink3 }]}>
-              {t.checked && <Ionicons name="checkmark" size={14} color={S.card} />}
-            </View>
-          </Pressable>
+        <View key={t.id} style={[styles.task, t.echo && { opacity: 0.5 }]}>
+          {t.echo ? (
+            <Ionicons name="repeat-outline" size={18} color={S.ink3} accessibilityLabel="Повтор" />
+          ) : (
+            <Pressable hitSlop={10} onPress={() => onToggleTask(t)} accessibilityLabel={t.checked ? 'Зняти позначку' : 'Позначити зробленим'}>
+              <View style={[styles.box, t.checked && { backgroundColor: S.ink3, borderColor: S.ink3 }]}>
+                {t.checked && <Ionicons name="checkmark" size={14} color={S.card} />}
+              </View>
+            </Pressable>
+          )}
           <Text style={[styles.taskText, t.checked && styles.taskDone]} numberOfLines={1}>
             {t.text || 'Без назви'}
           </Text>
@@ -522,7 +529,7 @@ function Day({
             {(t.groupId && groups.get(t.groupId)) || 'Вхідні'}
           </Text>
           {!!t.reminderTime && <Ionicons name="alarm-outline" size={16} color={S.ink3} />}
-          {!!t.recurrence && <Ionicons name="repeat-outline" size={16} color={S.ink3} />}
+          {!!t.recurrence && !t.echo && <Ionicons name="repeat-outline" size={16} color={S.ink3} />}
         </View>
       ))}
       {ordered.length > SHOWN_TASKS && (
