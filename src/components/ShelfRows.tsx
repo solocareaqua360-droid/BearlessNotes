@@ -1,5 +1,5 @@
-import { ReactNode, useEffect } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
+import { ReactNode, useEffect, useState } from 'react';
+import { FlatList, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -41,6 +41,8 @@ const SMALLEST = 0.88;
 const TILE_DELAY = 45;
 const SHELF_DELAY = 70;
 const ANIMATED_TILES = 6;
+// How many tiles of a gathered deck are built before the shelf is touched.
+const DECK_VISIBLE = 7;
 
 export default function ShelfRows<T>({
   shelves,
@@ -72,10 +74,18 @@ export default function ShelfRows<T>({
   topPad?: number;
 }) {
   return (
-    <Animated.ScrollView contentContainerStyle={{ paddingTop: topPad + 8, paddingBottom: bottomPad }}>
-      {header}
-      {shelves.map((shelf, index) => (
-        <View key={shelf.key} style={styles.shelf}>
+    <FlatList
+      data={shelves}
+      keyExtractor={(shelf) => shelf.key}
+      // Only the shelves in sight are built (optimisation, 2026-10-27).
+      initialNumToRender={3}
+      maxToRenderPerBatch={2}
+      windowSize={5}
+      contentContainerStyle={{ paddingTop: topPad + 8, paddingBottom: bottomPad }}
+      ListHeaderComponent={header ? <View>{header}</View> : null}
+      ListFooterComponent={footer ? <View>{footer}</View> : null}
+      renderItem={({ item: shelf, index }) => (
+        <View style={styles.shelf}>
           <View style={[styles.header, { paddingHorizontal: padding }]}>
             <Text style={[styles.label, labelStyle]} numberOfLines={1}>
               {shelf.label}
@@ -84,16 +94,16 @@ export default function ShelfRows<T>({
           </View>
           <ShelfRow
             items={shelf.items}
-            order={index}
+            // A shelf that scrolls into sight later does not wait for the ones above it.
+            order={Math.min(index, 3)}
             tileWidth={tileWidth}
             padding={padding}
             keyOf={keyOf}
             renderTile={renderTile}
           />
         </View>
-      ))}
-      {footer}
-    </Animated.ScrollView>
+      )}
+    />
   );
 }
 
@@ -116,9 +126,14 @@ function ShelfRow<T>({
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
   });
+  // The deck is gathered until the shelf is scrolled: tiles past the first few are tucked out of sight under the ones
+  // before them, so they are built only when a finger starts the shelf moving (they are in place before the deck spreads).
+  const [all, setAll] = useState(items.length <= DECK_VISIBLE);
+  const shown = all ? items : items.slice(0, DECK_VISIBLE);
   return (
     <Animated.ScrollView
       horizontal
+      onScrollBeginDrag={() => setAll(true)}
       onScroll={onScroll}
       scrollEventThrottle={16}
       showsHorizontalScrollIndicator={false}
@@ -130,7 +145,7 @@ function ShelfRow<T>({
       style={styles.row}
       contentContainerStyle={{ paddingHorizontal: padding }}
     >
-      {items.map((item, i) => (
+      {shown.map((item, i) => (
         <Tile key={keyOf(item)} index={i} count={items.length} order={order} width={tileWidth} scrollX={scrollX}>
           {renderTile(item, tileWidth)}
         </Tile>

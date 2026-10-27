@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import { FlatList, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReferenceDrag } from '../hooks/useReferenceDrag';
 import { useSoftSurface } from '../theme/soft';
@@ -162,22 +162,32 @@ export default function CustomDatabaseKanban({
                 </Text>
                 <Text style={[styles.count, { color: ink3 }]}>{column.rows.length}</Text>
               </View>
-              <ScrollView
+              <FlatList
                 style={styles.list}
-                contentContainerStyle={[styles.listContent, { paddingBottom: bottomInset + insets.bottom }]}
+                data={column.rows}
+                keyExtractor={(row) => row.id}
+                // Only the cards in sight are built (optimisation, 2026-10-27); a dragged card is read from the rows that
+                // are on the screen, which is all one can grab.
+                initialNumToRender={6}
+                maxToRenderPerBatch={4}
+                windowSize={5}
+                contentContainerStyle={[styles.listContent, { gap: 0, paddingBottom: bottomInset + insets.bottom }]}
                 showsVerticalScrollIndicator={false}
                 nestedScrollEnabled
-              >
-                {column.rows.map((row) => {
+                ListEmptyComponent={<Text style={[styles.empty, { color: ink3 }]}>Порожньо</Text>}
+                renderItem={({ item: row, index }) => {
                   const block = { id: row.id, text: '' } as Block;
                   return (
-                    <View key={row.id} ref={drag.registerRow(`kan-${row.id}`, () => block, titleOf(row))} collapsable={false}>
+                    <View
+                      ref={drag.registerRow(`kan-${row.id}`, () => block, titleOf(row))}
+                      collapsable={false}
+                      style={index < column.rows.length - 1 ? { paddingBottom: 8 } : undefined}
+                    >
                       {renderRow(row)}
                     </View>
                   );
-                })}
-                {column.rows.length === 0 && <Text style={[styles.empty, { color: ink3 }]}>Порожньо</Text>}
-              </ScrollView>
+                }}
+              />
             </View>
           ))}
         </ScrollView>
