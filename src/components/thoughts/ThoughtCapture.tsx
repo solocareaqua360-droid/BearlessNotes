@@ -16,6 +16,8 @@ import { SOFT_BOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils
 import { createTheme, hueOf, saveThought, THEME_HUES, type ThoughtSource, type ThoughtTheme } from '../../hooks/useThoughts';
 import { backupThoughtImages, clipboardHasImage, keepThoughtImage, pasteClipboardImage, pickThoughtImages } from '../../utils/thoughtImages';
 import { Cloud, cloudDiameter, layoutClouds, type CloudPlace } from './ThemeClouds';
+import FeelRow from './FeelRow';
+import type { Feeling } from './feelings';
 
 // CATCHING A THOUGHT (2026-10-15, the user's sketch corrections: «забагато кнопок і мало візуалу ... одна кнопка
 // "Куди?", і переді мною з'являються мої хмарки, на яку тицьну - туди і додасться»). Two moments in one window:
@@ -63,6 +65,7 @@ export default function ThoughtCapture({
   const keyboard = useKeyboardRide();
   const kb = useKeyboardHeight();
   const [felt, setFelt] = useState('');
+  const [feel, setFeel] = useState<Feeling | null>(null);
   const [stage, setStage] = useState<'write' | 'pick' | 'name'>('write');
   const [newName, setNewName] = useState('');
   const [listening, setListening] = useState(false);
@@ -90,6 +93,7 @@ export default function ThoughtCapture({
   useEffect(() => {
     if (!visible) return;
     setFelt('');
+    setFeel(null);
     setStage('write');
     setNewName('');
     setPulseId(null);
@@ -167,7 +171,7 @@ export default function ThoughtCapture({
           // The pictures first into the app's own folder (a picker's address does not live long), then the thought.
           const kept = await Promise.all(images.map((u) => keepThoughtImage(u).catch(() => u)));
           const mine = kept.map((uri) => ({ uri }));
-          const id = await saveThought({ felt, source, images: mine, themeId });
+          const id = await saveThought({ felt, feel, source, images: mine, themeId });
           if (mine.length) backupThoughtImages(id, mine).catch(() => {});
         }
       } catch {
@@ -176,7 +180,7 @@ export default function ThoughtCapture({
       shown.value = withTiming(0, { duration: 200 });
       setTimeout(onClose, 210);
     },
-    [felt, source, images, listening, stopListening, onClose, shown]
+    [felt, feel, source, images, listening, stopListening, onClose, shown]
   );
 
   // Closing: anything caught is kept, not laid out yet.
@@ -436,6 +440,7 @@ export default function ThoughtCapture({
                 <Ionicons name={(listening ? 'stop' : 'mic-outline') as never} size={22} color={listening ? '#fff' : S.ink} />
               </Pressable>
             </View>
+            <FeelRow value={feel} onChange={setFeel} />
             <Pressable
               onPress={() => {
                 if (!hasSomething) return;

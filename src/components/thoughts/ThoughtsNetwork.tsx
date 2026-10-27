@@ -6,6 +6,7 @@ import { runOnJS, useDerivedValue, useSharedValue } from 'react-native-reanimate
 import { BlendMode, Canvas, PaintStyle, Picture, Skia, StrokeCap, TileMode, createPicture, matchFont, useClock } from '@shopify/react-native-skia';
 import type { Thought, ThoughtTheme } from '../../hooks/useThoughts';
 import { cardTitle } from './thoughtText';
+import { FEELINGS } from './feelings';
 
 // THOUGHTS AS NEURONS (2026-10-27, the user's picture, prototype https://claude.ai/artifact/9mnhW7YrFwirjz3JckXgP3 -
 // «візуально це прям кайф»). A LENS over the same thoughts, not a new place: every thought a neuron that pulses, every
@@ -13,15 +14,8 @@ import { cardTitle } from './thoughtText';
 // along the links and opens the thought's own card (the owner's `onOpen`). Pulled out, the clusters read as a cosmos.
 // Drawn by Skia on the UI thread: one picture per frame, recorded from plain arrays (`net`), so React renders it once.
 
-// The five feelings (agreed 2026-10-27; picked by hand at first). A thought with none yet glows starlight-white.
-export const FEELINGS = {
-  spark: { name: 'натхнення', c: [247, 200, 110] },
-  curious: { name: 'цікавість', c: [170, 140, 255] },
-  calm: { name: 'спокій', c: [96, 214, 200] },
-  worry: { name: 'тривога', c: [255, 112, 112] },
-  joy: { name: 'радість', c: [255, 140, 205] },
-} as const;
-export type Feeling = keyof typeof FEELINGS;
+// A thought's feeling colours its neuron (feelings.ts); one with none yet glows starlight-white.
+export { FEELINGS, type Feeling } from './feelings';
 const STARLIGHT = [226, 222, 236];
 // A theme's own nebula: told apart by hue, all of one brightness so none shouts.
 const NEBULAE = [
@@ -74,14 +68,14 @@ function layout(themes: ThoughtTheme[], thoughts: Thought[]): Net {
       // Fresh thoughts glow, old ones go quiet (never out): two months to the quiet end.
       const life = Math.max(0.15, Math.min(1, 1 - (now - t.createdAt) / (60 * 86400000)));
       heat += life;
-      const feel = (t as Thought & { feel?: Feeling }).feel;
+      const feel = t.feel;
       const label = (cardTitle(t) || t.felt || '').replace(/\s+/g, ' ').trim();
       nodes.push({
         id: t.id,
         x: cx + Math.cos(a) * r,
         y: cy + Math.sin(a) * r * 0.85,
         r: 4 + h2 * 3,
-        c: feel && FEELINGS[feel] ? [...FEELINGS[feel].c] : STARLIGHT,
+        c: feel ? [...FEELINGS[feel].c] : STARLIGHT,
         ph: h1 * 6.28,
         per: 2.2 + h2 * 2.6,
         life,

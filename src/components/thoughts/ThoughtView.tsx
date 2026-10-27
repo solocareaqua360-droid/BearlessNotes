@@ -8,7 +8,8 @@ import { Ionicons } from '../icons/Ionicons';
 import { useSoft } from '../../theme/soft';
 import { SOFT_BOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
 import { formatAddedOn } from '../../utils/documentPreview';
-import type { Thought } from '../../hooks/useThoughts';
+import { setThoughtFeel, type Thought } from '../../hooks/useThoughts';
+import FeelRow from './FeelRow';
 import { readable } from './ThoughtCapture';
 import { isYouTube } from '../../utils/thoughtAI';
 import { pauseVoice, resumeVoice, seekVoice, skipVoice, stopVoice, subscribeVoice, type VoiceState } from '../../utils/thoughtVoice';
@@ -145,6 +146,7 @@ export default function ThoughtView({
               )}
             </View>
           )}
+          {!thought.ai && <FeelRow value={thought.feel ?? null} onChange={(f) => setThoughtFeel(thought.id, f).catch(() => {})} />}
           {sounding && v && (
             // THE PLAYER IN THE CARD: where in the text, and the controls.
             <View style={[styles.player, { backgroundColor: S.fill }]}>

@@ -4,6 +4,7 @@ import { db } from '../firebase';
 import { FEATURES } from '../features';
 import { addDoc, ownedQuery } from '../utils/owned';
 import { listenError } from '../utils/listenError';
+import { isFeeling, type Feeling } from '../components/thoughts/feelings';
 
 // THE THOUGHT FLOW'S DATA (2026-10-15, the user's «хід думок»: something that caught you - a video, a text, a thought
 // in the shower - is kept WITH what it made you feel, and lands in a THEME that grows and that you want to come back
@@ -23,6 +24,8 @@ export type Thought = {
   id: string;
   themeId: string | null;
   felt: string;
+  // The feeling it came with (one of five, picked by hand); unset = none said.
+  feel?: Feeling;
   source?: ThoughtSource;
   // Pictures that came with it (or ARE it - a thought can arrive as a photo alone).
   images?: ThoughtImage[];
@@ -139,6 +142,7 @@ export function useThoughts(enabled = true) {
                 id: d.id,
                 themeId: typeof x.themeId === 'string' ? x.themeId : null,
                 felt: str(x.felt),
+                feel: isFeeling(x.feel) ? x.feel : undefined,
                 source: sourceOf(x.source),
                 images: imagesOf(x.images),
                 state: x.state === 'ripening' || x.state === 'settled' ? x.state : 'raw',
@@ -183,11 +187,12 @@ function cleanSource(source: ThoughtSource | undefined) {
   return Object.fromEntries(Object.entries(source).filter(([, v]) => v !== undefined && v !== ''));
 }
 
-export async function saveThought(input: { felt: string; source?: ThoughtSource; images?: ThoughtImage[]; themeId: string | null }): Promise<string> {
+export async function saveThought(input: { felt: string; feel?: Feeling | null; source?: ThoughtSource; images?: ThoughtImage[]; themeId: string | null }): Promise<string> {
   const now = Date.now();
   const ref = await addDoc(collection(db, 'thoughts'), {
     themeId: input.themeId,
     felt: input.felt.trim(),
+    ...(input.feel ? { feel: input.feel } : {}),
     source: cleanSource(input.source),
     ...(input.images?.length ? { images: input.images.map((i) => (i.driveFileId ? { uri: i.uri, driveFileId: i.driveFileId } : { uri: i.uri })) } : {}),
     state: 'raw',
@@ -300,6 +305,10 @@ export async function saveTextCard(input: { themeId: string | null; text: string
   });
   if (input.themeId) await updateDoc(doc(db, 'thoughtThemes', input.themeId), { touchedAt: now }).catch(() => {});
   return ref.id;
+}
+
+export async function setThoughtFeel(id: string, feel: Feeling | null) {
+  await updateDoc(doc(db, 'thoughts', id), { feel: feel ?? deleteField(), updatedAt: Date.now() });
 }
 
 export async function editThoughtText(id: string, text: string) {
