@@ -1,4 +1,5 @@
-import { type ComponentProps, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useRenderTimer } from '../utils/perfWatch'; // TEMPORARY
+import { type ComponentProps, type ReactElement, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { askFates, boardContentsFates, confirmFates, FATE, type FateEntry, type FateKind } from '../utils/deleteFates';
 import { folderPathFromName } from '../utils/folderName';
 import { usePublishRailPanel } from '../navigation/navRail';
@@ -10,7 +11,7 @@ import { explorerPlace, useExplorerCreateWanted, useExplorerWanted } from '../na
 import { folderOpening, useFolderOpening } from '../navigation/folderOpening';
 import { SwipeSelectArea, SwipeSelectItem } from '../components/SwipeSelect';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BackHandler, FlatList, Image, Modal, Platform, Pressable, ScrollView, Share, useWindowDimensions, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, FlatList, type GestureResponderEvent, Image, Modal, Platform, Pressable, ScrollView, Share, useWindowDimensions, StyleSheet, Text, View } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -316,6 +317,7 @@ async function readPhotoText(uri: string, driveFileId: string | undefined, start
 }
 
 export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; desk?: boolean } = {}) {
+  useRenderTimer('Провідник'); // TEMPORARY - optimisation day 2026-10-27
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -3047,6 +3049,40 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // «Думки» card and every folder card from nothing - 3 of the 4 stalls of a closing, ~150 ms). It is hidden, not taken
   // away: on the way back the same components come back into view, and React only updates them.
   const atFirstLevel = !path && !inBin && !inCleanup && !searching;
+  // WHILE SOMETHING ELSE IS IN FRONT (a note, the AI, another desk), the list is not built again (optimisation day,
+  // 2026-10-27): losing focus re-renders this screen - it has to give up the dock and the bar - and the list's rows came
+  // with it, every visible card (~20-40 ms on each note opened and closed, more in a folder with a map). The element
+  // last built while in front is handed back as it is, so React leaves that whole part alone; back in front, it is built
+  // fresh, with whatever changed meanwhile.
+  // ONE PRESS FUNCTION PER CARD, kept between renders (optimisation day, 2026-10-27): FolderItemCard is a memo, and a
+  // new arrow on every render made each visible card draw itself again whenever the explorer did - a whole folder at
+  // once, its map with it, on every note closed. The function stays; what it does is read fresh at the tap.
+  const itemPress = useRef<(item: FolderItem, e?: GestureResponderEvent) => void>(() => {});
+  itemPress.current = (item, e) => {
+    if (selecting) return toggle(item.id);
+    if (explorerSelect && !pickTwice(item.id, () => openItem(item))) return;
+    openItem(item, e);
+  };
+  const pressFns = useRef(new Map<string, (e?: GestureResponderEvent) => void>());
+  const pressItems = useRef(new Map<string, FolderItem>());
+  const pressFor = (item: FolderItem) => {
+    pressItems.current.set(item.id, item);
+    let fn = pressFns.current.get(item.id);
+    if (!fn) {
+      fn = (e?: GestureResponderEvent) => {
+        const latest = pressItems.current.get(item.id);
+        if (latest) itemPress.current(latest, e);
+      };
+      pressFns.current.set(item.id, fn);
+    }
+    return fn;
+  };
+  const bodyKept = useRef<ReactElement | null>(null);
+  const keepWhileAway = (el: ReactElement) => {
+    if (!isFocused && bodyKept.current) return bodyKept.current;
+    bodyKept.current = el;
+    return el;
+  };
   const firstLevelKept = useRef<ReactNode>(null);
   if (atFirstLevel) firstLevelKept.current = headerBody;
   const header = (
@@ -3077,7 +3113,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         </GlassPortal>
       )}
       {warmJobs.length > 0 && <FolderWarmup jobs={warmJobs} cover={stage === 'cover'} />}
-      <SoftSurfaceContext.Provider value={S}>
+      {keepWhileAway(<SoftSurfaceContext.Provider value={S}>
       {!inBin && !inCleanup && chipsOn && viewMode !== 'canvas' && (
         <View style={[styles.chipsBar, { top: chipsTop, backgroundColor: S.bg }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
@@ -3175,11 +3211,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                   search={searching ? searchText.trim() : undefined}
                   tileWidth={strip ?? (tile ? tileW : contentW)}
                   columns={strip !== undefined ? 1 : gridCols}
-                  onPress={(e) => {
-                    if (selecting) return toggle(item.id);
-                    if (explorerSelect && !pickTwice(item.id, () => openItem(item))) return;
-                    openItem(item, e);
-                  }}
+                  onPress={pressFor(item)}
                   // The tick is ours for EVERY card (the bases' cells drew pink, black, whatever their
                   // own colour was - the user saw mixed ticks, 2026-10-12): none passed down.
                 />
@@ -3283,7 +3315,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         </View>
         </GestureDetector>
         )}
-      </SoftSurfaceContext.Provider>
+      </SoftSurfaceContext.Provider>)}
       {/* What runs off the top and the bottom melts into the ground under the bar and the dock, as in the notes and
           the boards (EdgeFade) - missed in the explorer (the user, 2026-10-13). Not over a folder's cover (its picture
           runs under the bar on purpose), and not with a pointer (the desktop keeps its hard edges). */}
