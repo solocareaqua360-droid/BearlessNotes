@@ -3113,6 +3113,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         </GlassPortal>
       )}
       {warmJobs.length > 0 && <FolderWarmup jobs={warmJobs} cover={stage === 'cover'} />}
+      {/* Away, the page under the note is one texture: the note grows out of its card over it, and every frame of that
+          redrew each card's shadow, table and text again (half the frames late, 2026-10-27). */}
+      <View style={styles.container} renderToHardwareTextureAndroid={!isFocused} collapsable={false}>
       {keepWhileAway(<SoftSurfaceContext.Provider value={S}>
       {!inBin && !inCleanup && chipsOn && viewMode !== 'canvas' && (
         <View style={[styles.chipsBar, { top: chipsTop, backgroundColor: S.bg }]}>
@@ -3316,6 +3319,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         </GestureDetector>
         )}
       </SoftSurfaceContext.Provider>)}
+      </View>
       {/* What runs off the top and the bottom melts into the ground under the bar and the dock, as in the notes and
           the boards (EdgeFade) - missed in the explorer (the user, 2026-10-13). Not over a folder's cover (its picture
           runs under the bar on purpose), and not with a pointer (the desktop keeps its hard edges). */}
