@@ -254,6 +254,8 @@ export const LUCIDE: Record<string, IconElement[]> = {
   "layout-grid": [['rect',{width:7,height:7,x:3,y:3,rx:1}],['rect',{width:7,height:7,x:14,y:3,rx:1}],['rect',{width:7,height:7,x:14,y:14,rx:1}],['rect',{width:7,height:7,x:3,y:14,rx:1}]],
   "leaf": [['path',{d:"M11 20a10 10 0 0010-10 25.9 25.9 0 00-1.04-7.281 1 1 0 00-1.755-.325C15.833 5.5 13 5.5 9.8 6.1A7 7 0 0011 20"}],['path',{d:"M2 21a5 5 0 012.911-4.544C7.613 15.212 8.351 15.24 11 13"}]],
   "library": [['path',{d:"m16 6 4 14"}],['path',{d:"M12 6v14"}],['path',{d:"M8 8v12"}],['path',{d:"M4 4v16"}]],
+  // Not Lucide's: the app's own AI sign (components/BalloonMark), for a dock button (the theme board's «ШІ», 2026-10-27).
+  "balloon": [['ellipse',{cx:12,cy:9.5,rx:6.5,ry:7.5}],['path',{d:"M12 17v1.6"}],['path',{d:"M12 18.6c0 1.8-1.6 2.9-1.6 2.9"}]],
   "lightbulb": [['path',{d:"M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"}],['path',{d:"M9 18h6"}],['path',{d:"M10 22h4"}]],
   "link": [['path',{d:"M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"}],['path',{d:"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"}]],
   "list": [['path',{d:"M3 5h.01"}],['path',{d:"M3 12h.01"}],['path',{d:"M3 19h.01"}],['path',{d:"M8 5h13"}],['path',{d:"M8 12h13"}],['path',{d:"M8 19h13"}]],

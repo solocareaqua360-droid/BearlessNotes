@@ -67,7 +67,7 @@ import { FEATURES } from '../features';
 import { BoardPlan, PlanItem, describeBoard, describeBoards, removeItems } from '../utils/deletionPlan';
 import { askWhatToKeep } from '../components/DeleteContentsHost';
 import { useDockDesksWhileFocused } from '../navigation/deskBeadsBus';
-import { isChatOwned } from '../utils/chatOwned';
+import { isTucked } from '../utils/chatOwned';
 
 // The "+" fill: the accent at half strength, since the blur behind it is
 // what separates it from the screen (see DatabaseChrome).
@@ -277,7 +277,7 @@ export default function BoardsListScreen({
               groupId: data.groupId,
               trashed: data.trashed === true || !!data.deletedAt,
               // A day's own board (utils/dayBoard) belongs to its day, not here - nor does a draft that belongs to an AI conversation.
-              dayBoard: !!data.calendarDate || isChatOwned(data),
+              dayBoard: !!data.calendarDate || isTucked(data),
               createdAt: data.createdAt ?? 0,
               updatedAt: data.updatedAt ?? 0,
               previewImageUri: data.previewImageUri,

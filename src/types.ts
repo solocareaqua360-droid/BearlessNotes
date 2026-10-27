@@ -610,7 +610,9 @@ export interface Tag {
 // INSIDE another document, so that fifth type only ever makes sense here on
 // the board, never in DocumentEditorScreen's own block list.
 export interface BoardCard extends Omit<Block, 'type'> {
-  type?: BlockType | 'document' | 'board';
+  type?: BlockType | 'document' | 'board' | 'thought';
+  // A 'thought' card (a thought theme's board, 2026-10-27): the thought it shows, live from the `thoughts` collection.
+  thoughtId?: string;
   x: number;
   y: number;
   // Where this card sits in its column, counted from the top. The place

@@ -7,7 +7,7 @@ import { TextMatch, documentMatchesQuery, findBodyMatch, findTitleMatch } from '
 import { categoryFromSiteName } from '../utils/linkCategory';
 import { listenError } from '../utils/listenError';
 import { isGone } from '../utils/isGone';
-import { isChatOwned } from '../utils/chatOwned';
+import { isTucked } from '../utils/chatOwned';
 import { FEATURES } from '../features';
 
 // One search over every database. Firestore has no query that reaches
@@ -132,7 +132,7 @@ export function useGlobalSearch(rawQuery: string) {
 
     for (const d of documents) {
       // What the AI made in a conversation stays in it until the user saves it (utils/chatObjects).
-      if (isChatOwned(d)) continue;
+      if (isTucked(d)) continue;
       const title = asString(d.title) ?? '';
       const blocks = (d.blocks as Block[] | undefined) ?? [];
       if (!documentMatchesQuery(title, blocks, needle)) continue;
@@ -238,7 +238,7 @@ export function useGlobalSearch(rawQuery: string) {
     }
 
     for (const b of boards) {
-      if (isChatOwned(b)) continue;
+      if (isTucked(b)) continue;
       const title = asString(b.title) ?? '';
       const match = plainMatch(title, needle);
       if (!match) continue;

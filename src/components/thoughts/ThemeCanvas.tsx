@@ -254,7 +254,7 @@ export default function ThemeCanvas({
     });
     if (choice === 'pick') setPicked(new Set([t.id]));
     else if (choice === 'listen') listen([t]);
-    else if (choice === 'retry' && t.ai) runAi(t.ai, t.from ?? [], t.question, t.id);
+    else if (choice === 'retry' && (t.ai === 'summary' || t.ai === 'answer')) runAi(t.ai, t.from ?? [], t.question, t.id);
     else if (choice === 'edit') setWriting({ kind: 'edit', id: t.id, text: t.felt });
     else if (choice === 'video') watchVideo(t);
     else if (choice === 'delete') {

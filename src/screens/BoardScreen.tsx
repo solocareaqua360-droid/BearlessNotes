@@ -165,10 +165,21 @@ import PagePreviewRow from '../components/PagePreviewRow';
 import { SoftTaskCheck } from '../components/SoftIcon';
 import { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockWide, useTopBack, useTopExtras } from '../navigation/navDock';
-import TopNavBar, { useTopNavOn } from '../components/TopNavBar';
+import TopNavBar, { TOP_NAV_H, useTopNavOn } from '../components/TopNavBar';
+import { CHROME_TOP } from '../constants/rail';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
+import { useThemeBoard } from '../hooks/useThemeBoard';
+import ThoughtBoardCard, { ThoughtCardsContext } from '../components/thoughts/ThoughtBoardCard';
+import ThemeBoardStrip from '../components/thoughts/ThemeBoardStrip';
+import ThemeNoteView from '../components/thoughts/ThemeNoteView';
+import WriteSheet from '../components/thoughts/WriteSheet';
+import { openThoughtCapture, openThoughtReader } from '../utils/thoughtBus';
+import { deleteThought, hueOf, moveThought, type Thought } from '../hooks/useThoughts';
+import { askOnBoard, branchOnBoard, deepenOnBoard, summarizeOnBoard } from '../utils/themeBoardOps';
+import { speakThoughts } from '../utils/thoughtVoice';
+import { cardTitle, voiceTextOf } from '../components/thoughts/thoughtText';
 import { listenError } from '../utils/listenError';
-import { isChatOwned } from '../utils/chatOwned';
+import { isTucked } from '../utils/chatOwned';
 import { rad } from '../utils/angle';
 import GlassLayer from '../components/GlassLayer';
 // The four windows (2026-10-25): on the phone these windows stand on the bottom edge and rise (surfaces/bottomSheet).
@@ -2205,6 +2216,9 @@ function DraggableCard({
           <View pointerEvents="none">
             <FlashcardBlockCard block={card as Block} variant="board" open={!!card.flashcardOpen} />
           </View>
+        ) : type === 'thought' ? (
+          // A thought of the theme this board belongs to, live (components/thoughts/ThoughtBoardCard).
+          <ThoughtBoardCard thoughtId={card.thoughtId} width={cardWidth} />
         ) : null}
 
         {resizable && (
@@ -2750,6 +2764,21 @@ export default function BoardScreen() {
   }, [isLoaded]);
   const cardHeightsRef = useRef(cardHeights);
   cardHeightsRef.current = cardHeights;
+  // A THOUGHT THEME'S BOARD (utils/themeBoard): its thoughts kept on it as live cards, its arrows as their links. Nothing
+  // at all on any other board (the hook reads no thoughts there).
+  const themeBoard = useThemeBoard({
+    boardId,
+    isLoaded,
+    cards,
+    setCards,
+    connections,
+    setConnections,
+    viewCenter,
+    heightOf: (id) => cardHeightsRef.current.get(id),
+  });
+  const [themeView, setThemeView] = useState<'board' | 'note'>('board');
+  // The picked thoughts a question is being written about («ШІ» -> «Питання»).
+  const [askingAbout, setAskingAbout] = useState<Thought[] | null>(null);
   const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
   // Both steps of adding a link live in ONE piece of state so they can
@@ -4895,7 +4924,7 @@ export default function BoardScreen() {
       snapshot.docs
         // Not this one: a board holding a card of itself is a loop with
         // nothing at the end of it.
-        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt && !isChatOwned(d.data()))
+        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt && !isTucked(d.data()))
         .map((d) => ({ id: d.id, title: (d.data().title as string)?.trim() || 'Без назви' }))
         .sort((a, b) => a.title.localeCompare(b.title))
     );
@@ -5005,7 +5034,7 @@ export default function BoardScreen() {
     const snapshot = await getDocs(ownedQuery('boards'));
     setPickableBoards(
       snapshot.docs
-        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt && !isChatOwned(d.data()))
+        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt && !isTucked(d.data()))
         .map((d) => ({ id: d.id, title: (d.data().title as string)?.trim() || 'Без назви' }))
         .sort((a, b) => a.title.localeCompare(b.title))
     );
@@ -5266,6 +5295,11 @@ export default function BoardScreen() {
     const type = card.type ?? 'paragraph';
     if (card.freeBlock) {
       startInlineEdit(card.id);
+      return;
+    }
+    // A thought: its own card, the same one as everywhere (ThoughtsHost's reader).
+    if (type === 'thought') {
+      if (card.thoughtId) openThoughtReader(card.thoughtId);
       return;
     }
     if (type === 'paragraph') {
@@ -6514,6 +6548,8 @@ export default function BoardScreen() {
   // What one row of the drawer's object list shows, across all three
   // kinds of board furniture it can hold.
   function labelForCard(card: BoardCard): string {
+    const thought = card.type === 'thought' && card.thoughtId ? themeBoard.thoughtsById.get(card.thoughtId) : undefined;
+    if (thought) return cardTitle(thought) || thought.felt.trim().slice(0, 60) || 'Думка';
     return (
       card.documentTitle || card.boardTitle || card.fileTitle || card.imageTitle || card.linkTitle ||
       card.text?.trim() || 'Картка'
@@ -6529,6 +6565,8 @@ export default function BoardScreen() {
         return 'document-outline';
       case 'link':
         return 'link-outline';
+      case 'thought':
+        return 'bulb-outline';
       default:
         return 'chatbox-outline';
     }
@@ -6922,6 +6960,10 @@ export default function BoardScreen() {
   // for a document card - the preview on the card is clipped, and copying
   // half a document silently is worse than not offering it.
   async function textOfCard(card: BoardCard): Promise<string> {
+    if (card.type === 'thought') {
+      const thought = card.thoughtId ? themeBoard.thoughtsById.get(card.thoughtId) : undefined;
+      return thought ? voiceTextOf(thought) : '';
+    }
     if ((card.type ?? 'paragraph') === 'document' && card.documentId) {
       const snapshot = await getDoc(doc(db, 'documents', card.documentId));
       const data = snapshot.data();
@@ -7453,7 +7495,129 @@ export default function BoardScreen() {
       ]
     : [];
   // What can be done with the chosen cards - ONE list: the phone's dock shows it as buttons, the Mac's right panel as rows.
-  const selectionActions = [
+  // THOUGHTS PICKED ON A THEME'S BOARD (sketch artboard «Виділені думки»): their own few actions instead of the board's -
+  // listen to them, join them in a chain, put a frame round them, the AI («ШІ»: the same moves as in the AI chat, plus
+  // the old canvas's summary and question), and «Ще» (another theme, delete). Only when every picked card is a thought:
+  // a mixed selection keeps the board's own list.
+  const pickedCards = themeBoard.themeId ? cards.filter((c) => selectedCardIds.has(c.id)) : [];
+  const pickedThoughts = pickedCards
+    .map((c) => (c.type === 'thought' && c.thoughtId ? themeBoard.thoughtsById.get(c.thoughtId) : undefined))
+    .filter((t): t is Thought => !!t);
+  const thoughtSelectionActions =
+    themeBoard.themeId && pickedCards.length > 0 && selectedShapeIds.size === 0 && pickedCards.every((c) => c.type === 'thought')
+      ? [
+          { key: 'cancel', icon: 'close-outline', label: 'Вийти', onPress: clearSelection },
+          {
+            key: 'listen',
+            icon: 'lc:volume-2',
+            label: 'Слухати',
+            onPress: () => {
+              const items = pickedThoughts
+                .filter((t) => !t.aiState)
+                .map((t) => ({ title: cardTitle(t) || 'Думка', text: voiceTextOf(t), thoughtId: t.id }))
+                .filter((i) => i.text.trim());
+              if (items.length) speakThoughts(items).catch(() => {});
+            },
+          },
+          ...(pickedCards.length >= 2
+            ? [
+                {
+                  key: 'chain',
+                  icon: 'lc:link',
+                  label: "Зв'язати",
+                  // One after another in reading order (top to bottom, then left to right), a line between each two
+                  // that are not joined yet.
+                  onPress: () => {
+                    const order = [...pickedCards].sort((a, b) => (Math.abs(a.y - b.y) > 40 ? a.y - b.y : a.x - b.x));
+                    setConnections((prev) => {
+                      const next = [...prev];
+                      for (let i = 1; i < order.length; i++) {
+                        const a = order[i - 1].id;
+                        const b = order[i].id;
+                        if (!next.some((k) => (k.fromCardId === a && k.toCardId === b) || (k.fromCardId === b && k.toCardId === a)))
+                          next.push({ id: generateId(), fromCardId: a, toCardId: b });
+                      }
+                      return next;
+                    });
+                    clearSelection();
+                  },
+                },
+              ]
+            : []),
+          {
+            key: 'frame',
+            icon: 'lc:square-dashed',
+            label: 'Рамка',
+            // A frame round them with room for its name; it holds what lies inside it, like any frame on a board.
+            onPress: () => {
+              const pad = 28;
+              const x0 = Math.min(...pickedCards.map((c) => c.x)) - pad;
+              const y0 = Math.min(...pickedCards.map((c) => c.y)) - pad - 24;
+              const x1 = Math.max(...pickedCards.map((c) => c.x + (c.width ?? 220))) + pad;
+              const y1 = Math.max(...pickedCards.map((c) => c.y + (cardHeightsRef.current.get(c.id) ?? 160))) + pad;
+              setContainers((prev) => [...prev, { id: generateId(), title: '', x: x0, y: y0, width: x1 - x0, height: y1 - y0 }]);
+              clearSelection();
+            },
+          },
+          {
+            key: 'ai',
+            icon: 'lc:balloon',
+            label: 'ШІ',
+            onPress: async () => {
+              const themeId = themeBoard.themeId!;
+              const list = pickedThoughts;
+              const choice = await ask({
+                title: list.length === 1 ? 'ШІ і ця думка' : `ШІ і ${list.length} думки`,
+                actions: [
+                  { id: 'summary', label: 'Резюме', icon: 'reorder-three-outline' },
+                  { id: 'ask', label: 'Питання', icon: 'help-circle-outline' },
+                  { id: 'deepen', label: 'Поглибити', icon: 'arrow-down-outline' },
+                  { id: 'branch', label: 'Розгалузити', icon: 'git-branch-outline' },
+                ],
+              });
+              if (!choice) return;
+              clearSelection();
+              if (choice === 'summary') summarizeOnBoard(themeId, list).catch(() => {});
+              else if (choice === 'ask') setAskingAbout(list);
+              else if (choice === 'deepen') deepenOnBoard(themeId, list).catch(() => {});
+              else if (choice === 'branch') branchOnBoard(themeId, list).catch(() => {});
+            },
+          },
+          {
+            key: 'more',
+            icon: 'ellipsis-horizontal',
+            label: 'Ще',
+            onPress: async () => {
+              const list = pickedThoughts;
+              const others = themeBoard.themes.filter((x) => x.id !== themeBoard.themeId);
+              const choice = await ask({
+                title: list.length === 1 ? (cardTitle(list[0]) || list[0].felt || 'Думка').slice(0, 60) : `${list.length} думки`,
+                actions: [
+                  ...others.map((x) => ({ id: `to:${x.id}`, label: `У «${x.name}»`, icon: 'arrow-forward-outline' as const })),
+                  { id: 'loose', label: 'У «Не розкладено»', icon: 'arrow-forward-outline' as const },
+                  { id: 'delete', label: list.length === 1 ? 'Видалити думку' : 'Видалити думки', icon: 'trash-outline' as const, tone: 'danger' as const },
+                ],
+              });
+              if (!choice) return;
+              if (choice === 'delete') {
+                const yes = await confirm({
+                  title: list.length === 1 ? 'Видалити думку?' : `Видалити ${list.length} думки?`,
+                  message: 'Їх не можна буде повернути.',
+                  confirmLabel: 'Видалити',
+                });
+                if (!yes) return;
+                clearSelection();
+                list.forEach((t) => deleteThought(t.id).catch(() => {}));
+              } else {
+                clearSelection();
+                const to = choice === 'loose' ? null : choice.slice(3);
+                list.forEach((t) => moveThought(t.id, to).catch(() => {}));
+              }
+            },
+          },
+        ]
+      : null;
+  const boardSelectionActions = [
       { key: 'cancel', icon: 'close-outline', label: 'Вийти', onPress: clearSelection },
       // A free block (with its strip) becomes a note; a note's card on
       // a day board comes apart into free blocks again.
@@ -7600,6 +7764,7 @@ export default function BoardScreen() {
       },
       { key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: deleteSelection },
   ];
+  const selectionActions = thoughtSelectionActions ?? boardSelectionActions;
 
   // A CARD SELECTION IS AN ACTIONS CARD, the same as on every other
   // database (Documents/Files/Photos/Links) - it used to be its own
@@ -7724,6 +7889,21 @@ export default function BoardScreen() {
       {
         title: 'Картки',
         tiles: [
+          // A theme's board: a new thought of this theme first - the same window it is caught in anywhere; the board puts
+          // its card in the middle of the view once it is kept (useThemeBoard).
+          ...(themeBoard.themeId
+            ? [
+                {
+                  key: 'thought',
+                  icon: 'bulb-outline' as keyof typeof Ionicons.glyphMap,
+                  label: 'Думка',
+                  onPress: () => {
+                    setAddSheetVisible(false);
+                    openThoughtCapture({ themeId: themeBoard.themeId! });
+                  },
+                },
+              ]
+            : []),
           { key: 'doc', icon: 'document-text-outline', label: 'Документ', onPress: createDocumentCard },
           // A new card of the «Картки» base, made here like a document.
           { key: 'flashcard', icon: 'albums-outline', label: 'Картка', onPress: createFlashcard },
@@ -8207,6 +8387,7 @@ export default function BoardScreen() {
 
   return (
     <BoardFieldsContext.Provider value={boardFields}>
+    <ThoughtCardsContext.Provider value={themeBoard.themeId ? themeBoard.thoughtsById : null}>
     <View ref={deskContentRef} collapsable={false} style={styles.splitRoot}>
       {/* The board keeps every pixel it had until a document is opened
           beside it, and all of them again when that document goes full
@@ -8679,7 +8860,12 @@ export default function BoardScreen() {
         {embed ? null : bar ? (
           boardFocused && (
             <TopNavBar
-              title={{ icon: 'easel-outline', label: title || 'Без назви', onPress: () => setRenamingTitle(true) }}
+              title={
+                themeBoard.theme
+                  ? // A theme's board is called by its theme, with its colour - renamed where the theme is (the clouds).
+                    { icon: 'easel-outline', label: themeBoard.theme.name, dot: hueOf(themeBoard.theme, !!softBoardTokens?.dark).to }
+                  : { icon: 'easel-outline', label: title || 'Без назви', onPress: () => setRenamingTitle(true) }
+              }
             />
           )
         ) : macBoard ? null : (
@@ -9735,7 +9921,36 @@ export default function BoardScreen() {
           bounds={viewport}
         />
       ))}
+      {themeBoard.theme && !embed && (
+        <>
+          {/* A THEME'S BOARD: its conclusion in one line under the title, and the board <-> note switch. */}
+          {bar && boardFocused && themeView === 'board' && (
+            <ThemeBoardStrip theme={themeBoard.theme} top={boardInsets.top + CHROME_TOP + TOP_NAV_H + 10} mode="board" onMode={setThemeView} />
+          )}
+          <ThemeNoteView
+            visible={themeView === 'note'}
+            theme={themeBoard.theme}
+            cards={cards}
+            connections={connections}
+            thoughtsById={themeBoard.thoughtsById}
+            onClose={() => setThemeView('board')}
+          />
+          <WriteSheet
+            visible={askingAbout !== null}
+            title={askingAbout && askingAbout.length === 1 ? 'Питання до думки' : 'Питання до думок'}
+            placeholder="Що хочеш про них дізнатися?"
+            doneLabel="Запитати"
+            onDone={(q) => {
+              const list = askingAbout ?? [];
+              setAskingAbout(null);
+              if (themeBoard.themeId) askOnBoard(themeBoard.themeId, list, q).catch(() => {});
+            }}
+            onClose={() => setAskingAbout(null)}
+          />
+        </>
+      )}
     </View>
+    </ThoughtCardsContext.Provider>
     </BoardFieldsContext.Provider>
   );
 }

@@ -23,6 +23,8 @@ import { cardTitle, voiceTextOf } from './thoughtText';
 import { CAPSULE_H, CAPSULE_W, VoiceCapsule, useVoiceCapsuleOn } from './VoicePlayer';
 import { TOP_NAV_H } from '../TopNavBar';
 import { CHROME_TOP } from '../../constants/rail';
+import { navigationRef } from '../../navigationRef';
+import { ensureThemeBoard, thoughtCardId } from '../../utils/themeBoard';
 
 // THE SPACE OF THEMES (2026-10-15, sketch 3, liked: «воно плаває, десь щось об'єднане»). Every theme a cloud - bigger
 // for more thoughts, faded when it has not been touched for three weeks; the thoughts not laid out yet are a grey
@@ -92,6 +94,49 @@ export default function ThoughtsSpace({
   // The theme whose canvas is open (sketch 4); the loose thoughts keep their list.
   const [canvasId, setCanvasId] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
+  // A THEME OPENS AS ITS BOARD (utils/themeBoard, 2026-10-27): a real board screen, under this window - so the window
+  // steps aside (hidden, not closed: the sky keeps where it was) while that board is anywhere in the stack, and comes back
+  // the moment it is left.
+  const [parked, setParked] = useState<string | null>(null);
+  const openBoard = async (themeId: string) => {
+    const theme = themes.find((t) => t.id === themeId);
+    if (!theme) return;
+    const boardId = await ensureThemeBoard(theme, thoughts);
+    if (!navigationRef.isReady()) return;
+    if (!inline) setParked(boardId);
+    // Opened with all of its thoughts in view (the board's own «focus these cards»).
+    const focusCardIds = thoughts.filter((t) => t.themeId === themeId).map((t) => thoughtCardId(t.id));
+    (navigationRef.navigate as (name: string, p?: unknown) => void)('BoardCopy', { boardId, ...(focusCardIds.length ? { focusCardIds } : {}) });
+  };
+  // Stepping aside and back: the same fade the window opens with.
+  useEffect(() => {
+    if (!visible) return;
+    shown.value = withTiming(parked ? 0 : 1, { duration: parked ? 160 : 260, easing: Easing.out(Easing.cubic) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parked]);
+  useEffect(() => {
+    if (!parked) return;
+    // Is that board still anywhere in the navigation (a board walked into from it keeps it under)?
+    const holds = (state: unknown): boolean => {
+      const st = state as { routes?: { params?: { boardId?: string }; state?: unknown }[] } | undefined;
+      return !!st?.routes?.some((r) => r.params?.boardId === parked || holds(r.state));
+    };
+    let seen = false;
+    const check = () => {
+      if (holds(navigationRef.getRootState())) seen = true;
+      else if (seen) setParked(null);
+    };
+    const off = navigationRef.addListener('state', check);
+    check();
+    // A board that never opened (no navigation happened) must not leave the space hidden.
+    const timer = setTimeout(() => {
+      if (!seen) setParked(null);
+    }, 2500);
+    return () => {
+      off();
+      clearTimeout(timer);
+    };
+  }, [parked]);
   const [lens, setLensState] = useState<Lens>(lastLens);
   const setLens = (l: Lens) => {
     lastLens = l;
@@ -109,14 +154,14 @@ export default function ThoughtsSpace({
   }, [visible]);
   // Back: the canvas has its own (registered later, so it is asked first); the space closes when none is open.
   useEffect(() => {
-    if (!visible || canvasId !== null) return;
+    if (!visible || canvasId !== null || parked !== null) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       close();
       return true;
     });
     return () => sub.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, canvasId]);
+  }, [visible, canvasId, parked]);
 
   const close = () => {
     shown.value = withTiming(0, { duration: 200 });
@@ -167,6 +212,7 @@ export default function ThoughtsSpace({
     <Shell inline={inline}>
       <Animated.View
         onLayout={inline ? (e) => setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height }) : undefined}
+        pointerEvents={parked ? 'none' : 'auto'}
         style={[StyleSheet.absoluteFill, { backgroundColor: sky ? '#05060B' : S.bg === 'transparent' ? '#F6F5F2' : S.bg }, look]}
       >
         {sky && (
@@ -177,8 +223,8 @@ export default function ThoughtsSpace({
             themes={themes}
             thoughts={thoughts}
             onOpen={setReading}
-            onEnter={(id) => (id === null ? setOpenId(LOOSE) : setCanvasId(id))}
-            away={canvasId !== null || openId !== null}
+            onEnter={(id) => (id === null ? setOpenId(LOOSE) : openBoard(id))}
+            away={canvasId !== null || openId !== null || parked !== null}
           />
         )}
         {inline ? (
@@ -234,7 +280,7 @@ export default function ThoughtsSpace({
               const hit = pressAt(e);
               if (!hit) return;
               if (hit.id === LOOSE) setOpenId(LOOSE);
-              else setCanvasId(hit.id);
+              else openBoard(hit.id);
             }}
             // A HELD THEME: rename it, or delete it - its thoughts are kept, not laid out yet.
             onLongPress={async (e) => {
@@ -245,10 +291,13 @@ export default function ThoughtsSpace({
                 title: theme.name,
                 actions: [
                   { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+                  // The theme's old canvas, kept until the board has proved itself (the rule of gradual migration).
+                  { id: 'canvas', label: 'Старе полотно', icon: 'albums-outline' },
                   { id: 'delete', label: 'Видалити тему', icon: 'trash-outline', tone: 'danger' },
                 ],
               });
               if (choice === 'rename') setRenaming(theme);
+              else if (choice === 'canvas') setCanvasId(theme.id);
               else if (choice === 'delete') {
                 const mine = thoughts.filter((t) => t.themeId === theme.id).map((t) => t.id);
                 const yes = await confirm({

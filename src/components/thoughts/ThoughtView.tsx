@@ -123,7 +123,7 @@ export default function ThoughtView({
             </View>
           )}
           {!!thought.ai && (
-            <Text style={[styles.label, { color: '#B07A44' }]}>{thought.ai === 'summary' ? 'Резюме' : `Питання: ${thought.question ?? ''}`}</Text>
+            <Text style={[styles.label, { color: '#B07A44' }]}>{thought.ai === 'summary' ? 'Резюме' : thought.ai === 'deepen' ? 'Глибше' : thought.ai === 'branch' ? 'Гілка' : `Питання: ${thought.question ?? ''}`}</Text>
           )}
           {thought.aiState === 'error' && (
             <Text style={[styles.text, { color: '#B4533C' }]} selectable>{`Не вдалося: ${thought.aiError ?? ''}`}</Text>

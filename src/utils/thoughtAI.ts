@@ -174,6 +174,35 @@ export async function askAboutThoughts(thoughts: Thought[], question: string): P
   return call(await partsFor(thoughts, `Людина ставить питання про свої думки і матеріали нижче. Питання: «${question}». Дай відповідь саме на нього, спираючись на те, що дано.`), k);
 }
 
+// ONE THOUGHT, TAKEN FURTHER (the theme board's «Поглибити» / «Розгалузити», 2026-10-27): the same two moves the AI
+// chat makes on a card of its own board, here on a thought - deeper into it, or out into a few directions.
+export async function deepenThought(t: Thought): Promise<string> {
+  const k = await key();
+  return call(
+    await partsFor(
+      [t],
+      'Це одна думка людини і те, що її зачепило. Розгорни її глибше: що за нею стоїть, що з неї випливає, яке питання вона відкриває. Коротко, простими словами, без вступу.'
+    ),
+    k
+  );
+}
+
+export async function branchThought(t: Thought): Promise<string[]> {
+  const k = await key();
+  const text = await call(
+    await partsFor(
+      [t],
+      'Це одна думка людини. Запропонуй три різні напрями, куди її можна розвинути: кожен окремим рядком, одним коротким реченням, без нумерації, без вступу.'
+    ),
+    k
+  );
+  return text
+    .split('\n')
+    .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/\*\*/g, '').trim())
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
 // WHAT IS IN A VIDEO (YouTube only - the API watches it by its address), kept on its card once.
 export async function videoGist(url: string): Promise<string> {
   const k = await key();

@@ -22,7 +22,9 @@ export type DocOwner =
   | { kind: 'note'; id: string }
   | { kind: 'chat'; id: string }
   // A board's map (utils/boardMap).
-  | { kind: 'board'; id: string };
+  | { kind: 'board'; id: string }
+  // A thought theme's own board (utils/themeBoard).
+  | { kind: 'theme'; id: string };
 
 // The record's main note («Розбір») has an id of its own, the way a day's
 // note does (day_<date>): found without a query, never made twice.

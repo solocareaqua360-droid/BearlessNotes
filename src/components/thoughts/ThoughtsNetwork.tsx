@@ -515,7 +515,7 @@ export default function ThoughtsNetwork({
     <GestureDetector gesture={gesture}>
       <View style={[StyleSheet.absoluteFill, { backgroundColor: '#05060B' }]} collapsable={false}>
         {/* The night sky wants the light status bar, whatever the app's own theme. */}
-        <StatusBar style="light" />
+        {!away && <StatusBar style="light" />}
         {!sleeping && (
           <Canvas style={{ width, height }}>
             <Picture picture={picture} />

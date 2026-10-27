@@ -38,7 +38,8 @@ export type Thought = {
   links: string[];
   // Written by the assistant (thoughtAI): a summary of picked thoughts, or an answer to a question about them. While
   // it is being written the card stands as 'pending'; a failed call leaves 'error' with the reason, and a retry.
-  ai?: 'summary' | 'answer';
+  // 'deepen' / 'branch': the theme board's «Поглибити» and «Розгалузити» on a picked thought (2026-10-27).
+  ai?: 'summary' | 'answer' | 'deepen' | 'branch';
   question?: string;
   from?: string[];
   aiState?: 'pending' | 'error';
@@ -115,6 +116,9 @@ export function useThoughts(enabled = true) {
   const [thoughts, setThoughts] = useState<Thought[]>([]);
   // The first answer of the themes has come: before it, «no themes» only means «not heard yet» (the folder showed its empty line for a blink).
   const [loaded, setLoaded] = useState(false);
+  // The thoughts themselves have answered once (an empty list before that is not «no thoughts» - the theme board must
+  // not take its cards away on it).
+  const [thoughtsLoaded, setThoughtsLoaded] = useState(false);
   useEffect(() => {
     if (!enabled) return;
     const offThemes = onSnapshot(
@@ -133,7 +137,8 @@ export function useThoughts(enabled = true) {
     );
     const offThoughts = onSnapshot(
       ownedQuery('thoughts'),
-      (snap) =>
+      (snap) => {
+        setThoughtsLoaded(true);
         setThoughts(
           snap.docs
             .map((d) => {
@@ -150,7 +155,7 @@ export function useThoughts(enabled = true) {
                 x: typeof x.x === 'number' ? x.x : undefined,
                 y: typeof x.y === 'number' ? x.y : undefined,
                 links: Array.isArray(x.links) ? (x.links as unknown[]).filter((l): l is string => typeof l === 'string') : [],
-                ai: x.ai === 'summary' || x.ai === 'answer' ? x.ai : undefined,
+                ai: x.ai === 'summary' || x.ai === 'answer' || x.ai === 'deepen' || x.ai === 'branch' ? x.ai : undefined,
                 question: str(x.question) || undefined,
                 from: Array.isArray(x.from) ? (x.from as unknown[]).filter((l): l is string => typeof l === 'string') : undefined,
                 aiState: x.aiState === 'pending' || x.aiState === 'error' ? x.aiState : undefined,
@@ -159,7 +164,8 @@ export function useThoughts(enabled = true) {
               } as Thought;
             })
             .sort((a, b) => b.createdAt - a.createdAt)
-        ),
+        );
+      },
       listenError('thoughts')
     );
     return () => {
@@ -172,7 +178,7 @@ export function useThoughts(enabled = true) {
     thoughts.forEach((t) => m.set(t.themeId, (m.get(t.themeId) ?? 0) + 1));
     return (id: string | null) => m.get(id) ?? 0;
   }, [thoughts]);
-  return { themes, thoughts, countOf, loaded };
+  return { themes, thoughts, countOf, loaded, thoughtsLoaded };
 }
 
 export async function createTheme(name: string, hue: number): Promise<string> {
@@ -246,6 +252,14 @@ export async function unlinkThought(id: string, others: string[]) {
   await batch.commit();
 }
 
+// One line between two thoughts taken away (the theme board's arrow removed), both ways; the rest stay.
+export async function unlinkPair(a: string, b: string) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'thoughts', a), { links: arrayRemove(b) });
+  batch.update(doc(db, 'thoughts', b), { links: arrayRemove(a) });
+  await batch.commit();
+}
+
 export async function setConclusion(themeId: string, text: string) {
   await updateDoc(doc(db, 'thoughtThemes', themeId), { conclusion: text, touchedAt: Date.now() });
 }
@@ -254,7 +268,7 @@ export async function setConclusion(themeId: string, text: string) {
 // cards and joined to them.
 export async function startAiCard(input: {
   themeId: string | null;
-  ai: 'summary' | 'answer';
+  ai: 'summary' | 'answer' | 'deepen' | 'branch';
   question?: string;
   from: string[];
   x?: number;

@@ -4,7 +4,7 @@ import { ownedQuery } from '../utils/owned';
 import { categoryFromSiteName } from '../utils/linkCategory';
 import { listenError } from '../utils/listenError';
 import { isGone } from '../utils/isGone';
-import { isChatOwned } from '../utils/chatOwned';
+import { isTucked } from '../utils/chatOwned';
 
 // What each database has in it, for the tiles to show. A tile that only
 // carries an icon gets emptier the bigger it is made; a count and the
@@ -73,7 +73,7 @@ export function useDatabaseContents(enabled = true): DatabaseContents {
   const stickers = useCollection('stickers', enabled);
   const flashcards = useCollection('flashcards', enabled);
   // A day's own board is the day's, not one of the boards.
-  const boards = useCollection('boards', enabled).filter((b) => !b.calendarDate && !isChatOwned(b));
+  const boards = useCollection('boards', enabled).filter((b) => !b.calendarDate && !isTucked(b));
   const tags = useCollection('tags', enabled);
   const groups = useCollection('groups', enabled);
   const chat = useCollection('chat', enabled);

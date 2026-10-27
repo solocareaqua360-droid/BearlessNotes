@@ -7,6 +7,7 @@ export function cardTitle(t: Thought) {
   const src = t.source;
   if (t.ai === 'answer' && t.question) return t.question;
   if (t.ai === 'summary') return 'Резюме';
+  if (t.ai === 'deepen') return 'Глибше';
   if (src?.kind === 'link') return src.title || src.siteName || src.url;
   if (src?.kind === 'text') return readable(src.text);
   // A picture alone has no words of its own: the card shows the picture, and the voice says only that it is one.

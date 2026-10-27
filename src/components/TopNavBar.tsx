@@ -111,6 +111,8 @@ export type TopTitle = {
   icon: string;
   label: string;
   onPress?: () => void;
+  // A coloured dot in the icon's place: a thought theme's board shows its theme's colour (2026-10-27).
+  dot?: string;
   // Several words in the title's place, each a button, the one in force
   // standing out - the left layer's «календар | чат». Replaces the single
   // title (the icon and label are then only its accessibility name).
@@ -561,7 +563,11 @@ function TopNavBar({
                       style={styles.titlePress}
                     >
                       <Surface soft={soft} style={styles.piece} radius={pieceRadius}>
-                        <Glyph name={title.icon} size={20} color={ink} soft={soft} />
+                        {title.dot ? (
+                          <View style={{ width: 12, height: 12, borderRadius: 6, marginHorizontal: 4, backgroundColor: title.dot }} />
+                        ) : (
+                          <Glyph name={title.icon} size={20} color={ink} soft={soft} />
+                        )}
                         <Text numberOfLines={1} style={[styles.label, styles.titleLabel, { color: ink }, soft && styles.softLabel]}>
                           {title.label}
                         </Text>

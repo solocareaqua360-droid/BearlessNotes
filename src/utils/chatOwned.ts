@@ -16,6 +16,16 @@ export function isChatOwned(data: unknown, chatId?: string): boolean {
   return chatId === undefined || owner.id === chatId;
 }
 
+// A board that belongs to a thought theme (utils/themeBoard): reached from the theme, never listed on its own.
+export function isThemeOwned(data: unknown): boolean {
+  return (data as { owner?: { kind?: unknown } } | null | undefined)?.owner?.kind === 'theme';
+}
+
+// Anything that lives inside something else (a conversation, a thought theme) and is left out of the lists and search.
+export function isTucked(data: unknown): boolean {
+  return isChatOwned(data) || isThemeOwned(data);
+}
+
 // The AI's outline text (Markdown headings) as a tree of StructNodes, depth = place in the tree (a skipped `#` level nests).
 export function nodesFromOutline(text: string): StructNode[] {
   const parsed = parseOutline(text);
