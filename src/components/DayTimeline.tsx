@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
@@ -36,17 +36,17 @@ export type TimelineItem = {
   subs?: TimelineSub[];
 };
 
-const HOUR_H = 56;
+export const HOUR_H = 56;
 const LABEL_W = 40;
 const STRIP_H = 26;
 const BAND_INSET = 18;
-const STEP = 15;
+export const STEP = 15;
 
 function toMinutes(time: string): number {
   const [h, m] = time.split(':').map(Number);
   return (h || 0) * 60 + (m || 0);
 }
-const hhmm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+export const hhmm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 
 // Side by side: each task in the first column free at its start, the columns counted per group of tasks that touch.
 function columns(list: { id: string; start: number; end: number }[]) {
@@ -81,6 +81,10 @@ export default function DayTimeline({
   onResize,
   onToggleSub,
   onSubTime,
+  onMove,
+  scaleRef,
+  onFirstHour,
+  dropAt = null,
   showNow = true,
 }: {
   items: TimelineItem[];
@@ -92,6 +96,13 @@ export default function DayTimeline({
   onToggleSub?: (id: string, subId: string) => void;
   // The hour of a step asked for (its own time, to stand inside the band).
   onSubTime?: (id: string, subId: string) => void;
+  // A block held and carried to another time (HH:mm, on a quarter hour).
+  onMove?: (id: string, time: string) => void;
+  // The scale's own view and its first hour - for a task carried in from the list above (TasksScreen works out the time
+  // under the finger) - and where such a task would land now, in minutes (a line across the scale).
+  scaleRef?: (node: View | null) => void;
+  onFirstHour?: (hour: number) => void;
+  dropAt?: number | null;
   showNow?: boolean;
 }) {
   const theme = useTheme();
@@ -104,6 +115,8 @@ export default function DayTimeline({
   const [width, setWidth] = useState(0);
   // The block being pulled longer or shorter: what it measures right now.
   const [live, setLive] = useState<{ id: string; minutes: number } | null>(null);
+  // The block being carried to another time: where it would start now (minutes).
+  const [moving, setMoving] = useState<{ id: string; start: number } | null>(null);
   // The background task whose steps are open as a list.
   const [subsFor, setSubsFor] = useState<string | null>(null);
 
@@ -118,6 +131,8 @@ export default function DayTimeline({
   const first = Math.max(0, Math.min(showNow ? Math.max(6, h - 2) : 8, ...starts));
   const last = Math.min(24, Math.max(showNow ? h + 9 : 18, ...ends));
   const hours = Array.from({ length: last - first }, (_, i) => first + i);
+  useEffect(() => onFirstHour?.(first), [first, onFirstHour]);
+  const startOf = (i: TimelineItem) => (moving?.id === i.id ? moving.start : toMinutes(i.time));
   const top = (min: number) => ((min - first * 60) / 60) * HOUR_H;
   const px = (minutes: number) => (minutes / 60) * HOUR_H;
 
@@ -162,6 +177,43 @@ export default function DayTimeline({
     setLive(null);
     if (m !== base.current) onResize?.(id, m);
   };
+  // THE CARRY: held a moment, the block follows the finger up and down in quarter-hour steps; let go, it takes that time.
+  const carryBase = useRef(0);
+  const carryStep = useRef(0);
+  const carryBegin = (id: string, start: number) => {
+    hapticSnapTick();
+    carryBase.current = start;
+    carryStep.current = start;
+    setMoving({ id, start });
+  };
+  const carry = (id: string, dy: number) => {
+    const m = Math.min(24 * 60 - STEP, Math.max(0, Math.round((carryBase.current + (dy / HOUR_H) * 60) / STEP) * STEP));
+    if (m !== carryStep.current) {
+      carryStep.current = m;
+      hapticSnapTick();
+      setMoving({ id, start: m });
+    }
+  };
+  const carryEnd = (id: string) => {
+    const m = carryStep.current;
+    setMoving(null);
+    if (m !== carryBase.current) onMove?.(id, hhmm(m));
+  };
+  const carried = (item: TimelineItem, node: React.ReactElement) => {
+    if (!onMove || item.done) return node;
+    const g = Gesture.Pan()
+      .activateAfterLongPress(300)
+      .onStart(() => runOnJS(carryBegin)(item.id, toMinutes(item.time)))
+      .onUpdate((e) => runOnJS(carry)(item.id, e.translationY))
+      .onEnd(() => runOnJS(carryEnd)(item.id))
+      .onFinalize(() => runOnJS(setMoving)(null));
+    return (
+      <GestureDetector key={item.id} gesture={g}>
+        {node}
+      </GestureDetector>
+    );
+  };
+
   const grip = (item: TimelineItem) => {
     if (!onResize || item.done) return null;
     const g = Gesture.Pan()
@@ -185,7 +237,7 @@ export default function DayTimeline({
   };
 
   return (
-    <View style={[styles.wrap, { height: hours.length * HOUR_H + 8 }]} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+    <View ref={scaleRef} collapsable={false} style={[styles.wrap, { height: hours.length * HOUR_H + 8 }]} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {hours.map((hr) => (
         <Pressable key={hr} onPress={() => onPressHour(hr)} style={[styles.hour, { top: (hr - first) * HOUR_H }]}>
           <Text style={[styles.label, { color: theme.ink.faint }]}>{String(hr).padStart(2, '0')}</Text>
@@ -194,13 +246,13 @@ export default function DayTimeline({
       ))}
 
       {bands.map((item) => {
-        const start = toMinutes(item.time);
+        const start = startOf(item);
         const minutes = lengthOf(item) ?? 120;
         const subs = item.subs ?? [];
         const done = subs.filter((s) => s.checked).length;
         const timedSubs = subs.filter((s) => s.time);
         return (
-          <View key={item.id} style={[styles.band, { top: top(start) + 2, height: Math.max(48, px(minutes) - 4), opacity: item.done ? 0.5 : 1 }]}>
+          carried(item, <View key={item.id} style={[styles.band, moving?.id === item.id && styles.lifted, { top: top(start) + 2, height: Math.max(48, px(minutes) - 4), opacity: item.done ? 0.5 : 1 }]}>
             <Pressable onPress={() => onPressItem(item.id)} style={styles.bandHead}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[styles.blockText, { color: '#5A3B12' }, item.done && styles.done]} numberOfLines={1}>
@@ -227,24 +279,26 @@ export default function DayTimeline({
               );
             })}
             {grip(item)}
-          </View>
+          </View>)
         );
       })}
 
       {fore.map((item) => {
-        const start = toMinutes(item.time);
+        const start = startOf(item);
         const height = spanOf(item);
         const strip = !lengthOf(item);
         const c = cols.get(item.id) ?? { col: 0, cols: 1 };
         const left0 = LABEL_W + 4 + (inBand(item) ? BAND_INSET : 0);
         const avail = Math.max(0, width - left0);
         const w = width ? avail / c.cols : undefined;
-        return (
+        return carried(
+          item,
           <Pressable
             key={item.id}
             onPress={() => onPressItem(item.id)}
             style={[
               styles.block,
+              moving?.id === item.id && styles.lifted,
               {
                 top: top(start) + 2,
                 height,
@@ -275,9 +329,17 @@ export default function DayTimeline({
               </>
             )}
             {grip(item)}
+            {moving?.id === item.id && <Text style={styles.movingTime}>{hhmm(moving.start)}</Text>}
           </Pressable>
         );
       })}
+
+      {/* Where a task carried in from the list above would land. */}
+      {dropAt !== null && dropAt >= first * 60 && dropAt <= last * 60 && (
+        <View pointerEvents="none" style={[styles.drop, { top: top(dropAt) }]}>
+          <Text style={styles.dropText}>{hhmm(dropAt)}</Text>
+        </View>
+      )}
 
       {showNow && nowMin >= first * 60 && nowMin <= last * 60 && (
         <View pointerEvents="none" style={[styles.now, { top: top(nowMin) }]}>
@@ -383,6 +445,10 @@ const styles = StyleSheet.create({
     fontFamily: FONT_MEDIUM,
     color: '#6A7075',
   },
+  lifted: { zIndex: 40, elevation: 8, boxShadow: '0 6px 18px rgba(0,0,0,0.22)' } as never,
+  movingTime: { position: 'absolute', right: 8, top: 4, fontSize: 12, fontFamily: FONT_SEMIBOLD, color: '#1F2326' },
+  drop: { position: 'absolute', left: LABEL_W - 4, right: 0, height: 0, borderTopWidth: 2, borderStyle: 'dashed', borderColor: '#4A7BD0', zIndex: 45 },
+  dropText: { position: 'absolute', left: 6, top: -20, fontSize: 12, fontFamily: FONT_SEMIBOLD, color: '#4A7BD0' },
   grip: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 14, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 3 },
   gripBar: { width: 26, height: 3, borderRadius: 2 },
   now: {

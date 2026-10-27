@@ -4,7 +4,7 @@ import { useTileOpened } from '../navigation/recentPlaces';
 import ScreenGround from '../components/ScreenGround';
 import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
-import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import EdgeFade from '../components/EdgeFade';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -46,7 +46,7 @@ import {
 import { addDoc, ownedQuery, setDoc } from '../utils/owned';
 import { db } from '../firebase';
 import OrderableRow, { type OrderControl } from '../components/OrderableRow';
-import { hapticDrop } from '../utils/haptics';
+import { hapticDrop, hapticSnapTick } from '../utils/haptics';
 import { Block, Group, Recurrence, Subtask, TaskList } from '../types';
 import { nextRecurrenceDate, recurrenceLabel } from '../utils/recurrence';
 import AddExistingItemModal from '../components/AddExistingItemModal';
@@ -86,7 +86,7 @@ import { exportHtmlAsPdf } from '../utils/htmlToPdf';
 import { tasksToHtml } from '../utils/tasksHtml';
 import { ageInDays, dayAhead, dateKeyPlus, inView, isDueToday, isOverdue, recurrenceEchoes, VIEW_META, whenFields, type TaskView, type WhenChoice } from '../utils/taskViews';
 import { useSoft } from '../theme/soft';
-import DayTimeline from '../components/DayTimeline';
+import DayTimeline, { HOUR_H as SCALE_HOUR_H, hhmm as scaleHhmm } from '../components/DayTimeline';
 import { GlassPortal } from '../components/GlassPortal';
 import SwipeRow, { type SwipeAction } from '../components/SwipeRow';
 import { rightClick } from '../utils/rightClick';
@@ -2018,6 +2018,24 @@ export default function TasksScreen() {
   const rootNode = useRef<View | null>(null);
   const rootTop = useRef(0);
   const [orderLine, setOrderLine] = useState<number | null>(null);
+  // ONTO THE DAY SCALE (2026-10-27, the user: «відкрив сьогодні, вгорі справи, перетягнув на шкалу»): a task of the list
+  // carried down over the scale lands on the quarter hour under the finger; the scale shows where. Its place on the
+  // screen is measured when the carry starts, its first hour comes from the scale itself.
+  const scaleNode = useRef<View | null>(null);
+  const scaleBox = useRef<{ top: number; bottom: number } | null>(null);
+  const scaleFirst = useRef(0);
+  const onScaleFirstHour = useCallback((h: number) => {
+    scaleFirst.current = h;
+  }, []);
+  const [scaleDrop, setScaleDrop] = useState<number | null>(null);
+  const scaleDropRef = useRef<number | null>(null);
+  const setDrop = (m: number | null) => {
+    if (m !== scaleDropRef.current) {
+      if (m !== null) hapticSnapTick();
+      scaleDropRef.current = m;
+      setScaleDrop(m);
+    }
+  };
   const orderCtl: OrderControl = {
     register: (id, node) => {
       orderNodes.current[id] = node;
@@ -2027,6 +2045,8 @@ export default function TasksScreen() {
       setOpenSwipeId(null);
       orderDrag.current = { id, ids, rects: [], index: ids.indexOf(id) };
       rootNode.current?.measureInWindow((_x, y) => (rootTop.current = y));
+      scaleBox.current = null;
+      scaleNode.current?.measureInWindow((_x, y, _w, h) => (scaleBox.current = { top: y, bottom: y + h }));
       ids.forEach((one) => {
         orderNodes.current[one]?.measureInWindow((_x, y, _w, h) => {
           const d = orderDrag.current;
@@ -2038,6 +2058,14 @@ export default function TasksScreen() {
     move: (y) => {
       const d = orderDrag.current;
       if (!d) return;
+      const box = scaleBox.current;
+      if (box && y >= box.top && y <= box.bottom) {
+        const m = scaleFirst.current * 60 + ((y - box.top) / SCALE_HOUR_H) * 60;
+        setDrop(Math.min(24 * 60 - 15, Math.max(0, Math.round(m / 15) * 15)));
+        setOrderLine(null);
+        return;
+      }
+      setDrop(null);
       const others = d.rects.filter((r) => r.id !== d.id);
       if (others.length === 0) return;
       const index = others.filter((r) => (r.top + r.bottom) / 2 < y).length;
@@ -2049,7 +2077,14 @@ export default function TasksScreen() {
       const d = orderDrag.current;
       orderDrag.current = null;
       setOrderLine(null);
+      const drop = scaleDropRef.current;
+      setDrop(null);
       if (!d) return;
+      if (drop !== null) {
+        const task = tasks.find((t) => t.id === d.id);
+        if (task) setPlan(task, scaleHhmm(drop));
+        return;
+      }
       const rest = d.ids.filter((one) => one !== d.id);
       const next = [...rest.slice(0, d.index), d.id, ...rest.slice(d.index)];
       if (next.every((one, i) => one === d.ids[i])) return;
@@ -2062,6 +2097,7 @@ export default function TasksScreen() {
     cancel: () => {
       orderDrag.current = null;
       setOrderLine(null);
+      setDrop(null);
     },
   };
   function orderable(list: Task[], render: (t: Task) => ReactNode): ReactNode {
@@ -2536,6 +2572,13 @@ export default function TasksScreen() {
               const task = tasks.find((t) => t.id === id);
               if (task) askSubtaskTime(task, subId);
             }}
+            onMove={(id, time) => {
+              const task = tasks.find((t) => t.id === id);
+              if (task) setPlan(task, time);
+            }}
+            scaleRef={(node) => (scaleNode.current = node)}
+            onFirstHour={onScaleFirstHour}
+            dropAt={scaleDrop}
           />
           {evening.length > 0 && <Text style={styles.v2Section}>Ввечері</Text>}
           {orderable(evening, renderV2Row)}
