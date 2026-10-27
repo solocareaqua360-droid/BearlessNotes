@@ -37,7 +37,7 @@ import {
   TextInput,
   useWindowDimensions,
   View,
-  type GestureResponderEvent, Platform } from 'react-native';
+  type GestureResponderEvent, Platform, FlatList } from 'react-native';
 // gesture-handler's own ScrollView (not the core RN one) for the row-editor
 // sheet: a drag that starts on one of its TextInput/Pressable fields never
 // reaches an RN ScrollView's scroll recognition on Android, so that form
@@ -2400,6 +2400,80 @@ export default function CustomDatabaseScreen({
     );
   }
 
+  // THE LIST OF RECORDS, drawn only where it is seen (optimisation, 2026-10-27: sixty cards were all built at once and all
+  // carried through every scroll - ~850 ms to open a base, a heavy scroll after). One flat sequence of group headers and
+  // cards in a FlatList; the gaps the old container made (`gap` + the group's margin) are each entry's own bottom
+  // padding, because a list that leaves unseen parts out cannot lay out `gap` between them.
+  function renderRowsList() {
+    type Entry =
+      | { kind: 'head'; key: string; label: string; count: number; collapsed: boolean; after: number }
+      | { kind: 'row'; row: CustomDatabaseRow; after: number };
+    const entries: Entry[] = [];
+    if (groupField) {
+      rowGroups.forEach((group) => {
+        const key = group.key || '__empty__';
+        const collapsed = collapsedGroups.has(key);
+        const open = !collapsed && group.rows.length > 0;
+        entries.push({ kind: 'head', key, label: group.label, count: group.rows.length, collapsed, after: open ? 8 : 28 });
+        if (collapsed) return;
+        group.rows.forEach((row, i) => entries.push({ kind: 'row', row, after: i === group.rows.length - 1 ? 28 : 8 }));
+      });
+    } else {
+      displayedRows.forEach((row, i) => entries.push({ kind: 'row', row, after: i === displayedRows.length - 1 ? 0 : 10 }));
+    }
+    const totals = renderTotals();
+    return (
+      <SwipeSelectArea
+        enabled={FEATURES.swipeSelect}
+        order={entries.flatMap((e) => (e.kind === 'row' ? [e.row.id] : []))}
+        isSelectMode={isSelectMode}
+        selectedIds={selectedIds}
+        onSelect={sweepTo}
+        onEnd={(ids) => {
+          if (ids.size === 0) clearSelection();
+        }}
+        onToggle={toggleSelected}
+      >
+        <FlatList
+          data={entries}
+          keyExtractor={(e) => (e.kind === 'head' ? `h:${e.key}` : e.row.id)}
+          initialNumToRender={9}
+          maxToRenderPerBatch={6}
+          windowSize={7}
+          contentContainerStyle={[styles.list, { gap: 0, paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}
+          ListHeaderComponent={totals ? <View style={{ paddingBottom: 10 }}>{totals}</View> : null}
+          ListFooterComponent={
+            groupField ? (
+              <View style={styles.groupTotal}>
+                <Text style={styles.groupTotalLabel}>Усього</Text>
+                <Text style={styles.groupTotalCount}>{displayedRows.length}</Text>
+              </View>
+            ) : null
+          }
+          renderItem={({ item: e }) =>
+            e.kind === 'head' ? (
+              <View style={{ paddingBottom: e.after }}>
+                <Pressable style={styles.groupHeader} onPress={() => toggleGroupCollapsed(e.key)}>
+                  <Ionicons
+                    name={e.collapsed ? 'chevron-forward' : 'chevron-down'}
+                    size={14}
+                    color={softDb ? softDb.ink3 : "rgba(255,255,255,0.6)"}
+                  />
+                  <Text style={styles.groupHeaderLabel} numberOfLines={1}>
+                    {e.label}
+                  </Text>
+                  <Text style={styles.groupHeaderCount}>{e.count}</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={{ paddingBottom: e.after }}>{swipeRow(e.row)}</View>
+            )
+          }
+        />
+      </SwipeSelectArea>
+    );
+  }
+
   // The first field stays put while the rest scroll sideways, and the header
   // stays put while rows scroll down - a spreadsheet's two fixed edges. That
   // needs the table split in two: a frozen left block (row button + first
@@ -4237,65 +4311,8 @@ export default function CustomDatabaseScreen({
         renderCards()
       ) : viewMode === 'shelves' ? (
         renderShelves()
-      ) : groupField ? (
-        // Grouped by one field: a header per value with its own count, and
-        // the total under the last group - the "how many working, how many
-        // in for repair, how many altogether" read. Collapsible, same as
-        // the table and gallery's own grouped rendering.
-        <SwipeSelectArea
-          enabled={FEATURES.swipeSelect}
-          isSelectMode={isSelectMode}
-          selectedIds={selectedIds}
-          onSelect={sweepTo}
-          onEnd={(ids) => {
-            if (ids.size === 0) clearSelection();
-          }}
-          onToggle={toggleSelected}
-        >
-        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
-          {renderTotals()}
-          {rowGroups.map((group) => {
-            const key = group.key || '__empty__';
-            const collapsed = collapsedGroups.has(key);
-            return (
-              <View key={key} style={styles.groupSection}>
-                <Pressable style={styles.groupHeader} onPress={() => toggleGroupCollapsed(key)}>
-                  <Ionicons
-                    name={collapsed ? 'chevron-forward' : 'chevron-down'}
-                    size={14}
-                    color={softDb ? softDb.ink3 : "rgba(255,255,255,0.6)"}
-                  />
-                  <Text style={styles.groupHeaderLabel} numberOfLines={1}>
-                    {group.label}
-                  </Text>
-                  <Text style={styles.groupHeaderCount}>{group.rows.length}</Text>
-                </Pressable>
-                {!collapsed && withinBudget(group.rows).map(swipeRow)}
-              </View>
-            );
-          })}
-          <View style={styles.groupTotal}>
-            <Text style={styles.groupTotalLabel}>Усього</Text>
-            <Text style={styles.groupTotalCount}>{displayedRows.length}</Text>
-          </View>
-        </ScrollView>
-        </SwipeSelectArea>
       ) : (
-        <SwipeSelectArea
-          enabled={FEATURES.swipeSelect}
-          isSelectMode={isSelectMode}
-          selectedIds={selectedIds}
-          onSelect={sweepTo}
-          onEnd={(ids) => {
-            if (ids.size === 0) clearSelection();
-          }}
-          onToggle={toggleSelected}
-        >
-        <ScrollView contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad }]}>
-          {renderTotals()}
-          {withinBudget(displayedRows).map(swipeRow)}
-        </ScrollView>
-        </SwipeSelectArea>
+        renderRowsList()
       )}
 
       {/* What runs off the top and the bottom melts into the ground rather
