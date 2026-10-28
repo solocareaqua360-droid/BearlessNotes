@@ -42,8 +42,11 @@ export default function GeoPointEntrySheet({
   visible,
   onCancel,
   onSave,
+  initialPoint,
 }: {
   visible: boolean;
+  // Already found (the map's search): the three fields open filled in, only the name is left to give.
+  initialPoint?: LatLng | null;
   onCancel: () => void;
   onSave: (params: { title: string; point: LatLng }) => void;
 }) {
@@ -81,6 +84,8 @@ export default function GeoPointEntrySheet({
     setMgrsText('');
     setResolvingUrl(false);
     setApproxCenter(null);
+    if (initialPoint) applyPoint(initialPoint, 'map');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   // Every field but the one just typed into is a MIRROR of `point` - set

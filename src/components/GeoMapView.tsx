@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import {
   Camera,
   LocationManager,
@@ -16,6 +17,14 @@ import { MAP_STYLE_URL } from '../utils/geoMapStyle';
 import GeoOfflineRegionsSheet from './GeoOfflineRegionsSheet';
 import GeoHouseNumbers from './GeoHouseNumbers';
 import { notify } from './surfaces/Ask';
+import {
+  distanceMeters,
+  formatDecimalLatLng,
+  formatMgrs,
+  parseCoordinatesText,
+  type LatLng,
+} from '../utils/geoCoordinates';
+import { extractMapsCoordinates, isMapsUrl } from '../utils/linkPreview';
 
 // Kyiv, zoomed out to the country - a reasonable place to open with no
 // points of the user's own yet, rather than the middle of the ocean
@@ -50,6 +59,9 @@ export default function GeoMapView({
   onPressPoint,
   focusId,
   bare,
+  searchText = '',
+  onAddAt,
+  bottomInset = 24,
 }: {
   points: GeoMapPoint[];
   onPressPoint: (id: string) => void;
@@ -57,6 +69,13 @@ export default function GeoMapView({
   focusId?: string | null;
   // Inside a small window: no offline / locate buttons.
   bare?: boolean;
+  // What the screen's search (the dock's) holds: read as coordinates, it puts a pin there with a card offering to add a
+  // point (2026-10-28, the user: «пошук за координатами і потенційне додавання цієї точки»; ONE search on the screen -
+  // «2 пошуки на екрані будуть плутати»). Anything else is the screen's own name search and the map ignores it.
+  searchText?: string;
+  onAddAt?: (point: LatLng) => void;
+  // How far from the bottom the found place's card stands (the dock is over the map).
+  bottomInset?: number;
 }) {
   const theme = useTheme();
   const cameraRef = useRef<CameraRef>(null);
@@ -106,6 +125,53 @@ export default function GeoMapView({
   }, [focusId]);
 
   const [offlineSheetVisible, setOfflineSheetVisible] = useState(false);
+
+  // THE SEARCH (the dock's, see `searchText`): decimal degrees, degrees-minutes-seconds, MGRS - read on the phone, so it
+  // works offline - or a Maps link. Read once typing settles, so a half-typed number does not fly the map about. The
+  // place found gets a temporary pin and a card; nothing is saved until «Додати точку» (which asks the name).
+  const [found, setFound] = useState<LatLng | null>(null);
+  const [resolving, setResolving] = useState(false);
+  useEffect(() => {
+    const text = searchText.trim();
+    if (!text) {
+      setFound(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      let point = parseCoordinatesText(text);
+      if (!point && isMapsUrl(text)) {
+        setResolving(true);
+        try {
+          point = await extractMapsCoordinates(text);
+        } finally {
+          if (!cancelled) setResolving(false);
+        }
+      }
+      if (cancelled) return;
+      setFound(point);
+      if (point) {
+        Keyboard.dismiss();
+        flyTo([point.lng, point.lat], 15);
+      }
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchText]);
+  // A point of the user's own already standing near the place found - so a second one is not made by mistake.
+  const nearest = useMemo(() => {
+    if (!found) return null;
+    let best: { point: GeoMapPoint; meters: number } | null = null;
+    points.forEach((p) => {
+      const meters = distanceMeters(found, p);
+      if (meters <= 500 && (!best || meters < best.meters)) best = { point: p, meters };
+    });
+    return best as { point: GeoMapPoint; meters: number } | null;
+  }, [found, points]);
+  const foundMgrs = found ? formatMgrs(found) : null;
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [locating, setLocating] = useState(false);
 
@@ -172,6 +238,13 @@ export default function GeoMapView({
             </Marker>
           );
         })}
+        {found && (
+          <Marker lngLat={[found.lng, found.lat]}>
+            <View style={[styles.foundPin, { backgroundColor: theme.ink.primary, borderColor: theme.raised }]}>
+              <Ionicons name="locate" size={18} color={theme.raised} />
+            </View>
+          </Marker>
+        )}
       </Map>
       {points.length === 0 && (
         <View style={styles.emptyHint} pointerEvents="none">
@@ -199,6 +272,51 @@ export default function GeoMapView({
         )}
       </Pressable>
       </>
+      )}
+      {resolving && (
+        <View style={[styles.resolving, { backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}>
+          <ActivityIndicator size="small" color={theme.ink.primary} />
+          <Text style={{ color: theme.ink.primary, fontSize: 13 }}>Читаю посилання…</Text>
+        </View>
+      )}
+      {onAddAt && found && (
+        <View style={[styles.foundCard, { bottom: bottomInset + 12, backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}>
+          <Text style={[styles.foundCoords, { color: theme.ink.primary }]} selectable>
+            {formatDecimalLatLng(found)}
+          </Text>
+          {foundMgrs && (
+            <Text style={[styles.foundMgrs, { color: theme.ink.muted }]} selectable>
+              MGRS {foundMgrs}
+            </Text>
+          )}
+          {nearest && (
+            <Pressable onPress={() => onPressPoint(nearest.point.id)} style={styles.nearRow}>
+              <Ionicons name="location-outline" size={16} color={theme.ink.muted} />
+              <Text style={[styles.nearText, { color: theme.ink.primary }]} numberOfLines={1}>
+                Поруч ваша точка: {nearest.point.title} · {nearest.meters < 1000 ? `${Math.round(nearest.meters)} м` : `${(nearest.meters / 1000).toFixed(1)} км`}
+              </Text>
+            </Pressable>
+          )}
+          <View style={styles.foundActions}>
+            <Pressable
+              style={[styles.foundButton, { borderColor: theme.edge.hairline }]}
+              onPress={() => {
+                Clipboard.setStringAsync(formatDecimalLatLng(found)).catch(() => {});
+                notify('Скопійовано', formatDecimalLatLng(found));
+              }}
+            >
+              <Ionicons name="copy-outline" size={18} color={theme.ink.primary} />
+              <Text style={[styles.foundButtonLabel, { color: theme.ink.primary }]}>Копіювати</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.foundButton, styles.foundButtonMain, { backgroundColor: theme.ink.primary }]}
+              onPress={() => onAddAt(found)}
+            >
+              <Ionicons name="add" size={18} color={theme.raised} />
+              <Text style={[styles.foundButtonLabel, { color: theme.raised }]}>Додати точку</Text>
+            </Pressable>
+          </View>
+        </View>
       )}
       <GeoOfflineRegionsSheet
         visible={offlineSheetVisible}
@@ -280,5 +398,74 @@ const styles = StyleSheet.create({
   },
   locateButton: {
     top: 140,
+  },
+  resolving: {
+    position: 'absolute',
+    top: 90,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  foundPin: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  foundCard: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    padding: 16,
+    borderRadius: 22,
+    borderWidth: 1,
+    gap: 6,
+  },
+  foundCoords: {
+    fontSize: 17,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  foundMgrs: {
+    fontSize: 13,
+  },
+  nearRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  nearText: {
+    flex: 1,
+    fontSize: 13,
+  },
+  foundActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  foundButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  foundButtonMain: {
+    borderWidth: 0,
+  },
+  foundButtonLabel: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

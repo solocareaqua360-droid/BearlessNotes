@@ -62,7 +62,7 @@ import CardMenu, { type CardMenuRow } from '../components/surfaces/CardMenu';
 import { useDensity } from '../hooks/useDensity';
 import { pickPhotosFromDevice } from '../utils/photoLibrary';
 import AddExistingItemModal from '../components/AddExistingItemModal';
-import { mapsUrlForLatLng, type LatLng } from '../utils/geoCoordinates';
+import { mapsUrlForLatLng, parseCoordinatesText, type LatLng } from '../utils/geoCoordinates';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import UndoToast from '../components/UndoToast';
 import { gridBasis, gridFillerCount, LinkGridCell, LinkRow } from '../components/ItemCards';
@@ -242,6 +242,8 @@ export default function LinksScreen({
   const [bulkCopyModalVisible, setBulkCopyModalVisible] = useState(false);
   const [addLinkUrlPromptVisible, setAddLinkUrlPromptVisible] = useState(false);
   const [geoPointSheetVisible, setGeoPointSheetVisible] = useState(false);
+  // A point found by the map's own search: the new-point window opens with it filled in.
+  const [geoPointInitial, setGeoPointInitial] = useState<{ lat: number; lng: number } | null>(null);
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
   const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
@@ -412,7 +414,10 @@ export default function LinksScreen({
   // place - search, tags, group and folder all already narrowed
   // `linksHere` down before this ever runs, so the map needs no filtering
   // machinery of its own; see the plan's "одночасний пошук і показ".
-  const geoMapPoints: GeoMapPoint[] = linksHere
+  // Coordinates typed into the search are a place, not a name: the map then keeps every point (no name matches «47.86,
+  // 35.11», and the points near the place found are exactly what is worth seeing).
+  const searchIsPlace = category === 'geo' && !!parseCoordinatesText(list.searchQuery);
+  const geoMapPoints: GeoMapPoint[] = (searchIsPlace ? allCategoryLinks : linksHere)
     .filter((l): l is LinkItem & { geoLat: number; geoLng: number } => l.geoLat != null && l.geoLng != null)
     .map((l) => ({ id: l.id, title: l.title || hostnameOf(l.url), lat: l.geoLat, lng: l.geoLng }));
 
@@ -822,7 +827,10 @@ export default function LinksScreen({
       ],
     });
     if (choice === 'url') setAddLinkUrlPromptVisible(true);
-    else if (choice === 'coords') setGeoPointSheetVisible(true);
+    else if (choice === 'coords') {
+      setGeoPointInitial(null);
+      setGeoPointSheetVisible(true);
+    }
   }
 
   function linkToBlock(item: JustAddedLink) {
@@ -1150,7 +1158,7 @@ export default function LinksScreen({
       onBack={() => navigation.goBack()}
       leaveIcon="link-outline"
       navTitle={inPane ? undefined : { icon: info.icon, label: info.title }}
-      searchPlaceholder="Пошук за назвою"
+      searchPlaceholder={category === 'geo' && mapVisible ? 'Назва або координати' : 'Пошук за назвою'}
       onAdd={handleAddPress}
       // Only when there is something to show or hide (see recordLinkIds).
       menuRows={
@@ -1302,6 +1310,7 @@ export default function LinksScreen({
 
           <GeoPointEntrySheet
             visible={geoPointSheetVisible}
+            initialPoint={geoPointInitial}
             onCancel={() => setGeoPointSheetVisible(false)}
             onSave={({ title, point }) => saveGeoPointByHand(title, point)}
           />
@@ -1524,7 +1533,9 @@ export default function LinksScreen({
         ) : // linksHere, not linksHere: stepping into an empty folder
         // mid-carry would otherwise swap the list for the empty state and
         // unmount the carried row with it.
-        !trashOpen && linksHere.length === 0 && explorer.folders.length === 0 ? (
+        // The map stays while searching: a name that matches nothing leaves it empty of pins, coordinates put a pin of
+        // their own on it.
+        !trashOpen && linksHere.length === 0 && explorer.folders.length === 0 && !(mapVisible && category === 'geo') ? (
           <View style={styles.emptyState}>
             <View style={[styles.emptyIcon, { backgroundColor: `${info.color}1A` }]}>
               <Ionicons name={info.icon} size={32} color={info.color} />
@@ -1558,7 +1569,16 @@ export default function LinksScreen({
             topPad={listTopPad}
           />
         ) : mapVisible && category === 'geo' ? (
-          <GeoMapView points={geoMapPoints} onPressPoint={(id) => setDetailLinkId(id)} />
+          <GeoMapView
+            points={geoMapPoints}
+            searchText={list.searchQuery}
+            onPressPoint={(id) => setDetailLinkId(id)}
+            bottomInset={dockClear + insets.bottom}
+            onAddAt={(point) => {
+              setGeoPointInitial(point);
+              setGeoPointSheetVisible(true);
+            }}
+          />
         ) : viewMode === 'grid' ? (
           <GestureDetector gesture={carrying.listGesture}>
           <ScrollView
