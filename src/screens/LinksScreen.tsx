@@ -244,6 +244,8 @@ export default function LinksScreen({
   const [geoPointSheetVisible, setGeoPointSheetVisible] = useState(false);
   // A point found by the map's own search: the new-point window opens with it filled in.
   const [geoPointInitial, setGeoPointInitial] = useState<{ lat: number; lng: number } | null>(null);
+  // The place the map has found right now (typed coordinates or a held pin): the dock's «+» saves it meanwhile.
+  const [geoFound, setGeoFound] = useState<{ lat: number; lng: number } | null>(null);
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
   const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
@@ -1160,6 +1162,17 @@ export default function LinksScreen({
       navTitle={inPane ? undefined : { icon: info.icon, label: info.title }}
       searchPlaceholder={category === 'geo' && mapVisible ? 'Назва або координати' : 'Пошук за назвою'}
       onAdd={handleAddPress}
+      keepContentWhileSearching={mapVisible && category === 'geo'}
+      saveInstead={
+        mapVisible && category === 'geo' && geoFound
+          ? {
+              onPress: () => {
+                setGeoPointInitial(geoFound);
+                setGeoPointSheetVisible(true);
+              },
+            }
+          : null
+      }
       // Only when there is something to show or hide (see recordLinkIds).
       menuRows={
         recordLinkCount > 0 || showRecordLinks || bin.trashed.length > 0
@@ -1578,6 +1591,7 @@ export default function LinksScreen({
               setGeoPointInitial(point);
               setGeoPointSheetVisible(true);
             }}
+            onFound={setGeoFound}
           />
         ) : viewMode === 'grid' ? (
           <GestureDetector gesture={carrying.listGesture}>

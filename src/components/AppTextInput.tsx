@@ -18,10 +18,15 @@ import { Commands } from 'react-native/Libraries/Components/TextInput/AndroidTex
 // write lands after the next key and the caret jumps to the start. Here the native field owns its text while it is
 // typed in: `value` only seeds it, and is written into the field ONLY when it differs from what the field itself last
 // said - a screen that clears, fills or rejects the text. Imported everywhere in place of react-native's TextInput.
+//
+// HOW an outside value gets in (2026-10-28, found on the phone: the new-point window opened with its coordinates empty):
+// a field nobody is typing in is simply made again with the new text (a fresh `key`) - a native «set text» sent to a
+// field that is not on screen yet was dropped without a word. Only the field in use gets the native command, so the
+// keyboard and the caret stay where they are (a chat box cleared after sending).
 type Props = TextInputProps;
 
 const TextInput = forwardRef<RNTextInput, Props>(function AppTextInput(props, ref) {
-  const { value, defaultValue, onChange, onChangeText, onSelectionChange, ...rest } = props;
+  const { value, defaultValue, onChange, onChangeText, onSelectionChange, onFocus, onBlur, autoFocus, ...rest } = props;
   const controlled = typeof value === 'string';
   const inner = useRef<RNTextInput | null>(null);
   // What the field last said, the newest `value` given, the field's event count and where its caret stood.
@@ -31,6 +36,15 @@ const TextInput = forwardRef<RNTextInput, Props>(function AppTextInput(props, re
   const eventCount = useRef(0);
   const caret = useRef<{ start: number; end: number } | null>(null);
   const seed = useRef(controlled ? value : defaultValue);
+  const focused = useRef(false);
+  const epoch = useRef(0);
+  // Not in use: made again with the outside text (see above), here in render so it lands in this very frame.
+  if (controlled && value !== said.current && !focused.current) {
+    said.current = value as string;
+    seed.current = value;
+    caret.current = null;
+    epoch.current += 1;
+  }
 
   const push = useCallback((text: string) => {
     const host = inner.current;
@@ -62,9 +76,20 @@ const TextInput = forwardRef<RNTextInput, Props>(function AppTextInput(props, re
 
   return (
     <RNTextInput
+      key={epoch.current}
       ref={setRef}
       {...rest}
+      // Only the first time: a field made again for new text must not pull the focus to itself.
+      autoFocus={epoch.current === 0 ? autoFocus : false}
       defaultValue={seed.current}
+      onFocus={(e) => {
+        focused.current = true;
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        focused.current = false;
+        onBlur?.(e);
+      }}
       onChange={(e: NativeSyntheticEvent<TextInputChangeEventData>) => {
         eventCount.current = e.nativeEvent.eventCount;
         onChange?.(e);

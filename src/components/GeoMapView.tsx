@@ -61,6 +61,7 @@ export default function GeoMapView({
   bare,
   searchText = '',
   onAddAt,
+  onFound,
   bottomInset = 24,
 }: {
   points: GeoMapPoint[];
@@ -74,6 +75,8 @@ export default function GeoMapView({
   // «2 пошуки на екрані будуть плутати»). Anything else is the screen's own name search and the map ignores it.
   searchText?: string;
   onAddAt?: (point: LatLng) => void;
+  // The place found (search or a pin held on the map), or null - the screen turns its «+» into «Зберегти» meanwhile.
+  onFound?: (point: LatLng | null) => void;
   // How far from the bottom the found place's card stands (the dock is over the map).
   bottomInset?: number;
 }) {
@@ -161,6 +164,16 @@ export default function GeoMapView({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchText]);
+  useEffect(() => {
+    onFound?.(found);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [found]);
+  useEffect(() => () => onFound?.(null), []);
+  // Saved: a point of the user's own now stands on the pin, so the pin (and the «Зберегти» it offered) goes.
+  useEffect(() => {
+    if (found && points.some((p) => distanceMeters(found, p) < 1)) setFound(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [points]);
   // A point of the user's own already standing near the place found - so a second one is not made by mistake.
   const nearest = useMemo(() => {
     if (!found) return null;
@@ -204,6 +217,18 @@ export default function GeoMapView({
         style={styles.fill}
         mapStyle={MAP_STYLE_URL}
         onRegionDidChange={handleRegionChange}
+        // A finger held on the map drops the same temporary pin a typed coordinate does; a tap elsewhere lifts it.
+        onLongPress={
+          onAddAt
+            ? (e) => {
+                const [lng, lat] = e.nativeEvent.lngLat;
+                setFound({ lat, lng });
+                // Brought to the middle, at the same zoom, so the card below does not cover it.
+                flyTo([lng, lat], view.zoom);
+              }
+            : undefined
+        }
+        onPress={onAddAt ? () => found && setFound(null) : undefined}
         // TextureView, not the default GLSurfaceView (2026-10-28, the user: the bar, the dock and the «⋯» menu over the
         // map were see-through, and the map seemed to slide out of the opening menu): a SurfaceView is drawn outside the
         // view tree, so the app's blur cannot see it - the glass over it showed nothing, and the growing menu panel
@@ -316,13 +341,6 @@ export default function GeoMapView({
             >
               <Ionicons name="copy-outline" size={18} color={theme.ink.primary} />
               <Text style={[styles.foundButtonLabel, { color: theme.ink.primary }]}>Копіювати</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.foundButton, styles.foundButtonMain, { backgroundColor: theme.ink.primary }]}
-              onPress={() => onAddAt(found)}
-            >
-              <Ionicons name="add" size={18} color={theme.raised} />
-              <Text style={[styles.foundButtonLabel, { color: theme.raised }]}>Додати точку</Text>
             </Pressable>
           </View>
         </View>
@@ -469,9 +487,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-  },
-  foundButtonMain: {
-    borderWidth: 0,
   },
   foundButtonLabel: {
     fontSize: 15,

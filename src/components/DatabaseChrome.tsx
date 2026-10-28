@@ -97,6 +97,12 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // - the plus is drawn ON the thing it adds there, as it is on the
   // documents screen.
   addIcon?: keyof typeof Ionicons.glyphMap;
+  // In place of the «+» while the screen holds something it can save right now (the geo map's found place, 2026-10-28:
+  // «підміною кнопки + на кнопку зберегти поки введені координати»).
+  saveInstead?: { onPress: () => void } | null;
+  // The content stays while the search is open and empty (the geo map: a black void hid the map the coordinates were
+  // about to be read on, 2026-10-28).
+  keepContentWhileSearching?: boolean;
   // The shape of the list, where this database has two of them. It was
   // the "Вигляд" pair of rows inside the "..." menu on three screens, all
   // spelling out the same thing; on the rail its icon IS the shape in
@@ -208,6 +214,8 @@ export default function DatabaseChrome<T extends { id: string }>({
   menuRows,
   onAdd,
   addIcon,
+  saveInstead,
+  keepContentWhileSearching,
   shape,
   explorer,
   hideDrawer,
@@ -370,7 +378,9 @@ export default function DatabaseChrome<T extends { id: string }>({
           }
         : { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
       : null,
-    isFocused && !list.isSelectMode && !searchingAlone && onAdd
+    isFocused && !list.isSelectMode && saveInstead
+      ? { icon: 'checkmark', keepIcon: true, onPress: saveInstead.onPress }
+      : isFocused && !list.isSelectMode && !searchingAlone && onAdd
       ? {
           icon: addIcon ?? 'add-outline',
           badge: 'add-circle-outline',
@@ -666,7 +676,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             without taking anything away from it. */}
         {/* Nothing under the field until something is typed for - an
             empty search is a question, not a list. */}
-        {list.isSearching && list.needle.length === 0 ? (
+        {list.isSearching && list.needle.length === 0 && !keepContentWhileSearching ? (
           <SearchVoid
             style={styles.emptySearch}
             onClose={() => {

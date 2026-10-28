@@ -160,6 +160,8 @@ export default function GeoPointEntrySheet({
           {b.on && <View style={{ height: 12 }} />}
           <Text style={styles.title}>Нова геоточка</Text>
           <TextInput
+            // A point already found (the map's search, a pin held on the map): only the name is left to give.
+            autoFocus={!!initialPoint}
             value={title}
             onChangeText={setTitle}
             placeholder="Назва"
@@ -220,7 +222,7 @@ export default function GeoPointEntrySheet({
 
           {mode === 'decimal' ? (
             <TextInput
-              autoFocus
+              autoFocus={!initialPoint}
               value={decimalText}
               onChangeText={handleDecimalChange}
               placeholder="55.7558, 37.6173"

@@ -783,6 +783,14 @@ export default function ContextDock() {
     // its top edge, never below where the dock rests.
     transform: [{ translateY: Math.min(0, keyboard.height.value - 10 + softRest) }],
   }));
+  // The list's dock rides only while its own search field stands in it (see the list branch). ALWAYS applied, with 0
+  // when not searching: a Reanimated style taken out of the array leaves its last transform on the view - the dock
+  // stayed hanging mid-screen after the search closed (2026-10-28).
+  const searchRides = !!dockSearch;
+  const softRideWhileSearching = useAnimatedStyle(
+    () => ({ transform: [{ translateY: searchRides ? Math.min(0, keyboard.height.value - 10 + softRest) : 0 }] }),
+    [searchRides, softRest]
+  );
   // Three cards, and they are three because of the one thing a
   // navigation dock must never do: the desks used to vanish the moment
   // you stepped into a folder or opened the calendar - "навігація між
@@ -2407,9 +2415,11 @@ export default function ContextDock() {
           style={[
             styles.twoBeads,
             { bottom: softRest, left: frame.left, width: frame.width, gap: 10 },
-            // No ride on the keyboard here (2026-10-26, the user: «разом з клавіатурою чомусь підіймається док»): this dock
-            // holds no field of its own - its search is the branch above, which rides - so a keyboard opened by a field in
-            // the page (a subtask, a comment) leaves the dock where it rests, under the keyboard.
+            // No ride on the keyboard (2026-10-26, the user: «разом з клавіатурою чомусь підіймається док») - a keyboard
+            // opened by a field in the page (a subtask, a comment) leaves the dock where it rests. EXCEPT when the dock's
+            // own search field stands here (dockSearch, below): that field brought the keyboard and must ride above it -
+            // without this every base's search was typed blind under the keyboard (found 2026-10-28).
+            softRideWhileSearching,
           ]}
         >
           {/* THE OPEN DESKS (an experiment, user 2026-10-03): the same round
