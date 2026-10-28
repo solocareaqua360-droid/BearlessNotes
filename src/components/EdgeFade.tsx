@@ -2,6 +2,7 @@ import { useId, useState, memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useRenderTimer } from '../utils/perfWatch';
+import { FEATURES } from '../features';
 
 // Content scrolling past an edge dissolves into the surface behind it
 // instead of being cut off - the user's own words for the hard edge it
@@ -17,12 +18,14 @@ import { useRenderTimer } from '../utils/perfWatch';
 const STOPS = 8;
 
 // `solid`: points at the edge that stay fully covered before the fade begins.
-// `bar`: this is the fade under the top bar (a mark only: with the open bar the name carries its own small glass - TopNavBar).
+// `bar`: this is the fade under the top bar (true: it ends at the bar's foot; 'roomy': it already runs 20 past it).
 function EdgeFade({ edge, color, height: given = 36, solid: givenSolid = 0, bar }: { edge: 'top' | 'bottom'; color: string; height?: number; solid?: number; bar?: boolean | 'roomy' }) {
   useRenderTimer('Край, що тане');
-  // Under the open bar the name's own glass keeps it readable (TopNavBar's HugContext): this fade stays as it always was.
-  void bar;
-  const height = given;
+  // Under the open bar (features.openTopBar) the fade reaches a little past the bar's foot, so it still acts at the bottom of
+  // the desk's name and not only above its middle (the user, 2026-10-28: «продовжити дію верхнього до нижнього краю назви
+  // столу»). Short of where a list at rest begins. 'roomy': the height already runs 20 past the foot.
+  const height = bar === true && FEATURES.openTopBar ? given + 18 : given;
+  const barLong = !!bar && FEATURES.openTopBar;
   const solid = givenSolid;
   const [width, setWidth] = useState(0);
   const id = `fade${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
@@ -33,7 +36,8 @@ function EdgeFade({ edge, color, height: given = 36, solid: givenSolid = 0, bar 
     // How solid the surface is at this offset from the top of the strip.
     const inward = edge === 'top' ? u : 1 - u;
     const past = solid > 0 ? Math.max(0, (inward * height - solid) / Math.max(1, height - solid)) : inward;
-    return { offset: u, opacity: Math.pow(1 - past, 2) };
+    // Under the open bar the fade holds on longer (1 - u², not (1 - u)²): it still acts at the name's foot.
+    return { offset: u, opacity: barLong ? 1 - past * past : Math.pow(1 - past, 2) };
   });
   return (
     <View

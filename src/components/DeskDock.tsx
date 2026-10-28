@@ -147,18 +147,23 @@ function GrowOnTouch({ style, children }: { style: object; children: ReactNode }
 }
 // «WHERE YOU ARE» AS A BUBBLE (the user, 2026-10-28, with the glass capsules: «помаранчеву кульку ледь помаранчевою, майже
 // прозорою; ефект збільшення іконки зовсім трохи; ефект мильної бульки по краях, трохи зміщено від центру; ледь помітний
-// розбілений блік») - features.glassRefract. The fill is the accent at a breath; the rim is the round button's soap film
-// (pressLens) with a second, fainter film a little off centre; a milky glint up and to the left.
-function hereWash(soft: SoftTokens): string {
-  const a = soft.accent.replace('#', '');
-  const n = parseInt(a.length === 3 ? a.split('').map((c) => c + c).join('') : a, 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${soft.dark ? 0.14 : 0.06})`;
-}
+// розбілений блік») - features.glassRefract. Then (same evening): «помаранчевості прибрати... збільшення трохи підсилити...
+// товщину обводки зменшити... ледь сплюснута, більш овальна». So: no fill at all, the bubble IS its rim - an ellipse a little
+// flatter than the bead, the round button's soap film (pressLens) thin, a second fainter film a little off centre, a milky
+// glint up and to the left.
+// The bubble's own oval: OUT to the dock's edges, not shrunk inside the bead (the user, 2026-10-28: «овальність не за рахунок
+// зменшення, а за рахунок збільшення впритул до країв доку») - as tall as the pill, a little wider than the bead.
+const HERE_DX = 7;
+const HERE_DY = (PILL_H - BEAD_H) / 2;
+const HERE_W = BEAD_W + HERE_DX * 2;
+const HERE_H = BEAD_H + HERE_DY * 2;
+const HERE_RX = HERE_W / 2 - 0.8;
+const HERE_RY = HERE_H / 2 - 0.8;
 function HereBubble({ soft }: { soft: SoftTokens }) {
   // On white the pale film vanishes: the light theme's film is deeper and a fine dark line holds the bubble's edge.
   const light = !soft.dark;
   return (
-    <Svg width="100%" height="100%" viewBox={`0 0 ${BEAD_W} ${BEAD_H}`} preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
+    <Svg width="100%" height="100%" viewBox={`0 0 ${HERE_W} ${HERE_H}`} preserveAspectRatio="none" style={styles.hereBubble}>
       <Defs>
         <LinearGradient id="hereFilm" x1="0" y1="0" x2="1" y2="1">
           <Stop offset="0" stopColor={light ? '#8FC4FF' : '#FFFFFF'} stopOpacity={0.9} />
@@ -177,18 +182,18 @@ function HereBubble({ soft }: { soft: SoftTokens }) {
           <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
         </RadialGradient>
       </Defs>
-      <Ellipse cx={BEAD_W * 0.36} cy={BEAD_H * 0.3} rx={BEAD_W * 0.22} ry={BEAD_H * 0.15} fill="url(#hereGlint)" />
-      <Rect x={2.6} y={1.6} width={BEAD_W - 4.4} height={BEAD_H - 4.4} rx={(BEAD_H - 4.4) / 2} fill="none" stroke="url(#hereFilm2)" strokeOpacity={soft.dark ? 0.5 : 0.7} strokeWidth={1.2} />
-      {light && <Rect x={0.5} y={0.5} width={BEAD_W - 1} height={BEAD_H - 1} rx={(BEAD_H - 1) / 2} fill="none" stroke="#000000" strokeOpacity={0.07} strokeWidth={1} />}
-      <Rect x={1.2} y={1.2} width={BEAD_W - 2.4} height={BEAD_H - 2.4} rx={(BEAD_H - 2.4) / 2} fill="none" stroke="url(#hereFilm)" strokeOpacity={soft.dark ? 0.7 : 0.75} strokeWidth={1.4} />
+      <Ellipse cx={HERE_W * 0.36} cy={HERE_H / 2 - HERE_RY * 0.45} rx={HERE_W * 0.2} ry={HERE_RY * 0.28} fill="url(#hereGlint)" />
+      <Ellipse cx={HERE_W / 2 + 1.1} cy={HERE_H / 2 + 0.7} rx={HERE_RX - 1.8} ry={HERE_RY - 1.8} fill="none" stroke="url(#hereFilm2)" strokeOpacity={soft.dark ? 0.5 : 0.7} strokeWidth={0.8} />
+      {light && <Ellipse cx={HERE_W / 2} cy={HERE_H / 2} rx={HERE_RX} ry={HERE_RY} fill="none" stroke="#000000" strokeOpacity={0.07} strokeWidth={0.8} />}
+      <Ellipse cx={HERE_W / 2} cy={HERE_H / 2} rx={HERE_RX - 0.4} ry={HERE_RY - 0.4} fill="none" stroke="url(#hereFilm)" strokeOpacity={soft.dark ? 0.75 : 0.8} strokeWidth={0.9} />
     </Svg>
   );
 }
 // The glyph under the bubble, a touch larger - the lens on what is beneath it.
 function useHereScale(active: boolean) {
-  const k = useSharedValue(active && FEATURES.glassRefract ? 1.08 : 1);
+  const k = useSharedValue(active && FEATURES.glassRefract ? 1.15 : 1);
   useEffect(() => {
-    k.value = withTiming(active && FEATURES.glassRefract ? 1.08 : 1, { duration: 220, easing: Easing.out(Easing.cubic) });
+    k.value = withTiming(active && FEATURES.glassRefract ? 1.15 : 1, { duration: 220, easing: Easing.out(Easing.cubic) });
   }, [active, k]);
   return useAnimatedStyle(() => ({ transform: [{ scale: k.value }] }));
 }
@@ -640,7 +645,7 @@ export default function DeskDock({
               // «Where you are» is the accent now (the user, 2026-10-23): the orange that used to ring the AI button marks
               // the place in front - the balloon too, while its window is open.
               // (`assist` is the balloon being IN the dock, not its window being open - so the bubble takes it over too.)
-              style={[styles.capsule, { backgroundColor: FEATURES.glassRefract ? hereWash(soft) : assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
+              style={[styles.capsule, { backgroundColor: FEATURES.glassRefract ? 'transparent' : assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
             >
               {FEATURES.glassRefract && <HereBubble soft={soft} />}
             </Animated.View>
@@ -779,6 +784,7 @@ const styles = StyleSheet.create({
   beads: { position: 'absolute', left: 0, top: 0, bottom: 0, width: PILL_CORE },
   bead: { position: 'absolute', borderRadius: BEAD_H / 2, alignItems: 'center', justifyContent: 'center' },
   capsule: { position: 'absolute', borderRadius: BEAD_H / 2 },
+  hereBubble: { position: 'absolute', left: -HERE_DX, right: -HERE_DX, top: -HERE_DY, bottom: -HERE_DY },
   circleWrap: { position: 'absolute' },
   hairline: { position: 'absolute', top: (PILL_H - 26) / 2, width: 1, height: 26 },
   drop: { position: 'absolute' },
