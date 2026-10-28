@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import TextInput from './AppTextInput';
 import { Ionicons } from './icons/Ionicons';
 import { useTheme } from '../theme/ThemeProvider';
 import { useSoft } from '../theme/soft';

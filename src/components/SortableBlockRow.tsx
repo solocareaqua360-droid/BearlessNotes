@@ -1,6 +1,7 @@
 import { memo, useEffect } from 'react';
 import { useDensity } from '../hooks/useDensity';
-import { LayoutChangeEvent, StyleSheet, TextInput, View } from 'react-native';
+import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
+import TextInput from './AppTextInput';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { Block, Tag } from '../types';

@@ -1,5 +1,6 @@
 import { useContext, useEffect, useRef, memo } from 'react';
-import { Keyboard, Pressable, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import TextInput from './AppTextInput';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost from './DockFrost';

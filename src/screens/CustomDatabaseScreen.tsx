@@ -34,10 +34,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
-  type GestureResponderEvent, Platform, FlatList } from 'react-native';
+  type GestureResponderEvent, Platform, FlatList,
+} from 'react-native';
+import TextInput from '../components/AppTextInput';
 // gesture-handler's own ScrollView (not the core RN one) for the row-editor
 // sheet: a drag that starts on one of its TextInput/Pressable fields never
 // reaches an RN ScrollView's scroll recognition on Android, so that form

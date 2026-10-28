@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import TextInput from '../AppTextInput';
 import { Ionicons } from '../icons/Ionicons';
 import { RADIUS, TYPE, useDeskColors } from '../../theme/desktopTheme';
 import { FONT_REGULAR, FONT_SEMIBOLD } from '../../utils/fonts';

@@ -35,9 +35,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
-  View, Platform } from 'react-native';
+  View, Platform,
+} from 'react-native';
+import TextInput from '../components/AppTextInput';
 import Svg, { Defs, LinearGradient, Stop, Rect, Path, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '../components/icons/Ionicons';
 import AttachmentImage from '../components/AttachmentImage';

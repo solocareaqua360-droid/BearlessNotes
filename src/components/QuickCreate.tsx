@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { folderPathFromName } from '../utils/folderName';
-import { BackHandler, Keyboard, useWindowDimensions, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { BackHandler, Keyboard, useWindowDimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import TextInput from './AppTextInput';
 import Sheet from './surfaces/Sheet';
 import StableTextInput from './StableTextInput';
 import { Ionicons } from './icons/Ionicons';

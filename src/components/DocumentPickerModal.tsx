@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import TextInput from './AppTextInput';
 import type { ComponentProps } from 'react';
 import { Ionicons } from './icons/Ionicons';
 import Sheet from './surfaces/Sheet';

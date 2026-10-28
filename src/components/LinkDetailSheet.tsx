@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { FlipFrom } from '../utils/flipOpen';
-import { ActivityIndicator, Image, Keyboard, Linking, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Linking, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import TextInput from './AppTextInput';
 import { Ionicons } from './icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
 import { useStyles, useTheme } from '../theme/ThemeProvider';

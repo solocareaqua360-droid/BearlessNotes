@@ -6,9 +6,9 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+import TextInput from './AppTextInput';
 import { Ionicons } from './icons/Ionicons';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import GlassLayer from './GlassLayer';

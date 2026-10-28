@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import TextInput from './AppTextInput';
 import ChatSheetFrame from './ChatSheetFrame';
 import { useSoft } from '../theme/soft';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';

@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
-import { Keyboard, Pressable, StyleSheet, TextInput, type StyleProp, type ViewStyle } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import TextInput from './AppTextInput';
 import { Ionicons } from './icons/Ionicons';
 import GlassDrop, { GlassIcon } from './GlassDrop';
 import { useTheme } from '../theme/ThemeProvider';

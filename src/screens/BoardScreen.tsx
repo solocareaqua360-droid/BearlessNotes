@@ -23,10 +23,10 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
+import TextInput from '../components/AppTextInput';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Ionicons } from '../components/icons/Ionicons';
 // gesture-handler's ScrollView for the outline: it lives over a canvas

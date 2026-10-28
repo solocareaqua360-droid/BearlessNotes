@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import TextInput from './AppTextInput';
 import { ScrollView } from 'react-native-gesture-handler';
 import Sheet from './surfaces/Sheet';
 import { Ionicons } from './icons/Ionicons';

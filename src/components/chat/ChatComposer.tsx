@@ -1,5 +1,6 @@
 import { useEffect, useState, type Ref } from 'react';
-import { Image, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import TextInput from '../AppTextInput';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '../icons/Ionicons';
 import { useKeyboardRide } from '../../hooks/useKeyboardRide';

@@ -1,6 +1,7 @@
 import { ForwardedRef, forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { listNumbers } from '../utils/documentBlocks';
-import { LayoutAnimation, LayoutChangeEvent, TextInput, View } from 'react-native';
+import { LayoutAnimation, LayoutChangeEvent, View } from 'react-native';
+import TextInput from './AppTextInput';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { Block, Tag } from '../types';
 import { useStyles } from '../theme/ThemeProvider';

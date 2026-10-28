@@ -24,10 +24,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
+import TextInput from '../components/AppTextInput';
 import { Ionicons } from '../components/icons/Ionicons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';

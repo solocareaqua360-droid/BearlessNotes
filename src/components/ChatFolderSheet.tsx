@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import TextInput from './AppTextInput';
 // gesture-handler's ScrollView, not the core one: a sheet with a search field over a list (the sheet scroll trap).
 import { ScrollView } from 'react-native-gesture-handler';
 import ChatSheetFrame from './ChatSheetFrame';

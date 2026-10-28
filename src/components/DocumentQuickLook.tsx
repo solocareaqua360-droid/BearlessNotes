@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import FlipModal from './FlipModal';
 import type { FlipFrom } from '../utils/flipOpen';
-import { ActivityIndicator, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Keyboard, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import TextInput from './AppTextInput';
 import { Ionicons } from './icons/Ionicons';
 import { WebView } from 'react-native-webview';
 import { Asset } from 'expo-asset';

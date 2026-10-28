@@ -9,11 +9,11 @@ import {
   StyleProp,
   StyleSheet,
   Text,
-  TextInput,
   TextStyle,
   View,
   useWindowDimensions,
 } from 'react-native';
+import TextInput from './AppTextInput';
 import { Ionicons } from './icons/Ionicons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {

@@ -25,11 +25,11 @@ import {
   ScrollView as RNScrollView,
   StyleSheet,
   Text,
-  TextInput,
   UIManager,
   useWindowDimensions,
   View,
 } from 'react-native';
+import TextInput from '../components/AppTextInput';
 import { Ionicons } from '../components/icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';

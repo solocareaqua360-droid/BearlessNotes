@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import TextInput from '../components/AppTextInput';
 import Svg, { Circle } from 'react-native-svg';
 import BalloonMark from '../components/BalloonMark';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

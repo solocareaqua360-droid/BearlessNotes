@@ -2,7 +2,8 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import { localPathFor } from '../utils/localPath';
 import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import TextInput from './AppTextInput';
 // gesture-handler's ScrollView, not the core RN one: on Android a drag that
 // starts on a TextInput never reaches an RN ScrollView's scroll recognition,
 // and this sheet is mostly inputs - it only scrolled when a finger happened

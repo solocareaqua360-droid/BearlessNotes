@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
+import TextInput from '../AppTextInput';
 import { Ionicons } from '../icons/Ionicons';
 import { useSoft } from '../../theme/soft';
 import { SOFT_BOLD, SOFT_REGULAR } from '../../utils/fonts';

@@ -1,6 +1,7 @@
 import { lift } from '../../utils/lift';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import TextInput from '../AppTextInput';
 import { doc, onSnapshot } from '../../firestore';
 import { db } from '../../firebase';
 import { Ionicons } from '../icons/Ionicons';

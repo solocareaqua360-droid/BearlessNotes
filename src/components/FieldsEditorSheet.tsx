@@ -6,10 +6,10 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
+import TextInput from './AppTextInput';
 // gesture-handler's ScrollView, not the core RN one: a drag that starts on
 // a field's name input (every row here has one) never reaches an RN
 // ScrollView's scroll recognition on Android, so this list only scrolled
