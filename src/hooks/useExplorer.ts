@@ -349,13 +349,18 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
       if (path === folderPath || path.startsWith(`${folderPath}/`)) setPath(parent);
       return;
     }
-    if (own) {
-      const holders = items.filter((item) => tagIdsOf(item).includes(own.id));
+    // Every tag that stands for this folder - two with one path (a twin made by a race) are one folder to the user, and
+    // deleting it must not leave the other behind.
+    const twins = explorerTags.filter((t) => t.path === folderPath);
+    if (own && !twins.some((t) => t.id === own.id)) twins.push(own);
+    if (twins.length) {
+      const ids = new Set(twins.map((t) => t.id));
+      const holders = items.filter((item) => tagIdsOf(item).some((id) => ids.has(id)));
       if (parent) {
         const parentTag = await tagForFolder(parent);
         await Promise.all(holders.map((item) => attachTag(parentTag, kind, item.id, collection)));
       }
-      await deleteTagCompletely(realTag(own));
+      for (const t of twins) await deleteTagCompletely(realTag(t));
     }
     const below = explorerTags.filter((t) => t.path.startsWith(`${folderPath}/`));
     await Promise.all(

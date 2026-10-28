@@ -35,9 +35,16 @@ export function isTableFileName(name: string): boolean {
 // SheetJS reads .xlsx, .xls and .csv from the same call - it sniffs the
 // content rather than trusting the extension, so one path covers all three
 // and a file the user renamed still imports.
+//
+// A CSV is text, and read from base64 SheetJS took its bytes as Latin-1 - every Cyrillic letter came out as «Ð¢Ðµ»
+// (found 2026-10-28 with a points file). A file that is not a workbook (an .xlsx is a zip, «PK»; an old .xls starts
+// D0 CF 11 E0) is read as UTF-8 text instead, its byte-order mark dropped.
 export async function parseTableFile(uri: string): Promise<ParsedSheet[]> {
   const base64 = await LegacyFileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-  const workbook = XLSX.read(base64, { type: 'base64', cellDates: false, raw: false });
+  const workbookFile = base64.startsWith('UEsD') || base64.startsWith('0M8R4');
+  const workbook = workbookFile
+    ? XLSX.read(base64, { type: 'base64', cellDates: false, raw: false })
+    : XLSX.read((await LegacyFileSystem.readAsStringAsync(uri)).replace(/^\uFEFF/, ''), { type: 'string', cellDates: false, raw: false });
   return workbook.SheetNames.map((name) => ({
     name,
     // header:1 gives rows as plain arrays (not keyed by header), defval

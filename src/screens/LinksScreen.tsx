@@ -54,6 +54,9 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import GeoPointEntrySheet from '../components/GeoPointEntrySheet';
 import GeoMapView, { type GeoMapPoint } from '../components/GeoMapView';
+import GeoImportSheet, { type GeoImportProgress } from '../components/GeoImportSheet';
+import type { GeoImportRow } from '../utils/geoImport';
+import { extractMapsCoordinates } from '../utils/linkPreview';
 import GeoLayersPanel, { NO_PICK, pickActive, pointShown, type LayerPick, type LayerPoint } from '../components/GeoLayersPanel';
 import LinkDetailSheet from '../components/LinkDetailSheet';
 import { copyLinkText } from '../utils/shareAndCopy';
@@ -252,6 +255,7 @@ export default function LinksScreen({
   const [layersOpen, setLayersOpen] = useState(false);
   // «Мапа без інтернету» (the offline regions window), opened from «⋯» while the map is on.
   const [offlineOpen, setOfflineOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
   const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
@@ -728,6 +732,41 @@ export default function LinksScreen({
     await saveNewLink(url, { siteName: 'Геоточка', geoLat: point.lat, geoLng: point.lng }, title);
   }
 
+  // «Імпорт точок» (GeoImportSheet): each row a geo point like one entered by hand, its note as the point's comment,
+  // all in one folder. A Google link is read through the network here, one after another (the user: «просто довшим
+  // вікном підвантаження»); one that cannot be read now is saved as it is and gets its place later, when the network
+  // is back (backfillGeoCoordinatesIfMissing, on the next load).
+  async function importGeoPoints(rows: GeoImportRow[], folder: string | null, progress: (p: GeoImportProgress) => void) {
+    let saved = 0;
+    let waiting = 0;
+    // The folder is found or made ONCE: asked per row, each row made a twin of it (the explorer's list of folders is
+    // only read again on the next render) - the first import made three «test-import-tochky» (2026-10-28).
+    const folderTag = folder ? await explorer.tagForFolder(folder) : null;
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (row.kind === 'bad') continue;
+      let point = row.kind === 'point' ? row.point : null;
+      if (row.kind === 'link') {
+        progress({ done: i, total: rows.length, note: 'читаю посилання Google…' });
+        point = await extractMapsCoordinates(row.url).catch(() => null);
+      }
+      const url = point ? mapsUrlForLatLng(point) : (row as { url: string }).url;
+      const id = linkDocId(url);
+      const now = Date.now();
+      const data: Record<string, unknown> = { url, title: row.title, siteName: 'Геоточка', updatedAt: now, createdAt: now, usedInDocuments: {} };
+      if (point) {
+        data.geoLat = point.lat;
+        data.geoLng = point.lng;
+      } else waiting += 1;
+      if (row.note) data.comment = row.note;
+      await setDoc(doc(db, 'links', id), data, { merge: true });
+      if (folderTag) await attachTag(folderTag, tagKind, id, 'links');
+      saved += 1;
+      progress({ done: i + 1, total: rows.length });
+    }
+    return { saved, waiting };
+  }
+
   // A tap opens the link's own card - every link, since the card grew a
   // comment, photos, reading and fragments (2026-09-25; it was the geo
   // point's alone before). Leaving the app is a button inside it, or the
@@ -1191,7 +1230,10 @@ export default function LinksScreen({
       keepContentWhileSearching={mapVisible && category === 'geo'}
       topMenuExtras={
         mapVisible && category === 'geo'
-          ? [{ label: 'Мапа без інтернету', icon: 'cloud-download-outline', onPress: () => setOfflineOpen(true) }]
+          ? [
+              { label: 'Мапа без інтернету', icon: 'cloud-download-outline', onPress: () => setOfflineOpen(true) },
+              { label: 'Імпорт точок', icon: 'cloud-upload-outline', onPress: () => setImportOpen(true) },
+            ]
           : null
       }
       dockTools={
@@ -1365,6 +1407,8 @@ export default function LinksScreen({
             onCancel={() => setAddLinkUrlPromptVisible(false)}
             onSave={submitNewLinkUrl}
           />
+
+          <GeoImportSheet visible={importOpen} onClose={() => setImportOpen(false)} onImport={importGeoPoints} />
 
           <GeoPointEntrySheet
             visible={geoPointSheetVisible}
