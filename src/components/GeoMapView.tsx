@@ -11,6 +11,7 @@ import {
   UserLocation,
   type CameraRef,
   type GeoJSONSourceRef,
+  type MapRef,
   type ViewStateChangeEvent,
 } from '@maplibre/maplibre-react-native';
 import { Ionicons } from './icons/Ionicons';
@@ -69,6 +70,7 @@ export default function GeoMapView({
   onOfflineClose,
   rulerOn = false,
   onRulerChange,
+  snapshotRef,
 }: {
   points: GeoMapPoint[];
   onPressPoint: (id: string) => void;
@@ -93,6 +95,9 @@ export default function GeoMapView({
   // on and off (onRulerChange - the found-place card's «Звідси» turns it on too).
   rulerOn?: boolean;
   onRulerChange?: (on: boolean) => void;
+  // «Знімок»: filled with a function that photographs what the map shows now (its layers - points, ruler - included) to
+  // a file, for the screen's dock button.
+  snapshotRef?: { current: (() => Promise<string | null>) | null };
 }) {
   const theme = useTheme();
   const cameraRef = useRef<CameraRef>(null);
@@ -114,6 +119,15 @@ export default function GeoMapView({
   // over it - so a thousand points cost what ten do. The focused point (a collection's chosen one) is still a view, on
   // top, because it is one.
   const sourceRef = useRef<GeoJSONSourceRef>(null);
+  const mapRef = useRef<MapRef>(null);
+  if (snapshotRef)
+    snapshotRef.current = async () => {
+      try {
+        return (await mapRef.current?.createStaticMapImage({ output: 'file' })) ?? null;
+      } catch {
+        return null;
+      }
+    };
   const shape = useMemo<GeoJSON.FeatureCollection>(
     () => ({
       type: 'FeatureCollection',
@@ -253,6 +267,7 @@ export default function GeoMapView({
   return (
     <View style={styles.fill}>
       <Map
+        ref={mapRef}
         style={styles.fill}
         mapStyle={MAP_STYLE_URL}
         onRegionDidChange={handleRegionChange}

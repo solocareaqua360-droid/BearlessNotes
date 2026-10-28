@@ -90,6 +90,10 @@ import { detachTagFromDeletedItem, isTagAllowedForKind } from '../hooks/useTags'
 import { appendBlocksToToday, blockFromLink, blockFromPhoto, clipBlocksToNote, copyObjectsToNote } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import SaveDestinationSheet from '../components/SaveDestinationSheet';
+import SketchEditor from '../components/SketchEditor';
+import { writePhotoRecord } from '../utils/photoLibrary';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
+import type { SketchElement } from '../types';
 import { linkDocId } from '../utils/linkId';
 import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import VideoPlayerModal from '../components/VideoPlayerModal';
@@ -151,6 +155,8 @@ type LinkItem = {
   // list, tags/group/references untouched, purged for good after 30 days.
   deletedAt?: number;
 };
+
+const NO_SKETCH: SketchElement[] = [];
 
 function categoryOf(link: LinkItem): LinkCategory {
   return categoryFromSiteName(link.siteName);
@@ -258,6 +264,52 @@ export default function LinksScreen({
   const [importOpen, setImportOpen] = useState(false);
   // «Рулетка» on the map (GeoMapView's ruler).
   const [rulerOn, setRulerOn] = useState(false);
+  // «Знімок» (step 5 of the map tools, 2026-10-28: «спочатку знімок потім малювання потім можливість зберегти»): the map
+  // photographed to a file, drawn on in the sketch editor, then placed in a note as a picture with the drawing over it
+  // (the same image block + sketch layer a drawn-on photo is, so it can be drawn on again there).
+  const snapshotRef = useRef<(() => Promise<string | null>) | null>(null);
+  const [mapShot, setMapShot] = useState<string | null>(null);
+  const [mapDrawing, setMapDrawing] = useState<{ elements: SketchElement[]; width: number; height: number } | null>(null);
+  async function takeMapShot() {
+    setLayersOpen(false);
+    const tmp = await snapshotRef.current?.();
+    if (!tmp) {
+      notify('Не вдалося зробити знімок', 'Спробуйте ще раз, коли мапа домалюється.');
+      return;
+    }
+    // Out of the cache, which the phone may clear: the picture is about to become a photo of its own.
+    const dir = `${LegacyFileSystem.documentDirectory}mapShots/`;
+    await LegacyFileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
+    const file = `${dir}map-${Date.now()}.png`;
+    const ok = await LegacyFileSystem.copyAsync({ from: tmp, to: file }).then(() => true, () => false);
+    setMapShot(ok ? file : tmp);
+  }
+  // The drawn map becomes a photo (Photos base, backed up to Drive like any) and its block goes to the chosen note.
+  async function placeMapShot(target: 'today' | 'new' | string | null, noteTitle?: string) {
+    const shot = mapShot;
+    const drawing = mapDrawing;
+    setMapDrawing(null);
+    setMapShot(null);
+    if (!shot || !drawing) return;
+    const photo = await writePhotoRecord(shot);
+    const title = `Мапа · ${new Date().toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })}`;
+    const extra: Record<string, unknown> = { title };
+    if (drawing.elements.length) Object.assign(extra, { sketchElements: drawing.elements, sketchWidth: drawing.width, sketchHeight: drawing.height });
+    await updateDoc(doc(db, 'photos', photo.id), extra);
+    if (target === null) return;
+    const block = blockFromPhoto({ id: photo.id, imageUri: shot, createdAt: photo.createdAt, title, ...(drawing.elements.length ? { sketchElements: drawing.elements, sketchWidth: drawing.width, sketchHeight: drawing.height } : {}) });
+    const mirror = [{ collectionName: 'photos', id: photo.id }];
+    if (target === 'today') {
+      await appendBlocksToToday([block], mirror);
+      notify('Мапу вставлено', 'У сьогоднішню нотатку.');
+    } else if (target === 'new') {
+      const newId = await copyObjectsToNote(null, [block], mirror);
+      navigation.navigate('Editor', { documentId: newId });
+    } else {
+      await copyObjectsToNote(target, [block], mirror);
+      notify('Мапу вставлено', `У «${noteTitle || 'Без назви'}».`);
+    }
+  }
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
   const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
@@ -1262,6 +1314,14 @@ export default function LinksScreen({
                   setRulerOn((on) => !on);
                 },
               },
+              {
+                key: 'shot',
+                icon: 'camera-outline',
+                label: 'Знімок',
+                onPress: () => {
+                  takeMapShot();
+                },
+              },
             ]
           : null
       }
@@ -1424,6 +1484,28 @@ export default function LinksScreen({
           />
 
           <GeoImportSheet visible={importOpen} onClose={() => setImportOpen(false)} onImport={importGeoPoints} />
+
+          <SketchEditor
+            visible={mapShot !== null && mapDrawing === null}
+            initialElements={NO_SKETCH}
+            background={mapShot ? { uri: mapShot } : undefined}
+            onSave={(elements, width, height) => setMapDrawing({ elements, width, height })}
+            onClose={() => setMapShot(null)}
+          />
+          <SaveDestinationSheet
+            visible={mapDrawing !== null}
+            title="Куди вставити мапу?"
+            notesOnly
+            defaultLabel="Лише у «Фото»"
+            onPickDefault={() => placeMapShot(null).catch(() => {})}
+            onPickToday={() => placeMapShot('today').catch(() => {})}
+            onPickNew={() => placeMapShot('new').catch(() => {})}
+            onPickExisting={(documentId, noteTitle) => placeMapShot(documentId, noteTitle).catch(() => {})}
+            onClose={() => {
+              setMapDrawing(null);
+              setMapShot(null);
+            }}
+          />
 
           <GeoPointEntrySheet
             visible={geoPointSheetVisible}
@@ -1699,6 +1781,7 @@ export default function LinksScreen({
             onFound={setGeoFound}
             rulerOn={rulerOn}
             onRulerChange={setRulerOn}
+            snapshotRef={snapshotRef}
             offlineOpen={offlineOpen}
             onOfflineClose={() => setOfflineOpen(false)}
           />
