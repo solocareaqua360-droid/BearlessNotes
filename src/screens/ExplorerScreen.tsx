@@ -1,4 +1,4 @@
-import { type ComponentProps, type ReactElement, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, type ReactElement, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { askFates, boardContentsFates, confirmFates, FATE, type FateEntry, type FateKind } from '../utils/deleteFates';
 import { folderPathFromName } from '../utils/folderName';
 import { usePublishRailPanel } from '../navigation/navRail';
@@ -63,7 +63,10 @@ import FlashcardReader from '../components/FlashcardReader';
 import FlashcardEditor from '../components/FlashcardEditor';
 import { ensureFileIsHere, openFileExternally, shareFile } from '../utils/openFileExternally';
 import { holdAsk } from '../components/surfaces/HoldAsk';
-import { markHeld } from '../utils/heldNode';
+import { DesksControlContext, deskFace } from '../navigation/desks';
+import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
+import { openStartBase, useStartBases } from '../navigation/startBases';
+import { markHeld, useHeld } from '../utils/heldNode';
 import { GestureDetector } from 'react-native-gesture-handler';
 import CreateFan from '../components/CreateFan';
 import QuickCreateHost from '../components/QuickCreateHost';
@@ -283,7 +286,8 @@ const PROJECT_COVER_COLORS = [
 
 // The bin's place among the folder cards of «Модерний» - not a folder path anyone can make (no tag has it).
 const BIN_PATH = '\u0000bin';
-// The start list's level of all the projects (features.startList); any other level is a project's id.
+// The start list's levels (features.startList): every folder as cards («Папки ›»), and the projects («Проєкти ›»).
+const START_FOLDERS = '\u0000folders';
 const START_PROJECTS = '\u0000projects';
 
 function cornerIn(delay: number) {
@@ -541,6 +545,23 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     });
   // «Нещодавні» on the start desk (the user, 2026-10-25): on unless switched off in «⋯», remembered on this device.
   const [recentsOn, setRecentsOn] = useState(true);
+  // The start list's other two switches (features.startList; the user, 2026-10-28: «в трьох крапках налаштування чи
+  // показувати обрані бази та чи показувати проекти»), remembered on this device like «Нещодавні».
+  const [startProjectsOn, setStartProjectsOn] = useState(true);
+  const [startBasesOn, setStartBasesOn] = useState(true);
+  useEffect(() => {
+    AsyncStorage.multiGet(['startProjects', 'startBases'])
+      .then(([[, p], [, b]]) => {
+        if (p !== null) setStartProjectsOn(p === '1');
+        if (b !== null) setStartBasesOn(b === '1');
+      })
+      .catch(() => {});
+  }, []);
+  const toggleStartSwitch = (key: 'startProjects' | 'startBases') =>
+    (key === 'startProjects' ? setStartProjectsOn : setStartBasesOn)((on) => {
+      AsyncStorage.setItem(key, on ? '0' : '1').catch(() => {});
+      return !on;
+    });
   useEffect(() => {
     AsyncStorage.getItem('explorerRecents').then((v) => v !== null && setRecentsOn(v === '1')).catch(() => {});
   }, []);
@@ -731,7 +752,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
 
   // THE PROJECTS STYLE'S FIRST LEVEL: only the folders of the project in front (a folder is in a project when a tag of its path
   // carries the project in groupIds); «Без проєкту» keeps what is in none, with «Нерозкладене».
-  const projectsOn = (explorerMode === 'projects' || startList) && FEATURES.explorerProjects;
+  // The start list has no projects style of its own: only its «Проєкти» level is one.
+  const projectsOn = FEATURES.explorerProjects && (startList ? startLevel === START_PROJECTS : explorerMode === 'projects');
   const projectsHere = projectsOn && !path && !inBin && !inCleanup && !searching && !filtering;
   const projectIdsOf = useMemo(() => {
     const m = new Map<string, Set<string>>();
@@ -2109,7 +2131,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       { label: 'Фільтри (тип, проєкт)', icon: 'filter-outline' as const, checked: chipsOn, onPress: toggleChips },
       // Under a name of its own: straight after «Порядок» it read as one more way to sort.
       ...(desk ? [{ kind: 'section' as const, label: 'На старті' }, { label: 'Нещодавні', icon: 'time-outline' as const, checked: recentsOn, onPress: toggleRecents }] : []),
-      ...(FEATURES.explorerProjects
+      ...(desk && startList
+        ? [
+            { label: 'Проєкти', icon: 'folder-open-outline' as const, checked: startProjectsOn, onPress: () => toggleStartSwitch('startProjects') },
+            { label: 'Обрані бази', icon: 'apps-outline' as const, checked: startBasesOn, onPress: () => toggleStartSwitch('startBases') },
+          ]
+        : []),
+      // The start list decides this itself (its «Проєкти» level): the old switch would change nothing there.
+      ...(FEATURES.explorerProjects && !startList
         ? [
             { kind: 'section' as const, label: 'Показувати' },
             { label: 'Провідник', icon: 'folder-outline' as const, checked: explorerMode === 'explorer', onPress: () => changeMode('explorer') },
@@ -2493,7 +2522,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     // («Старт») over a list of dead things (the user, 2026-10-13).
     if (!desk || !publishToDock || (!path && !inBin && !inCleanup && !startLevel)) return;
     if (!path && !inBin && !inCleanup && startLevel) {
-      publishToDock({ kind: 'path', icon: 'folder-open-outline', crumbs: ['Проєкти'], onGo: (to: string) => !to && setStartLevels([]) });
+      publishToDock({ kind: 'path', icon: 'folder-open-outline', crumbs: [startLevel === START_PROJECTS ? 'Проєкти' : 'Папки'], onGo: (to: string) => !to && setStartLevels([]) });
     } else if (inBin) publishToDock({ kind: 'path', icon: 'trash-outline', crumbs: ['Кошик'], onGo: () => leaveBin() });
     else if (inCleanup) publishToDock({ kind: 'path', icon: 'folder-open-outline', crumbs: ['Кандидати на очищення'], onGo: () => leaveCleanup() });
     else publishToDock({ kind: 'path', icon: 'folder-open-outline', crumbs: path.split('/'), onGo: setPath });
@@ -2727,7 +2756,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       }
     };
     // «Думки» first, a middle card of the first column (the same square as the clean look's, 2026-10-25).
-    if (FEATURES.thoughts && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT)) place({ path: THOUGHTS_PATH, name: 'Думки', count: 0 } as FolderEntry);
+    if (FEATURES.thoughts && !startList && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT)) place({ path: THOUGHTS_PATH, name: 'Думки', count: 0 } as FolderEntry);
     while (queue.length) {
       const f = queue.shift()!;
       if (sizeOf(f) === 'L') {
@@ -2762,7 +2791,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     return <Animated.View entering={coming ? cornerIn(Math.min(cardsBefore + rowIndex, 12) * 32) : undefined}>{el}</Animated.View>;
   };
   // The clean look's first level shows «Думки» as a square (ThoughtsSquare) - where the wide card stood.
-  const thoughtsHere = FEATURES.thoughts && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT);
+  const thoughtsHere = FEATURES.thoughts && !startList && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT);
   const thoughtsSquare = thoughtsHere && !modernLook;
   const squareSide = Math.floor((contentW - FOLDER_GAP) / 2);
   // A modern column's width (two on the phone; capped at 260 where there are more).
@@ -2834,22 +2863,33 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     ));
   const startBody = (
     <>
+      {/* «ДУМКИ» OVER EVERYTHING (the user, 2026-10-28: «думки вгорі над усім над папками»), and nowhere else on the start's levels. */}
+      {FEATURES.thoughts && (
+        <View style={{ marginTop: -6, marginBottom: 6 }}>
+          <ThoughtsRow />
+        </View>
+      )}
       {recentsOn && (
         <View style={{ marginHorizontal: -20 }}>
           <RecentPlacesRow side={20} kinds={START_KINDS} />
         </View>
       )}
-      <Text style={[styles.startHead, { color: S.ink }]}>Папки</Text>
-      {FEATURES.thoughts && <ThoughtsRow />}
+      {/* «Папки ›» opens every folder as cards (the explorer's own first level). */}
+      <Pressable onPress={() => setStartLevels([START_FOLDERS])} style={styles.startHeadRow} hitSlop={8}>
+        <Text style={[styles.startHead, styles.startHeadInRow, { color: S.ink }]}>Папки</Text>
+        <Ionicons name="chevron-forward" size={20} color={S.ink3} />
+      </Pressable>
       {/* EVERY folder of the first level, whatever project it is in (the user, 2026-10-28: «папки видимі не всі а ті які
           стоять з фільтром проекту») - the projects below are another way into the same folders. */}
       {startRowsOf(foldersAll, binned.length === 0)}
       {binned.length > 0 && <StartRow icon="trash-outline" name="Кошик" count={binned.length} last onPress={enterBin} />}
+      {startProjectsOn && (
       <Pressable onPress={() => setStartLevels([START_PROJECTS])} style={styles.startHeadRow} hitSlop={8}>
         <Text style={[styles.startHead, styles.startHeadInRow, { color: S.ink }]}>Проєкти</Text>
         <Ionicons name="chevron-forward" size={20} color={S.ink3} />
       </Pressable>
-      {bandGroups.map((g, i) => (
+      )}
+      {startProjectsOn && bandGroups.map((g, i) => (
         <StartRow
           key={g.id}
           dot={g.color ?? S.ink3}
@@ -2863,7 +2903,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           onLongPress={() => holdProject(g.id)}
         />
       ))}
-      {bandGroups.length === 0 && <Text style={[styles.hint, { color: S.ink3 }]}>Проєктів поки немає.</Text>}
+      {startProjectsOn && bandGroups.length === 0 && <Text style={[styles.hint, { color: S.ink3 }]}>Проєктів поки немає.</Text>}
+      {startBasesOn && <StartBases />}
     </>
   );
   const headerBody = startHere ? startBody : (
@@ -2908,7 +2949,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         />
         </View>
       )}
-      {FEATURES.thoughts && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT) &&
+      {FEATURES.thoughts && !startList && !path && !inBin && !inCleanup && !searching && !filtering && (!projectsHere || focusProj === NO_PROJECT) &&
         !thoughtsSquare && !modernLook && <ThoughtsFolder late={projectsHere} />}
       {modernLook && !!path && cardTagOf(path) && (
         // Edge to edge and up under the bar: out of the list's own side and top padding.
@@ -3794,8 +3835,20 @@ function StartRow({
   rowRef?: (node: View | null) => void;
 }) {
   const S = useSoft();
+  // A hold lifts the row over the blur, the way every hold menu does (utils/heldNode).
+  const held = useHeld();
   return (
-    <Pressable ref={rowRef} collapsable={false} onPress={onPress} onLongPress={onLongPress} delayLongPress={350} style={startStyles.row}>
+    <Pressable
+      ref={(node) => {
+        held.ref.current = node;
+        rowRef?.(node);
+      }}
+      collapsable={false}
+      onPress={onPress}
+      onLongPress={held.wrap(onLongPress)}
+      delayLongPress={350}
+      style={startStyles.row}
+    >
       <View style={startStyles.icon}>
         {dot ? <View style={[startStyles.dot, { backgroundColor: dot }]} /> : <Ionicons name={icon as never} size={22} color={iconColor ?? S.ink2} />}
       </View>
@@ -3826,3 +3879,36 @@ const startStyles = StyleSheet.create({
   count: { fontSize: 15, fontFamily: SOFT_MEDIUM, fontVariant: ['tabular-nums'] },
   line: { position: 'absolute', left: 38, right: 0, bottom: 0, height: StyleSheet.hairlineWidth },
 });
+
+// «ОБРАНІ БАЗИ», last on the start list (navigation/startBases): the bases put there from a base's hold menu, as rows; a hold
+// takes one off again. Nothing at all while there are none.
+function StartBases() {
+  const S = useSoft();
+  const { keys, toggle } = useStartBases();
+  const { customDatabases, iconFor } = useDatabaseTiles();
+  const desksControl = useContext(DesksControlContext);
+  // A base of one's own that is gone is not drawn (its key stays until taken off).
+  const shown = keys.filter((k) => !k.startsWith('db:custom:') || customDatabases.some((d) => `db:custom:${d.id}` === k));
+  if (shown.length === 0) return null;
+  return (
+    <>
+      <Text style={[styles.startHead, { color: S.ink }]}>Обрані бази</Text>
+      {shown.map((key, i) => {
+        const face = deskFace(key, customDatabases, iconFor);
+        return (
+          <StartRow
+            key={key}
+            icon={face.icon}
+            name={face.label}
+            last={i === shown.length - 1}
+            onPress={() => openStartBase(key, desksControl?.desks)}
+            onLongPress={async () => {
+              const choice = await holdAsk({ title: face.label, actions: [{ id: 'off', label: 'Прибрати зі Старту', icon: 'remove-circle-outline' }] });
+              if (choice === 'off') toggle(key);
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}

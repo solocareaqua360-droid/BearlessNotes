@@ -31,6 +31,7 @@ import { useSoft, type SoftTokens } from '../theme/soft';
 import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify, type AskAction } from '../components/surfaces/Ask';
 import { holdAsk } from '../components/surfaces/HoldAsk';
+import { useStartBases } from '../navigation/startBases';
 import HoldPressable from '../components/HoldPressable';
 import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
@@ -551,6 +552,7 @@ export default function DatabasesScreen() {
     if (k === 'board') return BOARDS_DESK;
     return ['tasks', 'photos', 'files', 'stickers', 'flashcards', 'diary', 'geo', 'links', 'video'].includes(k) ? `db:${k}` : null;
   };
+  const startBases = useStartBases();
   async function openRowMenu(item: BaseItem) {
     if (item.kind === 'action') return;
     const actions: AskAction[] = [];
@@ -564,6 +566,9 @@ export default function DatabasesScreen() {
         { id: 'colour', label: 'Колір', icon: 'color-palette-outline' }
       );
     }
+    // On the start desk's «Обрані бази» (navigation/startBases).
+    const startKey = item.kind === 'custom' ? `db:custom:${item.database.id}` : item.kind === 'builtin' ? `db:${item.tile.key}` : null;
+    if (startKey) actions.push({ id: 'start', label: startBases.isOn(startKey) ? 'Прибрати зі Старту' : 'На Старт', icon: 'home-outline' });
     if (item.kind === 'pin') actions.push({ id: 'unpin', label: 'Відкріпити', icon: 'remove-circle-outline' });
     if (item.kind === 'custom') actions.push({ id: 'delete', label: 'Видалити базу', icon: 'trash-outline', tone: 'danger' });
     const choice = await holdAsk({ title: rowOf(item).label, actions });
@@ -571,6 +576,7 @@ export default function DatabasesScreen() {
     else if (choice === 'icon') setIconPickerFor(item.key);
     else if (choice === 'colour') setColorPickerFor(item.key);
     else if (choice === 'unpin') togglePin(item.key);
+    else if (choice === 'start' && startKey) startBases.toggle(startKey);
     else if (choice === 'delete' && item.kind === 'custom') confirmDeleteDatabase(item.database);
   }
 
