@@ -43,13 +43,18 @@ const INSET = 4;
 const PILL_H = 60;
 const BEAD_W = 56;
 const BEAD_H = 52;
-const PILL_PAD = 4;
+// The places stand off the pill's ends (features.glassRefract: 10, so «where you are» has room to be a wide capsule as in
+// Craft - the user, 2026-10-29; otherwise 4).
+const PILL_PAD = FEATURES.glassRefract ? 10 : 4;
+// «Where you are» at rest: a capsule wider than a place and lower than it (Craft's), not a circle (features.glassRefract).
+const HERE_GROW = FEATURES.glassRefract ? 6 : 0;
+const REST_H = FEATURES.glassRefract ? 44 : BEAD_H;
 // The lens under a held place (see onLens): wider than a place, taller than the dock.
 const LENS_W = 92;
 const LENS_H = 88;
 // The pill without its lens zone, and with it.
-const PILL_CORE = 185;
-const PILL_FULL = 237;
+const PILL_CORE = 185 + (FEATURES.glassRefract ? 6 : 0);
+const PILL_FULL = 237 + (FEATURES.glassRefract ? 6 : 0);
 // The desks' capsule as drawn at rest - the note's dock capsule is the same width, so the two docks stand alike (2026-10-23).
 export const DESK_PILL_W = PILL_FULL;
 // The round button for the AI conversation: the same size as «+», 4 to its left.
@@ -113,12 +118,12 @@ function capAt(from: number, to: number, e: number) {
   const R = aL + BEAD_W + (bL - aL) * (right ? lead : trail);
   const H =
     e < 110
-      ? BEAD_H + (PILL_H - BEAD_H) * (e / 110)
+      ? REST_H + (PILL_H - REST_H) * (e / 110)
       : e < CAP_END - 150
         ? PILL_H
         : e < CAP_END
-          ? PILL_H - (PILL_H - BEAD_H) * ((e - (CAP_END - 150)) / 150)
-          : BEAD_H;
+          ? PILL_H - (PILL_H - REST_H) * ((e - (CAP_END - 150)) / 150)
+          : REST_H;
   return { L, R, H };
 }
 const capFresh = () => (capMotion && Date.now() - capMotion.at < CAP_END ? capMotion : null);
@@ -152,11 +157,14 @@ function GrowOnTouch({ style, children }: { style: object; children: ReactNode }
 // second fainter film a little off centre, a milky glint up and to the left.
 // Round, the bead's own shape: an oval was tried twice the same night (shrunk inside the bead, then grown out to the dock's
 // edges) and rolled back by the user («забудь на секунду про овал та відкати зміну»).
+// Drawn in the capsule's rest size (a stadium); on its way to another place it stretches with it.
+const HW = BEAD_W + HERE_GROW * 2;
+const HH = REST_H;
 function HereBubble({ soft }: { soft: SoftTokens }) {
   // On white the pale film vanishes: the light theme's film is deeper and a fine dark line holds the bubble's edge.
   const light = !soft.dark;
   return (
-    <Svg width="100%" height="100%" viewBox={`0 0 ${BEAD_W} ${BEAD_H}`} preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
+    <Svg width="100%" height="100%" viewBox={`0 0 ${HW} ${HH}`} preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
       <Defs>
         <LinearGradient id="hereFilm" x1="0" y1="0" x2="1" y2="1">
           <Stop offset="0" stopColor={light ? '#8FC4FF' : '#FFFFFF'} stopOpacity={0.9} />
@@ -175,10 +183,10 @@ function HereBubble({ soft }: { soft: SoftTokens }) {
           <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
         </RadialGradient>
       </Defs>
-      <Ellipse cx={BEAD_W * 0.36} cy={BEAD_H * 0.3} rx={BEAD_W * 0.22} ry={BEAD_H * 0.15} fill="url(#hereGlint)" />
-      <Rect x={2.6} y={1.6} width={BEAD_W - 4.4} height={BEAD_H - 4.4} rx={(BEAD_H - 4.4) / 2} fill="none" stroke="url(#hereFilm2)" strokeOpacity={soft.dark ? 0.5 : 0.7} strokeWidth={0.8} />
-      {light && <Rect x={0.5} y={0.5} width={BEAD_W - 1} height={BEAD_H - 1} rx={(BEAD_H - 1) / 2} fill="none" stroke="#000000" strokeOpacity={0.07} strokeWidth={0.8} />}
-      <Rect x={1} y={1} width={BEAD_W - 2} height={BEAD_H - 2} rx={(BEAD_H - 2) / 2} fill="none" stroke="url(#hereFilm)" strokeOpacity={soft.dark ? 0.75 : 0.8} strokeWidth={0.9} />
+      <Ellipse cx={HW * 0.34} cy={HH * 0.3} rx={HW * 0.2} ry={HH * 0.15} fill="url(#hereGlint)" />
+      <Rect x={2.2} y={1.4} width={HW - 3.6} height={HH - 3.6} rx={(HH - 3.6) / 2} fill="none" stroke="url(#hereFilm2)" strokeOpacity={soft.dark ? 0.5 : 0.7} strokeWidth={0.6} />
+      {light && <Rect x={0.4} y={0.4} width={HW - 0.8} height={HH - 0.8} rx={(HH - 0.8) / 2} fill="none" stroke="#000000" strokeOpacity={0.06} strokeWidth={0.6} />}
+      <Rect x={0.8} y={0.8} width={HW - 1.6} height={HH - 1.6} rx={(HH - 1.6) / 2} fill="none" stroke="url(#hereFilm)" strokeOpacity={soft.dark ? 0.75 : 0.8} strokeWidth={0.7} />
     </Svg>
   );
 }
@@ -318,9 +326,9 @@ export default function DeskDock({
     return () => clearTimeout(t);
   }, [state]);
   const shaping = settledState !== state;
-  const glassPill = glassOn ? <DockGlassFill soft={soft} paused={!shaping && state !== 'root'} /> : null;
-  const glassBody = glassOn ? <DockGlassFill soft={soft} paused={!shaping && state === 'root'} /> : null;
-  const glassDrop = glassOn ? <DockGlassFill soft={soft} paused={!shaping} /> : null;
+  const glassPill = glassOn ? <DockGlassFill soft={soft} airy paused={!shaping && state !== 'root'} /> : null;
+  const glassBody = glassOn ? <DockGlassFill soft={soft} airy paused={!shaping && state === 'root'} /> : null;
+  const glassDrop = glassOn ? <DockGlassFill soft={soft} airy paused={!shaping} /> : null;
   // With the balloon the places are one bead more, and the pill as much wider; the search lens stays at its end.
   const assistIndex = assist ? desks.length : -1;
   const pillCore = PILL_CORE + (assist ? BEAD_W : 0);
@@ -500,8 +508,8 @@ export default function DeskDock({
       const shown = p < 0.5 ? 1 - smooth(p / 0.4) : smooth((p - 0.5) / 0.5);
       const cx = (c.L + c.R) / 2;
       const span = Math.max(BEAD_W, c.R - c.L);
-      const w = span + (LENS_W - 8 - BEAD_W) * k;
-      const h = BEAD_H + (LENS_H - 8 - BEAD_H) * k;
+      const w = span + HERE_GROW * 2 + (LENS_W - 8 - BEAD_W - HERE_GROW * 2) * k;
+      const h = REST_H + (LENS_H - 8 - REST_H) * k;
       return {
         left: cx - w / 2,
         width: w,
@@ -512,8 +520,8 @@ export default function DeskDock({
       };
     }
     return {
-      left: c.L,
-      width: Math.max(0, c.R - c.L),
+      left: c.L - HERE_GROW,
+      width: Math.max(0, c.R - c.L + HERE_GROW * 2),
       top: (PILL_H - c.H) / 2,
       height: c.H,
       borderRadius: c.H / 2,
@@ -638,7 +646,9 @@ export default function DeskDock({
               // «Where you are» is the accent now (the user, 2026-10-23): the orange that used to ring the AI button marks
               // the place in front - the balloon too, while its window is open.
               // (`assist` is the balloon being IN the dock, not its window being open - so the bubble takes it over too.)
-              style={[styles.capsule, { backgroundColor: FEATURES.glassRefract ? 'transparent' : assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
+              // Some weight of its own, the dock lighter round it (the user, 2026-10-29: «масовість кульки... трохи збільш, а
+              // масовість самого доку трохи зменш»).
+              style={[styles.capsule, { backgroundColor: FEATURES.glassRefract ? (soft.dark ? 'rgba(255,255,255,0.10)' : 'rgba(30,30,28,0.06)') : assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
             >
               {FEATURES.glassRefract && <HereBubble soft={soft} />}
             </Animated.View>

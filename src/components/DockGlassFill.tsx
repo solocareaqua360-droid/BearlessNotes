@@ -43,7 +43,8 @@ const FILM_ALPHA: Record<string, number> = { dark: 0.69, light: 0.78, default: 0
 // than `dense`, so a card behind cannot show through a label (the user, 2026-10-25: «вже погано вікно відображається»).
 // `intensity`: a stronger blur for the same reason - what passes behind a sheet must read as a smear, not as cards (the
 // user, 2026-10-25: «зливається текст блюр повинен бути сильнішим фон просвічує»).
-export default function DockGlassFill({ soft, paused: still, radius, dense, coat, intensity }: { soft: SoftTokens; paused?: boolean; radius?: number; dense?: boolean; coat?: number; intensity?: number }) {
+// `airy`: the desks' dock, lighter than the other capsules so «where you are» on it has the weight (the user, 2026-10-29).
+export default function DockGlassFill({ soft, paused: still, radius, dense, coat, intensity, airy }: { soft: SoftTokens; paused?: boolean; radius?: number; dense?: boolean; coat?: number; intensity?: number; airy?: boolean }) {
   const theme = useTheme();
   const g = theme.glass;
   const target = useBlurTarget();
@@ -69,7 +70,7 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
   const filmOf = (i: number) => ((FILM_ALPHA[tint] ?? 0.44) * i) / 100;
   const covered = 1 - (1 - filmOf(baseIntensity)) * (1 - baseCoat);
   // A bubble is clearer than a slab, and a lens must show what it enlarges: the middle keeps 0.48 of the old glass's coat.
-  const refractCoat = Math.min(0.97, 0.48 * (1 - (1 - covered) / (1 - filmOf(REFRACT_FILM))));
+  const refractCoat = Math.min(0.97, (airy ? 0.34 : 0.48) * (1 - (1 - covered) / (1 - filmOf(REFRACT_FILM))));
   return (
     <View
       style={StyleSheet.absoluteFill}
