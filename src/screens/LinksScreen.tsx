@@ -268,10 +268,13 @@ export default function LinksScreen({
   // photographed to a file, drawn on in the sketch editor, then placed in a note as a picture with the drawing over it
   // (the same image block + sketch layer a drawn-on photo is, so it can be drawn on again there).
   const snapshotRef = useRef<(() => Promise<string | null>) | null>(null);
+  const viewRef = useRef<(() => { lat: number; lng: number; zoom: number }) | null>(null);
+  const shotView = useRef<{ lat: number; lng: number; zoom: number } | null>(null);
   const [mapShot, setMapShot] = useState<string | null>(null);
   const [mapDrawing, setMapDrawing] = useState<{ elements: SketchElement[]; width: number; height: number } | null>(null);
   async function takeMapShot() {
     setLayersOpen(false);
+    shotView.current = viewRef.current?.() ?? null;
     const tmp = await snapshotRef.current?.();
     if (!tmp) {
       notify('Не вдалося зробити знімок', 'Спробуйте ще раз, коли мапа домалюється.');
@@ -298,6 +301,7 @@ export default function LinksScreen({
     await updateDoc(doc(db, 'photos', photo.id), extra);
     if (target === null) return;
     const block = blockFromPhoto({ id: photo.id, imageUri: shot, createdAt: photo.createdAt, title, ...(drawing.elements.length ? { sketchElements: drawing.elements, sketchWidth: drawing.width, sketchHeight: drawing.height } : {}) });
+    if (shotView.current) block.mapView = shotView.current;
     const mirror = [{ collectionName: 'photos', id: photo.id }];
     if (target === 'today') {
       await appendBlocksToToday([block], mirror);
@@ -1782,6 +1786,7 @@ export default function LinksScreen({
             rulerOn={rulerOn}
             onRulerChange={setRulerOn}
             snapshotRef={snapshotRef}
+            viewRef={viewRef}
             offlineOpen={offlineOpen}
             onOfflineClose={() => setOfflineOpen(false)}
           />

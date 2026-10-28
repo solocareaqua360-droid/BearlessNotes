@@ -92,6 +92,7 @@ import { Block, CanvasLink, BlockType, Group, SketchElement, Tag } from '../type
 import { groupAppliesTo } from '../utils/groups';
 import { RootStackParamList } from '../navigation';
 import ZoomableImageViewer from '../components/ZoomableImageViewer';
+import MapBlockWindow, { type MapShot } from '../components/MapBlockWindow';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import RenamePrompt from '../components/RenamePrompt';
 import DocumentTagsBlock from '../components/DocumentTagsBlock';
@@ -1064,6 +1065,8 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // Where the window stands: above the caret's block when there is room there, under it otherwise.
   const [slashPlace, setSlashPlace] = useState<{ top?: number; bottom?: number; maxHeight: number } | null>(null);
   const [viewerImageId, setViewerImageId] = useState<string | null>(null);
+  // A picture that is a MAP (Block.mapView) opens the live map instead of the picture viewer (components/MapBlockWindow).
+  const [mapBlockId, setMapBlockId] = useState<string | null>(null);
   // Reading the text off a page - see TextRecognizer. `after` is the block
   // the result is put under, so a scan and its text stay together.
   const [recognizing, setRecognizing] = useState<{
@@ -5882,6 +5885,35 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     setSketchEditorBlockId(id);
   }
 
+  // A NEW SNAPSHOT of a map block (MapBlockWindow): the picture is replaced by it (the user: «новий замінює старий»),
+  // the place it was taken at is kept, and the drawing editor opens on it at once with the old drawing, to be moved
+  // or redrawn. The file leaves the cache for the app's own folder and goes to Drive like any photo; the photo record
+  // behind the block (same id) follows.
+  async function replaceMapShot(id: string, shot: MapShot) {
+    setMapBlockId(null);
+    const dir = `${LegacyFileSystem.documentDirectory}mapShots/`;
+    await LegacyFileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
+    const file = `${dir}map-${Date.now()}.png`;
+    const uri = await LegacyFileSystem.copyAsync({ from: shot.uri, to: file }).then(() => file, () => shot.uri);
+    snapshotBeforeChange();
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        const { driveFileId: _old, driveBytes: _oldBytes, ...rest } = b;
+        return { ...rest, imageUri: uri, mapView: shot.view };
+      })
+    );
+    updateDoc(doc(db, 'photos', id), { imageUri: uri, driveFileId: deleteField(), updatedAt: Date.now() }).catch(() => {});
+    setSketchEditorBlockId(id);
+    backupFileToDrive(uri, `${id}-${Date.now()}.png`, 'image/png', 'Photos')
+      .then((uploaded) => {
+        if (!uploaded) return;
+        setBlocks((prev) => prev.map((b) => (b.id === id && b.imageUri === uri ? { ...b, driveFileId: uploaded.fileId, driveBytes: uploaded.bytes } : b)));
+        updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes }).catch(() => {});
+      })
+      .catch(() => {});
+  }
+
   // The picture under the canvas, when the block being drawn on is one.
   const sketchBlock = sketchEditorBlockId ? blocks.find((b) => b.id === sketchEditorBlockId) : undefined;
   const sketchBackground =
@@ -7526,7 +7558,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onBackspaceEmpty={handleBackspaceOnEmpty}
           onFocus={handleBlockFocus}
           onSelectionChange={handleBlockSelectionChange}
-          onOpenImage={setViewerImageId}
+          onOpenImage={(id) => (blocks.find((b) => b.id === id)?.mapView ? setMapBlockId(id) : setViewerImageId(id))}
           onToggleImageFit={toggleImageFit}
           onDrawOverImage={openSketchBlock}
           onOpenFile={openFileBlock}
@@ -7964,6 +7996,13 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           setQuickLook(null);
           if (file) openFileExternally(file);
         }}
+      />
+
+      <MapBlockWindow
+        visible={mapBlockId !== null}
+        start={(mapBlockId && blocks.find((b) => b.id === mapBlockId)?.mapView) || null}
+        onShot={(shot) => mapBlockId && replaceMapShot(mapBlockId, shot)}
+        onClose={() => setMapBlockId(null)}
       />
 
       <SketchEditor

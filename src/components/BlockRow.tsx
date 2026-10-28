@@ -544,6 +544,12 @@ export default function BlockRow({
               <SketchLayer elements={item.sketchElements} ink={INK} />
             </Svg>
           )}
+          {item.mapView && (
+            <View style={mapBadgeStyles.badge} pointerEvents="none">
+              <Ionicons name="map-outline" size={13} color="#fff" />
+              <Text style={mapBadgeStyles.label}>Мапа</Text>
+            </View>
+          )}
         </Pressable>
         {!isSelectMode && (
           <Pressable
@@ -1302,6 +1308,23 @@ export default function BlockRow({
     </View>
   );
 }
+
+// The «Мапа» mark on a picture that is a map (Block.mapView) - a tap opens the live map, not the picture viewer.
+const mapBadgeStyles = StyleSheet.create({
+  badge: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  label: { color: '#fff', fontSize: 12, fontWeight: '600' },
+});
 
 const previewEmbedStyles = StyleSheet.create({
   plate: {

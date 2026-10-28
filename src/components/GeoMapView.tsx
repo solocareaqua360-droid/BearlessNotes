@@ -71,6 +71,8 @@ export default function GeoMapView({
   rulerOn = false,
   onRulerChange,
   snapshotRef,
+  viewRef,
+  start,
 }: {
   points: GeoMapPoint[];
   onPressPoint: (id: string) => void;
@@ -98,6 +100,10 @@ export default function GeoMapView({
   // «Знімок»: filled with a function that photographs what the map shows now (its layers - points, ruler - included) to
   // a file, for the screen's dock button.
   snapshotRef?: { current: (() => Promise<string | null>) | null };
+  // Where the camera stands now (centre and zoom) - kept with a map picture so it can open there again (Block.mapView).
+  viewRef?: { current: (() => { lat: number; lng: number; zoom: number }) | null };
+  // Where to open, instead of on the points (a map block reopened from a note).
+  start?: { lat: number; lng: number; zoom: number };
 }) {
   const theme = useTheme();
   const cameraRef = useRef<CameraRef>(null);
@@ -105,8 +111,8 @@ export default function GeoMapView({
   // flies to - a map built centred on the FIRST point and then asked to fly before its camera was ready stayed there.
   const focused = focusId ? points.find((x) => x.id === focusId) : undefined;
   const first = focused ?? points[0];
-  const initialZoom = focused ? FOCUS_ZOOM : first ? 11 : DEFAULT_ZOOM;
-  const initialCenter: [number, number] = first ? [first.lng, first.lat] : DEFAULT_CENTER;
+  const initialZoom = start ? start.zoom : focused ? FOCUS_ZOOM : first ? 11 : DEFAULT_ZOOM;
+  const initialCenter: [number, number] = start ? [start.lng, start.lat] : first ? [first.lng, first.lat] : DEFAULT_CENTER;
   const [view, setView] = useState<{ zoom: number; bounds: [number, number, number, number] }>({
     zoom: initialZoom,
     // Wide enough that nothing clusters away before the map's own first
@@ -120,6 +126,11 @@ export default function GeoMapView({
   // top, because it is one.
   const sourceRef = useRef<GeoJSONSourceRef>(null);
   const mapRef = useRef<MapRef>(null);
+  if (viewRef)
+    viewRef.current = () => {
+      const [w, sth, e, n] = view.bounds;
+      return { lat: (sth + n) / 2, lng: (w + e) / 2, zoom: view.zoom };
+    };
   if (snapshotRef)
     snapshotRef.current = async () => {
       try {

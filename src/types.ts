@@ -372,6 +372,10 @@ export interface Block {
   sketchElements?: SketchElement[];
   sketchWidth?: number;
   sketchHeight?: number;
+  // 'image' blocks that are a MAP (the geo map's «Знімок», 2026-10-28): where the map stood when the picture was taken.
+  // The block stays a picture - cheap, the note does not slow down - and a tap opens the live map there again; a new
+  // «Знімок» from it replaces the picture.
+  mapView?: { lat: number; lng: number; zoom: number };
   // 'table' blocks only. tableRows[r].cells[c] is that cell's raw text -
   // either a plain value or a formula starting with "=" (e.g.
   // "=SUM(B1:B3)", referencing other cells by their A1-style address).
