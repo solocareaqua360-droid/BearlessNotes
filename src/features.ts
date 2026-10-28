@@ -196,4 +196,9 @@ export const FEATURES = {
   // ARCHIVED 2026-10-25 - the user: it came out well, without problems, but was not needed; the projects are now a row of
   // capsules (components/ProjectCapsules). true brings the accordion back.
   projectsAccordion: false,
+  // «СТАРТ» СПИСКОМ (2026-10-28, the user, after Craft's Home; sketch KLjwHTT3F9K7ftbvJYFjs6): on the phone's start desk the
+  // explorer's first level is three things only - «Нещодавні» (notes and boards), «Папки» as rows (the folders of no project,
+  // «Думки» first, «Кошик» last) and «Проєкти ›» with the projects as rows; a project opens as its own level. false: the
+  // capsules of projects and the folder cards, as before.
+  startList: true,
 } as const;

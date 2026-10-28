@@ -30,7 +30,8 @@ function go(route: string, params?: Record<string, unknown>) {
   (navigationRef.navigate as (name: string, p?: unknown) => void)(route, params);
 }
 
-export default function RecentPlacesRow({ side }: { side: number }) {
+// `kinds`: only these kinds of place (the start desk's list keeps notes and boards).
+export default function RecentPlacesRow({ side, kinds }: { side: number; kinds?: RecentPlace['kind'][] }) {
   const S = useSoft();
   const desksControl = useContext(DesksControlContext);
   const recent = useRecentPlaces();
@@ -62,6 +63,7 @@ export default function RecentPlacesRow({ side }: { side: number }) {
   const shown = recent
     .filter((r) => r.kind !== 'document' || index.size === 0 || (index.has(r.ref) && !index.get(r.ref)?.deletedAt))
     .filter((r) => FEATURES.stickers || r.ref !== 'tile:stickers')
+    .filter((r) => !kinds || kinds.includes(r.kind))
     .slice(0, count);
   if (shown.length === 0) return null;
   openRef.current = (place: RecentPlace) => open(place);

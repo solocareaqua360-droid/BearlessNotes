@@ -47,7 +47,9 @@ import { openFolderItem } from '../utils/openFolderItem';
 import { useSortPref } from '../hooks/useSortPref';
 import { sortItems } from '../utils/sortItems';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from '../components/SortMenuRows';
-import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
+import { SOFT_BOLD, SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
+import { openThoughtsSpace } from '../utils/thoughtBus';
+import { useThoughts } from '../hooks/useThoughts';
 import { hapticSelectItem, hapticSelectTap } from '../utils/haptics';
 import RenamePrompt from '../components/RenamePrompt';
 import StockPhotoPicker from '../components/StockPhotoPicker';
@@ -281,6 +283,8 @@ const PROJECT_COVER_COLORS = [
 
 // The bin's place among the folder cards of «Модерний» - not a folder path anyone can make (no tag has it).
 const BIN_PATH = '\u0000bin';
+// The start list's level of all the projects (features.startList); any other level is a project's id.
+const START_PROJECTS = '\u0000projects';
 
 function cornerIn(delay: number) {
   return () => {
@@ -425,7 +429,16 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     AsyncStorage.setItem('explorerMode', next).catch(() => {});
   };
   // The project in front in that style ('' = «Без проєкту»); remembered on this device.
-  const [focusProj, setFocusProj] = useState<string>(NO_PROJECT);
+  const [focusProjStored, setFocusProj] = useState<string>(NO_PROJECT);
+  // «СТАРТ» СПИСКОМ (features.startList): the start desk's first level is the recents, every first-level folder and the
+  // projects, all as rows. «Проєкти ›» and a project's row open the PROJECTS LEVEL (START_PROJECTS): the capsules at the
+  // top and the folders of the project in front - what the start itself was before (the user, 2026-10-28: «екран проекти з
+  // капсулами вгорі з поглядом на конкретні папки»); a project's row puts that project in front first.
+  const startList = FEATURES.startList && touchDensity && !!desk && !inPane;
+  const [startLevels, setStartLevels] = useState<string[]>([]);
+  const startLevel = startList ? startLevels[startLevels.length - 1] ?? null : null;
+  const popStartLevel = () => setStartLevels((l) => l.slice(0, -1));
+  const focusProj = startList && startLevel !== START_PROJECTS ? NO_PROJECT : focusProjStored;
   useEffect(() => {
     AsyncStorage.getItem('explorerProject')
       .then((v) => typeof v === 'string' && setFocusProj(v))
@@ -718,7 +731,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
 
   // THE PROJECTS STYLE'S FIRST LEVEL: only the folders of the project in front (a folder is in a project when a tag of its path
   // carries the project in groupIds); «Без проєкту» keeps what is in none, with «Нерозкладене».
-  const projectsOn = explorerMode === 'projects' && FEATURES.explorerProjects;
+  const projectsOn = (explorerMode === 'projects' || startList) && FEATURES.explorerProjects;
   const projectsHere = projectsOn && !path && !inBin && !inCleanup && !searching && !filtering;
   const projectIdsOf = useMemo(() => {
     const m = new Map<string, Set<string>>();
@@ -2285,9 +2298,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     else if (inCleanup) leaveCleanup();
     else if (selecting) leaveSelect();
     else if (path) up();
+    else if (startLevel) popStartLevel();
     else navigation.goBack();
   };
-  const atRoot = !path && !selecting && !inBin && !inCleanup && !searchOpen;
+  const atRoot = !path && !startLevel && !selecting && !inBin && !inCleanup && !searchOpen;
   // A folder opens at its TOP. The list kept the offset it had a level up, so a folder opened from a scrolled
   // root stood scrolled too - the cover of «Модерний» a little high, then settling in small jerks as the list
   // clamped that offset to the new content (the user, 2026-10-12: «три невеликі ривки... підіймаючись трохи вище»).
@@ -2401,23 +2415,30 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     setChromeCompact(false);
     return () => timers.forEach(clearTimeout);
   }, [path]);
+  // A start level opens at its top, like a folder.
+  useLayoutEffect(() => {
+    if (!startList) return;
+    (carrying.scrollRef.current as unknown as { scrollToOffset?: (o: { offset: number; animated: boolean }) => void } | null)?.scrollToOffset?.({ offset: 0, animated: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startLevel]);
   useTopBack(desk && atRoot ? null : goBack, isFocused && !inPane);
   // Inside a folder the three desks stay in the dock, the circle is back (deskBeadsBus's useDockDesksHere).
   useDockDesksHere(isFocused && !inPane);
   // The phone's own back (gesture or key): inside a folder it goes UP one level,
   // like the arrow in the bar; at the root it is left to leave the screen.
   useEffect(() => {
-    if (!isFocused || (!path && !selecting && !inBin && !inCleanup && !searchOpen)) return;
+    if (!isFocused || (!path && !startLevel && !selecting && !inBin && !inCleanup && !searchOpen)) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (searchOpen) closeSearch();
       else if (inBin) leaveBin();
       else if (inCleanup) leaveCleanup();
       else if (selecting) leaveSelect();
+      else if (!path && startLevel) popStartLevel();
       else up();
       return true;
     });
     return () => sub.remove();
-  }, [isFocused, path, up, selecting, inBin, inCleanup, searchOpen]);
+  }, [isFocused, path, up, selecting, inBin, inCleanup, searchOpen, startLevel]);
   useTopSearch(
     searchOpen
       ? { placeholder: 'Пошук у провіднику', initialQuery: searchText, onChangeQuery: setSearchText, onClose: closeSearch }
@@ -2470,12 +2491,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   useWhileFocused(() => {
     // The bin and the cleanup list say where they are too: with nothing published the bar kept the desk's own name
     // («Старт») over a list of dead things (the user, 2026-10-13).
-    if (!desk || !publishToDock || (!path && !inBin && !inCleanup)) return;
-    if (inBin) publishToDock({ kind: 'path', icon: 'trash-outline', crumbs: ['Кошик'], onGo: () => leaveBin() });
+    if (!desk || !publishToDock || (!path && !inBin && !inCleanup && !startLevel)) return;
+    if (!path && !inBin && !inCleanup && startLevel) {
+      publishToDock({ kind: 'path', icon: 'folder-open-outline', crumbs: ['Проєкти'], onGo: (to: string) => !to && setStartLevels([]) });
+    } else if (inBin) publishToDock({ kind: 'path', icon: 'trash-outline', crumbs: ['Кошик'], onGo: () => leaveBin() });
     else if (inCleanup) publishToDock({ kind: 'path', icon: 'folder-open-outline', crumbs: ['Кандидати на очищення'], onGo: () => leaveCleanup() });
     else publishToDock({ kind: 'path', icon: 'folder-open-outline', crumbs: path.split('/'), onGo: setPath });
     return () => publishToDock(null);
-  }, [desk, publishToDock, path, inBin, inCleanup]);
+  }, [desk, publishToDock, path, inBin, inCleanup, startLevel]);
   // As a desk, the sideways row of filter chips tells the drawers' swipe to start only from the screen's edge
   // there - the same as the start screen's «Нещодавні» row did - or scrolling the chips opened a drawer.
   const chipsShown = !inBin && !inCleanup && chipsOn && viewMode !== 'canvas';
@@ -2789,10 +2812,64 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             )}
           </Pressable>
   );
-  const headerBody = (
+  // THE START LIST (features.startList): rows in place of the capsules and cards. A folder's row is a drop target and holds
+  // for its menu exactly as its card did (the carrying's registerFolder / registerCard).
+  const startHere = startList && startLevel === null && !path && !inBin && !inCleanup && !searching && !filtering;
+  const startRowsOf = (list: FolderEntry[], lastOfAll: boolean) =>
+    list.map((f, i) => (
+      <StartRow
+        key={f.path}
+        rowRef={(node) => {
+          carrying.carry.registerFolder(f.path)(node as never);
+          if (f.path !== UNFILED) carrying.carry.registerCard(`folder:${f.path}`, () => carrying.groupFor(folderItem(f)), () => holdFolder(f))(node as never);
+          if (node) folderNodes.current.set(f.path, node as never);
+        }}
+        icon={f.playlist ? 'play-circle-outline' : f.collection === 'geo' ? 'location-outline' : f.collection === 'photo' ? 'images-outline' : f.icon || 'folder-outline'}
+        iconColor={f.color}
+        name={f.name}
+        count={f.count}
+        last={lastOfAll && i === list.length - 1}
+        onPress={() => openFolderEntry(f)}
+      />
+    ));
+  const startBody = (
+    <>
+      {recentsOn && (
+        <View style={{ marginHorizontal: -20 }}>
+          <RecentPlacesRow side={20} kinds={START_KINDS} />
+        </View>
+      )}
+      <Text style={[styles.startHead, { color: S.ink }]}>Папки</Text>
+      {FEATURES.thoughts && <ThoughtsRow />}
+      {/* EVERY folder of the first level, whatever project it is in (the user, 2026-10-28: «папки видимі не всі а ті які
+          стоять з фільтром проекту») - the projects below are another way into the same folders. */}
+      {startRowsOf(foldersAll, binned.length === 0)}
+      {binned.length > 0 && <StartRow icon="trash-outline" name="Кошик" count={binned.length} last onPress={enterBin} />}
+      <Pressable onPress={() => setStartLevels([START_PROJECTS])} style={styles.startHeadRow} hitSlop={8}>
+        <Text style={[styles.startHead, styles.startHeadInRow, { color: S.ink }]}>Проєкти</Text>
+        <Ionicons name="chevron-forward" size={20} color={S.ink3} />
+      </Pressable>
+      {bandGroups.map((g, i) => (
+        <StartRow
+          key={g.id}
+          dot={g.color ?? S.ink3}
+          name={g.name}
+          count={bandCounts.get(g.id)?.folders ?? 0}
+          last={i === bandGroups.length - 1}
+          onPress={() => {
+            changeFocusProj(g.id);
+            setStartLevels([START_PROJECTS]);
+          }}
+          onLongPress={() => holdProject(g.id)}
+        />
+      ))}
+      {bandGroups.length === 0 && <Text style={[styles.hint, { color: S.ink3 }]}>Проєктів поки немає.</Text>}
+    </>
+  );
+  const headerBody = startHere ? startBody : (
     <>
       {/* Only on the start desk itself, never inside a folder (the user, 2026-10-25: «нещодавні не показуються всередині папок»). */}
-      {desk && recentsOn && !path && (
+      {desk && recentsOn && !path && !startLevel && (
         // Edge to edge: the list pads 20 on each side, the row scrolls under that padding.
         <View style={{ marginHorizontal: -20 }}>
           <RecentPlacesRow side={20} />
@@ -3191,7 +3268,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           keyExtractor={(row) => (isHeader(row) || isCells(row) || isStrip(row) ? row.key : row.id)}
           ListHeaderComponent={header}
           ListEmptyComponent={
-            stage === 'all' && folders.length === 0 ? <Text style={[styles.hint, { color: S.ink3 }]}>{searching ? 'Нічого не знайдено.' : path ? 'У цій папці ще порожньо.' : projectsHere && focusProj !== NO_PROJECT ? 'У цьому проєкті ще немає папок. Додати: «Без проєкту» → «у проєкт…».' : 'Ще нічого немає.'}</Text> : null
+            stage === 'all' && folders.length === 0 && !startHere ? <Text style={[styles.hint, { color: S.ink3 }]}>{searching ? 'Нічого не знайдено.' : path ? 'У цій папці ще порожньо.' : projectsHere && focusProj !== NO_PROJECT ? 'У цьому проєкті ще немає папок. Додати: «Без проєкту» → «у проєкт…».' : 'Ще нічого немає.'}</Text> : null
           }
           renderItem={({ item: row, index: rowIndex }) => withArrival(rowIndex, (() => {
             if (isHeader(row)) {
@@ -3649,6 +3726,9 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13.5, fontFamily: SOFT_SEMIBOLD },
   hint: { fontSize: 14, textAlign: 'center', marginTop: 40 },
   sectionLabel: { fontSize: 13, fontFamily: SOFT_SEMIBOLD, marginBottom: 10, marginLeft: 4 },
+  startHead: { fontSize: 20, fontFamily: SOFT_BOLD, marginTop: 24, marginBottom: 4 },
+  startHeadRow: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', marginTop: 24, marginBottom: 4 },
+  startHeadInRow: { marginTop: 0, marginBottom: 0 },
   pickedFrame: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderWidth: 2.5, borderRadius: 24 },
   check: { position: 'absolute', top: 12, right: 12, width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   toast: { position: 'absolute', backgroundColor: '#111827', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
@@ -3684,3 +3764,65 @@ function FolderWarmup({ jobs, cover }: { jobs: ComponentProps<typeof PatternWarm
   const { opening } = useFolderOpening();
   return <PatternWarmup jobs={jobs} paused={!!opening || cover} />;
 }
+
+// The kinds of place the start list's «Нещодавні» keeps (features.startList): notes and boards.
+const START_KINDS: ('document' | 'board')[] = ['document', 'board'];
+
+// ONE ROW OF THE START LIST (features.startList, Craft's Home): an icon or a project's dot, the name, a count and the
+// chevron; a hairline under it from where the text starts, none under a section's last.
+function StartRow({
+  icon,
+  iconColor,
+  dot,
+  name,
+  count,
+  note,
+  last,
+  onPress,
+  onLongPress,
+  rowRef,
+}: {
+  icon?: string;
+  iconColor?: string;
+  dot?: string;
+  name: string;
+  count?: number;
+  note?: string;
+  last?: boolean;
+  onPress: () => void;
+  onLongPress?: () => void;
+  rowRef?: (node: View | null) => void;
+}) {
+  const S = useSoft();
+  return (
+    <Pressable ref={rowRef} collapsable={false} onPress={onPress} onLongPress={onLongPress} delayLongPress={350} style={startStyles.row}>
+      <View style={startStyles.icon}>
+        {dot ? <View style={[startStyles.dot, { backgroundColor: dot }]} /> : <Ionicons name={icon as never} size={22} color={iconColor ?? S.ink2} />}
+      </View>
+      <Text style={[startStyles.name, { color: S.ink }]} numberOfLines={1}>
+        {name}
+      </Text>
+      {!!note && <Text style={[startStyles.count, { color: S.accent }]}>{note}</Text>}
+      {count !== undefined && count > 0 && !note && <Text style={[startStyles.count, { color: S.ink3 }]}>{count}</Text>}
+      <Ionicons name="chevron-forward" size={17} color={S.ink3} />
+      {!last && <View style={[startStyles.line, { backgroundColor: S.line }]} />}
+    </Pressable>
+  );
+}
+
+// «Думки» as the first of the start list's folders (the user, 2026-10-28): what is not yet sorted, said beside it.
+function ThoughtsRow() {
+  const S = useSoft();
+  const { countOf } = useThoughts(true);
+  const loose = countOf(null);
+  return <StartRow dot={S.accent} name="Думки" note={loose > 0 ? `${loose} не розкладено` : undefined} onPress={() => openThoughtsSpace()} />;
+}
+
+const startStyles = StyleSheet.create({
+  row: { height: 52, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  icon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  dot: { width: 12, height: 12, borderRadius: 6 },
+  name: { flex: 1, minWidth: 0, fontSize: 16, fontFamily: SOFT_MEDIUM },
+  count: { fontSize: 15, fontFamily: SOFT_MEDIUM, fontVariant: ['tabular-nums'] },
+  line: { position: 'absolute', left: 38, right: 0, bottom: 0, height: StyleSheet.hairlineWidth },
+});
