@@ -17,6 +17,7 @@ import { navigationRef } from '../navigationRef';
 import { requestOpen } from '../utils/openRequest';
 import { fileIconColorFor, fileIconFor } from '../utils/fileIcons';
 import { FEATURES } from '../features';
+import { morph, morphCardRef } from '../utils/morph';
 import type { Block, Tag } from '../types';
 
 // «НЕЩОДАВНІ» (the old start screen's row, brought back to the explorer's start desk - the user, 2026-10-25: «додати
@@ -65,7 +66,10 @@ export default function RecentPlacesRow({ side }: { side: number }) {
   if (shown.length === 0) return null;
   openRef.current = (place: RecentPlace) => open(place);
   const open = (place: RecentPlace) => {
-    if (place.kind === 'document') go('Editor', { documentId: place.ref });
+    // A note grows out of its card and folds back into it on the way out, as from a folder (utils/morph) - from here it
+    // only cross-faded and «dissolved into the start» (the user, 2026-10-28).
+    if (place.kind === 'document')
+      morph(`note:${place.ref}`, (morphing) => go('Editor', { documentId: place.ref, ...(morphing ? { morph: true } : {}) }));
     else if (place.kind === 'board') go('BoardCopy', { boardId: place.ref });
     else if (place.kind === 'file') {
       requestOpen('files', place.ref);
@@ -104,11 +108,13 @@ const CARD_W = 150;
 const FIRST_CARDS = 4;
 const PIC_H = 118;
 
-function RecentFrame({ label, icon, onPress, children }: { label: string; icon: string; onPress: () => void; children: ReactNode }) {
+function RecentFrame({ label, icon, onPress, children, morphKey }: { label: string; icon: string; onPress: () => void; children: ReactNode; morphKey?: string }) {
   const S = useSoft();
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { backgroundColor: S.card, boxShadow: S.shadow }, pressed && { opacity: 0.75 }]}>
-      <View style={[styles.cardPicture, { backgroundColor: S.fill }]}>{children}</View>
+      <View ref={morphKey ? morphCardRef(morphKey) : undefined} collapsable={false} style={[styles.cardPicture, { backgroundColor: S.fill }]}>
+        {children}
+      </View>
       <View style={styles.cardFoot}>
         <Ionicons name={icon as never} size={15} color={S.ink3} />
         <Text style={[styles.cardLabel, { color: S.ink }]} numberOfLines={1}>
@@ -143,7 +149,7 @@ const RecentDocument = memo(function RecentDocument({ id, onPress }: { id: strin
   const data = useRecord<{ title?: string; blocks?: Block[]; noteFont?: string; noteFontMode?: string }>('documents', id);
   if (!data) return null;
   return (
-    <RecentFrame onPress={onPress} label={data.title?.trim() || 'Без назви'} icon="document-text-outline">
+    <RecentFrame onPress={onPress} label={data.title?.trim() || 'Без назви'} icon="document-text-outline" morphKey={`note:${id}`}>
       <DocumentPageMiniature font={data.noteFont} fontMode={data.noteFontMode} title={data.title ?? ''} blocks={data.blocks ?? NONE} tagIds={NO_IDS} tags={NO_TAGS} project={null} width={CARD_W} height={PIC_H} />
     </RecentFrame>
   );

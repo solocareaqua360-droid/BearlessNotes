@@ -1067,6 +1067,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   const [viewerImageId, setViewerImageId] = useState<string | null>(null);
   // A picture that is a MAP (Block.mapView) opens the live map instead of the picture viewer (components/MapBlockWindow).
   const [mapBlockId, setMapBlockId] = useState<string | null>(null);
+  // ONE function for every row, kept (the rows are memoised: an arrow made here per render re-rendered every block of the
+  // note on every render - the note's closing animation stuttered, 2026-10-28). What the block is, is read at the tap.
+  const openImageBlock = useCallback((id: string) => {
+    if (blocksRef.current.find((b) => b.id === id)?.mapView) setMapBlockId(id);
+    else setViewerImageId(id);
+  }, []);
   // Reading the text off a page - see TextRecognizer. `after` is the block
   // the result is put under, so a scan and its text stay together.
   const [recognizing, setRecognizing] = useState<{
@@ -7558,7 +7564,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
           onBackspaceEmpty={handleBackspaceOnEmpty}
           onFocus={handleBlockFocus}
           onSelectionChange={handleBlockSelectionChange}
-          onOpenImage={(id) => (blocks.find((b) => b.id === id)?.mapView ? setMapBlockId(id) : setViewerImageId(id))}
+          onOpenImage={openImageBlock}
           onToggleImageFit={toggleImageFit}
           onDrawOverImage={openSketchBlock}
           onOpenFile={openFileBlock}
