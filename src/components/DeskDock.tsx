@@ -13,7 +13,7 @@ import { FEATURES } from '../features';
 import { morphCardRef } from '../utils/morph';
 import { ASSIST_KEY, assistFlown, assistHeld, assistWash, onAssistHeld } from '../utils/assistMorph';
 import BalloonMark from './BalloonMark';
-import Svg, { Defs, Ellipse, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { deg } from '../utils/angle';
 
 // THE DESK DOCK (2026-10-12, the user's sketch and words: «лупа відривається, як крапля, і приєднується до плюса»).
@@ -49,8 +49,10 @@ const PILL_PAD = FEATURES.glassRefract ? 14 : 4;
 // «Where you are» at rest: a capsule wider than a place and lower than it (Craft's), not a circle (features.glassRefract).
 // Then (2026-10-29): «пропорційно збільшити кульку, бо вона сильно відстає від гори та низу» - as tall as a place (4 off the
 // pill's top and bottom), and as much wider.
+// Then: «не дотягнув до верхнього та нижнього краю, через це відступ до лівого краю здається меншим» - the same 3 off the
+// pill all round (PILL_PAD - HERE_GROW on the left end), so its ends sit concentric in the pill's.
 const HERE_GROW = FEATURES.glassRefract ? 11 : 0;
-const REST_H = BEAD_H;
+const REST_H = FEATURES.glassRefract ? PILL_H - 6 : BEAD_H;
 // The lens under a held place (see onLens): wider than a place, taller than the dock.
 const LENS_W = 92;
 const LENS_H = 88;
@@ -156,7 +158,7 @@ function GrowOnTouch({ style, children }: { style: object; children: ReactNode }
 // прозорою; ефект збільшення іконки зовсім трохи; ефект мильної бульки по краях, трохи зміщено від центру; ледь помітний
 // розбілений блік») - features.glassRefract. Then (same evening): «помаранчевості прибрати... збільшення трохи підсилити...
 // товщину обводки зменшити». So: no fill at all, the bubble IS its rim - the round button's soap film (pressLens) thin, a
-// second fainter film a little off centre, a milky glint up and to the left.
+// second fainter film a little off centre (the glint up and to the left was taken off: «прибери той блік на кульці»).
 // Round, the bead's own shape: an oval was tried twice the same night (shrunk inside the bead, then grown out to the dock's
 // edges) and rolled back by the user («забудь на секунду про овал та відкати зміну»).
 // Drawn in the capsule's rest size (a stadium); on its way to another place it stretches with it.
@@ -180,12 +182,7 @@ function HereBubble({ soft }: { soft: SoftTokens }) {
           <Stop offset="0.5" stopColor="#B9E2FF" stopOpacity={0.15} />
           <Stop offset="1" stopColor="#FFF3C4" stopOpacity={0.55} />
         </LinearGradient>
-        <RadialGradient id="hereGlint" cx="0.5" cy="0.5" rx="0.5" ry="0.5">
-          <Stop offset="0" stopColor="#FFFFFF" stopOpacity={soft.dark ? 0.2 : 0.9} />
-          <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
-        </RadialGradient>
       </Defs>
-      <Ellipse cx={HW * 0.34} cy={HH * 0.3} rx={HW * 0.2} ry={HH * 0.15} fill="url(#hereGlint)" />
       <Rect x={2.2} y={1.4} width={HW - 3.6} height={HH - 3.6} rx={(HH - 3.6) / 2} fill="none" stroke="url(#hereFilm2)" strokeOpacity={soft.dark ? 0.5 : 0.7} strokeWidth={0.6} />
       {light && <Rect x={0.4} y={0.4} width={HW - 0.8} height={HH - 0.8} rx={(HH - 0.8) / 2} fill="none" stroke="#000000" strokeOpacity={0.06} strokeWidth={0.6} />}
       <Rect x={0.8} y={0.8} width={HW - 1.6} height={HH - 1.6} rx={(HH - 1.6) / 2} fill="none" stroke="url(#hereFilm)" strokeOpacity={soft.dark ? 0.75 : 0.8} strokeWidth={0.7} />
