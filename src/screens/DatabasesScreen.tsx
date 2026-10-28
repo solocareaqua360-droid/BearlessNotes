@@ -769,7 +769,7 @@ export default function DatabasesScreen() {
               under the bar and the dock (the user's, 2026-10-02). */}
           {!inPanel && panelDensity !== 'pointer' && S && !(inDrawer && openInPane) && (
             <>
-              <EdgeFade edge="top" color={S.bg} height={databasesInsets.top + CHROME_TOP + TOP_NAV_H} />
+              <EdgeFade edge="top" color={S.bg} height={databasesInsets.top + CHROME_TOP + TOP_NAV_H} bar />
               <EdgeFade edge="bottom" color={S.bg} height={Math.round((dockClear + databasesInsets.bottom) * 0.85)} />
             </>
           )}

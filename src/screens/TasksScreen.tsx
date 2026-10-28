@@ -3470,7 +3470,7 @@ export default function TasksScreen() {
             the bar and the dock (the user's, 2026-10-02). */}
         {floatHeader && softDb && (
           <>
-            <EdgeFade edge="top" color={softDb.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} />
+            <EdgeFade edge="top" color={softDb.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} bar />
             <EdgeFade edge="bottom" color={softDb.bg} height={Math.round((dockClear + insets.bottom) * 0.85)} />
           </>
         )}

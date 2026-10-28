@@ -2,6 +2,7 @@ import { useId, useState, memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useRenderTimer } from '../utils/perfWatch';
+import { FEATURES } from '../features';
 
 // Content scrolling past an edge dissolves into the surface behind it
 // instead of being cut off - the user's own words for the hard edge it
@@ -16,15 +17,26 @@ import { useRenderTimer } from '../utils/perfWatch';
 // bottom edge mirrors the values, not the offsets.
 const STOPS = 8;
 
-function EdgeFade({ edge, color, height = 36 }: { edge: 'top' | 'bottom'; color: string; height?: number }) {
+// `solid`: points at the edge that stay fully covered before the fade begins.
+// `bar`: this is the fade under the top bar. With the bar's capsule gone (features.openTopBar) the name is plain text, so the
+// fade stays solid down to the name and melts only below the bar - a list scrolled under it no longer shows through the name.
+// `bar`: true when `height` ends at the bar's foot (16 more points of fade are added below it, short of where a list at rest
+// begins); 'roomy' when `height` already runs 20 past the foot (the explorer's own top room) and nothing is added.
+function EdgeFade({ edge, color, height: given = 36, solid: givenSolid = 0, bar }: { edge: 'top' | 'bottom'; color: string; height?: number; solid?: number; bar?: boolean | 'roomy' }) {
   useRenderTimer('Край, що тане');
+  const open = !!bar && FEATURES.openTopBar;
+  const height = open && bar !== 'roomy' ? given + 16 : given;
+  const solid = open ? Math.max(givenSolid, bar === 'roomy' ? given - 20 : given - 8) : givenSolid;
   const [width, setWidth] = useState(0);
   const id = `fade${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
-  const stops = Array.from({ length: STOPS }, (_, i) => {
-    const u = i / (STOPS - 1);
+  // A solid part leaves the fade a shorter run: more stops keep it smooth.
+  const count = solid > 0 ? STOPS * 2 : STOPS;
+  const stops = Array.from({ length: count }, (_, i) => {
+    const u = i / (count - 1);
     // How solid the surface is at this offset from the top of the strip.
     const inward = edge === 'top' ? u : 1 - u;
-    return { offset: u, opacity: Math.pow(1 - inward, 2) };
+    const past = solid > 0 ? Math.max(0, (inward * height - solid) / Math.max(1, height - solid)) : inward;
+    return { offset: u, opacity: Math.pow(1 - past, 2) };
   });
   return (
     <View

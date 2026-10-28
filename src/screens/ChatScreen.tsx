@@ -1296,7 +1296,7 @@ export default function ChatScreen() {
 
       {ground && (
         <>
-          <EdgeFade edge="top" color={ground} height={Math.max(insets.top + CHROME_TOP + TOP_NAV_H, headerH)} />
+          <EdgeFade edge="top" color={ground} height={Math.max(insets.top + CHROME_TOP + TOP_NAV_H, headerH)} bar />
           <EdgeFade edge="bottom" color={ground} height={Math.round((dockClear + insets.bottom) * 0.85)} />
         </>
       )}

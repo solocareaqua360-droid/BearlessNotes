@@ -4354,7 +4354,7 @@ export default function CustomDatabaseScreen({
           than being cut by the screen's edge - under the bar and the dock. */}
       {floatHeader && softDb && (
         <>
-          <EdgeFade edge="top" color={softDb.bg} height={insets.top + CHROME_TOP + 46} />
+          <EdgeFade edge="top" color={softDb.bg} height={insets.top + CHROME_TOP + 46} bar />
           <EdgeFade edge="bottom" color={softDb.bg} height={Math.round((dockClear + insets.bottom) * 0.85)} />
         </>
       )}

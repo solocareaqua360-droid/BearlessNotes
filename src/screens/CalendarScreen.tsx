@@ -93,7 +93,8 @@ import { useDockClearance } from '../navigation/dockGeometry';
 import { CAPSULE_DROP, CHROME_TOP, RAIL_RIGHT, RAIL_WIDTH } from '../constants/rail';
 import Menu from '../components/surfaces/Menu';
 import { listenError } from '../utils/listenError';
-import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import TopNavBar, { TOP_NAV_H, TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
+import EdgeFade from '../components/EdgeFade';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
 import { useRenderTimer } from '../utils/perfWatch';
 import { useDeskGate } from '../navigation/deskVisibility';
@@ -2333,6 +2334,11 @@ export default function CalendarScreen() {
         </Pressable>
       )}
 
+      {/* The top bar has no capsule of its own now (features.openTopBar): the week strip that rides up under it is faded out
+          at the screen's top edge, as every list does (components/EdgeFade). */}
+      {S && !calendarDrawer && FEATURES.openTopBar && !pointerDensity && (
+        <EdgeFade edge="top" color={S.bg} height={calendarInsets.top + CHROME_TOP + TOP_NAV_H} bar />
+      )}
       {/* In the drawer: the calendar's own bar and dock, inside it and
           moving with it - see CalendarDrawer. */}
       {calendarDrawer && (

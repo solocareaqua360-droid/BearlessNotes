@@ -201,4 +201,8 @@ export const FEATURES = {
   // «Думки» first, «Кошик» last) and «Проєкти ›» with the projects as rows; a project opens as its own level. false: the
   // capsules of projects and the folder cards, as before.
   startList: true,
+  // ВЕРХ БЕЗ СУЦІЛЬНОЇ СМУЖКИ (2026-10-28, the user, sketch 5BJNEhmoz1oz3VkfbHwiFT: «позбавляємось суцільної смужки вгорі»):
+  // the bar's capsule under everything is gone - the name or path is text on the left, over the screen's own edge fade, and
+  // only the buttons at the right end keep a capsule. false: the one capsule across the top, the name in the middle.
+  openTopBar: true,
 } as const;

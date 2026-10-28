@@ -538,7 +538,7 @@ export default function StartScreen() {
         </ScrollView>
         </GestureDetector>
         </Animated.View>
-        <EdgeFade edge="top" color={S.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} />
+        <EdgeFade edge="top" color={S.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} bar />
         <EdgeFade edge="bottom" color={S.bg} height={Math.round((dockClear + insets.bottom) * 0.85)} />
       </View>
     </SoftSurfaceContext.Provider>

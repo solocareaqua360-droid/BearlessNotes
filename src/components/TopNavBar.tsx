@@ -55,6 +55,8 @@ const PIECE_H = TOP_NAV_H - PLATE_PAD * 2;
 // A closed desk: a square, as tall as the pieces are.
 const PILL_W = PIECE_H;
 const GAP = 6;
+// features.openTopBar: the room before the name at the bar's left edge (the back button is in the dock).
+const OPEN_LEFT = 4;
 // The buttons standing apart at either end: the way back and choosing a
 // touch wider (50 - the user's own measure, "трішки ширшими"; the open
 // desk still has room for «Документи» whole), "⋯" narrower between them.
@@ -270,10 +272,12 @@ function TopNavBar({
   // left as the buttons take on the right, so the name sits on the middle of the SCREEN, not of what is left.
   const dockCarriesBack = useDockCarriesBack();
   const backHidden = FEATURES.deskDock && dockCarriesBack && !inline && soft;
+  // features.openTopBar: no capsule across the top, the name on the left (only the button cluster keeps a capsule).
+  const open = FEATURES.openTopBar && soft && !inline;
   const rightW = clusterCount > 0 ? clusterWidth + gap : 0;
   // Soft bar: the left side keeps as much room as the right one even with the back button there (empty room after
   // it), so every name stands on the middle of the SCREEN.
-  const leftWBase = soft && !inline ? Math.max(SIDE_W + gap, rightW) : backHidden ? rightW : SIDE_W + gap;
+  const leftWBase = open ? (backHidden ? OPEN_LEFT : SIDE_W + gap) : soft && !inline ? Math.max(SIDE_W + gap, rightW) : backHidden ? rightW : SIDE_W + gap;
   // THE PLAYER'S CAPSULE on the bar's left edge while something is read aloud (thoughts/VoicePlayer.tsx, the
   // user's sketch 2026-10-15): the left keeps room for it, and the right as much again, so the name still stands
   // on the middle of the SCREEN («головне правильно центрувати»). Where the way back is still at the top, the
@@ -281,7 +285,7 @@ function TopNavBar({
   const capsuleOn = useVoiceCapsuleOn() && !inline;
   const capsuleX = backHidden ? PLATE_PAD : SIDE_W + gap + 4;
   const leftW = capsuleOn ? Math.max(leftWBase, capsuleX + CAPSULE_W + PLATE_PAD, rightW) : leftWBase;
-  const rightRoom = capsuleOn ? leftW : rightW;
+  const rightRoom = capsuleOn && !open ? leftW : rightW;
   const rightExtra = Math.max(0, rightRoom - rightW - gap);
   const plateWidth = frame.width - leftW - rightRoom;
   // The solid pill narrows to the plate while the chrome is folded (see compactOn above).
@@ -465,7 +469,7 @@ function TopNavBar({
         onTouchCancel={soft ? barOff : undefined}
         style={[styles.row, { top: barTop, left: frame.left, width: frame.width, gap }, fadeStyle, soft ? barPress : undefined]}
       >
-        {soft && (
+        {soft && !open && (
           <>
             <Animated.View
               pointerEvents="none"
@@ -540,7 +544,7 @@ function TopNavBar({
                   {trail && <TrailRow trail={trail} radius={pieceRadius} ink={ink} inkMuted={inkMuted} soft={soft} />}
                   {title?.choices && (
                     <View style={styles.titlePress}>
-                      <Surface soft={soft} style={styles.piece} radius={pieceRadius}>
+                      <Surface soft={soft} style={[styles.piece, open && styles.pieceLeft]} radius={pieceRadius}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                           {title.choices.map((choice) => (
                             <Pressable key={choice.label} onPress={choice.onPress} hitSlop={8} accessibilityLabel={choice.label}>
@@ -563,13 +567,13 @@ function TopNavBar({
                       accessibilityLabel={title.label}
                       style={styles.titlePress}
                     >
-                      <Surface soft={soft} style={styles.piece} radius={pieceRadius}>
+                      <Surface soft={soft} style={[styles.piece, open && styles.pieceLeft]} radius={pieceRadius}>
                         {title.dot ? (
                           <View style={{ width: 12, height: 12, borderRadius: 6, marginHorizontal: 4, backgroundColor: title.dot }} />
                         ) : (
                           <Glyph name={title.icon} size={20} color={ink} soft={soft} />
                         )}
-                        <Text numberOfLines={1} style={[styles.label, styles.titleLabel, { color: ink }, soft && styles.softLabel]}>
+                        <Text numberOfLines={1} style={[styles.label, styles.titleLabel, { color: ink }, soft && styles.softLabel, open && styles.openLabel]}>
                           {title.label}
                         </Text>
                       </Surface>
@@ -577,6 +581,7 @@ function TopNavBar({
                   )}
                   {!!desks?.length && soft && FEATURES.deskDock && !!dockBeads?.length && (
                     <DeskTitles
+                      left={open}
                       desks={deskPosition && desksAll ? desksAll : desks}
                       position={deskPosition}
                       width={innerWidth}
@@ -603,7 +608,7 @@ function TopNavBar({
                 </Animated.View>
                 {shownPath && (
                   <Animated.View style={[styles.layer, pathStyle]} pointerEvents={path ? 'box-none' : 'none'}>
-                    <PathRow path={shownPath} radius={pieceRadius} ink={ink} inkMuted={inkMuted} soft={soft ? S : null} />
+                    <PathRow path={shownPath} radius={pieceRadius} ink={ink} inkMuted={inkMuted} soft={soft ? S : null} left={open} />
                   </Animated.View>
                 )}
                 </Animated.View>
@@ -632,9 +637,23 @@ function TopNavBar({
         {clusterCount > 0 && (
           <Animated.View
             pointerEvents={searchShown || compactOn ? 'none' : 'auto'}
-            style={[styles.cluster, !soft && lift, { borderRadius: corners.plate }, clusterSize, clusterAway, !inline && FEATURES.chromeCompact ? compactCluster : undefined]}
+            style={[
+              styles.cluster,
+              !soft && lift,
+              { borderRadius: corners.plate },
+              open && { borderRadius: TOP_NAV_H / 2 },
+              clusterSize,
+              clusterAway,
+              !inline && FEATURES.chromeCompact ? compactCluster : undefined,
+            ]}
           >
             {!soft && <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} />}
+            {/* Open: the buttons are the one capsule left at the top, in the dock's own material («Скло» when it is on). */}
+            {open && (
+              <View pointerEvents="none" style={[StyleSheet.absoluteFill, glassOn ? glassSurface : { backgroundColor: S.chrome, boxShadow: S.shadow }, { borderRadius: TOP_NAV_H / 2 }]}>
+                {glassOn && <DockGlassFill soft={S} />}
+              </View>
+            )}
             {[
               ...(extras?.tools ?? []).map((t) => ({
                 key: `tool:${t.key}`,
@@ -1000,6 +1019,7 @@ function DeskPill({
 // the name out one side and the next in from the other, and a tap does the same, since the pager moves either way.
 // Without a position (the web build) only the desk in front is drawn, still.
 function DeskTitles({
+  left,
   desks,
   position,
   width,
@@ -1016,6 +1036,8 @@ function DeskTitles({
   onLongPress?: () => void;
   // The width of the name in front, for the folded rim to wrap.
   onActiveWidth?: (w: number) => void;
+  // features.openTopBar: the name stands at the plate's left, not in its middle.
+  left?: boolean;
 }) {
   const activeIndex = Math.max(0, desks.findIndex((d) => d.active));
   const shift = useMemo(
@@ -1036,7 +1058,7 @@ function DeskTitles({
   const prevWidth = useRef(width);
   useEffect(() => {
     if (prevWidth.current === width) return;
-    comp.value = (prevWidth.current - width) / 2;
+    comp.value = left ? 0 : (prevWidth.current - width) / 2;
     comp.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
     prevWidth.current = width;
   }, [width, comp]);
@@ -1051,7 +1073,7 @@ function DeskTitles({
             position && desks.length > 1
               ? position.interpolate({ inputRange: [i - 0.7, i, i + 0.7], outputRange: [0, 1, 0], extrapolate: 'clamp' })
               : 1;
-          const label = [styles.label, styles.softLabel, { color: ink }];
+          const label = [styles.label, styles.softLabel, { color: ink }, left && styles.openLabel];
           return (
             <RNAnimated.View key={desk.key} style={{ width, height: PIECE_H, opacity: fade }}>
               <Pressable
@@ -1059,7 +1081,7 @@ function DeskTitles({
                 onLongPress={onLongPress}
                 delayLongPress={400}
                 accessibilityLabel={desk.label}
-                style={{ width, height: PIECE_H, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width, height: PIECE_H, flexDirection: 'row', alignItems: 'center', justifyContent: left ? 'flex-start' : 'center' }}
               >
                 <Text
                   numberOfLines={1}
@@ -1154,12 +1176,15 @@ function PathRow({
   ink,
   inkMuted,
   soft,
+  left,
 }: {
   path: PathContext;
   radius: number;
   ink: string;
   inkMuted: string;
   soft: SoftTokens | null;
+  // features.openTopBar: a lone name at the plate's left.
+  left?: boolean;
 }) {
   useRenderTimer('Смужка: шлях');
   const targets = useNavDockTargets();
@@ -1172,10 +1197,10 @@ function PathRow({
         <Pressable
           onPress={() => path.onGo('')}
           accessibilityLabel="Корінь"
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: left ? 'flex-start' : 'center' }}
         >
           <Glyph name={path.icon} size={20} color={ink} soft />
-          <Text numberOfLines={1} style={[styles.label, styles.softLabel, { color: ink, marginLeft: 8 }]}>
+          <Text numberOfLines={1} style={[styles.label, styles.softLabel, { color: ink, marginLeft: 8 }, left && styles.openLabel]}>
             {path.crumbs[0]}
           </Text>
         </Pressable>
@@ -1308,6 +1333,12 @@ const styles = StyleSheet.create({
   },
   crumbsPiece: {
     justifyContent: 'flex-start',
+  },
+  pieceLeft: {
+    justifyContent: 'flex-start',
+  },
+  openLabel: {
+    fontSize: 17,
   },
   crumbs: {
     alignItems: 'center',

@@ -2353,7 +2353,7 @@ export default function DocumentsScreen({
             in the portal, over it. */}
         {soft && !pointerDensity && (
           <>
-            <EdgeFade edge="top" color={soft.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} />
+            <EdgeFade edge="top" color={soft.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} bar />
             <EdgeFade edge="bottom" color={soft.bg} height={Math.round((listBottomPad + insets.bottom) * 0.85)} />
           </>
         )}

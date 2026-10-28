@@ -3499,7 +3499,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           runs under the bar on purpose), and not with a pointer (the desktop keeps its hard edges). */}
       {touchDensity && !(modernLook && !!path && !!cardTagOf(path)) && (
         <>
-          <EdgeFade edge="top" color={S.bg} height={top} />
+          <EdgeFade edge="top" color={S.bg} height={top} bar="roomy" />
           <EdgeFade edge="bottom" color={S.bg} height={Math.round((dockClear + insets.bottom) * 0.85)} />
         </>
       )}

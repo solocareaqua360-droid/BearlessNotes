@@ -751,7 +751,7 @@ export default function DatabaseChrome<T extends { id: string }>({
           ones). The tabs are in the portal and stay over it. */}
       {edgesFade && soft && (
         <>
-          <EdgeFade edge="top" color={soft.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} />
+          <EdgeFade edge="top" color={soft.bg} height={insets.top + CHROME_TOP + TOP_NAV_H} bar />
           <EdgeFade edge="bottom" color={soft.bg} height={Math.round((dockClear + insets.bottom) * 0.85)} />
         </>
       )}
