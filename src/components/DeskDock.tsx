@@ -253,7 +253,7 @@ export default function DeskDock({
 }) {
   // The glass dock, while its switch is on (utils/dockGlass).
   const glassOn = useDockGlass();
-  const surface = useDockSurface(soft, glassOn);
+  const surface = useDockSurface(soft, glassOn, true);
   const glass = glassOn ? <DockGlassFill soft={soft} /> : null;
   // Only what is SEEN blurs (a hidden live blur still blurs every frame - project_pending_blur_optimization): the desks'
   // pill on a desk, the search body inside a base; the drop that carries the lens across is never still, so never live.

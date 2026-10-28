@@ -697,7 +697,7 @@ export default function ContextDock() {
   const soft = useSoft();
   // The glass dock, while its switch is on (utils/dockGlass): every soft piece below takes this surface and a DockGlassFill.
   const glassOn = useDockGlass();
-  const dockSurface = useDockSurface(soft, glassOn);
+  const dockSurface = useDockSurface(soft, glassOn, true);
   const iconInk = dockInk(soft, glassOn);
   const { width: windowW } = useWindowDimensions();
   const { isTwoPane } = useResponsiveLayout();

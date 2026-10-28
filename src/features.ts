@@ -205,4 +205,9 @@ export const FEATURES = {
   // the bar's capsule under everything is gone - the name or path is text on the left, over the screen's own edge fade, and
   // only the buttons at the right end keep a capsule. false: the one capsule across the top, the name in the middle.
   openTopBar: true,
+  // СКЛО, ЩО ЗАЛОМЛЮЄ (2026-10-28, the user over Craft's capsules: the rim lights up in the colour passing under it): the
+  // glass capsules (dock, the bar's name and buttons) keep their tint off a thin ring at the edge, so the blur shows there
+  // nearly bare - over black the edge stays quiet, a colour passing under it lights the rim. No glow round the capsule.
+  // false: the glass as before (tint across, the inner shade rings, the glow).
+  glassRefract: true,
 } as const;

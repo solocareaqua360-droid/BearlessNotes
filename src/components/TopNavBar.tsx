@@ -236,7 +236,7 @@ function TopNavBar({
   const liveSearch = inline ? searchOverride ?? null : soft ? null : publishedSearch;
   const S = useSoft();
   const glassOn = useDockGlass();
-  const glassSurface = useDockSurface(S, glassOn);
+  const glassSurface = useDockSurface(S, glassOn, true);
   // THE BAR ANSWERS A TOUCH (2026-10-25, the user: «висвітлення та невелике збільшення верхньої стрічки при натисканні»): a
   // hair bigger and lighter while a finger is on it, as the dock's pill is.
   const barTouch = useSharedValue(0);

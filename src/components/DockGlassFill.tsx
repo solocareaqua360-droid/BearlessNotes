@@ -6,6 +6,7 @@ import { useBlurTarget, useInsideBlurTarget } from './GlassTarget';
 import { useFrostPaused } from './frostPause';
 import { useTheme } from '../theme/ThemeProvider';
 import type { SoftTokens } from '../theme/soft';
+import { FEATURES } from '../features';
 
 // THE DOCK'S GLASS (utils/dockGlass): what one piece of the soft dock is made of while the switch is on - the tags
 // drawer's material the user picked for the dock in September («у шторки рівень блюру і структури матеріалу який ідеально
@@ -23,6 +24,12 @@ const FLAT = 0.97;
 const SPEC = 0.7;
 // The light theme's milk: plain white, not the theme's cream (#FDFAF4) - cream over the warm ground read as stale white.
 const LIGHT_MILK = '#FFFFFF';
+// features.glassRefract: the ring at the edge left without the tint, and the film expo-blur lays over every blur (its alpha is
+// tied to `intensity`, radius = intensity / blurReductionFactor) kept faint - the same blur radius comes from the factor.
+const RING = 3;
+const REFRACT_FILM = 10;
+// How strongly expo-blur's own film covers per unit of intensity, by tint (Android's TintStyle).
+const FILM_ALPHA: Record<string, number> = { dark: 0.69, light: 0.78, default: 0.44 };
 
 // `coat`: the milk's own strength over the blur, for a window that is mostly words and fields (a bottom sheet) - thicker
 // than `dense`, so a card behind cannot show through a label (the user, 2026-10-25: «вже погано вікно відображається»).
@@ -45,6 +52,15 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
   // A piece of the dock is a capsule or a circle (half its short side); a menu or a window says its own corner radius - the
   // rim of a rounded RECTANGLE drawn as a capsule ran round it as an oval (the user, 2026-10-24).
   const r = Math.min(radius ?? Infinity, Math.min(w, h) / 2);
+  // Only the capsules refract: a window or a menu (`dense`, `coat`) keeps its coat across, words must read on it.
+  const refract = FEATURES.glassRefract && blur && !dense && coat === undefined && intensity === undefined;
+  const tint = soft.dark ? 'dark' : g.blurTint;
+  const baseIntensity = soft.dark ? BLUR : g.blur;
+  const baseCoat = soft.dark ? TINT : g.opacity;
+  // The inside keeps the darkness it had: what the old film and coat covered together, the new coat covers over a fainter film.
+  const filmOf = (i: number) => ((FILM_ALPHA[tint] ?? 0.44) * i) / 100;
+  const covered = 1 - (1 - filmOf(baseIntensity)) * (1 - baseCoat);
+  const refractCoat = Math.min(0.97, 1 - (1 - covered) / (1 - filmOf(REFRACT_FILM)));
   return (
     <View
       style={StyleSheet.absoluteFill}
@@ -56,8 +72,10 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
     >
       {blur && (
         <BlurView
-          intensity={intensity ?? (soft.dark ? BLUR : g.blur)}
-          tint={soft.dark ? 'dark' : g.blurTint}
+          intensity={refract ? REFRACT_FILM : intensity ?? baseIntensity}
+          // The same radius as before (expo-blur's default factor is 4), from a faint film.
+          blurReductionFactor={refract ? (REFRACT_FILM * 4) / baseIntensity : undefined}
+          tint={tint}
           blurMethod="dimezisBlurView"
           blurTarget={target ?? undefined}
           style={StyleSheet.absoluteFill}
@@ -69,8 +87,12 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
       <View
         style={[
           StyleSheet.absoluteFill,
+          // Refracting: the coat stops short of the edge, so the ring shows the blur nearly bare (features.glassRefract).
+          refract && w > 0 && { top: RING, left: RING, right: RING, bottom: RING, borderRadius: Math.max(0, r - RING) },
           // `dense`: glass with TEXT on it over moving text (the chat's top capsule) - a thicker coat, so the words read.
-          soft.dark ? { backgroundColor: soft.chrome, opacity: blur ? (coat ?? (dense ? 0.75 : TINT)) : FLAT } : { backgroundColor: LIGHT_MILK, opacity: blur ? (coat ?? (dense ? 0.72 : g.opacity)) : FLAT },
+          soft.dark
+            ? { backgroundColor: soft.chrome, opacity: blur ? (refract ? refractCoat : coat ?? (dense ? 0.75 : TINT)) : FLAT }
+            : { backgroundColor: LIGHT_MILK, opacity: blur ? (refract ? refractCoat : coat ?? (dense ? 0.72 : g.opacity)) : FLAT },
         ]}
       />
       {/* THE RIM (the user, 2026-10-24, over a photo of the old rail capsule: «Питання в обідку») - GlassDrop's three layers,
@@ -92,7 +114,7 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
           </Defs>
           {/* Dark only: on white a dark edge reads as dirt, not as the thickness of the glass - white glass is LIGHTER at its
               edge than in its middle (the user, 2026-10-24: «в білому виглядає бруднувато»). */}
-          {soft.dark && RINGS.map((ring, i) => (
+          {soft.dark && !refract && RINGS.map((ring, i) => (
             <Rect
               key={i}
               x={ring.inset}
@@ -123,9 +145,12 @@ const RINGS = Array.from({ length: 10 }, (_, i) => ({ inset: 0.5 + i, width: 1.2
 // The piece's own style while the glass is on: no fill of its own (the glass is), clipped to its shape, and
 // the theme's own light round it - the black theme's glow (two shadows: a tight bright one at the edge, a wide soft one
 // thrown down), the white one's shadow. Off, the soft capsule as it always was.
-export function useDockSurface(soft: SoftTokens, glass: boolean) {
+// `capsule`: the dock's and the bar's capsules - refracting (features.glassRefract), they throw no glow; windows and menus keep it.
+export function useDockSurface(soft: SoftTokens, glass: boolean, capsule = false) {
   const theme = useTheme();
   if (!glass) return { backgroundColor: soft.chrome, boxShadow: soft.shadow };
+  // Refracting glass throws no light round itself (the user, 2026-10-28: «відмовитись від світіння навколо капсули»).
+  if (FEATURES.glassRefract && capsule) return { backgroundColor: 'transparent', overflow: 'hidden' as const };
   const g = theme.glow;
   const light =
     soft.dark && theme.lift === 'glow'
