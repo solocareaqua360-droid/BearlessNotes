@@ -106,6 +106,22 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
               <Stop offset="0.35" stopColor={g.specular} stopOpacity={g.specularIntensity * SPEC * 0.35} />
               <Stop offset="0.7" stopColor={g.specular} stopOpacity={0} />
             </LinearGradient>
+            {/* Refracting (features.glassRefract): the body's VOLUME - lighter at the top, a shade deeper at the foot - and an
+                iridescent inner rim, the round button's soap-bubble lens (DeskDock's pressLens) said quietly (the user, 2026-10-28:
+                «внутрішня частина видається пласкою... ефект мильної бульки... Apple робить переливами»). */}
+            <LinearGradient id={`${uid}-body`} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#FFFFFF" stopOpacity={soft.dark ? 0.09 : 0.28} />
+              <Stop offset="0.45" stopColor="#FFFFFF" stopOpacity={0} />
+              <Stop offset="0.6" stopColor="#000000" stopOpacity={0} />
+              <Stop offset="1" stopColor="#000000" stopOpacity={soft.dark ? 0.16 : 0.05} />
+            </LinearGradient>
+            <LinearGradient id={`${uid}-iri`} x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.55} />
+              <Stop offset="0.3" stopColor="#B9E2FF" stopOpacity={0.4} />
+              <Stop offset="0.55" stopColor="#D9BCFF" stopOpacity={0.32} />
+              <Stop offset="0.8" stopColor="#C6FFD9" stopOpacity={0.38} />
+              <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0.5} />
+            </LinearGradient>
             <LinearGradient id={`${uid}-rim`} x1="0" y1="1" x2="0" y2="0">
               <Stop offset="0" stopColor={g.rim} stopOpacity={g.rimOpacity} />
               <Stop offset="0.45" stopColor={g.rim} stopOpacity={g.rimOpacity * 0.4} />
@@ -128,7 +144,12 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
               strokeWidth={ring.width}
             />
           ))}
-          <Rect x={2.5} y={2.5} width={Math.max(0, w - 5)} height={Math.max(0, h - 5)} rx={Math.max(0, r - 2.5)} fill="none" stroke={`url(#${uid}-rim)`} strokeOpacity={soft.dark ? 1 : 0.7} strokeWidth={1.2} />
+          {refract && <Rect x={RING} y={RING} width={Math.max(0, w - RING * 2)} height={Math.max(0, h - RING * 2)} rx={Math.max(0, r - RING)} fill={`url(#${uid}-body)`} />}
+          {refract ? (
+            <Rect x={RING + 0.5} y={RING + 0.5} width={Math.max(0, w - RING * 2 - 1)} height={Math.max(0, h - RING * 2 - 1)} rx={Math.max(0, r - RING - 0.5)} fill="none" stroke={`url(#${uid}-iri)`} strokeOpacity={soft.dark ? 0.55 : 0.8} strokeWidth={1} />
+          ) : (
+            <Rect x={2.5} y={2.5} width={Math.max(0, w - 5)} height={Math.max(0, h - 5)} rx={Math.max(0, r - 2.5)} fill="none" stroke={`url(#${uid}-rim)`} strokeOpacity={soft.dark ? 1 : 0.7} strokeWidth={1.2} />
+          )}
           <Rect x={0.6} y={0.6} width={Math.max(0, w - 1.2)} height={Math.max(0, h - 1.2)} rx={Math.max(0, r - 0.6)} fill="none" stroke={`url(#${uid}-spec)`} strokeWidth={1.2} />
         </Svg>
       )}
@@ -150,7 +171,10 @@ export function useDockSurface(soft: SoftTokens, glass: boolean, capsule = false
   const theme = useTheme();
   if (!glass) return { backgroundColor: soft.chrome, boxShadow: soft.shadow };
   // Refracting glass throws no light round itself (the user, 2026-10-28: «відмовитись від світіння навколо капсули»).
-  if (FEATURES.glassRefract && capsule) return { backgroundColor: 'transparent', overflow: 'hidden' as const };
+  // Not a glow but the capsule's shadow ON what it lies over, the round button's lens's own (DeskDock) - Apple's glass does the
+  // same: it rests on the page.
+  if (FEATURES.glassRefract && capsule)
+    return { backgroundColor: 'transparent', overflow: 'hidden' as const, boxShadow: soft.dark ? '0px 10px 26px rgba(0,0,0,0.45)' : '0px 10px 24px rgba(0,0,0,0.12)' };
   const g = theme.glow;
   const light =
     soft.dark && theme.lift === 'glow'
