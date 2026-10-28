@@ -11,7 +11,7 @@ import { SHEET_FRAME } from '../constants/glass';
 // in one list, each with its two views side by side - a list or a grid. The canvas is not here: it shows all the folders
 // at once, so it is one view for the whole explorer («⋯» → «Вигляд»). A folder with no view of its own follows that one.
 
-export type FolderViewRow = { path: string; name: string; depth: number; view?: 'list' | 'grid' };
+export type FolderViewRow = { path: string; name: string; depth: number; view?: 'list' | 'grid' | 'rows' };
 
 export default function FolderViewsSheet({
   visible,
@@ -24,27 +24,27 @@ export default function FolderViewsSheet({
   visible: boolean;
   folders: FolderViewRow[];
   // What a folder with no view of its own shows (the explorer's list or grid).
-  fallback: 'list' | 'grid';
-  onSet: (path: string, view: 'list' | 'grid') => void;
-  onSetAll: (view: 'list' | 'grid') => void;
+  fallback: 'list' | 'grid' | 'rows';
+  onSet: (path: string, view: 'list' | 'grid' | 'rows') => void;
+  onSetAll: (view: 'list' | 'grid' | 'rows') => void;
   onClose: () => void;
 }) {
   const S = useSoft();
   const b = useBottomSheet(visible, onClose);
-  const allAre = (v: 'list' | 'grid') => folders.length > 0 && folders.every((f) => (f.view ?? fallback) === v);
-  const pair = (current: 'list' | 'grid' | null, set: (v: 'list' | 'grid') => void, label: string) => (
+  const allAre = (v: 'list' | 'grid' | 'rows') => folders.length > 0 && folders.every((f) => (f.view ?? fallback) === v);
+  const pair = (current: 'list' | 'grid' | 'rows' | null, set: (v: 'list' | 'grid' | 'rows') => void, label: string) => (
     <View style={[styles.pair, { backgroundColor: S.fill }]}>
-      {(['list', 'grid'] as const).map((v) => {
+      {(['list', 'grid', 'rows'] as const).map((v) => {
         const on = current === v;
         return (
           <Pressable
             key={v}
             onPress={() => set(v)}
             hitSlop={4}
-            accessibilityLabel={`${label}: ${v === 'list' ? 'список' : 'сітка'}`}
+            accessibilityLabel={`${label}: ${v === 'list' ? 'список' : v === 'grid' ? 'сітка' : 'рядки'}`}
             style={[styles.seg, on && { backgroundColor: S.card, boxShadow: S.shadow } as never]}
           >
-            <Ionicons name={v === 'list' ? 'list-outline' : 'grid-outline'} size={18} color={on ? S.ink : S.ink3} />
+            <Ionicons name={v === 'list' ? 'reorder-four-outline' : v === 'grid' ? 'grid-outline' : 'list-outline'} size={18} color={on ? S.ink : S.ink3} />
           </Pressable>
         );
       })}
@@ -61,7 +61,7 @@ export default function FolderViewsSheet({
           <Text style={[styles.hint, { color: S.ink3 }]}>Полотно - одне для всіх папок, воно в «⋯» → «Вигляд».</Text>
           <View style={styles.row}>
             <Text style={[styles.allLabel, { color: S.ink }]}>Усі папки</Text>
-            {pair(allAre('list') ? 'list' : allAre('grid') ? 'grid' : null, onSetAll, 'Усі папки')}
+            {pair(allAre('list') ? 'list' : allAre('grid') ? 'grid' : allAre('rows') ? 'rows' : null, onSetAll, 'Усі папки')}
           </View>
           <View style={[styles.rule, { backgroundColor: S.line }]} />
           <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 8 }}>

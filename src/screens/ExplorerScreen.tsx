@@ -88,7 +88,7 @@ import { FolderCardSheet, FolderProjectsSheet } from '../components/FolderStyleS
 import { copyNoteWithNested } from '../utils/copyNote';
 import { useCreateFlow } from '../hooks/useCreateFlow';
 import { openCapture } from '../components/CaptureWindow';
-import Animated, { Easing as REasing, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
+import Animated, { Easing as REasing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { useExplorerCarry } from '../hooks/useExplorerCarry';
 import CardCarryOverlay from '../components/CardCarryOverlay';
 import UndoToast from '../components/UndoToast';
@@ -384,7 +384,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // tile a line, bigger picture). Remembered on this device.
   const [globalView, setGlobalView] = useState<FolderCardMode | 'canvas'>('list');
   useEffect(() => {
-    AsyncStorage.getItem('explorerView').then((v) => (v === 'grid' || v === 'canvas') && setGlobalView(v)).catch(() => {});
+    AsyncStorage.getItem('explorerView').then((v) => (v === 'grid' || v === 'rows' || v === 'canvas') && setGlobalView(v)).catch(() => {});
   }, []);
   const changeView = (m: FolderCardMode | 'canvas') => {
     setGlobalView(m);
@@ -393,7 +393,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // EACH FOLDER ITS OWN VIEW (the user, 2026-10-25): a list or a grid kept on the folder (Tag.view); the canvas is one for
   // all - it shows every folder - so it wins wherever it is on. Unset: the explorer's own view.
   const folderTagsAt = (p: string) => tags.filter((t) => t.path === p);
-  const folderViewOf = (p: string): 'list' | 'grid' | undefined => folderTagsAt(p).find((t) => t.view)?.view;
+  const folderViewOf = (p: string): 'list' | 'grid' | 'rows' | undefined => folderTagsAt(p).find((t) => t.view)?.view;
   const pinsOf = (p: string): string[] => folderTagsAt(p).find((t) => t.pins?.length)?.pins ?? [];
   const viewMode: FolderCardMode | 'canvas' = globalView === 'canvas' || !path ? globalView : folderViewOf(path) ?? globalView;
   // «СТИЛЬ ПРОВІДНИКА» (2026-10-12, the user's): «Чистий» - the folders as this screen draws them; «Модерний» - the
@@ -885,6 +885,36 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // What the list draws: the things in order, or in sections by kind (each section in the same order).
   const rows = useMemo<Row[]>(() => {
     const flat: Row[] = [];
+    // «РЯДКИ» SORTED BY A DATE say when in section titles instead of on each row (the user, 2026-10-28: «дата буде лише при
+    // сортуванні по даті день тому тиждень тому місяць тому просто списками»).
+    if (viewMode === 'rows' && !byKind && sortPref.field !== 'title') {
+      const field = sortPref.field;
+      const at = (i: FolderItem) => {
+        const v = ((i.raw ?? {}) as Record<string, unknown>)[field];
+        const own = typeof v === 'number' ? v : undefined;
+        return own ?? (field === 'updatedAt' ? stamp(i) : undefined) ?? 0;
+      };
+      const pinsHere = path && !searching ? pinsOf(path) : [];
+      const day = new Date();
+      day.setHours(0, 0, 0, 0);
+      const today = day.getTime();
+      const bands: { title: string; from: number }[] = [
+        { title: 'Сьогодні', from: today },
+        { title: 'Цього тижня', from: today - 6 * 86400000 },
+        { title: 'Цього місяця', from: today - 29 * 86400000 },
+        { title: 'Раніше', from: -Infinity },
+      ];
+      const pinned = here.filter((i) => pinsHere.includes(i.id));
+      if (pinned.length) flat.push({ header: 'Закріплені', count: pinned.length, key: 'h:pins' }, ...pinned);
+      const rest = here.filter((i) => !pinsHere.includes(i.id));
+      const groups = bands.map(() => [] as FolderItem[]);
+      rest.forEach((i) => {
+        const t = at(i);
+        groups[bands.findIndex((b) => t >= b.from)].push(i);
+      });
+      groups.forEach((g, n) => g.length && flat.push({ header: bands[n].title, count: g.length, key: `h:d${n}` }, ...g));
+      return flat;
+    }
     if (!byKind) flat.push(...here);
     else
       KIND_ORDER.forEach((k) => {
@@ -940,7 +970,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     });
     flush();
     return out;
-  }, [here, byKind, viewMode, gridCols, tileW]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [here, byKind, viewMode, gridCols, tileW, sortPref.field, path, searching]);
   const sweepOrder = useMemo(() => sweepOrderOf(rows), [rows]);
 
   // A PICTURE OPENS RIGHT HERE, over the explorer (the user, 2026-10-10: opening
@@ -1002,7 +1033,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     }
     // A note is PAPER: its card grows into the page (utils/morph), it does not turn.
     // A LIST ROW slides in from the right and leaves to the left (components/SlideFrame); the grid's card grows (below).
-    else if (viewMode === 'list' && (item.kind === 'document' || item.kind === 'board')) {
+    else if ((viewMode === 'list' || viewMode === 'rows') && (item.kind === 'document' || item.kind === 'board')) {
       (navigation as unknown as { navigate: (name: string, params?: object) => void }).navigate(
         item.kind === 'document' ? 'Editor' : 'BoardCopy',
         item.kind === 'document'
@@ -1216,7 +1247,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // implied folder gets a tag of its own through setTagFields).
   const [folderViewsOpen, setFolderViewsOpen] = useState(false);
   const settingsTagOf = (p: string, has: (t: Tag) => boolean) => folderTagsAt(p).find(has) ?? cardTagOf(p);
-  function setFolderView(p: string, view: 'list' | 'grid') {
+  function setFolderView(p: string, view: 'list' | 'grid' | 'rows') {
     if (p === UNFILED) return;
     setTagFields(settingsTagOf(p, (t) => !!t.view).id, { view }).catch((e) => notify('Не вдалося зберегти', (e as Error).message));
   }
@@ -2124,7 +2155,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     explorerSelect ? null : [
       // The shared set of the bases' «⋯» (the survey of 2026-10-10): the view, the order, then the folder.
       // Inside a folder a list/grid is THAT folder's own view; the canvas (and the root) is the explorer's.
-      ...viewSection(viewMode, (m) => (path && path !== UNFILED && m !== 'canvas' && globalView !== 'canvas' ? setFolderView(path, m === 'grid' ? 'grid' : 'list') : changeView(m)), ['list', 'grid', 'canvas']),
+      ...viewSection(viewMode, (m) => (path && path !== UNFILED && m !== 'canvas' && globalView !== 'canvas' ? setFolderView(path, m === 'grid' ? 'grid' : m === 'rows' ? 'rows' : 'list') : changeView(m as FolderCardMode | 'canvas')), ['list', 'grid', 'rows', 'canvas']),
       { label: 'Вигляд папок…', icon: 'options-outline' as const, onPress: () => setFolderViewsOpen(true) },
       ...orderSection(sortPref, selectSortField),
       { label: 'Групувати за типом', icon: 'layers-outline' as const, checked: byKind, onPress: toggleByKind },
@@ -2593,6 +2624,27 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // «Проєкти» page drew (its size, colour, pattern or photo; FolderCard), and an opened folder wears its card as a
   // head (FolderHeader).
   const modernLook = explorerStyle === 'modern' && !inBin && !inCleanup && !searching;
+  // THE LEVELS MOVE (the user, 2026-10-28: «все зараз супроводжується блиманням, анімації нуль»): in the clean look a folder,
+  // and on the start list a level, was swapped in place with nothing moving. A deeper level now comes in from the right and
+  // the way back from the left - a short slide with a fade from a third, the direction the notes take (components/
+  // SlideFrame). The modern look keeps its card growing into the folder (FolderGrow / FolderShrink).
+  const levelX = useSharedValue(0);
+  const levelFade = useSharedValue(1);
+  const levelBefore = useRef({ path, startLevel });
+  useLayoutEffect(() => {
+    const prev = levelBefore.current;
+    levelBefore.current = { path, startLevel };
+    if (prev.path === path && prev.startLevel === startLevel) return;
+    if (explorerStyle === 'modern' && (path || prev.path)) return;
+    const depthOf = (p: string, level: string | null) => (p ? p.split('/').length : 0) + (level ? 1 : 0);
+    const deeper = depthOf(path, startLevel) > depthOf(prev.path, prev.startLevel);
+    levelX.value = (deeper ? 1 : -1) * Math.round(winW * 0.22);
+    levelFade.value = 0.35;
+    levelX.value = withTiming(0, { duration: 260, easing: REasing.out(REasing.cubic) });
+    levelFade.value = withTiming(1, { duration: 200 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, startLevel]);
+  const levelStyle = useAnimatedStyle(() => ({ opacity: levelFade.value, transform: [{ translateX: levelX.value }] }));
   const listTopPad = top + (!inBin && !inCleanup && chipsOn ? CHIPS_H + CHIPS_GAP - CHIPS_UP : 0);
   const { height: winH } = useWindowDimensions();
   const schemeNow = useTheme().scheme;
@@ -2635,7 +2687,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   usePublishRailPanel(
     explorerSelect ? (
       <ExplorerPanel
-        view={viewMode === 'wide' ? 'grid' : viewMode}
+        view={viewMode === 'wide' ? 'grid' : viewMode === 'rows' ? 'list' : viewMode}
         onView={(v) => changeView(v)}
         sortPref={sortPref}
         onSort={selectSortField}
@@ -2908,6 +2960,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       {startBasesOn && <StartBases />}
     </>
   );
+  const rowsFolders = viewMode === 'rows' && !modernLook && !!path;
   const headerBody = startHere ? startBody : (
     <>
       {/* Only on the start desk itself, never inside a folder (the user, 2026-10-25: «нещодавні не показуються всередині папок»). */}
@@ -3114,8 +3167,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           </View>
         </View>
       )}
+      {/* «РЯДКИ» inside a folder: its subfolders and collections are rows too, the start list's rows (Craft's folder). */}
+      {rowsFolders && folders.length > 0 && <View style={{ marginBottom: 8 }}>{startRowsOf(folders, true)}</View>}
       <View style={styles.folders}>
-        {(modernLook ? [] : folders)
+        {(modernLook || rowsFolders ? [] : folders)
           .filter((f) => !collKindOf(f))
           .slice(thoughtsSquare ? SIDE_FOLDERS : 0)
           .map((f) => folderPill(f))}
@@ -3133,7 +3188,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       </View>
       {/* THE COLLECTIONS, under the folders and on their own lines: a tall face beside a folder stretched the folder
           to its height, empty (2026-10-15). */}
-      {!modernLook && folders.some((f) => !!collKindOf(f)) && (
+      {!modernLook && !rowsFolders && folders.some((f) => !!collKindOf(f)) && (
         <View style={[styles.folders, viewMode === 'grid' && { alignItems: 'flex-start' }]}>
           {folders.filter((f) => !!collKindOf(f)).map((f) => {
             const collKind = collKindOf(f)!;
@@ -3287,9 +3342,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           <FoldersCanvas topPad={top} linksOpen={false} onOpenItem={(item) => openItem(item)} />
         ) : (
         <GestureDetector gesture={carrying.listGesture}>
-        <View style={{ flex: 1 }} {...webData({ explorer: '1' })} onLayout={touchDensity ? undefined : (e) => setMeasuredW(Math.round(e.nativeEvent.layout.width))}>
+        <Animated.View style={[{ flex: 1 }, levelStyle]} {...webData({ explorer: '1' })} onLayout={touchDensity ? undefined : (e) => setMeasuredW(Math.round(e.nativeEvent.layout.width))}>
         <SwipeSelectArea
-          enabled={FEATURES.swipeSelect && viewMode === 'list'}
+          enabled={FEATURES.swipeSelect && (viewMode === 'list' || viewMode === 'rows')}
           order={sweepOrder}
           isSelectMode={selecting}
           selectedIds={selected}
@@ -3327,7 +3382,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                   key={own && tile ? item.id : undefined}
                   item={item}
                   tags={tags}
-                  mode={tile ? 'grid' : 'list'}
+                  mode={tile ? 'grid' : viewMode === 'rows' ? 'rows' : 'list'}
                   search={searching ? searchText.trim() : undefined}
                   tileWidth={strip ?? (tile ? tileW : contentW)}
                   columns={strip !== undefined ? 1 : gridCols}
@@ -3366,9 +3421,11 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                 );
               }
               return (
-                <View key={item.id} ref={(n) => carrying.carry.registerCard(item.id, () => carrying.groupFor(item), () => holdItem(item))(n as never)} collapsable={false} {...webData({ card: item.id })} style={[tile ? { width: tileW } : styles.cardWrap, chosen === item.id && { boxShadow: `0 0 0 2px ${S.ink}`, borderRadius: tile ? 18 : 14 }]}>
+                <View key={item.id} ref={(n) => carrying.carry.registerCard(item.id, () => carrying.groupFor(item), () => holdItem(item))(n as never)} collapsable={false} {...webData({ card: item.id })} style={[tile ? { width: tileW } : viewMode === 'rows' ? null : styles.cardWrap, chosen === item.id && { boxShadow: `0 0 0 2px ${S.ink}`, borderRadius: tile ? 18 : 14 }]}>
                   <SwipeSelectItem id={item.id}>
                   <View pointerEvents={selecting ? 'none' : 'auto'}>{card}</View>
+                  {/* «Рядки»: a hairline from where the text starts, as the start list's rows. */}
+                  {viewMode === 'rows' && <View pointerEvents="none" style={[styles.rowsLine, { backgroundColor: S.line }]} />}
                   {pin}
                   {selecting && (
                     <Pressable style={StyleSheet.absoluteFill} onPress={() => toggle(item.id)}>
@@ -3432,7 +3489,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           removeClippedSubviews
         />
         </SwipeSelectArea>
-        </View>
+        </Animated.View>
         </GestureDetector>
         )}
       </SoftSurfaceContext.Provider>)}
@@ -3553,7 +3610,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       <FolderViewsSheet
         visible={folderViewsOpen}
         folders={folderPaths.filter((p) => p !== UNFILED).map((p) => ({ path: p, name: nameOf(p), depth: p.split('/').length - 1, view: folderViewOf(p) }))}
-        fallback={globalView === 'grid' ? 'grid' : 'list'}
+        fallback={globalView === 'grid' ? 'grid' : globalView === 'rows' ? 'rows' : 'list'}
         onSet={setFolderView}
         onSetAll={(v) => folderPaths.filter((p) => p !== UNFILED).forEach((p) => setFolderView(p, v))}
         onClose={() => setFolderViewsOpen(false)}
@@ -3769,6 +3826,7 @@ const styles = StyleSheet.create({
   hint: { fontSize: 14, textAlign: 'center', marginTop: 40 },
   sectionLabel: { fontSize: 13, fontFamily: SOFT_SEMIBOLD, marginBottom: 10, marginLeft: 4 },
   startHead: { fontSize: 20, fontFamily: SOFT_BOLD, marginTop: 24, marginBottom: 4 },
+  rowsLine: { position: 'absolute', left: 54, right: 0, bottom: 0, height: StyleSheet.hairlineWidth },
   startHeadRow: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', marginTop: 24, marginBottom: 4 },
   startHeadInRow: { marginTop: 0, marginBottom: 0 },
   pickedFrame: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderWidth: 2.5, borderRadius: 24 },

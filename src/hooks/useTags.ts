@@ -114,7 +114,7 @@ export function useTags() {
             ...(Array.isArray(data.groupIds) ? { groupIds: data.groupIds as string[] } : {}),
             ...(Array.isArray(data.projectRoots) ? { projectRoots: data.projectRoots as string[] } : {}),
             ...(data.card ? { card: data.card as Tag['card'] } : {}),
-            ...(data.view === 'list' || data.view === 'grid' ? { view: data.view as Tag['view'] } : {}),
+            ...(data.view === 'list' || data.view === 'grid' || data.view === 'rows' ? { view: data.view as Tag['view'] } : {}),
             ...(Array.isArray(data.pins) ? { pins: data.pins as string[] } : {}),
           };
         })

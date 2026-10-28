@@ -1076,7 +1076,7 @@ export default function DocumentsScreen({
   // brings its actions into the dock, under the thumb.
   useTopExtras(
     [
-      ...viewSection(viewMode, changeViewMode),
+      ...viewSection(viewMode, (m) => changeViewMode(m as Parameters<typeof changeViewMode>[0])),
       ...orderSection(sortPref, selectSortField),
       { kind: 'rule' },
       { label: 'Смартпапки', icon: 'pricetag-outline', checked: !!activeFilter, onPress: () => drawerRef.current?.open() },

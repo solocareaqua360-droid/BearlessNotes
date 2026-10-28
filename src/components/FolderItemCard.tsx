@@ -40,32 +40,12 @@ const LIST_FOLDER_CHIPS = false;
 const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
 const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
 
-export type FolderCardMode = 'list' | 'grid' | 'wide';
+export type FolderCardMode = 'list' | 'grid' | 'wide' | 'rows';
 
-// A TILE (the explorer's «Сітка» and «Широкі картки»): the picture of the thing on top - a note
-// as its real page (DocumentPageMiniature: «every card is the page»), a photo, a link's image, a
-// board's map - then its name and a line. `width` is the tile's own width; the picture is a
-// fixed share of it (taller on a grid tile, a wide strip on a wide card).
-function FolderTile({
-  item,
-  tags,
-  width,
-  wide,
-  onPress,
-  onLongPress,
-}: {
-  item: FolderItem;
-  tags: Tag[];
-  width: number;
-  wide: boolean;
-  onPress: () => void;
-  onLongPress?: () => void;
-}) {
-  const S = useSoft();
+// What a tile and a row both draw of a thing: its picture (a note's real page at `picW` x `picH`, a photo, a link's
+// image, a board's map, or its kind's icon at `iconSize`) and its line.
+function thingFace(item: FolderItem, S: ReturnType<typeof useSoft>, picW: number, picH: number, iconSize: number): { picture: React.ReactNode; sub: string } {
   const raw = (item.raw ?? {}) as Record<string, unknown>;
-  // A wide card lays the picture BESIDE the text (about two fifths of the card); a tile puts it above.
-  const picW = wide ? Math.round(width * 0.42) : width;
-  const picH = wide ? Math.round(width * 0.34) : Math.round(width * 0.78);
   const when = num(raw.updatedAt) ?? num(raw.createdAt);
   let picture: React.ReactNode;
   let sub = '';
@@ -101,7 +81,7 @@ function FolderTile({
         boardId={item.docId}
         uri={str(raw.previewImageUri)}
         driveFileId={str(raw.previewDriveFileId)}
-        fallback={<Ionicons name="easel-outline" size={30} color={S.ink3} />}
+        fallback={<Ionicons name="easel-outline" size={Math.round(iconSize * 0.94)} color={S.ink3} />}
       />
     );
     sub = `Дошка · ${count} карток`;
@@ -116,7 +96,7 @@ function FolderTile({
             : item.kind === 'link'
               ? 'link-outline'
               : 'grid-outline';
-    picture = <Ionicons name={icon as never} size={32} color={S.ink3} />;
+    picture = <Ionicons name={icon as never} size={iconSize} color={S.ink3} />;
     sub =
       item.kind === 'file'
         ? (str(raw.fileName)?.split('.').pop() ?? 'файл').toUpperCase()
@@ -128,6 +108,34 @@ function FolderTile({
               ? [str(raw.siteName), 'Посилання'].filter(Boolean)[0] ?? 'Посилання'
               : 'Запис';
   }
+  return { picture, sub };
+}
+
+// A TILE (the explorer's «Сітка» and «Широкі картки»): the picture of the thing on top - a note
+// as its real page (DocumentPageMiniature: «every card is the page»), a photo, a link's image, a
+// board's map - then its name and a line. `width` is the tile's own width; the picture is a
+// fixed share of it (taller on a grid tile, a wide strip on a wide card).
+function FolderTile({
+  item,
+  tags,
+  width,
+  wide,
+  onPress,
+  onLongPress,
+}: {
+  item: FolderItem;
+  tags: Tag[];
+  width: number;
+  wide: boolean;
+  onPress: () => void;
+  onLongPress?: () => void;
+}) {
+  const S = useSoft();
+  const raw = (item.raw ?? {}) as Record<string, unknown>;
+  // A wide card lays the picture BESIDE the text (about two fifths of the card); a tile puts it above.
+  const picW = wide ? Math.round(width * 0.42) : width;
+  const picH = wide ? Math.round(width * 0.34) : Math.round(width * 0.78);
+  const { picture, sub } = thingFace(item, S, picW, picH, 32);
   const blurb = item.kind === 'document' ? extractPreview((raw.blocks as Block[]) ?? [], undefined, undefined, undefined).previewText : '';
   const own = tags.filter((t) => item.tagIds.includes(t.id));
   return (
@@ -146,6 +154,46 @@ function FolderTile({
     </HoldPressable>
   );
 }
+
+// A ROW (the explorer's «Рядки», 2026-10-28, the user after Craft: «третій вид»): a small picture of the thing, its name
+// and one line under it - a note's first words, a board's cards, a file's type. No date: sorted by date, the list says
+// when in its own section titles.
+function FolderRowItem({ item, onPress, onLongPress }: { item: FolderItem; onPress: () => void; onLongPress?: () => void }) {
+  const S = useSoft();
+  const raw = (item.raw ?? {}) as Record<string, unknown>;
+  const { picture, sub } = thingFace(item, S, ROW_PIC_W, ROW_PIC_H, 20);
+  const blurb = item.kind === 'document' ? extractPreview((raw.blocks as Block[]) ?? [], undefined, undefined, undefined).previewText : '';
+  // The line: the date first, short (the user, 2026-10-28: «дату залиш як зараз на початку тексту»), then a note's first
+  // words, a link's site, a file's type; a board keeps its cards.
+  const when = num(raw.updatedAt) ?? num(raw.createdAt);
+  const date = when ? new Date(when).toLocaleString('uk-UA', { day: 'numeric', month: 'short' }) : '';
+  const what = item.kind === 'document' ? blurb : item.kind === 'photo' ? 'Фото' : item.kind === 'link' ? str(raw.siteName) ?? 'Посилання' : item.kind === 'file' ? sub : '';
+  const line = item.kind === 'board' ? sub : [date, what].filter(Boolean).join(' · ') || sub;
+  return (
+    <HoldPressable onPress={onPress} onLongPress={onLongPress} style={rowItemStyles.row}>
+      <View style={[rowItemStyles.pic, { backgroundColor: S.fill, borderColor: S.line }]}>{picture}</View>
+      <View style={rowItemStyles.text}>
+        <Text style={[rowItemStyles.title, { color: S.ink }]} numberOfLines={1}>
+          {item.title || 'Без назви'}
+        </Text>
+        {!!line && (
+          <Text style={[rowItemStyles.line, { color: S.ink3 }]} numberOfLines={1}>
+            {line}
+          </Text>
+        )}
+      </View>
+    </HoldPressable>
+  );
+}
+const ROW_PIC_W = 40;
+const ROW_PIC_H = 49;
+const rowItemStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 68 },
+  pic: { width: ROW_PIC_W, height: ROW_PIC_H, borderRadius: 8, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth },
+  text: { flex: 1, minWidth: 0, gap: 3 },
+  title: { fontSize: 16, fontFamily: SOFT_SEMIBOLD },
+  line: { fontSize: 13.5 },
+});
 
 const boardTileStyles = StyleSheet.create({
   tile: { borderRadius: 18, overflow: 'hidden' },
@@ -223,6 +271,7 @@ function FolderItemCardInner({
   // «виглядають дуже жахливо» - every base's grid looks right on its own, so use theirs):
   // a photo's PhotoCell, a file's and a link's grid cell, a note's DocumentCard. The wide
   // view is a note's wide card; everything else has no wide card in its base and keeps its row.
+  if (mode === 'rows') return <FolderRowItem item={item} onPress={onPress} onLongPress={onLongPress} />;
   if (mode !== 'list') {
     if (item.kind === 'photo' && str(raw.imageUri) && mode === 'grid') {
       return (
@@ -607,6 +656,8 @@ const styles = StyleSheet.create({
 // The type's corner glow around whichever card was drawn (features.itemGlow) - one place, not one per card kind.
 function FolderItemCardGlowed(props: React.ComponentProps<typeof FolderItemCardInner>) {
   const inner = <FolderItemCardInner {...props} />;
+  // A row says what it is in its own line; the corner mark is a card's.
+  if (props.mode === 'rows') return inner;
   if (FEATURES.typeBadge) return <TypeBadge item={props.item}>{inner}</TypeBadge>;
   if (!FEATURES.itemGlow) return inner;
   return <CornerGlow color={glowColorFor(props.item)}>{inner}</CornerGlow>;

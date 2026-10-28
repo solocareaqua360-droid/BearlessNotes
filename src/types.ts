@@ -591,7 +591,7 @@ export interface Tag {
   // card) and an inner one (at the top of the opened folder).
   // THE FOLDER'S OWN VIEW (the user, 2026-10-25: «в налаштуванні кожної папки можна буде вибирати вигляд»): a list or a
   // grid - the canvas stays one for all, it shows every folder. Unset: the explorer's own view.
-  view?: 'list' | 'grid';
+  view?: 'list' | 'grid' | 'rows';
   // PINNED in this folder (2026-10-25): up to three things (FolderItem ids) that stand first whatever the order.
   pins?: string[];
   card?: { size?: 'L' | 'M' | 'S'; color?: string; outer?: string; inner?: string; pattern?: 'none' | 'light' | 'normal' | 'dense';

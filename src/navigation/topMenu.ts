@@ -5,13 +5,14 @@ import type { SortPref, SortField } from '../utils/sortItems';
 // THE «⋯» ROWS EVERY LIST SHARES (the shared set, 2026-10-12): the view section and the order
 // section are built here once, so the Documents screen and the single explorer say the same
 // words with the same icons in the same order. A screen adds only what is its own around them.
-export type ViewMode = 'list' | 'grid' | 'wide' | 'canvas';
+export type ViewMode = 'list' | 'grid' | 'wide' | 'rows' | 'canvas';
 
 export function viewSection(current: string, change: (mode: ViewMode) => void, modes: ViewMode[] = ['list', 'grid', 'canvas']): MenuEntry[] {
   const all: Record<ViewMode, { label: string; icon: string }> = {
     list: { label: 'Список', icon: 'reorder-four-outline' },
     grid: { label: 'Сітка', icon: 'grid-outline' },
     wide: { label: 'Широкі картки', icon: 'tablet-landscape-outline' },
+    rows: { label: 'Рядки', icon: 'list-outline' },
     canvas: { label: 'Полотно', icon: 'easel-outline' },
   };
   return [
