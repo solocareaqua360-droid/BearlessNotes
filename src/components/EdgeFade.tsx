@@ -24,20 +24,26 @@ function EdgeFade({ edge, color, height: given = 36, solid: givenSolid = 0, bar 
   // Under the open bar (features.openTopBar) the fade reaches a little past the bar's foot, so it still acts at the bottom of
   // the desk's name and not only above its middle (the user, 2026-10-28: «продовжити дію верхнього до нижнього краю назви
   // столу»). Short of where a list at rest begins. 'roomy': the height already runs 20 past the foot.
-  const height = bar === true && FEATURES.openTopBar ? given + 18 : given;
+  // MACH BANDS (the user, 2026-10-29: «контрастний перехід... ти ж теж зчитуєш аномально білу полоску переходу, це оптична
+  // ілюзія»): the eye draws a light line wherever a gradient ENDS steeply. Under the open bar the fade therefore runs on an
+  // S-curve (smootherstep - flat at both ends) over a longer run, so it is as strong at the name's foot as before but has no
+  // edge for the eye to find.
   const barLong = !!bar && FEATURES.openTopBar;
-  const solid = givenSolid;
+  const height = barLong ? given + (bar === 'roomy' ? 24 : 40) : given;
+  // The top quarter (the status bar's own strip) held full, so the curve is a little stronger at the name's line - it, not a
+  // halo under each word, keeps the name and the buttons readable over a white picture (halos made smudges, 2026-10-29).
+  const solid = barLong ? Math.max(givenSolid, Math.round(given * 0.25)) : givenSolid;
   const [width, setWidth] = useState(0);
   const id = `fade${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   // A solid part leaves the fade a shorter run: more stops keep it smooth.
-  const count = solid > 0 ? STOPS * 2 : STOPS;
+  const count = solid > 0 || barLong ? STOPS * 3 : STOPS;
   const stops = Array.from({ length: count }, (_, i) => {
     const u = i / (count - 1);
     // How solid the surface is at this offset from the top of the strip.
     const inward = edge === 'top' ? u : 1 - u;
     const past = solid > 0 ? Math.max(0, (inward * height - solid) / Math.max(1, height - solid)) : inward;
-    // Under the open bar the fade holds on longer (1 - u², not (1 - u)²): it still acts at the name's foot.
-    return { offset: u, opacity: barLong ? 1 - past * past : Math.pow(1 - past, 2) };
+    const smoother = past * past * past * (past * (past * 6 - 15) + 10);
+    return { offset: u, opacity: barLong ? 1 - smoother : Math.pow(1 - past, 2) };
   });
   return (
     <View

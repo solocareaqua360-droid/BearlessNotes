@@ -9,7 +9,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost, { FlatFrostContext } from './DockFrost';
 import { GlassPortal } from './GlassPortal';
 import DockGlassFill, { useDockSurface } from './DockGlassFill';
-import NameHalo from './NameHalo';
 import { useDockGlass } from '../utils/dockGlass';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { CHROME_TOP } from '../constants/rail';
@@ -566,12 +565,6 @@ function TopNavBar({
           {plateFrost && (
             <>
               {!soft && <DockFrost style={StyleSheet.absoluteFill} radius={corners.plate} />}
-              {open && (
-                // A halo of the ground under the name, soft at its edge - no rim, no tint, no shadow (components/NameHalo).
-                <Animated.View pointerEvents="none" style={[styles.hugGlass, hugStyle]}>
-                  <NameHalo color={S.bg === 'transparent' ? S.chrome : S.bg} />
-                </Animated.View>
-              )}
               <View style={[styles.viewport, { borderRadius: pieceRadius }]}>
                 <Animated.View style={[StyleSheet.absoluteFill, rowsAway, titleRide]} pointerEvents={searchShown ? 'none' : 'box-none'}>
                 <Animated.View
@@ -698,9 +691,6 @@ function TopNavBar({
             ]}
           >
             {!soft && <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} />}
-            {/* Open: the buttons stand on the same unseen halo as the name (the user, 2026-10-29: «те саме для кнопок в правому
-                верхньому куті») - no capsule, rim or shadow of their own. */}
-            {open && <NameHalo color={S.bg === 'transparent' ? S.chrome : S.bg} />}
             {[
               ...(extras?.tools ?? []).map((t) => ({
                 key: `tool:${t.key}`,
