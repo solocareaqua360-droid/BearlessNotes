@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DockFrost, { FlatFrostContext } from './DockFrost';
 import { GlassPortal } from './GlassPortal';
 import DockGlassFill, { useDockSurface } from './DockGlassFill';
+import NameHalo from './NameHalo';
 import { useDockGlass } from '../utils/dockGlass';
 import { useLift, useTheme } from '../theme/ThemeProvider';
 import { CHROME_TOP } from '../constants/rail';
@@ -566,8 +567,9 @@ function TopNavBar({
             <>
               {!soft && <DockFrost style={StyleSheet.absoluteFill} radius={corners.plate} />}
               {open && (
-                <Animated.View pointerEvents="none" style={[styles.hugGlass, glassOn ? glassSurface : { backgroundColor: S.chrome, boxShadow: S.shadow }, hugStyle]}>
-                  {glassOn && <DockGlassFill soft={S} />}
+                // A halo of the ground under the name, soft at its edge - no rim, no tint, no shadow (components/NameHalo).
+                <Animated.View pointerEvents="none" style={[styles.hugGlass, hugStyle]}>
+                  <NameHalo color={S.bg === 'transparent' ? S.chrome : S.bg} />
                 </Animated.View>
               )}
               <View style={[styles.viewport, { borderRadius: pieceRadius }]}>
@@ -1441,8 +1443,6 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     height: TOP_NAV_H,
-    borderRadius: TOP_NAV_H / 2,
-    overflow: 'hidden',
   },
   openLabel: {
     fontSize: 17,
