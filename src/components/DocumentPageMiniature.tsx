@@ -1,7 +1,7 @@
 import type { ImageFrame } from '../utils/imageFrame';
 import { BlocksFontContext, NoteFontContext, resolveNoteFont } from '../utils/noteFont';
 import { listNumbers } from '../utils/documentBlocks';
-import { memo } from 'react';
+import { memo, useContext, useRef, useState } from 'react';
 import { IS_POINTER } from '../utils/pointer';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from './icons/Ionicons';
@@ -14,7 +14,6 @@ import { visibleBlocks } from '../utils/toggleBlocks';
 import { blockMatchesQuery } from '../utils/documentPreview';
 import DocumentTagsBlock from './DocumentTagsBlock';
 import { PAGE_HEADER_TOP, PAGE_SHEET_INSET, makeStyles as makeEditorStyles } from './documentEditorStyles';
-import { useContext } from 'react';
 import { PreviewDepthContext } from './previewDepth';
 import PagePreviewRow, { isLightRow } from './PagePreviewRow';
 import { useTextScale } from '../theme/ThemeProvider';
@@ -127,7 +126,23 @@ function DocumentPageMiniature({
   // As many rows as the card can show at all - a short block is about 26
   // of the page's points - rather than a flat 24 laid out and cut away.
   const fits = Math.ceil((height / scale + offsetY) / 26);
-  const shown = all.slice(from, from + Math.min(MAX_ROWS, Math.max(4, fits)));
+  const counted = all.slice(from, from + Math.min(MAX_ROWS, Math.max(4, fits)));
+  // ROWS BELOW THE CARD'S EDGE GO (2026-10-28): `fits` counts a row as a line of text, so a page of pictures had all of
+  // them laid out under the card's foot, cut away but still drawn - and Android prepares every bitmap it draws, seen or
+  // not, on every frame. Three map snapshots of «таблиці тестую» in its Start card were half of what overfilled the
+  // GPU's cache while that note folded back. Once the rows are laid out, the first one starting below the edge and all
+  // after it are dropped; the rows above keep their places, so the picture does not change.
+  const [cut, setCut] = useState<{ blocks: Block[]; at: number } | null>(null);
+  const cutAt = cut && cut.blocks === blocks ? cut.at : null;
+  const shown = cutAt === null ? counted : counted.slice(0, cutAt);
+  const rowsTop = useRef<number | null>(null);
+  const rowYs = useRef<number[]>([]);
+  const recut = () => {
+    if (rowsTop.current === null || cutAt !== null) return;
+    const edge = offsetY + height / scale;
+    const at = rowYs.current.findIndex((y) => y !== undefined && rowsTop.current! + y > edge);
+    if (at > 0) setCut({ blocks, at });
+  };
   const depth = useContext(PreviewDepthContext);
   const textScale = useTextScale();
   return (
@@ -174,9 +189,24 @@ function DocumentPageMiniature({
             a task's row, a link card's title - and only the small print
             under them is left. DayPageMiniature learned this the hard
             way and says so too. */}
-        <ScrollView scrollEnabled={false} contentContainerStyle={styles.rows}>
+        <ScrollView
+          scrollEnabled={false}
+          contentContainerStyle={styles.rows}
+          onLayout={(e) => {
+            rowsTop.current = e.nativeEvent.layout.y + styles.rows.paddingTop;
+            recut();
+          }}
+        >
           <View style={editorStyles.blockListContainer}>
-            {shown.map((item, index) => {
+            {shown.map((item, index) => (
+              <View
+                key={item.id}
+                onLayout={(e) => {
+                  rowYs.current[index] = e.nativeEvent.layout.y;
+                  recut();
+                }}
+              >
+              {(() => {
               numbered = numbers[from + index];
               // Same run as BlockList's own - the miniature draws the
               // same indent the editor does, or a card would show a
@@ -241,7 +271,9 @@ function DocumentPageMiniature({
                   preview
                 />
               );
-            })}
+              })()}
+              </View>
+            ))}
           </View>
           <View style={editorStyles.addBlockRow}>
             <View style={editorStyles.addBlock}>

@@ -16,6 +16,7 @@ import { DeskVisibilityContext, makeVisibilityBox, setBoxVisible, type Visibilit
 import { DeskContext, DesksControlContext, registerDesks, useDesks } from './desks';
 import { threeDesksOnly } from './deskRegistry';
 import { useRenderTimer } from '../utils/perfWatch';
+import { useBelowCovered } from '../utils/belowCover';
 
 // Material top tabs, not bottom tabs: the navigator the desks were built
 // on when they were swiped between. Its "top" is nominal here; the tab
@@ -35,12 +36,16 @@ export default function Tabs() {
     registerDesks(control);
     return () => registerDesks(null);
   }, [control]);
+  // Out of the tree while a page covers them (utils/belowCover).
+  const covered = useBelowCovered();
   return (
-    <DesksControlContext.Provider value={control}>
-      <SideDrawersProvider>
-        <TabsWithDrawers desks={desks.filter((key) => !!deskScreenFor(key))} />
-      </SideDrawersProvider>
-    </DesksControlContext.Provider>
+    <View style={[styles.fill, covered && styles.gone]}>
+      <DesksControlContext.Provider value={control}>
+        <SideDrawersProvider>
+          <TabsWithDrawers desks={desks.filter((key) => !!deskScreenFor(key))} />
+        </SideDrawersProvider>
+      </DesksControlContext.Provider>
+    </View>
   );
 }
 
@@ -378,5 +383,8 @@ const EDGE_BAND = 32;
 const styles = StyleSheet.create({
   fill: {
     flex: 1,
+  },
+  gone: {
+    display: 'none',
   },
 });

@@ -6,6 +6,7 @@ import { openMark } from '../utils/openTiming';
 import { backMarkPop } from '../utils/perfWatch';
 import { chromeAbort, chromeBackBegin, chromeEnd, chromeOpenArrive, chromeT } from '../utils/chromeMorph';
 import { cardBand, measureCard, setFoldingInto, takeMorphFrom, whenLanded, type Rect } from '../utils/morph';
+import { coverBelow } from '../utils/belowCover';
 import { foldTransforms } from './foldGeometry';
 import { captureRef, releaseCapture } from 'react-native-view-shot';
 import { endPageFold, startPageFold } from '../utils/pageFold';
@@ -82,6 +83,14 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
     chromeEnd();
   };
 
+  // The whole screen is the page now: the desks under it stop being drawn (utils/belowCover), until the way back.
+  const handBack = useRef<(() => Promise<void>) | null>(null);
+  const goingBack = useRef(false);
+  const onGrown = () => {
+    if (!goingBack.current && !handBack.current) handBack.current = coverBelow();
+  };
+  useEffect(() => () => void handBack.current?.(), []);
+
   const start = () => {
     if (started.current || !landed.current || !box.current) return;
     started.current = true;
@@ -102,7 +111,9 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           shown.value = 1;
-          t.value = withTiming(1, { duration: OUT_MS, easing: EASE });
+          t.value = withTiming(1, { duration: OUT_MS, easing: EASE }, (finished) => {
+            if (finished) runOnJS(onGrown)();
+          });
         });
       });
     })();
@@ -161,134 +172,140 @@ function Growing({ morphKey, navigation, from, children }: { morphKey: string; n
       passing = true;
       // A growth that had not started yet must not start under the fold.
       started.current = true;
-      const frame = box.current;
-      // A note scrolled away from its top folds LIVE, rolling back to the top on the fold's own clock (utils/pageScroll):
-      // a photograph would fold the scrolled page and land as it stood, then blink into the card's top. Such a page keeps
-      // the screen to the end of the fold (no picture to hand over to).
-      const scroller = pageScroller(morphKey);
-      const scrolledBy = scroller?.offset() ?? 0;
-      const rolling = !!scroller && scrolledBy > 2;
-      // The page as it stands, photographed alongside the bar and the dock
-      // (components/PageFold: the picture folds, the screen goes at once).
-      const pagePicture = !rolling && pageRef.current
-        ? captureRef(pageRef.current, { format: 'jpg', quality: 0.92, result: 'tmpfile' }).catch(() => null)
-        : Promise.resolve(null);
-      const chromeCarried = chromeBackBegin();
-      const release = (picture: string | null) => {
-        if (!picture) return;
-        try {
-          releaseCapture(picture);
-        } catch {
-          // Already gone.
-        }
-      };
-      // Once, whatever happens to the fold: an interrupted animation
-      // (finished false) used to leave the note on the stack, unseen, with
-      // the desks' bar waiting for it to go.
-      let left = false;
-      let carrying = false;
-      const leave = () => {
-        if (left) return;
-        left = true;
-        backMarkPop();
-        shown.value = 0;
-        navigation.dispatch(e.data.action as never);
-        // The list's own chrome mounts with its focus, after the pop: the
-        // stand-in waits for it before it goes.
-        if (carrying) chromeEnd('list');
-      };
-      // The screen goes once the chrome's stand-in is settled one way or
-      // the other (it covers the real chrome the pop changes).
-      chromeCarried.then((c) => {
-        carrying = c;
-        // Left already (the safety below): the stand-in still goes.
-        if (c && left) chromeEnd('list');
-      });
-      const leaveWhenChromeIs = () => {
-        chromeCarried.then(leave);
-      };
-      measureCard(morphKey).then((card) => {
-        if (!card || !frame) {
-          pagePicture.then(release);
-          chromeCarried.then((c) => {
-            if (c) chromeAbort();
-          });
-          const pop = () => navigation.dispatch(e.data.action as never);
-          shown.value = withTiming(0, { duration: 160 }, (finished) => {
-            if (finished) runOnJS(pop)();
-          });
-          return;
-        }
-        cx.value = card.x - frame.x;
-        cy.value = card.y - frame.y;
-        cw.value = card.width;
-        ch.value = card.height - band;
-        // THE FOLD STARTS AT ONCE, on the page itself (2026-10-06). It used
-        // to wait for the photographs below - 80-90 ms of a still page
-        // after "back", every time (the phone's trace). The picture takes
-        // over mid-way, on the same clock (`t`), so the two are the same
-        // frame by frame and the hand-over cannot be seen.
-        const began = Date.now();
-        let folded = false;
-        let foldId: number | null = null;
-        const onFolded = () => {
-          folded = true;
-          setFoldingInto(null);
-          if (foldId !== null) endPageFold(foldId);
-          // Folded as itself, the page goes AT ONCE: the list's own card is
-          // right under it, in the same place. It used to stay up until the
-          // pop had been committed, and for that half second the folded page
-          // stood where the card is and then blinked into it, taking every
-          // tap meanwhile (2026-10-05).
-          else leaveWhenChromeIs();
-        };
-        setLeaving(true);
-        setFoldingInto(morphKey);
-        if (rolling && scroller) {
-          // AT THE TOP WELL BEFORE IT LANDS, however long the note (the user, 2026-10-25: «регулювати швидкість прокрутки
-          // назад в залежності від довжини документу, щоб він встигав докручуватись до початку; вихід швидкий, ривка ніхто
-          // не помітить»): the roll is done by 60% of the fold, and a note scrolled far jumps at once to a screen and a half
-          // from its top and rolls only that - the page is already small by then, the jump is not seen.
-          const start = Math.min(scrolledBy, ROLL_FAR);
-          scroller.from.value = start;
-          scroller.roll.value = 1;
-          scroller.roll.value = withTiming(0, { duration: Math.round(BACK_MS * 0.6), easing: Easing.out(Easing.cubic) });
-        }
-        t.value = withTiming(0, { duration: BACK_MS, easing: EASE }, (finished) => {
-          if (finished) shown.value = 0;
-          runOnJS(onFolded)();
-        });
-        chromeCarried.then((c) => {
-          if (!c) return;
-          // The chrome catches up in what is left of the page's time.
-          const remaining = Math.max(120, BACK_MS - (Date.now() - began));
-          chromeT.value = withTiming(0, { duration: remaining, easing: EASE });
-        });
-        // THE PICTURE TAKES OVER, THE SCREEN GOES (components/PageFold). The
-        // note's screen used to stay over the list for the whole fold and a
-        // beat after it, taking the first tap meant for the list. Once the
-        // picture stands where the page is, the page hides and the screen
-        // is taken away under it; the list is live for the rest of the fold.
-        pagePicture.then((picture) => {
+      goingBack.current = true;
+      // The desks first: the fold lands on their card, which has to be laid out where it was.
+      const desksBack = handBack.current?.() ?? Promise.resolve();
+      handBack.current = null;
+      desksBack.then(() => {
+        const frame = box.current;
+        // A note scrolled away from its top folds LIVE, rolling back to the top on the fold's own clock (utils/pageScroll):
+        // a photograph would fold the scrolled page and land as it stood, then blink into the card's top. Such a page keeps
+        // the screen to the end of the fold (no picture to hand over to).
+        const scroller = pageScroller(morphKey);
+        const scrolledBy = scroller?.offset() ?? 0;
+        const rolling = !!scroller && scrolledBy > 2;
+        // The page as it stands, photographed alongside the bar and the dock
+        // (components/PageFold: the picture folds, the screen goes at once).
+        const pagePicture = !rolling && pageRef.current
+          ? captureRef(pageRef.current, { format: 'jpg', quality: 0.92, result: 'tmpfile' }).catch(() => null)
+          : Promise.resolve(null);
+        const chromeCarried = chromeBackBegin();
+        const release = (picture: string | null) => {
           if (!picture) return;
-          if (folded || left) {
-            release(picture);
+          try {
+            releaseCapture(picture);
+          } catch {
+            // Already gone.
+          }
+        };
+        // Once, whatever happens to the fold: an interrupted animation
+        // (finished false) used to leave the note on the stack, unseen, with
+        // the desks' bar waiting for it to go.
+        let left = false;
+        let carrying = false;
+        const leave = () => {
+          if (left) return;
+          left = true;
+          backMarkPop();
+          shown.value = 0;
+          navigation.dispatch(e.data.action as never);
+          // The list's own chrome mounts with its focus, after the pop: the
+          // stand-in waits for it before it goes.
+          if (carrying) chromeEnd('list');
+        };
+        // The screen goes once the chrome's stand-in is settled one way or
+        // the other (it covers the real chrome the pop changes).
+        chromeCarried.then((c) => {
+          carrying = c;
+          // Left already (the safety below): the stand-in still goes.
+          if (c && left) chromeEnd('list');
+        });
+        const leaveWhenChromeIs = () => {
+          chromeCarried.then(leave);
+        };
+        measureCard(morphKey).then((card) => {
+          if (!card || !frame) {
+            pagePicture.then(release);
+            chromeCarried.then((c) => {
+              if (c) chromeAbort();
+            });
+            const pop = () => navigation.dispatch(e.data.action as never);
+            shown.value = withTiming(0, { duration: 160 }, (finished) => {
+              if (finished) runOnJS(pop)();
+            });
             return;
           }
-          foldId = startPageFold({
-            uri: picture,
-            frame,
-            card: { x: card.x - frame.x, y: card.y - frame.y, width: card.width, height: card.height - band },
-            squareBottom: band > 0,
-            sheetY: sheetY.value,
-            t,
-            // A frame after the picture has loaded: drawn, so hiding the page
-            // under it changes nothing anyone can see.
-            onShown: () => requestAnimationFrame(leaveWhenChromeIs),
+          cx.value = card.x - frame.x;
+          cy.value = card.y - frame.y;
+          cw.value = card.width;
+          ch.value = card.height - band;
+          // THE FOLD STARTS AT ONCE, on the page itself (2026-10-06). It used
+          // to wait for the photographs below - 80-90 ms of a still page
+          // after "back", every time (the phone's trace). The picture takes
+          // over mid-way, on the same clock (`t`), so the two are the same
+          // frame by frame and the hand-over cannot be seen.
+          const began = Date.now();
+          let folded = false;
+          let foldId: number | null = null;
+          const onFolded = () => {
+            folded = true;
+            setFoldingInto(null);
+            if (foldId !== null) endPageFold(foldId);
+            // Folded as itself, the page goes AT ONCE: the list's own card is
+            // right under it, in the same place. It used to stay up until the
+            // pop had been committed, and for that half second the folded page
+            // stood where the card is and then blinked into it, taking every
+            // tap meanwhile (2026-10-05).
+            else leaveWhenChromeIs();
+          };
+          setLeaving(true);
+          setFoldingInto(morphKey);
+          if (rolling && scroller) {
+            // AT THE TOP WELL BEFORE IT LANDS, however long the note (the user, 2026-10-25: «регулювати швидкість прокрутки
+            // назад в залежності від довжини документу, щоб він встигав докручуватись до початку; вихід швидкий, ривка ніхто
+            // не помітить»): the roll is done by 60% of the fold, and a note scrolled far jumps at once to a screen and a half
+            // from its top and rolls only that - the page is already small by then, the jump is not seen.
+            const start = Math.min(scrolledBy, ROLL_FAR);
+            scroller.from.value = start;
+            scroller.roll.value = 1;
+            scroller.roll.value = withTiming(0, { duration: Math.round(BACK_MS * 0.6), easing: Easing.out(Easing.cubic) });
+          }
+          t.value = withTiming(0, { duration: BACK_MS, easing: EASE }, (finished) => {
+            if (finished) shown.value = 0;
+            runOnJS(onFolded)();
           });
+          chromeCarried.then((c) => {
+            if (!c) return;
+            // The chrome catches up in what is left of the page's time.
+            const remaining = Math.max(120, BACK_MS - (Date.now() - began));
+            chromeT.value = withTiming(0, { duration: remaining, easing: EASE });
+          });
+          // THE PICTURE TAKES OVER, THE SCREEN GOES (components/PageFold). The
+          // note's screen used to stay over the list for the whole fold and a
+          // beat after it, taking the first tap meant for the list. Once the
+          // picture stands where the page is, the page hides and the screen
+          // is taken away under it; the list is live for the rest of the fold.
+          pagePicture.then((picture) => {
+            if (!picture) return;
+            if (folded || left) {
+              release(picture);
+              return;
+            }
+            foldId = startPageFold({
+              uri: picture,
+              frame,
+              card: { x: card.x - frame.x, y: card.y - frame.y, width: card.width, height: card.height - band },
+              squareBottom: band > 0,
+              sheetY: sheetY.value,
+              t,
+              // A frame after the picture has loaded: drawn, so hiding the page
+              // under it changes nothing anyone can see.
+              onShown: () => requestAnimationFrame(leaveWhenChromeIs),
+            });
+          });
+          // And if nothing ever reports at all.
+          setTimeout(leave, BACK_MS + 400);
         });
-        // And if nothing ever reports at all.
-        setTimeout(leave, BACK_MS + 400);
       });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
