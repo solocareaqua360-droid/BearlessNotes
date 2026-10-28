@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Defs, Ellipse, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import { useBlurTarget, useInsideBlurTarget } from './GlassTarget';
 import { useFrostPaused } from './frostPause';
@@ -60,7 +60,8 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
   // The inside keeps the darkness it had: what the old film and coat covered together, the new coat covers over a fainter film.
   const filmOf = (i: number) => ((FILM_ALPHA[tint] ?? 0.44) * i) / 100;
   const covered = 1 - (1 - filmOf(baseIntensity)) * (1 - baseCoat);
-  const refractCoat = Math.min(0.97, 1 - (1 - covered) / (1 - filmOf(REFRACT_FILM)));
+  // A bubble is clearer than a slab: the middle keeps a little less coat than the old glass (0.85 of it).
+  const refractCoat = Math.min(0.97, 0.85 * (1 - (1 - covered) / (1 - filmOf(REFRACT_FILM))));
   return (
     <View
       style={StyleSheet.absoluteFill}
@@ -109,19 +110,29 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
             {/* Refracting (features.glassRefract): the body's VOLUME - lighter at the top, a shade deeper at the foot - and an
                 iridescent inner rim, the round button's soap-bubble lens (DeskDock's pressLens) said quietly (the user, 2026-10-28:
                 «внутрішня частина видається пласкою... ефект мильної бульки... Apple робить переливами»). */}
+            {/* A TUBE, not a slab (the user, 2026-10-28, the dock beside the round button's bubble: «у кульки ефект бульбашки, а
+                у дока ефект плаского скельця... ми знаємо, як виглядають бульки»): glass curved across its height is brighter at
+                its top and bottom edges than in its middle, which stays the clearest. */}
             <LinearGradient id={`${uid}-body`} x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#FFFFFF" stopOpacity={soft.dark ? 0.09 : 0.28} />
-              <Stop offset="0.45" stopColor="#FFFFFF" stopOpacity={0} />
-              <Stop offset="0.6" stopColor="#000000" stopOpacity={0} />
-              <Stop offset="1" stopColor="#000000" stopOpacity={soft.dark ? 0.16 : 0.05} />
+              <Stop offset="0" stopColor="#FFFFFF" stopOpacity={soft.dark ? 0.16 : 0.42} />
+              <Stop offset="0.2" stopColor="#FFFFFF" stopOpacity={soft.dark ? 0.05 : 0.12} />
+              <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity={0} />
+              <Stop offset="0.8" stopColor="#FFFFFF" stopOpacity={soft.dark ? 0.03 : 0.08} />
+              <Stop offset="1" stopColor="#FFFFFF" stopOpacity={soft.dark ? 0.12 : 0.3} />
             </LinearGradient>
+            {/* The bubble's own rim (DeskDock's pressLens, at its strength): round the very edge. */}
             <LinearGradient id={`${uid}-iri`} x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.55} />
-              <Stop offset="0.3" stopColor="#B9E2FF" stopOpacity={0.4} />
-              <Stop offset="0.55" stopColor="#D9BCFF" stopOpacity={0.32} />
-              <Stop offset="0.8" stopColor="#C6FFD9" stopOpacity={0.38} />
-              <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0.5} />
+              <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.95} />
+              <Stop offset="0.3" stopColor="#B9E2FF" stopOpacity={0.75} />
+              <Stop offset="0.55" stopColor="#D9BCFF" stopOpacity={0.6} />
+              <Stop offset="0.8" stopColor="#C6FFD9" stopOpacity={0.7} />
+              <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0.9} />
             </LinearGradient>
+            {/* A window's reflection near the top-left, as on any bubble. */}
+            <RadialGradient id={`${uid}-glint`} cx="0.5" cy="0.5" rx="0.5" ry="0.5">
+              <Stop offset="0" stopColor="#FFFFFF" stopOpacity={soft.dark ? 0.22 : 0.55} />
+              <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+            </RadialGradient>
             <LinearGradient id={`${uid}-rim`} x1="0" y1="1" x2="0" y2="0">
               <Stop offset="0" stopColor={g.rim} stopOpacity={g.rimOpacity} />
               <Stop offset="0.45" stopColor={g.rim} stopOpacity={g.rimOpacity * 0.4} />
@@ -144,13 +155,17 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
               strokeWidth={ring.width}
             />
           ))}
-          {refract && <Rect x={RING} y={RING} width={Math.max(0, w - RING * 2)} height={Math.max(0, h - RING * 2)} rx={Math.max(0, r - RING)} fill={`url(#${uid}-body)`} />}
+          {refract && <Rect x={0} y={0} width={w} height={h} rx={r} fill={`url(#${uid}-body)`} />}
+          {refract && <Ellipse cx={Math.min(r * 0.9, w * 0.2)} cy={h * 0.24} rx={Math.min(r * 0.7, w * 0.16)} ry={h * 0.14} fill={`url(#${uid}-glint)`} />}
+          {refract && (
+            <Rect x={RING + 0.5} y={RING + 0.5} width={Math.max(0, w - RING * 2 - 1)} height={Math.max(0, h - RING * 2 - 1)} rx={Math.max(0, r - RING - 0.5)} fill="none" stroke="#FFFFFF" strokeOpacity={soft.dark ? 0.18 : 0.5} strokeWidth={1} />
+          )}
           {refract ? (
-            <Rect x={RING + 0.5} y={RING + 0.5} width={Math.max(0, w - RING * 2 - 1)} height={Math.max(0, h - RING * 2 - 1)} rx={Math.max(0, r - RING - 0.5)} fill="none" stroke={`url(#${uid}-iri)`} strokeOpacity={soft.dark ? 0.55 : 0.8} strokeWidth={1} />
+            <Rect x={0.8} y={0.8} width={Math.max(0, w - 1.6)} height={Math.max(0, h - 1.6)} rx={Math.max(0, r - 0.8)} fill="none" stroke={`url(#${uid}-iri)`} strokeOpacity={soft.dark ? 0.7 : 0.85} strokeWidth={1.6} />
           ) : (
             <Rect x={2.5} y={2.5} width={Math.max(0, w - 5)} height={Math.max(0, h - 5)} rx={Math.max(0, r - 2.5)} fill="none" stroke={`url(#${uid}-rim)`} strokeOpacity={soft.dark ? 1 : 0.7} strokeWidth={1.2} />
           )}
-          <Rect x={0.6} y={0.6} width={Math.max(0, w - 1.2)} height={Math.max(0, h - 1.2)} rx={Math.max(0, r - 0.6)} fill="none" stroke={`url(#${uid}-spec)`} strokeWidth={1.2} />
+          {!refract && <Rect x={0.6} y={0.6} width={Math.max(0, w - 1.2)} height={Math.max(0, h - 1.2)} rx={Math.max(0, r - 0.6)} fill="none" stroke={`url(#${uid}-spec)`} strokeWidth={1.2} />}
         </Svg>
       )}
     </View>
