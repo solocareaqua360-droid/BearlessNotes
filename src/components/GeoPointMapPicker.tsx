@@ -65,6 +65,7 @@ export default function GeoPointMapPicker({
           <Text style={styles.hint}>Торкніться мапи, щоб поставити чи перемістити точку</Text>
           <View style={styles.mapWrap}>
             <Map
+              androidView="texture"
               style={styles.fill}
               mapStyle={MAP_STYLE_URL}
               onPress={(e: { nativeEvent: PressEvent }) => {

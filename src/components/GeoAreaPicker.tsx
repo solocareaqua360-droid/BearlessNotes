@@ -125,7 +125,16 @@ export default function GeoAreaPicker({
           </View>
           <Text style={styles.hint}>Перетягніть рамку чи її кути, або спершу знайдіть місце</Text>
           <View style={styles.mapWrap} onLayout={handleMapLayout}>
-            <Map ref={mapRef} style={styles.fill} mapStyle={MAP_STYLE_URL}>
+            <Map
+              ref={mapRef}
+              style={styles.fill}
+              mapStyle={MAP_STYLE_URL}
+        // TextureView, not the default GLSurfaceView (2026-10-28, the user: the bar, the dock and the «⋯» menu over the
+        // map were see-through, and the map seemed to slide out of the opening menu): a SurfaceView is drawn outside the
+        // view tree, so the app's blur cannot see it - the glass over it showed nothing, and the growing menu panel
+        // carried a raw piece of map. A TextureView is part of the tree, so the shared blur blurs it like any screen.
+        androidView="texture"
+      >
               <Camera
                 ref={cameraRef}
                 initialViewState={initialBounds ? { bounds: initialBounds } : { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM }}
