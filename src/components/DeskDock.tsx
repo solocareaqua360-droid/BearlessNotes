@@ -13,7 +13,7 @@ import { FEATURES } from '../features';
 import { morphCardRef } from '../utils/morph';
 import { ASSIST_KEY, assistFlown, assistHeld, assistWash, onAssistHeld } from '../utils/assistMorph';
 import BalloonMark from './BalloonMark';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Defs, Ellipse, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { deg } from '../utils/angle';
 
 // THE DESK DOCK (2026-10-12, the user's sketch and words: «лупа відривається, як крапля, і приєднується до плюса»).
@@ -145,9 +145,58 @@ function GrowOnTouch({ style, children }: { style: object; children: ReactNode }
     </Animated.View>
   );
 }
+// «WHERE YOU ARE» AS A BUBBLE (the user, 2026-10-28, with the glass capsules: «помаранчеву кульку ледь помаранчевою, майже
+// прозорою; ефект збільшення іконки зовсім трохи; ефект мильної бульки по краях, трохи зміщено від центру; ледь помітний
+// розбілений блік») - features.glassRefract. The fill is the accent at a breath; the rim is the round button's soap film
+// (pressLens) with a second, fainter film a little off centre; a milky glint up and to the left.
+function hereWash(soft: SoftTokens): string {
+  const a = soft.accent.replace('#', '');
+  const n = parseInt(a.length === 3 ? a.split('').map((c) => c + c).join('') : a, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${soft.dark ? 0.14 : 0.06})`;
+}
+function HereBubble({ soft }: { soft: SoftTokens }) {
+  // On white the pale film vanishes: the light theme's film is deeper and a fine dark line holds the bubble's edge.
+  const light = !soft.dark;
+  return (
+    <Svg width="100%" height="100%" viewBox={`0 0 ${BEAD_W} ${BEAD_H}`} preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
+      <Defs>
+        <LinearGradient id="hereFilm" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor={light ? '#8FC4FF' : '#FFFFFF'} stopOpacity={0.9} />
+          <Stop offset="0.3" stopColor={light ? '#7FB4FF' : '#B9E2FF'} stopOpacity={0.7} />
+          <Stop offset="0.55" stopColor={light ? '#B08CFF' : '#D9BCFF'} stopOpacity={0.6} />
+          <Stop offset="0.8" stopColor={light ? '#6FD9A0' : '#C6FFD9'} stopOpacity={0.7} />
+          <Stop offset="1" stopColor={light ? '#FFB37A' : '#FFFFFF'} stopOpacity={0.85} />
+        </LinearGradient>
+        <LinearGradient id="hereFilm2" x1="1" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#FFD6F0" stopOpacity={0.6} />
+          <Stop offset="0.5" stopColor="#B9E2FF" stopOpacity={0.15} />
+          <Stop offset="1" stopColor="#FFF3C4" stopOpacity={0.55} />
+        </LinearGradient>
+        <RadialGradient id="hereGlint" cx="0.5" cy="0.5" rx="0.5" ry="0.5">
+          <Stop offset="0" stopColor="#FFFFFF" stopOpacity={soft.dark ? 0.2 : 0.9} />
+          <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx={BEAD_W * 0.36} cy={BEAD_H * 0.3} rx={BEAD_W * 0.22} ry={BEAD_H * 0.15} fill="url(#hereGlint)" />
+      <Rect x={2.6} y={1.6} width={BEAD_W - 4.4} height={BEAD_H - 4.4} rx={(BEAD_H - 4.4) / 2} fill="none" stroke="url(#hereFilm2)" strokeOpacity={soft.dark ? 0.5 : 0.7} strokeWidth={1.2} />
+      {light && <Rect x={0.5} y={0.5} width={BEAD_W - 1} height={BEAD_H - 1} rx={(BEAD_H - 1) / 2} fill="none" stroke="#000000" strokeOpacity={0.07} strokeWidth={1} />}
+      <Rect x={1.2} y={1.2} width={BEAD_W - 2.4} height={BEAD_H - 2.4} rx={(BEAD_H - 2.4) / 2} fill="none" stroke="url(#hereFilm)" strokeOpacity={soft.dark ? 0.7 : 0.75} strokeWidth={1.4} />
+    </Svg>
+  );
+}
+// The glyph under the bubble, a touch larger - the lens on what is beneath it.
+function useHereScale(active: boolean) {
+  const k = useSharedValue(active && FEATURES.glassRefract ? 1.08 : 1);
+  useEffect(() => {
+    k.value = withTiming(active && FEATURES.glassRefract ? 1.08 : 1, { duration: 220, easing: Easing.out(Easing.cubic) });
+  }, [active, k]);
+  return useAnimatedStyle(() => ({ transform: [{ scale: k.value }] }));
+}
+
 function DeskBeadButton({ d, i, soft, onPick, active, onLens }: { d: DeskBead; i: number; soft: SoftTokens; onPick: (i: number) => void; active?: boolean; onLens: (i: number | null) => void }) {
   const glassOn = useDockGlass();
   const g = useGrow();
+  const here = useHereScale(!!active);
   return (
     <Pressable
       onPress={() => {
@@ -166,7 +215,9 @@ function DeskBeadButton({ d, i, soft, onPick, active, onLens }: { d: DeskBead; i
       style={[styles.bead, { left: PILL_PAD + i * BEAD_W, top: (PILL_H - BEAD_H) / 2, width: BEAD_W, height: BEAD_H }]}
     >
       <Animated.View style={g.style}>
-        <Ionicons name={d.icon as keyof typeof Ionicons.glyphMap} size={24} color={active ? soft.accent : dockInk(soft, glassOn)} />
+        <Animated.View style={here}>
+          <Ionicons name={d.icon as keyof typeof Ionicons.glyphMap} size={24} color={active ? soft.accent : dockInk(soft, glassOn)} />
+        </Animated.View>
         {d.dot && <View style={[styles.toolDot, { backgroundColor: '#F08A3C', borderColor: soft.chrome }]} />}
       </Animated.View>
     </Pressable>
@@ -177,6 +228,7 @@ function DeskBeadButton({ d, i, soft, onPick, active, onLens }: { d: DeskBead; i
 function AssistBead({ i, soft, active, onPress, onLens }: { i: number; soft: SoftTokens; active: boolean; onPress: () => void; onLens: (i: number | null) => void }) {
   const glassOn = useDockGlass();
   const g = useGrow();
+  const here = useHereScale(active);
   // Flown out into its window: the place stands empty (utils/assistMorph).
   const away = useAnimatedStyle(() => ({ opacity: 1 - assistFlown.value }));
   return (
@@ -196,7 +248,9 @@ function AssistBead({ i, soft, active, onPress, onLens }: { i: number; soft: Sof
       style={[styles.bead, { left: PILL_PAD + i * BEAD_W, top: (PILL_H - BEAD_H) / 2, width: BEAD_W, height: BEAD_H }]}
     >
       <Animated.View style={[g.style, away]}>
-        <BalloonMark size={26} color={active ? soft.accent : dockInk(soft, glassOn)} />
+        <Animated.View style={here}>
+          <BalloonMark size={26} color={active ? soft.accent : dockInk(soft, glassOn)} />
+        </Animated.View>
       </Animated.View>
     </Pressable>
   );
@@ -585,8 +639,11 @@ export default function DeskDock({
               pointerEvents="none"
               // «Where you are» is the accent now (the user, 2026-10-23): the orange that used to ring the AI button marks
               // the place in front - the balloon too, while its window is open.
-              style={[styles.capsule, { backgroundColor: assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
-            />
+              // (`assist` is the balloon being IN the dock, not its window being open - so the bubble takes it over too.)
+              style={[styles.capsule, { backgroundColor: FEATURES.glassRefract ? hereWash(soft) : assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
+            >
+              {FEATURES.glassRefract && <HereBubble soft={soft} />}
+            </Animated.View>
           )}
           {desks.map((d, i) => (
             <DeskBeadButton key={d.key} d={d} i={i} soft={soft} onPick={pick} active={tools ? d.active : !!assist && i === shownIndex} onLens={onLens} />
