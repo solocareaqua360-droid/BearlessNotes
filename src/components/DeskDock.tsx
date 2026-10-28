@@ -45,16 +45,18 @@ const BEAD_W = 56;
 const BEAD_H = 52;
 // The places stand off the pill's ends (features.glassRefract: 10, so «where you are» has room to be a wide capsule as in
 // Craft - the user, 2026-10-29; otherwise 4).
-const PILL_PAD = FEATURES.glassRefract ? 10 : 4;
+const PILL_PAD = FEATURES.glassRefract ? 14 : 4;
 // «Where you are» at rest: a capsule wider than a place and lower than it (Craft's), not a circle (features.glassRefract).
-const HERE_GROW = FEATURES.glassRefract ? 6 : 0;
-const REST_H = FEATURES.glassRefract ? 44 : BEAD_H;
+// Then (2026-10-29): «пропорційно збільшити кульку, бо вона сильно відстає від гори та низу» - as tall as a place (4 off the
+// pill's top and bottom), and as much wider.
+const HERE_GROW = FEATURES.glassRefract ? 11 : 0;
+const REST_H = BEAD_H;
 // The lens under a held place (see onLens): wider than a place, taller than the dock.
 const LENS_W = 92;
 const LENS_H = 88;
 // The pill without its lens zone, and with it.
-const PILL_CORE = 185 + (FEATURES.glassRefract ? 6 : 0);
-const PILL_FULL = 237 + (FEATURES.glassRefract ? 6 : 0);
+const PILL_CORE = 185 + (FEATURES.glassRefract ? 10 : 0);
+const PILL_FULL = 237 + (FEATURES.glassRefract ? 10 : 0);
 // The desks' capsule as drawn at rest - the note's dock capsule is the same width, so the two docks stand alike (2026-10-23).
 export const DESK_PILL_W = PILL_FULL;
 // The round button for the AI conversation: the same size as «+», 4 to its left.
@@ -646,9 +648,9 @@ export default function DeskDock({
               // «Where you are» is the accent now (the user, 2026-10-23): the orange that used to ring the AI button marks
               // the place in front - the balloon too, while its window is open.
               // (`assist` is the balloon being IN the dock, not its window being open - so the bubble takes it over too.)
-              // Some weight of its own, the dock lighter round it (the user, 2026-10-29: «масовість кульки... трохи збільш, а
-              // масовість самого доку трохи зменш»).
-              style={[styles.capsule, { backgroundColor: FEATURES.glassRefract ? (soft.dark ? 'rgba(255,255,255,0.10)' : 'rgba(30,30,28,0.06)') : assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
+              // MATTE on a clear dock, not the other way round (the user, 2026-10-29: «виглядає так, ніби кулька прозора, а
+              // капсула матова, а треба навпаки»): a dense milk in the light theme, a frosted grey in the dark one.
+              style={[styles.capsule, { backgroundColor: FEATURES.glassRefract ? (soft.dark ? 'rgba(92,92,98,0.62)' : 'rgba(255,255,255,0.82)') : assist ? assistWash(soft.dark) : soft.fillSolid }, capStyle]}
             >
               {FEATURES.glassRefract && <HereBubble soft={soft} />}
             </Animated.View>

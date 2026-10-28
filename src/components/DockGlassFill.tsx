@@ -70,7 +70,7 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
   const filmOf = (i: number) => ((FILM_ALPHA[tint] ?? 0.44) * i) / 100;
   const covered = 1 - (1 - filmOf(baseIntensity)) * (1 - baseCoat);
   // A bubble is clearer than a slab, and a lens must show what it enlarges: the middle keeps 0.48 of the old glass's coat.
-  const refractCoat = Math.min(0.97, (airy ? 0.34 : 0.48) * (1 - (1 - covered) / (1 - filmOf(REFRACT_FILM))));
+  const refractCoat = Math.min(0.97, (airy ? 0.22 : 0.48) * (1 - (1 - covered) / (1 - filmOf(REFRACT_FILM))));
   return (
     <View
       style={StyleSheet.absoluteFill}
