@@ -17,10 +17,10 @@ import { useRenderTimer } from '../utils/perfWatch';
 const STOPS = 8;
 
 // `solid`: points at the edge that stay fully covered before the fade begins.
-// `bar`: this is the fade under the top bar (kept as a mark: the open bar's blur band does the rest - TopEdgeBlur).
+// `bar`: this is the fade under the top bar (a mark only: with the open bar the name carries its own small glass - TopNavBar).
 function EdgeFade({ edge, color, height: given = 36, solid: givenSolid = 0, bar }: { edge: 'top' | 'bottom'; color: string; height?: number; solid?: number; bar?: boolean | 'roomy' }) {
   useRenderTimer('Край, що тане');
-  // Under the open bar the band of blur (components/TopEdgeBlur) keeps the name readable: this fade stays as it always was.
+  // Under the open bar the name's own glass keeps it readable (TopNavBar's HugContext): this fade stays as it always was.
   void bar;
   const height = given;
   const solid = givenSolid;
