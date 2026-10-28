@@ -3,14 +3,16 @@ import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from '
 import * as Clipboard from 'expo-clipboard';
 import {
   Camera,
+  GeoJSONSource,
+  Layer,
   LocationManager,
   Map,
   Marker,
   UserLocation,
   type CameraRef,
+  type GeoJSONSourceRef,
   type ViewStateChangeEvent,
 } from '@maplibre/maplibre-react-native';
-import Supercluster, { type PointFeature } from 'supercluster';
 import { Ionicons } from './icons/Ionicons';
 import { useTheme } from '../theme/ThemeProvider';
 import { MAP_STYLE_URL } from '../utils/geoMapStyle';
@@ -42,15 +44,8 @@ const LABEL_MIN_ZOOM = 13;
 
 export type GeoMapPoint = { id: string; title: string; lat: number; lng: number };
 
-type PointProps = { pointId: string; title: string };
-
-// The FIRST slice's plain pins now go through supercluster: a point
-// stands alone once the map is zoomed in past where its neighbours would
-// collide with it, and a bubble with a count stands in for a knot of
-// them everywhere else - tapping one flies the camera in rather than
-// trying to show every point inside it at once. See
-// `project_map_view_plan` for the rest of what is still ahead
-// (offline regions, the browser build).
+// Clusters: a point stands alone once the map is zoomed in past where its neighbours would collide with it, and a bubble
+// with a count stands in for a knot of them everywhere else - tapping one flies the camera in.
 // How close a chosen point is shown: the street and the blocks around it.
 const FOCUS_ZOOM = 14;
 
@@ -63,6 +58,8 @@ export default function GeoMapView({
   onAddAt,
   onFound,
   bottomInset = 24,
+  offlineOpen,
+  onOfflineClose,
 }: {
   points: GeoMapPoint[];
   onPressPoint: (id: string) => void;
@@ -79,6 +76,10 @@ export default function GeoMapView({
   onFound?: (point: LatLng | null) => void;
   // How far from the bottom the found place's card stands (the dock is over the map).
   bottomInset?: number;
+  // The offline regions window, opened from the screen's «⋯» (2026-10-28: the round download button left the map).
+  // Given, the map has no download button of its own.
+  offlineOpen?: boolean;
+  onOfflineClose?: () => void;
 }) {
   const theme = useTheme();
   const cameraRef = useRef<CameraRef>(null);
@@ -95,20 +96,24 @@ export default function GeoMapView({
     bounds: [initialCenter[0] - 5, initialCenter[1] - 5, initialCenter[0] + 5, initialCenter[1] + 5],
   });
 
-  const index = useMemo(() => {
-    const sc = new Supercluster<PointProps>({ radius: 50, maxZoom: 17 });
-    const features: PointFeature<PointProps>[] = points.map((p) => ({
-      type: 'Feature',
-      properties: { pointId: p.id, title: p.title },
-      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-    }));
-    sc.load(features);
-    return sc;
-  }, [points]);
-
-  const clusters = useMemo(
-    () => index.getClusters(view.bounds, Math.round(view.zoom)),
-    [index, view.bounds, view.zoom]
+  // THE POINTS ARE DRAWN BY THE MAP ITSELF (2026-10-28, before the points import: each pin used to be a React view of
+  // its own, fine for seven, a stutter for hundreds). One GeoJSON source the map clusters on its own, and two layers
+  // over it - so a thousand points cost what ten do. The focused point (a collection's chosen one) is still a view, on
+  // top, because it is one.
+  const sourceRef = useRef<GeoJSONSourceRef>(null);
+  const shape = useMemo<GeoJSON.FeatureCollection>(
+    () => ({
+      type: 'FeatureCollection',
+      features: points
+        .filter((p) => p.id !== focusId)
+        .map((p) => ({
+          type: 'Feature',
+          id: p.id,
+          properties: { pointId: p.id, title: p.title },
+          geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+        })),
+    }),
+    [points, focusId]
   );
 
   function handleRegionChange(event: { nativeEvent: ViewStateChangeEvent }) {
@@ -238,40 +243,75 @@ export default function GeoMapView({
         <Camera ref={cameraRef} initialViewState={{ center: initialCenter, zoom: initialZoom }} />
         <GeoHouseNumbers />
         {locationEnabled && <UserLocation accuracy />}
-        {clusters.map((feature) => {
-          const [lng, lat] = feature.geometry.coordinates;
-          if ('cluster' in feature.properties) {
-            const { cluster_id: clusterId, point_count: count } = feature.properties;
-            return (
-              <Marker
-                key={`c${clusterId}`}
-                lngLat={[lng, lat]}
-                onPress={() => flyTo([lng, lat], Math.min(20, index.getClusterExpansionZoom(clusterId)))}
-              >
-                <View style={[styles.cluster, { backgroundColor: theme.accent }]}>
-                  <Text style={[styles.clusterLabel, { color: theme.onAccent }]}>{count}</Text>
-                </View>
-              </Marker>
-            );
-          }
-          const point = feature.properties;
-          return (
-            <Marker key={point.pointId} lngLat={[lng, lat]} onPress={() => onPressPoint(point.pointId)}>
-              <View style={styles.pinGroup}>
-                <View style={[styles.pin, { backgroundColor: theme.accent }, point.pointId === focusId && styles.pinFocus]}>
-                  <Ionicons name="location" size={point.pointId === focusId ? 20 : 16} color={theme.onAccent} />
-                </View>
-                {view.zoom >= LABEL_MIN_ZOOM && (
-                  <View style={[styles.pinLabel, { backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}>
-                    <Text style={[styles.pinLabelText, { color: theme.ink.primary }]} numberOfLines={1}>
-                      {point.title}
-                    </Text>
-                  </View>
-                )}
+        <GeoJSONSource
+          id="bearless-points"
+          ref={sourceRef}
+          data={shape}
+          cluster
+          clusterRadius={50}
+          clusterMaxZoom={16}
+          onPress={async (e) => {
+            const feature = e.nativeEvent.features[0];
+            if (!feature) return;
+            e.stopPropagation?.();
+            const props = (feature.properties ?? {}) as { cluster_id?: number; pointId?: string };
+            const [lng, lat] = (feature.geometry as GeoJSON.Point).coordinates;
+            if (props.cluster_id != null) {
+              const zoom = await sourceRef.current?.getClusterExpansionZoom(props.cluster_id).catch(() => null);
+              flyTo([lng, lat], Math.min(20, zoom ?? view.zoom + 2));
+            } else if (props.pointId) onPressPoint(props.pointId);
+          }}
+        >
+          <Layer
+            id="bearless-clusters"
+            type="circle"
+            filter={['has', 'point_count']}
+            paint={{ 'circle-color': theme.accent, 'circle-radius': 17, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }}
+          />
+          <Layer
+            id="bearless-cluster-count"
+            type="symbol"
+            filter={['has', 'point_count']}
+            layout={{ 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 13, 'text-allow-overlap': true }}
+            paint={{ 'text-color': theme.onAccent }}
+          />
+          <Layer
+            id="bearless-points"
+            type="circle"
+            filter={['!', ['has', 'point_count']]}
+            paint={{ 'circle-color': theme.accent, 'circle-radius': 11, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }}
+          />
+          <Layer
+            id="bearless-point-dot"
+            type="circle"
+            filter={['!', ['has', 'point_count']]}
+            paint={{ 'circle-color': theme.onAccent, 'circle-radius': 3.5 }}
+          />
+          <Layer
+            id="bearless-point-labels"
+            type="symbol"
+            filter={['!', ['has', 'point_count']]}
+            minzoom={LABEL_MIN_ZOOM}
+            layout={{
+              'text-field': ['get', 'title'],
+              'text-font': ['Noto Sans Regular'],
+              'text-size': 12,
+              'text-offset': [0, 1.5],
+              'text-anchor': 'top',
+              'text-max-width': 10,
+            }}
+            paint={{ 'text-color': '#1c1c1e', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 }}
+          />
+        </GeoJSONSource>
+        {focused && (
+          <Marker lngLat={[focused.lng, focused.lat]} onPress={() => onPressPoint(focused.id)}>
+            <View style={styles.pinGroup}>
+              <View style={[styles.pin, styles.pinFocus, { backgroundColor: theme.accent }]}>
+                <Ionicons name="location" size={20} color={theme.onAccent} />
               </View>
-            </Marker>
-          );
-        })}
+            </View>
+          </Marker>
+        )}
         {found && (
           <Marker lngLat={[found.lng, found.lat]}>
             <View style={[styles.foundPin, { backgroundColor: theme.ink.primary, borderColor: theme.raised }]}>
@@ -289,14 +329,16 @@ export default function GeoMapView({
       )}
       {!bare && (
       <>
+      {offlineOpen === undefined && (
+        <Pressable
+          style={[styles.offlineButton, { backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}
+          onPress={() => setOfflineSheetVisible(true)}
+        >
+          <Ionicons name="cloud-download-outline" size={20} color={theme.ink.primary} />
+        </Pressable>
+      )}
       <Pressable
-        style={[styles.offlineButton, { backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}
-        onPress={() => setOfflineSheetVisible(true)}
-      >
-        <Ionicons name="cloud-download-outline" size={20} color={theme.ink.primary} />
-      </Pressable>
-      <Pressable
-        style={[styles.offlineButton, styles.locateButton, { backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}
+        style={[styles.offlineButton, offlineOpen === undefined && styles.locateButton, { backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}
         onPress={handleLocateMe}
       >
         {locating ? (
@@ -346,9 +388,9 @@ export default function GeoMapView({
         </View>
       )}
       <GeoOfflineRegionsSheet
-        visible={offlineSheetVisible}
+        visible={offlineOpen ?? offlineSheetVisible}
         currentBounds={view.bounds}
-        onClose={() => setOfflineSheetVisible(false)}
+        onClose={() => (onOfflineClose ? onOfflineClose() : setOfflineSheetVisible(false))}
       />
     </View>
   );
@@ -370,31 +412,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#fff',
-  },
-  pinLabel: {
-    marginTop: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    borderWidth: 1,
-    maxWidth: 140,
-  },
-  pinLabelText: {
-    fontSize: 11,
-  },
-  cluster: {
-    minWidth: 34,
-    height: 34,
-    borderRadius: 17,
-    paddingHorizontal: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  clusterLabel: {
-    fontSize: 13,
-    fontWeight: '700',
   },
   emptyHint: {
     position: 'absolute',

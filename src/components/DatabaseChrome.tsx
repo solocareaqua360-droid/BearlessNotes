@@ -107,6 +107,9 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // stand, the search lens, «+» (or «Зберегти», saveInstead) as the dark circle and back at the right edge - the note's
   // dock. Not while selecting or searching: those keep their own dock.
   dockTools?: DockAction[] | null;
+  // Rows of the screen's own, straight in the bar's «⋯» (not behind «Ще…») - the geo map's «Мапа без інтернету» and
+  // «Імпорт точок».
+  topMenuExtras?: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }[] | null;
   // The shape of the list, where this database has two of them. It was
   // the "Вигляд" pair of rows inside the "..." menu on three screens, all
   // spelling out the same thing; on the rail its icon IS the shape in
@@ -221,6 +224,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   saveInstead,
   keepContentWhileSearching,
   dockTools,
+  topMenuExtras,
   shape,
   explorer,
   hideDrawer,
@@ -431,6 +435,7 @@ export default function DatabaseChrome<T extends { id: string }>({
       // A screen's own extra rows (the photos' record attachments, the
       // stickers' bin) are drawn by the screen, not listed, so they open
       // as a second list under the bar rather than being lost.
+      ...(topMenuExtras ?? []),
       ...(menuRows ? [{ label: 'Ще…', icon: 'ellipsis-horizontal-outline' as const, onPress: () => setMenuOpen(true) }] : []),
     ],
     bulk ? { active: list.isSelectMode, onPress: () => list.toggleSelectMode() } : null,

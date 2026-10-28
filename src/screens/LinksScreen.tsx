@@ -250,6 +250,8 @@ export default function LinksScreen({
   // The map's «Шари» (GeoLayersPanel): which folders/points are on the map, and whether its window is open.
   const [layerPick, setLayerPick] = useState<LayerPick>(NO_PICK);
   const [layersOpen, setLayersOpen] = useState(false);
+  // «Мапа без інтернету» (the offline regions window), opened from «⋯» while the map is on.
+  const [offlineOpen, setOfflineOpen] = useState(false);
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
   const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
@@ -1187,6 +1189,11 @@ export default function LinksScreen({
       searchPlaceholder={category === 'geo' && mapVisible ? 'Назва або координати' : 'Пошук за назвою'}
       onAdd={handleAddPress}
       keepContentWhileSearching={mapVisible && category === 'geo'}
+      topMenuExtras={
+        mapVisible && category === 'geo'
+          ? [{ label: 'Мапа без інтернету', icon: 'cloud-download-outline', onPress: () => setOfflineOpen(true) }]
+          : null
+      }
       dockTools={
         mapVisible && category === 'geo'
           ? [
@@ -1631,6 +1638,8 @@ export default function LinksScreen({
               setGeoPointSheetVisible(true);
             }}
             onFound={setGeoFound}
+            offlineOpen={offlineOpen}
+            onOfflineClose={() => setOfflineOpen(false)}
           />
           {layersOpen && !list.isSearching && (
             <GeoLayersPanel
