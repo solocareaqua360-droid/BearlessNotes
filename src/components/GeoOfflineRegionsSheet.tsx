@@ -4,7 +4,8 @@ import { Ionicons } from './icons/Ionicons';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import type { Theme } from '../theme/tokens';
 import GlassLayer from './GlassLayer';
-import { useBottomSheet } from './surfaces/bottomSheet';
+import { BELOW, useBottomSheet } from './surfaces/bottomSheet';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import Animated from 'react-native-reanimated';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME, SHEET_WINDOW } from '../constants/glass';
@@ -41,6 +42,8 @@ export default function GeoOfflineRegionsSheet({
   onClose: () => void;
 }) {
   const b = useBottomSheet(visible, onClose);
+  // The name field must stay above the keyboard (it hid the whole window, 2026-10-28) - same lift as GeoPointEntrySheet.
+  const keyboardHeight = useKeyboardHeight();
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [regions, setRegions] = useState<OfflineRegion[]>([]);
@@ -123,7 +126,7 @@ export default function GeoOfflineRegionsSheet({
   return (
     <GlassLayer visible={visible} onClose={onClose} intensity={60} rise={b.on}>
       <View style={[styles.frame, b.frame]} pointerEvents="box-none">
-        <Animated.View style={[styles.card, b.window, b.padBottom(20)]}>
+        <Animated.View style={[styles.card, b.window, keyboardHeight > 0 && { marginBottom: keyboardHeight - (b.on ? BELOW : 0) }, b.padBottom(20)]}>
           {b.fill}
           {b.grab}
           {b.on && <View style={{ height: 12 }} />}
