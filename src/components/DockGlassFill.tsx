@@ -28,6 +28,14 @@ const LIGHT_MILK = '#FFFFFF';
 // tied to `intensity`, radius = intensity / blurReductionFactor) kept faint - the same blur radius comes from the factor.
 const RING = 3;
 const REFRACT_FILM = 10;
+// THE LENS (the user, 2026-10-28: «трохи зменшимо непрозорість і додамо ефект риб'ячого ока до всієї капсули, щоб зміни
+// відбувались з тим, що під нею» - an experiment): the blur is laid out a little SMALLER than the capsule and scaled up to
+// fill it, so it shows what lies under the capsule's middle a little larger - what passes under moves «bigger» inside the
+// glass than beside it. The September island lens (fe49cbaa) could only enlarge its own glyph; this enlarges the page.
+// With a thinner blur and coat, so the enlargement can be seen at all.
+const LENS = 1.12;
+const LENS_INSET = `${Math.round((1 - 1 / LENS) * 5000) / 100}%` as `${number}%`;
+const REFRACT_RADIUS = 4;
 // How strongly expo-blur's own film covers per unit of intensity, by tint (Android's TintStyle).
 const FILM_ALPHA: Record<string, number> = { dark: 0.69, light: 0.78, default: 0.44 };
 
@@ -60,8 +68,8 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
   // The inside keeps the darkness it had: what the old film and coat covered together, the new coat covers over a fainter film.
   const filmOf = (i: number) => ((FILM_ALPHA[tint] ?? 0.44) * i) / 100;
   const covered = 1 - (1 - filmOf(baseIntensity)) * (1 - baseCoat);
-  // A bubble is clearer than a slab: the middle keeps a little less coat than the old glass (0.85 of it).
-  const refractCoat = Math.min(0.97, 0.85 * (1 - (1 - covered) / (1 - filmOf(REFRACT_FILM))));
+  // A bubble is clearer than a slab, and a lens must show what it enlarges: the middle keeps 0.48 of the old glass's coat.
+  const refractCoat = Math.min(0.97, 0.48 * (1 - (1 - covered) / (1 - filmOf(REFRACT_FILM))));
   return (
     <View
       style={StyleSheet.absoluteFill}
@@ -75,11 +83,11 @@ export default function DockGlassFill({ soft, paused: still, radius, dense, coat
         <BlurView
           intensity={refract ? REFRACT_FILM : intensity ?? baseIntensity}
           // The same radius as before (expo-blur's default factor is 4), from a faint film.
-          blurReductionFactor={refract ? (REFRACT_FILM * 4) / baseIntensity : undefined}
+          blurReductionFactor={refract ? REFRACT_FILM / REFRACT_RADIUS : undefined}
           tint={tint}
           blurMethod="dimezisBlurView"
           blurTarget={target ?? undefined}
-          style={StyleSheet.absoluteFill}
+          style={refract ? styles.lens : StyleSheet.absoluteFill}
         />
       )}
       {/* Dark: the drawer's material (the dock's own colour at 55%). Light: the white theme's own milk glass, chosen with it
@@ -204,3 +212,7 @@ export const LIGHT_GLASS_INK = '#5C5B57';
 export function dockInk(soft: SoftTokens, glass: boolean): string {
   return glass && !soft.dark ? LIGHT_GLASS_INK : soft.ink;
 }
+
+const styles = StyleSheet.create({
+  lens: { position: 'absolute', left: LENS_INSET, right: LENS_INSET, top: LENS_INSET, bottom: LENS_INSET, transform: [{ scale: LENS }] },
+});
