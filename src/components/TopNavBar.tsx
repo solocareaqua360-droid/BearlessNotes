@@ -682,7 +682,9 @@ function TopNavBar({
             not only while the save ring is tracing round them. */}
         {clusterCount > 0 && (
           <Animated.View
-            pointerEvents={searchShown || compactOn ? 'none' : 'auto'}
+            // Open, the buttons never step back while reading (the user, 2026-10-28: «капсула з чекбоксом та трьома крапками...
+            // точно не повинна зникати»): the folding was the old bar's, which narrowed to its name.
+            pointerEvents={searchShown || (compactOn && !open) ? 'none' : 'auto'}
             style={[
               styles.cluster,
               !soft && lift,
@@ -690,7 +692,7 @@ function TopNavBar({
               open && { borderRadius: TOP_NAV_H / 2 },
               clusterSize,
               clusterAway,
-              !inline && FEATURES.chromeCompact ? compactCluster : undefined,
+              !inline && !open && FEATURES.chromeCompact ? compactCluster : undefined,
             ]}
           >
             {!soft && <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} />}
