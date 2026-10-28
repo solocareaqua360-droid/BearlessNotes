@@ -49,6 +49,13 @@ export type GeoMapPoint = { id: string; title: string; lat: number; lng: number 
 // How close a chosen point is shown: the street and the blocks around it.
 const FOCUS_ZOOM = 14;
 
+// «240 м», «1,9 км», «12 км».
+function formatDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} м`;
+  const km = meters / 1000;
+  return `${(km < 10 ? km.toFixed(1) : Math.round(km).toString()).replace('.', ',')} км`;
+}
+
 export default function GeoMapView({
   points,
   onPressPoint,
@@ -60,6 +67,8 @@ export default function GeoMapView({
   bottomInset = 24,
   offlineOpen,
   onOfflineClose,
+  rulerOn = false,
+  onRulerChange,
 }: {
   points: GeoMapPoint[];
   onPressPoint: (id: string) => void;
@@ -80,6 +89,10 @@ export default function GeoMapView({
   // Given, the map has no download button of its own.
   offlineOpen?: boolean;
   onOfflineClose?: () => void;
+  // «Рулетка» (the dock's tool): while on, a tap on the map adds a point and the distances are shown; the screen turns it
+  // on and off (onRulerChange - the found-place card's «Звідси» turns it on too).
+  rulerOn?: boolean;
+  onRulerChange?: (on: boolean) => void;
 }) {
   const theme = useTheme();
   const cameraRef = useRef<CameraRef>(null);
@@ -138,6 +151,27 @@ export default function GeoMapView({
   // works offline - or a Maps link. Read once typing settles, so a half-typed number does not fly the map about. The
   // place found gets a temporary pin and a card; nothing is saved until «Додати точку» (which asks the name).
   const [found, setFound] = useState<LatLng | null>(null);
+  // THE RULER (2026-10-28, sketch NhS6SVqj1GGGYdsZPYwP7K): the points measured, in order. Kept when the ruler is turned
+  // off - its lines stay on the map until «Очистити», so they go into a snapshot - and drawn by the map itself.
+  const [ruler, setRuler] = useState<LatLng[]>([]);
+  const rulerShape = useMemo<GeoJSON.FeatureCollection>(() => {
+    const features: GeoJSON.Feature[] = [];
+    if (ruler.length > 1) {
+      features.push({ type: 'Feature', properties: { kind: 'line' }, geometry: { type: 'LineString', coordinates: ruler.map((p) => [p.lng, p.lat]) } });
+      for (let i = 1; i < ruler.length; i++) {
+        const a = ruler[i - 1];
+        const b = ruler[i];
+        features.push({
+          type: 'Feature',
+          properties: { kind: 'label', label: formatDistance(distanceMeters(a, b)) },
+          geometry: { type: 'Point', coordinates: [(a.lng + b.lng) / 2, (a.lat + b.lat) / 2] },
+        });
+      }
+    }
+    ruler.forEach((p) => features.push({ type: 'Feature', properties: { kind: 'vertex' }, geometry: { type: 'Point', coordinates: [p.lng, p.lat] } }));
+    return { type: 'FeatureCollection', features };
+  }, [ruler]);
+  const rulerTotal = ruler.reduce((sum, p, i) => (i ? sum + distanceMeters(ruler[i - 1], p) : 0), 0);
   const [resolving, setResolving] = useState(false);
   useEffect(() => {
     const text = searchText.trim();
@@ -233,7 +267,14 @@ export default function GeoMapView({
               }
             : undefined
         }
-        onPress={onAddAt ? () => found && setFound(null) : undefined}
+        onPress={(e) => {
+          if (rulerOn) {
+            const [lng, lat] = e.nativeEvent.lngLat;
+            setRuler((prev) => [...prev, { lat, lng }]);
+            return;
+          }
+          if (onAddAt && found) setFound(null);
+        }}
         // TextureView, not the default GLSurfaceView (2026-10-28, the user: the bar, the dock and the «⋯» menu over the
         // map were see-through, and the map seemed to slide out of the opening menu): a SurfaceView is drawn outside the
         // view tree, so the app's blur cannot see it - the glass over it showed nothing, and the growing menu panel
@@ -312,6 +353,37 @@ export default function GeoMapView({
             </View>
           </Marker>
         )}
+        {ruler.length > 0 && (
+          <GeoJSONSource id="bearless-ruler" data={rulerShape}>
+            <Layer
+              id="bearless-ruler-casing"
+              type="line"
+              filter={['==', ['get', 'kind'], 'line']}
+              layout={{ 'line-join': 'round', 'line-cap': 'round' }}
+              paint={{ 'line-color': '#1c1c1e', 'line-width': 5 }}
+            />
+            <Layer
+              id="bearless-ruler-line"
+              type="line"
+              filter={['==', ['get', 'kind'], 'line']}
+              layout={{ 'line-join': 'round' }}
+              paint={{ 'line-color': '#f1f0ec', 'line-width': 2.5, 'line-dasharray': [2, 1.6] }}
+            />
+            <Layer
+              id="bearless-ruler-vertex"
+              type="circle"
+              filter={['==', ['get', 'kind'], 'vertex']}
+              paint={{ 'circle-radius': 6, 'circle-color': '#ffffff', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#1c1c1e' }}
+            />
+            <Layer
+              id="bearless-ruler-label"
+              type="symbol"
+              filter={['==', ['get', 'kind'], 'label']}
+              layout={{ 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 12, 'text-allow-overlap': true, 'text-offset': [0, -1.1] }}
+              paint={{ 'text-color': '#ffffff', 'text-halo-color': '#1c1c1e', 'text-halo-width': 3 }}
+            />
+          </GeoJSONSource>
+        )}
         {found && (
           <Marker lngLat={[found.lng, found.lat]}>
             <View style={[styles.foundPin, { backgroundColor: theme.ink.primary, borderColor: theme.raised }]}>
@@ -355,7 +427,7 @@ export default function GeoMapView({
           <Text style={{ color: theme.ink.primary, fontSize: 13 }}>Читаю посилання…</Text>
         </View>
       )}
-      {onAddAt && found && (
+      {onAddAt && found && !rulerOn && (
         <View style={[styles.foundCard, { bottom: bottomInset + 12, backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}>
           <Text style={[styles.foundCoords, { color: theme.ink.primary }]} selectable>
             {formatDecimalLatLng(found)}
@@ -383,6 +455,50 @@ export default function GeoMapView({
             >
               <Ionicons name="copy-outline" size={18} color={theme.ink.primary} />
               <Text style={[styles.foundButtonLabel, { color: theme.ink.primary }]}>Копіювати</Text>
+            </Pressable>
+            {onRulerChange && (
+              <Pressable
+                style={[styles.foundButton, { borderColor: theme.edge.hairline }]}
+                onPress={() => {
+                  setRuler([found]);
+                  setFound(null);
+                  onRulerChange(true);
+                }}
+              >
+                <Ionicons name={"lc:ruler" as never} size={18} color={theme.ink.primary} />
+                <Text style={[styles.foundButtonLabel, { color: theme.ink.primary }]}>Звідси</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
+      {rulerOn && (
+        <View style={[styles.foundCard, { bottom: bottomInset + 12, backgroundColor: theme.raised, borderColor: theme.edge.hairline }]}>
+          <Text style={[styles.foundCoords, { color: theme.ink.primary }]}>
+            {ruler.length > 1 ? formatDistance(rulerTotal) : 'Рулетка'}
+            <Text style={[styles.foundMgrs, { color: theme.ink.muted }]}>
+              {ruler.length > 1 ? `  · ${ruler.length - 1} ${ruler.length === 2 ? 'відрізок' : ruler.length < 6 ? 'відрізки' : 'відрізків'}` : ''}
+            </Text>
+          </Text>
+          <Text style={[styles.foundMgrs, { color: theme.ink.muted }]}>
+            {ruler.length === 0 ? 'Торкніться мапи, щоб поставити першу точку.' : 'Торкніться мапи, щоб додати точку.'}
+          </Text>
+          <View style={styles.foundActions}>
+            <Pressable
+              style={[styles.foundButton, { borderColor: theme.edge.hairline }, ruler.length === 0 && { opacity: 0.4 }]}
+              disabled={ruler.length === 0}
+              onPress={() => setRuler((prev) => prev.slice(0, -1))}
+            >
+              <Ionicons name="arrow-undo-outline" size={18} color={theme.ink.primary} />
+              <Text style={[styles.foundButtonLabel, { color: theme.ink.primary }]}>Крок назад</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.foundButton, { borderColor: theme.edge.hairline }, ruler.length === 0 && { opacity: 0.4 }]}
+              disabled={ruler.length === 0}
+              onPress={() => setRuler([])}
+            >
+              <Ionicons name="close" size={18} color={theme.ink.primary} />
+              <Text style={[styles.foundButtonLabel, { color: theme.ink.primary }]}>Очистити</Text>
             </Pressable>
           </View>
         </View>

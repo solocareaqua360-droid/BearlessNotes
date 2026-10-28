@@ -256,6 +256,8 @@ export default function LinksScreen({
   // «Мапа без інтернету» (the offline regions window), opened from «⋯» while the map is on.
   const [offlineOpen, setOfflineOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  // «Рулетка» on the map (GeoMapView's ruler).
+  const [rulerOn, setRulerOn] = useState(false);
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
   const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
@@ -1245,7 +1247,20 @@ export default function LinksScreen({
                 label: 'Шари',
                 active: layersOpen,
                 dot: layersOn,
-                onPress: () => setLayersOpen((open) => !open),
+                onPress: () => {
+                  setRulerOn(false);
+                  setLayersOpen((open) => !open);
+                },
+              },
+              {
+                key: 'ruler',
+                icon: 'lc:ruler',
+                label: 'Рулетка',
+                active: rulerOn,
+                onPress: () => {
+                  setLayersOpen(false);
+                  setRulerOn((on) => !on);
+                },
               },
             ]
           : null
@@ -1682,6 +1697,8 @@ export default function LinksScreen({
               setGeoPointSheetVisible(true);
             }}
             onFound={setGeoFound}
+            rulerOn={rulerOn}
+            onRulerChange={setRulerOn}
             offlineOpen={offlineOpen}
             onOfflineClose={() => setOfflineOpen(false)}
           />
