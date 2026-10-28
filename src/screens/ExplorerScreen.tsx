@@ -3927,7 +3927,7 @@ function ThoughtsRow() {
   const S = useSoft();
   const { countOf } = useThoughts(true);
   const loose = countOf(null);
-  return <StartRow dot={S.accent} name="Думки" note={loose > 0 ? `${loose} не розкладено` : undefined} onPress={() => openThoughtsSpace()} />;
+  return <StartRow dot={S.accent} name="Думки" note={loose > 0 ? `${loose} не розкладено` : undefined} last onPress={() => openThoughtsSpace()} />;
 }
 
 const startStyles = StyleSheet.create({
