@@ -9,6 +9,8 @@ export type DeskBead = {
   label: string;
   icon: string;
   active: boolean;
+  // A tool's orange dot (see DockAction.dot).
+  dot?: boolean;
   onPress: () => void;
 };
 

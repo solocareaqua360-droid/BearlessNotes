@@ -29,7 +29,7 @@ import ProjectTabsRow from './ProjectTabsRow';
 import { FIELD_ICONS, FIELD_LABELS, FIELD_ORDER } from './SortMenuRows';
 import { selectionDock } from '../navigation/selectionDock';
 import { orderSection } from '../navigation/topMenu';
-import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useTopBack, useTopExtras, useTopSearch, type DockAction } from '../navigation/navDock';
 import { SoftSurfaceContext, useSoft } from '../theme/soft';
 import { useDockClearance } from '../navigation/dockGeometry';
 import ScreenBackdrop from './ScreenBackdrop';
@@ -103,6 +103,10 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // The content stays while the search is open and empty (the geo map: a black void hid the map the coordinates were
   // about to be read on, 2026-10-28).
   keepContentWhileSearching?: boolean;
+  // THE DOCK AS A TOOL BAR (the geo map, 2026-10-28 sketch NhS6SVqj1GGGYdsZPYwP7K): the screen's own tools where the desks
+  // stand, the search lens, «+» (or «Зберегти», saveInstead) as the dark circle and back at the right edge - the note's
+  // dock. Not while selecting or searching: those keep their own dock.
+  dockTools?: DockAction[] | null;
   // The shape of the list, where this database has two of them. It was
   // the "Вигляд" pair of rows inside the "..." menu on three screens, all
   // spelling out the same thing; on the rail its icon IS the shape in
@@ -216,6 +220,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   addIcon,
   saveInstead,
   keepContentWhileSearching,
+  dockTools,
   shape,
   explorer,
   hideDrawer,
@@ -361,8 +366,11 @@ export default function DatabaseChrome<T extends { id: string }>({
       : null,
     !!topNav && isFocused
   );
+  const toolsDock = !!dockTools && isFocused && !list.isSelectMode && !list.isSearching;
   useDockBeads(
-    isFocused
+    toolsDock
+      ? null
+      : isFocused
       ? topNav
         ? {
             icon: list.isSelectMode || list.isSearching ? 'close-outline' : 'search-outline',
@@ -378,7 +386,9 @@ export default function DatabaseChrome<T extends { id: string }>({
           }
         : { icon: 'arrow-back', onPress: () => back?.(), dimmed: !back }
       : null,
-    isFocused && !list.isSelectMode && saveInstead
+    toolsDock
+      ? { icon: 'chevron-back', onPress: () => back?.(), dimmed: !back }
+      : isFocused && !list.isSelectMode && saveInstead
       ? { icon: 'checkmark', keepIcon: true, onPress: saveInstead.onPress }
       : isFocused && !list.isSelectMode && !searchingAlone && onAdd
       ? {
@@ -443,7 +453,15 @@ export default function DatabaseChrome<T extends { id: string }>({
     ) : null
   );
   useDockActions(
-    isFocused && !searchingAlone && (list.isSelectMode || !deskMenu)
+    toolsDock
+      ? [
+          ...dockTools!,
+          { key: 'find', icon: 'search-outline', label: 'Пошук', onPress: () => list.setIsSearching(true) },
+          saveInstead
+            ? { key: 'save', icon: 'checkmark', label: 'Зберегти', primary: true, onPress: saveInstead.onPress }
+            : { key: 'add', icon: addIcon ?? 'add', label: 'Додати', primary: true, onPress: () => onAdd?.() },
+        ]
+      : isFocused && !searchingAlone && (list.isSelectMode || !deskMenu)
       ? list.isSelectMode
         ? selectionDock({
             onExit: () => {

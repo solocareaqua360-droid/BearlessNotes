@@ -167,6 +167,7 @@ function DeskBeadButton({ d, i, soft, onPick, active, onLens }: { d: DeskBead; i
     >
       <Animated.View style={g.style}>
         <Ionicons name={d.icon as keyof typeof Ionicons.glyphMap} size={24} color={active ? soft.accent : dockInk(soft, glassOn)} />
+        {d.dot && <View style={[styles.toolDot, { backgroundColor: '#F08A3C', borderColor: soft.chrome }]} />}
       </Animated.View>
     </Pressable>
   );
@@ -716,6 +717,7 @@ export default function DeskDock({
 }
 
 const styles = StyleSheet.create({
+  toolDot: { position: 'absolute', top: -2, right: -4, width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
   pill: { position: 'absolute', left: 0, overflow: 'hidden' },
   beads: { position: 'absolute', left: 0, top: 0, bottom: 0, width: PILL_CORE },
   bead: { position: 'absolute', borderRadius: BEAD_H / 2, alignItems: 'center', justifyContent: 'center' },

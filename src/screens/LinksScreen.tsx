@@ -54,6 +54,7 @@ import { RootStackParamList } from '../navigation';
 import RenamePrompt from '../components/RenamePrompt';
 import GeoPointEntrySheet from '../components/GeoPointEntrySheet';
 import GeoMapView, { type GeoMapPoint } from '../components/GeoMapView';
+import GeoLayersPanel, { NO_PICK, pickActive, pointShown, type LayerPick, type LayerPoint } from '../components/GeoLayersPanel';
 import LinkDetailSheet from '../components/LinkDetailSheet';
 import { copyLinkText } from '../utils/shareAndCopy';
 import LinkReaderSheet from '../components/LinkReaderSheet';
@@ -246,6 +247,9 @@ export default function LinksScreen({
   const [geoPointInitial, setGeoPointInitial] = useState<{ lat: number; lng: number } | null>(null);
   // The place the map has found right now (typed coordinates or a held pin): the dock's «+» saves it meanwhile.
   const [geoFound, setGeoFound] = useState<{ lat: number; lng: number } | null>(null);
+  // The map's «Шари» (GeoLayersPanel): which folders/points are on the map, and whether its window is open.
+  const [layerPick, setLayerPick] = useState<LayerPick>(NO_PICK);
+  const [layersOpen, setLayersOpen] = useState(false);
   // «Геоточки» only - see the rail's own shape.onToggle above.
   const [mapVisible, setMapVisible] = useState(false);
   const [detailLinkId, setDetailLinkId] = useState<string | null>(null);
@@ -419,7 +423,27 @@ export default function LinksScreen({
   // Coordinates typed into the search are a place, not a name: the map then keeps every point (no name matches «47.86,
   // 35.11», and the points near the place found are exactly what is worth seeing).
   const searchIsPlace = category === 'geo' && !!parseCoordinatesText(list.searchQuery);
-  const geoMapPoints: GeoMapPoint[] = (searchIsPlace ? allCategoryLinks : linksHere)
+  // Every point with a place, with its folders - what «Шари» lists and filters.
+  const layerPoints: LayerPoint[] =
+    category === 'geo'
+      ? allCategoryLinks
+          .filter((l) => l.geoLat != null && l.geoLng != null)
+          .map((l) => ({ id: l.id, title: l.title || hostnameOf(l.url), folders: explorer.foldersOf(l) }))
+      : [];
+  // The folders that hold any point, with every folder above them.
+  const layerFolders = Array.from(
+    new Set(
+      layerPoints.flatMap((p) =>
+        p.folders.flatMap((f) => {
+          const parts = f.split('/');
+          return parts.map((_, i) => parts.slice(0, i + 1).join('/'));
+        })
+      )
+    )
+  ).sort((a, b) => a.localeCompare(b, 'uk'));
+  const layersOn = pickActive(layerPick);
+  const geoMapPoints: GeoMapPoint[] = (searchIsPlace || layersOn ? allCategoryLinks : linksHere)
+    .filter((l) => !layersOn || pointShown({ id: l.id, title: '', folders: explorer.foldersOf(l) }, layerPick))
     .filter((l): l is LinkItem & { geoLat: number; geoLng: number } => l.geoLat != null && l.geoLng != null)
     .map((l) => ({ id: l.id, title: l.title || hostnameOf(l.url), lat: l.geoLat, lng: l.geoLng }));
 
@@ -1163,6 +1187,20 @@ export default function LinksScreen({
       searchPlaceholder={category === 'geo' && mapVisible ? 'Назва або координати' : 'Пошук за назвою'}
       onAdd={handleAddPress}
       keepContentWhileSearching={mapVisible && category === 'geo'}
+      dockTools={
+        mapVisible && category === 'geo'
+          ? [
+              {
+                key: 'layers',
+                icon: 'layers-outline',
+                label: 'Шари',
+                active: layersOpen,
+                dot: layersOn,
+                onPress: () => setLayersOpen((open) => !open),
+              },
+            ]
+          : null
+      }
       saveInstead={
         mapVisible && category === 'geo' && geoFound
           ? {
@@ -1582,6 +1620,7 @@ export default function LinksScreen({
             topPad={listTopPad}
           />
         ) : mapVisible && category === 'geo' ? (
+          <View style={{ flex: 1 }}>
           <GeoMapView
             points={geoMapPoints}
             searchText={list.searchQuery}
@@ -1593,6 +1632,17 @@ export default function LinksScreen({
             }}
             onFound={setGeoFound}
           />
+          {layersOpen && !list.isSearching && (
+            <GeoLayersPanel
+              folders={layerFolders}
+              points={layerPoints}
+              pick={layerPick}
+              onPick={setLayerPick}
+              onClose={() => setLayersOpen(false)}
+              bottom={dockClear + insets.bottom + 6}
+            />
+          )}
+          </View>
         ) : viewMode === 'grid' ? (
           <GestureDetector gesture={carrying.listGesture}>
           <ScrollView

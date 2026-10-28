@@ -201,6 +201,8 @@ export type DockAction = {
   closesStack?: boolean;
   onLongPress?: () => void;
   active?: boolean;
+  // A small orange dot on the button: something it governs is in force (the map's layers filter hides points).
+  dot?: boolean;
   // Drawn as its own dark circle inside the strip, the strong button -
   // the board's «+» once it moved into the tools strip (2026-10-08: «в
   // окремий кружечок, зіграємо на контрасті»). Soft dock only.
@@ -415,7 +417,7 @@ const NavDockFaceContext = createContext<DockFace>('context');
 function actionSignature(list: DockAction[] | null): string {
   return list
     ? list
-        .map((a) => `${a.key}:${a.icon}:${a.label ?? ''}:${a.badge ?? ''}:${a.count ?? ''}:${a.active ? 1 : 0}:${a.primary ?? ''}`)
+        .map((a) => `${a.key}:${a.icon}:${a.label ?? ''}:${a.badge ?? ''}:${a.count ?? ''}:${a.active ? 1 : 0}:${a.primary ?? ''}:${a.dot ? 1 : 0}`)
         .join('|')
     : '';
 }

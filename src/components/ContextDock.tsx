@@ -2187,7 +2187,7 @@ export default function ContextDock() {
         const toolBeads: DeskBead[] = rest
           .filter((a) => a !== find)
           .slice(0, 3)
-          .map((a) => ({ key: a.key, label: a.label ?? '', icon: a.icon, active: !!a.active, onPress: a.onPress }));
+          .map((a) => ({ key: a.key, label: a.label ?? '', icon: a.icon, active: !!a.active, dot: !!a.dot, onPress: a.onPress }));
         const back = beads.right;
         const quiet = primary.primary === 'quiet';
         return (
