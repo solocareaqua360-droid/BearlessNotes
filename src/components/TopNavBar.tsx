@@ -1,8 +1,8 @@
 import { Ionicons } from './icons/Ionicons';
 import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
-import { ReactNode, useEffect, useMemo, useRef, useState, memo } from 'react';
+import { Fragment, ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { Animated as RNAnimated } from 'react-native';
-import { Keyboard, Pressable, ScrollView, StyleProp, StyleSheet, Text, useWindowDimensions, View, ViewStyle } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleProp, StyleSheet, Text, useWindowDimensions, View, ViewStyle, type LayoutChangeEvent } from 'react-native';
 import TextInput from './AppTextInput';
 import Animated, { Easing, Extrapolation, FadeIn, FadeOut, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -57,6 +57,16 @@ const PILL_W = PIECE_H;
 const GAP = 6;
 // features.openTopBar: the room before the name at the bar's left edge (the back button is in the dock).
 const OPEN_LEFT = 4;
+// OPEN, THE NAME SITS ON ITS OWN SMALL GLASS (the user, 2026-10-28: «підкладку під текст заголовку з розмиттям, щоб не
+// втрачати корисну площину... те, що і в доці»): a capsule of the dock's material only as wide as what the plate shows. The
+// row in front tells its width here (`a`: the desks, a title or a note's trail; `b`: a folder path); null where the bar
+// keeps its capsule across.
+type Hug = { a: (w: number) => void; b: (w: number) => void };
+const HugContext = createContext<Hug | null>(null);
+const useHug = () => useContext(HugContext);
+// The text's own inset on that glass, left and right.
+const HUG_IN = 12;
+const HUG_OUT = 14;
 // The buttons standing apart at either end: the way back and choosing a
 // touch wider (50 - the user's own measure, "трішки ширшими"; the open
 // desk still has room for «Документи» whole), "⋯" narrower between them.
@@ -274,6 +284,7 @@ function TopNavBar({
   const backHidden = FEATURES.deskDock && dockCarriesBack && !inline && soft;
   // features.openTopBar: no capsule across the top, the name on the left (only the button cluster keeps a capsule).
   const open = FEATURES.openTopBar && soft && !inline;
+
   const rightW = clusterCount > 0 ? clusterWidth + gap : 0;
   // Soft bar: the left side keeps as much room as the right one even with the back button there (empty room after
   // it), so every name stands on the middle of the SCREEN.
@@ -395,6 +406,24 @@ function TopNavBar({
     else roll.value = withTiming(target, { duration: 280, easing: Easing.inOut(Easing.cubic) });
   }, [path, roll]);
   const travel = TOP_NAV_H;
+  // The glass under the name (HugContext): the two widths, eased, and between them by the same roll as the rows.
+  const hugA = useSharedValue(0);
+  const hugB = useSharedValue(0);
+  const hug = useMemo<Hug>(
+    () => ({
+      a: (w) => {
+        hugA.value = hugA.value === 0 ? w : withTiming(w, { duration: 240, easing: Easing.out(Easing.cubic) });
+      },
+      b: (w) => {
+        hugB.value = hugB.value === 0 ? w : withTiming(w, { duration: 240, easing: Easing.out(Easing.cubic) });
+      },
+    }),
+    [hugA, hugB]
+  );
+  const hugStyle = useAnimatedStyle(() => {
+    const w = interpolate(roll.value, [0, 1], [hugA.value, hugB.value || hugA.value]);
+    return { width: Math.min(plateW.value, w), opacity: w > 0 ? 1 : 0 };
+  });
   const desksStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -roll.value * travel }],
     opacity: interpolate(roll.value, [0, 0.7], [1, 0], Extrapolation.CLAMP),
@@ -458,6 +487,7 @@ function TopNavBar({
   return (
     <>
     <Layer>
+      <HugContext.Provider value={open ? hug : null}>
       <FlatFrostContext.Provider value={!!inline}>
       <Animated.View
         // The list's bar or the note's, as the chrome morph photographs it.
@@ -535,6 +565,11 @@ function TopNavBar({
           {plateFrost && (
             <>
               {!soft && <DockFrost style={StyleSheet.absoluteFill} radius={corners.plate} />}
+              {open && (
+                <Animated.View pointerEvents="none" style={[styles.hugGlass, glassOn ? glassSurface : { backgroundColor: S.chrome, boxShadow: S.shadow }, hugStyle]}>
+                  {glassOn && <DockGlassFill soft={S} />}
+                </Animated.View>
+              )}
               <View style={[styles.viewport, { borderRadius: pieceRadius }]}>
                 <Animated.View style={[StyleSheet.absoluteFill, rowsAway, titleRide]} pointerEvents={searchShown ? 'none' : 'box-none'}>
                 <Animated.View
@@ -544,7 +579,12 @@ function TopNavBar({
                   {trail && <TrailRow trail={trail} radius={pieceRadius} ink={ink} inkMuted={inkMuted} soft={soft} />}
                   {title?.choices && (
                     <View style={styles.titlePress}>
-                      <Surface soft={soft} style={[styles.piece, open && styles.pieceLeft]} radius={pieceRadius}>
+                      <Surface
+                        soft={soft}
+                        style={[styles.piece, open && styles.pieceHug]}
+                        radius={pieceRadius}
+                        onLayout={open ? (e) => hug.a(PLATE_PAD + e.nativeEvent.layout.width) : undefined}
+                      >
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                           {title.choices.map((choice) => (
                             <Pressable key={choice.label} onPress={choice.onPress} hitSlop={8} accessibilityLabel={choice.label}>
@@ -567,7 +607,12 @@ function TopNavBar({
                       accessibilityLabel={title.label}
                       style={styles.titlePress}
                     >
-                      <Surface soft={soft} style={[styles.piece, open && styles.pieceLeft]} radius={pieceRadius}>
+                      <Surface
+                        soft={soft}
+                        style={[styles.piece, open && styles.pieceHug]}
+                        radius={pieceRadius}
+                        onLayout={open ? (e) => hug.a(PLATE_PAD + e.nativeEvent.layout.width) : undefined}
+                      >
                         {title.dot ? (
                           <View style={{ width: 12, height: 12, borderRadius: 6, marginHorizontal: 4, backgroundColor: title.dot }} />
                         ) : (
@@ -590,6 +635,7 @@ function TopNavBar({
                       onLongPress={onLongPress}
                       onActiveWidth={(w) => {
                         titleW.value = w;
+                        if (open) hug.a(PLATE_PAD + HUG_IN + w + HUG_OUT);
                       }}
                     />
                   )}
@@ -707,6 +753,7 @@ function TopNavBar({
         )}
       </Animated.View>
       </FlatFrostContext.Provider>
+      </HugContext.Provider>
     </Layer>
     {/* The screen's own list, hanging from the bar's right end - its own
         portal, not one inside the bar's. */}
@@ -729,12 +776,14 @@ function Surface({
   style,
   radius,
   fill,
+  onLayout,
   children,
 }: {
   soft: boolean;
   style?: StyleProp<ViewStyle>;
   radius: number;
   fill?: string;
+  onLayout?: (e: LayoutChangeEvent) => void;
   children?: ReactNode;
 }) {
   if (!soft) {
@@ -744,7 +793,11 @@ function Surface({
       </DockFrost>
     );
   }
-  return <View style={[style, styles.softPiece, { borderRadius: radius, backgroundColor: fill ?? 'transparent' }]}>{children}</View>;
+  return (
+    <View onLayout={onLayout} style={[style, styles.softPiece, { borderRadius: radius, backgroundColor: fill ?? 'transparent' }]}>
+      {children}
+    </View>
+  );
 }
 
 // An Ionicons name, drawn as the soft style's own icon where it has one
@@ -1081,7 +1134,7 @@ function DeskTitles({
                 onLongPress={onLongPress}
                 delayLongPress={400}
                 accessibilityLabel={desk.label}
-                style={{ width, height: PIECE_H, flexDirection: 'row', alignItems: 'center', justifyContent: left ? 'flex-start' : 'center' }}
+                style={{ width, height: PIECE_H, flexDirection: 'row', alignItems: 'center', justifyContent: left ? 'flex-start' : 'center', paddingLeft: left ? HUG_IN : 0 }}
               >
                 <Text
                   numberOfLines={1}
@@ -1104,6 +1157,15 @@ function DeskTitles({
     </View>
   );
 }
+// A row of the open bar hugging its content, as wide as it needs up to the plate (the glass under it takes this width).
+function HugRow({ onWidth, children }: { onWidth?: (w: number) => void; children: ReactNode }) {
+  return (
+    <View style={styles.hugRow} onLayout={(e) => onWidth?.(PLATE_PAD + e.nativeEvent.layout.width)}>
+      {children}
+    </View>
+  );
+}
+
 // Where a note lives: its database's glyph, then the folders down to it,
 // then its own name - the same look as the folder path below, and the
 // same rule: every crumb but the last is a way there.
@@ -1121,17 +1183,20 @@ function TrailRow({
   soft?: boolean;
 }) {
   useRenderTimer('Смужка: слід');
+  const hug = useHug();
   const targets = useNavDockTargets();
   const scroll = useRef<ScrollView>(null);
+  const Wrap = hug ? HugRow : Fragment;
   return (
-    <>
+    <Wrap {...(hug ? { onWidth: hug.a } : {})}>
       <View style={{ width: PILL_W, height: PIECE_H }}>
         <Surface soft={soft} style={styles.piece} radius={radius}>
           <Glyph name={trail.icon} size={20} color={ink} soft={soft} />
         </Surface>
       </View>
-      <Surface soft={soft} style={[styles.piece, styles.crumbsPiece]} radius={radius}>
+      <Surface soft={soft} style={[styles.piece, styles.crumbsPiece, hug && styles.crumbsHug]} radius={radius}>
         <ScrollView
+          style={hug ? styles.scrollHug : undefined}
           ref={scroll}
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1162,7 +1227,7 @@ function TrailRow({
           })}
         </ScrollView>
       </Surface>
-    </>
+    </Wrap>
   );
 }
 
@@ -1187,17 +1252,19 @@ function PathRow({
   left?: boolean;
 }) {
   useRenderTimer('Смужка: шлях');
+  const hug = useHug();
   const targets = useNavDockTargets();
   const scroll = useRef<ScrollView>(null);
   // ONE name only (the bin, a folder at the first level): centred like a desk's name, not a circle and a word
   // pushed to the left (the user, 2026-10-13: «назва корзина не по центру»). A tap on it still goes to the root.
   if (soft && path.crumbs.length === 1) {
     return (
-      <View ref={targets?.('')} collapsable={false} style={{ flex: 1, height: PIECE_H }}>
+      <View ref={targets?.('')} collapsable={false} style={hug ? { height: PIECE_H, flexDirection: 'row' } : { flex: 1, height: PIECE_H }}>
         <Pressable
           onPress={() => path.onGo('')}
           accessibilityLabel="Корінь"
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: left ? 'flex-start' : 'center' }}
+          style={hug ? styles.loneHug : { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: left ? 'flex-start' : 'center' }}
+          onLayout={hug ? (e) => hug.b(PLATE_PAD + e.nativeEvent.layout.width) : undefined}
         >
           <Glyph name={path.icon} size={20} color={ink} soft />
           <Text numberOfLines={1} style={[styles.label, styles.softLabel, { color: ink, marginLeft: 8 }, left && styles.openLabel]}>
@@ -1207,17 +1274,19 @@ function PathRow({
       </View>
     );
   }
+  const Wrap = hug ? HugRow : Fragment;
   return (
-    <>
+    <Wrap {...(hug ? { onWidth: hug.b } : {})}>
       <View ref={targets?.('')} collapsable={false}>
         <Pressable onPress={() => path.onGo('')} accessibilityLabel="Корінь" style={{ width: PILL_W, height: PIECE_H }}>
-          <Surface soft={!!soft} fill={soft?.fill} style={styles.piece} radius={radius}>
+          <Surface soft={!!soft} fill={hug ? undefined : soft?.fill} style={styles.piece} radius={radius}>
             <Glyph name={path.icon} size={20} color={ink} soft={!!soft} />
           </Surface>
         </Pressable>
       </View>
-      <Surface soft={!!soft} style={[styles.piece, styles.crumbsPiece]} radius={radius}>
+      <Surface soft={!!soft} style={[styles.piece, styles.crumbsPiece, hug && styles.crumbsHug]} radius={radius}>
         <ScrollView
+          style={hug ? styles.scrollHug : undefined}
           ref={scroll}
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1249,7 +1318,7 @@ function PathRow({
           })}
         </ScrollView>
       </Surface>
-    </>
+    </Wrap>
   );
 }
 
@@ -1336,6 +1405,42 @@ const styles = StyleSheet.create({
   },
   pieceLeft: {
     justifyContent: 'flex-start',
+  },
+  // Open: the pieces hug their text on the name's glass (HugContext).
+  pieceHug: {
+    flex: 0,
+    alignSelf: 'flex-start',
+    height: PIECE_H,
+    paddingLeft: HUG_IN,
+    paddingRight: HUG_OUT,
+  },
+  loneHug: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: PIECE_H,
+    paddingLeft: HUG_IN,
+    paddingRight: HUG_OUT,
+  },
+  hugRow: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    paddingRight: HUG_OUT - 6,
+  },
+  crumbsHug: {
+    flex: 0,
+    flexShrink: 1,
+  },
+  scrollHug: {
+    flexGrow: 0,
+  },
+  hugGlass: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    height: TOP_NAV_H,
+    borderRadius: TOP_NAV_H / 2,
+    overflow: 'hidden',
   },
   openLabel: {
     fontSize: 17,

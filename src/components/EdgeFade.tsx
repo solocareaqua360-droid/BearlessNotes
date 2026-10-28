@@ -2,7 +2,6 @@ import { useId, useState, memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useRenderTimer } from '../utils/perfWatch';
-import { FEATURES } from '../features';
 
 // Content scrolling past an edge dissolves into the surface behind it
 // instead of being cut off - the user's own words for the hard edge it
@@ -18,15 +17,13 @@ import { FEATURES } from '../features';
 const STOPS = 8;
 
 // `solid`: points at the edge that stay fully covered before the fade begins.
-// `bar`: this is the fade under the top bar. With the bar's capsule gone (features.openTopBar) the name is plain text, so the
-// fade stays solid down to the name and melts only below the bar - a list scrolled under it no longer shows through the name.
-// `bar`: true when `height` ends at the bar's foot (16 more points of fade are added below it, short of where a list at rest
-// begins); 'roomy' when `height` already runs 20 past the foot (the explorer's own top room) and nothing is added.
+// `bar`: this is the fade under the top bar (kept as a mark: the open bar's blur band does the rest - TopEdgeBlur).
 function EdgeFade({ edge, color, height: given = 36, solid: givenSolid = 0, bar }: { edge: 'top' | 'bottom'; color: string; height?: number; solid?: number; bar?: boolean | 'roomy' }) {
   useRenderTimer('Край, що тане');
-  const open = !!bar && FEATURES.openTopBar;
-  const height = open && bar !== 'roomy' ? given + 16 : given;
-  const solid = open ? Math.max(givenSolid, bar === 'roomy' ? given - 20 : given - 8) : givenSolid;
+  // Under the open bar the band of blur (components/TopEdgeBlur) keeps the name readable: this fade stays as it always was.
+  void bar;
+  const height = given;
+  const solid = givenSolid;
   const [width, setWidth] = useState(0);
   const id = `fade${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   // A solid part leaves the fade a shorter run: more stops keep it smooth.
