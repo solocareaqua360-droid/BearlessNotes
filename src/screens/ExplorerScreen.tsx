@@ -2863,15 +2863,16 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     ));
   const startBody = (
     <>
-      {/* «ДУМКИ» OVER EVERYTHING (the user, 2026-10-28: «думки вгорі над усім над папками»), and nowhere else on the start's levels. */}
-      {FEATURES.thoughts && (
-        <View style={{ marginTop: -6, marginBottom: 6 }}>
-          <ThoughtsRow />
-        </View>
-      )}
       {recentsOn && (
         <View style={{ marginHorizontal: -20 }}>
           <RecentPlacesRow side={20} kinds={START_KINDS} />
+        </View>
+      )}
+      {/* «ДУМКИ» under the recents and over the folders (the user, 2026-10-28: «думки нижче нещодавно відкритих але над
+          папками»), and nowhere else on the start's levels. */}
+      {FEATURES.thoughts && (
+        <View style={{ marginTop: recentsOn ? 10 : 0 }}>
+          <ThoughtsRow />
         </View>
       )}
       {/* «Папки ›» opens every folder as cards (the explorer's own first level). */}
