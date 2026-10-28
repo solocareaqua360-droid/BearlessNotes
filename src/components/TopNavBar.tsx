@@ -698,12 +698,9 @@ function TopNavBar({
             ]}
           >
             {!soft && <DockFrost style={[StyleSheet.absoluteFill, styles.clusterEdge]} radius={corners.plate} />}
-            {/* Open: the buttons are the one capsule left at the top, in the dock's own material («Скло» when it is on). */}
-            {open && (
-              <View pointerEvents="none" style={[StyleSheet.absoluteFill, glassOn ? glassSurface : { backgroundColor: S.chrome, boxShadow: S.shadow }, { borderRadius: TOP_NAV_H / 2 }]}>
-                {glassOn && <DockGlassFill soft={S} />}
-              </View>
-            )}
+            {/* Open: the buttons stand on the same unseen halo as the name (the user, 2026-10-29: «те саме для кнопок в правому
+                верхньому куті») - no capsule, rim or shadow of their own. */}
+            {open && <NameHalo color={S.bg === 'transparent' ? S.chrome : S.bg} />}
             {[
               ...(extras?.tools ?? []).map((t) => ({
                 key: `tool:${t.key}`,

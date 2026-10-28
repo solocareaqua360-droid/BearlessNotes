@@ -27,10 +27,10 @@ export default function NameHalo({ color, spread = 12 }: { color: string; spread
         <Svg width={box.w} height={box.h}>
           <Defs>
             <RadialGradient id={id} cx="0.5" cy="0.5" rx="0.5" ry="0.5">
-              {/* Half as dense as first drawn (the user, 2026-10-29: «зменш її непрозорість відсотків на 50»). */}
-              <Stop offset="0" stopColor={color} stopOpacity={0.47} />
-              <Stop offset="0.62" stopColor={color} stopOpacity={0.43} />
-              <Stop offset="0.82" stopColor={color} stopOpacity={0.22} />
+              {/* 0.4 of the first density (the user, 2026-10-29: «на 50», then «ще відсотків на 20»). */}
+              <Stop offset="0" stopColor={color} stopOpacity={0.38} />
+              <Stop offset="0.62" stopColor={color} stopOpacity={0.34} />
+              <Stop offset="0.82" stopColor={color} stopOpacity={0.18} />
               <Stop offset="1" stopColor={color} stopOpacity={0} />
             </RadialGradient>
           </Defs>
