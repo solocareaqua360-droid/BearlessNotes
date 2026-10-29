@@ -287,15 +287,15 @@ export default function AssistantScreen() {
     if (FEATURES.aiHome && home) refreshChats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [home]);
-  // What the draft looks like, after a pause in the typing; changed only when the match itself changes (no flicker).
+  // What the draft looks like, read at each FINISHED word - no waiting for a pause: a pause that every letter put off again
+  // meant the card came only once the typing stopped, 5-7 s after the first letter (the user, 2026-10-29). The word still
+  // being typed is left out, so the card does not blink with each letter; it changes only when the match itself changes.
+  const doneWords = draft.slice(0, Math.max(draft.search(/[\s.,;:!?]+[^\s.,;:!?]*$/), 0));
   useEffect(() => {
     if (!home || !composing) return;
-    const t = setTimeout(() => {
-      const next = similarChat(draft, chatList);
-      setSimilar((prev) => (prev?.id === next?.id ? prev : next));
-    }, 400);
-    return () => clearTimeout(t);
-  }, [draft, home, composing, chatList]);
+    const next = similarChat(doneWords, chatList);
+    setSimilar((prev) => (prev?.id === next?.id ? prev : next));
+  }, [doneWords, home, composing, chatList]);
   // The window hides the app's dock (utils/assistMorph's cover, and the balloon's place stands empty while it is open); the LIST
   // stands under the dock, the balloon back in its place with «you are here» on it. The first time only after the window has
   // grown (the opening's own cover comes 140 ms in).
