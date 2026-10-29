@@ -210,4 +210,8 @@ export const FEATURES = {
   // nearly bare - over black the edge stays quiet, a colour passing under it lights the rim. No glow round the capsule.
   // false: the glass as before (tint across, the inner shade rings, the glow).
   glassRefract: true,
+  // THE AI'S FIRST SCREEN IS A LIST (2026-10-29, sketch P7vugFh1mrFwyNHjK6bnx3): themes, «Без теми», the latest conversations,
+  // the app's dock and «+»; «+» turns into the field, Enter opens the new conversation; a similar one is offered at the top
+  // before (found on the phone); the theme is quiet chips in the conversation. false: the window opens into a conversation.
+  aiHome: true,
 } as const;

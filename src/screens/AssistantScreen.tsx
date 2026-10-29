@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { withTiming } from 'react-native-reanimated';
 import TextInput from '../components/AppTextInput';
 import Svg, { Circle } from 'react-native-svg';
 import BalloonMark from '../components/BalloonMark';
@@ -79,7 +80,14 @@ import Menu, { type MenuEntry } from '../components/surfaces/Menu';
 import { writeMemoryNote, writeMemoryTree } from '../utils/assistantTree';
 import { shortTitle } from '../utils/assistant';
 import { FEATURES } from '../features';
-import { ASSIST_KEY, assistReturned, assistWash, closeAssistant } from '../utils/assistMorph';
+import { navigationRef } from '../navigationRef';
+import AssistantHome, { NO_THEME, ThemeChips } from '../components/chat/AssistantHome';
+import RenamePrompt from '../components/RenamePrompt';
+import { holdAsk } from '../components/surfaces/HoldAsk';
+import { useChromeStyle, useDockBeads, useTopBack, useTopExtras } from '../navigation/navDock';
+import { useDockDesksHere } from '../navigation/deskBeadsBus';
+import { createTheme, deleteTheme, likelyThemes, listenThemes, renameThemeTo, similarChat, type ChatTheme } from '../utils/assistant';
+import { ASSIST_KEY, assistDockCover, assistFlown, assistReturned, assistWash, closeAssistant } from '../utils/assistMorph';
 import { morphLanded } from '../utils/morph';
 import { speakThoughts, stopVoice, subscribeVoice } from '../utils/thoughtVoice';
 import { useGeminiUsage } from '../utils/geminiUsage';
@@ -227,6 +235,160 @@ export default function AssistantScreen() {
     chatRef.current = next;
     setChat(next);
     saveChat(next);
+  };
+  // THE FIRST SCREEN IS A LIST (features.aiHome): themes and conversations; a conversation opens from it and «‹» / × goes back.
+  const [home, setHome] = useState<boolean>(FEATURES.aiHome);
+  const [composing, setComposing] = useState(false);
+  const [level, setLevel] = useState<string | null>(null);
+  const [themes, setThemes] = useState<ChatTheme[]>([]);
+  const [similar, setSimilar] = useState<ChatSummary | null>(null);
+  const [themeSkip, setThemeSkip] = useState<string | null>(null);
+  const [themeAsk, setThemeAsk] = useState(false);
+  const [newThemeFor, setNewThemeFor] = useState<'chat' | 'list' | null>(null);
+  const [renameTheme, setRenameTheme] = useState<ChatTheme | null>(null);
+  const [renameChat, setRenameChat] = useState<ChatSummary | null>(null);
+  useEffect(() => (FEATURES.aiHome ? listenThemes(setThemes) : undefined), []);
+  useEffect(() => {
+    if (FEATURES.aiHome && home) refreshChats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [home]);
+  // What the draft looks like, after a pause in the typing; changed only when the match itself changes (no flicker).
+  useEffect(() => {
+    if (!home || !composing) return;
+    const t = setTimeout(() => {
+      const next = similarChat(draft, chatList);
+      setSimilar((prev) => (prev?.id === next?.id ? prev : next));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [draft, home, composing, chatList]);
+  // The window hides the app's dock (utils/assistMorph's cover, and the balloon's place stands empty while it is open); the LIST
+  // stands under the dock, the balloon back in its place with «you are here» on it. The first time only after the window has
+  // grown (the opening's own cover comes 140 ms in).
+  const dockShownOnce = useRef(false);
+  // Only while this window is in front: gone to a desk from the list's dock, it must not leave the dock hidden over the desk
+  // (2026-10-29: the Start desk came back with no dock at all).
+  useEffect(
+    () => () => {
+      if (!FEATURES.aiHome) return;
+      assistDockCover.value = withTiming(0, { duration: 120 });
+    },
+    []
+  );
+  useEffect(() => {
+    if (!FEATURES.aiHome) return;
+    if (!chatFocused) {
+      assistDockCover.value = withTiming(0, { duration: 120 });
+      assistFlown.value = 0;
+      // A desk picked from the list's dock pushed the desks again OVER this window (Tabs, Assistant, Tabs): the window is
+      // left - only the desks stay, as they are now - so «back» does not bring the list up again under them.
+      const t = setTimeout(() => {
+        if (!navigationRef.isReady()) return;
+        const st = navigationRef.getRootState() as unknown as { index: number; routes: { name: string }[] };
+        const top = st.routes[st.index];
+        if (top?.name === 'Tabs' && st.routes.slice(0, st.index).some((r) => r.name === 'Assistant')) {
+          navigationRef.reset({ ...(st as object), index: 0, routes: [top] } as never);
+        }
+      }, 0);
+      return () => clearTimeout(t);
+    }
+    const show = home && !composing;
+    const apply = () => {
+      assistDockCover.value = withTiming(show ? 0 : 1, { duration: 160 });
+      assistFlown.value = show ? 0 : 1;
+    };
+    if (dockShownOnce.current) {
+      apply();
+      return;
+    }
+    const t = setTimeout(() => {
+      dockShownOnce.current = true;
+      apply();
+    }, 420);
+    return () => clearTimeout(t);
+  }, [home, composing, chatFocused]);
+  // «+»: the field comes up with the keyboard at once.
+  useEffect(() => {
+    if (!composing) return;
+    const t = setTimeout(() => inputRef.current?.focus(), 80);
+    return () => clearTimeout(t);
+  }, [composing]);
+  const goHome = () => {
+    if (chatRef.current) saveChat(chatRef.current);
+    setHome(true);
+    setComposing(false);
+    setSimilar(null);
+  };
+  const closeAll = () => closeAssistant(() => navigation.goBack(), S.bg, assistWash(S.dark));
+  // The phone's back: out of the field, out of a theme, out of a conversation to the list - then the window itself.
+  useEffect(() => {
+    if (!FEATURES.aiHome || !chatFocused) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (home && composing) {
+        setComposing(false);
+        setDraft('');
+        return true;
+      }
+      if (home && level !== null) {
+        setLevel(null);
+        return true;
+      }
+      if (!home) {
+        goHome();
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [home, composing, level, chatFocused]);
+  // The list stands under the app's own dock: the desks with «you are here» on the balloon, and «+» for a new conversation.
+  useChromeStyle('soft', FEATURES.aiHome && home && chatFocused);
+  // The bar's «⋯» on the list.
+  useTopExtras(
+    FEATURES.aiHome && home && !composing ? ([{ label: 'Нова тема…', icon: 'add-circle-outline', onPress: () => setNewThemeFor('list') }] as MenuEntry[]) : null,
+    null,
+    FEATURES.aiHome && home && !composing && chatFocused
+  );
+  useDockDesksHere(FEATURES.aiHome && home && !composing && chatFocused);
+  // The lens: the same field - what is typed finds the conversation it looks like, at the top (a search by meaning of words).
+  useDockBeads(
+    FEATURES.aiHome && home && !composing && chatFocused
+      ? { icon: 'search-outline', onPress: () => {
+          setDraft('');
+          setSimilar(null);
+          setComposing(true);
+        } }
+      : null,
+    FEATURES.aiHome && home && !composing && chatFocused
+      ? { icon: 'add-outline', badge: 'add-circle-outline', onPress: () => {
+          setDraft('');
+          setSimilar(null);
+          setComposing(true);
+        } }
+      : null
+  );
+  // Not while writing: a dimmed «‹» stood at the bar's start over the field.
+  useTopBack(closeAll, FEATURES.aiHome && home && !composing && chatFocused);
+  // Enter on the list: a new conversation with the message (the motion of the message hides the window's building).
+  const sendFromHome = () => {
+    if (!draft.trim()) return;
+    newConversation();
+    // Started inside a theme: the conversation is in it from its first message.
+    if (level && level !== NO_THEME && chatRef.current) chatRef.current = { ...chatRef.current, themeId: level };
+    setHome(false);
+    setComposing(false);
+    setSimilar(null);
+    // The similar conversation was already looked for here, on the phone: no second (paid) look by the AI.
+    if (attached.length === 0) send(draft, undefined, true);
+    else sendFromDock();
+  };
+  const continueThere = async (id: string) => {
+    const text = draft;
+    await openChat(id);
+    setHome(false);
+    setComposing(false);
+    setSimilar(null);
+    send(text, undefined, true);
   };
   useEffect(() => subscribeVoice((s) => !s.playing && setSpeaking(null)), []);
   useEffect(
@@ -536,7 +698,7 @@ export default function AssistantScreen() {
     setChatsOpen(false);
   }
   // A folder, an instruction or a new name for ANY conversation: the open one goes through update(), another only to the database.
-  async function setChatFields(chatId: string, fields: { instruction?: string; folderId?: string; customTitle?: string }) {
+  async function setChatFields(chatId: string, fields: { instruction?: string; folderId?: string; customTitle?: string; themeId?: string }) {
     const open = chatRef.current;
     if (open && open.id === chatId) {
       const merged: AssistantChat = { ...open };
@@ -733,6 +895,9 @@ export default function AssistantScreen() {
       { label: 'Розмови', icon: 'chatbubble-outline', onPress: run(openChatsSheet) },
       { kind: 'section', label: 'Ця розмова' },
       { label: 'Інструкція', icon: 'book-outline', checked: !!c?.instruction, onPress: run(() => c && setInstructionFor(c.id)) },
+      ...(FEATURES.aiHome && c && c.messages.length > 0
+        ? [{ label: c.themeId ? `Тема: ${themes.find((t) => t.id === c.themeId)?.name ?? '—'}` : 'Тема…', icon: 'pricetag-outline', onPress: run(() => setThemeAsk(true)) } as MenuEntry]
+        : []),
       { label: folder ? `Папка: ${folder.name}` : 'Папка', icon: 'folder-outline', checked: !!folder, onPress: run(() => c && setFolderFor({ chatId: c.id, purpose: 'chat' })) },
       { label: "Що ти пам'ятаєш?", icon: 'bulb-outline', onPress: run(showMemory) },
       ...(count > 0 ? [{ label: freshCount > 0 ? `Відібране в нотатку (${freshCount})` : 'Відкрити нотатку', icon: 'document-text-outline' as const, onPress: run(toNote) }] : []),
@@ -853,6 +1018,151 @@ export default function AssistantScreen() {
   }
 
   let shownTopic: string | undefined;
+  const firstMineId = messages.find((m) => m.role === 'user')?.id;
+  const themePrompt = (
+    <RenamePrompt
+      visible={newThemeFor !== null}
+      title="Нова тема"
+      initialValue=""
+      placeholder="Назва теми"
+      onCancel={() => setNewThemeFor(null)}
+      onSave={async (name) => {
+        const forChat = newThemeFor === 'chat';
+        setNewThemeFor(null);
+        if (!name.trim()) return;
+        try {
+          const t = await createTheme(name, themes);
+          if (forChat && chatRef.current) setChatFields(chatRef.current.id, { themeId: t.id });
+        } catch (e) {
+          notify('Не вдалося створити тему', (e as Error).message);
+        }
+      }}
+    />
+  );
+  const renamePrompt = (
+    <RenamePrompt
+      visible={renameTheme !== null}
+      title="Назва теми"
+      initialValue={renameTheme?.name ?? ''}
+      onCancel={() => setRenameTheme(null)}
+      onSave={async (name) => {
+        const t = renameTheme;
+        setRenameTheme(null);
+        if (!t || !name.trim()) return;
+        try {
+          await renameThemeTo(t.id, name);
+        } catch (e) {
+          notify('Не вдалося перейменувати', (e as Error).message);
+        }
+      }}
+    />
+  );
+  if (FEATURES.aiHome && home) {
+    return (
+      <View style={styles.screen}>
+        <AssistantHome
+          chats={chatList}
+          themes={themes}
+          level={level}
+          onLevel={setLevel}
+          onOpenChat={async (id) => {
+            await openChat(id);
+            setHome(false);
+          }}
+          composing={composing}
+          similar={similar}
+          onContinue={continueThere}
+          focused={chatFocused}
+          onHoldChat={async (c) => {
+            const choice = await holdAsk({
+              title: c.title,
+              actions: [
+                { id: 'theme', label: 'Тема…', icon: 'pricetag-outline' },
+                { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+                { id: 'delete', label: 'Видалити розмову', icon: 'trash-outline', tone: 'danger' },
+              ],
+            });
+            if (choice === 'theme') {
+              const pick = await ask({
+                title: 'Тема розмови',
+                actions: [
+                  ...themes.map((t) => ({ id: t.id, label: t.name, icon: 'pricetag-outline' as const })),
+                  { id: NO_THEME, label: 'Без теми', icon: 'remove-circle-outline' as const },
+                ],
+              });
+              if (pick === NO_THEME) setChatFields(c.id, { themeId: undefined });
+              else if (themes.some((t) => t.id === pick)) setChatFields(c.id, { themeId: pick });
+            } else if (choice === 'rename') setRenameChat(c);
+            else if (choice === 'delete') {
+              const sure = await ask({
+                title: 'Видалити розмову?',
+                message: c.title,
+                actions: [{ id: 'yes', label: 'Видалити', icon: 'trash-outline', tone: 'danger' }],
+              });
+              if (sure === 'yes') removeChat(c.id);
+            }
+          }}
+          onHoldTheme={async (t) => {
+            const choice = await holdAsk({
+              title: t.name,
+              actions: [
+                { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+                { id: 'delete', label: 'Видалити тему', icon: 'trash-outline', tone: 'danger' },
+              ],
+            });
+            if (choice === 'rename') setRenameTheme(t);
+            else if (choice === 'delete') {
+              try {
+                await deleteTheme(t.id, chatList);
+                refreshChats();
+              } catch (e) {
+                notify('Не вдалося видалити тему', (e as Error).message);
+              }
+            }
+          }}
+        />
+        {composing && chatFocused ? (
+          <GlassPortal name="chatComposer">
+            <ChatComposer
+              value={draft}
+              onChangeText={setDraft}
+              onSend={sendFromHome}
+              sending={busy}
+              listening={listening}
+              onMic={listening ? stopListening : startListening}
+              onPlus={() => setAttachOpen(true)}
+              hintsOpen={false}
+              onHints={() => {}}
+              attachments={attached.map((a) => ({ id: a.id, kind: a.kind === 'photo' ? 'photo' : a.kind === 'note' ? 'note' : a.kind === 'folder' ? 'folder' : a.kind === 'link' ? 'link' : 'file', name: a.name, sub: a.sub, uri: a.uri }))}
+              onRemoveAttachment={(id) => {
+                weighed.current.delete(id);
+                setAttached((list) => list.filter((a) => a.id !== id));
+              }}
+              estimate={null}
+              placeholder="Запитай або скажи…"
+              keyboardHeight={keyboard}
+              bottomInset={insets.bottom}
+              inputRef={inputRef}
+              onHeight={setDockH}
+            />
+          </GlassPortal>
+        ) : null}
+        {themePrompt}
+        {renamePrompt}
+        <RenamePrompt
+          visible={renameChat !== null}
+          title="Назва розмови"
+          initialValue={renameChat?.title ?? ''}
+          onCancel={() => setRenameChat(null)}
+          onSave={(name) => {
+            const c = renameChat;
+            setRenameChat(null);
+            if (c && name.trim()) setChatFields(c.id, { customTitle: name.trim() });
+          }}
+        />
+      </View>
+    );
+  }
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {/* THE CONVERSATION RUNS UNDER GLASS (2026-10-25, the user's «робимо»): the list is the blur's own target, under the
@@ -905,6 +1215,25 @@ export default function AssistantScreen() {
                   <View style={styles.mine}>
                     <Text style={styles.mineText}>{m.text}</Text>
                   </View>
+                  {FEATURES.aiHome && chat && m.id === firstMineId && ((!chat.themeId && themeSkip !== chat.id && messages.filter((x) => x.role === 'user').length <= 1) || themeAsk) ? (
+                    <ThemeChips
+                      likely={likelyThemes(m.text, chatList.filter((c) => c.id !== chat.id), themes)}
+                      themes={themes}
+                      onPick={(id) => {
+                        setThemeAsk(false);
+                        setChatFields(chat.id, { themeId: id });
+                      }}
+                      onNew={() => {
+                        setThemeAsk(false);
+                        setNewThemeFor('chat');
+                      }}
+                      onSkip={() => {
+                        setThemeAsk(false);
+                        setThemeSkip(chat.id);
+                        if (chat.themeId) setChatFields(chat.id, { themeId: undefined });
+                      }}
+                    />
+                  ) : null}
                 </View>
               ) : m.error ? (
                 <Text style={styles.error}>{m.text}</Text>
@@ -1018,8 +1347,8 @@ export default function AssistantScreen() {
               ) : null}
             </Pressable>
           ) : null}
-          <Pressable onPress={() => closeAssistant(() => navigation.goBack(), S.bg, assistWash(S.dark))} style={styles.roundBare} accessibilityLabel="Закрити" hitSlop={6}>
-            <Ionicons name="close" size={18} color={S.ink} />
+          <Pressable onPress={FEATURES.aiHome ? goHome : closeAll} style={styles.roundBare} accessibilityLabel={FEATURES.aiHome ? 'До списку розмов' : 'Закрити'} hitSlop={6}>
+            <Ionicons name={FEATURES.aiHome ? 'chevron-back' : 'close'} size={18} color={S.ink} />
           </Pressable>
         </View>
         {chat?.instruction ? <ChatInstructionChip instruction={chat.instruction} onPress={() => setInstructionFor(chat.id)} /> : null}
@@ -1223,6 +1552,7 @@ export default function AssistantScreen() {
           )}
         />
       ) : null}
+      {FEATURES.aiHome ? themePrompt : null}
       <Menu
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}

@@ -69,19 +69,12 @@ export default function RenamePrompt({
   // 30 tall - the phone's are sized for a thumb.
   const pointer = useDensity() === 'pointer';
   const [value, setValue] = useState(initialValue);
-  // Some Android keyboards (Samsung's own, confirmed on-device) silently
-  // reset the cursor to the START of the field after every character
-  // typed instead of leaving it where it was - a whole word types out
-  // back to front ("things" -> "sgniht"), every single letter, not a
-  // flake. Pinning `selection` explicitly after each change is what
-  // overrides that; a real tap still moves it correctly, since
-  // onSelectionChange keeps this in sync with wherever the user actually
-  // put the cursor themselves.
-  const [selection, setSelection] = useState<{ start: number; end: number } | undefined>(undefined);
+  // Samsung's keyboard typed words back to front here once (the caret reset to the start after every letter); the
+  // dialog pinned `selection` after each change against it. AppTextInput keeps the caret itself now, and that pinning is
+  // what made every typed letter vanish once the field owned its text (2026-10-29) - so it is gone.
 
   function handleChangeText(text: string) {
     setValue(text);
-    setSelection({ start: text.length, end: text.length });
   }
 
   // Lifted clear of the keyboard by hand, the way TagPicker,
@@ -109,7 +102,6 @@ export default function RenamePrompt({
   useEffect(() => {
     if (visible) {
       setValue(initialValue);
-      setSelection({ start: initialValue.length, end: initialValue.length });
     }
   }, [visible, initialValue, title]);
 
@@ -129,8 +121,6 @@ export default function RenamePrompt({
           editable={!busy}
           value={value}
           onChangeText={handleChangeText}
-          selection={selection}
-          onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
           placeholder={placeholder ?? 'Назва'}
           placeholderTextColor={theme.ink.faint}
           multiline={multiline}

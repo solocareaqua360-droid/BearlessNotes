@@ -26,7 +26,7 @@ import { Commands } from 'react-native/Libraries/Components/TextInput/AndroidTex
 type Props = TextInputProps;
 
 const TextInput = forwardRef<RNTextInput, Props>(function AppTextInput(props, ref) {
-  const { value, defaultValue, onChange, onChangeText, onSelectionChange, onFocus, onBlur, autoFocus, ...rest } = props;
+  const { value, defaultValue, onChange, onChangeText, onSelectionChange, onFocus, onBlur, autoFocus, selection, ...rest } = props;
   const controlled = typeof value === 'string';
   const inner = useRef<RNTextInput | null>(null);
   // What the field last said, the newest `value` given, the field's event count and where its caret stood.
@@ -64,6 +64,22 @@ const TextInput = forwardRef<RNTextInput, Props>(function AppTextInput(props, re
   useLayoutEffect(() => {
     if (controlled && value !== said.current) push(value as string);
   });
+
+  // A caret placed from outside. NOT handed to react-native's field: with `selection` set it writes its own text back on every
+  // caret change - and here that is `defaultValue`, the text the field was made with, so every letter typed vanished (the
+  // rename dialog, 2026-10-29: «Test tema» was saved as «ema»). Put through the same command as the text, with the text the
+  // field holds now.
+  useLayoutEffect(() => {
+    const host = inner.current;
+    if (!selection || !host) return;
+    const end = selection.end ?? selection.start;
+    if (caret.current && caret.current.start === selection.start && caret.current.end === end) return;
+    try {
+      Commands.setTextAndSelection(host, eventCount.current, said.current, selection.start, end);
+    } catch {
+      // A field already gone.
+    }
+  }, [selection?.start, selection?.end]);
 
   const setRef = useCallback(
     (node: RNTextInput | null) => {

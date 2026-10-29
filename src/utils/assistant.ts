@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { deleteDoc, deleteField, doc, getDoc, getDocs } from '../firestore';
+import { deleteDoc, deleteField, doc, getDoc, getDocs, onSnapshot } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery, setDoc } from './owned';
 import { GEMINI_MODEL, GeminiError, READ_BY_URL, askGemini } from './gemini';
 import { getGeminiKey } from './geminiKey';
 import { costOfGemini, recordGemini } from './geminiUsage';
 import { deleteChatObjects } from './chatObjects';
+import { listenError } from './listenError';
 
 // THE ASSISTANT'S CONVERSATION (step 1, 2026-10-22; plan in the project memory «project_ai_tree_notes»): one living
 // conversation opened from the start desks, answers in BLOCKS (one thought each, like the app's own blocks), a block held
@@ -57,6 +58,9 @@ export type AssistantChat = {
   instruction?: string;
   folderId?: string;
   customTitle?: string;
+  // THE CONVERSATION'S THEME (2026-10-29, features.aiHome): one of the person's chat themes (assistantThemes), a place on the
+  // AI's first screen - not a folder of the explorer.
+  themeId?: string;
 };
 
 export function groupsOf(chat: AssistantChat): string[][] {
@@ -159,6 +163,7 @@ function toStored(chat: AssistantChat) {
     ...(chat.instruction?.trim() ? { instruction: chat.instruction.trim() } : {}),
     ...(chat.folderId ? { folderId: chat.folderId } : {}),
     ...(chat.customTitle?.trim() ? { customTitle: chat.customTitle.trim() } : {}),
+    ...(chat.themeId ? { themeId: chat.themeId } : {}),
   };
 }
 function fromStored(id: string, data: Record<string, unknown>): AssistantChat {
@@ -180,6 +185,7 @@ function fromStored(id: string, data: Record<string, unknown>): AssistantChat {
     ...(data.instruction ? { instruction: data.instruction as string } : {}),
     ...(data.folderId ? { folderId: data.folderId as string } : {}),
     ...(data.customTitle ? { customTitle: data.customTitle as string } : {}),
+    ...(data.themeId ? { themeId: data.themeId as string } : {}),
   };
 }
 
@@ -191,7 +197,7 @@ export function saveChat(chat: AssistantChat): void {
 }
 
 // `summary`/`instruction`: what the list shows and the routing reads. `userTurns`: the number of the person's own messages.
-export type ChatSummary = { id: string; title: string; updatedAt: number; count: number; userTurns: number; folderId?: string; summary?: string; instruction?: string };
+export type ChatSummary = { id: string; title: string; updatedAt: number; count: number; userTurns: number; folderId?: string; summary?: string; instruction?: string; themeId?: string };
 
 export async function listChats(): Promise<ChatSummary[]> {
   const snap = await getDocs(ownedQuery(COLLECTION));
@@ -207,6 +213,7 @@ export async function listChats(): Promise<ChatSummary[]> {
         ...(data.folderId ? { folderId: data.folderId as string } : {}),
         ...(data.summary ? { summary: data.summary as string } : {}),
         ...(data.instruction ? { instruction: data.instruction as string } : {}),
+        ...(data.themeId ? { themeId: data.themeId as string } : {}),
       };
     })
     .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -418,10 +425,79 @@ export async function routeFirstMessage(message: string, chats: ChatSummary[]): 
 
 // Fields of ANOTHER conversation than the open one (the list's rows: a folder, an instruction, a new name), written to the
 // database only - saveChat would also make it «the last one» on this phone. `undefined` removes the field.
-export async function updateChatFields(chatId: string, fields: { instruction?: string; folderId?: string; customTitle?: string }): Promise<void> {
+export async function updateChatFields(chatId: string, fields: { instruction?: string; folderId?: string; customTitle?: string; themeId?: string }): Promise<void> {
   const patch: Record<string, unknown> = { updatedAt: Date.now() };
   (Object.keys(fields) as (keyof typeof fields)[]).forEach((k) => {
     patch[k] = fields[k] === undefined || fields[k] === '' ? deleteField() : fields[k];
   });
+  // The list reads `title`: a new name is the title at once.
+  if (fields.customTitle?.trim()) patch.title = fields.customTitle.trim();
   await setDoc(doc(db, COLLECTION, chatId), patch, { merge: true });
+}
+
+// ---- THE CHAT THEMES (features.aiHome, 2026-10-29) ----------------------------------------------------------------------------
+// The places on the AI's first screen: a few broad themes the person keeps (the user: «простий список і теми для об'єднання
+// чатів»). Kept in the account, like the conversations.
+export type ChatTheme = { id: string; name: string; color: string; createdAt: number };
+const THEMES = 'assistantThemes';
+export const THEME_COLORS = ['#E89A62', '#55B5A6', '#E1B53E', '#8FA6F0', '#D98BB5', '#9BBE6A', '#B99BF2', '#7FB8D9'];
+
+export function listenThemes(on: (themes: ChatTheme[]) => void): () => void {
+  return onSnapshot(
+    ownedQuery(THEMES),
+    (snap) =>
+      on(
+        snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<ChatTheme, 'id'>) }))
+          .filter((t) => typeof t.name === 'string' && t.name.trim())
+          .sort((a, b) => a.name.localeCompare(b.name))
+      ),
+    listenError('assistantThemes')
+  );
+}
+export async function createTheme(name: string, taken: ChatTheme[]): Promise<ChatTheme> {
+  const theme: ChatTheme = { id: `theme-${Date.now()}`, name: name.trim(), color: THEME_COLORS[taken.length % THEME_COLORS.length], createdAt: Date.now() };
+  await setDoc(doc(db, THEMES, theme.id), { name: theme.name, color: theme.color, createdAt: theme.createdAt });
+  return theme;
+}
+
+// WHICH CONVERSATION THIS LOOKS LIKE, on the phone (no AI, no cost): the words of the draft against each conversation's title
+// and summary. A match needs two shared words, or one long one in a short draft; null otherwise.
+const STOP = new Set(['який', 'яка', 'яке', 'які', 'щоб', 'чому', 'коли', 'тому', 'якщо', 'мені', 'тобі', 'тебе', 'мене', 'його', 'вона', 'вони', 'буде', 'було', 'треба', 'можна', 'about', 'what', 'with', 'this', 'that', 'from', 'have', 'then']);
+export function wordsOf(text: string): string[] {
+  return (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => w.length >= 4 && !STOP.has(w)).map((w) => w.slice(0, 6));
+}
+export function similarChat(draft: string, chats: ChatSummary[]): ChatSummary | null {
+  const mine = new Set(wordsOf(draft));
+  if (mine.size === 0) return null;
+  let best: { chat: ChatSummary; score: number } | null = null;
+  chats.forEach((c) => {
+    if (c.count === 0) return;
+    const theirs = new Set(wordsOf(`${c.title} ${c.summary ?? ''}`));
+    let score = 0;
+    mine.forEach((w) => theirs.has(w) && (score += 1));
+    if (score > 0 && (!best || score > best.score || (score === best.score && c.updatedAt > best.chat.updatedAt))) best = { chat: c, score };
+  });
+  if (!best) return null;
+  const b = best as { chat: ChatSummary; score: number };
+  return b.score >= 2 || (b.score === 1 && mine.size <= 2) ? b.chat : null;
+}
+// The themes a message most looks like, by the conversations already in them (best first).
+export function likelyThemes(text: string, chats: ChatSummary[], themes: ChatTheme[]): ChatTheme[] {
+  const mine = new Set(wordsOf(text));
+  const scored = themes.map((t) => {
+    const words = new Set(wordsOf(`${t.name} ${chats.filter((c) => c.themeId === t.id).map((c) => c.title).join(' ')}`));
+    let score = 0;
+    mine.forEach((w) => words.has(w) && (score += 1));
+    return { t, score };
+  });
+  return scored.filter((x) => x.score > 0).sort((a, b) => b.score - a.score).map((x) => x.t);
+}
+export async function renameThemeTo(id: string, name: string): Promise<void> {
+  await setDoc(doc(db, THEMES, id), { name: name.trim() }, { merge: true });
+}
+// The theme goes; its conversations stay, without a theme.
+export async function deleteTheme(id: string, chats: ChatSummary[]): Promise<void> {
+  await Promise.all(chats.filter((c) => c.themeId === id).map((c) => updateChatFields(c.id, { themeId: undefined })));
+  await deleteDoc(doc(db, THEMES, id));
 }
