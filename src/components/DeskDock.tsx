@@ -11,7 +11,7 @@ import { chromeCompact, useChromeCompactFlag } from '../navigation/chromeScroll'
 import { setDockCarriesBack, useExtraDeskCount } from '../navigation/deskBeadsBus';
 import { FEATURES } from '../features';
 import { morphCardRef } from '../utils/morph';
-import { ASSIST_KEY, assistFlown, assistHeld, assistWash, onAssistHeld } from '../utils/assistMorph';
+import { ASSIST_KEY, assistFlown, assistHeld, assistLeft, assistWash, onAssistHeld } from '../utils/assistMorph';
 import BalloonMark from './BalloonMark';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { deg } from '../utils/angle';
@@ -386,6 +386,8 @@ export default function DeskDock({
     if (tools) return;
     const from = lastDeskIndex >= 0 ? lastDeskIndex : activeIndex;
     if (from < 0 || i === from) return;
+    // Off from the balloon's list to a desk: that desk's dock carries this journey on, and nothing more (assistLeft).
+    if (assist && i !== assistIndex && assistHeld()) assistLeft();
     capMotion = { from, to: i, at: Date.now() };
     lastDeskIndex = i;
     runCapsule(from, i, 0);

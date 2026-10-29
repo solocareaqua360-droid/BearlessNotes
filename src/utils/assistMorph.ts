@@ -82,8 +82,16 @@ export function assistReturned() {
   releaseTimer = setTimeout(() => {
     // The window has landed in the balloon's place (or went without a fold): it is back, and then the capsule goes home.
     assistFlown.value = 0;
-    setHeld(false);
+    // Already let go by a desk picked from the list's dock (assistLeft): the capsule is on its way there - telling the
+    // docks now would send it from the balloon a second time (the user, 2026-10-29: «дублюється в док»).
+    if (held) setHeld(false);
   }, FEATURES.aiHome ? 0 : FOLD_MS);
+}
+
+// A desk picked on the list's own dock (features.aiHome): the capsule's journey from the balloon to that desk is the whole
+// move, carried on by the desk's dock - the balloon lets go of it without a word, so no dock starts a way home of its own.
+export function assistLeft() {
+  held = false;
 }
 
 // Its cross: the window folds into the balloon.
