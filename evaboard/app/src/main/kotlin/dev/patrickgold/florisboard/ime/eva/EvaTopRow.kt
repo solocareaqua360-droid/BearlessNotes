@@ -9,10 +9,10 @@
  * to the letters brings the digits back. While the digits show, the letter
  * keys carry no digit hints.
  *
- * The row is cut into 11 equal slots - the Ukrainian top row - so every
- * digit and every icon stands above its own letter column (in English, with
- * 10 letters, they sit slightly off; the user chose one fixed grid over a
- * row that changes with the language).
+ * The icons sit in 11 equal slots - the Ukrainian top row - each above its
+ * own letter column. The ten digits share the whole width instead, so no
+ * empty place is left after 0 (the user's call, 2026-10-29); the row's
+ * height still comes from the 11-slot width.
  */
 
 package dev.patrickgold.florisboard.ime.eva
@@ -123,19 +123,21 @@ fun EvaTopRowUi() {
             val slots: List<@Composable () -> Unit> = if (shown == EvaTopRowState.TOOLS) {
                 iconKeySlots()
             } else {
-                // the digits stand over the first ten letter columns, й…з; the eleventh slot stays empty
+                // the ten digits share the whole row (the user asked for no empty place after 0), so each
+                // is a little wider than a letter key; the row keeps its height
                 buildList<@Composable () -> Unit> {
                     for (digit in "1234567890") add { DigitKey(digit) }
-                    add { }
                 }
             }
+            val count = slots.size
+            val width = (maxWidth - gap - margin * 2) / count
             // slots whose centre lies left of the middle stay left of the gap
-            val leftCount = (0 until EvaTopRow.SLOTS).count { (it + 0.5f) < EvaTopRow.SLOTS / 2f }
+            val leftCount = (0 until count).count { (it + 0.5f) < count / 2f }
             Row(modifier = rowModifier, verticalAlignment = Alignment.CenterVertically) {
                 if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
                 slots.forEachIndexed { index, slot ->
                     if (gap > 0.dp && index == leftCount) Spacer(modifier = Modifier.width(gap))
-                    Box(Modifier.width(slotWidth).fillMaxHeight(), contentAlignment = Alignment.Center) { slot() }
+                    Box(Modifier.width(width).fillMaxHeight(), contentAlignment = Alignment.Center) { slot() }
                 }
             }
         }
