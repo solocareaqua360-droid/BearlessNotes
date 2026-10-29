@@ -1,5 +1,6 @@
 import { makeMutable, withDelay, withTiming } from 'react-native-reanimated';
 import { morphBack, morphSheet } from './morph';
+import { FEATURES } from '../features';
 
 // THE AI CONVERSATION OPENS OUT OF ITS BALLOON (2026-10-23, the user's sketch «Морф кульки»): the balloon is one of the
 // places in the desks' capsule; tapped, the orange capsule slides onto it (DeskDock), then a sheet grows out of it into the
@@ -46,6 +47,12 @@ export function assistWash(dark: boolean): string {
 
 export function openAssistant(navigate: () => void, color?: string, toColor?: string) {
   held = true;
+  // THE LIST (features.aiHome) stands under the app's dock like a desk: no sheet grows out of the balloon - the capsule
+  // slides onto it and the list is simply there (the user, 2026-10-29: «всеодно ніби відкривається новий екран»).
+  if (FEATURES.aiHome) {
+    navigate();
+    return;
+  }
   // The rest of the dock steps away while the circle is half grown - at the hand-over it was still fading and the screen-
   // less dock of the conversation showed through it for a frame.
   assistDockCover.value = withDelay(140, withTiming(1, { duration: 160 }));
@@ -76,12 +83,18 @@ export function assistReturned() {
     // The window has landed in the balloon's place (or went without a fold): it is back, and then the capsule goes home.
     assistFlown.value = 0;
     setHeld(false);
-  }, FOLD_MS);
+  }, FEATURES.aiHome ? 0 : FOLD_MS);
 }
 
 // Its cross: the window folds into the balloon.
 export function closeAssistant(leave: () => void, color?: string, toColor?: string) {
   assistDockCover.value = withTiming(0, { duration: 120 });
+  // No fold either (features.aiHome): the list goes the way a desk does.
+  if (FEATURES.aiHome) {
+    assistFlown.value = 0;
+    leave();
+    return;
+  }
   morphBack(ASSIST_KEY, leave, {
     color,
     toColor,

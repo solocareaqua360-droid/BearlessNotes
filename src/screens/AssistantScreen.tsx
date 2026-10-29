@@ -296,7 +296,9 @@ export default function AssistantScreen() {
       assistDockCover.value = withTiming(show ? 0 : 1, { duration: 160 });
       assistFlown.value = show ? 0 : 1;
     };
-    if (dockShownOnce.current) {
+    // Nothing grows any more (assistMorph: the list opens like a desk) - the dock is there from the first frame.
+    if (dockShownOnce.current || FEATURES.aiHome) {
+      dockShownOnce.current = true;
       apply();
       return;
     }
