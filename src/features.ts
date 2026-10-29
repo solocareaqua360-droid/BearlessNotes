@@ -217,4 +217,8 @@ export const FEATURES = {
   // THE CONVERSATION BY TOPIC (2026-10-29): «Зміст розмови» in its header - «За часом / По темах», the topics to jump to and
   // «Впорядкувати» (the AI groups the pairs; the real order is kept for it). false: the conversation is only by time.
   aiChatOutline: true,
+  // THE CONVERSATION'S OWN BAR (2026-10-29, sketch JwVdGx2hGt9KFBjMYbDSNA): no capsule - the other conversations' drawer on the
+  // left, the name and its price, «Зміст» and «⋯» (the materials moved into it); the way back is the round button beside the
+  // field, where it always is. false: the capsule with ⋯, the name, the materials and ‹.
+  aiChatBar: true,
 } as const;

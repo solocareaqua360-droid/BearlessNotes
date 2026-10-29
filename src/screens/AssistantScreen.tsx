@@ -82,11 +82,13 @@ import { shortTitle } from '../utils/assistant';
 import { FEATURES } from '../features';
 import { navigationRef } from '../navigationRef';
 import AssistantHome, { NO_THEME, ThemeChips } from '../components/chat/AssistantHome';
+import ChatsDrawer from '../components/chat/ChatsDrawer';
+import EdgeFade from '../components/EdgeFade';
 import RenamePrompt from '../components/RenamePrompt';
 import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useChromeStyle, useDockBeads, useTopBack, useTopExtras } from '../navigation/navDock';
 import { useDockDesksHere } from '../navigation/deskBeadsBus';
-import { applySort, createTheme, deleteTheme, likelyThemes, listenThemes, pairsOf, renameThemeTo, similarChat, sortPlan, type ChatSection, type ChatTheme } from '../utils/assistant';
+import { applySort, mergeInto, createTheme, deleteTheme, likelyThemes, listenThemes, pairsOf, renameThemeTo, similarChat, sortPlan, type ChatSection, type ChatTheme } from '../utils/assistant';
 import { ASSIST_KEY, assistDockCover, assistFlown, assistReturned, assistWash, closeAssistant } from '../utils/assistMorph';
 import { morphLanded } from '../utils/morph';
 import { speakThoughts, stopVoice, subscribeVoice } from '../utils/thoughtVoice';
@@ -263,6 +265,10 @@ export default function AssistantScreen() {
   // THE CONVERSATION BY TOPIC (features.aiChatOutline): the «Зміст розмови» card, which view is on (by time unless asked -
   // what is typed lands at the end), the AI at work on «Впорядкувати», a topic being renamed, where each topic stands.
   const [outlineOpen, setOutlineOpen] = useState(false);
+  // The other conversations' drawer (features.aiChatBar).
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // «Схоже на … - перенести туди» put away for these conversations (features.aiChatBar).
+  const [moveSkip, setMoveSkip] = useState<string[]>([]);
   const [byTopic, setByTopic] = useState(false);
   const [sortBusy, setSortBusy] = useState(false);
   const [renameSection, setRenameSection] = useState<ChatSection | null>(null);
@@ -933,6 +939,7 @@ export default function AssistantScreen() {
       { label: 'Нова розмова', icon: 'add', onPress: run(() => newConversation()) },
       { label: 'Розмови', icon: 'chatbubble-outline', onPress: run(openChatsSheet) },
       { kind: 'section', label: 'Ця розмова' },
+      ...(FEATURES.aiChatBar && structure ? [{ label: materialsCount > 0 ? `Матеріали (${materialsCount})` : 'Матеріали', icon: 'layers-outline', onPress: run(() => setMaterialsOpen(true)) } as MenuEntry] : []),
       { label: 'Інструкція', icon: 'book-outline', checked: !!c?.instruction, onPress: run(() => c && setInstructionFor(c.id)) },
       ...(FEATURES.aiHome && c && c.messages.length > 0
         ? [{ label: c.themeId ? `Тема: ${themes.find((t) => t.id === c.themeId)?.name ?? '—'}` : 'Тема…', icon: 'pricetag-outline', onPress: run(() => setThemeAsk(true)) } as MenuEntry]
@@ -1058,6 +1065,27 @@ export default function AssistantScreen() {
 
   let shownTopic: string | undefined;
   const firstMineId = messages.find((m) => m.role === 'user')?.id;
+  // A conversation just begun that looks like an older one (on the phone, no AI): offered quietly under the first message, for
+  // whoever wrote fast and pressed Enter before the card over the field could show it.
+  const mineCount = messages.filter((m) => m.role === 'user').length;
+  const moveOffer =
+    FEATURES.aiHome && FEATURES.aiChatBar && chat && mineCount === 1 && !busy && !moveSkip.includes(chat.id)
+      ? similarChat(messages.find((m) => m.role === 'user')?.text ?? '', chatList.filter((c) => c.id !== chat.id && c.count > 0))
+      : null;
+  async function moveThere(targetId: string) {
+    const from = chatRef.current;
+    if (!from) return;
+    try {
+      const merged = await mergeInto(targetId, from);
+      if (!merged) return;
+      // The one just begun is gone: openChat must not save it back.
+      chatRef.current = null;
+      await openChat(merged.id);
+      refreshChats();
+    } catch (e) {
+      notify('Не вдалося перенести', (e as Error).message);
+    }
+  }
   // By topic: each topic's messages in the order «Впорядкувати» laid them out, then «Нове» - what came after it, by time.
   const sortedSet = new Set(chat?.sortedIds ?? []);
   const sortedOn = FEATURES.aiChatOutline && byTopic && !!chat?.sections?.length;
@@ -1139,6 +1167,19 @@ export default function AssistantScreen() {
                   <View style={styles.mine}>
                     <Text style={styles.mineText}>{m.text}</Text>
                   </View>
+                  {moveOffer && chat && m.id === firstMineId ? (
+                    <View style={styles.moveRow}>
+                      <Text style={styles.moveText} numberOfLines={1}>
+                        {`Схоже на «${moveOffer.title}»`}
+                      </Text>
+                      <Pressable onPress={() => moveThere(moveOffer.id)} style={styles.moveChip} accessibilityLabel="Перенести в ту розмову">
+                        <Text style={styles.moveChipText}>Перенести туди</Text>
+                      </Pressable>
+                      <Pressable onPress={() => setMoveSkip((l) => [...l, chat.id])} hitSlop={8} accessibilityLabel="Ні, лишити тут">
+                        <Ionicons name="close" size={16} color={S.ink3} />
+                      </Pressable>
+                    </View>
+                  ) : null}
                   {FEATURES.aiHome && chat && m.id === firstMineId && ((!chat.themeId && themeSkip !== chat.id && messages.filter((x) => x.role === 'user').length <= 1) || themeAsk) ? (
                     <ThemeChips
                       likely={likelyThemes(m.text, chatList.filter((c) => c.id !== chat.id), themes)}
@@ -1456,9 +1497,47 @@ export default function AssistantScreen() {
       </View>
       {/* Through the glass portal (above the app's blur target, as the dock and the bar): only there does a blur see what
           is under it - a nested target did not blur at all. Only while this screen is in front. */}
+      {/* Under the open bar the conversation goes out of sight: solid to the subtitle's line, then the long S-curve - the dense
+          text of an answer showed through a fade that was only a quarter solid. */}
+      {FEATURES.aiChatBar ? <EdgeFade edge="top" color={S.bg} height={insets.top + 14 + 56 + 6} solid={insets.top + 14 + 50} bar /> : null}
       {chatFocused && (
       <GlassPortal name="chatTop">
         <View style={[styles.topBlock, { top: insets.top }]} onLayout={(e) => setTopH(Math.round(e.nativeEvent.layout.height))} pointerEvents="box-none">
+          {FEATURES.aiChatBar ? (
+            // The open bar (features.aiChatBar): no capsule, as on every desk.
+            <View style={styles.openBar}>
+              <Pressable
+                onPress={() => {
+                  refreshChats();
+                  setDrawerOpen(true);
+                }}
+                style={styles.roundBare}
+                accessibilityLabel="Інші розмови"
+                hitSlop={6}
+              >
+                <Ionicons name="chatbubbles-outline" size={22} color={S.ink} />
+              </Pressable>
+              <View style={[styles.titleBox, { alignItems: 'flex-start' }]}>
+                <Text style={[styles.title, styles.openTitle]} numberOfLines={1}>
+                  {chat && messages.length > 0 ? titleOf(chat) : 'Нова розмова'}
+                </Text>
+                <Pressable onPress={() => setCostOpen((v) => !v)} hitSlop={8} accessibilityLabel="Вартість розмови" style={[styles.subRow, styles.openSub]}>
+                  {messages.length > 0 ? <Text style={styles.sub}>{`${thoughtsWord(messages.filter((m) => m.role === 'user').length)} · `}</Text> : null}
+                  <MiniRing usd={chatCost} color={S.accent} track={S.line} />
+                  <Text style={styles.subCost}>{`$${money(tenthsOf(chatCost), 1)}`}</Text>
+                </Pressable>
+              </View>
+              {FEATURES.aiChatOutline && messages.some((m) => m.role === 'user') ? (
+                <Pressable onPress={() => setOutlineOpen((v) => !v)} style={styles.roundBare} accessibilityLabel="Зміст розмови" hitSlop={6}>
+                  <Ionicons name="list-outline" size={22} color={sortedOn ? S.accent : S.ink} />
+                </Pressable>
+              ) : null}
+              <Pressable onPress={menu} style={styles.roundBare} accessibilityLabel="Меню розмови" hitSlop={6}>
+                <Ionicons name="ellipsis-horizontal" size={21} color={S.ink} />
+                {structure && materialsCount > 0 ? <View style={[styles.badge, styles.dotBadge]} /> : null}
+              </Pressable>
+            </View>
+          ) : (
           <View style={[styles.header, styles.topCapsule, topGlass]}>
             {glassOn && <DockGlassFill soft={S} dense radius={28} />}
           <Pressable onPress={menu} style={styles.roundBare} accessibilityLabel="Меню розмови" hitSlop={6}>
@@ -1494,6 +1573,7 @@ export default function AssistantScreen() {
             <Ionicons name={FEATURES.aiHome ? 'chevron-back' : 'close'} size={18} color={S.ink} />
           </Pressable>
         </View>
+          )}
         {chat?.instruction ? <ChatInstructionChip instruction={chat.instruction} onPress={() => setInstructionFor(chat.id)} /> : null}
         {path.length > 0 ? (
           <Pressable onPress={() => parentTopic !== null && setTopic(parentTopic)} style={styles.crumbs} accessibilityLabel="Вийти з гілки">
@@ -1533,6 +1613,37 @@ export default function AssistantScreen() {
           while a conversation is open (the chip did nothing in a conversation until 2026-10-29). */}
       {themePrompt}
       {sectionPrompt}
+      {FEATURES.aiChatBar && chatFocused ? (
+        <GlassPortal name="chatsDrawer" priority={2}>
+          <ChatsDrawer
+            visible={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            chats={chatList}
+            themes={themes}
+            currentId={chat?.id}
+            onOpenChat={async (id) => {
+              setDrawerOpen(false);
+              if (id !== chatRef.current?.id) await openChat(id);
+            }}
+            onAll={() => {
+              setDrawerOpen(false);
+              setLevel(null);
+              goHome();
+            }}
+            onTheme={(id) => {
+              setDrawerOpen(false);
+              setLevel(id ?? NO_THEME);
+              goHome();
+            }}
+            onNew={() => {
+              setDrawerOpen(false);
+              setLevel(null);
+              goHome();
+              setComposing(true);
+            }}
+          />
+        </GlassPortal>
+      ) : null}
       {outlineOpen && chat ? (
         <>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setOutlineOpen(false)} accessibilityLabel="Закрити зміст" />
@@ -1635,6 +1746,7 @@ export default function AssistantScreen() {
           bottomInset={insets.bottom}
           inputRef={inputRef}
           onHeight={setDockH}
+          back={FEATURES.aiHome && FEATURES.aiChatBar ? { onPress: goHome, label: 'До списку розмов' } : undefined}
         />
         </GlassPortal>
         ) : null
@@ -1884,6 +1996,14 @@ function makeStyles(S: ReturnType<typeof useSoft>) {
     costRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
     costText: { fontSize: 14, color: S.ink, fontFamily: SOFT_REGULAR },
     costNote: { marginTop: 6, fontSize: 12, lineHeight: 17, color: S.ink2, fontFamily: SOFT_REGULAR },
+    moveRow: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-end', maxWidth: '100%' },
+    moveText: { flexShrink: 1, fontSize: 13, color: S.ink3, fontFamily: SOFT_MEDIUM },
+    moveChip: { height: 30, paddingHorizontal: 12, borderRadius: 15, borderWidth: 1, borderColor: S.accent, backgroundColor: S.card, justifyContent: 'center' },
+    moveChipText: { fontSize: 13, color: S.ink, fontFamily: SOFT_SEMIBOLD },
+    openBar: { height: 56, marginTop: 14, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, gap: 0 },
+    openTitle: { fontSize: 17, textAlign: 'left' },
+    openSub: { justifyContent: 'flex-start' },
+    dotBadge: { minWidth: 9, width: 9, height: 9, paddingHorizontal: 0, top: 10, right: 10 },
     outlineCard: { right: 12, width: 300, gap: 6 },
     outlineSwitch: { flexDirection: 'row', backgroundColor: S.fillSolid, borderRadius: 14, padding: 3, gap: 3 },
     outlineSeg: { flex: 1, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },

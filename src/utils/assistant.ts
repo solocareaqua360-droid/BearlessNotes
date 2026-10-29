@@ -147,7 +147,9 @@ function toStored(chat: AssistantChat) {
   return {
     title: titleOf(chat),
     startedAt: chat.startedAt,
-    updatedAt: Date.now(),
+    // The time of its LAST MESSAGE, not of this save: a conversation is saved also when it is only looked at and left, and
+    // that put it at the top of the list with today's date (2026-10-29).
+    updatedAt: chat.messages.reduce((t, m) => Math.max(t, m.at || 0), 0) || Date.now(),
     messages: chat.messages.map((m) => ({
       id: m.id,
       role: m.role,
@@ -472,6 +474,18 @@ export async function askCosted(prompt: string, options: { json?: boolean } = {}
 
 // DELETING A CONVERSATION (2026-10-24): what it owns (its notes and boards) goes first, then its own document; a failure on the
 // way leaves the conversation in place to try again. The copy kept on the phone goes only if it is this one.
+// «ПЕРЕНЕСТИ ТУДИ» (2026-10-29): a conversation just begun turns out to belong to an older one - its messages are added at
+// that one's end, in their order, and the new one is gone. Returns the older one as it is now, or null if it is not there.
+export async function mergeInto(targetId: string, from: AssistantChat): Promise<AssistantChat | null> {
+  const target = await loadChatById(targetId);
+  if (!target) return null;
+  const have = new Set(target.messages.map((m) => m.id));
+  const merged: AssistantChat = { ...target, messages: [...target.messages, ...from.messages.filter((m) => !have.has(m.id)).map(({ sectionId: _s, ...m }) => m)] };
+  saveChat(merged);
+  await deleteChat(from.id);
+  return merged;
+}
+
 export async function deleteChat(chatId: string): Promise<void> {
   await deleteChatObjects(chatId);
   await deleteDoc(doc(db, COLLECTION, chatId));
@@ -516,7 +530,8 @@ export async function routeFirstMessage(message: string, chats: ChatSummary[]): 
 // Fields of ANOTHER conversation than the open one (the list's rows: a folder, an instruction, a new name), written to the
 // database only - saveChat would also make it «the last one» on this phone. `undefined` removes the field.
 export async function updateChatFields(chatId: string, fields: { instruction?: string; folderId?: string; customTitle?: string; themeId?: string }): Promise<void> {
-  const patch: Record<string, unknown> = { updatedAt: Date.now() };
+  // No new date: a name, a theme or a folder is not a new word in the talk (the list is ordered by the last message).
+  const patch: Record<string, unknown> = {};
   (Object.keys(fields) as (keyof typeof fields)[]).forEach((k) => {
     patch[k] = fields[k] === undefined || fields[k] === '' ? deleteField() : fields[k];
   });

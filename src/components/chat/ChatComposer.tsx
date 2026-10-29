@@ -15,6 +15,8 @@ export type ComposerAttachment = { id: string; kind: 'photo' | 'file' | 'note' |
 
 const STRIP_H = 56;
 const ROW_H = 44;
+// The round way back beside the dock, the app dock's own circle.
+const BACK = 52;
 
 // THE CHAT'S DOCK (sketches fin2/fin3/fin6 of 2026-10-24, after Claude's own): at rest a narrow strip - «+», the field, the «?»
 // balloon (the hints), the microphone; while writing (focused, words typed, or something attached) the same thing GROWS into a
@@ -38,6 +40,7 @@ export default function ChatComposer({
   bottomInset,
   inputRef,
   onHeight,
+  back,
 }: {
   value: string;
   onChangeText: (t: string) => void;
@@ -57,6 +60,9 @@ export default function ChatComposer({
   inputRef?: Ref<TextInput>;
   // The dock's drawn height, for the host to keep the chat (and the hints band) clear of it.
   onHeight?: (h: number) => void;
+  // THE WAY BACK where it always is (2026-10-29, features.aiChatBar): the round button at the right end, as on the app's dock;
+  // the dock is that much narrower and the two ride the keyboard together.
+  back?: { onPress: () => void; label: string };
 }) {
   const S = useSoft();
   const C = chatColours(S);
@@ -101,10 +107,12 @@ export default function ChatComposer({
   const mic = circle(<Ionicons name={listening ? 'stop' : 'mic-outline'} size={21} color={listening ? '#FFFFFF' : S.ink} />, onMic, listening ? 'Зупинити диктування' : 'Диктувати', listening ? S.accent : 'transparent');
 
   return (
+    <>
     <Animated.View
       onLayout={(e) => onHeight?.(Math.round(e.nativeEvent.layout.height))}
       style={[
         styles.dock,
+        back ? { right: 14 + BACK + 10 } : null,
         { bottom, backgroundColor: C.dockCard, borderColor: S.line, boxShadow: S.dark ? '0px 10px 34px rgba(0,0,0,0.55)' : '0px 10px 34px rgba(0,0,0,0.16)' } as never,
         glassOn && ([glassSurface, { borderWidth: 0 }] as never),
         frame,
@@ -183,6 +191,20 @@ export default function ChatComposer({
         </View>
       )}
     </Animated.View>
+    {back ? (
+      <Animated.View style={[styles.back, { bottom: bottom + (STRIP_H - BACK) / 2 }, lift]}>
+        <Pressable
+          onPress={back.onPress}
+          accessibilityLabel={back.label}
+          hitSlop={4}
+          style={[styles.backButton, { backgroundColor: C.dockCard, borderColor: S.line }, glassOn && ([glassSurface, { borderWidth: 0 }] as never)]}
+        >
+          {glassOn && <DockGlassFill soft={S} dense radius={BACK / 2} />}
+          <Ionicons name="chevron-back" size={20} color={S.ink} />
+        </Pressable>
+      </Animated.View>
+    ) : null}
+    </>
   );
 }
 
@@ -206,5 +228,7 @@ const styles = StyleSheet.create({
   fileIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   fileName: { fontSize: 12.5, fontFamily: SOFT_SEMIBOLD },
   fileSub: { fontSize: 11, fontFamily: SOFT_REGULAR },
+  back: { position: 'absolute', right: 14, width: BACK, height: BACK },
+  backButton: { width: BACK, height: BACK, borderRadius: BACK / 2, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   fileX: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
 });
