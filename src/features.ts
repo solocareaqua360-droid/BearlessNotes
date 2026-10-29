@@ -214,4 +214,7 @@ export const FEATURES = {
   // the app's dock and «+»; «+» turns into the field, Enter opens the new conversation; a similar one is offered at the top
   // before (found on the phone); the theme is quiet chips in the conversation. false: the window opens into a conversation.
   aiHome: true,
+  // THE CONVERSATION BY TOPIC (2026-10-29): «Зміст розмови» in its header - «За часом / По темах», the topics to jump to and
+  // «Впорядкувати» (the AI groups the pairs; the real order is kept for it). false: the conversation is only by time.
+  aiChatOutline: true,
 } as const;

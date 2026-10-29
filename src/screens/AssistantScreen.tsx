@@ -12,7 +12,7 @@ import { Ionicons } from '../components/icons/Ionicons';
 import FormattedText from '../components/FormattedText';
 import { ask, notify } from '../components/surfaces/Ask';
 import { useSoft } from '../theme/soft';
-import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import { SOFT_BOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import {
   askAssistant,
@@ -86,7 +86,7 @@ import RenamePrompt from '../components/RenamePrompt';
 import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useChromeStyle, useDockBeads, useTopBack, useTopExtras } from '../navigation/navDock';
 import { useDockDesksHere } from '../navigation/deskBeadsBus';
-import { createTheme, deleteTheme, likelyThemes, listenThemes, renameThemeTo, similarChat, type ChatTheme } from '../utils/assistant';
+import { applySort, createTheme, deleteTheme, likelyThemes, listenThemes, pairsOf, renameThemeTo, similarChat, sortPlan, type ChatSection, type ChatTheme } from '../utils/assistant';
 import { ASSIST_KEY, assistDockCover, assistFlown, assistReturned, assistWash, closeAssistant } from '../utils/assistMorph';
 import { morphLanded } from '../utils/morph';
 import { speakThoughts, stopVoice, subscribeVoice } from '../utils/thoughtVoice';
@@ -148,6 +148,14 @@ function MiniRing({ usd, color, track }: { usd: number; color: string; track: st
 // around the app and coming back finds the same one, the last. The older ones wait in the list of conversations.
 let conversationStartedThisRun = false;
 // The list as it was last read (features.aiHome): drawn at once on the next opening, then brought up to date - no empty frame.
+// «1 пара», «3 пари», «5 пар».
+function pairsWord(n: number): string {
+  const d = n % 10;
+  const t = n % 100;
+  return `${n} ${d === 1 && t !== 11 ? 'пара' : d >= 2 && d <= 4 && (t < 12 || t > 14) ? 'пари' : 'пар'}`;
+}
+// The conversations being read by topic, for as long as the app runs (features.aiChatOutline).
+const byTopicChats = new Set<string>();
 let lastChats: ChatSummary[] = [];
 let lastThemes: ChatTheme[] = [];
 
@@ -252,6 +260,19 @@ export default function AssistantScreen() {
   const [newThemeFor, setNewThemeFor] = useState<'chat' | 'list' | null>(null);
   const [renameTheme, setRenameTheme] = useState<ChatTheme | null>(null);
   const [renameChat, setRenameChat] = useState<ChatSummary | null>(null);
+  // THE CONVERSATION BY TOPIC (features.aiChatOutline): the «Зміст розмови» card, which view is on (by time unless asked -
+  // what is typed lands at the end), the AI at work on «Впорядкувати», a topic being renamed, where each topic stands.
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [byTopic, setByTopic] = useState(false);
+  const [sortBusy, setSortBusy] = useState(false);
+  const [renameSection, setRenameSection] = useState<ChatSection | null>(null);
+  const sectionY = useRef<Record<string, number>>({});
+  const jumpTo = useRef<string | null>(null);
+  useEffect(() => {
+    setByTopic(!!chat?.id && byTopicChats.has(chat.id));
+    setOutlineOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat?.id]);
   useEffect(
     () =>
       FEATURES.aiHome
@@ -1037,6 +1058,174 @@ export default function AssistantScreen() {
 
   let shownTopic: string | undefined;
   const firstMineId = messages.find((m) => m.role === 'user')?.id;
+  // By topic: each topic's messages in the order «Впорядкувати» laid them out, then «Нове» - what came after it, by time.
+  const sortedSet = new Set(chat?.sortedIds ?? []);
+  const sortedOn = FEATURES.aiChatOutline && byTopic && !!chat?.sections?.length;
+  const byIdMsg = new Map(messages.map((m) => [m.id, m]));
+  const topicGroups = chat?.sections?.length
+    ? [
+        ...chat.sections.map((sec) => ({
+          key: sec.id,
+          title: sec.title,
+          section: sec as ChatSection | null,
+          items: (chat.sortedIds ?? []).map((id) => byIdMsg.get(id)).filter((m): m is AssistantMessage => !!m && m.sectionId === sec.id),
+        })),
+        { key: 'new', title: 'Нове', section: null, items: messages.filter((m) => !sortedSet.has(m.id)) },
+      ].filter((g) => g.items.length > 0)
+    : [];
+  const pairCount = (items: AssistantMessage[]) => items.filter((m) => m.role === 'user').length || 1;
+  const showByTopic = (on: boolean) => {
+    if (!chat) return;
+    if (on) byTopicChats.add(chat.id);
+    else byTopicChats.delete(chat.id);
+    setByTopic(on);
+  };
+  const goToSection = (key: string) => {
+    setOutlineOpen(false);
+    if (!sortedOn) {
+      jumpTo.current = key;
+      showByTopic(true);
+      return;
+    }
+    const y = sectionY.current[key];
+    if (y !== undefined) scroll.current?.scrollTo({ y: Math.max(0, y - topH - 8), animated: true });
+  };
+  async function sortNow() {
+    const before = chatRef.current;
+    if (!before || sortBusy) return;
+    setSortBusy(true);
+    try {
+      const plan = await sortPlan(before);
+      const pairs = pairsOf(before);
+      const lines = plan.sections
+        .map((sec, i) => ({ title: sec.title, n: plan.pairSection.filter((x) => x === i).length }))
+        .filter((x) => x.n > 0)
+        .map((x) => `${x.title} · ${x.n}`);
+      setOutlineOpen(false);
+      const go = await ask({
+        title: 'Впорядкувати розмову?',
+        message: `${pairsWord(pairs.length)} питання-відповідь:\n${lines.join('\n')}\n\nСправжній порядок збережеться - «За часом» поверне його.`,
+        actions: [{ id: 'yes', label: 'Впорядкувати', icon: 'list-outline' as const }],
+      });
+      if (go !== 'yes' || !chatRef.current || chatRef.current.id !== before.id) return;
+      update(applySort(chatRef.current, before, plan));
+      showByTopic(true);
+    } catch (e) {
+      notify('Не вдалося впорядкувати', (e as Error).message);
+    } finally {
+      setSortBusy(false);
+    }
+  }
+  const renderMessage = (m: AssistantMessage, sorted: boolean) => {
+          const t = m.topicId ?? ROOT_TOPIC;
+          const marker =
+            !sorted && t !== (shownTopic ?? ROOT_TOPIC) && chat ? (
+              <Pressable key={`${m.id}-branch`} onPress={() => setTopic(t)} style={styles.branchMark}>
+                <Text style={styles.branchMarkText} numberOfLines={1}>
+                  {t === ROOT_TOPIC ? 'Головна тема' : topicPath(chat, t).map((x) => x.title).join(' › ')}
+                </Text>
+              </Pressable>
+            ) : null;
+          shownTopic = t;
+          return (
+            <View key={m.id} style={{ gap: 14 }}>
+              {marker}
+              {sorted && m.role === 'user' ? <Text style={styles.pairDate}>{new Date(m.at).toLocaleString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</Text> : null}
+              {m.role === 'user' ? (
+                <View style={{ gap: 6 }}>
+                  {m.attachments?.length ? (
+                    <MessageAttachments items={m.attachments.map((a) => ({ kind: a.kind === 'photo' ? 'photo' : a.kind === 'note' ? 'note' : a.kind === 'folder' ? 'folder' : a.kind === 'link' ? 'link' : 'file', name: a.name, sub: a.sub, uri: a.uri }))} />
+                  ) : null}
+                  <View style={styles.mine}>
+                    <Text style={styles.mineText}>{m.text}</Text>
+                  </View>
+                  {FEATURES.aiHome && chat && m.id === firstMineId && ((!chat.themeId && themeSkip !== chat.id && messages.filter((x) => x.role === 'user').length <= 1) || themeAsk) ? (
+                    <ThemeChips
+                      likely={likelyThemes(m.text, chatList.filter((c) => c.id !== chat.id), themes)}
+                      themes={themes}
+                      onPick={(id) => {
+                        setThemeAsk(false);
+                        setChatFields(chat.id, { themeId: id });
+                      }}
+                      onNew={() => {
+                        setThemeAsk(false);
+                        setNewThemeFor('chat');
+                      }}
+                      onSkip={() => {
+                        setThemeAsk(false);
+                        setThemeSkip(chat.id);
+                        if (chat.themeId) setChatFields(chat.id, { themeId: undefined });
+                      }}
+                    />
+                  ) : null}
+                </View>
+              ) : m.error ? (
+                <Text style={styles.error}>{m.text}</Text>
+              ) : (
+                <View style={styles.answer}>
+                  {blocksOf(m.text).map((b, i) => {
+                    const key = blockKey(m.id, i);
+                    const mem = memo.get(key);
+                    const on = picked.includes(key);
+                    return (
+                      <Pressable
+                        key={key}
+                        onLongPress={() => hold(key)}
+                        onPress={() => tap(key)}
+                        delayLongPress={350}
+                        style={[styles.block, mem && styles.blockMem, on && styles.blockPicked]}
+                      >
+                        {renderBlock(b)}
+                        {mem?.last ? <Text style={styles.memo}>у пам'яті</Text> : null}
+                        {on ? (
+                          <View style={styles.tick}>
+                            <Ionicons name="checkmark" size={12} color={S.card} />
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                  {m.structure ? (
+                    <Pressable onPress={() => setBoardOpen(m.structure!)} style={styles.structCard} accessibilityLabel="Відкрити дошку">
+                      <View style={styles.structIcon}>
+                        <Ionicons name="grid-outline" size={26} color={S.accent} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                        <Text style={styles.structTitle} numberOfLines={1}>
+                          {m.structure.title}
+                        </Text>
+                        <StructCount boardId={m.structure.boardId} fallback={m.structure.cards} style={styles.structSub} />
+                      </View>
+                      <View style={styles.structOpen}>
+                        <Text style={styles.structOpenText}>Відкрити</Text>
+                      </View>
+                    </Pressable>
+                  ) : null}
+                  <Pressable onPress={() => listen(m)} style={styles.listen} hitSlop={8} accessibilityLabel="Послухати відповідь">
+                    <Ionicons name={speaking === m.id ? 'stop-circle-outline' : 'volume-high-outline'} size={16} color={S.ink3} />
+                    <Text style={styles.listenText}>{speaking === m.id ? 'Зупинити' : 'Послухати'}</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          );
+  };
+  // A topic of the conversation renamed by holding it (features.aiChatOutline) - shown in the conversation, not the list.
+  const sectionPrompt = (
+    <RenamePrompt
+      visible={renameSection !== null}
+      title="Назва теми розмови"
+      initialValue={renameSection?.title ?? ''}
+      onCancel={() => setRenameSection(null)}
+      onSave={(name) => {
+        const sec = renameSection;
+        setRenameSection(null);
+        const c = chatRef.current;
+        if (!sec || !c || !name.trim()) return;
+        update({ ...c, sections: (c.sections ?? []).map((x) => (x.id === sec.id ? { ...x, title: name.trim() } : x)) });
+      }}
+    />
+  );
   const themePrompt = (
     <RenamePrompt
       visible={newThemeFor !== null}
@@ -1211,99 +1400,30 @@ export default function AssistantScreen() {
             </View>
           </View>
         ) : null}
-        {messages.map((m) => {
-          const t = m.topicId ?? ROOT_TOPIC;
-          const marker =
-            t !== (shownTopic ?? ROOT_TOPIC) && chat ? (
-              <Pressable key={`${m.id}-branch`} onPress={() => setTopic(t)} style={styles.branchMark}>
-                <Text style={styles.branchMarkText} numberOfLines={1}>
-                  {t === ROOT_TOPIC ? 'Головна тема' : topicPath(chat, t).map((x) => x.title).join(' › ')}
-                </Text>
-              </Pressable>
-            ) : null;
-          shownTopic = t;
-          return (
-            <View key={m.id} style={{ gap: 14 }}>
-              {marker}
-              {m.role === 'user' ? (
-                <View style={{ gap: 6 }}>
-                  {m.attachments?.length ? (
-                    <MessageAttachments items={m.attachments.map((a) => ({ kind: a.kind === 'photo' ? 'photo' : a.kind === 'note' ? 'note' : a.kind === 'folder' ? 'folder' : a.kind === 'link' ? 'link' : 'file', name: a.name, sub: a.sub, uri: a.uri }))} />
-                  ) : null}
-                  <View style={styles.mine}>
-                    <Text style={styles.mineText}>{m.text}</Text>
-                  </View>
-                  {FEATURES.aiHome && chat && m.id === firstMineId && ((!chat.themeId && themeSkip !== chat.id && messages.filter((x) => x.role === 'user').length <= 1) || themeAsk) ? (
-                    <ThemeChips
-                      likely={likelyThemes(m.text, chatList.filter((c) => c.id !== chat.id), themes)}
-                      themes={themes}
-                      onPick={(id) => {
-                        setThemeAsk(false);
-                        setChatFields(chat.id, { themeId: id });
-                      }}
-                      onNew={() => {
-                        setThemeAsk(false);
-                        setNewThemeFor('chat');
-                      }}
-                      onSkip={() => {
-                        setThemeAsk(false);
-                        setThemeSkip(chat.id);
-                        if (chat.themeId) setChatFields(chat.id, { themeId: undefined });
-                      }}
-                    />
-                  ) : null}
-                </View>
-              ) : m.error ? (
-                <Text style={styles.error}>{m.text}</Text>
-              ) : (
-                <View style={styles.answer}>
-                  {blocksOf(m.text).map((b, i) => {
-                    const key = blockKey(m.id, i);
-                    const mem = memo.get(key);
-                    const on = picked.includes(key);
-                    return (
-                      <Pressable
-                        key={key}
-                        onLongPress={() => hold(key)}
-                        onPress={() => tap(key)}
-                        delayLongPress={350}
-                        style={[styles.block, mem && styles.blockMem, on && styles.blockPicked]}
-                      >
-                        {renderBlock(b)}
-                        {mem?.last ? <Text style={styles.memo}>у пам'яті</Text> : null}
-                        {on ? (
-                          <View style={styles.tick}>
-                            <Ionicons name="checkmark" size={12} color={S.card} />
-                          </View>
-                        ) : null}
-                      </Pressable>
-                    );
-                  })}
-                  {m.structure ? (
-                    <Pressable onPress={() => setBoardOpen(m.structure!)} style={styles.structCard} accessibilityLabel="Відкрити дошку">
-                      <View style={styles.structIcon}>
-                        <Ionicons name="grid-outline" size={26} color={S.accent} />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                        <Text style={styles.structTitle} numberOfLines={1}>
-                          {m.structure.title}
-                        </Text>
-                        <StructCount boardId={m.structure.boardId} fallback={m.structure.cards} style={styles.structSub} />
-                      </View>
-                      <View style={styles.structOpen}>
-                        <Text style={styles.structOpenText}>Відкрити</Text>
-                      </View>
-                    </Pressable>
-                  ) : null}
-                  <Pressable onPress={() => listen(m)} style={styles.listen} hitSlop={8} accessibilityLabel="Послухати відповідь">
-                    <Ionicons name={speaking === m.id ? 'stop-circle-outline' : 'volume-high-outline'} size={16} color={S.ink3} />
-                    <Text style={styles.listenText}>{speaking === m.id ? 'Зупинити' : 'Послухати'}</Text>
-                  </Pressable>
-                </View>
-              )}
-            </View>
-          );
-        })}
+        {sortedOn
+          ? topicGroups.map((g) => (
+              <View
+                key={`sec-${g.key}`}
+                style={{ gap: 14 }}
+                onLayout={(e) => {
+                  sectionY.current[g.key] = e.nativeEvent.layout.y;
+                  if (jumpTo.current === g.key) {
+                    jumpTo.current = null;
+                    const y = e.nativeEvent.layout.y;
+                    setTimeout(() => scroll.current?.scrollTo({ y: Math.max(0, y - topH - 8), animated: false }), 60);
+                  }
+                }}
+              >
+                <Pressable onLongPress={g.section ? () => setRenameSection(g.section) : undefined} delayLongPress={350} style={styles.sectionHead} accessibilityLabel={`Тема: ${g.title}`}>
+                  <Text style={[styles.sectionTitle, !g.section && { color: S.ink2 }]} numberOfLines={2}>
+                    {g.title}
+                  </Text>
+                  <Text style={styles.sectionCount}>{pairCount(g.items)}</Text>
+                </Pressable>
+                {g.items.map((m) => renderMessage(m, true))}
+              </View>
+            ))
+          : messages.map((m) => renderMessage(m, false))}
         {routeOffer ? (
           <View style={{ gap: 14 }}>
             <View style={styles.mine}>
@@ -1355,6 +1475,11 @@ export default function AssistantScreen() {
               <Text style={styles.subCost}>{`$${money(tenthsOf(chatCost), 1)}`}</Text>
             </Pressable>
           </View>
+          {FEATURES.aiChatOutline && messages.some((m) => m.role === 'user') ? (
+            <Pressable onPress={() => setOutlineOpen((v) => !v)} style={styles.roundBare} accessibilityLabel="Зміст розмови" hitSlop={6}>
+              <Ionicons name="list-outline" size={22} color={sortedOn ? S.accent : S.ink} />
+            </Pressable>
+          ) : null}
           {structure ? (
             <Pressable onPress={() => setMaterialsOpen(true)} style={styles.roundBare} accessibilityLabel="Матеріали розмови" hitSlop={6}>
               <Ionicons name="layers-outline" size={21} color={S.ink} />
@@ -1401,6 +1526,58 @@ export default function AssistantScreen() {
               <Text style={[styles.costText, { fontFamily: SOFT_SEMIBOLD }]}>{usage ? `$${money(usage.costUsd, 2)}` : '—'}</Text>
             </View>
             <Text style={styles.costNote}>Під назвою — сума розмови, завжди вгору до наступної десятої долара; кільце заповнюється, поки ця десята використовується.</Text>
+          </View>
+        </>
+      ) : null}
+      {/* «Нова тема…» under the first message and a topic renamed by hold open here: the list's own copies are not drawn
+          while a conversation is open (the chip did nothing in a conversation until 2026-10-29). */}
+      {themePrompt}
+      {sectionPrompt}
+      {outlineOpen && chat ? (
+        <>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOutlineOpen(false)} accessibilityLabel="Закрити зміст" />
+          {/* «Зміст розмови» (features.aiChatOutline): the two views, the topics to jump to, and «Впорядкувати». */}
+          <View style={[styles.costCard, styles.outlineCard, { top: insets.top + 66 }]}>
+            <View style={styles.outlineSwitch}>
+              {[
+                { on: false, label: 'За часом' },
+                { on: true, label: 'По темах' },
+              ].map((o) => {
+                const active = sortedOn === o.on;
+                const can = !o.on || !!chat.sections?.length;
+                return (
+                  <Pressable
+                    key={o.label}
+                    disabled={!can}
+                    onPress={() => {
+                      showByTopic(o.on);
+                      setOutlineOpen(false);
+                    }}
+                    style={[styles.outlineSeg, active && { backgroundColor: S.card, boxShadow: S.shadow } as never, !can && { opacity: 0.4 }]}
+                  >
+                    <Text style={[styles.outlineSegText, active && { color: S.ink, fontFamily: SOFT_SEMIBOLD }]}>{o.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {topicGroups.length ? (
+              <ScrollView style={{ maxHeight: 300 }} contentContainerStyle={{ paddingVertical: 4 }}>
+                {topicGroups.map((g) => (
+                  <Pressable key={g.key} onPress={() => goToSection(g.key)} onLongPress={g.section ? () => { setOutlineOpen(false); setRenameSection(g.section); } : undefined} delayLongPress={350} style={styles.outlineRow}>
+                    <Text style={[styles.outlineRowText, !g.section && { color: S.ink2 }]} numberOfLines={1}>
+                      {g.title}
+                    </Text>
+                    <Text style={styles.sectionCount}>{pairCount(g.items)}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : (
+              <Text style={styles.costNote}>Розмова ще не впорядкована. ШІ розкладе пари питання-відповідь за темами; справжній порядок збережеться.</Text>
+            )}
+            <Pressable onPress={sortNow} disabled={sortBusy} style={styles.outlineAction} accessibilityLabel="Впорядкувати розмову">
+              {sortBusy ? <ActivityIndicator size="small" color={S.ink2} /> : <Ionicons name="sparkles-outline" size={17} color={S.ink} />}
+              <Text style={styles.outlineActionText}>{sortBusy ? 'Групую…' : chat.sections?.length ? 'Впорядкувати знову' : 'Впорядкувати'}</Text>
+            </Pressable>
           </View>
         </>
       ) : null}
@@ -1707,6 +1884,18 @@ function makeStyles(S: ReturnType<typeof useSoft>) {
     costRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
     costText: { fontSize: 14, color: S.ink, fontFamily: SOFT_REGULAR },
     costNote: { marginTop: 6, fontSize: 12, lineHeight: 17, color: S.ink2, fontFamily: SOFT_REGULAR },
+    outlineCard: { right: 12, width: 300, gap: 6 },
+    outlineSwitch: { flexDirection: 'row', backgroundColor: S.fillSolid, borderRadius: 14, padding: 3, gap: 3 },
+    outlineSeg: { flex: 1, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+    outlineSegText: { fontSize: 14, color: S.ink2, fontFamily: SOFT_MEDIUM },
+    outlineRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
+    outlineRowText: { flex: 1, fontSize: 15.5, color: S.ink, fontFamily: SOFT_MEDIUM },
+    outlineAction: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, borderRadius: 14, backgroundColor: S.fillSolid, marginTop: 4 },
+    outlineActionText: { fontSize: 14.5, color: S.ink, fontFamily: SOFT_SEMIBOLD },
+    sectionHead: { flexDirection: 'row', alignItems: 'baseline', gap: 10, paddingTop: 10 },
+    sectionTitle: { flex: 1, fontSize: 21, color: S.ink, fontFamily: SOFT_BOLD },
+    sectionCount: { fontSize: 14, color: S.ink3, fontFamily: SOFT_MEDIUM, fontVariant: ['tabular-nums'] },
+    pairDate: { alignSelf: 'flex-end', fontSize: 11.5, color: S.ink3, fontFamily: SOFT_MEDIUM, marginBottom: -8 },
     branchMark: { alignSelf: 'flex-start', backgroundColor: S.fillSolid, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4, maxWidth: '100%' },
     branchMarkText: { fontSize: 11.5, color: S.ink2, fontFamily: SOFT_MEDIUM },
     mine: { alignSelf: 'flex-end', maxWidth: '82%', backgroundColor: S.card, borderRadius: 22, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 11, boxShadow: S.shadow } as never,

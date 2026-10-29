@@ -27,7 +27,11 @@ import { listenError } from './listenError';
 export type AssistantStructure = { boardId: string; title: string; cards: number };
 // `attachments`: what was given with this message to read (utils/chatAttachments) - shown over it, kept as names and a local picture.
 export type AssistantAttachment = { kind: 'photo' | 'pdf' | 'text' | 'docx' | 'xlsx' | 'note' | 'folder' | 'link'; name: string; sub: string; uri?: string; url?: string };
-export type AssistantMessage = { id: string; role: 'user' | 'model'; text: string; at: number; error?: boolean; costUsd?: number; topicId?: string; structure?: AssistantStructure; attachments?: AssistantAttachment[] };
+// `sectionId`: the conversation's own topic this message was sorted into (sortChat) - none until the first sorting.
+export type AssistantMessage = { id: string; role: 'user' | 'model'; text: string; at: number; error?: boolean; costUsd?: number; topicId?: string; structure?: AssistantStructure; attachments?: AssistantAttachment[]; sectionId?: string };
+// A topic of ONE conversation, laid out by «Впорядкувати» (2026-10-29) - not the AI's themes of the first screen, and not the
+// branches («Детальніше», AssistantTopic).
+export type ChatSection = { id: string; title: string };
 export type AssistantTopic = { id: string; parentId: string | null; title: string; fromKey?: string };
 export const ROOT_TOPIC = 'root';
 // `remembered`: block keys («messageId:index»). `groups`: what was remembered TOGETHER - several blocks picked at once
@@ -61,6 +65,11 @@ export type AssistantChat = {
   // THE CONVERSATION'S THEME (2026-10-29, features.aiHome): one of the person's chat themes (assistantThemes), a place on the
   // AI's first screen - not a folder of the explorer.
   themeId?: string;
+  // SORTED BY TOPIC (2026-10-29, the user's: the conversation «змінює порядок повідомлень» - a simplified tree, so the talk is
+  // neither lost nor got lost in): its topics, and the messages in the order they are SHOWN once sorted. The real order stays
+  // `messages` - the AI always reads that one; what came after the sorting is shown under «Нове» until the next one.
+  sections?: ChatSection[];
+  sortedIds?: string[];
 };
 
 export function groupsOf(chat: AssistantChat): string[][] {
@@ -149,6 +158,7 @@ function toStored(chat: AssistantChat) {
       ...(m.topicId ? { topicId: m.topicId } : {}),
       ...(m.structure ? { structure: m.structure } : {}),
       ...(m.attachments?.length ? { attachments: m.attachments.map((a) => ({ kind: a.kind, name: a.name, sub: a.sub, ...(a.uri ? { uri: a.uri } : {}) })) } : {}),
+      ...(m.sectionId ? { sectionId: m.sectionId } : {}),
     })),
     remembered: chat.remembered,
     groups: groupsOf(chat).map((keys) => ({ keys })),
@@ -164,6 +174,7 @@ function toStored(chat: AssistantChat) {
     ...(chat.folderId ? { folderId: chat.folderId } : {}),
     ...(chat.customTitle?.trim() ? { customTitle: chat.customTitle.trim() } : {}),
     ...(chat.themeId ? { themeId: chat.themeId } : {}),
+    ...(chat.sections?.length ? { sections: chat.sections, sortedIds: chat.sortedIds ?? [] } : {}),
   };
 }
 function fromStored(id: string, data: Record<string, unknown>): AssistantChat {
@@ -186,6 +197,7 @@ function fromStored(id: string, data: Record<string, unknown>): AssistantChat {
     ...(data.folderId ? { folderId: data.folderId as string } : {}),
     ...(data.customTitle ? { customTitle: data.customTitle as string } : {}),
     ...(data.themeId ? { themeId: data.themeId as string } : {}),
+    ...(Array.isArray(data.sections) && data.sections.length ? { sections: data.sections as ChatSection[], sortedIds: (data.sortedIds as string[]) ?? [] } : {}),
   };
 }
 
@@ -352,6 +364,84 @@ function pagesOf(m: AssistantMessage): string {
   return pages.length ? `\n\n(Додані сторінки: ${pages.map((a) => `«${a.name}» ${a.url}`).join(', ')})` : '';
 }
 
+// «ВПОРЯДКУВАТИ» (2026-10-29): the conversation is laid out by topic. The unit is a PAIR - the person's message with the answers
+// after it (an answer without its question means nothing) - and a follow-up («а дешевше?») stays with the pair before it.
+// The AI gets only the first lines of each pair and the topics it already named (so a topic come back to keeps its name);
+// it answers which pairs go under which topic. Nothing moves here - sortPlan only says, applySort lays it out.
+export type ChatPair = { ids: string[]; question: string; answer: string; at: number };
+export function pairsOf(chat: AssistantChat): ChatPair[] {
+  const pairs: ChatPair[] = [];
+  for (const m of chat.messages) {
+    const line = m.text.replace(/\s+/g, ' ').trim();
+    if (m.role === 'user' || pairs.length === 0) {
+      pairs.push({ ids: [m.id], question: m.role === 'user' ? line : '', answer: m.role === 'user' ? '' : line, at: m.at });
+    } else {
+      const p = pairs[pairs.length - 1];
+      p.ids.push(m.id);
+      if (!p.answer && !m.error) p.answer = line;
+    }
+  }
+  return pairs;
+}
+export type SortPlan = { sections: ChatSection[]; pairSection: number[]; costUsd: number };
+export async function sortPlan(chat: AssistantChat): Promise<SortPlan> {
+  const pairs = pairsOf(chat);
+  const known = chat.sections ?? [];
+  const list = pairs
+    .map((p, i) => `${i + 1} | Л: ${p.question.slice(0, 140) || '-'} | ШІ: ${p.answer.slice(0, 90) || '-'}`)
+    .join('\n');
+  const prompt = `Ось розмова людини з ШІ, розбита на пари (повідомлення людини + відповідь), за часом. Згрупуй пари за темами, щоб розмову було зручно читати по темах.
+Правила:
+- від 1 до 8 тем; назва теми 1-4 слова, мовою розмови, без лапок і крапки;
+- уточнення до попередньої пари («а дешевше?», «а детальніше?», «а якщо…») - у ту саму тему, що й пара перед ним;
+- якщо тема вже є серед наявних - назви її ТОЧНО так само;
+- кожна пара - рівно в одній темі; теми впорядкуй за першою своєю парою.
+Наявні теми: ${known.length ? known.map((t) => t.title).join('; ') : '(немає)'}
+Пари:
+${list}
+Відповідь - лише JSON: {"themes":[{"title":"...","pairs":[1,2,5]}]}`;
+  const { text, costUsd } = await askCosted(prompt, { json: true });
+  let themes: { title?: unknown; pairs?: unknown }[] = [];
+  try {
+    const parsed = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, ''));
+    themes = Array.isArray(parsed?.themes) ? parsed.themes : [];
+  } catch {
+    throw new GeminiError('ШІ відповів не так, як треба. Спробуй ще раз.');
+  }
+  const sections: ChatSection[] = [];
+  const pairSection = pairs.map(() => -1);
+  for (const t of themes) {
+    const title = typeof t.title === 'string' ? t.title.trim().slice(0, 60) : '';
+    if (!title || !Array.isArray(t.pairs)) continue;
+    // A topic it named before keeps its id (and so the name the person may have given it).
+    const same = known.find((k) => k.title.toLowerCase() === title.toLowerCase());
+    let at = sections.findIndex((x) => x.title.toLowerCase() === title.toLowerCase());
+    if (at < 0) {
+      sections.push(same ?? { id: `sec-${Date.now().toString(36)}-${sections.length}`, title });
+      at = sections.length - 1;
+    }
+    for (const n of t.pairs) if (typeof n === 'number' && n >= 1 && n <= pairs.length && pairSection[n - 1] < 0) pairSection[n - 1] = at;
+  }
+  // A pair it left out goes with the pair before it - a follow-up, most likely.
+  if (sections.length === 0) sections.push({ id: `sec-${Date.now().toString(36)}-0`, title: 'Розмова' });
+  for (let i = 0; i < pairSection.length; i++) if (pairSection[i] < 0) pairSection[i] = i > 0 ? pairSection[i - 1] : 0;
+  return { sections, pairSection, costUsd };
+}
+// The plan laid out on the conversation as it is NOW: messages that came while the AI was thinking stay under «Нове».
+export function applySort(chat: AssistantChat, planFor: AssistantChat, plan: SortPlan): AssistantChat {
+  const pairs = pairsOf(planFor);
+  const sectionOf = new Map<string, string>();
+  pairs.forEach((p, i) => p.ids.forEach((id) => sectionOf.set(id, plan.sections[plan.pairSection[i]].id)));
+  const used = plan.sections.filter((sec) => [...sectionOf.values()].includes(sec.id));
+  const sortedIds = used.flatMap((sec) => planFor.messages.filter((m) => sectionOf.get(m.id) === sec.id).map((m) => m.id));
+  return {
+    ...chat,
+    sections: used,
+    sortedIds,
+    messages: chat.messages.map((m) => (sectionOf.has(m.id) ? { ...m, sectionId: sectionOf.get(m.id) } : m)),
+  };
+}
+
 // A one-shot request (no conversation) with its price, for what the board window asks of the AI: deepen a card, branch it.
 // `json`: the answer is JSON only. Throws GeminiError with a message to show as it is.
 export async function askCosted(prompt: string, options: { json?: boolean } = {}): Promise<{ text: string; costUsd: number }> {
@@ -465,7 +555,11 @@ export async function createTheme(name: string, taken: ChatTheme[]): Promise<Cha
 // and summary. A match needs two shared words, or one long one in a short draft; null otherwise.
 const STOP = new Set(['який', 'яка', 'яке', 'які', 'щоб', 'чому', 'коли', 'тому', 'якщо', 'мені', 'тобі', 'тебе', 'мене', 'його', 'вона', 'вони', 'буде', 'було', 'треба', 'можна', 'about', 'what', 'with', 'this', 'that', 'from', 'have', 'then']);
 export function wordsOf(text: string): string[] {
-  return (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => w.length >= 4 && !STOP.has(w)).map((w) => w.slice(0, 6));
+  // Short words are noise - except an abbreviation in capitals (RAG, API, CRM), often the very thing a talk is about
+  // (2026-10-29: «Test RAG vector database cost» found no «Test RAG: what is RAG…»).
+  return (text.match(/[\p{L}\p{N}]+/gu) ?? [])
+    .filter((w) => (w.length >= 4 || (w.length >= 2 && /\p{L}/u.test(w) && w === w.toUpperCase())) && !STOP.has(w.toLowerCase()))
+    .map((w) => w.toLowerCase().slice(0, 6));
 }
 export function similarChat(draft: string, chats: ChatSummary[]): ChatSummary | null {
   const mine = new Set(wordsOf(draft));
