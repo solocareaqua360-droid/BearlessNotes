@@ -2,7 +2,7 @@ import { FEATURES } from '../features';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from './icons/Ionicons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
-import { getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
+import { StackActions, getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
 import { DesksControlContext, FIXED_DESKS, deskFace } from '../navigation/desks';
@@ -305,7 +305,13 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         return {
           ...d,
           onPress: () => {
-            if (route && navigationRef.isReady()) navigationRef.navigate('Tabs', { screen: route.name } as never);
+            if (!route || !navigationRef.isReady()) return;
+            // BACK to the desks under the screen in front, not a second set of them on top: `navigate` pushed a new
+            // Tabs (React Navigation 7), and building every desk anew held the dock still for a second or two (the user,
+            // 2026-10-29: «кулька розтягується в овал і завмирає»). popTo leaves the screen; then the desk is picked.
+            const routes = navigationRef.getRootState()?.routes ?? [];
+            if (routes.length > 1 && routes[0]?.name === 'Tabs') navigationRef.dispatch(StackActions.popTo('Tabs'));
+            navigationRef.navigate('Tabs', { screen: route.name } as never);
           },
         };
       }),

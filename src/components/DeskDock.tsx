@@ -667,9 +667,10 @@ export default function DeskDock({
                 pick(assistIndex);
                 setShownIndex(assistIndex);
                 // The capsule lands on the balloon; then the two lift off together and the window grows out of them. The list
-                // (features.aiHome) grows out of nothing: it opens at the tap, as a desk does, and its dock carries the capsule on.
-                if (FEATURES.aiHome) assist.onOpen();
-                else setTimeout(() => assist.onOpen(), CAP_END - 20);
+                // (features.aiHome) waits for the landing too: opened at the tap it was built while the capsule ran, and the
+                // capsule stalled twice on its way (the user, 2026-10-29: «підвисання кульки»). Its last list is kept, so it is
+                // whole the moment it shows.
+                setTimeout(() => assist.onOpen(), CAP_END - 20);
               }}
             />
           )}
