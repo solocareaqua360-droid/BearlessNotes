@@ -147,6 +147,9 @@ function MiniRing({ usd, color, track }: { usd: number; color: string; track: st
 // started it is a NEW one (an empty one is never kept in the list - saveChat writes nothing of it to the database); moving
 // around the app and coming back finds the same one, the last. The older ones wait in the list of conversations.
 let conversationStartedThisRun = false;
+// The list as it was last read (features.aiHome): drawn at once on the next opening, then brought up to date - no empty frame.
+let lastChats: ChatSummary[] = [];
+let lastThemes: ChatTheme[] = [];
 
 export default function AssistantScreen() {
   const S = useSoft();
@@ -195,7 +198,7 @@ export default function AssistantScreen() {
   const docIndex = useDocumentIndex();
   const folders = useMemo(() => folderOptions(tags), [tags]);
   const [chatsOpen, setChatsOpen] = useState(false);
-  const [chatList, setChatList] = useState<ChatSummary[]>([]);
+  const [chatList, setChatList] = useState<ChatSummary[]>(lastChats);
   const [folderFor, setFolderFor] = useState<{ chatId: string; purpose: 'chat' | 'save' } | null>(null);
   const [instructionFor, setInstructionFor] = useState<string | null>(null);
   const [materialsOpen, setMaterialsOpen] = useState(false);
@@ -215,6 +218,8 @@ export default function AssistantScreen() {
     };
   }, []);
   useEffect(() => {
+    // The list comes first (features.aiHome): a conversation is made only when one is begun (newConversation) or opened.
+    if (FEATURES.aiHome) return;
     const firstOpen = !conversationStartedThisRun;
     conversationStartedThisRun = true;
     const start = firstOpen
@@ -240,14 +245,23 @@ export default function AssistantScreen() {
   const [home, setHome] = useState<boolean>(FEATURES.aiHome);
   const [composing, setComposing] = useState(false);
   const [level, setLevel] = useState<string | null>(null);
-  const [themes, setThemes] = useState<ChatTheme[]>([]);
+  const [themes, setThemes] = useState<ChatTheme[]>(lastThemes);
   const [similar, setSimilar] = useState<ChatSummary | null>(null);
   const [themeSkip, setThemeSkip] = useState<string | null>(null);
   const [themeAsk, setThemeAsk] = useState(false);
   const [newThemeFor, setNewThemeFor] = useState<'chat' | 'list' | null>(null);
   const [renameTheme, setRenameTheme] = useState<ChatTheme | null>(null);
   const [renameChat, setRenameChat] = useState<ChatSummary | null>(null);
-  useEffect(() => (FEATURES.aiHome ? listenThemes(setThemes) : undefined), []);
+  useEffect(
+    () =>
+      FEATURES.aiHome
+        ? listenThemes((t) => {
+            lastThemes = t;
+            setThemes(t);
+          })
+        : undefined,
+    []
+  );
   useEffect(() => {
     if (FEATURES.aiHome && home) refreshChats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -663,7 +677,9 @@ export default function AssistantScreen() {
   // THE LIST OF CONVERSATIONS and what is done to its rows (sketches 8-12).
   async function refreshChats() {
     try {
-      setChatList(await listChats());
+      const list = await listChats();
+      lastChats = list;
+      setChatList(list);
     } catch {
       // The list stays as it was.
     }

@@ -666,8 +666,10 @@ export default function DeskDock({
               onPress={() => {
                 pick(assistIndex);
                 setShownIndex(assistIndex);
-                // The capsule lands on the balloon; then the two lift off together and the window grows out of them.
-                setTimeout(() => assist.onOpen(), CAP_END - 20);
+                // The capsule lands on the balloon; then the two lift off together and the window grows out of them. The list
+                // (features.aiHome) grows out of nothing: it opens at the tap, as a desk does, and its dock carries the capsule on.
+                if (FEATURES.aiHome) assist.onOpen();
+                else setTimeout(() => assist.onOpen(), CAP_END - 20);
               }}
             />
           )}

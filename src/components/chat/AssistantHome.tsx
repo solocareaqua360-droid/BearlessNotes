@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -44,6 +45,9 @@ export default function AssistantHome({
 }) {
   const S = useSoft();
   const insets = useSafeAreaInsets();
+  // The bar is one for the whole app (a portal): put up at once, it showed «Розмови» over the desk left behind for a frame or
+  // two before this screen was drawn. It comes up once the screen has been laid out.
+  const [laidOut, setLaidOut] = useState(false);
   const themeOf = (id?: string) => themes.find((t) => t.id === id);
   const real = chats.filter((c) => c.count > 0);
   const countIn = (id: string) => real.filter((c) => (id === NO_THEME ? !themeOf(c.themeId) : c.themeId === id)).length;
@@ -89,7 +93,7 @@ export default function AssistantHome({
   };
 
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <View style={StyleSheet.absoluteFill} onLayout={() => setLaidOut(true)}>
       <ScrollView
         contentContainerStyle={{ paddingTop: top + TOP_NAV_H + 6, paddingBottom: insets.bottom + 140, paddingHorizontal: 20 }}
         keyboardShouldPersistTaps="handled"
@@ -135,7 +139,7 @@ export default function AssistantHome({
       </ScrollView>
       <EdgeFade edge="top" color={S.bg} height={top + TOP_NAV_H} bar />
       {/* The app's own bar (TopNavBar): the dock's desks stand only under it. The name, «‹» inside a theme and «⋯» are its. */}
-      {focused && (
+      {focused && laidOut && (
         <TopNavBar
           title={{
             icon: level === null || composing ? 'chatbubble-outline' : 'chevron-back',
