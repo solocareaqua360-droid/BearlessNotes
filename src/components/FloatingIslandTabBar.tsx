@@ -293,7 +293,13 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
             if (route.name === BASES_DESK && liveIndexRef.current !== index && hasBase()) {
               const base = takeBase();
               if (base && navigationRef.isReady()) {
-                (navigationRef.navigate as (n: string, p?: object) => void)(base.name, base.params);
+                // The capsule first travels to «Бази» on the desks, and only when it has landed the base comes in front: the dock then
+                // changes from the desks' beads to the base's with the same bead lit, nothing left to move (a base pushed at once left
+                // the capsule standing between two beads).
+                barHandlers.current.desks[index]?.onPress();
+                setTimeout(() => {
+                  if (navigationRef.isReady()) (navigationRef.navigate as (n: string, p?: object) => void)(base.name, base.params);
+                }, 420);
                 return;
               }
             }
@@ -315,6 +321,9 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         const route = state.routes.filter((r) => FIXED_DESKS.includes(r.name))[i];
         return {
           ...d,
+          // A base in front belongs to the «Бази» desk, so that bead is the lit one (the desk under it, where the person came
+          // from, used to stay lit: «Старт» over an open base - the user, 2026-10-31).
+          active: route?.name === BASES_DESK,
           onPress: () => {
             if (!route || !navigationRef.isReady()) return;
             // BACK to the desks under the screen in front, not a second set of them on top: `navigate` pushed a new
