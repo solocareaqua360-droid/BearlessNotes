@@ -221,9 +221,35 @@ const SCHEDULE_FREE = '__free__';
 // computed from them (see gridTileWidth) as well as applied in the style.
 // A part of a table row that stays where it is while the table scrolls sideways: it shifts itself by the scroller's own
 // offset, so it is drawn over what slides under it (the caller gives it the ground's colour).
-function StickyLeft({ x, style, children }: { x: SharedValue<number>; style?: object; children: ReactNode }) {
+function StickyLeft({ x, style, children, web }: { x: SharedValue<number>; style?: object; children: ReactNode; web?: boolean }) {
+  // The browser: the shift is set straight on the element from the scroller's own scroll event, in the same frame the scroller moves.
+  // Through the shared value it came a frame late, and the frozen column and header trembled against the columns passing under them
+  // (the user, 2026-10-30).
+  if (Platform.OS === 'web' && web) return <WebStickyLeft style={style}>{children}</WebStickyLeft>;
+  return <PhoneStickyLeft x={x} style={style}>{children}</PhoneStickyLeft>;
+}
+function PhoneStickyLeft({ x, style, children }: { x: SharedValue<number>; style?: object; children: ReactNode }) {
   const shift = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   return <Animated.View style={[style, shift, { zIndex: 2 }]}>{children}</Animated.View>;
+}
+function WebStickyLeft({ style, children }: { style?: object; children: ReactNode }) {
+  const ref = useRef<View>(null);
+  useEffect(() => {
+    const el = ref.current as unknown as HTMLElement | null;
+    const scroller = el?.closest('[data-sticky-scroller]') as HTMLElement | null;
+    if (!el || !scroller) return;
+    const apply = () => {
+      el.style.transform = `translateX(${scroller.scrollLeft}px)`;
+    };
+    apply();
+    scroller.addEventListener('scroll', apply, { passive: true });
+    return () => scroller.removeEventListener('scroll', apply);
+  }, []);
+  return (
+    <View ref={ref} style={[style, { zIndex: 2 }]}>
+      {children}
+    </View>
+  );
 }
 
 // The schedule's grid lines and today / cursor columns, drawn ONCE behind the rows and cut where the rows end (they scroll
@@ -2539,7 +2565,9 @@ export default function CustomDatabaseScreen({
     // the ground's own colour so what scrolls under it is hidden.
     const frozenW = TABLE_HANDLE_WIDTH + titleWidth;
     const totalW = frozenW + restFields.length * TABLE_COLUMN_WIDTH;
-    const ground = softDb ? softDb.bg : '#000000';
+    // On the laptop the soft ground is see-through (glass), and the columns passing under the frozen one showed through it: the frozen
+    // column needs a ground of its own there.
+    const ground = softDb ? (Platform.OS === 'web' && softDb.bg === 'transparent' ? '#FAF9F6' : softDb.bg) : '#000000';
     const headerFill = StyleSheet.flatten(styles.tableHeaderRow).backgroundColor;
     return (
       <View style={styles.tableWrap}>
@@ -2550,10 +2578,11 @@ export default function CustomDatabaseScreen({
           onScroll={tableScrollHandler}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ width: totalW }}
+          {...({ dataSet: { stickyScroller: '1' } } as object)}
         >
           <View style={{ width: totalW, flex: 1 }}>
             <View style={[styles.tableHeaderRow, { paddingVertical: 0 }]}>
-              <StickyLeft x={tableScrollX} style={{ width: frozenW, backgroundColor: ground }}>
+              <StickyLeft web x={tableScrollX} style={{ width: frozenW, backgroundColor: ground }}>
                 <View style={[styles.tableFrozenHeader, { paddingVertical: 10, backgroundColor: headerFill }]}>
                   <View style={styles.tableRowHandle} />
                   <View style={[styles.tableHeaderCell, { width: titleWidth }]}>
@@ -2588,7 +2617,7 @@ export default function CustomDatabaseScreen({
               renderItem={({ item }) =>
                 item.kind === 'group' ? (
                   <View style={{ height: TABLE_ROW_HEIGHT, width: totalW }}>
-                    <StickyLeft x={tableScrollX} style={{ width: frozenW }}>
+                    <StickyLeft web x={tableScrollX} style={{ width: frozenW }}>
                       <Pressable style={styles.tableGroupHeader} onPress={() => toggleGroupCollapsed(item.key)}>
                         <Ionicons
                           name={item.collapsed ? 'chevron-forward' : 'chevron-down'}
@@ -2604,7 +2633,7 @@ export default function CustomDatabaseScreen({
                   </View>
                 ) : (
                   <View style={[styles.tableRow, { width: totalW }]}>
-                    <StickyLeft x={tableScrollX} style={{ width: frozenW, flexDirection: 'row', backgroundColor: ground }}>
+                    <StickyLeft web x={tableScrollX} style={{ width: frozenW, flexDirection: 'row', backgroundColor: ground }}>
                       {/* Tapping a cell edits that one cell; this button is the
                           way to open the whole row as a card, per the user's own
                           "a cell for one value, the card when I want them all". */}
