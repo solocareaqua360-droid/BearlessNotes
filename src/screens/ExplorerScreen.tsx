@@ -3339,7 +3339,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         {viewMode === 'canvas' && !inBin && !inCleanup ? (
           // «Полотно»: the folders as islands with their things on them, carried by hand (FoldersCanvas,
           // the one the «Папки» screen has). Only what lies in some folder stands on it.
-          <FoldersCanvas topPad={top} linksOpen={false} onOpenItem={(item) => openItem(item)} />
+          <FoldersCanvas topPad={top} linksOpen={false} asExplorer onOpenItem={(item) => openItem(item)} />
         ) : (
         <GestureDetector gesture={carrying.listGesture}>
         <Animated.View style={[{ flex: 1 }, levelStyle]} {...webData({ explorer: '1' })} onLayout={touchDensity ? undefined : (e) => setMeasuredW(Math.round(e.nativeEvent.layout.width))}>

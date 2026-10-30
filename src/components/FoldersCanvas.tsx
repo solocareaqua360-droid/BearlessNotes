@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { holdAsk } from './surfaces/HoldAsk';
 import { useNavigation } from '@react-navigation/native';
@@ -51,8 +52,13 @@ export default function FoldersCanvas({
   onFolderMenu,
   focusFolder,
   onOpenItem,
+  asExplorer,
 }: {
   topPad: number;
+  // The EXPLORER's own canvas: the same folders its list shows. A base's collection (Tag.baseOnly) is not a folder of the
+  // explorer until it is placed there - the list left «Слеш панель» out while this canvas stood it up (the user, 2026-10-30).
+  // The «Папки» screen keeps every tag.
+  asExplorer?: boolean;
   // A screen that opens things in its OWN windows (the single explorer) says how; without it
   // a tile goes to its database, as it always did.
   onOpenItem?: (item: FolderItem) => void;
@@ -63,7 +69,13 @@ export default function FoldersCanvas({
 }) {
   const S = useSoft();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { tags, attachTag, detachTag, createFolderTag, renameTag, updateTag } = useTags();
+  const { tags: allTags, attachTag, detachTag, createFolderTag, renameTag, updateTag } = useTags();
+  const tags = useMemo(() => {
+    if (!asExplorer) return allTags;
+    const placed = allTags.filter((t) => t.baseOnly && t.inExplorer).map((t) => t.path);
+    const isPlaced = (path: string) => placed.some((p) => path === p || path.startsWith(`${p}/`));
+    return allTags.filter((t) => !t.baseOnly || isPlaced(t.path));
+  }, [allTags, asExplorer]);
   const items = useAllFolderItems(tags);
   // The databases, as circles - see useFolderBases.
   const bases: LinkBase[] = useFolderBases();
