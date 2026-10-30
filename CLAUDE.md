@@ -345,3 +345,17 @@ APK (Stage 10 in `DEVELOPMENT_PLAN.md`) is built via `eas build
 --profile development --platform android` and installed on the phone;
 from then on, `npm start` opens straight into that custom client
 instead of Expo Go.
+
+## Dev board («розробка») - keep it current, without the user importing anything
+
+The user's own base «розробка» (fields: Назва, Тип, Статус, Платформа, Дата, Опис) is THE list of what is done, open, paused and
+deferred. It is fed from here, not by hand: `python3 scripts/dev-board.py ...` writes `~/Library/Application Support/mindEva/state/dev-board.json`,
+and the signed-in Mac app puts the records into the base within a few seconds (src/utils/devBoardBridge.web.ts) - as the user, no key,
+no access of Claude's own to his data. The app must be open; records wait in the file until it is.
+
+- After finishing a piece of work: `dev-board.py done "<exact Назва of the row>" --desc "..."`. A new thing worth keeping (a bug found,
+  a question for the user, an idea he spoke of): `dev-board.py add "<Назва>" --type баг|питання|борг|ідея|функція --platform Android|Mac|Обидві`
+  (status defaults to «вхідне»; he decides what moves to «далі»).
+- Read his side with the user's words: he changes statuses in the base by hand; when it matters, ask him, do not guess.
+- Do not build new features for the planning tool itself (the user stopped that loop on 2026-10-30). The three old files
+  docs/dev-notes/01-03 are a frozen snapshot, not updated.
