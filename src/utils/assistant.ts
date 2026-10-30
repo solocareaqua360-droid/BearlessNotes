@@ -72,6 +72,12 @@ export type AssistantChat = {
   sortedIds?: string[];
 };
 
+// The YouTube addresses of a message as the parts Gemini watches (one is enough: a video is heavy to read).
+function youTubePartsOf(text: string): { fileData: { fileUri: string } }[] {
+  const url = text.match(/https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?[^\s]+|youtu\.be\/[^\s]+)/i)?.[0];
+  return url ? [{ fileData: { fileUri: url } }] : [];
+}
+
 export function groupsOf(chat: AssistantChat): string[][] {
   return chat.groups ?? chat.remembered.map((k) => [k]);
 }
@@ -338,14 +344,24 @@ export async function askAssistant(
         systemInstruction: { parts: [{ text: memory ? `${SYSTEM}\n\n${memory}` : SYSTEM }] },
         contents: turns.map((m, i) => ({
           role: m.role,
-          parts:
-            i === turns.length - 1 && m.role === 'user' && extraParts?.length
+          parts: [
+            ...(i === turns.length - 1 && m.role === 'user' && extraParts?.length
               ? [{ text: m.text }, ...extraParts]
               : // A page given earlier is only its address now: the talk about it goes on with Gemini opening it again.
-                [{ text: m.text + pagesOf(m) }],
+                [{ text: m.text + pagesOf(m) }]),
+            // A YouTube address in the user's own words is WATCHED (2026-10-30, the user: «він не може бачити відео»): the API takes the
+            // address as a file, the way the thoughts' video summary does - the last video of the last message only.
+            ...(i === turns.length - 1 && m.role === 'user' ? youTubePartsOf(m.text) : []),
+          ],
         })),
         // A page given as an address (now, or earlier in the talk): Gemini opens it itself.
-        ...(extraParts?.some((p) => 'text' in p && p.text.includes(READ_BY_URL)) || turns.some((m) => pagesOf(m)) ? { tools: [{ url_context: {} }] } : {}),
+        ...(() => {
+          const tools: object[] = [];
+          if (extraParts?.some((p) => 'text' in p && p.text.includes(READ_BY_URL)) || turns.some((m) => pagesOf(m))) tools.push({ url_context: {} });
+          // A video in the last message: Gemini may also search the web, to find the app it names in a store (the first try, 2026-10-30).
+          if (youTubePartsOf(turns[turns.length - 1]?.text ?? '').length > 0) tools.push({ google_search: {} });
+          return tools.length ? { tools } : {};
+        })(),
       }),
     });
   } catch {
