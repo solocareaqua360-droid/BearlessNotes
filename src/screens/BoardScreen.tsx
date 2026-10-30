@@ -10,7 +10,7 @@ import type { BoardDbWindow, CustomDatabase, CustomDatabaseRow } from '../types'
 import BoardDatabaseWindow from '../components/BoardDatabaseWindow';
 import { MONTH_SHORT, WEEKDAY_SHORT, addDays, dateKey, formatShortDate, mondayIndex, parseDateKey } from '../utils/dateLocale';
 import { mutedForTheme, type Theme } from '../theme/tokens';
-import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -1560,6 +1560,24 @@ const freeInputStyles = StyleSheet.create({
 const PAPER_DOC_HEIGHT = 260;
 const CARD_BUTTONS_H = 44;
 const PAPER_DOC_TEXT = 0.62;
+// Its children laid out `factor` times wider and drawn at `factor` of that size: text, gaps and numbers shrink together. The
+// transform leaves the layout box alone, so the height is measured and given back to the wrapper.
+function UniformScaled({ factor, children }: { factor: number; children: ReactNode }) {
+  const [width, setWidth] = useState(0);
+  const [height, setHeight] = useState(0);
+  return (
+    <View style={{ width: '100%', height: height ? height * factor : undefined, overflow: 'hidden' }} onLayout={(e) => setWidth(Math.round(e.nativeEvent.layout.width))}>
+      {width > 0 && (
+        <View
+          style={{ width: width / factor, transform: [{ scale: factor }], transformOrigin: 'top left' } as never}
+          onLayout={(e) => setHeight(Math.round(e.nativeEvent.layout.height))}
+        >
+          {children}
+        </View>
+      )}
+    </View>
+  );
+}
 
 function DraggableCard({
   card,
@@ -2051,9 +2069,20 @@ function DraggableCard({
                 {card.documentTitle || 'Без назви'}
               </Text>
             </View>
-            <TextScaleOverride factor={PAPER_DOC_TEXT}>
-              <DocumentCardBlocks documentId={card.documentId} />
-            </TextScaleOverride>
+            {FEATURES.macFrameB && Platform.OS === 'web' ? (
+              // THE MAC: laid out at the card's world size over 0.62 and scaled whole - the way the live editor is (see the card
+              // window below) - so numbers, gaps and text keep their proportions when the card is opened for writing. Only the
+              // TEXT was scaled before, and the rows' own gaps and numbers stayed big (2026-10-30: «стрибки дезорієнтують»).
+              <UniformScaled factor={PAPER_DOC_TEXT}>
+                <TextScaleOverride factor={1}>
+                  <DocumentCardBlocks documentId={card.documentId} />
+                </TextScaleOverride>
+              </UniformScaled>
+            ) : (
+              <TextScaleOverride factor={PAPER_DOC_TEXT}>
+                <DocumentCardBlocks documentId={card.documentId} />
+              </TextScaleOverride>
+            )}
           </View>
         ) : type === 'document' ? (
           <View style={styles.refCard}>
