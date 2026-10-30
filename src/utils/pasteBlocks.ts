@@ -95,6 +95,17 @@ function tableAt(lines: string[], start: number): { rows: TableRow[]; end: numbe
   return { rows, end: i };
 }
 
+// A TABLE OUT OF PASTED TEXT, as plain rows of strings (the import of a table by pasting, 2026-10-30): the first markdown table
+// or tab-separated run in the text, else null. What a chat answer copied with its «copy» button, or a range copied out of a spreadsheet, is.
+export function parsedTableGrid(raw: string): string[][] | null {
+  const lines = raw.replace(/\r\n?/g, '\n').split('\n');
+  for (let i = 0; i < lines.length; i += 1) {
+    const found = tableAt(lines, i);
+    if (found) return found.rows.map((row) => row.cells.map((cell) => inlineMarkdown(cell).replace(/\*\*/g, '').trim()));
+  }
+  return null;
+}
+
 export function parsePastedText(raw: string): ParsedBlock[] {
   const lines = raw.replace(/\r\n?/g, '\n').split('\n');
   const out: ParsedBlock[] = [];

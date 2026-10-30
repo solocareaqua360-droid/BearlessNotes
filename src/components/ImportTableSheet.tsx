@@ -15,6 +15,7 @@ import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { FieldDef, FieldType } from '../types';
 import { canJoinTitle } from '../utils/customRowDisplay';
+import { parsedTableGrid } from '../utils/pasteBlocks';
 import {
   ColumnMapping,
   ParsedSheet,
@@ -121,6 +122,8 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
   const columnCount = grid.reduce((max, row) => Math.max(max, row.length), 0);
 
   function reset() {
+    setPasting(false);
+    setPasted('');
     setSheets(null);
     setSheetIndex(0);
     setHasHeaderRow(true);
@@ -184,6 +187,25 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
     } finally {
       setBusy(false);
     }
+  }
+
+  // PASTED TEXT (the user, 2026-10-30: a convenient way to bring in what Claude writes, no sync of its own): a markdown table or
+  // spreadsheet cells, read into the same grid a file gives, and on through the same mapping.
+  const [pasting, setPasting] = useState(false);
+  const [pasted, setPasted] = useState('');
+  function loadPasted() {
+    const grid = parsedTableGrid(pasted);
+    if (!grid) {
+      notify('Не знайшов таблицю', 'Встав таблицю з рядками | як у відповіді, або клітинки зі спредшита.');
+      return;
+    }
+    const parsed: ParsedSheet = { name: 'Вставлено', grid };
+    setSheets([parsed]);
+    setSheetIndex(0);
+    setMappings(buildDefaultMappings(parsed, true));
+    setDatabaseName('Нова база');
+    setPasting(false);
+    setPasted('');
   }
 
   async function pickFile() {
@@ -370,7 +392,27 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
 
           {!sheet ? (
             <View style={styles.pickArea}>
-              <Text style={styles.hint}>Оберіть файл .xlsx, .xls або .csv.</Text>
+              <Text style={styles.hint}>Оберіть файл .xlsx, .xls або .csv, або встав таблицю текстом.</Text>
+              {pasting ? (
+                <>
+                  <TextInput
+                    value={pasted}
+                    onChangeText={setPasted}
+                    multiline
+                    autoFocus
+                    placeholder="Встав таблицю: | колонка | колонка | або клітинки зі спредшита"
+                    placeholderTextColor={theme.ink.faint}
+                    style={{ minHeight: 120, maxHeight: 220, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.edge.hairline, padding: 12, color: theme.ink.primary, fontFamily: FONT_REGULAR, fontSize: 14, textAlignVertical: 'top' }}
+                  />
+                  <Pressable style={styles.primaryButton} onPress={loadPasted} disabled={!pasted.trim()}>
+                    <Text style={styles.primaryButtonLabel}>Далі</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <Pressable style={[styles.primaryButton, { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.edge.hairline }]} onPress={() => setPasting(true)}>
+                  <Text style={[styles.primaryButtonLabel, { color: theme.ink.primary }]}>Вставити таблицю текстом</Text>
+                </Pressable>
+              )}
               <Pressable style={styles.primaryButton} onPress={() => pickFile()} disabled={busy}>
                 {busy ? (
                   <ActivityIndicator color="#fff" />
