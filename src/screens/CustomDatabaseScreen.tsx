@@ -192,6 +192,7 @@ const VIEW_LABELS: Record<ViewMode, string> = {
   schedule: 'Графік',
   kanban: 'Канбан',
   shelves: 'Полиці',
+  endings: 'Закінчуються',
 };
 const VIEW_ICONS: Record<ViewMode, keyof typeof Ionicons.glyphMap> = {
   list: 'reorder-four-outline',
@@ -200,6 +201,7 @@ const VIEW_ICONS: Record<ViewMode, keyof typeof Ionicons.glyphMap> = {
   schedule: 'calendar-outline',
   kanban: 'apps-outline',
   shelves: 'layers-outline',
+  endings: 'flag-outline',
 };
 // A day column's own width, and how tall one row of the grid stands -
 // the same two numbers decide the row-header column's height per record
@@ -353,7 +355,7 @@ function WrapTextCell({
   );
 }
 
-type ViewMode = 'list' | 'table' | 'cards' | 'schedule' | 'kanban' | 'shelves';
+type ViewMode = 'list' | 'table' | 'cards' | 'schedule' | 'kanban' | 'shelves' | 'endings';
 // The three tabs of the parameters window. They were three buttons on the
 // rail and three anchored lists; the user's own call was that they are one
 // window with three tabs, "як менше основного екрану по центру" - the
@@ -454,7 +456,7 @@ export default function CustomDatabaseScreen({
   // A table, a kanban and a schedule scroll sideways themselves: the swipe
   // to the databases layer then begins from the edge of the screen (see
   // Tabs) - "не можу перейти ... свайпом до вікна з базами даних".
-  useEdgeOnlyDrawerSwipe(isFocused && (viewMode === 'table' || viewMode === 'kanban' || viewMode === 'schedule'));
+  useEdgeOnlyDrawerSwipe(isFocused && (viewMode === 'table' || viewMode === 'kanban' || viewMode === 'schedule' || viewMode === 'endings'));
   // Which capsule is selected at the top of the screen - null means
   // "Поточні зміни" (the working area: sort/filter/group/representation/
   // hidden fields persist for it same as before, just now explicitly
@@ -754,6 +756,11 @@ export default function CustomDatabaseScreen({
     if (!isTemplate || database.fields.some((f) => f.role === 'links')) return;
     updateDoc(doc(db, 'customDatabases', databaseId), { fields: [...database.fields, linksField(Date.now())] }).catch(() => {});
   }, [database, databaseId]);
+  // «Закінчуються»: the Monday of the week on screen.
+  const [endingsWeek, setEndingsWeek] = useState(() => {
+    const now = new Date();
+    return dateKey(addDays(now, -((now.getDay() + 6) % 7)));
+  });
   // Folded groups, by `${viewId}:${groupKey}` - this session only.
   const [scheduleCollapsed, setScheduleCollapsed] = useState<Set<string>>(() => new Set());
   // The window opens (and moves) with the cursor in view - its column one
@@ -1804,6 +1811,36 @@ export default function CustomDatabaseScreen({
       return;
     }
     setScheduleSetupVisible(true);
+  }
+
+  // «ЗАКІНЧУЮТЬСЯ» (the user, 2026-10-31): the sheets of a week by the day they END. Its fields are the schedule's own (which relation names the
+  // vehicle, which date range is the sheet), so it asks for nothing new: it is made from the first schedule view there is.
+  async function createEndingsView() {
+    closeParamList();
+    const existing = savedViews.find((v) => v.viewMode === 'endings');
+    if (existing) {
+      applySavedView(existing);
+      return;
+    }
+    const base = savedViews.find((v) => v.viewMode === 'schedule')?.scheduleConfig;
+    if (!base) {
+      notify('Потрібен графік', 'Цей вигляд бере поля з графіка. Спершу створіть «Графік».');
+      return;
+    }
+    const id = generateId();
+    await setDoc(doc(db, 'customDatabaseViews', id), {
+      databaseId,
+      name: 'Закінчуються',
+      viewMode: 'endings',
+      endingsLayout: 'kanban',
+      sortField: sortPref.field,
+      sortDir: sortPref.dir,
+      filters: [],
+      scheduleConfig: { rowDatabaseId: base.rowDatabaseId, rowRelationFieldId: base.rowRelationFieldId, dateFieldId: base.dateFieldId },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    selectCapsule(id);
   }
 
   // Moves the visible stretch of days - see scheduleWindowStart. Half a
@@ -3419,6 +3456,182 @@ export default function CustomDatabaseScreen({
     );
   }
 
+  // THE WEEK OF ENDINGS (2026-10-31, the user's): a sheet shows ONLY on the day it ends - as a narrow «краєчок» with the vehicle's number - and
+  // beside it the sheet that goes on (the vehicle's next one, if it exists; else a place to make it, the «Продовжити» the record already has).
+  // The days a sheet merely runs through show nothing. Columns of the week, or the same as a list of the days that have an ending.
+  function renderEndings(view: CustomDatabaseView) {
+    const config = view.scheduleConfig;
+    if (!config) return null;
+    const layout = view.endingsLayout ?? 'kanban';
+    const vehicleDb = relatedDatabases[config.rowDatabaseId] ?? null;
+    const vehicles = relatedRows[config.rowDatabaseId] ?? [];
+    const plateOf = (vehicleId: string) => {
+      const vehicle = vehicles.find((r) => r.id === vehicleId);
+      const parts = rowTitleOf(vehicleDb, vehicle).split(' · ');
+      return parts[parts.length - 1] || '—';
+    };
+    type Sheet = { row: CustomDatabaseRow; vehicleId: string; start: string; end: string };
+    const sheets: Sheet[] = [];
+    rows.forEach((row) => {
+      const vehicleId = row.values[config.rowRelationFieldId];
+      const range = dateRangeOf(row.values[config.dateFieldId]);
+      if (typeof vehicleId === 'string' && range) sheets.push({ row, vehicleId, start: range.start, end: range.end ?? range.start });
+    });
+    const nextOf = (sheet: Sheet) =>
+      sheets
+        .filter((o) => o.vehicleId === sheet.vehicleId && o.row.id !== sheet.row.id && o.start >= sheet.end)
+        .sort((a, b) => (a.start < b.start ? -1 : 1))[0] ?? null;
+    const weekStart = parseDateKey(endingsWeek);
+    const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+    const todayKey = dateKey(new Date());
+    const WEEKDAYS = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    const WEEKDAYS_FULL = ['неділя', 'понеділок', 'вівторок', 'середа', 'четвер', 'пʼятниця', 'субота'];
+    const MONTHS = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
+    const endingOn = (key: string) => sheets.filter((s) => s.end === key).sort((a, b) => plateOf(a.vehicleId).localeCompare(plateOf(b.vehicleId)));
+    const ink = sInk('#fff');
+    const ink2 = sInk2('rgba(255,255,255,0.7)');
+    const ink3 = sInk3('rgba(255,255,255,0.45)');
+    const line = softDb ? softDb.line : 'rgba(255,255,255,0.14)';
+    const edgeBg = softDb ? '#E9D3BE' : '#5A4630';
+    const edgeBorder = softDb ? '#D2AE86' : '#8A6B45';
+    const edgeInk = softDb ? '#5F3F1B' : '#F1DEC4';
+    const cardBg = softDb ? softDb.card : 'rgba(255,255,255,0.06)';
+    const todayBg = softDb ? softDb.accent : '#9A5F7B';
+    const columnWidth = Math.max(104, Math.floor((windowWidth - 24) / 3.4));
+    const labelOf = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+    const dd = (key: string) => key.split('-').reverse().slice(0, 2).join('.');
+
+    const edge = (sheet: Sheet, wide: boolean) => (
+      <Pressable
+        onPress={() => setRowPageId(sheet.row.id)}
+        style={{
+          minHeight: wide ? 46 : 26,
+          justifyContent: 'center',
+          paddingHorizontal: 10,
+          backgroundColor: edgeBg,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: edgeBorder,
+          ...(wide ? { width: 124, borderTopLeftRadius: 12, borderBottomLeftRadius: 12, borderRightWidth: 0 } : { borderTopLeftRadius: 10, borderTopRightRadius: 10, borderBottomWidth: 0 }),
+        }}
+      >
+        <Text style={{ fontFamily: FONT_BOLD, fontSize: 13, color: edgeInk }} numberOfLines={1}>
+          {plateOf(sheet.vehicleId)}
+        </Text>
+      </Pressable>
+    );
+    const follow = (sheet: Sheet, wide: boolean) => {
+      const next = nextOf(sheet);
+      const shape = wide
+        ? { flex: 1, minHeight: 46, borderTopRightRadius: 12, borderBottomRightRadius: 12 }
+        : { minHeight: 44, borderBottomLeftRadius: 10, borderBottomRightRadius: 10 };
+      if (next) {
+        return (
+          <Pressable
+            onPress={() => setRowPageId(next.row.id)}
+            style={{ ...shape, justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 6, backgroundColor: cardBg, borderWidth: StyleSheet.hairlineWidth, borderColor: line }}
+          >
+            <Text style={{ fontFamily: FONT_BOLD, fontSize: 13, color: ink }} numberOfLines={1}>
+              {plateOf(next.vehicleId)}
+            </Text>
+            <Text style={{ fontFamily: FONT_REGULAR, fontSize: 12, color: ink2 }} numberOfLines={1}>
+              з {dd(next.start)}
+            </Text>
+          </Pressable>
+        );
+      }
+      return (
+        <Pressable
+          onPress={() => continueRow(sheet.row)}
+          style={{ ...shape, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: 1, borderStyle: 'dashed', borderColor: ink3 }}
+        >
+          <Ionicons name="add" size={14} color={ink2} />
+          <Text style={{ fontFamily: FONT_REGULAR, fontSize: 13, color: ink2 }}>{wide ? 'Новий лист' : 'Новий'}</Text>
+        </Pressable>
+      );
+    };
+
+    return (
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, gap: 10 }}>
+          <Pressable hitSlop={10} onPress={() => setEndingsWeek(dateKey(addDays(weekStart, -7)))}>
+            <Ionicons name="chevron-back" size={18} color={ink} />
+          </Pressable>
+          <Pressable style={{ flex: 1 }} onPress={() => setEndingsWeek(dateKey(addDays(new Date(), -((new Date().getDay() + 6) % 7))))}>
+            <Text style={{ fontFamily: FONT_REGULAR, fontSize: 14, color: ink }} numberOfLines={1}>
+              Закінчуються · {labelOf(days[0])} — {labelOf(days[6])}
+            </Text>
+          </Pressable>
+          {(['kanban', 'list'] as const).map((mode) => (
+            <Pressable
+              key={mode}
+              hitSlop={8}
+              onPress={() => updateDoc(doc(db, 'customDatabaseViews', view.id), { endingsLayout: mode, updatedAt: Date.now() })}
+              style={{ padding: 6, borderRadius: 10, backgroundColor: layout === mode ? (softDb ? softDb.fill : 'rgba(255,255,255,0.12)') : 'transparent' }}
+            >
+              <Ionicons name={mode === 'kanban' ? 'albums-outline' : 'reorder-four-outline'} size={17} color={layout === mode ? ink : ink3} />
+            </Pressable>
+          ))}
+          <Pressable hitSlop={10} onPress={() => setEndingsWeek(dateKey(addDays(weekStart, 7)))}>
+            <Ionicons name="chevron-forward" size={18} color={ink} />
+          </Pressable>
+        </View>
+        {layout === 'kanban' ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: dockClear + insets.bottom + 20 }}>
+            {days.map((day) => {
+              const key = dateKey(day);
+              const ending = endingOn(key);
+              const today = key === todayKey;
+              return (
+                <View key={key} style={{ width: columnWidth, paddingRight: 6 }}>
+                  <View style={{ alignItems: 'center', paddingVertical: 6, borderRadius: 14, marginBottom: 8, backgroundColor: today ? todayBg : 'transparent' }}>
+                    <Text style={{ fontFamily: FONT_REGULAR, fontSize: 12, color: today ? '#fff' : ink2 }}>{WEEKDAYS[day.getDay()]}</Text>
+                    <Text style={{ fontFamily: FONT_REGULAR, fontSize: 20, color: today ? '#fff' : ink }}>{day.getDate()}</Text>
+                    <Text style={{ fontFamily: FONT_REGULAR, fontSize: 12, color: today ? '#fff' : ink3 }}>{ending.length}</Text>
+                  </View>
+                  {ending.length === 0 ? (
+                    <Text style={{ fontFamily: FONT_REGULAR, fontSize: 14, color: ink3, paddingHorizontal: 8 }}>—</Text>
+                  ) : (
+                    ending.map((sheet) => (
+                      <View key={sheet.row.id} style={{ marginBottom: 10 }}>
+                        {edge(sheet, false)}
+                        {follow(sheet, false)}
+                      </View>
+                    ))
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+        ) : (
+          <ScrollView contentContainerStyle={{ paddingBottom: dockClear + insets.bottom + 20 }}>
+            {days.every((day) => endingOn(dateKey(day)).length === 0) && (
+              <Text style={{ fontFamily: FONT_REGULAR, fontSize: 14, color: ink3, padding: 20 }}>Цього тижня жоден лист не закінчується.</Text>
+            )}
+            {days.map((day) => {
+              const key = dateKey(day);
+              const ending = endingOn(key);
+              if (ending.length === 0) return null;
+              return (
+                <View key={key}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: line }}>
+                    <Text style={{ fontFamily: FONT_SEMIBOLD, fontSize: 15, color: ink }}>{key === todayKey ? 'Сьогодні' : WEEKDAYS_FULL[day.getDay()]}</Text>
+                    <Text style={{ fontFamily: FONT_REGULAR, fontSize: 13, color: ink3 }}>{labelOf(day)}</Text>
+                  </View>
+                  {ending.map((sheet) => (
+                    <View key={sheet.row.id} style={{ flexDirection: 'row', marginHorizontal: 16, marginBottom: 9 }}>
+                      {edge(sheet, true)}
+                      {follow(sheet, true)}
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
+          </ScrollView>
+        )}
+      </View>
+    );
+  }
+
   // Step 1 of the schedule view: the grid itself (sticky row-header
   // column vs. a horizontally-scrolling stretch of date columns, cribbed
   // from renderTable's own frozen-column/scroll-sync technique above) -
@@ -4176,6 +4389,17 @@ export default function CustomDatabaseScreen({
                           </Text>
                           {viewMode === 'schedule' && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
                         </Pressable>
+                        <Pressable style={styles.paramOption} onPress={createEndingsView}>
+                          <Ionicons
+                            name={VIEW_ICONS.endings}
+                            size={14}
+                            color={viewMode === 'endings' ? sInk('#fff') : sInk2('rgba(255,255,255,0.7)')}
+                          />
+                          <Text style={[styles.paramOptionLabel, viewMode === 'endings' && styles.paramOptionLabelActive]}>
+                            {VIEW_LABELS.endings}
+                          </Text>
+                          {viewMode === 'endings' && <Ionicons name="checkmark" size={14} color={sInk('#fff')} />}
+                        </Pressable>
                         {/* «Зберегти» lives here now (2026-10-04): what is in
                             force, kept as a new view - a button of its own under
                             the representations, with a "+". */}
@@ -4448,7 +4672,9 @@ export default function CustomDatabaseScreen({
       </GlassLayer>
 
 
-      {viewMode === 'schedule' && activeView?.scheduleConfig ? (
+      {viewMode === 'endings' && activeView?.scheduleConfig ? (
+        <View style={{ flex: 1, paddingTop: topPad }}>{renderEndings(activeView)}</View>
+      ) : viewMode === 'schedule' && activeView?.scheduleConfig ? (
         // Its own branch, ahead of the loading/empty gates below: a
         // schedule's rows come from ANOTHER database (relatedRows), so
         // zero rows in THIS one (no waybills yet) must still show every

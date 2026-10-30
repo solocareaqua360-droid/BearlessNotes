@@ -1191,7 +1191,10 @@ export interface CustomDatabaseView {
   id: string;
   databaseId: string;
   name: string;
-  viewMode: 'list' | 'table' | 'cards' | 'schedule' | 'kanban' | 'shelves';
+  viewMode: 'list' | 'table' | 'cards' | 'schedule' | 'kanban' | 'shelves' | 'endings';
+  // 'endings' only (2026-10-31, the user's «закінчуються»): a week of the sheets that END each day, drawn as columns or as a list; the
+  // fields come from `scheduleConfig` (the relation to the rows' database and the date range), copied from the schedule view.
+  endingsLayout?: 'kanban' | 'list';
   sortField: string;
   sortDir: 'asc' | 'desc';
   // Same array the screen stores in its prefs doc; a filter naming a field
