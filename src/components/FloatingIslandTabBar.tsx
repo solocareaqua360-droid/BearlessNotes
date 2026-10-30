@@ -3,9 +3,10 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from './icons/Ionicons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { StackActions, getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
+import { forgetBase, hasBase, rememberBase, takeBase } from '../navigation/lastBase';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
-import { DesksControlContext, FIXED_DESKS, deskFace } from '../navigation/desks';
+import { BASES_DESK, DesksControlContext, FIXED_DESKS, deskFace } from '../navigation/desks';
 import { captureAllDesks, captureDesk, forgetDesk, setCurrentDesk, setDeskCapturePaused, useDeskShots } from '../navigation/deskShots';
 import DeskSwitcher from './DeskSwitcher';
 import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
@@ -287,7 +288,17 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
           label: faceOf(route.name).label as string,
           icon: faceOf(route.name).icon as string,
           active: liveIndex === index,
-          onPress: () => barHandlers.current.desks[index]?.onPress(),
+          onPress: () => {
+            // From another desk, «Бази» opens the base the person left by a desk bead, if one waits (lastBase); else the list as ever.
+            if (route.name === BASES_DESK && liveIndexRef.current !== index && hasBase()) {
+              const base = takeBase();
+              if (base && navigationRef.isReady()) {
+                (navigationRef.navigate as (n: string, p?: object) => void)(base.name, base.params);
+                return;
+              }
+            }
+            barHandlers.current.desks[index]?.onPress();
+          },
         })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.routes, liveIndex, customDatabases, iconFor]
@@ -310,6 +321,9 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
             // Tabs (React Navigation 7), and building every desk anew held the dock still for a second or two (the user,
             // 2026-10-29: «кулька розтягується в овал і завмирає»). popTo leaves the screen; then the desk is picked.
             const routes = navigationRef.getRootState()?.routes ?? [];
+            // The base being left is remembered, unless the «Бази» bead itself was pressed (that is a wish for the list).
+            if (route?.name === BASES_DESK) forgetBase();
+            else rememberBase(routes[routes.length - 1] as { name: string; params?: object } | undefined);
             if (routes.length > 1 && routes[0]?.name === 'Tabs') navigationRef.dispatch(StackActions.popTo('Tabs'));
             navigationRef.navigate('Tabs', { screen: route.name } as never);
           },
