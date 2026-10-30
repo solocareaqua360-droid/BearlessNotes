@@ -130,6 +130,13 @@ function capAt(from: number, to: number, e: number) {
           : REST_H;
   return { L, R, H };
 }
+// A journey of the capsule begun NOT on a dock (a press that brings a base in front at once, FloatingIslandTabBar): said here, so the dock that
+// stands next takes it up from where the clock has it, the same hand-over a tap on a bead makes.
+export function noteCapsuleJourney(to: number): void {
+  if (lastDeskIndex < 0 || lastDeskIndex === to) return;
+  capMotion = { from: lastDeskIndex, to, at: Date.now() };
+  lastDeskIndex = to;
+}
 const capFresh = () => (capMotion && Date.now() - capMotion.at < CAP_END ? capMotion : null);
 function useGrow() {
   const s = useSharedValue(1);
@@ -373,6 +380,15 @@ export default function DeskDock({
   // restart by the JS clock pulled the capsule back ~40 px (the UI's run had started later than the tap).
   const running = useRef<string | null>(born.t < CAP_END ? `${born.from}>${born.to}` : null);
   const runCapsuleRef = useRef<(from: number, to: number, e: number) => void>(() => {});
+  // A dock BORN mid-way (another dock started the journey, then a screen with its own dock came in front - a base): its clock was only SET to
+  // where the journey had got to, never run, and `running` above told every later effect it was under way - the capsule stood as a stretched
+  // oval between two beads for good (the user, 2026-10-31). The rest of the journey is run once, on mount.
+  useEffect(() => {
+    const m = capFresh();
+    if (!tools && m && m.from === born.from && m.to === born.to) runCapsuleRef.current(m.from, m.to, Date.now() - m.at);
+    else if (!tools && born.t < CAP_END) runCapsuleRef.current(born.to, born.to, CAP_END);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const runCapsule = (from: number, to: number, e: number) => {
     running.current = `${from}>${to}`;
     capFrom.value = from;
