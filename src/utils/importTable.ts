@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as XLSX from 'xlsx';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { downloadFileFromDrive } from './googleDrive';
@@ -40,11 +41,7 @@ export function isTableFileName(name: string): boolean {
 // (found 2026-10-28 with a points file). A file that is not a workbook (an .xlsx is a zip, «PK»; an old .xls starts
 // D0 CF 11 E0) is read as UTF-8 text instead, its byte-order mark dropped.
 export async function parseTableFile(uri: string): Promise<ParsedSheet[]> {
-  const base64 = await LegacyFileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-  const workbookFile = base64.startsWith('UEsD') || base64.startsWith('0M8R4');
-  const workbook = workbookFile
-    ? XLSX.read(base64, { type: 'base64', cellDates: false, raw: false })
-    : XLSX.read((await LegacyFileSystem.readAsStringAsync(uri)).replace(/^\uFEFF/, ''), { type: 'string', cellDates: false, raw: false });
+  const workbook = await readWorkbook(uri);
   return workbook.SheetNames.map((name) => ({
     name,
     // header:1 gives rows as plain arrays (not keyed by header), defval
@@ -57,6 +54,23 @@ export async function parseTableFile(uri: string): Promise<ParsedSheet[]> {
       blankrows: false,
     }),
   }));
+}
+
+// The browser has no file system to read a picked file from: the picker hands over a blob: address, and that is fetched (found 2026-10-30:
+// «Не вдалося прочитати файл» on the Mac for a plain .csv).
+async function readWorkbook(uri: string): Promise<XLSX.WorkBook> {
+  if (Platform.OS === 'web') {
+    const bytes = new Uint8Array(await (await fetch(uri)).arrayBuffer());
+    const zip = bytes[0] === 0x50 && bytes[1] === 0x4b; // «PK»: .xlsx
+    const oldXls = bytes[0] === 0xd0 && bytes[1] === 0xcf; // D0 CF 11 E0: .xls
+    if (zip || oldXls) return XLSX.read(bytes, { type: 'array', cellDates: false, raw: false });
+    return XLSX.read(new TextDecoder('utf-8').decode(bytes).replace(/^\uFEFF/, ''), { type: 'string', cellDates: false, raw: false });
+  }
+  const base64 = await LegacyFileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+  const workbookFile = base64.startsWith('UEsD') || base64.startsWith('0M8R4');
+  return workbookFile
+    ? XLSX.read(base64, { type: 'base64', cellDates: false, raw: false })
+    : XLSX.read((await LegacyFileSystem.readAsStringAsync(uri)).replace(/^\uFEFF/, ''), { type: 'string', cellDates: false, raw: false });
 }
 
 // Accepts what people actually type: 2026-09-11, 11.09.2026, 11/09/2026.
