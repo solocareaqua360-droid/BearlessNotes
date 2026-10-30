@@ -1038,11 +1038,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     // A note is PAPER: its card grows into the page (utils/morph), it does not turn.
     // A LIST ROW slides in from the right and leaves to the left (components/SlideFrame); the grid's card grows (below).
     else if ((viewMode === 'list' || viewMode === 'rows') && (item.kind === 'document' || item.kind === 'board')) {
+      // The slide is the phone's: a transparent modal over a list that is hidden underneath only by the phone's Tabs (belowCover). On the
+      // laptop the list stayed drawn under the note (the user, 2026-10-30: the note opens on top of the list) - there it opens plainly.
+      const slideOnPhone = Platform.OS === 'web' ? {} : { slide: true };
       (navigation as unknown as { navigate: (name: string, params?: object) => void }).navigate(
         item.kind === 'document' ? 'Editor' : 'BoardCopy',
         item.kind === 'document'
-          ? { documentId: item.docId, slide: true, ...(searching && searchText.trim() ? { searchQuery: searchText.trim() } : {}) }
-          : { boardId: item.docId, slide: true }
+          ? { documentId: item.docId, ...slideOnPhone, ...(searching && searchText.trim() ? { searchQuery: searchText.trim() } : {}) }
+          : { boardId: item.docId, ...slideOnPhone }
       );
     }
     else if (item.kind === 'document') {
