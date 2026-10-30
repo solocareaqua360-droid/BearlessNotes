@@ -70,6 +70,7 @@ import {
 import { prefetchState, startOfflinePrefetch, subscribeToPrefetch } from './src/utils/offlineCache.web';
 import { onDesktopCommand } from './src/utils/desktopCommands';
 import { LEAN_WINDOW, BOARD_WINDOW } from './src/utils/leanWindow';
+import { useDevBoardBridge } from './src/utils/devBoardBridge';
 import { inspector, useInspectorOpen } from './src/navigation/inspector';
 import { Ionicons } from './src/components/icons/Ionicons';
 import {
@@ -635,6 +636,8 @@ export default function App() {
       stopSettings();
     };
   }, []);
+
+  useDevBoardBridge(!!user);
 
   useEffect(() => {
     ensureSignedIn();
