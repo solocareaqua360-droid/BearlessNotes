@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { markHeld } from '../utils/heldNode';
 import { bindRightClick } from '../utils/rightClick';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { hapticDrop, hapticPickUp, hapticWarning } from '../utils/haptics';
 
 // Dragging a card into a folder - the explorer's own two-hold-length rule
@@ -388,6 +388,44 @@ export function useCardCarry<T extends { id: string }>({
     }, 2000);
     return () => clearInterval(id);
   }, [ghost, cancelCarry]);
+
+  // THE LAPTOP'S WAY OF LOSING THE FINGER (2026-10-30, the user's first freeze of the Mac app: the lifted card's capsule stood on
+  // the list and everything under it was dead). A mouse button can be let go where no gesture hears it - over another window,
+  // after a right/ctrl-click opened the system menu, with the window losing focus - and then nothing ever ends the carry; the
+  // overlay takes every click until the watchdog above notices, long seconds later. On the web the carry also ends by itself
+  // when a button is released anywhere (after the gesture has had its chance to drop the card), on Escape, on a context menu
+  // and when the window loses focus.
+  useEffect(() => {
+    if (!ghost || Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const held = ghostRef.current;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const release = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (ghostRef.current && ghostRef.current === held) cancelCarry();
+      }, 700);
+    };
+    const stop = () => cancelCarry();
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cancelCarry();
+    };
+    window.addEventListener('pointerup', release, true);
+    window.addEventListener('mouseup', release, true);
+    window.addEventListener('pointercancel', stop, true);
+    window.addEventListener('contextmenu', stop, true);
+    window.addEventListener('blur', stop);
+    window.addEventListener('keydown', key, true);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('pointerup', release, true);
+      window.removeEventListener('mouseup', release, true);
+      window.removeEventListener('pointercancel', stop, true);
+      window.removeEventListener('contextmenu', stop, true);
+      window.removeEventListener('blur', stop);
+      window.removeEventListener('keydown', key, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!ghost]);
 
   return {
     ghost,
