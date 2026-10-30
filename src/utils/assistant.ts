@@ -72,11 +72,31 @@ export type AssistantChat = {
   sortedIds?: string[];
 };
 
-// The YouTube addresses of a message as the parts Gemini watches (one is enough: a video is heavy to read).
-function youTubePartsOf(text: string): { fileData: { fileUri: string } }[] {
-  const url = text.match(/https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?[^\s]+|youtu\.be\/[^\s]+)/i)?.[0];
-  return url ? [{ fileData: { fileUri: url } }] : [];
+// THE VIDEO, WATCHED ONCE (2026-10-30, the user's: «не платити 0,053 щоразу»): a YouTube address in a message is watched by Gemini the
+// first time only, and the same answer carries a detailed minute-by-minute NOTE of the video; the note is kept on the device by the
+// video's id, and every later question about it - in this chat or another - goes with the note as text, the video no longer sent.
+const VIDEO_URL = /https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?[^\s]+|youtu\.be\/[^\s]+)/gi;
+const NOTE_MARK = '===КОНСПЕКТ===';
+function videoIdOf(url: string): string | null {
+  return url.match(/[?&]v=([\w-]{6,})/)?.[1] ?? url.match(/youtu\.be\/([\w-]{6,})/)?.[1] ?? null;
 }
+function videosIn(text: string): { url: string; id: string }[] {
+  const out: { url: string; id: string }[] = [];
+  for (const url of text.match(VIDEO_URL) ?? []) {
+    const id = videoIdOf(url);
+    if (id && !out.some((v) => v.id === id)) out.push({ url, id });
+  }
+  return out;
+}
+const noteKey = (id: string) => `videoNote:${id}`;
+async function noteOf(id: string): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(noteKey(id));
+  } catch {
+    return null;
+  }
+}
+const NOTE_ASK = `ПІСЛЯ відповіді на питання людини напиши окремим рядком ${NOTE_MARK}, а далі докладний конспект ЦЬОГО відео українською, для твоєї власної пам'яті (людині він не показується): позначки часу (хв:сек) приблизно кожні 30-60 секунд, що в цей момент говориться чи показується, ВСІ названі застосунки, сервіси, інструменти, сайти, імена, цифри й поради. Без розмітки, до 1500 слів.`;
 
 export function groupsOf(chat: AssistantChat): string[][] {
   return chat.groups ?? chat.remembered.map((k) => [k]);
@@ -324,11 +344,23 @@ export async function askAssistant(
   while (turns.length && turns[0].role !== 'user') turns.shift();
   const memories = memoryTexts(chat);
   const path = topicPath(chat, topicId).map((t) => t.title);
+  // The videos of this conversation: with a note kept, the note goes along as text; the one just sent without a note is WATCHED, once.
+  const lastText = turns[turns.length - 1]?.role === 'user' ? turns[turns.length - 1].text : '';
+  const seen = new Map<string, { url: string; id: string }>();
+  for (const m of turns) if (m.role === 'user') videosIn(m.text).forEach((v) => seen.set(v.id, v));
+  const notes: { url: string; note: string }[] = [];
+  let toWatch: { url: string; id: string } | null = null;
+  for (const v of [...seen.values()].slice(-3)) {
+    const note = await noteOf(v.id);
+    if (note) notes.push({ url: v.url, note });
+    else if (videosIn(lastText).some((l) => l.id === v.id)) toWatch = v;
+  }
   const memory = [
     chat.instruction?.trim() ? `ІНСТРУКЦІЯ ЦІЄЇ РОЗМОВИ ВІД ЛЮДИНИ - виконуй її в кожній відповіді, поки вона діє:\n${chat.instruction.trim()}` : '',
     chat.summary ? `ЗВЕДЕННЯ ПОПЕРЕДНЬОЇ ЧАСТИНИ РОЗМОВИ:\n${chat.summary}` : '',
     memories.length ? `ЩО ЛЮДИНА ВІДІБРАЛА ЯК ВАЖЛИВЕ (тримайся цього):\n${memories.map((t) => `- ${t.replace(/\n+/g, ' ')}`).join('\n')}` : '',
     path.length ? `ЗАРАЗ РОЗМОВА В ГІЛЦІ: ${path.join(' › ')}` : '',
+    notes.length ? `КОНСПЕКТИ ВІДЕО, які ти вже дивився (відповідай з них; повторно відео не потрібно):\n${notes.map((n) => `Відео ${n.url}:\n${n.note}`).join('\n\n')}` : '',
     structureOutline
       ? `У ЦІЄЇ РОЗМОВИ ВЖЕ Є СХЕМА (дошка, яку людина бачить):\n${structureOutline}\nЯкщо людина просить додати чи змінити схему, відповідай блоком structure з ПОВНОЮ оновленою схемою: усі наявні картки з тими самими назвами та нові картки на своїх місцях. Не створюй схему заново з іншими назвами.`
       : '',
@@ -351,7 +383,7 @@ export async function askAssistant(
                 [{ text: m.text + pagesOf(m) }]),
             // A YouTube address in the user's own words is WATCHED (2026-10-30, the user: «він не може бачити відео»): the API takes the
             // address as a file, the way the thoughts' video summary does - the last video of the last message only.
-            ...(i === turns.length - 1 && m.role === 'user' ? youTubePartsOf(m.text) : []),
+            ...(i === turns.length - 1 && m.role === 'user' && toWatch ? [{ fileData: { fileUri: toWatch.url } }, { text: NOTE_ASK }] : []),
           ],
         })),
         // A page given as an address (now, or earlier in the talk): Gemini opens it itself.
@@ -359,7 +391,7 @@ export async function askAssistant(
           const tools: object[] = [];
           if (extraParts?.some((p) => 'text' in p && p.text.includes(READ_BY_URL)) || turns.some((m) => pagesOf(m))) tools.push({ url_context: {} });
           // A video in the last message: Gemini may also search the web, to find the app it names in a store (the first try, 2026-10-30).
-          if (youTubePartsOf(turns[turns.length - 1]?.text ?? '').length > 0) tools.push({ google_search: {} });
+          if (toWatch || notes.length > 0) tools.push({ google_search: {} });
           return tools.length ? { tools } : {};
         })(),
       }),
@@ -374,6 +406,13 @@ export async function askAssistant(
   const parts = data?.candidates?.[0]?.content?.parts as { text?: string }[] | undefined;
   const text = parts?.map((p) => p.text ?? '').join('').trim();
   if (!text) throw new GeminiError('Gemini не дав відповіді - можливо, запит потрапив під фільтр безпеки');
+  // The note rides at the end of the same answer: kept by the video's id, never shown.
+  const at = text.indexOf(NOTE_MARK);
+  if (at >= 0) {
+    const note = text.slice(at + NOTE_MARK.length).trim();
+    if (toWatch && note.length > 200) AsyncStorage.setItem(noteKey(toWatch.id), note).catch(() => {});
+    return { text: text.slice(0, at).trim() || text, costUsd: costOfGemini(GEMINI_MODEL, usage) };
+  }
   return { text, costUsd: costOfGemini(GEMINI_MODEL, usage) };
 }
 
