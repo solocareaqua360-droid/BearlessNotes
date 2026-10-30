@@ -32,6 +32,7 @@ import RenamePrompt from '../components/RenamePrompt';
 import { ask, confirm, notify, type AskAction } from '../components/surfaces/Ask';
 import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useStartBases } from '../navigation/startBases';
+import { CAN_OPEN_IN_WINDOW, openInWindow } from '../navigation/openInWindow';
 import HoldPressable from '../components/HoldPressable';
 import ImportTableSheet from '../components/ImportTableSheet';
 import ContentColumn from '../components/ContentColumn';
@@ -560,6 +561,8 @@ export default function DatabasesScreen() {
     // drag): a hold on a base opens it as a window of its own, beside the three desks.
     const deskKey = !inPanel && !inDrawer && !threeDesksOnly ? deskKeyOf(item) : null;
     if (deskKey) actions.push({ id: 'window', label: 'Відкрити в новому вікні', icon: 'copy-outline' });
+    // The Mac: a base of one's own in a window of its own (the standard ones stay as they are).
+    else if (CAN_OPEN_IN_WINDOW && item.kind === 'custom') actions.push({ id: 'macwindow', label: 'У вікно', icon: 'copy-outline' });
     if (item.kind === 'builtin' || item.kind === 'custom') {
       actions.push(
         { id: 'icon', label: 'Іконка', icon: (currentIcon(item.key) ?? 'grid-outline') as AskAction['icon'] },
@@ -573,6 +576,7 @@ export default function DatabasesScreen() {
     if (item.kind === 'custom') actions.push({ id: 'delete', label: 'Видалити базу', icon: 'trash-outline', tone: 'danger' });
     const choice = await holdAsk({ title: rowOf(item).label, actions });
     if (choice === 'window' && deskKey) whenDeskIsThere(deskKey, () => navigation.navigate('Tabs', { screen: deskKey as never }));
+    else if (choice === 'macwindow' && item.kind === 'custom') openInWindow({ kind: 'custom', databaseId: item.database.id });
     else if (choice === 'icon') setIconPickerFor(item.key);
     else if (choice === 'colour') setColorPickerFor(item.key);
     else if (choice === 'unpin') togglePin(item.key);

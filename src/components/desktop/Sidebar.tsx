@@ -21,6 +21,8 @@ import { onDesktopCommand } from '../../utils/desktopCommands';
 import { usePins, type Pin } from '../../navigation/pinned';
 import { useDocumentIndex } from '../../hooks/useDocumentIndex';
 import { rightClick } from '../../utils/rightClick';
+import { openInWindow } from '../../navigation/openInWindow';
+import { holdAsk } from '../surfaces/HoldAsk';
 
 // THE MAC'S ONE NAVIGATION (frame B, 2026-10-19, after the user's own look at Claude's window: «тут є відчуття
 // зручності»). Everything the window can go to stands here, top to bottom in the order a hand reaches: search,
@@ -212,13 +214,13 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
     else if (t.route) goSection(t.route);
   };
 
-  function row(opts: { key: string; icon?: string; swatch?: string; label: string; on: boolean; onPress: () => void; count?: number; depth?: number; twist?: 'open' | 'closed' | null; onTwist?: () => void; tree?: boolean; unpin?: () => void }) {
+  function row(opts: { key: string; icon?: string; swatch?: string; label: string; on: boolean; onPress: () => void; count?: number; depth?: number; twist?: 'open' | 'closed' | null; onTwist?: () => void; tree?: boolean; unpin?: () => void; menu?: () => void }) {
     const { icon, swatch, label, on, onPress, count, depth = 0, twist = null, onTwist } = opts;
     return (
       <Pressable
         key={opts.key}
         onPress={onPress}
-        {...(opts.unpin ? rightClick(opts.unpin) : {})}
+        {...(opts.unpin || opts.menu ? rightClick(opts.unpin ?? opts.menu) : {})}
         style={(state) => [
           styles.row,
           { paddingLeft: 10 + depth * 14 },
@@ -332,6 +334,10 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
                   label: d.name || 'Без назви',
                   on: where.route === 'CustomDatabase' && where.params.databaseId === d.id,
                   onPress: () => goSection('CustomDatabase', { databaseId: d.id }),
+                  menu: async () => {
+                    const choice = await holdAsk({ title: d.name || 'Без назви', actions: [{ id: 'window', label: 'У вікно', icon: 'copy-outline' }] });
+                    if (choice === 'window') openInWindow({ kind: 'custom', databaseId: d.id });
+                  },
                 })
               )}
             {row({ key: 'all-bases', icon: 'apps-outline', label: 'Усі бази…', on: where.route === 'Більше', onPress: () => goSection('Tabs', { screen: 'Більше' }) })}

@@ -66,6 +66,7 @@ import { holdAsk } from '../components/surfaces/HoldAsk';
 import { DesksControlContext, deskFace } from '../navigation/desks';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { openStartBase, useStartBases } from '../navigation/startBases';
+import { CAN_OPEN_IN_WINDOW, openInWindow } from '../navigation/openInWindow';
 import { markHeld, useHeld } from '../utils/heldNode';
 import { GestureDetector } from 'react-native-gesture-handler';
 import CreateFan from '../components/CreateFan';
@@ -2143,6 +2144,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         { id: 'folders', label: 'Папки', icon: 'pricetag-outline' as const },
         { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' as const },
         ...(item.kind === 'document' ? [{ id: 'duplicate', label: 'Створити копію', icon: 'copy-outline' as const }] : []),
+        ...(CAN_OPEN_IN_WINDOW && (item.kind === 'document' || item.kind === 'board') ? [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] : []),
         ...(canShare ? [{ id: 'share', label: 'Поділитись', icon: 'share-social-outline' as const }] : []),
         ...(path && path !== UNFILED && !searching
           ? [{ id: 'pin', label: pinsOf(path).includes(item.id) ? 'Відкріпити' : 'Закріпити вгорі', icon: 'pin-outline' as const }]
@@ -2152,6 +2154,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       ],
     });
     if (choice === 'rename') setRenaming(item);
+    else if (choice === 'window') openInWindow(item.kind === 'board' ? { kind: 'board', boardId: item.docId } : { kind: 'note', documentId: item.docId });
     else if (choice === 'pin') togglePin(item);
     else if (choice === 'folders') setFoldersFor([item]);
     else if (choice === 'share') shareItem(item);
@@ -3988,8 +3991,16 @@ function StartBases() {
             last={i === shown.length - 1}
             onPress={() => openStartBase(key, desksControl?.desks)}
             onLongPress={async () => {
-              const choice = await holdAsk({ title: face.label, actions: [{ id: 'off', label: 'Прибрати зі Старту', icon: 'remove-circle-outline' }] });
-              if (choice === 'off') toggle(key);
+              const customId = key.startsWith('db:custom:') ? key.slice('db:custom:'.length) : null;
+              const choice = await holdAsk({
+                title: face.label,
+                actions: [
+                  ...(CAN_OPEN_IN_WINDOW && customId ? [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] : []),
+                  { id: 'off', label: 'Прибрати зі Старту', icon: 'remove-circle-outline' as const },
+                ],
+              });
+              if (choice === 'window' && customId) openInWindow({ kind: 'custom', databaseId: customId });
+              else if (choice === 'off') toggle(key);
             }}
           />
         );

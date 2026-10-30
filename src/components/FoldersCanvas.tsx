@@ -1,3 +1,4 @@
+import { CAN_OPEN_IN_WINDOW, openInWindow } from '../navigation/openInWindow';
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { holdAsk } from './surfaces/HoldAsk';
@@ -222,11 +223,13 @@ export default function FoldersCanvas({
       title: item.title,
       actions: [
         { id: 'open', label: 'Відкрити', icon: 'open-outline' as const },
+        ...(CAN_OPEN_IN_WINDOW && item.collection === 'documents' ? [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] : []),
         ...(folder ? [{ id: 'out', label: `Вийняти з «${nameOf(folder)}»`, icon: 'arrow-undo-outline' as const }] : []),
         ...(canBin ? [{ id: 'delete', label: 'Видалити', icon: 'trash-outline' as const, tone: 'danger' as const }] : []),
       ],
     });
     if (choice === 'open') open(c);
+    else if (choice === 'window') openInWindow({ kind: 'note', documentId: item.docId });
     else if (choice === 'out' && folder) await takeOut(item, folder);
     else if (choice === 'delete' && canBin) {
       const yes = await confirm({ title: `Видалити «${item.title}»?`, message: 'Воно піде в кошик своєї бази.', confirmLabel: 'Видалити' });
