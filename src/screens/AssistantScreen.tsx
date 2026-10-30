@@ -1054,7 +1054,16 @@ export default function AssistantScreen() {
             <View key={i} style={{ flexDirection: 'row', gap: 8 }}>
               {bullet ? <Text style={styles.blockText}>•</Text> : number ? <Text style={styles.blockText}>{`${number[1]}.`}</Text> : null}
               <Text style={[styles.blockText, { flex: 1 }]}>
-                <FormattedText segments={parseFormattedText(body)} defaultColor={S.ink} />
+                {/* An address in the answer opens on a tap (2026-10-30, the user's: the Google Play link could not be followed). */}
+                {body.split(/(https?:\/\/[^\s)]+)/g).map((piece, j) =>
+                  j % 2 === 1 ? (
+                    <Text key={j} style={{ textDecorationLine: 'underline' }} onPress={() => Linking.openURL(piece.replace(/[.,;:]+$/, '')).catch(() => {})}>
+                      {piece}
+                    </Text>
+                  ) : piece ? (
+                    <FormattedText key={j} segments={parseFormattedText(piece)} defaultColor={S.ink} />
+                  ) : null
+                )}
               </Text>
             </View>
           );
