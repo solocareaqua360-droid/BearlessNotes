@@ -5,6 +5,7 @@ import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { StackActions, getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
 import { forgetBase, hasBase, rememberBase, takeBase } from '../navigation/lastBase';
 import { noteCapsuleJourney } from './DeskDock';
+import { holdPushFromLayer } from '../navigation/layerPush';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
 import { BASES_DESK, DesksControlContext, FIXED_DESKS, deskFace } from '../navigation/desks';
@@ -297,8 +298,13 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
                 // The desks under are set to «Бази» at once and the base comes in front in the same breath: the list of bases is never
                 // seen (a pause for the capsule showed it for a moment - the user, 2026-10-31), and the same bead is lit before and after.
                 noteCapsuleJourney(index);
-                barHandlers.current.desks[index]?.onPress();
+                // The base comes back WHOLE, not sliding in: it was never left in the person's mind, and the slide showed the list of
+                // bases under it for a frame (the user, 2026-10-31). The same no-animation push the side layers use (layerPush).
+                // The desks under it are NOT switched to «Бази» first: that drew the list of bases for a frame before the base. The base
+                // stands over the desk the press came from, and its own dock lights «Бази».
+                const release = holdPushFromLayer();
                 (navigationRef.navigate as (n: string, p?: object) => void)(base.name, base.params);
+                setTimeout(release, 600);
                 return;
               }
             }

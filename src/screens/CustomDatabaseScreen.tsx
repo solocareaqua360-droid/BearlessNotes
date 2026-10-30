@@ -224,6 +224,19 @@ const SCHEDULE_FREE = '__free__';
 // computed from them (see gridTileWidth) as well as applied in the style.
 // A part of a table row that stays where it is while the table scrolls sideways: it shifts itself by the scroller's own
 // offset, so it is drawn over what slides under it (the caller gives it the ground's colour).
+// HOW EACH BASE WAS LAST SHOWN, for this run of the app: a base opened again draws its own view from the first frame instead of the plain
+// list it starts with until its saved view comes from the store (the user saw that list flash on coming back, 2026-10-31).
+type ShownAs = {
+  viewMode: ViewMode;
+  activeViewId: string | null;
+  savedViews: CustomDatabaseView[];
+  sortPref: RowSort;
+  filters: RowFilter[];
+  groupFieldId: string | null;
+  hiddenFieldIds: string[];
+};
+const shownAs = new Map<string, ShownAs>();
+
 function StickyLeft({ x, style, children, web }: { x: SharedValue<number>; style?: object; children: ReactNode; web?: boolean }) {
   // The browser: the shift is set straight on the element from the scroller's own scroll event, in the same frame the scroller moves.
   // Through the shared value it came a frame late, and the frozen column and header trembled against the columns passing under them
@@ -452,7 +465,7 @@ export default function CustomDatabaseScreen({
   const [readError, setReadError] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => shownAs.get(databaseId)?.viewMode ?? 'list');
   // A table, a kanban and a schedule scroll sideways themselves: the swipe
   // to the databases layer then begins from the edge of the screen (see
   // Tabs) - "не можу перейти ... свайпом до вікна з базами даних".
@@ -467,7 +480,7 @@ export default function CustomDatabaseScreen({
   // again or the screen unmounts, never written back to the view or to
   // this prefs doc. Kept in the same prefs doc the rest of the view
   // state already lives in.
-  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const [activeViewId, setActiveViewId] = useState<string | null>(() => shownAs.get(databaseId)?.activeViewId ?? null);
   const [scheduleSetupVisible, setScheduleSetupVisible] = useState(false);
   // Non-null while editing an EXISTING schedule's own configuration
   // (relation field / date field / manual statuses) rather than creating
@@ -493,11 +506,11 @@ export default function CustomDatabaseScreen({
   const [projectFilterOpen, setProjectFilterOpen] = useState(false);
   // The saved views, as a small list under their own button at the bar's edge.
   const [viewsMenuOpen, setViewsMenuOpen] = useState(false);
-  const [sortPref, setSortPref] = useState<RowSort>(DEFAULT_ROW_SORT);
-  const [filters, setFilters] = useState<RowFilter[]>([]);
+  const [sortPref, setSortPref] = useState<RowSort>(() => shownAs.get(databaseId)?.sortPref ?? DEFAULT_ROW_SORT);
+  const [filters, setFilters] = useState<RowFilter[]>(() => shownAs.get(databaseId)?.filters ?? []);
   // Which field the list is broken into groups by, if any - each group
   // headed by its own value and count.
-  const [groupFieldId, setGroupFieldId] = useState<string | null>(null);
+  const [groupFieldId, setGroupFieldId] = useState<string | null>(() => shownAs.get(databaseId)?.groupFieldId ?? null);
   // Which group headers are collapsed, by the group's own key - session-
   // only (not persisted), same as every other purely-visual fold in this
   // app. Shared by every representation (list/table/gallery), since a
@@ -507,11 +520,11 @@ export default function CustomDatabaseScreen({
   // wide `hidden` flag (FieldDef.hidden) always wins, this only ever
   // hides MORE on top of that, per whichever capsule is active (see
   // activeViewId's own comment).
-  const [hiddenFieldIds, setHiddenFieldIds] = useState<string[]>([]);
+  const [hiddenFieldIds, setHiddenFieldIds] = useState<string[]>(() => shownAs.get(databaseId)?.hiddenFieldIds ?? []);
   // Which field's values the filter dropdown is currently showing. null is
   // its top level, the list of fields.
   const [filterFieldId, setFilterFieldId] = useState<string | null>(null);
-  const [savedViews, setSavedViews] = useState<CustomDatabaseView[]>([]);
+  const [savedViews, setSavedViews] = useState<CustomDatabaseView[]>(() => shownAs.get(databaseId)?.savedViews ?? []);
   // Every manual schedule status this account owns, across every schedule
   // view - see ScheduleCellStatus's own comment. Small enough (one row per
   // filled cell of one view) that filtering client-side by the active
@@ -1127,7 +1140,7 @@ export default function CustomDatabaseScreen({
   // unrelated write anywhere touched this database's views. Retries on its
   // own once savedViews actually contains the view, so switching to one
   // right after creating it still works before its snapshot round-trips.
-  const seededViewIdRef = useRef<string | null>(null);
+  const seededViewIdRef = useRef<string | null>(shownAs.get(databaseId)?.activeViewId ?? null);
   // The prefs doc as last heard - «Поточні зміни» is applied from it at once on a tap (selectCapsule).
   const lastPrefsRef = useRef<Record<string, unknown> | null>(null);
   useEffect(() => {
@@ -1145,6 +1158,10 @@ export default function CustomDatabaseScreen({
     setGroupFieldId(view.groupFieldId ?? null);
     setHiddenFieldIds(view.hiddenFieldIds ?? []);
   }, [activeViewId, savedViews]);
+
+  useEffect(() => {
+    if (databaseId) shownAs.set(databaseId, { viewMode, activeViewId, savedViews, sortPref, filters, groupFieldId, hiddenFieldIds });
+  }, [databaseId, viewMode, activeViewId, savedViews, sortPref, filters, groupFieldId, hiddenFieldIds]);
 
   // A direct id lookup now, not a match against sort/filter state - every
   // capsule (including a schedule one) is explicitly selected via
