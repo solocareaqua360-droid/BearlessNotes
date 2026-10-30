@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { deleteDoc, deleteField, doc, getDoc, getDocs, onSnapshot } from '../firestore';
 import { db } from '../firebase';
@@ -86,6 +87,44 @@ function videosIn(text: string): { url: string; id: string }[] {
     const id = videoIdOf(url);
     if (id && !out.some((v) => v.id === id)) out.push({ url, id });
   }
+  return out;
+}
+// AN ADDRESS THE MODEL WROTE IS OFTEN A DEAD ONE (the user, 2026-10-30: Google Play links did not open): each address in an answer is
+// opened here before it is shown (from the phone, no money), and a page that is not there (404 / 410) is turned into a SEARCH for what
+// it was meant to be - the store's own search for a Play address, Google's for any other - so the link in front of the user opens.
+// Lines are asked for as «Назва — адреса», so the name is what stands before the address. No answer, a refusal (403, bots) and a slow
+// site prove nothing and leave the address as it was. The browser cannot ask other sites (CORS): there the text stays as it is.
+const ANY_URL = /https?:\/\/[^\s)>\]]+/g;
+const CHECK_LIMIT = 8;
+function searchFor(url: string, name: string): string {
+  const q = encodeURIComponent(name || 'посилання');
+  return url.includes('play.google.com/store/apps') ? `https://play.google.com/store/search?q=${q}&c=apps` : `https://www.google.com/search?q=${q}`;
+}
+async function isDead(url: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    return response.status === 404 || response.status === 410;
+  } catch {
+    return false;
+  }
+}
+async function checkedLinks(text: string): Promise<string> {
+  if (Platform.OS === 'web') return text;
+  const found = [...new Set((text.match(ANY_URL) ?? []).map((u) => u.replace(/[.,;:]+$/, '')))]
+    // The person's own video address and the search addresses already made are not checked.
+    .filter((u) => !/youtu\.?be|play\.google\.com\/store\/search|google\.com\/search|vertexaisearch/i.test(u))
+    .slice(0, CHECK_LIMIT);
+  const dead = await Promise.all(found.map(isDead));
+  let out = text;
+  found.forEach((url, k) => {
+    if (!dead[k]) return;
+    const line = out.split('\n').find((l) => l.includes(url)) ?? '';
+    const name = line.split(url)[0].replace(/[*_`#>\-–—:()\[\]•\d.]+/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(-3).join(' ');
+    out = out.split(url).join(searchFor(url, name));
+  });
   return out;
 }
 const noteKey = (id: string) => `videoNote:${id}`;
@@ -362,7 +401,7 @@ export async function askAssistant(
     path.length ? `ЗАРАЗ РОЗМОВА В ГІЛЦІ: ${path.join(' › ')}` : '',
     // The links (2026-10-30, the user: the answer named the apps but gave no address): the search is there to find them.
     toWatch || notes.length
-      ? 'ПОСИЛАННЯ: коли людина просить посилання чи «де скачати» - знайди пошуком і дай ПОВНУ робочу адресу (https://play.google.com/store/apps/details?id=… для Android, сайт або GitHub - якщо застосунку немає в магазині), для КОЖНОГО названого застосунку окремим рядком. Не відсилай «пошукай у магазині» і не обмежуйся назвою магазину; якщо адресу не знайшов - так і скажи.'
+      ? 'ПОСИЛАННЯ: коли людина просить посилання чи «де скачати» - знайди пошуком і дай ПОВНУ робочу адресу (https://play.google.com/store/apps/details?id=… для Android, сайт або GitHub - якщо застосунку немає в магазині), для КОЖНОГО названого застосунку окремим рядком у вигляді «Назва — адреса» (назва лише словами, без зірочок). Не відсилай «пошукай у магазині» і не обмежуйся назвою магазину; якщо адресу не знайшов - так і скажи.'
       : '',
     notes.length ? `КОНСПЕКТИ ВІДЕО, які ти вже дивився (відповідай з них; повторно відео не потрібно):\n${notes.map((n) => `Відео ${n.url}:\n${n.note}`).join('\n\n')}` : '',
     structureOutline
@@ -415,9 +454,9 @@ export async function askAssistant(
   if (at >= 0) {
     const note = text.slice(at + NOTE_MARK.length).trim();
     if (toWatch && note.length > 200) AsyncStorage.setItem(noteKey(toWatch.id), note).catch(() => {});
-    return { text: text.slice(0, at).trim() || text, costUsd: costOfGemini(GEMINI_MODEL, usage) };
+    return { text: await checkedLinks(text.slice(0, at).trim() || text), costUsd: costOfGemini(GEMINI_MODEL, usage) };
   }
-  return { text, costUsd: costOfGemini(GEMINI_MODEL, usage) };
+  return { text: await checkedLinks(text), costUsd: costOfGemini(GEMINI_MODEL, usage) };
 }
 
 function pagesOf(m: AssistantMessage): string {
