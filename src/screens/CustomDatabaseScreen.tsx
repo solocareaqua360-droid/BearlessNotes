@@ -314,6 +314,9 @@ function WrapTextCell({
   const [draft, setDraft] = useState(initial);
   const saved = useRef(initial);
   const ref = useRef<TextInput>(null);
+  // The cell's single-line style carries a fixed height; a wrapping cell takes its height from its text, so it is left out (an `undefined`
+  // laid over it later does not take it away).
+  const { height: _fixedHeight, ...flat } = StyleSheet.flatten(inputStyle) as Record<string, unknown>;
   const commit = (text: string) => {
     if (text === saved.current) return;
     saved.current = text;
@@ -321,10 +324,10 @@ function WrapTextCell({
   };
   return (
     <View style={{ width, minHeight: TABLE_ROW_HEIGHT - 1 }}>
-      <Text pointerEvents="none" style={[inputStyle, { height: undefined, opacity: 0, paddingVertical: 14 } as object]}>{`${draft || '—'}\u200B`}</Text>
+      <Text pointerEvents="none" style={[flat, { opacity: 0, paddingVertical: 14 } as object]}>{`${draft || '—'}\u200B`}</Text>
       <TextInput
         ref={ref}
-        style={[inputStyle, { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, height: '100%', paddingVertical: 14, textAlignVertical: 'top' } as object]}
+        style={[flat, { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, height: '100%', paddingVertical: 14, textAlignVertical: 'top', overflow: 'hidden' } as object]}
         multiline
         defaultValue={initial}
         placeholder="—"
@@ -2690,7 +2693,7 @@ export default function CustomDatabaseScreen({
                     </StickyLeft>
                   </View>
                 ) : (
-                  <View style={[styles.tableRow, { width: totalW }, TABLE_WRAPS && ({ height: undefined, minHeight: TABLE_ROW_HEIGHT } as object)]}>
+                  <View style={[styles.tableRow, { width: totalW }, TABLE_WRAPS && ({ height: 'auto', minHeight: TABLE_ROW_HEIGHT } as object)]}>
                     <StickyLeft web x={tableScrollX} style={{ width: frozenW, flexDirection: 'row', backgroundColor: ground }}>
                       {/* Tapping a cell edits that one cell; this button is the
                           way to open the whole row as a card, per the user's own

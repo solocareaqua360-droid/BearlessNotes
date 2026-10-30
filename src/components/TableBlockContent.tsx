@@ -1009,7 +1009,7 @@ export default function TableBlockContent({
                         caretHidden={!(editing && isSelected)}
                         style={[
                           styles.tableCellInput,
-                          { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, paddingHorizontal: 10, textAlignVertical: 'top' },
+                          { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, paddingHorizontal: 10, textAlignVertical: 'top', overflow: 'hidden' } as object,
                           strongCell && styles.tableReadStrong,
                           !typingHere && { color: 'transparent' },
                           isSelected && !formulaMode && { paddingRight: 30 },
