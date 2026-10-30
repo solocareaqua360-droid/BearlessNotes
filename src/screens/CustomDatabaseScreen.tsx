@@ -287,6 +287,63 @@ function titleColumnWidth(titles: string[], windowWidth: number): number {
 // columns line up row for row - they're two separate stacks, nothing else
 // keeps them in step.
 const TABLE_ROW_HEIGHT = 46;
+// THE LAPTOP'S TABLE WRAPS (the user, 2026-10-30: «немає переносу тексту, я бачу довгий рядок назви й короткі стовпчики»): a text cell
+// carries all of its text over as many lines as it needs, the row grows to its tallest cell, the title column is capped and a text
+// column is wider than the rest. The phone keeps the single fixed-height line its list is laid out for (getItemLayout).
+const TABLE_WRAPS = Platform.OS === 'web';
+const TABLE_TEXT_COLUMN_WIDTH = 280;
+const TABLE_TITLE_MAX_WIDTH = 380;
+
+// A text / number cell that wraps: the text stands in an invisible Text that gives the cell its height, and the field lies over it,
+// filling the cell - the same recipe as a note's table (components/TableBlockContent). Enter ends the typing; the cell is saved on blur.
+function WrapTextCell({
+  initial,
+  width,
+  inputStyle,
+  placeholderColor,
+  numeric,
+  onCommit,
+}: {
+  initial: string;
+  width: number;
+  inputStyle: object;
+  placeholderColor: string;
+  numeric: boolean;
+  onCommit: (text: string) => void;
+}) {
+  const [draft, setDraft] = useState(initial);
+  const saved = useRef(initial);
+  const ref = useRef<TextInput>(null);
+  const commit = (text: string) => {
+    if (text === saved.current) return;
+    saved.current = text;
+    onCommit(text);
+  };
+  return (
+    <View style={{ width, minHeight: TABLE_ROW_HEIGHT - 1 }}>
+      <Text pointerEvents="none" style={[inputStyle, { height: undefined, opacity: 0, paddingVertical: 14 } as object]}>{`${draft || '—'}\u200B`}</Text>
+      <TextInput
+        ref={ref}
+        style={[inputStyle, { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, height: '100%', paddingVertical: 14, textAlignVertical: 'top' } as object]}
+        multiline
+        defaultValue={initial}
+        placeholder="—"
+        placeholderTextColor={placeholderColor}
+        keyboardType={numeric ? 'numeric' : 'default'}
+        onChangeText={setDraft}
+        onBlur={() => commit(draft)}
+        onEndEditing={(e) => commit(e.nativeEvent.text)}
+        onKeyPress={(e) => {
+          const native = e.nativeEvent as unknown as { key: string; shiftKey?: boolean; preventDefault?: () => void };
+          if (native.key === 'Enter' && !native.shiftKey) {
+            native.preventDefault?.();
+            ref.current?.blur();
+          }
+        }}
+      />
+    </View>
+  );
+}
 
 type ViewMode = 'list' | 'table' | 'cards' | 'schedule' | 'kanban' | 'shelves';
 // The three tabs of the parameters window. They were three buttons on the
@@ -2541,7 +2598,8 @@ export default function CustomDatabaseScreen({
     const restFields = visibleFieldsOf(database).filter(
       (f) => f.id !== firstField?.id && !hiddenFieldIds.includes(f.id)
     );
-    const titleWidth = titleColumnWidth(displayedRows.map(titleOf), windowWidth);
+    const titleWidth = Math.min(titleColumnWidth(displayedRows.map(titleOf), windowWidth), TABLE_WRAPS ? TABLE_TITLE_MAX_WIDTH : Infinity);
+    const colW = (f: FieldDef) => (TABLE_WRAPS && f.type === 'text' ? TABLE_TEXT_COLUMN_WIDTH : TABLE_COLUMN_WIDTH);
     // One flat sequence, group headers and rows alike, rendered in lockstep
     // into BOTH the frozen column and the scrolling one below - same
     // technique renderSchedule already uses for its own two parallel
@@ -2564,7 +2622,7 @@ export default function CustomDatabaseScreen({
     // not a second list kept in step but a part of each row that shifts itself by the sideways offset (StickyLeft), on
     // the ground's own colour so what scrolls under it is hidden.
     const frozenW = TABLE_HANDLE_WIDTH + titleWidth;
-    const totalW = frozenW + restFields.length * TABLE_COLUMN_WIDTH;
+    const totalW = frozenW + restFields.reduce((sum, f) => sum + colW(f), 0);
     // On the laptop the soft ground is see-through (glass), and the columns passing under the frozen one showed through it: the frozen
     // column needs a ground of its own there.
     const ground = softDb ? (Platform.OS === 'web' && softDb.bg === 'transparent' ? '#FAF9F6' : softDb.bg) : '#000000';
@@ -2595,7 +2653,7 @@ export default function CustomDatabaseScreen({
               </StickyLeft>
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}>
                 {restFields.map((field) => (
-                  <View key={field.id} style={[styles.tableHeaderCell, { width: TABLE_COLUMN_WIDTH }]}>
+                  <View key={field.id} style={[styles.tableHeaderCell, { width: colW(field) }]}>
                     <Ionicons name={FIELD_TYPE_ICON[field.type]} size={12} color={sInk2('rgba(255,255,255,0.65)')} />
                     <Text style={styles.tableHeaderLabel} numberOfLines={1}>
                       {field.name}
@@ -2608,7 +2666,7 @@ export default function CustomDatabaseScreen({
             <FlatList
               data={tableItems}
               keyExtractor={(item) => (item.kind === 'group' ? `g:${item.key}` : item.row.id)}
-              getItemLayout={(_, index) => ({ length: TABLE_ROW_HEIGHT, offset: TABLE_ROW_HEIGHT * index, index })}
+              getItemLayout={TABLE_WRAPS ? undefined : (_, index) => ({ length: TABLE_ROW_HEIGHT, offset: TABLE_ROW_HEIGHT * index, index })}
               initialNumToRender={12}
               maxToRenderPerBatch={6}
               windowSize={5}
@@ -2632,7 +2690,7 @@ export default function CustomDatabaseScreen({
                     </StickyLeft>
                   </View>
                 ) : (
-                  <View style={[styles.tableRow, { width: totalW }]}>
+                  <View style={[styles.tableRow, { width: totalW }, TABLE_WRAPS && ({ height: undefined, minHeight: TABLE_ROW_HEIGHT } as object)]}>
                     <StickyLeft web x={tableScrollX} style={{ width: frozenW, flexDirection: 'row', backgroundColor: ground }}>
                       {/* Tapping a cell edits that one cell; this button is the
                           way to open the whole row as a card, per the user's own
@@ -2656,7 +2714,7 @@ export default function CustomDatabaseScreen({
                       </Pressable>
                       {renderTableCell(item.row, firstField, titleWidth)}
                     </StickyLeft>
-                    {restFields.map((field) => renderTableCell(item.row, field))}
+                    {restFields.map((field) => renderTableCell(item.row, field, colW(field)))}
                   </View>
                 )
               }
@@ -3264,6 +3322,19 @@ export default function CustomDatabaseScreen({
     // every keystroke; the key re-seeds it if the stored value changes.
     if (!isSelectMode && (field.type === 'text' || field.type === 'number')) {
       const asText = raw === undefined || raw === null ? '' : String(raw);
+      if (TABLE_WRAPS) {
+        return (
+          <WrapTextCell
+            key={`${field.id}:${asText}`}
+            initial={asText}
+            width={width}
+            inputStyle={styles.tableCellInput}
+            placeholderColor={sInk3('rgba(255,255,255,0.3)')}
+            numeric={field.type === 'number'}
+            onCommit={(text) => commitCellText(row, field, text)}
+          />
+        );
+      }
       return (
         <TextInput
           key={`${field.id}:${asText}`}
@@ -3325,10 +3396,10 @@ export default function CustomDatabaseScreen({
     return (
       <Pressable
         key={field.id}
-        style={[styles.tableCellTap, { width }]}
+        style={[styles.tableCellTap, { width }, TABLE_WRAPS && { paddingVertical: 14 }]}
         onPress={() => beginCellEdit(row, field)}
       >
-        <Text style={shown ? styles.tableCell : styles.tableCellEmpty} numberOfLines={1}>
+        <Text style={shown ? styles.tableCell : styles.tableCellEmpty} numberOfLines={TABLE_WRAPS ? undefined : 1}>
           {shown || '—'}
         </Text>
       </Pressable>
