@@ -983,8 +983,20 @@ export default function TableBlockContent({
                 ) : null;
                 if (!asAddress && !showsResult) {
                   const raw = row.cells[c] ?? '';
+                  // THE CELL IS DRAWN THE WAY IT IS READ (the user, 2026-10-30: «під час редагування таблиця стискається і додає зірочки»): the
+                  // text stands in a Text that sets the cell's height - wrapped, with **bold** as bold - and the field lies over it, transparent.
+                  // Only the cell being typed in shows its raw text (the marks and all), still wrapping, and grows with it.
+                  const typingHere = editing && isSelected;
+                  const strongCell = (headerRow && r === 0) || (headerColumn && c === 0);
                   return (
                     <View key={c} style={[cellBox, { paddingHorizontal: 0, paddingVertical: 0 }]}>
+                      <View pointerEvents="none" style={{ paddingLeft: 10, paddingRight: typingHere && !formulaMode ? 30 : 10, paddingVertical: 8 }}>
+                        {typingHere ? (
+                          <Text style={[styles.tableCellText, strongCell && styles.tableReadStrong, { opacity: 0 }]}>{`${draftText ?? raw}\u200B`}</Text>
+                        ) : (
+                          <CellText rows={rows} r={r} c={c} strong={strongCell} style={styles.tableCellText} strongStyle={styles.tableReadStrong} ink={theme.paper.ink} />
+                        )}
+                      </View>
                       <TextInput
                         // Re-seeded when the STORED value changes (a
                         // formula recomputing, the other device writing) -
@@ -995,7 +1007,14 @@ export default function TableBlockContent({
                           cellRefs.current.set(`${r}:${c}`, node);
                         }}
                         caretHidden={!(editing && isSelected)}
-                        style={[styles.tableCellInput, isSelected && !formulaMode && { paddingRight: 30 }]}
+                        style={[
+                          styles.tableCellInput,
+                          { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, paddingHorizontal: 10, textAlignVertical: 'top' },
+                          strongCell && styles.tableReadStrong,
+                          !typingHere && { color: 'transparent' },
+                          isSelected && !formulaMode && { paddingRight: 30 },
+                        ]}
+                        multiline
                         defaultValue={raw}
                         editable={!formulaMode}
                         onFocus={() => {
@@ -1039,7 +1058,7 @@ export default function TableBlockContent({
                           }
                         }}
                         // Enter on a phone keyboard: on to the cell below, and at the foot a new row - instead of closing the keyboard.
-                        blurOnSubmit={false}
+                        submitBehavior="submit"
                         onSubmitEditing={() => moveSelection(1, 0)}
                         autoCapitalize="none"
                         autoCorrect={false}
