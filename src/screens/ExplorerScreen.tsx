@@ -1,6 +1,6 @@
 import { type ComponentProps, type ReactElement, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { askFates, boardContentsFates, confirmFates, FATE, type FateEntry, type FateKind } from '../utils/deleteFates';
-import { folderPathFromName } from '../utils/folderName';
+import { folderPathFromName, resolveFolderPath } from '../utils/folderName';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { usePins } from '../navigation/pinned';
 import ExplorerPanel from '../components/desktop/ExplorerPanel';
@@ -1536,14 +1536,33 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const pickAndMoveRef = useRef<() => void>(() => {});
   const deleteSelectedRef = useRef<() => void>(() => {});
   async function makeFolder(name: string, thenMove: boolean) {
-    const clean = folderPathFromName(name);
-    if (!clean) return;
-    const full = folderOf(path) ? `${path}/${clean}` : clean;
+    const full = resolveFolderPath(name, folderOf(path));
+    if (!full) return;
     try {
       await tagForPath(full);
       if (thenMove) await moveSelected(full);
       // A new folder is OPENED: otherwise it stands somewhere in the sort order and is lost.
       if (!thenMove) setPath(full);
+    } catch (e) {
+      notify('Не вдалося створити папку', (e as Error).message);
+    }
+  }
+  // «НОВА ПАПКА» IN ONE CLICK, WHERE YOU STAND (the user, 2026-10-30: «створити нову папку там де я знаходжусь в один клік, а по
+  // факту треба прописати купу тексту»): the folder is made at once under the one that is open - «Нова папка», «Нова папка 2»... -
+  // and its name asked for straight away, kept as it is by Enter or Esc.
+  async function newFolderHere() {
+    const base = folderOf(path);
+    const taken = new Set(folderPaths);
+    let n = 1;
+    let name = 'Нова папка';
+    while (taken.has(base ? `${base}/${name}` : name)) {
+      n += 1;
+      name = `Нова папка ${n}`;
+    }
+    const full = base ? `${base}/${name}` : name;
+    try {
+      await tagForPath(full);
+      setRenamingFolder({ path: full, name, count: 0 });
     } catch (e) {
       notify('Не вдалося створити папку', (e as Error).message);
     }
@@ -2196,7 +2215,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       ...(history.current.at < history.current.stack.length - 1
         ? [{ label: `Уперед: ${folderLabel(history.current.stack[history.current.at + 1])}`, icon: 'arrow-forward-outline' as const, onPress: () => goHistory(1) }]
         : []),
-      { label: 'Нова папка', icon: 'folder-open-outline' as const, onPress: () => setNaming('new') },
+      { label: 'Нова папка', icon: 'folder-open-outline' as const, onPress: () => newFolderHere() },
       { label: 'Новий ярлик…', icon: 'rocket-outline' as const, onPress: () => newShortcut() },
     ],
     { active: selecting, onPress: () => (selecting ? leaveSelect() : setSelecting(true)) },
@@ -2733,7 +2752,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
               }
             : null
         }
-        onNewFolder={() => setNaming('new')}
+        onNewFolder={() => newFolderHere()}
         onNewShortcut={() => newShortcut()}
         candidates={candidates.length}
         onCleanup={enterCleanup}

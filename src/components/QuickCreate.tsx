@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { folderPathFromName } from '../utils/folderName';
+import { folderPathFromName, resolveFolderPath } from '../utils/folderName';
 import { BackHandler, Keyboard, useWindowDimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import TextInput from './AppTextInput';
 import Sheet from './surfaces/Sheet';
@@ -239,7 +239,7 @@ export default function QuickCreate({
   const q = query.trim();
   const ql = q.toLowerCase();
   // The folder a «Нова папка» would make: inside the one you stand in.
-  const newPath = q ? `${folder ? `${folder}/` : ''}${folderPathFromName(q)}` : '';
+  const newPath = q ? resolveFolderPath(q, folder) : '';
   const folderRows = useMemo(() => {
     const all = ['', ...folderPaths].filter((p, i, a) => a.indexOf(p) === i);
     const filtered = ql ? all.filter((p) => p.toLowerCase().includes(ql) || (!p && 'без папки'.includes(ql))) : all;

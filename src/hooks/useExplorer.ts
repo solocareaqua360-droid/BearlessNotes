@@ -1,5 +1,5 @@
 import { doc, updateDoc } from '../firestore';
-import { folderPathFromName } from '../utils/folderName';
+import { folderPathFromName, resolveFolderPath } from '../utils/folderName';
 import { db } from '../firebase';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
@@ -313,7 +313,7 @@ export function useExplorer<T extends { id: string }>(options: ExplorerOptions<T
     const clean = cleanName(name);
     if (!prompt || !clean) return;
     if (prompt.mode === 'new') {
-      const full = prompt.parent ? `${prompt.parent}/${clean}` : clean;
+      const full = resolveFolderPath(name, prompt.parent);
       if (tagByPath.has(full)) return;
       await createFolderTag(realPathOf(full), kind, randomColor(), baseOnly ? { baseOnly: true } : undefined);
     } else {

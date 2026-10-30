@@ -1,3 +1,4 @@
+import { folderPathFromName } from '../utils/folderName';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { markHeld } from '../utils/heldNode';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -1113,7 +1114,8 @@ export default function FolderCanvas({
           placeholder="Назва папки"
           onCancel={() => setNewFolderFor(null)}
           onSave={(name) => {
-            const clean = name.trim().replace(/\//g, ' ');
+            // A slash is a level (utils/folderName) - it used to become a space, and a nested path made a second root folder.
+            const clean = folderPathFromName(name);
             const items = newFolderFor ?? { moves: [], adds: [] };
             setNewFolderFor(null);
             if (!clean) return;
