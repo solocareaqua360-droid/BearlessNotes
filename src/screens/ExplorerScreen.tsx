@@ -438,7 +438,11 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // projects, all as rows. «Проєкти ›» and a project's row open the PROJECTS LEVEL (START_PROJECTS): the capsules at the
   // top and the folders of the project in front - what the start itself was before (the user, 2026-10-28: «екран проекти з
   // капсулами вгорі з поглядом на конкретні папки»); a project's row puts that project in front first.
-  const startList = FEATURES.startList && touchDensity && !!desk && !inPane;
+  // On the laptop too (2026-10-30, the user sorts his notes there and the old start - projects band, «Думки» card, folder cards -
+  // confused him against the phone's list): the same list on every device.
+  // The laptop's explorer is not handed `desk` (its sidebar stands where the phone's dock does), but its root IS the start.
+  const startDesk = !!desk || (Platform.OS === 'web' && FEATURES.macFrameB && !touchDensity && !inPane);
+  const startList = FEATURES.startList && startDesk && !inPane;
   const [startLevels, setStartLevels] = useState<string[]>([]);
   const startLevel = startList ? startLevels[startLevels.length - 1] ?? null : null;
   const popStartLevel = () => setStartLevels((l) => l.slice(0, -1));
@@ -2161,8 +2165,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       { label: 'Групувати за типом', icon: 'layers-outline' as const, checked: byKind, onPress: toggleByKind },
       { label: 'Фільтри (тип, проєкт)', icon: 'filter-outline' as const, checked: chipsOn, onPress: toggleChips },
       // Under a name of its own: straight after «Порядок» it read as one more way to sort.
-      ...(desk ? [{ kind: 'section' as const, label: 'На старті' }, { label: 'Нещодавні', icon: 'time-outline' as const, checked: recentsOn, onPress: toggleRecents }] : []),
-      ...(desk && startList
+      ...(startDesk ? [{ kind: 'section' as const, label: 'На старті' }, { label: 'Нещодавні', icon: 'time-outline' as const, checked: recentsOn, onPress: toggleRecents }] : []),
+      ...(startDesk && startList
         ? [
             { label: 'Проєкти', icon: 'folder-open-outline' as const, checked: startProjectsOn, onPress: () => toggleStartSwitch('startProjects') },
             { label: 'Обрані бази', icon: 'apps-outline' as const, checked: startBasesOn, onPress: () => toggleStartSwitch('startBases') },
@@ -2964,7 +2968,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const headerBody = startHere ? startBody : (
     <>
       {/* Only on the start desk itself, never inside a folder (the user, 2026-10-25: «нещодавні не показуються всередині папок»). */}
-      {desk && recentsOn && !path && !startLevel && (
+      {startDesk && recentsOn && !path && !startLevel && (
         // Edge to edge: the list pads 20 on each side, the row scrolls under that padding.
         <View style={{ marginHorizontal: -20 }}>
           <RecentPlacesRow side={20} />
