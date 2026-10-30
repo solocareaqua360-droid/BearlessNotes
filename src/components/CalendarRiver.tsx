@@ -69,6 +69,10 @@ const CalendarRiver = forwardRef<CalendarRiverHandle, { navigation: unknown }>(f
   const nav = navigation as { navigate: (name: string, params?: object) => void };
 
   const [notes, setNotes] = useState<Map<string, DayNote>>(new Map());
+  // The same notes WITH their checkbox blocks: the past months' small sheets are drawn from these. A day written only as tasks
+  // (checkboxes) has no card among `notes` and no task rows in the past, so it was missing from the calendar altogether
+  // (the user, 2026-10-30: the 29th, notes and tasks written, not shown).
+  const [allNotes, setAllNotes] = useState<Map<string, DayNote>>(new Map());
   const [boards, setBoards] = useState<Set<string>>(new Set());
   const [tasks, setTasks] = useState<RiverTask[]>([]);
   const [groups, setGroups] = useState<Map<string, string>>(new Map());
@@ -78,16 +82,19 @@ const CalendarRiver = forwardRef<CalendarRiverHandle, { navigation: unknown }>(f
         ownedQuery('documents'),
         (snap) => {
           const next = new Map<string, DayNote>();
+          const all = new Map<string, DayNote>();
           snap.docs.forEach((d) => {
             const data = d.data();
             const key = data.calendarDate as string | undefined;
             if (!key || data.deletedAt) return;
+            all.set(key, { title: (data.title as string) ?? '', blocks: (data.blocks as Block[]) ?? [] });
             // The day's tasks live in its note as checkbox blocks; the river draws them as rows of their own, so
             // the note's card is what is left - a note holding only tasks has no card.
             const blocks = ((data.blocks as Block[]) ?? []).filter((b) => (b.type ?? 'paragraph') !== 'checkbox');
             next.set(key, { title: (data.title as string) ?? '', blocks });
           });
           setNotes(next);
+          setAllNotes(all);
         },
         listenError('CalendarRiver:documents')
       ),
@@ -158,7 +165,7 @@ const CalendarRiver = forwardRef<CalendarRiverHandle, { navigation: unknown }>(f
       const days: string[] = [];
       for (let d = new Date(first); d <= last; d = addDays(d, 1)) {
         const k = dateKey(d);
-        const n = notes.get(k);
+        const n = allNotes.get(k);
         if ((n && hasNoteContent(n.title, n.blocks)) || boards.has(k)) days.push(k);
       }
       const title =
@@ -169,7 +176,7 @@ const CalendarRiver = forwardRef<CalendarRiverHandle, { navigation: unknown }>(f
       out.push({ key: `${first.getFullYear()}-${first.getMonth()}`, title, days });
     }
     return out;
-  }, [todayKey, monthsBack, notes, boards]);
+  }, [todayKey, monthsBack, allNotes, boards]);
   const pull = usePullToSearch(() => setMonthsBack((n) => n + 1), true);
   const chromeScroll = useChromeScrollHandler();
   // Opened on TODAY, not on the past above it - and kept there while the months above arrive (they come after the
@@ -273,12 +280,12 @@ const CalendarRiver = forwardRef<CalendarRiverHandle, { navigation: unknown }>(f
             key={month.key}
             title={month.title}
             days={month.days}
-            notes={notes}
+            notes={allNotes}
             boards={boards}
             width={windowWidth - 32}
             styles={styles}
             S={S}
-            onOpen={(k) => (notes.get(k) && hasNoteContent(notes.get(k)!.title, notes.get(k)!.blocks) ? openNote(k) : openBoard(k))}
+            onOpen={(k) => (allNotes.get(k) && hasNoteContent(allNotes.get(k)!.title, allNotes.get(k)!.blocks) ? openNote(k) : openBoard(k))}
           />
         ))}
         {keys.map((key) => {
