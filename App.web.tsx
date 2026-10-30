@@ -69,7 +69,7 @@ import {
 } from './src/utils/driveToken.web';
 import { prefetchState, startOfflinePrefetch, subscribeToPrefetch } from './src/utils/offlineCache.web';
 import { onDesktopCommand } from './src/utils/desktopCommands';
-import { LEAN_WINDOW } from './src/utils/leanWindow';
+import { LEAN_WINDOW, BOARD_WINDOW } from './src/utils/leanWindow';
 import { inspector, useInspectorOpen } from './src/navigation/inspector';
 import { Ionicons } from './src/components/icons/Ionicons';
 import {
@@ -853,7 +853,7 @@ export default function App() {
                     </View>
                   </DeskGround>
                   {!FEATURES.macFrameB && <RightColumn />}
-                  {FEATURES.macFrameB && !LEAN_WINDOW && <FrameBRightPanel />}
+                  {FEATURES.macFrameB && (!LEAN_WINDOW || BOARD_WINDOW) && <FrameBRightPanel />}
                 </View>
                 </InnerBackProvider>
                 </WorkspaceProvider>

@@ -12,6 +12,8 @@ export type PaneTarget =
   // and carry no chrome of their own; see PlainScreenShell.
   | { kind: 'route'; route: 'Photos' | 'Files' | 'Stickers' | 'Flashcards' | 'Tasks' | 'Tags' | 'Groups' | 'Diary' | 'Chat' }
   // A note in a window of its own (the Mac's «У вікно», frame B 2026-10-19) - never a pane's content.
-  | { kind: 'note'; documentId: string };
+  | { kind: 'note'; documentId: string }
+  // A board in a window of its own (2026-10-30), next to the explorer's window.
+  | { kind: 'board'; boardId: string };
 
 export const sameTarget = (a: PaneTarget, b: PaneTarget) => JSON.stringify(a) === JSON.stringify(b);

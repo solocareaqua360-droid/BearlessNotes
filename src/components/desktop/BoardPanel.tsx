@@ -31,6 +31,7 @@ export default function BoardPanel({
   selected,
   selectedBadge,
   info,
+  refs,
   map,
   onMapAdd,
   dbTabs,
@@ -44,6 +45,9 @@ export default function BoardPanel({
   // «Обране» carries a dot while something is chosen.
   selectedBadge?: boolean;
   info?: ReactNode;
+  // «Референси» (2026-10-30, the user's): the bases to take ready things FROM, a tab of its own beside «Вставити» (which
+  // makes new ones); it stays open, so several things can be taken one after another.
+  refs?: ReactNode;
   // The board's map: its own tab («Карта дошки»).
   map?: ReactNode;
   // «＋ ділянка» in the map tab's own header: writes the place now on screen into the map.
@@ -68,6 +72,7 @@ export default function BoardPanel({
   );
   const tabs: { id: string; label: string; badge?: boolean; close?: () => void }[] = [
     { id: 'insert', label: 'Вставити' },
+    ...(refs ? [{ id: 'refs', label: 'Референси' }] : []),
     ...(layers ? [{ id: 'layers', label: 'Шари' }] : []),
     ...(selected ? [{ id: 'selected', label: 'Обране', badge: selectedBadge }] : []),
     ...(map ? [{ id: 'map', label: 'Карта' }] : []),
@@ -122,6 +127,8 @@ export default function BoardPanel({
             </View>
           ))}
         </ScrollView>
+      ) : tab === 'refs' ? (
+        <View style={{ flex: 1 }}>{refs}</View>
       ) : tab === 'layers' ? (
         <View style={{ flex: 1 }}>{layers}</View>
       ) : tab === 'selected' ? (

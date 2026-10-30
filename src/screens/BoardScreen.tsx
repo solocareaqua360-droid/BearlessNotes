@@ -164,6 +164,8 @@ import { PAGE_H2, PAGE_TEXT, makeStyles as makeEditorStyles } from '../component
 import PagePreviewRow from '../components/PagePreviewRow';
 import { SoftTaskCheck } from '../components/SoftIcon';
 import { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
+import { windowUrlFor } from '../navigation/paneTargetInfo';
+import { BOARD_WINDOW } from '../utils/leanWindow';
 import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockWide, useTopBack, useTopExtras } from '../navigation/navDock';
 import TopNavBar, { TOP_NAV_H, useTopNavOn } from '../components/TopNavBar';
 import { CHROME_TOP } from '../constants/rail';
@@ -4652,12 +4654,13 @@ export default function BoardScreen() {
 
   function openExistingItemPicker() {
     setAddSheetVisible(false);
-    setExistingItemPickerVisible(true);
-    // On the Mac the browser of existing things is a tab of the right panel, not a window over the whole app.
+    // On the Mac the browser of existing things is the right panel's own tab «Референси», always there.
     if (macBoard) {
-      setPanelTab('pick');
+      setPanelTab('refs');
       inspector.set(true);
+      return;
     }
+    setExistingItemPickerVisible(true);
   }
 
   // Everything below creates a BRAND NEW database record from the board and
@@ -7456,6 +7459,10 @@ export default function BoardScreen() {
   useTopExtras(
     [
       ...(isolatedIds !== null ? [{ label: 'Вийти з ізоляції', icon: 'scan-outline' as const, onPress: toggleIsolation }] : []),
+      // The Mac: this board in a window of its own, beside the explorer's (App.web's `open` parameter).
+      ...(macBoard && !embed && !BOARD_WINDOW && !isDayBoard
+        ? [{ label: 'У вікно', icon: 'copy-outline' as const, onPress: () => window.open(windowUrlFor({ kind: 'board', boardId }), '_blank') }]
+        : []),
       ...(textCards.length > 0
         ? [
             { label: 'Згорнути всі картки', icon: 'contract-outline' as const, onPress: () => setShort(null, true) },
@@ -8144,6 +8151,17 @@ export default function BoardScreen() {
         groups={addSections.map((g) => ({ title: g.title, tiles: g.tiles.map((t) => ({ key: t.key, label: t.label, onPress: t.onPress })) }))}
         selectedBadge={hasSelection}
         focusSearch={insertFocus}
+        refs={
+          <AddExistingItemModal
+            docked
+            visible
+            onPick={addExistingCard}
+            onClose={() => setPanelTab('insert')}
+            excludeIds={existingItemExcludeIds}
+            includeDocuments
+            onPickDocument={addDocumentCard}
+          />
+        }
         dbTabs={[
           ...(existingItemPickerVisible
             ? [
