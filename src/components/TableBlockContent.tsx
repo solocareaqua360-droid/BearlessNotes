@@ -1015,6 +1015,8 @@ export default function TableBlockContent({
                           isSelected && !formulaMode && { paddingRight: 30 },
                         ]}
                         multiline
+                        // A drag that starts in a cell selects its text, it never starts the note's block picker.
+                        {...({ dataSet: { noMarquee: '1' } } as object)}
                         defaultValue={raw}
                         editable={!formulaMode}
                         onFocus={() => {
@@ -1120,7 +1122,11 @@ export default function TableBlockContent({
           {/* The column's width grip: on the right edge of the selected cell's column, the whole height of the table. */}
           {!!selected && !formulaMode && (
             <GestureDetector gesture={resizeGesture(selected.c)}>
-              <View style={{ position: 'absolute', left: boundaryX(selected.c) - 10, top: 0, bottom: 0, width: 20, alignItems: 'center', justifyContent: 'center', zIndex: 3 }}>
+              <View
+                style={{ position: 'absolute', left: boundaryX(selected.c) - 10, top: 0, bottom: 0, width: 20, alignItems: 'center', justifyContent: 'center', zIndex: 3, cursor: 'col-resize' } as never}
+                // A drag that starts here moves the line; without this the note's block picker (useBlockMarquee) took it (found 2026-10-30).
+                {...({ dataSet: { noMarquee: '1' } } as object)}
+              >
                 <View style={styles.tableResizeGrip} />
               </View>
             </GestureDetector>
@@ -1294,7 +1300,7 @@ function CellText({
   const raw = rows[r]?.cells[c] ?? '';
   const isFormula = raw.trim().startsWith('=');
   return (
-    <Text style={[style, strong && strongStyle]} numberOfLines={CELL_MAX_LINES}>
+    <Text style={[style, strong && strongStyle]}>
       {isFormula ? (
         displayValueOf(rows, r, c)
       ) : raw === '' ? (
@@ -1367,8 +1373,7 @@ const MIN_COLUMN_WIDTH = 56;
 // Past this a column is a paragraph, and a paragraph belongs in a
 // paragraph.
 const MAX_COLUMN_WIDTH = 420;
-// A cell may wrap, but it is still a cell. Four lines is a sentence.
-const CELL_MAX_LINES = 4;
+// A cell shows all of its text (the user, 2026-10-30: «текст досі ховається за трьома крапками»): no line cap; the row grows.
 // ONE, and the user was explicit about why: "ніяких мін максів я
 // виводити не буду. Максимум, що мені знадобиться від таблиці, це
 // підбити суму... Для цього є Excel."
