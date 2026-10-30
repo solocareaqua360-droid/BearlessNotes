@@ -11,7 +11,8 @@ import TextInput from './AppTextInput';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from './icons/Ionicons';
 import * as DocumentPicker from 'expo-document-picker';
-import { onSnapshot } from '../firestore';
+import { doc, onSnapshot, updateDoc } from '../firestore';
+import { db } from '../firebase';
 import { ownedQuery } from '../utils/owned';
 import { FieldDef, FieldType } from '../types';
 import { canJoinTitle } from '../utils/customRowDisplay';
@@ -157,7 +158,10 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
         // Into an existing database: match by name where possible, skip
         // whatever doesn't line up rather than guessing.
         const match = targetDatabase.fields.find((f) => f.name.trim().toLowerCase() === name.toLowerCase());
-        return match ? { kind: 'existingField', fieldId: match.id } : { kind: 'skip' };
+        if (match) return { kind: 'existingField', fieldId: match.id };
+        // A column the base has no field for becomes a NEW field of the guessed type (a list where the values repeat), changeable below
+        // (the user, 2026-10-30: «не можу вибирати тип поля окрім текст»).
+        return { kind: 'newField', fieldId: generateId(), name, type: guessFieldType(columnValues(index, rows)) };
       }
       return {
         kind: 'newField',
@@ -349,6 +353,23 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
           return;
         }
         databaseId = await createDatabaseForImport(databaseName.trim(), fields);
+      } else {
+        // Columns the base had no field for: the fields are added to it first (a list gets the options found in the column), then
+        // the rows are written against all of them.
+        const added = mappings
+          .map((mapping, index) => {
+            if (mapping.kind !== 'newField') return null;
+            const field: FieldDef = { id: mapping.fieldId, name: mapping.name.trim() || `Колонка ${index + 1}`, type: mapping.type };
+            if (mapping.type === 'select' || mapping.type === 'multiSelect') {
+              field.options = optionsFromColumn(columnValues(index, dataRows), mapping.type === 'multiSelect');
+            }
+            return field;
+          })
+          .filter((f): f is FieldDef => f !== null);
+        if (added.length > 0) {
+          fields = [...fields, ...added];
+          await updateDoc(doc(db, 'customDatabases', targetDatabase.id), { fields, updatedAt: Date.now() });
+        }
       }
 
       const written = await runTableImport({ databaseId, fields, columns: mappings, dataRows });
@@ -558,20 +579,20 @@ export default function ImportTableSheet({ visible, targetDatabase, otherDatabas
                           </Pressable>
                         )}
 
-                        {targetDatabase
-                          ? targetDatabase.fields
-                              .filter((f) => f.type !== 'backlink')
-                              .map((f) => (
-                                <Pressable
-                                  key={f.id}
-                                  style={styles.menuRow}
-                                  onPress={() => setMapping(index, { kind: 'existingField', fieldId: f.id })}
-                                >
-                                  <Text style={styles.menuRowLabel}>{f.name}</Text>
-                                  <Text style={styles.menuRowType}>{FIELD_TYPE_LABEL[f.type]}</Text>
-                                </Pressable>
-                              ))
-                          : (index === titleColumn ? (['text'] as FieldType[]) : IMPORTABLE_TYPES).map((type) => (
+                        {targetDatabase &&
+                          targetDatabase.fields
+                            .filter((f) => f.type !== 'backlink')
+                            .map((f) => (
+                              <Pressable
+                                key={f.id}
+                                style={styles.menuRow}
+                                onPress={() => setMapping(index, { kind: 'existingField', fieldId: f.id })}
+                              >
+                                <Text style={styles.menuRowLabel}>{f.name}</Text>
+                                <Text style={styles.menuRowType}>{FIELD_TYPE_LABEL[f.type]}</Text>
+                              </Pressable>
+                            ))}
+                        {(targetDatabase ? IMPORTABLE_TYPES : index === titleColumn ? (['text'] as FieldType[]) : IMPORTABLE_TYPES).map((type) => (
                               <Pressable
                                 key={type}
                                 style={styles.menuRow}
