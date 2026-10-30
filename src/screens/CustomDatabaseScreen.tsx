@@ -84,6 +84,7 @@ import GlassLayer from '../components/GlassLayer';
 // The four windows (2026-10-25): on the phone every hand-built window here stands on the bottom edge and rises.
 import { BOTTOM_FLUSH, BOTTOM_FRAME, BottomWindow, RISES } from '../components/surfaces/bottomSheet';
 import RecordPanel from '../components/desktop/RecordPanel';
+import CustomBasePanel from '../components/desktop/CustomBasePanel';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { usePins } from '../navigation/pinned';
 import { db } from '../firebase';
@@ -227,6 +228,10 @@ function StickyLeft({ x, style, children, web }: { x: SharedValue<number>; style
   // (the user, 2026-10-30).
   if (Platform.OS === 'web' && web) return <WebStickyLeft style={style}>{children}</WebStickyLeft>;
   return <PhoneStickyLeft x={x} style={style}>{children}</PhoneStickyLeft>;
+}
+// Reads the panel's content at its own render: the screen builds it below the early return, where a hook may no longer stand.
+function PanelSlot({ read }: { read: () => ReactNode }) {
+  return <>{read()}</>;
 }
 function PhoneStickyLeft({ x, style, children }: { x: SharedValue<number>; style?: object; children: ReactNode }) {
   const shift = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
@@ -1370,6 +1375,8 @@ export default function CustomDatabaseScreen({
   // Above the loading return below: a hook under an early return is the white-screen trap of 2026-09-19.
   const panelRow = rowPageId ? rows.find((r) => r.id === rowPageId) ?? null : null;
   const recordPanelOn = FEATURES.macFrameB && Platform.OS === 'web' && !inPane;
+  const paramsPanelOn = recordPanelOn;
+  const panelSlotRef = useRef<ReactNode>(null);
   const [pageForced, setPageForced] = useState(false);
   useEffect(() => {
     if (rowPageId === null) setPageForced(false);
@@ -1385,6 +1392,8 @@ export default function CustomDatabaseScreen({
         onOpenPage={() => setPageForced(true)}
         onClose={() => setRowPageId(null)}
       />
+    ) : paramsPanelOn && database ? (
+      <PanelSlot read={() => panelSlotRef.current} />
     ) : null
   );
 
@@ -1924,7 +1933,8 @@ export default function CustomDatabaseScreen({
   function openParamsTab(tab: ParamsTab) {
     setParamsTab(tab);
     setDoc(prefsDoc, { paramsTab: tab }, { merge: true });
-    setOpenParam('params');
+    // In the Mac's right panel the section opens right there; the window is only the pill's (it stays open if it already is).
+    setOpenParam((prev) => (paramsPanelOn ? prev : 'params'));
   }
 
   function openParamList(key: 'params') {
@@ -3907,230 +3917,9 @@ export default function CustomDatabaseScreen({
       tab.key === 'filter' ? filterFields.length > 0 || groups.length > 0 : tab.key === 'group' ? groupFields.length > 0 : true
     );
 
-  return (
-    <SoftSurfaceContext.Provider value={softDb}>
-    <View style={styles.container}>
-      {softDb ? (
-        <ScreenGround color={softDb.bg} />
-      ) : (
-      <Svg
-        width={windowWidth + 2}
-        height={windowHeight + 2}
-        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
-        pointerEvents="none"
-      >
-        <Defs>
-          <LinearGradient id="customDbBg" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.03" stopColor="#705648" />
-            <Stop offset="0.52" stopColor="#69736E" />
-            <Stop offset="1" stopColor="#000000" />
-          </LinearGradient>
-        </Defs>
-        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#customDbBg)" />
-      </Svg>
-      )}
-
-      {/* No title, no arrow in the corner: the capsule holds the way out,
-          the tile the user came from said the name, and the row cost the
-          records a screenful. What is left of the header is the line the
-          tabs start on - the same one as every other database. */}
-      {/* THE HEADER FLOATS on a phone (the user's, 2026-10-02: "велика
-          плашка, яка закриває частину контенту ... картки можуть уходити
-          вгору до краю екрану"): the room for the bar and the two capsule
-          rows lie OVER the records, see-through, and the records start at
-          the screen's edge with this much room inside them (headerHeight)
-          - the documents' own arrangement. Under a mouse it stays a row
-          of its own. The empty parts pass every touch to the cards
-          below. */}
-      <View
-        pointerEvents="box-none"
-        style={floatHeader ? styles.floatingHeader : null}
-        onLayout={floatHeader ? (e) => setHeaderHeight(Math.round(e.nativeEvent.layout.height)) : undefined}
-      >
-      <View pointerEvents="none" style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
-      {isFocused && bar && !desk && !paneBar && (
-        <TopNavBar title={{ icon: database?.icon ?? 'grid-outline', label: database?.name || 'База' }} />
-      )}
-      <SearchCorner
-        visible={!chromeTools && isFocused && !isSelectMode}
-        open={isSearching}
-        query={searchQuery}
-        onChangeQuery={setSearchQuery}
-        placeholder="Пошук у базі"
-        soft={!!softDb}
-        onOpen={() => setIsSearching(true)}
-        onClose={() => {
-          setSearchQuery('');
-          setIsSearching(false);
-        }}
-      />
-      {/* The open field is the corner's, over the screen; this keeps its
-          room so the rows start below it. */}
-      {isSearching && !bar && <View pointerEvents="none" style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
-
-      {/* Which vigляд is on screen - "Поточні зміни" (the working area,
-          always first, per its own comment on activeViewId) plus every
-          saved one, Notion-style tabs replacing the old shape popover.
-          Switching a capsule is the only thing this row does; managing
-          the views themselves (rename/delete/edit/project) lives in
-          Параметри → Налаштування виглядів now. */}
-      {!chromeTools && (
-      <View style={styles.controlsRow} pointerEvents="box-none">
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.viewCapsuleRow}
-        >
-          <Pressable
-            style={[styles.viewCapsule, activeViewId === null && styles.viewCapsuleActive]}
-            onPress={() => selectCapsule(null)}
-          >
-            <Ionicons
-              name="ellipse-outline"
-              size={12}
-              color={activeViewId === null ? (softDb ? softDb.chrome : '#0B1220') : softDb ? softDb.ink2 : 'rgba(255,255,255,0.75)'}
-            />
-            <Text style={[styles.viewCapsuleLabel, activeViewId === null && styles.viewCapsuleLabelActive]}>
-              Поточні зміни
-            </Text>
-          </Pressable>
-          {savedViews.map((view) => {
-            const active = activeViewId === view.id;
-            return (
-              <Pressable
-                key={view.id}
-                style={[styles.viewCapsule, active && styles.viewCapsuleActive]}
-                onPress={() => selectCapsule(view.id)}
-              >
-                <Ionicons
-                  name={(view.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[view.viewMode]}
-                  size={12}
-                  color={active ? (softDb ? softDb.chrome : '#0B1220') : softDb ? softDb.ink2 : 'rgba(255,255,255,0.75)'}
-                />
-                <Text style={[styles.viewCapsuleLabel, active && styles.viewCapsuleLabelActive]} numberOfLines={1}>
-                  {view.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-      )}
-
-      {/* The tabs have this row to themselves now that the capsule stands
-          on the rail. Under a bar the project is a condition in «Подача»'s filter instead. */}
-      {!chromeTools && (
-      <View style={styles.controlsRow} pointerEvents="box-none">
-        {groups.length > 0 ? (
-          <ProjectTabsRow
-            items={groups}
-            selected={groupFilter}
-            onSelect={setGroupFilter}
-            unassignedLabel="Без проекту"
-            dark
-            endPadding={20}
-          />
-        ) : (
-          <View pointerEvents="none" style={styles.controlsSpacer} />
-        )}
-      </View>
-      )}
-      </View>
-
-      {/* The saved views, hanging from their button at the bar's edge. */}
-      <Menu
-        soft={softDb}
-        visible={viewsMenuOpen && bar}
-        onClose={() => setViewsMenuOpen(false)}
-        style={{ position: 'absolute', right: (windowWidth - topBarFrame(windowWidth).width) / 2, top: insets.top + CHROME_TOP + TOP_NAV_H + 8 }}
-        entries={[
-          { label: 'Поточні зміни', icon: 'ellipse-outline', checked: activeViewId === null, onPress: () => { setViewsMenuOpen(false); selectCapsule(null); } },
-          ...savedViews.map((view) => ({
-            label: view.name,
-            icon: ((view.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[view.viewMode]) as keyof typeof Ionicons.glyphMap,
-            checked: activeViewId === view.id,
-            onPress: () => {
-              setViewsMenuOpen(false);
-              selectCapsule(view.id);
-            },
-          })),
-          { kind: 'rule' as const },
-          { label: 'Новий вигляд', icon: 'add-circle-outline', onPress: () => { setViewsMenuOpen(false); confirmSaveNewView(); } },
-          { label: 'Керування', icon: 'settings-outline', onPress: () => { setViewsMenuOpen(false); setViewsManagerVisible(true); } },
-        ]}
-      />
-
-      <Menu
-        soft={softDb}
-        visible={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        // Above the dock, where the button that opens it lives.
-        style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
-        entries={databaseMenuEntries}
-      />
-
-      {/* Sorting, filtering, grouping and representation, in one window
-          with four tabs. They started as three buttons on the rail and
-          three lists hanging off it; the user's own reading was that they
-          are one family - all four change how the same list is served up
-          - and that the shape for that is the window this app already
-          uses, a smaller screen in the middle of the screen. Representation
-          (list/table/gallery/graphic) joined the other three later, once a
-          "вигляд" stopped meaning "a shape" and started meaning "a whole
-          bundle of parameters" - the shape is just one more of them now.
-
-          The window remembers its tab per database, so the common case is
-          one tap and no thinking. Filtering keeps its two levels inside
-          its own tab: fields, then that field's values, with the back
-          step in the tab's own header rather than the window's. */}
-      <GlassLayer visible={openParam === 'params'} onClose={closeParamList} rise={RISES}>
-        <View style={[styles.layerBackdrop, BOTTOM_FRAME]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeParamList} />
-          {/* Not the whole width (the user's, 2026-10-16: «аномально витягнуте»): a window of its own size. */}
-          <BottomWindow visible={openParam === 'params'} onClose={closeParamList} style={[styles.paramsSheet, { maxWidth: 380, maxHeight: Math.min(windowHeight * 0.7, 560) }]} pad={10} glass={false}>
-            {/* Only while "редагувати" (startEditView) brought us here -
-                a reminder that changes on every tab below now write
-                straight back into this saved view (see persistParam's own
-                comment), plus its icon, which is part of "редагування"
-                itself rather than its own row button. */}
-            {editingViewId && (
-              <View style={styles.editingViewBanner}>
-                <Pressable
-                  style={styles.editingViewIconBtn}
-                  onPress={() => {
-                    setIconQuery('');
-                    setIconPickerVisible(true);
-                  }}
-                >
-                  <Ionicons
-                    name={(activeView?.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[viewMode]}
-                    size={16}
-                    color={sInk('#fff')}
-                  />
-                  <Ionicons name="pencil-outline" size={10} color={sInk2('rgba(255,255,255,0.6)')} />
-                </Pressable>
-                <Text style={styles.editingViewBannerLabel} numberOfLines={1}>
-                  Редагування: {activeView?.name ?? ''}
-                </Text>
-              </View>
-            )}
-            {/* What the window is about: this base and the view in force. Then the four sections as rows, each with
-                what it is set to, wrapping - not a strip of four tabs squeezed into one line (2026-10-16, the user's:
-                «ми що, не вміємо в перенесення строчок»). */}
-            <View style={styles.paramsHead}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={[styles.paramsSheetTitle, { flex: 0 }]} numberOfLines={1}>
-                  Налаштування вигляду
-                </Text>
-                <Text style={styles.paramsHeadSub} numberOfLines={1}>
-                  {database.name} · {activeView?.name ?? 'Поточні зміни'}
-                </Text>
-              </View>
-              <Pressable hitSlop={8} style={styles.paramsClose} onPress={closeParamList}>
-                <Ionicons name="close" size={18} color={sInk2('rgba(255,255,255,0.7)')} />
-              </Pressable>
-            </View>
-            <ScrollView keyboardShouldPersistTaps="handled" style={styles.paramsBody}>
+  // THE PARAMETERS (sort, filter, group, representation) drawn once: in the bottom window on the phone, and docked in the right panel on the Mac.
+  const paramsBodyNode = (
+    <ScrollView keyboardShouldPersistTaps="handled" style={styles.paramsBody}>
               {paramSections.map((tab) => {
                 const open = paramsTab === tab.key && !paramsFolded;
                 return (
@@ -4408,6 +4197,252 @@ export default function CustomDatabaseScreen({
                 );
               })}
             </ScrollView>
+  );
+
+  panelSlotRef.current = paramsPanelOn ? (
+    <CustomBasePanel
+      title={database.name || 'База'}
+      count={`${displayedRows.length} записів`}
+      views={[
+        { id: null, name: 'Поточні зміни', icon: 'ellipse-outline', active: activeViewId === null, onPress: () => selectCapsule(null) },
+        ...savedViews.map((view) => ({
+          id: view.id,
+          name: view.name,
+          icon: (view.icon as string | undefined) ?? (VIEW_ICONS[view.viewMode] as string),
+          active: activeViewId === view.id,
+          onPress: () => selectCapsule(view.id),
+        })),
+      ]}
+      onNewView={confirmSaveNewView}
+    >
+      {paramsBodyNode}
+    </CustomBasePanel>
+  ) : null;
+
+  return (
+    <SoftSurfaceContext.Provider value={softDb}>
+    <View style={styles.container}>
+      {softDb ? (
+        <ScreenGround color={softDb.bg} />
+      ) : (
+      <Svg
+        width={windowWidth + 2}
+        height={windowHeight + 2}
+        style={[StyleSheet.absoluteFill, { top: -1, left: -1 }]}
+        pointerEvents="none"
+      >
+        <Defs>
+          <LinearGradient id="customDbBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0.03" stopColor="#705648" />
+            <Stop offset="0.52" stopColor="#69736E" />
+            <Stop offset="1" stopColor="#000000" />
+          </LinearGradient>
+        </Defs>
+        <Rect width={windowWidth + 2} height={windowHeight + 2} fill="url(#customDbBg)" />
+      </Svg>
+      )}
+
+      {/* No title, no arrow in the corner: the capsule holds the way out,
+          the tile the user came from said the name, and the row cost the
+          records a screenful. What is left of the header is the line the
+          tabs start on - the same one as every other database. */}
+      {/* THE HEADER FLOATS on a phone (the user's, 2026-10-02: "велика
+          плашка, яка закриває частину контенту ... картки можуть уходити
+          вгору до краю екрану"): the room for the bar and the two capsule
+          rows lie OVER the records, see-through, and the records start at
+          the screen's edge with this much room inside them (headerHeight)
+          - the documents' own arrangement. Under a mouse it stays a row
+          of its own. The empty parts pass every touch to the cards
+          below. */}
+      <View
+        pointerEvents="box-none"
+        style={floatHeader ? styles.floatingHeader : null}
+        onLayout={floatHeader ? (e) => setHeaderHeight(Math.round(e.nativeEvent.layout.height)) : undefined}
+      >
+      <View pointerEvents="none" style={{ height: insets.top + CHROME_TOP + 8 + (bar ? TOP_NAV_SPACE : 0) }} />
+      {isFocused && bar && !desk && !paneBar && (
+        <TopNavBar title={{ icon: database?.icon ?? 'grid-outline', label: database?.name || 'База' }} />
+      )}
+      <SearchCorner
+        visible={!chromeTools && isFocused && !isSelectMode}
+        open={isSearching}
+        query={searchQuery}
+        onChangeQuery={setSearchQuery}
+        placeholder="Пошук у базі"
+        soft={!!softDb}
+        onOpen={() => setIsSearching(true)}
+        onClose={() => {
+          setSearchQuery('');
+          setIsSearching(false);
+        }}
+      />
+      {/* The open field is the corner's, over the screen; this keeps its
+          room so the rows start below it. */}
+      {isSearching && !bar && <View pointerEvents="none" style={{ height: searchCornerHeight(windowWidth) + 2 }} />}
+
+      {/* Which vigляд is on screen - "Поточні зміни" (the working area,
+          always first, per its own comment on activeViewId) plus every
+          saved one, Notion-style tabs replacing the old shape popover.
+          Switching a capsule is the only thing this row does; managing
+          the views themselves (rename/delete/edit/project) lives in
+          Параметри → Налаштування виглядів now. */}
+      {!chromeTools && (
+      <View style={styles.controlsRow} pointerEvents="box-none">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.viewCapsuleRow}
+        >
+          <Pressable
+            style={[styles.viewCapsule, activeViewId === null && styles.viewCapsuleActive]}
+            onPress={() => selectCapsule(null)}
+          >
+            <Ionicons
+              name="ellipse-outline"
+              size={12}
+              color={activeViewId === null ? (softDb ? softDb.chrome : '#0B1220') : softDb ? softDb.ink2 : 'rgba(255,255,255,0.75)'}
+            />
+            <Text style={[styles.viewCapsuleLabel, activeViewId === null && styles.viewCapsuleLabelActive]}>
+              Поточні зміни
+            </Text>
+          </Pressable>
+          {savedViews.map((view) => {
+            const active = activeViewId === view.id;
+            return (
+              <Pressable
+                key={view.id}
+                style={[styles.viewCapsule, active && styles.viewCapsuleActive]}
+                onPress={() => selectCapsule(view.id)}
+              >
+                <Ionicons
+                  name={(view.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[view.viewMode]}
+                  size={12}
+                  color={active ? (softDb ? softDb.chrome : '#0B1220') : softDb ? softDb.ink2 : 'rgba(255,255,255,0.75)'}
+                />
+                <Text style={[styles.viewCapsuleLabel, active && styles.viewCapsuleLabelActive]} numberOfLines={1}>
+                  {view.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+      )}
+
+      {/* The tabs have this row to themselves now that the capsule stands
+          on the rail. Under a bar the project is a condition in «Подача»'s filter instead. */}
+      {!chromeTools && (
+      <View style={styles.controlsRow} pointerEvents="box-none">
+        {groups.length > 0 ? (
+          <ProjectTabsRow
+            items={groups}
+            selected={groupFilter}
+            onSelect={setGroupFilter}
+            unassignedLabel="Без проекту"
+            dark
+            endPadding={20}
+          />
+        ) : (
+          <View pointerEvents="none" style={styles.controlsSpacer} />
+        )}
+      </View>
+      )}
+      </View>
+
+      {/* The saved views, hanging from their button at the bar's edge. */}
+      <Menu
+        soft={softDb}
+        visible={viewsMenuOpen && bar}
+        onClose={() => setViewsMenuOpen(false)}
+        style={{ position: 'absolute', right: (windowWidth - topBarFrame(windowWidth).width) / 2, top: insets.top + CHROME_TOP + TOP_NAV_H + 8 }}
+        entries={[
+          { label: 'Поточні зміни', icon: 'ellipse-outline', checked: activeViewId === null, onPress: () => { setViewsMenuOpen(false); selectCapsule(null); } },
+          ...savedViews.map((view) => ({
+            label: view.name,
+            icon: ((view.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[view.viewMode]) as keyof typeof Ionicons.glyphMap,
+            checked: activeViewId === view.id,
+            onPress: () => {
+              setViewsMenuOpen(false);
+              selectCapsule(view.id);
+            },
+          })),
+          { kind: 'rule' as const },
+          { label: 'Новий вигляд', icon: 'add-circle-outline', onPress: () => { setViewsMenuOpen(false); confirmSaveNewView(); } },
+          { label: 'Керування', icon: 'settings-outline', onPress: () => { setViewsMenuOpen(false); setViewsManagerVisible(true); } },
+        ]}
+      />
+
+      <Menu
+        soft={softDb}
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        // Above the dock, where the button that opens it lives.
+        style={{ position: 'absolute', right: 16, bottom: dockClear + insets.bottom }}
+        entries={databaseMenuEntries}
+      />
+
+      {/* Sorting, filtering, grouping and representation, in one window
+          with four tabs. They started as three buttons on the rail and
+          three lists hanging off it; the user's own reading was that they
+          are one family - all four change how the same list is served up
+          - and that the shape for that is the window this app already
+          uses, a smaller screen in the middle of the screen. Representation
+          (list/table/gallery/graphic) joined the other three later, once a
+          "вигляд" stopped meaning "a shape" and started meaning "a whole
+          bundle of parameters" - the shape is just one more of them now.
+
+          The window remembers its tab per database, so the common case is
+          one tap and no thinking. Filtering keeps its two levels inside
+          its own tab: fields, then that field's values, with the back
+          step in the tab's own header rather than the window's. */}
+      <GlassLayer visible={openParam === 'params'} onClose={closeParamList} rise={RISES}>
+        <View style={[styles.layerBackdrop, BOTTOM_FRAME]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeParamList} />
+          {/* Not the whole width (the user's, 2026-10-16: «аномально витягнуте»): a window of its own size. */}
+          <BottomWindow visible={openParam === 'params'} onClose={closeParamList} style={[styles.paramsSheet, { maxWidth: 380, maxHeight: Math.min(windowHeight * 0.7, 560) }]} pad={10} glass={false}>
+            {/* Only while "редагувати" (startEditView) brought us here -
+                a reminder that changes on every tab below now write
+                straight back into this saved view (see persistParam's own
+                comment), plus its icon, which is part of "редагування"
+                itself rather than its own row button. */}
+            {editingViewId && (
+              <View style={styles.editingViewBanner}>
+                <Pressable
+                  style={styles.editingViewIconBtn}
+                  onPress={() => {
+                    setIconQuery('');
+                    setIconPickerVisible(true);
+                  }}
+                >
+                  <Ionicons
+                    name={(activeView?.icon as keyof typeof Ionicons.glyphMap | undefined) ?? VIEW_ICONS[viewMode]}
+                    size={16}
+                    color={sInk('#fff')}
+                  />
+                  <Ionicons name="pencil-outline" size={10} color={sInk2('rgba(255,255,255,0.6)')} />
+                </Pressable>
+                <Text style={styles.editingViewBannerLabel} numberOfLines={1}>
+                  Редагування: {activeView?.name ?? ''}
+                </Text>
+              </View>
+            )}
+            {/* What the window is about: this base and the view in force. Then the four sections as rows, each with
+                what it is set to, wrapping - not a strip of four tabs squeezed into one line (2026-10-16, the user's:
+                «ми що, не вміємо в перенесення строчок»). */}
+            <View style={styles.paramsHead}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[styles.paramsSheetTitle, { flex: 0 }]} numberOfLines={1}>
+                  Налаштування вигляду
+                </Text>
+                <Text style={styles.paramsHeadSub} numberOfLines={1}>
+                  {database.name} · {activeView?.name ?? 'Поточні зміни'}
+                </Text>
+              </View>
+              <Pressable hitSlop={8} style={styles.paramsClose} onPress={closeParamList}>
+                <Ionicons name="close" size={18} color={sInk2('rgba(255,255,255,0.7)')} />
+              </Pressable>
+            </View>
+            {paramsBodyNode}
           </BottomWindow>
         </View>
       </GlassLayer>
