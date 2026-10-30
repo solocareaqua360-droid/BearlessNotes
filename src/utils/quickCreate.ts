@@ -3,6 +3,7 @@ import { arrayUnion, collection, deleteDoc, doc, updateDoc } from '../firestore'
 import { db } from '../firebase';
 import { addDoc, setDoc } from './owned';
 import { buildBlock, generateId } from './documentBlocks';
+import { parsePastedText } from './pasteBlocks';
 import { blockFromFile, blockFromPhoto, createTaskInToday, createTaskOnDate } from './copyToNote';
 import { WORLD_CENTER } from './boardLayout';
 import { copyPickedFile } from './localCopy';
@@ -33,6 +34,23 @@ const collectionOf = (a: Attachment) => (a.kind === 'photo' ? 'photos' : 'files'
 // Paragraph blocks from lines (blank lines dropped - the editor's own blank block is not made by typing Enter twice).
 export function paragraphsFrom(lines: string[]): Block[] {
   return lines.filter((l) => l.trim()).map((l) => buildBlock(generateId(), 'paragraph', l));
+}
+
+// THE TEXT OF A NOTE, read as the editor reads a paste (2026-10-30, the user's: a chat answer pasted into this window
+// arrived as raw «| a | b |» lines, pasted into an open note it became a table): headings, lists, checkboxes, code and
+// tables are made what they say. Plain text with none of that keeps the window's own way - a line a paragraph.
+export function blocksFromText(text: string): Block[] {
+  const parsed = parsePastedText(text);
+  if (!parsed.some((p) => p.type !== 'paragraph')) return paragraphsFrom(linesOf(text));
+  return parsed.map((piece) => {
+    const block = buildBlock(generateId(), piece.type, piece.text);
+    if (piece.checked) block.checked = true;
+    if (piece.headingLevel) block.headingLevel = piece.headingLevel;
+    if (piece.indent) block.indent = piece.indent;
+    if (piece.codeLanguage) block.codeLanguage = piece.codeLanguage;
+    if (piece.tableRows) block.tableRows = piece.tableRows;
+    return block;
+  });
 }
 
 export function blocksFromAttachments(list: Attachment[]): Block[] {
@@ -96,7 +114,7 @@ export async function quickCreateDocument(text: string, folder: Tag | null, atta
     title: 'Без назви',
     createdAt: now,
     updatedAt: now,
-    blocks: [...paragraphsFrom(linesOf(text)), ...blocksFromAttachments(attachments)],
+    blocks: [...blocksFromText(text), ...blocksFromAttachments(attachments)],
   });
   if (folder) await attachTag(folder, 'document', ref.id, ITEMS_COLLECTION_BY_KIND.document);
   await markUsed(attachments, ref.id);
@@ -141,7 +159,7 @@ export async function quickAddToDay(text: string, attachments: Attachment[] = []
   await setDoc(
     doc(db, 'documents', documentId),
     {
-      blocks: arrayUnion(...paragraphsFrom(linesOf(text)), ...blocksFromAttachments(attachments)),
+      blocks: arrayUnion(...blocksFromText(text), ...blocksFromAttachments(attachments)),
       calendarDate: dayKey,
       updatedAt: Date.now(),
     },
@@ -154,7 +172,7 @@ export async function quickAddToDay(text: string, attachments: Attachment[] = []
 // LINES FOR A NOTE that is already there.
 export async function quickAppendToDocument(documentId: string, text: string, attachments: Attachment[] = []): Promise<void> {
   await updateDoc(doc(db, 'documents', documentId), {
-    blocks: arrayUnion(...paragraphsFrom(linesOf(text)), ...blocksFromAttachments(attachments)),
+    blocks: arrayUnion(...blocksFromText(text), ...blocksFromAttachments(attachments)),
     updatedAt: Date.now(),
   });
   await markUsed(attachments, documentId);
