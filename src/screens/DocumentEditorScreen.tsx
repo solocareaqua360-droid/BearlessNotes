@@ -247,7 +247,7 @@ import DayTasksBlock from '../components/DayTasksBlock';
 import { ensureDayBoard } from '../utils/dayBoard';
 import { copyNoteWithNested } from '../utils/copyNote';
 import { DESK_PILL_W } from '../components/DeskDock';
-import { blocksToMarkdown } from '../utils/blocksText';
+import { blocksToMarkdown, documentToMarkdown } from '../utils/blocksText';
 import { holdBlocks, takeHeldBlocks } from '../utils/blockClipboard';
 import { startNaming } from '../utils/docRefNaming';
 import SelectModeSheet, { type ExtraLook, type LookKind } from '../components/SelectModeSheet';
@@ -5089,6 +5089,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (destUri) showDownloadToast(fileName, destUri, 'text/plain');
   }
 
+  // THE NOTE AS A .md FILE (2026-10-31): headings, lists, checkboxes, code and tables in Markdown; pictures and files by name (one note
+  // alone has nowhere to keep them - a folder's zip carries them beside it).
+  async function exportAsMarkdown() {
+    setLookOpen(false);
+    const text = documentToMarkdown(title, blocks);
+    const fileName = `${sanitizeFileName(title)}.md`;
+    if (Platform.OS === 'web') {
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' }));
+      await downloadToDevice(url, fileName, 'text/markdown');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      return;
+    }
+    const tempUri = `${LegacyFileSystem.cacheDirectory}${generateId()}.md`;
+    await LegacyFileSystem.writeAsStringAsync(tempUri, text, { encoding: 'utf8' });
+    const destUri = await downloadToDevice(tempUri, fileName, 'text/markdown');
+    if (destUri) showDownloadToast(fileName, destUri, 'text/markdown');
+  }
+
   function openReminderBlock(id: string) {
     setReminderBlockId(id);
   }
@@ -6254,10 +6272,12 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       actions: [
         { id: 'pdf', label: 'У PDF' },
         { id: 'txt', label: 'У TXT' },
+        { id: 'md', label: 'У Markdown (.md)' },
       ],
     }).then((id) => {
       if (id === 'pdf') exportAsPdf();
       else if (id === 'txt') exportAsTxt();
+      else if (id === 'md') exportAsMarkdown();
     });
   }
 

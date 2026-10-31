@@ -6,7 +6,12 @@ import { displayValueOf, indentOf, listNumbers } from './documentBlocks';
 // What cannot be text (a photo, a file, a note card, a record) is written as its name in brackets: outside the app that is
 // what it reads as, and inside the app the paste is matched to the blocks themselves (utils/blockClipboard) and they come
 // back whole.
-export function blocksToMarkdown(blocks: Block[]): string {
+export function blocksToMarkdown(
+  blocks: Block[],
+  // A .md FILE (2026-10-31, «експорт документа в md»): tables as Markdown tables (the clipboard keeps tabs, which a spreadsheet
+  // pastes as cells), headings one level down (the note's title is the file's «#»), a picture or file named by its file.
+  file?: { headingShift?: number; pipeTables?: boolean; assetPath?: (b: Block) => string | null }
+): string {
   const out: string[] = [];
   // Step-aware numbering, and a sub-item two spaces in per step (Block.indent) - Markdown's own nesting.
   const numbers = listNumbers(blocks);
@@ -16,7 +21,7 @@ export function blocksToMarkdown(blocks: Block[]): string {
     const text = b.text ?? '';
     switch (type) {
       case 'heading':
-        out.push(`${'#'.repeat(Math.min(3, Math.max(1, b.headingLevel ?? 2)))} ${text}`);
+        out.push(`${'#'.repeat(Math.min(6, Math.max(1, (b.headingLevel ?? 2) + (file?.headingShift ?? 0))))} ${text}`);
         return;
       case 'bulleted':
         out.push(`${pad}- ${text}`);
@@ -35,6 +40,13 @@ export function blocksToMarkdown(blocks: Block[]): string {
         return;
       case 'table': {
         const rows = b.tableRows ?? [];
+        if (file?.pipeTables && rows.length > 0) {
+          const cell = (r: number, c: number) => displayValueOf(rows, r, c).replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+          const lines = rows.map((row, r) => `| ${row.cells.map((_, c) => cell(r, c)).join(' | ')} |`);
+          lines.splice(1, 0, `|${rows[0].cells.map(() => '---').join('|')}|`);
+          out.push(lines.join('\n'));
+          return;
+        }
         out.push(rows.map((row, r) => row.cells.map((_, c) => displayValueOf(rows, r, c)).join('\t')).join('\n'));
         return;
       }
@@ -42,12 +54,16 @@ export function blocksToMarkdown(blocks: Block[]): string {
       case 'toggle':
         if (text) out.push(text);
         return;
-      case 'image':
-        out.push(b.imageTitle ? `[Фото: ${b.imageTitle}]` : '[Фото]');
+      case 'image': {
+        const path = file?.assetPath?.(b);
+        out.push(path ? `![${b.imageTitle || 'Фото'}](${encodeURI(path)})` : b.imageTitle ? `[Фото: ${b.imageTitle}]` : '[Фото]');
         return;
-      case 'file':
-        out.push(`[Файл: ${b.fileName || 'без назви'}]`);
+      }
+      case 'file': {
+        const path = file?.assetPath?.(b);
+        out.push(path ? `[${b.fileName || 'Файл'}](${encodeURI(path)})` : `[Файл: ${b.fileName || 'без назви'}]`);
         return;
+      }
       case 'sketch':
         out.push('[Малюнок]');
         return;
@@ -74,4 +90,10 @@ export function blocksToMarkdown(blocks: Block[]): string {
     }
   });
   return out.join('\n\n');
+}
+
+// A NOTE AS A .md FILE: its title as the «#», then its blocks (see blocksToMarkdown's `file`).
+export function documentToMarkdown(title: string, blocks: Block[], assetPath?: (b: Block) => string | null): string {
+  const body = blocksToMarkdown(blocks, { headingShift: 1, pipeTables: true, assetPath });
+  return `# ${title.trim() || 'Без назви'}\n\n${body}\n`;
 }

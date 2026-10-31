@@ -10,7 +10,9 @@ export function useFilePreview(file: { id: string; fileName: string; fileUri?: s
   const [, bump] = useState(0);
   useEffect(() => subscribeToPreviews(() => bump((n) => n + 1)), []);
 
-  const kind = quickLookKindFor(file.fileName);
+  // Only what the worker can draw a card of: a .md, a slide deck or an archive opens in the quick look but has no thumbnail.
+  const found = quickLookKindFor(file.fileName);
+  const kind = found === 'docx' || found === 'xlsx' || found === 'pdf' ? found : null;
   useEffect(() => {
     if (!kind || !file.fileUri) return;
     requestPreview({ id: file.id, uri: file.fileUri, kind });

@@ -63,6 +63,10 @@ import FlashcardReader from '../components/FlashcardReader';
 import FlashcardEditor from '../components/FlashcardEditor';
 import { ensureFileIsHere, openFileExternally, shareFile } from '../utils/openFileExternally';
 import { holdAsk } from '../components/surfaces/HoldAsk';
+import { folderToZip } from '../utils/folderZip';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { downloadToDevice, sanitizeFileName } from '../utils/documentBlocks';
+
 import { DesksControlContext, deskFace } from '../navigation/desks';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { openStartBase, useStartBases } from '../navigation/startBases';
@@ -1728,6 +1732,20 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       folderHeld.current = false;
     }
   }
+  // THE FOLDER AS A ZIP (2026-10-31): built here, saved where the person picks, as a note's PDF is (downloadToDevice).
+  async function exportFolderZip(f: FolderEntry) {
+    notify('Збираю архів', `«${f.name}» з усіма вкладеними папками. Це може зайняти хвилину, якщо фото на Диску.`);
+    try {
+      const { base64, files, skipped } = await folderToZip(f.path, f.name, tags, all);
+      const fileName = `${sanitizeFileName(f.name) || 'Папка'}.zip`;
+      const tempUri = `${LegacyFileSystem.cacheDirectory}${Date.now()}.zip`;
+      await LegacyFileSystem.writeAsStringAsync(tempUri, base64, { encoding: 'base64' });
+      const dest = await downloadToDevice(tempUri, fileName, 'application/zip');
+      if (dest) notify('Архів збережено', `${fileName}: ${files} файлів${skipped ? `, ${skipped} пропущено (дошки, картки, записи або недоступні фото)` : ''}.`);
+    } catch (e) {
+      notify('Не вдалося зібрати архів', (e as Error).message);
+    }
+  }
   async function holdFolderMenu(f: FolderEntry) {
     // A BASE'S COLLECTION placed here (2026-10-15): it has no icon or colour of its own (its face is its content), it can
     // be taken back out of the explorer - it stays in its base - and deleting it deletes the collection itself.
@@ -1742,6 +1760,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         ...(coll ? [] : [{ id: 'look', label: 'Іконка й колір', icon: 'color-palette-outline' as const }]),
         { id: 'card', label: 'Вигляд картки', icon: 'albums-outline' as const },
         ...(FEATURES.explorerProjects && !coll ? [{ id: 'projects', label: 'Проєкти…', icon: 'folder-open-outline' as const }] : []),
+        // A folder as a .zip (utils/folderZip) - the phone; the laptop reads files another way, not built there yet.
+        ...(Platform.OS !== 'web' ? [{ id: 'zip', label: 'Експорт у zip', icon: 'archive-outline' as const }] : []),
         ...(coll ? [{ id: 'unplace', label: 'Прибрати з провідника', icon: 'eye-off-outline' as const }] : []),
         { id: 'delete', label: coll ? 'Видалити підбірку' : 'Видалити папку', icon: 'trash-outline' as const, tone: 'danger' as const },
       ],
@@ -1767,6 +1787,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       } catch (e) {
         notify('Не вдалося видалити', (e as Error).message);
       }
+      return;
+    }
+    if (choice === 'zip') {
+      exportFolderZip(f);
       return;
     }
     if (choice === 'rename') setRenamingFolder(f);

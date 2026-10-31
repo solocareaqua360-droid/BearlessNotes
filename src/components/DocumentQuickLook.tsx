@@ -12,6 +12,11 @@ import { FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { GLASS_TEXT, GLASS_TEXT_MUTED } from '../constants/glass';
 import { useSoft } from '../theme/soft';
 import { topBarFrame } from './TopNavBar';
+import { readZip, bytesToBase64 } from '../utils/zip';
+import { importMarkdown } from '../utils/markdownFile';
+import { openFileExternally } from '../utils/openFileExternally';
+import { navigationRef } from '../navigationRef';
+import { notify } from './surfaces/Ask';
 
 // A quick look at a Word, Excel or PDF file, without leaving the app and
 // without the network - the way a phone's own preview does it: the text
@@ -30,7 +35,7 @@ import { topBarFrame } from './TopNavBar';
 // inside the page as base64 - a string that size does not survive the
 // bridge to the WebView, a file does.
 
-export type QuickLookKind = 'docx' | 'xlsx' | 'pdf';
+export type QuickLookKind = 'docx' | 'xlsx' | 'pdf' | 'md' | 'pptx' | 'zip';
 
 // What this can show. Anything else goes straight to the app that opens
 // it - see openFileExternally.
@@ -39,6 +44,11 @@ export function quickLookKindFor(fileName: string): QuickLookKind | null {
   if (ext === 'docx') return 'docx';
   if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') return 'xlsx';
   if (ext === 'pdf') return 'pdf';
+  // 2026-10-31: a Markdown file (read, and taken in as a note), a slide deck (its text and pictures, a card a slide - not its layout),
+  // an archive (its files, each opened in turn).
+  if (ext === 'md' || ext === 'markdown') return 'md';
+  if (ext === 'pptx') return 'pptx';
+  if (ext === 'zip') return 'zip';
   return null;
 }
 
@@ -59,7 +69,77 @@ async function readAsset(module: number): Promise<string> {
 
 function pageFor(kind: QuickLookKind, base64: string, library: string): string {
   const convert =
-    kind === 'docx'
+    kind === 'md'
+      ? `var text = new TextDecoder('utf-8').decode(bytes).replace(/^\\uFEFF/, '');
+         root.innerHTML = renderMarkdown(text) || '<p class="muted">Порожній файл</p>';
+         allDone = true; pageDone();`
+      : kind === 'pptx'
+      ? `var cfb = XLSX.CFB.read(bytes, { type: 'array' });
+         var find = function (p) { var e = XLSX.CFB.find(cfb, p) || XLSX.CFB.find(cfb, '/' + p); return e && e.content ? new Uint8Array(e.content) : null; };
+         var decode = function (u) { return new TextDecoder('utf-8').decode(u); };
+         var slides = [];
+         cfb.FullPaths.forEach(function (p) { var m = p.match(/ppt\\/slides\\/slide(\\d+)\\.xml$/); if (m) slides.push(+m[1]); });
+         slides.sort(function (a, b) { return a - b; });
+         var html = '';
+         slides.forEach(function (n) {
+           var xml = find('ppt/slides/slide' + n + '.xml');
+           if (!xml) return;
+           var docx = new DOMParser().parseFromString(decode(xml), 'application/xml');
+           var paras = [];
+           var ps = docx.getElementsByTagNameNS('*', 'p');
+           for (var i = 0; i < ps.length; i++) {
+             var ts = ps[i].getElementsByTagNameNS('*', 't'), line = '';
+             for (var j = 0; j < ts.length; j++) line += ts[j].textContent;
+             if (line.trim()) paras.push(line);
+           }
+           var pics = '';
+           var rels = find('ppt/slides/_rels/slide' + n + '.xml.rels');
+           if (rels) {
+             var rd = new DOMParser().parseFromString(decode(rels), 'application/xml').getElementsByTagNameNS('*', 'Relationship');
+             for (var r = 0; r < rd.length; r++) {
+               var type = rd[r].getAttribute('Type') || '', target = rd[r].getAttribute('Target') || '';
+               if (!/\\/image$/.test(type)) continue;
+               var path = 'ppt/' + target.replace(/^\\.\\.\\//, '');
+               var img = find(path);
+               if (!img) continue;
+               var ext = (path.split('.').pop() || 'png').toLowerCase();
+               if (ext === 'emf' || ext === 'wmf') continue;
+               var bin = '';
+               for (var k = 0; k < img.length; k += 8192) bin += String.fromCharCode.apply(null, img.subarray(k, k + 8192));
+               pics += '<img src="data:image/' + (ext === 'jpg' ? 'jpeg' : ext) + ';base64,' + btoa(bin) + '">';
+             }
+           }
+           html += '<div class="slide"><div class="num">Слайд ' + n + '</div>' +
+             (paras.length ? '<h3>' + esc(paras[0]) + '</h3>' + paras.slice(1).map(function (t) { return '<p>' + esc(t) + '</p>'; }).join('') : '') +
+             pics + '</div>';
+         });
+         root.innerHTML = html || '<p class="muted">У презентації не знайшлося слайдів</p>';
+         allDone = true; pageDone();`
+      : kind === 'zip'
+      ? `var cfb = XLSX.CFB.read(bytes, { type: 'array' });
+         var rows = [];
+         cfb.FileIndex.forEach(function (f, i) {
+           if (f.type !== 2 || !f.content) return;
+           var raw = (cfb.FullPaths[i] || f.name).replace(/^Root Entry\\//, '');
+           var name = raw;
+           try { name = new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(raw.split('').map(function (c) { return c.charCodeAt(0) & 255; }))); } catch (e) {}
+           if (name.charAt(0) === '\\u0001' || /\\/$/.test(name) || name.indexOf('__MACOSX/') === 0) return;
+           rows.push({ name: name, size: f.content.length });
+         });
+         rows.sort(function (a, b) { return a.name.localeCompare(b.name); });
+         var kb = function (n) { return n < 1024 ? n + ' Б' : n < 1048576 ? Math.round(n / 1024) + ' КБ' : (n / 1048576).toFixed(1) + ' МБ'; };
+         root.innerHTML = rows.length
+           ? '<p class="muted">' + rows.length + ' файлів у архіві. Натисни файл, щоб відкрити.</p>' + rows.map(function (r) {
+               var parts = r.name.split('/'), file = parts.pop();
+               return '<div class="zrow" data-name="' + esc(r.name) + '"><div class="zname">' + esc(file) + '</div><div class="zmeta">' + (parts.length ? esc(parts.join(' / ')) + ' · ' : '') + kb(r.size) + '</div></div>';
+             }).join('')
+           : '<p class="muted">Архів порожній</p>';
+         root.addEventListener('click', function (ev) {
+           var row = ev.target.closest ? ev.target.closest('.zrow') : null;
+           if (row && window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ open: row.getAttribute('data-name') }));
+         });
+         allDone = true; pageDone();`
+      : kind === 'docx'
       ? `mammoth.convertToHtml({ arrayBuffer: bytes.buffer })
            .then(function (r) { root.innerHTML = r.value || '<p class="muted">Порожній документ</p>'; allDone = true; pageDone(); })
            .catch(function (e) { fail(e); });`
@@ -150,6 +230,23 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
   td.hitcell { background: #FBEDE1; }
   td.curcell { background: #F5DCC6; }
   .muted { color: #9CA3AF; }
+  h1.md, h2.md, h3.md, h4.md { font-size: inherit; color: #111827; text-transform: none; letter-spacing: 0; }
+  h1.md { font-size: 24px; } h2.md { font-size: 20px; } h3.md { font-size: 17px; }
+  .li { margin: 3px 0; }
+  pre { background: #F3F4F6; border-radius: 8px; padding: 10px; overflow-x: auto; font-size: 13px; }
+  code { background: #F3F4F6; border-radius: 4px; padding: 0 3px; }
+  pre code { background: none; padding: 0; }
+  blockquote { margin: 8px 0; padding: 6px 12px; border-radius: 8px; background: #F5F3EE; }
+  th { background: #F5F3EE; text-align: left; }
+  hr { border: none; border-top: 1px solid #E5E7EB; margin: 14px 0; }
+  .slide { border: 1px solid #E5E7EB; border-radius: 14px; padding: 14px 16px; margin: 0 0 14px; }
+  .slide .num { font-size: 12px; color: #9CA3AF; margin-bottom: 6px; }
+  .slide h3 { margin: 0 0 8px; font-size: 18px; }
+  .slide p { margin: 4px 0; }
+  .slide img { display: block; margin: 10px auto 0; border-radius: 8px; max-height: 360px; }
+  .zrow { padding: 12px 4px; border-bottom: 1px solid #F0EFEA; }
+  .zname { font-size: 16px; color: #111827; word-break: break-word; }
+  .zmeta { font-size: 13px; color: #9CA3AF; margin-top: 2px; }
   .error { color: #B91C1C; }
 </style></head><body>
 <div id="root" class="scroll"><p class="muted">Відкриваю…</p></div>
@@ -233,6 +330,42 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
     if (Q) find(Q, true);
     else post();
   }
+  function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  // MARKDOWN, enough to read a note written in it: headings, lists, checkboxes, quotes, code, rules, tables, bold/italic/code/links.
+  function inline(t) {
+    return esc(t)
+      .replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, '<span class="muted">[$1]</span>')
+      .replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2">$1</a>')
+      .replace(/\\*\\*([^*]+)\\*\\*/g, '<b>$1</b>')
+      .replace(/(^|[^*])\\*([^*\\s][^*]*)\\*/g, '$1<i>$2</i>')
+      .replace(/\`([^\`]+)\`/g, '<code>$1</code>')
+      .replace(/~~([^~]+)~~/g, '<s>$1</s>')
+      .replace(/&lt;br\\s*\\/?&gt;/gi, '<br>');
+  }
+  function renderMarkdown(src) {
+    var lines = src.replace(/\\r\\n?/g, '\\n').split('\\n'), out = [], para = [], i = 0;
+    function flush() { if (para.length) { out.push('<p>' + para.map(inline).join('<br>') + '</p>'); para = []; } }
+    while (i < lines.length) {
+      var l = lines[i], m;
+      if (/^\\s*\`\`\`/.test(l)) { flush(); var code = []; i++; while (i < lines.length && !/^\\s*\`\`\`/.test(lines[i])) code.push(lines[i++]); out.push('<pre><code>' + esc(code.join('\\n')) + '</code></pre>'); i++; continue; }
+      if (/^\\s*\\|.*\\|\\s*$/.test(l)) {
+        flush(); var rows = [];
+        while (i < lines.length && /^\\s*\\|.*\\|\\s*$/.test(lines[i])) { if (!/^\\s*\\|[\\s:|-]+\\|\\s*$/.test(lines[i])) rows.push(lines[i].trim().replace(/^\\||\\|$/g, '').split('|')); i++; }
+        out.push('<div class="scroll"><table>' + rows.map(function (r, ri) { return '<tr>' + r.map(function (c) { return (ri ? '<td>' : '<th>') + inline(c.trim()) + (ri ? '</td>' : '</th>'); }).join('') + '</tr>'; }).join('') + '</table></div>');
+        continue;
+      }
+      if (!l.trim()) { flush(); i++; continue; }
+      if ((m = l.match(/^(#{1,6})\\s+(.*)$/))) { flush(); out.push('<h' + Math.min(6, m[1].length) + ' class="md">' + inline(m[2]) + '</h' + Math.min(6, m[1].length) + '>'); i++; continue; }
+      if (/^\\s*([-*_])\\1{2,}\\s*$/.test(l)) { flush(); out.push('<hr>'); i++; continue; }
+      if ((m = l.match(/^(\\s*)[-*•]\\s+\\[([ xX])\\]\\s+(.*)$/))) { flush(); out.push('<div class="li" style="margin-left:' + (m[1].length * 9) + 'px">' + (m[2] === ' ' ? '☐' : '☑') + ' ' + inline(m[3]) + '</div>'); i++; continue; }
+      if ((m = l.match(/^(\\s*)[-*•]\\s+(.*)$/))) { flush(); out.push('<div class="li" style="margin-left:' + (m[1].length * 9) + 'px">• ' + inline(m[2]) + '</div>'); i++; continue; }
+      if ((m = l.match(/^(\\s*)(\\d+)[.)]\\s+(.*)$/))) { flush(); out.push('<div class="li" style="margin-left:' + (m[1].length * 9) + 'px">' + m[2] + '. ' + inline(m[3]) + '</div>'); i++; continue; }
+      if ((m = l.match(/^>\\s?(.*)$/))) { flush(); out.push('<blockquote>' + inline(m[1]) + '</blockquote>'); i++; continue; }
+      para.push(l); i++;
+    }
+    flush();
+    return out.join('');
+  }
   function fail(e) { root.innerHTML = '<p class="error">Не вдалося показати файл: ' + (e && e.message ? e.message : e) + '</p>'; }
   try {
     var bin = atob('${base64}');
@@ -281,6 +414,35 @@ export default function DocumentQuickLook({
     ready: false,
   });
   const [keyboardH, setKeyboardH] = useState(0);
+  // A file taken out of an archive and looked at in turn (its own quick look over this one).
+  const [inner, setInner] = useState<{ uri: string; name: string; kind: QuickLookKind } | null>(null);
+  async function openZipEntry(name: string) {
+    if (!file) return;
+    try {
+      const entry = readZip(await LegacyFileSystem.readAsStringAsync(file.uri, { encoding: 'base64' })).find((e) => e.path === name);
+      if (!entry) return;
+      const base = name.split('/').pop() || 'файл';
+      const target = `${LegacyFileSystem.cacheDirectory}zip-${Date.now()}-${base.replace(/[^\w.\-а-яіїєґА-ЯІЇЄҐ ]/g, '_')}`;
+      await LegacyFileSystem.writeAsStringAsync(target, bytesToBase64(entry.bytes), { encoding: 'base64' });
+      const kind = quickLookKindFor(base);
+      if (kind) setInner({ uri: target, name: base, kind });
+      else await openFileExternally({ fileUri: target, fileName: base });
+    } catch (e) {
+      notify('Не вдалося відкрити файл з архіву', (e as Error).message);
+    }
+  }
+  // A .md taken in as a note of the app (utils/markdownFile): it opens, the preview steps away.
+  async function importAsNote() {
+    if (!file) return;
+    try {
+      const text = await LegacyFileSystem.readAsStringAsync(file.uri, { encoding: 'utf8' });
+      const id = await importMarkdown(text, file.name);
+      onClose();
+      if (navigationRef.isReady()) (navigationRef.navigate as (n: string, p?: object) => void)('Editor', { documentId: id });
+    } catch (e) {
+      notify('Не вдалося імпортувати', (e as Error).message);
+    }
+  }
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardH(e.endCoordinates.height));
     const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardH(0));
@@ -328,9 +490,11 @@ export default function DocumentQuickLook({
     (async () => {
       try {
         const [library, base64] = await Promise.all([
-          file.kind === 'docx'
+          file.kind === 'md'
+            ? Promise.resolve('')
+            : file.kind === 'docx'
             ? readAsset(MAMMOTH)
-            : file.kind === 'xlsx'
+            : file.kind === 'xlsx' || file.kind === 'pptx' || file.kind === 'zip'
               ? readAsset(XLSX)
               : Promise.all([readAsset(PDFJS), readAsset(PDFJS_WORKER)]).then((parts) => parts.join('\n')),
           LegacyFileSystem.readAsStringAsync(file.uri, { encoding: 'base64' }),
@@ -372,6 +536,11 @@ export default function DocumentQuickLook({
                 {file?.name ?? ''}
               </Text>
             </View>
+            {file?.kind === 'md' && (
+              <Pressable hitSlop={8} onPress={importAsNote} accessibilityLabel="Імпортувати як нотатку" style={styles.pillButton}>
+                <Ionicons name="download-outline" size={19} color={S.ink} />
+              </Pressable>
+            )}
             <Pressable hitSlop={8} onPress={onOpenElsewhere} accessibilityLabel="В іншій програмі" style={styles.pillButton}>
               <Ionicons name="open-outline" size={19} color={S.ink} />
             </Pressable>
@@ -388,7 +557,9 @@ export default function DocumentQuickLook({
             ref={webRef}
             onMessage={(e) => {
               try {
-                setFound(JSON.parse(e.nativeEvent.data));
+                const data = JSON.parse(e.nativeEvent.data);
+                if (typeof data.open === 'string') openZipEntry(data.open);
+                else setFound(data);
               } catch {}
             }}
             originWhitelist={['*']}
@@ -459,10 +630,18 @@ export default function DocumentQuickLook({
       </View>
   );
 
-  if (embedded) return file ? body : null;
+  const innerLook = inner ? (
+    <DocumentQuickLook
+      file={inner}
+      onClose={() => setInner(null)}
+      onOpenElsewhere={() => openFileExternally({ fileUri: inner.uri, fileName: inner.name })}
+    />
+  ) : null;
+  if (embedded) return file ? <>{body}{innerLook}</> : null;
   return (
     <FlipModal visible={file !== null} flipFrom={flipFrom} animationType="slide" onRequestClose={onClose}>
       {body}
+      {innerLook}
     </FlipModal>
   );
 }
