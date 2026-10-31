@@ -32,9 +32,9 @@ export async function compressPickedImage(uri: string, width: number, height: nu
 // final, compressed file. Backed up to Drive in the background, same as
 // any photo.
 // `fromCamera`: the mark the Photos base's built-in «З камери» reads (it replaced the service project «Фото», 2026-10-22).
-export async function writePhotoRecord(imageUri: string, options: { groupId?: string; fromCamera?: boolean } = {}): Promise<NewPhoto> {
+export async function writePhotoRecord(imageUri: string, options: { groupId?: string; fromCamera?: boolean; id?: string } = {}): Promise<NewPhoto> {
   const now = Date.now();
-  const id = generateId();
+  const id = options.id ?? generateId();
   const data: Record<string, unknown> = {
     imageUri,
     imageFit: 'contain',
@@ -56,7 +56,9 @@ export async function writePhotoRecord(imageUri: string, options: { groupId?: st
 // nothing picked when permission is refused or the picker is cancelled.
 export async function pickPhotosFromDevice(
   source: 'gallery' | 'camera',
-  options: { groupId?: string } = {}
+  // `record: false` (2026-10-31, the one rule for pictures): only the picture is made - nothing is written to the base; the caller
+  // decides whether it ever goes there.
+  options: { groupId?: string; record?: boolean } = {}
 ): Promise<NewPhoto[]> {
   const permission =
     source === 'camera'
@@ -71,7 +73,7 @@ export async function pickPhotosFromDevice(
   const added: NewPhoto[] = [];
   for (const asset of result.assets) {
     const imageUri = await compressPickedImage(asset.uri, asset.width, asset.height);
-    added.push(await writePhotoRecord(imageUri, options));
+    added.push(options.record === false ? { id: generateId(), imageUri, createdAt: Date.now() } : await writePhotoRecord(imageUri, options));
   }
   return added;
 }

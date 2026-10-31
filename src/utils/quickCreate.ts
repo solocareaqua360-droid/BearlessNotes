@@ -56,20 +56,21 @@ export function blocksFromText(text: string): Block[] {
 export function blocksFromAttachments(list: Attachment[]): Block[] {
   return list.map((a) =>
     a.kind === 'photo'
-      ? blockFromPhoto({ id: a.id, imageUri: a.uri, driveFileId: a.driveFileId, driveBytes: a.driveBytes })
+      ? { ...blockFromPhoto({ id: a.id, imageUri: a.uri, driveFileId: a.driveFileId, driveBytes: a.driveBytes }), pageOnly: true }
       : blockFromFile({ id: a.id, fileUri: a.uri, fileName: a.name, mimeType: a.mimeType })
   );
 }
 
 // The records the attachments already are are marked as used in the note they went into (so the bases know).
 async function markUsed(list: Attachment[], documentId: string) {
-  await Promise.all(list.map((a) => setDoc(doc(db, collectionOf(a), a.id), { [`usedInDocuments.${documentId}`]: true }, { merge: true })));
+  // A picture is not a record (the one rule): only a file is marked as used.
+  await Promise.all(list.filter((a) => a.kind === 'file').map((a) => setDoc(doc(db, collectionOf(a), a.id), { [`usedInDocuments.${documentId}`]: true }, { merge: true })));
 }
 
 // ---- picking (the record is written at once, like everywhere in the app; thrown away if the window is closed) ------
 
 export async function pickPhotoAttachments(source: 'gallery' | 'camera'): Promise<Attachment[]> {
-  const added = await pickPhotosFromDevice(source);
+  const added = await pickPhotosFromDevice(source, { record: false });
   return added.map((p) => ({ id: p.id, kind: 'photo' as const, uri: p.imageUri, name: 'Фото' }));
 }
 
@@ -107,8 +108,7 @@ export async function attachmentsFromFiles(files: File[]): Promise<Attachment[]>
       } catch {
         imageUri = uri;
       }
-      const photo = await writePhotoRecord(imageUri);
-      made.push({ id: photo.id, kind: 'photo', uri: imageUri, name: file.name || 'Фото' });
+      made.push({ id: generateId(), kind: 'photo', uri: imageUri, name: file.name || 'Фото' });
       continue;
     }
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -132,6 +132,8 @@ export async function discardAttachments(list: Attachment[]) {
 
 // NO TEXT, only pictures/files: each is simply itself - filed in the folder, else left in its own base.
 export async function quickFileAttachments(list: Attachment[], folder: Tag | null, attachTag: AttachTag) {
+  // Alone, a picture IS put in the base - that is what the person did - and filed in the folder, if there is one.
+  for (const a of list) if (a.kind === 'photo') await writePhotoRecord(a.uri, { id: a.id });
   if (!folder) return;
   for (const a of list) await attachTag(folder, a.kind, a.id, collectionOf(a));
 }
@@ -227,6 +229,18 @@ export async function quickCreateCard(text: string, folder: Tag | null, attachTa
     updatedAt: now,
   });
   if (folder) await attachTag(folder, 'flashcard', id, 'flashcards');
+  // The pictures have no record of their own any more (the one rule), so the card keeps their Drive copies' addresses itself.
+  if (images.some((img) => !img.driveFileId)) {
+    Promise.all(
+      images.map(async (img, i) => {
+        if (img.driveFileId) return img;
+        const up = await backupFileToDrive(img.uri, `${id}-${i}.jpg`, 'image/jpeg', 'Photos').catch(() => null);
+        return up ? { ...img, driveFileId: up.fileId, driveBytes: up.bytes } : img;
+      })
+    )
+      .then((withDrive) => updateDoc(doc(db, 'flashcards', id), { images: withDrive }))
+      .catch(() => {});
+  }
   return id;
 }
 

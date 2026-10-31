@@ -4816,14 +4816,10 @@ export default function BoardScreen() {
     const imageUri = await compressPickedImage(asset.uri, asset.width, asset.height);
     const id = generateId();
     const now = Date.now();
-    await setDoc(
-      doc(db, 'photos', id),
-      { imageUri, imageFit: 'contain', createdAt: now, updatedAt: now, usedInDocuments: {} },
-      { merge: true }
-    );
+    // A picture laid on a board lives on that board (2026-10-31, the user's one rule for every picture): no record in the base
+    // until it is put there on purpose («У базу»). Its Drive copy is kept on the card.
     backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
       if (!uploaded) return;
-      updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
       // The card needs it too, and this is the only moment it can be
       // learned: the upload finishes after the card is already made. A
       // card without it is a picture no other device can ever fetch.
@@ -4835,8 +4831,27 @@ export default function BoardScreen() {
     });
     setCards((prev) => [
       ...prev,
-      cardFromExistingBlock(blockFromPhoto({ id, imageUri, imageFit: 'contain', createdAt: now }), prev.length, viewCenter()),
+      cardFromExistingBlock({ ...blockFromPhoto({ id, imageUri, imageFit: 'contain', createdAt: now }), pageOnly: true }, prev.length, viewCenter()),
     ]);
+  }
+
+  // «У БАЗУ ЗОБРАЖЕНЬ» for a picture of this board only: the record is made now, the mark comes off the card.
+  async function putCardIntoBase(card: BoardCard) {
+    if (!card.imageUri) return;
+    const now = Date.now();
+    const data: Record<string, unknown> = { imageUri: card.imageUri, imageFit: card.imageFit ?? 'contain', createdAt: card.createdAt ?? now, updatedAt: now, usedInDocuments: {} };
+    if (card.driveFileId) data.driveFileId = card.driveFileId;
+    if (card.driveBytes) data.driveBytes = card.driveBytes;
+    if (card.imageTitle) data.title = card.imageTitle;
+    await setDoc(doc(db, 'photos', card.id), data, { merge: true });
+    setCards((prev) =>
+      prev.map((c) => {
+        if (c.id !== card.id) return c;
+        const { pageOnly: _mark, ...rest } = c;
+        return rest as BoardCard;
+      })
+    );
+    notify('Додано в базу зображень', 'Тепер це зображення є і в базі, і на дошці.');
   }
 
   async function createFileCard() {
@@ -7775,6 +7790,9 @@ export default function BoardScreen() {
               onPress: disconnectSelectedCards,
             },
           ]
+        : []),
+      ...(onlySelectedImageCard?.pageOnly
+        ? [{ key: 'into-base', icon: 'server-outline', label: 'У базу', onPress: () => putCardIntoBase(onlySelectedImageCard) }]
         : []),
       ...(onlySelectedImageCard
         ? [

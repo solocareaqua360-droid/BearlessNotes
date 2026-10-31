@@ -6229,7 +6229,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         entries.push({ kind: 'task', tone: 'forever', fate: FATE.forever });
         continue;
       }
-      if (t === 'image' && b.pageOnly) continue;
+      // A picture of this page only has no record to fall back on: it is gone for good, and the window says so.
+      if (t === 'image' && b.pageOnly) {
+        entries.push({ kind: 'photo', tone: 'forever', fate: FATE.forever });
+        continue;
+      }
       const coll = t === 'image' && b.imageUri ? 'photos' : t === 'file' && b.fileUri ? 'files' : t === 'link' && b.linkUrl ? 'links' : null;
       if (!coll) continue;
       const id = coll === 'links' ? linkDocId(b.linkUrl!) : b.id;
