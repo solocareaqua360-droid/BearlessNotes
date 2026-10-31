@@ -1,0 +1,137 @@
+import { forwardRef, useCallback, useLayoutEffect, useRef } from 'react';
+import {
+  TextInput as RNTextInput,
+  type NativeSyntheticEvent,
+  type TextInputChangeEventData,
+  type TextInputProps,
+  type TextInputSelectionChangeEventData,
+} from 'react-native';
+// The native field's own «set this text» command - what React Native's own TextInput sends for a controlled value.
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore - a deep import with no type declarations
+import { Commands } from 'react-native/Libraries/Components/TextInput/AndroidTextInputNativeComponent';
+
+// EVERY TEXT FIELD IN THE APP (2026-10-28, the user: «раз і назавжди вирішити цю проблему по всьому застосунку» -
+// typing at the START of a field came out backwards, in the coordinates window and in «Думки»; StableTextInput had
+// fixed it in six places only). A controlled TextInput on Android hands each keystroke to JS, and React Native writes
+// the value back into the field a render later; while the keyboard is still composing a word (the underline), that
+// write lands after the next key and the caret jumps to the start. Here the native field owns its text while it is
+// typed in: `value` only seeds it, and is written into the field ONLY when it differs from what the field itself last
+// said - a screen that clears, fills or rejects the text. Imported everywhere in place of react-native's TextInput.
+//
+// HOW an outside value gets in (2026-10-28, found on the phone: the new-point window opened with its coordinates empty):
+// a field nobody is typing in is simply made again with the new text (a fresh `key`) - a native «set text» sent to a
+// field that is not on screen yet was dropped without a word. Only the field in use gets the native command, so the
+// keyboard and the caret stay where they are (a chat box cleared after sending).
+type Props = TextInputProps;
+
+const TextInput = forwardRef<RNTextInput, Props>(function AppTextInput(props, ref) {
+  const { value, defaultValue, onChange, onChangeText, onSelectionChange, onFocus, onBlur, autoFocus, selection, ...rest } = props;
+  const controlled = typeof value === 'string';
+  const inner = useRef<RNTextInput | null>(null);
+  // What the field last said, the newest `value` given, the field's event count and where its caret stood.
+  const said = useRef<string>(controlled ? (value as string) : (defaultValue ?? ''));
+  const latest = useRef(value);
+  latest.current = value;
+  const eventCount = useRef(0);
+  const caret = useRef<{ start: number; end: number } | null>(null);
+  const seed = useRef(controlled ? value : defaultValue);
+  const focused = useRef(false);
+  const epoch = useRef(0);
+  // Not in use: made again with the outside text (see above), here in render so it lands in this very frame.
+  if (controlled && value !== said.current && !focused.current) {
+    said.current = value as string;
+    seed.current = value;
+    caret.current = null;
+    epoch.current += 1;
+  }
+
+  const push = useCallback((text: string) => {
+    const host = inner.current;
+    if (!host) return;
+    // Where the caret was, moved by however much shorter or longer the text became; else the end.
+    const shift = text.length - said.current.length;
+    const at = caret.current ? Math.max(0, Math.min(text.length, caret.current.end + shift)) : text.length;
+    said.current = text;
+    try {
+      Commands.setTextAndSelection(host, eventCount.current, text, at, at);
+    } catch {
+      // A field already gone - nothing to write into.
+    }
+  }, []);
+
+  // A value set from outside (cleared after sending, filled from a picker, a reopened card).
+  useLayoutEffect(() => {
+    if (controlled && value !== said.current) push(value as string);
+  });
+
+  // A caret placed from outside. NOT handed to react-native's field: with `selection` set it writes its own text back on every
+  // caret change - and here that is `defaultValue`, the text the field was made with, so every letter typed vanished (the
+  // rename dialog, 2026-10-29: «Test tema» was saved as «ema»). Put through the same command as the text, with the text the
+  // field holds now.
+  useLayoutEffect(() => {
+    const host = inner.current;
+    if (!selection || !host) return;
+    const end = selection.end ?? selection.start;
+    if (caret.current && caret.current.start === selection.start && caret.current.end === end) return;
+    try {
+      Commands.setTextAndSelection(host, eventCount.current, said.current, selection.start, end);
+    } catch {
+      // A field already gone.
+    }
+  }, [selection?.start, selection?.end]);
+
+  const setRef = useCallback(
+    (node: RNTextInput | null) => {
+      inner.current = node;
+      if (typeof ref === 'function') ref(node);
+      else if (ref) (ref as React.MutableRefObject<RNTextInput | null>).current = node;
+    },
+    [ref]
+  );
+
+  return (
+    <RNTextInput
+      key={epoch.current}
+      ref={setRef}
+      {...rest}
+      // Only the first time: a field made again for new text must not pull the focus to itself.
+      autoFocus={epoch.current === 0 ? autoFocus : false}
+      defaultValue={seed.current}
+      onFocus={(e) => {
+        focused.current = true;
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        focused.current = false;
+        onBlur?.(e);
+      }}
+      onChange={(e: NativeSyntheticEvent<TextInputChangeEventData>) => {
+        eventCount.current = e.nativeEvent.eventCount;
+        onChange?.(e);
+      }}
+      onChangeText={(text) => {
+        said.current = text;
+        onChangeText?.(text);
+        if (!controlled) return;
+        // A screen that keeps the old text (a filter, a limit) may not render again at all - then the field is set
+        // back here, once the screen has had its say.
+        setTimeout(() => {
+          const now = latest.current;
+          if (typeof now === 'string' && now !== said.current) push(now);
+        }, 0);
+      }}
+      onSelectionChange={(e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
+        caret.current = e.nativeEvent.selection;
+        onSelectionChange?.(e);
+      }}
+    />
+  );
+}) as unknown as typeof RNTextInput;
+// TextInput.State (the focused field) is react-native's own.
+Object.assign(TextInput, { State: RNTextInput.State });
+
+// The same name as a type, so `useRef<TextInput>(null)` keeps working where it is imported.
+type TextInput = RNTextInput;
+
+export default TextInput;

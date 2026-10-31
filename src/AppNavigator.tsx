@@ -1,0 +1,142 @@
+import { pushFromLayer } from './navigation/layerPush';
+import { createNativeStackNavigator, type NativeStackScreenProps } from '@react-navigation/native-stack';
+import MorphFrame from './components/MorphFrame';
+import BoardZoomFrame from './components/BoardZoomFrame';
+import Tabs from './navigation/Tabs';
+import PlaceholderScreen from './screens/PlaceholderScreen';
+import TasksScreen from './screens/TasksScreen';
+import ChatScreen from './screens/ChatScreen';
+import FileViewScreen from './screens/FileViewScreen';
+import DocumentsScreen from './screens/DocumentsScreen';
+import BoardsListScreen from './screens/BoardsListScreen';
+import BoardScreen from './screens/BoardScreen';
+import LinksScreen from './screens/LinksScreen';
+import PhotosScreen from './screens/PhotosScreen';
+import FilesScreen from './screens/FilesScreen';
+import StickersScreen from './screens/StickersScreen';
+import FlashcardsScreen from './screens/FlashcardsScreen';
+import CustomDatabaseScreen from './screens/CustomDatabaseScreen';
+import TagManageScreen from './screens/TagManageScreen';
+import GroupsScreen from './screens/GroupsScreen';
+import AssistantScreen from './screens/AssistantScreen';
+import ExplorerScreen from './screens/ExplorerScreen';
+import ThoughtsScreen from './screens/ThoughtsScreen';
+import TagItemsScreen from './screens/TagItemsScreen';
+import SettingsScreen from './screens/SettingsScreen';
+import SearchScreen from './screens/SearchScreen';
+import DiaryScreen from './screens/DiaryScreen';
+import DocumentEditorScreen from './screens/DocumentEditorScreen';
+import SlideFrame from './components/SlideFrame';
+import { RootStackParamList } from './navigation';
+
+// Every screen the app has, in one place, for both builds.
+//
+// The browser used to carry a navigator of its own with two routes in it,
+// the board list and a board, and every other screen was unreachable
+// there - not because anything in them failed in a browser (the note
+// editor was the one that did, and that is fixed), but because the
+// browser's navigator had never heard of them. A screen that navigates to
+// 'Search' or 'Editor' warned and went nowhere.
+//
+// So the tree lives here and the two roots (App.tsx, App.web.tsx) each
+// wrap it in what THEY need - the phone in a keyboard provider and the
+// share-intent handler, the browser in the account bar - and neither
+// lists a screen. The one platform difference inside the tree, the tab
+// navigator, is chosen by file (navigation/Tabs vs Tabs.web), the same
+// way every other difference in this port is.
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+// A note, inside the frame it grows out of its card in (utils/morph) -
+// which is just the note unless it was opened from a card.
+function EditorScreen(props: NativeStackScreenProps<RootStackParamList, 'Editor'>) {
+  if (props.route.params.slide) {
+    return (
+      <SlideFrame navigation={props.navigation as never}>
+        <DocumentEditorScreen {...props} />
+      </SlideFrame>
+    );
+  }
+  return (
+    <MorphFrame morphKey={`note:${props.route.params.documentId}`} navigation={props.navigation as never}>
+      <DocumentEditorScreen {...props} />
+    </MorphFrame>
+  );
+}
+
+// A board opened from its card in the explorer zooms in (utils/boardZoom); any other way it is just the board.
+function BoardCopyScreen(props: NativeStackScreenProps<RootStackParamList, 'BoardCopy'>) {
+  const screen = <BoardScreen {...(props as unknown as Record<string, never>)} />;
+  if (props.route.params.slide) return <SlideFrame navigation={props.navigation as never}>{screen}</SlideFrame>;
+  if (!props.route.params.zoom) return screen;
+  return (
+    <BoardZoomFrame boardId={props.route.params.boardId} navigation={props.navigation as never}>
+      {screen}
+    </BoardZoomFrame>
+  );
+}
+
+export default function RootNavigator() {
+  return (
+    <Stack.Navigator
+      // A screen opened from a layer beside the desks arrives whole, under
+      // the layer, which then dissolves over it - see layerPush.
+      screenOptions={() => (pushFromLayer() ? { headerShown: false, animation: 'none' } : { headerShown: false })}
+    >
+      {/* animation: 'none' only on the root screen - the navigator
+          mounts after the splash view above hands over, and its
+          entry animation played as a blink at startup. Pushes from
+          here (Editor and the rest) keep their own animation. */}
+      <Stack.Screen name="Tabs" component={Tabs} options={{ animation: 'none' }} />
+      {/* Opened out of its card (utils/morph), a note is the card growing:
+          no slide of its own, and a transparent modal, so the list stays
+          drawn under the page while it grows and shrinks. */}
+      <Stack.Screen
+        name="Editor"
+        component={EditorScreen}
+        options={({ route }) =>
+          (route.params as { morph?: boolean } | undefined)?.morph
+            ? { animation: 'none', presentation: 'transparentModal' }
+            : (route.params as { slide?: boolean } | undefined)?.slide
+              ? { animation: 'slide_from_right', presentation: 'transparentModal' }
+              : {}
+        }
+      />
+      <Stack.Screen name="EditorModal" component={DocumentEditorScreen} options={{ presentation: 'modal' }} />
+      <Stack.Screen name="Tasks" component={TasksScreen} />
+      <Stack.Screen name="Chat" component={ChatScreen} />
+      <Stack.Screen name="FileView" component={FileViewScreen} />
+      <Stack.Screen name="DocumentsCopy">{() => <DocumentsScreen standalone />}</Stack.Screen>
+      <Stack.Screen name="BoardsCopy">{() => <BoardsListScreen standalone />}</Stack.Screen>
+      <Stack.Screen
+        name="BoardCopy"
+        component={BoardCopyScreen}
+        options={({ route }) =>
+          (route.params as { zoom?: boolean } | undefined)?.zoom
+            ? { animation: 'none', presentation: 'transparentModal' }
+            : (route.params as { slide?: boolean } | undefined)?.slide
+              ? { animation: 'slide_from_right', presentation: 'transparentModal' }
+              : {}
+        }
+      />
+      <Stack.Screen name="Links" component={LinksScreen} />
+      <Stack.Screen name="Photos" component={PhotosScreen} />
+      <Stack.Screen name="Files" component={FilesScreen} />
+      <Stack.Screen name="Stickers" component={StickersScreen} />
+      <Stack.Screen name="Flashcards" component={FlashcardsScreen} />
+      <Stack.Screen name="CustomDatabase" component={CustomDatabaseScreen} />
+      <Stack.Screen name="Tags" component={TagManageScreen} />
+      <Stack.Screen name="Groups" component={GroupsScreen} />
+      <Stack.Screen name="Explorer" component={ExplorerScreen} />
+      <Stack.Screen name="Thoughts" component={ThoughtsScreen} />
+      {/* No slide of its own: it opens and closes under the sheet that grows out of the balloon (utils/assistMorph). */}
+      <Stack.Screen name="Assistant" component={AssistantScreen} options={{ animation: 'none' }} />
+      <Stack.Screen name="TagItems" component={TagItemsScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="Search" component={SearchScreen} />
+      <Stack.Screen name="Diary" component={DiaryScreen} />
+      <Stack.Screen name="Placeholder">
+        {({ route }) => <PlaceholderScreen icon={route.params.icon} label={route.params.label} />}
+      </Stack.Screen>
+    </Stack.Navigator>
+  );
+}

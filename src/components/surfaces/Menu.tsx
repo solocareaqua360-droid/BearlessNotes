@@ -1,0 +1,297 @@
+import { cardRadius, controlRadius, deskSize } from '../../theme/scale';
+import { ReactNode, useEffect, useState } from 'react';
+import Animated, { Easing, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { useLift, useTheme } from '../../theme/ThemeProvider';
+import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle, useWindowDimensions } from 'react-native';
+import { Ionicons } from '../icons/Ionicons';
+import { BlurView } from 'expo-blur';
+import { useIsFocused } from '@react-navigation/native';
+import { useBlurTarget } from '../GlassTarget';
+import { GlassPortal } from '../GlassPortal';
+import { FONT_BOLD, FONT_REGULAR, SOFT_MEDIUM, SOFT_REGULAR } from '../../utils/fonts';
+import type { SoftTokens } from '../../theme/soft';
+import { GLASS_DANGER, GLASS_ISLAND, GLASS_LINE, GLASS_TEXT, GLASS_TEXT_FAINT } from '../../constants/glass';
+import DockGlassFill, { useDockSurface } from '../DockGlassFill';
+import { useDockGlass } from '../../utils/dockGlass';
+import { useSoft } from '../../theme/soft';
+
+// «Меню» - a short list of commands, beside the thing it acts on.
+//
+// Every screen had grown its own: the documents list had this one, in
+// glass; the calendar had a flat black slab with square corners; the
+// custom database another; the boards list a sheet stuck to the bottom
+// edge. Same purpose, four looks - which is what the user saw in one
+// quick pass through the app.
+//
+// This is the documents one, made shared. It draws the panel and the
+// backdrop that closes it; WHERE it sits is the caller's business, since
+// a menu belongs beside whatever opened it - so `style` must place it
+// ABSOLUTELY, in the screen's own coordinates.
+//
+// Absolutely, because it is drawn through the portal, and that is not a
+// detail: on Android the blur is told which view to blur, and that view
+// is every screen. A BlurView left where it was declared therefore sits
+// INSIDE the picture it is blurring and tries to draw itself - which
+// does not look wrong, it takes the whole app down. The first version of
+// this crashed the calendar the moment the menu opened, exactly that
+// way. The portal lifts it out, above the target, where the documents
+// menu has always been.
+
+export type MenuEntry =
+  | { kind: 'section'; label: string }
+  | { kind: 'rule' }
+  | {
+      kind?: 'row';
+      label: string;
+      icon?: keyof typeof Ionicons.glyphMap;
+      // A tick on the right: this is the option in force.
+      checked?: boolean;
+      // A number on the right, in the accent colour (how many are behind
+      // this row).
+      count?: number;
+      tone?: 'normal' | 'danger';
+      onPress: () => void;
+    };
+
+// Wide enough for the longest rows the menus carry («Групувати за типом», «Фільтри (тип, проєкт)») - at 210 they were cut
+// to «Групувати за ...» (the user, 2026-10-24).
+export const MENU_WIDTH = 256;
+
+// The grown panel as a plain style (see «DEAD PRESSES WHILE IT GROWS»).
+export const STILL_PANEL = { opacity: 1, transform: [{ scale: 1 }] };
+export const RELEASE_ANYWHERE = { top: 2000, bottom: 2000, left: 2000, right: 2000 };
+
+export default function Menu({
+  visible,
+  onClose,
+  entries,
+  style,
+  maxHeight,
+  width = MENU_WIDTH,
+  accent,
+  children,
+  soft,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  entries: MenuEntry[];
+  // Where the panel goes - usually absolute, against the rail.
+  style?: ViewStyle | ViewStyle[];
+  maxHeight?: number;
+  width?: number;
+  // The colour of the tick, which is the screen's own.
+  accent?: string;
+  // Anything the rows cannot express (a row of colours, a slider).
+  children?: ReactNode;
+  // The soft style (theme/soft): a plain surface with a soft shadow
+  // instead of the glass (blur, bright rim), labels in sentence case
+  // instead of spaced capitals - "вікно трьох крапок... не таке".
+  soft?: SoftTokens | null;
+}) {
+  const theme = useTheme();
+  const lift = useLift();
+  const blurTarget = useBlurTarget();
+  // Read at render, never captured at module scope - a stale window size
+  // is what broke the calendar's week strip twice before.
+  const { height: windowHeight } = useWindowDimensions();
+  // Drawn through the portal, which reaches over the WHOLE app - so a menu
+  // left open on one screen went on floating above the next one the user
+  // swiped to, and two of them could stack. Every rail piece is already
+  // behind its own isFocused; this is the same rule, made once here rather
+  // than at each of the six places a menu is opened.
+  const isFocused = useIsFocused();
+  // «Скло» (utils/dockGlass): the soft menu wears the dock's glass too.
+  const glassOn = useDockGlass();
+  const softNow = useSoft();
+  const glassSurface = useDockSurface(soft ?? softNow, glassOn);
+  // THE MENU GROWS OUT OF ITS BUTTON (2026-10-25, the user: «морфінг меню трьох крапок… в стилі Apple»): from the corner it
+  // stands against - the «⋯» it hangs from - it swells to its size on a soft spring, its rows showing as it nears it; closed,
+  // it shrinks back into that corner before it goes.
+  const [mounted, setMounted] = useState(visible);
+  const grow = useSharedValue(visible ? 1 : 0);
+  // DEAD PRESSES WHILE IT GROWS (the user, 2026-10-25: «пункти можна вибрати тільки через секунду-дві»; found with a log of
+  // the rows' press-in/out): the grow runs on the UI thread only (ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS), so React's own
+  // picture of the panel stays at the quarter-size it started from - a press measured its row against that, and every
+  // release counted as «outside the row», for about two seconds, until something wrote the real size back. A React
+  // re-render does not (the animated values never pass through it). So once the spring is still the panel takes a plain
+  // style of its full size, which React does write; and the spring is called still sooner (energyThreshold).
+  const [still, setStill] = useState(false);
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      grow.value = withSpring(1, { damping: 20, stiffness: 300, mass: 0.7, energyThreshold: 1e-4 }, (finished) => {
+        if (finished) runOnJS(setStill)(true);
+      });
+    } else {
+      setStill(false);
+      grow.value = withTiming(0, { duration: 170, easing: Easing.in(Easing.quad) }, (finished) => {
+        if (finished) runOnJS(setMounted)(false);
+      });
+    }
+  }, [visible, grow]);
+  const placed = StyleSheet.flatten(style) ?? {};
+  const origin = `${placed.right !== undefined && placed.left === undefined ? 'right' : 'left'} ${placed.bottom !== undefined && placed.top === undefined ? 'bottom' : 'top'}`;
+  const panelGrow = useAnimatedStyle(() => ({
+    opacity: Math.min(1, grow.value * 2),
+    transform: [{ scale: 0.25 + 0.75 * grow.value }],
+  }));
+  const rowsShow = useAnimatedStyle(() => ({ opacity: interpolate(grow.value, [0.55, 1], [0, 1], 'clamp') }));
+  if (!mounted || !isFocused) return null;
+  return (
+    <GlassPortal name="Menu">
+      <Pressable style={styles.backdrop} onPress={onClose} />
+      <Animated.View
+        style={[
+          styles.panel,
+          { width },
+          { maxHeight: maxHeight ?? windowHeight * 0.6 },
+          soft ? [styles.softPanel, glassOn ? glassSurface : { backgroundColor: soft.chrome, boxShadow: soft.popShadow }] : lift,
+          style,
+          { transformOrigin: origin },
+          still ? STILL_PANEL : panelGrow,
+        ]}
+      >
+        {soft && glassOn && <DockGlassFill soft={soft} radius={cardRadius(24)} />}
+        {!soft && (
+          <BlurView
+            intensity={60}
+            tint="dark"
+            blurMethod="dimezisBlurView"
+            blurTarget={blurTarget ?? undefined}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        )}
+        <Animated.ScrollView style={still ? undefined : rowsShow} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          {entries.map((entry, index) => {
+            if (entry.kind === 'section') {
+              return (
+                <Text key={`s${index}`} style={[styles.sectionLabel, soft && [styles.softSection, { color: soft.ink3 }]]}>
+                  {entry.label}
+                </Text>
+              );
+            }
+            if (entry.kind === 'rule') return <View key={`r${index}`} style={[styles.rule, soft && { backgroundColor: soft.line }]} />;
+            const danger = entry.tone === 'danger';
+            return (
+              <Pressable
+                key={`${entry.label}${index}`}
+                // A press begun while the panel still grew was measured against the small panel, and the moment it stood
+                // still that measure no longer matched anything (a press at ~0.3 s was lost): a release anywhere counts as on
+                // the row - a menu is left by its backdrop or a scroll, never by sliding off a row.
+                pressRetentionOffset={RELEASE_ANYWHERE}
+                style={({ pressed }) => [styles.row, pressed && (soft ? { backgroundColor: soft.fill } : styles.rowPressed)]}
+                onPress={() => {
+                  // Closed first, always: a menu that stays up while the
+                  // screen changes under it is the thing that made these
+                  // feel homemade.
+                  onClose();
+                  entry.onPress();
+                }}
+              >
+                {!!entry.icon && (
+                  <Ionicons name={entry.icon} size={soft ? 18 : 17} color={danger ? GLASS_DANGER : soft ? soft.ink2 : theme.ink.primary} />
+                )}
+                <Text
+                  style={[styles.rowLabel, soft && [styles.softRowLabel, { color: soft.ink }], danger && styles.rowLabelDanger]}
+                  numberOfLines={1}
+                >
+                  {entry.label}
+                </Text>
+                {entry.count !== undefined && (
+                  <Text style={[styles.rowLabel, { flex: 0, fontSize: soft ? 15 : 14 }, { color: soft ? soft.accent : accent ?? theme.ink.primary }]}>
+                    {entry.count}
+                  </Text>
+                )}
+                {entry.checked && (
+                  <Ionicons name="checkmark" size={18} color={soft ? soft.accent : accent ?? theme.ink.primary} />
+                )}
+              </Pressable>
+            );
+          })}
+          {children}
+        </Animated.ScrollView>
+      </Animated.View>
+    </GlassPortal>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 5,
+  },
+  panel: {
+    backgroundColor: GLASS_ISLAND,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+    zIndex: 6,
+  },
+  scroll: {
+    padding: 6,
+  },
+  softPanel: {
+    borderWidth: 0,
+    borderRadius: cardRadius(24),
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  softSection: {
+    fontFamily: SOFT_MEDIUM,
+    fontSize: deskSize(12.5),
+    letterSpacing: 0,
+    textTransform: 'none',
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  softRowLabel: {
+    fontFamily: SOFT_REGULAR,
+    fontSize: 15,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontFamily: FONT_BOLD,
+    letterSpacing: 0.04,
+    textTransform: 'uppercase',
+    color: GLASS_TEXT_FAINT,
+    paddingHorizontal: 8,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: controlRadius(12),
+  },
+  rowPressed: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  rowLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FONT_REGULAR,
+    color: GLASS_TEXT,
+  },
+  rowLabelDanger: {
+    color: GLASS_DANGER,
+  },
+  rule: {
+    height: 1,
+    backgroundColor: GLASS_LINE,
+    marginVertical: 6,
+  },
+});

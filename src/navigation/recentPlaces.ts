@@ -1,0 +1,79 @@
+import { useEffect, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useDeskGate } from './deskVisibility';
+
+// WHAT WAS OPENED LATELY, on this device only: a document, a board, a file,
+// a database - newest first. The start desk's «Нещодавні». Kept in the
+// phone's own storage (it opens instantly and works offline), not in the
+// account: what was opened on the laptop is the laptop's own list
+// (navigation/desktopTabs).
+export type RecentKind = 'document' | 'board' | 'file' | 'database';
+export type RecentPlace = { kind: RecentKind; ref: string; at: number };
+
+const KEY = 'mindeva.phone.recentPlaces';
+const MAX = 30;
+
+let recent: RecentPlace[] = [];
+const listeners = new Set<() => void>();
+
+// What was kept before this run, with whatever has been opened since the
+// app started in front of it.
+AsyncStorage.getItem(KEY)
+  .then((raw) => {
+    const kept = raw ? (JSON.parse(raw) as RecentPlace[]) : [];
+    if (!Array.isArray(kept)) return;
+    const fresh = recent;
+    recent = [...fresh, ...kept.filter((k) => !fresh.some((f) => f.kind === k.kind && f.ref === k.ref))].slice(0, MAX);
+    listeners.forEach((l) => l());
+  })
+  .catch(() => {});
+
+export function noteOpened(kind: RecentKind, ref: string): void {
+  if (!ref) return;
+  if (recent[0]?.kind === kind && recent[0]?.ref === ref) return;
+  recent = [{ kind, ref, at: Date.now() }, ...recent.filter((r) => !(r.kind === kind && r.ref === ref))].slice(0, MAX);
+  AsyncStorage.setItem(KEY, JSON.stringify(recent)).catch(() => {});
+  // Told a moment later: the start desk redraws its «Нещодавні» on this,
+  // and doing it in the very frames a note is opening in was a tenth of a
+  // second of the opening (2026-10-05). The desk is behind the note then.
+  clearTimeout(notifyTimer);
+  notifyTimer = setTimeout(() => listeners.forEach((l) => l()), 1500);
+}
+// Taken off the row (the right-click menu): gone from the list and from the phone's own storage.
+export function forgetRecent(kind: RecentKind, ref: string): void {
+  recent = recent.filter((r) => !(r.kind === kind && r.ref === ref));
+  AsyncStorage.setItem(KEY, JSON.stringify(recent)).catch(() => {});
+  listeners.forEach((l) => l());
+}
+let notifyTimer: ReturnType<typeof setTimeout> | undefined;
+
+export function useRecentPlaces(): RecentPlace[] {
+  const [value, setValue] = useState(recent);
+  const gated = useDeskGate();
+  useEffect(() => {
+    const listener = () => gated('recent', () => setValue(recent));
+    listeners.add(listener);
+    listener();
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
+  return value;
+}
+
+// For a screen: this thing is open (while it is the one in front).
+export function useNoteOpened(kind: RecentKind, ref: string | undefined, enabled = true) {
+  useEffect(() => {
+    if (enabled && ref) noteOpened(kind, ref);
+  }, [kind, ref, enabled]);
+}
+
+// A built-in database (tasks, photos, files, stickers, flashcards, the
+// diary, the three kinds of link) is open while its screen is in front.
+// Kept as `tile:<key>` so it can never be taken for a database of the
+// user's own, whose ref is its id.
+export function useTileOpened(tileKey: string) {
+  const focused = useIsFocused();
+  useNoteOpened('database', `tile:${tileKey}`, focused);
+}

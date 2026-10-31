@@ -1,0 +1,1274 @@
+import { createContext, ReactNode, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import type { View } from 'react-native';
+import type { MenuEntry } from '../components/surfaces/Menu';
+import { useNavigation } from '@react-navigation/native';
+
+// WHILE THIS SCREEN IS IN FRONT, WITHOUT RE-RENDERING IT (2026-10-06). The
+// publishers below used useIsFocused, which re-renders its component on
+// every focus and blur - so every component that published anything to the
+// bar or the dock (a screen and several of its parts) re-rendered, all at
+// once, each time a note opened or closed, only to publish or withdraw. The
+// navigation's own focus/blur events now start and stop the publication
+// directly; `run` is the effect body while in front, its return the
+// withdrawal, and `deps` restart it as useEffect's would.
+export function useWhileFocused(run: () => void | (() => void), deps: unknown[]): void {
+  const navigation = useNavigation();
+  const runRef = useRef(run);
+  runRef.current = run;
+  useEffect(() => {
+    let stop: (() => void) | null = null;
+    let active = false;
+    const start = () => {
+      if (active) return;
+      active = true;
+      stop = runRef.current() || null;
+    };
+    const end = () => {
+      if (!active) return;
+      active = false;
+      stop?.();
+      stop = null;
+    };
+    if (navigation.isFocused()) start();
+    const offFocus = navigation.addListener('focus', start);
+    const offBlur = navigation.addListener('blur', end);
+    return () => {
+      offFocus();
+      offBlur();
+      end();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation, ...deps]);
+}
+import { SharedValue, useSharedValue } from 'react-native-reanimated';
+
+// What the dock is showing instead of the desks.
+//
+// The dock (FloatingIslandTabBar) is the switch between the four desks.
+// The user's own idea - «план навігації» in the project memory - is that
+// it should change SHAPE with the context instead of the app growing a
+// new control for every context: inside folders it becomes the path, in
+// the calendar a date scrubber, and held down it always goes back to the
+// dots that say which desk you are on, so context can never steal
+// navigation.
+//
+// This is how a screen tells it. One publisher at a time - whichever
+// screen is focused - and `null` means "nothing to say", which is when
+// the dock is simply the dock.
+// A small mark under a day - what it means is the screen's business, not
+// the dock's. 'ink' takes the dock's own ink, 'accent' its accent.
+export type DockMark = 'ink' | 'accent';
+
+export type DockStripItem = {
+  key: string;
+  label: string;
+  // A second, smaller line under the label - the weekday, in the
+  // calendar. It is not a footnote: the user navigates by it.
+  sub?: string;
+  // The one item the strip is ORIENTED by, which is NOT the selected one.
+  // The selected item is already in the middle, so its position says so;
+  // what the middle cannot say is where you were before you scrolled
+  // away. In the calendar this is today - the user's own reasoning: "я
+  // хочу знати, який справді день, а не до якого я домотав".
+  anchor?: boolean;
+  marks?: DockMark[];
+};
+
+// The desks themselves, as a shape of the dock rather than a separate
+// bar. They used to be drawn by the tab bar, which meant that at a
+// database's ROOT - where there is no path - the dock was two different
+// components stacked on one another: the tab bar's desks and this one's
+// actions, neither aware of the other, and nothing to swipe between.
+// The desks are a card like any other now.
+// Which card of the stack is in front. Three, in the order they are
+// wanted: what you are in, what you can do in it, and where else you
+// could be.
+export type DockFace = 'context' | 'actions' | 'desks';
+
+export type DockDesk = { key: string; icon: string; active: boolean; onPress: () => void };
+
+// The shapes the dock can take. A new context adds a case here and a
+// publisher on its own screen; nothing else in the app has to know.
+export type DockContext =
+  | {
+      kind: 'desks';
+      icon: string;
+      desks: DockDesk[];
+      collapsed: boolean;
+      onToggleCollapsed: () => void;
+    }
+  | {
+      kind: 'path';
+      // What this database IS - drawn in the bead that leads out of the
+      // context, so the way out says where it goes.
+      icon: string;
+      // Folder names from the root down, the deepest last.
+      crumbs: string[];
+      // Where a crumb leads: '' is the root, which is also what puts the
+      // desks back.
+      onGo: (path: string) => void;
+    }
+  | {
+      icon: string;
+      // A run of things you scrub through with your thumb - days, for
+      // now. The SCREEN builds the labels, because it is the one that
+      // knows what they mean; the dock only draws them and reports a tap.
+      kind: 'strip';
+      items: DockStripItem[];
+      selected: string;
+      onPick: (key: string) => void;
+    };
+
+// How the dock's own crumbs become DROP TARGETS for a card being
+// carried. It is a second, independent slot rather than part of the
+// context: the screen publishes where it is (useExplorer) and the carry
+// publishes how to register a target (useExplorerCarry), and those are
+// two different hooks that learn their answers at different moments.
+export type DockTargets = (path: string) => (node: View | null) => void;
+
+// The way OUT of a whole screen, for the screens that are pushed over
+// the tabs - a database opened from «Більше», a board, a note. Separate
+// from the context because it is true whether or not there is a path:
+// standing in a database's root there is nothing to show, and leaving
+// the database is exactly the thing you want under your thumb.
+export type DockLeave = { icon: string; onLeave: () => void };
+// The way back on the four desks' own screens, drawn at the TOP-LEFT of
+// the navigation bar (TopNavBar) rather than in the dock - the user's
+// Notion-style plan. `dimmed`: in its place, nowhere to go. `icon`
+// overrides the plain arrow - the note swaps it for a checkmark while a
+// canvas card is being edited, the same swap the old bead used to make.
+// See claimTopNav.
+const TOP_NAV_RELEASE_MS = 300;
+export type TopBack = { onPress: () => void; dimmed: boolean; icon?: string };
+// The right end of the bar at the top, on the screens that write rather
+// than sort (the documents list, the calendar, a note): "⋯" opening the
+// screen's own list of what else it does, and choosing, at the very edge
+// - "виділяю я достатньо часто". `pane`: the note's own third button
+// there, on a Fold with the note beside the list - "постав поруч із ...
+// і множинним вибором" - expand/collapse toggled by its own icon.
+export type TopExtras = {
+  menu: MenuEntry[] | null;
+  select: { active: boolean; onPress: () => void } | null;
+  pane?: { icon: string; onPress: () => void } | null;
+  // One-shot buttons kept in sight ahead of "⋯" on the same plate - the
+  // board's undo/redo, used too often to hide in a menu. Dimmed while
+  // there is nothing for them to do, so the plate never changes width.
+  tools?: TopTool[] | null;
+};
+
+// `active`: lit while what it opens is open; `dot`: the accent dot - something it governs is in force (a base's
+// filter or sort).
+export type TopTool = { key: string; icon: string; label: string; dimmed?: boolean; active?: boolean; dot?: boolean; onPress: () => void };
+
+// SEARCH IN THE BAR ITSELF - the user's rule: the plate that carries the
+// desk's (or database's) name IS the search field; it opens out across
+// the whole bar, pushing back and "⋯" off the edges, instead of a second
+// field appearing under the bar. What is typed goes straight to the
+// screen (onChangeQuery); the bar keeps the text itself, so a keystroke
+// does not have to travel through this context.
+export type ChromeStyle = 'soft';
+
+export type TopSearch = {
+  placeholder: string;
+  initialQuery: string;
+  onChangeQuery: (query: string) => void;
+  onClose: () => void;
+};
+
+// What this screen can DO - the other half of the dock's stack.
+//
+// Deliberately NOT part of the context. The user's own objection, and it
+// settled the design: the dock answers "where am I", the rail answers
+// "what can I do", and the two being both made of buttons does not make
+// them one thing. They live in one place now but stay two objects - two
+// capsules, one behind the other, the way a Samsung lock screen stacks
+// its cards.
+export type DockAction = {
+  key: string;
+  // An Ionicons name, or "mc:<name>" for a MaterialCommunityIcons one.
+  icon: string;
+  // One word under the icon, and it is not optional in spirit: the user
+  // asked for words because a card of bare glyphs stops being readable
+  // the moment the set of them changes from screen to screen - "іконки
+  // починають мене плутати... ти вже не розумієш, яка із них що
+  // значить". Keep it SHORT - the card is only a quarter of the screen
+  // wide and each button gets a quarter of that.
+  label?: string;
+  onPress: () => void;
+  // Done in one press, so the stack goes back to where-you-are by
+  // itself: the card of actions is a drawer you opened for one thing,
+  // not a place to stand.
+  closesStack?: boolean;
+  onLongPress?: () => void;
+  active?: boolean;
+  // A small orange dot on the button: something it governs is in force (the map's layers filter hides points).
+  dot?: boolean;
+  // Drawn as its own dark circle inside the strip, the strong button -
+  // the board's «+» once it moved into the tools strip (2026-10-08: «в
+  // окремий кружечок, зіграємо на контрасті»). Soft dock only.
+  strong?: boolean;
+  // THE NOTE'S PENCIL (2026-10-16, sketch JD1ELAiSpepZLXsxwcVk1x): taken out of the capsule and drawn as the black
+  // circle where "+" stands on every other screen; the capsule moves to the left, where the desks stand elsewhere,
+  // and the way back to the right edge. Soft dock with a back circle and no left bead only.
+  // 'quiet': the same place, a white circle - the canvas's «Скинути» (not the strong button, it asks to undo).
+  primary?: boolean | 'quiet';
+  // A small glyph over the icon's corner - "the plus ON the thing it
+  // adds", which is how this app has drawn creation since the user asked
+  // for it.
+  badge?: string;
+  // A NUMBER over the icon's corner instead of a glyph - how many things
+  // the action is about to act on. The note's select mode needs it: the
+  // ticks on the blocks say which ones are chosen, but not once they
+  // have been scrolled past, and "delete" is not a button to press
+  // without knowing how many.
+  count?: number;
+  // In its place but with nothing to act on (the select dock's «Формат» while no text block is chosen): drawn faint, not pressable.
+  dimmed?: boolean;
+  // A destructive one, its word and icon in the danger colour.
+  tone?: 'danger';
+  // The strip that carries this action gets a smaller corner than a capsule (the select dock, 2026-10-31: «менш скруглені кути під
+  // стать верхньому» - the sheet above it). Read from any action of the strip.
+  squareStrip?: boolean;
+};
+
+// The two things that stay OUT of the stack, as beads either side of it.
+// Samsung's lock screen keeps its torch and its camera exactly so: what
+// never changes does not belong in a pile of cards that does.
+export type DockBead = {
+  icon: string;
+  onPress: () => void;
+  onLongPress?: () => void;
+  // PRESS AND SLIDE (a create bead that deals a fan): a drag that starts on it opens the fan, and the
+  // finger carries on to a button (utils/fanDrag). A plain tap is still onPress.
+  onSlide?: () => void;
+  active?: boolean;
+  badge?: string;
+  // Standing in its place but with nowhere to go - the way back on the
+  // first desk's own root. The anchor stays put; it only goes quiet.
+  dimmed?: boolean;
+  // What the soft dock's wide LEFT field says, when it is not a search
+  // (it read «Пошук» on the folders' databases button, 2026-10-02).
+  label?: string;
+  // Drawn round, as the right bead is, not as the wide field - a left
+  // bead that is a BUTTON, not a search (the folders' databases).
+  round?: boolean;
+  // RIGHT bead that does not CREATE (a view switch): it keeps its own
+  // glyph instead of the one «+» every create circle wears. The folders'
+  // canvas/list switch had turned into a «+» and was lost (2026-10-08).
+  keepIcon?: boolean;
+  // RIGHT bead only: a second button that goes with it - drawn as another
+  // small circle in the soft dock's search field, ahead of "+" (a personal
+  // database's «Подача», 2026-10-04), or as a round button beside it where
+  // there is no field to hold it.
+  // `count`: a small number on the circle (the chat's «не розібране»);
+  // `filled`: the circle turns dark while it is in force, instead of the
+  // quiet accent dot `active` gives.
+  extra?: { icon: string; label: string; active?: boolean; onPress: () => void; count?: number; filled?: boolean };
+};
+
+type Value = {
+  face: DockFace;
+  setFace: (face: DockFace) => void;
+  // A face change that should be SEEN happening - see ContextDock's own
+  // `flip`. `at` is what makes each request its own: asking for the same
+  // card twice in a row is two flips, not one.
+  flip: { face: DockFace; at: number } | null;
+  requestFlip: (face: DockFace) => void;
+  // What the dock falls back to when no screen has anything more
+  // specific to say: the desks. A path or a calendar takes the front
+  // while it exists; putting one away lands here rather than nowhere.
+  base: DockContext | null;
+  publishBase: (base: DockContext | null) => void;
+  context: DockContext | null;
+  actions: DockAction[] | null;
+  // One claim per publisher, under its own id - see the Claim comment
+  // below. Passing null withdraws that publisher's claim and nobody
+  // else's.
+  publishActions: (id: string, actions: DockAction[] | null, layer?: number) => void;
+  beads: { left: DockBead | null; right: DockBead | null };
+  publishBeads: (id: string, beads: { left: DockBead | null; right: DockBead | null } | null, layer?: number) => void;
+  leave: DockLeave | null;
+  publishLeave: (leave: DockLeave | null) => void;
+  // A DRAWER OVER THE DESKS (the calendar's): how far out it is, 0..1 on
+  // the UI thread, and whether it is there at all right now (the desks
+  // are the screen in front) and open. The desks' own bar and the dock
+  // fade out as it comes in - it carries a bar and buttons of its own.
+  drawerProgress: { left: SharedValue<number>; right: SharedValue<number> };
+  drawerCover: { active: boolean; open: boolean };
+  publishDrawerCover: (cover: { active: boolean; open: boolean }) => void;
+  topBack: TopBack | null;
+  publishTopBack: (id: string, back: TopBack | null, layer?: number) => void;
+  topExtras: TopExtras | null;
+  publishTopExtras: (id: string, extras: TopExtras | null, layer?: number) => void;
+  topSearch: TopSearch | null;
+  publishTopSearch: (id: string, search: TopSearch | null, layer?: number) => void;
+  // Which look the shared chrome (the bar and the dock) wears for the
+  // screen in front - see useChromeStyle.
+  chromeStyle: ChromeStyle | null;
+  publishChromeStyle: (id: string, style: ChromeStyle | null, layer?: number) => void;
+  // Whether the desks bar is drawn at the top (TopNavBar). While it is,
+  // the path and the days rise under IT rather than above the dock.
+  topNavUp: boolean;
+  // A claim, not a flag: two bars can overlap for a beat while one screen
+  // is pushed over another, and the last to let go of a flag would win.
+  claimTopNav: () => () => void;
+  publish: (context: DockContext | null) => void;
+  // Stepped out of, without being given up: the context is still there,
+  // one press brings it back. Lives here rather than in the dock because
+  // the dock is drawn in more than one place now.
+  hidden: boolean;
+  setHidden: (hidden: boolean) => void;
+  targets: DockTargets | null;
+  publishTargets: (targets: DockTargets | null) => void;
+  // True for the one beat, on a SWIPED desk change, between the native
+  // pager visually settling on the new page and react-navigation's own
+  // state catching up to it. A tap sets its target synchronously - the
+  // same call that moves the page also moves this - but a swipe's
+  // commit is a native event crossing back to JS, and everything a
+  // screen publishes (its own context, its actions) is gated on
+  // react-navigation's focus, which only flips once that event lands.
+  // For that one beat the OLD screen's context is still the published
+  // one, while the eye is already on the new screen - "док... опущений
+  // трохи нижче... і тому... сіпається вниз", and only after a swipe,
+  // never landing on a desk directly (confirmed on-device): a stale
+  // card is what was sitting behind the desks card, peeking out under
+  // it exactly where a real second card does. See FloatingIslandTabBar,
+  // the one place that can see both the live page and the settled one.
+  tabsInFlux: boolean;
+  tabsDrifting: boolean;
+  publishTabsDrifting: (drifting: boolean) => void;
+  publishTabsInFlux: (inFlux: boolean) => void;
+  // Whether the screen showing wants the stack to OPEN on its actions.
+  //
+  // The default is deliberate and stays: a screen with no context of its
+  // own opens on the desks, because landing someone on the options by
+  // accident is a bug this project already had and fixed. A note is the
+  // one place where that default is wrong - its actions ARE its dock
+  // («Полотно»/«Сторінка», the selection's own four), the desks mean
+  // nothing while you are inside a document, and a note that opened on
+  // the desks would have hidden the very buttons this merge was for.
+  // So it is DECLARED by the screen, not inferred.
+  prefersActions: boolean;
+  publishPrefersActions: (prefers: boolean) => void;
+  // Whether the screen showing wants the stack WIDER than usual.
+  //
+  // The user's own idea, for the note's select mode: nine actions in a
+  // row that holds four is a lot of scrolling, and the room is right
+  // there - a note publishes no beads, so the two slots either side of
+  // the stack stand empty the whole time. Declared while the selection
+  // lasts, the card grows into them and shrinks back after.
+  //
+  // It is a MORPH in the sense this project means it (see the card-to-
+  // page note in the navigation plan): the shape changes, the object
+  // does not. Nothing fades into anything.
+  wide: boolean;
+  publishWide: (wide: boolean) => void;
+
+};
+
+// THE STATE, READ BY SLICE (2026-10-06). The context used to carry the whole
+// value, so a reader of one field (the top bar reads six) re-rendered on
+// every change of any of the thirty: an action, a bead, a flip, a drifting
+// swipe - five bar renders for one note opening (measured, ~35 ms each).
+// The context now carries a STABLE store; each hook below subscribes to
+// only what it returns, through useSyncExternalStore, and renders again
+// only when that part is a different object.
+type DockStore = {
+  value: Value | null;
+  listeners: Set<() => void>;
+  subscribe: (listener: () => void) => () => void;
+};
+function makeDockStore(): DockStore {
+  const store: DockStore = {
+    value: null,
+    listeners: new Set(),
+    subscribe: (listener) => {
+      store.listeners.add(listener);
+      return () => {
+        store.listeners.delete(listener);
+      };
+    },
+  };
+  return store;
+}
+const NavDockContext = createContext<DockStore | null>(null);
+const emptyStore = makeDockStore();
+
+// `select` must hand back the SAME object while the part is unchanged
+// (every field of the value is memoised or a primitive), or this would
+// render on every change like the old context did.
+function useDockSlice<T>(select: (value: Value) => T, fallback: T): T {
+  const store = useContext(NavDockContext) ?? emptyStore;
+  return useSyncExternalStore(
+    store.subscribe,
+    () => (store.value ? select(store.value) : fallback),
+    () => fallback
+  );
+}
+const NO_BEADS = { left: null, right: null } as const;
+
+// THE PUBLISHING HALF ALONE (2026-10-05). Every screen that says what the
+// bar and the dock should hold (its way back, its menu, its actions, its
+// look) used to read the WHOLE value above to get at its publish function
+// - so every publish re-rendered every mounted screen: opening one note,
+// five or six publishes in a row redrew Документи, Старт, Календар, Бази
+// and every other desk each time (measured: most of a 0.9 s stall). The
+// functions never change, so this half never changes, and only what READS
+// the state (the bar, the dock) renders when it does.
+type Publishers = Pick<Value, 'publish' | 'publishTargets' | 'publishLeave' | 'publishTopBack' | 'claimTopNav' | 'publishTopExtras' | 'publishTopSearch' | 'publishChromeStyle' | 'publishDrawerCover' | 'drawerProgress' | 'publishActions' | 'publishBeads' | 'publishTabsInFlux' | 'publishTabsDrifting' | 'publishBase' | 'requestFlip' | 'publishPrefersActions' | 'publishWide' | 'setFace' | 'setHidden'>;
+const NavDockPublishContext = createContext<Publishers | null>(null);
+// The stack's front card on its own, for the screens that ask (it changes
+// rarely; the rest of the state changes on every publish).
+const NavDockFaceContext = createContext<DockFace>('context');
+
+function actionSignature(list: DockAction[] | null): string {
+  return list
+    ? list
+        .map((a) => `${a.key}:${a.icon}:${a.label ?? ''}:${a.badge ?? ''}:${a.count ?? ''}:${a.active ? 1 : 0}:${a.primary ?? ''}:${a.dot ? 1 : 0}`)
+        .join('|')
+    : '';
+}
+
+function beadSignature(beads: { left: DockBead | null; right: DockBead | null }): string {
+  const one = (b: DockBead | null) =>
+    b
+      ? `${b.icon}:${b.badge ?? ''}:${b.active ? 1 : 0}:${b.dimmed ? 1 : 0}:${b.label ?? ''}:${b.round ? 1 : 0}:${
+          b.extra ? `${b.extra.icon}${b.extra.active ? 1 : 0}${b.extra.filled ? 1 : 0}${b.extra.count ?? ''}` : ''
+        }`
+      : '-';
+  return `${one(beads.left)}/${one(beads.right)}`;
+}
+
+// THE DOCK HAS ONE OF EACH AND CAN HAVE TWO SCREENS PUBLISHING AT ONCE.
+// A note opened in another screen's pane is a second publisher, not a
+// replacement for the first: both are mounted, both are "focused", and
+// both write every time their own contents change.
+//
+// Last-writer-wins settled that by accident of effect order - React runs
+// a child's effects before its parent's, so whoever re-rendered last
+// owned the dock. That is why its contents changed three times over
+// opening a note in a pane, growing it to full screen and shrinking it
+// back: three different screens winning three different races, with the
+// buttons changing identity under the finger ("людина буде нажахана").
+//
+// So every publisher keeps its own CLAIM instead, under its own id, and
+// two rules follow from that:
+//   - a publisher with nothing to say makes NO claim, rather than
+//     clobbering everyone else with emptiness;
+//   - withdrawing takes away only that publisher's OWN claim, so the one
+//     underneath simply shows again - nobody has to re-publish to get
+//     their buttons back.
+// That second rule is the one that was costing whole controls: closing a
+// note in a pane wiped the single slot, and the list behind it had no
+// reason to write again, so the documents screen was left with neither
+// search nor "new document" - "невже у мене немає можливості тепер
+// створити документ?".
+//
+// WHICH claim is drawn while two of them stand is deliberately still
+// what it was - the one written most recently - so this change fixes the
+// disappearing without quietly deciding the other half of the question
+// (who owns the dock while a note is open in a pane). That is a design
+// decision, not a mechanism one, and it is taken separately.
+type Claim<T> = { id: string; value: T; layer: number };
+
+// A LAYER outranks the order claims arrived in: a drawer over the desks
+// (the calendar's, see DockLayerContext) holds the bar and the dock for
+// as long as it is open, even if the desk under it happens to republish
+// in the meantime. Within one layer, the most recent claim wins.
+function topClaim<T>(claims: Claim<T>[]): T | null {
+  let best: Claim<T> | null = null;
+  for (const claim of claims) {
+    if (!best || claim.layer >= best.layer) best = claim;
+  }
+  return best ? best.value : null;
+}
+
+// Which layer this subtree publishes on. 0 is the screens; a drawer that
+// lies over them provides a higher one.
+export const DockLayerContext = createContext(0);
+
+function withClaim<T>(
+  claims: Claim<T>[],
+  id: string,
+  value: T | null,
+  same: (a: T, b: T) => boolean,
+  layer = 0
+): Claim<T>[] {
+  const at = claims.findIndex((claim) => claim.id === id);
+  if (value === null) return at === -1 ? claims : claims.filter((claim) => claim.id !== id);
+  if (at !== -1 && claims[at].layer === layer && same(claims[at].value, value)) return claims;
+  // Written last, so drawn: a claim that changes goes to the end of the
+  // queue, which is the same "most recent wins" the dock has always had
+  // between two screens that both have something to say.
+  return [...claims.filter((claim) => claim.id !== id), { id, value, layer }];
+}
+
+export function NavDockProvider({ children }: { children: ReactNode }) {
+  const [context, setContext] = useState<DockContext | null>(null);
+  const publish = useCallback((next: DockContext | null) => {
+    // Same context, same dock. A screen publishes from an effect that
+    // runs on every render, and a fresh object each time would redraw the
+    // dock with it.
+    setContext((prev) => {
+      if (prev === next) return prev;
+      if (!prev || !next || prev.kind !== next.kind) return next;
+      if (prev.kind === 'path' && next.kind === 'path') {
+        const same =
+          prev.crumbs.length === next.crumbs.length && prev.crumbs.every((c, i) => c === next.crumbs[i]);
+        return same && prev.onGo === next.onGo ? prev : next;
+      }
+      if (prev.kind === 'strip' && next.kind === 'strip') {
+        // By IDENTITY, not by comparing keys: the items carry marks that
+        // arrive later than the days do (a dot query answering), and a
+        // comparison that only looked at the first and last key would
+        // call the strip unchanged and quietly keep the dotless version.
+        // The publisher memoises, so identity is the honest test.
+        const same =
+          prev.items === next.items && prev.selected === next.selected && prev.onPick === next.onPick;
+        return same ? prev : next;
+      }
+      return next;
+    });
+  }, []);
+  // Held inside a box, not as the state itself: DockTargets IS a
+  // function, and useState cannot tell a function it is meant to STORE
+  // from a function it is meant to CALL as an updater.
+  const [targetBox, setTargetBox] = useState<{ fn: DockTargets | null }>({ fn: null });
+  const targets = targetBox.fn;
+  // The same value never becomes a new render: this provider sits above
+  // the entire app, so a needless setState here costs a pass over
+  // everything - and a publisher handing over a fresh function each time
+  // would loop, which is exactly what happened.
+  const publishTargets = useCallback(
+    (next: DockTargets | null) => setTargetBox((prev) => (prev.fn === next ? prev : { fn: next })),
+    []
+  );
+  const [topNavClaims, setTopNavClaims] = useState(0);
+  const topNavUp = topNavClaims > 0;
+  // Let go a beat LATE. Opening a note from the documents list, the
+  // list's bar goes before the note's arrives - one frame, maybe two, of
+  // no bar at all, and in them the dock drew itself the OLD way (beads
+  // and a card) before the new one: "перед відкриттям нотатки спливає
+  // старий док". Held a moment longer, one bar hands over to the next
+  // with no gap; leaving for a screen with no bar is a quarter-second
+  // later than it would be, which nothing on screen waits for.
+  const claimTopNav = useCallback(() => {
+    setTopNavClaims((n) => n + 1);
+    return () => {
+      setTimeout(() => setTopNavClaims((n) => n - 1), TOP_NAV_RELEASE_MS);
+    };
+  }, []);
+  const drawerProgressLeft = useSharedValue(0);
+  const drawerProgressRight = useSharedValue(0);
+  const drawerProgress = useMemo(
+    () => ({ left: drawerProgressLeft, right: drawerProgressRight }),
+    [drawerProgressLeft, drawerProgressRight]
+  );
+  const [drawerCover, setDrawerCover] = useState({ active: false, open: false });
+  const publishDrawerCover = useCallback((next: { active: boolean; open: boolean }) => {
+    setDrawerCover((prev) => (prev.active === next.active && prev.open === next.open ? prev : next));
+  }, []);
+  // Claims too, like the dock's own beads and actions - a drawer over the
+  // desks publishes its own bar without wiping the desk's, which comes
+  // back the moment the drawer closes.
+  const [topExtrasClaims, setTopExtrasClaims] = useState<Claim<TopExtras>[]>([]);
+  const publishTopExtras = useCallback((id: string, next: TopExtras | null, layer = 0) => {
+    setTopExtrasClaims((prev) => withClaim(prev, id, next, (a, b) => a === b, layer));
+  }, []);
+  const topExtras = useMemo(() => topClaim(topExtrasClaims), [topExtrasClaims]);
+  const [topSearchClaims, setTopSearchClaims] = useState<Claim<TopSearch>[]>([]);
+  const publishTopSearch = useCallback((id: string, next: TopSearch | null, layer = 0) => {
+    setTopSearchClaims((prev) => withClaim(prev, id, next, (a, b) => a.placeholder === b.placeholder, layer));
+  }, []);
+  const topSearch = useMemo(() => topClaim(topSearchClaims), [topSearchClaims]);
+  const [chromeStyleClaims, setChromeStyleClaims] = useState<Claim<ChromeStyle>[]>([]);
+  const publishChromeStyle = useCallback((id: string, next: ChromeStyle | null, layer = 0) => {
+    setChromeStyleClaims((prev) => withClaim(prev, id, next, (a, b) => a === b, layer));
+  }, []);
+  const chromeStyle = useMemo(() => topClaim(chromeStyleClaims), [chromeStyleClaims]);
+  const [topBackClaims, setTopBackClaims] = useState<Claim<TopBack>[]>([]);
+  const publishTopBack = useCallback((id: string, next: TopBack | null, layer = 0) => {
+    setTopBackClaims((prev) =>
+      withClaim(prev, id, next, (a, b) => a.onPress === b.onPress && a.dimmed === b.dimmed && a.icon === b.icon, layer)
+    );
+  }, []);
+  const topBack = useMemo(() => topClaim(topBackClaims), [topBackClaims]);
+  const [leaveBox, setLeaveBox] = useState<{ value: DockLeave | null }>({ value: null });
+  const leave = leaveBox.value;
+  const publishLeave = useCallback((next: DockLeave | null) => {
+    setLeaveBox((prev) => {
+      const a = prev.value;
+      if (a === next) return prev;
+      if (a && next && a.icon === next.icon && a.onLeave === next.onLeave) return prev;
+      return { value: next };
+    });
+  }, []);
+  // Compared by SIGNATURE, not by identity: a screen builds this array
+  // fresh on every render, and the handlers inside it close over state
+  // that the signature already accounts for (an icon that changes with
+  // the view mode, an `active` that changes with select mode).
+  const [actionClaims, setActionClaims] = useState<Claim<DockAction[]>[]>([]);
+  const publishActions = useCallback((id: string, next: DockAction[] | null, layer = 0) => {
+    setActionClaims((prev) =>
+      withClaim(
+        prev,
+        id,
+        next && next.length > 0 ? next : null,
+        (a, b) => actionSignature(a) === actionSignature(b),
+        layer
+      )
+    );
+  }, []);
+  const actions = useMemo(() => topClaim(actionClaims), [actionClaims]);
+  const [beadClaims, setBeadClaims] = useState<Claim<{ left: DockBead | null; right: DockBead | null }>[]>(
+    []
+  );
+  const publishBeads = useCallback(
+    (id: string, next: { left: DockBead | null; right: DockBead | null } | null, layer = 0) => {
+      setBeadClaims((prev) =>
+        withClaim(
+          prev,
+          id,
+          next && (next.left || next.right) ? next : null,
+          (a, b) => beadSignature(a) === beadSignature(b),
+          layer
+        )
+      );
+    },
+    []
+  );
+  const beads = useMemo(() => topClaim(beadClaims) ?? { left: null, right: null }, [beadClaims]);
+  const [base, setBase] = useState<DockContext | null>(null);
+  const publishBase = useCallback((next: DockContext | null) => {
+    setBase((prev) => {
+      if (prev === next) return prev;
+      if (!prev || !next || prev.kind !== 'desks' || next.kind !== 'desks') return next;
+      const same =
+        prev.collapsed === next.collapsed &&
+        prev.desks.length === next.desks.length &&
+        prev.desks.every((d, i) => d.key === next.desks[i].key && d.active === next.desks[i].active);
+      return same && prev.onToggleCollapsed === next.onToggleCollapsed ? prev : next;
+    });
+  }, []);
+  // Which card of the stack is in front. It lives here rather than in
+  // the dock because screens have to be able to ask for it back - an
+  // action that finishes somewhere else (a sort chosen in a menu, a
+  // select mode left) should put the path in front again.
+  const [face, setFace] = useState<DockFace>('context');
+  const [flip, setFlip] = useState<{ face: DockFace; at: number } | null>(null);
+  const requestFlip = useCallback((next: DockFace) => setFlip({ face: next, at: Date.now() }), []);
+  const [hidden, setHidden] = useState(false);
+  const [tabsInFlux, setTabsInFlux] = useState(false);
+  const publishTabsInFlux = useCallback((inFlux: boolean) => {
+    setTabsInFlux((prev) => (prev === inFlux ? prev : inFlux));
+  }, []);
+  // The desks swipe having MOVED AT ALL, which is earlier than
+  // `tabsInFlux` (that one waits for the halfway mark, where the
+  // arriving desk becomes the one being arrived at). Anything that has
+  // to be under way before the eye notices the move reads this instead -
+  // the path strip's own exit does: "починається вона від початку
+  // зміщення в сторону сусіднього робочого столу".
+  const [tabsDrifting, setTabsDrifting] = useState(false);
+  const publishTabsDrifting = useCallback((drifting: boolean) => {
+    setTabsDrifting((prev) => (prev === drifting ? prev : drifting));
+  }, []);
+  const [prefersActions, setPrefersActions] = useState(false);
+  const publishPrefersActions = useCallback((next: boolean) => {
+    setPrefersActions((prev) => (prev === next ? prev : next));
+  }, []);
+  const [wide, setWide] = useState(false);
+  const publishWide = useCallback((next: boolean) => {
+    setWide((prev) => (prev === next ? prev : next));
+  }, []);
+  // A new context is a new question, so a context stepped out of does not
+  // stay stepped out of once you have gone somewhere else.
+  const contextKey = context ? `${context.kind}:${context.icon}` : '';
+  useEffect(() => setHidden(false), [contextKey]);
+  const value = useMemo(
+    () => ({
+      face,
+      setFace,
+      flip,
+      requestFlip,
+      base,
+      publishBase,
+      context,
+      publish,
+      actions,
+      publishActions,
+      beads,
+      publishBeads,
+      leave,
+      publishLeave,
+      drawerProgress,
+      drawerCover,
+      publishDrawerCover,
+      topBack,
+      publishTopBack,
+      topExtras,
+      publishTopExtras,
+      topSearch,
+      publishTopSearch,
+      chromeStyle,
+      publishChromeStyle,
+      topNavUp,
+      claimTopNav,
+      targets,
+      publishTargets,
+      hidden,
+      setHidden,
+      tabsInFlux,
+      publishTabsInFlux,
+      tabsDrifting,
+      publishTabsDrifting,
+      prefersActions,
+      publishPrefersActions,
+      wide,
+      publishWide,
+    }),
+    [
+      face,
+      flip,
+      requestFlip,
+      base,
+      publishBase,
+      context,
+      publish,
+      actions,
+      publishActions,
+      beads,
+      publishBeads,
+      leave,
+      publishLeave,
+      drawerProgress,
+      drawerCover,
+      publishDrawerCover,
+      topBack,
+      publishTopBack,
+      topExtras,
+      publishTopExtras,
+      topSearch,
+      publishTopSearch,
+      chromeStyle,
+      publishChromeStyle,
+      topNavUp,
+      claimTopNav,
+      targets,
+      publishTargets,
+      hidden,
+      tabsInFlux,
+      publishTabsInFlux,
+      tabsDrifting,
+      publishTabsDrifting,
+      prefersActions,
+      publishPrefersActions,
+      wide,
+      publishWide,
+    ]
+  );
+  // Every member is a stable callback (or shared values), so this is
+  // built once.
+  const publishers = useMemo<Publishers>(
+    () => ({
+      publish,
+      publishTargets,
+      publishLeave,
+      publishTopBack,
+      claimTopNav,
+      publishTopExtras,
+      publishTopSearch,
+      publishChromeStyle,
+      publishDrawerCover,
+      drawerProgress,
+      publishActions,
+      publishBeads,
+      publishTabsInFlux,
+      publishTabsDrifting,
+      publishBase,
+      requestFlip,
+      publishPrefersActions,
+      publishWide,
+      setFace,
+      setHidden,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+  // Built once; filled before the first child reads it, and told to its
+  // subscribers after every commit that changed the value.
+  const store = useMemo(() => makeDockStore(), []);
+  if (store.value === null) store.value = value;
+  useLayoutEffect(() => {
+    if (store.value === value) return;
+    store.value = value;
+    store.listeners.forEach((l) => l());
+  }, [store, value]);
+  return (
+    <NavDockPublishContext.Provider value={publishers}>
+      <NavDockFaceContext.Provider value={face}>
+        <NavDockContext.Provider value={store}>{children}</NavDockContext.Provider>
+      </NavDockFaceContext.Provider>
+    </NavDockPublishContext.Provider>
+  );
+}
+
+// What the dock reads. Null where nothing has been wrapped.
+export function useNavDockContext(): DockContext | null {
+  return useDockSlice((v) => (v.hidden ? v.base : v.context ?? v.base), null);
+}
+
+// The screen's OWN context - a path, a run of days - with no fallback to
+// the desks. The stack needs them apart: they are two different cards
+// now, because the desks vanishing the moment you step into a folder is
+// the one thing a navigation dock must never do.
+export function useNavDockOwnContext(): DockContext | null {
+  return useDockSlice((v) => v.context, null);
+}
+
+export function useNavDockDesks(): DockContext | null {
+  return useDockSlice((v) => v.base, null);
+}
+
+// Whether a context is actually ON SCREEN. This is what the desks ask
+// before standing aside - and asking the other question instead is what
+// made the dock vanish entirely when a calendar was put away: the
+// context still EXISTED, so the desks kept hiding from something nobody
+// could see.
+export function useNavDockShowing(): boolean {
+  return useDockSlice((v) => !!v.context && !v.hidden, false);
+}
+
+// Whether there IS a context at all, shown or put away - what the desk
+// you are standing on asks before offering to bring it back.
+export function useNavDockHasContext(): boolean {
+  return useDockSlice((v) => !!v.context, false);
+}
+
+// The setter alone, for what only puts the context away or back - it does
+// not re-render on every publish the way reading `hidden` does.
+export function useNavDockSetHidden(): (hidden: boolean) => void {
+  return useContext(NavDockPublishContext)?.setHidden ?? noopSetHidden;
+}
+const noopSetHidden = () => {};
+
+export function useNavDockHidden(): [boolean, (hidden: boolean) => void] {
+  const hidden = useDockSlice((v) => v.hidden, false);
+  const setHidden = useNavDockSetHidden();
+  return useMemo(() => [hidden, setHidden], [hidden, setHidden]);
+}
+
+// What a screen writes. Publishing null (or unmounting) hands the dock
+// back to the desks.
+export function useNavDockPublisher() {
+  return useContext(NavDockPublishContext)?.publish;
+}
+
+// What the dock's crumbs register themselves with, and what a carry
+// publishes into. Null where nothing is being carried anywhere.
+export function useNavDockTargets(): DockTargets | null {
+  return useDockSlice((v) => v.targets, null);
+}
+
+export function useNavDockTargetPublisher() {
+  return useContext(NavDockPublishContext)?.publishTargets;
+}
+
+// What a pushed screen publishes so the dock can carry its way out.
+export function useDockLeave(icon: string, onLeave: () => void, enabled = true) {
+  const publish = useContext(NavDockPublishContext)?.publishLeave;
+  const leaveRef = useRef(onLeave);
+  leaveRef.current = onLeave;
+  // Stable by construction - a fresh handler every render would publish
+  // every render, and publishing is a setState above the whole app.
+  const stable = useCallback(() => leaveRef.current(), []);
+  useWhileFocused(() => {
+    if (!publish || !enabled) return;
+    publish({ icon, onLeave: stable });
+    return () => publish(null);
+  }, [publish, enabled, icon, stable]);
+}
+
+// What one of the four desks publishes as its way back, for TopNavBar.
+// Same stable-wrapper rule as everything else here: the handler can
+// change every render, the published one does not.
+export function useTopBack(onPress: (() => void) | null, enabled = true, icon?: string) {
+  const publish = useContext(NavDockPublishContext)?.publishTopBack;
+  const layer = useContext(DockLayerContext);
+  const id = useId();
+  const ref = useRef(onPress);
+  ref.current = onPress;
+  const stable = useCallback(() => ref.current?.(), []);
+  const dimmed = !onPress;
+  useWhileFocused(() => {
+    if (!publish || !enabled) return;
+    publish(id, { onPress: stable, dimmed, icon }, layer);
+    return () => publish(id, null);
+  }, [publish, enabled, stable, dimmed, icon, id, layer]);
+}
+
+// Whether the folder path stands on the dock (a 'path' context, the bar not
+// up to carry it instead) - one yes/no, so a screen that only clears the
+// dock renders when THAT changes, not on every context the dock is handed
+// (opening a note hands it one: the list, the start desk and the bases all
+// redrew for it, mid-way through the page's growth, 2026-10-06).
+export function useNavDockPathOnDock(): boolean {
+  return useDockSlice((v) => v.context?.kind === 'path' && !v.topNavUp, false);
+}
+
+export function useNavTopNavUp(): boolean {
+  return useDockSlice((v) => v.topNavUp, false);
+}
+
+// Held by a TopNavBar for as long as it is drawn.
+export function useTopNavClaim(enabled = true) {
+  const claim = useContext(NavDockPublishContext)?.claimTopNav;
+  useEffect(() => (claim && enabled ? claim() : undefined), [claim, enabled]);
+}
+
+type ExtrasInputs = {
+  menu: MenuEntry[] | null;
+  select: { active: boolean; onPress: () => void } | null;
+  pane?: { icon: string; onPress: () => void } | null;
+  tools?: TopTool[] | null;
+};
+
+// What the bar is handed: the screen's entries with STABLE handlers that
+// call the latest ones through the ref.
+function buildExtras(ref: { current: ExtrasInputs }): TopExtras {
+  const live = ref.current;
+  return {
+    menu: live.menu
+      ? live.menu.map((e, i) =>
+          e.kind === 'section' || e.kind === 'rule'
+            ? e
+            : {
+                ...e,
+                onPress: () => {
+                  const current = ref.current.menu?.[i];
+                  if (current && current.kind !== 'section' && current.kind !== 'rule') current.onPress();
+                },
+              }
+        )
+      : null,
+    select: live.select ? { active: live.select.active, onPress: () => ref.current.select?.onPress() } : null,
+    pane: live.pane ? { icon: live.pane.icon, onPress: () => ref.current.pane?.onPress() } : null,
+    tools: live.tools
+      ? live.tools.map((t) => ({
+          ...t,
+          onPress: () => ref.current.tools?.find((x) => x.key === t.key)?.onPress(),
+        }))
+      : null,
+  };
+}
+
+function extrasSignature(inputs: ExtrasInputs): string {
+  const { menu, select, pane, tools } = inputs;
+  return JSON.stringify([
+    menu?.map((e) => (e.kind === 'section' ? ['s', e.label] : e.kind === 'rule' ? ['r'] : [e.label, e.icon, !!e.checked, e.tone])),
+    select ? select.active : null,
+    pane ? pane.icon : null,
+    tools?.map((t) => [t.key, t.icon, !!t.dimmed, !!t.active, !!t.dot]) ?? null,
+  ]);
+}
+
+// The same extras for a bar DRAWN INSIDE a drawer (it is handed them
+// directly, not through the published claims). Built fresh in the screen
+// each render they made the bar redraw with the screen; this is one object
+// until what it shows changes.
+export function useStableTopExtras(
+  menu: MenuEntry[] | null,
+  select: { active: boolean; onPress: () => void } | null,
+  tools?: TopTool[] | null
+): TopExtras {
+  const ref = useRef<ExtrasInputs>({ menu, select, tools });
+  ref.current = { menu, select, tools };
+  const signature = extrasSignature(ref.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => buildExtras(ref), [signature]);
+}
+
+// What a writing screen puts at the bar's right end - see TopExtras. The
+// handlers are stable wrappers reading the latest ones through a ref, and
+// the whole is republished only when what it SHOWS changes (labels,
+// ticks, the choosing state) - the same rule as the dock's actions.
+export function useTopExtras(
+  menu: MenuEntry[] | null,
+  select: { active: boolean; onPress: () => void } | null,
+  enabled = true,
+  pane?: { icon: string; onPress: () => void } | null,
+  tools?: TopTool[] | null
+) {
+  const publish = useContext(NavDockPublishContext)?.publishTopExtras;
+  const layer = useContext(DockLayerContext);
+  const id = useId();
+  const ref = useRef({ menu, select, pane, tools });
+  ref.current = { menu, select, pane, tools };
+  const signature = extrasSignature(ref.current);
+  useWhileFocused(() => {
+    if (!publish || !enabled) return;
+    publish(id, buildExtras(ref), layer);
+    return () => publish(id, null);
+  }, [publish, enabled, signature, id, layer]);
+}
+
+// A screen searching through the bar: `search` while it is searching,
+// null otherwise. Stable wrappers, as everywhere here.
+export function useTopSearch(search: Omit<TopSearch, 'onChangeQuery' | 'onClose'> & {
+  onChangeQuery: (query: string) => void;
+  onClose: () => void;
+} | null, enabled = true) {
+  const publish = useContext(NavDockPublishContext)?.publishTopSearch;
+  const layer = useContext(DockLayerContext);
+  const id = useId();
+  const ref = useRef(search);
+  ref.current = search;
+  const active = !!search;
+  const placeholder = search?.placeholder ?? '';
+  useWhileFocused(() => {
+    if (!publish || !enabled || !active) return;
+    publish(
+      id,
+      {
+        placeholder,
+        initialQuery: ref.current?.initialQuery ?? '',
+        onChangeQuery: (q) => ref.current?.onChangeQuery(q),
+        onClose: () => ref.current?.onClose(),
+      },
+      layer
+    );
+    return () => publish(id, null);
+  }, [publish, enabled, active, placeholder, id, layer]);
+}
+
+// THE SOFT CHROME EXPERIMENT (2026-09-28): the style agreed from the
+// «М'який стиль» mockups - one soft capsule for the bar, a search field
+// and a "write" button instead of two floating discs, a chevron back,
+// no glass - is tried on the Documents desk alone before it reaches the
+// rest ("другий варіант давай"). The screen in front says which look it
+// wants; the bar and the dock, shared by every screen, read it here.
+export function useChromeStyle(style: ChromeStyle | null, enabled = true) {
+  const publish = useContext(NavDockPublishContext)?.publishChromeStyle;
+  const layer = useContext(DockLayerContext);
+  const id = useId();
+  useWhileFocused(() => {
+    if (!publish || !enabled || !style) return;
+    publish(id, style, layer);
+    return () => publish(id, null);
+  }, [publish, enabled, style, id, layer]);
+}
+
+export function useNavChromeStyle(): ChromeStyle | null {
+  return useDockSlice((v) => v.chromeStyle, null);
+}
+
+export function useNavTopSearch(): TopSearch | null {
+  return useDockSlice((v) => v.topSearch, null);
+}
+
+export function useNavTopExtras(): TopExtras | null {
+  return useDockSlice((v) => v.topExtras, null);
+}
+
+export function useNavDrawerCover() {
+  const progress = useDockSlice((v) => v.drawerProgress, null);
+  const cover = useDockSlice((v) => v.drawerCover, null);
+  return useMemo(() => (progress && cover ? { progress, ...cover } : null), [progress, cover]);
+}
+
+export function useDrawerCoverPublisher() {
+  return useContext(NavDockPublishContext)?.publishDrawerCover;
+}
+
+export function useNavDrawerProgress() {
+  return useContext(NavDockPublishContext)?.drawerProgress ?? null;
+}
+
+export function useNavTopBack(): TopBack | null {
+  return useDockSlice((v) => v.topBack, null);
+}
+
+export function useNavDockLeave(): DockLeave | null {
+  return useDockSlice((v) => v.leave, null);
+}
+
+// What a screen publishes as its own actions - see DockAction.
+//
+// The handlers published are STABLE WRAPPERS that call the latest ones
+// through a ref. Actions are deduplicated by signature (key, icon,
+// active), which is right for redrawing - but a handler can close over
+// state the signature knows nothing about, and the dock was then
+// keeping the FIRST handler it ever saw. The calendar's "today" bead
+// read which card was in front from a closure that was several renders
+// old, so its desks/days ring stopped after one step.
+export function useDockActions(actions: DockAction[] | null) {
+  const publish = useContext(NavDockPublishContext)?.publishActions;
+  const layer = useContext(DockLayerContext);
+  const id = useId();
+  const ref = useRef(actions);
+  ref.current = actions;
+  const wrappers = useRef(new Map<string, { onPress: () => void; onLongPress: () => void }>());
+  const signature = actionSignature(actions);
+  useWhileFocused(() => {
+    if (!publish) return;
+    const live = ref.current;
+    publish(
+      id,
+      live
+        ? live.map((a) => {
+            let w = wrappers.current.get(a.key);
+            if (!w) {
+              w = {
+                onPress: () => ref.current?.find((x) => x.key === a.key)?.onPress(),
+                onLongPress: () => ref.current?.find((x) => x.key === a.key)?.onLongPress?.(),
+              };
+              wrappers.current.set(a.key, w);
+            }
+            return { ...a, onPress: w.onPress, onLongPress: a.onLongPress ? w.onLongPress : undefined };
+          })
+        : null,
+      layer
+    );
+    return () => publish(id, null);
+  }, [publish, signature, id, layer]);
+}
+
+export function useNavDockActions(): DockAction[] | null {
+  return useDockSlice((v) => v.actions, null);
+}
+
+// The two fixed beads either side of the stack - see DockBead. Same
+// stable-wrapper rule as the actions, for the same reason.
+export function useDockBeads(left: DockBead | null, right: DockBead | null) {
+  const publish = useContext(NavDockPublishContext)?.publishBeads;
+  const layer = useContext(DockLayerContext);
+  const id = useId();
+  const ref = useRef({ left, right });
+  ref.current = { left, right };
+  const wrap = useRef({
+    left: { onPress: () => ref.current.left?.onPress(), onLongPress: () => ref.current.left?.onLongPress?.() },
+    right: {
+      onPress: () => ref.current.right?.onPress(),
+      onLongPress: () => ref.current.right?.onLongPress?.(),
+      extra: () => ref.current.right?.extra?.onPress(),
+    },
+  });
+  const signature = beadSignature({ left, right });
+  useWhileFocused(() => {
+    if (!publish) return;
+    const { left: l, right: r } = ref.current;
+    publish(id, {
+      left: l ? { ...l, onPress: wrap.current.left.onPress, onLongPress: l.onLongPress ? wrap.current.left.onLongPress : undefined } : null,
+      right: r
+        ? {
+            ...r,
+            onPress: wrap.current.right.onPress,
+            onLongPress: r.onLongPress ? wrap.current.right.onLongPress : undefined,
+            extra: r.extra ? { ...r.extra, onPress: wrap.current.right.extra } : undefined,
+          }
+        : null,
+    }, layer);
+    return () => publish(id, null);
+  }, [publish, signature, id, layer]);
+}
+
+export function useNavDockBeads() {
+  return useDockSlice((v) => v.beads, NO_BEADS as { left: DockBead | null; right: DockBead | null });
+}
+
+// Whether a swipe has visually settled on a new desk that
+// react-navigation does not know about yet - see the field's own
+// comment on Value. Read by ContextDock, written by FloatingIslandTabBar.
+export function useNavDockTabsInFlux(): boolean {
+  return useDockSlice((v) => v.tabsInFlux, false);
+}
+
+export function useDockTabsInFluxPublisher() {
+  return useContext(NavDockPublishContext)?.publishTabsInFlux;
+}
+
+export function useDockTabsDriftPublisher() {
+  return useContext(NavDockPublishContext)?.publishTabsDrifting;
+}
+
+export function useNavDockTabsDrifting(): boolean {
+  return useDockSlice((v) => v.tabsDrifting, false);
+}
+
+// The desks, published by the tab bar - see DockDesk.
+export function useDockBase(base: DockContext | null) {
+  const publish = useContext(NavDockPublishContext)?.publishBase;
+  const ref = useRef(base);
+  ref.current = base;
+  const signature =
+    base?.kind === 'desks'
+      ? `${base.collapsed}|${base.desks.map((d) => `${d.key}:${d.active ? 1 : 0}`).join(',')}`
+      : '';
+  useEffect(() => {
+    if (!publish) return;
+    publish(ref.current);
+    return () => publish(null);
+  }, [publish, signature]);
+}
+
+// Which card of the stack is in front, and how to change it.
+// What the DOCK reads: the standing request, if any.
+export function useNavDockFlipRequest(): { face: DockFace; at: number } | null {
+  return useDockSlice((v) => v.flip, null);
+}
+
+// What a SCREEN calls: turn the dock to that card, visibly.
+export function useNavDockFlip(): (face: DockFace) => void {
+  const request = useContext(NavDockPublishContext)?.requestFlip;
+  return useCallback((next: DockFace) => request?.(next), [request]);
+}
+
+// The setter alone - see useNavDockSetHidden.
+export function useNavDockSetFace(): (face: DockFace) => void {
+  return useContext(NavDockPublishContext)?.setFace ?? noopSetFace;
+}
+const noopSetFace = () => {};
+
+export function useNavDockFace(): [DockFace, (face: DockFace) => void] {
+  const face = useContext(NavDockFaceContext);
+  const setFace = useContext(NavDockPublishContext)?.setFace;
+  return [face, setFace ?? (() => {})];
+}
+
+// See `prefersActions`. Published while focused, cleared on the way out,
+// so the preference never outlives the screen that holds it.
+export function useDockOpensOnActions(prefers: boolean) {
+  const publish = useContext(NavDockPublishContext)?.publishPrefersActions;
+  useWhileFocused(() => {
+    if (!publish) return;
+    publish(prefers);
+    return () => publish(false);
+  }, [publish, prefers]);
+}
+
+export function useNavDockPrefersActions(): boolean {
+  return useDockSlice((v) => v.prefersActions, false);
+}
+
+// See `wide`. Published while focused and cleared on the way out, so a
+// screen left mid-selection does not hand the next one a stretched dock.
+export function useDockWide(wide: boolean) {
+  const publish = useContext(NavDockPublishContext)?.publishWide;
+  useWhileFocused(() => {
+    if (!publish) return;
+    publish(wide);
+    return () => publish(false);
+  }, [publish, wide]);
+}
+
+export function useNavDockWide(): boolean {
+  return useDockSlice((v) => v.wide, false);
+}
+
+// What a screen calls when an action has FINISHED somewhere else - a
+// sort picked from its menu, a select mode left, a folder named. The
+// card of actions was opened for one thing; once that thing is done,
+// where-you-are is what belongs in front.
+export function useDockShowContext(): () => void {
+  const setFace = useContext(NavDockPublishContext)?.setFace;
+  return useCallback(() => setFace?.('context'), [setFace]);
+}

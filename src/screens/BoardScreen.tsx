@@ -1,0 +1,10995 @@
+import { grabScreenFrame, startScreenCapture, stopScreenCapture, supportsScreenCapture } from '../utils/mindevaNative';
+import { boardCardFate, confirmFates } from '../utils/deleteFates';
+import { TextScaleOverride, useStyles, useTheme } from '../theme/ThemeProvider';
+import { useDeskContent } from '../navigation/useDeskContent';
+import { useNoteOpened } from '../navigation/recentPlaces';
+import { BoardFieldsContext } from '../components/boardFieldsContext';
+import { BoardEmbedContext } from '../components/boardEmbedContext';
+import { rowTitleOf } from '../utils/customRowDisplay';
+import type { BoardDbWindow, CustomDatabase, CustomDatabaseRow } from '../types';
+import BoardDatabaseWindow from '../components/BoardDatabaseWindow';
+import { MONTH_SHORT, WEEKDAY_SHORT, addDays, dateKey, formatShortDate, mondayIndex, parseDateKey } from '../utils/dateLocale';
+import { mutedForTheme, type Theme } from '../theme/tokens';
+import { type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  BackHandler,
+  Keyboard,
+  Image,
+  Linking,
+  PixelRatio,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import TextInput from '../components/AppTextInput';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '../components/icons/Ionicons';
+// gesture-handler's ScrollView for the outline: it lives over a canvas
+// that claims pans of its own, and the core RN one loses the drag to it.
+import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import Animated, {
+  makeMutable,
+  runOnJS,
+  SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import Svg, { Circle, Path, Polygon } from 'react-native-svg';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as DocumentPicker from 'expo-document-picker';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { copyPickedFile } from '../utils/localCopy';
+import * as ImagePicker from 'expo-image-picker';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import {
+  arrayUnion,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocFromCache,
+  getDocs,
+  onSnapshot,
+  updateDoc,
+} from '../firestore';
+import { addDoc, ownedQuery, setDoc } from '../utils/owned';
+import DocumentPickerModal from '../components/DocumentPickerModal';
+import { groupAppliesTo } from '../utils/groups';
+import { applyLiveRecord, recordIdFor, useLiveRecords } from '../hooks/useLiveRecords';
+import * as Clipboard from 'expo-clipboard';
+import { outlineToBoard, parseOutline } from '../utils/outlineToBoard';
+import FormattedText from '../components/FormattedText';
+import { parseFormattedText } from '../utils/documentBlocks';
+import { createOutlineNotes } from '../utils/outlineToNotes';
+import { copyObject, labelForBlock } from '../utils/objectClipboard';
+import { db } from '../firebase';
+import { BoardsStackParamList, RootStackParamList } from '../navigation';
+import { Block, BlockType, BoardCard, BoardColumn, BoardConnection, BoardContainer, BoardLayer, BoardShape, BoardShapeKind } from '../types';
+import { useCardCarry } from '../hooks/useCardCarry';
+import CardCarryOverlay from '../components/CardCarryOverlay';
+import CustomRowBlockCard from '../components/CustomRowBlockCard';
+import AttachmentImage from '../components/AttachmentImage';
+import { hapticDrop, hapticPickUp, hapticSuccess, hapticToggle } from '../utils/haptics';
+import {
+  APPROX_CARD_HEIGHT,
+  COLUMN_CARD_GAP,
+  COLUMN_HEADER_HEIGHT,
+  COLUMN_MIN_HEIGHT,
+  COLUMN_PADDING,
+  LIVE_TASK_ROW_HEIGHT,
+  widthInColumn,
+  clampCardWidth,
+  cardImageHeight,
+  CARD_IMAGE_PADDING,
+  COLUMN_SPACING,
+  COLUMN_WIDTH,
+  DEFAULT_CARD_WIDTH,
+  WORLD_CENTER,
+  WORLD_SIZE,
+  CONTAINER_HEADER_HEIGHT,
+  CONTAINER_DEFAULT_WIDTH,
+  CONTAINER_DEFAULT_HEIGHT,
+  CONTAINER_SPACING,
+  clampContainerWidth,
+  clampContainerHeight,
+  fileIconFor,
+} from '../utils/boardLayout';
+import AddExistingItemModal from '../components/AddExistingItemModal';
+import RenamePrompt from '../components/RenamePrompt';
+import FlashcardQuickSheet from '../components/FlashcardQuickSheet';
+import VideoPlayerModal from '../components/VideoPlayerModal';
+import InlineVideoPlayer from '../components/InlineVideoPlayer';
+import { getVideoEmbedInfo } from '../utils/videoEmbed';
+import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
+import { linkDocId } from '../utils/linkId';
+import { blockFromCustomRow, blockFromFile, blockFromFlashcard, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
+import { backupFileToDrive } from '../utils/googleDrive';
+import { captureBoardPreview } from '../components/BoardMiniature';
+import ShapeBody, { SHAPE_STROKE, SHAPE_TEXT_SIZE_DEFAULT, SHAPE_LABEL_SIZE_DEFAULT } from '../components/BoardShapeBody';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { useDensity } from '../hooks/useDensity';
+import { contentEqual } from '../utils/contentEqual';
+import { keyedAll, keyedDiff, readBoardPart } from '../utils/boardStorage';
+import { useBlockDrawerSwipe } from '../navigation/sideDrawers';
+import FlashcardBlockCard from '../components/FlashcardBlockCard';
+import GroupImportSheet from '../components/GroupImportSheet';
+import { useGroupItems } from '../hooks/useGroupItems';
+import { importGroupToBoard } from '../utils/importGroupToBoard';
+import { Group } from '../types';
+import DocumentEditorScreen, { DocumentEditorHandle } from './DocumentEditorScreen';
+import { useCanvasWheel } from '../hooks/useCanvasWheel';
+import { useBoardKeys } from '../hooks/useBoardKeys';
+import { autoGrowInput } from '../utils/autoGrowInput';
+import { installPasteMarkdown } from '../utils/pasteMarkdown';
+import { insertedPiece, parsePastedText, worthSplitting, type ParsedBlock } from '../utils/pasteBlocks';
+import { useAttachmentSource } from '../hooks/useAttachmentSource';
+import { useContextMenu } from '../hooks/useContextMenu';
+import { rightClick } from '../utils/rightClick';
+import Menu, { MENU_WIDTH } from '../components/surfaces/Menu';
+import { FONT_BOLD, FONT_EXTRABOLD, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
+import { softenStyles, useSoftDatabase, type SoftTokens } from '../theme/soft';
+import {
+  GLASS_BODY,
+  GLASS_CARD,
+  GLASS_EDGE,
+  GLASS_ISLAND,
+  GLASS_TEXT,
+  GLASS_TEXT_FAINT,
+  GLASS_TEXT_MUTED,
+  SHEET_BACKDROP,
+  SHEET_WINDOW, PHONE_ONLY } from '../constants/glass';
+import { GlassPortal } from '../components/GlassPortal';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { BlurView } from 'expo-blur';
+import { useIsFocused } from '@react-navigation/native';
+import { useBlurTarget } from '../components/GlassTarget';
+import { useDockClearance } from '../navigation/dockGeometry';
+import { FEATURES } from '../features';
+import { usePublishToolbarTitle } from '../navigation/toolbarTitle';
+import { usePublishRailPanel } from '../navigation/navRail';
+import { inspector } from '../navigation/inspector';
+import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
+import BoardPanel, { BoardSelection, PanelPickList, type BoardTab } from '../components/desktop/BoardPanel';
+import { ensureBoardMap, onBoardJump, publishBoardLive, type BoardView } from '../utils/boardMap';
+import DocumentCardBlocks from '../components/DocumentCardBlocks';
+import { PAGE_H2, PAGE_TEXT, makeStyles as makeEditorStyles } from '../components/documentEditorStyles';
+import PagePreviewRow from '../components/PagePreviewRow';
+import { SoftTaskCheck } from '../components/SoftIcon';
+import { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
+import { windowUrlFor } from '../navigation/paneTargetInfo';
+import { BOARD_WINDOW } from '../utils/leanWindow';
+import { useChromeStyle, useDockActions, useDockBeads, useDockLeave, useDockWide, useTopBack, useTopExtras } from '../navigation/navDock';
+import TopNavBar, { TOP_NAV_H, useTopNavOn } from '../components/TopNavBar';
+import { CHROME_TOP } from '../constants/rail';
+import { ask, confirm, notify } from '../components/surfaces/Ask';
+import { useThemeBoard } from '../hooks/useThemeBoard';
+import ThoughtBoardCard, { ThoughtCardsContext } from '../components/thoughts/ThoughtBoardCard';
+import ThemeBoardStrip from '../components/thoughts/ThemeBoardStrip';
+import ThemeNoteView from '../components/thoughts/ThemeNoteView';
+import WriteSheet from '../components/thoughts/WriteSheet';
+import { openThoughtCapture, openThoughtReader } from '../utils/thoughtBus';
+import { deleteThought, hueOf, moveThought, type Thought } from '../hooks/useThoughts';
+import { askOnBoard, branchOnBoard, deepenOnBoard, summarizeOnBoard } from '../utils/themeBoardOps';
+import { speakThoughts } from '../utils/thoughtVoice';
+import { cardTitle, voiceTextOf } from '../components/thoughts/thoughtText';
+import { listenError } from '../utils/listenError';
+import { isTucked } from '../utils/chatOwned';
+import { rad } from '../utils/angle';
+import GlassLayer from '../components/GlassLayer';
+// The four windows (2026-10-25): on the phone these windows stand on the bottom edge and rise (surfaces/bottomSheet).
+import { BOTTOM_FRAME, BottomWindow, RISES } from '../components/surfaces/bottomSheet';
+
+const AUTOSAVE_DELAY_MS = 600;
+// How many steps back undo keeps - a plain cap on a session-only stack,
+// not a meaningful design number.
+const UNDO_HISTORY_LIMIT = 50;
+const MIN_SCALE = 0.4;
+const MAX_SCALE = 3;
+// Isolation's own ceiling on fitting a chain into view - lower than the
+// pinch's own MAX_SCALE on purpose. A chain of one or two small objects
+// fit-to-bounds against the ordinary ceiling would blow up to fill the
+// whole screen at an absurd size; this caps how far "fit it in frame"
+// alone is allowed to zoom in, independent of how close a finger could
+// still pinch afterwards.
+const ISOLATE_MAX_SCALE = 1.6;
+// How much of the viewport a fitted chain actually fills - short of all
+// of it, so the isolated objects never sit flush against the screen's
+// own edges.
+const ISOLATE_FIT_FRACTION = 0.82;
+// A large fixed virtual canvas rather than an unbounded one - card x/y are
+// plain offsets from this world's own top-left, and the world container
+// itself starts centered on screen (see canvasSurface/world styles), so
+// WORLD_CENTER is where a freshly created card lands by default.
+// The six a sticky card can be. STORED as they are - the colour is the
+// user's own choice and must survive a change of theme - but DRAWN
+// through `mutedForTheme`: #FEF3C7 on a near-black canvas is a torch,
+// and blended most of the way into the theme's own surface the card
+// stays recognisable as "the yellow one" while it stops being the
+// brightest thing on the screen. In the colour theme mutedForTheme
+// hands the colour back untouched, so nothing moves there.
+//
+// Muted HARDER than the app's default 0.62, because a sticky fills a
+// whole card rather than a chip beside a row, and area is light: at the
+// default the six of them came out well above the plain card's own fill
+// and the board read as a handful of lamps again. At 0.72 a coloured
+// card is still clearly more present than a plain one - which is the
+// point of colouring it - without being the brightest thing there.
+// The board's furniture - see BoardShape in types.ts. SHAPE_STROKE
+// itself now lives with ShapeBody in ../components/BoardShapeBody.
+const SHAPE_MIN = 48;
+// A loose label is as tall as its own words, which nothing measures. The
+// same kind of stand-in APPROX_CARD_HEIGHT is, and used for the same two
+// things: aiming an arrow at it, and hit-testing.
+const SHAPE_TEXT_HEIGHT = 34;
+// A loose label is as WIDE as its own words too, now - it used to be
+// born at a fixed 180 and stay there forever, so raising its font size
+// (or typing more into it) just wrapped the same box onto more lines
+// instead of the box growing: "текст з фіксованою шириною переноситься
+// на іншу строку при збільшенні його розміру". The box itself (see
+// DraggableShape) auto-sizes to its own Text now, the same way its
+// height already did; this is only the STAND-IN used where nothing
+// actually measures the rendered box - aiming an arrow at it, same as
+// SHAPE_TEXT_HEIGHT above.
+function approxTextShapeWidth(text: string, fontSize: number): number {
+  return Math.max(SHAPE_MIN, Math.round((text || 'Текст').length * fontSize * 0.55) + 16);
+}
+// A STEP, never a free number - the request was "make it readable from
+// across the board", not fine typographic control, and a stepper is
+// what a corner grip already does for size (see clampShapeSize) rather
+// than a slider or a numeric field neither input method here suits.
+const SHAPE_TEXT_SIZES = [12, 14, 16, 20, 26, 32];
+// A наліпка's own text, on the same scale (see BoardCard.fontSize) - the
+// size it has always drawn at is the default, so every sticky made
+// before it could be changed looks exactly as it did.
+const STICKY_TEXT_SIZE_DEFAULT = 14;
+// How wide a наліпка can be stepped, and by how much per press. The
+// floor is where the card stops being able to hold a word; the ceiling
+// is about the widest that still reads as a note on a board rather than
+// as a page.
+const STICKY_WIDTH_STEP = 40;
+const STICKY_WIDTH_MIN = 120;
+const STICKY_WIDTH_MAX = 480;
+function stepTextSize(current: number, dir: 1 | -1): number {
+  const at = SHAPE_TEXT_SIZES.findIndex((v) => v >= current);
+  const i = at < 0 ? SHAPE_TEXT_SIZES.length - 1 : at;
+  const next = Math.max(0, Math.min(SHAPE_TEXT_SIZES.length - 1, i + dir));
+  return SHAPE_TEXT_SIZES[next];
+}
+// The step itself, as "2/6" - the user's own ask: a number to compare
+// by, not a size to judge by eye ("щоб я не на око а по цифрах міг
+// порівнювати який розмір шрифту зараз вибраний"). Shown next to every
+// stepper that steps through SHAPE_TEXT_SIZES, so a shape's own text and
+// a container's title read on the one shared scale.
+function textSizeStepLabel(current: number): string {
+  const at = SHAPE_TEXT_SIZES.findIndex((v) => v >= current);
+  const i = at < 0 ? SHAPE_TEXT_SIZES.length - 1 : at;
+  return `${i + 1}/${SHAPE_TEXT_SIZES.length}`;
+}
+// The fill is the outline's own colour, much weaker - so a shape stays
+// describable by one colour instead of two. 'none' when the user has
+// not turned the wash on, which keeps every shape made before this an
+// outline, exactly as it drew before.
+function shapeFillFor(shape: BoardShape, stroke: string, theme: Theme): string {
+  if (!shape.filled) return 'none';
+  return mutedForTheme(stroke, theme, 0.88, theme.canvas.card);
+}
+const SHAPE_MAX = 900;
+const clampShapeSize = (v: number) => Math.round(Math.max(SHAPE_MIN, Math.min(SHAPE_MAX, v)));
+// What each kind is born as. A square and a circle are born square and
+// stay square; the others are free.
+const SHAPE_BIRTH: Record<BoardShapeKind, { width: number; height: number }> = {
+  text: { width: 180, height: 0 },
+  rect: { width: 180, height: 110 },
+  square: { width: 140, height: 140 },
+  triangle: { width: 160, height: 140 },
+  diamond: { width: 160, height: 140 },
+  ellipse: { width: 180, height: 110 },
+  circle: { width: 140, height: 140 },
+};
+const SHAPE_MENU: { kind: BoardShapeKind; label: string; icon: string }[] = [
+  { kind: 'text', label: 'Текст', icon: 'format-text' },
+  { kind: 'rect', label: 'Прямокутник', icon: 'rectangle-outline' },
+  { kind: 'square', label: 'Квадрат', icon: 'square-outline' },
+  { kind: 'triangle', label: 'Трикутник', icon: 'triangle-outline' },
+  { kind: 'diamond', label: 'Ромб', icon: 'rhombus-outline' },
+  { kind: 'circle', label: 'Коло', icon: 'circle-outline' },
+  { kind: 'ellipse', label: 'Овал', icon: 'ellipse-outline' },
+];
+
+const STICKY_MUTE = 0.72;
+const STICKY_COLORS = ['#FEF3C7', '#DBEAFE', '#DCFCE7', '#FCE7F3', '#EDE9FE', '#FFE4E6'];
+// Cards don't carry their own rendered height (only width) - close enough
+// for hit-testing the marquee-selection rectangle against, not meant to be
+// pixel-exact.
+const SELECTION_COLOR = '#2563EB';
+// The foot the selection bar keeps clear for the dock - the same
+// reckoning DatabaseChrome makes.
+// Kanban columns. A column is exactly wide enough for a default card plus
+// its own padding on both sides, so a card dropped in sits flush.
+// A column with nothing in it still has to be a visible drop target.
+// How far outside a column's own bounds a dropped card still gets pulled
+// into it. Generous on purpose - dropping a card "at" a column shouldn't
+// require landing inside its box.
+// The boards section's own colour, the same one BoardsListScreen uses - it
+// was written into the "+" button's style as a number, which is how a
+// screen ends up with a colour nothing else knows about.
+const ACCENT = '#8B5CF6';
+// The same half-strength tint the documents screen's add button uses.
+const ACCENT_GLASS = 'rgba(139,92,246,0.55)';
+// Raised from 90: a card was coming loose from its column on the
+// slightest drag, which is the wrong default - a card in a column is
+// almost always meant to stay in it, and pulling one out deliberately is
+// the rarer move.
+// How far outside a column still counts as dropping into it. Generous
+// enough to forgive an imprecise finger, small enough that a card meant
+// for open canvas beside a column is not swallowed by it - 220 was the
+// second of those and not the first.
+const COLUMN_SNAP_MARGIN = 90;
+const CONNECTION_COLOR = '#8B5CF6';
+// The line from a copy back to its original (BoardCard.copyOf): its own
+// colour, dashed, so it never reads as an ordinary connection - and it has
+// no tap, so it cannot be taken away.
+const ORIGIN_COLOR = '#D9793F';
+// Padding around a connection's own bounding box, so the curve's bulge and
+// the stroke width itself aren't clipped by the little Svg canvas each
+// connection is drawn into.
+const CONNECTION_PADDING = 24;
+// A dragged card's own alignment guides, deliberately not the selection
+// blue or the connection purple - a third colour on the board would be
+// a fourth meaning to learn, so this borrows the one every design tool
+// already uses for the same job.
+const GUIDE_COLOR = '#FF3D9A';
+// How close an edge has to land, in SCREEN points regardless of zoom -
+// divided by canvasScale wherever it's actually compared, the same way
+// every other on-screen distance in this file is (see COLUMN_SNAP_MARGIN's
+// own use of canvasScale). A guide that only ever fired at one zoom level
+// would read as broken at every other one.
+const GUIDE_SNAP_DISTANCE = 6;
+
+const documentsCollection = collection(db, 'documents');
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// Same resize-then-compress every other image-picking flow in this app
+// already goes through (PhotosScreen's own "+", StickerComposer) -
+// duplicated rather than shared, per this app's established convention for
+// small single-purpose helpers.
+async function compressPickedImage(uri: string, width: number, height: number): Promise<string> {
+  const MAX_DIMENSION = 1600;
+  try {
+    const longest = Math.max(width, height);
+    let context = ImageManipulator.manipulate(uri);
+    if (longest > MAX_DIMENSION) {
+      const scale = MAX_DIMENSION / longest;
+      context = context.resize({ width: Math.round(width * scale), height: Math.round(height * scale) });
+    }
+    const rendered = await context.renderAsync();
+    const saved = await rendered.saveAsync({ compress: 0.7, format: SaveFormat.JPEG });
+    return saved.uri;
+  } catch {
+    return uri;
+  }
+}
+
+function newTextCard(index: number, at: { x: number; y: number }): BoardCard {
+  const jitter = (index % 6) * 24;
+  return {
+    id: generateId(),
+    text: '',
+    type: 'paragraph',
+    createdAt: Date.now(),
+    x: at.x - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: at.y - 60 + jitter,
+    width: DEFAULT_CARD_WIDTH,
+    color: STICKY_COLORS[index % STICKY_COLORS.length],
+  };
+}
+
+// A free block: paper, a text kind of the note's own, wide enough to read.
+const FREE_BLOCK_WIDTH = 240;
+// The strip of block kinds over the keyboard while a free block is typed in.
+const FREE_BAR_H = 48;
+function newFreeBlock(index: number, at: { x: number; y: number }): BoardCard {
+  const jitter = (index % 6) * 24;
+  return {
+    id: generateId(),
+    text: '',
+    type: 'paragraph',
+    freeBlock: true,
+    createdAt: Date.now(),
+    x: at.x - FREE_BLOCK_WIDTH / 2 + jitter,
+    y: at.y - 30 + jitter,
+    width: FREE_BLOCK_WIDTH,
+  };
+}
+
+// GLUE: how close a block's top-left must land to another block's
+// bottom-left to stick there, in board units.
+// THE MAGNET (2026-10-11, the user: a radius within which a block sticks to a block - truly, at once, exactly):
+// measured on the SCREEN, so it feels the same at any zoom. Let go within this many points of a block's foot (or
+// head) and the block is laid flush against it in the same moment.
+const GLUE_SNAP_SCREEN = 44;
+
+function glueMembers(cards: BoardCard[], glueId: string): BoardCard[] {
+  return cards.filter((c) => c.glueId === glueId).sort((a, b) => (a.glueOrder ?? 0) - (b.glueOrder ?? 0));
+}
+
+// Every strip laid out under its head: same x and width, edge to edge.
+// Returns the same array when nothing moved, so it can run on every
+// change of the measured heights without looping.
+// `needMeasured`: a strip is laid out only when EVERY block of it has been measured. Laid out by the rough constant
+// (what an unmeasured block falls back to) the blocks are put 140 units apart AND that is then saved - the user's
+// «при відкритті дошки блоки то склеєні, то розклеєні» (2026-10-11).
+function reflowGlue(cards: BoardCard[], heights: Map<string, number>, needMeasured = false): BoardCard[] {
+  const ids = new Set(cards.filter((c) => c.glueId).map((c) => c.glueId as string));
+  if (ids.size === 0) return cards;
+  const place = new Map<string, { x: number; y: number; width: number }>();
+  ids.forEach((gid) => {
+    const members = glueMembers(cards, gid);
+    if (needMeasured && members.some((m) => !heights.has(m.id))) return;
+    const head = members[0];
+    let y = head.y + heightOf(head, heights);
+    members.slice(1).forEach((m) => {
+      place.set(m.id, { x: head.x, y, width: head.width });
+      y += heightOf(m, heights);
+    });
+  });
+  let changed = false;
+  const next = cards.map((c) => {
+    const at = place.get(c.id);
+    if (!at || (Math.abs(c.x - at.x) < 0.5 && Math.abs(c.y - at.y) < 0.5 && c.width === at.width)) return c;
+    changed = true;
+    return { ...c, ...at };
+  });
+  return changed ? next : cards;
+}
+
+// A strip of one is no strip.
+function dropLoneGlue(cards: BoardCard[]): BoardCard[] {
+  const counts = new Map<string, number>();
+  cards.forEach((c) => c.glueId && counts.set(c.glueId, (counts.get(c.glueId) ?? 0) + 1));
+  if (![...counts.values()].some((n) => n < 2)) return cards;
+  return cards.map((c) => {
+    if (!c.glueId || (counts.get(c.glueId) ?? 0) >= 2) return c;
+    const out = { ...c };
+    delete out.glueId;
+    delete out.glueOrder;
+    return out;
+  });
+}
+
+function cardFromExistingBlock(block: Block, index: number, at: { x: number; y: number }): BoardCard {
+  const jitter = (index % 6) * 24;
+  return {
+    ...block,
+    x: at.x - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: at.y - 60 + jitter,
+    width: DEFAULT_CARD_WIDTH,
+  };
+}
+
+// A document card always gets a fresh id, unlike file/photo cards which
+// reuse the referenced record's own id - there's no Drive-dedup or
+// usedInDocuments concern for a document reference (it's just a documentId
+// pointer), so nothing stops the same document from being pinned to the
+// board more than once.
+// Another board, as a card. The title is a snapshot, refreshed the same
+// way a document card's is (see refreshDocumentPreviews) - what it is
+// NOT is live, because a board is not in memory here the way documents
+// are in the editor, and one fetch per open is cheaper than a listener
+// on every board that any board mentions.
+function newBoardCard(board: { id: string; title: string }, index: number, at: { x: number; y: number }): BoardCard {
+  const jitter = (index % 6) * 24;
+  return {
+    id: generateId(),
+    text: '',
+    type: 'board',
+    createdAt: Date.now(),
+    boardId: board.id,
+    boardTitle: board.title,
+    x: at.x - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: at.y - 60 + jitter,
+    width: DEFAULT_CARD_WIDTH,
+  };
+}
+
+function newDocumentCard(
+  document: { id: string; title: string },
+  preview: { text?: string; imageUri?: string; driveFileId?: string },
+  index: number,
+  at: { x: number; y: number }
+): BoardCard {
+  const jitter = (index % 6) * 24;
+  const card: BoardCard = {
+    id: generateId(),
+    text: '',
+    type: 'document',
+    createdAt: Date.now(),
+    documentId: document.id,
+    documentTitle: document.title,
+    x: at.x - DEFAULT_CARD_WIDTH / 2 + jitter,
+    y: at.y - 60 + jitter,
+    width: DEFAULT_CARD_WIDTH,
+  };
+  if (preview.text) card.documentPreviewText = preview.text;
+  if (preview.imageUri) card.documentPreviewImageUri = preview.imageUri;
+  if (preview.driveFileId) card.documentPreviewDriveFileId = preview.driveFileId;
+  return card;
+}
+
+// A plain-text peek at a document's blocks, cached onto the card at
+// add-time - not a real rendering of the editor's block types, just enough
+// to tell what's in there before deciding to open it for real. Text-bearing
+// block types show their text as-is; everything else gets a short
+// bracketed tag rather than being silently dropped, so an image/file/link-
+// heavy document doesn't preview as an empty page.
+function blocksToPreviewText(blocks: Block[]): string {
+  const TEXT_TYPES = new Set(['paragraph', 'bulleted', 'numbered', 'checkbox', undefined]);
+  return blocks
+    .map((b) => {
+      const type = b.type;
+      if (TEXT_TYPES.has(type) && b.text.trim()) return b.text;
+      if (type === 'image') return `[Зображення${b.imageTitle ? ': ' + b.imageTitle : ''}]`;
+      if (type === 'file') return `[Файл: ${b.fileTitle || b.fileName || ''}]`;
+      if (type === 'link') return `[Посилання: ${b.linkTitle || b.linkSiteName || ''}]`;
+      if (type === 'sketch') return '[Малюнок]';
+      if (type === 'table') return '[Таблиця]';
+      return null;
+    })
+    .filter((line): line is string => !!line)
+    .join('\n');
+}
+
+function firstImageUri(blocks: Block[]): string | undefined {
+  return blocks.find((b) => b.type === 'image' && b.imageUri)?.imageUri;
+}
+
+// And where its bytes are. A block usually carries no driveFileId of its
+// own - the mirror record in Photos does (see useLiveRecords) - so this
+// answers for the ones that do and leaves the rest to the cover, which
+// after 2026-09-22 has an id of its own.
+function firstImageDriveFileId(blocks: Block[]): string | undefined {
+  return blocks.find((b) => b.type === 'image' && b.imageUri)?.driveFileId;
+}
+
+// A card's real rendered height, reported by its own onLayout (see
+// DraggableCard's onMeasure). Falls back to the rough constant only for a
+// card that hasn't been laid out yet - stacking a column by the constant
+// is what made tall cards overflow their column and overlap each other.
+function heightOf(card: BoardCard, heights: Map<string, number>): number {
+  return heights.get(card.id) ?? APPROX_CARD_HEIGHT;
+}
+
+// A column's cards, top to bottom in their current vertical order - which
+// is what makes dropping a card above another genuinely reorder them.
+function columnMembers(cards: BoardCard[], columnId: string): BoardCard[] {
+  // By index where there is one, and by drawn position where there is
+  // not - a board written before cards carried an index still opens in
+  // the order it was left in, and gains one the first time it is touched.
+  return cards
+    .filter((c) => c.columnId === columnId)
+    .sort((a, b) => (a.order != null && b.order != null ? a.order - b.order : a.y - b.y));
+}
+
+function columnHeight(members: BoardCard[], heights: Map<string, number>): number {
+  const filled = members.reduce((sum, card) => sum + heightOf(card, heights) + COLUMN_CARD_GAP, 0);
+  return Math.max(COLUMN_MIN_HEIGHT, COLUMN_HEADER_HEIGHT + filled + COLUMN_PADDING);
+}
+
+// What a card looks like when it is compared with what was written down,
+// and when it is written. A card in a COLUMN keeps the position it was
+// last stored with: where it is actually drawn depends on heights this
+// device measured for itself, and sending those makes two screens argue
+// forever. A card that has just changed column is the exception - it has
+// to carry its new place, or it stays written down in the old column.
+function asStored(cards: BoardCard[], saved: BoardCard[]): BoardCard[] {
+  const savedById = new Map(saved.map((card) => [card.id, card]));
+  return cards.map((card) => {
+    if (!card.columnId) return card;
+    const previous = savedById.get(card.id);
+    if (!previous || previous.columnId !== card.columnId) return card;
+    return { ...card, x: previous.x, y: previous.y };
+  });
+}
+
+// The column a card dropped at this point belongs to: the nearest one
+// whose box the point is inside or within COLUMN_SNAP_MARGIN of. Nearest
+// rather than first-match because with a margin that generous, two
+// neighbouring columns' catch areas overlap.
+function columnAtPoint(
+  columns: BoardColumn[],
+  cards: BoardCard[],
+  heights: Map<string, number>,
+  x: number,
+  y: number,
+  // The column this card is currently IN, if any. It gets no catch area
+  // at all - the card has to be over its rectangle to stay, and is free
+  // the moment it is outside. Every OTHER column keeps the margin.
+  //
+  // That asymmetry is the whole mechanism, and two attempts got it
+  // backwards. A halo around the card's own column is a halo it has to
+  // escape before it can go anywhere, so the bigger the magnet, the more
+  // firmly a card is held by the place it is trying to leave. Catching
+  // should be generous; holding on should not.
+  homeColumnId?: string
+): BoardColumn | undefined {
+  let best: BoardColumn | undefined;
+  let bestDistance = COLUMN_SNAP_MARGIN;
+  for (const column of columns) {
+    const margin = column.id === homeColumnId ? 0 : COLUMN_SNAP_MARGIN;
+    const height = columnHeight(columnMembers(cards, column.id), heights);
+    // Distance from the point to the column's rectangle - zero anywhere
+    // inside it, so a card actually dropped in always wins.
+    const dx = Math.max(column.x - x, 0, x - (column.x + COLUMN_WIDTH));
+    const dy = Math.max(column.y - y, 0, y - (column.y + height));
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance > margin) continue;
+    if (distance <= bestDistance) {
+      bestDistance = distance;
+      best = column;
+    }
+  }
+  return best;
+}
+
+// A card in a column doesn't own its own position - the column stacks its
+// members top to bottom, each below the real height of the one above it.
+// Cards outside every column are left exactly where they were put.
+//
+// Returns the ORIGINAL array when nothing actually moved: this runs from
+// onLayout, and a fresh array every time would re-render and re-save the
+// board on every measurement.
+function reflowColumns(
+  cards: BoardCard[],
+  columns: BoardColumn[],
+  heights: Map<string, number>
+): BoardCard[] {
+  const columnIds = new Set(columns.map((c) => c.id));
+  const slots = new Map<string, { x: number; y: number; order: number }>();
+  for (const column of columns) {
+    const members = columnMembers(cards, column.id);
+    // Only a column NOTHING in which has been measured yet is left alone -
+    // that is the board opening, where the saved positions are already
+    // right and laying out against the fallback constant would visibly
+    // yank every card for one frame. Once anything in the column has a
+    // real height, a card that has not reported yet is placed against the
+    // approximate one instead of stopping the whole column: a card just
+    // dropped in would otherwise sit exactly where it fell, which is the
+    // one moment it must not.
+    if (members.length > 0 && members.every((card) => !heights.has(card.id))) continue;
+    let y = column.y + COLUMN_HEADER_HEIGHT;
+    members.forEach((card, index) => {
+      slots.set(card.id, { x: column.x + COLUMN_PADDING, y, order: index });
+      y += heightOf(card, heights) + COLUMN_CARD_GAP;
+    });
+  }
+  let changed = false;
+  const next = cards.map((card) => {
+    const slot = slots.get(card.id);
+    if (slot) {
+      if (card.x === slot.x && card.y === slot.y && card.order === slot.order) return card;
+      changed = true;
+      return { ...card, ...slot };
+    }
+    // Pointing at a column that's since been deleted releases the card. The
+    // key is dropped rather than set to undefined - Firestore rejects an
+    // undefined field value outright.
+    if (card.columnId && !columnIds.has(card.columnId)) {
+      changed = true;
+      return releaseFromColumn(card);
+    }
+    return card;
+  });
+  return changed ? next : cards;
+}
+
+function releaseFromColumn(card: BoardCard): BoardCard {
+  const { columnId: _columnId, ...rest } = card;
+  return rest;
+}
+
+// Where a connection meets each of its two cards: the middle of whichever
+// vertical side faces the other card, so the line never has to cross back
+// over a card to reach it. Recomputed on every render rather than stored,
+// which is what lets dragging a card past its partner flip the routing.
+// ANYTHING AN ARROW CAN END ON. A card or a piece of the board's own
+// furniture - the arrow does not care which, and it must not: the user
+// asked for shapes an arrow can reach and said in the same breath that
+// this is not a new thing to store. It is not: a connection holds two
+// ids, and an id is an id.
+type BoardNode = { id: string; x: number; y: number; width: number; height: number };
+
+// Picks LEFT/RIGHT or TOP/BOTTOM by whichever is the shorter real hop -
+// the user's own ask: "лінії повинні вміти з'єднуватись не тільки збоку
+// але й згори, в залежності від найкоротшого маршруту". Marked as a
+// worklet so the SAME function serves both the resting curve (called
+// from plain JS, below) and the live straight-line drag (called from
+// LiveConnectionLine's own useAnimatedStyle) - one routing rule, not two
+// copies that could drift apart.
+//
+// The "gap" on an axis is the real distance between the two boxes' EDGES
+// on that axis, not their centres - two boxes that overlap in x but sit
+// one above the other have a horizontal gap of zero or less, whatever
+// their centres say, and the bigger of the two gaps is the pair of edges
+// actually worth crossing.
+function connectionEndpoints(
+  fromX: number,
+  fromY: number,
+  fromWidth: number,
+  fromHeight: number,
+  toX: number,
+  toY: number,
+  toWidth: number,
+  toHeight: number
+) {
+  'worklet';
+  const fromRight = fromX + fromWidth;
+  const fromBottom = fromY + fromHeight;
+  const toRight = toX + toWidth;
+  const toBottom = toY + toHeight;
+  const hGap = Math.max(fromX, toX) - Math.min(fromRight, toRight);
+  const vGap = Math.max(fromY, toY) - Math.min(fromBottom, toBottom);
+  if (hGap >= vGap) {
+    const fromIsLeft = fromX + fromWidth / 2 <= toX + toWidth / 2;
+    return {
+      x1: fromIsLeft ? fromRight : fromX,
+      y1: fromY + fromHeight / 2,
+      x2: fromIsLeft ? toX : toRight,
+      y2: toY + toHeight / 2,
+      vertical: false,
+    };
+  }
+  const fromIsAbove = fromY + fromHeight / 2 <= toY + toHeight / 2;
+  return {
+    x1: fromX + fromWidth / 2,
+    y1: fromIsAbove ? fromBottom : fromY,
+    x2: toX + toWidth / 2,
+    y2: fromIsAbove ? toY : toBottom,
+    vertical: true,
+  };
+}
+
+// A mindmap S-curve: control points pushed straight out from each end,
+// sideways for a left/right connection or up-and-down for a top/bottom
+// one - so the line always leaves and arrives at a right angle to the
+// edge it's actually anchored on, whichever routing connectionEndpoints
+// picked.
+function curvePath(x1: number, y1: number, x2: number, y2: number, vertical: boolean): string {
+  if (vertical) {
+    const bend = Math.max(30, Math.abs(y2 - y1) / 2);
+    const direction = y2 >= y1 ? 1 : -1;
+    return `M ${x1} ${y1} C ${x1} ${y1 + bend * direction} ${x2} ${y2 - bend * direction} ${x2} ${y2}`;
+  }
+  const bend = Math.max(30, Math.abs(x2 - x1) / 2);
+  const direction = x2 >= x1 ? 1 : -1;
+  return `M ${x1} ${y1} C ${x1 + bend * direction} ${y1} ${x2 - bend * direction} ${y2} ${x2} ${y2}`;
+}
+
+// A small filled triangle, tip at (x,y), pointing along the unit
+// direction (dx,dy) - always axis-aligned today, since curvePath's own
+// S-bend always leaves and arrives at a right angle to whichever edge
+// connectionEndpoints picked (the user's own read: "стрілка повинна бути
+// перпендикулярна... майже всі елементи прямокутні"). Written to take
+// any direction, not just the four axis-aligned ones, so a round shape's
+// own radial direction can reuse it later without a second function.
+function arrowheadPoints(x: number, y: number, dx: number, dy: number): string {
+  const length = 10;
+  const halfWidth = 5;
+  const baseX = x - dx * length;
+  const baseY = y - dy * length;
+  const p1x = baseX - dy * halfWidth;
+  const p1y = baseY + dx * halfWidth;
+  const p2x = baseX + dy * halfWidth;
+  const p2y = baseY - dx * halfWidth;
+  return `${x},${y} ${p1x},${p1y} ${p2x},${p2y}`;
+}
+
+// The straight rubber band a connect-drag trails behind the finger, drawn
+// as one rotated View rather than an Svg: it has to follow the finger on
+// the UI thread, and an Svg big enough to cover anywhere the finger might
+// go is the whole 6000px world. A plain View takes a transform just as
+// well and costs nothing when idle.
+function ConnectDraftLine({
+  startX,
+  startY,
+  endX,
+  endY,
+  visible,
+}: {
+  startX: SharedValue<number>;
+  startY: SharedValue<number>;
+  endX: SharedValue<number>;
+  endY: SharedValue<number>;
+  visible: SharedValue<boolean>;
+}) {
+  const theme = useTheme();
+  const styles = useBoardStyles();
+  const animatedStyle = useAnimatedStyle(() => {
+    const dx = endX.value - startX.value;
+    const dy = endY.value - startY.value;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    return {
+      opacity: visible.value ? 1 : 0,
+      width: length,
+      // Positioned by its midpoint, then rotated about its own centre -
+      // which after that translation is exactly the line's midpoint.
+      transform: [
+        { translateX: (startX.value + endX.value) / 2 - length / 2 },
+        { translateY: (startY.value + endY.value) / 2 - 1 },
+        { rotateZ: rad(Math.atan2(dy, dx)) },
+      ],
+    };
+  });
+  return <Animated.View style={[styles.connectDraft, animatedStyle]} pointerEvents="none" />;
+}
+
+// One endpoint of a live connection: a card's position shared value plus
+// whichever shared drag offsets currently apply to it, so the line tracks
+// a card being dragged on its own, as part of a selection, or inside a
+// column being moved.
+type LiveEndpoint = {
+  posX: SharedValue<number>;
+  posY: SharedValue<number>;
+  offsetX: SharedValue<number> | null;
+  offsetY: SharedValue<number> | null;
+  columnOffsetX: SharedValue<number> | null;
+  columnOffsetY: SharedValue<number> | null;
+  containerOffsetX: SharedValue<number> | null;
+  containerOffsetY: SharedValue<number> | null;
+  pullOffsetX: SharedValue<number> | null;
+  pullOffsetY: SharedValue<number> | null;
+  width: number;
+  height: number;
+};
+
+// The version of a connection drawn while either of its cards is moving.
+// Deliberately a straight rotated View rather than the resting state's
+// Svg curve: the curve's canvas would have to be resized every frame to
+// keep up with the endpoints, and a fixed one big enough for any drag
+// distance runs into Android's own view-size limits. A straight line
+// needs nothing but a transform, and the curve comes back the moment the
+// card is dropped.
+function LiveConnectionLine({ from, to }: { from: LiveEndpoint; to: LiveEndpoint }) {
+  const theme = useTheme();
+  const styles = useBoardStyles();
+  const animatedStyle = useAnimatedStyle(() => {
+    const fromX =
+      from.posX.value +
+      (from.offsetX?.value ?? 0) +
+      (from.columnOffsetX?.value ?? 0) +
+      (from.containerOffsetX?.value ?? 0) +
+      (from.pullOffsetX?.value ?? 0);
+    const fromY =
+      from.posY.value +
+      (from.offsetY?.value ?? 0) +
+      (from.columnOffsetY?.value ?? 0) +
+      (from.containerOffsetY?.value ?? 0) +
+      (from.pullOffsetY?.value ?? 0);
+    const toX =
+      to.posX.value +
+      (to.offsetX?.value ?? 0) +
+      (to.columnOffsetX?.value ?? 0) +
+      (to.containerOffsetX?.value ?? 0) +
+      (to.pullOffsetX?.value ?? 0);
+    const toY =
+      to.posY.value +
+      (to.offsetY?.value ?? 0) +
+      (to.columnOffsetY?.value ?? 0) +
+      (to.containerOffsetY?.value ?? 0) +
+      (to.pullOffsetY?.value ?? 0);
+
+    // Same routing rule the resting curve uses (connectionEndpoints,
+    // marked 'worklet' for exactly this call), so the line doesn't jump
+    // to a different pair of edges the moment the card is dropped.
+    const { x1, y1, x2, y2 } = connectionEndpoints(fromX, fromY, from.width, from.height, toX, toY, to.width, to.height);
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    return {
+      width: length,
+      transform: [
+        { translateX: (x1 + x2) / 2 - length / 2 },
+        { translateY: (y1 + y2) / 2 - 1 },
+        { rotateZ: rad(Math.atan2(dy, dx)) },
+      ],
+    };
+  });
+  return <Animated.View style={[styles.connectDraft, animatedStyle]} pointerEvents="none" />;
+}
+
+// The two dashed alignment guides - see GUIDE_COLOR. Drawn as a thin
+// bordered View spanning the whole world, moved into place with a
+// transform, for the same reason LiveConnectionLine is a straight View
+// rather than an Svg: a fixed canvas big enough for any position runs
+// into Android's own view-size limits, and a transform needs neither a
+// resize nor a re-measure to follow the drag. Mounted once at the board
+// level, never per card - only one card is ever dragged at a time, so
+// there is only ever one pair of lines to show.
+function AlignmentGuides({
+  guideVX,
+  guideVVisible,
+  guideHY,
+  guideHVisible,
+}: {
+  guideVX: SharedValue<number>;
+  guideVVisible: SharedValue<boolean>;
+  guideHY: SharedValue<number>;
+  guideHVisible: SharedValue<boolean>;
+}) {
+  const styles = useBoardStyles();
+  const vStyle = useAnimatedStyle(() => ({
+    opacity: guideVVisible.value ? 1 : 0,
+    transform: [{ translateX: guideVX.value }],
+  }));
+  const hStyle = useAnimatedStyle(() => ({
+    opacity: guideHVisible.value ? 1 : 0,
+    transform: [{ translateY: guideHY.value }],
+  }));
+  return (
+    <>
+      <Animated.View style={[styles.guideLineV, vStyle]} pointerEvents="none" />
+      <Animated.View style={[styles.guideLineH, hStyle]} pointerEvents="none" />
+    </>
+  );
+}
+
+// A kanban lane, dragged by its own header. Same position architecture as
+// DraggableCard (the view's left/top pinned at 0, everything on an animated
+// transform), and the same shared-offset trick group drags use: this
+// column writes columnOffsetX/Y, and every card inside it reads the same
+// values, so the lane and its contents move together in one paint.
+// A week column's title: its day, counted from the week's start - "Пн, 5
+// жов". Worked out every time rather than stored, so moving the start
+// date renames all seven at once.
+function weekDayTitle(week: NonNullable<BoardColumn['week']>): string {
+  const day = addDays(parseDateKey(week.start), week.index);
+  return `${WEEKDAY_SHORT[mondayIndex(day)]}, ${day.getDate()} ${MONTH_SHORT[day.getMonth()]}`;
+}
+
+// The gap between the days of one week - close, so the seven read as one
+// piece, where separate columns keep COLUMN_SPACING.
+const WEEK_COLUMN_GAP = 8;
+
+function DraggableColumn({
+  column,
+  memberCount,
+  height,
+  isDragging,
+  isCatching,
+  locked,
+  dragEnabled,
+  canvasScale,
+  canvasPanGesture,
+  columnOffsetX,
+  columnOffsetY,
+  onDragStart,
+  onDragEnd,
+  onRename,
+  onDelete,
+  liveTasks,
+  onToggleTask,
+  onOpenTask,
+}: {
+  column: BoardColumn;
+  memberCount: number;
+  height: number;
+  isDragging: boolean;
+  // A card is being carried over this column right now: it lights up to
+  // say it will catch, rather than the drop being a surprise.
+  isCatching: boolean;
+  // True while this column's own BoardLayer is locked - blocks drag,
+  // rename and delete, but never visibility (see DraggableContainer's
+  // own comment on why lock and hide are two different things).
+  locked: boolean;
+  // False while the "Рука" tool is active - see canvasTool's own comment.
+  dragEnabled: boolean;
+  canvasScale: SharedValue<number>;
+  canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  columnOffsetX: SharedValue<number>;
+  columnOffsetY: SharedValue<number>;
+  onDragStart: (id: string) => void;
+  onDragEnd: (id: string, dx: number, dy: number) => void;
+  onRename: (column: BoardColumn) => void;
+  onDelete: (column: BoardColumn) => void;
+  // 'liveTaskSource' columns only (see BoardColumn's own comment) - the
+  // rows to draw below the header, computed live and never touching
+  // `cards`/reflow/autosave at all.
+  liveTasks?: BoardTask[];
+  onToggleTask?: (task: BoardTask) => void;
+  onOpenTask?: (task: BoardTask) => void;
+}) {
+  const theme = useTheme();
+  const styles = useBoardStyles();
+  const posX = useSharedValue(column.x);
+  const posY = useSharedValue(column.y);
+  const reportedX = useSharedValue(column.x);
+  const reportedY = useSharedValue(column.y);
+
+  useLayoutEffect(() => {
+    if (column.x === reportedX.value && column.y === reportedY.value) return;
+    reportedX.value = column.x;
+    reportedY.value = column.y;
+    posX.value = column.x;
+    posY.value = column.y;
+    columnOffsetX.value = 0;
+    columnOffsetY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [column.x, column.y]);
+
+  const panGesture = Gesture.Pan()
+    .enabled(!locked && dragEnabled)
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onDragStart)(column.id);
+    })
+    .onChange((e) => {
+      columnOffsetX.value += e.changeX / canvasScale.value;
+      columnOffsetY.value += e.changeY / canvasScale.value;
+    })
+    .onEnd(() => {
+      runOnJS(onDragEnd)(column.id, columnOffsetX.value, columnOffsetY.value);
+    });
+
+  const tapGesture = Gesture.Tap()
+    .enabled(!locked)
+    .onEnd(() => {
+      runOnJS(onRename)(column);
+    });
+
+  const longPressGesture = Gesture.LongPress()
+    .enabled(!locked)
+    .minDuration(500)
+    .onStart(() => {
+      runOnJS(onDelete)(column);
+    });
+
+  const headerGesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: posX.value + (isDragging ? columnOffsetX.value : 0) },
+      { translateY: posY.value + (isDragging ? columnOffsetY.value : 0) },
+    ],
+  }));
+
+  return (
+    // box-none so only the header takes touches - the rest of the lane
+    // stays transparent to the canvas's own pan, and the cards sitting on
+    // top of it keep their own drags.
+    <Animated.View
+      style={[styles.column, isCatching && styles.columnCatching, { height }, animatedStyle]}
+      pointerEvents="box-none"
+    >
+      <GestureDetector gesture={headerGesture}>
+        <View style={styles.columnHeader} {...rightClick(locked ? undefined : () => onRename(column))}>
+          <View style={styles.columnTitleWrap}>
+            <Text style={styles.columnTitle} numberOfLines={1}>
+              {column.week ? weekDayTitle(column.week) : column.title}
+            </Text>
+          </View>
+          <Text style={styles.columnCount}>{memberCount}</Text>
+        </View>
+      </GestureDetector>
+      {/* A live task column's own rows - see BoardColumn.liveTaskSource's
+          own comment for why these are drawn here rather than as ordinary
+          DraggableCards: no drag, no reflow, nothing stored. */}
+      {liveTasks && (
+        <View style={styles.liveTaskList}>
+          {liveTasks.map((task) => (
+            <View key={task.id} style={styles.liveTaskRow}>
+              <Pressable hitSlop={8} onPress={() => onToggleTask?.(task)}>
+                <Ionicons
+                  name={task.checked ? 'checkbox' : 'square-outline'}
+                  size={20}
+                  color={task.checked ? theme.accent : 'rgba(255,255,255,0.6)'}
+                />
+              </Pressable>
+              <Pressable style={styles.liveTaskTextTap} onPress={() => onOpenTask?.(task)}>
+                <Text
+                  style={[styles.liveTaskText, task.checked && styles.liveTaskTextChecked]}
+                  numberOfLines={3}
+                >
+                  {task.text || 'Без назви'}
+                </Text>
+              </Pressable>
+            </View>
+          ))}
+          {liveTasks.length === 0 && <Text style={styles.liveTaskEmpty}>Тут поки немає справ</Text>}
+        </View>
+      )}
+    </Animated.View>
+  );
+}
+
+// A free-standing frame - see BoardContainer in types.ts. Built the same
+// way DraggableColumn is (a header that alone takes touches, everything
+// else box-none so the canvas and whatever sits on top keep their own
+// gestures) with two real differences: the fill is genuinely transparent
+// (a column's is a translucent tint) and it carries its own resize grip,
+// because its size is stored rather than derived from its members.
+function DraggableContainer({
+  container,
+  posX,
+  posY,
+  isDragging,
+  dimmed,
+  locked,
+  dragEnabled,
+  canvasScale,
+  canvasPanGesture,
+  containerOffsetX,
+  containerOffsetY,
+  followsConnectionPull,
+  pullOffsetX,
+  pullOffsetY,
+  onDragStart,
+  onDragEnd,
+  onRename,
+  onDelete,
+  onResize,
+  onStepFontSize,
+}: {
+  container: BoardContainer;
+  // From the board's own position registry, same as a card/shape - so a
+  // connection ending on a container can read its live position too
+  // (see liveEndpointFor).
+  posX: SharedValue<number>;
+  posY: SharedValue<number>;
+  isDragging: boolean;
+  // True while isolation is active and this container is OUTSIDE the
+  // isolated chain - faded and untouchable, same treatment a card/shape
+  // gets (see their own `dimmed` prop).
+  dimmed: boolean;
+  // True while this container's own BoardLayer is locked - blocks drag,
+  // resize, rename and delete, but never visibility (see BoardLayer's
+  // own comment on why lock and hide are two different things).
+  locked: boolean;
+  // False while the "Рука" tool is active - see canvasTool's own comment.
+  // Only the MOVE and resize gestures answer to this; rename and delete
+  // (tap/long-press) stay available, same as a card's own tap still opens
+  // it while dragging is disabled for 'connect'.
+  dragEnabled: boolean;
+  canvasScale: SharedValue<number>;
+  canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  containerOffsetX: SharedValue<number>;
+  containerOffsetY: SharedValue<number>;
+  // True while this container is in pullMembers - something ELSE is being
+  // dragged and an 'arrow'/'doubleArrow' connection says this container
+  // (and everything geometrically inside it) comes along.
+  followsConnectionPull: boolean;
+  pullOffsetX: SharedValue<number>;
+  pullOffsetY: SharedValue<number>;
+  onDragStart: (id: string) => void;
+  onDragEnd: (id: string, dx: number, dy: number) => void;
+  onRename: (container: BoardContainer) => void;
+  onDelete: (container: BoardContainer) => void;
+  onResize: (id: string, width: number, height: number) => void;
+  onStepFontSize: (container: BoardContainer, dir: 1 | -1) => void;
+}) {
+  const styles = useBoardStyles();
+  const reportedX = useSharedValue(container.x);
+  const reportedY = useSharedValue(container.y);
+
+  useLayoutEffect(() => {
+    if (container.x === reportedX.value && container.y === reportedY.value) return;
+    reportedX.value = container.x;
+    reportedY.value = container.y;
+    posX.value = container.x;
+    posY.value = container.y;
+    containerOffsetX.value = 0;
+    containerOffsetY.value = 0;
+    pullOffsetX.value = 0;
+    pullOffsetY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [container.x, container.y]);
+
+  const panGesture = Gesture.Pan()
+    .enabled(!locked && dragEnabled)
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onDragStart)(container.id);
+    })
+    .onChange((e) => {
+      containerOffsetX.value += e.changeX / canvasScale.value;
+      containerOffsetY.value += e.changeY / canvasScale.value;
+      pullOffsetX.value += e.changeX / canvasScale.value;
+      pullOffsetY.value += e.changeY / canvasScale.value;
+    })
+    .onEnd(() => {
+      runOnJS(onDragEnd)(container.id, containerOffsetX.value, containerOffsetY.value);
+    });
+
+  const tapGesture = Gesture.Tap()
+    .enabled(!locked)
+    .onEnd(() => {
+      runOnJS(onRename)(container);
+    });
+
+  const longPressGesture = Gesture.LongPress()
+    .enabled(!locked)
+    .minDuration(500)
+    .onStart(() => {
+      runOnJS(onDelete)(container);
+    });
+
+  const headerGesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX:
+          posX.value +
+          (isDragging ? containerOffsetX.value : 0) +
+          (followsConnectionPull ? pullOffsetX.value : 0),
+      },
+      {
+        translateY:
+          posY.value +
+          (isDragging ? containerOffsetY.value : 0) +
+          (followsConnectionPull ? pullOffsetY.value : 0),
+      },
+    ],
+  }));
+
+  // The resize grip - same pattern DraggableShape's own grip uses: a
+  // live local width/height while the finger is down, committed once on
+  // release rather than on every frame.
+  const [live, setLive] = useState<{ width: number; height: number } | null>(null);
+  const resizeBase = useRef({ width: container.width, height: container.height });
+  const width = live?.width ?? container.width;
+  const height = live?.height ?? container.height;
+  const resizeGesture = Gesture.Pan()
+    .enabled(!locked && dragEnabled)
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      resizeBase.current = { width, height };
+    })
+    .onChange((e) => {
+      setLive({
+        width: clampContainerWidth(resizeBase.current.width + e.translationX / canvasScale.value),
+        height: clampContainerHeight(resizeBase.current.height + e.translationY / canvasScale.value),
+      });
+    })
+    .onEnd(() => {
+      const next = live;
+      setLive(null);
+      if (next) runOnJS(onResize)(container.id, next.width, next.height);
+    })
+    .runOnJS(true);
+
+  return (
+    <Animated.View
+      style={[styles.frame, { width, height, opacity: dimmed ? 0.28 : 1 }, animatedStyle]}
+      pointerEvents={dimmed ? 'none' : 'box-none'}
+    >
+      <View style={[styles.frameLabelRow, { width }]}>
+        <GestureDetector gesture={headerGesture}>
+          <View style={styles.frameLabel}>
+            <Text
+              style={[styles.frameLabelText, { fontSize: container.fontSize ?? SHAPE_LABEL_SIZE_DEFAULT }]}
+              numberOfLines={1}
+            >
+              {container.title}
+            </Text>
+          </View>
+        </GestureDetector>
+        {/* The user's own ask: a NUMBER to compare sizes by, not a guess
+            by eye - see textSizeStepLabel. A separate pill, never nested
+            inside the label's own GestureDetector - the label's Pan has
+            no minimum distance (see headerGesture), so a button living
+            inside that same touch area would lose its own tap to the
+            drag every time. */}
+        <View style={styles.frameSizeStepper}>
+          <Pressable hitSlop={6} onPress={() => onStepFontSize(container, -1)}>
+            <Ionicons name="remove" size={13} color="#fff" />
+          </Pressable>
+          <Text style={styles.frameSizeStepperText}>
+            {textSizeStepLabel(container.fontSize ?? SHAPE_LABEL_SIZE_DEFAULT)}
+          </Text>
+          <Pressable hitSlop={6} onPress={() => onStepFontSize(container, 1)}>
+            <Ionicons name="add" size={13} color="#fff" />
+          </Pressable>
+        </View>
+        {/* A long-press on the label already deletes (same as a column's
+            header) - added here too, visibly, because "не бачу
+            механізма їх видалення" is exactly what an invisible-only
+            affordance earns. */}
+        <Pressable hitSlop={6} style={styles.frameDeleteButton} onPress={() => onDelete(container)}>
+          <Ionicons name="trash-outline" size={13} color="#fff" />
+        </Pressable>
+      </View>
+      <GestureDetector gesture={resizeGesture}>
+        <View style={styles.cardGrip}>
+          <Ionicons name="resize-outline" size={13} color="#fff" />
+        </View>
+      </GestureDetector>
+    </Animated.View>
+  );
+}
+
+type DraggableCardProps = {
+  card: BoardCard;
+  // Bumped after EVERY drop: the card's drawn position is re-read from its state even when the state did not
+  // change (a glued block let go near its old place snaps back to the very same state value - React saw no change
+  // and left it drawn where it was dropped, with the strip's seam and a gap: the user, 2026-10-11).
+  settleTick?: number;
+  // Every board (features.cardWindow; first only a day's): a document card is drawn as the
+  // ONE card it is in every state - its title, then its real blocks, on
+  // the note's paper - and a tap makes that same card live (BoardScreen's
+  // card window lies exactly over it).
+  livePaper?: boolean;
+  // A free block being typed in, right here on the board (no sheet): the
+  // card turns into the field, and its own gestures step aside.
+  inlineEditing?: boolean;
+  // Where this free block stands in its glued strip (undefined = alone): the strip is drawn as ONE sheet - round only at its two ends -
+  // and its head carries the grip that drags the whole strip (the Mac).
+  glueRole?: 'first' | 'middle' | 'last';
+  onInlineText?: (id: string, text: string) => void;
+  onInlineDoubleEnter?: (id: string) => void;
+  onInlineBackspaceEmpty?: (id: string) => void;
+  // This card's live world position. Owned by BoardScreen (see
+  // cardPositions) rather than created here, so the connection lines can
+  // read it while a drag is in flight - the card itself still treats it
+  // exactly as it did when it was local state.
+  posX: SharedValue<number>;
+  posY: SharedValue<number>;
+  canvasScale: SharedValue<number>;
+  canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  isDragging: boolean;
+  isSelected: boolean;
+  // True while isolation is active and this card is outside the
+  // isolated chain - faded and untouchable until isolation ends.
+  dimmed: boolean;
+  // True while this card is being dragged AND it's part of a multi-card
+  // selection - in that case the drag moves the whole selection together
+  // (via the shared groupOffsetX/Y) instead of just this one card.
+  isGroupDrag: boolean;
+  groupOffsetX: SharedValue<number>;
+  groupOffsetY: SharedValue<number>;
+  // True while the column this card sits in is itself being dragged - the
+  // card then rides the column's own live offset, so the lane and its
+  // contents move as one piece instead of the cards catching up on drop.
+  followsColumnDrag: boolean;
+  columnOffsetX: SharedValue<number>;
+  columnOffsetY: SharedValue<number>;
+  // Same idea, for a BoardContainer this card currently sits inside - a
+  // column and a container can never both apply to a card (only a
+  // column reads columnId, only geometry decides a container's members,
+  // and a card is never dragged by two frames at once), so the two
+  // offsets simply add - only one is ever non-zero for a given card.
+  followsContainerDrag: boolean;
+  containerOffsetX: SharedValue<number>;
+  containerOffsetY: SharedValue<number>;
+  // True while this card is in pullMembers - something ELSE is being
+  // dragged and an 'arrow'/'doubleArrow' connection says this card comes
+  // along (see pulledIdsFrom). Same additive-offset shape as the other
+  // three; all four can in principle be non-zero for the same card at
+  // once (a member of a dragged column that ALSO happens to be pulled by
+  // an unrelated arrow, say), and they simply add.
+  followsConnectionPull: boolean;
+  pullOffsetX: SharedValue<number>;
+  pullOffsetY: SharedValue<number>;
+  // Every card's bounds, and the board's own guide shared values - see
+  // GUIDE_COLOR. Only read while THIS card is the one being dragged
+  // (isGroupDrag false); a card's own entry is skipped by id.
+  allCardBounds: { id: string; x: number; y: number; width: number; height: number }[];
+  guideVX: SharedValue<number>;
+  guideVVisible: SharedValue<boolean>;
+  guideHY: SharedValue<number>;
+  guideHVisible: SharedValue<boolean>;
+  // False while the canvas is in 'connect' mode: a drag starting on a card
+  // has to reach the canvas's own connect gesture to draw a link, and this
+  // card's Pan would otherwise win that touch (it blocksExternalGesture)
+  // and just move the card instead.
+  dragEnabled: boolean;
+  // Reports this card's real rendered height, which is what a column
+  // stacks by. Layout is measured before the canvas's own scale transform
+  // is applied, so this is already in world units.
+  onMeasure: (id: string, height: number) => void;
+  onDragStart: (id: string) => void;
+  onDragEnd: (id: string, x: number, y: number) => void;
+  // Where this card is, mid-drag, every few points of travel - what tells
+  // the board which column would catch it right now.
+  onHover: (id: string, x: number, y: number) => void;
+  onGroupDragEnd: (dx: number, dy: number) => void;
+  onTap: (card: BoardCard) => void;
+  onLongPress: (card: BoardCard) => void;
+  // This card is the one playing - see the board's own playingCardId.
+  // Only one card ever is: each player is a live WebView.
+  playing?: boolean;
+  onStopPlaying?: () => void;
+  onOpenFullscreen?: () => void;
+  // A frame of the playing video, taken off the screen (where this APK
+  // can): handed up as a JPEG to be laid beside the card.
+  onFrame?: (card: BoardCard, shot: { uri: string; width: number; height: number }) => void;
+  onVideoTime?: (seconds: number) => void;
+  onResize: (id: string, width: number) => void;
+  // The canvas's own "hold to reach for the marquee". A card's hold has
+  // to beat it - see the card's longPressGesture.
+  canvasHoldGesture: ReturnType<typeof Gesture.LongPress>;
+};
+
+// One card's own drag.
+//
+// The position lives in `posX`/`posY` shared values and NOWHERE else - the
+// view's `left`/`top` stay pinned at 0 forever and the whole world offset
+// rides on the animated transform. That's the load-bearing decision here,
+// arrived at after two failed attempts at the "jitter on release" bug:
+// splitting a card's position across a layout prop (`left`/`top`, which
+// travels JS render -> shadow tree -> native commit) AND an animated
+// transform (which Reanimated writes straight to the view on the UI thread)
+// means the two halves land in different frames. Every "swap the offset
+// into the base position" scheme therefore had a 1-2 frame window showing
+// either base+offset+offset (a jump of exactly the drag distance) or
+// base+0 (a snap back to where the drag started) - which is precisely what
+// the jitter was. One value, one pipeline, no swap, no window.
+//
+// React state is then only a persistence concern: `onDragEnd` reports the
+// final position up so it reaches Firestore, and the `card.x`/`card.y`
+// props coming back down are deliberately ignored unless they differ from
+// what this card last reported (i.e. a genuinely external change), so a
+// re-render can never fight the gesture.
+//
+// `canvasScale` is read inside the worklet so a drag still tracks the
+// finger 1:1 while the canvas is pinch-zoomed. A Tap is raced against the
+// Pan so a quick tap (edit a sticky's text) and a real drag never fight.
+// A free block typed in on the board: the note's own row - the same sizes
+// and marks a page draws (PagePreviewRow) - with a field in it. Single Enter
+// is a line break and two make the next block, as in a note.
+const FREE_BLOCK_TEXT = 0.86;
+function FreeBlockInput({
+  card,
+  editorStyles,
+  ink,
+  faint,
+  paper,
+  onText,
+  onDoubleEnter,
+  onBackspaceEmpty,
+  readOnly,
+}: {
+  card: BoardCard;
+  editorStyles: ReturnType<typeof makeEditorStyles>;
+  ink: string;
+  faint: string;
+  paper: string;
+  onText?: (text: string) => void;
+  onDoubleEnter?: () => void;
+  onBackspaceEmpty?: () => void;
+  readOnly?: boolean;
+}) {
+  const kind = card.type ?? 'paragraph';
+  const base = kind === 'heading' ? PAGE_H2 : PAGE_TEXT;
+  const size = { fontSize: Math.round(base.size * FREE_BLOCK_TEXT), lineHeight: Math.round(base.line * FREE_BLOCK_TEXT) };
+  const textRef = useRef(card.text ?? '');
+  textRef.current = card.text ?? '';
+  // FOCUS ASKED FOR, NOT HOPED FOR (2026-10-11, the user: after two Enters the keyboard stayed up for 3-4 s with
+  // no caret anywhere, then went down and the empty new block vanished; the same on the Mac). `autoFocus` of a
+  // field that mounts as the previous one unmounts is not reliable - the keyboard stays, the focus does not move.
+  // So the field is focused by hand, a few times over the first half second (harmless if it already has it).
+  const inputRef = useRef<TextInput>(null);
+  const caretPlaced = useRef(false);
+  // THE FIELD GROWS WITH ITS TEXT (the Mac, 2026-10-21: a long block turned into a one-line strip when clicked - the text was
+  // all there, behind the field's small box).
+  useEffect(() => {
+    if (!readOnly) autoGrowInput(inputRef.current);
+  }, [card.text, readOnly]);
+  useEffect(() => {
+    if (readOnly) return;
+    const timers = [0, 40, 120, 260, 480].map((ms) =>
+      setTimeout(() => {
+        const input = inputRef.current;
+        if (input && !input.isFocused()) {
+          input.focus();
+          // A block opened for typing puts the caret at the END of its text, not at the start (the Mac).
+          const end = (textRef.current ?? '').length;
+          (input as unknown as { setSelection?: (a: number, b: number) => void }).setSelection?.(end, end);
+        }
+      }, ms)
+    );
+    return () => timers.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <View style={freeInputStyles.row}>
+      {kind === 'checkbox' && (
+        <View style={freeInputStyles.mark}>
+          <SoftTaskCheck checked={!!card.checked} ink={ink} faint={faint} paper={paper} />
+        </View>
+      )}
+      {kind === 'bulleted' && <Text style={[freeInputStyles.bullet, { color: ink }, size]}>•</Text>}
+      {readOnly ? (
+        <Text style={[editorStyles.blockDisplayText, kind === 'heading' && editorStyles.heading2, size, freeInputStyles.input, { color: card.text ? ink : faint }]}>
+          {card.text || (kind === 'heading' ? 'Заголовок' : 'Порожній блок')}
+        </Text>
+      ) : (
+      <TextInput
+        ref={inputRef}
+        autoFocus
+        multiline
+        disableFullscreenUI
+        // A paste out of a rendered page keeps its lists and headings here too (utils/pasteMarkdown).
+        {...({ dataSet: { noteblock: '1' } } as object)}
+        value={card.text ?? ''}
+        placeholder={kind === 'heading' ? 'Заголовок' : 'Текст…'}
+        placeholderTextColor={faint}
+        onChangeText={(t) => {
+          if (t.endsWith('\n\n')) {
+            onText?.(t.slice(0, -2));
+            onDoubleEnter?.();
+            return;
+          }
+          onText?.(t);
+        }}
+        onFocus={(e) => {
+          // The browser's own focus lands the caret at 0: once, at the first focus, move it to the end.
+          if (caretPlaced.current) return;
+          caretPlaced.current = true;
+          const el = (e as unknown as { target?: { setSelectionRange?: (a: number, b: number) => void } }).target;
+          const end = (textRef.current ?? '').length;
+          el?.setSelectionRange?.(end, end);
+        }}
+        onKeyPress={(e) => {
+          if (e.nativeEvent.key === 'Backspace' && textRef.current === '') onBackspaceEmpty?.();
+        }}
+        style={[editorStyles.blockDisplayText, kind === 'heading' && editorStyles.heading2, size, freeInputStyles.input, { color: ink }]}
+      />
+      )}
+    </View>
+  );
+}
+const freeInputStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, gap: 8 },
+  mark: { paddingTop: 3 },
+  bullet: { width: 12 },
+  input: { flex: 1, padding: 0, margin: 0, textAlignVertical: 'top' },
+});
+
+// The day board's document card (see livePaper): its height when folded, in
+// the board's own units, and the size its text is read at - one size for the
+// card at rest and the same card being written in.
+const PAPER_DOC_HEIGHT = 260;
+const CARD_BUTTONS_H = 44;
+const PAPER_DOC_TEXT = 0.62;
+// Its children laid out `factor` times wider and drawn at `factor` of that size: text, gaps and numbers shrink together. The
+// transform leaves the layout box alone, so the height is measured and given back to the wrapper.
+function UniformScaled({ factor, children }: { factor: number; children: ReactNode }) {
+  const [width, setWidth] = useState(0);
+  const [height, setHeight] = useState(0);
+  return (
+    <View style={{ width: '100%', height: height ? height * factor : undefined, overflow: 'hidden' }} onLayout={(e) => setWidth(Math.round(e.nativeEvent.layout.width))}>
+      {width > 0 && (
+        <View
+          style={{ width: width / factor, transform: [{ scale: factor }], transformOrigin: 'top left' } as never}
+          onLayout={(e) => setHeight(Math.round(e.nativeEvent.layout.height))}
+        >
+          {children}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function DraggableCard({
+  card,
+  posX,
+  posY,
+  canvasScale,
+  canvasPanGesture,
+  isDragging,
+  isSelected,
+  dimmed,
+  isGroupDrag,
+  groupOffsetX,
+  groupOffsetY,
+  followsColumnDrag,
+  columnOffsetX,
+  columnOffsetY,
+  followsContainerDrag,
+  containerOffsetX,
+  containerOffsetY,
+  followsConnectionPull,
+  pullOffsetX,
+  pullOffsetY,
+  allCardBounds,
+  guideVX,
+  guideVVisible,
+  guideHY,
+  guideHVisible,
+  dragEnabled,
+  onMeasure,
+  onDragStart,
+  onDragEnd,
+  onHover,
+  onGroupDragEnd,
+  onTap,
+  onLongPress,
+  onResize,
+  playing,
+  onStopPlaying,
+  onOpenFullscreen,
+  onFrame,
+  onVideoTime,
+  canvasHoldGesture,
+  livePaper,
+  inlineEditing,
+  glueRole,
+  settleTick,
+  onInlineText,
+  onInlineDoubleEnter,
+  onInlineBackspaceEmpty,
+}: DraggableCardProps) {
+  // FRAMES FROM THE PLAYER (the user's, 2026-10-04): the phone's screen
+  // capture (asked for once per session), the newest frame cut to the
+  // player's own box. The box is read off two dots at its corners - they
+  // are measured where the board's zoom has put them, which the box's own
+  // size is not.
+  // A video card's window keeps the video's own shape as the card is
+  // stretched (the user's, 2026-10-04: it only grew wider and stayed a
+  // 90-high slit): wide for YouTube, tall for TikTok. Any other link keeps
+  // its fixed thumbnail.
+  const videoInfo = card.type === 'link' && card.linkUrl ? getVideoEmbedInfo(card.linkUrl) : null;
+  const videoShape = videoInfo
+    ? { height: undefined, aspectRatio: videoInfo.provider === 'youtube' ? 16 / 9 : 9 / 16 }
+    : undefined;
+  const frameTL = useRef<View>(null);
+  const frameBR = useRef<View>(null);
+  const [framing, setFraming] = useState(false);
+  const corner = (node: View | null) =>
+    new Promise<{ x: number; y: number } | null>((resolve) => {
+      if (!node) return resolve(null);
+      node.measureInWindow((x, y) => resolve({ x, y }));
+    });
+  async function takeFrame() {
+    if (!onFrame || framing) return;
+    if (!(await startScreenCapture())) return;
+    // The buttons off the picture first, and a moment for the screen to
+    // show it without them (and without the system's dialog).
+    setFraming(true);
+    await new Promise((r) => setTimeout(r, 350));
+    const [tl, br] = await Promise.all([corner(frameTL.current), corner(frameBR.current)]);
+    const ratio = PixelRatio.get();
+    // A session that has only just begun has no image yet - the screen
+    // sends one when it changes - so ask a few times.
+    let shot: { uri: string; width: number; height: number } | null = null;
+    if (tl && br) {
+      for (let attempt = 0; attempt < 8 && !shot; attempt++) {
+        shot = await grabScreenFrame({ x: tl.x * ratio, y: tl.y * ratio, w: (br.x - tl.x) * ratio, h: (br.y - tl.y) * ratio });
+        if (!shot) await new Promise((r) => setTimeout(r, 250));
+      }
+    }
+    setFraming(false);
+    if (shot) {
+      hapticSuccess();
+      onFrame(card, shot);
+    }
+  }
+  const theme = useTheme();
+  const styles = useBoardStyles();
+  const freeBlockStyles = useStyles(makeEditorStyles);
+  // The last position this card itself put into the parent's state. Used
+  // only to tell "our own drag echoing back" (ignore) apart from a real
+  // external move (adopt).
+  // An image card whose local file is not here - a card made on another
+  // device, or one whose bytes the ninety-day sweep took - fetches it
+  // back from Drive. The board was the one place that never did: it put
+  // pictures ON the Drive and never asked for them back.
+  const { status: imageStatus, source: imageSource } = useAttachmentSource(
+    (card.type ?? 'paragraph') === 'image' ? card.imageUri : undefined,
+    card.driveFileId,
+    false
+  );
+
+  const reportedX = useSharedValue(card.x);
+  const reportedY = useSharedValue(card.y);
+
+  useLayoutEffect(() => {
+    if (card.x === reportedX.value && card.y === reportedY.value) return;
+    reportedX.value = card.x;
+    reportedY.value = card.y;
+    posX.value = card.x;
+    posY.value = card.y;
+    // A group drag this card took part in (as a non-dragged, merely
+    // selected sibling) only ever moves it via groupOffsetX/Y, never posX/
+    // posY directly - reset that shared offset back to 0 in the same
+    // layout effect that adopts the new base position, so the two changes
+    // land in the same paint. Redundant (and harmless) for a plain solo
+    // drag, where the offset was never touched to begin with.
+    groupOffsetX.value = 0;
+    groupOffsetY.value = 0;
+    // Same for a column drag this card rode along on - the committed
+    // position already includes that offset, so it has to go back to zero
+    // in the very paint that adopts it.
+    columnOffsetX.value = 0;
+    columnOffsetY.value = 0;
+    // And the same again for a container this card rode along in - see
+    // followsContainerDrag's own comment.
+    containerOffsetX.value = 0;
+    containerOffsetY.value = 0;
+    // And again for a connection's own pull - see followsConnectionPull's
+    // own comment.
+    pullOffsetX.value = 0;
+    pullOffsetY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.x, card.y, settleTick]);
+
+  // blocksExternalGesture: RNGH's Gesture API treats gestures in separate
+  // (even nested) GestureDetectors as fully independent, so without this
+  // the canvas's own Pan (see BoardScreen) also recognizes movement on the
+  // very same touch that is dragging a card, and both move at once. An
+  // expanded document card drags exactly like a collapsed one - only the
+  // tap-to-edit interaction differs (see the selection bar's "Редагувати"
+  // button in BoardScreen, reached via long-press) now that there's no
+  // in-card button whose own gesture needed to win against this one.
+  const hoverReportedX = useSharedValue(0);
+  const hoverReportedY = useSharedValue(0);
+  // The width the corner grip is asking for, while it is held. Kept in
+  // the card rather than in the board's state so a resize re-renders one
+  // card per frame instead of every card on the canvas.
+  const [liveWidth, setLiveWidth] = useState<number | null>(null);
+  const resizeBase = useRef(0);
+  // This card's own size, purely for the alignment guides below - a
+  // separate name from the render's own `cardWidth` further down (same
+  // expression) because that one is declared after this gesture, and a
+  // worklet closes over whatever is already in scope where it's built.
+  const cardWidthForGuides = liveWidth ?? widthInColumn(card);
+  const cardHeightForGuides = allCardBounds.find((b) => b.id === card.id)?.height ?? APPROX_CARD_HEIGHT;
+  const buildPan = () => Gesture.Pan()
+    .enabled(dragEnabled)
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onDragStart)(card.id);
+    })
+    // onChange (per-event delta) rather than onUpdate (cumulative
+    // translation) - the position accumulates in place, so there's no
+    // separate "drag start" baseline to capture or reconcile afterwards.
+    .onChange((e) => {
+      if (isGroupDrag) {
+        groupOffsetX.value += e.changeX / canvasScale.value;
+        groupOffsetY.value += e.changeY / canvasScale.value;
+      } else {
+        posX.value += e.changeX / canvasScale.value;
+        posY.value += e.changeY / canvasScale.value;
+        pullOffsetX.value += e.changeX / canvasScale.value;
+        pullOffsetY.value += e.changeY / canvasScale.value;
+        // Told to JS only every few points of travel: it is the answer to
+        // "which column would catch this", and asking that on every frame
+        // of a drag costs far more than it is worth.
+        if (
+          Math.abs(posX.value - hoverReportedX.value) > 8 ||
+          Math.abs(posY.value - hoverReportedY.value) > 8
+        ) {
+          hoverReportedX.value = posX.value;
+          hoverReportedY.value = posY.value;
+          runOnJS(onHover)(card.id, posX.value, posY.value);
+        }
+        // ALIGNMENT GUIDES - entirely on this thread, no runOnJS: there
+        // is nothing here JS needs to decide, only two shared values to
+        // set. Every other card's LEFT, CENTRE and RIGHT edge (and TOP/
+        // MIDDLE/BOTTOM for the other axis) is compared against this
+        // card's own three; the closest match within GUIDE_SNAP_DISTANCE
+        // (in screen points, so divided by the live zoom) wins, and only
+        // one line per axis is ever shown - the same restraint a real
+        // design tool's guides use.
+        const threshold = GUIDE_SNAP_DISTANCE / canvasScale.value;
+        const myLeft = posX.value;
+        const myRight = posX.value + cardWidthForGuides;
+        const myCenterX = posX.value + cardWidthForGuides / 2;
+        const myTop = posY.value;
+        const myBottom = posY.value + cardHeightForGuides;
+        const myCenterY = posY.value + cardHeightForGuides / 2;
+        let bestVDistance = threshold;
+        let bestVX: number | null = null;
+        let bestHDistance = threshold;
+        let bestHY: number | null = null;
+        for (let i = 0; i < allCardBounds.length; i++) {
+          const other = allCardBounds[i];
+          if (other.id === card.id) continue;
+          const oLeft = other.x;
+          const oRight = other.x + other.width;
+          const oCenterX = other.x + other.width / 2;
+          const oTop = other.y;
+          const oBottom = other.y + other.height;
+          const oCenterY = other.y + other.height / 2;
+          for (const mx of [myLeft, myCenterX, myRight]) {
+            for (const ox of [oLeft, oCenterX, oRight]) {
+              const d = Math.abs(mx - ox);
+              if (d < bestVDistance) {
+                bestVDistance = d;
+                bestVX = ox;
+              }
+            }
+          }
+          for (const my of [myTop, myCenterY, myBottom]) {
+            for (const oy of [oTop, oCenterY, oBottom]) {
+              const d = Math.abs(my - oy);
+              if (d < bestHDistance) {
+                bestHDistance = d;
+                bestHY = oy;
+              }
+            }
+          }
+        }
+        if (bestVX !== null) {
+          guideVX.value = bestVX;
+          guideVVisible.value = true;
+        } else {
+          guideVVisible.value = false;
+        }
+        if (bestHY !== null) {
+          guideHY.value = bestHY;
+          guideHVisible.value = true;
+        } else {
+          guideHVisible.value = false;
+        }
+      }
+    })
+    .onEnd(() => {
+      guideVVisible.value = false;
+      guideHVisible.value = false;
+      if (isGroupDrag) {
+        runOnJS(onGroupDragEnd)(groupOffsetX.value, groupOffsetY.value);
+      } else {
+        reportedX.value = posX.value;
+        reportedY.value = posY.value;
+        runOnJS(onDragEnd)(card.id, posX.value, posY.value);
+      }
+    });
+  const panGesture = buildPan();
+  // THE GRIP (the Mac): a free block's own drag handle, shown on hover - dragging by it moves the block (the whole strip, from its head)
+  // without a text selection ever starting in the field under the pointer.
+  const gripGesture = buildPan().blocksExternalGesture(panGesture);
+  const [hovered, setHovered] = useState(false);
+
+  // A press on one of the player's own buttons is also a tap on the card
+  // under it (gesture-handler sees both), and a tap on a playing card
+  // toggles the playback: pressing «Кадр» stopped the very video it was
+  // meant to photograph (2026-10-04). The buttons stamp the moment, the
+  // card's tap ignores what follows within it.
+  const controlAt = useRef(0);
+  const markControl = () => {
+    controlAt.current = Date.now();
+  };
+  const cardTapped = () => {
+    if (Date.now() - controlAt.current < 600) return;
+    onTap(card);
+  };
+  const tapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(cardTapped)();
+  });
+
+  // Holding a card picks THAT card - which is what raises the bar of
+  // things to do with it, and the grip on a picture's corner.
+  //
+  // It has to block the canvas's own hold, and it has to be no slower.
+  // The canvas reaches for the marquee after 350ms and the card waited
+  // 500, in a detector of its own that knows nothing about it - so a
+  // hold on a card put the board into marquee mode instead, and the only
+  // way left to pick one card was to draw a box around it.
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(350)
+    // A hand is never perfectly still - the same allowance the canvas's
+    // own hold makes.
+    .maxDistance(10)
+    .blocksExternalGesture(canvasHoldGesture, canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onLongPress)(card);
+    });
+
+  // Typing in it: the field takes every touch (the caret, a selection).
+  const gesture = inlineEditing ? Gesture.Tap().enabled(false) : Gesture.Race(panGesture, tapGesture, longPressGesture);
+
+  // Two shared offsets can apply on top of this card's own position: the
+  // group-drag one (a selected sibling is being dragged) and the column
+  // one (the column this card sits in is being dragged). Both work the
+  // same way - the thing actually under the finger writes the offset,
+  // everything moving with it reads the same value.
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX:
+          posX.value +
+          (isSelected ? groupOffsetX.value : 0) +
+          (followsColumnDrag ? columnOffsetX.value : 0) +
+          (followsContainerDrag ? containerOffsetX.value : 0) +
+          (followsConnectionPull ? pullOffsetX.value : 0),
+      },
+      {
+        translateY:
+          posY.value +
+          (isSelected ? groupOffsetY.value : 0) +
+          (followsColumnDrag ? columnOffsetY.value : 0) +
+          (followsContainerDrag ? containerOffsetY.value : 0) +
+          (followsConnectionPull ? pullOffsetY.value : 0),
+      },
+    ],
+  }));
+
+  const type = card.type ?? 'paragraph';
+  const cardWidth = liveWidth ?? widthInColumn(card);
+  // THE SHAPE THE PICTURE IS ACTUALLY IN.
+  //
+  // Read off the file, never stored: it is a property of the picture,
+  // and a number two devices each recompute and write back is how the
+  // board learnt to argue with itself once already. Undefined until the
+  // file answers, and the fixed window is what is drawn until then, so
+  // a card never has no height at all.
+  const [naturalAspect, setNaturalAspect] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (!card.imageNatural || !imageSource) return;
+    let alive = true;
+    Image.getSize(
+      imageSource,
+      (w, h) => {
+        if (alive && w > 0 && h > 0) setNaturalAspect(h / w);
+      },
+      () => {}
+    );
+    return () => {
+      alive = false;
+    };
+  }, [card.imageNatural, imageSource]);
+  const pictureHeight =
+    card.imageNatural && naturalAspect
+      ? Math.round((cardWidth - CARD_IMAGE_PADDING * 2) * naturalAspect)
+      : cardImageHeight(cardWidth);
+  // Every card kind can be made bigger, not just a picture - a sticky
+  // note's text or a document's preview reads just as well wider. In a
+  // column every card takes the column's width, so there is nothing to
+  // drag there.
+  const resizable = isSelected && !card.columnId;
+  // blocksExternalGesture for the same reason the card's own drag has it:
+  // nested detectors are independent, so without it the card would move
+  // while its corner is being pulled.
+  const resizeGesture = Gesture.Pan()
+    .runOnJS(true)
+    .minDistance(0)
+    .blocksExternalGesture(panGesture, canvasPanGesture)
+    .onBegin(() => {
+      resizeBase.current = widthInColumn(card);
+    })
+    // Divided by the canvas scale so the corner tracks the finger 1:1
+    // however far the board is zoomed - the same rule the drag follows.
+    .onUpdate((e) => setLiveWidth(clampCardWidth(resizeBase.current + e.translationX / canvasScale.value)))
+    .onFinalize((e) => {
+      const next = clampCardWidth(resizeBase.current + e.translationX / canvasScale.value);
+      onResize(card.id, next);
+      setLiveWidth(null);
+    });
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        onLayout={(e) => onMeasure(card.id, e.nativeEvent.layout.height)}
+        style={[
+          styles.card,
+          // A card in a column is drawn at the column's width, whatever
+          // its own is - see widthInColumn.
+          { width: cardWidth },
+          // A plain (non-animated) style, not part of useAnimatedStyle -
+          // isDragging only flips twice per drag (start/end), not per
+          // frame, so it doesn't need to live on the UI thread. Elevation
+          // is Android's own stacking mechanism (zIndex alone isn't always
+          // enough there for sibling Views to reorder above one another).
+          isDragging && styles.cardDragging,
+          isSelected && styles.cardSelected,
+          animatedStyle,
+          dimmed && { opacity: 0.28 },
+        ]}
+        pointerEvents={dimmed ? 'none' : 'auto'}
+        {...(Platform.OS === 'web' && card.freeBlock
+          ? ({ onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) } as object)
+          : null)}
+      >
+        {card.freeBlock && Platform.OS === 'web' && (!card.glueId || (card.glueOrder ?? 0) === 0) && (hovered || inlineEditing) && (
+          <GestureDetector gesture={gripGesture}>
+            <View
+              accessibilityLabel="Перетягнути"
+              style={{ position: 'absolute', top: -13, left: '50%', marginLeft: -16, width: 32, height: 14, borderRadius: 7, zIndex: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.10)', cursor: 'grab' } as never}
+            >
+              <Ionicons name="reorder-two-outline" size={14} color="rgba(0,0,0,0.55)" />
+            </View>
+          </GestureDetector>
+        )}
+        {card.freeBlock ? (
+          // A free block: the note's own row, on its paper - the same look
+          // it will have once it is dropped into a note.
+          <View
+            style={[
+              styles.refCard,
+              styles.freeBlockCard,
+              { backgroundColor: theme.paper.fill },
+              // Glued: the line that says these two were stuck together.
+              !!card.glueId && (card.glueOrder ?? 0) > 0 && styles.freeBlockSeam,
+              // ONE white sheet: round at the strip's two ends only; the seam between blocks is the dashed line and nothing else.
+              glueRole === 'first' && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+              glueRole === 'middle' && { borderRadius: 0 },
+              glueRole === 'last' && { borderTopLeftRadius: 0, borderTopRightRadius: 0 },
+              glueRole && { boxShadow: glueRole === 'last' ? '0 0 0 1px rgba(0,0,0,0.05), 0 6px 14px -8px rgba(0,0,0,0.14)' : '0 0 0 1px rgba(0,0,0,0.05)' },
+            ]}
+            pointerEvents={inlineEditing ? 'auto' : 'none'}
+          >
+            {inlineEditing ? (
+              <FreeBlockInput
+                card={card}
+                editorStyles={freeBlockStyles}
+                ink={theme.paper.ink}
+                faint={theme.paper.inkFaint}
+                paper={theme.paper.fill}
+                onText={(t) => onInlineText?.(card.id, t)}
+                onDoubleEnter={() => onInlineDoubleEnter?.(card.id)}
+                onBackspaceEmpty={() => onInlineBackspaceEmpty?.(card.id)}
+              />
+            ) : (
+              // At rest: the very same row, without the field - so nothing
+              // moves when typing starts or stops.
+              <FreeBlockInput
+                card={card}
+                editorStyles={freeBlockStyles}
+                ink={theme.paper.ink}
+                faint={theme.paper.inkFaint}
+                paper={theme.paper.fill}
+                readOnly
+              />
+            )}
+          </View>
+        ) : type === 'board' ? (
+          // Another board. Deliberately plainer than a document card:
+          // there is nothing to preview - a board is a surface, not a
+          // text - so what it shows is what it IS, a named place to go.
+          <View style={styles.refCard}>
+            <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+              <Ionicons name="easel-outline" size={22} color="#6B7280" />
+            </View>
+            <Text style={styles.refLabel} numberOfLines={2}>
+              {card.boardTitle || 'Без назви'}
+            </Text>
+          </View>
+        ) : type === 'document' && livePaper && card.documentId ? (
+          <View
+            style={[
+              styles.refCard,
+              styles.paperDocCard,
+              { backgroundColor: theme.paper.fill },
+              !card.documentExpanded && { height: card.docHeight ?? PAPER_DOC_HEIGHT, overflow: 'hidden' },
+            ]}
+          >
+            <View style={styles.paperDocHead}>
+              <Ionicons name="document-text-outline" size={13} color={theme.paper.inkMuted} />
+              <Text style={[styles.refLabel, styles.paperDocTitle, { color: theme.paper.ink }]} numberOfLines={1}>
+                {card.documentTitle || 'Без назви'}
+              </Text>
+            </View>
+            {FEATURES.macFrameB && Platform.OS === 'web' ? (
+              // THE MAC: laid out at the card's world size over 0.62 and scaled whole - the way the live editor is (see the card
+              // window below) - so numbers, gaps and text keep their proportions when the card is opened for writing. Only the
+              // TEXT was scaled before, and the rows' own gaps and numbers stayed big (2026-10-30: «стрибки дезорієнтують»).
+              <UniformScaled factor={PAPER_DOC_TEXT}>
+                <TextScaleOverride factor={1}>
+                  <DocumentCardBlocks documentId={card.documentId} />
+                </TextScaleOverride>
+              </UniformScaled>
+            ) : (
+              <TextScaleOverride factor={PAPER_DOC_TEXT}>
+                <DocumentCardBlocks documentId={card.documentId} />
+              </TextScaleOverride>
+            )}
+          </View>
+        ) : type === 'document' ? (
+          <View style={styles.refCard}>
+            {!card.documentExpanded &&
+              (card.documentPreviewImageUri ? (
+                <AttachmentImage
+                  uri={card.documentPreviewImageUri}
+                  driveFileId={card.documentPreviewDriveFileId}
+                  style={styles.refThumb}
+                  countsAsUse={false}
+                />
+              ) : (
+                <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+                  <Ionicons name="document-text-outline" size={22} color="#6B7280" />
+                </View>
+              ))}
+            <Text style={styles.refLabel} numberOfLines={card.documentExpanded ? undefined : 2}>
+              {card.documentTitle || 'Без назви'}
+            </Text>
+            {!!card.documentPreviewText && (
+              <Text style={styles.documentPreviewText} numberOfLines={card.documentExpanded ? undefined : 4}>
+                {card.documentPreviewText}
+              </Text>
+            )}
+          </View>
+        ) : type === 'paragraph' ? (
+          <View
+            style={[
+              styles.stickyCard,
+              { backgroundColor: mutedForTheme(card.color ?? STICKY_COLORS[0], theme, STICKY_MUTE, theme.canvas.card) },
+            ]}
+          >
+            <Text
+              style={[styles.stickyText, { fontSize: card.fontSize ?? STICKY_TEXT_SIZE_DEFAULT }]}
+              numberOfLines={card.short ? 4 : undefined}
+            >
+              {card.text ? (
+                <FormattedText
+                  segments={parseFormattedText(card.text)}
+                  defaultColor={String(StyleSheet.flatten(styles.stickyText).color ?? theme.canvas.ink)}
+                />
+              ) : (
+                'Порожня наліпка'
+              )}
+            </Text>
+          </View>
+        ) : type === 'image' ? (
+          card.imageBare ? (
+            imageSource ? (
+              <Image
+                source={{ uri: imageSource }}
+                style={[styles.refThumbBare, { height: pictureHeight }]}
+                resizeMode="cover" resizeMethod="resize"
+              />
+            ) : (
+              <View style={[styles.refThumbBare, styles.refThumbPlaceholder, { height: pictureHeight }]}>
+                {imageStatus === 'restoring' ? (
+                  <ActivityIndicator color="#9CA3AF" />
+                ) : (
+                  <Ionicons name="image-outline" size={22} color="#9CA3AF" />
+                )}
+              </View>
+            )
+          ) : (
+            <View style={styles.refCard}>
+              {imageSource ? (
+                <Image
+                  source={{ uri: imageSource }}
+                  style={[styles.refThumb, { height: pictureHeight }]}
+                  resizeMode="cover" resizeMethod="resize"
+                />
+              ) : (
+                <View style={[styles.refThumb, styles.refThumbPlaceholder, { height: pictureHeight }]}>
+                  {imageStatus === 'restoring' ? (
+                    <ActivityIndicator color="#9CA3AF" />
+                  ) : (
+                    <Ionicons name="image-outline" size={22} color="#9CA3AF" />
+                  )}
+                </View>
+              )}
+              <Text style={styles.refLabel} numberOfLines={2}>
+                {card.imageTitle || 'Без назви'}
+              </Text>
+            </View>
+          )
+        ) : type === 'file' ? (
+          <View style={styles.refCard}>
+            <View style={[styles.refThumb, styles.refThumbPlaceholder]}>
+              <Ionicons name={fileIconFor(card.fileName ?? '')} size={22} color="#6B7280" />
+            </View>
+            <Text style={styles.refLabel} numberOfLines={2}>
+              {card.fileTitle || card.fileName || 'Файл'}
+            </Text>
+          </View>
+        ) : type === 'link' ? (
+          <View style={styles.refCard}>
+            {playing ? (
+              // In the card's own window, not over the whole screen -
+              // the board stays where it is behind it, and its two
+              // controls sit on the player: close, and full screen for
+              // when the card is too small to watch in.
+              <View style={[styles.refThumb, videoShape]}>
+                <InlineVideoPlayer url={card.linkUrl ?? ''} onTime={onVideoTime} />
+                <View ref={frameTL} collapsable={false} pointerEvents="none" style={styles.frameDotTL} />
+                <View ref={frameBR} collapsable={false} pointerEvents="none" style={styles.frameDotBR} />
+                {!framing && (
+                  <>
+                    {supportsScreenCapture && onFrame && (
+                      <View style={styles.playerControlsLeft} pointerEvents="box-none">
+                        <Pressable
+                          hitSlop={4}
+                          style={styles.playerButton}
+                          onPressIn={markControl}
+                          onPress={takeFrame}
+                          accessibilityLabel="Кадр"
+                        >
+                          <Ionicons name="camera-outline" size={15} color="#fff" />
+                        </Pressable>
+                      </View>
+                    )}
+                    <View style={styles.playerControls} pointerEvents="box-none">
+                      <Pressable hitSlop={4} style={styles.playerButton} onPressIn={markControl} onPress={onOpenFullscreen}>
+                        <Ionicons name="expand-outline" size={15} color="#fff" />
+                      </Pressable>
+                      <Pressable hitSlop={4} style={styles.playerButton} onPressIn={markControl} onPress={onStopPlaying}>
+                        <Ionicons name="close" size={15} color="#fff" />
+                      </Pressable>
+                    </View>
+                  </>
+                )}
+              </View>
+            ) : card.linkImageUrl ? (
+              <Image source={{ uri: card.linkImageUrl }} style={[styles.refThumb, videoShape]} resizeMode="cover" resizeMethod="resize" />
+            ) : (
+              <View style={[styles.refThumb, styles.refThumbPlaceholder, videoShape]}>
+                <Ionicons name="link-outline" size={22} color="#9CA3AF" />
+              </View>
+            )}
+            <Text style={styles.refLabel} numberOfLines={2}>
+              {card.linkTitle || card.linkSiteName || 'Посилання'}
+            </Text>
+          </View>
+        ) : type === 'dbRow' ? (
+          // A row of a user-created database, rendered live from that
+          // database through the same card its own list and its document
+          // block use (see CustomRowBlockCard) - a rename there shows up
+          // here without the board storing anything but the row's id.
+          <View style={styles.dbRowCard} pointerEvents="none">
+            <CustomRowBlockCard
+              databaseId={card.dbRowDatabaseId}
+              rowId={card.recordId ?? card.id}
+              fallbackTitle={card.dbRowTitle}
+              tags={[]}
+              onOpen={() => {}}
+            />
+          </View>
+        ) : type === 'flashcard' ? (
+          // A flashcard, live from «Картки»; a tap folds its explanation
+          // open and shut (see handleCardTap), kept on the card.
+          <View pointerEvents="none">
+            <FlashcardBlockCard block={card as Block} variant="board" open={!!card.flashcardOpen} />
+          </View>
+        ) : type === 'thought' ? (
+          // A thought of the theme this board belongs to, live (components/thoughts/ThoughtBoardCard).
+          <ThoughtBoardCard thoughtId={card.thoughtId} width={cardWidth} />
+        ) : null}
+
+        {resizable && (
+          <GestureDetector gesture={resizeGesture}>
+            <View style={styles.cardGrip}>
+              <Ionicons name="resize-outline" size={13} color="#fff" />
+            </View>
+          </GestureDetector>
+        )}
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
+// A piece of the board's FURNITURE, drawn. See BoardShape in types.ts
+// for why this is not a card: it is decoration, it never becomes a
+// block, and keeping it out of `cards` is what makes that true by
+// construction instead of by everyone remembering. The shape's own
+// look (`ShapeBody`) now lives in `../components/BoardShapeBody`,
+// shared with the boards-list preview capture; one shape's own drag,
+// built exactly like a card's, is what stays here - see DraggableCard
+// for why the position lives in shared values and nowhere else.
+function DraggableShape({
+  shape,
+  isSelected,
+  posX,
+  posY,
+  onDragStart,
+  dragEnabled,
+  canvasScale,
+  canvasPanGesture,
+  canvasHoldGesture,
+  onTap,
+  onLongPress,
+  onDragEnd,
+  onResize,
+  followsContainerDrag,
+  containerOffsetX,
+  containerOffsetY,
+  followsConnectionPull,
+  pullOffsetX,
+  pullOffsetY,
+  dimmed,
+}: {
+  shape: BoardShape;
+  isSelected: boolean;
+  // From the board's own registry, the same one the cards use - so an
+  // arrow ending on this shape follows it live while it is dragged.
+  posX: SharedValue<number>;
+  posY: SharedValue<number>;
+  onDragStart: (id: string) => void;
+  // True while a BoardContainer this shape currently sits inside is
+  // itself being dragged - same shared-offset trick DraggableCard uses
+  // for a column (see followsColumnDrag there), generalised to a frame
+  // that can hold either kind of item.
+  followsContainerDrag: boolean;
+  containerOffsetX: SharedValue<number>;
+  containerOffsetY: SharedValue<number>;
+  // True while this shape is in pullMembers - see DraggableCard's own
+  // identical comment.
+  followsConnectionPull: boolean;
+  pullOffsetX: SharedValue<number>;
+  pullOffsetY: SharedValue<number>;
+  // True while isolation is active and this shape is outside the
+  // isolated chain.
+  dimmed: boolean;
+  // false in 'connect' mode - same reason DraggableCard has this: a
+  // shape's own pan `.blocksExternalGesture(canvasPanGesture)` alone
+  // was not enough to guarantee the canvas's connect-drag wins (two
+  // competing Pan gestures, not a Pan racing a Tap) - "блоки не
+  // поєднуються звʼязками" turned out to be exactly this, shapes never
+  // got the explicit `.enabled()` gate cards already needed for the
+  // same reason.
+  dragEnabled: boolean;
+  canvasScale: SharedValue<number>;
+  canvasPanGesture: ReturnType<typeof Gesture.Pan>;
+  canvasHoldGesture: ReturnType<typeof Gesture.LongPress>;
+  onTap: (shape: BoardShape) => void;
+  onLongPress: (shape: BoardShape) => void;
+  onDragEnd: (id: string, x: number, y: number) => void;
+  onResize: (id: string, width: number, height: number) => void;
+}) {
+  const theme = useTheme();
+  const styles = useBoardStyles();
+  const reportedX = useSharedValue(shape.x);
+  const reportedY = useSharedValue(shape.y);
+  useEffect(() => {
+    if (shape.x !== reportedX.value) {
+      posX.value = shape.x;
+      reportedX.value = shape.x;
+    }
+    if (shape.y !== reportedY.value) {
+      posY.value = shape.y;
+      reportedY.value = shape.y;
+    }
+    // A container drag this shape rode along on already folded the
+    // offset into the committed x/y above - back to zero in the same
+    // paint that adopts it, exactly as DraggableCard does for its own
+    // column offset.
+    containerOffsetX.value = 0;
+    containerOffsetY.value = 0;
+    pullOffsetX.value = 0;
+    pullOffsetY.value = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shape.x, shape.y]);
+
+  const [live, setLive] = useState<{ width: number; height: number } | null>(null);
+  const resizeBase = useRef({ width: 0, height: 0 });
+
+  const panGesture = Gesture.Pan()
+    .enabled(dragEnabled)
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onDragStart)(shape.id);
+    })
+    .onChange((e) => {
+      posX.value += e.changeX / canvasScale.value;
+      posY.value += e.changeY / canvasScale.value;
+      pullOffsetX.value += e.changeX / canvasScale.value;
+      pullOffsetY.value += e.changeY / canvasScale.value;
+    })
+    .onEnd(() => {
+      reportedX.value = posX.value;
+      reportedY.value = posY.value;
+      runOnJS(onDragEnd)(shape.id, posX.value, posY.value);
+    });
+  const tapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(onTap)(shape);
+  });
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(350)
+    .maxDistance(10)
+    .blocksExternalGesture(canvasHoldGesture, canvasPanGesture)
+    .onStart(() => {
+      runOnJS(onLongPress)(shape);
+    });
+  const gesture = Gesture.Race(panGesture, tapGesture, longPressGesture);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX:
+          posX.value +
+          (followsContainerDrag ? containerOffsetX.value : 0) +
+          (followsConnectionPull ? pullOffsetX.value : 0),
+      },
+      {
+        translateY:
+          posY.value +
+          (followsContainerDrag ? containerOffsetY.value : 0) +
+          (followsConnectionPull ? pullOffsetY.value : 0),
+      },
+    ],
+  }));
+
+  // Text is as WIDE as its own words too, not only as tall - see
+  // approxTextShapeWidth's own comment. No resize grip ever changes it
+  // (below), so `live` never holds a width for a text shape and this is
+  // simply `undefined` there, the same way height already was.
+  const width = shape.kind === 'text' ? undefined : live?.width ?? shape.width;
+  // Text is as tall as its own words; everything else is the box it was
+  // given. A square and a circle are the same shapes as a rectangle and
+  // an ellipse with one rule added, which is why they are separate kinds
+  // rather than a flag: the rule belongs to the shape, not to a mode.
+  const locked = shape.kind === 'square' || shape.kind === 'circle';
+  const height = shape.kind === 'text' ? undefined : locked ? width : live?.height ?? shape.height;
+
+  const resizeGesture = Gesture.Pan()
+    .blocksExternalGesture(canvasPanGesture)
+    .onStart(() => {
+      resizeBase.current = { width: width ?? 0, height: height ?? shape.height };
+    })
+    .onChange((e) => {
+      const nextW = clampShapeSize(resizeBase.current.width + e.translationX / canvasScale.value);
+      const nextH = locked
+        ? nextW
+        : clampShapeSize(resizeBase.current.height + e.translationY / canvasScale.value);
+      setLive({ width: nextW, height: nextH });
+    })
+    .onEnd(() => {
+      const next = live;
+      setLive(null);
+      if (next) runOnJS(onResize)(shape.id, next.width, locked ? next.width : next.height);
+    })
+    .runOnJS(true);
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        style={[
+          styles.shape,
+          { width, height, opacity: dimmed ? 0.28 : 1 },
+          animatedStyle,
+          isSelected && styles.shapeSelected,
+        ]}
+        pointerEvents={dimmed ? 'none' : 'auto'}
+      >
+        <ShapeBody
+          shape={shape}
+          width={width ?? 0}
+          height={height ?? 0}
+          stroke={shape.color ?? theme.canvas.inkMuted}
+          fill={shapeFillFor(shape, shape.color ?? theme.canvas.inkMuted, theme)}
+          ink={theme.canvas.ink}
+        />
+        {isSelected && shape.kind !== 'text' && (
+          <GestureDetector gesture={resizeGesture}>
+            <View style={styles.cardGrip}>
+              <Ionicons name="resize-outline" size={13} color="#fff" />
+            </View>
+          </GestureDetector>
+        )}
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
+// A task's own shape, as read live for a "Проект справ" column (see
+// BoardColumn.liveTaskSource) - only what a checkbox row needs, not the
+// full local `Task` type TasksScreen.tsx keeps to itself.
+type BoardTask = {
+  id: string;
+  text: string;
+  checked: boolean;
+  documentId: string;
+  groupId?: string;
+  listId?: string;
+};
+
+type BoardTaskList = { id: string; name: string; groupId: string };
+
+type Props = NativeStackScreenProps<BoardsStackParamList, 'Board'>;
+
+// Stage 1 of the "Дошка" feature (see DEVELOPMENT_PLAN.md / PROJECT_BRIEF.md):
+// a pannable/zoomable canvas of cards. A card is deliberately just a `Block`
+// plus x/y/width (see BoardCard in types.ts) - a card referencing an
+// existing file/photo/link comes straight out of AddExistingItemModal
+// unmodified, exactly like inserting one into a document does.
+// What a document card is called. A day's note has no title of its own -
+// it is the day - so on a board (the day's board above all) it is called
+// by the day, not «Без назви».
+function documentCardTitle(data: Record<string, unknown> | undefined): string {
+  const title = data?.title as string | undefined;
+  const day = data?.calendarDate as string | undefined;
+  if (day && !title?.trim()) return `Аркуш · ${formatShortDate(parseDateKey(day))}`;
+  return title ?? 'Без назви';
+}
+
+export default function BoardScreen() {
+  const theme = useTheme();
+  const styles = useBoardStyles();
+  const keyboardHeight = useKeyboardHeight();
+  const boardFocused = useIsFocused();
+  const boardInsets = useSafeAreaInsets();
+  // Typed against BOTH param lists - this screen lives inside the "Дошки"
+  // tab's own nested BoardsStack (goBack to BoardsList) but also reaches
+  // UP into the root stack to open Editor/EditorModal, which React
+  // Navigation's navigate() resolves correctly at runtime by walking up
+  // the navigator tree regardless of which param list a call site is
+  // typed against.
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList & BoardsStackParamList>>();
+  const { params } = useRoute<Props['route']>();
+  // A board opened from the explorer lives in the root stack as «BoardCopy»; the walk from one board
+  // into another (and the move of a group) must stay on the same route name or the tap goes nowhere.
+  const boardRouteName = useRoute().name === 'BoardCopy' ? 'BoardCopy' : 'Board';
+  const goBoard = (method: 'push' | 'navigate', boardId: string, extra?: object) =>
+    (navigation as unknown as Record<string, (name: string, params?: object) => void>)[method](boardRouteName, { boardId, ...extra });
+  const { boardId, openDocumentId, focusCardIds } = params;
+  // The board is what the boards desk's picture shows while it is open.
+  const deskContentRef = useDeskContent();
+  // Drawn inside a window (the AI chat's draft board) rather than as a screen: null on every other path.
+  const embed = useContext(BoardEmbedContext);
+  // A window shows a whole tree small: it may zoom out further than the full screen does.
+  const minScaleNow = embed ? 0.15 : MIN_SCALE;
+  // In front: the start desk's recents - not for a board that is only a window.
+  useNoteOpened('board', boardId, useIsFocused() && !embed?.noRecents);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { isTwoPane } = useResponsiveLayout();
+  // A document card opened beside the board instead of over it: the board
+  // keeps panning and scrolling while the document is being written, which
+  // is the whole point of a board full of documents. Full screen is still
+  // a tap away, so nothing that worked before stops working.
+  const [paneDocId, setPaneDocId] = useState<string | null>(null);
+  // THE CARD WINDOW (a trial, 2026-10-08, features.cardWindow): on a
+  // phone, a document card on a DAY's board opens as a small window over
+  // the board with the real editor in it - typed blocks, editable - while
+  // the board stays in sight and can still be moved. Full screen is one
+  // press from it.
+  // Version 2 (the user's Scrintal screenshot): the card itself becomes
+  // the editor - at its own place, following the board up and down, with
+  // the note's blocks at card size (the editor's `embedded` mode, the one
+  // the calendar shows a day in: no header, no title, no «+ папка»).
+  // `live`: the card's editor is open in place; otherwise (an opened-out
+  // card, too tall to write in on a phone) only its buttons are shown.
+  const [cardWindow, setCardWindow] = useState<{
+    docId: string;
+    cardId: string;
+    title: string;
+    live: boolean;
+    zoom: number;
+  } | null>(null);
+  const cardWindowDocId = cardWindow?.docId ?? null;
+  const cardEditorRef = useRef<DocumentEditorHandle>(null);
+  const cardWindowDocIdSV = useSharedValue<string | null>(null);
+  useEffect(() => {
+    cardWindowDocIdSV.value = cardWindow?.cardId ?? null;
+  }, [cardWindow, cardWindowDocIdSV]);
+  // The note's own panel (lists, text, insert - the one that takes the
+  // keyboard's place) counts as writing too: the card stands up and the
+  // panel spans the screen under it, instead of opening inside the card.
+  const [cardWindowPanel, setCardWindowPanel] = useState(false);
+  const isDayBoard = boardId.startsWith('day_');
+  // One column read as flowing text in the right-hand half. Not a document
+  // and not a copy: it edits the cards themselves, which is why nothing
+  // here is synchronised with anything. Opened by long-pressing a column
+  // header. "Сформувати" from inside it still writes a real document, and
+  // that document is a snapshot from then on.
+  const [paneFullscreen, setPaneFullscreen] = useState(false);
+  // The note in the pane, reached for its own back steps - see
+  // DocumentEditorHandle.requestBack and the pane controls below.
+  const paneEditorRef = useRef<DocumentEditorHandle | null>(null);
+  // How far the pane's own left edge is from the window's - see
+  // DocumentEditorScreen's paneLeft. Fullscreen this is moot (the board
+  // is hidden and the pane IS the window), but harmless to keep current.
+  const [docPaneLeft, setDocPaneLeft] = useState(0);
+  // The canvas's own size, which stops being the window's the moment a
+  // document takes half of it. Screen->world maths below reads this, not
+  // the window - the gestures report x/y relative to the canvas surface,
+  // so the two must be the same rectangle.
+  const [viewport, setViewport] = useState({ width: windowWidth, height: windowHeight });
+  const pointerDensity = useDensity() === 'pointer';
+  // The width this board was laid out at last, to tell how much it
+  // just changed by - see the canvas's own onLayout.
+  const viewportWidthRef = useRef(0);
+  const layersPanelWidth = Math.round(Math.min(340, windowWidth * 0.86));
+  // Added on top of the fixed 104 the FAB/selection bar already clear the
+  // floating tab bar by - a device with a tall gesture-nav inset needs more
+  // than that fixed number to keep either from sitting partly behind it.
+  // Same fix as BulkActionBar's own bottom offset.
+  const bottomInset = useSafeAreaInsets().bottom;
+  const dockClear = useDockClearance();
+  const boardBlurTarget = useBlurTarget();
+
+  const [title, setTitle] = useState('');
+  const [cards, setCards] = useState<BoardCard[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [addSheetVisible, setAddSheetVisible] = useState(false);
+  // Boards to choose from, fetched when the picker opens rather than
+  // listened to: it is a one-off question, asked while a sheet is up.
+  const [boardPickerOpen, setBoardPickerOpen] = useState(false);
+  // The same picker, asking a different question: not "which board goes
+  // ON this one" but "which board do these objects go TO".
+  const [movePickerOpen, setMovePickerOpen] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [pickableBoards, setPickableBoards] = useState<{ id: string; title: string }[]>([]);
+  const [freshFlashcardId, setFreshFlashcardId] = useState<string | null>(null);
+  // The card of «Картки» whose two fields are being written (a card just made, or an unfolded one tapped again).
+  const [editFlashcardId, setEditFlashcardId] = useState<string | null>(null);
+  const [newRecordFor, setNewRecordFor] = useState<{ databaseId: string; fieldId: string; name: string } | null>(null);
+  const [existingItemPickerVisible, setExistingItemPickerVisible] = useState(false);
+  // «Вікно бази» on the Mac: the user's databases to choose from, shown as a tab of the right panel (null = not asking).
+  const [dbChoices, setDbChoices] = useState<{ id: string; name: string }[] | null>(null);
+  // Set when the pane's document was just made out of another one's
+  // blocks - the offer to put it on a board rides in with it.
+  const [paneOfferBoard, setPaneOfferBoard] = useState(false);
+  const [editingCard, setEditingCard] = useState<BoardCard | null>(null);
+  const [inlineBlockId, setInlineBlockId] = useState<string | null>(null);
+  const inlineBlockIdRef = useRef<string | null>(null);
+  inlineBlockIdRef.current = inlineBlockId;
+  const inlineKbSeenRef = useRef(false);
+  const [editingText, setEditingText] = useState('');
+  useEffect(() => installPasteMarkdown(), []);
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  const [renamingCardTitle, setRenamingCardTitle] = useState(false);
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  // The column a carried card is currently over - lit while it is, so the
+  // magnet is seen and felt before the finger lifts.
+  const [hoverColumnId, setHoverColumnId] = useState<string | null>(null);
+  const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
+  // Which card is playing IN ITS OWN WINDOW. One at a time on purpose:
+  // every player is a live WebView, and a board of video cards all
+  // playing at once is a board that stops responding.
+  const [playingCardId, setPlayingCardId] = useState<string | null>(null);
+  // The card whose video is open full screen - frames taken there are laid
+  // beside it.
+  const fullscreenCardId = useRef<string | null>(null);
+  // Where the playing video is (seconds), and how many frames each video
+  // has given this session - the next one is laid under the last.
+  const videoTime = useRef(0);
+  const framesTaken = useRef<Record<string, number>>({});
+  // The screen capture lasts while a video plays on the board, no longer.
+  useEffect(() => {
+    videoTime.current = 0;
+    if (playingCardId === null && playingVideoUrl === null) stopScreenCapture();
+  }, [playingCardId, playingVideoUrl]);
+  useEffect(() => () => stopScreenCapture(), []);
+  // 'move' - single-finger drag pans the canvas (the original Stage 1
+  // behaviour). 'select' - single-finger drag instead draws a marquee
+  // rectangle over the world, selecting every card it overlaps, so several
+  // cards can be deleted or dragged as one group.
+  // 'connect' - a single-finger drag from one card to another links them
+  // with a mindmap line instead of panning or selecting.
+  //
+  // It always STARTS as move, on every device. Selecting is something the
+  // hand asks for - by holding on bare canvas, see below - rather than a
+  // state the board sits in from the moment it opens. Defaulting the web
+  // to select worked, but it left the tool lit as though a mode had been
+  // entered that nobody chose.
+  const [canvasTool, setCanvasTool] = useState<'move' | 'hand' | 'select' | 'connect'>('move');
+  // Which tab the Mac's right panel shows (Вставити · Шари · Обране · Інфо).
+  const [panelTab, setPanelTab] = useState<BoardTab>('insert');
+  // Isolation is deliberately its OWN flag, not a fourth canvasTool - it
+  // is a lens over the whole board (dim/disable everything outside a
+  // chain), not a way of interacting with the canvas the way move/
+  // select/connect are, and it has to survive switching back to 'move'
+  // to actually work with the isolated chain afterwards. `isolateArmed`
+  // is the one-shot "next tap picks the chain" state; `isolatedIds` is
+  // the chain itself once picked (null = not isolated).
+  const [isolateArmed, setIsolateArmed] = useState(false);
+  const [isolatedIds, setIsolatedIds] = useState<Set<string> | null>(null);
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
+  // The marquee's own catch on floating text - the user's own ask: the
+  // 'select' tool only ever swept up cards, so a text shape could only
+  // ever be removed one at a time, by long-pressing it. Deliberately just
+  // text (BoardShapeKind === 'text'), not every shape kind, and deliberately
+  // its OWN set rather than folded into selectedCardIds - a marquee-caught
+  // text shape only ever gets the "Вийти"/"Видалити" pair (see the dock's
+  // own action list), not the card-only actions (align, copy, disconnect...)
+  // that assume every selected id is a real BoardCard.
+  const [selectedShapeIds, setSelectedShapeIds] = useState<Set<string>>(new Set());
+  const [connections, setConnections] = useState<BoardConnection[]>([]);
+  // Tapping the LINE ITSELF selects it and shows a small "×" beside it -
+  // the disconnect action lives on card multi-select too (see
+  // disconnectSelectedCards), but that only ever covers CARDS, and a
+  // connection can now join a shape or a container just as well (see
+  // BoardConnection's own fromCardId/toCardId - despite the name, either
+  // end can be any node kind). Neither has a multi-select of its own, so
+  // this is the only way to remove one of those - the user's own ask,
+  // and also just how every other canvas app lets you cancel a line.
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+  // The board's own furniture - see BoardShape. A list of its OWN, never
+  // merged into `cards`, so nothing that collects, groups or exports
+  // cards can ever pick one up.
+  const [shapes, setShapes] = useState<BoardShape[]>([]);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  const [draggedShapeId, setDraggedShapeId] = useState<string | null>(null);
+  // Whether the align/arrange list is open - see alignSelectedCards.
+  const [alignMenuVisible, setAlignMenuVisible] = useState(false);
+  const [shapeSheetVisible, setShapeSheetVisible] = useState(false);
+  const [editingShape, setEditingShape] = useState<BoardShape | null>(null);
+  const [columns, setColumns] = useState<BoardColumn[]>([]);
+  // A free-standing frame - see BoardContainer in types.ts. Unlike a
+  // column, membership is never stored: whatever card or shape currently
+  // sits inside a container's rectangle belongs to it, discovered fresh
+  // every time the container itself is dragged (see containerMembersAt).
+  const [containers, setContainers] = useState<BoardContainer[]>([]);
+  const [renamingContainer, setRenamingContainer] = useState<BoardContainer | null>(null);
+  const [draggingContainerId, setDraggingContainerId] = useState<string | null>(null);
+  // Snapshotted the instant a container drag starts (see
+  // startContainerDrag) - which cards and shapes were geometrically
+  // inside it right then, so they can ride its live offset for the rest
+  // of that one gesture. Recomputing this every frame would mean testing
+  // every card and shape against the container's rectangle 60 times a
+  // second for a number that cannot change mid-drag (the container's own
+  // rectangle is the thing moving, and nothing else moves while it does).
+  const [containerDragMembers, setContainerDragMembers] = useState<{ cardIds: Set<string>; shapeIds: Set<string> }>({
+    cardIds: new Set(),
+    shapeIds: new Set(),
+  });
+  // Whatever an 'arrow'/'doubleArrow' connection says should move along
+  // with whichever card/shape/container is being dragged right now - see
+  // pulledIdsFrom's own comment. Same snapshot-once-at-drag-start shape as
+  // containerDragMembers, for the same reason (nothing in it can change
+  // mid-drag), just carrying container ids too since a pulled container
+  // moves as a whole rather than only ever being someone else's member.
+  const [pullMembers, setPullMembers] = useState<{
+    cardIds: Set<string>;
+    shapeIds: Set<string>;
+    containerIds: Set<string>;
+  }>({ cardIds: new Set(), shapeIds: new Set(), containerIds: new Set() });
+  // Organisational, not spatial - see BoardLayer. `layersDrawerVisible`
+  // is the "Шари" bead's own sheet.
+  const [layers, setLayers] = useState<BoardLayer[]>([]);
+  const [layersDrawerVisible, setLayersDrawerVisible] = useState(false);
+  const [renamingLayer, setRenamingLayer] = useState<BoardLayer | null>(null);
+  const [collapsedLayerIds, setCollapsedLayerIds] = useState<Set<string>>(new Set());
+  // The drawer isn't built on GlassLayer (see its own JSX comment), so it
+  // has to catch the hardware back button itself, the way GlassLayer does
+  // for every other sheet.
+  // The phone's back closes the card window first.
+  useEffect(() => {
+    if (!cardWindow) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setCardWindow(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [cardWindow]);
+  useEffect(() => {
+    if (!layersDrawerVisible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setLayersDrawerVisible(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [layersDrawerVisible]);
+  // Each card's real rendered height, reported by its own onLayout - what
+  // a column stacks by. State rather than a ref specifically so a height
+  // change re-renders: a column whose single card grew has nothing to
+  // reposition, but its OWN height still has to catch up.
+  const [cardHeights, setCardHeights] = useState<Map<string, number>>(new Map());
+  const [settleTick, setSettleTick] = useState(0);
+  // The same heights, reachable from a callback that must not be rebuilt
+  // every time one of them is measured - the listener depends on it, and
+  // resubscribing on every measurement would be a lot of churn for
+  // nothing.
+  // A strip re-lays itself whenever one of its blocks changes height - and whenever the cards change at all
+  // (a sync that brings a `glueId` back, a block let go, an undo): glued blocks are never left standing apart
+  // for a few seconds, waiting for a measurement. reflowGlue returns the same array when nothing has to move.
+  useEffect(() => {
+    // A «strip» of one is no strip: a block that carries glue but has nobody to be glued to (a sync that brought
+    // a `glueId` back, an old save) is shown with a seam and refuses to stick again until it is dragged far away
+    // and back (the user, 2026-10-11). Such leftovers are cleared here, in the same place the layout is kept flush.
+    setCards((prev) => reflowGlue(dropLoneGlue(prev), cardHeights, true));
+  }, [cardHeights, cards]);
+  // And the DRAWN positions are re-read from the state a moment after anything has settled - a strip laid out
+  // while blocks were still being measured must not stay drawn where it first stood. Also once, a little after
+  // the board has opened, when every height is certain to be known.
+  useEffect(() => {
+    const t = setTimeout(() => setSettleTick((n) => n + 1), 160);
+    return () => clearTimeout(t);
+  }, [cardHeights, cards]);
+  useEffect(() => {
+    if (!isLoaded) return;
+    const t = setTimeout(() => {
+      // Not strict: a block that is never drawn (hidden by a layer) has no height and must not keep its strip
+      // from being laid out for ever.
+      setCards((prev) => reflowGlue(dropLoneGlue(prev), cardHeightsRef.current));
+      setSettleTick((n) => n + 1);
+    }, 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded]);
+  const cardHeightsRef = useRef(cardHeights);
+  cardHeightsRef.current = cardHeights;
+  // A THOUGHT THEME'S BOARD (utils/themeBoard): its thoughts kept on it as live cards, its arrows as their links. Nothing
+  // at all on any other board (the hook reads no thoughts there).
+  const themeBoard = useThemeBoard({
+    boardId,
+    isLoaded,
+    cards,
+    setCards,
+    connections,
+    setConnections,
+    viewCenter,
+    heightOf: (id) => cardHeightsRef.current.get(id),
+  });
+  const [themeView, setThemeView] = useState<'board' | 'note'>('board');
+  // The picked thoughts a question is being written about («ШІ» -> «Питання»).
+  const [askingAbout, setAskingAbout] = useState<Thought[] | null>(null);
+  const [renamingColumn, setRenamingColumn] = useState<BoardColumn | null>(null);
+  const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
+  // Both steps of adding a link live in ONE piece of state so they can
+  // share ONE dialog: asking for the URL, waiting on its preview, then (if
+  // the page had no readable title) asking for a name. Two separate
+  // dialogs meant Android unmounting one modal and mounting another
+  // between the steps, which reads as a flicker. `kind` only picks the
+  // first step's wording - where the link is actually filed comes from the
+  // URL itself (see saveNewLink).
+  const [linkPrompt, setLinkPrompt] = useState<
+    | { step: 'url'; kind: 'other' | 'video' | 'geo'; busy: boolean }
+    | { step: 'title'; url: string; preview: LinkPreview }
+    | null
+  >(null);
+
+  const scale = useSharedValue(1);
+  // Where a new card should land: the middle of what is on screen right
+  // now, in the world's own coordinates.
+  //
+  // It used to be WORLD_CENTER - the middle of the whole canvas - which
+  // is only where you are looking on a board you have never moved. Pan
+  // anywhere at all and everything added afterwards appeared somewhere
+  // off behind you, with nothing to say where: "потім доводиться шукати
+  // по всьому полотну".
+  //
+  // The inverse of the screen-to-world conversion the taps use, taken at
+  // the centre of the screen - where `e.x` is viewport.width / 2, the
+  // whole viewport term cancels and this is what is left.
+  // THE BOARD'S MAP (utils/boardMap): opened in the pane beside the board, «Додати ділянку» writes the place now on screen into it,
+  // and the button of such a line (BlockRow) arrives here through onBoardJump.
+  // The map note stands inside the «Карта» tab of the right column (not beside the board): made on first need.
+  const [mapId, setMapId] = useState<string | null>(null);
+  const mapEditorRef = useRef<DocumentEditorHandle | null>(null);
+  useEffect(() => {
+    if (panelTab !== 'map' || mapId) return;
+    ensureBoardMap(boardId, title)
+      .then(setMapId)
+      .catch((e) => notify('Не вдалося відкрити карту', (e as Error).message));
+  }, [panelTab, mapId, boardId, title]);
+  // The place on screen now: centre, zoom, and how much of the board the screen holds at that zoom (what the picture of the place draws).
+  function currentView(): BoardView {
+    const c = viewCenter();
+    const k = scale.value || 1;
+    return {
+      boardId,
+      x: Math.round(c.x),
+      y: Math.round(c.y),
+      scale: Math.round(k * 100) / 100,
+      w: Math.round(viewportWidthSV.value / k),
+      h: Math.round(viewportHeightSV.value / k),
+    };
+  }
+  function addMapPlace() {
+    mapEditorRef.current?.appendBlock({ type: 'paragraph', text: 'Ділянка', boardView: currentView() });
+  }
+  // The board's data for the pictures in its map; the map reads it through utils/boardMap while this board is open.
+  const currentViewRef = useRef(currentView);
+  currentViewRef.current = currentView;
+  useEffect(() => {
+    publishBoardLive(boardId, { cards, columns, connections, shapes, containers, currentView: () => currentViewRef.current() });
+  }, [boardId, cards, columns, connections, shapes, containers]);
+  useEffect(() => () => publishBoardLive(boardId, null), [boardId]);
+  useEffect(
+    () =>
+      onBoardJump((view) => {
+        if (view.boardId !== boardId) return false;
+        const next = Math.min(MAX_SCALE, Math.max(minScaleNow, view.scale));
+        scale.value = withTiming(next, { duration: 380 });
+        translateX.value = withTiming(-(view.x - WORLD_CENTER) * next, { duration: 380 });
+        translateY.value = withTiming(-(view.y - WORLD_CENTER) * next, { duration: 380 });
+        return true;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [boardId]
+  );
+
+  function viewCenter(): { x: number; y: number } {
+    return {
+      x: WORLD_CENTER - translateX.value / scale.value,
+      y: WORLD_CENTER - translateY.value / scale.value,
+    };
+  }
+
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  // The card window's place: where its card's top is on the screen now,
+  // kept below the bar and above the lower half - so it rides along when
+  // the board is moved up or down, at the card's own spot.
+  const canvasOriginX = useSharedValue(0);
+  const canvasOriginY = useSharedValue(0);
+  const cardWorldX = useSharedValue(0);
+  const cardWorldY = useSharedValue(0);
+  const cardWorldW = useSharedValue(DEFAULT_CARD_WIDTH);
+  const viewportHeightSV = useSharedValue(windowHeight);
+  const viewportWidthSV = useSharedValue(windowWidth);
+  // THE CARD MADE LIVE (version 5, the user's: one card, one style): the
+  // window lies exactly where the card is, at its size - at the board's
+  // zoom - and follows it. Writing, it keeps that size and only rises, if
+  // it has to, so its foot sits on the bar above the keyboard.
+  // THE MAC'S BOARD (frame B, 2026-10-20): the name goes to the window bar, the tools to a palette on the canvas, the grey
+  // phone «pill» and the dock's tool buttons are not drawn; add, layers and the selection's actions live in the right panel.
+  const macBoard = FEATURES.macFrameB && Platform.OS === 'web';
+  // On the Mac the card stays EXACTLY where it lies (the user, 2026-10-20: «картка скаче»): no room kept above it for
+  // the three buttons and no room kept at the foot for a phone's editor bar - the buttons hang over it, the panel is on the right.
+  const cardWindowMinTop = macBoard ? 4 : boardInsets.top + 68 + CARD_BUTTONS_H;
+  const cardBarFoot = macBoard ? 0 : bottomInset + EDITOR_TOOLBAR_HEIGHT + 12;
+  // The window's buttons: above the card on a phone; INSIDE its header bar on the Mac, like any window's title bar.
+  const buttonsLift = macBoard ? -4 : CARD_BUTTONS_H;
+  const winW = useSharedValue(240);
+  const winH = useSharedValue(260);
+  const [winSize, setWinSize] = useState({ w: 240, h: 260 });
+  const cardWindowTyping = useSharedValue(false);
+  // Where this screen starts in the window (0 on a phone; under the tabs on the Mac).
+  const rootOffYSV = useSharedValue(0);
+  // 0 at the card's place on the board, 1 where it is written in.
+  const cardWindowTypingP = useSharedValue(0);
+  const lastKbSV = useSharedValue(0);
+  const cardWindowKb = useSharedValue(0);
+  const cardWindowStyle = useAnimatedStyle(() => {
+    const w = winW.value;
+    const rawTop =
+      canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
+    const rawLeft =
+      canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
+    // THE MAC: the window is exactly the card, wherever the card is - no keyboard to rise above, no foot to sink to, no glide
+    // (the user, 2026-10-21: «при натисканні на картку її вікно стрибає вниз»).
+    if (macBoard) return { top: rawTop, left: rawLeft, width: w, height: winH.value };
+    if (cardWindowTyping.value) {
+      const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - cardBarFoot;
+      const h = Math.min(winH.value, barTop - cardWindowMinTop);
+      const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
+      // Centred while writing, so the note's bar and panel - which reach
+      // out the same amount on both sides - span the screen exactly.
+      const left = pointerDensity ? Math.min(Math.max(rawLeft, 8), windowWidth - w - 8) : (windowWidth - w) / 2;
+      // Glides there rather than jumping (the user, on the unfolded Fold).
+      const p = cardWindowTypingP.value;
+      const at = rawTop + (top - rawTop) * p;
+      // Down to the screen's foot while writing: the editor's bar and
+      // panel stand there, measured from this frame's bottom.
+      return { top: at, left: rawLeft + (left - rawLeft) * p, width: w, height: windowHeight - rootOffYSV.value - at };
+    }
+    const p = cardWindowTypingP.value;
+    if (p > 0) {
+      // On the way back: from where it was written in to its place.
+      const barTop = windowHeight - rootOffYSV.value - lastKbSV.value - cardBarFoot;
+      const h = Math.min(winH.value, barTop - cardWindowMinTop);
+      const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
+      const left = (windowWidth - w) / 2;
+      return { top: rawTop + (top - rawTop) * p, left: rawLeft + (left - rawLeft) * p, width: w, height: winH.value };
+    }
+    return { top: rawTop, left: rawLeft, width: w, height: winH.value };
+  });
+  // The buttons' layer: the same left/width as the card, CARD_BUTTONS_H above it.
+  const cardWindowButtonsStyle = useAnimatedStyle(() => {
+    const w = winW.value;
+    const rawTop =
+      canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
+    const rawLeft =
+      canvasOriginX.value + (cardWorldX.value - WORLD_CENTER) * scale.value + viewportWidthSV.value / 2 + translateX.value;
+    if (macBoard) return { top: rawTop - buttonsLift, left: rawLeft, width: w };
+    if (cardWindowTyping.value) {
+      const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - cardBarFoot;
+      const h = Math.min(winH.value, barTop - cardWindowMinTop);
+      const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
+      const p = cardWindowTypingP.value;
+      const to = pointerDensity ? Math.min(Math.max(rawLeft, 8), windowWidth - w - 8) : (windowWidth - w) / 2;
+      return { top: rawTop + (top - rawTop) * p - buttonsLift, left: rawLeft + (to - rawLeft) * p, width: w };
+    }
+    const p = cardWindowTypingP.value;
+    if (p > 0) {
+      const barTop = windowHeight - rootOffYSV.value - lastKbSV.value - cardBarFoot;
+      const h = Math.min(winH.value, barTop - cardWindowMinTop);
+      const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
+      return { top: rawTop + (top - rawTop) * p - buttonsLift, left: rawLeft + ((windowWidth - w) / 2 - rawLeft) * p, width: w };
+    }
+    return { top: rawTop - buttonsLift, left: rawLeft, width: w };
+  });
+  // The painted card while writing: its own height, ending on the bar.
+  const cardWindowOutlineStyle = useAnimatedStyle(() => {
+    if (macBoard) return { height: winH.value };
+    const barTop = windowHeight - rootOffYSV.value - cardWindowKb.value - cardBarFoot;
+    const rawTop =
+      canvasOriginY.value + (cardWorldY.value - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
+    const h = Math.min(winH.value, barTop - cardWindowMinTop);
+    const top = Math.max(cardWindowMinTop, Math.min(rawTop, barTop - h));
+    return { height: Math.min(winH.value, barTop - top) };
+  });
+  // The corner handle: drag to make the window wider or taller.
+  const winStartW = useSharedValue(0);
+  const winStartH = useSharedValue(0);
+  // The handle resizes the CARD itself, on the board (world units).
+  const cardWindowZoomRef = useRef(1);
+  const saveWinSize = useCallback(
+    (w: number, h: number, cardId: string | null, at?: { x: number; y: number }) => {
+      setWinSize({ w, h });
+      if (!cardId) return;
+      const z = cardWindowZoomRef.current || 1;
+      setCards((prev) =>
+        prev.map((c) =>
+          c.id === cardId ? { ...c, width: Math.round(w / z), docHeight: Math.round(h / z), ...(at ? { x: Math.round(at.x), y: Math.round(at.y) } : null) } : c
+        )
+      );
+    },
+    []
+  );
+  const cardWindowMaxW = windowWidth - 16;
+  const cardWindowMaxH = windowHeight - cardWindowMinTop - 24;
+  // Writing ends a moment AFTER the keyboard is down: the note's bar above
+  // the keyboard is still sliding to the foot for a few frames, and a card
+  // that shrank at once had that bar sliding through it (the user saw
+  // buttons flash across the card).
+  // At a pointer there is no soft keyboard to say so: a live card is always
+  // ready to be written in, the note's own bar at the window's foot.
+  const writingNow = !!cardWindow?.live && (pointerDensity || keyboardHeight > 0 || cardWindowPanel);
+  const [writingHeld, setWritingHeld] = useState(false);
+  useEffect(() => {
+    if (writingNow) {
+      setWritingHeld(true);
+      return;
+    }
+    const t = setTimeout(() => setWritingHeld(false), 450);
+    return () => clearTimeout(t);
+  }, [writingNow]);
+  const cardWindowWriting = !!cardWindow?.live && (writingNow || writingHeld);
+  // While writing, the note scrolls only within the painted card - below it
+  // the frame runs on to the screen's foot for the bar, and the rest of the
+  // note showed through there (the user: "щось пропливає").
+  const [cardHeadH, setCardHeadH] = useState(30);
+  cardWindowZoomRef.current = cardWindow?.zoom ?? 1;
+  // The panel takes the keyboard's place at the keyboard's height.
+  const lastKbRef = useRef(0);
+  if (keyboardHeight > 0) lastKbRef.current = keyboardHeight;
+  // While writing is held after the keyboard went down, the card stays
+  // where it stood over the keyboard rather than dropping and coming back.
+  const cardWindowKbNow =
+    keyboardHeight > 0
+      ? keyboardHeight
+      : pointerDensity
+        ? 0
+        : cardWindowPanel || cardWindowWriting
+          ? lastKbRef.current || Math.round(windowHeight * 0.36)
+          : 0;
+  const cardWindowScrollH =
+    Math.min(winSize.h, windowHeight - cardWindowKbNow - cardBarFoot - cardWindowMinTop) - cardHeadH;
+  useEffect(() => {
+    cardWindowTypingP.value = withTiming(cardWindowWriting ? 1 : 0, { duration: 240 });
+    if (cardWindowKbNow > 0) lastKbSV.value = cardWindowKbNow;
+    cardWindowTyping.value = cardWindowWriting;
+    cardWindowKb.value = cardWindowKbNow;
+  }, [cardWindowWriting, cardWindowTyping, cardWindowTypingP, lastKbSV, cardWindowKb, cardWindowKbNow]);
+  // Typing in a free block: the board slides up if the keyboard would cover
+  // it, and the keyboard going down ends the typing (as in a note).
+  useEffect(() => {
+    if (!inlineBlockId) return;
+    if (keyboardHeight > 0) {
+      inlineKbSeenRef.current = true;
+      const card = cards.find((c) => c.id === inlineBlockId);
+      if (!card) return;
+      const top =
+        canvasOriginY.value + (card.y - WORLD_CENTER) * scale.value + viewportHeightSV.value / 2 + translateY.value;
+      const bottom = top + heightOf(card, cardHeights) * scale.value;
+      const limit = windowHeight - keyboardHeight - bottomInset - FREE_BAR_H - 24;
+      if (bottom > limit) translateY.value = withTiming(translateY.value - (bottom - limit), { duration: 220 });
+      else if (top < boardInsets.top + 80) translateY.value = withTiming(translateY.value + (boardInsets.top + 80 - top), { duration: 220 });
+      return;
+    }
+    // The keyboard dips for a moment while one field hands the focus to the next (two Enters): only a keyboard
+    // that STAYS down ends the typing.
+    if (!inlineKbSeenRef.current) return;
+    const id = inlineBlockId;
+    const timer = setTimeout(() => {
+      if (inlineBlockIdRef.current === id) endInlineEdit();
+    }, 450);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyboardHeight, inlineBlockId]);
+  const resizeGestureWin = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(2)
+        .onStart(() => {
+          'worklet';
+          winStartW.value = winW.value;
+          winStartH.value = winH.value;
+        })
+        .onUpdate((e) => {
+          'worklet';
+          winW.value = Math.min(Math.max(winStartW.value + e.translationX, 140), cardWindowMaxW);
+          winH.value = Math.min(Math.max(winStartH.value + e.translationY, 120), cardWindowMaxH);
+        })
+        .onEnd(() => {
+          'worklet';
+          runOnJS(saveWinSize)(winW.value, winH.value, cardWindowDocIdSV.value);
+        }),
+    [winW, winH, winStartW, winStartH, cardWindowMaxW, cardWindowMaxH, saveWinSize]
+  );
+  // THE MAC'S RESIZE BY ANY EDGE (frame B, 2026-10-20): the same window, taken by a side or a corner. A left or top edge
+  // also moves the card's corner on the board by what the window lost, so the opposite side stays where it was.
+  const winStartX = useSharedValue(0);
+  const winStartY = useSharedValue(0);
+  // The note inside re-flows WHILE the window is dragged (the user, 2026-10-21: shrinking left blocks sticking out, widening drew them
+  // only after the release): the React size is pushed a few times a second, not only at the end.
+  const lastSizePush = useSharedValue(0);
+  const edgeGestures = useMemo(() => {
+    const make = (l: boolean, r: boolean, t: boolean, b: boolean) =>
+      Gesture.Pan()
+        .minDistance(2)
+        .onStart(() => {
+          'worklet';
+          winStartW.value = winW.value;
+          winStartH.value = winH.value;
+          winStartX.value = cardWorldX.value;
+          winStartY.value = cardWorldY.value;
+        })
+        .onUpdate((e) => {
+          'worklet';
+          if (r) winW.value = Math.min(Math.max(winStartW.value + e.translationX, 140), cardWindowMaxW);
+          if (l) {
+            const w = Math.min(Math.max(winStartW.value - e.translationX, 140), cardWindowMaxW);
+            winW.value = w;
+            cardWorldX.value = winStartX.value + (winStartW.value - w) / scale.value;
+          }
+          if (b) winH.value = Math.min(Math.max(winStartH.value + e.translationY, 120), cardWindowMaxH);
+          if (t) {
+            const h = Math.min(Math.max(winStartH.value - e.translationY, 120), cardWindowMaxH);
+            winH.value = h;
+            cardWorldY.value = winStartY.value + (winStartH.value - h) / scale.value;
+          }
+          if (Date.now() - lastSizePush.value > 60) {
+            lastSizePush.value = Date.now();
+            runOnJS(setWinSize)({ w: winW.value, h: winH.value });
+          }
+        })
+        .onEnd(() => {
+          'worklet';
+          runOnJS(saveWinSize)(winW.value, winH.value, cardWindowDocIdSV.value, { x: cardWorldX.value, y: cardWorldY.value });
+        });
+    return {
+      left: make(true, false, false, false),
+      right: make(false, true, false, false),
+      top: make(false, false, true, false),
+      bottom: make(false, false, false, true),
+      tl: make(true, false, true, false),
+      tr: make(false, true, true, false),
+      bl: make(true, false, false, true),
+      br: make(false, true, false, true),
+    };
+  }, [winW, winH, winStartW, winStartH, winStartX, winStartY, lastSizePush, cardWorldX, cardWorldY, scale, cardWindowMaxW, cardWindowMaxH, saveWinSize]);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+  // The world point under the pinch's own focal (the midpoint between the
+  // two fingers), captured once when the pinch starts - see pinchGesture's
+  // own comment for why this is what keeps zoom anchored to the fingers
+  // instead of drifting toward the board's centre.
+  const pinchFocalWorldX = useSharedValue(0);
+  const pinchFocalWorldY = useSharedValue(0);
+  // Where the finger panGesture is tracking actually was when ITS OWN
+  // onStart fired - see panGesture's own comment for why its built-in
+  // translationX/Y can't be trusted right after a pinch.
+  const panTouchStartX = useSharedValue(0);
+  const panTouchStartY = useSharedValue(0);
+  // Shared by every selected card (see DraggableCard's isGroupDrag branch) -
+  // whichever selected card is actually being dragged writes into this, and
+  // every OTHER selected card reads the same live value in its own animated
+  // style, which is what makes the whole selection visibly move together.
+  const groupOffsetX = useSharedValue(0);
+  const groupOffsetY = useSharedValue(0);
+  // The same idea one level up: written by the column being dragged, read
+  // by that column AND by every card inside it.
+  const columnOffsetX = useSharedValue(0);
+  const columnOffsetY = useSharedValue(0);
+  // Same idea again, for a container - written by the container being
+  // dragged, read by every card AND shape inside it (see
+  // containerDragMembers for how "inside it" is decided).
+  const containerOffsetX = useSharedValue(0);
+  const containerOffsetY = useSharedValue(0);
+  // Same idea again, for a connection's own 'arrow'/'doubleArrow' pull -
+  // written by whichever card/shape/container is actually being dragged,
+  // read by everything pulledIdsFrom (below) put in pullMembers, whatever
+  // mix of kinds that turns out to be.
+  const pullOffsetX = useSharedValue(0);
+  const pullOffsetY = useSharedValue(0);
+  // A dragged card's own alignment guides - see GUIDE_COLOR. Written
+  // entirely on the UI thread from inside DraggableCard's own pan
+  // gesture (no runOnJS: there is nothing here JS needs to decide), read
+  // by AlignmentGuides below to draw the two dashed lines. One of each
+  // axis at a time - the CLOSEST match wins, same as a real design
+  // tool's guides never show more than one line per direction at once.
+  const guideVX = useSharedValue(0);
+  const guideVVisible = useSharedValue(false);
+  const guideHY = useSharedValue(0);
+  const guideHVisible = useSharedValue(false);
+  // The marquee-selection rectangle, in world coordinates (same space as
+  // card x/y) so it can be rendered inside the same transformed `world`
+  // container the cards live in and compared against their x/y directly -
+  // no screen<->world conversion needed except once, at the very start of
+  // the gesture (see selectGesture below).
+  const marqueeStartX = useSharedValue(0);
+  const marqueeStartY = useSharedValue(0);
+  const marqueeCurrentX = useSharedValue(0);
+  const marqueeCurrentY = useSharedValue(0);
+  const marqueeVisible = useSharedValue(false);
+  // The connect-drag's rubber-band line, in world coordinates like
+  // everything else inside the transformed `world` container.
+  const connectStartX = useSharedValue(0);
+  const connectStartY = useSharedValue(0);
+  const connectEndX = useSharedValue(0);
+  const connectEndY = useSharedValue(0);
+  const connectVisible = useSharedValue(false);
+
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The updatedAt of the last write this device made, and the newest
+  // thing that arrived while hands were busy. Between them they replace
+  // the old rule "drop whatever arrives while saving", which lost the
+  // update for good - see the listener below.
+  const lastWriteAtRef = useRef(0);
+  const pendingRemoteRef = useRef<{ cards: BoardCard[]; columns: BoardColumn[] } | null>(null);
+  // What is believed to be in the document right now. Every save writes
+  // the difference against this, so one moved card is one field - see
+  // utils/boardStorage for why that matters.
+  const savedRef = useRef<{
+    cards: BoardCard[];
+    columns: BoardColumn[];
+    connections: BoardConnection[];
+    shapes: BoardShape[];
+    containers: BoardContainer[];
+    layers: BoardLayer[];
+  }>({
+    cards: [],
+    columns: [],
+    connections: [],
+    shapes: [],
+    containers: [],
+    layers: [],
+  });
+  // What shape the DOCUMENT is in, which decides how a save may be
+  // written - and the one thing here that must never be guessed.
+  //
+  // 'array'   - written before cards were keyed. Merging a keyed patch
+  //             into an array replaces it, so such a board is written
+  //             whole once, and is keyed from then on.
+  // 'keyed'   - the normal case: write only what changed.
+  // 'unknown' - the CACHE says array. That is not evidence: the cache can
+  //             be a copy from before another device migrated the board,
+  //             and writing it whole from here would put this device's
+  //             stale memory over everything that has happened since.
+  //             Which is exactly what it did - a card that existed only
+  //             on the other device stopped existing. So nothing is
+  //             written at all until the server says which it is.
+  const shapeRef = useRef<'unknown' | 'array' | 'keyed'>('keyed');
+  // The card a connect-drag started on. A ref, not state, because the
+  // gesture's own worklet closure is captured at creation time - by the
+  // time onEnd fires, a state value set during the same gesture would
+  // still read as whatever it was when the gesture was built. The ref is
+  // read on the JS thread inside finishConnection, where it's current.
+  const connectingFromIdRef = useRef<string | null>(null);
+  // Every card's live world position, keyed by card id. Lifted out of the
+  // cards themselves so a connection line can read both of its endpoints
+  // while they're being dragged - a card's own component can't hand its
+  // position to a sibling. Created with makeMutable rather than
+  // useSharedValue because the set of cards is dynamic and hooks can't be.
+  const cardPositions = useRef<Map<string, { x: SharedValue<number>; y: SharedValue<number> }>>(new Map());
+
+  function positionFor(id: string, x: number, y: number) {
+    const existing = cardPositions.current.get(id);
+    if (existing) return existing;
+    const created = { x: makeMutable(x), y: makeMutable(y) };
+    cardPositions.current.set(id, created);
+    return created;
+  }
+
+  function positionOf(card: BoardCard) {
+    return positionFor(card.id, card.x, card.y);
+  }
+
+  useEffect(() => {
+    (async () => {
+      const docRef = doc(db, 'boards', boardId);
+      let snapshot;
+      try {
+        snapshot = await getDocFromCache(docRef);
+        if (!snapshot.exists()) throw new Error('not cached');
+      } catch {
+        snapshot = await getDoc(docRef);
+      }
+      const data = snapshot.data();
+      const loadedCards = readBoardPart<BoardCard>(data?.cards);
+      const loadedColumns = readBoardPart<BoardColumn>(data?.columns);
+      const loadedConnections = readBoardPart<BoardConnection>(data?.connections);
+      const loadedShapes = readBoardPart<BoardShape>(data?.shapes);
+      const loadedContainers = readBoardPart<BoardContainer>(data?.containers);
+      const loadedLayers = readBoardPart<BoardLayer>(data?.layers);
+      const looksLikeArray =
+        Array.isArray(data?.cards) || Array.isArray(data?.columns) || Array.isArray(data?.connections);
+      // A keyed copy is trustworthy even from the cache - the change is
+      // one way, and nothing turns a map back into an array. An array is
+      // only believed when the server itself says so.
+      shapeRef.current = !looksLikeArray ? 'keyed' : snapshot.metadata.fromCache ? 'unknown' : 'array';
+      // Nothing is written while the shape is in doubt, so the doubt has
+      // to be settled rather than waited out: only the server can say
+      // whether those arrays are really there. Without this a board read
+      // from the cache stayed unknown for as long as it was open, and
+      // every change made to it was dropped.
+      if (shapeRef.current === 'unknown') {
+        getDoc(docRef)
+          .then((fresh) => {
+            const server = fresh.data();
+            shapeRef.current =
+              Array.isArray(server?.cards) || Array.isArray(server?.columns) || Array.isArray(server?.connections)
+                ? 'array'
+                : 'keyed';
+          })
+          // Offline, and the server cannot be asked. Treated as the old
+          // shape, which writes the board whole - more than is needed,
+          // and never wrong.
+          .catch(() => {
+            shapeRef.current = 'array';
+          });
+      }
+      savedRef.current = {
+        cards: loadedCards,
+        columns: loadedColumns,
+        connections: loadedConnections,
+        shapes: loadedShapes,
+        containers: loadedContainers,
+        layers: loadedLayers,
+      };
+      setTitle(data?.title ?? 'Без назви');
+      setCards(loadedCards);
+      setConnections(loadedConnections);
+      setShapes(loadedShapes);
+      setColumns(loadedColumns);
+      setContainers(loadedContainers);
+      setLayers(loadedLayers);
+      setIsLoaded(true);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    const attemptSave = () => {
+      // Cleared as the write goes out: the listener above reads this to
+      // tell "a local change is waiting to be written" from "nothing
+      // pending, so whatever arrives is news".
+      saveTimeoutRef.current = null;
+      // Nothing is written while the shape is in doubt - see shapeRef.
+      // It comes back to ask again rather than giving up, because the
+      // change is real and the only thing missing is the server's word
+      // on how to write it down.
+      if (shapeRef.current === 'unknown') {
+        saveTimeoutRef.current = setTimeout(attemptSave, 1500);
+        return;
+      }
+      // Written down before the write goes out: what comes back on the
+      // listener a moment later is this same stamp, and that is how an
+      // echo of our own write is told from another device's news.
+      const updatedAt = Date.now();
+      lastWriteAtRef.current = updatedAt;
+      const saved = savedRef.current;
+      const whole = shapeRef.current === 'array';
+      const patch: Record<string, unknown> = { title, updatedAt };
+      // A card in a column is DRAWN where the measured heights of the
+      // cards above it put it, and those differ between a phone and a
+      // laptop because text wraps differently. So that position is NOT
+      // written: it is kept at whatever was written last, and the card's
+      // index carries the real meaning.
+      //
+      // Without this the two devices never settle. Each recomputes the
+      // stack for its own screen, writes the numbers, receives the
+      // other's, recomputes again - which is what made the columns
+      // flicker and the cards land on top of each other.
+      const cardsToSave = asStored(cards, saved.cards);
+      // Whole once for a board still in the old shape, the difference
+      // ever after.
+      const cardPatch = whole ? keyedAll(cardsToSave) : keyedDiff(saved.cards, cardsToSave);
+      const columnPatch = whole ? keyedAll(columns) : keyedDiff(saved.columns, columns);
+      const connectionPatch = whole ? keyedAll(connections) : keyedDiff(saved.connections, connections);
+      const shapePatch = whole ? keyedAll(shapes) : keyedDiff(saved.shapes, shapes);
+      const containerPatch = whole ? keyedAll(containers) : keyedDiff(saved.containers, containers);
+      const layerPatch = whole ? keyedAll(layers) : keyedDiff(saved.layers, layers);
+      if (cardPatch) patch.cards = cardPatch;
+      if (columnPatch) patch.columns = columnPatch;
+      if (connectionPatch) patch.connections = connectionPatch;
+      if (shapePatch) patch.shapes = shapePatch;
+      if (containerPatch) patch.containers = containerPatch;
+      if (layerPatch) patch.layers = layerPatch;
+      shapeRef.current = 'keyed';
+      // Recorded as sent, not as acknowledged: Firestore keeps an unsent
+      // write on disk and replays it in order, so it WILL arrive - and
+      // until it does, the next difference must be measured against it
+      // rather than against what the server has yet to hear.
+      savedRef.current = { cards: cardsToSave, columns, connections, shapes, containers, layers };
+      setDoc(doc(db, 'boards', boardId), patch, { merge: true });
+    };
+    saveTimeoutRef.current = setTimeout(attemptSave, AUTOSAVE_DELAY_MS);
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, cards, connections, columns, shapes, containers, layers, isLoaded]);
+
+  // UNDO/REDO - one history entry per settled change to the board's own
+  // structural content (cards/connections/columns/shapes/containers/
+  // layers), the same six pieces the save effect above already watches.
+  // Session-only, on purpose: it lives in a ref, not in anything written
+  // to Firestore, and resets the moment the board is left and reopened -
+  // matching every other whiteboard/editor's own undo, and far simpler
+  // than trying to make "undo" survive a sync from another device.
+  //
+  // Deliberately snapshot-based rather than per-action: cards/shapes/
+  // containers are each their own React state, set from dozens of
+  // different call sites all over this file (add, delete, drag-end,
+  // resize, rename, recolor...), and recording an explicit history
+  // entry at every one of them would both miss the ones a future edit
+  // forgets to wire up and double-count the ones that touch more than
+  // one piece of state at once. Watching the SETTLED combination
+  // instead - the same six values already used to decide what to save -
+  // means every one of those call sites is covered for free, with
+  // exactly one entry per user-visible change (a drag's own live motion
+  // never touches this state at all; only the commit at its end does -
+  // see the position registry's own comment).
+  type BoardSnapshot = {
+    cards: BoardCard[];
+    connections: BoardConnection[];
+    columns: BoardColumn[];
+    shapes: BoardShape[];
+    containers: BoardContainer[];
+    layers: BoardLayer[];
+  };
+  const undoStack = useRef<BoardSnapshot[]>([]);
+  const redoStack = useRef<BoardSnapshot[]>([]);
+  const lastSnapshotRef = useRef<BoardSnapshot | null>(null);
+  // Set right before undo/redo applies a past snapshot, so the effect
+  // below recognises its OWN write and skips recording a new history
+  // entry for it - otherwise every undo would immediately push a fresh
+  // entry undoing the undo.
+  const applyingHistoryRef = useRef(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  // Read by the leave-effect below, which must not re-subscribe every
+  // time an edit flips this - the same reason cardsRef exists.
+  const canUndoRef = useRef(canUndo);
+  useEffect(() => {
+    canUndoRef.current = canUndo;
+  }, [canUndo]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const next: BoardSnapshot = { cards, connections, columns, shapes, containers, layers };
+    if (applyingHistoryRef.current) {
+      applyingHistoryRef.current = false;
+      lastSnapshotRef.current = next;
+      return;
+    }
+    const previous = lastSnapshotRef.current;
+    lastSnapshotRef.current = next;
+    // The very first settle after load is the board arriving from
+    // Firestore, not a change the user made - nothing to undo TO yet.
+    if (previous === null) return;
+    undoStack.current.push(previous);
+    if (undoStack.current.length > UNDO_HISTORY_LIMIT) undoStack.current.shift();
+    redoStack.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards, connections, columns, shapes, containers, layers, isLoaded]);
+
+  function applyBoardSnapshot(snap: BoardSnapshot) {
+    applyingHistoryRef.current = true;
+    setCards(snap.cards);
+    setConnections(snap.connections);
+    setColumns(snap.columns);
+    setShapes(snap.shapes);
+    setContainers(snap.containers);
+    setLayers(snap.layers);
+  }
+
+  function undo() {
+    const previous = undoStack.current.pop();
+    if (!previous || !lastSnapshotRef.current) return;
+    redoStack.current.push(lastSnapshotRef.current);
+    applyBoardSnapshot(previous);
+    setCanUndo(undoStack.current.length > 0);
+    setCanRedo(true);
+  }
+
+  function redo() {
+    const next = redoStack.current.pop();
+    if (!next || !lastSnapshotRef.current) return;
+    undoStack.current.push(lastSnapshotRef.current);
+    applyBoardSnapshot(next);
+    setCanRedo(redoStack.current.length > 0);
+    setCanUndo(true);
+  }
+
+  // Read by the focus-time preview refresh below, which must not re-run
+  // every time a card moves - so it reads the current cards through this
+  // rather than closing over them.
+  const cardsRef = useRef<BoardCard[]>(cards);
+  useEffect(() => {
+    cardsRef.current = cards;
+  }, [cards]);
+  // Same reason, for the board-picture capture - it wants the columns as
+  // they are the moment you leave, not whatever they were when the
+  // callback was created.
+  const columnsRef = useRef<BoardColumn[]>(columns);
+  useEffect(() => {
+    columnsRef.current = columns;
+  }, [columns]);
+  // Same, for the arrows and the furniture the capture now also draws
+  // ("лінії і зірочку можна рендерити" - there is no star shape, see
+  // BoardShapeKind, but the lines and every other shape are real now).
+  const connectionsRef = useRef<BoardConnection[]>(connections);
+  useEffect(() => {
+    connectionsRef.current = connections;
+  }, [connections]);
+  const shapesRef = useRef<BoardShape[]>(shapes);
+  useEffect(() => {
+    shapesRef.current = shapes;
+  }, [shapes]);
+  // A connection can end on a container too ("нодById... covers cards,
+  // shapes AND containers"), same reason as the shapes ref above.
+  const containersRef = useRef<BoardContainer[]>(containers);
+  useEffect(() => {
+    containersRef.current = containers;
+  }, [containers]);
+
+  // A document card's preview (title, text, first image) is snapshotted
+  // when the card is made, so editing the document leaves the card showing
+  // the old version. Re-reading every document card's source whenever the
+  // board comes back into focus is what catches that up: the only way a
+  // document changes while its card exists is that you left the board to
+  // edit it - including via the card's own "Редагувати", which opens the
+  // editor as a modal over this screen and blurs it.
+  // A board card carries its target's name as a snapshot, so a board
+  // renamed elsewhere would keep showing the old one for ever. Refreshed
+  // beside the document previews, at the same moments and for the same
+  // reason - and a board that has been deleted is left alone rather than
+  // blanked, exactly as a missing document is.
+  const refreshBoardCardTitles = useCallback(async () => {
+    const boardIds = [
+      ...new Set(
+        cardsRef.current
+          .filter((c) => (c.type ?? 'paragraph') === 'board' && c.boardId)
+          .map((c) => c.boardId as string)
+      ),
+    ];
+    if (boardIds.length === 0) return;
+    const snapshots = await Promise.all(boardIds.map((id) => getDoc(doc(db, 'boards', id))));
+    const fresh = new Map<string, string>();
+    snapshots.forEach((snapshot, index) => {
+      if (!snapshot.exists() || snapshot.data()?.deletedAt) return;
+      fresh.set(boardIds[index], (snapshot.data()?.title as string)?.trim() || 'Без назви');
+    });
+    setCards((prev) => {
+      let changed = false;
+      const next = prev.map((card) => {
+        if (!card.boardId) return card;
+        const title = fresh.get(card.boardId);
+        if (!title || card.boardTitle === title) return card;
+        changed = true;
+        return { ...card, boardTitle: title };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  // THE BOARD'S OWN PICTURE (step 2 of the boards-list preview work) -
+  // see BoardMiniature (the capture rig itself lives at the app root now,
+  // `captureBoardPreview`, mounted once so it survives THIS screen
+  // unmounting - the earlier version owned it locally and lost the race
+  // often enough to save an arrangement from a bit before the real one:
+  // "картки можуть зафіксуватися не в тому положенні, в якому я їх
+  // залишив при виході"). Captured once, on the way out, only when this
+  // visit changed something real (the leave-effect below checks
+  // `canUndoRef`) - a screenshot of an unedited board would just repeat
+  // whatever it already has, at the cost of an upload for nothing.
+  const capturePreview = useCallback(async () => {
+    const uri = await captureBoardPreview(
+      cardsRef.current,
+      columnsRef.current,
+      connectionsRef.current,
+      shapesRef.current,
+      containersRef.current
+    );
+    if (!uri) {
+      console.warn('[board preview] capture returned no uri', boardId);
+      return;
+    }
+    // Written down FIRST, on its own - a local uri is already enough for
+    // THIS device (AttachmentImage reads a local uri before ever asking
+    // Drive for it), and gating the write on the Drive upload meant a
+    // device with no active Drive connection got no picture at all, ever
+    // - not stale, not missing the new lines/shapes, just permanently
+    // absent, because backupFileToDrive returning null (not signed in,
+    // offline, the hourly Drive reconnect lapsed) made this whole
+    // function a no-op. The driveFileId - what a DIFFERENT device needs -
+    // is patched in afterward, quietly, if the upload succeeds. Until it
+    // does, the picture is real (this device made it, this device shows
+    // it) but LOCAL ONLY - it will not reach another device or survive a
+    // reinstall the way the board's actual data (cards/text/connections,
+    // always in Firestore) already does; check "Підключити Диск" if a
+    // preview never gains its driveFileId.
+    updateDoc(doc(db, 'boards', boardId), { previewImageUri: uri });
+    const uploaded = await backupFileToDrive(uri, `preview-${boardId}.jpg`, 'image/jpeg', 'Photos');
+    if (!uploaded) {
+      console.warn('[board preview] Drive backup failed - this device still shows it, others will not yet', boardId);
+      return;
+    }
+    updateDoc(doc(db, 'boards', boardId), { previewDriveFileId: uploaded.fileId });
+  }, [boardId]);
+
+  const refreshDocumentPreviews = useCallback(async () => {
+    const documentIds = [
+      ...new Set(
+        cardsRef.current
+          .filter((c) => (c.type ?? 'paragraph') === 'document' && c.documentId)
+          .map((c) => c.documentId as string)
+      ),
+    ];
+    if (documentIds.length === 0) return;
+    const snapshots = await Promise.all(documentIds.map((id) => getDoc(doc(db, 'documents', id))));
+    const fresh = new Map<string, { title: string; text: string; imageUri?: string; driveFileId?: string }>();
+    snapshots.forEach((snapshot, index) => {
+      // A document deleted elsewhere is left alone rather than blanked -
+      // the card keeps showing what it last knew instead of silently
+      // emptying itself.
+      if (!snapshot.exists()) return;
+      const data = snapshot.data();
+      const blocks: Block[] = data?.blocks ?? [];
+      fresh.set(documentIds[index], {
+        title: documentCardTitle(data),
+        text: blocksToPreviewText(blocks).slice(0, 20000),
+        // The cover image (DocumentEditorScreen's "..." menu) takes
+        // priority over a body image block, same rule extractPreview
+        // uses for the Documents/Search/Diary list cards.
+        imageUri: data?.coverImageUri ?? firstImageUri(blocks),
+        driveFileId: data?.coverImageUri
+          ? (data?.coverDriveFileId as string | undefined)
+          : firstImageDriveFileId(blocks),
+      });
+    });
+    setCards((prev) => {
+      let changed = false;
+      const next = prev.map((card) => {
+        if (!card.documentId) return card;
+        const current = fresh.get(card.documentId);
+        if (!current) return card;
+        if (
+          card.documentTitle === current.title &&
+          (card.documentPreviewText ?? '') === current.text &&
+          card.documentPreviewImageUri === current.imageUri &&
+          card.documentPreviewDriveFileId === current.driveFileId
+        ) {
+          return card;
+        }
+        changed = true;
+        const updated: BoardCard = { ...card, documentTitle: current.title };
+        // Written as key-deletes rather than undefined values: Firestore
+        // rejects undefined outright, and a document whose last image was
+        // removed has to lose the field, not carry a stale one.
+        if (current.text) updated.documentPreviewText = current.text;
+        else delete updated.documentPreviewText;
+        if (current.imageUri) updated.documentPreviewImageUri = current.imageUri;
+        else delete updated.documentPreviewImageUri;
+        if (current.driveFileId) updated.documentPreviewDriveFileId = current.driveFileId;
+        else delete updated.documentPreviewDriveFileId;
+        return updated;
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  // While a document is open in the pane beside the board, its card keeps
+  // up with it: the editor saves on its own 600ms beat and this hears
+  // every one of those writes, so the card on the canvas changes as the
+  // document is written rather than when the pane is closed.
+  const liveDocId = paneDocId ?? cardWindowDocId;
+  useEffect(() => {
+    if (!liveDocId) return;
+    return onSnapshot(doc(db, 'documents', liveDocId), (snapshot) => {
+      const data = snapshot.data();
+      if (!data) return;
+      const blocks: Block[] = data.blocks ?? [];
+      const title = documentCardTitle(data);
+      const text = blocksToPreviewText(blocks).slice(0, 20000);
+      const imageUri = (data.coverImageUri as string | undefined) ?? firstImageUri(blocks);
+      const driveFileId = data.coverImageUri
+        ? (data.coverDriveFileId as string | undefined)
+        : firstImageDriveFileId(blocks);
+      setCards((prev) => {
+        let changed = false;
+        const next = prev.map((card) => {
+          if (card.documentId !== liveDocId) return card;
+          if (
+            card.documentTitle === title &&
+            (card.documentPreviewText ?? '') === text &&
+            card.documentPreviewImageUri === imageUri &&
+            card.documentPreviewDriveFileId === driveFileId
+          ) {
+            return card;
+          }
+          changed = true;
+          // Key-deletes rather than undefined values, for the reason
+          // refreshDocumentPreviews spells out: Firestore rejects
+          // undefined, and a removed image has to lose its field.
+          const updated: BoardCard = { ...card, documentTitle: title };
+          if (text) updated.documentPreviewText = text;
+          else delete updated.documentPreviewText;
+          if (imageUri) updated.documentPreviewImageUri = imageUri;
+          else delete updated.documentPreviewImageUri;
+          if (driveFileId) updated.documentPreviewDriveFileId = driveFileId;
+          else delete updated.documentPreviewDriveFileId;
+          return updated;
+        });
+        return changed ? next : prev;
+      });
+    }, listenError('BoardScreen:documents'));
+  }, [liveDocId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoaded) return;
+      refreshDocumentPreviews();
+      refreshBoardCardTitles();
+      // The editor saves on a 600ms debounce, so closing it right after
+      // typing hands focus back here before that write is even issued -
+      // the read above would then see the previous version. A second pass
+      // safely past that window catches it.
+      const timeout = setTimeout(refreshDocumentPreviews, 1000);
+      return () => {
+        clearTimeout(timeout);
+        // THE BOARD'S OWN PICTURE, once, on the way out - only when this
+        // visit actually changed something (`canUndo`, the same flag the
+        // undo stack already tracks: false right after load, true from
+        // the first real edit). A board merely opened and closed gets no
+        // capture, no upload - the boards list keeps drawing BoardMiniMap
+        // live for it, which already reflects whatever it already had.
+        if (canUndoRef.current && !embed?.noPreviewCapture) capturePreview();
+      };
+    }, [isLoaded, refreshDocumentPreviews, refreshBoardCardTitles, capturePreview, embed?.noPreviewCapture])
+  );
+
+  // In a window nothing hands focus back after a card's note was written (see boardEmbedContext), so the owner says so.
+  const embedTick = embed?.previewsTick;
+  useEffect(() => {
+    if (embedTick === undefined || !isLoaded) return;
+    refreshDocumentPreviews();
+  }, [embedTick, isLoaded, refreshDocumentPreviews]);
+
+  // Positions and measured heights outlive the cards they belong to
+  // otherwise - both are keyed by card id in structures React doesn't
+  // clean up for us.
+  useEffect(() => {
+    if (!isLoaded) return;
+    const live = new Set(cards.map((c) => c.id));
+    for (const id of cardPositions.current.keys()) {
+      if (!live.has(id)) cardPositions.current.delete(id);
+    }
+    setCardHeights((prev) => {
+      if (![...prev.keys()].some((id) => !live.has(id))) return prev;
+      return new Map([...prev].filter(([id]) => live.has(id)));
+    });
+  }, [cards, isLoaded]);
+
+  // Re-lays every column out whenever a card's measured height changes or
+  // the columns themselves do. Deliberately does NOT depend on `cards`:
+  // the two places that change cards in a way a column cares about
+  // (dropping one in, deleting one) reflow explicitly, and depending on
+  // cards here would mean reflowing on every unrelated edit. reflowColumns
+  // returns the same array when nothing moved, so this can't loop.
+  useEffect(() => {
+    if (!isLoaded) return;
+    setCards((prev) => reflowColumns(prev, columns, cardHeights));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardHeights, columns, isLoaded]);
+
+  // Anchored to the pinch's own focal point (the midpoint between the two
+  // fingers), the way pinch-zoom works everywhere else - the world point
+  // under that focal is captured ONCE, in onStart, then every frame's
+  // translateX/Y is solved so that same world point stays under wherever
+  // the focal is NOW (it can drift a little as two fingers move, and this
+  // tracks that too, not just the distance between them). Before this it
+  // only ever changed `scale`, which zooms around the view's own default
+  // transform origin - the board's centre - so pinching anywhere else
+  // visibly dragged the board diagonally toward or away from the centre
+  // instead of staying under the fingers: the user's own read, confirmed.
+  const pinchGesture = Gesture.Pinch()
+    .onStart((e) => {
+      savedScale.value = scale.value;
+      pinchFocalWorldX.value = (e.focalX - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      pinchFocalWorldY.value = (e.focalY - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+    })
+    // The jump the anchoring above didn't fix: the moment one of the two
+    // fingers actually lifts, the platform's own pinch detector (Android's
+    // ScaleGestureDetector underneath this) recomputes its focal from
+    // whichever touch is left - jumping from the true midpoint of two
+    // fingers to that one finger's own position, in a single ordinary
+    // onUpdate frame indistinguishable from a real one, no matter how the
+    // math in that frame is written. Ending the gesture right here, on the
+    // touch-up itself, stops it from ever reading that jumped focal at
+    // all - panGesture picks up the one remaining finger right after,
+    // cleanly, from its own onStart.
+    .onTouchesUp((e, state) => {
+      if (e.numberOfTouches < 2) state.end();
+    })
+    .onUpdate((e) => {
+      const nextScale = Math.min(MAX_SCALE, Math.max(minScaleNow, savedScale.value * e.scale));
+      scale.value = nextScale;
+      translateX.value = e.focalX - viewport.width / 2 - (pinchFocalWorldX.value - WORLD_CENTER) * nextScale;
+      translateY.value = e.focalY - viewport.height / 2 - (pinchFocalWorldY.value - WORLD_CENTER) * nextScale;
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value;
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  const panGesture = Gesture.Pan()
+    // One finger only - two is a pinch (see canvasGesture's own
+    // Simultaneous(pinchGesture, panGesture)), and pinchGesture's own
+    // focal-tracking above already moves translateX/Y for a two-finger
+    // touch, scale changing or not. Letting this ALSO claim a two-finger
+    // touch meant both gestures wrote translateX/Y on the same frames,
+    // each from its own, different formula - fighting over the same
+    // value is what the diagonal drift actually was.
+    .minPointers(1)
+    .maxPointers(1)
+    // A hold and a drag start the same way, and the canvas used to take
+    // the very first pixel - so a hand that meant to hold had already
+    // moved the board before the press could count. Now it has to travel
+    // before it is a drag, which leaves room for the hold to win.
+    .minDistance(12)
+    // Same resync as pinchGesture's own onStart, same reason: a fit-to-
+    // bounds pan (isolation, "показати на дошці") moves translateX/Y
+    // outside this gesture, and the next drag has to pick up from there,
+    // not from wherever the PREVIOUS drag happened to end. Also captures
+    // the finger's own absolute position right now - see onUpdate's own
+    // comment for why the gesture's built-in translationX/Y isn't used.
+    .onStart((e) => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+      panTouchStartX.value = e.absoluteX;
+      panTouchStartY.value = e.absoluteY;
+    })
+    .onUpdate((e) => {
+      // Computed by hand from the finger's own absolute position, rather
+      // than the gesture's own translationX/Y - which measures from
+      // wherever THAT finger first touched down, not from this gesture's
+      // own onStart. Ordinarily the same instant, but not right after a
+      // two-finger pinch: the second finger may have been down (and
+      // drifting) for the whole pinch before it became this lone finger's
+      // own pan, and translationX would silently carry that drift as a
+      // jump the moment this gesture activated - the user's own report,
+      // "невеличкий ривок... не можу сказати напрямку", exactly matches
+      // it depending on how far that one finger personally moved mid-pinch.
+      translateX.value = savedTranslateX.value + (e.absoluteX - panTouchStartX.value);
+      translateY.value = savedTranslateY.value + (e.absoluteY - panTouchStartY.value);
+    })
+    .onEnd(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  // A fresh marquee replaces whatever was selected before, rather than
+  // adding to it - simpler to reason about than shift-click-style additive
+  // selection, and matches what "draw a box around the things you want"
+  // reads as as a first pass.
+  function finishMarqueeSelection(x1: number, y1: number, x2: number, y2: number) {
+    const left = Math.min(x1, x2);
+    const right = Math.max(x1, x2);
+    const top = Math.min(y1, y2);
+    const bottom = Math.max(y1, y2);
+    const matched = cards.filter(
+      (c) => c.x < right && c.x + (c.width ?? DEFAULT_CARD_WIDTH) > left && c.y < bottom && c.y + APPROX_CARD_HEIGHT > top
+    );
+    setSelectedCardIds(new Set(matched.map((c) => c.id)));
+    // Loose text auto-sizes its own box - same stand-in width/height the
+    // node map (nodeById) and the connection lines already aim at, since
+    // nothing here has actually measured the rendered text either.
+    const matchedText = shapes.filter((sh) => {
+      if (sh.kind !== 'text') return false;
+      const w = approxTextShapeWidth(sh.text ?? '', sh.fontSize ?? SHAPE_TEXT_SIZE_DEFAULT);
+      return sh.x < right && sh.x + w > left && sh.y < bottom && sh.y + SHAPE_TEXT_HEIGHT > top;
+    });
+    setSelectedShapeIds(new Set(matchedText.map((sh) => sh.id)));
+  }
+
+  // Held in a ref so the context-menu callback above can reach it
+  // without this function having to move up the file.
+  const cardAtRef = useRef<(x: number, y: number) => BoardCard | undefined>(() => undefined);
+  cardAtRef.current = cardAt;
+
+  function cardAt(worldX: number, worldY: number): BoardCard | undefined {
+    // Last match wins - cards later in the array paint on top of earlier
+    // ones, so where they overlap the visually topmost is the one meant.
+    return cards
+      .filter(
+        (c) =>
+          worldX >= c.x &&
+          worldX <= c.x + (c.width ?? DEFAULT_CARD_WIDTH) &&
+          worldY >= c.y &&
+          worldY <= c.y + APPROX_CARD_HEIGHT
+      )
+      .pop();
+  }
+
+  // What an arrow may start from or land on. Cards first, then the
+  // furniture underneath them, then a container last of all - it is the
+  // bottom-most layer on screen (see DraggableContainer), so it should
+  // be the last thing a connect-drag falls back to as well: a card is drawn on top.
+  function nodeAt(worldX: number, worldY: number): BoardNode | undefined {
+    const card = cardAt(worldX, worldY);
+    if (card) return nodeById.get(card.id);
+    const shapeHit = shapes
+      .map((sh) => nodeById.get(sh.id))
+      .filter(
+        (n): n is BoardNode =>
+          !!n &&
+          worldX >= n.x &&
+          worldX <= n.x + n.width &&
+          worldY >= n.y &&
+          worldY <= n.y + n.height
+      )
+      .pop();
+    if (shapeHit) return shapeHit;
+    return containers
+      .map((c) => nodeById.get(c.id))
+      .filter(
+        (n): n is BoardNode =>
+          !!n &&
+          worldX >= n.x &&
+          worldX <= n.x + n.width &&
+          worldY >= n.y &&
+          worldY <= n.y + n.height
+      )
+      .pop();
+  }
+
+  function beginConnection(worldX: number, worldY: number) {
+    const source = nodeAt(worldX, worldY);
+    connectingFromIdRef.current = source ? source.id : null;
+  }
+
+  function finishConnection(worldX: number, worldY: number) {
+    const fromId = connectingFromIdRef.current;
+    connectingFromIdRef.current = null;
+    if (!fromId) return;
+    const target = nodeAt(worldX, worldY);
+    if (!target || target.id === fromId) return;
+    setConnections((prev) => {
+      // Links are undirected as far as the user is concerned, so a pair
+      // that's already joined (in either direction) isn't joined twice.
+      const exists = prev.some(
+        (c) =>
+          (c.fromCardId === fromId && c.toCardId === target.id) ||
+          (c.fromCardId === target.id && c.toCardId === fromId)
+      );
+      if (exists) return prev;
+      return [...prev, { id: generateId(), fromCardId: fromId, toCardId: target.id }];
+    });
+  }
+
+  // Every id reachable from `startId` by following connections,
+  // transitively - "ланцюжок" is the whole connected component, not
+  // just direct neighbours. `connections`' own fromCardId/toCardId are
+  // generic node ids already (nodeAt already returns shapes and
+  // containers, not only cards - see nodeAt's own comment), so this
+  // walks cards, shapes and containers alike without needing to know
+  // which is which.
+  function connectedComponent(startId: string): Set<string> {
+    const adjacency = new Map<string, string[]>();
+    // A copy is tied to its original as firmly as a drawn line: the chain
+    // of one car takes in every place it stands (the user's own reading:
+    // "дублікати в режимі ізоляції показуються ... це зв'язок").
+    const links = [
+      ...connections.map((c) => ({ from: c.fromCardId, to: c.toCardId })),
+      ...originLinks,
+      ...hiddenOriginLinks,
+    ];
+    for (const c of links) {
+      if (!adjacency.has(c.from)) adjacency.set(c.from, []);
+      if (!adjacency.has(c.to)) adjacency.set(c.to, []);
+      adjacency.get(c.from)!.push(c.to);
+      adjacency.get(c.to)!.push(c.from);
+    }
+    const visited = new Set<string>([startId]);
+    const queue = [startId];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const next of adjacency.get(current) ?? []) {
+        if (!visited.has(next)) {
+          visited.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    return visited;
+  }
+
+  // Pans and zooms so every id in `ids` fits on screen - see
+  // ISOLATE_MAX_SCALE's own comment for why this has a lower ceiling
+  // than the pinch gesture's own MAX_SCALE. Reads each id's bounds from
+  // nodeById, which already covers cards, shapes AND containers.
+  function fitViewToBounds(ids: Set<string>) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    ids.forEach((id) => {
+      const node = nodeById.get(id);
+      if (!node) return;
+      minX = Math.min(minX, node.x);
+      minY = Math.min(minY, node.y);
+      maxX = Math.max(maxX, node.x + node.width);
+      maxY = Math.max(maxY, node.y + node.height);
+    });
+    if (!Number.isFinite(minX)) return;
+    const boxWidth = Math.max(1, maxX - minX);
+    const boxHeight = Math.max(1, maxY - minY);
+    const fitScale = Math.min(
+      (viewport.width * ISOLATE_FIT_FRACTION) / boxWidth,
+      (viewport.height * ISOLATE_FIT_FRACTION) / boxHeight
+    );
+    const nextScale = Math.min(ISOLATE_MAX_SCALE, Math.max(minScaleNow, fitScale));
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    scale.value = withTiming(nextScale, { duration: 320 });
+    translateX.value = withTiming(-(centerX - WORLD_CENTER) * nextScale, { duration: 320 });
+    translateY.value = withTiming(-(centerY - WORLD_CENTER) * nextScale, { duration: 320 });
+  }
+
+  // The tap that actually enters isolation, once armed - see
+  // isolateArmed's own comment. Any card, shape or container's own tap
+  // handler checks this first (see their call sites below) instead of
+  // doing its usual thing.
+  function pickIsolationAnchor(id: string) {
+    setIsolateArmed(false);
+    const ids = connectedComponent(id);
+    setIsolatedIds(ids);
+    fitViewToBounds(ids);
+  }
+
+  // From the menu a held card opens (the selection bar): isolate THIS
+  // card's chain at once, no arming and no second tap.
+  function isolateSelectedCard(id: string) {
+    setIsolateArmed(false);
+    clearSelection();
+    pickIsolationAnchor(id);
+  }
+
+  // The dock's own toggle: arm it (waiting for the next tap), or - if
+  // already isolated - leave isolation and let everything else on the
+  // board light back up. Pressing it again while armed but before
+  // anything is picked cancels the arm instead of doing nothing.
+  function toggleIsolation() {
+    if (isolatedIds !== null) {
+      setIsolatedIds(null);
+      return;
+    }
+    setIsolateArmed((armed) => !armed);
+  }
+
+  // Same screen->world conversion the marquee does, for the same reason -
+  // once at the start, then the gesture's own translation from there.
+  const connectGesture = Gesture.Pan()
+    .onStart((e) => {
+      const wx = (e.x - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (e.y - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      connectStartX.value = wx;
+      connectStartY.value = wy;
+      connectEndX.value = wx;
+      connectEndY.value = wy;
+      connectVisible.value = true;
+      runOnJS(beginConnection)(wx, wy);
+    })
+    .onUpdate((e) => {
+      connectEndX.value = connectStartX.value + e.translationX / scale.value;
+      connectEndY.value = connectStartY.value + e.translationY / scale.value;
+    })
+    .onEnd(() => {
+      runOnJS(finishConnection)(connectEndX.value, connectEndY.value);
+    })
+    // Same reason as the card drag's own onFinalize - a cancelled gesture
+    // never reaches onEnd, and the rubber band would hang there.
+    .onFinalize(() => {
+      connectVisible.value = false;
+    });
+
+  // Only active in 'select' mode (see canvasGesture below). `e.x`/`e.y` are
+  // reported relative to the view this gesture is attached to
+  // (`canvasSurface`, which fills the whole screen), so they're already
+  // absolute screen coordinates - converting the START point into world
+  // coordinates once is enough; every point after that is just that start
+  // plus the gesture's own cumulative translation (divided by scale, same
+  // trick card-dragging already uses), no repeated screen<->world math.
+  const selectGesture = Gesture.Pan()
+    .onStart((e) => {
+      const wx = (e.x - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (e.y - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      marqueeStartX.value = wx;
+      marqueeStartY.value = wy;
+      marqueeCurrentX.value = wx;
+      marqueeCurrentY.value = wy;
+      marqueeVisible.value = true;
+    })
+    .onUpdate((e) => {
+      marqueeCurrentX.value = marqueeStartX.value + e.translationX / scale.value;
+      marqueeCurrentY.value = marqueeStartY.value + e.translationY / scale.value;
+    })
+    .onEnd(() => {
+      marqueeVisible.value = false;
+      runOnJS(finishMarqueeSelection)(
+        marqueeStartX.value,
+        marqueeStartY.value,
+        marqueeCurrentX.value,
+        marqueeCurrentY.value
+      );
+    });
+
+  // Simultaneous here only combines the canvas's OWN pinch+pan with each
+  // other. A card's Pan (see DraggableCard) sits on its own nested
+  // GestureDetector and explicitly calls `.blocksExternalGesture(...)`
+  // against whichever of these two is currently active - gesture-handler's
+  // default is to treat gestures in separate GestureDetectors as fully
+  // independent (NOT exclusive), so without that explicit block this
+  // canvas gesture was free to also recognize a sliver of movement on a
+  // touch that started on a card, visible as a jitter once the touch
+  // lifted and that unwanted micro-pan committed. Pinch-zoom is
+  // deliberately unavailable while selecting - zoom first, then switch
+  // tools to draw the box.
+  const canvasBlockingGesture =
+    canvasTool === 'select' ? selectGesture : canvasTool === 'connect' ? connectGesture : panGesture;
+  // A tap on bare canvas puts the selection down. Reaching for the cross
+  // in the bar to say "never mind" is a step nobody takes willingly, and
+  // clicking the empty space beside a thing is how every canvas says it.
+  //
+  // Raced against the others rather than added to them: a tap and a drag
+  // begin identically, so whichever one the hand turns out to be making
+  // wins, and a marquee is never cancelled by the touch that starts it.
+  // Putting the selection down on bare canvas, and coming out of the mode
+  // with it. The button in the rail is not a preference, it says what the
+  // board is doing right now: lit while there is a selection to work with
+  // - including while it is being carried - and out again the moment
+  // there is not.
+  useEffect(() => {
+    if (selectedCardIds.size < 2) setAlignMenuVisible(false);
+  }, [selectedCardIds]);
+
+  // Arriving with objects that were just moved here: look at THEM.
+  // Without this the board opens wherever it was last left, which is
+  // usually nowhere near where the group landed - and a move that ends
+  // on an empty stretch of canvas reads as a move that lost them.
+  //
+  // Once per set of ids, and only after the cards are really here: the
+  // first snapshot of a board opened fresh is empty, and fitting to
+  // nothing would just reset the view.
+  const focusedIdsRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isLoaded) return;
+    // A board in a window (the AI chat's draft) opens showing ALL of its cards, once.
+    const wanted = focusCardIds && focusCardIds.length > 0 ? focusCardIds : embed?.fitAll ? cards.map((c) => c.id) : null;
+    if (!wanted || wanted.length === 0) return;
+    const key = embed?.fitAll && !(focusCardIds && focusCardIds.length > 0) ? `fit-all-${embed.fitTick ?? 0}` : wanted.join(',');
+    if (focusedIdsRef.current === key) return;
+    const here = wanted.filter((id) => cards.some((c) => c.id === id));
+    if (here.length === 0) return;
+    focusedIdsRef.current = key;
+    fitViewToBounds(new Set(here));
+  }, [isLoaded, focusCardIds, cards, embed]);
+
+  const clearSelection = useCallback(() => {
+    // A tap on the board beside an open card window closes it, as in
+    // Scrintal.
+    setCardWindow(null);
+    setCardWindowPanel(false);
+    if (inlineBlockIdRef.current) {
+      Keyboard.dismiss();
+      endInlineEdit();
+    }
+    setSelectedShapeId(null);
+    setSelectedCardIds(new Set());
+    setSelectedShapeIds(new Set());
+    setSelectedConnectionId(null);
+    setCanvasTool('move');
+  }, []);
+
+  // The window draws its own bar for what is selected (see boardEmbedContext); a ref keeps this off the owner's re-renders.
+  const embedSelectionRef = useRef(embed?.onSelection);
+  embedSelectionRef.current = embed?.onSelection;
+  const embedded = !!embed;
+  useEffect(() => {
+    if (!embedded) return;
+    embedSelectionRef.current?.(Array.from(selectedCardIds), clearSelection);
+  }, [embedded, selectedCardIds, clearSelection]);
+
+  function deleteConnection(id: string) {
+    // Every line between the same two ends goes, not only this id - a copy of it (made by an old sync or
+    // a double drop) would otherwise sit under it, looking like the line that would not break.
+    setConnections((prev) => {
+      const gone = prev.find((c) => c.id === id);
+      if (!gone) return prev;
+      return prev.filter(
+        (c) =>
+          c.id !== id &&
+          !((c.fromCardId === gone.fromCardId && c.toCardId === gone.toCardId) ||
+            (c.fromCardId === gone.toCardId && c.toCardId === gone.fromCardId))
+      );
+    });
+    setSelectedConnectionId(null);
+  }
+
+  // Plain -> one-way -> two-way -> plain. The move-together behaviour a
+  // one-way/two-way line implies is a later phase (see BoardConnection's
+  // own comment) - this only changes how the line LOOKS for now.
+  const NEXT_CONNECTION_KIND: Record<'plain' | 'arrow' | 'doubleArrow', 'plain' | 'arrow' | 'doubleArrow'> = {
+    plain: 'arrow',
+    arrow: 'doubleArrow',
+    doubleArrow: 'plain',
+  };
+  function cycleConnectionKind(id: string) {
+    setConnections((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, kind: NEXT_CONNECTION_KIND[c.kind ?? 'plain'] } : c))
+    );
+  }
+
+  // Which end is the "parent" of a one-way line is just which id is
+  // fromCardId - so flipping it is swapping the two ids, not a direction
+  // field of its own. Only meaningful for 'arrow'; the button that calls
+  // this is hidden otherwise (see the connection's own toolbar).
+  function flipConnectionDirection(id: string) {
+    setConnections((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, fromCardId: c.toCardId, toCardId: c.fromCardId } : c))
+    );
+  }
+
+  // A tap on bare canvas clears the selection and ends typing in a free block - but NOT a tap that lands ON the
+  // block being typed in (2026-10-11, the Mac: a click inside the field to move the caret reached this canvas
+  // gesture through the browser's event bubbling and closed the block; on the phone the field keeps its own touch).
+  function clearSelectionTap(wx: number, wy: number) {
+    const id = inlineBlockIdRef.current;
+    // THE MAC'S ENTER (2026-10-20, the user: «після Enter вихід з поля вводу»): the canvas's tap gesture also ENDS on a
+    // key press in the field (no pointer event at all - measured), and its point lands outside the block, so the first Enter
+    // closed the block before the field could split it. A real tap beside the block first takes the focus away from
+    // the field (the mouse-down), so a field still holding the focus means this is not a tap.
+    if (id && Platform.OS === 'web' && typeof document !== 'undefined' && document.activeElement?.tagName === 'TEXTAREA') return;
+    if (id) {
+      const card = cards.find((c) => c.id === id);
+      if (card && wx >= card.x && wx <= card.x + card.width && wy >= card.y && wy <= card.y + heightOf(card, cardHeights)) return;
+    }
+    // A tap on the selected line's own buttons (2026-10-11, the "x" that broke a line once in ten): this canvas
+    // gesture fires for it TOO, and clearing the selection unmounted the buttons before their press arrived.
+    if (selectedConnectionId) {
+      const sel = connections.find((c) => c.id === selectedConnectionId);
+      const a = sel && nodeById.get(sel.fromCardId);
+      const b = sel && nodeById.get(sel.toCardId);
+      if (sel && a && b) {
+        const e = connectionEndpoints(a.x, a.y, a.width, a.height, b.x, b.y, b.width, b.height);
+        const buttons = sel.kind === 'arrow' ? 3 : 2;
+        const left = (e.x1 + e.x2) / 2 - 15 - 8;
+        const top = (e.y1 + e.y2) / 2 - 15 - 8;
+        if (wx >= left && wx <= left + buttons * 34 + 12 && wy >= top && wy <= top + 46) return;
+      }
+    }
+    clearSelection();
+  }
+  const clearSelectionGesture = Gesture.Tap()
+    .maxDuration(250)
+    .onEnd((event, success) => {
+      if (!success) return;
+      const wx = (event.x - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (event.y - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      runOnJS(clearSelectionTap)(wx, wy);
+    });
+
+  // Holding bare canvas asks for the marquee. The same gesture a phone
+  // uses to mean "I want to do something with these, not to them", and on
+  // a laptop it is the press that the mouse has been holding anyway.
+  const holdToSelectGesture = Gesture.LongPress()
+    .minDuration(350)
+    // A hand is never perfectly still, least of all on a trackpad.
+    .maxDistance(10)
+    .onStart(() => {
+      runOnJS(hapticPickUp)();
+      runOnJS(setCanvasTool)('select');
+    });
+
+  const canvasGesture = Gesture.Race(
+    clearSelectionGesture,
+    canvasTool === 'move' ? holdToSelectGesture : Gesture.Tap().enabled(false),
+    canvasTool === 'select'
+      ? selectGesture
+      : canvasTool === 'connect'
+        ? connectGesture
+        : Gesture.Simultaneous(pinchGesture, panGesture)
+  );
+
+  const marqueeAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: marqueeVisible.value ? 1 : 0,
+    left: Math.min(marqueeStartX.value, marqueeCurrentX.value),
+    top: Math.min(marqueeStartY.value, marqueeCurrentY.value),
+    width: Math.abs(marqueeCurrentX.value - marqueeStartX.value),
+    height: Math.abs(marqueeCurrentY.value - marqueeStartY.value),
+  }));
+
+  // A trackpad and a mouse have no pinch; in a browser this is what
+  // gives the board its zoom (see useCanvasWheel). A no-op on the phone.
+  const canvasRef = useRef<View | null>(null);
+  // Where the right button was pressed, and on which card. A laptop's
+  // answer to holding a card down - see useContextMenu.
+  const [cardMenu, setCardMenu] = useState<{ x: number; y: number; card: BoardCard } | null>(null);
+  useCanvasWheel(canvasRef, {
+    scale,
+    savedScale,
+    translateX,
+    translateY,
+    savedTranslateX,
+    savedTranslateY,
+    viewport,
+    minScale: minScaleNow,
+    maxScale: MAX_SCALE,
+  });
+
+  // THE KEYBOARD (Mac / browser; nothing on the phone). Copy remembers
+  // which cards, paste makes copies of them a step further along each time.
+  const copiedCardIds = useRef<string[]>([]);
+  const pasteRound = useRef(0);
+  const deleteAsking = useRef(false);
+  useBoardKeys({
+    active: boardFocused && isLoaded,
+    onDelete: () => {
+      if (selectedConnectionId) return deleteConnection(selectedConnectionId);
+      if (selectedShapeId) return deleteShape(selectedShapeId);
+      if (deleteAsking.current) return;
+      deleteAsking.current = true;
+      deleteSelection().finally(() => {
+        deleteAsking.current = false;
+      });
+    },
+    onEscape: () => {
+      if (selectedCardIds.size + selectedShapeIds.size > 0 || selectedShapeId || selectedConnectionId) {
+        clearSelection();
+      }
+    },
+    onCopy: () => {
+      if (selectedCardIds.size === 0) return;
+      copiedCardIds.current = [...selectedCardIds];
+      pasteRound.current = 0;
+    },
+    onPaste: () => {
+      const originals = cards.filter((c) => copiedCardIds.current.includes(c.id));
+      if (originals.length === 0) return;
+      pasteRound.current += 1;
+      const copies = duplicateCards(originals, 28 * pasteRound.current);
+      if (copies) setSelectedCardIds(new Set(copies.map((c) => c.id)));
+    },
+    onDuplicate: () => {
+      const originals = cards.filter((c) => selectedCardIds.has(c.id));
+      const copies = duplicateCards(originals, 28);
+      if (copies) setSelectedCardIds(new Set(copies.map((c) => c.id)));
+    },
+    onSelectAll: () => setSelectedCardIds(new Set(cards.map((c) => c.id))),
+  });
+
+  // The same screen->world conversion the marquee and the connector use.
+  // Selecting the card first means every action below is the SAME code
+  // the selection bar runs - the menu is a second way in, not a second
+  // implementation.
+  const openCardMenu = useCallback(
+    (x: number, y: number) => {
+      const worldX = (x - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const worldY = (y - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      const card = cardAtRef.current(worldX, worldY);
+      if (!card) {
+        setCardMenu(null);
+        return;
+      }
+      // Deliberately NOT selected: selecting it would raise the
+      // selection bar at the foot of the screen, and two menus for one
+      // right-click is exactly what this was meant to replace.
+      setCardMenu({ x, y, card });
+    },
+    [viewport.width, viewport.height, translateX, translateY, scale]
+  );
+  useContextMenu(canvasRef, openCardMenu);
+
+  const worldAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }],
+  }));
+
+  function addFreeBlock() {
+    setAddSheetVisible(false);
+    const card = newFreeBlock(cards.length, viewCenter());
+    setCards((prev) => [...prev, card]);
+    startInlineEdit(card.id);
+  }
+
+  // Where the canvas starts, measured from THIS screen's own corner - the
+  // card window and the free block's field are placed inside this screen.
+  // On a phone that corner is the window's; on the Mac the screen sits
+  // beside the sidebar and under the tabs, and window coordinates put the
+  // card window that far off its card.
+  const rootOffsetRef = useRef({ x: 0, y: 0 });
+  function measureCanvasOrigin(then: () => void) {
+    const node = canvasRef.current;
+    const root = deskContentRef.current;
+    if (!node) return then();
+    node.measureInWindow((cx, cy) => {
+      if (!root) {
+        canvasOriginX.value = cx;
+        canvasOriginY.value = cy;
+        return then();
+      }
+      root.measureInWindow((rx, ry) => {
+        rootOffsetRef.current = { x: rx, y: ry };
+        rootOffYSV.value = ry;
+        canvasOriginX.value = cx - rx;
+        canvasOriginY.value = cy - ry;
+        then();
+      });
+    });
+  }
+
+  // TYPING IN A FREE BLOCK ON THE BOARD (2026-10-08, the user's: "логіка
+  // така сама як із вводом в звичайний блок документа"): no sheet - the
+  // block itself turns into the field.
+  function startInlineEdit(id: string) {
+    measureCanvasOrigin(() => {});
+    inlineKbSeenRef.current = false;
+    setInlineBlockId(id);
+  }
+  function endInlineEdit() {
+    const id = inlineBlockIdRef.current;
+    setInlineBlockId(null);
+    if (!id) return;
+    // A block left empty is no block.
+    setCards((prev) => {
+      const c = prev.find((x) => x.id === id);
+      if (!c || c.text?.trim()) return prev;
+      return reflowGlue(dropLoneGlue(prev.filter((x) => x.id !== id)), cardHeightsRef.current);
+    });
+  }
+  function inlineText(id: string, text: string) {
+    // A PASTE with several paragraphs / list items (the Mac, 2026-10-21, the user: five points copied from a chat came in as ONE block):
+    // read it with the note's own splitter and lay the pieces out as glued blocks, one under another.
+    const here = cards.find((c) => c.id === id);
+    const ins = here ? insertedPiece(here.text ?? '', text) : null;
+    if (here && ins && /[\n\t]/.test(ins.piece)) {
+      const parsed = parsePastedText(ins.piece);
+      if (worthSplitting(parsed)) {
+        inlinePaste(here, ins, parsed);
+        return;
+      }
+    }
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, text } : c)));
+  }
+  function inlinePaste(card: BoardCard, ins: { head: string; tail: string }, parsed: ParsedBlock[]) {
+    // What a free block can be: text, heading, task, list. A numbered item stays text with its number in it.
+    let counter = 0;
+    const pieces = parsed.map((piece) => {
+      counter = piece.type === 'numbered' ? counter + 1 : 0;
+      const type: 'paragraph' | 'heading' | 'checkbox' | 'bulleted' =
+        piece.type === 'heading' || piece.type === 'checkbox' || piece.type === 'bulleted' ? piece.type : 'paragraph';
+      const text = piece.type === 'numbered' ? `${counter}. ${piece.text}` : piece.type === 'table' ? (piece.tableRows ?? []).map((r) => r.cells.join(' | ')).join('\n') : piece.text;
+      // A free block shows its text as it is: bold/italic marks would stand there as stars, so they go.
+      return { type, text: text.replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/\*([^*\n]+)\*/g, '$1'), checked: piece.checked, headingLevel: piece.headingLevel };
+    });
+    const [first, ...rest] = pieces;
+    const lastText = rest.length ? rest[rest.length - 1].text + ins.tail : null;
+    const gid = card.glueId ?? generateId();
+    const order = card.glueOrder ?? 0;
+    const fresh: BoardCard[] = rest.map((piece, i) => ({
+      id: generateId(),
+      text: i === rest.length - 1 && lastText !== null ? lastText : piece.text,
+      type: piece.type,
+      ...(piece.checked ? { checked: true } : null),
+      ...(piece.type === 'heading' ? { headingLevel: 2 } : null),
+      freeBlock: true,
+      createdAt: Date.now(),
+      x: card.x,
+      y: card.y + heightOf(card, cardHeights) * (i + 1),
+      width: card.width,
+      glueId: gid,
+      glueOrder: order + 1 + i,
+    }));
+    setCards((prev) => {
+      const next = prev.map((c) => {
+        if (c.id === card.id) {
+          const emptyHead = ins.head.trim() === '';
+          const merged: BoardCard = { ...c, text: `${ins.head}${first.text}${rest.length ? '' : ins.tail}`, glueId: gid, glueOrder: order };
+          if (emptyHead && first.type !== 'paragraph') merged.type = first.type;
+          return merged;
+        }
+        if (card.glueId && c.glueId === gid && (c.glueOrder ?? 0) > order) return { ...c, glueOrder: (c.glueOrder ?? 0) + fresh.length };
+        return c;
+      });
+      return reflowGlue([...next, ...fresh], cardHeights);
+    });
+    if (fresh.length) setInlineBlockId(fresh[fresh.length - 1].id);
+  }
+  // Two Enters: the next block, glued under this one, typed in at once. A
+  // list or a task carries on as a list or a task, as in a note.
+  function inlineDoubleEnter(id: string) {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return;
+    const kind = card.type ?? 'paragraph';
+    const nextKind = kind === 'checkbox' || kind === 'bulleted' ? kind : 'paragraph';
+    const fresh: BoardCard = {
+      id: generateId(),
+      text: '',
+      type: nextKind,
+      freeBlock: true,
+      createdAt: Date.now(),
+      x: card.x,
+      y: card.y + heightOf(card, cardHeights),
+      width: card.width,
+    };
+    setCards((prev) => {
+      const gid = card.glueId ?? generateId();
+      const order = card.glueOrder ?? 0;
+      const next = prev.map((c) => {
+        if (c.id === card.id) return card.glueId ? c : { ...c, glueId: gid, glueOrder: 0 };
+        if (card.glueId && c.glueId === gid && (c.glueOrder ?? 0) > order) return { ...c, glueOrder: (c.glueOrder ?? 0) + 1 };
+        return c;
+      });
+      return reflowGlue([...next, { ...fresh, glueId: gid, glueOrder: order + 1 }], cardHeights);
+    });
+    setInlineBlockId(fresh.id);
+  }
+  // Backspace in an empty block: it goes, and the caret to the one above.
+  function inlineBackspaceEmpty(id: string) {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return;
+    let previous: string | null = null;
+    if (card.glueId) {
+      const strip = glueMembers(cards, card.glueId);
+      const i = strip.findIndex((m) => m.id === id);
+      if (i > 0) previous = strip[i - 1].id;
+    }
+    setCards((prev) => reflowGlue(dropLoneGlue(prev.filter((c) => c.id !== id)), cardHeights));
+    if (previous) setInlineBlockId(previous);
+    else {
+      setInlineBlockId(null);
+      Keyboard.dismiss();
+    }
+  }
+  function setInlineKind(kind: 'paragraph' | 'heading' | 'checkbox' | 'bulleted') {
+    const id = inlineBlockIdRef.current;
+    if (!id) return;
+    setCards((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) return c;
+        const out: BoardCard = { ...c, type: kind };
+        if (kind === 'heading') out.headingLevel = 2;
+        else delete out.headingLevel;
+        return out;
+      })
+    );
+  }
+
+  // A free block's kind, from its editor: text, heading, task, list.
+  function setEditingBlockKind(kind: 'paragraph' | 'heading' | 'checkbox' | 'bulleted') {
+    if (!editingCard) return;
+    const patch: Partial<BoardCard> = { type: kind, headingLevel: kind === 'heading' ? 2 : undefined };
+    const next = { ...editingCard, ...patch };
+    if (kind !== 'heading') delete next.headingLevel;
+    setEditingCard(next);
+    setCards((prev) =>
+      prev.map((c) => {
+        if (c.id !== editingCard.id) return c;
+        const updated = { ...c, ...patch };
+        if (kind !== 'heading') delete updated.headingLevel;
+        return updated;
+      })
+    );
+  }
+
+  // «КАРТА З ТЕКСТУ»: what is on the clipboard - a tree of ideas as Markdown headings (or an indented
+  // list), the sort of answer an AI gives when asked for a mind map - becomes cards with their lines,
+  // laid out from the middle of what is on screen (utils/outlineToBoard).
+  async function pasteOutlineAsMap(asNotes: boolean) {
+    setAddSheetVisible(false);
+    let text = '';
+    try {
+      text = await Clipboard.getStringAsync();
+    } catch {
+      // handled below as an empty clipboard
+    }
+    const nodes = parseOutline(text);
+    if (nodes.length < 2) {
+      notify(
+        'Нема з чого будувати карту',
+        'Скопіюйте текст із заголовками (#, ##, ###) - заголовок стане карткою, текст під ним її змістом - або список із відступами, і спробуйте ще раз.'
+      );
+      return;
+    }
+    if (nodes.length > 80 && !(await confirm({ title: `${nodes.length} карток`, message: 'Це дуже велика карта. Додати все?', confirmLabel: 'Додати' }))) return;
+    if (asNotes) {
+      // The tree becomes notes nested in the root note, on a new board; this board gets ONE card for it.
+      if (nodes.filter((n) => n.parent === null).length !== 1) {
+        notify('Потрібен один корінь', 'У тексті має бути один головний заголовок (#), під ним решта. Попросіть ШІ про один корінь.');
+        return;
+      }
+      try {
+        const made = await createOutlineNotes(nodes);
+        setCards((prev) => [...prev, newBoardCard({ id: made.boardId, title: made.boardTitle }, prev.length, viewCenter())]);
+      } catch (e) {
+        notify('Не вдалося створити карту', (e as Error).message);
+      }
+      return;
+    }
+    const built = outlineToBoard(nodes, viewCenter());
+    setCards((prev) => [...prev, ...built.cards]);
+    setConnections((prev) => [...prev, ...built.connections]);
+  }
+
+  // «КОРОТКО»: sticky text cards show their first lines only (BoardCard.short), all of them at once or the
+  // chosen ones.
+  const textCards = cards.filter((c) => (c.type ?? 'paragraph') === 'paragraph' && !c.freeBlock);
+  function setShort(ids: Set<string> | null, short: boolean) {
+    setCards((prev) =>
+      prev.map((c) => {
+        if ((c.type ?? 'paragraph') !== 'paragraph' || c.freeBlock) return c;
+        if (ids && !ids.has(c.id)) return c;
+        if (!!c.short === short) return c;
+        const { short: _gone, ...rest } = c;
+        return short ? { ...rest, short: true } : rest;
+      })
+    );
+  }
+
+  function addTextCard() {
+    setAddSheetVisible(false);
+    const card = newTextCard(cards.length, viewCenter());
+    setCards((prev) => [...prev, card]);
+    setEditingCard(card);
+    setEditingText('');
+  }
+
+  function openExistingItemPicker() {
+    setAddSheetVisible(false);
+    // On the Mac the browser of existing things is the right panel's own tab «Референси», always there.
+    if (macBoard) {
+      setPanelTab('refs');
+      inspector.set(true);
+      return;
+    }
+    setExistingItemPickerVisible(true);
+  }
+
+  // Everything below creates a BRAND NEW database record from the board and
+  // drops a card for it, rather than referencing something that already
+  // exists (that's openExistingItemPicker's job). Each one writes the same
+  // record shape its own database screen's "+" writes, `usedInDocuments`
+  // included: the object belongs to its database from the moment it's
+  // made, and the board card is a reference to it like any other.
+
+  async function createDocumentCard() {
+    setAddSheetVisible(false);
+    const now = Date.now();
+    const created = await addDoc(documentsCollection, {
+      title: 'Без назви',
+      createdAt: now,
+      updatedAt: now,
+      blocks: [],
+    });
+    setCards((prev) => [...prev, newDocumentCard({ id: created.id, title: 'Без назви' }, {}, prev.length, viewCenter())]);
+  }
+
+  // One flow behind all three link menu entries. The category a link ends
+  // up filed under (video / geo / other - separate databases as far as the
+  // UI is concerned) is derived from the fetched preview's siteName, NOT
+  // from which entry was tapped, exactly as LinksScreen does it: paste a
+  // YouTube URL under "Геоточка" and it still correctly lands in
+  // YouTube/TikTok rather than being mis-filed.
+  function openLinkPrompt(kind: 'other' | 'video' | 'geo') {
+    setAddSheetVisible(false);
+    setLinkPrompt({ step: 'url', kind, busy: false });
+  }
+
+  // The dialog stays open the whole way through: it goes busy while the
+  // preview is fetched, then either closes (the page named itself) or
+  // turns into the name question.
+  async function submitLinkStep(value: string) {
+    if (!linkPrompt) return;
+    if (linkPrompt.step === 'title') {
+      const { url, preview } = linkPrompt;
+      setLinkPrompt(null);
+      saveNewLink(url, preview, value.trim());
+      return;
+    }
+    const url = value.trim();
+    if (!url) return;
+    setLinkPrompt({ ...linkPrompt, busy: true });
+    const preview = await fetchLinkPreview(url);
+    if (preview.title) {
+      setLinkPrompt(null);
+      saveNewLink(url, preview, preview.title);
+    } else {
+      // No title to read out of the page (a raw-coordinates Maps link, or
+      // a page with no og:title) - ask rather than filing something
+      // nameless nobody could find later. Same as LinksScreen's own "+".
+      setLinkPrompt({ step: 'title', url, preview });
+    }
+  }
+
+  async function saveNewLink(url: string, preview: LinkPreview, title: string) {
+    // Keyed by the URL (linkDocId), not a fresh id - the same link saved
+    // twice is one record, which is what makes the databases dedupe.
+    const id = linkDocId(url);
+    const now = Date.now();
+    const data: Record<string, unknown> = { url, updatedAt: now, createdAt: now, usedInDocuments: {} };
+    if (title) data.title = title;
+    if (preview.imageUrl) data.imageUrl = preview.imageUrl;
+    if (preview.siteName) data.siteName = preview.siteName;
+    if (preview.geoLat != null && preview.geoLng != null) {
+      data.geoLat = preview.geoLat;
+      data.geoLng = preview.geoLng;
+    }
+    await setDoc(doc(db, 'links', id), data, { merge: true });
+    setCards((prev) => [
+      ...prev,
+      cardFromExistingBlock(blockFromLink({ url, title, imageUrl: preview.imageUrl, siteName: preview.siteName }), prev.length, viewCenter()),
+    ]);
+  }
+
+  function createImageCard() {
+    setAddSheetVisible(false);
+    ask({
+      title: 'Нове зображення',
+      actions: [
+        { id: 'gallery', label: 'Галерея', icon: 'images-outline' },
+        { id: 'camera', label: 'Камера', icon: 'camera-outline' },
+      ],
+    }).then((answer) => {
+      if (answer === 'gallery' || answer === 'camera') pickImage(answer);
+    });
+  }
+
+  async function pickImage(source: 'gallery' | 'camera') {
+    const permission =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
+        // A whole set at once - the board is where a handful of pictures
+        // are laid out beside each other, and one at a time meant opening
+        // the gallery again for every one of them.
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            quality: 1,
+            allowsMultipleSelection: true,
+          });
+    if (result.canceled) return;
+    // One after another, in the order they were picked: each is written,
+    // laid on the board, and only then the next - so two pictures cannot
+    // land on the same spot.
+    for (const asset of result.assets) await addPhotoCard(asset);
+  }
+
+  // A frame of a playing video: a photo of its own («Зображення», backed up
+  // like any), titled with the moment it shows, laid to the right of the
+  // video's card - the next one under it.
+  async function addVideoFrame(video: BoardCard, shot: { uri: string; width: number; height: number }) {
+    const t = Math.max(0, Math.floor(videoTime.current));
+    const stamp = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    const title = `Кадр ${stamp}${video.linkTitle ? ` · ${video.linkTitle}` : ''}`;
+    const imageUri = await compressPickedImage(shot.uri, shot.width, shot.height);
+    const id = generateId();
+    const now = Date.now();
+    await setDoc(
+      doc(db, 'photos', id),
+      { imageUri, imageFit: 'contain', title, createdAt: now, updatedAt: now, usedInDocuments: {}, sourceUrl: video.linkUrl ?? null, sourceTime: t },
+      { merge: true }
+    );
+    backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
+      if (!uploaded) return;
+      updateDoc(doc(db, 'photos', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+      setCards((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, driveFileId: uploaded.fileId, driveBytes: uploaded.bytes } : c))
+      );
+    });
+    const nth = framesTaken.current[video.id] ?? 0;
+    framesTaken.current[video.id] = nth + 1;
+    const width = video.width ?? DEFAULT_CARD_WIDTH;
+    setCards((prev) => [
+      ...prev,
+      {
+        ...blockFromPhoto({ id, imageUri, imageFit: 'contain', title, createdAt: now }),
+        x: video.x + width + 24,
+        y: video.y + nth * (Math.round((width * shot.height) / Math.max(1, shot.width)) + 24),
+        width,
+      },
+    ]);
+  }
+
+  async function addPhotoCard(asset: ImagePicker.ImagePickerAsset) {
+    const imageUri = await compressPickedImage(asset.uri, asset.width, asset.height);
+    const id = generateId();
+    const now = Date.now();
+    // A picture laid on a board lives on that board (2026-10-31, the user's one rule for every picture): no record in the base
+    // until it is put there on purpose («У базу»). Its Drive copy is kept on the card.
+    backupFileToDrive(imageUri, `${id}.jpg`, 'image/jpeg', 'Photos').then((uploaded) => {
+      if (!uploaded) return;
+      // The card needs it too, and this is the only moment it can be
+      // learned: the upload finishes after the card is already made. A
+      // card without it is a picture no other device can ever fetch.
+      setCards((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, driveFileId: uploaded.fileId, driveBytes: uploaded.bytes } : c
+        )
+      );
+    });
+    setCards((prev) => [
+      ...prev,
+      cardFromExistingBlock({ ...blockFromPhoto({ id, imageUri, imageFit: 'contain', createdAt: now }), pageOnly: true }, prev.length, viewCenter()),
+    ]);
+  }
+
+  // «У БАЗУ ЗОБРАЖЕНЬ» for a picture of this board only: the record is made now, the mark comes off the card.
+  async function putCardIntoBase(card: BoardCard) {
+    if (!card.imageUri) return;
+    const now = Date.now();
+    const data: Record<string, unknown> = { imageUri: card.imageUri, imageFit: card.imageFit ?? 'contain', createdAt: card.createdAt ?? now, updatedAt: now, usedInDocuments: {} };
+    if (card.driveFileId) data.driveFileId = card.driveFileId;
+    if (card.driveBytes) data.driveBytes = card.driveBytes;
+    if (card.imageTitle) data.title = card.imageTitle;
+    await setDoc(doc(db, 'photos', card.id), data, { merge: true });
+    setCards((prev) =>
+      prev.map((c) => {
+        if (c.id !== card.id) return c;
+        const { pageOnly: _mark, ...rest } = c;
+        return rest as BoardCard;
+      })
+    );
+    notify('Додано в базу зображень', 'Тепер це зображення є і в базі, і на дошці.');
+  }
+
+  async function createFileCard() {
+    setAddSheetVisible(false);
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: false });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const id = generateId();
+    const fileUri = await copyPickedFile(asset.uri, id, asset.name);
+    const now = Date.now();
+    const data: Record<string, unknown> = {
+      fileUri,
+      fileName: asset.name,
+      createdAt: now,
+      updatedAt: now,
+      usedInDocuments: {},
+    };
+    if (asset.mimeType) data.mimeType = asset.mimeType;
+    await setDoc(doc(db, 'files', id), data, { merge: true });
+    backupFileToDrive(fileUri, asset.name, asset.mimeType ?? 'application/octet-stream', 'Files').then((uploaded) => {
+      if (!uploaded) return;
+      updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+      // Same as the photo above: the card learns where its copy went, or
+      // no other device can ever fetch it.
+      setCards((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, driveFileId: uploaded.fileId, driveBytes: uploaded.bytes } : c
+        )
+      );
+    });
+    setCards((prev) => [
+      ...prev,
+      cardFromExistingBlock(
+        blockFromFile({ id, fileUri, fileName: asset.name, mimeType: asset.mimeType, createdAt: now }),
+        prev.length,
+        viewCenter()
+      ),
+    ]);
+  }
+
+  function addExistingCard(block: Block) {
+    setExistingItemPickerVisible(false);
+    setCards((prev) => [...prev, cardFromExistingBlock(block, prev.length, viewCenter())]);
+  }
+
+  // «КАРТКА» (2026-10-24): a NEW card of the «Картки» base - the term typed here, the explanation filled in on the card - made
+  // right on the board, as a «Документ» is.
+  async function createFlashcard() {
+    setAddSheetVisible(false);
+    const name = '';
+    const id = generateId();
+    const now = Date.now();
+    try {
+      await setDoc(doc(db, 'flashcards', id), { term: name, explanation: '', short: false, images: [], tagIds: [], createdAt: now, updatedAt: now });
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+      return;
+    }
+    addExistingCard(blockFromFlashcard({ id, term: name, explanation: '', images: [] }));
+    setFreshFlashcardId(id);
+    setEditFlashcardId(id);
+  }
+  // The sheet closed: a card made a moment ago and left empty is not kept (cancelling must leave nothing on the board).
+  async function closeFlashcardSheet(saved: boolean) {
+    const id = editFlashcardId;
+    setEditFlashcardId(null);
+    if (!id || id !== freshFlashcardId) return;
+    setFreshFlashcardId(null);
+    if (saved) return;
+    setCards((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await deleteDoc(doc(db, 'flashcards', id));
+    } catch {
+      // An empty card left behind in the base is harmless.
+    }
+  }
+
+  // «ЗАПИС БАЗИ» (the panel's / «+» sheet's tile, restored 2026-10-24): a NEW row of one of the user's own databases, made right
+  // here and standing on the board as its card - the database is asked for (when there is more than one), then the record's name.
+  async function addDatabaseRecord() {
+    setAddSheetVisible(false);
+    try {
+      const snap = await getDocs(ownedQuery('customDatabases'));
+      const bases = snap.docs
+        .map((d) => ({ id: d.id, name: ((d.data().name as string) || 'Без назви').trim(), fieldId: ((d.data().fields as { id: string }[] | undefined) ?? [])[0]?.id ?? '' }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      if (bases.length === 0) {
+        notify('Ще немає баз', 'Створіть власну базу у «Базах» - і її записи можна буде створювати тут.');
+        return;
+      }
+      const picked = bases.length === 1 ? bases[0].id : await ask({ title: 'У якій базі', actions: bases.map((b) => ({ id: b.id, label: b.name, icon: 'albums-outline' as const })) });
+      const base = bases.find((b) => b.id === picked);
+      if (base) setNewRecordFor({ databaseId: base.id, fieldId: base.fieldId, name: base.name });
+    } catch (e) {
+      notify('Не вдалося', (e as Error).message);
+    }
+  }
+  async function createDatabaseRecord(target: { databaseId: string; fieldId: string }, name: string) {
+    setNewRecordFor(null);
+    const title = name.trim();
+    if (!title || !target.fieldId) return;
+    const id = generateId();
+    const now = Date.now();
+    try {
+      await setDoc(doc(db, 'customDatabaseRows', id), { databaseId: target.databaseId, values: { [target.fieldId]: title }, tagIds: [], createdAt: now, updatedAt: now });
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+      return;
+    }
+    addExistingCard(blockFromCustomRow({ id, databaseId: target.databaseId, title, createdAt: now }));
+  }
+
+  async function openBoardPicker() {
+    setAddSheetVisible(false);
+    const snapshot = await getDocs(ownedQuery('boards'));
+    setPickableBoards(
+      snapshot.docs
+        // Not this one: a board holding a card of itself is a loop with
+        // nothing at the end of it.
+        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt && !isTucked(d.data()))
+        .map((d) => ({ id: d.id, title: (d.data().title as string)?.trim() || 'Без назви' }))
+        .sort((a, b) => a.title.localeCompare(b.title))
+    );
+    setBoardPickerOpen(true);
+  }
+
+  // Everything selected, onto another board - "інколи дошка розростається
+  // і ти розумієш що для чогось треба окрема дошка".
+  //
+  // Three rules, and each of them is a decision rather than an accident:
+  //
+  // - A CONNECTION travels only when BOTH its ends do. A line to a card
+  //   that stayed behind has nothing to point at over there.
+  // - A COLUMN, an area or a layer is that board's own furniture and
+  //   stays. A card that stood in one arrives free, because the
+  //   alternative is dragging half the board along with it.
+  // - The group's own arrangement is kept exactly. Its bounding box is
+  //   moved to the origin and set down below whatever the target board
+  //   already holds, so it never lands on top of something and you see
+  //   the same construction you selected.
+  //
+  // The write is a WHOLE keyed map, not a diff. The target board may
+  // still be in the old array shape, and merging a keyed patch onto an
+  // array field replaces it - see boardStorage. Reading it first and
+  // writing the whole thing is what BoardScreen's own `whole` path does
+  // for exactly this reason.
+  async function moveSelectionTo(targetId: string) {
+    if (moving) return;
+    const cardIds = new Set(selectedCardIds);
+    const shapeIds = new Set(selectedShapeIds);
+    if (cardIds.size === 0 && shapeIds.size === 0) return;
+    setMoving(true);
+    setMovePickerOpen(false);
+    try {
+      const movingCards = cards.filter((c) => cardIds.has(c.id));
+      const movingShapes = shapes.filter((s) => shapeIds.has(s.id));
+      const movingConnections = connections.filter(
+        (c) => cardIds.has(c.fromCardId) && cardIds.has(c.toCardId)
+      );
+
+      const targetSnapshot = await getDoc(doc(db, 'boards', targetId));
+      const targetData = targetSnapshot.data() ?? {};
+      const targetCards = readBoardPart<BoardCard>(targetData.cards);
+      const targetShapes = readBoardPart<BoardShape>(targetData.shapes);
+      const targetConnections = readBoardPart<BoardConnection>(targetData.connections);
+
+      // Where the group sits now, and where it is going to sit.
+      const xs = [...movingCards.map((c) => c.x), ...movingShapes.map((s) => s.x)];
+      const ys = [...movingCards.map((c) => c.y), ...movingShapes.map((s) => s.y)];
+      const fromX = Math.min(...xs);
+      const fromY = Math.min(...ys);
+      const occupiedBottom = [
+        ...targetCards.map((c) => c.y + APPROX_CARD_HEIGHT),
+        ...targetShapes.map((s) => s.y + (s.height ?? 120)),
+      ];
+      const toX = targetCards.length + targetShapes.length === 0 ? WORLD_CENTER : Math.min(
+        ...[...targetCards.map((c) => c.x), ...targetShapes.map((s) => s.x)]
+      );
+      const toY = occupiedBottom.length > 0 ? Math.max(...occupiedBottom) + 60 : WORLD_CENTER;
+      const shiftX = toX - fromX;
+      const shiftY = toY - fromY;
+
+      // columnId/order/layerId belong to the board being left. Dropped
+      // rather than carried: over there they name nothing.
+      const landedCards = movingCards.map(({ columnId: _c, order: _o, layerId: _l, ...card }) => ({
+        ...card,
+        x: card.x + shiftX,
+        y: card.y + shiftY,
+      })) as BoardCard[];
+      const landedShapes = movingShapes.map(({ layerId: _l, ...shape }) => ({
+        ...shape,
+        x: shape.x + shiftX,
+        y: shape.y + shiftY,
+      })) as BoardShape[];
+
+      await setDoc(
+        doc(db, 'boards', targetId),
+        {
+          cards: keyedAll([...targetCards, ...landedCards]),
+          shapes: keyedAll([...targetShapes, ...landedShapes]),
+          connections: keyedAll([...targetConnections, ...movingConnections]),
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      );
+
+      // Only once the other board has them. A failed write must not be
+      // able to take the objects off this board as well.
+      setCards((prev) => prev.filter((c) => !cardIds.has(c.id)));
+      setShapes((prev) => prev.filter((s) => !shapeIds.has(s.id)));
+      setConnections((prev) =>
+        prev.filter((c) => !cardIds.has(c.fromCardId) && !cardIds.has(c.toCardId))
+      );
+      clearSelection();
+      // No "done" dialog. The target board opens on the group a moment
+      // later, which says it better than a box with one button - and a
+      // box with one button is a tap the move does not need.
+      goBoard('navigate', targetId, { focusCardIds: landedCards.map((c) => c.id) });
+    } catch (e) {
+      notify('Не вдалося перенести', String(e));
+    } finally {
+      setMoving(false);
+    }
+  }
+
+  async function openMovePicker() {
+    const snapshot = await getDocs(ownedQuery('boards'));
+    setPickableBoards(
+      snapshot.docs
+        .filter((d) => d.id !== boardId && !d.data().trashed && !d.data().deletedAt && !isTucked(d.data()))
+        .map((d) => ({ id: d.id, title: (d.data().title as string)?.trim() || 'Без назви' }))
+        .sort((a, b) => a.title.localeCompare(b.title))
+    );
+    setMovePickerOpen(true);
+  }
+
+  // The board that does not exist yet, which is usually the whole point
+  // of moving things off this one. Born KEYED - see BoardsListScreen's
+  // own comment and the board_shape_doubt memory: a board born as an
+  // array sits in "which shape is this" for ever and saves nothing.
+  async function moveSelectionToNewBoard() {
+    const now = Date.now();
+    const created = await addDoc(collection(db, 'boards'), {
+      title: 'Без назви',
+      cards: {},
+      createdAt: now,
+      updatedAt: now,
+    });
+    await moveSelectionTo(created.id);
+  }
+
+  function addBoardCard(picked: string) {
+    const board = pickableBoards.find((b) => b.id === picked);
+    setBoardPickerOpen(false);
+    if (!board) return;
+    setCards((prev) => [...prev, newBoardCard(board, prev.length, viewCenter())]);
+  }
+
+  async function addDocumentCard(document: { id: string; title: string }) {
+    setExistingItemPickerVisible(false);
+    // One extra read at add-time to snapshot a preview (full text, first
+    // image) onto the card itself - AddExistingItemModal's own "Документи"
+    // tab only ever carries {id, title} for its list, not blocks, so
+    // there's nothing to preview from without this fetch. The full text is
+    // cached (capped defensively, not just 4 lines) so the card can later
+    // expand in place to show all of it without a second fetch - the
+    // collapsed view just clips the same string to 4 lines via
+    // `numberOfLines`.
+    const snapshot = await getDoc(doc(db, 'documents', document.id));
+    const data = snapshot.data();
+    const blocks: Block[] = data?.blocks ?? [];
+    const preview = {
+      text: blocksToPreviewText(blocks).slice(0, 20000),
+      // Cover image takes priority over a body image block - see
+      // refreshDocumentPreviews' identical rule.
+      imageUri: data?.coverImageUri ?? firstImageUri(blocks),
+      // And WHERE that picture is, which the uri alone does not say -
+      // see the card's own field in types.ts.
+      driveFileId: (data?.coverImageUri
+        ? (data?.coverDriveFileId as string | undefined)
+        : firstImageDriveFileId(blocks)) as string | undefined,
+    };
+    setCards((prev) => [...prev, newDocumentCard(document, preview, prev.length, viewCenter())]);
+  }
+
+  // Tapping a document card toggles it in place (see BoardCard's
+  // documentExpanded) rather than opening a separate overlay - collapsed
+  // shows a 4-line peek, expanded shows the whole cached preview text and
+  // stays that way while the user keeps working with other cards, exactly
+  // like every other card's position: it's just a field, so it persists
+  // through the normal autosave and survives reopening the board.
+  function toggleDocumentExpanded(card: BoardCard) {
+    setCards((prev) =>
+      prev.map((c) => (c.id === card.id ? { ...c, documentExpanded: !c.documentExpanded } : c))
+    );
+  }
+
+  // The other half of the live link, and the half that was missing: this
+  // screen read its cards once, at open, and wrote them back from memory
+  // ever after. A card the document made never appeared here - and worse,
+  // the next autosave overwrote it with this screen's older list, which is
+  // what had the two sides writing each other in circles.
+  //
+  // Same rule as the document's own listener: take what arrives, but only
+  // while nothing local is in flight - no pending save, no card or column
+  // under the finger - and never when it matches what's already here.
+  const applyRemote = useCallback(
+    (incomingCards: BoardCard[], incomingColumns: BoardColumn[]) => {
+      // What arrived is now what the document holds, so the next
+      // difference is measured against it - otherwise the very next save
+      // would write the other device's own changes back at it as if they
+      // were ours. Kept exactly as it arrived, unstacked.
+      const written = savedRef.current.cards;
+      savedRef.current = { ...savedRef.current, cards: incomingCards, columns: incomingColumns };
+      // Then stacked for THIS screen before it is shown. The positions in
+      // the document are deliberately not kept up to date for cards in a
+      // column - the index is what travels, because the drawn position
+      // depends on heights this device measured for itself. So a change
+      // from elsewhere has to be laid out again on arrival, or the cards
+      // stay wherever the numbers last happened to say: a column with a
+      // hole in it where a card used to be, and the ones below it hanging
+      // past its bottom edge.
+      setCards((current) => {
+        // Anything changed here since the last write is a local edit that
+        // has not been sent yet - a card just dragged into another
+        // column, with the save still on its 600ms timer. Those keep
+        // ours; everything else takes theirs. Imposing the whole arriving
+        // board instead is what made a card spring back: the drop was
+        // undone by news that left a moment before it happened.
+        const storedNow = new Map(asStored(current, written).map((card) => [card.id, card]));
+        const writtenById = new Map(written.map((card) => [card.id, card]));
+        const mine = new Set(
+          current
+            .filter((card) => {
+              const before = writtenById.get(card.id);
+              return !before || !contentEqual(before, storedNow.get(card.id));
+            })
+            .map((card) => card.id)
+        );
+        const currentById = new Map(current.map((card) => [card.id, card]));
+        const merged = incomingCards.map((card) =>
+          mine.has(card.id) ? currentById.get(card.id) ?? card : card
+        );
+        // A card made here that the other side has not heard of yet.
+        const arrived = new Set(incomingCards.map((card) => card.id));
+        current.forEach((card) => {
+          if (!arrived.has(card.id) && mine.has(card.id)) merged.push(card);
+        });
+        const stacked = reflowColumns(merged, incomingColumns, cardHeightsRef.current);
+        return contentEqual(current, stacked) ? current : stacked;
+      });
+      setColumns((current) => (contentEqual(current, incomingColumns) ? current : incomingColumns));
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    return onSnapshot(doc(db, 'boards', boardId), (snapshot) => {
+      const data = snapshot.data() as
+        | { cards?: unknown; columns?: unknown; connections?: unknown; updatedAt?: number }
+        | undefined;
+      if (!data) return;
+      // The server has spoken, so the shape is no longer in doubt.
+      if (!snapshot.metadata.fromCache) {
+        shapeRef.current =
+          Array.isArray(data.cards) || Array.isArray(data.columns) || Array.isArray(data.connections)
+            ? 'array'
+            : 'keyed';
+      }
+      // Our own write, still on its way to the server: Firestore shows it
+      // locally first, and that reflection is not news from anywhere.
+      if (snapshot.metadata.hasPendingWrites) return;
+      // And our own write coming back settled. Compared for EQUALITY, not
+      // for "older than" - the stamp is made by whichever device wrote
+      // it, and two clocks are never quite the same. Ignoring everything
+      // stamped earlier than our last write would silently ignore the
+      // other device for as long as its clock ran behind.
+      if ((data.updatedAt ?? 0) === lastWriteAtRef.current) return;
+      const incomingCards = readBoardPart<BoardCard>(data.cards);
+      const incomingColumns = readBoardPart<BoardColumn>(data.columns);
+      // A card under the finger must not be yanked out from under it, so
+      // this WAITS rather than dropping. Dropping is what the old rule
+      // did, and Firestore sends each change exactly once - so an update
+      // refused here was gone until the screen was opened again, which is
+      // exactly how it behaved: nothing, then everything on reload.
+      if (draggedCardId || draggingColumnId) {
+        pendingRemoteRef.current = { cards: incomingCards, columns: incomingColumns };
+        return;
+      }
+      applyRemote(incomingCards, incomingColumns);
+    }, listenError('BoardScreen:boards'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, boardId, draggedCardId, draggingColumnId, applyRemote]);
+
+  // The moment the hands are free, whatever waited arrives.
+  useEffect(() => {
+    if (draggedCardId || draggingColumnId) return;
+    const pending = pendingRemoteRef.current;
+    if (!pending) return;
+    pendingRemoteRef.current = null;
+    applyRemote(pending.cards, pending.columns);
+  }, [draggedCardId, draggingColumnId, applyRemote]);
+
+  // One column read as flowing text in the right-hand half - see
+  // BoardColumnDocument. Editing there edits the cards themselves, so
+  // there is nothing to keep in step with anything.
+  const [viewerColumnId, setViewerColumnId] = useState<string | null>(null);
+  // Pulling a group onto this board without going to the groups screen
+  // first. Same two steps as there - which group, then which of its items -
+  // except the board is already known, so the second question never
+  // arises.
+  const { groups, itemsByGroup, titleForItem, labelForItemKind } = useGroupItems();
+  const [groupPickerVisible, setGroupPickerVisible] = useState(false);
+  const [importingGroup, setImportingGroup] = useState<Group | null>(null);
+
+  // "Проект справ" - live columns (see BoardColumn.liveTaskSource's own
+  // comment on why these never become stored BoardCards). Kept entirely
+  // separate from the group-import machinery above: those materialize a
+  // one-time snapshot, this stays live for as long as the column exists.
+  const [liveTasks, setLiveTasks] = useState<BoardTask[]>([]);
+  const [taskProjects, setTaskProjects] = useState<Group[]>([]);
+  const [taskLists, setTaskLists] = useState<BoardTaskList[]>([]);
+  const [taskColumnPickerVisible, setTaskColumnPickerVisible] = useState(false);
+  // Set once a project is tapped in that picker - its own lists (plus
+  // "Весь проект") show next. Cleared to go back to the project list.
+  const [taskColumnProject, setTaskColumnProject] = useState<{ id: string | null; name: string } | null>(null);
+
+  useEffect(() => {
+    return onSnapshot(ownedQuery('tasks'), (snapshot) => {
+      setLiveTasks(
+        snapshot.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            text: (data.text as string) ?? '',
+            checked: !!data.checked,
+            documentId: data.documentId as string,
+            groupId: data.groupId as string | undefined,
+            listId: data.listId as string | undefined,
+          };
+        })
+      );
+    }, listenError('BoardScreen:tasks'));
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(ownedQuery('groups'), (snapshot) => {
+      setTaskProjects(
+        snapshot.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<Group, 'id'>) }))
+          .filter((g) => groupAppliesTo(g, 'task'))
+      );
+    }, listenError('BoardScreen:groups'));
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(ownedQuery('taskLists'), (snapshot) => {
+      setTaskLists(
+        snapshot.docs.map((d) => {
+          const data = d.data();
+          return { id: d.id, name: (data.name as string) ?? '', groupId: data.groupId as string };
+        })
+      );
+    }, listenError('BoardScreen:taskLists'));
+  }, []);
+
+  // Arriving from the document's own "show the board" button: the document
+  // that sent us here opens beside the board it came from.
+  useEffect(() => {
+    if (openDocumentId && isTwoPane) setPaneDocId(openDocumentId);
+  }, [openDocumentId, isTwoPane]);
+
+  function editDocumentCard(card: BoardCard) {
+    if (!card.documentId) return;
+    if (isTwoPane) {
+      setPaneDocId(card.documentId);
+      return;
+    }
+    // The modal-presented registration of the same Editor screen (see
+    // App.tsx) - slides up over the board and swipes back down to it,
+    // rather than the sideways push/pop of a regular stack screen, so
+    // editing feels like it's still happening on the board.
+    navigation.navigate('EditorModal', { documentId: card.documentId });
+  }
+
+  function handleCardTap(card: BoardCard) {
+    const type = card.type ?? 'paragraph';
+    if (card.freeBlock) {
+      startInlineEdit(card.id);
+      return;
+    }
+    // A thought: its own card, the same one as everywhere (ThoughtsHost's reader).
+    if (type === 'thought') {
+      if (card.thoughtId) openThoughtReader(card.thoughtId);
+      return;
+    }
+    if (type === 'paragraph') {
+      setEditingCard(card);
+      setEditingText(card.text);
+    } else if (type === 'board') {
+      // Straight there. push rather than navigate, so walking from one
+      // board into another and back retraces the path - the same
+      // reasoning a note's own card follows.
+      if (card.boardId) {
+        const target = card.boardId;
+        // A board that went to the bin is not walked into: say so instead.
+        getDoc(doc(db, 'boards', target))
+          .then((s) => {
+            if (s.exists() && s.data()?.deletedAt) notify('Ця дошка в кошику', 'Відновіть її, щоб відкрити.');
+            else goBoard('push', target);
+          })
+          .catch(() => goBoard('push', target));
+      }
+    } else if (type === 'document') {
+      // Every board now, not only a day's (2026-10-18, the user's «робимо»): a document is the same paper card that
+      // comes alive in place wherever it lies.
+      if (FEATURES.cardWindow && card.documentId && !embed?.noCardWindow) {
+        // The SAME card becomes live: the window lies exactly over it, at
+        // its size and the board's zoom - unless it is opened out, which
+        // only shows its buttons (too tall to write in on a phone).
+        const zoom = scale.value;
+        const worldW = Number.isFinite(card.width) ? card.width : DEFAULT_CARD_WIDTH;
+        const worldH = card.documentExpanded ? cardHeights.get(card.id) ?? PAPER_DOC_HEIGHT : card.docHeight ?? PAPER_DOC_HEIGHT;
+        const open = {
+          docId: card.documentId,
+          cardId: card.id,
+          title: card.documentTitle || 'Документ',
+          live: !card.documentExpanded,
+          zoom,
+        };
+        const place = () => {
+          cardWorldX.value = card.x;
+          cardWorldY.value = card.y;
+          cardWorldW.value = worldW;
+          winW.value = worldW * zoom;
+          winH.value = worldH * zoom;
+          setWinSize({ w: worldW * zoom, h: worldH * zoom });
+          setCardWindow(open);
+        };
+        measureCanvasOrigin(place);
+        return;
+      }
+      toggleDocumentExpanded(card);
+    } else if (type === 'flashcard') {
+      setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, flashcardOpen: !c.flashcardOpen } : c)));
+    } else if (type === 'link' && card.linkUrl) {
+      // A YouTube/TikTok card plays right here; any other link opens
+      // externally, same split DocumentEditorScreen's own link blocks use.
+      if (getVideoEmbedInfo(card.linkUrl)) {
+        // In the card, not over the whole screen - full screen is one
+        // more press from there (see DraggableCard's own controls).
+        setPlayingCardId((current) => (current === card.id ? null : card.id));
+      } else {
+        Linking.openURL(card.linkUrl).catch(() => {});
+      }
+    }
+  }
+
+  function handleDragStart(id: string) {
+    hapticPickUp();
+    setDraggedCardId(id);
+    // A group drag (see isGroupDrag) already has its own way of moving
+    // several cards together - connection-pull is for a SOLO drag only,
+    // to keep the two mechanisms from having to reconcile with each other.
+    if (!(selectedCardIds.has(id) && selectedCardIds.size > 1)) beginConnectionPull(id);
+  }
+
+  function measureCard(id: string, height: number) {
+    setCardHeights((prev) => {
+      const previous = prev.get(id);
+      // Returning the same Map is what stops measure -> reflow -> layout ->
+      // measure from looping once the height has settled.
+      if (previous !== undefined && Math.abs(previous - height) < 1) return prev;
+      const next = new Map(prev);
+      next.set(id, height);
+      return next;
+    });
+  }
+
+  // Where the card being carried would land right now. Reported from the
+  // drag itself (throttled - see DraggableCard's onHover), so the column
+  // lights up and answers with a tick the moment it catches, instead of
+  // the answer only arriving once the finger lifts.
+  function reportCardHover(id: string, x: number, y: number) {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return;
+    const others = cards.filter((c) => c.id !== id);
+    const centreY = y + heightOf(card, cardHeights) / 2;
+    const target = columnAtPoint(
+      columns,
+      others,
+      cardHeights,
+      x + widthInColumn(card) / 2,
+      centreY,
+      card.columnId
+    );
+    const nextId = target?.id ?? null;
+    if (nextId !== hoverColumnId) {
+      setHoverColumnId(nextId);
+      if (nextId) hapticDrop();
+    }
+  }
+
+  // A picture made bigger. Only the width is kept - the height follows
+  // it, so the picture keeps its shape (cardImageHeight).
+  function commitCardResize(id: string, width: number) {
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, width } : c)));
+  }
+
+  function commitCardDrag(id: string, x: number, y: number) {
+    setHoverColumnId(null);
+    // Read before the update below, while `cards` (this render's own
+    // closure) still holds where the card was BEFORE this drag - nothing
+    // else can have moved it in the meantime, a drag's own live motion
+    // never touches this state until now (see the position registry's
+    // own comment).
+    const before = cards.find((c) => c.id === id);
+    // Out of a SOURCE column (records brought in to plan with), a drag
+    // COPIES: the original goes back where it was, and a copy - with its
+    // line back to the original - lands where the finger let go.
+    // SWITCHED OFF (2026-09-29): every move of an original made a new copy
+    // ("кожне переміщення картки оригіналу ... створює нову копію"). Source
+    // columns behave as plain ones until the database WINDOW replaces them
+    // (the user's next step); «Дублювати» is how a copy is made for now.
+    const fromSource = false as boolean;
+    let copied = false;
+    setCards((prev) => {
+      if (fromSource && before) {
+        const probe = { ...before, x, y };
+        const others = prev.filter((c) => c.id !== id);
+        const target = columnAtPoint(columns, others, cardHeights, x + widthInColumn(probe) / 2, y + heightOf(probe, cardHeights) / 2, undefined);
+        if (!target || target.id !== before.columnId) {
+          copied = true;
+          const copy: BoardCard = {
+            ...releaseFromColumn(before),
+            id: generateId(),
+            x,
+            y,
+            copyOf: before.id,
+            recordId: before.recordId ?? before.id,
+            width: Number.isFinite(before.width) ? before.width : DEFAULT_CARD_WIDTH,
+            ...(target ? { columnId: target.id } : {}),
+          };
+          delete copy.order;
+          if (target) hapticDrop();
+          return reflowColumns([...prev, copy], columns, cardHeights);
+        }
+      }
+      const dropped = prev.map((c) => (c.id === id ? { ...c, x, y } : c));
+      const card = dropped.find((c) => c.id === id);
+      if (!card) return dropped;
+      // Hit-tested against the OTHER cards' membership, so a card being
+      // dragged out of a column doesn't count itself towards that column's
+      // height while deciding whether it landed back inside it.
+      const others = dropped.filter((c) => c.id !== id);
+      const centreY = y + heightOf(card, cardHeights) / 2;
+      const target = columnAtPoint(
+        columns,
+        others,
+        cardHeights,
+        x + widthInColumn(card) / 2,
+        centreY,
+        card.columnId
+      );
+      // Only a card that actually came to rest in a column gets the
+      // "landed" feedback - one dropped on open canvas has nothing to
+      // confirm, same rule the document editor's own drop follows.
+      if (target && card.columnId !== target.id) hapticDrop();
+      const assigned = dropped.map((c) => {
+        if (c.id !== id) return c;
+        if (target) return { ...c, columnId: target.id };
+        return c.columnId ? releaseFromColumn(c) : c;
+      });
+      return reflowColumns(assigned, columns, cardHeights);
+    });
+    setDraggedCardId(null);
+    setSettleTick((t) => t + 1);
+    if (before && !copied) commitConnectionPull(x - before.x, y - before.y);
+    // A free block (or a strip, by its head) let go over a note's card goes
+    // INTO that note - its one home is now the note.
+    if (before?.freeBlock && dropIntoDocument(id, x, y)) return;
+    // Glue last, after the pull has moved whatever rode along: the strips
+    // are laid out from where their heads now stand.
+    if (before?.freeBlock) setCards((prev) => applyGlue(prev, id));
+  }
+
+  // «Нотатка»: the strip a free block is in (or the block alone) becomes a
+  // note of its own, its blocks in order with their kinds; the note's card
+  // takes the strip's place. Named by its first line.
+  async function stripToNote(card: BoardCard) {
+    const strip = card.glueId ? glueMembers(cards, card.glueId) : [card];
+    const filled = strip.filter((m) => m.text?.trim());
+    if (filled.length === 0) return;
+    const head = strip[0];
+    const blocks: Block[] = filled.map((m) => {
+      const b: Block = { id: generateId(), text: m.text ?? '', type: (m.type ?? 'paragraph') as Block['type'], createdAt: m.createdAt ?? Date.now() };
+      if (m.type === 'heading') b.headingLevel = m.headingLevel ?? 2;
+      if ((m.type as string) === 'checkbox') b.checked = !!m.checked;
+      return b;
+    });
+    const title = (filled[0].text ?? '').split('\n')[0].trim().slice(0, 80) || 'Без назви';
+    const now = Date.now();
+    try {
+      // A plain first line (or a heading) IS the title, so it is not kept
+      // twice; a first task or list item stays a row, and only lends its words.
+      const firstIsName = ['paragraph', 'heading'].includes((filled[0].type ?? 'paragraph') as string);
+      const body = firstIsName ? blocks.slice(1) : blocks;
+      const created = await addDoc(documentsCollection, { title, blocks: body, createdAt: now, updatedAt: now });
+      const ids = new Set(strip.map((m) => m.id));
+      const noteCard: BoardCard = {
+        id: generateId(),
+        text: '',
+        type: 'document',
+        createdAt: now,
+        documentId: created.id,
+        documentTitle: title,
+        x: head.x,
+        y: head.y,
+        width: Number.isFinite(head.width) ? head.width : FREE_BLOCK_WIDTH,
+      };
+      clearSelection();
+      setCards((prev) => [...prev.filter((c) => !ids.has(c.id)), noteCard]);
+      hapticDrop();
+    } catch (e) {
+      notify('Нотатка не створилась', (e as Error).message);
+    }
+  }
+
+  // «Розібрати»: a note's card comes apart into a strip of free blocks at its
+  // place, and the note goes to the bin (its blocks live on the board now).
+  // Only a note of text rows: a picture or a table has no free-block form.
+  async function noteToStrip(card: BoardCard) {
+    if (!card.documentId) return;
+    try {
+      const snap = await getDoc(doc(db, 'documents', card.documentId));
+      const data = snap.data() as { title?: string; blocks?: Block[] } | undefined;
+      const all = (data?.blocks ?? []).filter((b) => !!b.text?.trim() || !['paragraph', undefined].includes(b.type));
+      const kinds = new Set(['paragraph', 'heading', 'checkbox', 'bulleted', 'numbered']);
+      if (all.some((b) => !kinds.has((b.type ?? 'paragraph') as string))) {
+        notify('Не розібрати', 'У нотатці є не лише текст (картинка, файл, таблиця…). Розбирати можна нотатку з самих рядків.');
+        return;
+      }
+      if (card.documentId.startsWith('day_')) {
+        notify('Не розібрати', 'Аркуш дня лишається аркушем.');
+        return;
+      }
+      const title = data?.title?.trim();
+      const rows: Block[] = [
+        ...(title && title !== 'Без назви' ? [{ id: generateId(), text: title, type: 'heading' as const, headingLevel: 2 } as Block] : []),
+        ...all,
+      ];
+      if (rows.length === 0) return;
+      const gid = generateId();
+      const width = Number.isFinite(card.width) ? card.width : FREE_BLOCK_WIDTH;
+      const fresh: BoardCard[] = rows.map((b, i) => {
+        const kind = (b.type ?? 'paragraph') === 'numbered' ? 'bulleted' : b.type ?? 'paragraph';
+        const out: BoardCard = {
+          id: generateId(),
+          text: b.text ?? '',
+          type: kind as BoardCard['type'],
+          freeBlock: true,
+          createdAt: b.createdAt ?? Date.now(),
+          x: card.x,
+          y: card.y + i * 40,
+          width,
+          ...(rows.length > 1 ? { glueId: gid, glueOrder: i } : {}),
+        };
+        if (kind === 'heading') out.headingLevel = b.headingLevel ?? 2;
+        if ((kind as string) === 'checkbox') out.checked = !!b.checked;
+        return out;
+      });
+      await updateDoc(doc(db, 'documents', card.documentId), { deletedAt: Date.now() });
+      clearSelection();
+      setCards((prev) => reflowGlue([...prev.filter((c) => c.id !== card.id), ...fresh], cardHeights));
+      hapticDrop();
+    } catch (e) {
+      notify('Не вдалося розібрати', (e as Error).message);
+    }
+  }
+
+  // MOVED INTO A NOTE (the «один дім» rule): the blocks are added to the end
+  // of the note, in order, with their kinds - and leave the board. The
+  // note's write lands in the local cache at once (and syncs later, offline
+  // too), which is why the board lets them go without waiting for the server.
+  function dropIntoDocument(id: string, x: number, y: number): boolean {
+    const card = cards.find((c) => c.id === id);
+    if (!card) return false;
+    const strip = card.glueId ? glueMembers(cards, card.glueId) : [];
+    const isHead = strip.length > 0 && strip[0].id === id;
+    const moving = isHead ? strip : [card];
+    const px = x + (Number.isFinite(card.width) ? card.width : FREE_BLOCK_WIDTH) / 2;
+    const py = y + 12;
+    const target = cards.find(
+      (c) =>
+        c.type === 'document' &&
+        !!c.documentId &&
+        !isHidden(c) &&
+        px >= c.x &&
+        px <= c.x + (Number.isFinite(c.width) ? c.width : DEFAULT_CARD_WIDTH) &&
+        py >= c.y &&
+        py <= c.y + heightOf(c, cardHeights)
+    );
+    if (!target?.documentId) return false;
+    const blocks: Block[] = moving
+      .filter((m) => m.text?.trim())
+      .map((m) => {
+        const b: Block = { id: generateId(), text: m.text ?? '', type: (m.type ?? 'paragraph') as Block['type'], createdAt: m.createdAt ?? Date.now() };
+        if (m.type === 'heading') b.headingLevel = m.headingLevel ?? 2;
+        if (m.type === 'checkbox') b.checked = !!m.checked;
+        return b;
+      });
+    const movingIds = new Set(moving.map((m) => m.id));
+    const leave = () => setCards((prev) => reflowGlue(dropLoneGlue(prev.filter((c) => !movingIds.has(c.id))), cardHeights));
+    if (blocks.length === 0) {
+      leave();
+      return true;
+    }
+    hapticDrop();
+    updateDoc(doc(db, 'documents', target.documentId), { blocks: arrayUnion(...blocks), updatedAt: Date.now() })
+      .catch((e: Error) => notify('Не вдалося перенести в нотатку', e.message));
+    leave();
+    return true;
+  }
+
+  // A free block let go: out of its strip if it was not the head, and onto
+  // the foot of whichever strip (or lone block) it landed under.
+  function applyGlue(prev: BoardCard[], id: string): BoardCard[] {
+    let next = prev;
+    const card = next.find((c) => c.id === id);
+    if (!card) return prev;
+    const ownStrip = card.glueId ? glueMembers(next, card.glueId) : [];
+    const isHead = ownStrip.length > 0 && ownStrip[0].id === id;
+    // What moves together: a head brings its strip, anything else goes alone.
+    let moving: BoardCard[] = isHead ? ownStrip : [card];
+    if (card.glueId && !isHead) {
+      next = next.map((c) => {
+        if (c.id !== id) return c;
+        const out = { ...c };
+        delete out.glueId;
+        delete out.glueOrder;
+        return out;
+      });
+      moving = [next.find((c) => c.id === id)!];
+    }
+    const movingIds = new Set(moving.map((m) => m.id));
+    const top = next.find((c) => c.id === id)!;
+    const radius = GLUE_SNAP_SCREEN / Math.max(0.2, scale.value);
+    const movHeight = moving.reduce((sum, m) => sum + heightOf(m, cardHeights), 0);
+    // The nearest block within the radius, by the corner that would meet: the moving block's top-left to a
+    // block's foot (it goes UNDER it), or the moving strip's foot to a block's top-left (it goes ABOVE it).
+    let best: { target: BoardCard; dist: number; below: boolean } | null = null;
+    for (const t of next) {
+      if (!t.freeBlock || movingIds.has(t.id)) continue;
+      const strip = t.glueId ? glueMembers(next, t.glueId) : [t];
+      if (strip[strip.length - 1].id === t.id) {
+        const d = Math.hypot(top.x - t.x, top.y - (t.y + heightOf(t, cardHeights)));
+        if (d < radius && (!best || d < best.dist)) best = { target: t, dist: d, below: true };
+      }
+      if (strip[0].id === t.id) {
+        const d = Math.hypot(top.x - t.x, top.y + movHeight - t.y);
+        if (d < radius && (!best || d < best.dist)) best = { target: t, dist: d, below: false };
+      }
+    }
+    if (best) {
+      const target = best.target;
+      const gid = target.glueId ?? generateId();
+      const strip = target.glueId ? glueMembers(next, gid) : [target];
+      const assigned = new Map<string, number>();
+      if (best.below) {
+        let order = Math.max(...strip.map((m) => m.glueOrder ?? 0)) + 1;
+        moving.forEach((m) => assigned.set(m.id, order++));
+        // A LONE block that others stick under becomes the head of a strip itself (it carried no glue yet) -
+        // without this the moving blocks were glued to a strip of one, which is no strip and was dropped.
+        if (!target.glueId) assigned.set(target.id, 0);
+      } else {
+        // Above: the moving blocks take the head's place, the target strip follows them.
+        moving.forEach((m, i) => assigned.set(m.id, i));
+        strip.forEach((m, i) => assigned.set(m.id, moving.length + i));
+      }
+      next = next.map((c) => {
+        const o = assigned.get(c.id);
+        if (o === undefined) return c;
+        const out: BoardCard = { ...c, glueId: gid, glueOrder: o };
+        // The new head stands flush on top of the old one: the strip is laid out from it.
+        if (!best!.below && c.id === moving[0].id) {
+          out.x = target.x;
+          out.y = target.y - movHeight;
+          out.width = target.width;
+        }
+        return out;
+      });
+      hapticDrop();
+    }
+    return reflowGlue(dropLoneGlue(next), cardHeights);
+  }
+
+  // «Дублювати»: a copy of this card beside it, tied to it by the line
+  // every copy keeps (see BoardCard.copyOf) - to put one car into Monday
+  // AND Thursday.
+  function duplicateCard(card: BoardCard) {
+    duplicateCards([card], 28);
+  }
+
+  function duplicateCards(originals: BoardCard[], offset: number) {
+    if (originals.length === 0) return;
+    const copies = originals.map((card) => {
+      const copy: BoardCard = {
+        ...releaseFromColumn(card),
+        id: generateId(),
+        x: card.x + offset,
+        y: card.y + offset,
+        recordId: card.recordId ?? card.id,
+        // The card it was made FROM - a copy of a copy draws its line to
+        // that copy, not to the first card (the count is by record, so it
+        // does not change).
+        copyOf: card.id,
+        createdAt: Date.now(),
+        width: Number.isFinite(card.width) ? card.width : DEFAULT_CARD_WIDTH,
+      };
+      delete copy.order;
+      return copy;
+    });
+    setCards((prev) => reflowColumns([...prev, ...copies], columns, cardHeights));
+    hapticDrop();
+    return copies;
+  }
+
+  // Dragging any one selected card moves the whole selection - see
+  // DraggableCard's isGroupDrag branch, which accumulates the shared delta
+  // instead of moving just itself. A group drag deliberately doesn't do any
+  // column assignment: several cards landing across different columns at
+  // once has no obvious right answer, and reflow would yank them apart
+  // mid-gesture.
+  function commitGroupDrag(dx: number, dy: number) {
+    setHoverColumnId(null);
+    setCards((prev) => prev.map((c) => (selectedCardIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    setDraggedCardId(null);
+  }
+
+  function addColumn() {
+    setColumns((prev) => {
+      const centre = viewCenter();
+      const x =
+        prev.length === 0
+          ? centre.x - COLUMN_WIDTH / 2
+          : Math.max(...prev.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
+      const y = prev.length === 0 ? centre.y - COLUMN_MIN_HEIGHT / 2 : prev[0].y;
+      return [...prev, { id: generateId(), title: `Стовпчик ${prev.length + 1}`, x, y }];
+    });
+    setAddSheetVisible(false);
+  }
+
+  // A ROW OF COLUMNS of any length. One to begin with, and a «+» at its end
+  // for the next - "створюється один, біля нього є плюсик додати ще
+  // один". Each has its own name; they stay close and move together.
+  function addStrip() {
+    setColumns((prev) => {
+      const centre = viewCenter();
+      const x =
+        prev.length === 0
+          ? centre.x - COLUMN_WIDTH / 2
+          : Math.max(...prev.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
+      const y = prev.length === 0 ? centre.y - COLUMN_MIN_HEIGHT / 2 : prev[0].y;
+      return [...prev, { id: generateId(), title: 'Стовпчик 1', x, y, strip: { id: generateId() } }];
+    });
+    setAddSheetVisible(false);
+  }
+  function addStripColumn(stripId: string) {
+    setColumns((prev) => {
+      const mine = prev.filter((c) => c.strip?.id === stripId);
+      if (mine.length === 0) return prev;
+      const last = mine.reduce((a, b) => (b.x > a.x ? b : a));
+      return [
+        ...prev,
+        { id: generateId(), title: `Стовпчик ${mine.length + 1}`, x: last.x + COLUMN_WIDTH + WEEK_COLUMN_GAP, y: last.y, strip: { id: stripId } },
+      ];
+    });
+  }
+  // Left to right, close together again from where the row starts: run
+  // after a column is taken out or moved along, with the cards of every
+  // column that shifted carried the same way.
+  function relayoutStrip(stripId: string, list: BoardColumn[]): { columns: BoardColumn[]; shifts: Map<string, number> } {
+    const mine = list.filter((c) => c.strip?.id === stripId).sort((a, b) => a.x - b.x);
+    const shifts = new Map<string, number>();
+    if (mine.length === 0) return { columns: list, shifts };
+    const startX = Math.min(...mine.map((c) => c.x));
+    const placed = new Map<string, number>();
+    mine.forEach((c, index) => {
+      const x = startX + index * (COLUMN_WIDTH + WEEK_COLUMN_GAP);
+      placed.set(c.id, x);
+      if (x !== c.x) shifts.set(c.id, x - c.x);
+    });
+    return { columns: list.map((c) => (placed.has(c.id) ? { ...c, x: placed.get(c.id) as number } : c)), shifts };
+  }
+  function applyShifts(shifts: Map<string, number>) {
+    if (shifts.size === 0) return;
+    setCards((prev) => prev.map((c) => (c.columnId && shifts.has(c.columnId) ? { ...c, x: c.x + (shifts.get(c.columnId) as number) } : c)));
+  }
+  // «Ліворуч / Праворуч»: the column trades places with its neighbour.
+  function moveStripColumn(column: BoardColumn, direction: -1 | 1) {
+    const stripId = column.strip?.id;
+    if (!stripId) return;
+    const ordered = columns.filter((c) => c.strip?.id === stripId).sort((a, b) => a.x - b.x);
+    const index = ordered.findIndex((c) => c.id === column.id);
+    const neighbour = ordered[index + direction];
+    if (index === -1 || !neighbour) return;
+    const swapped = columns.map((c) => (c.id === column.id ? { ...c, x: neighbour.x } : c.id === neighbour.id ? { ...c, x: column.x } : c));
+    const shifts = new Map<string, number>([
+      [column.id, neighbour.x - column.x],
+      [neighbour.id, column.x - neighbour.x],
+    ]);
+    setColumns(swapped);
+    applyShifts(shifts);
+  }
+
+  // A WEEK: seven columns side by side, close together, starting from this
+  // week's Monday - the start date is theirs to change (openWeekMenu).
+  function addWeek() {
+    setColumns((prev) => {
+      const centre = viewCenter();
+      const x0 =
+        prev.length === 0
+          ? centre.x - (COLUMN_WIDTH * 7 + WEEK_COLUMN_GAP * 6) / 2
+          : Math.max(...prev.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
+      const y = prev.length === 0 ? centre.y - COLUMN_MIN_HEIGHT / 2 : prev[0].y;
+      const today = new Date();
+      const start = dateKey(addDays(today, -mondayIndex(today)));
+      const weekId = generateId();
+      const days: BoardColumn[] = Array.from({ length: 7 }, (_, index) => ({
+        id: generateId(),
+        title: weekDayTitle({ id: weekId, index, start }),
+        x: x0 + index * (COLUMN_WIDTH + WEEK_COLUMN_GAP),
+        y,
+        week: { id: weekId, index, start },
+      }));
+      return [...prev, ...days];
+    });
+    setAddSheetVisible(false);
+  }
+
+  // ---- DATABASE WINDOWS -------------------------------------------------
+  // Floating windows over the board, each holding one database open (see
+  // BoardDatabaseWindow). Kept in the board document's own `dbWindows`
+  // field - apart from the keyed parts the card sync guards - and written
+  // after a short pause, so dragging a window is not a write per frame.
+  const [dbWindows, setDbWindows] = useState<BoardDbWindow[]>([]);
+  const dbWindowsJson = useRef('[]');
+  useEffect(() => {
+    if (!isLoaded) return;
+    return onSnapshot(doc(db, 'boards', boardId), (snapshot) => {
+      if (snapshot.metadata.hasPendingWrites) return;
+      const incoming = (snapshot.data()?.dbWindows as BoardDbWindow[] | undefined) ?? [];
+      const json = JSON.stringify(incoming);
+      if (json === dbWindowsJson.current) return;
+      dbWindowsJson.current = json;
+      setDbWindows(incoming);
+    }, listenError('BoardScreen:dbWindows'));
+  }, [isLoaded, boardId]);
+  useEffect(() => {
+    if (!isLoaded) return;
+    const json = JSON.stringify(dbWindows);
+    if (json === dbWindowsJson.current) return;
+    const timer = setTimeout(() => {
+      dbWindowsJson.current = json;
+      updateDoc(doc(db, 'boards', boardId), { dbWindows }).catch((e: Error) => notify('Вікно бази не збереглося', e.message));
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [dbWindows, isLoaded, boardId]);
+  function patchWindow(id: string, patch: Partial<BoardDbWindow>) {
+    // One side panel at a time: pinning a window lets go of the others.
+    setDbWindows((prev) =>
+      prev.map((w) => (w.id === id ? { ...w, ...patch } : patch.docked ? { ...w, docked: false } : w))
+    );
+  }
+
+  // Closing a database window asks first (its chosen records, filters and field settings go with it).
+  async function closeDbWindow(id: string) {
+    const yes = await confirm({
+      title: 'Закрити вікно бази?',
+      message: 'Вибрані записи, фільтри й налаштування полів для цього вікна зникнуть. Картки на дошці лишаться.',
+      confirmLabel: 'Закрити',
+    });
+    if (!yes) return;
+    setDbWindows((prev) => prev.filter((x) => x.id !== id));
+    setPanelTab((t) => (t === `db:${id}` ? 'insert' : t));
+  }
+
+  function openDatabaseWindow(databaseId: string) {
+    const open = dbWindows.length;
+    const windowId = generateId();
+    setDbWindows((prev) => [
+      ...prev,
+      { id: windowId, databaseId, chosen: null, x: Math.max(8, viewport.width - 316 - open * 24), y: 110 + open * 24 },
+    ]);
+    // On the Mac the window is a tab of the right panel: show it.
+    if (macBoard) {
+      setDbChoices(null);
+      setPanelTab(`db:${windowId}`);
+      inspector.set(true);
+    }
+  }
+
+  async function addDatabaseWindow() {
+    setAddSheetVisible(false);
+    try {
+      const databasesSnap = await getDocs(ownedQuery('customDatabases'));
+      const databases = databasesSnap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabase, 'id'>) }))
+        .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')));
+      if (databases.length === 0) {
+        notify('Ще немає баз', 'Створіть власну базу у «Базах» - і її можна буде відкрити тут вікном.');
+        return;
+      }
+      // On the Mac the choice is a tab of the right panel, not a list window over the app.
+      if (macBoard) {
+        setDbChoices(databases.map((d) => ({ id: d.id, name: d.name || 'Без назви' })));
+        return;
+      }
+      const databaseId = await ask({
+        title: 'Яку базу відкрити вікном?',
+        actions: databases.map((d) => ({ id: d.id, label: d.name || 'Без назви', icon: 'grid-outline' as const })),
+      });
+      if (!databaseId || databaseId === 'cancel') return;
+      openDatabaseWindow(databaseId);
+    } catch (e) {
+      notify('Не вдалося відкрити базу', (e as Error).message);
+    }
+  }
+
+  // How many cards each record already has on the board - the count on the
+  // window's rows. A card IS its record (id) or points at it (recordId).
+  const placedByRecord = new Map<string, number>();
+  for (const card of cards) {
+    if (card.type !== 'dbRow') continue;
+    const key = card.recordId ?? card.id;
+    placedByRecord.set(key, (placedByRecord.get(key) ?? 0) + 1);
+  }
+
+  // A record put on the board from a window: where the finger let go (a
+  // screen point), or the middle of what is on screen. Into the column
+  // under it, if there is one.
+  function placeRecord(block: Block, at: { x: number; y: number } | null, respond?: (accepted: boolean) => void) {
+    const put = (world: { x: number; y: number }, jitter: number) => {
+      const card: BoardCard = {
+        ...(block as unknown as BoardCard),
+        id: generateId(),
+        recordId: block.id,
+        createdAt: Date.now(),
+        width: DEFAULT_CARD_WIDTH,
+        x: world.x - DEFAULT_CARD_WIDTH / 2 + jitter,
+        y: world.y - APPROX_CARD_HEIGHT / 2 + jitter,
+      };
+      const target = columnAtPoint(columns, cards, cardHeights, world.x, world.y, undefined);
+      if (target) card.columnId = target.id;
+      setCards((prev) => reflowColumns([...prev, card], columns, cardHeights));
+      respond?.(true);
+    };
+    if (!at) {
+      put(viewCenter(), Math.round((Math.random() - 0.5) * 60));
+      return;
+    }
+    const node = canvasRef.current;
+    if (!node) {
+      respond?.(false);
+      return;
+    }
+    node.measureInWindow((ox, oy, width, height) => {
+      const lx = at.x - ox;
+      const ly = at.y - oy;
+      // Let go outside the canvas (over the window itself, say): nothing.
+      if (lx < 0 || ly < 0 || lx > width || ly > height) {
+        respond?.(false);
+        return;
+      }
+      put(
+        {
+          x: (lx - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER,
+          y: (ly - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER,
+        },
+        0
+      );
+    });
+  }
+
+  // While a row is carried, the column it would fall into lights up.
+  const carryOrigin = useRef<{ x: number; y: number } | null>(null);
+  function carryMove(screenX: number, screenY: number) {
+    const node = canvasRef.current;
+    if (!node) return;
+    const apply = (ox: number, oy: number) => {
+      const wx = (screenX - ox - viewport.width / 2 - translateX.value) / scale.value + WORLD_CENTER;
+      const wy = (screenY - oy - viewport.height / 2 - translateY.value) / scale.value + WORLD_CENTER;
+      setHoverColumnId(columnAtPoint(columns, cards, cardHeights, wx, wy, undefined)?.id ?? null);
+    };
+    if (carryOrigin.current) apply(carryOrigin.current.x, carryOrigin.current.y);
+    else
+      node.measureInWindow((ox, oy) => {
+        carryOrigin.current = { x: ox, y: oy };
+        apply(ox, oy);
+      });
+  }
+  function carryEnd() {
+    carryOrigin.current = null;
+    setHoverColumnId(null);
+  }
+
+  // "Where is this record?" - every card of it lit, the rest dimmed for a
+  // moment, and the board brought round to them.
+  const [findRecordId, setFindRecordId] = useState<string | null>(null);
+  const findTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function findRecord(recordId: string) {
+    const mine = cards.filter((c) => c.type === 'dbRow' && (c.recordId ?? c.id) === recordId);
+    if (mine.length === 0) return;
+    setFindRecordId(recordId);
+    if (findTimer.current) clearTimeout(findTimer.current);
+    findTimer.current = setTimeout(() => setFindRecordId(null), 3500);
+    const xs = mine.map((c) => c.x);
+    const ys = mine.map((c) => c.y);
+    const centerX = (Math.min(...xs) + Math.max(...xs) + DEFAULT_CARD_WIDTH) / 2;
+    const centerY = (Math.min(...ys) + Math.max(...ys) + APPROX_CARD_HEIGHT) / 2;
+    translateX.value = withTiming(-(centerX - WORLD_CENTER) * scale.value, { duration: 320 });
+    translateY.value = withTiming(-(centerY - WORLD_CENTER) * scale.value, { duration: 320 });
+  }
+  // THE ORIGIN LINES: every card of a record but the first is tied to the
+  // card it was copied from (copyOf) - a copy of a copy to that copy, the
+  // user's own proposal - or, where that one is gone, to the first -
+  // "перша картка ... стає оригіналом" (the window is a catalogue,
+  // not an original). Worked out from the cards themselves rather than
+  // stored, so taking the first one away simply makes the next one the
+  // original, and no line can be left pointing at nothing.
+  const originLinks: { from: string; to: string }[] = [];
+  const hiddenOriginLinks: { from: string; to: string }[] = [];
+  const hiddenLinkDatabases = new Set(dbWindows.filter((w) => w.hideLinks).map((w) => w.databaseId));
+  {
+    const groups = new Map<string, BoardCard[]>();
+    for (const card of cards) {
+      if (card.type !== 'dbRow') continue;
+      const key = `${card.dbRowDatabaseId ?? ''}:${card.recordId ?? card.id}`;
+      groups.set(key, [...(groups.get(key) ?? []), card]);
+    }
+    groups.forEach((members) => {
+      if (members.length < 2) return;
+      const ordered = members
+        .map((card, index) => ({ card, index }))
+        .sort((a, b) => (a.card.createdAt ?? 0) - (b.card.createdAt ?? 0) || a.index - b.index);
+      const anchor = ordered[0].card;
+      // Not drawn while this database's window says so (BoardDbWindow.
+      // hideLinks); isolation still follows them (connectedComponent).
+      if (hiddenLinkDatabases.has(anchor.dbRowDatabaseId ?? '')) {
+        members.forEach((m) => {
+          if (m.id !== anchor.id) hiddenOriginLinks.push({ from: anchor.id, to: m.id });
+        });
+        return;
+      }
+      const here = new Set(members.map((m) => m.id));
+      // Each copy to the card it was made from, while that one is still on
+      // the board; otherwise (and for copies made before this was kept) to
+      // the first card of the record.
+      ordered.slice(1).forEach(({ card }) => {
+        const parent = card.copyOf && card.copyOf !== card.id && here.has(card.copyOf) ? card.copyOf : anchor.id;
+        originLinks.push({ from: parent, to: card.id });
+      });
+    });
+  }
+  const findIds = findRecordId
+    ? new Set(cards.filter((c) => c.type === 'dbRow' && (c.recordId ?? c.id) === findRecordId).map((c) => c.id))
+    : null;
+
+  // A plain column's menu - what a tap on its header opens. It was a
+  // rename on a tap and a delete on a HOLD, and the hold lost its race
+  // with the tap and the drag often enough that the column could not be
+  // taken off the board at all ("навіть не можу видалити ... сам
+  // стовпчик"). Both are now a visible choice.
+  async function openColumnMenu(column: BoardColumn) {
+    const inRow = column.strip
+      ? columns.filter((c) => c.strip?.id === column.strip!.id).sort((a, b) => a.x - b.x)
+      : [];
+    const position = inRow.findIndex((c) => c.id === column.id);
+    const choice = await ask({
+      title: column.title || 'Стовпчик',
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        ...(position > 0 ? [{ id: 'left', label: 'Пересунути ліворуч', icon: 'chevron-back' as const }] : []),
+        ...(position !== -1 && position < inRow.length - 1
+          ? [{ id: 'right', label: 'Пересунути праворуч', icon: 'chevron-forward' as const }]
+          : []),
+        { id: 'delete', label: 'Видалити стовпчик', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'rename') setRenamingColumn(column);
+    else if (choice === 'left') moveStripColumn(column, -1);
+    else if (choice === 'right') moveStripColumn(column, 1);
+    else if (choice === 'delete') confirmDeleteColumn(column);
+  }
+
+  // The week's own menu - what a tap on any of its seven headers opens.
+  const [weekDateEditing, setWeekDateEditing] = useState<{ weekId: string; start: string } | null>(null);
+  function setWeekStart(weekId: string, start: string) {
+    setColumns((prev) =>
+      prev.map((c) => (c.week?.id === weekId ? { ...c, week: { ...c.week, start }, title: weekDayTitle({ ...c.week, start }) } : c))
+    );
+  }
+  async function openWeekMenu(column: BoardColumn) {
+    const week = column.week;
+    if (!week) return;
+    const startDate = parseDateKey(week.start);
+    const first = weekDayTitle({ ...week, index: 0 });
+    const last = weekDayTitle({ ...week, index: 6 });
+    const choice = await ask({
+      title: 'Тиждень',
+      message: `${first} - ${last}`,
+      actions: [
+        { id: 'prev', label: 'На тиждень раніше', icon: 'chevron-back' },
+        { id: 'next', label: 'На тиждень пізніше', icon: 'chevron-forward' },
+        { id: 'this', label: 'З цього понеділка', icon: 'today-outline' },
+        { id: 'date', label: 'Інша дата початку…', icon: 'calendar-outline' },
+        { id: 'delete', label: 'Видалити тиждень', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'prev') setWeekStart(week.id, dateKey(addDays(startDate, -7)));
+    else if (choice === 'next') setWeekStart(week.id, dateKey(addDays(startDate, 7)));
+    else if (choice === 'this') {
+      const today = new Date();
+      setWeekStart(week.id, dateKey(addDays(today, -mondayIndex(today))));
+    } else if (choice === 'date') setWeekDateEditing({ weekId: week.id, start: week.start });
+    else if (choice === 'delete') confirmDeleteWeek(column);
+  }
+  async function confirmDeleteWeek(column: BoardColumn) {
+    const weekId = column.week?.id;
+    if (!weekId) return;
+    const yes = await confirm({
+      title: 'Видалити тиждень?',
+      message: 'Сім стовпчиків зникнуть, картки з них залишаться на дошці.',
+      confirmLabel: 'Видалити',
+    });
+    if (!yes) return;
+    setColumns((prev) => prev.filter((c) => c.week?.id !== weekId));
+  }
+  // "дд.мм.рррр" -> YYYY-MM-DD, or null.
+  function parseTypedDate(text: string): string | null {
+    const m = /^\s*(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})\s*$/.exec(text);
+    if (!m) return null;
+    const year = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    const date = new Date(year, Number(m[2]) - 1, Number(m[1]));
+    if (Number.isNaN(date.getTime()) || date.getDate() !== Number(m[1])) return null;
+    return dateKey(date);
+  }
+
+  // One or several live task columns at once (see BoardColumn.
+  // liveTaskSource) - "Весь проект" adds one per list in a single batch,
+  // so each one still needs to know about the others just added, not only
+  // about `columns` as it stood before the tap. Same positioning rule as
+  // addColumn - each new one lands to the right of the last.
+  function addLiveTaskColumns(entries: { title: string; source: NonNullable<BoardColumn['liveTaskSource']> }[]) {
+    setColumns((prev) => {
+      const next = [...prev];
+      const centre = viewCenter();
+      entries.forEach(({ title, source }) => {
+        const x =
+          next.length === 0
+            ? centre.x - COLUMN_WIDTH / 2
+            : Math.max(...next.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
+        const y = next.length === 0 ? centre.y - COLUMN_MIN_HEIGHT / 2 : next[0].y;
+        next.push({ id: generateId(), title, x, y, liveTaskSource: source });
+      });
+      return next;
+    });
+    setAddSheetVisible(false);
+    setTaskColumnPickerVisible(false);
+    setTaskColumnProject(null);
+  }
+
+  // "Весь проект" - one column per list, the user's own call, plus one
+  // more for whatever's left with no list (only if that bucket actually
+  // has something in it, or there were no lists at all to begin with -
+  // never an empty column just for the sake of covering every case).
+  function insertWholeTaskProject() {
+    if (!taskColumnProject) return;
+    const projectId = taskColumnProject.id;
+    const listsHere = taskLists.filter((l) => l.groupId === projectId);
+    const entries: { title: string; source: NonNullable<BoardColumn['liveTaskSource']> }[] = listsHere.map(
+      (list) => ({ title: list.name, source: { kind: 'list' as const, listId: list.id } })
+    );
+    const hasUnlisted = liveTasks.some((t) => (t.groupId ?? null) === projectId && !t.listId);
+    if (hasUnlisted || listsHere.length === 0) {
+      entries.push({
+        title: listsHere.length === 0 ? taskColumnProject.name : `${taskColumnProject.name} · Без списку`,
+        source: { kind: 'projectUnlisted', groupId: projectId },
+      });
+    }
+    addLiveTaskColumns(entries);
+  }
+
+  function insertOneTaskList(list: BoardTaskList) {
+    addLiveTaskColumns([{ title: list.name, source: { kind: 'list', listId: list.id } }]);
+  }
+
+  // The checkbox on a live task row - the SAME dual write TasksScreen's
+  // own toggleTask does (the tasks/{id} mirror doc, and the matching
+  // block inside the source document), so checking it here really does
+  // complete the real task, not just this board's own idea of it.
+  async function toggleLiveTask(task: BoardTask) {
+    const newChecked = !task.checked;
+    hapticToggle(newChecked);
+    updateDoc(doc(db, 'tasks', task.id), { checked: newChecked });
+    const documentRef = doc(db, 'documents', task.documentId);
+    const snapshot = await getDoc(documentRef);
+    const data = snapshot.data();
+    if (!data) return;
+    const blocks: Block[] = data.blocks ?? [];
+    const updatedBlocks = blocks.map((b) => (b.id === task.id ? { ...b, checked: newChecked } : b));
+    updateDoc(documentRef, { blocks: updatedBlocks });
+  }
+
+  // Which live tasks belong in this column right now - recomputed every
+  // render straight from `liveTasks`, never stored (see BoardColumn.
+  // liveTaskSource's own comment on why).
+  function tasksForColumn(column: BoardColumn): BoardTask[] {
+    const source = column.liveTaskSource;
+    if (!source) return [];
+    if (source.kind === 'list') return liveTasks.filter((t) => t.listId === source.listId);
+    return liveTasks.filter((t) => (t.groupId ?? null) === source.groupId && !t.listId);
+  }
+
+  // Tapping the card itself (not its checkbox) - "тільки відмічати
+  // виконання" on the board means anything more than that sends you to
+  // Tasks, where the row opens already expanded.
+  function openLiveTask(task: BoardTask) {
+    navigation.navigate('Tasks', { focusTaskId: task.id });
+  }
+
+  // Both the column and its cards take the drag's own delta, so nothing
+  // has to be recomputed from the column's new origin - and the reflow
+  // effect that follows (columns changed) lands on the same positions,
+  // which is what keeps the drop from visibly nudging anything.
+  function commitColumnDrag(id: string, dx: number, dy: number) {
+    // A day of a week takes its whole week along - the seven are one piece.
+    const moving = columnsMovingWith(id);
+    setColumns((prev) => prev.map((c) => (moving.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    setCards((prev) => prev.map((c) => (c.columnId && moving.has(c.columnId) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    setDraggingColumnId(null);
+  }
+  function columnsMovingWith(id: string | null): Set<string> {
+    if (!id) return new Set();
+    const column = columns.find((c) => c.id === id);
+    if (column?.week) return new Set(columns.filter((c) => c.week?.id === column.week!.id).map((c) => c.id));
+    if (column?.strip) return new Set(columns.filter((c) => c.strip?.id === column.strip!.id).map((c) => c.id));
+    return new Set([id]);
+  }
+  // What moves while a column is dragged - the column, or its whole week.
+  const movingColumnIds = columnsMovingWith(draggingColumnId);
+
+  function renameColumn(column: BoardColumn, title: string) {
+    setColumns((prev) => prev.map((c) => (c.id === column.id ? { ...c, title: title.trim() || c.title } : c)));
+    setRenamingColumn(null);
+  }
+
+  // This screen used to draw its own confirmation window, because the
+  // system's white dialog stood out against the board's dark glass. Now
+  // «Питання» looks like the board does, so there is nothing left to
+  // work around.
+  async function confirmDeleteColumn(column: BoardColumn) {
+    // A live column has nothing to leave behind - its rows were never
+    // stored (see BoardColumn.liveTaskSource) - so the usual "cards stay
+    // on the board" reassurance would be actively wrong here, and the
+    // real tasks themselves are obviously untouched either way.
+    const yes = await confirm({
+      title: 'Видалити стовпчик?',
+      message: column.liveTaskSource
+        ? 'Самі справи нікуди не подінуться - лише перестануть показуватись на цій дошці.'
+        : 'Картки з нього залишаться на дошці.',
+      confirmLabel: 'Видалити',
+    });
+    if (!yes) return;
+    // Cards keep the position the column had them in - the reflow effect
+    // below strips the now-dangling columnId when `columns` changes.
+    const stripId = column.strip?.id;
+    const rest = columns.filter((c) => c.id !== column.id);
+    if (stripId) {
+      // A row closes up over the gap instead of leaving a hole.
+      const { columns: closed, shifts } = relayoutStrip(stripId, rest);
+      setColumns(closed);
+      applyShifts(shifts);
+    } else {
+      setColumns(rest);
+    }
+  }
+
+  function addContainer() {
+    setContainers((prev) => {
+      // The RIGHT edge of the rightmost container, not its left one - a
+      // container's width varies (resizable, and wider than the default
+      // once anyone drags its grip), so landing a fixed distance past
+      // its own x, the way a column's fixed-width own math does, put
+      // every new one deep inside the one before it: "області в дошці
+      // створюються одна на одній".
+      const x =
+        prev.length === 0
+          ? viewCenter().x - CONTAINER_DEFAULT_WIDTH / 2
+          : Math.max(...prev.map((c) => c.x + (c.width ?? DEFAULT_CARD_WIDTH))) + CONTAINER_SPACING;
+      const y = prev.length === 0 ? viewCenter().y - CONTAINER_DEFAULT_HEIGHT / 2 : prev[0].y;
+      return [
+        ...prev,
+        {
+          id: generateId(),
+          title: `Область ${prev.length + 1}`,
+          x,
+          y,
+          width: CONTAINER_DEFAULT_WIDTH,
+          height: CONTAINER_DEFAULT_HEIGHT,
+        },
+      ];
+    });
+    setAddSheetVisible(false);
+  }
+
+  function renameContainer(container: BoardContainer, title: string) {
+    setContainers((prev) => prev.map((c) => (c.id === container.id ? { ...c, title: title.trim() || c.title } : c)));
+    setRenamingContainer(null);
+  }
+
+  async function confirmDeleteContainer(container: BoardContainer) {
+    // Two questions, not one - "повинне бути запитання видалити
+    // область і потім видалити чи залишити об'єкти області": deleting
+    // the frame and deleting what's in it are two different things, and
+    // "Видалити" alone used to always mean only the first.
+    const choice = await ask({
+      title: 'Видалити область?',
+      message: 'Що зробити з обʼєктами всередині неї?',
+      actions: [
+        { id: 'keep', label: 'Залишити обʼєкти на дошці' },
+        { id: 'deleteAll', label: 'Видалити разом з обʼєктами', tone: 'danger' },
+      ],
+    });
+    if (choice === 'cancel') return;
+    const { cardIds, shapeIds } = containerMembersAt(container);
+    setContainers((prev) => prev.filter((c) => c.id !== container.id));
+    if (choice === 'deleteAll') {
+      if (cardIds.size > 0) setCards((prev) => prev.filter((c) => !cardIds.has(c.id)));
+      if (shapeIds.size > 0) setShapes((prev) => prev.filter((sh) => !shapeIds.has(sh.id)));
+    }
+  }
+
+  function resizeContainer(id: string, width: number, height: number) {
+    setContainers((prev) =>
+      prev.map((c) =>
+        c.id === id ? { ...c, width: clampContainerWidth(width), height: clampContainerHeight(height) } : c
+      )
+    );
+  }
+
+  function stepContainerTextSize(container: BoardContainer, dir: 1 | -1) {
+    const current = container.fontSize ?? SHAPE_LABEL_SIZE_DEFAULT;
+    const next = stepTextSize(current, dir);
+    setContainers((prev) => prev.map((c) => (c.id === container.id ? { ...c, fontSize: next } : c)));
+  }
+
+  // LAYERS - see BoardLayer. Purely organisational: a card/shape/
+  // container names its layer by id, nothing here has a position of its
+  // own.
+  const layersById = useMemo(() => {
+    const map = new Map<string, BoardLayer>();
+    layers.forEach((l) => map.set(l.id, l));
+    return map;
+  }, [layers]);
+
+  // Hidden if the object says so itself, OR its own layer does - either
+  // one is enough (see BoardCard's own `hidden` comment).
+  function isHidden(obj: { hidden?: boolean; layerId?: string }): boolean {
+    return !!obj.hidden || (!!obj.layerId && !!layersById.get(obj.layerId)?.hidden);
+  }
+  // Lock only ever comes from the LAYER - there is no per-object lock,
+  // on purpose: an object is either free or it is filed somewhere that
+  // protects it, never protected on its own.
+  function isLocked(obj: { layerId?: string }): boolean {
+    return !!obj.layerId && !!layersById.get(obj.layerId)?.locked;
+  }
+  // For the connections loop, which only has an id on each end and has
+  // to ask across all three kinds of node.
+  function isObjectHiddenById(id: string): boolean {
+    const card = cardById.get(id);
+    if (card) return isHidden(card);
+    const shape = shapes.find((s) => s.id === id);
+    if (shape) return isHidden(shape);
+    const container = containers.find((c) => c.id === id);
+    if (container) return isHidden(container);
+    return false;
+  }
+
+  function addLayer() {
+    setLayers((prev) => [...prev, { id: generateId(), name: `Шар ${prev.length + 1}` }]);
+  }
+
+  function renameLayerTo(layer: BoardLayer, name: string) {
+    const trimmed = name.trim();
+    if (trimmed) setLayers((prev) => prev.map((l) => (l.id === layer.id ? { ...l, name: trimmed } : l)));
+    setRenamingLayer(null);
+  }
+
+  function toggleLayerHidden(layer: BoardLayer) {
+    setLayers((prev) => prev.map((l) => (l.id === layer.id ? { ...l, hidden: !l.hidden } : l)));
+  }
+
+  function toggleLayerLocked(layer: BoardLayer) {
+    setLayers((prev) => prev.map((l) => (l.id === layer.id ? { ...l, locked: !l.locked } : l)));
+  }
+
+  async function confirmDeleteLayer(layer: BoardLayer) {
+    const yes = await confirm({
+      title: 'Видалити шар?',
+      message: `Обʼєкти з шару "${layer.name}" стануть без шару.`,
+      confirmLabel: 'Видалити',
+    });
+    if (!yes) return;
+    setLayers((prev) => prev.filter((l) => l.id !== layer.id));
+    setCards((prev) =>
+      prev.map((c) => {
+        if (c.layerId !== layer.id) return c;
+        const { layerId: _drop, ...rest } = c;
+        return rest;
+      })
+    );
+    setShapes((prev) =>
+      prev.map((sh) => {
+        if (sh.layerId !== layer.id) return sh;
+        const { layerId: _drop, ...rest } = sh;
+        return rest;
+      })
+    );
+    setContainers((prev) =>
+      prev.map((c) => {
+        if (c.layerId !== layer.id) return c;
+        const { layerId: _drop, ...rest } = c;
+        return rest;
+      })
+    );
+  }
+
+  // What the layers drawer's own list carries - a flat id across all
+  // three kinds, since the drawer shows them side by side.
+  type LayerMember = { kind: 'card' | 'shape' | 'container' | 'column'; id: string };
+
+  function setObjectLayer(member: LayerMember, layerId: string | null) {
+    const apply = <T extends { layerId?: string }>(item: T): T => {
+      if (layerId) return { ...item, layerId };
+      const { layerId: _drop, ...rest } = item;
+      return rest as T;
+    };
+    if (member.kind === 'card') setCards((prev) => prev.map((c) => (c.id === member.id ? apply(c) : c)));
+    else if (member.kind === 'shape') setShapes((prev) => prev.map((sh) => (sh.id === member.id ? apply(sh) : sh)));
+    else if (member.kind === 'container') setContainers((prev) => prev.map((c) => (c.id === member.id ? apply(c) : c)));
+    else setColumns((prev) => prev.map((c) => (c.id === member.id ? apply(c) : c)));
+  }
+
+  function toggleObjectHidden(member: LayerMember) {
+    if (member.kind === 'card') {
+      setCards((prev) => prev.map((c) => (c.id === member.id ? { ...c, hidden: !c.hidden } : c)));
+    } else if (member.kind === 'shape') {
+      setShapes((prev) => prev.map((sh) => (sh.id === member.id ? { ...sh, hidden: !sh.hidden } : sh)));
+    } else if (member.kind === 'container') {
+      setContainers((prev) => prev.map((c) => (c.id === member.id ? { ...c, hidden: !c.hidden } : c)));
+    } else {
+      setColumns((prev) => prev.map((c) => (c.id === member.id ? { ...c, hidden: !c.hidden } : c)));
+    }
+  }
+
+  // "Показати на дошці" - the same fit-to-bounds isolation already uses,
+  // aimed at just one object instead of a whole connected chain. Leaves
+  // the drawer open on purpose - the user's own ask: seeing the board pan
+  // to the object is the point, and closing the drawer to show it would
+  // hide the very list they were just working from.
+  function locateObject(id: string) {
+    fitViewToBounds(new Set([id]));
+  }
+
+  // Every object, bucketed by its layer - '' is "Без шару", same
+  // convention useCardCarry's own moveItem destination uses (null layerId
+  // reads back as the empty path).
+  const layerMembers = useMemo(() => {
+    const map = new Map<string, LayerMember[]>();
+    map.set('', []);
+    layers.forEach((l) => map.set(l.id, []));
+    const bucket = (layerId: string | undefined) => map.get(layerId && map.has(layerId) ? layerId : '')!;
+    cards.forEach((c) => bucket(c.layerId).push({ kind: 'card', id: c.id }));
+    shapes.forEach((s) => bucket(s.layerId).push({ kind: 'shape', id: s.id }));
+    containers.forEach((c) => bucket(c.layerId).push({ kind: 'container', id: c.id }));
+    columns.forEach((c) => bucket(c.layerId).push({ kind: 'column', id: c.id }));
+    return map;
+  }, [layers, cards, shapes, containers, columns]);
+
+  function toggleLayerCollapsed(id: string) {
+    setCollapsedLayerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function layerIdOfMember(member: LayerMember): string | null {
+    if (member.kind === 'card') return cardById.get(member.id)?.layerId ?? null;
+    if (member.kind === 'shape') return shapes.find((s) => s.id === member.id)?.layerId ?? null;
+    if (member.kind === 'container') return containers.find((c) => c.id === member.id)?.layerId ?? null;
+    return columns.find((c) => c.id === member.id)?.layerId ?? null;
+  }
+
+  // Where a carried object actually sits RIGHT NOW - not a fixed "current
+  // folder" the way the explorer has one, since the drawer shows every
+  // layer at once rather than standing inside one. Without this, dropping
+  // an object that already has a layer back onto "Без шару" read as a
+  // drop on its own origin (both '') and did nothing - see useCardCarry's
+  // own settle().
+  const layerDragOriginRef = useRef<string>('');
+  const layersCarry = useCardCarry<LayerMember>({
+    currentPath: layerDragOriginRef.current,
+    onPickUp: (items) => {
+      layerDragOriginRef.current = items[0] ? (layerIdOfMember(items[0]) ?? '') : '';
+    },
+    moveItem: async (member, destination) => {
+      setObjectLayer(member, destination);
+    },
+    // No auto-scroll axis of its own - the drawer's list is short enough
+    // that the carry's own edge-scroll isn't needed the way the kanban
+    // board's is.
+    scrollBy: () => {},
+  });
+  // Same long-press-then-drag shape as TasksScreen's own kanbanBoardGesture
+  // - lives on the drawer's own scrollable list, not on each row, so it
+  // survives a row scrolling off and back on screen.
+  const layersDragGesture = Gesture.Pan()
+    .activateAfterLongPress(400)
+    .runOnJS(true)
+    .onStart((e) => layersCarry.pickUpAt(e.absoluteX, e.absoluteY))
+    .onUpdate((e) => layersCarry.updateCarry(e.absoluteX, e.absoluteY))
+    .onEnd((_e, success) => {
+      if (success) layersCarry.endCarry();
+    })
+    .onFinalize(() => layersCarry.cancelCarry());
+
+  // What one row of the drawer's object list shows, across all three
+  // kinds of board furniture it can hold.
+  function labelForCard(card: BoardCard): string {
+    const thought = card.type === 'thought' && card.thoughtId ? themeBoard.thoughtsById.get(card.thoughtId) : undefined;
+    if (thought) return cardTitle(thought) || thought.felt.trim().slice(0, 60) || 'Думка';
+    return (
+      card.documentTitle || card.boardTitle || card.fileTitle || card.imageTitle || card.linkTitle ||
+      card.text?.trim() || 'Картка'
+    );
+  }
+  function iconForCard(card: BoardCard): keyof typeof Ionicons.glyphMap {
+    switch (card.type) {
+      case 'document':
+        return 'document-text-outline';
+      case 'image':
+        return 'image-outline';
+      case 'file':
+        return 'document-outline';
+      case 'link':
+        return 'link-outline';
+      case 'thought':
+        return 'bulb-outline';
+      default:
+        return 'chatbox-outline';
+    }
+  }
+  function labelForMember(member: LayerMember): string {
+    if (member.kind === 'card') {
+      const card = cardById.get(member.id);
+      return card ? labelForCard(card) : 'Картка';
+    }
+    if (member.kind === 'shape') {
+      const shape = shapes.find((s) => s.id === member.id);
+      if (!shape) return 'Фігура';
+      return shape.text?.trim() || SHAPE_MENU.find((m) => m.kind === shape.kind)?.label || 'Фігура';
+    }
+    if (member.kind === 'column') {
+      const column = columns.find((c) => c.id === member.id);
+      return (column?.week ? weekDayTitle(column.week) : column?.title) || 'Стовпчик';
+    }
+    const container = containers.find((c) => c.id === member.id);
+    return container?.title || 'Область';
+  }
+  function iconForMember(member: LayerMember): keyof typeof Ionicons.glyphMap {
+    if (member.kind === 'card') {
+      const card = cardById.get(member.id);
+      return card ? iconForCard(card) : 'chatbox-outline';
+    }
+    if (member.kind === 'shape') return 'shapes-outline';
+    if (member.kind === 'column') {
+      const column = columns.find((c) => c.id === member.id);
+      return column?.liveTaskSource ? 'checkbox-outline' : 'apps-outline';
+    }
+    return 'scan-outline';
+  }
+  // This object's OWN hide flag - not combined with its layer's, unlike
+  // isHidden/isObjectHiddenById: the row shows what tapping ITS eye would
+  // toggle, and the layer's own eye (drawn on the layer's own row) already
+  // says whether the whole layer is hidden.
+  function hiddenForMember(member: LayerMember): boolean {
+    if (member.kind === 'card') return !!cardById.get(member.id)?.hidden;
+    if (member.kind === 'shape') return !!shapes.find((s) => s.id === member.id)?.hidden;
+    if (member.kind === 'container') return !!containers.find((c) => c.id === member.id)?.hidden;
+    return !!columns.find((c) => c.id === member.id)?.hidden;
+  }
+
+  // One row of the drawer's object list - registered with layersCarry as
+  // both a drag source (registerCard) and, via its own eye/locate buttons,
+  // a place to act on the object without lifting it at all.
+  function renderLayerMemberRow(member: LayerMember) {
+    const hidden = hiddenForMember(member);
+    const isCarrying = !!layersCarry.ghost?.items.some(
+      (one) => one.kind === member.kind && one.id === member.id
+    );
+    return (
+      <View
+        key={`${member.kind}:${member.id}`}
+        ref={layersCarry.registerCard(member.id, () => [member], () => {})}
+        collapsable={false}
+        style={[styles.memberRow, isCarrying && styles.memberRowDimmed]}
+      >
+        <Ionicons name={iconForMember(member)} size={layerIcon} color={layerInkMuted} />
+        <Text style={styles.memberLabel} numberOfLines={1}>
+          {labelForMember(member)}
+        </Text>
+        <Pressable hitSlop={layerButtonSlop} onPress={() => toggleObjectHidden(member)}>
+          <Ionicons
+            name={hidden ? 'eye-off-outline' : 'eye-outline'}
+            size={layerIcon}
+            color={hidden ? '#F87171' : layerInkMuted}
+          />
+        </Pressable>
+        <Pressable hitSlop={layerButtonSlop} onPress={() => locateObject(member.id)}>
+          <Ionicons name="locate-outline" size={layerIcon} color={layerInkMuted} />
+        </Pressable>
+      </View>
+    );
+  }
+
+  // Long-pressing a card selects just that one, which surfaces the same
+  // bottom action bar the marquee/select tool uses for a multi-card
+  // selection - "Редагувати" for a lone document card, "Видалити" either
+  // way - rather than jumping straight to a delete confirmation.
+  // Long-pressing a column header used to delete it outright. It now asks
+  // what to do with the column, because that header is where the reading
+  // order lives - it's the natural place to ask for the document this
+  // board would make. (Renaming is still a plain tap.)
+  async function runGroupImport(
+    group: Group,
+    selected: { id: string; kind: string; databaseId?: string; data: Record<string, unknown> }[]
+  ) {
+    setImportingGroup(null);
+    await importGroupToBoard(
+      boardId,
+      group,
+      selected.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        title: titleForItem(item as Parameters<typeof titleForItem>[0]),
+        databaseId: item.databaseId,
+        data: item.data,
+      })),
+      labelForItemKind
+    );
+    // The import writes the board document directly; this screen hears
+    // about the new cards through its own listener.
+  }
+
+  function handleCardLongPress(card: BoardCard) {
+    setSelectedCardIds(new Set([card.id]));
+  }
+
+  // Told which cards to remove rather than reading the selection: the
+  // bar hands it the selection, the right-click menu hands it the one
+  // card it was opened on - which is what lets that menu act WITHOUT
+  // selecting anything first, and so without raising the selection bar
+  // as a second menu beside itself.
+  function deleteCards(ids: Set<string>) {
+    const count = ids.size;
+    if (count === 0) return;
+    confirmFates({
+      title: count === 1 ? 'Видалити картку?' : `Видалити картки (${count})?`,
+      entries: cards.filter((c) => ids.has(c.id)).map(boardCardFate),
+    }).then((yes) => {
+      if (!yes) return;
+      // Reflowed after the removal so a column closes the gap its
+      // deleted card left behind.
+      setCards((prev) => reflowColumns(prev.filter((c) => !ids.has(c.id)), columns, cardHeights));
+      // A connection to a card that no longer exists would render as a
+      // line into empty space, so they go with it.
+      setConnections((prev) => prev.filter((c) => !ids.has(c.fromCardId) && !ids.has(c.toCardId)));
+      setSelectedCardIds((prev) => {
+        const left = new Set(prev);
+        ids.forEach((id) => left.delete(id));
+        // Nothing left to work with means the board is not selecting any
+        // more, and the rail should stop saying that it is.
+        if (left.size === 0) setCanvasTool('move');
+        return left;
+      });
+    });
+  }
+
+  // The dock's combined "Видалити" for whatever the marquee is currently
+  // holding - cards, or the text shapes it now also catches (see
+  // selectedShapeIds's own comment). One confirm, one count, either or
+  // both kinds at once - not deleteCards(selectedCardIds) plus a second
+  // dialog for the shapes.
+  function deleteSelection() {
+    const cardIds = selectedCardIds;
+    const shapeIds = selectedShapeIds;
+    const count = cardIds.size + shapeIds.size;
+    if (count === 0) return Promise.resolve();
+    return confirmFates({
+      title: count === 1 ? 'Видалити обʼєкт?' : `Видалити обʼєкти (${count})?`,
+      entries: [
+        ...cards.filter((c) => cardIds.has(c.id)).map(boardCardFate),
+        ...[...shapeIds].map(() => ({ kind: 'shape' as const, tone: 'forever' as const, fate: 'зникають з дошки (поверне лише «Назад»)' })),
+      ],
+    }).then((yes) => {
+      if (!yes) return;
+      if (cardIds.size > 0) {
+        setCards((prev) => reflowColumns(prev.filter((c) => !cardIds.has(c.id)), columns, cardHeights));
+      }
+      if (shapeIds.size > 0) {
+        setShapes((prev) => prev.filter((sh) => !shapeIds.has(sh.id)));
+      }
+      const removedIds = new Set([...cardIds, ...shapeIds]);
+      // A connection to something that no longer exists would render as a
+      // line into empty space, so it goes with whatever it was attached to.
+      setConnections((prev) => prev.filter((c) => !removedIds.has(c.fromCardId) && !removedIds.has(c.toCardId)));
+      setSelectedCardIds(new Set());
+      setSelectedShapeIds(new Set());
+      setCanvasTool('move');
+    });
+  }
+
+  // ALIGN AND ARRANGE. Plain state edits, not a gesture - each selected
+  // card's x/y just becomes a different number, and the same effect
+  // that already catches a REMOTE change (see DraggableCard's own
+  // reportedX/Y) is what carries it onto the canvas smoothly; nothing
+  // here has to touch a shared value directly.
+  type AlignEdge = 'left' | 'right' | 'top' | 'bottom' | 'centerX' | 'centerY';
+  function alignSelectedCards(edge: AlignEdge) {
+    setAlignMenuVisible(false);
+    if (selectedCardIds.size < 2) return;
+    const targets = cards.filter((c) => selectedCardIds.has(c.id));
+    const box = (c: BoardCard) => ({
+      left: c.x,
+      right: c.x + widthInColumn(c),
+      top: c.y,
+      bottom: c.y + heightOf(c, cardHeights),
+    });
+    const boxes = targets.map(box);
+    const minLeft = Math.min(...boxes.map((b) => b.left));
+    const maxRight = Math.max(...boxes.map((b) => b.right));
+    const minTop = Math.min(...boxes.map((b) => b.top));
+    const maxBottom = Math.max(...boxes.map((b) => b.bottom));
+    const centerX = (minLeft + maxRight) / 2;
+    const centerY = (minTop + maxBottom) / 2;
+    setCards((prev) =>
+      prev.map((c) => {
+        if (!selectedCardIds.has(c.id)) return c;
+        const w = widthInColumn(c);
+        const h = heightOf(c, cardHeights);
+        switch (edge) {
+          case 'left':
+            return { ...c, x: minLeft };
+          case 'right':
+            return { ...c, x: maxRight - w };
+          case 'top':
+            return { ...c, y: minTop };
+          case 'bottom':
+            return { ...c, y: maxBottom - h };
+          case 'centerX':
+            return { ...c, x: centerX - w / 2 };
+          case 'centerY':
+            return { ...c, y: centerY - h / 2 };
+        }
+      })
+    );
+  }
+
+  // "Розкласти сіткою." Reading order (top to bottom, left to right as
+  // the cards stand NOW), packed into a near-square grid of UNIFORM
+  // cells - the widest and tallest of the selection, so nothing
+  // overlaps whatever the mix of card kinds. Anchored on the
+  // selection's own top-left corner, so the tidy stays where the mess
+  // was rather than jumping to the world's centre.
+  const GRID_ARRANGE_GAP = 24;
+  function arrangeSelectedGrid() {
+    setAlignMenuVisible(false);
+    if (selectedCardIds.size < 2) return;
+    const targets = cards.filter((c) => selectedCardIds.has(c.id));
+    const originX = Math.min(...targets.map((c) => c.x));
+    const originY = Math.min(...targets.map((c) => c.y));
+    const cellW = Math.max(...targets.map((c) => widthInColumn(c))) + GRID_ARRANGE_GAP;
+    const cellH = Math.max(...targets.map((c) => heightOf(c, cardHeights))) + GRID_ARRANGE_GAP;
+    const columns = Math.ceil(Math.sqrt(targets.length));
+    const ordered = [...targets].sort((a, b) => a.y - b.y || a.x - b.x);
+    const nextById = new Map(
+      ordered.map((c, i) => [
+        c.id,
+        { x: originX + (i % columns) * cellW, y: originY + Math.floor(i / columns) * cellH },
+      ])
+    );
+    setCards((prev) =>
+      prev.map((c) => {
+        const next = nextById.get(c.id);
+        return next ? { ...c, ...next } : c;
+      })
+    );
+  }
+
+  function disconnectSelectedCards() {
+    setConnections((prev) =>
+      prev.filter((c) => !selectedCardIds.has(c.fromCardId) && !selectedCardIds.has(c.toCardId))
+    );
+    clearSelection();
+  }
+
+  function saveEditingText() {
+    if (editingCard) {
+      setCards((prev) => prev.map((c) => (c.id === editingCard.id ? { ...c, text: editingText } : c)));
+    }
+    setEditingCard(null);
+  }
+
+  function setEditingCardColor(color: string) {
+    if (!editingCard) return;
+    setEditingCard({ ...editingCard, color });
+    setCards((prev) => prev.map((c) => (c.id === editingCard.id ? { ...c, color } : c)));
+  }
+
+  // Text size and width, stepped from inside the наліпка's own editor -
+  // applied to the card as they are pressed, the same way the colour
+  // swatches above already work, so the board behind the sheet shows
+  // what you are choosing rather than what you chose.
+  function stepEditingCardFontSize(dir: 1 | -1) {
+    if (!editingCard) return;
+    const next = stepTextSize(editingCard.fontSize ?? STICKY_TEXT_SIZE_DEFAULT, dir);
+    setEditingCard({ ...editingCard, fontSize: next });
+    setCards((prev) => prev.map((c) => (c.id === editingCard.id ? { ...c, fontSize: next } : c)));
+  }
+
+  function stepEditingCardWidth(dir: 1 | -1) {
+    if (!editingCard) return;
+    const next = Math.round(
+      Math.max(
+        STICKY_WIDTH_MIN,
+        Math.min(STICKY_WIDTH_MAX, (editingCard.width || DEFAULT_CARD_WIDTH) + dir * STICKY_WIDTH_STEP)
+      )
+    );
+    setEditingCard({ ...editingCard, width: next });
+    setCards((prev) => prev.map((c) => (c.id === editingCard.id ? { ...c, width: next } : c)));
+  }
+
+  const existingItemExcludeIds = new Set(
+    cards
+      .filter(
+        (c) =>
+          ((c.type ?? 'paragraph') === 'file' && c.fileUri) ||
+          ((c.type ?? 'paragraph') === 'image' && c.imageUri) ||
+          c.isSticker
+      )
+      .map((c) => c.id)
+  );
+
+  // Only offered in the selection bar when exactly one document card is
+  // selected - a lone sticky/link/file/etc. or any multi-card selection
+  // has no single "Редагувати" target.
+  const onlySelectedDocumentCard =
+    selectedCardIds.size === 1
+      ? cards.find((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'document')
+      : undefined;
+
+  // The one selected card, whatever its kind - what the copy and read
+  // actions below work on.
+  const onlySelectedCard =
+    selectedCardIds.size === 1 ? cards.find((c) => selectedCardIds.has(c.id)) : undefined;
+
+  // Only a lone image card offers the caption toggle - see imageBare.
+  const onlySelectedImageCard =
+    onlySelectedCard && (onlySelectedCard.type ?? 'paragraph') === 'image' ? onlySelectedCard : undefined;
+
+  // FURNITURE. Every one of these writes `shapes` and nothing else -
+  // that separation is the whole design, see BoardShape.
+  function addShape(kind: BoardShapeKind) {
+    setShapeSheetVisible(false);
+    const birth = SHAPE_BIRTH[kind];
+    // Born where a new card is born, and nudged the same way, so two
+    // made in a row do not land exactly on top of each other.
+    const jitter = (shapes.length % 6) * 24;
+    const centre = viewCenter();
+    const shape: BoardShape = {
+      id: generateId(),
+      kind,
+      x: centre.x - birth.width / 2 + jitter,
+      y: centre.y - birth.height / 2 + jitter,
+      width: birth.width,
+      height: birth.height,
+    };
+    setShapes((prev) => [...prev, shape]);
+    setSelectedShapeId(shape.id);
+    // Straight into the words: a shape with nothing written in it is
+    // rarely what anyone wanted, and a loose label is never.
+    setEditingShape(shape);
+  }
+
+  function moveShape(id: string, x: number, y: number) {
+    setShapes((prev) => prev.map((sh) => (sh.id === id ? { ...sh, x, y } : sh)));
+  }
+
+  function resizeShape(id: string, width: number, height: number) {
+    setShapes((prev) => prev.map((sh) => (sh.id === id ? { ...sh, width, height } : sh)));
+  }
+
+  function setShapeText(id: string, text: string) {
+    setShapes((prev) => prev.map((sh) => (sh.id === id ? { ...sh, text } : sh)));
+  }
+
+  function setShapeColour(id: string, colour: string | undefined) {
+    setShapes((prev) => prev.map((sh) => (sh.id === id ? { ...sh, color: colour } : sh)));
+  }
+
+  function toggleShapeFilled(id: string) {
+    setShapes((prev) => prev.map((sh) => (sh.id === id ? { ...sh, filled: !sh.filled } : sh)));
+  }
+
+  function stepShapeTextSize(shape: BoardShape, dir: 1 | -1) {
+    const current = shape.fontSize ?? (shape.kind === 'text' ? SHAPE_TEXT_SIZE_DEFAULT : SHAPE_LABEL_SIZE_DEFAULT);
+    const next = stepTextSize(current, dir);
+    setShapes((prev) => prev.map((sh) => (sh.id === shape.id ? { ...sh, fontSize: next } : sh)));
+  }
+
+  function deleteShape(id: string) {
+    setShapes((prev) => prev.filter((sh) => sh.id !== id));
+    setConnections((prev) => prev.filter((c) => c.fromCardId !== id && c.toCardId !== id));
+    setSelectedShapeId((current) => (current === id ? null : current));
+  }
+
+  const selectedShape = shapes.find((sh) => sh.id === selectedShapeId);
+
+  function toggleImageBare(card: BoardCard) {
+    setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, imageBare: !c.imageBare } : c)));
+  }
+
+  function toggleImageNatural(card: BoardCard) {
+    setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, imageNatural: !c.imageNatural } : c)));
+  }
+
+
+  // A card's text as text: its own for a sticky, its document's whole body
+  // for a document card - the preview on the card is clipped, and copying
+  // half a document silently is worse than not offering it.
+  async function textOfCard(card: BoardCard): Promise<string> {
+    if (card.type === 'thought') {
+      const thought = card.thoughtId ? themeBoard.thoughtsById.get(card.thoughtId) : undefined;
+      return thought ? voiceTextOf(thought) : '';
+    }
+    if ((card.type ?? 'paragraph') === 'document' && card.documentId) {
+      const snapshot = await getDoc(doc(db, 'documents', card.documentId));
+      const data = snapshot.data();
+      if (!data) return card.documentPreviewText ?? '';
+      const title = (data.title as string) ?? '';
+      const body = blocksToPreviewText((data.blocks ?? []) as Block[]);
+      return [title, body].filter((part) => part.trim() !== '').join('\n\n');
+    }
+    return card.text ?? '';
+  }
+
+  // Copying a card does both halves at once: its text goes to the system
+  // clipboard, where any other app can take it, and the card ITSELF goes
+  // to this app's own clipboard as the block it would be in a document -
+  // which is what lets a photo be pasted as that same photo rather than a
+  // second copy of it.
+  async function copyCardText(card: BoardCard) {
+    const {
+      x: _x,
+      y: _y,
+      width: _width,
+      color: _color,
+      columnId: _columnId,
+      documentExpanded: _expanded,
+      flashcardOpen: _open,
+      ...block
+    } = card;
+    // Neither a document nor a board can be a block inside a note, so
+    // copying one out of here carries its TEXT in a plain paragraph -
+    // see the comment further down on why.
+    const isReference = card.type === 'document' || card.type === 'board';
+    const asBlock: Block = {
+      ...(block as Block),
+      type: isReference ? 'paragraph' : ((card.type as BlockType | undefined) ?? 'paragraph'),
+    };
+    copyObject({ label: isReference ? 'текст' : labelForBlock(asBlock), block: asBlock });
+
+    const text = await textOfCard(card);
+    if (text.trim()) {
+      // A document card has no block of its own to paste (a document
+      // cannot nest in a document), so its text is what travels - and it
+      // replaces the block above for that case.
+      if (card.type === 'document') copyObject({ label: 'текст', block: { ...asBlock, text } });
+      await Clipboard.setStringAsync(text);
+    }
+    hapticSuccess();
+    clearSelection();
+  }
+
+  // Reading a card's text without opening anything that could change it -
+  // and selecting part of it by hand, which is the whole point: a plain
+  // Text on the canvas can't be selected, because a long press there means
+  // "pick this card".
+  const [readingCard, setReadingCard] = useState<{ card: BoardCard; text: string } | null>(null);
+  async function openCardText(card: BoardCard) {
+    clearSelection();
+    setReadingCard({ card, text: await textOfCard(card) });
+  }
+
+  const cardById = new Map(cards.map((c) => [c.id, c]));
+
+  // The names and pictures the reference cards show, as their records say
+  // them now - see useLiveRecords. Listened for only when this board has
+  // a card that refers to something.
+  const hasReferenceCards = cards.some((c) => recordIdFor(c) !== null);
+  const liveRecords = useLiveRecords(hasReferenceCards);
+  // A dragged card's live position lives in its own shared values, which
+  // the connection lines (drawn from React state) can't see - so rather
+  // than leave a line anchored to where the card WAS for the length of the
+  // drag, its links are hidden outright and come back correctly shaped
+  // once the drop commits the new position. A group drag moves every
+  // selected card, so all of their links go too.
+  // Which shared offsets currently apply to this card, so a live line can
+  // add exactly the same ones the card's own animated style does.
+  // Every card's own bounds, for a dragged card's alignment guides to
+  // compare itself against - see GUIDE_COLOR. Built once here rather
+  // than once per card: every DraggableCard reads the SAME array, and
+  // only the one actually being dragged ever does anything with it.
+  const cardBoundsForGuides = cards.map((c) => ({
+    id: c.id,
+    x: c.x,
+    y: c.y,
+    width: widthInColumn(c),
+    height: heightOf(c, cardHeights),
+  }));
+
+  // Every box an arrow may end on, cards and furniture together, looked
+  // up by the one thing a connection actually stores: an id.
+  const nodeById = new Map<string, BoardNode>();
+  for (const card of cards) {
+    nodeById.set(card.id, {
+      id: card.id,
+      x: card.x,
+      y: card.y,
+      width: Number.isFinite(widthInColumn(card)) ? widthInColumn(card) : DEFAULT_CARD_WIDTH,
+      height: heightOf(card, cardHeights),
+    });
+  }
+  for (const shape of shapes) {
+    nodeById.set(shape.id, {
+      id: shape.id,
+      x: shape.x,
+      y: shape.y,
+      // Loose text auto-sizes its own box now and `shape.width` is no
+      // longer what it is actually drawn at (see approxTextShapeWidth) -
+      // stale here would aim an arrow, or a connect-mode tap, at where
+      // the box used to end rather than where it now does.
+      width: shape.kind === 'text' ? approxTextShapeWidth(shape.text ?? '', shape.fontSize ?? SHAPE_TEXT_SIZE_DEFAULT) : shape.width,
+      // Loose text is as tall as its own words, which nothing here has
+      // measured; a card's own rough constant is the same stand-in the
+      // marquee uses, and it is close enough to aim a line at.
+      height: shape.kind === 'text' ? SHAPE_TEXT_HEIGHT : shape.kind === 'square' || shape.kind === 'circle' ? shape.width : shape.height,
+    });
+  }
+  // A container is a connectable node too now - "область можна
+  // пов'язувати з іншими областями лініями". Its own stored size, not a
+  // live-resize one: a resting connection reads this, and the live line
+  // (see liveEndpointFor) is what tracks an actual drag or resize.
+  for (const container of containers) {
+    nodeById.set(container.id, {
+      id: container.id,
+      x: container.x,
+      y: container.y,
+      width: container.width,
+      height: container.height,
+    });
+  }
+
+  // Which cards and shapes are geometrically INSIDE a container's own
+  // rectangle right now, by each item's CENTRE point - so a thing only
+  // half over the edge still counts as belonging wherever its middle
+  // actually sits, the same rule a drop onto a column already uses.
+  // Called once, at the instant a container starts being dragged (see
+  // startContainerDrag) - see BoardContainer's own comment for why this
+  // is discovered fresh rather than kept in a stored field.
+  function containerMembersAt(container: BoardContainer): { cardIds: Set<string>; shapeIds: Set<string> } {
+    const cardIds = new Set<string>();
+    const shapeIds = new Set<string>();
+    const inside = (node: BoardNode) => {
+      const cx = node.x + node.width / 2;
+      const cy = node.y + node.height / 2;
+      return (
+        cx >= container.x &&
+        cx <= container.x + container.width &&
+        cy >= container.y &&
+        cy <= container.y + container.height
+      );
+    };
+    for (const card of cards) {
+      const node = nodeById.get(card.id);
+      if (node && inside(node)) cardIds.add(card.id);
+    }
+    for (const shape of shapes) {
+      const node = nodeById.get(shape.id);
+      if (node && inside(node)) shapeIds.add(shape.id);
+    }
+    return { cardIds, shapeIds };
+  }
+
+  function startContainerDrag(id: string) {
+    setDraggingContainerId(id);
+    const container = containers.find((c) => c.id === id);
+    setContainerDragMembers(container ? containerMembersAt(container) : { cardIds: new Set(), shapeIds: new Set() });
+    beginConnectionPull(id);
+  }
+
+  // The container and every member it was carrying at the start of THIS
+  // drag all take the same delta, so nothing has to be recomputed from
+  // the container's new origin - unlike a column, a member keeps
+  // whatever position it already had relative to the frame, because
+  // that relative position was never given up to begin with.
+  function commitContainerDrag(id: string, dx: number, dy: number) {
+    const { cardIds, shapeIds } = containerDragMembers;
+    setContainers((prev) => prev.map((c) => (c.id === id ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    if (cardIds.size > 0) {
+      setCards((prev) => prev.map((c) => (cardIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    }
+    if (shapeIds.size > 0) {
+      setShapes((prev) => prev.map((sh) => (shapeIds.has(sh.id) ? { ...sh, x: sh.x + dx, y: sh.y + dy } : sh)));
+    }
+    setDraggingContainerId(null);
+    setContainerDragMembers({ cardIds: new Set(), shapeIds: new Set() });
+    commitConnectionPull(dx, dy);
+  }
+
+  // CONNECTION-PULL MOVEMENT - see BoardConnection's own comment on
+  // 'arrow'/'doubleArrow'. Computed once, at the instant a drag starts
+  // (same moment containerMembersAt is, and for the same reason:
+  // recomputed fresh rather than kept in a stored field, since the graph
+  // can change between drags).
+  //
+  // A cycle in the arrow graph (A pulls B pulls C pulls A) is deliberately
+  // NOT forbidden - the visited set below just means each node is only
+  // ever added once, so a cycle reads as "this whole ring moves
+  // together", a sensible outcome rather than a bug to guard against.
+  function pulledIdsFrom(startId: string): Set<string> {
+    const visited = new Set<string>([startId]);
+    const queue = [startId];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const c of connections) {
+        const kind = c.kind ?? 'plain';
+        if (kind === 'plain') continue;
+        if (c.fromCardId === current && !visited.has(c.toCardId)) {
+          visited.add(c.toCardId);
+          queue.push(c.toCardId);
+        }
+        if (kind === 'doubleArrow' && c.toCardId === current && !visited.has(c.fromCardId)) {
+          visited.add(c.fromCardId);
+          queue.push(c.fromCardId);
+        }
+      }
+    }
+    visited.delete(startId);
+    return visited;
+  }
+
+  // A pulled container carries everything geometrically inside it too -
+  // the user's own call: "якщо область прив'язана з лінією, то ми тягнемо
+  // всю область" - the same membership test a direct container drag
+  // already uses (containerMembersAt).
+  function expandPulledContainers(
+    ids: Set<string>
+  ): { cardIds: Set<string>; shapeIds: Set<string>; containerIds: Set<string> } {
+    const cardIds = new Set<string>();
+    const shapeIds = new Set<string>();
+    const containerIds = new Set<string>();
+    ids.forEach((id) => {
+      if (cardById.has(id)) {
+        cardIds.add(id);
+        return;
+      }
+      const shape = shapes.find((s) => s.id === id);
+      if (shape) {
+        shapeIds.add(id);
+        return;
+      }
+      const container = containers.find((c) => c.id === id);
+      if (container) {
+        containerIds.add(id);
+        const members = containerMembersAt(container);
+        members.cardIds.forEach((cid) => cardIds.add(cid));
+        members.shapeIds.forEach((sid) => shapeIds.add(sid));
+      }
+    });
+    return { cardIds, shapeIds, containerIds };
+  }
+
+  function beginConnectionPull(id: string) {
+    const pulled = pulledIdsFrom(id);
+    // A strip's head carries the strip with it.
+    const card = cardById.get(id);
+    if (card?.glueId) {
+      const strip = glueMembers(cards, card.glueId);
+      if (strip[0]?.id === id) strip.slice(1).forEach((m) => pulled.add(m.id));
+    }
+    setPullMembers(expandPulledContainers(pulled));
+  }
+
+  function commitConnectionPull(dx: number, dy: number) {
+    const { cardIds, shapeIds, containerIds } = pullMembers;
+    if (cardIds.size === 0 && shapeIds.size === 0 && containerIds.size === 0) return;
+    if (cardIds.size > 0) {
+      setCards((prev) => prev.map((c) => (cardIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    }
+    if (shapeIds.size > 0) {
+      setShapes((prev) => prev.map((sh) => (shapeIds.has(sh.id) ? { ...sh, x: sh.x + dx, y: sh.y + dy } : sh)));
+    }
+    if (containerIds.size > 0) {
+      setContainers((prev) => prev.map((c) => (containerIds.has(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c)));
+    }
+    setPullMembers({ cardIds: new Set(), shapeIds: new Set(), containerIds: new Set() });
+  }
+
+  function liveEndpointFor(node: BoardNode): LiveEndpoint {
+    const card = cardById.get(node.id);
+    const inGroupDrag = !!card && selectedCardIds.has(node.id);
+    const inColumnDrag = !!card?.columnId && movingColumnIds.has(card.columnId);
+    // True for the container itself while it's being dragged, AND for
+    // every card/shape riding along with it - same set startContainerDrag
+    // snapshotted (see containerDragMembers's own comment).
+    const inContainerDrag =
+      draggingContainerId !== null &&
+      (node.id === draggingContainerId ||
+        containerDragMembers.cardIds.has(node.id) ||
+        containerDragMembers.shapeIds.has(node.id));
+    // True for anything pulledIdsFrom put in pullMembers - see
+    // followsConnectionPull's own comment.
+    const inPull =
+      pullMembers.cardIds.has(node.id) ||
+      pullMembers.shapeIds.has(node.id) ||
+      pullMembers.containerIds.has(node.id);
+    const position = positionFor(node.id, node.x, node.y);
+    return {
+      posX: position.x,
+      posY: position.y,
+      offsetX: inGroupDrag ? groupOffsetX : null,
+      offsetY: inGroupDrag ? groupOffsetY : null,
+      columnOffsetX: inColumnDrag ? columnOffsetX : null,
+      columnOffsetY: inColumnDrag ? columnOffsetY : null,
+      containerOffsetX: inContainerDrag ? containerOffsetX : null,
+      containerOffsetY: inContainerDrag ? containerOffsetY : null,
+      pullOffsetX: inPull ? pullOffsetX : null,
+      pullOffsetY: inPull ? pullOffsetY : null,
+      width: node.width,
+      height: node.height,
+    };
+  }
+
+  // Dragging a column moves every card in it, so their links go too.
+  const movingCardIds = draggingColumnId
+    ? new Set(cards.filter((c) => !!c.columnId && movingColumnIds.has(c.columnId)).map((c) => c.id))
+    : !draggedCardId
+      ? null
+      : selectedCardIds.has(draggedCardId) && selectedCardIds.size > 1
+        ? selectedCardIds
+        : new Set([draggedCardId]);
+  // Furniture under the finger moves its arrows the same way a card
+  // does - it is in the same position registry, so there is nothing
+  // special to do beyond saying which one is moving.
+  const movingIds =
+    draggedShapeId !== null
+      ? new Set([...(movingCardIds ?? []), draggedShapeId])
+      : movingCardIds;
+  // A dragged container moves its own arrows too, and every card/shape
+  // riding along with it.
+  const containerMovingIds = draggingContainerId
+    ? new Set([draggingContainerId, ...containerDragMembers.cardIds, ...containerDragMembers.shapeIds])
+    : null;
+  // Whatever pullMembers is currently holding also counts as "moving" for
+  // the connections loop below - a line between two PULLED nodes (neither
+  // one actually under the finger) still has to draw live, or it visibly
+  // lags behind both ends while they slide together.
+  const pullMovingIds =
+    pullMembers.cardIds.size > 0 || pullMembers.shapeIds.size > 0 || pullMembers.containerIds.size > 0
+      ? new Set([...pullMembers.cardIds, ...pullMembers.shapeIds, ...pullMembers.containerIds])
+      : null;
+  const allMovingIds = [movingIds, containerMovingIds, pullMovingIds].reduce<Set<string> | null>(
+    (acc, ids) => (ids ? (acc ? new Set([...acc, ...ids]) : new Set(ids)) : acc),
+    null
+  );
+  const selectionHasConnections = connections.some(
+    (c) => selectedCardIds.has(c.fromCardId) || selectedCardIds.has(c.toCardId)
+  );
+
+  // The board's own chrome goes on the DOCK, as on every other screen:
+  // the way out, a card on the right, and the canvas tool on the stack's
+  // second card. The top capsule and the floating "+" are what that
+  // replaces - and the rail's width comes back to a screen that is
+  // nothing BUT width.
+  //
+  // With a document open in the pane, this button used to skip straight
+  // past it and out of the board - the pane's OWN arrow (its rail
+  // capsule) was the only way to close just the document. One press now
+  // does what that arrow does; the board itself is only left once
+  // there is no document left to close.
+  function closePane() {
+    // Whatever the note itself still has open comes first - see
+    // DocumentEditorHandle.requestBack.
+    if (paneEditorRef.current?.requestBack()) return;
+    setPaneOfferBoard(false);
+    setPaneDocId(null);
+    setPaneFullscreen(false);
+    // The card that opened this pane shows a snapshot of the document
+    // (title, text, first image), so it has to be read again now that
+    // the document has been edited. Twice: the editor saves on a
+    // debounce, and the first read can land before that write is even
+    // issued.
+    refreshDocumentPreviews();
+    setTimeout(refreshDocumentPreviews, 1000);
+  }
+  // A note filling the window hides the board these two act on, so they
+  // stand down for as long as it does - the pane's own controls take the
+  // dock's actions card instead (see paneControls below).
+  const paneDocOpen = isTwoPane && paneDocId !== null;
+  // Each glued block's place in its strip (first / middle / last), for the one-sheet look.
+  const glueRoleById = useMemo(() => {
+    const out = new Map<string, 'first' | 'middle' | 'last'>();
+    const groups = new Map<string, BoardCard[]>();
+    cards.forEach((c) => {
+      if (c.glueId) groups.set(c.glueId, [...(groups.get(c.glueId) ?? []), c]);
+    });
+    groups.forEach((members) => {
+      if (members.length < 2) return;
+      members.sort((a, b) => (a.glueOrder ?? 0) - (b.glueOrder ?? 0));
+      members.forEach((m, i) => out.set(m.id, i === 0 ? 'first' : i === members.length - 1 ? 'last' : 'middle'));
+    });
+    return out;
+  }, [cards]);
+  const boardShowing = boardFocused && !(paneDocOpen && paneFullscreen);
+  // THE BOARD UNDER THE SAME SCHEME AS EVERY OTHER SCREEN (touch only):
+  // the top bar says where you are - back, the board's name (tap to
+  // rename), and undo/redo + "⋯" on one plate; the dock below is what you
+  // do - the four tools and "+" last, since the right end always creates.
+  // A note filling the window keeps the old arrangement: the board is
+  // hidden then and the note's own controls hold the dock.
+  const topNavOn = useTopNavOn();
+  const bar = topNavOn && !embed && !(paneDocOpen && paneFullscreen);
+  // The names of the user's databases, for the panel's tabs of open database windows.
+  const { customDatabases: boardDatabases } = useDatabaseTiles();
+  const dbNames: Record<string, string> = Object.fromEntries(boardDatabases.map((d) => [d.id, d.name || 'База']));
+  // The canvas takes every sideways drag for itself: the drawers' swipe
+  // stands down while a board is open.
+  useBlockDrawerSwipe(boardFocused);
+  const leaveOrClosePane = () => (isTwoPane && paneDocId !== null ? closePane() : navigation.goBack());
+  useDockLeave('easel-outline', leaveOrClosePane, !bar);
+  useTopBack(leaveOrClosePane, bar);
+  // A note opened FULL SCREEN from the board (the Mac, 2026-10-21, the user: «не можу закрити після редагування»): the board's
+  // bar is gone and the note publishes nothing the toolbar can draw, so the way back is the board's name here - it closes the note.
+  usePublishToolbarTitle(
+    macBoard && !(paneDocOpen && paneFullscreen)
+      ? { parent: 'Дошки', title: title || 'Без назви', onParent: leaveOrClosePane, onRename: () => setRenamingTitle(true) }
+      : macBoard && paneDocOpen && paneFullscreen
+        ? { parent: title || 'Без назви', title: 'Нотатка', onParent: closePane }
+        : null
+  );
+  // V Рух · H Рука · S Вибір · C Зв'язок · N Додати - the keys of every canvas (Figma, Miro), only while nothing is being
+  // typed and no modifier is held (⌘C / ⌘V / ⌘D / ⌘A are useBoardKeys').
+  const historyRef = useRef({ undo, redo });
+  historyRef.current = { undo, redo };
+  useEffect(() => {
+    if (!macBoard || !boardFocused || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      // ⌘Z / ⇧⌘Z - the board's own history (a card's text field keeps the browser's).
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'z') {
+        const tg = e.target as HTMLElement | null;
+        if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA' || tg.isContentEditable)) return;
+        e.preventDefault();
+        if (e.shiftKey) historyRef.current.redo();
+        else historyRef.current.undo();
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const k = e.key.toLowerCase();
+      if (k === 'v') setCanvasTool('move');
+      else if (k === 'h') setCanvasTool('hand');
+      else if (k === 's') setCanvasTool('select');
+      else if (k === 'c') setCanvasTool('connect');
+      else if (k === 'n') openInsert();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [macBoard, boardFocused]);
+  // THE BOARD IN THE SOFT STYLE (theme/soft) - the user's pick after the
+  // databases ("дошки"). On a phone the bar and the dock follow; every
+  // piece of the canvas takes its styles through useBoardStyles.
+  const softBoardTokens = useSoftDatabase();
+  useChromeStyle('soft', !!softBoardTokens);
+  // The layers panel draws its icons in these - the glass's white, or the
+  // soft ink (on the soft panel white would vanish).
+  const layerInk = softBoardTokens ? softBoardTokens.ink : GLASS_TEXT;
+  const layerInkMuted = softBoardTokens ? softBoardTokens.ink2 : GLASS_TEXT_MUTED;
+  // ...and at a size for a finger on the phone: "строки об'єктів та шари
+  // дрібні ... тут може бути все трішки зручнішим для пальця".
+  const layerIcon = softBoardTokens && !macBoard ? 21 : 16;
+  const layerButtonSlop = softBoardTokens && !macBoard ? 12 : 6;
+  useTopExtras(
+    [
+      ...(isolatedIds !== null ? [{ label: 'Вийти з ізоляції', icon: 'scan-outline' as const, onPress: toggleIsolation }] : []),
+      // The Mac: this board in a window of its own, beside the explorer's (App.web's `open` parameter).
+      ...(macBoard && !embed && !BOARD_WINDOW && !isDayBoard
+        ? [{ label: 'У вікно', icon: 'copy-outline' as const, onPress: () => window.open(windowUrlFor({ kind: 'board', boardId }), '_blank') }]
+        : []),
+      ...(textCards.length > 0
+        ? [
+            { label: 'Згорнути всі картки', icon: 'contract-outline' as const, onPress: () => setShort(null, true) },
+            { label: 'Розгорнути всі картки', icon: 'expand-outline' as const, onPress: () => setShort(null, false) },
+          ]
+        : []),
+    ],
+    null,
+    bar || macBoard,
+    paneDocOpen && !paneFullscreen ? { icon: 'expand-outline', onPress: () => setPaneFullscreen(true) } : null,
+    [
+      { key: 'undo', icon: 'arrow-undo-outline', label: 'Скасувати', dimmed: !canUndo, onPress: undo },
+      { key: 'redo', icon: 'arrow-redo-outline', label: 'Повторити', dimmed: !canRedo, onPress: redo },
+    ]
+  );
+  // «Шари» is the board's search - "аналог пошуку" - so it takes the
+  // left bead search holds everywhere else, "+" the right, and the tools
+  // stand between them (the dock's tools-screen strip, opted into with
+  // `dockWide`). A selection lets both go: the dock is then only what
+  // can be done to it.
+  const selecting = selectedCardIds.size > 0 || selectedShapeIds.size > 0;
+  useDockWide(bar && !selecting);
+  // While a card window is being written in, the note's own bar and panel
+  // own the foot of the screen - the board's dock steps away.
+  useDockBeads(
+    boardShowing && !(cardWindowWriting && !pointerDensity) && !(inlineBlockId && !pointerDensity) && (!bar || !selecting)
+      ? {
+          icon: 'layers-outline',
+          active: macBoard ? panelTab === 'layers' : layersDrawerVisible,
+          onPress: () => {
+            if (macBoard) {
+              setPanelTab('layers');
+              inspector.set(true);
+            } else setLayersDrawerVisible((v) => !v);
+          },
+        }
+      : null,
+    boardShowing && !(cardWindowWriting && !pointerDensity) && !(inlineBlockId && !pointerDensity) && (bar ? !selecting : selectedCardIds.size === 0)
+      ? // The right round button is the way OUT of the board on the phone
+        // (2026-10-08, the user's: "+ з дошки перенести в її док, а замість
+        // + кнопка назад") - as it already is inside the databases; "+"
+        // stands at the end of the tools strip instead.
+        bar && FEATURES.boardDockBack
+        ? { icon: 'chevron-back', onPress: leaveOrClosePane }
+        : { icon: 'add-outline', onPress: () => (macBoard ? openInsert() : setAddSheetVisible(true)) }
+      : null
+  );
+  // Beside the board, both are on show and both have something to say,
+  // so these two ride along with the board's own actions: the pair is
+  // then reachable whichever of the two wrote to the dock last.
+  //
+  // Full screen they are NOT published at all - see the board's own
+  // actions below. The board is hidden then, the note holds the dock,
+  // and its own beads already carry back and collapse; a stand-in pair
+  // here was all the dock held, which left the note unable to open its
+  // own «Референси» while full screen.
+  const paneControls = paneDocOpen && !paneFullscreen
+    ? [
+        {
+          key: 'pane-size',
+          icon: 'expand-outline',
+          label: 'Розгорнути',
+          onPress: () => setPaneFullscreen(true),
+        },
+        { key: 'pane-close', icon: 'close-outline', label: 'Закрити', onPress: closePane },
+      ]
+    : [];
+  // What can be done with the chosen cards - ONE list: the phone's dock shows it as buttons, the Mac's right panel as rows.
+  // THOUGHTS PICKED ON A THEME'S BOARD (sketch artboard «Виділені думки»): their own few actions instead of the board's -
+  // listen to them, join them in a chain, put a frame round them, the AI («ШІ»: the same moves as in the AI chat, plus
+  // the old canvas's summary and question), and «Ще» (another theme, delete). Only when every picked card is a thought:
+  // a mixed selection keeps the board's own list.
+  const pickedCards = themeBoard.themeId ? cards.filter((c) => selectedCardIds.has(c.id)) : [];
+  const pickedThoughts = pickedCards
+    .map((c) => (c.type === 'thought' && c.thoughtId ? themeBoard.thoughtsById.get(c.thoughtId) : undefined))
+    .filter((t): t is Thought => !!t);
+  const thoughtSelectionActions =
+    themeBoard.themeId && pickedCards.length > 0 && selectedShapeIds.size === 0 && pickedCards.every((c) => c.type === 'thought')
+      ? [
+          { key: 'cancel', icon: 'close-outline', label: 'Вийти', onPress: clearSelection },
+          {
+            key: 'listen',
+            icon: 'lc:volume-2',
+            label: 'Слухати',
+            onPress: () => {
+              const items = pickedThoughts
+                .filter((t) => !t.aiState)
+                .map((t) => ({ title: cardTitle(t) || 'Думка', text: voiceTextOf(t), thoughtId: t.id }))
+                .filter((i) => i.text.trim());
+              if (items.length) speakThoughts(items).catch(() => {});
+            },
+          },
+          ...(pickedCards.length >= 2
+            ? [
+                {
+                  key: 'chain',
+                  icon: 'lc:link',
+                  label: "Зв'язати",
+                  // One after another in reading order (top to bottom, then left to right), a line between each two
+                  // that are not joined yet.
+                  onPress: () => {
+                    const order = [...pickedCards].sort((a, b) => (Math.abs(a.y - b.y) > 40 ? a.y - b.y : a.x - b.x));
+                    setConnections((prev) => {
+                      const next = [...prev];
+                      for (let i = 1; i < order.length; i++) {
+                        const a = order[i - 1].id;
+                        const b = order[i].id;
+                        if (!next.some((k) => (k.fromCardId === a && k.toCardId === b) || (k.fromCardId === b && k.toCardId === a)))
+                          next.push({ id: generateId(), fromCardId: a, toCardId: b });
+                      }
+                      return next;
+                    });
+                    clearSelection();
+                  },
+                },
+              ]
+            : []),
+          {
+            key: 'frame',
+            icon: 'lc:square-dashed',
+            label: 'Рамка',
+            // A frame round them with room for its name; it holds what lies inside it, like any frame on a board.
+            onPress: () => {
+              const pad = 28;
+              const x0 = Math.min(...pickedCards.map((c) => c.x)) - pad;
+              const y0 = Math.min(...pickedCards.map((c) => c.y)) - pad - 24;
+              const x1 = Math.max(...pickedCards.map((c) => c.x + (c.width ?? 220))) + pad;
+              const y1 = Math.max(...pickedCards.map((c) => c.y + (cardHeightsRef.current.get(c.id) ?? 160))) + pad;
+              setContainers((prev) => [...prev, { id: generateId(), title: '', x: x0, y: y0, width: x1 - x0, height: y1 - y0 }]);
+              clearSelection();
+            },
+          },
+          {
+            key: 'ai',
+            icon: 'lc:balloon',
+            label: 'ШІ',
+            onPress: async () => {
+              const themeId = themeBoard.themeId!;
+              const list = pickedThoughts;
+              const choice = await ask({
+                title: list.length === 1 ? 'ШІ і ця думка' : `ШІ і ${list.length} думки`,
+                actions: [
+                  { id: 'summary', label: 'Резюме', icon: 'reorder-three-outline' },
+                  { id: 'ask', label: 'Питання', icon: 'help-circle-outline' },
+                  { id: 'deepen', label: 'Поглибити', icon: 'arrow-down-outline' },
+                  { id: 'branch', label: 'Розгалузити', icon: 'git-branch-outline' },
+                ],
+              });
+              if (!choice) return;
+              clearSelection();
+              if (choice === 'summary') summarizeOnBoard(themeId, list).catch(() => {});
+              else if (choice === 'ask') setAskingAbout(list);
+              else if (choice === 'deepen') deepenOnBoard(themeId, list).catch(() => {});
+              else if (choice === 'branch') branchOnBoard(themeId, list).catch(() => {});
+            },
+          },
+          {
+            key: 'more',
+            icon: 'ellipsis-horizontal',
+            label: 'Ще',
+            onPress: async () => {
+              const list = pickedThoughts;
+              const others = themeBoard.themes.filter((x) => x.id !== themeBoard.themeId);
+              const choice = await ask({
+                title: list.length === 1 ? (cardTitle(list[0]) || list[0].felt || 'Думка').slice(0, 60) : `${list.length} думки`,
+                actions: [
+                  ...others.map((x) => ({ id: `to:${x.id}`, label: `У «${x.name}»`, icon: 'arrow-forward-outline' as const })),
+                  { id: 'loose', label: 'У «Не розкладено»', icon: 'arrow-forward-outline' as const },
+                  { id: 'delete', label: list.length === 1 ? 'Видалити думку' : 'Видалити думки', icon: 'trash-outline' as const, tone: 'danger' as const },
+                ],
+              });
+              if (!choice) return;
+              if (choice === 'delete') {
+                const yes = await confirm({
+                  title: list.length === 1 ? 'Видалити думку?' : `Видалити ${list.length} думки?`,
+                  message: 'Їх не можна буде повернути.',
+                  confirmLabel: 'Видалити',
+                });
+                if (!yes) return;
+                clearSelection();
+                list.forEach((t) => deleteThought(t.id).catch(() => {}));
+              } else {
+                clearSelection();
+                const to = choice === 'loose' ? null : choice.slice(3);
+                list.forEach((t) => moveThought(t.id, to).catch(() => {}));
+              }
+            },
+          },
+        ]
+      : null;
+  const boardSelectionActions = [
+      { key: 'cancel', icon: 'close-outline', label: 'Вийти', onPress: clearSelection },
+      // A free block (with its strip) becomes a note; a note's card on
+      // a day board comes apart into free blocks again.
+      ...(onlySelectedCard?.freeBlock
+        ? [{ key: 'to-note', icon: 'document-text-outline', label: 'Нотатка', onPress: () => stripToNote(onlySelectedCard) }]
+        : []),
+      ...(onlySelectedCard?.type === 'document' && onlySelectedCard.documentId && isDayBoard
+        ? [{ key: 'apart', icon: 'reorder-four-outline', label: 'Розібрати', onPress: () => noteToStrip(onlySelectedCard) }]
+        : []),
+      // Several chosen cards: their texts together, one after another, with a blank line between.
+      ...(selectedCardIds.size >= 2
+        ? [
+            {
+              key: 'copy-many',
+              icon: 'copy-outline',
+              label: 'Копіювати',
+              onPress: async () => {
+                const chosen = cards.filter((c) => selectedCardIds.has(c.id));
+                const texts = await Promise.all(chosen.map((c) => textOfCard(c)));
+                await Clipboard.setStringAsync(texts.filter((t) => t.trim()).join('\n\n'));
+              },
+            },
+          ]
+        : []),
+      ...(cards.some((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'paragraph' && !c.freeBlock)
+        ? [
+            (() => {
+              const mine = cards.filter((c) => selectedCardIds.has(c.id) && (c.type ?? 'paragraph') === 'paragraph' && !c.freeBlock);
+              const allShort = mine.every((c) => c.short);
+              return {
+                key: 'short',
+                icon: allShort ? 'expand-outline' : 'contract-outline',
+                label: allShort ? 'Повністю' : 'Коротко',
+                onPress: () => setShort(new Set(mine.map((c) => c.id)), !allShort),
+              };
+            })(),
+          ]
+        : []),
+      ...(selectedCardIds.size >= 2
+        ? [
+            {
+              key: 'align',
+              icon: 'mc:align-horizontal-left',
+              label: 'Вирівняти',
+              active: alignMenuVisible,
+              onPress: () => setAlignMenuVisible((v) => !v),
+            },
+          ]
+        : []),
+      ...(onlySelectedCard
+        ? [
+            // While a chain is isolated the same button is the way OUT -
+            // a second hold offers it at once, no trip to the "..."
+            // menu. On a card of the chain itself, isolating again
+            // would change nothing; on any other card it re-aims.
+            isolatedIds !== null && isolatedIds.has(onlySelectedCard.id)
+              ? {
+                  key: 'isolate',
+                  icon: 'mc:image-filter-center-focus',
+                  label: 'Вийти з ізоляції',
+                  active: true,
+                  onPress: () => {
+                    clearSelection();
+                    setIsolatedIds(null);
+                  },
+                }
+              : {
+                  key: 'isolate',
+                  icon: 'mc:image-filter-center-focus',
+                  label: 'Ізоляція',
+                  onPress: () => isolateSelectedCard(onlySelectedCard.id),
+                },
+            {
+              key: 'copy',
+              icon: 'copy-outline',
+              label: 'Копіювати',
+              onPress: () => copyCardText(onlySelectedCard),
+            },
+            // A record card (a car, a road list) can be planned on
+            // several days: a copy of it, linked to it.
+            ...(onlySelectedCard.type === 'dbRow'
+              ? [
+                  {
+                    key: 'duplicate',
+                    icon: 'duplicate-outline',
+                    label: 'Дублювати',
+                    onPress: () => duplicateCard(onlySelectedCard),
+                  },
+                ]
+              : []),
+          ]
+        : []),
+      // A card of «Картки»: its two fields are written here (a tap only folds the explanation).
+      ...(onlySelectedCard?.type === 'flashcard'
+        ? [{ key: 'editFlashcard', icon: 'create-outline', label: 'Редагувати', onPress: () => setEditFlashcardId(onlySelectedCard.id) }]
+        : []),
+      ...(onlySelectedDocumentCard
+        ? [
+            {
+              key: 'openText',
+              icon: 'reader-outline',
+              label: 'Текст',
+              onPress: () => openCardText(onlySelectedDocumentCard),
+            },
+            {
+              key: 'editDoc',
+              icon: 'create-outline',
+              label: 'Редагувати',
+              onPress: () => editDocumentCard(onlySelectedDocumentCard),
+            },
+          ]
+        : []),
+      ...(selectionHasConnections
+        ? [
+            {
+              key: 'disconnect',
+              icon: 'mc:vector-line',
+              label: 'Відʼєднати',
+              onPress: disconnectSelectedCards,
+            },
+          ]
+        : []),
+      ...(onlySelectedImageCard?.pageOnly
+        ? [{ key: 'into-base', icon: 'server-outline', label: 'У базу', onPress: () => putCardIntoBase(onlySelectedImageCard) }]
+        : []),
+      ...(onlySelectedImageCard
+        ? [
+            {
+              key: 'natural',
+              icon: onlySelectedImageCard.imageNatural ? 'mc:crop-square' : 'mc:image-size-select-actual',
+              label: onlySelectedImageCard.imageNatural ? 'Однакові' : 'Свої пропорції',
+              onPress: () => toggleImageNatural(onlySelectedImageCard),
+            },
+            {
+              key: 'bare',
+              icon: onlySelectedImageCard.imageBare ? 'text-outline' : 'image-outline',
+              label: onlySelectedImageCard.imageBare ? 'З підписом' : 'Без підпису',
+              onPress: () => toggleImageBare(onlySelectedImageCard),
+            },
+          ]
+        : []),
+      {
+        key: 'move',
+        icon: 'mc:arrow-right-bold-box-outline',
+        label: 'Перенести',
+        onPress: openMovePicker,
+      },
+      { key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: deleteSelection },
+  ];
+  const selectionActions = thoughtSelectionActions ?? boardSelectionActions;
+
+  // A CARD SELECTION IS AN ACTIONS CARD, the same as on every other
+  // database (Documents/Files/Photos/Links) - it used to be its own
+  // floating capsule instead, which is what left the dock showing one
+  // idle "Рух" button directly above a second, unrelated menu:
+  // "у нас впливає ціле окреме меню, і при цьому пустує док з однієї
+  // многофункціональної кнопки". The dock already knows how to hold a
+  // variable, scrolling list of actions with a word under each icon -
+  // this was simply the one screen that had never been moved onto it.
+  useDockActions(
+    (paneDocOpen && paneFullscreen) || (cardWindowWriting && !pointerDensity) || (inlineBlockId !== null && !pointerDensity)
+      ? null
+      : macBoard
+      ? // On the Mac the right panel's «Обране» holds the selection's actions; only the way out of isolation stays on the bar.
+        isolatedIds !== null && !(selectedCardIds.size > 0 || selectedShapeIds.size > 0)
+        ? [{ key: 'isolate', icon: 'mc:image-filter-center-focus', label: 'Вийти з ізоляції', active: true, onPress: toggleIsolation }]
+        : null
+      : boardFocused
+      ? selectedCardIds.size > 0 || selectedShapeIds.size > 0
+        ? selectionActions
+        : bar
+        ? [
+            {
+              key: 'move',
+              icon: 'mc:cursor-move',
+              label: 'Рух',
+              active: canvasTool === 'move',
+              onPress: () => setCanvasTool('move'),
+            },
+            {
+              key: 'hand',
+              icon: 'mc:hand-back-right-outline',
+              label: 'Рука',
+              active: canvasTool === 'hand',
+              onPress: () => setCanvasTool('hand'),
+            },
+            {
+              key: 'select',
+              icon: 'mc:selection-drag',
+              label: 'Вибір',
+              active: canvasTool === 'select',
+              onPress: () => setCanvasTool('select'),
+            },
+            {
+              key: 'connect',
+              icon: 'mc:vector-line',
+              label: 'Звʼязок',
+              active: canvasTool === 'connect',
+              onPress: () => setCanvasTool('connect'),
+            },
+            // "+" moved here from the right round button (see useDockBeads).
+            ...(FEATURES.boardDockBack ? [{ key: 'add', icon: 'add-outline', label: 'Додати', strong: true, onPress: () => setAddSheetVisible(true) }] : []),
+          ]
+        : [
+            ...(macBoard
+              ? []
+              : [
+            // Three separate buttons now, not one cycled through - "чому
+            // їх всі не розмістити на доці? а не проклацувати одну
+            // кнопку - це ж нелогічно". The card was already sized for
+            // four (ACT_W divides by 4 regardless of count), so the old
+            // single button just left three slots sitting empty beside
+            // it - every mode was ALREADY drawing the width, none of
+            // them were drawing the button.
+            {
+              key: 'move',
+              icon: 'mc:cursor-move',
+              label: 'Рух',
+              active: canvasTool === 'move',
+              onPress: () => setCanvasTool('move'),
+            },
+            {
+              key: 'hand',
+              icon: 'mc:hand-back-right-outline',
+              label: 'Рука',
+              active: canvasTool === 'hand',
+              onPress: () => setCanvasTool('hand'),
+            },
+            {
+              key: 'select',
+              icon: 'mc:selection-drag',
+              label: 'Вибір',
+              active: canvasTool === 'select',
+              onPress: () => setCanvasTool('select'),
+            },
+            {
+              key: 'connect',
+              icon: 'mc:vector-line',
+              label: 'Звʼязок',
+              active: canvasTool === 'connect',
+              onPress: () => setCanvasTool('connect'),
+            },
+              ]),
+            // Isolation is no tool of the strip: it lives in the menu a held
+            // card opens (see the selection bar) - "режим ізоляції треба
+            // перенести в док в меню яке виникає при затисканні картки".
+            // Only the way OUT stays here, while a chain is isolated.
+            ...(isolatedIds !== null
+              ? [
+                  {
+                    key: 'isolate',
+                    icon: 'mc:image-filter-center-focus',
+                    label: 'Вийти з ізоляції',
+                    active: true,
+                    onPress: toggleIsolation,
+                  },
+                ]
+              : []),
+            // Also not tools - one-shot actions, shown only once there is
+            // something to do (see undo/redo's own comment on why they
+            // stay in sync for free with every mutation on the board).
+            // On the Mac undo/redo stand in the window bar already (useTopExtras above).
+            ...(canUndo && !macBoard ? [{ key: 'undo', icon: 'arrow-undo-outline', label: 'Скасувати', onPress: undo }] : []),
+            ...(canRedo && !macBoard ? [{ key: 'redo', icon: 'arrow-redo-outline', label: 'Повторити', onPress: redo }] : []),
+            ...paneControls,
+          ]
+      : null
+  );
+
+    type Tile = { key: string; icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void };
+    const addSections: { title: string; tiles: Tile[] }[] = [
+      {
+        title: 'Картки',
+        tiles: [
+          // A theme's board: a new thought of this theme first - the same window it is caught in anywhere; the board puts
+          // its card in the middle of the view once it is kept (useThemeBoard).
+          ...(themeBoard.themeId
+            ? [
+                {
+                  key: 'thought',
+                  icon: 'bulb-outline' as keyof typeof Ionicons.glyphMap,
+                  label: 'Думка',
+                  onPress: () => {
+                    setAddSheetVisible(false);
+                    openThoughtCapture({ themeId: themeBoard.themeId! });
+                  },
+                },
+              ]
+            : []),
+          { key: 'doc', icon: 'document-text-outline', label: 'Документ', onPress: createDocumentCard },
+          // A new card of the «Картки» base, made here like a document.
+          { key: 'flashcard', icon: 'albums-outline', label: 'Картка', onPress: createFlashcard },
+          // «Наліпка», not «Текст» - a bare text label with no
+          // card under it is a SHAPE and is already called
+          // Текст; two things under one word is the confusion
+          // this renames away from.
+          { key: 'sticky', icon: 'text-outline', label: 'Наліпка', onPress: addTextCard },
+          // A line of the note's own, free on the board.
+          { key: 'block', icon: 'reorder-two-outline', label: 'Блок', onPress: addFreeBlock },
+          { key: 'link', icon: 'link-outline', label: 'Посилання', onPress: () => openLinkPrompt('other') },
+          { key: 'video', icon: 'videocam-outline', label: 'Відео', onPress: () => openLinkPrompt('video') },
+          { key: 'geo', icon: 'location-outline', label: 'Геоточка', onPress: () => openLinkPrompt('geo') },
+          { key: 'image', icon: 'image-outline', label: 'Зображення', onPress: createImageCard },
+          { key: 'file', icon: 'document-outline', label: 'Файл', onPress: createFileCard },
+          { key: 'board', icon: 'easel-outline', label: 'Дошка', onPress: openBoardPicker },
+          { key: 'existing', icon: 'search-outline', label: 'З бази', onPress: openExistingItemPicker },
+          // A NEW record of one of the user's own databases, as a card.
+          { key: 'record', icon: 'albums-outline', label: 'Запис бази', onPress: addDatabaseRecord },
+        ],
+      },
+      {
+        title: 'Пачкою',
+        tiles: [
+          // The one that brings a whole theme's worth of
+          // material at once rather than one card.
+          {
+            key: 'project',
+            icon: 'albums-outline',
+            label: 'З проекту',
+            onPress: () => {
+              setAddSheetVisible(false);
+              setGroupPickerVisible(true);
+            },
+          },
+          // A live column (BoardColumn.liveTaskSource), apart
+          // from «З проекту», which makes a one-time snapshot.
+          {
+            key: 'tasks',
+            icon: 'checkbox-outline',
+            label: 'Справи',
+            onPress: () => {
+              setAddSheetVisible(false);
+              setTaskColumnPickerVisible(true);
+            },
+          },
+          { key: 'window', icon: 'server-outline', label: 'Вікно бази', onPress: addDatabaseWindow },
+          // A tree of ideas pasted as text (an AI's answer) becomes cards with lines.
+          { key: 'outline', icon: 'git-network-outline', label: 'Карта з тексту', onPress: () => pasteOutlineAsMap(true) },
+          // The first version: plain text cards that live only on this board.
+          { key: 'outline-cards', icon: 'albums-outline', label: 'Карта картками', onPress: () => pasteOutlineAsMap(false) },
+        ],
+      },
+      {
+        // Furniture, not content - below everything that
+        // becomes part of a document.
+        title: 'Розмітка',
+        tiles: [
+          { key: 'column', icon: 'browsers-outline', label: 'Стовпчик', onPress: addColumn },
+          { key: 'strip', icon: 'newspaper-outline', label: 'Ряд з «+»', onPress: addStrip },
+          { key: 'week', icon: 'calendar-number-outline', label: 'Тиждень', onPress: addWeek },
+          { key: 'area', icon: 'scan-outline', label: 'Область', onPress: addContainer },
+          {
+            key: 'shape',
+            icon: 'shapes-outline',
+            label: 'Фігура',
+            onPress: () => {
+              setAddSheetVisible(false);
+              setShapeSheetVisible(true);
+            },
+          },
+        ],
+      },
+    ];
+
+  // The layers list - ONE piece of JSX for the phone's drawer and the Mac's panel tab.
+  const layersBody = (
+  <GestureDetector gesture={layersDragGesture}>
+    <ScrollView style={styles.layersScroll}>
+      {/* "Без шару": every object nothing has claimed - a bucket,
+          not a real layer, so it has no eye/lock of its own. */}
+      <View
+        ref={layersCarry.registerFolder('')}
+        collapsable={false}
+        style={styles.layerGroup}
+      >
+        <Pressable
+          style={styles.layerHeaderRow}
+          onPress={() => toggleLayerCollapsed('__none__')}
+        >
+          <Ionicons
+            name={collapsedLayerIds.has('__none__') ? 'chevron-forward' : 'chevron-down'}
+            size={layerIcon}
+            color={layerInkMuted}
+          />
+          <Text style={[styles.layerName, { color: layerInkMuted }]} numberOfLines={1}>
+            Без шару
+          </Text>
+          <Text style={styles.layerCount}>{(layerMembers.get('') ?? []).length}</Text>
+        </Pressable>
+        {!collapsedLayerIds.has('__none__') &&
+          (layerMembers.get('') ?? []).map((member) => renderLayerMemberRow(member))}
+      </View>
+
+      {layers.map((layer) => (
+        <View
+          key={layer.id}
+          ref={layersCarry.registerFolder(layer.id)}
+          collapsable={false}
+          style={styles.layerGroup}
+        >
+          <View style={styles.layerHeaderRow}>
+            <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerCollapsed(layer.id)}>
+              <Ionicons
+                name={collapsedLayerIds.has(layer.id) ? 'chevron-forward' : 'chevron-down'}
+                size={layerIcon}
+                color={layerInk}
+              />
+            </Pressable>
+            <Pressable style={styles.layerNameTap} onPress={() => setRenamingLayer(layer)}>
+              <Text style={styles.layerName} numberOfLines={1}>
+                {layer.name}
+              </Text>
+            </Pressable>
+            <Text style={styles.layerCount}>{(layerMembers.get(layer.id) ?? []).length}</Text>
+            <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerHidden(layer)}>
+              <Ionicons
+                name={layer.hidden ? 'eye-off-outline' : 'eye-outline'}
+                size={layerIcon}
+                color={layer.hidden ? '#F87171' : layerInk}
+              />
+            </Pressable>
+            <Pressable hitSlop={layerButtonSlop} onPress={() => toggleLayerLocked(layer)}>
+              <Ionicons
+                name={layer.locked ? 'lock-closed' : 'lock-open-outline'}
+                size={layerIcon}
+                color={layer.locked ? '#F5C77E' : layerInk}
+              />
+            </Pressable>
+            <Pressable hitSlop={layerButtonSlop} onPress={() => confirmDeleteLayer(layer)}>
+              <Ionicons name="trash-outline" size={layerIcon} color={layerInkMuted} />
+            </Pressable>
+          </View>
+          {!collapsedLayerIds.has(layer.id) &&
+            (layerMembers.get(layer.id) ?? []).map((member) => renderLayerMemberRow(member))}
+        </View>
+      ))}
+
+      {layers.length === 0 && (
+        <Text style={styles.layersEmpty}>
+          Ще немає жодного шару. Натисніть «+», щоб створити перший.
+        </Text>
+      )}
+    </ScrollView>
+  </GestureDetector>
+  );
+
+  // THE BOARD'S PANEL (Mac, frame B): the add sheet's kinds as tiles, opened from the palette's «+», the N key and the bar's
+  // «+» instead of the big sheet. The tab asked for is local; an opened panel is the inspector's door (remembered).
+  const [insertFocus, setInsertFocus] = useState(0);
+  const openInsert = () => {
+    setPanelTab('insert');
+    inspector.set(true);
+    // Already showing «Вставити»? Then the button still does something you can see: the search field takes the caret.
+    setInsertFocus((n) => n + 1);
+  };
+  // The choice lists of the panel (the phone's sheets): whichever is asked for is the tab shown; when none is asked any more, its
+  // tab goes and the panel goes back to «Вставити».
+  const askedSheet = !macBoard
+    ? null
+    : shapeSheetVisible
+      ? 'shape'
+      : groupPickerVisible
+        ? 'group'
+        : taskColumnPickerVisible
+          ? 'tasks'
+          : boardPickerOpen
+            ? 'board'
+            : movePickerOpen
+              ? 'move'
+              : dbChoices
+                ? 'dbpick'
+                : null;
+  useEffect(() => {
+    if (askedSheet) {
+      setPanelTab(askedSheet);
+      inspector.set(true);
+    } else {
+      setPanelTab((t) => (['shape', 'group', 'tasks', 'board', 'move', 'dbpick'].includes(t) ? 'insert' : t));
+    }
+  }, [askedSheet]);
+  // The picker closed (a pick, or its tab's ×): leave its tab.
+  useEffect(() => {
+    if (!existingItemPickerVisible) setPanelTab((t) => (t === 'pick' ? 'insert' : t));
+  }, [existingItemPickerVisible]);
+  // Something chosen -> the panel shows «Обране»; nothing chosen any more -> back to «Вставити».
+  const hasSelection = selectedCardIds.size > 0 || selectedShapeIds.size > 0 || !!selectedShape;
+  useEffect(() => {
+    if (!macBoard) return;
+    // The panel is not forced open: someone who folded it for room keeps it folded (the dot on «Обране» says why).
+    if (hasSelection) setPanelTab('selected');
+    else setPanelTab((t) => (t === 'selected' ? 'insert' : t));
+  }, [hasSelection, macBoard]);
+  usePublishRailPanel(
+    macBoard && !(paneDocOpen && paneFullscreen) ? (
+      <BoardPanel
+        tab={panelTab}
+        onTab={setPanelTab}
+        groups={addSections.map((g) => ({ title: g.title, tiles: g.tiles.map((t) => ({ key: t.key, label: t.label, onPress: t.onPress })) }))}
+        selectedBadge={hasSelection}
+        focusSearch={insertFocus}
+        refs={
+          <AddExistingItemModal
+            docked
+            visible
+            onPick={addExistingCard}
+            onClose={() => setPanelTab('insert')}
+            excludeIds={existingItemExcludeIds}
+            includeDocuments
+            onPickDocument={addDocumentCard}
+          />
+        }
+        dbTabs={[
+          ...(existingItemPickerVisible
+            ? [
+                {
+                  id: 'pick',
+                  label: 'З бази',
+                  onClose: () => setExistingItemPickerVisible(false),
+                  node: (
+                    <AddExistingItemModal
+                      docked
+                      visible
+                      onPick={addExistingCard}
+                      onClose={() => setExistingItemPickerVisible(false)}
+                      excludeIds={existingItemExcludeIds}
+                      includeDocuments
+                      onPickDocument={addDocumentCard}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...(shapeSheetVisible
+            ? [
+                {
+                  id: 'shape',
+                  label: 'Фігура',
+                  onClose: () => setShapeSheetVisible(false),
+                  node: (
+                    <PanelPickList
+                      hint="Клацни — з'явиться посеред поля."
+                      rows={SHAPE_MENU.map((entry) => ({
+                        key: entry.kind,
+                        label: entry.label,
+                        leading: <MaterialCommunityIcons name={entry.icon as keyof typeof MaterialCommunityIcons.glyphMap} size={18} color="#6E6B64" />,
+                        onPress: () => addShape(entry.kind),
+                      }))}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...(groupPickerVisible
+            ? [
+                {
+                  id: 'group',
+                  label: 'З проєкту',
+                  onClose: () => setGroupPickerVisible(false),
+                  node: (
+                    <PanelPickList
+                      hint="З якого проєкту взяти речі."
+                      empty="Поки немає жодного проєкту."
+                      rows={groups
+                        .filter((group) => !group.archived)
+                        .map((group) => ({
+                          key: group.id,
+                          label: group.name,
+                          meta: String(itemsByGroup[group.id]?.length ?? 0),
+                          leading: <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: group.color || '#6B7280' }} />,
+                          onPress: () => {
+                            setGroupPickerVisible(false);
+                            setImportingGroup(group);
+                          },
+                        }))}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...(taskColumnPickerVisible
+            ? [
+                {
+                  id: 'tasks',
+                  label: 'Справи',
+                  onClose: () => {
+                    setTaskColumnPickerVisible(false);
+                    setTaskColumnProject(null);
+                  },
+                  node:
+                    taskColumnProject === null ? (
+                      <PanelPickList
+                        hint="З якого проєкту."
+                        rows={[
+                          { key: 'inbox', label: 'Вхідні', leading: <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#6B7280' }} />, onPress: () => setTaskColumnProject({ id: null, name: 'Вхідні' }) },
+                          ...taskProjects
+                            .filter((project) => !project.archived)
+                            .map((project) => ({
+                              key: project.id,
+                              label: project.name,
+                              leading: <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: project.color || '#6B7280' }} />,
+                              onPress: () => setTaskColumnProject({ id: project.id, name: project.name }),
+                            })),
+                        ]}
+                      />
+                    ) : (
+                      <PanelPickList
+                        onBack={() => setTaskColumnProject(null)}
+                        backLabel={taskColumnProject.name}
+                        rows={[
+                          { key: 'all', label: 'Весь проєкт', leading: <Ionicons name="albums-outline" size={17} color="#6E6B64" />, onPress: insertWholeTaskProject },
+                          ...taskLists
+                            .filter((list) => list.groupId === taskColumnProject.id)
+                            .map((list) => ({ key: list.id, label: list.name, leading: <Ionicons name="list-outline" size={17} color="#6E6B64" />, onPress: () => insertOneTaskList(list) })),
+                        ]}
+                      />
+                    ),
+                },
+              ]
+            : []),
+          ...(boardPickerOpen
+            ? [
+                {
+                  id: 'board',
+                  label: 'Дошка',
+                  onClose: () => setBoardPickerOpen(false),
+                  node: (
+                    <PanelPickList
+                      hint="Картка з'явиться на цій дошці."
+                      searchable
+                      rows={pickableBoards.map((b) => ({ key: b.id, label: b.title, leading: <Ionicons name="easel-outline" size={16} color="#6E6B64" />, onPress: () => addBoardCard(b.id) }))}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...(movePickerOpen
+            ? [
+                {
+                  id: 'move',
+                  label: 'Перенести',
+                  onClose: () => setMovePickerOpen(false),
+                  node: (
+                    <PanelPickList
+                      hint="Виділене поїде на цю дошку."
+                      searchable
+                      createLabel="Нова дошка"
+                      onCreate={moveSelectionToNewBoard}
+                      rows={pickableBoards.map((b) => ({ key: b.id, label: b.title, leading: <Ionicons name="easel-outline" size={16} color="#6E6B64" />, onPress: () => moveSelectionTo(b.id) }))}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...(dbChoices
+            ? [
+                {
+                  id: 'dbpick',
+                  label: 'Вікно бази',
+                  onClose: () => setDbChoices(null),
+                  node: (
+                    <PanelPickList
+                      hint="Яку базу відкрити вкладкою."
+                      searchable
+                      rows={dbChoices.map((d) => ({ key: d.id, label: d.name, leading: <Ionicons name="grid-outline" size={16} color="#6E6B64" />, onPress: () => openDatabaseWindow(d.id) }))}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...dbWindows.map((w) => ({
+          id: `db:${w.id}`,
+          label: dbNames[w.databaseId] ?? 'База',
+          onClose: () => closeDbWindow(w.id),
+          node: (
+            <BoardDatabaseWindow
+              inPanel
+              win={w}
+              placed={placedByRecord}
+              onChange={(patch) => patchWindow(w.id, patch)}
+              onClose={() => closeDbWindow(w.id)}
+              onPlace={placeRecord}
+              onFind={findRecord}
+              onCarryMove={carryMove}
+              onCarryEnd={carryEnd}
+            />
+          ),
+        })),
+        ]}
+        layers={
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 }}>
+              <Text style={{ fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', color: '#9E9B93', fontWeight: '600' }}>Шари</Text>
+              <Pressable onPress={addLayer} hitSlop={8} accessibilityLabel="Новий шар">
+                <Ionicons name="add" size={20} color="#6E6B64" />
+              </Pressable>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 8 }}>{layersBody}</View>
+          </View>
+        }
+        selected={
+          hasSelection ? (
+            <BoardSelection
+              heading={
+                selectedShape && selectedCardIds.size === 0
+                  ? 'Обрана фігура'
+                  : selectedCardIds.size === 1
+                  ? 'Обрана картка'
+                  : `Обрано ${selectedCardIds.size + selectedShapeIds.size} елементів`
+              }
+              actions={
+                selectedShape && selectedCardIds.size === 0
+                  ? [{ key: 'delete', icon: 'trash-outline', label: 'Видалити', onPress: () => deleteShape(selectedShape.id) }]
+                  : selectionActions
+              }
+              onClear={clearSelection}
+              align={selectedCardIds.size >= 2 ? { onAlign: (k) => alignSelectedCards(k), onGrid: arrangeSelectedGrid } : undefined}
+              shape={
+                selectedShape && selectedCardIds.size === 0
+                  ? {
+                      kind: selectedShape.kind,
+                      text: selectedShape.text ?? '',
+                      sizeLabel: textSizeStepLabel(selectedShape.fontSize ?? (selectedShape.kind === 'text' ? SHAPE_TEXT_SIZE_DEFAULT : SHAPE_LABEL_SIZE_DEFAULT)),
+                      filled: !!selectedShape.filled,
+                      canFill: selectedShape.kind !== 'text',
+                      colour: selectedShape.color,
+                      colours: STICKY_COLORS,
+                      onText: () => setEditingShape(selectedShape),
+                      onSize: (d) => stepShapeTextSize(selectedShape, d),
+                      onFill: () => toggleShapeFilled(selectedShape.id),
+                      onColour: (c) => setShapeColour(selectedShape.id, c),
+                      onDelete: () => deleteShape(selectedShape.id),
+                    }
+                  : undefined
+              }
+            />
+          ) : undefined
+        }
+        map={
+          mapId ? (
+            <DocumentEditorScreen
+              key={mapId}
+              ref={mapEditorRef}
+              embedded
+              documentId={mapId}
+              navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
+            />
+          ) : (
+            <View />
+          )
+        }
+        onMapAdd={addMapPlace}
+        info={
+          <View style={{ gap: 8 }}>
+            <View style={{ backgroundColor: '#FFFFFF', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 6 }}>
+              {[
+                ['Назва', title || 'Без назви'],
+                ['Карток', String(cards.length)],
+                ['Зв\'язків', String(connections.length)],
+                ['Шарів', String(layers.length)],
+              ].map(([k, v]) => (
+                <View key={k} style={{ paddingVertical: 7 }}>
+                  <Text style={{ fontSize: 11.5, color: '#9E9B93' }}>{k}</Text>
+                  <Text style={{ fontSize: 13.5, fontWeight: '600', color: '#1F1E1B' }}>{v}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        }
+      />
+    ) : null,
+    // The map is a note and wants room: the column widens for it and returns to its own width on any other tab.
+    panelTab === 'map' ? 560 : undefined
+  );
+
+  // The fields each database's cards show ON THIS BOARD - see
+  // boardFieldsContext.
+  const boardFields: Record<string, string[]> = {};
+  dbWindows.forEach((w) => {
+    if (w.hiddenFieldIds) boardFields[w.databaseId] = w.hiddenFieldIds;
+  });
+
+  return (
+    <BoardFieldsContext.Provider value={boardFields}>
+    <ThoughtCardsContext.Provider value={themeBoard.themeId ? themeBoard.thoughtsById : null}>
+    <View ref={deskContentRef} collapsable={false} style={styles.splitRoot}>
+      {/* The board keeps every pixel it had until a document is opened
+          beside it, and all of them again when that document goes full
+          screen - hidden rather than unmounted, so the canvas comes back
+          at the same pan and zoom. */}
+      <View
+        style={[
+          styles.container,
+          isTwoPane && paneDocId !== null && paneFullscreen ? styles.paneHidden : null,
+          // The panel pushes the canvas in rather than lying over it.
+          //
+          // A MARGIN and not a padding, which was the first attempt and
+          // did nothing: onLayout reports a view's own width, padding
+          // included, so the board went on believing it had the whole
+          // window - and the canvas surface is absolutely positioned
+          // inside, which ignores padding outright. A margin makes the
+          // view itself narrower, so the width onLayout reports is the
+          // width there actually is, and the board's screen-to-world
+          // maths keeps agreeing with what is drawn.
+          //
+          // Only where a cursor is pointing: on a phone there is no room
+          // to give up, which is why the drawer lies over the board
+          // there.
+          pointerDensity && layersDrawerVisible ? { marginRight: layersPanelWidth } : null,
+        ]}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          // Keep what is on screen where it is.
+          //
+          // Everything here is placed relative to the MIDDLE of the
+          // viewport, so narrowing it by 340 moves that middle 170 to
+          // the left and the whole board jumps with it - which is what
+          // opening «Шари» looked like. The canvas is endless, so
+          // there is no reason for the user to see the shift at all:
+          // giving translateX back half of whatever the width lost
+          // holds the LEFT edge still, and the only part that changes
+          // is the strip on the right that the panel is taking anyway.
+          //
+          // Also right on a window resize, which is the other way this
+          // number moves.
+          const previous = viewportWidthRef.current;
+          if (previous > 0 && width !== previous) translateX.value += (width - previous) / 2;
+          viewportWidthRef.current = width;
+          setViewport({ width, height });
+          viewportHeightSV.value = height;
+          viewportWidthSV.value = width;
+        }}
+      >
+        <GestureDetector gesture={canvasGesture}>
+          <View ref={canvasRef} style={[StyleSheet.absoluteFill, styles.canvasSurface]}>
+            <Animated.View style={[styles.world, worldAnimatedStyle]}>
+              {/* Under everything else too - a frame marks a region, it
+                  never sits ON top of what it holds. */}
+              {containers.filter((frame) => !isHidden(frame)).map((frame) => (
+                <DraggableContainer
+                  key={frame.id}
+                  container={frame}
+                  posX={positionFor(frame.id, frame.x, frame.y).x}
+                  posY={positionFor(frame.id, frame.x, frame.y).y}
+                  isDragging={frame.id === draggingContainerId}
+                  dimmed={isolatedIds !== null && !isolatedIds.has(frame.id)}
+                  locked={isLocked(frame)}
+                  dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand'}
+                  canvasScale={scale}
+                  canvasPanGesture={canvasBlockingGesture}
+                  containerOffsetX={containerOffsetX}
+                  containerOffsetY={containerOffsetY}
+                  followsConnectionPull={pullMembers.containerIds.has(frame.id)}
+                  pullOffsetX={pullOffsetX}
+                  pullOffsetY={pullOffsetY}
+                  onDragStart={startContainerDrag}
+                  onDragEnd={commitContainerDrag}
+                  onRename={(c) => (isolateArmed ? pickIsolationAnchor(c.id) : setRenamingContainer(c))}
+                  onDelete={confirmDeleteContainer}
+                  onResize={resizeContainer}
+                  onStepFontSize={stepContainerTextSize}
+                />
+              ))}
+
+              {/* Underneath everything - a column is a backdrop its cards sit
+                  on. box-none so only the header takes touches and the rest
+                  of the lane still pans the canvas. Filtered by its own
+                  layer's visibility the same way cards/shapes/containers
+                  already are - a column had no way into «Шари» at all
+                  until now. */}
+              {columns.filter((column) => !isHidden(column)).map((column) => {
+                // A "Проект справ" column never holds real BoardCards - see
+                // BoardColumn.liveTaskSource's own comment - so its member
+                // count and height come from the live task list instead of
+                // columnMembers/columnHeight, which both assume `cards`.
+                if (column.liveTaskSource) {
+                  const liveTasksForCol = tasksForColumn(column);
+                  const rowsCount = Math.max(1, liveTasksForCol.length);
+                  return (
+                    <DraggableColumn
+                      key={column.id}
+                      column={column}
+                      memberCount={liveTasksForCol.length}
+                      height={COLUMN_HEADER_HEIGHT + rowsCount * (LIVE_TASK_ROW_HEIGHT + 10) + COLUMN_PADDING}
+                      isDragging={movingColumnIds.has(column.id)}
+                      locked={isLocked(column)}
+                      dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand'}
+                      canvasScale={scale}
+                      canvasPanGesture={canvasBlockingGesture}
+                      columnOffsetX={columnOffsetX}
+                      columnOffsetY={columnOffsetY}
+                      isCatching={column.id === hoverColumnId}
+                      onDragStart={setDraggingColumnId}
+                      onDragEnd={commitColumnDrag}
+                      onRename={openColumnMenu}
+                      onDelete={confirmDeleteColumn}
+                      liveTasks={liveTasksForCol}
+                      onToggleTask={toggleLiveTask}
+                      onOpenTask={openLiveTask}
+                    />
+                  );
+                }
+                const members = columnMembers(cards, column.id);
+                return (
+                  <DraggableColumn
+                    key={column.id}
+                    column={column}
+                    memberCount={members.length}
+                    height={columnHeight(members, cardHeights)}
+                    isDragging={movingColumnIds.has(column.id)}
+                    locked={isLocked(column)}
+                    dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand'}
+                    canvasScale={scale}
+                    canvasPanGesture={canvasBlockingGesture}
+                    columnOffsetX={columnOffsetX}
+                    columnOffsetY={columnOffsetY}
+                    isCatching={column.id === hoverColumnId}
+                    onDragStart={setDraggingColumnId}
+                    onDragEnd={commitColumnDrag}
+                    onRename={(c) => (c.week ? openWeekMenu(c) : openColumnMenu(c))}
+                    onDelete={(c) => (c.week ? confirmDeleteWeek(c) : confirmDeleteColumn(c))}
+                  />
+                );
+              })}
+
+              {/* Before the cards, so a link passes UNDER the two cards it
+                  joins rather than across their faces. Each connection gets
+                  its own small Svg sized to that pair's bounding box - one
+                  canvas the size of the whole 6000px world would be a lot to
+                  hand the renderer for a handful of thin curves. */}
+              {/* THE BOARD'S FURNITURE, between the lanes and the
+                  cards: it is drawn ON the canvas, and the cards are the
+                  things that live on top of it. */}
+              {shapes.filter((shape) => !isHidden(shape)).map((shape) => (
+                <DraggableShape
+                  key={shape.id}
+                  shape={shape}
+                  isSelected={shape.id === selectedShapeId || selectedShapeIds.has(shape.id)}
+                  posX={positionFor(shape.id, shape.x, shape.y).x}
+                  posY={positionFor(shape.id, shape.x, shape.y).y}
+                  onDragStart={(id) => {
+                    setDraggedShapeId(id);
+                    beginConnectionPull(id);
+                  }}
+                  dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand' && !isLocked(shape)}
+                  canvasScale={scale}
+                  canvasPanGesture={canvasBlockingGesture}
+                  canvasHoldGesture={holdToSelectGesture}
+                  onTap={(sh) => (isolateArmed ? pickIsolationAnchor(sh.id) : setSelectedShapeId((c) => (c === sh.id ? null : sh.id)))}
+                  onLongPress={(sh) => {
+                    setSelectedShapeId(sh.id);
+                    setEditingShape(sh);
+                  }}
+                  onDragEnd={(id, x, y) => {
+                    setDraggedShapeId(null);
+                    const before = shapes.find((s) => s.id === id);
+                    moveShape(id, x, y);
+                    if (before) commitConnectionPull(x - before.x, y - before.y);
+                  }}
+                  onResize={resizeShape}
+                  followsContainerDrag={draggingContainerId !== null && containerDragMembers.shapeIds.has(shape.id)}
+                  containerOffsetX={containerOffsetX}
+                  containerOffsetY={containerOffsetY}
+                  followsConnectionPull={pullMembers.shapeIds.has(shape.id)}
+                  pullOffsetX={pullOffsetX}
+                  pullOffsetY={pullOffsetY}
+                  dimmed={isolatedIds !== null && !isolatedIds.has(shape.id)}
+                />
+              ))}
+
+              {(() => {
+                // One «+» at the end of each row of columns.
+                const strips = new Map<string, BoardColumn[]>();
+                columns.forEach((c) => {
+                  if (c.strip) strips.set(c.strip.id, [...(strips.get(c.strip.id) ?? []), c]);
+                });
+                return [...strips.entries()].map(([stripId, list]) => {
+                  if (list.some((c) => c.id === draggingColumnId)) return null;
+                  if (list.some((c) => isObjectHiddenById(c.id))) return null;
+                  const last = list.reduce((a, b) => (b.x > a.x ? b : a));
+                  return (
+                    <Pressable
+                      key={`strip-plus-${stripId}`}
+                      onPress={() => addStripColumn(stripId)}
+                      accessibilityLabel="Додати стовпчик"
+                      style={[styles.stripPlus, { left: last.x + COLUMN_WIDTH + 10, top: last.y + 6 }]}
+                    >
+                      <Ionicons name="add" size={24} color="#FFFFFF" />
+                    </Pressable>
+                  );
+                });
+              })()}
+              {originLinks.map((link) => {
+                const from = nodeById.get(link.from);
+                const to = nodeById.get(link.to);
+                if (!from || !to) return null;
+                if (isObjectHiddenById(from.id) || isObjectHiddenById(to.id)) return null;
+                // Redrawn once the move is over, like the resting curves.
+                if (allMovingIds && (allMovingIds.has(from.id) || allMovingIds.has(to.id))) return null;
+                const { x1, y1, x2, y2, vertical } = connectionEndpoints(
+                  from.x,
+                  from.y,
+                  from.width,
+                  from.height,
+                  to.x,
+                  to.y,
+                  to.width,
+                  to.height
+                );
+                const left = Math.min(x1, x2) - CONNECTION_PADDING;
+                const top = Math.min(y1, y2) - CONNECTION_PADDING;
+                const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
+                const height = Math.abs(y2 - y1) + CONNECTION_PADDING * 2;
+                return (
+                  <View key={`origin-${link.to}`} style={[styles.connection, { left, top, width, height }]} pointerEvents="none">
+                    <Svg width={width} height={height}>
+                      <Path
+                        d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top, vertical)}
+                        stroke={ORIGIN_COLOR}
+                        strokeWidth={3.5}
+                        strokeDasharray="10 6"
+                        strokeLinecap="round"
+                        fill="none"
+                      />
+                      {/* A dot at each end, so the tie reads even where the
+                          line is short or passes behind a card. */}
+                      <Circle cx={x1 - left} cy={y1 - top} r={5} fill={ORIGIN_COLOR} />
+                      <Circle cx={x2 - left} cy={y2 - top} r={5} fill={ORIGIN_COLOR} />
+                    </Svg>
+                  </View>
+                );
+              })}
+
+              {connections.map((connection) => {
+                const from = nodeById.get(connection.fromCardId);
+                const to = nodeById.get(connection.toCardId);
+                if (!from || !to) return null;
+                // A line to or from something hidden is itself hidden -
+                // nothing to point at otherwise.
+                if (isObjectHiddenById(from.id) || isObjectHiddenById(to.id)) return null;
+                // While either end is in motion the line is drawn live off
+                // the cards' own shared positions instead - the resting
+                // curve below is computed from React state, which doesn't
+                // update until the drop commits.
+                if (allMovingIds && (allMovingIds.has(from.id) || allMovingIds.has(to.id))) {
+                  return (
+                    <LiveConnectionLine
+                      key={connection.id}
+                      from={liveEndpointFor(from)}
+                      to={liveEndpointFor(to)}
+                    />
+                  );
+                }
+                const { x1, y1, x2, y2, vertical } = connectionEndpoints(
+                  from.x,
+                  from.y,
+                  from.width,
+                  from.height,
+                  to.x,
+                  to.y,
+                  to.width,
+                  to.height
+                );
+                const left = Math.min(x1, x2) - CONNECTION_PADDING;
+                const top = Math.min(y1, y2) - CONNECTION_PADDING;
+                const width = Math.abs(x2 - x1) + CONNECTION_PADDING * 2;
+                const height = Math.abs(y2 - y1) + CONNECTION_PADDING * 2;
+                const isSelected = selectedConnectionId === connection.id;
+                const kind = connection.kind ?? 'plain';
+                // The curve's own departure/arrival direction at each end -
+                // see curvePath's own identical `direction`, duplicated here
+                // rather than threaded out of it, since that worklet's
+                // signature is also called from LiveConnectionLine's own
+                // UI-thread animated style and changing its return shape
+                // would touch that path too.
+                const direction = vertical ? (y2 >= y1 ? 1 : -1) : x2 >= x1 ? 1 : -1;
+                const toDx = vertical ? 0 : direction;
+                const toDy = vertical ? direction : 0;
+                const tint = isSelected ? SELECTION_COLOR : CONNECTION_COLOR;
+                // Tapping the line selects it and shows the "×" beside it -
+                // see selectedConnectionId's own comment for why this has
+                // to exist alongside disconnectSelectedCards, not instead
+                // of it. The whole padded box counts as "on the line"
+                // rather than hit-testing the curve itself: close enough
+                // for a connection this short, and far simpler than
+                // distance-to-bezier math.
+                const connectionTapGesture = Gesture.Tap()
+                  .maxDuration(250)
+                  .enabled(canvasTool === 'move')
+                  .onEnd((_e, success) => {
+                    if (success) runOnJS(setSelectedConnectionId)(connection.id);
+                  });
+                return (
+                  <View key={connection.id} style={[styles.connection, { left, top, width, height }]}>
+                    <GestureDetector gesture={connectionTapGesture}>
+                      <Svg width={width} height={height}>
+                        <Path
+                          d={curvePath(x1 - left, y1 - top, x2 - left, y2 - top, vertical)}
+                          stroke={tint}
+                          strokeWidth={isSelected ? 3 : 2}
+                          fill="none"
+                        />
+                        {(kind === 'arrow' || kind === 'doubleArrow') && (
+                          <Polygon points={arrowheadPoints(x2 - left, y2 - top, toDx, toDy)} fill={tint} />
+                        )}
+                        {kind === 'doubleArrow' && (
+                          <Polygon points={arrowheadPoints(x1 - left, y1 - top, -toDx, -toDy)} fill={tint} />
+                        )}
+                      </Svg>
+                    </GestureDetector>
+                  </View>
+                );
+              })}
+
+              {cards
+                // The card open as a window is drawn by the window - its
+                // own small self stays out of sight behind it.
+                .filter((card) => !isHidden(card) && !(cardWindow?.live && card.id === cardWindow.cardId))
+                .map((card) => {
+                const isSelected = selectedCardIds.has(card.id);
+                const position = positionOf(card);
+                return (
+                  <DraggableCard
+                    key={card.id}
+                    // Drawn from the record as it is NOW - the same
+                    // treatment a document's blocks get, and for the same
+                    // reason. A card carries the photo's name as it was
+                    // when the card was made, so renaming the photo in its
+                    // database changed it everywhere except here.
+                    //
+                    // Only what is DRAWN is swapped. `cards` is what gets
+                    // saved back to the board, and a live value must never
+                    // be written into it as though someone had moved or
+                    // edited the card.
+                    card={applyLiveRecord(card, liveRecords)}
+                    posX={position.x}
+                    posY={position.y}
+                    canvasScale={scale}
+                    canvasPanGesture={canvasBlockingGesture}
+                    glueRole={glueRoleById.get(card.id)}
+                    isDragging={card.id === draggedCardId}
+                    isSelected={isSelected}
+                    isGroupDrag={isSelected && selectedCardIds.size > 1}
+                    groupOffsetX={groupOffsetX}
+                    groupOffsetY={groupOffsetY}
+                    followsColumnDrag={!!card.columnId && movingColumnIds.has(card.columnId)}
+                    onHover={reportCardHover}
+                    columnOffsetX={columnOffsetX}
+                    columnOffsetY={columnOffsetY}
+                    followsContainerDrag={draggingContainerId !== null && containerDragMembers.cardIds.has(card.id)}
+                    containerOffsetX={containerOffsetX}
+                    containerOffsetY={containerOffsetY}
+                    followsConnectionPull={pullMembers.cardIds.has(card.id)}
+                    pullOffsetX={pullOffsetX}
+                    pullOffsetY={pullOffsetY}
+                    allCardBounds={cardBoundsForGuides}
+                    guideVX={guideVX}
+                    guideVVisible={guideVVisible}
+                    guideHY={guideHY}
+                    guideHVisible={guideHVisible}
+                    dragEnabled={canvasTool !== 'connect' && canvasTool !== 'hand' && !isLocked(card)}
+                    onMeasure={measureCard}
+                    onDragStart={handleDragStart}
+                    onDragEnd={commitCardDrag}
+                    onGroupDragEnd={commitGroupDrag}
+                    onTap={(c) => (isolateArmed ? pickIsolationAnchor(c.id) : handleCardTap(c))}
+                    playing={playingCardId === card.id}
+                    onStopPlaying={() => setPlayingCardId(null)}
+                    onOpenFullscreen={() => {
+                      setPlayingCardId(null);
+                      fullscreenCardId.current = card.id;
+                      setPlayingVideoUrl(card.linkUrl ?? null);
+                    }}
+                    onFrame={addVideoFrame}
+                    onVideoTime={(t) => {
+                      videoTime.current = t;
+                    }}
+                    onLongPress={handleCardLongPress}
+                    onResize={commitCardResize}
+                    canvasHoldGesture={holdToSelectGesture}
+                    livePaper={FEATURES.cardWindow}
+                    inlineEditing={inlineBlockId === card.id}
+                    settleTick={settleTick}
+                    onInlineText={inlineText}
+                    onInlineDoubleEnter={inlineDoubleEnter}
+                    onInlineBackspaceEmpty={inlineBackspaceEmpty}
+                    dimmed={(isolatedIds !== null && !isolatedIds.has(card.id)) || (findIds !== null && !findIds.has(card.id))}
+                  />
+                );
+              })}
+
+              {/* The selected line's buttons live HERE, above the cards and every other line's
+                  box (2026-10-11: inside their own line's box - 48 wide for a vertical line - the
+                  "x" stuck out past the edge, where Android hands no touches, and the boxes of
+                  other lines lay on top of it; it broke a line about once in ten taps). */}
+              {(() => {
+                const sel = selectedConnectionId ? connections.find((c) => c.id === selectedConnectionId) : undefined;
+                if (!sel) return null;
+                const from = nodeById.get(sel.fromCardId);
+                const to = nodeById.get(sel.toCardId);
+                if (!from || !to) return null;
+                if (allMovingIds && (allMovingIds.has(from.id) || allMovingIds.has(to.id))) return null;
+                const { x1, y1, x2, y2 } = connectionEndpoints(from.x, from.y, from.width, from.height, to.x, to.y, to.width, to.height);
+                const kind = sel.kind ?? 'plain';
+                return (
+                  <View
+                    style={[styles.connectionToolbar, { left: (x1 + x2) / 2 - 15, top: (y1 + y2) / 2 - 15 }]}
+                  >
+                    {/* Plain -> one-way -> two-way -> plain - the button's own icon says which is current. */}
+                    <Pressable hitSlop={8} style={styles.connectionToolButton} onPress={() => cycleConnectionKind(sel.id)}>
+                      <Ionicons
+                        name={kind === 'plain' ? 'remove-outline' : kind === 'arrow' ? 'arrow-forward-outline' : 'swap-horizontal-outline'}
+                        size={16}
+                        color="#fff"
+                      />
+                    </Pressable>
+                    {kind === 'arrow' && (
+                      <Pressable hitSlop={8} style={styles.connectionToolButton} onPress={() => flipConnectionDirection(sel.id)}>
+                        <Ionicons name="repeat-outline" size={16} color="#fff" />
+                      </Pressable>
+                    )}
+                    <Pressable hitSlop={8} style={styles.connectionToolButton} onPress={() => deleteConnection(sel.id)}>
+                      <Ionicons name="close" size={16} color="#fff" />
+                    </Pressable>
+                  </View>
+                );
+              })()}
+
+              {/* The rubber-band line a connect-drag trails behind the
+                  finger - live (shared values), so an animated style rather
+                  than plain React state. */}
+              <ConnectDraftLine
+                startX={connectStartX}
+                startY={connectStartY}
+                endX={connectEndX}
+                endY={connectEndY}
+                visible={connectVisible}
+              />
+              {/* On top of every card - a guide has to be seen over
+                  whatever it's aligning with. */}
+              <AlignmentGuides
+                guideVX={guideVX}
+                guideVVisible={guideVVisible}
+                guideHY={guideHY}
+                guideHVisible={guideHVisible}
+              />
+              <Animated.View style={[styles.marquee, marqueeAnimatedStyle]} pointerEvents="none" />
+            </Animated.View>
+          </View>
+        </GestureDetector>
+
+        {/* Only the board's name stays up here - it needs the width. The
+            way back and the tool button stand on the dock with everything
+            else. */}
+        {embed ? null : bar ? (
+          boardFocused && (
+            <TopNavBar
+              title={
+                themeBoard.theme
+                  ? // A theme's board is called by its theme, with its colour - renamed where the theme is (the clouds).
+                    { icon: 'easel-outline', label: themeBoard.theme.name, dot: hueOf(themeBoard.theme, !!softBoardTokens?.dark).to }
+                  : { icon: 'easel-outline', label: title || 'Без назви', onPress: () => setRenamingTitle(true) }
+              }
+            />
+          )
+        ) : macBoard ? null : (
+          <View style={styles.headerRow} pointerEvents="box-none">
+            <Pressable style={styles.titleTap} onPress={() => setRenamingTitle(true)}>
+              <Text style={styles.headerTitle} numberOfLines={1}>
+                {title || 'Без назви'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* THE MAC'S TOOL PALETTE: on the canvas, at its left edge, like Figma's and Miro's - the phone's dock buttons
+            were drawn in the window bar as a capsule. A tool lights while it is the one in the hand; the key is in the tip. */}
+        {macBoard && boardFocused && !(paneDocOpen && paneFullscreen) && (
+          <View pointerEvents="box-none" style={{ position: 'absolute', left: 14, top: 70, zIndex: 20 }}>
+            <View style={{ backgroundColor: '#FFFFFF', borderRadius: 14, padding: 5, gap: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.12)' } as never}>
+              {(
+                [
+                  { tool: 'move' as const, icon: 'mc:cursor-move', label: 'Рух', key: 'V' },
+                  { tool: 'hand' as const, icon: 'mc:hand-back-right-outline', label: 'Рука', key: 'H' },
+                  { tool: 'select' as const, icon: 'mc:selection-drag', label: 'Вибір', key: 'S' },
+                  { tool: 'connect' as const, icon: 'mc:vector-line', label: 'Зв\'язок', key: 'C' },
+                ]
+              ).map((t) => (
+                <Pressable
+                  key={t.tool}
+                  onPress={() => setCanvasTool(t.tool)}
+                  accessibilityLabel={t.label}
+                  {...({ title: `${t.label} (${t.key})` } as object)}
+                  style={{ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: canvasTool === t.tool ? '#1F1E1B' : 'transparent' }}
+                >
+                  <MaterialCommunityIcons name={t.icon.slice(3) as never} size={21} color={canvasTool === t.tool ? '#FFFFFF' : '#6E6B64'} />
+                </Pressable>
+              ))}
+              <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(31,30,27,0.12)', marginVertical: 3, marginHorizontal: 6 }} />
+              <Pressable
+                onPress={openInsert}
+                accessibilityLabel="Додати"
+                {...({ title: 'Додати (N)' } as object)}
+                style={{ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Ionicons name="add" size={24} color="#6E6B64" />
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {/* FURNITURE'S OWN BAR. Separate from the cards' one and never
+            shown with it, because the two act on two different lists -
+            and that is deliberate: if a shape could join a card
+            selection, every bulk action would have to learn to skip it.
+            See BoardShape. */}
+        {!macBoard && selectedShape && selectedCardIds.size === 0 ? (
+          // TWO ROWS, not one long one. A single row here ran wider than
+          // even the Fold's OUTER (cover) screen - "розмір панелі ширший
+          // за зовнішній фолд" - because it was never one control, it was
+          // five: text, a size stepper, fill, eight colour swatches and
+          // delete, laid end to end with no wrap and no scroll. The
+          // Fold's actual screen (unfolded) has the width to spare, so
+          // splitting it in two uses that width instead of demanding
+          // ever more of it in one direction.
+          <View style={[styles.selectionBarWrap, { bottom: dockClear + bottomInset }]} pointerEvents="box-none">
+            <View style={styles.selectionBarCapsule}>
+              <View style={styles.selectionBarRow}>
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => setEditingShape(selectedShape)}
+                >
+                  <MaterialCommunityIcons name="format-text" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Текст</Text>
+                </Pressable>
+                {/* A step, not a slider - see SHAPE_TEXT_SIZES. Two taps
+                    either side of the label rather than one button, so
+                    each press is one clear step instead of a cycle whose
+                    current value has to be read off a changing icon. */}
+                <View style={styles.textSizeGroup}>
+                  <Pressable
+                    hitSlop={6}
+                    onPress={() => stepShapeTextSize(selectedShape, -1)}
+                  >
+                    <Ionicons name="remove" size={16} color="#fff" />
+                  </Pressable>
+                  <Text style={styles.selectionBarActionLabel}>
+                    {textSizeStepLabel(selectedShape.fontSize ?? (selectedShape.kind === 'text' ? SHAPE_TEXT_SIZE_DEFAULT : SHAPE_LABEL_SIZE_DEFAULT))}
+                  </Text>
+                  <Pressable
+                    hitSlop={6}
+                    onPress={() => stepShapeTextSize(selectedShape, 1)}
+                  >
+                    <Ionicons name="add" size={16} color="#fff" />
+                  </Pressable>
+                </View>
+                {selectedShape.kind !== 'text' && (
+                  <Pressable
+                    style={styles.selectionBarAction}
+                    hitSlop={6}
+                    onPress={() => toggleShapeFilled(selectedShape.id)}
+                  >
+                    <Ionicons
+                      name={selectedShape.filled ? 'color-fill' : 'color-fill-outline'}
+                      size={18}
+                      color="#fff"
+                    />
+                    <Text style={styles.selectionBarActionLabel}>Заливка</Text>
+                  </Pressable>
+                )}
+                <View style={styles.selectionBarDivider} />
+                <Pressable
+                  style={styles.selectionBarAction}
+                  hitSlop={6}
+                  onPress={() => deleteShape(selectedShape.id)}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#fff" />
+                  <Text style={styles.selectionBarActionLabel}>Видалити</Text>
+                </Pressable>
+              </View>
+              <View style={styles.selectionBarRow}>
+                {/* The outline's colour. The first swatch is "no colour" -
+                    the theme's own quiet ink, which is what a shape is
+                    born with. */}
+                <Pressable
+                  hitSlop={4}
+                  onPress={() => setShapeColour(selectedShape.id, undefined)}
+                  style={[
+                    styles.shapeSwatch,
+                    { borderColor: theme.canvas.inkMuted },
+                    !selectedShape.color && styles.shapeSwatchOn,
+                  ]}
+                />
+                {STICKY_COLORS.map((colour) => (
+                  <Pressable
+                    key={colour}
+                    hitSlop={4}
+                    onPress={() => setShapeColour(selectedShape.id, colour)}
+                    style={[
+                      styles.shapeSwatch,
+                      { borderColor: colour, backgroundColor: colour },
+                      selectedShape.color === colour && styles.shapeSwatchOn,
+                    ]}
+                  />
+                ))}
+              </View>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Selection actions moved onto the DOCK's actions card - see
+            useDockActions above. This floating capsule used to duplicate
+            it, leaving the dock showing one idle button directly above a
+            second, unrelated menu. */}
+
+        {/* Align/arrange, opened from the dock's "Вирівняти" action -
+            "виділив кілька - «вирівняти по лівому краю / розкласти
+            сіткою». Зараз усе руками." A short list rather than seven
+            more icons crowding the dock's own action row. */}
+        <Menu
+          visible={alignMenuVisible}
+          onClose={() => setAlignMenuVisible(false)}
+          style={{
+            position: 'absolute',
+            left: windowWidth / 2 - MENU_WIDTH / 2,
+            top: windowHeight - dockClear - bottomInset - 340,
+          }}
+          entries={[
+            { kind: 'section', label: 'Вирівняти' },
+            { label: 'Ліворуч', icon: 'arrow-back-outline', onPress: () => alignSelectedCards('left') },
+            {
+              label: 'По центру (гор.)',
+              icon: 'swap-horizontal-outline',
+              onPress: () => alignSelectedCards('centerX'),
+            },
+            { label: 'Праворуч', icon: 'arrow-forward-outline', onPress: () => alignSelectedCards('right') },
+            { kind: 'rule' },
+            { label: 'Вгору', icon: 'arrow-up-outline', onPress: () => alignSelectedCards('top') },
+            {
+              label: 'По центру (верт.)',
+              icon: 'swap-vertical-outline',
+              onPress: () => alignSelectedCards('centerY'),
+            },
+            { label: 'Вниз', icon: 'arrow-down-outline', onPress: () => alignSelectedCards('bottom') },
+            { kind: 'rule' },
+            { label: 'Розкласти сіткою', icon: 'grid-outline', onPress: arrangeSelectedGrid },
+          ]}
+        />
+
+        {/* «Меню», where the right button was pressed. Every row calls
+            exactly what the selection bar calls - the card is selected
+            first, so there is one implementation of each action, not
+            two. */}
+        <Menu
+          visible={!!cardMenu}
+          onClose={() => setCardMenu(null)}
+          style={{ position: 'absolute', left: cardMenu?.x ?? 0, top: cardMenu?.y ?? 0 }}
+          entries={
+            cardMenu
+              ? [
+                  {
+                    label: 'Копіювати',
+                    icon: 'copy-outline',
+                    onPress: () => copyCardText(cardMenu.card),
+                  },
+                  // A copy beside it, tied to it by the line every copy
+                  // keeps - the same as the held card's «Дублювати» and ⌘D.
+                  {
+                    label: 'Дублювати',
+                    icon: 'duplicate-outline' as const,
+                    onPress: () => duplicateCard(cardMenu.card),
+                  },
+                  // Isolation, and the way out of it, as the held card's bar
+                  // offers them: on a card of the isolated chain the entry is
+                  // the way out, on any other it isolates (or re-aims).
+                  isolatedIds !== null && isolatedIds.has(cardMenu.card.id)
+                    ? {
+                        label: 'Вийти з ізоляції',
+                        icon: 'scan-outline' as const,
+                        onPress: () => {
+                          clearSelection();
+                          setIsolatedIds(null);
+                        },
+                      }
+                    : {
+                        label: 'Ізоляція',
+                        icon: 'scan-outline' as const,
+                        onPress: () => isolateSelectedCard(cardMenu.card.id),
+                      },
+                  ...(cardMenu.card.type === 'flashcard'
+                    ? [{ label: 'Редагувати', icon: 'create-outline' as const, onPress: () => setEditFlashcardId(cardMenu.card.id) }]
+                    : []),
+                  ...((cardMenu.card.type ?? 'paragraph') === 'document'
+                    ? [
+                        {
+                          label: 'Текст',
+                          icon: 'reader-outline' as const,
+                          onPress: () => openCardText(cardMenu.card),
+                        },
+                        {
+                          label: 'Редагувати',
+                          icon: 'create-outline' as const,
+                          onPress: () => editDocumentCard(cardMenu.card),
+                        },
+                      ]
+                    : []),
+                  { kind: 'rule' as const },
+                  {
+                    label: 'Видалити',
+                    icon: 'trash-outline',
+                    tone: 'danger',
+                    onPress: () => deleteCards(new Set([cardMenu.card.id])),
+                  },
+                ]
+              : []
+          }
+        />
+
+        <GlassLayer visible={groupPickerVisible && !macBoard} onClose={() => setGroupPickerVisible(false)} rise={RISES}>
+          <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]} onPress={() => setGroupPickerVisible(false)}>
+            <BottomWindow visible={groupPickerVisible && !macBoard} onClose={() => setGroupPickerVisible(false)} style={styles.sheet} pad={28} catchTaps>
+              <Text style={styles.sheetTitle}>З якого проекту</Text>
+              <ScrollView style={styles.groupList}>
+                {groups
+                  .filter((group) => !group.archived)
+                  .map((group) => {
+                    const count = itemsByGroup[group.id]?.length ?? 0;
+                    return (
+                      <Pressable
+                        key={group.id}
+                        style={styles.sheetRow}
+                        onPress={() => {
+                          setGroupPickerVisible(false);
+                          setImportingGroup(group);
+                        }}
+                      >
+                        <View style={[styles.groupDot, { backgroundColor: group.color || '#6B7280' }]} />
+                        <Text style={styles.sheetRowLabel} numberOfLines={1}>
+                          {group.name}
+                        </Text>
+                        <Text style={styles.groupCount}>{count}</Text>
+                      </Pressable>
+                    );
+                  })}
+                {groups.filter((group) => !group.archived).length === 0 && (
+                  <Text style={styles.groupEmpty}>Поки немає жодного проекту.</Text>
+                )}
+              </ScrollView>
+            </BottomWindow>
+          </Pressable>
+        </GlassLayer>
+
+        {/* "Проект справ" - a live column, not a snapshot (see the sheet
+            row's own comment). Two steps: which project, then the whole
+            thing or one of its own lists - a project can hold several. */}
+        <GlassLayer visible={taskColumnPickerVisible && !macBoard} onClose={() => {
+            setTaskColumnPickerVisible(false);
+            setTaskColumnProject(null);
+          }} rise={RISES}>
+          <Pressable
+            style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]}
+            onPress={() => {
+              setTaskColumnPickerVisible(false);
+              setTaskColumnProject(null);
+            }}
+          >
+            <BottomWindow visible={taskColumnPickerVisible && !macBoard} onClose={() => {
+            setTaskColumnPickerVisible(false);
+            setTaskColumnProject(null);
+          }} style={styles.sheet} pad={28} catchTaps>
+              {taskColumnProject === null ? (
+                <>
+                  <Text style={styles.sheetTitle}>З якого проекту</Text>
+                  <ScrollView style={styles.groupList}>
+                    <Pressable
+                      style={styles.sheetRow}
+                      onPress={() => setTaskColumnProject({ id: null, name: 'Вхідні' })}
+                    >
+                      <View style={[styles.groupDot, { backgroundColor: '#6B7280' }]} />
+                      <Text style={styles.sheetRowLabel} numberOfLines={1}>
+                        Вхідні
+                      </Text>
+                    </Pressable>
+                    {taskProjects
+                      .filter((project) => !project.archived)
+                      .map((project) => (
+                        <Pressable
+                          key={project.id}
+                          style={styles.sheetRow}
+                          onPress={() => setTaskColumnProject({ id: project.id, name: project.name })}
+                        >
+                          <View style={[styles.groupDot, { backgroundColor: project.color || '#6B7280' }]} />
+                          <Text style={styles.sheetRowLabel} numberOfLines={1}>
+                            {project.name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                  </ScrollView>
+                </>
+              ) : (
+                <>
+                  <Pressable style={styles.sheetBack} onPress={() => setTaskColumnProject(null)}>
+                    <Ionicons name="chevron-back" size={16} color="#111827" />
+                    <Text style={styles.sheetTitle}>{taskColumnProject.name}</Text>
+                  </Pressable>
+                  <ScrollView style={styles.groupList}>
+                    <Pressable style={styles.sheetRow} onPress={insertWholeTaskProject}>
+                      <Ionicons name="albums-outline" size={18} color="#111827" />
+                      <Text style={styles.sheetRowLabel}>Весь проект</Text>
+                    </Pressable>
+                    {taskLists
+                      .filter((list) => list.groupId === taskColumnProject.id)
+                      .map((list) => (
+                        <Pressable key={list.id} style={styles.sheetRow} onPress={() => insertOneTaskList(list)}>
+                          <Ionicons name="list-outline" size={18} color="#111827" />
+                          <Text style={styles.sheetRowLabel} numberOfLines={1}>
+                            {list.name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                  </ScrollView>
+                </>
+              )}
+            </BottomWindow>
+          </Pressable>
+        </GlassLayer>
+
+        <GroupImportSheet
+          visible={importingGroup !== null}
+          groupName={importingGroup?.name ?? ''}
+          items={importingGroup ? (itemsByGroup[importingGroup.id] ?? []) : []}
+          fixedBoardId={boardId}
+          labelForKind={labelForItemKind}
+          titleForItem={(item) => titleForItem(item as Parameters<typeof titleForItem>[0])}
+          onCancel={() => setImportingGroup(null)}
+          onConfirm={(selected) => {
+            if (importingGroup) runGroupImport(importingGroup, selected as Parameters<typeof runGroupImport>[1]);
+          }}
+        />
+
+        <GlassLayer visible={addSheetVisible} onClose={() => setAddSheetVisible(false)} rise={RISES}>
+          <Pressable style={[styles.sheetBackdrop, { paddingBottom: keyboardHeight }, BOTTOM_FRAME]} onPress={() => setAddSheetVisible(false)}>
+            <BottomWindow visible={addSheetVisible} onClose={() => setAddSheetVisible(false)} style={styles.sheet} pad={28} catchTaps>
+              {/* WHAT CAN BE ADDED, as sections of icon tiles rather than one
+                  long list of words - the user's own ask: orientation by
+                  icons and sections, compact ("як під клавіатурне меню").
+                  Still scrolls, for a small screen. */}
+              <ScrollView style={{ maxHeight: Math.round(windowHeight * 0.74) }} showsVerticalScrollIndicator={false}>
+                {(() => {
+                  const sections = addSections;
+                  return sections.map((section) => (
+                    <View key={section.title}>
+                      <Text style={styles.addSectionTitle}>{section.title}</Text>
+                      <View style={styles.addGrid}>
+                        {section.tiles.map((tile) => (
+                          <Pressable key={tile.key} style={styles.addTile} onPress={tile.onPress} accessibilityLabel={tile.label}>
+                            <Ionicons name={tile.icon} size={28} color="#111827" />
+                            <Text style={styles.addTileLabel} numberOfLines={1}>
+                              {tile.label}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  ));
+                })()}
+              </ScrollView>
+            </BottomWindow>
+          </Pressable>
+        </GlassLayer>
+        {/* Which piece of furniture. A short list of shapes and one
+            loose label - see BoardShape for why none of them is a card. */}
+        <GlassLayer visible={shapeSheetVisible && !macBoard} onClose={() => setShapeSheetVisible(false)} rise={RISES}>
+          <Pressable style={[styles.sheetBackdrop, BOTTOM_FRAME]} onPress={() => setShapeSheetVisible(false)}>
+            <BottomWindow visible={shapeSheetVisible && !macBoard} onClose={() => setShapeSheetVisible(false)} style={styles.sheet} pad={28} catchTaps>
+              {SHAPE_MENU.map((entry) => (
+                <Pressable key={entry.kind} style={styles.sheetRow} onPress={() => addShape(entry.kind)}>
+                  <MaterialCommunityIcons
+                    name={entry.icon as keyof typeof MaterialCommunityIcons.glyphMap}
+                    size={18}
+                    color="#111827"
+                  />
+                  <Text style={styles.sheetRowLabel}>{entry.label}</Text>
+                </Pressable>
+              ))}
+            </BottomWindow>
+          </Pressable>
+        </GlassLayer>
+
+        <FlashcardQuickSheet id={editFlashcardId} onClose={closeFlashcardSheet} />
+        <RenamePrompt
+          visible={newRecordFor !== null}
+          title={newRecordFor ? `Новий запис у «${newRecordFor.name}»` : 'Новий запис'}
+          initialValue=""
+          placeholder="Назва"
+          onCancel={() => setNewRecordFor(null)}
+          onSave={(name) => {
+            if (newRecordFor) createDatabaseRecord(newRecordFor, name);
+          }}
+        />
+        {/* The week's start, typed - see openWeekMenu. */}
+        <RenamePrompt
+          visible={weekDateEditing !== null}
+          title="Дата початку тижня"
+          placeholder="дд.мм.рррр"
+          initialValue={
+            weekDateEditing
+              ? (() => {
+                  const d = parseDateKey(weekDateEditing.start);
+                  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+                })()
+              : ''
+          }
+          onCancel={() => setWeekDateEditing(null)}
+          onSave={(text) => {
+            const editing = weekDateEditing;
+            setWeekDateEditing(null);
+            if (!editing) return;
+            const start = parseTypedDate(text);
+            if (!start) {
+              notify('Не та дата', 'Напишіть її як дд.мм.рррр, наприклад 05.10.2026.');
+              return;
+            }
+            setWeekStart(editing.weekId, start);
+          }}
+        />
+        <RenamePrompt
+          visible={editingShape !== null}
+          title={editingShape?.kind === 'text' ? 'Напис' : 'Текст у фігурі'}
+          initialValue={editingShape?.text ?? ''}
+          placeholder="Текст"
+          multiline
+          onCancel={() => setEditingShape(null)}
+          onSave={(value) => {
+            if (editingShape) setShapeText(editingShape.id, value.trim());
+            setEditingShape(null);
+          }}
+        />
+
+
+        <AddExistingItemModal
+          visible={existingItemPickerVisible && !macBoard}
+          onPick={addExistingCard}
+          onClose={() => setExistingItemPickerVisible(false)}
+          excludeIds={existingItemExcludeIds}
+          includeDocuments
+          onPickDocument={addDocumentCard}
+        />
+
+        <DocumentPickerModal
+          visible={movePickerOpen && !macBoard}
+          title="Куди перенести?"
+          subtitle="Виділене поїде на цю дошку"
+          icon="easel-outline"
+          documents={pickableBoards}
+          onPick={moveSelectionTo}
+          onCreateNew={moveSelectionToNewBoard}
+          createLabel="Нова дошка"
+          onClose={() => setMovePickerOpen(false)}
+        />
+
+        <DocumentPickerModal
+          visible={boardPickerOpen && !macBoard}
+          title="Яка дошка?"
+          subtitle="Картка зʼявиться на цій дошці"
+          icon="easel-outline"
+          documents={pickableBoards}
+          onPick={addBoardCard}
+          onClose={() => setBoardPickerOpen(false)}
+        />
+
+        <VideoPlayerModal
+          url={playingVideoUrl}
+          onClose={() => setPlayingVideoUrl(null)}
+          onFrame={(shot, seconds) => {
+            const video = cards.find((c) => c.id === fullscreenCardId.current);
+            if (!video) return;
+            videoTime.current = seconds;
+            addVideoFrame(video, shot);
+          }}
+        />
+
+        <RenamePrompt
+          visible={renamingCardTitle}
+          title="Назва нотатки"
+          initialValue={cardWindow?.title ?? ''}
+          onCancel={() => setRenamingCardTitle(false)}
+          onSave={(value) => {
+            setRenamingCardTitle(false);
+            const name = value.trim();
+            if (!name || !cardWindow) return;
+            cardEditorRef.current?.setDocumentTitle(name);
+            setCardWindow((w) => (w ? { ...w, title: name } : w));
+            setCards((prev) => prev.map((c) => (c.id === cardWindow.cardId ? { ...c, documentTitle: name } : c)));
+          }}
+        />
+
+        <RenamePrompt
+          visible={renamingTitle}
+          title="Назва дошки"
+          initialValue={title}
+          onCancel={() => setRenamingTitle(false)}
+          onSave={(value) => {
+            setRenamingTitle(false);
+            setTitle(value);
+          }}
+        />
+
+        {/* One dialog for both steps of adding a link - see linkPrompt's own
+            comment on why they can't be two. */}
+        <RenamePrompt
+          visible={linkPrompt !== null}
+          title={
+            linkPrompt?.step === 'title'
+              ? 'Назва посилання'
+              : linkPrompt?.kind === 'video'
+                ? 'Посилання на YouTube / TikTok'
+                : linkPrompt?.kind === 'geo'
+                  ? 'Посилання на місце'
+                  : 'Нове посилання'
+          }
+          placeholder={linkPrompt?.step === 'title' ? 'Назва' : 'https://…'}
+          initialValue=""
+          busy={linkPrompt?.step === 'url' && linkPrompt.busy}
+          onCancel={() => setLinkPrompt(null)}
+          onSave={submitLinkStep}
+        />
+
+        <RenamePrompt
+          visible={renamingColumn !== null}
+          title="Назва стовпчика"
+          initialValue={renamingColumn?.title ?? ''}
+          onCancel={() => setRenamingColumn(null)}
+          onSave={(value) => {
+            if (renamingColumn) renameColumn(renamingColumn, value);
+          }}
+        />
+
+        <RenamePrompt
+          visible={renamingContainer !== null}
+          title="Назва області"
+          initialValue={renamingContainer?.title ?? ''}
+          onCancel={() => setRenamingContainer(null)}
+          onSave={(value) => {
+            if (renamingContainer) renameContainer(renamingContainer, value);
+          }}
+        />
+
+        <RenamePrompt
+          visible={renamingLayer !== null}
+          title="Назва шару"
+          initialValue={renamingLayer?.name ?? ''}
+          onCancel={() => setRenamingLayer(null)}
+          onSave={(value) => {
+            if (renamingLayer) renameLayerTo(renamingLayer, value);
+          }}
+        />
+
+        {/* «Шари» - see BoardLayer. NOT built on GlassLayer, on purpose:
+            GlassLayer blurs the WHOLE screen behind it AND swallows every
+            touch outside its own card to close on tap - both wrong for a
+            drawer the user wants open ALONGSIDE a board that stays fully
+            usable: "показати на дошці" is pointless if showing it means
+            the board went behind a blur, and dragging a card should still
+            drag the card, not close the drawer. So this is TagsDrawer's
+            own shape instead - a plain dim over the screen, non-touchable
+            (pointerEvents="none") so it never competes with the canvas's
+            own pan/drag gestures for the same touch - and the blur lives
+            only on the panel itself, clipped to its own width. Closing is
+            the "Шари" bead again (now a toggle), the drawer's own "×", or
+            the hardware back button. */}
+        {layersDrawerVisible && (
+          <GlassPortal name="BoardScreen">
+            <View style={styles.layersLayer} pointerEvents="box-none">
+              <View style={[StyleSheet.absoluteFill, styles.layersDim]} pointerEvents="none" />
+              <View style={[styles.layersPanel, { width: layersPanelWidth }]}>
+                {/* Soft: a plain surface, no live blur under it. */}
+                {!softBoardTokens && (
+                  <BlurView
+                    intensity={60}
+                    tint="dark"
+                    blurMethod="dimezisBlurView"
+                    blurTarget={boardBlurTarget ?? undefined}
+                    style={StyleSheet.absoluteFill}
+                    pointerEvents="none"
+                  />
+                )}
+                <View style={[StyleSheet.absoluteFill, styles.layersPanelTint]} pointerEvents="none" />
+              <View style={styles.layersHeader}>
+                <Text style={styles.layersTitle}>Шари</Text>
+                <View style={styles.layersHeaderActions}>
+                  <Pressable hitSlop={8} onPress={addLayer}>
+                    <Ionicons name="add" size={softBoardTokens ? 26 : 22} color={layerInk} />
+                  </Pressable>
+                  <Pressable hitSlop={8} onPress={() => setLayersDrawerVisible(false)}>
+                    <Ionicons name="close" size={softBoardTokens ? 26 : 22} color={layerInk} />
+                  </Pressable>
+                </View>
+              </View>
+              {layersBody}
+              </View>
+            </View>
+          </GlassPortal>
+        )}
+        <CardCarryOverlay
+          carry={layersCarry}
+          label={(items) => (items[0] ? labelForMember(items[0]) : 'Обʼєкт')}
+          icon="layers-outline"
+          onEnterFolder={() => {}}
+        />
+        {/* A plain overlay View sibling of the gesture-driven canvas, not a
+            Modal and not a child of the canvas - same reasoning as
+            SketchEditor's own text-entry overlay: a Modal here would fight a
+            nested Modal (AddExistingItemModal) for focus, and a child of the
+            canvas would fight its Pan/Pinch gesture for touch focus. */}
+        {readingCard && (
+          <View style={styles.textEditBackdrop}>
+            <View style={styles.textEditCard}>
+              <Text style={styles.readTitle} numberOfLines={1}>
+                {readingCard.card.documentTitle?.trim() || 'Текст картки'}
+              </Text>
+              {/* A read-only input rather than a Text: it can't be edited,
+                  but it CAN be selected, which a Text on this canvas
+                  cannot. */}
+              <ScrollView style={styles.readBody}>
+                <TextInput
+                  style={styles.textEditInput}
+                  value={readingCard.text}
+                  editable={false}
+                  multiline
+                  scrollEnabled={false}
+                />
+              </ScrollView>
+              <View style={styles.textEditButtons}>
+                <Pressable style={styles.textEditCancel} onPress={() => setReadingCard(null)}>
+                  <Text style={styles.textEditCancelLabel}>Закрити</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.textEditSave}
+                  onPress={async () => {
+                    await Clipboard.setStringAsync(readingCard.text);
+                    hapticSuccess();
+                    setReadingCard(null);
+                  }}
+                >
+                  <Text style={styles.textEditSaveLabel}>Копіювати все</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {editingCard && (
+          // The keyboard used to stand OVER the foot of this sheet - the
+          // colours, "Скасувати" and "Зберегти" were all behind it, on a
+          // sheet centred in the whole screen as though nothing else was
+          // there. Same paddingBottom every other sheet on this screen
+          // already uses, so the sheet centres in what is left.
+          <View style={[styles.textEditBackdrop, { paddingBottom: 24 + keyboardHeight }]}>
+            <View style={styles.textEditCard}>
+              <TextInput
+                autoFocus
+                multiline
+                value={editingText}
+                onChangeText={setEditingText}
+                placeholder="Текст…"
+                placeholderTextColor={GLASS_TEXT_FAINT}
+                style={styles.textEditInput}
+              />
+              {editingCard.freeBlock && (
+                <View style={styles.freeBlockKinds}>
+                  {(
+                    [
+                      ['paragraph', 'text-outline', 'Текст'],
+                      ['heading', 'reorder-four-outline', 'Заголовок'],
+                      ['checkbox', 'checkbox-outline', 'Справа'],
+                      ['bulleted', 'list-outline', 'Список'],
+                    ] as const
+                  ).map(([kind, icon, label]) => (
+                    <Pressable
+                      key={kind}
+                      onPress={() => setEditingBlockKind(kind)}
+                      style={[styles.freeBlockKind, (editingCard.type ?? 'paragraph') === kind && styles.freeBlockKindActive]}
+                    >
+                      <Ionicons name={icon} size={16} color="#111827" />
+                      <Text style={styles.freeBlockKindLabel}>{label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              {/* The наліпка's own two sizes - its text, and how wide the
+                  card itself is. Steps rather than sliders, and the text
+                  one counts on the same scale a shape's text does (see
+                  textSizeStepLabel), so "3/6" means one size across the
+                  whole board. */}
+              {!editingCard.freeBlock && (
+              <View style={styles.stickySizeRow}>
+                <MaterialCommunityIcons name="format-size" size={16} color="#6B7280" />
+                <Pressable hitSlop={8} onPress={() => stepEditingCardFontSize(-1)}>
+                  <Ionicons name="remove" size={18} color="#111827" />
+                </Pressable>
+                <Text style={styles.stickySizeValue}>
+                  {textSizeStepLabel(editingCard.fontSize ?? STICKY_TEXT_SIZE_DEFAULT)}
+                </Text>
+                <Pressable hitSlop={8} onPress={() => stepEditingCardFontSize(1)}>
+                  <Ionicons name="add" size={18} color="#111827" />
+                </Pressable>
+                <View style={styles.stickySizeGap} />
+                <MaterialCommunityIcons name="arrow-expand-horizontal" size={16} color="#6B7280" />
+                <Pressable hitSlop={8} onPress={() => stepEditingCardWidth(-1)}>
+                  <Ionicons name="remove" size={18} color="#111827" />
+                </Pressable>
+                <Text style={styles.stickySizeValue}>{editingCard.width || DEFAULT_CARD_WIDTH}</Text>
+                <Pressable hitSlop={8} onPress={() => stepEditingCardWidth(1)}>
+                  <Ionicons name="add" size={18} color="#111827" />
+                </Pressable>
+              </View>
+              )}
+              {!editingCard.freeBlock && (
+              <View style={styles.textEditColors}>
+                {STICKY_COLORS.map((color) => (
+                  <Pressable
+                    key={color}
+                    onPress={() => setEditingCardColor(color)}
+                    style={[
+                      styles.textEditColorSwatch,
+                      // Muted the same way the card will be, or the
+                      // swatch promises a colour the board never shows.
+                      { backgroundColor: mutedForTheme(color, theme, STICKY_MUTE, theme.canvas.card) },
+                      editingCard.color === color && styles.textEditColorSwatchActive,
+                    ]}
+                  />
+                ))}
+              </View>
+              )}
+              <View style={styles.textEditButtons}>
+                <Pressable style={styles.textEditCancel} onPress={() => setEditingCard(null)}>
+                  <Text style={styles.textEditCancelLabel}>Скасувати</Text>
+                </Pressable>
+                <Pressable style={styles.textEditSave} onPress={saveEditingText}>
+                  <Text style={styles.textEditSaveLabel}>Зберегти</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {isTwoPane && paneDocId !== null && (
+        <View style={styles.docPane} onLayout={(e) => setDocPaneLeft(e.nativeEvent.layout.x)}>
+          <DocumentEditorScreen
+            key={paneDocId}
+            ref={paneEditorRef}
+            pane
+            documentId={paneDocId}
+            // This pane sits to the RIGHT of the board, not at the
+            // window's own left edge - see DocumentEditorScreen's own
+            // paneLeft comment on why the drawer needs to be told.
+            paneLeft={docPaneLeft}
+            // This screen's navigation carries the boards stack's own
+            // routes as well; the editor only ever pushes root-stack ones
+            // (Links/Photos/Files), which a nested navigator forwards
+            // upwards at runtime - the cast is purely about the wider
+            // param list this prop is typed against.
+            navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
+            isFullscreen={paneFullscreen}
+            onToggleFullscreen={() => setPaneFullscreen((v) => !v)}
+            offerBoard={paneOfferBoard}
+            // A clipping made in this pane STAYS in this pane: the board
+            // keeps the left half, and the new note opens on the right,
+            // so adding it to the board happens in front of the board.
+            onOpenInPane={(documentId, options) => {
+              setPaneOfferBoard(!!options?.offerBoard);
+              setPaneDocId(documentId);
+            }}
+            onClose={closePane}
+          />
+          {macBoard && (
+            // The note beside the board had NO close on the Mac (the user, 2026-10-21): the bar's ‹ leaves the whole board.
+            <Pressable
+              onPress={closePane}
+              accessibilityLabel="Закрити нотатку"
+              hitSlop={6}
+              style={{ position: 'absolute', top: 12, right: 14, zIndex: 50, width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.canvas.card }}
+              {...({ className: undefined } as object)}
+            >
+              <Ionicons name="close-outline" size={18} color={theme.paper.ink} />
+            </Pressable>
+          )}
+        </View>
+      )}
+      {inlineBlockId !== null && (keyboardHeight > 0 || pointerDensity) && (
+        <View style={[styles.freeBar, { bottom: keyboardHeight + bottomInset, backgroundColor: theme.paper.fill }]}>
+          {(
+            [
+              ['paragraph', 'text-outline'],
+              ['heading', 'reorder-four-outline'],
+              ['checkbox', 'checkbox-outline'],
+              ['bulleted', 'list-outline'],
+            ] as const
+          ).map(([kind, icon]) => {
+            const current = (cards.find((c) => c.id === inlineBlockId)?.type ?? 'paragraph') === kind;
+            return (
+              <Pressable key={kind} onPress={() => setInlineKind(kind)} style={[styles.freeBarButton, current && styles.freeBlockKindActive]}>
+                <Ionicons name={icon} size={20} color="#1c1c1e" />
+              </Pressable>
+            );
+          })}
+          <View style={{ flex: 1 }} />
+          <Pressable
+            accessibilityLabel="Готово"
+            onPress={() => {
+              Keyboard.dismiss();
+              endInlineEdit();
+            }}
+            style={[styles.freeBarButton, { backgroundColor: '#1c1c1e' }]}
+          >
+            <Ionicons name="checkmark" size={20} color="#ffffff" />
+          </Pressable>
+        </View>
+      )}
+      {cardWindow !== null && (
+        <>
+        <Animated.View collapsable={false} style={[styles.cardWindowFrame, cardWindowStyle]}>
+          {cardWindowWriting && (
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.cardWindowGround, cardWindowOutlineStyle, { backgroundColor: theme.paper.fill, borderRadius: 16 * cardWindow.zoom }]}
+            />
+          )}
+          <View
+            // Never flattened away: its style empties while writing, and a
+            // view Android drops takes the focused field out from under the
+            // keyboard - which then closes half a second after opening.
+            collapsable={false}
+            style={[
+              styles.cardWindowInner,
+              { borderRadius: 16 * cardWindow.zoom },
+              cardWindow.live && !cardWindowWriting
+                ? { backgroundColor: theme.paper.fill, boxShadow: '0px 6px 24px rgba(0,0,0,0.18)', overflow: 'hidden' }
+                : null,
+            ]}
+          >
+          {/* The card's own head, at the card's own size - so the live card
+              reads as the same card - with its buttons over its right end. */}
+          <View
+            pointerEvents={cardWindow.live ? 'auto' : 'box-none'}
+            onLayout={(e) => setCardHeadH(Math.round(e.nativeEvent.layout.height))}
+            style={[styles.paperDocHead, { paddingHorizontal: 8 * cardWindow.zoom, paddingTop: 8 * cardWindow.zoom, opacity: cardWindow.live ? 1 : 0 }, macBoard && { paddingRight: 8 * cardWindow.zoom + 100 }]}
+          >
+            <Ionicons name="document-text-outline" size={13 * cardWindow.zoom} color={theme.paper.inkMuted} />
+            <Text
+              style={[styles.refLabel, styles.paperDocTitle, { color: theme.paper.ink, fontSize: 12 * cardWindow.zoom }]}
+              numberOfLines={1}
+              // The Mac: a click on the name renames the note right here, without opening it full screen.
+              {...(macBoard && cardWindow.live ? ({ onPress: () => setRenamingCardTitle(true), suppressHighlighting: true } as object) : null)}
+            >
+              {cardWindow.title}
+            </Text>
+          </View>
+          {cardWindow.live && (
+            // A tap on the card's body starts writing - the note's blocks
+            // stand inert until then so that a swipe scrolls them, and the
+            // pencil that wakes them is not on a card (utils: the note's
+            // own startWriting).
+            <View style={[styles.cardWindowBody, cardWindowWriting && !macBoard && { overflow: 'visible' }, macBoard && { overflow: 'hidden' }]}>
+              {/* THE MAC: the note is laid out at the CARD'S OWN (world) size and scaled by the board's zoom, exactly as the card at rest is
+                  scaled with the canvas - so opening the card does not re-size its text and list numbers (the user, 2026-10-21: all five
+                  points fitted, then only two, the numbers twice as big). A transform on the web keeps text sharp. */}
+              <View
+                style={
+                  macBoard
+                    ? ({
+                        width: winSize.w / ((cardWindow.zoom || 1) * PAPER_DOC_TEXT),
+                        height: Math.max(0, winSize.h - cardHeadH) / ((cardWindow.zoom || 1) * PAPER_DOC_TEXT),
+                        transform: [{ scale: (cardWindow.zoom || 1) * PAPER_DOC_TEXT }],
+                        transformOrigin: 'top left',
+                      } as never)
+                    : { flex: 1 }
+                }
+              >
+              <TextScaleOverride factor={macBoard ? 1 : Math.max(0.42, PAPER_DOC_TEXT * cardWindow.zoom)}>
+                <DocumentEditorScreen
+                  key={cardWindow.docId}
+                  ref={cardEditorRef}
+                  embedded
+                  documentId={cardWindow.docId}
+                  navigation={navigation as unknown as NativeStackNavigationProp<RootStackParamList>}
+                  extraFields={cardWindow.docId.startsWith('day_') ? { calendarDate: cardWindow.docId.slice(4) } : undefined}
+                  panelBleed={cardWindowWriting && !macBoard ? Math.max(0, Math.round((windowWidth - winSize.w) / 2)) : 0}
+                  clearGround
+                  // A height ALWAYS while the card is live, only its number changing (2026-10-18): switching the note's
+                  // scroll from "fill" to a fixed height at the moment the keyboard came up took the focus away from
+                  // the field that had just got it - the keyboard opened and closed, the card could not be written in.
+                  scrollHeight={macBoard ? Math.max(0, winSize.h - cardHeadH) / ((cardWindow.zoom || 1) * PAPER_DOC_TEXT) : cardWindowWriting ? cardWindowScrollH : Math.max(0, winSize.h - cardHeadH)}
+                  onPanelChange={setCardWindowPanel}
+                />
+              </TextScaleOverride>
+              </View>
+            </View>
+          )}
+          {cardWindowWriting && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.cardWindowOutline,
+                cardWindowOutlineStyle,
+                { borderColor: softBoardTokens?.accent ?? '#c46a2c', borderRadius: 16 * cardWindow.zoom },
+              ]}
+            />
+          )}
+          {cardWindow.live && !cardWindowWriting && !macBoard && (
+            <GestureDetector gesture={resizeGestureWin}>
+              <View style={styles.cardWindowResize} hitSlop={10} accessibilityLabel="Змінити розмір">
+                <View style={styles.cardWindowResizeMark} />
+              </View>
+            </GestureDetector>
+          )}
+          </View>
+          {macBoard && cardWindow.live && (
+            // Writing stretches the frame down to the screen's foot, so the handles hang on the VISIBLE card instead:
+            // the same box the outline paints (its own height), at rest the whole frame.
+            <Animated.View pointerEvents="box-none" style={[{ position: 'absolute', left: 0, right: 0, top: 0 }, cardWindowWriting ? cardWindowOutlineStyle : { bottom: 0 }]}>
+              {(
+                [
+                  ['left', { left: -5, top: 18, bottom: 18, width: 10, cursor: 'ew-resize' }],
+                  ['right', { right: -5, top: 18, bottom: 18, width: 10, cursor: 'ew-resize' }],
+                  ['top', { top: -5, left: 18, right: 18, height: 10, cursor: 'ns-resize' }],
+                  ['bottom', { bottom: -5, left: 18, right: 18, height: 10, cursor: 'ns-resize' }],
+                  ['tl', { top: -5, left: -5, width: 24, height: 24, cursor: 'nwse-resize' }],
+                  ['tr', { top: -5, right: -5, width: 24, height: 24, cursor: 'nesw-resize' }],
+                  ['bl', { bottom: -5, left: -5, width: 24, height: 24, cursor: 'nesw-resize' }],
+                  ['br', { bottom: -5, right: -5, width: 24, height: 24, cursor: 'nwse-resize' }],
+                ] as const
+              ).map(([key, pos]) => (
+                <GestureDetector key={key} gesture={edgeGestures[key]}>
+                  <View style={[{ position: 'absolute', zIndex: 5 }, pos as never]} accessibilityLabel="Змінити розмір" />
+                </GestureDetector>
+              ))}
+            </Animated.View>
+          )}
+        </Animated.View>
+        {/* Above the card's top-right corner, never over its text: its own
+            layer, so the card's frame (which the note's touches live in)
+            keeps exactly the card's bounds. */}
+        <Animated.View pointerEvents="box-none" style={[styles.cardWindowButtonLayer, macBoard && { height: 30, paddingRight: 8 }, cardWindowButtonsStyle]}>
+          <View style={styles.cardWindowButtonsRow}>
+            <Pressable
+              style={macBoard ? styles.cardWindowIconBar : styles.cardWindowIcon}
+              hitSlop={4}
+              accessibilityLabel={cardWindow.live ? 'Розгорнути вниз' : 'Згорнути'}
+              onPress={() => {
+                const id = cardWindow.cardId;
+                Keyboard.dismiss();
+                setCardWindow(null);
+                setCardWindowPanel(false);
+                setCards((prev) => prev.map((c) => (c.id === id ? { ...c, documentExpanded: !c.documentExpanded } : c)));
+              }}
+            >
+              <Ionicons name={cardWindow.live ? 'chevron-down' : 'chevron-up'} size={18} color="#1c1c1e" />
+            </Pressable>
+            <Pressable
+              style={macBoard ? styles.cardWindowIconBar : styles.cardWindowIcon}
+              hitSlop={4}
+              accessibilityLabel="На весь екран"
+              onPress={() => {
+                const id = cardWindow.docId;
+                Keyboard.dismiss();
+                setCardWindow(null);
+                setCardWindowPanel(false);
+                if (isTwoPane) setPaneDocId(id);
+                else navigation.navigate('EditorModal', { documentId: id });
+              }}
+            >
+              <Ionicons name="expand-outline" size={17} color="#1c1c1e" />
+            </Pressable>
+            <Pressable
+              style={macBoard ? styles.cardWindowIconBar : [styles.cardWindowIcon, cardWindowWriting && { backgroundColor: '#1c1c1e' }]}
+              hitSlop={4}
+              accessibilityLabel={cardWindowWriting ? 'Готово' : 'Закрити'}
+              onPress={() => {
+                Keyboard.dismiss();
+                setCardWindow(null);
+                setCardWindowPanel(false);
+              }}
+            >
+              <Ionicons name={cardWindowWriting ? 'checkmark' : 'close-outline'} size={18} color={cardWindowWriting && !macBoard ? '#ffffff' : '#1c1c1e'} />
+            </Pressable>
+          </View>
+        </Animated.View>
+        </>
+      )}
+      {/* Databases held open over the board - see BoardDatabaseWindow. */}
+      {!macBoard && dbWindows.map((w) => (
+        <BoardDatabaseWindow
+          key={w.id}
+          win={w}
+          placed={placedByRecord}
+          onChange={(patch) => patchWindow(w.id, patch)}
+          // Asked first: the ✕ sits beside the fold button, and a closed
+          // window loses its chosen records, filters and field settings
+          // ("інколи промахуюсь і натискаю не звернути, а закрити").
+          onClose={async () => {
+            const yes = await confirm({
+              title: 'Закрити вікно бази?',
+              message: 'Вибрані записи, фільтри й налаштування полів для цього вікна зникнуть. Картки на дошці лишаться.',
+              confirmLabel: 'Закрити',
+            });
+            if (yes) setDbWindows((prev) => prev.filter((x) => x.id !== w.id));
+          }}
+          onPlace={placeRecord}
+          onFind={findRecord}
+          onCarryMove={carryMove}
+          onCarryEnd={carryEnd}
+          bounds={viewport}
+        />
+      ))}
+      {themeBoard.theme && !embed && (
+        <>
+          {/* A THEME'S BOARD: its conclusion in one line under the title, and the board <-> note switch. */}
+          {bar && boardFocused && themeView === 'board' && (
+            <ThemeBoardStrip theme={themeBoard.theme} top={boardInsets.top + CHROME_TOP + TOP_NAV_H + 10} mode="board" onMode={setThemeView} />
+          )}
+          <ThemeNoteView
+            visible={themeView === 'note'}
+            theme={themeBoard.theme}
+            cards={cards}
+            connections={connections}
+            thoughtsById={themeBoard.thoughtsById}
+            onClose={() => setThemeView('board')}
+          />
+          <WriteSheet
+            visible={askingAbout !== null}
+            title={askingAbout && askingAbout.length === 1 ? 'Питання до думки' : 'Питання до думок'}
+            placeholder="Що хочеш про них дізнатися?"
+            doneLabel="Запитати"
+            onDone={(q) => {
+              const list = askingAbout ?? [];
+              setAskingAbout(null);
+              if (themeBoard.themeId) askOnBoard(themeBoard.themeId, list, q).catch(() => {});
+            }}
+            onClose={() => setAskingAbout(null)}
+          />
+        </>
+      )}
+    </View>
+    </ThoughtCardsContext.Provider>
+    </BoardFieldsContext.Provider>
+  );
+}
+
+// THE SOFT BOARD: the soft ground under the canvas, cards lifted by the
+// soft shadow instead of an outline and a Material shadow, lanes as soft
+// tints, the chosen and the catching in the accent, Inter. The glass
+// pieces that float over the canvas (the selection capsule, the layers
+// panel) keep their glass for now - their icons are drawn white.
+const softBoard = (S: SoftTokens) => {
+  const wash = S.dark ? 'rgba(232,154,98,0.12)' : 'rgba(217,121,63,0.10)';
+  return StyleSheet.create({
+    container: { backgroundColor: S.bg },
+    refCard: { backgroundColor: S.card, borderWidth: 0, borderRadius: 16, elevation: 0, shadowOpacity: 0, boxShadow: S.shadow },
+    stickyCard: { borderRadius: 12, elevation: 0, shadowOpacity: 0, boxShadow: S.shadow },
+    stickyText: { fontFamily: SOFT_REGULAR },
+    refThumbBare: { borderRadius: 14, elevation: 0, shadowOpacity: 0, boxShadow: S.shadow },
+    refThumbPlaceholder: { backgroundColor: S.fill },
+    refLabel: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink },
+    documentPreviewText: { fontFamily: SOFT_REGULAR, color: S.ink2 },
+    cardSelected: { borderRadius: 16, borderColor: S.accent },
+    shapeSelected: { borderColor: S.accent },
+    column: { backgroundColor: S.fill, borderWidth: 0, borderRadius: 20 },
+    columnCatching: { borderWidth: 2, borderColor: S.accent, backgroundColor: wash },
+    columnTitle: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink2 },
+    columnCount: { fontFamily: SOFT_MEDIUM, color: S.ink3 },
+    liveTaskText: { fontFamily: SOFT_REGULAR, color: S.ink },
+    liveTaskEmpty: { fontFamily: SOFT_REGULAR, color: S.ink3 },
+    frame: { borderRadius: 20, borderColor: S.ink3 },
+    frameLabelText: { fontFamily: SOFT_SEMIBOLD, fontWeight: 'normal', color: S.ink2 },
+    marquee: { borderColor: S.accent, backgroundColor: wash, borderRadius: 10 },
+    stripPlus: { backgroundColor: S.accent, boxShadow: S.shadow },
+    // The layers panel: a soft sheet drawn in from the right edge.
+    layersPanel: { borderLeftWidth: 0, borderTopLeftRadius: 26, borderBottomLeftRadius: 26, boxShadow: S.popShadow },
+    layersPanelTint: { backgroundColor: S.bg },
+    // Sized for a finger: taller rows, larger words, more room between
+    // the eye, the lock and the rest.
+    layersTitle: { fontSize: 26, fontFamily: SOFT_SEMIBOLD, letterSpacing: -0.4, color: S.ink },
+    layersHeaderActions: { gap: 22 },
+    layerGroup: { marginBottom: 14 },
+    layerHeaderRow: { minHeight: 54, gap: 14, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: S.card, borderRadius: 18, boxShadow: S.shadow },
+    layerName: { fontSize: 17.5, fontFamily: SOFT_SEMIBOLD, color: S.ink },
+    layerCount: { fontSize: 15, fontFamily: SOFT_MEDIUM, color: S.ink3 },
+    memberRow: { minHeight: 52, gap: 14, paddingVertical: 12, paddingLeft: 30, paddingRight: 14 },
+    memberLabel: { fontSize: 17, fontFamily: SOFT_REGULAR, color: S.ink2 },
+    layersEmpty: { fontSize: 15, fontFamily: SOFT_REGULAR, color: S.ink3 },
+  }) as Record<string, object>;
+};
+
+function useBoardStyles() {
+  return softenStyles(useStyles(makeStyles), useSoftDatabase(), softBoard);
+}
+
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    splitRoot: {
+      flex: 1,
+      flexDirection: 'row',
+    },
+    container: {
+      flex: 1,
+      // The canvas's own ground. It was a flat light grey whatever the
+      // theme, which in the black one is one huge bright rectangle the
+      // eye has to re-adjust for every time it leaves the board -
+      // "її полотно біле а вся загальна тема чорна".
+      backgroundColor: theme.canvas.ground,
+    },
+    paneHidden: {
+      display: 'none',
+    },
+    cardWindowResize: {
+      position: 'absolute',
+      right: 0,
+      bottom: 0,
+      width: 36,
+      height: 36,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cardWindowResizeMark: {
+      width: 12,
+      height: 12,
+      borderRightWidth: 2.5,
+      borderBottomWidth: 2.5,
+      borderColor: 'rgba(0,0,0,0.35)',
+      borderBottomRightRadius: 4,
+    },
+    cardWindowFrame: { position: 'absolute' },
+    freeBlockCard: { paddingVertical: 4, paddingHorizontal: 2, borderRadius: 12 },
+    freeBlockSeam: { borderTopWidth: 1.5, borderTopColor: 'rgba(0,0,0,0.18)', borderStyle: 'dashed', borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+    freeBar: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      height: FREE_BAR_H,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: 'rgba(0,0,0,0.12)',
+    },
+    freeBarButton: { width: 40, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+    freeBlockEmpty: { fontSize: 13, paddingHorizontal: 10, paddingVertical: 8 },
+    freeBlockKinds: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+    freeBlockKind: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      height: 34,
+      paddingHorizontal: 10,
+      borderRadius: 17,
+      backgroundColor: 'rgba(0,0,0,0.05)',
+    },
+    freeBlockKindActive: { backgroundColor: 'rgba(196,106,44,0.18)' },
+    freeBlockKindLabel: { fontSize: 13, color: '#111827' },
+    cardWindowInner: { flex: 1 },
+    cardWindowButtonLayer: { position: 'absolute', height: CARD_BUTTONS_H, justifyContent: 'center', alignItems: 'flex-end' },
+    cardWindowButtonsRow: { flexDirection: 'row', gap: 6 },
+    paperDocCard: { padding: 0, gap: 0 },
+    paperDocHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingTop: 8 },
+    paperDocTitle: { flex: 1 },
+    cardWindowGround: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      borderRadius: 22,
+      boxShadow: '0px 6px 24px rgba(0,0,0,0.18)',
+    },
+    cardWindowOutline: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      borderWidth: 2,
+      borderRadius: 22,
+    },
+    cardWindow: {
+      position: 'absolute',
+      borderRadius: 22,
+      backgroundColor: '#ffffff',
+      boxShadow: '0px 6px 24px rgba(0,0,0,0.18)',
+      overflow: 'hidden',
+    },
+    cardWindowHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingLeft: 16,
+      paddingRight: 8,
+      paddingTop: 8,
+      paddingBottom: 6,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: 'rgba(0,0,0,0.12)',
+    },
+    cardWindowTitle: { flex: 1, fontSize: 15, fontWeight: '600', color: '#1c1c1e' },
+    cardWindowButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      height: 32,
+      paddingHorizontal: 12,
+      borderRadius: 16,
+      backgroundColor: 'rgba(0,0,0,0.06)',
+    },
+    cardWindowButtonText: { fontSize: 13, color: '#1c1c1e' },
+    cardWindowIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(0,0,0,0.06)',
+    },
+    cardWindowIconBar: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+    cardWindowBody: { flex: 1 },
+    docPane: {
+      flex: 1,
+      borderLeftWidth: 1,
+      borderLeftColor: 'rgba(17,24,39,0.12)',
+      overflow: 'hidden',
+    },
+    canvasSurface: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    world: {
+      width: WORLD_SIZE,
+      height: WORLD_SIZE,
+    },
+    // left/top are pinned at 0 on purpose - a card's world position is carried
+    // entirely by its animated transform (see DraggableCard), never by layout.
+    card: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      zIndex: 0,
+    },
+    // The card currently being dragged renders above every other card - see
+    // the isDragging comment where this is applied.
+    cardDragging: {
+      zIndex: 100,
+      elevation: 12,
+    },
+    // The corner a picture is made bigger by. Hangs half off the card, the
+    // way the tile board's own grip does, so it never sits on the picture.
+    cardGrip: {
+      position: 'absolute',
+      right: -8,
+      bottom: -8,
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(17,24,39,0.85)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.5)',
+      zIndex: 30,
+    },
+    cardSelected: {
+      borderRadius: 10,
+      borderWidth: 2,
+      borderColor: SELECTION_COLOR,
+    },
+    // FURNITURE. Pinned at 0/0 like a card, for the same reason: the
+    // position rides entirely on the animated transform.
+    shape: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    shapeSelected: {
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: SELECTION_COLOR,
+    },
+    // shapeTextWrap/shapeTextWrapBare/shapeText/shapeTextLoose moved with
+    // ShapeBody into ../components/BoardShapeBody.
+    textSizeGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 4,
+    },
+    shapeSwatch: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 2,
+    },
+    shapeSwatchOn: {
+      borderColor: '#fff',
+      borderWidth: 3,
+    },
+    stickyCard: {
+      borderRadius: 8,
+      padding: 12,
+      minHeight: 90,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    stickyText: {
+      fontSize: 14,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.ink,
+    },
+    // The «+» at the end of a row of columns.
+    stripPlus: {
+      position: 'absolute',
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: '#8B5CF6',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 3,
+    },
+    dbRowCard: {
+      padding: 2,
+    },
+    refCard: {
+      backgroundColor: theme.canvas.card,
+      borderRadius: 10,
+      padding: 8,
+      gap: 6,
+      borderWidth: 1,
+      // What parts a card from the canvas in the dark - there is
+      // nothing darker for the shadow below to fall on.
+      borderColor: theme.canvas.edge,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    refThumb: {
+      width: '100%',
+      height: 90,
+      borderRadius: 6,
+      overflow: 'hidden',
+    },
+    // The player's two corners, measured for a frame (DraggableCard's
+    // takeFrame).
+    frameDotTL: { position: 'absolute', left: 0, top: 0, width: 1, height: 1 },
+    frameDotBR: { position: 'absolute', right: 0, bottom: 0, width: 1, height: 1 },
+    // On the player: the frame button in its top-left corner, the other two
+    // in the top-right - apart, so a small card's buttons do not lie on one
+    // another.
+    playerControlsLeft: {
+      position: 'absolute',
+      top: 4,
+      left: 4,
+    },
+    playerControls: {
+      position: 'absolute',
+      top: 4,
+      right: 4,
+      flexDirection: 'row',
+      gap: 8,
+    },
+    playerButton: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // imageBare cards only - no refCard wrapper around this one, so the
+    // picture itself carries the card's own rounding and shadow.
+    refThumbBare: {
+      width: '100%',
+      height: 90,
+      borderRadius: 10,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    refThumbPlaceholder: {
+      backgroundColor: theme.canvas.lane,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    refLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      fontFamily: FONT_SEMIBOLD,
+      color: '#111827',
+    },
+    documentPreviewText: {
+      fontSize: 11,
+      fontFamily: FONT_REGULAR,
+      lineHeight: 15,
+      color: theme.canvas.inkMuted,
+    },
+    headerRow: {
+      position: 'absolute',
+      top: 56,
+      left: 20,
+      right: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    titleTap: {
+      flex: 1,
+      // The app's own glass. No BlurView behind it, deliberately: this
+      // screen is INSIDE the blur target, and a blur asked to blur a
+      // picture it is itself part of recurses and takes the app down - it
+      // did exactly that here. A blurred one would have to be drawn through
+      // GlassPortal, like the rail's.
+      overflow: 'hidden',
+      backgroundColor: GLASS_ISLAND,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.4)',
+      borderRadius: 999,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+    },
+    headerTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      fontFamily: FONT_BOLD,
+      color: '#fff',
+      textAlign: 'center',
+    },
+    // `bottom` is set inline (104 + the device's real safe-area inset) -
+    // see the component body. Board is a screen inside the "Дошки" tab, so
+    // FloatingIslandTabBar's pill (bottom: 24, ~48 tall) is always showing
+    // underneath here - 104 is the fixed clearance BulkActionBar's own
+    // aboveTabBar variant uses for the same pill.
+
+    marquee: {
+      position: 'absolute',
+      backgroundColor: 'rgba(37,99,235,0.15)',
+      borderWidth: 1.5,
+      borderColor: SELECTION_COLOR,
+      borderRadius: 4,
+    },
+    // left/top come from each connection's own bounding box at render time.
+    connection: {
+      position: 'absolute',
+    },
+    // The selected connection's own small row of buttons (type/flip/
+    // delete) - left/top come from its curve's own midpoint at render
+    // time, same as connection's left/top above.
+    connectionToolbar: {
+      position: 'absolute',
+      flexDirection: 'row',
+      gap: 4,
+    },
+    connectionToolButton: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: SELECTION_COLOR,
+      borderWidth: 1.5,
+      borderColor: '#fff',
+    },
+    connectDraft: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      height: 2,
+      backgroundColor: CONNECTION_COLOR,
+    },
+    // A vertical guide spans the world's own full height, positioned by
+    // TRANSLATING it sideways into place - never by setting `left`,
+    // which would have to be measured against the current drag every
+    // frame instead of riding the same shared value the drag itself
+    // writes. Drawn as a dashed BORDER rather than a filled background,
+    // the standard lightweight way to get a dashed line out of a plain
+    // View - a filled Svg Line would need its own animated-props wiring
+    // to follow a Reanimated shared value.
+    guideLineV: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      width: 0,
+      height: WORLD_SIZE,
+      borderLeftWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: GUIDE_COLOR,
+    },
+    guideLineH: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      width: WORLD_SIZE,
+      height: 0,
+      borderTopWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: GUIDE_COLOR,
+    },
+    // left/top pinned at 0 on purpose - the column's world position rides
+    // entirely on its animated transform, same as a card's.
+    column: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      width: COLUMN_WIDTH,
+      borderRadius: 14,
+      // A lane ON the canvas, not a card lying on it. It was a 5% dark
+      // wash, which over a dark canvas is nothing at all.
+      backgroundColor: theme.canvas.lane,
+      borderWidth: 1,
+      borderColor: theme.canvas.laneEdge,
+    },
+    // Lit while a card is held over it.
+    columnCatching: {
+      borderColor: SELECTION_COLOR,
+      borderWidth: 2,
+      backgroundColor: 'rgba(139,92,246,0.10)',
+    },
+    columnHeader: {
+      height: COLUMN_HEADER_HEIGHT,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      paddingHorizontal: COLUMN_PADDING,
+    },
+    columnTitleWrap: {
+      flex: 1,
+    },
+    columnTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      fontFamily: FONT_BOLD,
+      color: theme.canvas.inkMuted,
+    },
+    columnCount: {
+      fontSize: 11,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.inkFaint,
+    },
+    // A live task column's own rows - see DraggableColumn's liveTasks
+    // prop. Plain flex, no per-card measuring/reflow the way real cards
+    // need - LIVE_TASK_ROW_HEIGHT is what the parent's own height
+    // calculation assumes each one takes.
+    liveTaskList: {
+      paddingHorizontal: COLUMN_PADDING,
+      paddingBottom: COLUMN_PADDING,
+      gap: 6,
+    },
+    liveTaskRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      minHeight: LIVE_TASK_ROW_HEIGHT,
+      paddingVertical: 4,
+    },
+    liveTaskTextTap: {
+      flex: 1,
+    },
+    liveTaskText: {
+      fontSize: 13,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.ink,
+    },
+    liveTaskTextChecked: {
+      color: theme.canvas.inkFaint,
+      textDecorationLine: 'line-through',
+    },
+    liveTaskEmpty: {
+      fontSize: 12,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.inkFaint,
+      paddingVertical: 6,
+    },
+    // A free-standing frame - see BoardContainer. Genuinely transparent
+    // inside (a column's own tint is deliberate; this one exists only to
+    // mark a region, never to look like a surface something sits ON).
+    frame: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      borderRadius: 14,
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      borderColor: theme.canvas.laneEdge,
+      borderStyle: 'dashed',
+    },
+    // Floats just above the frame's own top-left corner, Figma/Miro-style
+    // - the only part of it that takes touches is the label pill inside
+    // (see DraggableContainer's own comment on why the rest is box-none).
+    // Width is SAID inline (see DraggableContainer's own call site) at
+    // exactly the frame's own width, never left to a percentage - a
+    // maxWidth of '100%' here left the label capped by its OWN
+    // hardcoded number well before the row ever reached that limit, so
+    // a wide frame sat with room to spare while the name was cut off
+    // for no reason: "назва може збільшуватись і відображатись доти
+    // поки блок показу розміру тексту не дійде до протилежного краю
+    // рамки". With the row's own width said exactly and the stepper
+    // pinned to its natural size (flexShrink 0), the label's flexShrink
+    // 1 below gives it every point of room the stepper isn't using.
+    frameLabelRow: {
+      position: 'absolute',
+      left: -1,
+      top: -CONTAINER_HEADER_HEIGHT,
+      height: CONTAINER_HEADER_HEIGHT,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    frameLabel: {
+      height: CONTAINER_HEADER_HEIGHT,
+      minWidth: 64,
+      flexShrink: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.canvas.laneEdge,
+      backgroundColor: theme.canvas.lane,
+    },
+    frameLabelText: {
+      fontWeight: '700',
+      fontFamily: FONT_BOLD,
+      color: theme.canvas.inkMuted,
+    },
+    // The size stepper beside the label - a separate pill on purpose,
+    // never nested inside the label's own draggable/tappable area. See
+    // textSizeStepLabel for what the number between the buttons means.
+    frameSizeStepper: {
+      height: CONTAINER_HEADER_HEIGHT,
+      flexShrink: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.canvas.laneEdge,
+      backgroundColor: theme.canvas.lane,
+    },
+    frameSizeStepperText: {
+      fontSize: 11,
+      fontFamily: FONT_REGULAR,
+      color: theme.canvas.inkFaint,
+      minWidth: 22,
+      textAlign: 'center',
+    },
+    frameDeleteButton: {
+      height: CONTAINER_HEADER_HEIGHT,
+      width: CONTAINER_HEADER_HEIGHT,
+      flexShrink: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.canvas.laneEdge,
+      backgroundColor: theme.canvas.lane,
+    },
+    // Same compact, content-hugging dark-glass pill as the shared
+    // BulkActionBar component (Documents/Files/Photos/Links' own
+    // multi-select bar) - kept local rather than reusing that component
+    // directly since its action set (tag/group/copy) doesn't apply to board
+    // cards. `bottom` is set inline, same as the FAB above.
+    selectionBarWrap: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+    },
+    // A COLUMN now, of rows - see the shape selection bar's own comment
+    // for why: one row of every control here ran past even the Fold's
+    // narrow outer screen.
+    selectionBarCapsule: {
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: 'rgba(20,20,20,0.55)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.35)',
+      borderRadius: 24,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      shadowColor: '#000',
+      shadowOpacity: 0.3,
+      shadowOffset: { width: 0, height: 6 },
+      shadowRadius: 16,
+      elevation: 8,
+    },
+    selectionBarDivider: {
+      width: 1,
+      height: 22,
+      backgroundColor: 'rgba(255,255,255,0.3)',
+    },
+    selectionBarRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 14,
+    },
+    selectionBarAction: {
+      alignItems: 'center',
+      gap: 3,
+    },
+    selectionBarActionLabel: {
+      fontSize: 9.5,
+      fontWeight: '600',
+      fontFamily: FONT_SEMIBOLD,
+      color: '#fff',
+    },
+    // Same dark-glass treatment as the selection bar's own capsule above,
+    // for the one confirmation that sits over the canvas itself rather than
+    // this app's usual native Alert.
+    // «Шари» - a left-anchored drawer, drawn through GlassPortal rather
+    // than GlassLayer: the panel carries its own blur (see layersPanel/
+    // layersPanelTint below), and everything beside it stays a plain dim
+    // (layersDim) rather than the whole screen going behind a blur - the
+    // user's own ask was to see the board and the drawer at once.
+    layersLayer: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      zIndex: 55,
+    },
+    layersDim: {
+      backgroundColor: 'rgba(17,24,39,0.35)',
+    },
+    // The RIGHT edge, where a panel of tools belongs beside a canvas -
+    // the user's own reckoning, and the same side «Референси» takes in
+    // the editor now: "такі панелі повинні виїжджати з правого краю".
+    layersPanel: {
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      bottom: 0,
+      overflow: 'hidden',
+      borderLeftWidth: 1,
+      borderLeftColor: GLASS_EDGE,
+      paddingTop: 56,
+      paddingHorizontal: 14,
+      paddingBottom: 16,
+    },
+    // The tint OVER the blur - a blur alone leaves the canvas showing
+    // through too sharply for text to sit on; this is what RenamePrompt's
+    // own card gets for the same reason, just as an explicit layer here
+    // since the panel's own background can't paint over its BlurView
+    // child (a parent's fill draws BEHIND what it renders, not on top).
+    layersPanelTint: {
+      backgroundColor: GLASS_BODY, // a rising sheet has no blur behind it (GlassLayer `rise`): the 0.55 body let the page show through
+    },
+    layersHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 14,
+    },
+    layersTitle: {
+      fontSize: 20,
+      fontFamily: FONT_BOLD,
+      color: GLASS_TEXT,
+    },
+    layersHeaderActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+    },
+    layersScroll: {
+      flex: 1,
+    },
+    layerGroup: {
+      marginBottom: 10,
+    },
+    layerHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 8,
+      borderRadius: 12,
+      backgroundColor: GLASS_CARD,
+    },
+    layerNameTap: {
+      flex: 1,
+    },
+    layerName: {
+      flex: 1,
+      fontSize: 15,
+      fontFamily: FONT_SEMIBOLD,
+      color: GLASS_TEXT,
+    },
+    layerCount: {
+      fontSize: 12,
+      fontFamily: FONT_REGULAR,
+      color: GLASS_TEXT_FAINT,
+    },
+    memberRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 7,
+      paddingLeft: 26,
+      paddingRight: 8,
+    },
+    // The row of the object currently being dragged - left in place, just
+    // faded, the same treatment the kanban card gets while carried.
+    memberRowDimmed: {
+      opacity: 0.35,
+    },
+    memberLabel: {
+      flex: 1,
+      fontSize: 14,
+      fontFamily: FONT_REGULAR,
+      color: GLASS_TEXT_MUTED,
+    },
+    layersEmpty: {
+      fontSize: 13,
+      fontFamily: FONT_REGULAR,
+      color: GLASS_TEXT_FAINT,
+      textAlign: 'center',
+      paddingVertical: 24,
+    },
+    sheetBackdrop: {
+      backgroundColor: 'rgba(17,24,39,0.45)',
+      ...SHEET_BACKDROP,
+    },
+    sheet: {
+      backgroundColor: '#fff',
+      ...SHEET_WINDOW,
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      paddingBottom: 28,
+    },
+    // The add sheet's sections of icon tiles.
+    addSectionTitle: {
+      fontSize: 13,
+      fontFamily: FONT_SEMIBOLD,
+      color: '#6B7280',
+      marginTop: 10,
+      marginBottom: 8,
+      paddingLeft: 2,
+    },
+    addGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    addTile: {
+      flexBasis: '31%',
+      flexGrow: 1,
+      height: 80,
+      borderRadius: 18,
+      backgroundColor: '#F3F4F6',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      paddingHorizontal: 4,
+    },
+    addTileLabel: {
+      fontSize: 12.5,
+      fontFamily: FONT_SEMIBOLD,
+      color: '#111827',
+    },
+    sheetTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      fontFamily: FONT_BOLD,
+      color: '#111827',
+      marginBottom: 6,
+    },
+    sheetBack: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginBottom: 6,
+    },
+    groupList: {
+      maxHeight: 360,
+    },
+    groupDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    groupCount: {
+      fontSize: 13,
+      fontFamily: FONT_REGULAR,
+      color: '#9CA3AF',
+    },
+    groupEmpty: {
+      fontSize: 14,
+      fontFamily: FONT_REGULAR,
+      color: '#9CA3AF',
+      paddingVertical: 10,
+    },
+    sheetHandle: {
+      ...PHONE_ONLY,
+      width: 36,
+      height: 4,
+      backgroundColor: '#E5E7EB',
+      borderRadius: 2,
+      alignSelf: 'center',
+      marginBottom: 12,
+    },
+    sheetRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 12,
+    },
+    sheetRowLabel: {
+      flex: 1,
+      fontSize: 15,
+      fontFamily: FONT_REGULAR,
+      color: '#111827',
+    },
+    textEditBackdrop: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(17,24,39,0.5)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    textEditCard: {
+      width: '100%',
+      maxWidth: 360,
+      backgroundColor: '#fff',
+      borderRadius: 16,
+      padding: 16,
+      gap: 12,
+    },
+    readTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      fontFamily: FONT_BOLD,
+      color: '#111827',
+    },
+    readBody: {
+      maxHeight: 360,
+    },
+    textEditInput: {
+      minHeight: 100,
+      fontSize: 15,
+      fontFamily: FONT_REGULAR,
+      color: '#111827',
+      textAlignVertical: 'top',
+    },
+    // The наліпка's own text-size and width steppers, inside its editor.
+    stickySizeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    stickySizeValue: {
+      minWidth: 30,
+      textAlign: 'center',
+      fontSize: 13,
+      fontFamily: FONT_SEMIBOLD,
+      color: '#111827',
+    },
+    stickySizeGap: {
+      flex: 1,
+    },
+    textEditColors: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    textEditColorSwatch: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+    },
+    textEditColorSwatchActive: {
+      borderWidth: 2,
+      borderColor: '#111827',
+    },
+    textEditButtons: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 12,
+    },
+    textEditCancel: {
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+    },
+    textEditCancelLabel: {
+      fontSize: 15,
+      fontFamily: FONT_REGULAR,
+      color: '#6B7280',
+    },
+    textEditSave: {
+      backgroundColor: ACCENT,
+      borderRadius: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+    },
+    textEditSaveLabel: {
+      fontSize: 15,
+      fontWeight: '600',
+      fontFamily: FONT_SEMIBOLD,
+      color: '#fff',
+    },
+  });

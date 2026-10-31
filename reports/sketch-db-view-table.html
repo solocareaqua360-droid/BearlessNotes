@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Таблиця з бази</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#F6F5F2; --paper:#FFFDF9; --ink:#1E1E1C; --ink2:#5E5D58; --ink3:#9A988F; --line:#E7E2D9; --fill:#F1EEE8; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#E9E7E2; font-family: Inter, system-ui, sans-serif; color:var(--ink); padding:24px 16px; }
+  h1 { font-size:18px; margin:0 0 6px; }
+  .lead { font-size:14px; color:var(--ink2); margin:0 0 20px; max-width:1000px; line-height:1.5; }
+  .row { display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start; }
+  .phone { width:475px; max-width:100%; height:751px; background:var(--paper); border-radius:28px; overflow:hidden; position:relative; box-shadow:0 10px 30px rgba(0,0,0,.12); }
+  .cap { font-size:13px; color:var(--ink2); margin:8px 4px 0; max-width:475px; line-height:1.45; }
+  .page { position:absolute; inset:0; padding:92px 20px 0; }
+  .top { position:absolute; left:12px; right:12px; top:22px; height:52px; border-radius:26px; background:#fff; box-shadow:0 4px 18px rgba(30,30,28,.08); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:15px; }
+  .h2 { font-size:22px; font-weight:700; margin:0 0 10px; }
+  .p { font-size:16px; line-height:1.5; color:#3A3935; margin:0 0 14px; }
+  /* exactly the note's table: hairline frame, radius 10, plain cells */
+  .tbl { border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff; position:relative; }
+  .scroll { overflow-x:auto; }
+  table { border-collapse:separate; border-spacing:0; min-width:500px; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); white-space:nowrap; font-weight:400; }
+  th { color:var(--ink2); font-weight:500; }
+  td + td, th + th { border-left:1px solid var(--line); }
+  tr:last-child td { border-bottom:0; }
+  .foot { height:34px; display:flex; align-items:center; border-top:1px solid var(--line); padding:0 4px 0 12px; font-size:13px; color:var(--ink3); }
+  .foot .more { flex:1; }
+  .dots { width:30px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:8px; }
+  .menu { position:absolute; right:22px; width:256px; background:#fff; border-radius:22px; box-shadow:0 14px 40px rgba(30,30,28,.18); padding:8px; }
+  .menu .r { height:42px; display:flex; align-items:center; gap:12px; padding:0 12px; font-size:15px; }
+  .menu .r .v { margin-left:auto; color:var(--ink3); font-size:14px; }
+  .menu .s { font-size:12px; color:var(--ink3); padding:8px 12px 4px; }
+  .menu .rule { height:1px; background:var(--line); margin:4px 8px; }
+  .dim { position:absolute; inset:0; background:rgba(30,30,28,.06); }
+  svg { flex-shrink:0; }
+  .note { font-size:13px; color:var(--ink2); background:#fff; border-radius:16px; padding:14px 16px; max-width:1000px; line-height:1.55; margin-top:20px; }
+</style>
+</head>
+<body>
+<h1>Таблиця з бази - просто таблиця</h1>
+<p class="lead">Нічого зверху: ні назви бази, ні лічильника. Рамка, лінії й кути - як у звичайної таблиці в нотатці. Єдине, що її відрізняє, - тонкий рядок унизу: «Ще N» (розгорнути тут) і «⋯» в куті.</p>
+<div class="row">
+  <div>
+    <div class="phone">
+      <div class="page">
+        <div class="h2">Машини на тижні</div>
+        <p class="p">Заголовок - звичайний текст нотатки, не частина таблиці.</p>
+        <div class="tbl">
+          <div class="scroll">
+            <table>
+              <thead><tr><th>Назва</th><th>Статус</th><th>Водій</th><th>Огляд</th><th>Пробіг</th></tr></thead>
+              <tbody>
+                <tr><td>[Авто 1]</td><td>На ходу</td><td>[Ім'я]</td><td>28 жовт.</td><td>[км]</td></tr>
+                <tr><td>[Авто 2]</td><td>Ремонт</td><td>[Ім'я]</td><td>2 лист.</td><td>[км]</td></tr>
+                <tr><td>[Авто 3]</td><td>На ходу</td><td>[Ім'я]</td><td>5 лист.</td><td>[км]</td></tr>
+                <tr><td>[Авто 4]</td><td>Резерв</td><td>-</td><td>-</td><td>[км]</td></tr>
+                <tr><td>[Авто 5]</td><td>На ходу</td><td>[Ім'я]</td><td>9 лист.</td><td>[км]</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="foot"><span class="more">Ще 2</span>
+            <span class="dots" aria-label="Параметри таблиці"><svg width="18" height="18" viewBox="0 0 24 24" fill="#9A988F" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></span></div>
+        </div>
+        <p class="p" style="margin-top:16px">Далі нотатка як звичайно.</p>
+      </div>
+      <div class="top">Тест › Тиждень</div>
+    </div>
+    <p class="cap">1 · Згорнута: видно 5 рядків. «Ще 2» розгортає таблицю тут же, в нотатці. Тап по рядку - відкриває той запис.</p>
+  </div>
+  <div>
+    <div class="phone">
+      <div class="page">
+        <div class="h2">Машини на тижні</div>
+        <p class="p">Заголовок - звичайний текст нотатки, не частина таблиці.</p>
+        <div class="tbl">
+          <div class="scroll">
+            <table>
+              <thead><tr><th>Назва</th><th>Статус</th><th>Водій</th><th>Огляд</th><th>Пробіг</th></tr></thead>
+              <tbody>
+                <tr><td>[Авто 1]</td><td>На ходу</td><td>[Ім'я]</td><td>28 жовт.</td><td>[км]</td></tr>
+                <tr><td>[Авто 2]</td><td>Ремонт</td><td>[Ім'я]</td><td>2 лист.</td><td>[км]</td></tr>
+                <tr><td>[Авто 3]</td><td>На ходу</td><td>[Ім'я]</td><td>5 лист.</td><td>[км]</td></tr>
+                <tr><td>[Авто 4]</td><td>Резерв</td><td>-</td><td>-</td><td>[км]</td></tr>
+                <tr><td>[Авто 5]</td><td>На ходу</td><td>[Ім'я]</td><td>9 лист.</td><td>[км]</td></tr>
+                <tr><td>[Авто 6]</td><td>Ремонт</td><td>[Ім'я]</td><td>12 лист.</td><td>[км]</td></tr>
+                <tr><td>[Авто 7]</td><td>На ходу</td><td>[Ім'я]</td><td>14 лист.</td><td>[км]</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="foot"><span class="more">Згорнути</span>
+            <span class="dots" aria-label="Параметри таблиці"><svg width="18" height="18" viewBox="0 0 24 24" fill="#5E5D58" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></span></div>
+        </div>
+        <div class="dim"></div>
+        <div class="menu" style="top:200px">
+          <div class="r"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E5D58" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M9 4v16M15 4v16M4 4h16v16H4z"/></svg>Стовпці<span class="v">5</span></div>
+          <div class="r"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E5D58" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Умова<span class="v">Статус ≠ Списано</span></div>
+          <div class="r"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E5D58" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M7 5v14M7 19l-3-3M7 19l3-3M17 19V5M17 5l-3 3M17 5l3 3"/></svg>Порядок<span class="v">Назва ↑</span></div>
+          <div class="r"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E5D58" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Видно рядків<span class="v">5</span></div>
+          <div class="rule"></div>
+          <div class="r"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E5D58" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Додати запис з бази</div>
+          <div class="r"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E5D58" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg>Новий запис</div>
+          <div class="r"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E5D58" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>Відкрити в базі</div>
+          <div class="s">Рядки: за умовою 6 · додано 1 · прибрано 0</div>
+        </div>
+      </div>
+      <div class="top">Тест › Тиждень</div>
+    </div>
+    <p class="cap">2 · Розгорнута («Згорнути» внизу) і відкрите «⋯». Тут усе, що раніше стояло над таблицею: стовпці, умова, порядок, скільки рядків видно, додати чи створити запис, відкрити в базі.</p>
+  </div>
+</div>
+<p class="note">Затиснутий рядок: «Відкрити», «Прибрати з таблиці» (у базі лишається). Якщо вибрано «Видно рядків: усі» - нижній рядок лишається тонким, тільки з «⋯» у куті. Назва бази ніде не пишеться: таблиця не схожа на вирізку з бази, вона просто показує її записи.</p>
+</body>
+</html>
