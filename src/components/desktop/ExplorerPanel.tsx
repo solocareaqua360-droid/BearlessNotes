@@ -34,6 +34,8 @@ export type ExplorerPanelProps = {
   onNewShortcut: () => void;
   candidates: number;
   onCleanup: () => void;
+  // The pictures that live on a page only (the cleanup window's second list).
+  onPageImages: () => void;
   binned: number;
   onBin: () => void;
 };
@@ -196,6 +198,7 @@ export default function ExplorerPanel(p: ExplorerPanelProps) {
           {action('folder', 'folder-open-outline', 'Нова папка', p.onNewFolder)}
           {action('shortcut', 'rocket-outline', 'Новий ярлик…', p.onNewShortcut)}
           {p.candidates > 0 && action('cleanup', 'sparkles-outline', 'Кандидати на очищення', p.onCleanup, String(p.candidates))}
+          {action('page-images', 'images-outline', 'Картинки на сторінках', p.onPageImages)}
           {action('bin', 'trash-outline', 'Кошик', p.onBin, p.binned > 0 ? String(p.binned) : undefined)}
         </>,
         true

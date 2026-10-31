@@ -75,6 +75,7 @@ import { markHeld, useHeld } from '../utils/heldNode';
 import { GestureDetector } from 'react-native-gesture-handler';
 import CreateFan from '../components/CreateFan';
 import QuickCreateHost from '../components/QuickCreateHost';
+import PageImagesCleanup from '../components/PageImagesCleanup';
 import CollectionWindow, { type CollectionKind } from '../components/CollectionWindow';
 import ThoughtsSquare from '../components/thoughts/ThoughtsSquare';
 import ThoughtsFolder from '../components/thoughts/ThoughtsFolder';
@@ -638,6 +639,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // «КАНДИДАТИ НА ОЧИЩЕННЯ»: what nothing holds (see utils/cleanupCandidates). Shown in a view of its
   // own; the task leftovers among them (`auto`) are binned by themselves, once per visit.
   const [inCleanup, setInCleanup] = useState(false);
+  // The pictures of pages (the cleanup's second list) - utils/pageImages.
+  const [pageImagesOpen, setPageImagesOpen] = useState(false);
   // The Mac's sidebar reads where the explorer stands and sends it places (navigation/explorerPlace).
   useEffect(() => {
     explorerPlace.report(path);
@@ -2449,6 +2452,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       ...(candidates.length > 0
         ? [{ label: `Кандидати на очищення (${candidates.length})`, icon: 'sparkles-outline' as const, onPress: enterCleanup }]
         : []),
+      { label: 'Картинки на сторінках…', icon: 'images-outline' as const, onPress: () => setPageImagesOpen(true) },
       ...(history.current.at > 0
         ? [{ label: `Назад: ${folderLabel(history.current.stack[history.current.at - 1])}`, icon: 'arrow-back-outline' as const, onPress: () => goHistory(-1) }]
         : []),
@@ -2996,6 +3000,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         onNewShortcut={() => newShortcut()}
         candidates={candidates.length}
         onCleanup={enterCleanup}
+        onPageImages={() => setPageImagesOpen(true)}
         binned={binned.length}
         onBin={enterBin}
       />
@@ -4015,6 +4020,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         onEnterFolder={(p) => setPath(p)}
       />
       {create.nodes}
+      <PageImagesCleanup
+        visible={pageImagesOpen}
+        onClose={() => setPageImagesOpen(false)}
+        onOpenPage={(img) => {
+          setPageImagesOpen(false);
+          (navigation as unknown as { navigate: (n: string, p?: object) => void }).navigate(img.where === 'board' ? 'BoardCopy' : 'Editor', img.where === 'board' ? { boardId: img.parentId } : { documentId: img.parentId });
+        }}
+      />
       {FEATURES.quickCreate && (
         <QuickCreateHost
           visible={quickOpen}
