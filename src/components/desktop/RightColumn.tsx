@@ -366,6 +366,9 @@ export default function RightColumn() {
   const stripPanels = all.filter((c) => c.panels.every((p) => p.folded)).flatMap((c) => c.panels);
   const stripRoom = stripPanels.length > 0 ? STRIP_WIDTH + 8 : 0;
   const usable = room - stripRoom;
+  // Not room for even one column beside a main pane that can be used: the column steps aside (the window stretched back brings it
+  // again). It was kept at its least width instead, and the main pane was left 260 points wide with its title in two lines.
+  if (usable < COLUMN_MIN + 8) return null;
   // What each column is drawn at. The OUTER one keeps what it was given (as
   // far as the room allows); the one beside the main pane takes what is
   // left of the room after it, so a window that narrows eats the main pane's

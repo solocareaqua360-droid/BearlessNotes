@@ -49,6 +49,7 @@ import DesktopRail from './src/components/DesktopRail';
 import Sidebar from './src/components/desktop/Sidebar';
 import Composer from './src/components/desktop/Composer';
 import { useRailPanel, useRailPanelWidth } from './src/navigation/navRail';
+import { DESKTOP_MAIN_MIN, DESKTOP_RAIL_WIDTH } from './src/constants/desktop';
 import RightColumn from './src/components/desktop/RightColumn';
 import StartPage, { CreateWatcher } from './src/components/desktop/StartPage';
 import { useStartFront } from './src/navigation/desktopTabs';
@@ -374,7 +375,12 @@ function FrameBRightPanel() {
   // more than a list of buttons). It never takes more than 45% of the window, so the main pane always keeps its room.
   const wanted = useRailPanelWidth();
   const windowW = useWindowDimensions().width;
-  const target = Math.max(RIGHT_PANEL_W, Math.min(wanted ?? RIGHT_PANEL_W, Math.round(windowW * 0.45)));
+  // What is left for it beside the sidebar and a main pane that can still be used (380): below 260 it folds to its strip by
+  // itself (the window stretched back brings it again), between 260 and its own width it takes what is left. It stood at
+  // 340 whatever the window was, and the main pane was left 260 points wide with its title in two lines (2026-10-31).
+  const roomLeft = windowW - DESKTOP_RAIL_WIDTH - DESKTOP_MAIN_MIN;
+  const tooNarrow = roomLeft < 260;
+  const target = Math.max(260, Math.min(Math.max(RIGHT_PANEL_W, Math.min(wanted ?? RIGHT_PANEL_W, Math.round(windowW * 0.45))), roomLeft));
   const width = useRef(new Animated.Value(target)).current;
   useEffect(() => {
     Animated.timing(width, { toValue: target, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
@@ -411,7 +417,7 @@ function FrameBRightPanel() {
       <Ionicons name={folded ? 'chevron-back' : 'chevron-forward'} size={14} color={D.ink2} />
     </Pressable>
   );
-  if (!open) {
+  if (!open || tooNarrow) {
     return <View style={{ width: 20, backgroundColor: D.chrome, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: D.line }}>{handle(true)}</View>;
   }
   return (

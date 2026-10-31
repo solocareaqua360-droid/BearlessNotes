@@ -18,15 +18,19 @@ export const DESKTOP_NARROW_BELOW = 1000;
 export const DESKTOP_RAIL_NARROW = 52;
 export const DESKTOP_MAIN_MIN = 380;
 
-import { useWindowDimensions } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
+import { FEATURES } from '../features';
 
 export function useDesktopNarrow(): boolean {
   return useWindowDimensions().width < DESKTOP_NARROW_BELOW;
 }
 
 // The rail's width now, as anything standing against its edge needs it.
+// Frame B's sidebar (components/desktop/Sidebar) does not fold to icons, so it is the full width at any window width: asking
+// for the narrow one put the search corner over the sidebar's own search at 800 points (2026-10-31).
 export function useDesktopRailWidth(): number {
-  return useDesktopNarrow() ? DESKTOP_RAIL_NARROW : DESKTOP_RAIL_WIDTH;
+  const narrow = useDesktopNarrow();
+  return narrow && !(Platform.OS === 'web' && FEATURES.macFrameB) ? DESKTOP_RAIL_NARROW : DESKTOP_RAIL_WIDTH;
 }
 
 // The band along the very top of the window where macOS puts the traffic

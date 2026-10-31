@@ -3337,7 +3337,8 @@ export default function TasksScreen() {
             contentContainerStyle={[styles.list, { paddingBottom: dockClear + insets.bottom }, floatHeader && { paddingTop: topPad + 8 }]}
           >
             {/* The Mac has no bar at the top to say which window this is. */}
-            {!bar && <Text style={styles.v2Title}>{viewTitle.label}</Text>}
+            {/* Under the search corner that stands at the pane's top-left (SearchCorner) - in a narrow window it lay over the title. */}
+            {!bar && <Text style={[styles.v2Title, !phone && { marginTop: 40 }]}>{viewTitle.label}</Text>}
             {view === 'home' ? (isSearching && searchQuery.trim() ? renderSearchResults() : renderHome()) : renderViewList()}
           </ScrollView>
         ) : null}
