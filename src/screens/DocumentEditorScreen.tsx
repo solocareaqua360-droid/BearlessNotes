@@ -5,7 +5,7 @@ import CarriesBackMarker from '../components/CarriesBackMarker';
 import { frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { RADIUS } from '../theme/scale';
 import { whenDeskIsThere } from '../navigation/deskRegistry';
-import { useNoteOpened } from '../navigation/recentPlaces';
+import { noteOpened, useNoteOpened } from '../navigation/recentPlaces';
 import ScreenGround from '../components/ScreenGround';
 import { IN_SHELL } from '../utils/shell';
 import { morphKey, morphLanded } from '../utils/morph';
@@ -6018,6 +6018,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const kind = quickLookKindFor(file.fileName);
     if (kind) {
       if (await ensureFileIsHere(file)) {
+        noteOpened('file', block.id);
         setQuickLook({ uri: file.fileUri, name: block.fileTitle || file.fileName, kind, file });
       }
       return;

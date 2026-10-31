@@ -7,6 +7,32 @@ import type { SketchElement, SketchPathElement, SketchShape } from '../types';
 export type Point = { x: number; y: number };
 export type Box = { minX: number; minY: number; maxX: number; maxY: number };
 
+// A SHAKY LINE MADE SMOOTH (2026-10-31, the user's: held still at the end of a stroke, a trembling line steadies): a moving average
+// along the points (the ends stay where they are), twice, then each corner cut once (Chaikin) so the line is a curve and not a
+// polyline. Still plain points - every hit test that reads `d` keeps working.
+export function smoothPoints(points: Point[]): Point[] {
+  if (points.length < 4) return points;
+  let pts = points;
+  for (let pass = 0; pass < 2; pass += 1) {
+    pts = pts.map((p, i) => {
+      if (i === 0 || i === pts.length - 1) return p;
+      const a = pts[Math.max(0, i - 2)];
+      const b = pts[i - 1];
+      const c = pts[i + 1];
+      const d = pts[Math.min(pts.length - 1, i + 2)];
+      return { x: (a.x + b.x + p.x + c.x + d.x) / 5, y: (a.y + b.y + p.y + c.y + d.y) / 5 };
+    });
+  }
+  const cut: Point[] = [pts[0]];
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const p = pts[i];
+    const q = pts[i + 1];
+    cut.push({ x: 0.75 * p.x + 0.25 * q.x, y: 0.75 * p.y + 0.25 * q.y }, { x: 0.25 * p.x + 0.75 * q.x, y: 0.25 * p.y + 0.75 * q.y });
+  }
+  cut.push(pts[pts.length - 1]);
+  return cut;
+}
+
 export function pointsToPath(points: Point[]): string {
   return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
 }

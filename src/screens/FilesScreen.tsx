@@ -2,7 +2,7 @@ import { useFolderArrival } from '../navigation/folderArrival';
 import MenuLabel from '../components/MenuLabel';
 import { SwipeSelectItem } from '../components/SwipeSelect';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTileOpened } from '../navigation/recentPlaces';
+import { noteOpened, useTileOpened } from '../navigation/recentPlaces';
 import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useFolderHold } from '../components/FolderHoldMenu';
 import BinRestoreRows from '../components/BinRestoreRows';
@@ -533,6 +533,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       const flipping = prepareFlip(file.id, event);
       if (await ensureFileIsHere(file)) {
         setFileFlip(await flipping);
+        noteOpened('file', file.id);
         setQuickLook({ uri: file.fileUri, name: file.title || file.fileName, kind, file });
       }
       return;

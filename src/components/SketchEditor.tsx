@@ -36,6 +36,7 @@ import {
   parsePathPoints,
   pivotOf,
   pointsToPath,
+  smoothPoints,
   rotateElementAbout,
   rotatePoint,
   scaleElement,
@@ -642,6 +643,7 @@ export default function SketchEditor({ visible, initialElements, background, pap
     return Gesture.Simultaneous(pinchG, panG);
   }, [onTwo, background]);
 
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   function handleStart(e: GestureResponderEvent) {
     // A new single touch after the fingers are off: never stay stuck.
     if (pinch.current && twoActive.current === 0) pinch.current = null;
@@ -685,10 +687,15 @@ export default function SketchEditor({ visible, initialElements, background, pap
       return;
     }
     setCurrentPoints((prev) => [...prev, { x: locationX, y: locationY }]);
+    // The finger rests on the paper without lifting: the line drawn so far steadies (a trembling hand becomes a smooth line).
+    // The next move carries on from the smoothed line.
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(() => setCurrentPoints((prev) => (prev.length > 4 ? smoothPoints(prev) : prev)), 450);
   }
 
   function handleEnd() {
     erasing.current = false;
+    if (holdTimer.current) clearTimeout(holdTimer.current);
     if (pinch.current) return;
     if (tool === 'select') {
       selectEnd();

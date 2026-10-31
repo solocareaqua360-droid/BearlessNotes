@@ -90,6 +90,7 @@ import { listMoved } from '../utils/motionHold';
 import { useFolderMenuRequests } from '../utils/folderMenuRequest';
 import { composerBus } from '../navigation/composerBus';
 import { bindRightClick } from '../utils/rightClick';
+import { noteOpened } from '../navigation/recentPlaces';
 import { addDroppedInPlace } from '../utils/createItem';
 import { clearDropOver, markDropOver } from '../hooks/useCardCarry';
 import PlaylistWindow, { videoOf, type PlaylistVideo } from '../components/PlaylistWindow';
@@ -1091,7 +1092,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     const kind = quickLookKindFor(file.fileName);
     // A Word/Excel/PDF is read here; anything else is handed to the system's program.
     if (kind) {
-      if (await ensureFileIsHere(file)) setQuickLook({ uri: file.fileUri, name: (raw.title as string) || file.fileName, kind, item });
+      if (await ensureFileIsHere(file)) {
+        noteOpened('file', item.docId);
+        setQuickLook({ uri: file.fileUri, name: (raw.title as string) || file.fileName, kind, item });
+      }
     } else await openFileExternally(file);
   }
   const cardsHere = useMemo(
