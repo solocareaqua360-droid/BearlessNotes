@@ -1,6 +1,8 @@
 import { GRID_TILES, WIDE_TILES } from '../constants/databaseTiles';
 import type { PaneTarget } from './paneTarget';
 import { navigationRef } from '../navigationRef';
+import { explorerPlace } from './explorerPlace';
+import { requestOpen } from '../utils/openRequest';
 
 // What a PaneTarget is called and drawn with, off the database tiles - one
 // source, so a panel's header says what the tile it came from said. A
@@ -41,7 +43,13 @@ export function navigateToTarget(target: PaneTarget): void {
   else if (target.kind === 'boards') go('Tabs', { screen: 'Дошки' });
   else if (target.kind === 'note') go('Editor', { documentId: target.documentId });
   else if (target.kind === 'board') go('BoardCopy', { boardId: target.boardId });
-  else go(target.route);
+  else if (target.kind === 'folder') {
+    explorerPlace.request(target.path);
+    go('Explorer');
+  } else if (target.kind === 'item') {
+    requestOpen(target.collection, target.id);
+    go(target.collection === 'photos' ? 'Photos' : 'Files');
+  } else go(target.route);
 }
 
 // The address of a new window on a target.

@@ -14,6 +14,10 @@ export type PaneTarget =
   // A note in a window of its own (the Mac's «У вікно», frame B 2026-10-19) - never a pane's content.
   | { kind: 'note'; documentId: string }
   // A board in a window of its own (2026-10-30), next to the explorer's window.
-  | { kind: 'board'; boardId: string };
+  | { kind: 'board'; boardId: string }
+  // A folder of the explorer in a window of its own (2026-10-31): the explorer standing at that path.
+  | { kind: 'folder'; path: string }
+  // A photo or a file in a window of its own: its base, with that one opened on arrival.
+  | { kind: 'item'; collection: 'photos' | 'files'; id: string };
 
 export const sameTarget = (a: PaneTarget, b: PaneTarget) => JSON.stringify(a) === JSON.stringify(b);

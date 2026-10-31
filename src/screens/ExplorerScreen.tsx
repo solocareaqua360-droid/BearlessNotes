@@ -1747,6 +1747,18 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     try {
       const { base64, files, skipped } = await folderToZip(f.path, f.name, tags, all);
       const fileName = `${sanitizeFileName(f.name) || 'Папка'}.zip`;
+      if (Platform.OS === 'web') {
+        // The laptop: the browser's own download (the Mac app puts it in Downloads).
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+        const href = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
+        const a = document.createElement('a');
+        a.href = href;
+        a.download = fileName;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(href), 10000);
+        notify('Архів збережено', `${fileName}: ${files} файлів${skipped ? `, ${skipped} пропущено (дошки, картки, записи або недоступні фото)` : ''}.`);
+        return;
+      }
       const tempUri = `${LegacyFileSystem.cacheDirectory}${Date.now()}.zip`;
       await LegacyFileSystem.writeAsStringAsync(tempUri, base64, { encoding: 'base64' });
       const dest = await downloadToDevice(tempUri, fileName, 'application/zip');
@@ -1758,35 +1770,46 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // THE LAPTOP'S KEYS (2026-10-31): ⌘C / ⌘X / ⌘V, ⌘D, ⌘A, Delete - on the chosen card (one click) or on what is ticked.
   // A copied note is a new note put into the folder you paste in; any other kind appears in that folder too (one thing in
   // two folders, as «Папки» does it); a cut thing leaves the folder it was cut from.
-  const clip = useRef<{ mode: 'copy' | 'cut'; ids: string[]; from: string | null } | null>(null);
+  // The clipboard is shared by every window of the app (the same origin's storage), so a thing copied in one window is pasted
+  // in another - the laptop's way of dragging between windows.
+  type Clip = { mode: 'copy' | 'cut'; items: { docId: string; tagKind: FolderItem['tagKind']; collection: string; kind: FolderItem['kind'] }[]; from: string | null };
+  const CLIP_KEY = 'mindeva.explorerClip';
+  const readClip = (): Clip | null => {
+    try {
+      return JSON.parse(window.localStorage.getItem(CLIP_KEY) ?? 'null') as Clip | null;
+    } catch {
+      return null;
+    }
+  };
   const keyTargets = (): FolderItem[] => {
     const ids = selecting ? Array.from(selected) : chosen ? [chosen] : [];
     return ids.map((id) => pool.find((i) => i.id === id)).filter((i): i is FolderItem => !!i && i.kind !== 'row');
   };
-  async function putHere(item: FolderItem, copy: boolean) {
+  async function putHere(item: { docId: string; tagKind: FolderItem['tagKind']; collection: string; kind: FolderItem['kind'] }, copy: boolean) {
     const into = folderOf(path);
     const target = into ? await tagForPath(into) : null;
     if (copy && item.kind === 'document') {
       const { id } = await copyNoteWithNested(item.docId);
-      if (target) await attachTag(target, item.tagKind, id, item.collection);
-    } else if (target && !tags.some((t) => t.path === into && item.tagIds.includes(t.id))) {
-      await attachTag(target, item.tagKind, item.docId, item.collection);
+      if (target) await attachTag(target, item.tagKind, id, item.collection as never);
+    } else if (target) {
+      await attachTag(target, item.tagKind, item.docId, item.collection as never);
     }
   }
   async function pasteClip() {
-    const c = clip.current;
-    if (!c) return;
-    const items = c.ids.map((id) => pool.find((i) => i.id === id)).filter((i): i is FolderItem => !!i);
-    if (items.length === 0 || (c.mode === 'cut' && c.from === folderOf(path))) return;
+    const c = readClip();
+    if (!c || c.items.length === 0 || (c.mode === 'cut' && c.from === folderOf(path))) return;
     try {
-      for (const item of items) {
+      for (const item of c.items) {
         if (c.mode === 'cut') {
-          if (c.from) for (const tag of tags.filter((t) => t.path === c.from && item.tagIds.includes(t.id))) await detachTag(tag, item.tagKind, item.docId, item.collection);
+          if (c.from) {
+            const fromTags = tags.filter((t) => t.path === c.from);
+            for (const tag of fromTags) await detachTag(tag, item.tagKind, item.docId, item.collection as never).catch(() => {});
+          }
           await putHere(item, false);
         } else await putHere(item, true);
       }
-      if (c.mode === 'cut') clip.current = null;
-      setToast({ id: Date.now(), message: `${c.mode === 'cut' ? 'Переміщено' : 'Вставлено'}: ${items.length}`, left: 3 });
+      if (c.mode === 'cut') window.localStorage.removeItem(CLIP_KEY);
+      setToast({ id: Date.now(), message: `${c.mode === 'cut' ? 'Переміщено' : 'Вставлено'}: ${c.items.length}`, left: 3 });
     } catch (e) {
       notify('Не вдалося вставити', (e as Error).message);
     }
@@ -1805,7 +1828,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       const items = keyTargets();
       if (items.length === 0) return;
       e.preventDefault();
-      clip.current = { mode: key === 'c' ? 'copy' : 'cut', ids: items.map((i) => i.id), from: folderOf(path) };
+      const clip: Clip = { mode: key === 'c' ? 'copy' : 'cut', items: items.map((i) => ({ docId: i.docId, tagKind: i.tagKind, collection: i.collection, kind: i.kind })), from: folderOf(path) };
+      window.localStorage.setItem(CLIP_KEY, JSON.stringify(clip));
       setToast({ id: Date.now(), message: `${key === 'c' ? 'Скопійовано' : 'Вирізано'}: ${items.length}`, left: 2 });
     } else if (mod && key === 'v') {
       e.preventDefault();
@@ -1914,6 +1938,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       title: f.name,
       actions: [
         ...(explorerSelect ? [{ id: 'open', label: 'Відкрити', icon: 'open-outline' as const }] : []),
+        ...(CAN_OPEN_IN_WINDOW && !coll ? [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] : []),
         ...(explorerSelect && !coll ? [{ id: 'sub', label: 'Нова папка всередині', icon: 'folder-open-outline' as const }] : []),
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' as const },
         { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' as const },
@@ -1921,7 +1946,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         { id: 'card', label: 'Вигляд картки', icon: 'albums-outline' as const },
         ...(FEATURES.explorerProjects && !coll ? [{ id: 'projects', label: 'Проєкти…', icon: 'folder-open-outline' as const }] : []),
         // A folder as a .zip (utils/folderZip) - the phone; the laptop reads files another way, not built there yet.
-        ...(Platform.OS !== 'web' ? [{ id: 'zip', label: 'Експорт у zip', icon: 'archive-outline' as const }] : []),
+        { id: 'zip', label: 'Експорт у zip', icon: 'archive-outline' as const },
         ...(coll ? [{ id: 'unplace', label: 'Прибрати з провідника', icon: 'eye-off-outline' as const }] : []),
         { id: 'delete', label: coll ? 'Видалити підбірку' : 'Видалити папку', icon: 'trash-outline' as const, tone: 'danger' as const },
       ],
@@ -1955,6 +1980,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     }
     if (choice === 'open') {
       openFolderEntry(f);
+      return;
+    }
+    if (choice === 'window') {
+      openInWindow({ kind: 'folder', path: f.path });
       return;
     }
     if (choice === 'sub') {
@@ -2338,7 +2367,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         { id: 'folders', label: 'Папки', icon: 'pricetag-outline' as const },
         { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' as const },
         ...(item.kind === 'document' ? [{ id: 'duplicate', label: 'Створити копію', icon: 'copy-outline' as const }] : []),
-        ...(CAN_OPEN_IN_WINDOW && (item.kind === 'document' || item.kind === 'board') ? [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] : []),
+        ...(CAN_OPEN_IN_WINDOW && (item.kind === 'document' || item.kind === 'board' || item.kind === 'photo' || item.kind === 'file') ? [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] : []),
         ...(item.kind === 'photo' ? [{ id: 'copyimg', label: 'Копіювати зображення', icon: 'copy-outline' as const }] : []),
         ...(explorerSelect && item.kind === 'link' ? [{ id: 'copyurl', label: 'Копіювати посилання', icon: 'link-outline' as const }] : []),
         ...(canShare ? [{ id: 'share', label: 'Поділитись', icon: 'share-social-outline' as const }] : []),
@@ -2357,7 +2386,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       const url = ((item.raw ?? {}) as Record<string, unknown>).url as string | undefined;
       if (url && typeof navigator !== 'undefined') navigator.clipboard?.writeText(url).then(() => setToast({ id: Date.now(), message: 'Посилання скопійовано', left: 2 }));
     } else if (choice === 'rename') setRenaming(item);
-    else if (choice === 'window') openInWindow(item.kind === 'board' ? { kind: 'board', boardId: item.docId } : { kind: 'note', documentId: item.docId });
+    else if (choice === 'window') openInWindow(item.kind === 'board' ? { kind: 'board', boardId: item.docId } : item.kind === 'photo' || item.kind === 'file' ? { kind: 'item', collection: item.collection as 'photos' | 'files', id: item.docId } : { kind: 'note', documentId: item.docId });
     else if (choice === 'pin') togglePin(item);
     else if (choice === 'folders') setFoldersFor([item]);
     else if (choice === 'share') shareItem(item);
