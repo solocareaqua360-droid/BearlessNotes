@@ -101,12 +101,13 @@ export default function SelectModeSheet({ open, count, textCount, cardCount, bot
           },
         ]}
       >
-        {face}
+        <View style={styles.faceBox}>{face}</View>
+        {/* The word INSIDE the frame (2026-10-31, the user's): a tile reads as one button, as the dock's buttons do. */}
+        <Text style={[styles.tileLabel, { color: opts.danger ? '#B3412E' : ink }]} numberOfLines={1}>
+          {label}
+        </Text>
         {opts.into && <Text style={[styles.into, { color: soft.ink3 }]}>›</Text>}
       </View>
-      <Text style={[styles.tileLabel, { color: opts.danger ? '#B3412E' : ink }]} numberOfLines={1}>
-        {label}
-      </Text>
     </Pressable>
   );
   const icon = (name: string, mc = false) =>
@@ -115,7 +116,7 @@ export default function SelectModeSheet({ open, count, textCount, cardCount, bot
     ) : (
       <Ionicons name={name as never} size={21} color={ink} />
     );
-  const mini = (kind: string) => <BlockMiniature kind={kind} width={58} />;
+  const mini = (kind: string) => <BlockMiniature kind={kind} width={50} />;
   const glyph = (text: string, style?: object) => <Text style={[{ fontSize: 20, color: ink, fontFamily: FONT_MEDIUM }, style]}>{text}</Text>;
   // Picked and done: the sheet closes (a look); picked and maybe again: it stays (indent, marks).
   const thenClose = (fn: () => void) => () => {
@@ -285,10 +286,12 @@ const styles = StyleSheet.create({
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
   head: { fontFamily: FONT_SEMIBOLD, fontSize: 14 },
   back: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 10 },
-  tile: { width: '25%', alignItems: 'center', gap: 5, paddingHorizontal: 3 },
-  tileFace: { alignSelf: 'stretch', height: 54, alignItems: 'center', justifyContent: 'center' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 6 },
+  tile: { width: '25%', paddingHorizontal: 3 },
+  tileFace: { alignSelf: 'stretch', height: 66, alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: 4, paddingHorizontal: 2 },
   into: { position: 'absolute', top: 2, right: 7, fontSize: 15, fontFamily: FONT_REGULAR },
+  // Every picture in the same box, so the words of a row stand on one line whatever the picture is.
+  faceBox: { height: 34, alignItems: 'center', justifyContent: 'center' },
   tileLabel: { fontFamily: FONT_MEDIUM, fontSize: 10.5 },
   swatch: { width: 24, height: 24, borderRadius: 12 },
 });
