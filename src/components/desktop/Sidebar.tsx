@@ -20,7 +20,8 @@ import { UNFILED } from '../../screens/ExplorerScreen';
 import { onDesktopCommand } from '../../utils/desktopCommands';
 import { usePins, type Pin } from '../../navigation/pinned';
 import { useDocumentIndex } from '../../hooks/useDocumentIndex';
-import { rightClick } from '../../utils/rightClick';
+import { bindRightClick } from '../../utils/rightClick';
+import { registerExternalFolder } from '../../hooks/useCardCarry';
 import { requestFolderMenu } from '../../utils/folderMenuRequest';
 import { CAN_OPEN_IN_WINDOW, openInWindow } from '../../navigation/openInWindow';
 import type { PaneTarget } from '../../navigation/paneTarget';
@@ -216,13 +217,16 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
     else if (t.route) goSection(t.route);
   };
 
-  function row(opts: { key: string; icon?: string; swatch?: string; label: string; on: boolean; onPress: () => void; count?: number; depth?: number; twist?: 'open' | 'closed' | null; onTwist?: () => void; tree?: boolean; unpin?: () => void; menu?: () => void }) {
+  function row(opts: { key: string; icon?: string; swatch?: string; label: string; on: boolean; onPress: () => void; count?: number; depth?: number; twist?: 'open' | 'closed' | null; onTwist?: () => void; tree?: boolean; unpin?: () => void; menu?: () => void; dropPath?: string }) {
     const { icon, swatch, label, on, onPress, count, depth = 0, twist = null, onTwist } = opts;
     return (
       <Pressable
         key={opts.key}
         onPress={onPress}
-        {...(opts.unpin || opts.menu ? rightClick(opts.unpin ?? opts.menu) : {})}
+        ref={(node: unknown) => {
+          bindRightClick(node, opts.unpin ?? opts.menu);
+          if (opts.dropPath !== undefined) registerExternalFolder(opts.dropPath)(node as never);
+        }}
         style={(state) => [
           styles.row,
           { paddingLeft: 10 + depth * 14 },
@@ -268,6 +272,7 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
           twist: node.children.length ? (expanded ? 'open' : 'closed') : null,
           onTwist: () => toggle(node.path),
           tree: true,
+          dropPath: node.path,
           menu: () => requestFolderMenu(node.path, () => goFolder(node.path)),
         })}
         {expanded && node.children.map((child) => renderNode(child, depth + 1))}
@@ -296,7 +301,7 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
           on: false,
           onPress: newItem,
         })}
-        {sections.map((s) => row({ key: s.key, icon: s.icon, label: s.label, on: s.on, onPress: s.onPress, count: s.count }))}
+        {sections.map((s) => row({ key: s.key, icon: s.icon, label: s.label, on: s.on, onPress: s.onPress, count: s.count, ...(s.key === 'start' ? { dropPath: '' } : {}) }))}
 
         {pins.length > 0 && (
           <View style={styles.sec}>
@@ -313,7 +318,7 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
           <Text style={styles.secLabel}>Провідник</Text>
         </View>
         {unfiled > 0 &&
-          row({ key: 'unfiled', swatch: cardSwatch('mist', theme.scheme)?.bg ?? D.fill, label: 'Нерозкладене', on: onExplorer && where.path === UNFILED, onPress: () => goFolder(UNFILED), count: unfiled, tree: true })}
+          row({ key: 'unfiled', swatch: cardSwatch('mist', theme.scheme)?.bg ?? D.fill, label: 'Нерозкладене', on: onExplorer && where.path === UNFILED, onPress: () => goFolder(UNFILED), count: unfiled, tree: true, dropPath: UNFILED })}
         {roots.map((n) => renderNode(n, 0))}
 
         <Pressable style={styles.sec} onPress={() => setBasesOpen((v) => !v)}>

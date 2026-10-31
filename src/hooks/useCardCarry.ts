@@ -50,6 +50,16 @@ import { hapticDrop, hapticPickUp, hapticWarning } from '../utils/haptics';
 const GHOST_NUDGE_X = -18;
 const GHOST_NUDGE_Y = -58;
 
+// FOLDER ROWS OF ANOTHER PART OF THE SCREEN (2026-10-31, the laptop's sidebar): a row there is a drop target like the explorer's
+// own folder rows, though it belongs to no list. One register for the whole app, read when a carry ends.
+const externalFolders = new Map<string, View>();
+export function registerExternalFolder(path: string) {
+  return (node: View | null) => {
+    if (node) externalFolders.set(path, node);
+    else externalFolders.delete(path);
+  };
+}
+
 export type CarryGhost<T> = {
   // Everything being carried. One card usually; the whole tick-box
   // selection when the card picked up is part of one - the same rule the
@@ -311,7 +321,7 @@ export function useCardCarry<T extends { id: string }>({
     const { items } = current;
     const { x: cx, y: cy } = fingerRef.current;
     let matched: string | null | undefined;
-    const nodes = Array.from(folderNodes.current.entries());
+    const nodes = [...Array.from(folderNodes.current.entries()), ...Array.from(externalFolders.entries())];
     if (nodes.length === 0) {
       ghostRef.current = null;
       setGhost(null);

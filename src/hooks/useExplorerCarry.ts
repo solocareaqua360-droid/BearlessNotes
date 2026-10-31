@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { Platform, ScrollView } from 'react-native';
 import type { FlatList } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import type { SharedValue } from 'react-native-reanimated';
@@ -141,9 +141,10 @@ export function useExplorerCarry<T extends { id: string }>({
   // goes on scrolling exactly as it did; a hold that outlasts the menu
   // lifts whatever is under the finger.
   const downAt = useRef({ at: 0, x: 0, y: 0 });
-  const listGesture = Gesture.Pan()
-    .enabled(active)
-    .activateAfterLongPress(CARRY_LONG_PRESS_MS)
+  // A mouse picks a card up by dragging it (a few points), as every file manager does; a finger needs the long hold, or it
+  // could not scroll.
+  const pan = Gesture.Pan().enabled(active);
+  const listGesture = (Platform.OS === 'web' ? pan.minDistance(8) : pan.activateAfterLongPress(CARRY_LONG_PRESS_MS))
     .runOnJS(true)
     .onBegin((e) => {
       downAt.current = { at: Date.now(), x: e.absoluteX, y: e.absoluteY };
@@ -156,7 +157,7 @@ export function useExplorerCarry<T extends { id: string }>({
         // The window for the short hold alone (380-650 ms) was too narrow
         // to find - "затискання призводить тільки до переміщення".
         carry.endCarry(() => carry.menuAt(downAt.current.x, downAt.current.y));
-      } else if (Date.now() - downAt.current.at >= MENU_HOLD_MS) {
+      } else if (Platform.OS !== 'web' && Date.now() - downAt.current.at >= MENU_HOLD_MS) {
         // Not long enough to lift, longer than a tap: the short hold,
         // which is the card's own menu - opened on this gesture's clock
         // rather than racing a second one.
