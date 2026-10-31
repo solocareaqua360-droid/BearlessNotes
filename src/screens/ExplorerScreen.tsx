@@ -88,6 +88,7 @@ import CollectionCard, { collectionFaceFor, gustLeadMs, type CollectionCardKind,
 import TurningPressable from '../components/TurningPressable';
 import { listMoved } from '../utils/motionHold';
 import { useFolderMenuRequests } from '../utils/folderMenuRequest';
+import { composerBus } from '../navigation/composerBus';
 import { bindRightClick } from '../utils/rightClick';
 import { addDroppedInPlace } from '../utils/createItem';
 import { clearDropOver, markDropOver } from '../hooks/useCardCarry';
@@ -1244,7 +1245,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const createWanted = useExplorerCreateWanted();
   useEffect(() => {
     if (!createWanted || !isFocused) return;
-    if (explorerPlace.takeCreate()) setQuickOpen(true);
+    if (explorerPlace.takeCreate()) composerBus.open();
   }, [createWanted, isFocused]);
   // WHAT WAS JUST MADE OPENS (the user, 2026-10-11: a new board/file/card did not open, the folder made
   // itself somewhere in the sort order and was hard to find): the record's id waits here until the

@@ -4,15 +4,21 @@ import { useSyncExternalStore } from 'react';
 // it takes - «create here» (the composer's click). The same shape as explorerPlace: the screen owns the state, this is
 // a mirror and a mailbox, so the composer never reaches into the screen.
 let day = '';
+let dayKey = '';
 let createWanted = false;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
 export const calendarPlace = {
-  report(label: string) {
-    if (day === label) return;
+  report(label: string, key = '') {
+    if (day === label && dayKey === key) return;
     day = label;
+    dayKey = key;
     emit();
+  },
+  // The day's key («2026-10-31»), for what the composer writes to it.
+  get dayKey() {
+    return dayKey;
   },
   requestCreate() {
     createWanted = true;

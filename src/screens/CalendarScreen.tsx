@@ -59,6 +59,7 @@ import { extractPreview } from '../utils/documentPreview';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { COMPOSER_CLEAR } from '../components/desktop/Composer';
 import { calendarPlace, useCalendarCreateWanted } from '../navigation/calendarPlace';
+import { composerBus } from '../navigation/composerBus';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft, type SoftTokens } from '../theme/soft';
@@ -283,14 +284,14 @@ export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   // The Mac's composer (frame B): told which day stands here, and asked to open the quick-create window on it.
   useEffect(() => {
-    calendarPlace.report(`${WEEKDAY_SHORT[mondayIndex(selectedDate)]}, ${formatBigDate(selectedDate)}`);
+    calendarPlace.report(`${WEEKDAY_SHORT[mondayIndex(selectedDate)]}, ${formatBigDate(selectedDate)}`, dateKey(selectedDate));
   }, [selectedDate]);
   const createWanted = useCalendarCreateWanted();
   const focusedForCreate = useIsFocused();
   useEffect(() => {
     if (!createWanted || !focusedForCreate) return;
     calendarPlace.takeCreate();
-    setQuickOpen(true);
+    composerBus.open();
   }, [createWanted, focusedForCreate]);
   const [isMonthExpanded, setIsMonthExpanded] = useState(false);
   const [visibleMonth, setVisibleMonth] = useState(() => {
