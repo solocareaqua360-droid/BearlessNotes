@@ -77,41 +77,69 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
       ? `var cfb = XLSX.CFB.read(bytes, { type: 'array' });
          var find = function (p) { var e = XLSX.CFB.find(cfb, p) || XLSX.CFB.find(cfb, '/' + p); return e && e.content ? new Uint8Array(e.content) : null; };
          var decode = function (u) { return new TextDecoder('utf-8').decode(u); };
+         var xml = function (u) { return new DOMParser().parseFromString(decode(u), 'application/xml'); };
+         var kids = function (el, name) { var out = []; for (var i = 0; i < el.childNodes.length; i++) { var c = el.childNodes[i]; if (c.nodeType === 1 && (!name || c.localName === name)) out.push(c); } return out; };
+         var all = function (el, name) { return Array.prototype.slice.call(el.getElementsByTagNameNS('*', name)); };
+         var paraText = function (p) { return all(p, 't').map(function (t) { return t.textContent; }).join(''); };
+         // The text of a shape, paragraph by paragraph; a slide's title placeholder is drawn as its heading.
+         var shapeHtml = function (sp) {
+           var ph = all(sp, 'ph')[0];
+           var isTitle = ph && /title/i.test(ph.getAttribute('type') || '');
+           var paras = all(sp, 'p').map(paraText).filter(function (t) { return t.trim(); });
+           if (!paras.length) return '';
+           if (isTitle) return '<h3>' + paras.map(esc).join('<br>') + '</h3>';
+           return paras.map(function (t) { return '<p>' + esc(t) + '</p>'; }).join('');
+         };
+         // A table: its rows and cells, a cell's paragraphs on lines of their own; merged cells keep their span.
+         var tableHtml = function (tbl) {
+           var rows = kids(tbl, 'tr');
+           return '<div class="scroll"><table>' + rows.map(function (tr, ri) {
+             return '<tr>' + kids(tr, 'tc').map(function (tc) {
+               if (tc.getAttribute('hMerge') === '1' || tc.getAttribute('vMerge') === '1') return '';
+               var span = (tc.getAttribute('gridSpan') ? ' colspan="' + tc.getAttribute('gridSpan') + '"' : '') + (tc.getAttribute('rowSpan') ? ' rowspan="' + tc.getAttribute('rowSpan') + '"' : '');
+               var text = all(tc, 'p').map(paraText).map(esc).join('<br>');
+               return (ri === 0 ? '<th' : '<td') + span + '>' + text + (ri === 0 ? '</th>' : '</td>');
+             }).join('') + '</tr>';
+           }).join('') + '</table></div>';
+         };
          var slides = [];
          cfb.FullPaths.forEach(function (p) { var m = p.match(/ppt\\/slides\\/slide(\\d+)\\.xml$/); if (m) slides.push(+m[1]); });
          slides.sort(function (a, b) { return a - b; });
          var html = '';
          slides.forEach(function (n) {
-           var xml = find('ppt/slides/slide' + n + '.xml');
-           if (!xml) return;
-           var docx = new DOMParser().parseFromString(decode(xml), 'application/xml');
-           var paras = [];
-           var ps = docx.getElementsByTagNameNS('*', 'p');
-           for (var i = 0; i < ps.length; i++) {
-             var ts = ps[i].getElementsByTagNameNS('*', 't'), line = '';
-             for (var j = 0; j < ts.length; j++) line += ts[j].textContent;
-             if (line.trim()) paras.push(line);
-           }
-           var pics = '';
+           var raw = find('ppt/slides/slide' + n + '.xml');
+           if (!raw) return;
+           var doc = xml(raw);
+           var images = {};
            var rels = find('ppt/slides/_rels/slide' + n + '.xml.rels');
-           if (rels) {
-             var rd = new DOMParser().parseFromString(decode(rels), 'application/xml').getElementsByTagNameNS('*', 'Relationship');
-             for (var r = 0; r < rd.length; r++) {
-               var type = rd[r].getAttribute('Type') || '', target = rd[r].getAttribute('Target') || '';
-               if (!/\\/image$/.test(type)) continue;
-               var path = 'ppt/' + target.replace(/^\\.\\.\\//, '');
-               var img = find(path);
-               if (!img) continue;
-               var ext = (path.split('.').pop() || 'png').toLowerCase();
-               if (ext === 'emf' || ext === 'wmf') continue;
-               var bin = '';
-               for (var k = 0; k < img.length; k += 8192) bin += String.fromCharCode.apply(null, img.subarray(k, k + 8192));
-               pics += '<img src="data:image/' + (ext === 'jpg' ? 'jpeg' : ext) + ';base64,' + btoa(bin) + '">';
-             }
-           }
-           html += '<div class="slide"><div class="num">Слайд ' + n + '</div>' +
-             (paras.length ? '<h3>' + esc(paras[0]) + '</h3>' + paras.slice(1).map(function (t) { return '<p>' + esc(t) + '</p>'; }).join('') : '') +
-             pics + '</div>';
+           if (rels) all(xml(rels), 'Relationship').forEach(function (r) {
+             if (/\\/image$/.test(r.getAttribute('Type') || '')) images[r.getAttribute('Id')] = 'ppt/' + (r.getAttribute('Target') || '').replace(/^\\.\\.\\//, '');
+           });
+           var picHtml = function (pic) {
+             var blip = all(pic, 'blip')[0];
+             if (!blip) return '';
+             var id = blip.getAttribute('r:embed') || blip.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed');
+             var path = images[id];
+             var img = path ? find(path) : null;
+             if (!img) return '';
+             var ext = (path.split('.').pop() || 'png').toLowerCase();
+             if (ext === 'emf' || ext === 'wmf') return '';
+             var bin = '';
+             for (var k = 0; k < img.length; k += 8192) bin += String.fromCharCode.apply(null, img.subarray(k, k + 8192));
+             return '<img src="data:image/' + (ext === 'jpg' ? 'jpeg' : ext) + ';base64,' + btoa(bin) + '">';
+           };
+           // The slide's shapes in the order they stand; a group is walked into.
+           var walk = function (el) {
+             return kids(el).map(function (c) {
+               if (c.localName === 'sp') return shapeHtml(c);
+               if (c.localName === 'pic') return picHtml(c);
+               if (c.localName === 'grpSp') return walk(c);
+               if (c.localName === 'graphicFrame') { var tbl = all(c, 'tbl')[0]; return tbl ? tableHtml(tbl) : ''; }
+               return '';
+             }).join('');
+           };
+           var tree = all(doc, 'spTree')[0];
+           html += '<div class="slide"><div class="num">Слайд ' + n + '</div>' + (tree ? walk(tree) : '') + '</div>';
          });
          root.innerHTML = html || '<p class="muted">У презентації не знайшлося слайдів</p>';
          allDone = true; pageDone();`
@@ -239,9 +267,11 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
   blockquote { margin: 8px 0; padding: 6px 12px; border-radius: 8px; background: #F5F3EE; }
   th { background: #F5F3EE; text-align: left; }
   hr { border: none; border-top: 1px solid #E5E7EB; margin: 14px 0; }
-  .slide { border: 1px solid #E5E7EB; border-radius: 14px; padding: 14px 16px; margin: 0 0 14px; }
+  .slide { box-sizing: border-box; max-width: 100%; border: 1px solid #E5E7EB; border-radius: 14px; padding: 14px 16px; margin: 0 0 14px; }
   .slide .num { font-size: 12px; color: #9CA3AF; margin-bottom: 6px; }
   .slide h3 { margin: 0 0 8px; font-size: 18px; }
+  .slide table { white-space: normal; }
+  .slide td, .slide th { white-space: normal; min-width: 60px; }
   .slide p { margin: 4px 0; }
   .slide img { display: block; margin: 10px auto 0; border-radius: 8px; max-height: 360px; }
   .zrow { padding: 12px 4px; border-bottom: 1px solid #F0EFEA; }
@@ -249,7 +279,7 @@ function pageFor(kind: QuickLookKind, base64: string, library: string): string {
   .zmeta { font-size: 13px; color: #9CA3AF; margin-top: 2px; }
   .error { color: #B91C1C; }
 </style></head><body>
-<div id="root" class="scroll"><p class="muted">Відкриваю…</p></div>
+<div id="root" class="${kind === 'pptx' || kind === 'md' || kind === 'zip' ? '' : 'scroll'}"><p class="muted">Відкриваю…</p></div>
 <script>${library}</script>
 <script>
   var root = document.getElementById('root');
