@@ -8,7 +8,7 @@ import { blockFromFile, blockFromPhoto, createTaskInToday, createTaskOnDate } fr
 import { WORLD_CENTER } from './boardLayout';
 import { copyPickedFile } from './localCopy';
 import { backupFileToDrive } from './googleDrive';
-import { pickPhotosFromDevice } from './photoLibrary';
+import { compressPickedImage, pickPhotosFromDevice, writePhotoRecord } from './photoLibrary';
 import { fetchLinkPreview, hostnameOf } from './linkPreview';
 import { saveLinkInPlace } from './createItem';
 import { ITEMS_COLLECTION_BY_KIND } from '../hooks/useTags';
@@ -88,6 +88,37 @@ export async function pickFileAttachments(): Promise<Attachment[]> {
       if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
     });
     made.push({ id, kind: 'file', uri: fileUri, name: asset.name, mimeType: asset.mimeType });
+  }
+  return made;
+}
+
+// FILES THE BROWSER HANDS OVER (the laptop: a paste, a drop, the file dialog): a picture becomes a photo record, anything else a
+// file record, each at once, as the pickers above write them.
+export async function attachmentsFromFiles(files: File[]): Promise<Attachment[]> {
+  const made: Attachment[] = [];
+  const now = Date.now();
+  for (const file of files) {
+    const uri = URL.createObjectURL(file);
+    if (file.type.startsWith('image/')) {
+      let imageUri = uri;
+      try {
+        const bitmap = await createImageBitmap(file);
+        imageUri = await compressPickedImage(uri, bitmap.width, bitmap.height);
+      } catch {
+        imageUri = uri;
+      }
+      const photo = await writePhotoRecord(imageUri);
+      made.push({ id: photo.id, kind: 'photo', uri: imageUri, name: file.name || 'Фото' });
+      continue;
+    }
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const data: Record<string, unknown> = { fileUri: uri, fileName: file.name, updatedAt: now, createdAt: now, usedInDocuments: {} };
+    if (file.type) data.mimeType = file.type;
+    await setDoc(doc(db, 'files', id), data, { merge: true });
+    backupFileToDrive(uri, file.name, file.type || 'application/octet-stream', 'Files').then((uploaded) => {
+      if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+    });
+    made.push({ id, kind: 'file', uri, name: file.name, mimeType: file.type || undefined });
   }
   return made;
 }
