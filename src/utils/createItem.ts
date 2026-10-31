@@ -7,7 +7,7 @@ import { categoryFromSiteName } from './linkCategory';
 import type { LinkPreview } from './linkPreview';
 import { copyPickedFile } from './localCopy';
 import { backupFileToDrive } from './googleDrive';
-import { pickPhotosFromDevice } from './photoLibrary';
+import { compressPickedImage, pickPhotosFromDevice, writePhotoRecord } from './photoLibrary';
 import { ask } from '../components/surfaces/Ask';
 import { openCapture } from '../components/CaptureWindow';
 import { requestCreate } from '../navigation/startCreate';
@@ -180,6 +180,43 @@ export async function addFilesInPlace(where: { folder?: Tag | null; groupId?: st
     if (where.groupId) data.groupId = where.groupId;
     await setDoc(doc(db, 'files', id), data, { merge: true });
     backupFileToDrive(fileUri, asset.name, asset.mimeType ?? 'application/octet-stream', 'Files').then((uploaded) => {
+      if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
+    });
+    if (where.folder) await where.attachTag(where.folder, 'file', id, 'files');
+    made.push(id);
+  }
+  return made;
+}
+
+// FILES DROPPED FROM THE FINDER onto the explorer (the laptop): a picture becomes a Photos record, anything else a Files record,
+// each filed in the folder it was dropped on. The browser hands the bytes as a blob address, as its own picker does.
+export async function addDroppedInPlace(
+  dropped: File[],
+  where: { folder?: Tag | null; groupId?: string; attachTag: CreateTarget['attachTag'] }
+): Promise<string[]> {
+  const made: string[] = [];
+  const now = Date.now();
+  for (const file of dropped) {
+    const uri = URL.createObjectURL(file);
+    if (file.type.startsWith('image/')) {
+      let imageUri = uri;
+      try {
+        const bitmap = await createImageBitmap(file);
+        imageUri = await compressPickedImage(uri, bitmap.width, bitmap.height);
+      } catch {
+        imageUri = uri;
+      }
+      const photo = await writePhotoRecord(imageUri, where.groupId ? { groupId: where.groupId } : {});
+      if (where.folder) await where.attachTag(where.folder, 'photo', photo.id, 'photos');
+      made.push(photo.id);
+      continue;
+    }
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const data: Record<string, unknown> = { fileUri: uri, fileName: file.name, updatedAt: now, createdAt: now, usedInDocuments: {} };
+    if (file.type) data.mimeType = file.type;
+    if (where.groupId) data.groupId = where.groupId;
+    await setDoc(doc(db, 'files', id), data, { merge: true });
+    backupFileToDrive(uri, file.name, file.type || 'application/octet-stream', 'Files').then((uploaded) => {
       if (uploaded) updateDoc(doc(db, 'files', id), { driveFileId: uploaded.fileId, driveBytes: uploaded.bytes });
     });
     if (where.folder) await where.attachTag(where.folder, 'file', id, 'files');

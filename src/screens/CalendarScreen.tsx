@@ -1827,7 +1827,7 @@ export default function CalendarScreen() {
             stackedWide
               ? [styles.topBand, { height: bandHeight }, foldedAway && styles.bandFolded]
               : calendarPaneWidthFixed !== null
-                ? [styles.sidePane, { width: calendarPaneWidthFixed, flexGrow: 0, flexShrink: 0, flexBasis: 'auto' }]
+                ? [styles.sidePane, { width: calendarPaneWidthFixed, flexGrow: 0, flexShrink: 0, flexBasis: 'auto' }, calendarPaneWidthFixed === 0 && { overflow: 'hidden' as const }]
                 : isTwoPane
                   ? styles.sidePane
                   : null,

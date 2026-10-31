@@ -89,6 +89,8 @@ import TurningPressable from '../components/TurningPressable';
 import { listMoved } from '../utils/motionHold';
 import { useFolderMenuRequests } from '../utils/folderMenuRequest';
 import { bindRightClick } from '../utils/rightClick';
+import { addDroppedInPlace } from '../utils/createItem';
+import { clearDropOver, markDropOver } from '../hooks/useCardCarry';
 import PlaylistWindow, { videoOf, type PlaylistVideo } from '../components/PlaylistWindow';
 import TagEditSheet from '../components/TagEditSheet';
 import { FolderCardSheet, FolderProjectsSheet } from '../components/FolderStyleSheets';
@@ -1562,8 +1564,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // «НОВА ПАПКА» IN ONE CLICK, WHERE YOU STAND (the user, 2026-10-30: «створити нову папку там де я знаходжусь в один клік, а по
   // факту треба прописати купу тексту»): the folder is made at once under the one that is open - «Нова папка», «Нова папка 2»... -
   // and its name asked for straight away, kept as it is by Enter or Esc.
-  async function newFolderHere() {
-    const base = folderOf(path);
+  async function newFolderHere(inside?: string) {
+    const base = inside ?? folderOf(path);
     const taken = new Set(folderPaths);
     let n = 1;
     let name = 'Нова папка';
@@ -1835,6 +1837,51 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [explorerSelect, isFocused]);
+  // FILES DRAGGED IN FROM THE FINDER (2026-10-31): dropped on a folder row (the list's or the sidebar's) they go into that folder,
+  // anywhere else on the explorer into the folder being shown. A picture becomes a photo, anything else a file.
+  const dropRef = useRef<(e: DragEvent) => void>(() => {});
+  dropRef.current = async (e) => {
+    clearDropOver();
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
+    const hit = carrying.carry.folderAt(e.clientX, e.clientY);
+    const target = e.target as Element | null;
+    if (hit === null && !(target && target.closest && target.closest('[data-explorer]'))) return;
+    const into = folderOf(hit ?? path);
+    try {
+      const folder = into ? await tagForPath(into) : null;
+      const made = await addDroppedInPlace(files, { folder, attachTag });
+      setToast({ id: Date.now(), message: `Додано: ${made.length}${into ? ` у «${folderLabel(into)}»` : ''}`, left: 3 });
+    } catch (err) {
+      notify('Не вдалося додати', (err as Error).message);
+    }
+  };
+  useEffect(() => {
+    if (!explorerSelect || !isFocused || typeof window === 'undefined') return;
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const onOver = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      markDropOver([carrying.carry.folderNodesRef.current, carrying.carry.externalRegister], e.clientX, e.clientY);
+    };
+    const onLeave = (e: DragEvent) => {
+      if (!e.relatedTarget) clearDropOver();
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dropRef.current(e);
+    };
+    window.addEventListener('dragover', onOver);
+    window.addEventListener('dragleave', onLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onOver);
+      window.removeEventListener('dragleave', onLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [explorerSelect, isFocused]);
   // THE LAPTOP'S RIGHT CLICK ON THE EXPLORER'S OWN GROUND (2026-10-31): what a folder's empty place can do.
   async function groundMenu() {
     const choice = await holdAsk({
@@ -1866,6 +1913,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     const choice = await holdAsk({
       title: f.name,
       actions: [
+        ...(explorerSelect ? [{ id: 'open', label: 'Відкрити', icon: 'open-outline' as const }] : []),
+        ...(explorerSelect && !coll ? [{ id: 'sub', label: 'Нова папка всередині', icon: 'folder-open-outline' as const }] : []),
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' as const },
         { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' as const },
         ...(coll ? [] : [{ id: 'look', label: 'Іконка й колір', icon: 'color-palette-outline' as const }]),
@@ -1902,6 +1951,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     }
     if (choice === 'zip') {
       exportFolderZip(f);
+      return;
+    }
+    if (choice === 'open') {
+      openFolderEntry(f);
+      return;
+    }
+    if (choice === 'sub') {
+      newFolderHere(f.path);
       return;
     }
     if (choice === 'rename') setRenamingFolder(f);
@@ -2275,11 +2332,15 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     const choice = await holdAsk({
       title: item.title,
       actions: [
+        // The laptop's menu starts with the opening, as the Finder's does.
+        ...(explorerSelect ? [{ id: 'open', label: 'Відкрити', icon: 'open-outline' as const }] : []),
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' as const },
         { id: 'folders', label: 'Папки', icon: 'pricetag-outline' as const },
         { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' as const },
         ...(item.kind === 'document' ? [{ id: 'duplicate', label: 'Створити копію', icon: 'copy-outline' as const }] : []),
         ...(CAN_OPEN_IN_WINDOW && (item.kind === 'document' || item.kind === 'board') ? [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] : []),
+        ...(item.kind === 'photo' ? [{ id: 'copyimg', label: 'Копіювати зображення', icon: 'copy-outline' as const }] : []),
+        ...(explorerSelect && item.kind === 'link' ? [{ id: 'copyurl', label: 'Копіювати посилання', icon: 'link-outline' as const }] : []),
         ...(canShare ? [{ id: 'share', label: 'Поділитись', icon: 'share-social-outline' as const }] : []),
         ...(path && path !== UNFILED && !searching
           ? [{ id: 'pin', label: pinsOf(path).includes(item.id) ? 'Відкріпити' : 'Закріпити вгорі', icon: 'pin-outline' as const }]
@@ -2288,7 +2349,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         ...(canBin ? [{ id: 'delete', label: isReference(item) ? 'Прибрати з папки' : 'Видалити', icon: 'trash-outline' as const, tone: 'danger' as const }] : []),
       ],
     });
-    if (choice === 'rename') setRenaming(item);
+    if (choice === 'open') openItem(item);
+    else if (choice === 'copyimg') {
+      const raw = (item.raw ?? {}) as Record<string, unknown>;
+      copyImageFile(raw.imageUri as string, raw.driveFileId as string | undefined).catch((e: Error) => notify('Не вдалося скопіювати', e.message));
+    } else if (choice === 'copyurl') {
+      const url = ((item.raw ?? {}) as Record<string, unknown>).url as string | undefined;
+      if (url && typeof navigator !== 'undefined') navigator.clipboard?.writeText(url).then(() => setToast({ id: Date.now(), message: 'Посилання скопійовано', left: 2 }));
+    } else if (choice === 'rename') setRenaming(item);
     else if (choice === 'window') openInWindow(item.kind === 'board' ? { kind: 'board', boardId: item.docId } : { kind: 'note', documentId: item.docId });
     else if (choice === 'pin') togglePin(item);
     else if (choice === 'folders') setFoldersFor([item]);

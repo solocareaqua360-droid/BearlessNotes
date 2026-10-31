@@ -62,7 +62,7 @@ export function registerExternalFolder(path: string) {
 
 // The folder row under the mouse says so (the laptop): its node gets `data-drop-over`, which App.web.tsx draws as a highlight.
 // Straight on the DOM node - a carry moves every frame, and a state change per frame is what it must not cost.
-function markDropOver(registers: Map<string, View>[], x: number, y: number) {
+export function markDropOver(registers: Map<string, View>[], x: number, y: number) {
   if (Platform.OS !== 'web' || typeof document === 'undefined') return;
   document.querySelectorAll('[data-drop-over]').forEach((el) => el.removeAttribute('data-drop-over'));
   for (const register of registers) {
@@ -76,7 +76,7 @@ function markDropOver(registers: Map<string, View>[], x: number, y: number) {
     }
   }
 }
-function clearDropOver() {
+export function clearDropOver() {
   if (Platform.OS === 'web' && typeof document !== 'undefined') document.querySelectorAll('[data-drop-over]').forEach((el) => el.removeAttribute('data-drop-over'));
 }
 
@@ -406,6 +406,19 @@ export function useCardCarry<T extends { id: string }>({
       .catch(() => {});
   }
 
+  // The folder row under a point (web: the node's own rect) - what a file dragged in from the Finder is dropped on.
+  const folderAt = useCallback((x: number, y: number): string | null => {
+    for (const register of [folderNodes.current, externalFolders]) {
+      for (const [path, node] of register.entries()) {
+        const r = (node as unknown as HTMLElement).getBoundingClientRect?.();
+        if (r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return path;
+      }
+    }
+    return null;
+  }, []);
+  const folderNodesRef = folderNodes;
+  const externalRegister = externalFolders;
+
   const cancelCarry = useCallback(() => {
     clearDropOver();
     ghostRef.current = null;
@@ -464,6 +477,9 @@ export function useCardCarry<T extends { id: string }>({
     ghost,
     registerFolder,
     registerStepTarget,
+    folderAt,
+    folderNodesRef,
+    externalRegister,
     registerCard,
     pickUpAt,
     menuAt,
