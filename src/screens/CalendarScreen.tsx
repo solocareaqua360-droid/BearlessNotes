@@ -934,7 +934,7 @@ export default function CalendarScreen() {
   // actions fill the dock's middle.
   const pencilBead = river
     ? calendarFocused
-      ? { icon: 'add-outline', onPress: () => (FEATURES.quickCreate ? setQuickOpen(true) : riverRef.current?.plus()) }
+      ? { icon: 'add-outline', onPress: () => (FEATURES.macFrameB && Platform.OS === 'web' ? composerBus.open() : FEATURES.quickCreate ? setQuickOpen(true) : riverRef.current?.plus()) }
       : null
     : calendarFocused && !notePanelOpen
     ? { icon: 'pencil-outline', onPress: () => { setHistoryExpanded(false); noteEditorRef.current?.startWriting(); } }

@@ -1921,7 +1921,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         { id: 'canvas', label: 'Вигляд: полотно', icon: 'albums-outline' as const },
       ],
     });
-    if (choice === 'note') setQuickOpen(true);
+    if (choice === 'note') (explorerSelect ? composerBus.open() : setQuickOpen(true));
     else if (choice === 'folder') newFolderHere();
     else if (choice === 'shortcut') newShortcut();
     else if (choice === 'select') setSelecting(true);
@@ -2782,7 +2782,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     isFocused && !inPane
       ? plain
         ? FEATURES.quickCreate
-          ? { icon: 'add-outline', badge: 'add-circle-outline', onPress: () => setQuickOpen(true), onLongPress: () => openCapture() }
+          ? { icon: 'add-outline', badge: 'add-circle-outline', onPress: () => (explorerSelect ? composerBus.open() : setQuickOpen(true)), onLongPress: () => openCapture() }
           : { icon: 'add-outline', badge: 'add-circle-outline', onPress: () => setFanOpen(true), onLongPress: () => openCapture(), onSlide: () => setFanOpen(true) }
         : { icon: 'chevron-back', onPress: goBack, keepIcon: true }
       : null
