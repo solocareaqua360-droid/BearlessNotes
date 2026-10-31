@@ -21,7 +21,9 @@ import { onDesktopCommand } from '../../utils/desktopCommands';
 import { usePins, type Pin } from '../../navigation/pinned';
 import { useDocumentIndex } from '../../hooks/useDocumentIndex';
 import { rightClick } from '../../utils/rightClick';
-import { openInWindow } from '../../navigation/openInWindow';
+import { requestFolderMenu } from '../../utils/folderMenuRequest';
+import { CAN_OPEN_IN_WINDOW, openInWindow } from '../../navigation/openInWindow';
+import type { PaneTarget } from '../../navigation/paneTarget';
 import { holdAsk } from '../surfaces/HoldAsk';
 
 // THE MAC'S ONE NAVIGATION (frame B, 2026-10-19, after the user's own look at Claude's window: «тут є відчуття
@@ -266,6 +268,7 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
           twist: node.children.length ? (expanded ? 'open' : 'closed') : null,
           onTwist: () => toggle(node.path),
           tree: true,
+          menu: () => requestFolderMenu(node.path, () => goFolder(node.path)),
         })}
         {expanded && node.children.map((child) => renderNode(child, depth + 1))}
       </View>
@@ -322,7 +325,22 @@ export default function Sidebar({ footer }: { footer?: ReactNode }) {
             {builtIn.map((t) => {
               // The row of the base you are in is marked (it never was: «on» was always false).
               const on = t.opensBoardsTab ? where.route === 'BoardsCopy' : t.linkCategory ? where.route === 'Links' && where.params.category === t.linkCategory : t.route ? where.route === t.route : false;
-              return row({ key: t.key, icon: iconFor(t.key, t.icon), label: t.label, on, onPress: () => openTile(t) });
+              const target: PaneTarget | null = t.opensBoardsTab ? { kind: 'boards' } : t.linkCategory ? { kind: 'links', category: t.linkCategory } : null;
+              return row({
+                key: t.key,
+                icon: iconFor(t.key, t.icon),
+                label: t.label,
+                on,
+                onPress: () => openTile(t),
+                ...(target && CAN_OPEN_IN_WINDOW
+                  ? {
+                      menu: async () => {
+                        const choice = await holdAsk({ title: t.label, actions: [{ id: 'window', label: 'У вікно', icon: 'copy-outline' }] });
+                        if (choice === 'window') openInWindow(target);
+                      },
+                    }
+                  : {}),
+              });
             })}
             {customDatabases
               .slice()

@@ -87,6 +87,8 @@ import FolderViewsSheet from '../components/FolderViewsSheet';
 import CollectionCard, { collectionFaceFor, gustLeadMs, type CollectionCardKind, type CollectionFaceStyle } from '../components/CollectionCard';
 import TurningPressable from '../components/TurningPressable';
 import { listMoved } from '../utils/motionHold';
+import { useFolderMenuRequests } from '../utils/folderMenuRequest';
+import { bindRightClick } from '../utils/rightClick';
 import PlaylistWindow, { videoOf, type PlaylistVideo } from '../components/PlaylistWindow';
 import TagEditSheet from '../components/TagEditSheet';
 import { FolderCardSheet, FolderProjectsSheet } from '../components/FolderStyleSheets';
@@ -491,6 +493,11 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const [chosen, setChosen] = useState<string | null>(null);
   const lastPick = useRef<{ id: string; at: number }>({ id: '', at: 0 });
   const chosenOpen = useRef<(() => void) | null>(null);
+  // The sidebar's right click on a folder row asks for this folder's menu (utils/folderMenuRequest).
+  useFolderMenuRequests((folderPath) => {
+    const tag = tags.find((t) => t.path === folderPath);
+    holdFolderMenu({ path: folderPath, name: folderPath.split('/').pop() ?? folderPath, color: tag?.color, icon: tag?.icon, count: 0 });
+  });
   // True when this press is the second of a pair (open now); false when it only chose.
   const pickTwice = (id: string, open: () => void): boolean => {
     const now = Date.now();
@@ -1746,6 +1753,110 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       notify('Не вдалося зібрати архів', (e as Error).message);
     }
   }
+  // THE LAPTOP'S KEYS (2026-10-31): ⌘C / ⌘X / ⌘V, ⌘D, ⌘A, Delete - on the chosen card (one click) or on what is ticked.
+  // A copied note is a new note put into the folder you paste in; any other kind appears in that folder too (one thing in
+  // two folders, as «Папки» does it); a cut thing leaves the folder it was cut from.
+  const clip = useRef<{ mode: 'copy' | 'cut'; ids: string[]; from: string | null } | null>(null);
+  const keyTargets = (): FolderItem[] => {
+    const ids = selecting ? Array.from(selected) : chosen ? [chosen] : [];
+    return ids.map((id) => pool.find((i) => i.id === id)).filter((i): i is FolderItem => !!i && i.kind !== 'row');
+  };
+  async function putHere(item: FolderItem, copy: boolean) {
+    const into = folderOf(path);
+    const target = into ? await tagForPath(into) : null;
+    if (copy && item.kind === 'document') {
+      const { id } = await copyNoteWithNested(item.docId);
+      if (target) await attachTag(target, item.tagKind, id, item.collection);
+    } else if (target && !tags.some((t) => t.path === into && item.tagIds.includes(t.id))) {
+      await attachTag(target, item.tagKind, item.docId, item.collection);
+    }
+  }
+  async function pasteClip() {
+    const c = clip.current;
+    if (!c) return;
+    const items = c.ids.map((id) => pool.find((i) => i.id === id)).filter((i): i is FolderItem => !!i);
+    if (items.length === 0 || (c.mode === 'cut' && c.from === folderOf(path))) return;
+    try {
+      for (const item of items) {
+        if (c.mode === 'cut') {
+          if (c.from) for (const tag of tags.filter((t) => t.path === c.from && item.tagIds.includes(t.id))) await detachTag(tag, item.tagKind, item.docId, item.collection);
+          await putHere(item, false);
+        } else await putHere(item, true);
+      }
+      if (c.mode === 'cut') clip.current = null;
+      setToast({ id: Date.now(), message: `${c.mode === 'cut' ? 'Переміщено' : 'Вставлено'}: ${items.length}`, left: 3 });
+    } catch (e) {
+      notify('Не вдалося вставити', (e as Error).message);
+    }
+  }
+  const keysRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  keysRef.current = (e) => {
+    const t = e.target as HTMLElement | null;
+    if (t && (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable)) return;
+    const mod = e.metaKey || e.ctrlKey;
+    const key = e.key.toLowerCase();
+    if (mod && key === 'a') {
+      e.preventDefault();
+      setSelecting(true);
+      setSelected(new Set(here.map((i) => i.id)));
+    } else if (mod && (key === 'c' || key === 'x')) {
+      const items = keyTargets();
+      if (items.length === 0) return;
+      e.preventDefault();
+      clip.current = { mode: key === 'c' ? 'copy' : 'cut', ids: items.map((i) => i.id), from: folderOf(path) };
+      setToast({ id: Date.now(), message: `${key === 'c' ? 'Скопійовано' : 'Вирізано'}: ${items.length}`, left: 2 });
+    } else if (mod && key === 'v') {
+      e.preventDefault();
+      pasteClip();
+    } else if (mod && key === 'd') {
+      const items = keyTargets().filter((i) => i.kind === 'document');
+      if (items.length === 0) return;
+      e.preventDefault();
+      (async () => {
+        try {
+          for (const item of items) await putHere(item, true);
+          setToast({ id: Date.now(), message: `Копію створено: ${items.length}`, left: 3 });
+        } catch (err) {
+          notify('Не вдалося створити копію', (err as Error).message);
+        }
+      })();
+    } else if (!mod && (e.key === 'Delete' || e.key === 'Backspace')) {
+      const items = keyTargets();
+      if (items.length === 0) return;
+      e.preventDefault();
+      setSelecting(true);
+      setSelected(new Set(items.map((i) => i.id)));
+      setTimeout(() => deleteSelectedRef.current(), 80);
+    }
+  };
+  useEffect(() => {
+    if (!explorerSelect || !isFocused || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => keysRef.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [explorerSelect, isFocused]);
+  // THE LAPTOP'S RIGHT CLICK ON THE EXPLORER'S OWN GROUND (2026-10-31): what a folder's empty place can do.
+  async function groundMenu() {
+    const choice = await holdAsk({
+      title: path && path !== UNFILED ? folderLabel(path) : 'Провідник',
+      actions: [
+        { id: 'note', label: 'Створити…', icon: 'add-outline' as const },
+        { id: 'folder', label: 'Нова папка', icon: 'folder-open-outline' as const },
+        { id: 'shortcut', label: 'Новий ярлик…', icon: 'rocket-outline' as const },
+        { id: 'select', label: 'Вибрати', icon: 'checkmark-circle-outline' as const },
+        { id: 'list', label: 'Вигляд: список', icon: 'reorder-two-outline' as const },
+        { id: 'grid', label: 'Вигляд: сітка', icon: 'grid-outline' as const },
+        { id: 'canvas', label: 'Вигляд: полотно', icon: 'albums-outline' as const },
+      ],
+    });
+    if (choice === 'note') setQuickOpen(true);
+    else if (choice === 'folder') newFolderHere();
+    else if (choice === 'shortcut') newShortcut();
+    else if (choice === 'select') setSelecting(true);
+    else if (choice === 'list' || choice === 'grid' || choice === 'canvas') changeView(choice);
+  }
+  const groundMenuRef = useRef(groundMenu);
+  groundMenuRef.current = groundMenu;
   async function holdFolderMenu(f: FolderEntry) {
     // A BASE'S COLLECTION placed here (2026-10-15): it has no icon or colour of its own (its face is its content), it can
     // be taken back out of the explorer - it stays in its base - and deleting it deletes the collection itself.
@@ -3395,7 +3506,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           <FoldersCanvas topPad={top} linksOpen={false} asExplorer onOpenItem={(item) => openItem(item)} />
         ) : (
         <GestureDetector gesture={carrying.listGesture}>
-        <Animated.View style={[{ flex: 1 }, levelStyle]} {...webData({ explorer: '1' })} onLayout={touchDensity ? undefined : (e) => setMeasuredW(Math.round(e.nativeEvent.layout.width))}>
+        <Animated.View ref={explorerSelect ? ((n: unknown) => bindRightClick(n, () => groundMenuRef.current())) as never : undefined} style={[{ flex: 1 }, levelStyle]} {...webData({ explorer: '1' })} onLayout={touchDensity ? undefined : (e) => setMeasuredW(Math.round(e.nativeEvent.layout.width))}>
         <SwipeSelectArea
           enabled={FEATURES.swipeSelect && (viewMode === 'list' || viewMode === 'rows')}
           order={sweepOrder}

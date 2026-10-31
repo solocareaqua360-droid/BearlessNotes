@@ -40,6 +40,12 @@ export function noteOpened(kind: RecentKind, ref: string): void {
   clearTimeout(notifyTimer);
   notifyTimer = setTimeout(() => listeners.forEach((l) => l()), 1500);
 }
+// Taken off the row (the right-click menu): gone from the list and from the phone's own storage.
+export function forgetRecent(kind: RecentKind, ref: string): void {
+  recent = recent.filter((r) => !(r.kind === kind && r.ref === ref));
+  AsyncStorage.setItem(KEY, JSON.stringify(recent)).catch(() => {});
+  listeners.forEach((l) => l());
+}
 let notifyTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function useRecentPlaces(): RecentPlace[] {

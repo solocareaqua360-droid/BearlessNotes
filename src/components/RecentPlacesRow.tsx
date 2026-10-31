@@ -8,7 +8,12 @@ import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { doc, onSnapshot } from '../firestore';
 import { db } from '../firebase';
 import { useDocumentIndex } from '../hooks/useDocumentIndex';
-import { useRecentPlaces, type RecentPlace } from '../navigation/recentPlaces';
+import { forgetRecent, useRecentPlaces, type RecentPlace } from '../navigation/recentPlaces';
+import { holdAsk } from './surfaces/HoldAsk';
+import { notify } from './surfaces/Ask';
+import { rightClick } from '../utils/rightClick';
+import { CAN_OPEN_IN_WINDOW, openInWindow } from '../navigation/openInWindow';
+import { copyNoteWithNested } from '../utils/copyNote';
 import { useDeskGate } from '../navigation/deskVisibility';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { DesksControlContext, deskFace } from '../navigation/desks';
@@ -54,6 +59,18 @@ export default function RecentPlacesRow({ side, kinds }: { side: number; kinds?:
     }
     return fn;
   };
+  // The mouse's menu on a card (the laptop's right click): open, open in its own window, copy a note, take it off the row.
+  const menuRef = useRef<(place: RecentPlace) => void>(() => {});
+  const menus = useRef(new Map<string, () => void>());
+  const menuFor = (place: RecentPlace) => {
+    const key = `${place.kind}:${place.ref}`;
+    let fn = menus.current.get(key);
+    if (!fn) {
+      fn = () => menuRef.current(place);
+      menus.current.set(key, fn);
+    }
+    return fn;
+  };
   useEffect(() => {
     if (count >= 12) return;
     const timer = setTimeout(() => setCount((n) => n + 1), count === FIRST_CARDS ? 3000 : 250);
@@ -67,6 +84,29 @@ export default function RecentPlacesRow({ side, kinds }: { side: number; kinds?:
     .slice(0, count);
   if (shown.length === 0) return null;
   openRef.current = (place: RecentPlace) => open(place);
+  menuRef.current = async (place: RecentPlace) => {
+    const windowed = CAN_OPEN_IN_WINDOW && (place.kind === 'document' || place.kind === 'board');
+    const choice = await holdAsk({
+      title: 'Нещодавні',
+      actions: [
+        { id: 'open', label: 'Відкрити', icon: 'open-outline' as const },
+        ...(windowed ? [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] : []),
+        ...(place.kind === 'document' ? [{ id: 'duplicate', label: 'Створити копію', icon: 'copy-outline' as const }] : []),
+        { id: 'forget', label: 'Прибрати з нещодавніх', icon: 'eye-off-outline' as const },
+      ],
+    });
+    if (choice === 'open') open(place);
+    else if (choice === 'window') openInWindow(place.kind === 'board' ? { kind: 'board', boardId: place.ref } : { kind: 'note', documentId: place.ref });
+    else if (choice === 'forget') forgetRecent(place.kind, place.ref);
+    else if (choice === 'duplicate') {
+      try {
+        const { count } = await copyNoteWithNested(place.ref);
+        notify('Копію створено', count > 1 ? `Разом із вкладеними нотатками: ${count}. Вона в «Нерозкладене».` : 'Вона в «Нерозкладене».');
+      } catch (e) {
+        notify('Не вдалося створити копію', (e as Error).message);
+      }
+    }
+  };
   const open = (place: RecentPlace) => {
     // A note grows out of its card and folds back into it on the way out, as from a folder (utils/morph) - from here it
     // only cross-faded and «dissolved into the start» (the user, 2026-10-28).
@@ -94,11 +134,12 @@ export default function RecentPlacesRow({ side, kinds }: { side: number; kinds?:
       <ScrollView horizontal nestedScrollEnabled onScrollBeginDrag={() => setCount(12)} showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.recentRow, { paddingHorizontal: side }]}>
         {shown.map((place) => {
           const press = pressFor(place);
-          if (place.kind === 'document') return <RecentDocument key={`d:${place.ref}`} id={place.ref} onPress={press} />;
-          if (place.kind === 'board') return <RecentBoard key={`b:${place.ref}`} id={place.ref} onPress={press} />;
-          if (place.kind === 'file') return <RecentFile key={`f:${place.ref}`} id={place.ref} onPress={press} />;
-          if (place.ref.startsWith('tile:')) return <RecentTile key={`x:${place.ref}`} tileKey={place.ref.slice(5)} onPress={press} />;
-          return <RecentDatabase key={`x:${place.ref}`} id={place.ref} onPress={press} />;
+          const menu = menuFor(place);
+          if (place.kind === 'document') return <RecentDocument key={`d:${place.ref}`} id={place.ref} onPress={press} onMenu={menu} />;
+          if (place.kind === 'board') return <RecentBoard key={`b:${place.ref}`} id={place.ref} onPress={press} onMenu={menu} />;
+          if (place.kind === 'file') return <RecentFile key={`f:${place.ref}`} id={place.ref} onPress={press} onMenu={menu} />;
+          if (place.ref.startsWith('tile:')) return <RecentTile key={`x:${place.ref}`} tileKey={place.ref.slice(5)} onPress={press} onMenu={menu} />;
+          return <RecentDatabase key={`x:${place.ref}`} id={place.ref} onPress={press} onMenu={menu} />;
         })}
       </ScrollView>
     </View>
@@ -110,10 +151,10 @@ const CARD_W = 150;
 const FIRST_CARDS = 4;
 const PIC_H = 118;
 
-function RecentFrame({ label, icon, onPress, children, morphKey }: { label: string; icon: string; onPress: () => void; children: ReactNode; morphKey?: string }) {
+function RecentFrame({ label, icon, onPress, onMenu, children, morphKey }: { label: string; icon: string; onPress: () => void; onMenu?: () => void; children: ReactNode; morphKey?: string }) {
   const S = useSoft();
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { backgroundColor: S.card, boxShadow: S.shadow }, pressed && { opacity: 0.75 }]}>
+    <Pressable onPress={onPress} {...rightClick(onMenu)} style={({ pressed }) => [styles.card, { backgroundColor: S.card, boxShadow: S.shadow }, pressed && { opacity: 0.75 }]}>
       <View ref={morphKey ? morphCardRef(morphKey) : undefined} collapsable={false} style={[styles.cardPicture, { backgroundColor: S.fill }]}>
         {children}
       </View>
@@ -147,22 +188,22 @@ const NONE: Block[] = [];
 const NO_IDS: string[] = [];
 const NO_TAGS: Tag[] = [];
 
-const RecentDocument = memo(function RecentDocument({ id, onPress }: { id: string; onPress: () => void }) {
+const RecentDocument = memo(function RecentDocument({ id, onPress, onMenu }: { id: string; onPress: () => void; onMenu?: () => void }) {
   const data = useRecord<{ title?: string; blocks?: Block[]; noteFont?: string; noteFontMode?: string }>('documents', id);
   if (!data) return null;
   return (
-    <RecentFrame onPress={onPress} label={data.title?.trim() || 'Без назви'} icon="document-text-outline" morphKey={`note:${id}`}>
+    <RecentFrame onMenu={onMenu} onPress={onPress} label={data.title?.trim() || 'Без назви'} icon="document-text-outline" morphKey={`note:${id}`}>
       <DocumentPageMiniature font={data.noteFont} fontMode={data.noteFontMode} title={data.title ?? ''} blocks={data.blocks ?? NONE} tagIds={NO_IDS} tags={NO_TAGS} project={null} width={CARD_W} height={PIC_H} />
     </RecentFrame>
   );
 });
 
-const RecentBoard = memo(function RecentBoard({ id, onPress }: { id: string; onPress: () => void }) {
+const RecentBoard = memo(function RecentBoard({ id, onPress, onMenu }: { id: string; onPress: () => void; onMenu?: () => void }) {
   const S = useSoft();
   const data = useRecord<{ title?: string; previewImageUri?: string; previewDriveFileId?: string; deletedAt?: number }>('boards', id);
   if (!data || data.deletedAt) return null;
   return (
-    <RecentFrame onPress={onPress} label={data.title?.trim() || 'Дошка'} icon="easel-outline">
+    <RecentFrame onMenu={onMenu} onPress={onPress} label={data.title?.trim() || 'Дошка'} icon="easel-outline">
       <BoardPreviewImage
         boardId={id}
         uri={data.previewImageUri}
@@ -177,12 +218,12 @@ const RecentBoard = memo(function RecentBoard({ id, onPress }: { id: string; onP
   );
 });
 
-const RecentFile = memo(function RecentFile({ id, onPress }: { id: string; onPress: () => void }) {
+const RecentFile = memo(function RecentFile({ id, onPress, onMenu }: { id: string; onPress: () => void; onMenu?: () => void }) {
   const data = useRecord<{ title?: string; fileName?: string; deletedAt?: number }>('files', id);
   if (!data || data.deletedAt) return null;
   const name = data.title || data.fileName || 'Файл';
   return (
-    <RecentFrame onPress={onPress} label={name} icon="document-outline">
+    <RecentFrame onMenu={onMenu} onPress={onPress} label={name} icon="document-outline">
       <View style={styles.cardCenter}>
         <Ionicons name={fileIconFor(data.fileName ?? name) as never} size={42} color={fileIconColorFor(data.fileName ?? name)} />
       </View>
@@ -190,12 +231,12 @@ const RecentFile = memo(function RecentFile({ id, onPress }: { id: string; onPre
   );
 });
 
-const RecentTile = memo(function RecentTile({ tileKey, onPress }: { tileKey: string; onPress: () => void }) {
+const RecentTile = memo(function RecentTile({ tileKey, onPress, onMenu }: { tileKey: string; onPress: () => void; onMenu?: () => void }) {
   const S = useSoft();
   const { customDatabases, iconFor } = useDatabaseTiles();
   const face = deskFace(`db:${tileKey}`, customDatabases, iconFor);
   return (
-    <RecentFrame onPress={onPress} label={face.label} icon={face.icon}>
+    <RecentFrame onMenu={onMenu} onPress={onPress} label={face.label} icon={face.icon}>
       <View style={styles.cardCenter}>
         <Ionicons name={face.icon as never} size={40} color={S.ink2} />
       </View>
@@ -203,12 +244,12 @@ const RecentTile = memo(function RecentTile({ tileKey, onPress }: { tileKey: str
   );
 });
 
-const RecentDatabase = memo(function RecentDatabase({ id, onPress }: { id: string; onPress: () => void }) {
+const RecentDatabase = memo(function RecentDatabase({ id, onPress, onMenu }: { id: string; onPress: () => void; onMenu?: () => void }) {
   const S = useSoft();
   const data = useRecord<{ name?: string; icon?: string; color?: string }>('customDatabases', id);
   if (!data) return null;
   return (
-    <RecentFrame onPress={onPress} label={data.name || 'База'} icon={data.icon ?? 'grid-outline'}>
+    <RecentFrame onMenu={onMenu} onPress={onPress} label={data.name || 'База'} icon={data.icon ?? 'grid-outline'}>
       <View style={styles.cardCenter}>
         <Ionicons name={(data.icon ?? 'grid-outline') as never} size={40} color={data.color ?? S.ink2} />
       </View>
