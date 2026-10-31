@@ -2,10 +2,9 @@ import { FEATURES } from '../features';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from './icons/Ionicons';
 import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
-import { StackActions, getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
+import { StackActions, TabActions, getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
 import { forgetBase, hasBase, rememberBase, takeBase } from '../navigation/lastBase';
 import { noteCapsuleJourney } from './DeskDock';
-import { holdPushFromLayer } from '../navigation/layerPush';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
 import { BASES_DESK, DesksControlContext, FIXED_DESKS, deskFace } from '../navigation/desks';
@@ -235,6 +234,9 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   // bar is memoised - a new array per render of this strip rebuilt it every
   // time, three times over on every way back from a note). The handlers go
   // through a ref, so they are always the current ones.
+  // The tabs as they are now, for a press that comes from a screen over them (reachDesks).
+  const tabsRef = useRef({ navigation, key: state.key, index: state.index, routes: state.routes });
+  tabsRef.current = { navigation, key: state.key, index: state.index, routes: state.routes };
   const barHandlers = useRef({ openSwitcher, closeDesk, desks });
   barHandlers.current = { openSwitcher, closeDesk, desks };
   const barDesks = useMemo(
@@ -298,13 +300,10 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
                 // The desks under are set to «Бази» at once and the base comes in front in the same breath: the list of bases is never
                 // seen (a pause for the capsule showed it for a moment - the user, 2026-10-31), and the same bead is lit before and after.
                 noteCapsuleJourney(index);
-                // The base comes back WHOLE, not sliding in: it was never left in the person's mind, and the slide showed the list of
-                // bases under it for a frame (the user, 2026-10-31). The same no-animation push the side layers use (layerPush).
-                // The desks under it are NOT switched to «Бази» first: that drew the list of bases for a frame before the base. The base
-                // stands over the desk the press came from, and its own dock lights «Бази».
-                const release = holdPushFromLayer();
+                // The base slides in over the desk the press came from, as it does from the list. The desks are NOT switched to «Бази»
+                // first (a frame of the list showed), and it is not pushed without animation either: a screen that came with none
+                // left with none, and the desk under it was not drawn yet - a frame of the phone's wallpaper (both 2026-10-31).
                 (navigationRef.navigate as (n: string, p?: object) => void)(base.name, base.params);
-                setTimeout(release, 600);
                 return;
               }
             }
@@ -338,7 +337,15 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
             // The base being left is remembered, unless the «Бази» bead itself was pressed (that is a wish for the list).
             if (route?.name === BASES_DESK) forgetBase();
             else rememberBase(routes[routes.length - 1] as { name: string; params?: object } | undefined);
-            if (routes.length > 1 && routes[0]?.name === 'Tabs') navigationRef.dispatch(StackActions.popTo('Tabs'));
+            if (routes.length > 1 && routes[0]?.name === 'Tabs') {
+              // The desk is picked UNDER the screen in front first, and only then is that screen left, by its usual slide: closing it
+              // first and switching after showed whatever stood under it - another desk, or for a frame nothing at all, the phone's
+              // wallpaper (the user, 2026-10-31: «щось блимає»).
+              const tabs = tabsRef.current;
+              if (tabs.routes[tabs.index]?.name !== route.name) tabs.navigation.dispatch({ ...TabActions.jumpTo(route.name), target: tabs.key });
+              setTimeout(() => navigationRef.dispatch(StackActions.popTo('Tabs')), 60);
+              return;
+            }
             navigationRef.navigate('Tabs', { screen: route.name } as never);
           },
         };

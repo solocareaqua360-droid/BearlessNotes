@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import BackdropLayer from './src/components/BackdropLayer';
-import { View } from 'react-native';
+import { StyleSheet as RNStyleSheet, View } from 'react-native';
 import {
   useFonts,
   Nunito_400Regular,
@@ -99,6 +99,10 @@ function ThemedNavigationContainer({ children }: { children: React.ReactNode }) 
       // opened from a scrolled list inherited the fold - and at its top there is nothing to scroll back up with.
       onStateChange={() => setChromeCompact(false)}
     >
+      {/* The app's own ground under everything (2026-10-31, the user: «щось блимає» going from a base to a desk): the window is see-through
+          (left from the phone's wallpaper), so a frame in which Android had not yet drawn the desk under a closing screen showed the
+          wallpaper itself. Under the phone's wallpaper (still a choice) it stays clear. */}
+      {!wallpaper && <View pointerEvents="none" style={[RNStyleSheet.absoluteFill, { backgroundColor: theme.ground }]} />}
       <BackdropLayer />
       {children}
     </NavigationContainer>
