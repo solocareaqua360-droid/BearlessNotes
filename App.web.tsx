@@ -279,15 +279,19 @@ if (typeof document !== 'undefined') {
         //   of where it came from, and what LEAVES (data-fade-out) shrinks
         //   back and fades, a little quicker.
         ` [data-lift]:not([style*="transform"]) { transition: transform ${MOTION.base}ms ${MOTION.ease}, background-color 180ms ease, box-shadow ${MOTION.base}ms ease, opacity 180ms ease; }` +
-        ' [data-lift]:not([style*="transform"]):hover { transform: translateY(-2px); }' +
-        ` [data-lift]:not([style*="transform"]):active { transform: translateY(0) scale(0.985); transition-duration: ${MOTION.fast}ms; }` +
+        // The user, 2026-10-31: elements that jump under the pointer are not wanted - a card is HIGHLIGHTED instead (a ring that
+        // darkens as it is pressed), a pressed button dims.
+        ' [data-lift]:not([style*="transform"]):hover { outline: 2px solid color-mix(in srgb, currentColor 13%, transparent); outline-offset: -1px; }' +
+        ` [data-lift]:not([style*="transform"]):active { outline: 2px solid color-mix(in srgb, currentColor 26%, transparent); outline-offset: -1px; transition-duration: ${MOTION.fast}ms; }` +
+        // Where a carried card would land (hooks/useCardCarry's markDropOver).
+        ' [data-drop-over] { background-color: color-mix(in srgb, currentColor 11%, transparent) !important; outline: 2px solid color-mix(in srgb, currentColor 34%, transparent); outline-offset: -2px; border-radius: 10px; }' +
         ` [tabindex="0"]:not([data-lift]):not([style*="transform"]) { transition: transform ${MOTION.fast}ms ${MOTION.ease}, background-color 180ms ease, box-shadow 220ms ease, color 160ms ease, opacity 180ms ease; }` +
         // Only a button that holds no other button: a WINDOW is a pressable
         // too (its card catches the click so the backdrop does not close
         // it), and :active is true of every ancestor of what is pressed -
         // so a click on a day shrank the whole date picker, backdrop and
         // all (2026-10-03).
-        ' [tabindex="0"]:not([data-lift]):not([style*="transform"]):not(:has([tabindex="0"])):active { transform: scale(0.96); }' +
+        ' [tabindex="0"]:not([data-lift]):not([style*="transform"]):not(:has([tabindex="0"])):active { filter: brightness(0.92); }' +
         ` @keyframes mindevaFadeIn { from { opacity: 0; transform: scale(0.96) translateY(-3px); } to { opacity: 1; transform: none; } }` +
         ` @keyframes mindevaFadeOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.97) translateY(-2px); } }` +
         ` [data-fade-in] { animation: mindevaFadeIn ${MOTION.base}ms ${MOTION.ease}; transform-origin: top left; }` +

@@ -60,6 +60,26 @@ export function registerExternalFolder(path: string) {
   };
 }
 
+// The folder row under the mouse says so (the laptop): its node gets `data-drop-over`, which App.web.tsx draws as a highlight.
+// Straight on the DOM node - a carry moves every frame, and a state change per frame is what it must not cost.
+function markDropOver(registers: Map<string, View>[], x: number, y: number) {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  document.querySelectorAll('[data-drop-over]').forEach((el) => el.removeAttribute('data-drop-over'));
+  for (const register of registers) {
+    for (const node of register.values()) {
+      const el = node as unknown as HTMLElement;
+      const r = el.getBoundingClientRect?.();
+      if (r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+        el.setAttribute('data-drop-over', '1');
+        return;
+      }
+    }
+  }
+}
+function clearDropOver() {
+  if (Platform.OS === 'web' && typeof document !== 'undefined') document.querySelectorAll('[data-drop-over]').forEach((el) => el.removeAttribute('data-drop-over'));
+}
+
 export type CarryGhost<T> = {
   // Everything being carried. One card usually; the whole tick-box
   // selection when the card picked up is part of one - the same rule the
@@ -284,6 +304,7 @@ export function useCardCarry<T extends { id: string }>({
     const next = { ...current, x: absoluteX + GHOST_NUDGE_X, y: absoluteY + GHOST_NUDGE_Y };
     ghostRef.current = next;
     setGhost(next);
+    markDropOver([folderNodes.current, externalFolders], absoluteX, absoluteY);
   }, []);
 
   // Which registered target, if any, lies under a point - measured on
@@ -312,6 +333,7 @@ export function useCardCarry<T extends { id: string }>({
   const endCarry = useCallback((onStill?: () => void) => {
     const current = ghostRef.current;
     if (!current) return;
+    clearDropOver();
     if (onStill && !wandered.current) {
       ghostRef.current = null;
       setGhost(null);
@@ -385,6 +407,7 @@ export function useCardCarry<T extends { id: string }>({
   }
 
   const cancelCarry = useCallback(() => {
+    clearDropOver();
     ghostRef.current = null;
     setGhost(null);
   }, []);
