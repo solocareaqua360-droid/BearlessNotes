@@ -222,6 +222,13 @@ export type DockAction = {
   // have been scrolled past, and "delete" is not a button to press
   // without knowing how many.
   count?: number;
+  // In its place but with nothing to act on (the select dock's «Формат» while no text block is chosen): drawn faint, not pressable.
+  dimmed?: boolean;
+  // A destructive one, its word and icon in the danger colour.
+  tone?: 'danger';
+  // The strip that carries this action gets a smaller corner than a capsule (the select dock, 2026-10-31: «менш скруглені кути під
+  // стать верхньому» - the sheet above it). Read from any action of the strip.
+  squareStrip?: boolean;
 };
 
 // The two things that stay OUT of the stack, as beads either side of it.

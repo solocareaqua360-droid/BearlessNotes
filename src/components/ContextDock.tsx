@@ -444,6 +444,8 @@ const DOCK_WRAP_PAD = 6;
 // The two beads standing alone (see "JUST THE TWO") - a thumb's main
 // button, not the whole dock's height: 56, the size Android gives its own.
 const TWO_BEAD = 56;
+// The corner of a strip that is not a capsule (the select dock, under its sheets).
+const SQUARE_STRIP_R = 16;
 
 // The two beads' Ionicons, as the soft dock draws them (see SoftIcon).
 // The back chevron's own width at the start of the soft capsule.
@@ -2002,6 +2004,8 @@ export default function ContextDock() {
     // without scrolling (2026-10-23: choosing blocks was six - Вийти · Вигляд · Вкладена · Вирізати · Ще · Видалити -, the
     // user's «no scrolling»; 2026-10-24 «ШІ» joined them).
     const short = actions.length <= 7;
+    // The select dock's smaller corner (DockAction.squareStrip).
+    const squareStrip = actions.some((a) => a.squareStrip);
     // Never wider than the bar above it, even when short: five at full
     // width is wider than a phone's bar.
     const buttonW = short
@@ -2021,9 +2025,9 @@ export default function ContextDock() {
               // The note's dock, as the chrome morph photographs it.
               ref={chromeNodeRef('dock', 'note')}
               collapsable={false}
-              style={{ width: stripW, height: TWO_BEAD, borderRadius: TWO_BEAD / 2, ...dockSurface, overflow: 'hidden' }}
+              style={{ width: stripW, height: TWO_BEAD, borderRadius: squareStrip ? SQUARE_STRIP_R : TWO_BEAD / 2, ...dockSurface, overflow: 'hidden' }}
             >
-                {glassOn && <DockGlassFill soft={soft} />}
+                {glassOn && <DockGlassFill soft={soft} radius={squareStrip ? SQUARE_STRIP_R : undefined} />}
               <ScrollView
                 horizontal
                 scrollEnabled={!short}
@@ -3096,7 +3100,16 @@ export function ActionButton({
   soft?: SoftTokens | null;
 }) {
   const glassOn = useDockGlass();
-  const ink = soft ? (action.active ? soft.accent : dockInk(soft, glassOn)) : action.active ? theme.accent : theme.glass.ink;
+  const ink =
+    action.tone === 'danger'
+      ? '#B3412E'
+      : soft
+        ? action.active
+          ? soft.accent
+          : dockInk(soft, glassOn)
+        : action.active
+          ? theme.accent
+          : theme.glass.ink;
   const ownIcon = soft ? SOFT_DOCK_GLYPHS[action.icon] : undefined;
   // THE STRONG ONE: a dark circle of its own in the strip, no word under
   // it - set apart from the tools by contrast, as "+" is everywhere else.
@@ -3124,6 +3137,7 @@ export function ActionButton({
   }
   return (
     <Pressable
+      disabled={action.dimmed}
       onPress={() => {
         action.onPress();
         if (action.closesStack) onDone();
@@ -3133,6 +3147,7 @@ export function ActionButton({
         styles.actionButton,
         { width, height, borderRadius: Math.round(height / 3) },
         action.active && styles.actionButtonActive,
+        action.dimmed && { opacity: 0.32 },
       ]}
     >
       {/* Icon over word. The button is a quarter of the card wide and

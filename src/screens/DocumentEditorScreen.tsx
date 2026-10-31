@@ -250,7 +250,7 @@ import { DESK_PILL_W } from '../components/DeskDock';
 import { blocksToMarkdown, documentToMarkdown } from '../utils/blocksText';
 import { holdBlocks, takeHeldBlocks } from '../utils/blockClipboard';
 import { startNaming } from '../utils/docRefNaming';
-import SelectModeSheet, { type ExtraLook, type LookKind } from '../components/SelectModeSheet';
+import SelectModeSheet, { type ExtraLook, type LookKind, type SelectSheet } from '../components/SelectModeSheet';
 import AiEditSheet from '../components/AiEditSheet';
 import ImageFrameEditor from '../components/ImageFrameEditor';
 import type { ImageFrame } from '../utils/imageFrame';
@@ -3574,7 +3574,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the first of those buttons, and the daily note had no other.
   const embeddedSelect = embedded && isSelectMode;
   // The card open over the select-mode dock (SelectModeSheet), if any.
-  const [selectSheet, setSelectSheet] = useState<'look' | 'more' | null>(null);
+  const [selectSheet, setSelectSheet] = useState<SelectSheet | null>(null);
   // THE AI ON THE CHOSEN BLOCKS (sketch V4, components/AiEditSheet): what was chosen, as Markdown, while the window is open, and
   // which blocks it was made of (only the TEXT ones - a photo, a file, a record chosen with them stays where it is).
   const [aiSource, setAiSource] = useState<string | null>(null);
@@ -3591,6 +3591,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     if (!embeddedSelect) return;
     flipDock('actions');
   }, [embeddedSelect, flipDock]);
+  // What the chosen blocks are: the text ones (Формат acts on them) and the cards (Вигляд).
+  const selectedTextBlocks = isSelectMode ? blocks.filter((b) => selectedIds.has(b.id) && TEXT_KINDS.has(b.type ?? 'paragraph')) : [];
+  const selectionLooks = isSelectMode ? noteLooksOfSelection() : [];
   useDockActions(
     !dockLive && !embeddedSelect
       ? null
@@ -3610,44 +3613,40 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               toggleSelectMode();
             },
           },
-          // SIX BUTTONS, NO SCROLLING (2026-10-23, the user's sketch V8yysG1eFMHLTRBXWYJA7T: the row had grown to sixteen). What
-          // the chosen blocks become is one card («Вигляд», pictures of the result); the two things the user does most - fold
-          // them into a nested note, cut them - stay a tap; the rest is «Ще». The old rule here was «formatting in one tap»; the
-          // user chose two taps and no scrolling over it.
-          // The AI on what is chosen (sketch V4): its window takes the dock's place.
-          ...(FEATURES.assistant ? [{ key: 'ai', icon: 'sparkles', label: 'ШІ', active: aiSource !== null, onPress: openAiOnSelected }] : []),
+          // THE SELECT DOCK (2026-10-31, the user's grouping, sketched and agreed): Вийти · Дії · Формат · Вигляд · ШІ · Видалити.
+          // «Формат» is for the text blocks among the chosen, «Вигляд» for the cards - each faint while there is none of its kind
+          // (the user: in a mixed choice both are live). «Видалити» stands on its own, the last and red. The strip's corner is
+          // smaller than a capsule's, to match the sheets over it (SelectModeSheet).
+          {
+            key: 'actions',
+            icon: 'flash-outline',
+            label: 'Дії',
+            active: selectSheet === 'actions',
+            squareStrip: true,
+            onPress: () => setSelectSheet((v) => (v === 'actions' ? null : 'actions')),
+          },
+          {
+            key: 'format',
+            icon: 'text-outline',
+            label: 'Формат',
+            active: selectSheet === 'format',
+            dimmed: selectedTextBlocks.length === 0,
+            onPress: () => setSelectSheet((v) => (v === 'format' ? null : 'format')),
+          },
           {
             key: 'look',
             icon: 'grid-outline',
             label: 'Вигляд',
             active: selectSheet === 'look',
+            dimmed: selectionLooks.length === 0,
             onPress: () => setSelectSheet((v) => (v === 'look' ? null : 'look')),
           },
-          // 2026-10-26: «Вкладена» (dock) and «В окрему нотатку» («Ще») were one idea under two names - one button now, which
-          // asks where; and «Копіювати» comes out of «Ще» onto the dock, «Вирізати» goes into «Ще» in its place.
-          {
-            key: 'tonote',
-            icon: 'document-text-outline',
-            label: 'У нотатку',
-            onPress: selectedToNote,
-          },
-          {
-            key: 'copy',
-            icon: 'copy-outline',
-            label: 'Копіювати',
-            onPress: copySelectedBlocks,
-          },
-          {
-            key: 'more',
-            icon: 'ellipsis-horizontal',
-            label: 'Ще',
-            active: selectSheet === 'more',
-            onPress: () => setSelectSheet((v) => (v === 'more' ? null : 'more')),
-          },
+          ...(FEATURES.assistant ? [{ key: 'ai', icon: 'sparkles', label: 'ШІ', active: aiSource !== null, onPress: openAiOnSelected }] : []),
           {
             key: 'delete',
             icon: 'trash-outline',
             label: 'Видалити',
+            tone: 'danger' as const,
             onPress: deleteSelectedBlocks,
           },
         ]
@@ -6481,6 +6480,39 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     );
   }
 
+  // «ФОРМАТ» on the chosen text blocks (2026-10-31): one undo step each, select mode stays.
+  function onSelectedText(change: (b: Block) => Block) {
+    const ids = new Set(selectedTextBlocks.map((b) => b.id));
+    if (ids.size === 0) return;
+    snapshotBeforeChange();
+    setBlocks((prev) => prev.map((b) => (ids.has(b.id) ? change(b) : b)));
+  }
+  function markSelected(mark: '**' | '*' | '~~') {
+    // All of them in it already: it comes off; else it goes on those without.
+    const allIn = selectedTextBlocks.every((b) => wrappedIn(b.text ?? '', mark));
+    onSelectedText((b) => {
+      const text = b.text ?? '';
+      if (!text.trim()) return b;
+      if (allIn) return { ...b, text: unwrapMark(text, mark) };
+      return wrappedIn(text, mark) ? b : { ...b, text: `${mark}${text.trim()}${mark}` };
+    });
+  }
+  function selectedLookKind(): LookKind | null {
+    const kinds = new Set(
+      selectedTextBlocks.map((b) => {
+        const type = b.type ?? 'paragraph';
+        if (type !== 'heading') return type;
+        const level = b.headingLevel ?? 1;
+        return level === 1 ? 'h1' : level === 2 ? 'h2' : 'h3';
+      })
+    );
+    return kinds.size === 1 ? ([...kinds][0] as LookKind) : null;
+  }
+  function sameOf<T>(read: (b: Block) => T): T | null {
+    const values = new Set(selectedTextBlocks.map(read));
+    return values.size === 1 ? [...values][0] : null;
+  }
+
   function convertSelectedToDivider(style: 'solid' | 'bold') {
     if (selectedIds.size === 0) return;
     snapshotBeforeChange();
@@ -6815,16 +6847,41 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         <SelectModeSheet
           open={selectSheet}
           count={selectedIds.size}
+          textCount={selectedTextBlocks.length}
+          cardCount={selectionLooks.length > 0 ? 1 : 0}
+          buttons={FEATURES.assistant ? 6 : 5}
           bottom={menuClearance}
           onClose={() => setSelectSheet(null)}
-          onLook={applyLookToSelected}
-          extraLooks={noteLooksOfSelection()}
-          more={[
-            { key: 'cut', label: 'Вирізати', hint: 'вставити деінде цілими блоками', icon: 'cut-outline', onPress: cutSelectedBlocks },
+          extraLooks={selectionLooks}
+          format={{
+            kind: selectedLookKind(),
+            align: sameOf((b) => alignOf(b)),
+            font: sameOf((b) => b.font ?? effectiveFont.font),
+            fonts: effectiveFont.blocks
+              ? (
+                  [
+                    ['default', 'Системний'],
+                    ['mono', 'Машинка'],
+                    ['serif', 'Книжковий'],
+                    ['hand', 'Рукописний'],
+                  ] as const
+                ).map(([id, label]) => ({ id, label, family: FONT_GLYPH_FAMILY[id] }))
+              : null,
+            colors: TEXT_COLORS,
+            onLook: applyLookToSelected,
+            onIndent: (delta) => onSelectedText((b) => withIndent(b, delta)),
+            onAlign: (align) => onSelectedText((b) => withAlign(b, align)),
+            onMark: markSelected,
+            onColor: (hex) => onSelectedText((b) => ({ ...b, text: withWholeColor(b.text ?? '', hex) })),
+            onFont: (id) => onSelectedText((b) => ({ ...b, font: id as NoteFont })),
+          }}
+          actions={[
+            { key: 'copy', label: 'Копіювати', icon: 'copy-outline', onPress: copySelectedBlocks },
+            { key: 'cut', label: 'Вирізати', icon: 'cut-outline', onPress: cutSelectedBlocks },
+            { key: 'tonote', label: 'У нотатку', icon: 'document-text-outline', onPress: selectedToNote },
             {
               key: 'cards',
               label: 'Картки',
-              hint: 'термін і пояснення',
               icon: 'albums-outline',
               onPress: () => {
                 const chosen = blocks.filter((b) => selectedIds.has(b.id));
@@ -6832,10 +6889,10 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                 makeFlashcards(chosen);
               },
             },
-            ...(selectedIds.size === 1 ? [{ key: 'link', label: 'Посилання на блок', hint: 'для слова в іншій нотатці', icon: 'link-outline', onPress: copyBlockAddress }] : []),
+            ...(selectedIds.size === 1 ? [{ key: 'link', label: 'Посилання', icon: 'link-outline', onPress: copyBlockAddress }] : []),
             blocks.length > 0 && blocks.every((b) => selectedIds.has(b.id))
-              ? { key: 'none', label: 'Зняти всі', icon: 'remove-circle-outline', onPress: () => setSelectedIds(new Set()) }
-              : { key: 'all', label: 'Вибрати всі', icon: 'checkmark-done-outline', onPress: () => setSelectedIds(new Set(blocks.map((b) => b.id))) },
+              ? { key: 'none', label: 'Зняти всі', icon: 'remove-circle-outline', keepOpen: true, onPress: () => setSelectedIds(new Set()) }
+              : { key: 'all', label: 'Вибрати всі', icon: 'checkmark-done-outline', keepOpen: true, onPress: () => setSelectedIds(new Set(blocks.map((b) => b.id))) },
           ]}
         />
       )}
@@ -8246,6 +8303,27 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       {bottomChrome}
     </View>
   );
+}
+
+// THE BLOCKS THAT ARE TEXT (the select dock's «Формат» acts on these; a card, a picture or a table is left as it is).
+const TEXT_KINDS = new Set(['paragraph', 'heading', 'bulleted', 'numbered', 'checkbox', 'toggle', 'code']);
+// A whole block in one mark: is it wrapped already (then the mark comes off), and the two ways round. Bold is «**», italic a single
+// «*» (not the half of a bold one), struck «~~».
+function wrappedIn(text: string, mark: '**' | '*' | '~~'): boolean {
+  const t = text.trim();
+  if (t.length < mark.length * 2 + 1 || !t.startsWith(mark) || !t.endsWith(mark)) return false;
+  if (mark === '*') return !t.startsWith('**') || t.startsWith('***');
+  return true;
+}
+function unwrapMark(text: string, mark: string): string {
+  const t = text.trim();
+  return t.slice(mark.length, t.length - mark.length);
+}
+// A colour laid over the whole block ({c:#hex}…{/c}); the one already there comes off first.
+const WHOLE_COLOR = /^\{c:#[0-9A-Fa-f]{3,8}\}([\s\S]*)\{\/c\}$/;
+function withWholeColor(text: string, hex: string | null): string {
+  const bare = text.match(WHOLE_COLOR)?.[1] ?? text;
+  return hex && bare ? `{c:${hex}}${bare}{/c}` : bare;
 }
 
 export default forwardRef(DocumentEditorScreen);
