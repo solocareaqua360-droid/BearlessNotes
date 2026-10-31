@@ -106,6 +106,8 @@ let lastDeskIndex = -1;
 // then jumped into motion. Now the dock that is tapped starts the journey at once, and the dock of the new desk,
 // born mid-way, takes the same journey up from where it has got to by then (by the clock), so it never restarts.
 let capMotion: { from: number; to: number; at: number } | null = null;
+// Whether the circle at the right end showed back on the dock that stood last (see `q`).
+let lastBackShown = false;
 const CAP_END = CAP_LAG + CAP_TRAIL_MS;
 // Where the capsule is, `e` ms into a journey from one desk to another - ONE pure function of time, read on the UI
 // thread by every dock, so a dock born mid-way draws exactly what the one before it would have (the user saw the
@@ -564,8 +566,11 @@ export default function DeskDock({
   }, [state, p]);
   // What the circle is: 0 multitasking, 1 back - with `p` everywhere but inside a base that keeps the desks.
   const backOnCircle = state !== 'root' || !!circleBack;
-  const q = useSharedValue(backOnCircle ? 1 : 0);
+  // A dock born where the one before had NO back (a base brought over a desk by the «Бази» bead) starts from that and turns into back on its
+  // way, as a dock that stays does - born with it already there, the arrow popped in (the user, 2026-10-31).
+  const q = useSharedValue(lastBackShown ? 1 : 0);
   useEffect(() => {
+    lastBackShown = backOnCircle;
     q.value = withTiming(backOnCircle ? 1 : 0, { duration: DURATION, easing: Easing.bezier(0.33, 0, 0.2, 1) });
   }, [backOnCircle, q]);
 
