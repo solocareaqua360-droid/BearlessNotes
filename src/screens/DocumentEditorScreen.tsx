@@ -1834,9 +1834,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // the document-picker UI keeps working unchanged once a future "insert an
   // existing photo/file into another document" feature adds a second one.
   const knownPhotoBlockIdsRef = useRef<Set<string>>(new Set());
+  const backedUpPageOnlyRef = useRef<Set<string>>(new Set());
 
   function syncPhotosForDocument(currentBlocks: Block[]) {
-    const photoBlocks = currentBlocks.filter((b) => (b.type ?? 'paragraph') === 'image' && b.imageUri);
+    const photoBlocks = currentBlocks.filter((b) => (b.type ?? 'paragraph') === 'image' && b.imageUri && !b.pageOnly);
+    // A picture that lives on this page only: no record - but it is still backed up, the copy's address kept on the block.
+    currentBlocks
+      .filter((b) => (b.type ?? 'paragraph') === 'image' && b.imageUri && b.pageOnly && !b.driveFileId && !backedUpPageOnlyRef.current.has(b.id))
+      .forEach((b) => {
+        backedUpPageOnlyRef.current.add(b.id);
+        backupFileToDrive(b.imageUri!, `${b.id}.jpg`, 'image/jpeg', 'Photos')
+          .then((result) => {
+            if (result) setBlocks((prev) => prev.map((x) => (x.id === b.id && x.imageUri === b.imageUri ? { ...x, driveFileId: result.fileId, driveBytes: result.bytes } : x)));
+          })
+          .catch(() => {});
+      });
     const currentIds = new Set(photoBlocks.map((b) => b.id));
     photoBlocks.forEach((b) => {
       const photoDoc: Record<string, unknown> = {
@@ -5393,7 +5405,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const index = prev.findIndex((b) => b.id === id);
       if (index === -1) return prev;
       const next = [...prev];
-      next[index] = { ...buildBlock(id, 'image', ''), imageUri: uri, ...(source ? { imageSource: source } : {}) };
+      next[index] = { ...buildBlock(id, 'image', ''), imageUri: uri, pageOnly: true, ...(source ? { imageSource: source } : {}) };
       if (index === next.length - 1) {
         const trailing = newBlock();
         next.splice(index + 1, 0, trailing);
@@ -5647,11 +5659,24 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 1,
+      // Several at once (the user, 2026-10-31): they stand together and read in threes (BlockList).
+      allowsMultipleSelection: true,
     });
     if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    const uri = await compressPickedImage(asset.uri, asset.width, asset.height);
-    insertImageIntoBlock(id, uri);
+    const uris: string[] = [];
+    for (const asset of result.assets) uris.push(await compressPickedImage(asset.uri, asset.width, asset.height));
+    insertImageIntoBlock(id, uris[0]);
+    // The rest follow it as pictures of their own, right after.
+    if (uris.length > 1) {
+      setBlocks((prev) => {
+        const index = prev.findIndex((b) => b.id === id);
+        if (index === -1) return prev;
+        const more = uris.slice(1).map((uri) => ({ ...buildBlock(generateId(), 'image', ''), imageUri: uri, pageOnly: true }));
+        const next = [...prev];
+        next.splice(index + 1, 0, ...more);
+        return next;
+      });
+    }
   }
 
   // The document scanner (see scanDocumentForBlock) already covers "capture
@@ -5754,6 +5779,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
       const imageBlocks = compressed.map((uri, i) => ({
         ...buildBlock(i === 0 ? id : generateId(), 'image', ''),
         imageUri: uri,
+        pageOnly: true,
       }));
       lastBlockId = imageBlocks[imageBlocks.length - 1]?.id ?? null;
       const next = [...prev];
@@ -6202,6 +6228,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
         entries.push({ kind: 'task', tone: 'forever', fate: FATE.forever });
         continue;
       }
+      if (t === 'image' && b.pageOnly) continue;
       const coll = t === 'image' && b.imageUri ? 'photos' : t === 'file' && b.fileUri ? 'files' : t === 'link' && b.linkUrl ? 'links' : null;
       if (!coll) continue;
       const id = coll === 'links' ? linkDocId(b.linkUrl!) : b.id;
@@ -6667,6 +6694,21 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     await copyImageFile(uri, uri === block.imageUri ? block.driveFileId : undefined);
   }
 
+  // «У БАЗУ ЗОБРАЖЕНЬ»: a picture of this page only, put into the base on purpose. Its mark comes off, and the next sync makes the
+  // record (the copy already backed up keeps its address).
+  function putImageIntoBase(id: string) {
+    snapshotBeforeChange();
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        // The key goes, not «undefined»: Firestore refuses an undefined value outright.
+        const { pageOnly: _mark, ...rest } = b;
+        return rest;
+      })
+    );
+    notify('Додано в базу зображень', 'Тепер це зображення є і в базі, і на сторінці.');
+  }
+
   function renameImageBlock(id: string, title: string) {
     snapshotBeforeChange();
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, imageTitle: title } : b)));
@@ -6674,7 +6716,7 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // for a photo that already exists - see syncPhotosForDocument. The
     // block keeps its own copy as the fallback it has always been; the
     // name everything actually shows comes from here.
-    setDoc(doc(db, 'photos', id), { title, updatedAt: Date.now() }, { merge: true });
+    if (!blocks.find((b) => b.id === id)?.pageOnly) setDoc(doc(db, 'photos', id), { title, updatedAt: Date.now() }, { merge: true });
   }
 
   // A shortcut for the same thing select-mode's own delete already does -
@@ -6699,6 +6741,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   // block instead got no driveFileId - a picture that showed in the note
   // and opened onto a crossed-out cloud.
   const viewerBlock = viewerImageId ? liveBlocks.find((b) => b.id === viewerImageId) : null;
+  // The pictures of this page in the order they stand - the viewer pages through them and shows them as a strip.
+  const pageImages = liveBlocks.filter((b) => (b.type ?? 'paragraph') === 'image' && !!b.imageUri);
+  const pageImageAt = viewerImageId ? pageImages.findIndex((b) => b.id === viewerImageId) : -1;
 
 
   // The pages come back with every word and the box it sits in, so the
@@ -7784,6 +7829,16 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
               driveFileId={viewerBlock.driveFileId}
               onClose={() => setViewerImageId(null)}
               place={title.trim() || 'Без назви'}
+              position={pageImages.length > 1 && pageImageAt >= 0 ? { index: pageImageAt, count: pageImages.length } : undefined}
+              onPrev={pageImageAt > 0 ? () => setViewerImageId(pageImages[pageImageAt - 1].id) : undefined}
+              onNext={pageImageAt >= 0 && pageImageAt < pageImages.length - 1 ? () => setViewerImageId(pageImages[pageImageAt + 1].id) : undefined}
+              thumbs={pageImages.slice(Math.max(0, pageImageAt - 12), pageImageAt + 13).map((b) => ({
+                key: b.id,
+                uri: b.imageUri!,
+                driveFileId: b.driveFileId,
+                active: b.id === viewerImageId,
+                onPress: () => setViewerImageId(b.id),
+              }))}
               actions={[
                 {
                   key: 'rename',
@@ -7824,15 +7879,26 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                     );
                   },
                 },
-                {
-                  key: 'database',
-                  icon: 'server-outline',
-                  label: 'База',
-                  onPress: () => {
-                    setViewerImageId(null);
-                    navigation.navigate('Photos');
-                  },
-                },
+                viewerBlock.pageOnly
+                  ? {
+                      key: 'into-base',
+                      icon: 'server-outline',
+                      label: 'У базу',
+                      onPress: () => {
+                        const id = viewerBlock.id;
+                        setViewerImageId(null);
+                        putImageIntoBase(id);
+                      },
+                    }
+                  : {
+                      key: 'database',
+                      icon: 'server-outline',
+                      label: 'База',
+                      onPress: () => {
+                        setViewerImageId(null);
+                        navigation.navigate('Photos');
+                      },
+                    },
                 {
                   // Never automatic: most photographs are not pages, and
                   // spending ten seconds of the phone on every one of

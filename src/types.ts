@@ -188,6 +188,10 @@ export interface Block {
   // pick, or any image block from before this existed) leaves the group
   // unassigned as before.
   imageSource?: 'camera';
+  // 'image' blocks only (2026-10-31, the user's: «в базу збережеться лише те що я туди покладу»): a picture put on a PAGE lives
+  // on that page only - no record in the Photos base - until it is deliberately put there («У базу зображень»), which removes
+  // this mark. Absent = the old way (a block from the base, or any block made before this existed): mirrored as a record.
+  pageOnly?: boolean;
   // 'image' blocks only. Absent means 'contain' (real proportions, pale
   // gray letterboxing) - keeps images saved before this setting existed
   // displaying the same as they already did.

@@ -626,6 +626,38 @@ function BlockList({
   // tell was to collapse the toggle and see what vanished.
   let indented = false;
   let frameToggleId: string | null = null;
+  // THREE PICTURES IN A ROW (2026-10-31, the user's: «3 зображення поруч групуються в один блок з 3 мініатюрами» - and no grid of
+  // blocks, the list stays a list): pictures standing one after another are read in threes. The first of three draws the row
+  // (itself and the two after it), the other two draw nothing; each is still a block of its own, so every per-picture thing - the
+  // record, the name, the drawing, the viewer, deleting - is unchanged.
+  const imageGroupCache = useRef(new Map<string, Block[]>());
+  const imageRoles = useMemo(() => {
+    const roles = new Map<string, { head: boolean; group?: Block[] }>();
+    let run = 0;
+    for (let i = 0; i < blocks.length; i += 1) {
+      const b = blocks[i];
+      if ((b.type ?? 'paragraph') !== 'image' || !b.imageUri) {
+        run = 0;
+        continue;
+      }
+      if (run % 3 === 0) {
+        const group: Block[] = [];
+        for (let k = i + 1; k < blocks.length && group.length < 2; k += 1) {
+          if ((blocks[k].type ?? 'paragraph') !== 'image' || !blocks[k].imageUri) break;
+          group.push(blocks[k]);
+        }
+        const key = `${b.id}|${group.map((g) => `${g.id}:${g.imageUri}:${g.driveFileId ?? ''}`).join('|')}`;
+        let kept = imageGroupCache.current.get(key);
+        if (!kept) {
+          kept = group;
+          imageGroupCache.current.set(key, kept);
+        }
+        roles.set(b.id, { head: true, group: kept.length ? kept : undefined });
+      } else roles.set(b.id, { head: false });
+      run += 1;
+    }
+    return roles;
+  }, [blocks]);
 
   // EVERY ROW RENDERS ONLY WHEN ITS OWN THINGS CHANGE (2026-10-06). The
   // screen hands this list new handler functions on every one of its
@@ -734,6 +766,8 @@ function BlockList({
         <SortableBlockRow
           key={item.id}
           item={item}
+          imageGroup={imageRoles.get(item.id)?.group}
+          imageHidden={imageRoles.get(item.id)?.head === false}
           hideHandle={hideHandle}
           searchHighlight={searchHighlight}
           searchCurrent={searchCurrent && searchCurrent.blockId === item.id ? searchCurrent.nth : undefined}

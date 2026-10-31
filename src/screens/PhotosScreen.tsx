@@ -1035,6 +1035,17 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
                   position={viewerIndex >= 0 ? { index: viewerIndex, count: itemsHere.length } : undefined}
                   onPrev={viewerPrevId ? () => showOtherPhoto(viewerPrevId) : undefined}
                   onNext={viewerNextId ? () => showOtherPhoto(viewerNextId) : undefined}
+                  thumbs={
+                    viewerIndex >= 0
+                      ? itemsHere.slice(Math.max(0, viewerIndex - 12), viewerIndex + 13).map((p) => ({
+                          key: p.id,
+                          uri: p.imageUri,
+                          driveFileId: p.driveFileId,
+                          active: p.id === viewerPhotoId,
+                          onPress: () => showOtherPhoto(p.id),
+                        }))
+                      : undefined
+                  }
                   sketchElements={viewerPhoto.sketchElements}
                   sketchWidth={viewerPhoto.sketchWidth}
                   sketchHeight={viewerPhoto.sketchHeight}

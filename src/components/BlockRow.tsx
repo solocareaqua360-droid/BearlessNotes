@@ -9,6 +9,7 @@ import { INK, drawingViewBox } from '../utils/sketchGeometry';
 import { rememberTableTap, useTableWide } from '../utils/tableTap';
 import { finishNaming, useNamingBlock } from '../utils/docRefNaming';
 import { requestBoardJump } from '../utils/boardMap';
+import AttachmentImage from './AttachmentImage';
 import { ComponentProps, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -82,6 +83,8 @@ import { PreviewDepthContext } from './previewDepth';
 // handled by the wrapping SortableBlockRow, not in here.
 type BlockRowProps = {
   item: Block;
+  // The pictures drawn beside this one in the same row (BlockList reads pictures in threes).
+  imageGroup?: Block[];
   // The daily note in the calendar draws no drag handles: its sheet runs
   // the full width and passes under the rail, so a column of handles
   // would sit beneath the buttons. Dragging still works - the whole row
@@ -173,6 +176,7 @@ export const LINK_BLUE_DARK = '#60A5FA';
 
 export default function BlockRow({
   item,
+  imageGroup,
   hideHandle,
   handleGesture,
   indented,
@@ -501,7 +505,22 @@ export default function BlockRow({
     // cropping whatever doesn't fit. The small corner button switches
     // between the two per image.
     const fit = item.imageFit ?? 'contain';
-    content = !item.imageUri ? (
+    // The first of up to three pictures standing together draws all of them in one row, small and level; a tap on any opens it
+    // in the viewer, which pages through the whole page. Fit, drawing and the rest are per picture - one tap away in the viewer.
+    content = imageGroup && imageGroup.length > 0 && item.imageUri ? (
+      <View style={{ flexDirection: 'row', gap: 6, alignSelf: 'stretch', width: '100%' }}>
+        {[item, ...imageGroup].map((b) => (
+          <Pressable key={b.id} disabled={isSelectMode} onPress={() => onOpenImage(b.id)} style={{ flex: 1, height: 150, borderRadius: 10, overflow: 'hidden', backgroundColor: '#F1F1EF' }}>
+            <AttachmentImage uri={b.imageUri!} driveFileId={b.driveFileId} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            {!!b.sketchElements?.length && (
+              <Svg style={StyleSheet.absoluteFill} viewBox={`0 0 ${b.sketchWidth || 1} ${b.sketchHeight || 1}`} preserveAspectRatio="none" pointerEvents="none">
+                <SketchLayer elements={b.sketchElements} ink={INK} />
+              </Svg>
+            )}
+          </Pressable>
+        ))}
+      </View>
+    ) : !item.imageUri ? (
       <Text style={styles.blockPlaceholder}>Немає зображення</Text>
     ) : imageCacheStatus === 'restoring' || imageCacheStatus === 'checking' ? (
       <View style={[styles.blockImageWrap, styles.attachmentStatusBox]}>

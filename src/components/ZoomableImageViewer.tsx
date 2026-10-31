@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { INK } from '../utils/sketchGeometry';
 import SketchLayer from './SketchLayer';
 import { Ionicons } from './icons/Ionicons';
@@ -59,6 +59,9 @@ type Props = {
   place?: string;
   title?: string;
   position?: { index: number; count: number };
+  // THE STRIP OF THE NEIGHBOURS, as galleries have it (2026-10-31, the user's): small pictures along the foot, the one on
+  // show lit; a tap goes to that one. Given only where the viewer has a side to page to.
+  thumbs?: { key: string; uri: string; driveFileId?: string; active: boolean; onPress: () => void }[];
 };
 
 // THE FOUR IN THE DOCK (the user's «ок підходить» to the sketch): share, draw, read the text, folders - whichever of them the
@@ -86,6 +89,7 @@ export default function ZoomableImageViewer({
   place,
   title,
   position,
+  thumbs,
 }: Props) {
   // PAGING WITHOUT BLACK (the user, 2026-10-10: «між перегортаннями блимає
   // проміжний кадр»): the new picture is decoded at full size and for a moment
@@ -311,6 +315,27 @@ export default function ZoomableImageViewer({
           </>
         )}
 
+        {/* THE STRIP: the pictures of the same page or list, the current one framed, kept in view as the viewer pages. */}
+        {!!thumbs && thumbs.length > 1 && (
+          <View style={[styles.stripRow, { bottom: insets.bottom + 12 + 64 + 10 }]} pointerEvents="box-none">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.strip}
+              ref={(node) => {
+                const at = thumbs.findIndex((t) => t.active);
+                if (node && at >= 0) setTimeout(() => node.scrollTo({ x: Math.max(0, at * 54 - 120), animated: true }), 30);
+              }}
+            >
+              {thumbs.map((t) => (
+                <Pressable key={t.key} onPress={t.onPress} accessibilityLabel="Показати це зображення" style={[styles.thumb, t.active && { borderColor: ink, opacity: 1 }, !t.active && { opacity: 0.6 }]}>
+                  <AttachmentImage uri={t.uri} driveFileId={t.driveFileId} style={StyleSheet.absoluteFill} />
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         {/* THE DOCK: the four, and the way back on the right - where it is everywhere else. */}
         <View style={[styles.dockRow, { bottom: insets.bottom + 12 }]} pointerEvents="box-none">
           {primary.length > 0 ? (
@@ -391,6 +416,9 @@ const makeStyles = (t: Theme) => StyleSheet.create({
   menuText: { flex: 1, fontSize: 15, fontFamily: SOFT_REGULAR },
   menuBadge: { fontSize: 12.5, fontFamily: SOFT_MEDIUM },
   menuLine: { height: StyleSheet.hairlineWidth, marginVertical: 4, marginHorizontal: 10 },
+  stripRow: { position: 'absolute', left: 0, right: 0, height: 52 },
+  strip: { gap: 6, paddingHorizontal: 16, alignItems: 'center' },
+  thumb: { width: 48, height: 48, borderRadius: 9, overflow: 'hidden', borderWidth: 2, borderColor: 'transparent' },
   dockRow: { position: 'absolute', left: 12, right: 12, bottom: 18, flexDirection: 'row', alignItems: 'center', gap: 10 },
   dock: { flex: 1, height: 64, borderRadius: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 6 },
   dockButton: { minWidth: 64, height: 56, alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 4 },

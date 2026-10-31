@@ -29,6 +29,9 @@ import type { DocumentIndex } from '../hooks/useDocumentIndex';
 // a plain, prop-only component, no closure over the screen's own state.
 type SortableBlockRowProps = {
   item: Block;
+  // Pictures read in threes (BlockList): the pictures that stand after this one in its row, and a picture drawn by the row's first.
+  imageGroup?: Block[];
+  imageHidden?: boolean;
   hideHandle?: boolean;
   searchHighlight?: string;
   searchCurrent?: number;
@@ -122,6 +125,8 @@ const EDGE_START = 4;
 
 function SortableBlockRow({
   item,
+  imageGroup,
+  imageHidden,
   isSelected,
   isSelectMode,
   isActive,
@@ -299,12 +304,13 @@ function SortableBlockRow({
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
 
   return (
-    <View onLayout={onLayout} {...({ dataSet: { blockId: item.id } } as object)}>
+    <View onLayout={onLayout} style={imageHidden ? { height: 0, overflow: 'hidden' } : undefined} {...({ dataSet: { blockId: item.id } } as object)}>
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.glow, glowStyle]} />
       <GestureDetector gesture={gesture}>
         <Animated.View style={compressStyle}>
-          <BlockRow
+          {imageHidden ? null : <BlockRow
             item={item}
+            imageGroup={imageGroup}
             onPullSelect={() => {
               onSweepStart?.();
               onSweepEnd?.();
@@ -353,7 +359,7 @@ function SortableBlockRow({
             onOpenCustomView={onOpenCustomView}
             inputRef={inputRef}
             softInputDisabled={softInputDisabled}
-          />
+          />}
         </Animated.View>
       </GestureDetector>
       {isSelectMode && !!swipeSelect && !pointer && (
