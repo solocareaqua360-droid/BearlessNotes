@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FEATURES } from '../features';
+import { openThoughtCapture } from '../utils/thoughtBus';
 import { Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import TextInput from './AppTextInput';
 import { Ionicons } from './icons/Ionicons';
@@ -34,7 +36,10 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
 let listener: ((open: boolean) => void) | null = null;
 
+// The capture is «Думки» now (2026-11-02, the user's: the chat is put away; what is caught must stay where it can be seen). The
+// chat's own window is used only where «Думки» are off.
 export function openCapture() {
+  if (FEATURES.thoughts && openThoughtCapture()) return;
   listener?.(true);
 }
 

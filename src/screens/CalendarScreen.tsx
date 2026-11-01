@@ -63,7 +63,7 @@ import { composerBus } from '../navigation/composerBus';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft, type SoftTokens } from '../theme/soft';
-import { DockMark, useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher, useStableTopExtras, useTopBack, useTopExtras } from '../navigation/navDock';
+import { DockMark, useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher, useStableTopExtras, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import InlineDock from '../components/InlineDock';
 import {
   MONTH_FULL,
@@ -896,9 +896,20 @@ export default function CalendarScreen() {
   // it (see the end of the render) - nothing is published for the
   // window's bar or dock, which fade out while the drawer is out.
   useTopBack(toPreviousDesk, !calendarDrawer);
+  // Search is the calendar's own (2026-11-02, the user's: the diary exists only for its pages - search them here): the days that match
+  // stand over the calendar, newest first; a tap opens that day. It went to the separate «Щоденник» screen before.
   const searchBead = calendarFocused
-    ? { icon: 'search-outline', onPress: () => navigation.navigate('Diary') }
+    ? {
+        icon: daySearch !== null ? 'close-outline' : 'search-outline',
+        active: daySearch !== null,
+        onPress: () => setDaySearch((prev) => (prev === null ? '' : null)),
+      }
     : null;
+  // The field for it stands in the window's bar (the drawer, long gone on the phone, had its own).
+  useTopSearch(
+    daySearch !== null ? { placeholder: 'Пошук у щоденнику', initialQuery: daySearch, onChangeQuery: setDaySearch, onClose: () => setDaySearch(null) } : null,
+    calendarFocused && !calendarDrawer
+  );
   const todayBead = calendarFocused
       ? {
           icon: 'today-outline',
@@ -2266,7 +2277,7 @@ export default function CalendarScreen() {
 
       {/* The days that match, over the calendar while searching - newest
           first, the diary's cards. A tap opens that day. */}
-      {calendarDrawer && daySearch !== null && (
+      {daySearch !== null && (
         <View style={[styles.daySearch, { paddingTop: calendarInsets.top + CHROME_TOP + TOP_NAV_SPACE }]}>
           {daySearch.trim().length > 0 && (
             <ScrollView

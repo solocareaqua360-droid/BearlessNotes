@@ -138,7 +138,7 @@ function paneTargetFor(tile: Tile): PaneTarget | null {
 }
 
 // The tiles no longer listed among the bases (their things live in the explorer) - see `items`.
-const LEFT_FOR_EXPLORER = new Set(['documents', 'board', 'explorer', 'chat']);
+const LEFT_FOR_EXPLORER = new Set(['documents', 'board', 'explorer', 'chat', 'diary']);
 
 export default function DatabasesScreen() {
   // Temporary diagnosis - see utils/perfWatch.
