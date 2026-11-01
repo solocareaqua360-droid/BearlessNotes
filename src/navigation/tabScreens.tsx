@@ -17,6 +17,9 @@ import CustomDatabaseScreen from '../screens/CustomDatabaseScreen';
 import StartScreen from '../screens/StartScreen';
 import ExplorerScreen from '../screens/ExplorerScreen';
 import { FEATURES } from '../features';
+import TagManageScreen from '../screens/TagManageScreen';
+import GroupsScreen from '../screens/GroupsScreen';
+import TagItemsScreen from '../screens/TagItemsScreen';
 import { BASES_DESK, BOARDS_DESK, CALENDAR_DESK, DeskScreen, PERMANENT_DESK, START_DESK } from './desks';
 
 // The four tabs, as a list - shared by the two tab navigators (Tabs.tsx
@@ -41,6 +44,40 @@ export function BoardsStack() {
   );
 }
 
+// THE «БАЗИ» DESK'S OWN STACK (2026-11-02, the user's: every desk lives on its own, «як два вікна Finder» - in and out of folders as far
+// as one likes, and a switch to another desk closes nothing). A base opened from the bases list opens INSIDE this desk; switching to
+// «Старт» and back finds it where it was - its folder, its level - and back steps up inside it, to the list at its root. Before, a base
+// was a screen laid over ALL the desks: a desk bead took it off and a «remembered base» opened a fresh copy, which lost its folders and
+// lay over whichever desk the press came from (so back landed on «Старт»). The same names as the root's, so `navigate('CustomDatabase')`
+// from inside this desk finds this stack first; from anywhere else it still goes over everything, as before.
+const BasesStackNav = createNativeStackNavigator();
+function DocumentsStandalone() {
+  return <DocumentsScreen standalone />;
+}
+function BoardsStandalone() {
+  return <BoardsListScreen standalone />;
+}
+export function BasesStack() {
+  return (
+    <BasesStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <BasesStackNav.Screen name="BasesList" component={DatabasesScreen} />
+      <BasesStackNav.Screen name="CustomDatabase" component={CustomDatabaseScreen} />
+      <BasesStackNav.Screen name="Links" component={LinksScreen} />
+      <BasesStackNav.Screen name="Photos" component={PhotosScreen} />
+      <BasesStackNav.Screen name="Files" component={FilesScreen} />
+      <BasesStackNav.Screen name="Stickers" component={StickersScreen} />
+      <BasesStackNav.Screen name="Flashcards" component={FlashcardsScreen} />
+      <BasesStackNav.Screen name="Diary" component={DiaryScreen} />
+      <BasesStackNav.Screen name="Tasks" component={TasksScreen} />
+      <BasesStackNav.Screen name="Tags" component={TagManageScreen} />
+      <BasesStackNav.Screen name="Groups" component={GroupsScreen} />
+      <BasesStackNav.Screen name="TagItems" component={TagItemsScreen as never} />
+      <BasesStackNav.Screen name="DocumentsCopy" component={DocumentsStandalone} />
+      <BasesStackNav.Screen name="BoardsCopy" component={BoardsStandalone} />
+    </BasesStackNav.Navigator>
+  );
+}
+
 export const TAB_SCREENS: { name: string; component: ComponentType<any> }[] = [
   { name: 'Документи', component: DocumentsScreen },
   { name: 'Календар', component: CalendarScreen },
@@ -54,7 +91,7 @@ export const TAB_SCREENS: { name: string; component: ComponentType<any> }[] = [
 export function deskScreenFor(key: string): DeskScreen | null {
   if (key === START_DESK) return FEATURES.startIsExplorer ? { component: ExplorerScreen, props: { desk: true } } : { component: StartScreen };
   if (key === CALENDAR_DESK) return { component: CalendarScreen };
-  if (key === BASES_DESK) return { component: DatabasesScreen };
+  if (key === BASES_DESK) return { component: BasesStack };
   if (key === PERMANENT_DESK) return { component: DocumentsScreen };
   if (key === BOARDS_DESK) return { component: BoardsStack };
   if (key.startsWith('db:custom:')) {
