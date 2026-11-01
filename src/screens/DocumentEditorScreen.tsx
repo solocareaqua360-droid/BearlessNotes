@@ -5,6 +5,8 @@ import CarriesBackMarker from '../components/CarriesBackMarker';
 import { frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { RADIUS } from '../theme/scale';
 import { whenDeskIsThere } from '../navigation/deskRegistry';
+import { explorerPlace } from '../navigation/explorerPlace';
+import { START_DESK } from '../navigation/desks';
 import { noteOpened, useNoteOpened } from '../navigation/recentPlaces';
 import ScreenGround from '../components/ScreenGround';
 import { IN_SHELL } from '../utils/shell';
@@ -7184,20 +7186,11 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   const path = parts.slice(0, i + 1).join('/');
                   return {
                     label,
-                    onPress: () =>
-                      whenDeskIsThere(
-                        'Документи',
-                        () =>
-                          (navigation as unknown as { navigate: (name: string, params: object) => void }).navigate('Tabs', {
-                            screen: 'Документи',
-                            params: { folder: path },
-                          }),
-                        () =>
-                          (navigation as unknown as { navigate: (name: string, params: object) => void }).navigate(
-                            'DocumentsCopy',
-                            { folder: path }
-                          )
-                      ),
+                    // The folder opens in the explorer on the «Старт» desk (2026-11-02: the documents list left the bases).
+                    onPress: () => {
+                      explorerPlace.request(path);
+                      (navigation as unknown as { navigate: (name: string, params: object) => void }).navigate('Tabs', { screen: START_DESK });
+                    },
                   };
                 });
               })(),

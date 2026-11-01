@@ -282,7 +282,7 @@ const NO_BLOCKS: Block[] = [];
 
 // The diagnostics window (utils/perfWatch, kept as a quiet tool): what the
 // app measured lately, and one press to copy it all.
-async function showDiagnostics(copied = false): Promise<void> {
+export async function showDiagnostics(copied = false): Promise<void> {
   const text = recentReports();
   const answer = await ask({
     title: copied ? 'Діагностика · скопійовано' : 'Діагностика',

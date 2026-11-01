@@ -2122,15 +2122,27 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       notify('Не вдалося видалити', (e as Error).message);
     }
   }
-  // THE 30-DAY RULE for boards and cards (the bases that have their own bin already clear
-  // theirs): whatever has lain in the bin longer is removed for good, once per visit.
+  // THE 30-DAY RULE for notes, boards and cards: whatever has lain in the bin longer is removed for good, once per visit.
+  // Notes too since 2026-11-02 - their own list (DocumentsScreen) did it, and that list left the bases.
   const purgedOld = useRef(false);
   useEffect(() => {
     if (purgedOld.current || binned.length === 0) return;
     purgedOld.current = true;
     const cutoff = Date.now() - BIN_TTL_MS;
-    const old = binned.filter((i) => (i.kind === 'board' || i.kind === 'flashcard') && Number((i.raw as Record<string, unknown>).deletedAt) < cutoff);
-    old.forEach((i) => purgeOneItem(i).catch(() => {}));
+    const old = binned.filter((i) => (i.kind === 'board' || i.kind === 'flashcard' || i.kind === 'document') && Number((i.raw as Record<string, unknown>).deletedAt) < cutoff);
+    old.forEach((i) => {
+      if (i.kind === 'document')
+        purgeNote(i.docId, async (id) => {
+          const snap = await getDoc(doc(db, 'documents', id));
+          if (!snap.exists()) return;
+          for (const tagId of (snap.data()?.tagIds as string[] | undefined) ?? []) {
+            const tag = tagById.get(tagId);
+            if (tag) await detachTagFromDeletedItem(tag, 'document', id).catch(() => {});
+          }
+          await deleteDoc(doc(db, 'documents', id));
+        }).catch(() => {});
+      else purgeOneItem(i).catch(() => {});
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [binned]);
   const enterBin = () => {

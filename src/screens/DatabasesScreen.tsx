@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { showDiagnostics } from './DocumentsScreen';
 import { useChromeScrollHandler } from '../navigation/chromeScroll';
 import ScreenGround from '../components/ScreenGround';
 import { APPS_TEMPLATE_NAME, APPS_TEMPLATE_RATES, appsTemplateFields } from '../utils/appsTemplate';
@@ -136,6 +137,9 @@ function paneTargetFor(tile: Tile): PaneTarget | null {
   return null;
 }
 
+// The tiles no longer listed among the bases (their things live in the explorer) - see `items`.
+const LEFT_FOR_EXPLORER = new Set(['documents', 'board', 'explorer', 'chat']);
+
 export default function DatabasesScreen() {
   // Temporary diagnosis - see utils/perfWatch.
   useRenderTimer('Бази');
@@ -270,6 +274,8 @@ export default function DatabasesScreen() {
     { label: 'Закріпити', icon: 'bookmark-outline', onPress: () => setPinSheetVisible(true) },
     { kind: 'rule' },
     { label: 'Налаштування', icon: 'settings-outline', onPress: () => navigation.navigate('Settings') },
+    // The measurements window - it lived in the documents list's «⋯», which left the bases (2026-11-02).
+    { label: 'Діагностика', icon: 'pulse-outline', onPress: () => showDiagnostics() },
   ];
   useTopExtras(databasesMenu, null, databasesFocused && !databasesLayer);
   // For the bar drawn inside the layer: one object while it says the same
@@ -409,9 +415,11 @@ export default function DatabasesScreen() {
   // has not arranged yet stands in.
   const items: BaseItem[] = [
     // The icon the user chose for it, where they did.
-    ...WIDE_TILES.map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile: { ...tile, icon: iconFor(tile.key, tile.icon) as Tile['icon'] } })),
+    // What the explorer («Старт») holds is not listed again here (2026-11-02, the user's: notes, boards, the explorer itself), and the
+    // chat is put away (the capture window still writes to it - its own clock button still opens it).
+    ...WIDE_TILES.filter((tile) => !LEFT_FOR_EXPLORER.has(tile.key)).map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile: { ...tile, icon: iconFor(tile.key, tile.icon) as Tile['icon'] } })),
     // A database put away for now (features.ts) has no row.
-    ...GRID_TILES.filter((tile) => (FEATURES.stickers || tile.key !== 'stickers') && (FEATURES.projectsScreen || tile.key !== 'groups')).map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile: { ...tile, icon: iconFor(tile.key, tile.icon) as Tile['icon'] } })),
+    ...GRID_TILES.filter((tile) => !LEFT_FOR_EXPLORER.has(tile.key) && (FEATURES.stickers || tile.key !== 'stickers') && (FEATURES.projectsScreen || tile.key !== 'groups')).map((tile) => ({ key: tile.key, kind: 'builtin' as const, tile: { ...tile, icon: iconFor(tile.key, tile.icon) as Tile['icon'] } })),
     ...customDatabases.map((database) => ({ key: database.id, kind: 'custom' as const, database })),
     ...pinnedItems,
     { key: NEW_TILE_KEY, kind: 'action' as const },
