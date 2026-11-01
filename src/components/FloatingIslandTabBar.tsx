@@ -321,10 +321,12 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   // navigator goes back to the tabs, onto that desk - the base in front is left, as with its own back.
   // Whether a screen stands pushed over the tabs (a base) - read off the root navigator as it changes.
   const [overTabs, setOverTabs] = useState(false);
+  const overTabsRef = useRef(false);
   useEffect(() => {
     const read = () => {
       const routes = navigationRef.isReady() ? navigationRef.getRootState()?.routes ?? [] : [];
-      setOverTabs(routes.length > 1 && routes[0]?.name === 'Tabs');
+      overTabsRef.current = routes.length > 1 && routes[0]?.name === 'Tabs';
+      setOverTabs(overTabsRef.current);
     };
     read();
     return navigationRef.addListener('state', read);
@@ -341,6 +343,12 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
           active: overTabs ? route?.name === BASES_DESK : d.active,
           onPress: () => {
             if (!route || !navigationRef.isReady()) return;
+            // On a desk itself (the explorer asks for these beads too) a press is the desk bead's own press - which is what
+            // brings a remembered base back with «Бази» (it was forgotten here, and the list came instead - 2026-11-02).
+            if (!overTabsRef.current) {
+              d.onPress();
+              return;
+            }
             // BACK to the desks under the screen in front, not a second set of them on top: `navigate` pushed a new
             // Tabs (React Navigation 7), and building every desk anew held the dock still for a second or two (the user,
             // 2026-10-29: «кулька розтягується в овал і завмирає»). popTo leaves the screen; then the desk is picked.
