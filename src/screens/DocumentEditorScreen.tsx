@@ -6,6 +6,7 @@ import { frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { RADIUS } from '../theme/scale';
 import { whenDeskIsThere } from '../navigation/deskRegistry';
 import { explorerPlace } from '../navigation/explorerPlace';
+import { navigationRef } from '../navigationRef';
 import { START_DESK } from '../navigation/desks';
 import { noteOpened, useNoteOpened } from '../navigation/recentPlaces';
 import ScreenGround from '../components/ScreenGround';
@@ -7186,10 +7187,15 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
                   const path = parts.slice(0, i + 1).join('/');
                   return {
                     label,
-                    // The folder opens in the explorer on the «Старт» desk (2026-11-02: the documents list left the bases).
+                    // The folder opens in the explorer on the «Старт» desk (2026-11-02: the documents list left the bases). The note
+                    // leaves by its own back - that is what folds it into its card and gives the desks back (a jump to the tabs
+                    // skipped it and left the desks pushed aside: a black «Старт») - and then «Старт» is put in front.
                     onPress: () => {
                       explorerPlace.request(path);
-                      (navigation as unknown as { navigate: (name: string, params: object) => void }).navigate('Tabs', { screen: START_DESK });
+                      navigation.goBack();
+                      setTimeout(() => {
+                        if (navigationRef.isReady()) (navigationRef.navigate as (n: string, p: object) => void)('Tabs', { screen: START_DESK });
+                      }, 650);
                     },
                   };
                 });
