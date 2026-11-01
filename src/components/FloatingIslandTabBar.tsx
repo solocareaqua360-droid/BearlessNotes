@@ -225,7 +225,12 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
       : null
   );
 
-  const barUp = tabsFocused && !onBoard && topNavOn;
+  // A base open inside the «Бази» desk (its own stack, tabScreens' BasesStack) has its own bar and its own way back, as a board
+  // has: the desks' bar steps away, and with it the switcher that would take the back circle's place.
+  const inBase =
+    state.routes[state.index]?.name === BASES_DESK &&
+    (getFocusedRouteNameFromRoute(state.routes[state.index]) ?? 'BasesList') !== 'BasesList';
+  const barUp = tabsFocused && !onBoard && !inBase && topNavOn;
   // The dock's round button opens the same switcher (deskSwitcherBus) while
   // the desks are what is in front.
   // The bar's desks, the same array while nothing about them changes (the
