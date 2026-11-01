@@ -7473,6 +7473,7 @@ export default function BoardScreen() {
   const layerButtonSlop = softBoardTokens && !macBoard ? 12 : 6;
   useTopExtras(
     [
+      ...(!embed ? [{ label: 'Перейменувати дошку', icon: 'pencil-outline' as const, onPress: () => setRenamingTitle(true) }] : []),
       ...(isolatedIds !== null ? [{ label: 'Вийти з ізоляції', icon: 'scan-outline' as const, onPress: toggleIsolation }] : []),
       // The Mac: this board in a window of its own, beside the explorer's (App.web's `open` parameter).
       ...(macBoard && !embed && !BOARD_WINDOW && !isDayBoard

@@ -702,7 +702,8 @@ function TopNavBar({
                 dimmed: !!t.dimmed,
                 onPress: t.onPress,
               })),
-              extras?.menu
+              // An empty list draws no «⋯» (the board's opened onto nothing when it had no free text cards - 2026-11-02).
+              extras?.menu?.some((e) => !('kind' in e) || (e as { kind?: string }).kind === undefined)
                 ? { key: 'menu', width: MENU_W, icon: 'ellipsis-horizontal', label: 'Ще', active: menuOpen, onPress: () => setMenuOpen((v) => !v) }
                 : null,
               extras?.select

@@ -319,24 +319,36 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   useEffect(() => () => registerDeskBeads(null), []);
   // The same three, to be reached from a base pushed over the tabs (deskBeadsBus's registerDeskReach): the root
   // navigator goes back to the tabs, onto that desk - the base in front is left, as with its own back.
+  // Whether a screen stands pushed over the tabs (a base) - read off the root navigator as it changes.
+  const [overTabs, setOverTabs] = useState(false);
+  useEffect(() => {
+    const read = () => {
+      const routes = navigationRef.isReady() ? navigationRef.getRootState()?.routes ?? [] : [];
+      setOverTabs(routes.length > 1 && routes[0]?.name === 'Tabs');
+    };
+    read();
+    return navigationRef.addListener('state', read);
+  }, []);
   const reachDesks = useMemo(
     () =>
       dockDesks.map((d, i) => {
         const route = state.routes.filter((r) => FIXED_DESKS.includes(r.name))[i];
         return {
           ...d,
-          // A base in front belongs to the «Бази» desk, so that bead is the lit one (the desk under it, where the person came
-          // from, used to stay lit: «Старт» over an open base - the user, 2026-10-31).
-          active: route?.name === BASES_DESK,
+          // A base PUSHED over the tabs belongs to the «Бази» desk, so that bead is the lit one (the desk under it used to stay
+          // lit: «Старт» over an open base - the user, 2026-10-31). A desk that asks for these beads itself (the explorer inside a
+          // folder) is no base: there the desk in front stays lit (2026-11-02, the user's: a folder lit «Бази»).
+          active: overTabs ? route?.name === BASES_DESK : d.active,
           onPress: () => {
             if (!route || !navigationRef.isReady()) return;
             // BACK to the desks under the screen in front, not a second set of them on top: `navigate` pushed a new
             // Tabs (React Navigation 7), and building every desk anew held the dock still for a second or two (the user,
             // 2026-10-29: «кулька розтягується в овал і завмирає»). popTo leaves the screen; then the desk is picked.
             const routes = navigationRef.getRootState()?.routes ?? [];
-            // The base being left is remembered, unless the «Бази» bead itself was pressed (that is a wish for the list).
+            // The base being left is remembered, unless the «Бази» bead itself was pressed (that is a wish for the list) - and only
+            // when a base IS in front, pushed over the tabs (from a folder of the explorer there is nothing to remember).
             if (route?.name === BASES_DESK) forgetBase();
-            else rememberBase(routes[routes.length - 1] as { name: string; params?: object } | undefined);
+            else if (routes.length > 1 && routes[0]?.name === 'Tabs') rememberBase(routes[routes.length - 1] as { name: string; params?: object } | undefined);
             if (routes.length > 1 && routes[0]?.name === 'Tabs') {
               // The desk is picked UNDER the screen in front first, and only then is that screen left, by its usual slide: closing it
               // first and switching after showed whatever stood under it - another desk, or for a frame nothing at all, the phone's
@@ -351,7 +363,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
         };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dockDesks]
+    [dockDesks, overTabs]
   );
   const reachable = !!deskControl && topNavOn;
   useEffect(() => {
