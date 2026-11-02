@@ -64,7 +64,7 @@ import { detachTagFromDeletedItem } from '../hooks/useTags';
 import { appendBlocksToToday, blockFromFile, copyObjectsToNote } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import SaveDestinationSheet from '../components/SaveDestinationSheet';
-import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
+import { backupFileToDrive } from '../utils/googleDrive';
 import { colorForDocument } from '../utils/documentColor';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ensureFileIsHere, openFileExternally, shareFile } from '../utils/openFileExternally';
@@ -256,7 +256,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
   // The bin - see useBin. Auto-purge always keeps the Drive copy; a
   // human-initiated purge (openFileTrashMenu/emptyFileBin below) is the
   // only path that ever asks about deleting it too.
-  const bin = useBin<FileItem>('files', trashedFiles, (file) => purgeFile(file, false));
+  const bin = useBin<FileItem>('files', trashedFiles, (file) => purgeFile(file));
 
   useEffect(() => {
     return onSnapshot(ownedQuery('files'), (snapshot) => {
@@ -589,15 +589,10 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
 
   // Gone for good: what deleting used to be, now only reached by purging
   // from the bin - see useBin. Detaches every tag, drops the file out of
-  // any note that still references it, and optionally takes its Drive
-  // backup with it.
-  async function purgeFile(file: FileItem, alsoDeleteFromDrive: boolean) {
+  // any note that still references it. Its Drive copy stays for the Drive
+  // check (utils/driveSweep), which clears it once nothing points at it.
+  async function purgeFile(file: FileItem) {
     deleteDoc(doc(db, 'files', file.id));
-    if (alsoDeleteFromDrive && file.driveFileId) {
-      deleteFileFromDrive(file.driveFileId, file.driveBytes).then((error) => {
-        if (error) notify('Копія на Диску залишилась', error);
-      });
-    }
     await Promise.all(
       file.tagIds.map((tagId) => {
         const tag = tags.find((t) => t.id === tagId);
@@ -637,19 +632,9 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       return;
     }
     if (choice !== 'purge') return;
-    if (!file.driveFileId) {
-      await purgeFile(file, false);
-      return;
-    }
-    const driveAnswer = await ask({
-      title: 'Видалити копію з Google Диску?',
-      actions: [
-        { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
-        { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
-      ],
-    });
-    if (driveAnswer === 'cancel') return;
-    await purgeFile(file, driveAnswer === 'drive');
+    // No question about the Drive any more (2026-11-02): the Drive copy is the Drive check's to clear once nothing
+    // points at it (utils/driveSweep) - a board or a note may still be showing it.
+    await purgeFile(file);
   }
 
   async function emptyFileBin() {
@@ -660,20 +645,8 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
       confirmLabel: 'Очистити',
     });
     if (!yes) return;
-    const anyOnDrive = trashedFiles.some((f) => f.driveFileId);
-    if (!anyOnDrive) {
-      await Promise.all(trashedFiles.map((f) => purgeFile(f, false)));
-      return;
-    }
-    const driveAnswer = await ask({
-      title: 'Видалити копії з Google Диску?',
-      actions: [
-        { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
-        { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
-      ],
-    });
-    if (driveAnswer === 'cancel') return;
-    await Promise.all(trashedFiles.map((f) => purgeFile(f, driveAnswer === 'drive')));
+    // The Drive copies stay for the Drive check (utils/driveSweep), as above.
+    await Promise.all(trashedFiles.map((f) => purgeFile(f)));
   }
 
   // "Delete" puts a file in the bin (see useBin) - the record, its tags

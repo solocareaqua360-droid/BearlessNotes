@@ -109,7 +109,7 @@ import SketchEditor from '../components/SketchEditor';
 import EditorToolbar, { EDITOR_TOOLBAR_HEIGHT } from '../components/EditorToolbar';
 import { BLOCK_ACTIONS, BlockAction } from '../components/blockActions';
 import { clearCopiedObject, getCopiedObject, useCopiedObject } from '../utils/objectClipboard';
-import { backupFileToDrive, deleteFileFromDrive } from '../utils/googleDrive';
+import { backupFileToDrive } from '../utils/googleDrive';
 import { ensureFileIsHere, openFileExternally } from '../utils/openFileExternally';
 import TextRecognizer, {
   RecognizeProgress,
@@ -5607,9 +5607,9 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
     // same one. A cover CAN be a picture that is also in the text, and
     // then the copy belongs to both; deleting it would blank the picture
     // inside the note. Changing the cover must never do that.
-    if (previous && !contentRef.current.blocks.some((b) => b.driveFileId === previous.fileId)) {
-      deleteFileFromDrive(previous.fileId, previous.bytes).catch(() => null);
-    }
+    // 2026-11-02: no longer deleted here - a cover picked from the base shares the photo's own copy, and this check saw
+    // only this note's blocks. The Drive check (utils/driveSweep) clears it once nothing at all points at it.
+    void previous;
 
     if (!uri) return;
     // Quietly, after the picture is already on screen - the same order

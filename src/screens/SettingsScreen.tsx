@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { backupFileToDrive } from '../utils/googleDrive';
-import { checkDrive, DRIVE_GRACE_DAYS, restoreMissing } from '../utils/driveSweep';
+import { checkDrive, DRIVE_GRACE_DAYS, restoreMissing, trashUnused } from '../utils/driveSweep';
 import StockPhotoPicker from '../components/StockPhotoPicker';
 import {
   ActivityIndicator,
@@ -419,9 +419,29 @@ export default function SettingsScreen() {
           .join('\n'),
         actions: [
           ...(canRestore > 0 ? [{ id: 'restore', label: `Повернути на Диск (${canRestore})`, tone: 'primary' as const }] : []),
+          // Only once nothing is missing: putting back first, so nothing still wanted is counted as rubbish.
+          ...(r.missing.length === 0 && r.unused.length > 0
+            ? [{ id: 'trash', label: `Прибрати в кошик Диска (${r.unused.length})`, tone: 'danger' as const }]
+            : []),
           { id: 'ok', label: 'Зрозуміло' },
         ],
       });
+      if (answer === 'trash') {
+        const sure = await confirm({
+          title: `Прибрати ${r.unused.length} файлів?`,
+          message: `Вони підуть у кошик Google Диска (${formatBytes(r.unusedBytes)}) і лежатимуть там 30 днів - будь-який можна повернути. У застосунку ніщо на них не вказує.`,
+          confirmLabel: 'Прибрати',
+        });
+        if (sure) {
+          setDriveCheckBusy(true);
+          try {
+            const done = await trashUnused(r);
+            notify('Прибрано', `${done.trashed} файлів у кошику Диска.${done.failed ? ` Не вдалося: ${done.failed}.` : ''}`);
+          } catch (e) {
+            notify('Нічого не прибрано', e instanceof Error ? e.message : String(e));
+          }
+        }
+      }
       if (answer === 'restore') {
         setDriveCheckBusy(true);
         const done = await restoreMissing(r.missing);

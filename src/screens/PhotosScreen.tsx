@@ -85,7 +85,6 @@ import { useCachedAttachment } from '../hooks/useCachedAttachment';
 import { appendBlocksToToday, blockFromPhoto, copyObjectsToNote } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import SaveDestinationSheet from '../components/SaveDestinationSheet';
-import { deleteFileFromDrive } from '../utils/googleDrive';
 import DownloadToast from '../components/DownloadToast';
 import { FONT_BOLD, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
@@ -266,7 +265,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
   // The bin - see useBin. Auto-purge always keeps the Drive copy; a
   // human-initiated purge (openPhotoTrashMenu/emptyPhotoBin below) is the
   // only path that ever asks about deleting it too.
-  const bin = useBin<PhotoItem>('photos', trashedPhotos, (photo) => purgePhoto(photo, false));
+  const bin = useBin<PhotoItem>('photos', trashedPhotos, (photo) => purgePhoto(photo));
 
   async function handleDownloadPhoto(photo: PhotoItem) {
     const uri = await flattenPhoto(photo.imageUri, photo.driveFileId, photo.sketchElements, photo.sketchWidth, photo.sketchHeight);
@@ -594,16 +593,11 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
 
   // Gone for good: what deleting used to be, now only reached by purging
   // from the bin. Detaches every tag, drops the photo out of any note
-  // that still references it, and optionally takes its Drive backup with
-  // it - asked here rather than at bin time, since the whole point of the
-  // bin is that nothing irreversible happens until this.
-  async function purgePhoto(photo: PhotoItem, alsoDeleteFromDrive: boolean) {
+  // that still references it. Its Drive copy stays for the Drive check
+  // (utils/driveSweep), which clears it once nothing points at it - a
+  // board may still be showing it (2026-11-02).
+  async function purgePhoto(photo: PhotoItem) {
     deleteDoc(doc(db, 'photos', photo.id));
-    if (alsoDeleteFromDrive && photo.driveFileId) {
-      deleteFileFromDrive(photo.driveFileId, photo.driveBytes).then((error) => {
-        if (error) notify('Копія на Диску залишилась', error);
-      });
-    }
     await Promise.all(
       photo.tagIds.map((tagId) => {
         const tag = tags.find((t) => t.id === tagId);
@@ -643,19 +637,9 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       return;
     }
     if (choice !== 'purge') return;
-    if (!photo.driveFileId) {
-      await purgePhoto(photo, false);
-      return;
-    }
-    const driveAnswer = await ask({
-      title: 'Видалити копію з Google Диску?',
-      actions: [
-        { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
-        { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
-      ],
-    });
-    if (driveAnswer === 'cancel') return;
-    await purgePhoto(photo, driveAnswer === 'drive');
+    // No question about the Drive any more (2026-11-02): the Drive copy is the Drive check's to clear once nothing
+    // points at it (utils/driveSweep) - a board or a note may still be showing it.
+    await purgePhoto(photo);
   }
 
   async function emptyPhotoBin() {
@@ -666,20 +650,8 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
       confirmLabel: 'Очистити',
     });
     if (!yes) return;
-    const anyOnDrive = trashedPhotos.some((p) => p.driveFileId);
-    if (!anyOnDrive) {
-      await Promise.all(trashedPhotos.map((p) => purgePhoto(p, false)));
-      return;
-    }
-    const driveAnswer = await ask({
-      title: 'Видалити копії з Google Диску?',
-      actions: [
-        { id: 'keep', label: 'Залишити на Диску', icon: 'cloud-done-outline' },
-        { id: 'drive', label: 'Видалити з Диску', tone: 'danger', icon: 'cloud-offline-outline' },
-      ],
-    });
-    if (driveAnswer === 'cancel') return;
-    await Promise.all(trashedPhotos.map((p) => purgePhoto(p, driveAnswer === 'drive')));
+    // The Drive copies stay for the Drive check (utils/driveSweep), as above.
+    await Promise.all(trashedPhotos.map((p) => purgePhoto(p)));
   }
 
   function confirmDeleteSelected() {

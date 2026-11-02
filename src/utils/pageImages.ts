@@ -1,7 +1,7 @@
 import { deleteField, doc, getDoc, getDocs, updateDoc } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery, setDoc } from './owned';
-import { deleteFileFromDrive } from './googleDrive';
+import { trashDriveFile } from './googleDrive';
 import type { Block } from '../types';
 
 // THE PICTURES THAT LIVE ON A PAGE ONLY (2026-10-31, the one rule): not in the Photos base, so nothing there lists them - this is
@@ -124,8 +124,10 @@ export async function deletePageImages(list: PageImage[]): Promise<{ removed: nu
   let driveFailed = 0;
   for (const i of list) {
     if (!i.driveFileId || held.has(i.driveFileId)) continue;
-    const problem = await deleteFileFromDrive(i.driveFileId, i.bytes);
-    if (problem) driveFailed += 1;
+    // Into the Drive's own bin (30 days), never deleted outright (2026-11-02).
+    await trashDriveFile(i.driveFileId).catch(() => {
+      driveFailed += 1;
+    });
   }
   return { removed: list.length, driveFailed };
 }

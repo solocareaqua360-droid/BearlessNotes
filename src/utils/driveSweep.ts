@@ -1,7 +1,7 @@
 import { doc, getDocsFromServer, updateDoc } from '../firestore';
 import { db } from '../firebase';
 import { ownedQuery } from './owned';
-import { backupFileToDrive, deviceCopyOf, driveFileExists, listMediaFiles, type DriveMediaFile } from './googleDrive';
+import { backupFileToDrive, deviceCopyOf, driveFileExists, listMediaFiles, trashDriveFile, type DriveMediaFile } from './googleDrive';
 
 // THE DRIVE CHECK (2026-11-02, the user: «накопичується сміття… я боюсь, що ти щось недоробиш»). One rule is meant to
 // replace every «Видалити копію з Google Диску?»: a file on the Drive lives while anything in the app points at it, and
@@ -179,6 +179,24 @@ export async function checkDrive(): Promise<DriveCheck> {
     records,
     missing: [...missingById.values()],
   };
+}
+
+// CLEARING (step 2): what the check found nothing points at goes into the Drive's own bin - 30 days there, never deleted
+// outright. Refused when the check looks wrong (nothing in use, or hardly any records read): an empty answer from the
+// database must never read as «everything is rubbish».
+export async function trashUnused(check: DriveCheck): Promise<{ trashed: number; failed: number }> {
+  if (check.used === 0 || check.records < 20) throw new Error('Перевірка виглядає неповною - нічого не прибрано.');
+  let trashed = 0;
+  let failed = 0;
+  for (const f of check.unused) {
+    try {
+      await trashDriveFile(f.id);
+      trashed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { trashed, failed };
 }
 
 // PUTTING BACK what is gone from the Drive but still on this device: uploaded again, and every record that pointed at
