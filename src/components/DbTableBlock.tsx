@@ -28,6 +28,8 @@ import {
   facetLabel,
   facetsOf,
   filterableFieldsOf,
+  groupRows,
+  groupableFieldsOf,
   setPresenceOp,
   sortableFieldsOf,
   toggleFacet,
@@ -81,6 +83,16 @@ export default function DbTableBlock({
   const limit = s.rows ?? DB_TABLE_DEFAULT_ROWS;
   const folded = limit > 0 && !expanded && rows.length > limit;
   const shown = folded ? rows.slice(0, limit) : rows;
+  // Grouped: the groups of the rows shown (the fold above counts rows, the groups split what it lets through).
+  const groupField = s.groupField ? database?.fields.find((f) => f.id === s.groupField) ?? null : null;
+  const groups = groupField ? groupRows(shown, groupField, context) : null;
+  const foldedGroups = new Set(s.foldedGroups ?? []);
+  const toggleGroup = (key: string) => {
+    const next = new Set(foldedGroups);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    save({ foldedGroups: next.size ? [...next] : undefined });
+  };
   const ink = theme.paper.ink;
   const quiet = theme.paper.inkMuted;
 
@@ -122,6 +134,7 @@ export default function DbTableBlock({
       actions: [
         { id: 'columns', label: 'Стовпці', hint: `${columns.length} · показати, сховати, переставити`, icon: 'grid-outline' },
         { id: 'condition', label: 'Умова', hint: conditionName, icon: 'funnel-outline' },
+        { id: 'group', label: 'Групування', hint: groupField?.name ?? 'Без групування', icon: 'layers-outline' },
         { id: 'sort', label: 'Порядок', hint: `${sortName} ${s.sortDir === 'desc' ? '↓' : '↑'}`, icon: 'swap-vertical-outline' },
         { id: 'rows', label: 'Видно рядків', hint: limit === 0 ? 'Усі' : String(limit), icon: 'reorder-four-outline' },
         { id: 'look', label: 'Вигляд', hint: [s.totals && 'підсумки', s.headerColor && 'шапка', s.rowNumbers && 'нумерація', s.wrap && 'перенос'].filter(Boolean).join(', ') || 'Підсумки, шапка, нумерація, перенос', icon: 'color-palette-outline' },
@@ -134,6 +147,7 @@ export default function DbTableBlock({
     });
     if (choice === 'columns') setColumnsOpen(true);
     else if (choice === 'condition') pickCondition();
+    else if (choice === 'group') pickGroup();
     else if (choice === 'sort') pickSort();
     else if (choice === 'rows') {
       const n = await ask({
@@ -307,6 +321,19 @@ export default function DbTableBlock({
     }
   }
 
+  async function pickGroup() {
+    if (!database) return;
+    const choice = await ask({
+      title: 'Групувати за',
+      actions: [
+        { id: 'none', label: 'Без групування', icon: !s.groupField ? ('checkmark' as const) : undefined },
+        ...groupableFieldsOf(database).map((f) => ({ id: f.id, label: f.name, icon: f.id === s.groupField ? ('checkmark' as const) : undefined })),
+      ],
+    });
+    if (choice === 'none') save({ groupField: undefined, foldedGroups: undefined });
+    else if (choice !== 'cancel' && choice !== s.groupField) save({ groupField: choice, foldedGroups: undefined });
+  }
+
   async function pickSort() {
     if (!database) return;
     const current = s.sortField ?? 'title';
@@ -400,6 +427,29 @@ export default function DbTableBlock({
     if (choice !== 'cancel') save({ totalOps: { ...(s.totalOps ?? {}), [f.id]: choice as keyof typeof OP_LABEL } });
   }
   const headFill = s.headerColor ? { backgroundColor: s.headerColor } : null;
+  const tableW = (s.rowNumbers ? NUM_W : 0) + columns.reduce((sum, _f, i) => sum + widthOf(i), 0);
+  // One record's row (in a group or not); `last` = the table's last one, with no line under it.
+  const rowView = (row: (typeof rows)[number], r: number, last: boolean) => (
+    <Pressable
+      key={row.id}
+      onPress={(e: GestureResponderEvent) => openCard(row.id, e)}
+      onLongPress={() => holdRow(row.id)}
+      style={({ pressed }) => [styles.tableGridRow, last && !s.totals && styles.tableGridRowLast, pressed && { backgroundColor: theme.paper.tint }]}
+    >
+      {s.rowNumbers && (
+        <View style={[styles.tableGridCell, { width: NUM_W }]}>
+          <Text style={[local.cellText, { color: quiet }]}>{r + 1}</Text>
+        </View>
+      )}
+      {columns.map((f, i) => (
+        <View key={f.id} style={[styles.tableGridCell, i === columns.length - 1 && styles.tableGridCellLast, { width: widthOf(i) }]}>
+          <Text style={[local.cellText, { color: ink }]} numberOfLines={lines}>
+            {valueOf(f, i, row)}
+          </Text>
+        </View>
+      ))}
+    </Pressable>
+  );
   const lines = s.wrap ? undefined : 1;
   return (
     <View pointerEvents={disabled ? 'none' : 'auto'}>
@@ -416,27 +466,31 @@ export default function DbTableBlock({
                 </View>
               ))}
             </View>
-            {shown.map((row, r) => (
-              <Pressable
-                key={row.id}
-                onPress={(e: GestureResponderEvent) => openCard(row.id, e)}
-                onLongPress={() => holdRow(row.id)}
-                style={({ pressed }) => [styles.tableGridRow, r === shown.length - 1 && !s.totals && styles.tableGridRowLast, pressed && { backgroundColor: theme.paper.tint }]}
-              >
-                {s.rowNumbers && (
-                  <View style={[styles.tableGridCell, { width: NUM_W }]}>
-                    <Text style={[local.cellText, { color: quiet }]}>{r + 1}</Text>
-                  </View>
-                )}
-                {columns.map((f, i) => (
-                  <View key={f.id} style={[styles.tableGridCell, i === columns.length - 1 && styles.tableGridCellLast, { width: widthOf(i) }]}>
-                    <Text style={[local.cellText, { color: ink }]} numberOfLines={lines}>
-                      {valueOf(f, i, row)}
-                    </Text>
-                  </View>
-                ))}
-              </Pressable>
-            ))}
+            {groups
+              ? groups.map((g, gi) => {
+                  const shut = foldedGroups.has(g.key);
+                  const dot = groupField?.options?.find((o) => o.id === g.key)?.color;
+                  const lastGroup = gi === groups.length - 1;
+                  return (
+                    <View key={g.key || '∅'}>
+                      {/* The group's heading: one quiet line across the table - its value (with the option's own colour),
+                          how many, and the fold. No cell walls: it belongs to the rows under it, not to a column. */}
+                      <Pressable
+                        onPress={() => toggleGroup(g.key)}
+                        style={[styles.tableGridRow, local.groupHead, { backgroundColor: theme.paper.tint, width: tableW }, shut && lastGroup && !s.totals && styles.tableGridRowLast]}
+                      >
+                        <Ionicons name={shut ? 'chevron-forward' : 'chevron-down'} size={14} color={quiet} />
+                        {!!dot && <View style={[local.groupDot, { backgroundColor: dot }]} />}
+                        <Text style={[local.groupLabel, { color: ink }]} numberOfLines={1}>
+                          {g.label}
+                        </Text>
+                        <Text style={[local.groupCount, { color: quiet }]}>{g.rows.length}</Text>
+                      </Pressable>
+                      {!shut && g.rows.map((row, r) => rowView(row, r, lastGroup && r === g.rows.length - 1))}
+                    </View>
+                  );
+                })
+              : shown.map((row, r) => rowView(row, r, r === shown.length - 1))}
             {shown.length === 0 && (
               <View style={[styles.tableGridRow, styles.tableGridRowLast]}>
                 <View style={[styles.tableGridCell, styles.tableGridCellLast, { width: columns.reduce((sum, _f, i) => sum + widthOf(i), 0) }]}>
@@ -656,6 +710,10 @@ const local = StyleSheet.create({
   widthText: { width: 40, textAlign: 'center', fontSize: 14, fontFamily: SOFT_REGULAR },
   headText: { fontSize: 13.5, fontFamily: SOFT_MEDIUM },
   cellText: { fontSize: 14.5, fontFamily: SOFT_REGULAR },
+  groupHead: { alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  groupDot: { width: 9, height: 9, borderRadius: 4.5 },
+  groupLabel: { fontSize: 13.5, fontFamily: SOFT_SEMIBOLD, flexShrink: 1 },
+  groupCount: { fontSize: 13, fontFamily: SOFT_MEDIUM, fontVariant: ['tabular-nums'] },
   totalText: { fontSize: 14, fontFamily: SOFT_SEMIBOLD },
   missing: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 },
   foot: { height: 34, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingLeft: 12, paddingRight: 4 },

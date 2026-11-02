@@ -1346,4 +1346,8 @@ export interface DbTableSettings {
   rowNumbers?: boolean;
   wrap?: boolean;
   widths?: Record<string, number>;
+  // GROUPED (2026-11-02): the rows under a quiet heading per value of this field (utils/customRowQuery groupRows), and
+  // the groups folded to their heading (by value key; '' = «Без значення»).
+  groupField?: string;
+  foldedGroups?: string[];
 }
