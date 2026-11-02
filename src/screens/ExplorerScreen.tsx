@@ -1,4 +1,5 @@
 import { type ComponentProps, type ReactElement, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { applyFolderMerge, planFolderMerge } from '../utils/folderMerge';
 import { blockFromFlashcard, copyObjectsToNote } from '../utils/copyToNote';
 import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import { askFates, boardContentsFates, confirmFates, FATE, type FateEntry, type FateKind } from '../utils/deleteFates';
@@ -1958,6 +1959,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         ...(explorerSelect && !coll ? [{ id: 'sub', label: 'Нова папка всередині', icon: 'folder-open-outline' as const }] : []),
         { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' as const },
         { id: 'move', label: 'Перемістити в…', icon: 'arrow-forward-outline' as const },
+        ...(coll ? [] : [{ id: 'merge', label: 'Злити з папкою…', icon: 'git-merge-outline' as const }]),
         ...(coll ? [] : [{ id: 'look', label: 'Іконка й колір', icon: 'color-palette-outline' as const }]),
         { id: 'card', label: 'Вигляд картки', icon: 'albums-outline' as const },
         ...(FEATURES.explorerProjects && !coll ? [{ id: 'projects', label: 'Проєкти…', icon: 'folder-open-outline' as const }] : []),
@@ -2021,6 +2023,38 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         else setCardTag(rep);
       } catch (e) {
         notify('Не вдалося відкрити', (e as Error).message);
+      }
+    } else if (choice === 'merge') {
+      // «ЗЛИТИ З ПАПКОЮ» (2026-11-02, the user's: it lived only on the hidden «Папки» screen, as a technical clean-up): everything in this
+      // folder - its things and its subfolders - goes into the other one, and this one is gone. The folder is renamed onto the other's
+      // path (moveBranch), and the same-named folders that makes are joined into one (utils/folderMerge, the same as the clean-up did).
+      const targets = folderPaths.filter((p) => p !== f.path && !p.startsWith(`${f.path}/`) && !f.path.startsWith(`${p}/`) && p !== UNFILED);
+      if (targets.length === 0) return;
+      const dest = await ask({
+        title: `«${f.name}» злити з…`,
+        message: 'Усе з цієї папки (і її підпапки) перейде в обрану. Сама папка зникне.',
+        actions: targets.map((p) => ({ id: `p:${p}`, label: p.split('/').join(' › '), icon: 'folder-outline' as const })),
+      });
+      if (!dest.startsWith('p:')) return;
+      const into = dest.slice(2);
+      const yes = await confirm({ title: `Злити «${f.name}» з «${nameOf(into)}»?`, message: 'Речі не видаляються - лише переходять в іншу папку.', confirmLabel: 'Злити', tone: 'normal' });
+      if (!yes) return;
+      try {
+        await moveBranch(f.path, into);
+        const moved = allTags.map((t) =>
+          t.path === f.path || t.path.startsWith(`${f.path}/`) ? { ...t, path: into + t.path.slice(f.path.length) } : t
+        );
+        const plan = planFolderMerge(moved, all).filter((g) => g.path === into || g.path.startsWith(`${into}/`));
+        const refused: string[] = [];
+        for (const g of plan) {
+          const r = await applyFolderMerge(g, all).catch((e: Error) => ({ ok: false, reason: e.message, moved: 0 }));
+          if (!r.ok) refused.push(`«${g.path}»: ${r.reason}`);
+        }
+        setToast({ id: Date.now(), message: `«${f.name}» злито з «${nameOf(into)}»`, left: 4 });
+        if (refused.length) notify('Злито не все', `Частина папок лишилась поруч (з тим самим ім'ям):\n${refused.join('\n')}`);
+        if (path === f.path || path.startsWith(`${f.path}/`)) setPath(into);
+      } catch (e) {
+        notify('Не вдалося злити', (e as Error).message);
       }
     } else if (choice === 'move') {
       const dest = await ask({
