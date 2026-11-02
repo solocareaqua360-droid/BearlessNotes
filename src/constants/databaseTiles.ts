@@ -75,7 +75,7 @@ export const GRID_TILES: Tile[] = [
 
 // The built-in bases that are LISTED as bases (the bases list and the Start's «Бази»): what the explorer holds (notes, boards, the
 // explorer itself), the put-away chat and the diary (the calendar is its place) are not (2026-11-02, the user's cleanup).
-export const NOT_LISTED_AS_BASES = new Set(['documents', 'board', 'explorer', 'chat', 'diary', 'flashcards']);
+export const NOT_LISTED_AS_BASES = new Set(['documents', 'board', 'explorer', 'chat', 'diary']);
 export function listedBaseTiles(): Tile[] {
   return [...WIDE_TILES, ...GRID_TILES].filter(
     (t) => !NOT_LISTED_AS_BASES.has(t.key) && (FEATURES.stickers || t.key !== 'stickers') && (FEATURES.projectsScreen || t.key !== 'groups')
