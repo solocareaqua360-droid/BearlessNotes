@@ -1,4 +1,6 @@
 import { type ComponentProps, type ReactElement, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { blockFromFlashcard, copyObjectsToNote } from '../utils/copyToNote';
+import { addItemToBoard, createBoardAndAddItem } from '../utils/addItemToBoard';
 import { askFates, boardContentsFates, confirmFates, FATE, type FateEntry, type FateKind } from '../utils/deleteFates';
 import { folderPathFromName, resolveFolderPath } from '../utils/folderName';
 import { usePublishRailPanel } from '../navigation/navRail';
@@ -876,9 +878,12 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const here = useMemo(() => {
     if (inBin) return binned;
     if (inCleanup) return candidateItems;
+    // A folder set to hide the learned cards (its «⋯» - the cards' own screen did it per project) leaves them out.
+    const hideKnown = !!path && tags.some((t) => t.path === path && (t as Tag & { hideKnownCards?: boolean }).hideKnownCards);
+    const visible = hideKnown ? shown.filter((i) => !(i.kind === 'flashcard' && (i.raw as Record<string, unknown> | undefined)?.known)) : shown;
     const list = searching
-      ? shown.filter((item) => matchesNeedle(item, needle))
-      : shown.filter((item) => {
+      ? visible.filter((item) => matchesNeedle(item, needle))
+      : visible.filter((item) => {
           const paths = pathsOf.get(item.id) ?? [];
           // The root keeps only folders; what is in none is in «Нерозкладене».
           if (path === UNFILED) return isUnfiled(item);
@@ -1610,6 +1615,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const [framingProject, setFramingProject] = useState<{ id: string; uri: string } | null>(null);
   // The project whose icon is being picked (IconPickerSheet, below).
   const [iconProject, setIconProject] = useState<Group | null>(null);
+  const archivedGroups = useMemo(() => groups.filter((g) => g.archived).sort((a, b) => a.name.localeCompare(b.name)), [groups]);
   async function holdProject(id: string) {
     const g = groups.find((x) => x.id === id);
     if (!g) return;
@@ -2433,6 +2439,53 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     }
   }
 
+  // THE CARDS' OWN COMMANDS, in the folder that holds them (2026-11-02: the cards' screen left the bases). What the cards' screen
+  // kept per project is kept per FOLDER here - the explorer is folders: learning (each card shows «Знаю / Ще вчу»), the learned ones
+  // hidden, and starting over. Kept on the folder's tags (every twin of the path).
+  const folderTagsHere = path && path !== UNFILED ? tags.filter((t) => t.path === path) : [];
+  const flagOf = (k: 'flashcardLearning' | 'hideKnownCards') => folderTagsHere.some((t) => !!(t as Tag & Record<string, unknown>)[k]);
+  const cardsInFolder = here.filter((i) => i.kind === 'flashcard');
+  const anyCardsHere = folderTagsHere.length > 0 && (cardsInFolder.length > 0 || flagOf('hideKnownCards'));
+  async function setFolderCardFlag(k: 'flashcardLearning' | 'hideKnownCards', on: boolean) {
+    const tagsHere = folderTagsHere.length ? folderTagsHere : [await tagForPath(path)];
+    await Promise.all(tagsHere.map((t) => updateDoc(doc(db, 'tags', t.id), { [k]: on }).catch(() => {})));
+  }
+  async function restartCardsHere() {
+    const learned = all.filter(
+      (i) => i.kind === 'flashcard' && (i.raw as Record<string, unknown> | undefined)?.known && (pathsOf.get(i.id) ?? []).includes(path)
+    );
+    if (learned.length === 0) return;
+    const yes = await confirm({ title: 'Почати заново?', message: `Вивчені картки цієї папки (${learned.length}) знову стануть невивченими.`, confirmLabel: 'Скинути', tone: 'normal' });
+    if (!yes) return;
+    await Promise.all(learned.map((i) => updateDoc(doc(db, 'flashcards', i.docId), { known: false }).catch(() => {})));
+  }
+  // The chosen cards onto a new board (a column, in order) or into a new note (a card block each) - what the cards' screen offered.
+  async function chosenCardsOut(where: 'note' | 'board') {
+    const chosen = pool.filter((i) => selected.has(i.id) && i.kind === 'flashcard');
+    if (chosen.length === 0) return;
+    const cardOf = (i: FolderItem) => {
+      const r = (i.raw ?? {}) as Record<string, unknown>;
+      return { id: i.docId, term: (r.term as string) ?? i.title, explanation: (r.explanation as string) ?? '', images: (r.images as never) ?? [] };
+    };
+    try {
+      if (where === 'note') {
+        const newId = await copyObjectsToNote(null, chosen.map((i) => blockFromFlashcard(cardOf(i) as never)), []);
+        leaveSelect();
+        (navigation as unknown as { navigate: (n: string, p: object) => void }).navigate('Editor', { documentId: newId });
+      } else if (where === 'board') {
+        const items = chosen.map((i) => {
+          const c = cardOf(i);
+          return { id: c.id, kind: 'flashcard' as const, title: c.term, data: { term: c.term, explanation: c.explanation, images: c.images } };
+        });
+        const target = await createBoardAndAddItem(folderLabel(path) || 'Картки', items[0] as never);
+        for (const item of items.slice(1)) await addItemToBoard(target, item as never);
+        leaveSelect();
+        (navigation as unknown as { navigate: (n: string, p: object) => void }).navigate('BoardCopy', { boardId: target });
+      }
+    } catch (e) {
+      notify('Не вдалося', (e as Error).message);
+    }
+  }
   useTopExtras(
     // On the Mac (frame B) the panel beside the list says all of this as live controls (ExplorerPanel).
     explorerSelect ? null : [
@@ -2442,6 +2495,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       { label: 'Вигляд папок…', icon: 'options-outline' as const, onPress: () => setFolderViewsOpen(true) },
       ...orderSection(sortPref, selectSortField),
       { label: 'Групувати за типом', icon: 'layers-outline' as const, checked: byKind, onPress: toggleByKind },
+      ...(anyCardsHere
+        ? [
+            { kind: 'section' as const, label: 'Картки' },
+            { label: 'Режим навчання', icon: 'school-outline' as const, checked: flagOf('flashcardLearning'), onPress: () => setFolderCardFlag('flashcardLearning', !flagOf('flashcardLearning')) },
+            { label: 'Сховати вивчені', icon: 'eye-off-outline' as const, checked: flagOf('hideKnownCards'), onPress: () => setFolderCardFlag('hideKnownCards', !flagOf('hideKnownCards')) },
+            { label: 'Почати заново', icon: 'refresh-outline' as const, onPress: restartCardsHere },
+          ]
+        : []),
       { label: 'Фільтри (тип, проєкт)', icon: 'filter-outline' as const, checked: chipsOn, onPress: toggleChips },
       // Under a name of its own: straight after «Порядок» it read as one more way to sort.
       ...(startDesk ? [{ kind: 'section' as const, label: 'На старті' }, { label: 'Нещодавні', icon: 'time-outline' as const, checked: recentsOn, onPress: toggleRecents }] : []),
@@ -2516,6 +2577,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                   if (it) shareItem(it);
                 }
               : undefined,
+          // Only cards chosen: they go onto a board or into a note together.
+          ...(selected.size > 0 && pool.filter((i) => selected.has(i.id)).every((i) => i.kind === 'flashcard')
+            ? { board: () => chosenCardsOut('board'), copyToNote: () => chosenCardsOut('note') }
+            : {}),
           remove: deleteSelected,
           removeLabel: pool.filter((i) => selected.has(i.id)).length > 0 && pool.filter((i) => selected.has(i.id)).every(isReference) ? 'Прибрати' : undefined,
         })
@@ -3242,6 +3307,23 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         />
       ))}
       {startProjectsOn && bandGroups.length === 0 && <Text style={[styles.hint, { color: S.ink3 }]}>Проєктів поки немає.</Text>}
+      {/* THE ARCHIVE (2026-11-02): a project archived here could only come back on the hidden «Проєкти» screen. A tap lists the
+          archived ones; the one picked opens its own menu, which has «Повернути з архіву». */}
+      {startProjectsOn && archivedGroups.length > 0 && (
+        <StartRow
+          icon="archive-outline"
+          name="Архів проєктів"
+          count={archivedGroups.length}
+          last
+          onPress={async () => {
+            const id = await ask({
+              title: 'Архів проєктів',
+              actions: archivedGroups.map((g) => ({ id: g.id, label: g.name, icon: 'albums-outline' as const })),
+            });
+            if (id && id !== 'cancel') holdProject(id);
+          }}
+        />
+      )}
       {startBasesOn && <StartBases />}
     </>
   );
@@ -3826,7 +3908,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         flipFrom={cardFlip}
         cards={cardIndex >= 0 ? cardsHere : null}
         startIndex={Math.max(0, cardIndex)}
-        isLearning={(card) => !!groups.find((g) => g.id === card.groupId)?.flashcardLearning}
+        isLearning={(card) => flagOf('flashcardLearning') || !!groups.find((g) => g.id === card.groupId)?.flashcardLearning}
         onSetKnown={(card, known) => updateDoc(doc(db, 'flashcards', card.id), { known, updatedAt: Date.now() }).catch(() => {})}
         onEdit={(card) => {
           setCardId(null);

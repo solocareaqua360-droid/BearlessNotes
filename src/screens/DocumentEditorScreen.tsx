@@ -6,6 +6,7 @@ import { frameBlocks, timecodeBlocks } from '../utils/videoFrames';
 import { RADIUS } from '../theme/scale';
 import { whenDeskIsThere } from '../navigation/deskRegistry';
 import { explorerPlace } from '../navigation/explorerPlace';
+import { UNFILED as UNFILED_PATH } from './ExplorerScreen';
 import { navigationRef } from '../navigationRef';
 import { START_DESK } from '../navigation/desks';
 import { noteOpened, useNoteOpened } from '../navigation/recentPlaces';
@@ -6035,7 +6036,14 @@ function DocumentEditorScreen(props: Props, ref: ForwardedRef<DocumentEditorHand
   async function makeFlashcards(source: Block[]) {
     try {
       const result = await createFlashcardsFromNote(source, title);
-      if (result === 'open') navigation.navigate('Flashcards');
+      // New cards lie in no folder yet: «Нерозкладене» on the Start, where every card is now (the cards' screen left the bases).
+      if (result === 'open') {
+        explorerPlace.request(UNFILED_PATH);
+        navigation.goBack();
+        setTimeout(() => {
+          if (navigationRef.isReady()) (navigationRef.navigate as (n: string, p: object) => void)('Tabs', { screen: START_DESK });
+        }, 650);
+      }
     } catch (e) {
       notify('Картки не створились', (e as Error).message);
     }
