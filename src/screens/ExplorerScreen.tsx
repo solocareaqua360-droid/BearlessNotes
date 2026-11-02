@@ -1489,7 +1489,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         const r = (i.raw ?? {}) as Record<string, unknown>;
         return { cards: readBoardPart<BoardCard>(r.cards), shapes: readBoardPart<{ id: string }>(r.shapes) };
       });
-    const insideBoards = boardContentsFates(boardsWhole);
+    const insideBoards = await boardContentsFates(boardsWhole);
     const sureAnswer = await askFates({
       title: onlyRefs
         ? total === 1 ? `Прибрати «${first.title || 'Без назви'}» з папки?` : `Прибрати з папки (${total})?`

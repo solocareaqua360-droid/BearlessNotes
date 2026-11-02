@@ -1,5 +1,5 @@
 import { grabScreenFrame, startScreenCapture, stopScreenCapture, supportsScreenCapture } from '../utils/mindevaNative';
-import { boardCardFate, confirmFates } from '../utils/deleteFates';
+import { boardCardFates, confirmFates } from '../utils/deleteFates';
 import { TextScaleOverride, useStyles, useTheme } from '../theme/ThemeProvider';
 import { useDeskContent } from '../navigation/useDeskContent';
 import { useNoteOpened } from '../navigation/recentPlaces';
@@ -6734,12 +6734,13 @@ export default function BoardScreen() {
   // card it was opened on - which is what lets that menu act WITHOUT
   // selecting anything first, and so without raising the selection bar
   // as a second menu beside itself.
-  function deleteCards(ids: Set<string>) {
+  async function deleteCards(ids: Set<string>) {
     const count = ids.size;
     if (count === 0) return;
+    const entries = await boardCardFates(cards.filter((c) => ids.has(c.id)));
     confirmFates({
       title: count === 1 ? 'Видалити картку?' : `Видалити картки (${count})?`,
-      entries: cards.filter((c) => ids.has(c.id)).map(boardCardFate),
+      entries,
     }).then((yes) => {
       if (!yes) return;
       // Reflowed after the removal so a column closes the gap its
@@ -6764,15 +6765,16 @@ export default function BoardScreen() {
   // selectedShapeIds's own comment). One confirm, one count, either or
   // both kinds at once - not deleteCards(selectedCardIds) plus a second
   // dialog for the shapes.
-  function deleteSelection() {
+  async function deleteSelection() {
     const cardIds = selectedCardIds;
     const shapeIds = selectedShapeIds;
     const count = cardIds.size + shapeIds.size;
-    if (count === 0) return Promise.resolve();
+    if (count === 0) return;
+    const cardEntries = await boardCardFates(cards.filter((c) => cardIds.has(c.id)));
     return confirmFates({
       title: count === 1 ? 'Видалити обʼєкт?' : `Видалити обʼєкти (${count})?`,
       entries: [
-        ...cards.filter((c) => cardIds.has(c.id)).map(boardCardFate),
+        ...cardEntries,
         ...[...shapeIds].map(() => ({ kind: 'shape' as const, tone: 'forever' as const, fate: 'зникають з дошки (поверне лише «Назад»)' })),
       ],
     }).then((yes) => {

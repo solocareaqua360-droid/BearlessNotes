@@ -3,6 +3,38 @@ import type { BoardCard, BoardItem } from '../types';
 import { describeBoards, refOf, type PlanItem } from './deletionPlan';
 import { askWhatToKeep } from '../components/DeleteContentsHost';
 import { categoryFromSiteName } from './linkCategory';
+import { doc, getDoc } from '../firestore';
+import { db } from '../firebase';
+
+// WHERE A CARD'S RECORD REALLY IS (2026-11-02, the user: «в якій базі вони залишаться?» - the window said 23 pictures stay in
+// «Зображення» when they had been deleted from it for good). Read before the window opens; an unreadable one counts as there.
+type RecordState = 'alive' | 'binned' | 'gone';
+async function recordStates(cards: BoardCard[]): Promise<Map<string, RecordState>> {
+  const out = new Map<string, RecordState>();
+  const refs = new Map<string, { collection: string; id: string }>();
+  for (const card of cards) {
+    const ref = refOf(card);
+    if (ref) refs.set(`${ref.collection}:${ref.id}`, ref);
+  }
+  await Promise.all(
+    [...refs.entries()].map(async ([key, ref]) => {
+      try {
+        const snap = await getDoc(doc(db, ref.collection, ref.id));
+        out.set(key, !snap.exists() ? 'gone' : (snap.data() as { deletedAt?: unknown } | undefined)?.deletedAt ? 'binned' : 'alive');
+      } catch {
+        out.set(key, 'alive');
+      }
+    })
+  );
+  return out;
+}
+
+// The fate of a card that shows a record, by where that record really is.
+function recordCardFate(kind: FateKind, state: RecordState | undefined, alive: string): FateEntry {
+  if (state === 'gone') return { kind, tone: 'bin', fate: 'вже видалені з бази - лишились лише на дошці, ідуть разом з нею' };
+  if (state === 'binned') return { kind, tone: 'stays', fate: `вже в кошику бази «${KINDS[kind].base}»` };
+  return { kind, tone: 'stays', fate: alive };
+}
 
 // THE FATE OF EACH THING (the user, 2026-10-25): every delete - in a folder, a note or a board - first says, kind by
 // kind, where each thing goes: for good, into the bin, or nowhere (it stays in its base or its folder). One more
@@ -82,7 +114,8 @@ export function askFates(options: { title: string; message?: string; entries: Fa
 
 // A WHOLE BOARD going (the user, 2026-10-25: the board's window said nothing of what stays and what goes with it): the
 // records its cards show stay in their bases (each once); its own cards and its shapes go to the bin inside it.
-export function boardContentsFates(boards: { cards?: BoardCard[]; shapes?: unknown[] }[]): FateEntry[] {
+export async function boardContentsFates(boards: { cards?: BoardCard[]; shapes?: unknown[] }[]): Promise<FateEntry[]> {
+  const states = await recordStates(boards.flatMap((b) => b.cards ?? []));
   const seen = new Set<string>();
   const entries: FateEntry[] = [];
   for (const b of boards) {
@@ -95,7 +128,7 @@ export function boardContentsFates(boards: { cards?: BoardCard[]; shapes?: unkno
       if (seen.has(`${ref.collection}:${ref.id}`)) continue;
       seen.add(`${ref.collection}:${ref.id}`);
       const kind: FateKind = ref.kind === 'note' ? 'document' : ref.kind === 'link' ? (`link-${categoryFromSiteName(card.linkSiteName)}` as FateKind) : ref.kind;
-      entries.push({ kind, tone: 'stays', fate: FATE.stays(kind) });
+      entries.push(recordCardFate(kind, states.get(`${ref.collection}:${ref.id}`), FATE.stays(kind)));
     }
     for (let n = 0; n < (b.shapes?.length ?? 0); n++) entries.push({ kind: 'shape', tone: 'bin', fate: 'ідуть у кошик разом з дошкою' });
   }
@@ -104,18 +137,23 @@ export function boardContentsFates(boards: { cards?: BoardCard[]; shapes?: unkno
 
 // A board's card: one that shows a record (a note, board, picture, file, link) only leaves the board - the record stays in
 // its base; any other card (a sticky, text, a list) lives inside the board and goes with it.
-export function boardCardFate(card: BoardCard): FateEntry {
-  const ref = refOf(card);
-  if (!ref) return { kind: 'card', tone: 'forever', fate: 'зникають з дошки (поверне лише «Назад»)' };
-  const kind: FateKind =
-    ref.kind === 'note' ? 'document' : ref.kind === 'link' ? (`link-${categoryFromSiteName(card.linkSiteName)}` as FateKind) : ref.kind;
-  return { kind, tone: 'stays', fate: `прибираються з дошки, ${FATE.stays(kind)}` };
+export async function boardCardFates(cards: BoardCard[]): Promise<FateEntry[]> {
+  const states = await recordStates(cards);
+  return cards.map((card) => {
+    const ref = refOf(card);
+    if (!ref) return { kind: 'card', tone: 'forever', fate: 'зникають з дошки (поверне лише «Назад»)' };
+    const kind: FateKind =
+      ref.kind === 'note' ? 'document' : ref.kind === 'link' ? (`link-${categoryFromSiteName(card.linkSiteName)}` as FateKind) : ref.kind;
+    const state = states.get(`${ref.collection}:${ref.id}`);
+    if (state === 'gone') return { kind, tone: 'forever', fate: 'вже видалені з бази - зникають з дошки (поверне лише «Назад»)' };
+    return recordCardFate(kind, state, `прибираються з дошки, ${FATE.stays(kind)}`);
+  });
 }
 
 // Boards deleted from their own base, the same as from the explorer: the fates, then (only if asked) the old «Що лишити?»
 // for the records. Resolves the records chosen to go too, or null when the user walked away.
 export async function askBoardsGo(going: BoardItem[], every: BoardItem[]): Promise<PlanItem[] | null> {
-  const inside = boardContentsFates(going);
+  const inside = await boardContentsFates(going);
   const answer = await askFates({
     title: going.length === 1 ? `Видалити дошку «${going[0].title || 'Без назви'}»?` : `Видалити дошки (${going.length})?`,
     entries: [...going.map(() => ({ kind: 'board' as const, tone: 'bin' as const, fate: FATE.bin })), ...inside],
