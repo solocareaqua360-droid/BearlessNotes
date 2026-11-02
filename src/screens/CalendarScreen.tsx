@@ -2297,8 +2297,8 @@ export default function CalendarScreen() {
                       id={`day_${day.key}`}
                       title={`${WEEKDAY_SHORT[mondayIndex(date)]}, ${formatBigDate(date)}`}
                       updatedAt={day.updatedAt}
+                      // A picture only when the day has one - no gradient cover (the user, 2026-11-02: a rudiment).
                       imageUri={preview.imageUri}
-                      coverGradient={day.coverGradient}
                       imageDriveFileId={preview.imageDriveFileId}
                       previewText={preview.previewText}
                       bodyMatch={findBodyMatch(day.blocks, needle)}
@@ -2306,7 +2306,13 @@ export default function CalendarScreen() {
                       soft={S}
                       layout="list"
                       onPress={() => {
+                        Keyboard.dismiss();
                         setDaySearch(null);
+                        // The river of days has no «selected day» to move to: the found day's sheet opens, as a tap on it does there.
+                        if (river) {
+                          (navigation as unknown as { navigate: (n: string, p: object) => void }).navigate('Editor', { documentId: `day_${day.key}` });
+                          return;
+                        }
                         selectDay(date);
                         closeOverview();
                       }}
