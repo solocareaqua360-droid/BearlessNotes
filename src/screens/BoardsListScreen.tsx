@@ -605,6 +605,7 @@ export default function BoardsListScreen({
         icon: viewMode === 'cards' ? 'grid-outline' : 'reorder-four-outline',
         onToggle: () => changeViewMode(viewMode === 'list' ? 'cards' : 'list'),
       }}
+      shown={boardsHere}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         onTagTo: bulkAttachTag,

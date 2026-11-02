@@ -490,6 +490,7 @@ export default function FlashcardsScreen({ inPane }: { inPane?: boolean } = {}) 
         icon: list.viewMode === 'grid' ? 'grid-outline' : 'reorder-four-outline',
         onToggle: () => list.changeViewMode(list.viewMode === 'grid' ? 'list' : 'grid'),
       }}
+      shown={shown}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         onTagTo: bulkAttachTag,

@@ -20,6 +20,7 @@ import Animated, { SharedValue } from 'react-native-reanimated';
 import { DatabaseList } from '../hooks/useDatabaseList';
 import { GlassPortal } from './GlassPortal';
 import Menu from './surfaces/Menu';
+import { ask } from './surfaces/Ask';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
 import SearchCorner, { searchCornerHeight } from './SearchCorner';
@@ -207,6 +208,10 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // the same arrangement under it (the way back up there, search on the
   // dock's left bead). Not inside another screen's pane.
   navTitle?: TopTitle;
+  // WHAT IS ON THE SCREEN NOW - the open folder or collection, the bin - when it is less than the list's own filtered
+  // `displayed`. «Вибрати всі» chooses exactly these (2026-11-02: in the collection «Слеш панель» it chose every photo of
+  // the base, and «У кошик» took them all), and a delete that would reach chosen things NOT here asks first.
+  shown?: T[];
 };
 
 export default function DatabaseChrome<T extends { id: string }>({
@@ -236,6 +241,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   topNav: topNavWanted,
   navTitle,
   fullWidth = false,
+  shown,
 }: DatabaseChromeProps<T>) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -457,6 +463,43 @@ export default function DatabaseChrome<T extends { id: string }>({
       />
     ) : null
   );
+  // What «Вибрати всі» chooses and what a delete is checked against (see `shown`).
+  const onScreen = shown ?? list.displayed;
+  // «Лише ці»: the choice is narrowed to what is here, and the screen's own delete runs once that choice has rendered -
+  // its confirm counts its own selection, so it must see the narrowed one, not the one this click began with.
+  const [deleteAfterNarrowing, setDeleteAfterNarrowing] = useState(false);
+  useEffect(() => {
+    if (!deleteAfterNarrowing) return;
+    setDeleteAfterNarrowing(false);
+    bulk?.onDelete();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deleteAfterNarrowing]);
+  const guardedDelete = async () => {
+    if (!bulk) return;
+    const here = new Set(onScreen.map((item) => item.id));
+    const chosen = [...list.selectedIds];
+    const hereChosen = chosen.filter((id) => here.has(id));
+    const away = chosen.length - hereChosen.length;
+    if (away === 0) {
+      bulk.onDelete();
+      return;
+    }
+    const choice = await ask({
+      title: 'Вибрано не лише тут',
+      message:
+        hereChosen.length > 0
+          ? `Тут вибрано ${hereChosen.length}. Ще ${away} вибрано в інших місцях бази, їх зараз не видно.`
+          : `Усе вибране (${away}) - в інших місцях бази, тут його не видно.`,
+      actions: [
+        ...(hereChosen.length > 0 ? [{ id: 'here', label: `Лише ці ${hereChosen.length}` }] : []),
+        { id: 'all', label: `Усі ${chosen.length}`, tone: 'danger' as const },
+      ],
+    });
+    if (choice === 'here') {
+      list.selectMany(hereChosen);
+      setDeleteAfterNarrowing(true);
+    } else if (choice === 'all') bulk.onDelete();
+  };
   useDockActions(
     toolsDock
       ? [
@@ -475,9 +518,9 @@ export default function DatabaseChrome<T extends { id: string }>({
             },
             all: bulk
               ? {
-                  shown: list.displayed.length,
-                  chosen: list.displayed.filter((item) => list.selectedIds.has(item.id)).length,
-                  onAll: () => list.selectMany(list.displayed.map((item) => item.id)),
+                  shown: onScreen.length,
+                  chosen: onScreen.filter((item) => list.selectedIds.has(item.id)).length,
+                  onAll: () => list.selectMany(onScreen.map((item) => item.id)),
                   onNone: () => list.selectMany([]),
                 }
               : undefined,
@@ -490,7 +533,7 @@ export default function DatabaseChrome<T extends { id: string }>({
             board: bulk?.onBoard,
             copyToNote: bulk?.onCopy,
             copyObject: bulk?.onCopyObject && list.selectedIds.size === 1 ? bulk.onCopyObject : undefined,
-            remove: bulk?.onDelete,
+            remove: bulk ? guardedDelete : undefined,
           })
         : [
             ...(shape

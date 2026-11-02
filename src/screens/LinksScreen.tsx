@@ -1417,6 +1417,7 @@ export default function LinksScreen({
         canBack: explorer.historyState.canBack,
         canForward: explorer.historyState.canForward,
       }}
+      shown={trashOpen ? trashedLinks : linksHere}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         tagLabel: ownCollectionsOn ? (category === 'video' ? 'У плейліст' : 'У підбірку') : undefined,

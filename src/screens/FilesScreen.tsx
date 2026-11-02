@@ -932,6 +932,7 @@ export default function FilesScreen({ inPane }: { inPane?: boolean } = {}) {
         canBack: explorer.historyState.canBack,
         canForward: explorer.historyState.canForward,
       }}
+      shown={trashOpen ? trashedFiles : listedFiles}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         onTagTo: bulkAttachTag,

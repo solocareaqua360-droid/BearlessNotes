@@ -971,6 +971,7 @@ export default function PhotosScreen({ inPane }: { inPane?: boolean } = {}) {
         canBack: explorer.historyState.canBack,
         canForward: explorer.historyState.canForward,
       }}
+      shown={viewMode === 'canvas' && !trashOpen && !cameraOpen ? undefined : trashOpen ? trashedPhotos : cameraOpen ? cameraPhotos : itemsHere}
       bulk={{
         onTag: () => setBulkTagPickerVisible(true),
         tagLabel: FEATURES.baseCollections ? 'У підбірку' : undefined,
