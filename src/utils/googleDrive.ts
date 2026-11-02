@@ -328,6 +328,31 @@ export async function listBackupCopies(): Promise<{ id: string; name: string; cr
   return out;
 }
 
+// EVERY FILE IN THE APP'S OWN TWO FOLDERS («Photos», «Files») - what the Drive check (utils/driveSweep) weighs against
+// the records. The backups' folder is not read: a backup copy is meant to have nothing pointing at it.
+export type DriveMediaFile = { id: string; name: string; bytes: number; createdAt: number; folder: DriveSubFolder };
+
+export async function listMediaFiles(): Promise<DriveMediaFile[]> {
+  const out: DriveMediaFile[] = [];
+  for (const folder of ['Photos', 'Files'] as DriveSubFolder[]) {
+    const parent = await ensureSubFolder(folder);
+    let pageToken = '';
+    do {
+      const q = encodeURIComponent(`'${parent}' in parents and trashed=false`);
+      const res = await driveFetch(
+        `https://www.googleapis.com/drive/v3/files?q=${q}&pageSize=1000&fields=nextPageToken,files(id,name,size,createdTime)${pageToken ? `&pageToken=${pageToken}` : ''}`
+      );
+      if (!res.ok) throw new Error(await describeFailedResponse(res));
+      const json = (await res.json()) as { nextPageToken?: string; files?: { id: string; name: string; size?: string; createdTime?: string }[] };
+      for (const f of json.files ?? []) {
+        out.push({ id: f.id, name: f.name, bytes: Number(f.size ?? 0), createdAt: f.createdTime ? Date.parse(f.createdTime) : 0, folder });
+      }
+      pageToken = json.nextPageToken ?? '';
+    } while (pageToken);
+  }
+  return out;
+}
+
 // Into the Drive's bin - not gone: the bin keeps it for 30 days more.
 export async function trashDriveFile(fileId: string): Promise<void> {
   const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id`, {

@@ -8,6 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { backupFileToDrive } from '../utils/googleDrive';
+import { checkDrive, DRIVE_GRACE_DAYS } from '../utils/driveSweep';
 import StockPhotoPicker from '../components/StockPhotoPicker';
 import {
   ActivityIndicator,
@@ -382,6 +383,38 @@ export default function SettingsScreen() {
   const [stats, setStats] = useState<{ totalBytesStored: number; fileCount: number } | null>(null);
   const [quota, setQuota] = useState<DriveStorageQuota | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
+  // The Drive check (utils/driveSweep): counts only.
+  const [driveCheckBusy, setDriveCheckBusy] = useState(false);
+  const runDriveCheck = async () => {
+    setDriveCheckBusy(true);
+    try {
+      const r = await checkDrive();
+      const names = r.unused
+        .slice()
+        .sort((x, y) => y.createdAt - x.createdAt)
+        .slice(0, 12)
+        .map((f) => `• ${f.name} (${formatBytes(f.bytes)}, ${new Date(f.createdAt).toLocaleDateString('uk-UA')})`)
+        .join('\n');
+      await ask({
+        title: r.unused.length ? `Ніде не використовуються: ${r.unused.length}` : 'Сміття на Диску немає',
+        message: [
+          `У папках застосунку на Диску: ${r.files} файлів, ${formatBytes(r.bytes)}.`,
+          `Використовуються: ${r.used}.`,
+          r.young ? `Нові, молодші ${DRIVE_GRACE_DAYS} днів (не рахую): ${r.young}.` : '',
+          r.unused.length ? `Ні на що не вказують: ${r.unused.length}, ${formatBytes(r.unusedBytes)}.` : '',
+          `Перевірено записів: ${r.records}. Нічого не видалено.`,
+          names ? `\nНаймолодші з них:\n${names}${r.unused.length > 12 ? '\n…' : ''}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        actions: [{ id: 'ok', label: 'Зрозуміло' }],
+      });
+    } catch (e) {
+      notify('Перевірку не завершено', e instanceof Error ? e.message : String(e));
+    } finally {
+      setDriveCheckBusy(false);
+    }
+  };
 
   useEffect(() => {
     return onSnapshot(driveStatsDoc, (snapshot) => {
@@ -806,6 +839,17 @@ export default function SettingsScreen() {
                 Копії файлів, які не відкривали {STALE_AFTER_DAYS} днів, прибираються з пристрою самі - але лише тих,
                 що є на Диску. Записи лишаються; при наступному відкритті файл повертається.
               </Text>
+              {/* THE DRIVE CHECK, step 1 (utils/driveSweep): counts what on the Drive nothing in the app points at.
+                  Deletes nothing - the user sees the numbers before the rule is ever let loose. */}
+              <View style={styles.trafficRow}>
+                <Ionicons name="search-outline" size={15} color="#6B7280" />
+                <Text style={styles.trafficLabel} numberOfLines={1}>
+                  {driveCheckBusy ? 'Перевіряю Диск…' : 'Що на Диску ніде не використовується'}
+                </Text>
+                <Pressable hitSlop={8} disabled={driveCheckBusy} onPress={runDriveCheck}>
+                  <Text style={styles.inlineAction}>Перевірити</Text>
+                </Pressable>
+              </View>
               {/* Everything saved before there was a Drive backup has its
                   bytes on ONE device only - a card with nothing behind it
                   anywhere else. This sends whatever this device still
