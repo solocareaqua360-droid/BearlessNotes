@@ -20,7 +20,19 @@ import { navigationRef } from '../navigationRef';
 import type { Block, DbTableSettings, FieldDef } from '../types';
 import { useDbTableData } from '../hooks/useDbTableData';
 import { displayFieldValue, rowTitleOf, visibleFieldsOf } from '../utils/customRowDisplay';
-import { BUILT_IN_SORT_LABELS, sortableFieldsOf } from '../utils/customRowQuery';
+import {
+  BUILT_IN_SORT_LABELS,
+  activeFilterFor,
+  applyRowFilters,
+  clearFilterFor,
+  facetLabel,
+  facetsOf,
+  filterableFieldsOf,
+  setPresenceOp,
+  sortableFieldsOf,
+  toggleFacet,
+  type RowFilter,
+} from '../utils/customRowQuery';
 import { DB_TABLE_DEFAULT_ROWS, dbTableColumns, dbTableCounts, dbTableRows } from '../utils/dbTable';
 import { generateId } from '../utils/documentBlocks';
 import DbRecordCard from './DbRecordCard';
@@ -221,14 +233,77 @@ export default function DbTableBlock({
       actions: [
         { id: 'all', label: 'Усі записи', icon: 'albums-outline' },
         { id: 'manual', label: 'Тільки додані вручну', icon: 'hand-left-outline' },
+        { id: 'filter', label: 'Налаштувати фільтр…', hint: (s.filters ?? []).length ? `Умов: ${(s.filters ?? []).length}` : 'Поле і значення', icon: 'options-outline' },
         ...views.map((v) => ({ id: `v:${v.id}`, label: `Як у вигляді «${v.name}»`, icon: 'bookmark-outline' as const })),
       ],
     });
-    if (choice === 'all') save({ source: 'filter', filters: [] });
+    if (choice === 'filter') await editFilters();
+    else if (choice === 'all') save({ source: 'filter', filters: [] });
     else if (choice === 'manual') save({ source: 'manual', filters: [] });
     else if (choice.startsWith('v:')) {
       const v = views.find((x) => x.id === choice.slice(2));
       if (v) save({ source: 'filter', filters: v.filters, ...(v.sortField ? { sortField: v.sortField, sortDir: v.sortDir ?? 'asc' } : {}) });
+    }
+  }
+
+  // THE FILTER SET HERE (2026-11-02, the user: «я вставив базу розробка… хочу показувати тільки баги»): no view in the base
+  // needed. A field, then its values - the ones the records really hold, as in the base's own filter - ticked on and off;
+  // «Готово» steps back. Every tick is saved at once, so the table behind already shows it.
+  async function editFilters() {
+    if (!database) return;
+    let filters: RowFilter[] = s.source === 'filter' ? [...(s.filters ?? [])] : [];
+    const put = (next: RowFilter[]) => {
+      filters = next;
+      save({ source: 'filter', filters: next });
+    };
+    const fields = filterableFieldsOf(database);
+    const said = (f: FieldDef) => {
+      const active = activeFilterFor(filters, f.id);
+      if (!active) return undefined;
+      if (active.op === 'filled') return 'заповнене';
+      if (active.op === 'empty') return 'порожнє';
+      return (active.values ?? []).map((key) => facetLabel(f, key, context)).join(', ');
+    };
+    for (;;) {
+      const fieldChoice = await ask({
+        title: 'Фільтр',
+        message: filters.length ? 'Показуються записи, що підходять під усі умови.' : 'Виберіть поле, за яким відбирати записи.',
+        actions: [
+          ...fields.map((f) => ({ id: f.id, label: f.name, hint: said(f), icon: activeFilterFor(filters, f.id) ? ('funnel' as const) : ('funnel-outline' as const) })),
+          ...(filters.length ? [{ id: 'clear', label: 'Скинути всі умови', icon: 'close-circle-outline' as const }] : []),
+          { id: 'done', label: 'Готово', icon: 'checkmark' as const },
+        ],
+      });
+      if (fieldChoice === 'clear') {
+        put([]);
+        continue;
+      }
+      const field = fields.find((f) => f.id === fieldChoice);
+      if (!field) return;
+      for (;;) {
+        const active = activeFilterFor(filters, field.id);
+        const facets = facetsOf(field, applyRowFilters(raw, clearFilterFor(filters, field.id), database), context);
+        const valueChoice = await ask({
+          title: field.name,
+          message: 'Позначте, які значення показувати.',
+          actions: [
+            ...facets.map((f) => ({
+              id: `k:${f.key}`,
+              label: f.label,
+              hint: String(f.count),
+              icon: active?.op === 'any' && (active.values ?? []).includes(f.key) ? ('checkmark-circle' as const) : ('ellipse-outline' as const),
+            })),
+            { id: 'filled', label: 'Заповнене', icon: active?.op === 'filled' ? ('checkmark-circle' as const) : ('ellipse-outline' as const) },
+            { id: 'empty', label: 'Порожнє', icon: active?.op === 'empty' ? ('checkmark-circle' as const) : ('ellipse-outline' as const) },
+            ...(active ? [{ id: 'clear', label: 'Без умови для цього поля', icon: 'close-circle-outline' as const }] : []),
+            { id: 'done', label: 'Готово', icon: 'checkmark' as const },
+          ],
+        });
+        if (valueChoice.startsWith('k:')) put(toggleFacet(filters, field.id, valueChoice.slice(2)));
+        else if (valueChoice === 'filled' || valueChoice === 'empty') put(setPresenceOp(filters, field.id, valueChoice));
+        else if (valueChoice === 'clear') put(clearFilterFor(filters, field.id));
+        else break;
+      }
     }
   }
 
