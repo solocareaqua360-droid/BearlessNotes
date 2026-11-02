@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { backupFileToDrive } from '../utils/googleDrive';
-import { checkDrive, DRIVE_GRACE_DAYS } from '../utils/driveSweep';
+import { checkDrive, DRIVE_GRACE_DAYS, restoreMissing } from '../utils/driveSweep';
 import StockPhotoPicker from '../components/StockPhotoPicker';
 import {
   ActivityIndicator,
@@ -396,21 +396,42 @@ export default function SettingsScreen() {
         .slice(0, 12)
         .map((f) => `• ${f.name} (${formatBytes(f.bytes)}, ${new Date(f.createdAt).toLocaleDateString('uk-UA')})`)
         .join('\n');
-      await ask({
-        title: r.unused.length ? `Ніде не використовуються: ${r.unused.length}` : 'Сміття на Диску немає',
+      const canRestore = r.missing.filter((m) => m.localCopy).length;
+      const answer = await ask({
+        title: r.missing.length
+          ? `Зникли з Диску: ${r.missing.length}`
+          : r.unused.length
+            ? `Ніде не використовуються: ${r.unused.length}`
+            : 'Сміття на Диску немає',
         message: [
           `У папках застосунку на Диску: ${r.files} файлів, ${formatBytes(r.bytes)}.`,
           `Використовуються: ${r.used}.`,
           r.young ? `Нові, молодші ${DRIVE_GRACE_DAYS} днів (не рахую): ${r.young}.` : '',
           r.unused.length ? `Ні на що не вказують: ${r.unused.length}, ${formatBytes(r.unusedBytes)}.` : '',
           r.unused.length ? `З них старі прев'ю дошок: ${r.unusedPreviews}; фото й файли: ${r.unused.length - r.unusedPreviews}.` : '',
+          r.missing.length
+            ? `Зникли з Диску, хоча записи на них вказують: ${r.missing.length}. На цьому пристрої є копії: ${canRestore}.`
+            : '',
           `Перевірено записів: ${r.records}. Нічого не видалено.`,
           names ? `\nФото й файли, наймолодші:\n${names}${r.unused.length - r.unusedPreviews > 12 ? '\n…' : ''}` : '',
         ]
           .filter(Boolean)
           .join('\n'),
-        actions: [{ id: 'ok', label: 'Зрозуміло' }],
+        actions: [
+          ...(canRestore > 0 ? [{ id: 'restore', label: `Повернути на Диск (${canRestore})`, tone: 'primary' as const }] : []),
+          { id: 'ok', label: 'Зрозуміло' },
+        ],
       });
+      if (answer === 'restore') {
+        setDriveCheckBusy(true);
+        const done = await restoreMissing(r.missing);
+        notify(
+          'Повернуто на Диск',
+          `${done.restored} з ${canRestore}.${done.failed ? ` Не вдалося: ${done.failed} - спробуйте ще раз пізніше.` : ''}${
+            r.missing.length > canRestore ? ` Ще ${r.missing.length - canRestore} - лише на іншому пристрої: перевірте там.` : ''
+          }`
+        );
+      }
     } catch (e) {
       notify('Перевірку не завершено', e instanceof Error ? e.message : String(e));
     } finally {

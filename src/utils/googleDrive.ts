@@ -353,6 +353,28 @@ export async function listMediaFiles(): Promise<DriveMediaFile[]> {
   return out;
 }
 
+// Whether a Drive file is still there (not gone, not in the Drive's bin). A failure to ask is NOT «gone»: it throws.
+export async function driveFileExists(fileId: string): Promise<boolean> {
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,trashed`);
+  if (res.status === 404) return false;
+  if (!res.ok) throw new Error(await describeFailedResponse(res));
+  const json = (await res.json()) as { trashed?: boolean };
+  return !json.trashed;
+}
+
+// This device's own copy of a picture or file, if it still has one: the record's own path, or the path a Drive copy was
+// fetched to (utils/localPath). For putting back on the Drive a file whose Drive copy is gone.
+export async function deviceCopyOf(uri: string | undefined, driveFileId: string): Promise<string | null> {
+  const paths = [uri, localPathFor(uri, driveFileId), `${LegacyFileSystem.cacheDirectory}drive-${driveFileId}`].filter(
+    (p): p is string => !!p && (p.startsWith('file:') || p.startsWith('/'))
+  );
+  for (const p of paths) {
+    const info = await LegacyFileSystem.getInfoAsync(p).catch(() => null);
+    if (info?.exists) return p;
+  }
+  return null;
+}
+
 // Into the Drive's bin - not gone: the bin keeps it for 30 days more.
 export async function trashDriveFile(fileId: string): Promise<void> {
   const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id`, {

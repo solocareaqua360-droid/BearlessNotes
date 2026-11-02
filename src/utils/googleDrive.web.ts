@@ -30,6 +30,7 @@ import { ownedQuery, setDoc } from './owned';
 import { dropPending, keepPending, listPending, readPending } from './pendingUploads';
 import { db } from '../firebase';
 import { getDriveToken, hasDriveToken, markDriveNeeded, subscribeToDriveToken } from './driveToken.web';
+import { keptAttachmentUrl } from './desktopBridge.web';
 
 const driveStatsDoc = doc(db, 'settings', 'driveStats');
 
@@ -200,6 +201,21 @@ export async function listMediaFiles(): Promise<DriveMediaFile[]> {
     } while (pageToken);
   }
   return out;
+}
+
+// Whether a Drive file is still there (not gone, not in the Drive's bin). A failure to ask is NOT «gone»: it throws.
+export async function driveFileExists(fileId: string): Promise<boolean> {
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,trashed`);
+  if (res.status === 404) return false;
+  if (!res.ok) throw new Error(await describeFailedResponse(res));
+  const json = (await res.json()) as { trashed?: boolean };
+  return !json.trashed;
+}
+
+// This machine's own copy of a picture or file, if it still has one: the Mac's kept copy (desktopBridge), named by the
+// Drive id. A plain browser tab keeps nothing past its own life.
+export async function deviceCopyOf(_uri: string | undefined, driveFileId: string): Promise<string | null> {
+  return keptAttachmentUrl(driveFileId);
 }
 
 // Into the Drive's bin - not gone: the bin keeps it for 30 days more.
