@@ -111,7 +111,7 @@ import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import { fetchLinkPreview, LinkPreview } from '../utils/linkPreview';
 import { linkDocId } from '../utils/linkId';
 import { blockFromCustomRow, blockFromFile, blockFromFlashcard, blockFromLink, blockFromPhoto } from '../utils/copyToNote';
-import { backupFileToDrive } from '../utils/googleDrive';
+import { backupFileToDrive, trashDriveFile } from '../utils/googleDrive';
 import { captureBoardPreview } from '../components/BoardMiniature';
 import ShapeBody, { SHAPE_STROKE, SHAPE_TEXT_SIZE_DEFAULT, SHAPE_LABEL_SIZE_DEFAULT } from '../components/BoardShapeBody';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
@@ -3622,7 +3622,12 @@ export default function BoardScreen() {
       console.warn('[board preview] Drive backup failed - this device still shows it, others will not yet', boardId);
       return;
     }
-    updateDoc(doc(db, 'boards', boardId), { previewDriveFileId: uploaded.fileId });
+    // THE OLD PICTURE GOES (2026-11-02, the Drive check found 247 files nothing points at, nearly all of them old
+    // previews): each new preview is a new Drive file, and the one it replaces was left behind - several a day per board.
+    // Into the Drive's own bin (30 days), and only the one this board itself pointed at.
+    const before = (await getDoc(doc(db, 'boards', boardId)).catch(() => null))?.data()?.previewDriveFileId as string | undefined;
+    await updateDoc(doc(db, 'boards', boardId), { previewDriveFileId: uploaded.fileId });
+    if (before && before !== uploaded.fileId) trashDriveFile(before).catch(() => {});
   }, [boardId]);
 
   const refreshDocumentPreviews = useCallback(async () => {

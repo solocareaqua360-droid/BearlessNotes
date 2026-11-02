@@ -48,6 +48,8 @@ export type DriveCheck = {
   young: number;
   unused: DriveMediaFile[];
   unusedBytes: number;
+  // Of the unused, how many are boards' old previews (their names begin «preview-»).
+  unusedPreviews: number;
   records: number;
 };
 
@@ -87,6 +89,7 @@ export async function checkDrive(): Promise<DriveCheck> {
     young,
     unused,
     unusedBytes: unused.reduce((n, f) => n + f.bytes, 0),
+    unusedPreviews: unused.filter((f) => f.name.startsWith('preview-')).length,
     records,
   };
 }

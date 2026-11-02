@@ -389,8 +389,9 @@ export default function SettingsScreen() {
     setDriveCheckBusy(true);
     try {
       const r = await checkDrive();
+      // The photos and files first - the previews are the expected part.
       const names = r.unused
-        .slice()
+        .filter((f) => !f.name.startsWith('preview-'))
         .sort((x, y) => y.createdAt - x.createdAt)
         .slice(0, 12)
         .map((f) => `• ${f.name} (${formatBytes(f.bytes)}, ${new Date(f.createdAt).toLocaleDateString('uk-UA')})`)
@@ -402,8 +403,9 @@ export default function SettingsScreen() {
           `Використовуються: ${r.used}.`,
           r.young ? `Нові, молодші ${DRIVE_GRACE_DAYS} днів (не рахую): ${r.young}.` : '',
           r.unused.length ? `Ні на що не вказують: ${r.unused.length}, ${formatBytes(r.unusedBytes)}.` : '',
+          r.unused.length ? `З них старі прев'ю дошок: ${r.unusedPreviews}; фото й файли: ${r.unused.length - r.unusedPreviews}.` : '',
           `Перевірено записів: ${r.records}. Нічого не видалено.`,
-          names ? `\nНаймолодші з них:\n${names}${r.unused.length > 12 ? '\n…' : ''}` : '',
+          names ? `\nФото й файли, наймолодші:\n${names}${r.unused.length - r.unusedPreviews > 12 ? '\n…' : ''}` : '',
         ]
           .filter(Boolean)
           .join('\n'),
