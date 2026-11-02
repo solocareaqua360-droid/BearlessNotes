@@ -578,9 +578,9 @@ export default function DatabasesScreen() {
         { id: 'colour', label: 'Колір', icon: 'color-palette-outline' }
       );
     }
-    // On the start desk's «Обрані бази» (navigation/startBases).
+    // In «Обране», under «Думки» on the Start (navigation/startBases).
     const startKey = item.kind === 'custom' ? `db:custom:${item.database.id}` : item.kind === 'builtin' ? `db:${item.tile.key}` : null;
-    if (startKey) actions.push({ id: 'start', label: startBases.isOn(startKey) ? 'Прибрати зі Старту' : 'На Старт', icon: 'home-outline' });
+    if (startKey) actions.push({ id: 'start', label: startBases.isOn(startKey) ? 'Прибрати з обраного' : 'В обране', icon: startBases.isOn(startKey) ? 'star' : 'star-outline' });
     if (item.kind === 'pin') actions.push({ id: 'unpin', label: 'Відкріпити', icon: 'remove-circle-outline' });
     if (item.kind === 'custom') actions.push({ id: 'delete', label: 'Видалити базу', icon: 'trash-outline', tone: 'danger' });
     const choice = await holdAsk({ title: rowOf(item).label, actions });

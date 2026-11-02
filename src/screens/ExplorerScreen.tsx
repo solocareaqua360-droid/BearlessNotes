@@ -73,8 +73,8 @@ import { downloadToDevice, sanitizeFileName } from '../utils/documentBlocks';
 import { BASES_DESK, DesksControlContext, deskFace } from '../navigation/desks';
 import { navigationRef } from '../navigationRef';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
-import { openStartBase } from '../navigation/startBases';
-import { listedBaseTiles } from '../constants/databaseTiles';
+import { openStartBase, useStartBases } from '../navigation/startBases';
+import { GRID_TILES, WIDE_TILES, listedBaseTiles } from '../constants/databaseTiles';
 import { CAN_OPEN_IN_WINDOW, openInWindow } from '../navigation/openInWindow';
 import { markHeld, useHeld } from '../utils/heldNode';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -583,6 +583,20 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       })
       .catch(() => {});
   }, []);
+  // THE START'S SECTIONS FOLD (2026-11-02, the user: «на іншому місці окрім назви розгортає згортає»): «Папки», «Проєкти» and
+  // «Бази» each fold to their head, remembered on this device. The head's name still goes to the whole list.
+  const [startFold, setStartFold] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    AsyncStorage.getItem('startFold')
+      .then((v) => v && setStartFold(JSON.parse(v)))
+      .catch(() => {});
+  }, []);
+  const toggleStartFold = (key: 'folders' | 'projects' | 'bases') =>
+    setStartFold((was) => {
+      const next = { ...was, [key]: !was[key] };
+      AsyncStorage.setItem('startFold', JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   const toggleStartSwitch = (key: 'startProjects' | 'startBases') =>
     (key === 'startProjects' ? setStartProjectsOn : setStartBasesOn)((on) => {
       AsyncStorage.setItem(key, on ? '0' : '1').catch(() => {});
@@ -3306,27 +3320,20 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       )}
       {/* «ДУМКИ» under the recents and over the folders (the user, 2026-10-28: «думки нижче нещодавно відкритих але над
           папками»), and nowhere else on the start's levels. */}
-      {FEATURES.thoughts && (
-        <View style={{ marginTop: recentsOn ? 10 : 0 }}>
-          <ThoughtsRow />
-        </View>
-      )}
-      {/* «Папки ›» opens every folder as cards (the explorer's own first level). */}
-      <Pressable onPress={() => setStartLevels([START_FOLDERS])} style={styles.startHeadRow} hitSlop={8}>
-        <Text style={[styles.startHead, styles.startHeadInRow, { color: S.ink }]}>Папки</Text>
-        <Ionicons name="chevron-forward" size={20} color={S.ink3} />
-      </Pressable>
+      {/* «Думки» and, beside it, the bases put in «Обране» (StartFavorites). */}
+      <View style={{ marginTop: recentsOn ? 10 : 0 }}>
+        <StartFavorites />
+      </View>
+      {/* «Папки ›» opens every folder as cards (the explorer's own first level); the rest of the head folds the rows. */}
+      <StartHead title="Папки" folded={!!startFold.folders} count={foldersAll.length} onOpen={() => setStartLevels([START_FOLDERS])} onToggle={() => toggleStartFold('folders')} />
       {/* EVERY folder of the first level, whatever project it is in (the user, 2026-10-28: «папки видимі не всі а ті які
           стоять з фільтром проекту») - the projects below are another way into the same folders. */}
-      {startRowsOf(foldersAll, binned.length === 0)}
-      {binned.length > 0 && <StartRow icon="trash-outline" name="Кошик" count={binned.length} last onPress={enterBin} />}
+      {!startFold.folders && startRowsOf(foldersAll, binned.length === 0)}
+      {!startFold.folders && binned.length > 0 && <StartRow icon="trash-outline" name="Кошик" count={binned.length} last onPress={enterBin} />}
       {startProjectsOn && (
-      <Pressable onPress={() => setStartLevels([START_PROJECTS])} style={styles.startHeadRow} hitSlop={8}>
-        <Text style={[styles.startHead, styles.startHeadInRow, { color: S.ink }]}>Проєкти</Text>
-        <Ionicons name="chevron-forward" size={20} color={S.ink3} />
-      </Pressable>
+        <StartHead title="Проєкти" folded={!!startFold.projects} count={bandGroups.length} onOpen={() => setStartLevels([START_PROJECTS])} onToggle={() => toggleStartFold('projects')} />
       )}
-      {startProjectsOn && bandGroups.map((g, i) => (
+      {startProjectsOn && !startFold.projects && bandGroups.map((g, i) => (
         <StartRow
           key={g.id}
           dot={g.color ?? S.ink3}
@@ -3340,10 +3347,10 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           onLongPress={() => holdProject(g.id)}
         />
       ))}
-      {startProjectsOn && bandGroups.length === 0 && <Text style={[styles.hint, { color: S.ink3 }]}>Проєктів поки немає.</Text>}
+      {startProjectsOn && !startFold.projects && bandGroups.length === 0 && <Text style={[styles.hint, { color: S.ink3 }]}>Проєктів поки немає.</Text>}
       {/* THE ARCHIVE (2026-11-02): a project archived here could only come back on the hidden «Проєкти» screen. A tap lists the
           archived ones; the one picked opens its own menu, which has «Повернути з архіву». */}
-      {startProjectsOn && archivedGroups.length > 0 && (
+      {startProjectsOn && !startFold.projects && archivedGroups.length > 0 && (
         <StartRow
           icon="archive-outline"
           name="Архів проєктів"
@@ -3358,7 +3365,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           }}
         />
       )}
-      {startBasesOn && <StartBases />}
+      {startBasesOn && <StartBases folded={!!startFold.bases} onToggle={() => toggleStartFold('bases')} />}
     </>
   );
   const rowsFolders = viewMode === 'rows' && !modernLook && !!path;
@@ -4332,11 +4339,77 @@ function StartRow({
 }
 
 // «Думки» as the first of the start list's folders (the user, 2026-10-28): what is not yet sorted, said beside it.
-function ThoughtsRow() {
+function ThoughtsRow({ last }: { last: boolean }) {
   const S = useSoft();
   const { countOf } = useThoughts(true);
   const loose = countOf(null);
-  return <StartRow dot={S.accent} name="Думки" note={loose > 0 ? `${loose} не розкладено` : undefined} last onPress={() => openThoughtsSpace()} />;
+  return <StartRow dot={S.accent} name="Думки" note={loose > 0 ? `${loose} не розкладено` : undefined} last={last} onPress={() => openThoughtsSpace()} />;
+}
+
+// A section's head on the start list: the name (with its «›») opens the whole list, anywhere else on the row folds the rows under it.
+// Folded, the head says how many it holds.
+function StartHead({ title, folded, count, onOpen, onToggle }: { title: string; folded: boolean; count: number; onOpen: () => void; onToggle: () => void }) {
+  const S = useSoft();
+  return (
+    <Pressable onPress={onToggle} style={startStyles.head} accessibilityLabel={folded ? `Розгорнути: ${title}` : `Згорнути: ${title}`}>
+      <Pressable onPress={onOpen} style={startStyles.headName} hitSlop={{ top: 10, bottom: 10, left: 8, right: 4 }}>
+        <Text style={[styles.startHead, styles.startHeadInRow, { color: S.ink }]}>{title}</Text>
+        <Ionicons name="chevron-forward" size={20} color={S.ink3} />
+      </Pressable>
+      <View style={{ flex: 1 }} />
+      {folded && count > 0 && <Text style={[startStyles.count, { color: S.ink3 }]}>{count}</Text>}
+      <Ionicons name={folded ? 'chevron-down' : 'chevron-up'} size={18} color={S.ink3} />
+    </Pressable>
+  );
+}
+
+// The keys of the bases in «Обране» that still stand for a base (a deleted base of one's own, a retired tile drop out).
+function useFavoriteBases(): { keys: string[]; isOn: (key: string) => boolean; toggle: (key: string) => void } {
+  const { customDatabases } = useDatabaseTiles();
+  const fav = useStartBases();
+  const known = new Set([...WIDE_TILES, ...GRID_TILES].map((t) => `db:${t.key}`));
+  const keys = fav.keys.filter((k) => (k.startsWith('db:custom:') ? customDatabases.some((d) => `db:custom:${d.id}` === k) : known.has(k)));
+  return { keys, isOn: fav.isOn, toggle: fav.toggle };
+}
+
+// The hold menu of a base's row on the start: in or out of «Обране», and on the Mac a base of one's own in a window.
+async function holdStartBase(key: string, label: string, fav: { isOn: (key: string) => boolean; toggle: (key: string) => void }) {
+  const customId = key.startsWith('db:custom:') ? key.slice('db:custom:'.length) : null;
+  const choice = await holdAsk({
+    title: label,
+    actions: [
+      { id: 'fav', label: fav.isOn(key) ? 'Прибрати з обраного' : 'В обране', icon: fav.isOn(key) ? 'star' : 'star-outline' },
+      ...(CAN_OPEN_IN_WINDOW && customId ? [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] : []),
+    ],
+  });
+  if (choice === 'fav') fav.toggle(key);
+  else if (choice === 'window' && customId) openInWindow({ kind: 'custom', databaseId: customId });
+}
+
+// «ДУМКИ» AND «ОБРАНЕ» (2026-11-02, the user: «базу можна закріпити в обране і вона буде на рівні з думками»): the few bases in use
+// now stand as rows right under «Думки», in the order they were put there; they stay in «Бази» below as well, which can then fold.
+function StartFavorites() {
+  const { customDatabases, iconFor } = useDatabaseTiles();
+  const desksControl = useContext(DesksControlContext);
+  const fav = useFavoriteBases();
+  return (
+    <>
+      {FEATURES.thoughts && <ThoughtsRow last={fav.keys.length === 0} />}
+      {fav.keys.map((key, i) => {
+        const face = deskFace(key, customDatabases, iconFor);
+        return (
+          <StartRow
+            key={key}
+            icon={face.icon}
+            name={face.label}
+            last={i === fav.keys.length - 1}
+            onPress={() => openStartBase(key, desksControl?.desks)}
+            onLongPress={() => holdStartBase(key, face.label, fav)}
+          />
+        );
+      })}
+    </>
+  );
 }
 
 const startStyles = StyleSheet.create({
@@ -4346,6 +4419,8 @@ const startStyles = StyleSheet.create({
   name: { flex: 1, minWidth: 0, fontSize: 16, fontFamily: SOFT_MEDIUM },
   count: { fontSize: 15, fontFamily: SOFT_MEDIUM, fontVariant: ['tabular-nums'] },
   line: { position: 'absolute', left: 38, right: 0, bottom: 0, height: StyleSheet.hairlineWidth },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 24, marginBottom: 4, minHeight: 32 },
+  headName: { flexDirection: 'row', alignItems: 'center', gap: 2 },
 });
 
 // «ОБРАНІ БАЗИ», last on the start list (navigation/startBases): the bases put there from a base's hold menu, as rows; a hold
@@ -4353,10 +4428,10 @@ const startStyles = StyleSheet.create({
 // «БАЗИ» ON THE START (2026-11-02, the user's: the bases stand on the Start like the folders - a head that goes to all the bases, and
 // every base a row opened straight from here). It was the bases put there by hand («Обрані бази»); now it is every listed base, the
 // built-in ones and the user's own. No counts: each would be a listener of its own on the Start.
-function StartBases() {
-  const S = useSoft();
+function StartBases({ folded, onToggle }: { folded: boolean; onToggle: () => void }) {
   const { customDatabases, iconFor } = useDatabaseTiles();
   const desksControl = useContext(DesksControlContext);
+  const fav = useFavoriteBases();
   const keys = [
     ...listedBaseTiles().map((t) => `db:${t.key}`),
     ...customDatabases
@@ -4367,19 +4442,17 @@ function StartBases() {
   return (
     <>
       {/* The head goes to the «Бази» desk, at its list (its own history is left as it is below the list). */}
-      <Pressable
-        onPress={() => {
+      <StartHead
+        title="Бази"
+        folded={folded}
+        count={keys.length}
+        onOpen={() => {
           if (navigationRef.isReady()) (navigationRef.navigate as (n: string, p: object) => void)('Tabs', { screen: BASES_DESK, params: { screen: 'BasesList' } });
         }}
-        style={styles.startHeadRow}
-        hitSlop={8}
-      >
-        <Text style={[styles.startHead, styles.startHeadInRow, { color: S.ink }]}>Бази</Text>
-        <Ionicons name="chevron-forward" size={20} color={S.ink3} />
-      </Pressable>
-      {keys.map((key, i) => {
+        onToggle={onToggle}
+      />
+      {!folded && keys.map((key, i) => {
         const face = deskFace(key, customDatabases, iconFor);
-        const customId = key.startsWith('db:custom:') ? key.slice('db:custom:'.length) : null;
         return (
           <StartRow
             key={key}
@@ -4387,14 +4460,7 @@ function StartBases() {
             name={face.label}
             last={i === keys.length - 1}
             onPress={() => openStartBase(key, desksControl?.desks)}
-            onLongPress={
-              CAN_OPEN_IN_WINDOW && customId
-                ? async () => {
-                    const choice = await holdAsk({ title: face.label, actions: [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] });
-                    if (choice === 'window') openInWindow({ kind: 'custom', databaseId: customId });
-                  }
-                : undefined
-            }
+            onLongPress={() => holdStartBase(key, face.label, fav)}
           />
         );
       })}
