@@ -18,6 +18,7 @@ import {
   Tile,
   WIDE_TILES,
   openDatabaseTile,
+  NOT_LISTED_AS_BASES,
   tileColorsDoc, tileIconsDoc } from '../constants/databaseTiles';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { PinnableItem, useDatabaseContents } from '../hooks/useDatabaseCounts';
@@ -137,8 +138,8 @@ function paneTargetFor(tile: Tile): PaneTarget | null {
   return null;
 }
 
-// The tiles no longer listed among the bases (their things live in the explorer) - see `items`.
-const LEFT_FOR_EXPLORER = new Set(['documents', 'board', 'explorer', 'chat', 'diary']);
+// The tiles no longer listed among the bases (their things live in the explorer) - see `items` and databaseTiles.
+const LEFT_FOR_EXPLORER = NOT_LISTED_AS_BASES;
 
 export default function DatabasesScreen() {
   // Temporary diagnosis - see utils/perfWatch.

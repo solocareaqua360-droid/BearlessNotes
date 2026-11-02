@@ -67,9 +67,11 @@ import { folderToZip } from '../utils/folderZip';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { downloadToDevice, sanitizeFileName } from '../utils/documentBlocks';
 
-import { DesksControlContext, deskFace } from '../navigation/desks';
+import { BASES_DESK, DesksControlContext, deskFace } from '../navigation/desks';
+import { navigationRef } from '../navigationRef';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
-import { openStartBase, useStartBases } from '../navigation/startBases';
+import { openStartBase } from '../navigation/startBases';
+import { listedBaseTiles } from '../constants/databaseTiles';
 import { CAN_OPEN_IN_WINDOW, openInWindow } from '../navigation/openInWindow';
 import { markHeld, useHeld } from '../utils/heldNode';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -2446,7 +2448,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       ...(startDesk && startList
         ? [
             { label: 'Проєкти', icon: 'folder-open-outline' as const, checked: startProjectsOn, onPress: () => toggleStartSwitch('startProjects') },
-            { label: 'Обрані бази', icon: 'apps-outline' as const, checked: startBasesOn, onPress: () => toggleStartSwitch('startBases') },
+            { label: 'Бази', icon: 'apps-outline' as const, checked: startBasesOn, onPress: () => toggleStartSwitch('startBases') },
           ]
         : []),
       // The start list decides this itself (its «Проєкти» level): the old switch would change nothing there.
@@ -4232,38 +4234,51 @@ const startStyles = StyleSheet.create({
 
 // «ОБРАНІ БАЗИ», last on the start list (navigation/startBases): the bases put there from a base's hold menu, as rows; a hold
 // takes one off again. Nothing at all while there are none.
+// «БАЗИ» ON THE START (2026-11-02, the user's: the bases stand on the Start like the folders - a head that goes to all the bases, and
+// every base a row opened straight from here). It was the bases put there by hand («Обрані бази»); now it is every listed base, the
+// built-in ones and the user's own. No counts: each would be a listener of its own on the Start.
 function StartBases() {
   const S = useSoft();
-  const { keys, toggle } = useStartBases();
   const { customDatabases, iconFor } = useDatabaseTiles();
   const desksControl = useContext(DesksControlContext);
-  // A base of one's own that is gone is not drawn (its key stays until taken off).
-  const shown = keys.filter((k) => !k.startsWith('db:custom:') || customDatabases.some((d) => `db:custom:${d.id}` === k));
-  if (shown.length === 0) return null;
+  const keys = [
+    ...listedBaseTiles().map((t) => `db:${t.key}`),
+    ...customDatabases
+      .slice()
+      .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')))
+      .map((d) => `db:custom:${d.id}`),
+  ];
   return (
     <>
-      <Text style={[styles.startHead, { color: S.ink }]}>Обрані бази</Text>
-      {shown.map((key, i) => {
+      {/* The head goes to the «Бази» desk, at its list (its own history is left as it is below the list). */}
+      <Pressable
+        onPress={() => {
+          if (navigationRef.isReady()) (navigationRef.navigate as (n: string, p: object) => void)('Tabs', { screen: BASES_DESK, params: { screen: 'BasesList' } });
+        }}
+        style={styles.startHeadRow}
+        hitSlop={8}
+      >
+        <Text style={[styles.startHead, styles.startHeadInRow, { color: S.ink }]}>Бази</Text>
+        <Ionicons name="chevron-forward" size={20} color={S.ink3} />
+      </Pressable>
+      {keys.map((key, i) => {
         const face = deskFace(key, customDatabases, iconFor);
+        const customId = key.startsWith('db:custom:') ? key.slice('db:custom:'.length) : null;
         return (
           <StartRow
             key={key}
             icon={face.icon}
             name={face.label}
-            last={i === shown.length - 1}
+            last={i === keys.length - 1}
             onPress={() => openStartBase(key, desksControl?.desks)}
-            onLongPress={async () => {
-              const customId = key.startsWith('db:custom:') ? key.slice('db:custom:'.length) : null;
-              const choice = await holdAsk({
-                title: face.label,
-                actions: [
-                  ...(CAN_OPEN_IN_WINDOW && customId ? [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] : []),
-                  { id: 'off', label: 'Прибрати зі Старту', icon: 'remove-circle-outline' as const },
-                ],
-              });
-              if (choice === 'window' && customId) openInWindow({ kind: 'custom', databaseId: customId });
-              else if (choice === 'off') toggle(key);
-            }}
+            onLongPress={
+              CAN_OPEN_IN_WINDOW && customId
+                ? async () => {
+                    const choice = await holdAsk({ title: face.label, actions: [{ id: 'window', label: 'У вікно', icon: 'copy-outline' as const }] });
+                    if (choice === 'window') openInWindow({ kind: 'custom', databaseId: customId });
+                  }
+                : undefined
+            }
           />
         );
       })}
