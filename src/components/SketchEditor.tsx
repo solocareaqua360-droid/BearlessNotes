@@ -614,6 +614,11 @@ export default function SketchEditor({ visible, initialElements, background, pap
     // onStart/onEnd - when a gesture is ACTIVE - never onBegin: those run
     // on the first finger already, and would stop every stroke drawing.
     const pinchG = Gesture.Pinch()
+      // One finger lifting first: the platform recomputes the focal from the finger left, and the canvas jumped
+      // by the difference on letting go (the boards' fix, BoardScreen, now on every canvas - 2026-11-02).
+      .onTouchesUp((e, state) => {
+        if (e.numberOfTouches < 2) state.end();
+      })
       .enabled(!background)
       .onStart((e) => {
         runOnJS(onTwo)('start', e.focalX, e.focalY);

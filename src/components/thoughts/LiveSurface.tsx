@@ -82,6 +82,11 @@ export default function LiveSurface({
     });
 
   const pinch = Gesture.Pinch()
+    // One finger lifting first: the platform recomputes the focal from the finger left, and the canvas jumped
+    // by the difference on letting go (the boards' fix, BoardScreen, now on every canvas - 2026-11-02).
+    .onTouchesUp((e, state) => {
+      if (e.numberOfTouches < 2) state.end();
+    })
     .onStart(() => {
       s0.value = s.value;
       x0.value = tx.value;

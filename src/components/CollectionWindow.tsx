@@ -63,6 +63,11 @@ function ZoomPage({
   const fy = useSharedValue(0);
   const s0 = useSharedValue(1);
   const pinch = Gesture.Pinch()
+    // One finger lifting first: the platform recomputes the focal from the finger left, and the canvas jumped
+    // by the difference on letting go (the boards' fix, BoardScreen, now on every canvas - 2026-11-02).
+    .onTouchesUp((e, state) => {
+      if (e.numberOfTouches < 2) state.end();
+    })
     .onStart((e) => {
       fx.value = e.focalX - w / 2;
       fy.value = e.focalY - h / 2;

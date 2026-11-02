@@ -279,6 +279,11 @@ export default function FolderCanvas({
   const pinch = useMemo(
     () =>
       Gesture.Pinch()
+        // One finger lifting first: the platform recomputes the focal from the finger left, and the canvas jumped
+        // by the difference on letting go (the boards' fix, BoardScreen, now on every canvas - 2026-11-02).
+        .onTouchesUp((e, state) => {
+          if (e.numberOfTouches < 2) state.end();
+        })
         .onStart((e) => {
           start.value = { tx: tx.value, ty: ty.value, scale: scale.value, fx: e.focalX, fy: e.focalY };
         })
