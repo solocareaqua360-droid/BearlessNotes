@@ -78,6 +78,29 @@ export function markDropOver(registers: Map<string, View>[], x: number, y: numbe
 }
 export function clearDropOver() {
   if (Platform.OS === 'web' && typeof document !== 'undefined') document.querySelectorAll('[data-drop-over]').forEach((el) => el.removeAttribute('data-drop-over'));
+  setNativeDropOver(null);
+}
+
+// THE PHONE'S OWN «WHERE IT WILL LAND» (2026-11-02, the user: «підсвітку папки, в яку я перетягуванням вкладаю… папка
+// повинна трішки змінити свій колір»). The folder whose row is under the finger - the same test the drop makes - is told
+// so, and draws a slight tint (DropTint). Only a CHANGE of folder reaches React, never a move of the finger.
+let nativeDropOver: string | null = null;
+const dropOverListeners = new Set<(path: string | null) => void>();
+function setNativeDropOver(path: string | null) {
+  if (path === nativeDropOver) return;
+  nativeDropOver = path;
+  dropOverListeners.forEach((l) => l(path));
+}
+export function useIsDropOver(path: string): boolean {
+  const [on, setOn] = useState(nativeDropOver === path);
+  useEffect(() => {
+    const listener = (p: string | null) => setOn(p === path);
+    dropOverListeners.add(listener);
+    return () => {
+      dropOverListeners.delete(listener);
+    };
+  }, [path]);
+  return on;
 }
 
 export type CarryGhost<T> = {
@@ -193,6 +216,18 @@ export function useCardCarry<T extends { id: string }>({
   // would otherwise leave the overlay up forever, and an overlay that is
   // up is an overlay that takes every touch on the screen.
   const aliveAt = useRef(0);
+  // The folder rows' places, measured now and then during a carry (measuring is asynchronous on the phone, a move is
+  // not): what the tint is decided from.
+  const folderRects = useRef(new Map<string, { x: number; y: number; w: number; h: number }>());
+  const measuredAt = useRef(0);
+  function measureFolders() {
+    measuredAt.current = Date.now();
+    const seen = new Set(folderNodes.current.keys());
+    for (const path of folderRects.current.keys()) if (!seen.has(path)) folderRects.current.delete(path);
+    folderNodes.current.forEach((node, path) => {
+      node.measureInWindow((x, y, w, h) => folderRects.current.set(path, { x, y, w, h }));
+    });
+  }
 
   function registerFolder(path: string) {
     return (node: View | null) => {
@@ -278,6 +313,7 @@ export function useCardCarry<T extends { id: string }>({
       const finger = { x: x + touchX, y: y + touchY };
       fingerRef.current = finger;
       liftedAt.current = finger;
+      if (Platform.OS !== 'web') measureFolders();
       wandered.current = false;
       originRef.current = path;
       aliveAt.current = Date.now();
@@ -305,6 +341,18 @@ export function useCardCarry<T extends { id: string }>({
     ghostRef.current = next;
     setGhost(next);
     markDropOver([folderNodes.current, externalFolders], absoluteX, absoluteY);
+    if (Platform.OS !== 'web') {
+      // A list may scroll under a carry: the places are read again five times a second.
+      if (Date.now() - measuredAt.current > 200) measureFolders();
+      let over: string | null = null;
+      for (const [path, r] of folderRects.current) {
+        if (absoluteX >= r.x && absoluteX <= r.x + r.w && absoluteY >= r.y && absoluteY <= r.y + r.h) {
+          over = path;
+          break;
+        }
+      }
+      setNativeDropOver(over);
+    }
   }, []);
 
   // Which registered target, if any, lies under a point - measured on

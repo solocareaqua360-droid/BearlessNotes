@@ -285,7 +285,7 @@ if (typeof document !== 'undefined') {
         ' [data-lift]:not([style*="transform"]):hover { outline: 2px solid color-mix(in srgb, currentColor 13%, transparent); outline-offset: -1px; }' +
         ` [data-lift]:not([style*="transform"]):active { outline: 2px solid color-mix(in srgb, currentColor 26%, transparent); outline-offset: -1px; transition-duration: ${MOTION.fast}ms; }` +
         // Where a carried card would land (hooks/useCardCarry's markDropOver).
-        ' [data-drop-over] { background-color: color-mix(in srgb, currentColor 11%, transparent) !important; outline: 2px solid color-mix(in srgb, currentColor 34%, transparent); outline-offset: -2px; border-radius: 10px; }' +
+        ' [data-drop-over] { background-color: color-mix(in srgb, #D9793F 14%, transparent) !important; border-radius: 10px; }' +
         ` [tabindex="0"]:not([data-lift]):not([style*="transform"]) { transition: transform ${MOTION.fast}ms ${MOTION.ease}, background-color 180ms ease, box-shadow 220ms ease, color 160ms ease, opacity 180ms ease; }` +
         // Only a button that holds no other button: a WINDOW is a pressable
         // too (its card catches the click so the backdrop does not close

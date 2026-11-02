@@ -99,6 +99,7 @@ import { bindRightClick } from '../utils/rightClick';
 import { noteOpened } from '../navigation/recentPlaces';
 import { addDroppedInPlace } from '../utils/createItem';
 import { clearDropOver, markDropOver } from '../hooks/useCardCarry';
+import DropTint from '../components/DropTint';
 import PlaylistWindow, { videoOf, type PlaylistVideo } from '../components/PlaylistWindow';
 import TagEditSheet from '../components/TagEditSheet';
 import { FolderCardSheet, FolderProjectsSheet } from '../components/FolderStyleSheets';
@@ -3289,6 +3290,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             </View>
             </>
             )}
+            <DropTint path={f.path} radius={22} />
           </Pressable>
   );
   // THE START LIST (features.startList): rows in place of the capsules and cards. A folder's row is a drop target and holds
@@ -3307,6 +3309,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         iconColor={f.color}
         name={f.name}
         count={f.count}
+        dropPath={f.path}
         last={lastOfAll && i === list.length - 1}
         onPress={() => openFolderEntry(f)}
       />
@@ -3468,6 +3471,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                     >
                       <CollectionCard kind={collKind} name={f.name} count={f.count} items={collItemsOf(f, collKind)} face={size} blowing={blowing === f.path} />
                     </TurningPressable>
+                    <DropTint path={f.path} radius={20} />
                   </Animated.View>
                 );
               }
@@ -3543,6 +3547,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                       () => holdFolder(f)
                     )}
                   />
+                  <DropTint path={f.path} radius={20} />
                 </Animated.View>
               );
             };
@@ -3616,6 +3621,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
                 style={collLookOf(f).wide ? styles.collRow : { width: Math.floor((contentW - FOLDER_GAP) / 2) }}
               >
                 <CollectionCard kind={collKind} name={f.name} count={f.count} items={collItemsOf(f, collKind)} face={collFaceOf(f)} />
+                <DropTint path={f.path} radius={20} />
               </Pressable>
             );
           })}
@@ -4297,6 +4303,7 @@ function StartRow({
   onPress,
   onLongPress,
   rowRef,
+  dropPath,
 }: {
   icon?: string;
   iconColor?: string;
@@ -4308,6 +4315,8 @@ function StartRow({
   onPress: () => void;
   onLongPress?: () => void;
   rowRef?: (node: View | null) => void;
+  // A folder's row: tinted while a carried card is over it.
+  dropPath?: string;
 }) {
   const S = useSoft();
   // A hold lifts the row over the blur, the way every hold menu does (utils/heldNode).
@@ -4334,6 +4343,7 @@ function StartRow({
       {count !== undefined && count > 0 && !note && <Text style={[startStyles.count, { color: S.ink3 }]}>{count}</Text>}
       <Ionicons name="chevron-forward" size={17} color={S.ink3} />
       {!last && <View style={[startStyles.line, { backgroundColor: S.line }]} />}
+      {dropPath !== undefined && <DropTint path={dropPath} radius={14} inset={-10} />}
     </Pressable>
   );
 }
