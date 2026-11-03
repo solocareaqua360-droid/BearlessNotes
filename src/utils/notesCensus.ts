@@ -90,7 +90,10 @@ export async function notesCensus(): Promise<string> {
     `Сторінки записів (не в провіднику): ${technical.length}${byKind.size ? ` - ${[...byKind.entries()].map(([k, n]) => `${kindWord[k] ?? k} ${n}`).join(', ')}` : ''}.`,
     '',
     orphan.length
-      ? `НЕ ВИДНО НІДЕ: ${orphan.length} - їхній власник (запис, нотатка, дошка) уже видалений:\n${names(orphan, 12)}`
+      ? `НЕ ВИДНО НІДЕ: ${orphan.length} - їхній власник уже видалений (${[...orphan.reduce((m, x) => {
+          const k = (x.d.owner as { kind?: string }).kind ?? '?';
+          return m.set(k, (m.get(k) ?? 0) + 1);
+        }, new Map<string, number>())].map(([k, n]) => `${k === 'note' ? 'нотатки' : kindWord[k] ?? k} ${n}`).join(', ')}):\n${names(orphan, 12)}`
       : 'Не видно ніде: 0 - кожен документ має своє місце.',
     unknownOwner.length ? `Не вдалося перевірити власника: ${unknownOwner.length}.` : '',
   ]
