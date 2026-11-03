@@ -357,5 +357,11 @@ no access of Claude's own to his data. The app must be open; records wait in the
   a question for the user, an idea he spoke of): `dev-board.py add "<Назва>" --type баг|питання|борг|ідея|функція --platform Android|Mac|Обидві`
   (status defaults to «вхідне»; he decides what moves to «далі»).
 - Read his side with the user's words: he changes statuses in the base by hand; when it matters, ask him, do not guess.
+- READING THE BASE (2026-11-04): the Mac app, while signed in, writes every unclosed record of «розробка» (вхідне / далі / на паузі: type,
+  platform, status, description, screenshots) to `~/Documents/mindEva-порції/розробка-вхідне/вхідне.md` (+ `<id>-<n>.jpg` pictures) once
+  a minute when something changed (src/utils/devBoardBridge.web.ts `exportOnce`). When the user says «подивись за сьогодні» / «що у вхідному»,
+  READ THAT FILE first (the day's records are under its «(сьогодні)» heading) and open the screenshot paths with Read. A screenshot marked
+  «недоступний» means Drive is not connected on the Mac (ask the user to press «Підключити Диск» there). The folder is rewritten whole, so
+  closed records leave with their pictures; never copy from it.
 - Do not build new features for the planning tool itself (the user stopped that loop on 2026-10-30). The three old files
   docs/dev-notes/01-03 are a frozen snapshot, not updated.
