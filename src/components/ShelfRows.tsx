@@ -107,7 +107,7 @@ export default function ShelfRows<T>({
   );
 }
 
-function ShelfRow<T>({
+export function ShelfRow<T>({
   items,
   order,
   tileWidth,

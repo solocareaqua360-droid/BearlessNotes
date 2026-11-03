@@ -26,6 +26,7 @@ import { getVideoEmbedInfo } from '../utils/videoEmbed';
 import ScreenGround from '../components/ScreenGround';
 import TopNavBar, { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
 import FolderItemCard, { type FolderCardMode } from '../components/FolderItemCard';
+import { ShelfRow } from '../components/ShelfRows';
 import FoldersCanvas from '../components/FoldersCanvas';
 import CascadeGrid, { notifyCascadeScroll } from '../components/CascadeGrid';
 import { Ionicons } from '../components/icons/Ionicons';
@@ -196,6 +197,11 @@ const isHeader = (row: Row): row is { header: string; count: number; key: string
 const isCells = (row: Row): row is { cascade: FolderItem[]; key: string } => 'cascade' in row;
 // A run of photos in the LIST view: bare rounded squares, three to a line (the user, 2026-10-14: no card, no stretching).
 const isStrip = (row: Row): row is { strip: FolderItem[]; key: string } => 'strip' in row;
+// «ПОЛИЦІ» (2026-11-03, the user's): a level as shelves - each folder in it a row scrolling sideways with what lies in it,
+// its own folders first as folder cards to step into; what lies in the level itself is the first shelf.
+type ShelfTile = { folder: FolderEntry } | { item: FolderItem };
+type ShelfRowData = { shelf: { label: string; entry: FolderEntry | null; tiles: ShelfTile[] }; key: string };
+const isShelf = (row: Row | ShelfRowData): row is ShelfRowData => 'shelf' in row;
 // A collection's window turns over in this long (a record's card: FLIP_MS, 460).
 const COLLECTION_FLIP_MS = 340;
 
@@ -400,20 +406,20 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const { sortPref, selectSortField } = useSortPref('explorerSort');
   // THE VIEW (the one plan, 2026-10-11): a list of rows, a grid of tiles, or wide cards (one
   // tile a line, bigger picture). Remembered on this device.
-  const [globalView, setGlobalView] = useState<FolderCardMode | 'canvas'>('list');
+  const [globalView, setGlobalView] = useState<FolderCardMode | 'canvas' | 'shelves'>('list');
   useEffect(() => {
-    AsyncStorage.getItem('explorerView').then((v) => (v === 'grid' || v === 'rows' || v === 'canvas') && setGlobalView(v)).catch(() => {});
+    AsyncStorage.getItem('explorerView').then((v) => (v === 'grid' || v === 'rows' || v === 'canvas' || v === 'shelves') && setGlobalView(v)).catch(() => {});
   }, []);
-  const changeView = (m: FolderCardMode | 'canvas') => {
+  const changeView = (m: FolderCardMode | 'canvas' | 'shelves') => {
     setGlobalView(m);
     AsyncStorage.setItem('explorerView', m).catch(() => {});
   };
   // EACH FOLDER ITS OWN VIEW (the user, 2026-10-25): a list or a grid kept on the folder (Tag.view); the canvas is one for
   // all - it shows every folder - so it wins wherever it is on. Unset: the explorer's own view.
   const folderTagsAt = (p: string) => tags.filter((t) => t.path === p);
-  const folderViewOf = (p: string): 'list' | 'grid' | 'rows' | undefined => folderTagsAt(p).find((t) => t.view)?.view;
+  const folderViewOf = (p: string): 'list' | 'grid' | 'rows' | 'shelves' | undefined => folderTagsAt(p).find((t) => t.view)?.view;
   const pinsOf = (p: string): string[] => folderTagsAt(p).find((t) => t.pins?.length)?.pins ?? [];
-  const viewMode: FolderCardMode | 'canvas' = globalView === 'canvas' || !path ? globalView : folderViewOf(path) ?? globalView;
+  const viewMode: FolderCardMode | 'canvas' | 'shelves' = globalView === 'canvas' || !path ? globalView : folderViewOf(path) ?? globalView;
   // «СТИЛЬ ПРОВІДНИКА» (2026-10-12, the user's): «Чистий» - the folders as this screen draws them; «Модерний» - the
   // same folders drawn as the «Проєкти» page drew them (see modernLook below: a look only). Remembered on this device.
   // The Mac/browser opens «Модерний» unless told otherwise (2026-10-16: the explorer came to the Mac to show the phone's
@@ -1299,7 +1305,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   // implied folder gets a tag of its own through setTagFields).
   const [folderViewsOpen, setFolderViewsOpen] = useState(false);
   const settingsTagOf = (p: string, has: (t: Tag) => boolean) => folderTagsAt(p).find(has) ?? cardTagOf(p);
-  function setFolderView(p: string, view: 'list' | 'grid' | 'rows') {
+  function setFolderView(p: string, view: 'list' | 'grid' | 'rows' | 'shelves') {
     if (p === UNFILED) return;
     setTagFields(settingsTagOf(p, (t) => !!t.view).id, { view }).catch((e) => notify('Не вдалося зберегти', (e as Error).message));
   }
@@ -1949,6 +1955,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         { id: 'select', label: 'Вибрати', icon: 'checkmark-circle-outline' as const },
         { id: 'list', label: 'Вигляд: список', icon: 'reorder-two-outline' as const },
         { id: 'grid', label: 'Вигляд: сітка', icon: 'grid-outline' as const },
+        { id: 'shelves', label: 'Вигляд: полиці', icon: 'layers-outline' as const },
         { id: 'canvas', label: 'Вигляд: полотно', icon: 'albums-outline' as const },
       ],
     });
@@ -1956,7 +1963,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     else if (choice === 'folder') newFolderHere();
     else if (choice === 'shortcut') newShortcut();
     else if (choice === 'select') setSelecting(true);
-    else if (choice === 'list' || choice === 'grid' || choice === 'canvas') changeView(choice);
+    else if (choice === 'list' || choice === 'grid' || choice === 'canvas' || choice === 'shelves') changeView(choice);
   }
   const groundMenuRef = useRef(groundMenu);
   groundMenuRef.current = groundMenu;
@@ -2540,7 +2547,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     explorerSelect ? null : [
       // The shared set of the bases' «⋯» (the survey of 2026-10-10): the view, the order, then the folder.
       // Inside a folder a list/grid is THAT folder's own view; the canvas (and the root) is the explorer's.
-      ...viewSection(viewMode, (m) => (path && path !== UNFILED && m !== 'canvas' && globalView !== 'canvas' ? setFolderView(path, m === 'grid' ? 'grid' : m === 'rows' ? 'rows' : 'list') : changeView(m as FolderCardMode | 'canvas')), ['list', 'grid', 'rows', 'canvas']),
+      ...viewSection(viewMode, (m) => (path && path !== UNFILED && m !== 'canvas' && globalView !== 'canvas' ? setFolderView(path, m === 'grid' ? 'grid' : m === 'rows' ? 'rows' : m === 'shelves' ? 'shelves' : 'list') : changeView(m as FolderCardMode | 'canvas' | 'shelves')), ['list', 'grid', 'rows', 'shelves', 'canvas']),
       { label: 'Вигляд папок…', icon: 'options-outline' as const, onPress: () => setFolderViewsOpen(true) },
       ...orderSection(sortPref, selectSortField),
       { label: 'Групувати за типом', icon: 'layers-outline' as const, checked: byKind, onPress: toggleByKind },
@@ -3086,7 +3093,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     explorerSelect ? (
       <ExplorerPanel
         view={viewMode === 'wide' ? 'grid' : viewMode === 'rows' ? 'list' : viewMode}
-        onView={(v) => changeView(v)}
+        // Inside a folder the view is the folder's own (as «⋯» → «Вигляд» sets it); the canvas is one for all.
+        onView={(v) => (path && path !== UNFILED && v !== 'canvas' && globalView !== 'canvas' ? setFolderView(path, v) : changeView(v))}
         sortPref={sortPref}
         onSort={selectSortField}
         byKind={byKind}
@@ -3372,6 +3380,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     </>
   );
   const rowsFolders = viewMode === 'rows' && !modernLook && !!path;
+  // «Полиці»: the folders are drawn as shelves in the list itself (shelfRows), not as cards up here.
+  const shelvesMode = viewMode === 'shelves' && !inBin && !inCleanup && !searching;
   const headerBody = startHere ? startBody : (
     <>
       {/* Only on the start desk itself, never inside a folder (the user, 2026-10-25: «нещодавні не показуються всередині папок»). */}
@@ -3435,7 +3445,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
           />
         </View>
       )}
-      {modernLook && stage === 'all' && (
+      {modernLook && stage === 'all' && !shelvesMode && (
         <View style={styles.modernLines}>
           {(() => {
             let order = 0;
@@ -3569,7 +3579,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       )}
       {/* THE SQUARE «ДУМКИ» (sketch XCmYdqyLVpvVDxGWqyVm8b): a folder's square with two of the folders beside it, the rest of
           the list under them. */}
-      {thoughtsSquare && (
+      {thoughtsSquare && !shelvesMode && (
         <View style={[styles.folders, { flexWrap: 'nowrap', marginBottom: FOLDER_GAP }]}>
           <ThoughtsSquare size={squareSide} height={sideH || undefined} />
           <View style={{ flex: 1, gap: FOLDER_GAP }} onLayout={(e) => setSideH(Math.round(e.nativeEvent.layout.height))}>
@@ -3583,7 +3593,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       {/* «РЯДКИ» inside a folder: its subfolders and collections are rows too, the start list's rows (Craft's folder). */}
       {rowsFolders && folders.length > 0 && <View style={{ marginBottom: 8 }}>{startRowsOf(folders, true)}</View>}
       <View style={styles.folders}>
-        {(modernLook || rowsFolders ? [] : folders)
+        {(modernLook || rowsFolders || shelvesMode ? [] : folders)
           .filter((f) => !collKindOf(f))
           .slice(thoughtsSquare ? SIDE_FOLDERS : 0)
           .map((f) => folderPill(f))}
@@ -3601,7 +3611,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       </View>
       {/* THE COLLECTIONS, under the folders and on their own lines: a tall face beside a folder stretched the folder
           to its height, empty (2026-10-15). */}
-      {!modernLook && !rowsFolders && folders.some((f) => !!collKindOf(f)) && (
+      {!modernLook && !rowsFolders && !shelvesMode && folders.some((f) => !!collKindOf(f)) && (
         <View style={[styles.folders, viewMode === 'grid' && { alignItems: 'flex-start' }]}>
           {folders.filter((f) => !!collKindOf(f)).map((f) => {
             const collKind = collKindOf(f)!;
@@ -3662,6 +3672,88 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       pressFns.current.set(item.id, fn);
     }
     return fn;
+  };
+  // THE SHELVES (shelvesMode): the level's own things first, then a shelf per folder - its folders as cards, then its things.
+  const shelfTileW = Math.round(Math.min(230, contentW * 0.44));
+  const shelfRows: ShelfRowData[] | null = !shelvesMode
+    ? null
+    : [
+        ...(here.length ? [{ key: '__here', shelf: { label: 'У цій папці', entry: null, tiles: here.map((item) => ({ item })) } }] : []),
+        ...folders.map((f) => {
+          const things = sortItems(
+            directItemsOf(f.path),
+            sortPref,
+            (i) => i.title,
+            (i) => {
+              const v = ((i.raw ?? {}) as Record<string, unknown>).createdAt;
+              return typeof v === 'number' ? v : undefined;
+            },
+            (i) => stamp(i)
+          );
+          const subs = f.path === UNFILED || f.collection || f.playlist ? [] : entriesFor(f.path);
+          return { key: `shelf:${f.path}`, shelf: { label: f.name, entry: f, tiles: [...subs.map((folder) => ({ folder })), ...things.map((item) => ({ item }))] } };
+        }),
+      ];
+  // One height for every tile on a shelf: a note's card is its whole page and stood a screen tall beside a photo; on a shelf
+  // it shows its top, the way a book shows its spine.
+  const shelfTileH = (width: number) => Math.round(width * 1.15);
+  const shelfTile = (tile: ShelfTile, width: number) => {
+    if ('folder' in tile) {
+      const f = tile.folder;
+      return (
+        <Pressable onPress={() => openFolderEntry(f)} onLongPress={() => holdFolder(f)} delayLongPress={350} style={[styles.shelfFolder, { width, height: shelfTileH(width), backgroundColor: S.card, boxShadow: S.shadow } as never]}>
+          <View style={[styles.seat, { backgroundColor: S.bg }]}>
+            <Ionicons name={(f.icon as never) || ('folder-outline' as never)} size={22} color={f.color ?? S.ink2} />
+          </View>
+          <Text style={[styles.folderName, { color: S.ink }]} numberOfLines={2}>
+            {f.name}
+          </Text>
+          <Text style={[styles.folderCount, { color: S.ink3 }]}>{f.count}</Text>
+        </Pressable>
+      );
+    }
+    return (
+      <View style={[styles.shelfBox, { width, height: shelfTileH(width) }]}>
+        <FolderItemCard item={tile.item} tags={tags} mode="grid" tileWidth={width} columns={2} onPress={pressFor(tile.item)} onLongPress={() => holdItem(tile.item)} />
+      </View>
+    );
+  };
+  const renderShelf = (row: ShelfRowData, index: number) => {
+    const { label, entry, tiles } = row.shelf;
+    const head = (
+      <>
+        <Text style={[styles.shelfLabel, { color: S.ink }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={[styles.shelfCount, { color: S.ink3 }]}>{tiles.length}</Text>
+        {entry && <Ionicons name="chevron-forward" size={17} color={S.ink3} />}
+      </>
+    );
+    return (
+      <View style={styles.shelf}>
+        {entry ? (
+          <Pressable onPress={() => openFolderEntry(entry)} onLongPress={entry.path !== UNFILED ? () => holdFolder(entry) : undefined} delayLongPress={350} style={styles.shelfHead} hitSlop={6}>
+            {head}
+          </Pressable>
+        ) : (
+          <View style={styles.shelfHead}>{head}</View>
+        )}
+        {tiles.length > 0 ? (
+          <View style={{ marginHorizontal: -20 }}>
+            <ShelfRow
+              items={tiles}
+              order={Math.min(index, 3)}
+              tileWidth={shelfTileW}
+              padding={20}
+              keyOf={(t) => ('folder' in t ? `f:${t.folder.path}` : t.item.id)}
+              renderTile={shelfTile}
+            />
+          </View>
+        ) : (
+          <Text style={[styles.hint, { color: S.ink3, marginTop: 0 }]}>Порожньо</Text>
+        )}
+      </View>
+    );
   };
   const bodyKept = useRef<ReactElement | null>(null);
   const keepWhileAway = (el: ReactElement) => {
@@ -3774,14 +3866,15 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
         >
         <FlatList
           ref={carrying.scrollRef as never}
-          data={stage === 'cover' ? [] : rows}
+          data={(stage === 'cover' ? [] : shelfRows ?? rows) as Row[]}
           extraData={stage}
-          keyExtractor={(row) => (isHeader(row) || isCells(row) || isStrip(row) ? row.key : row.id)}
+          keyExtractor={(row) => (isShelf(row) || isHeader(row) || isCells(row) || isStrip(row) ? (row as { key: string }).key : row.id)}
           ListHeaderComponent={header}
           ListEmptyComponent={
-            stage === 'all' && folders.length === 0 && !startHere ? <Text style={[styles.hint, { color: S.ink3 }]}>{searching ? 'Нічого не знайдено.' : path ? 'У цій папці ще порожньо.' : projectsHere && focusProj !== NO_PROJECT ? 'У цьому проєкті ще немає папок. Додати: «Без проєкту» → «у проєкт…».' : 'Ще нічого немає.'}</Text> : null
+            stage === 'all' && folders.length === 0 && !startHere && !(shelfRows && shelfRows.length > 0) ? <Text style={[styles.hint, { color: S.ink3 }]}>{searching ? 'Нічого не знайдено.' : path ? 'У цій папці ще порожньо.' : projectsHere && focusProj !== NO_PROJECT ? 'У цьому проєкті ще немає папок. Додати: «Без проєкту» → «у проєкт…».' : 'Ще нічого немає.'}</Text> : null
           }
           renderItem={({ item: row, index: rowIndex }) => withArrival(rowIndex, (() => {
+            if (isShelf(row)) return renderShelf(row, rowIndex);
             if (isHeader(row)) {
               return <Text style={[styles.sectionLabel, { color: S.ink3, marginTop: 6 }]}>{`${row.header} · ${row.count}`}</Text>;
             }
@@ -4024,7 +4117,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
       <FolderViewsSheet
         visible={folderViewsOpen}
         folders={folderPaths.filter((p) => p !== UNFILED).map((p) => ({ path: p, name: nameOf(p), depth: p.split('/').length - 1, view: folderViewOf(p) }))}
-        fallback={globalView === 'grid' ? 'grid' : globalView === 'rows' ? 'rows' : 'list'}
+        fallback={globalView === 'grid' ? 'grid' : globalView === 'rows' ? 'rows' : globalView === 'shelves' ? 'shelves' : 'list'}
         onSet={setFolderView}
         onSetAll={(v) => folderPaths.filter((p) => p !== UNFILED).forEach((p) => setFolderView(p, v))}
         onClose={() => setFolderViewsOpen(false)}
@@ -4249,6 +4342,12 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 13, fontFamily: SOFT_SEMIBOLD, marginBottom: 10, marginLeft: 4 },
   startHead: { fontSize: 20, fontFamily: SOFT_BOLD, marginTop: 24, marginBottom: 4 },
   rowsLine: { position: 'absolute', left: 54, right: 0, bottom: 0, height: StyleSheet.hairlineWidth },
+  shelf: { marginBottom: 22 },
+  shelfHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, alignSelf: 'flex-start' },
+  shelfLabel: { fontSize: 18, fontFamily: SOFT_BOLD, flexShrink: 1 },
+  shelfCount: { fontSize: 15, fontFamily: SOFT_MEDIUM, fontVariant: ['tabular-nums'] },
+  shelfFolder: { borderRadius: 20, padding: 14, gap: 8, justifyContent: 'flex-start' },
+  shelfBox: { borderRadius: 18, overflow: 'hidden' },
   startHeadRow: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', marginTop: 24, marginBottom: 4 },
   startHeadInRow: { marginTop: 0, marginBottom: 0 },
   pickedFrame: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderWidth: 2.5, borderRadius: 24 },

@@ -12,7 +12,7 @@ import type { SortField, SortPref } from '../../utils/sortItems';
 // live controls that SHOW their state - the view as a segment, the order as a row of choices, the switches as
 // switches - then the folder the explorer stands in (or the one chosen with a click), then the actions. One column,
 // no tabs: the explorer has nothing to insert and nothing to format.
-export type ExplorerView = 'list' | 'grid' | 'canvas';
+export type ExplorerView = 'list' | 'grid' | 'shelves' | 'canvas';
 export type ExplorerPanelProps = {
   view: ExplorerView;
   onView: (v: ExplorerView) => void;
@@ -81,6 +81,7 @@ export default function ExplorerPanel(p: ExplorerPanelProps) {
         [
           { id: 'list', label: 'Список' },
           { id: 'grid', label: 'Сітка' },
+          { id: 'shelves', label: 'Полиці' },
           { id: 'canvas', label: 'Полотно' },
         ],
         p.view,
