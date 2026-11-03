@@ -372,6 +372,21 @@ async function serveDesktopApi(req, res, pathname) {
     }
   }
 
+  //   DELETE /__desktop/export/<folder>  -> the folder emptied (it is rewritten whole each time, so nothing piles up)
+  if (pathname.startsWith('/__desktop/export/') && req.method === 'DELETE') {
+    if (req.headers['x-mindeva'] !== '1') return done(403, { error: 'forbidden' });
+    const parts = pathname.slice('/__desktop/export/'.length).split('/').map((p) => decodeURIComponent(p));
+    if (parts.length !== 1 || !parts[0] || parts[0] === '.' || parts[0] === '..' || /[\/\\\0]/.test(parts[0])) {
+      return done(400, { error: 'bad path' });
+    }
+    try {
+      fs.rmSync(path.join(app.getPath('documents'), 'mindEva-порції', parts[0]), { recursive: true, force: true });
+      return done(204);
+    } catch (e) {
+      return done(500, { error: String(e) });
+    }
+  }
+
   if (pathname === '/__desktop/handoff/clear' && req.method === 'POST') {
     handoff = null;
     return done(204);

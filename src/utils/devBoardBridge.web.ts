@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
-import { collection, deleteDoc, doc, getDocs, updateDoc } from '../firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, updateDoc, where } from '../firestore';
+import { bytesOf } from './downloadToFolder.web';
+import { isDesktopShell } from './desktopBridge.web';
 import { db } from '../firebase';
 import { addDoc, ownedQuery } from './owned';
 import type { CustomDatabase, CustomDatabaseRow, FieldDef } from '../types';
@@ -143,11 +145,119 @@ async function applyOnce(): Promise<void> {
   }
 }
 
+// THE INBOX FOR CLAUDE (2026-11-04, the user: «подивись за сьогодні»): the other direction of the bridge. Every record of the
+// base «розробка» that is not closed (вхідне / далі / на паузі) is written, text and screenshots side by side, into
+//   ~/Documents/mindEva-порції/розробка-вхідне/   (вхідне.md + <key>-<n>.jpg)
+// where a Claude session on this Mac reads it. The folder is emptied and written whole whenever something in it changed, so
+// a record that was closed leaves its pictures with it - nothing piles up. Only the signed-in Mac app does this.
+const EXPORT_FOLDER = 'розробка-вхідне';
+const EXPORT_MS = 60_000;
+const EXPORT_SIG_KEY = 'devInboxSignature';
+const OPEN_STATUSES = ['вхідне', 'далі', 'на паузі'];
+let exporting = false;
+
+async function putFile(file: string, body: Blob | string): Promise<string | null> {
+  try {
+    const response = await fetch(`/__desktop/export/${encodeURIComponent(EXPORT_FOLDER)}/${encodeURIComponent(file)}`, {
+      method: 'PUT',
+      headers: { 'X-Mindeva': '1' },
+      body,
+    });
+    return response.ok ? ((await response.json()) as { path?: string }).path ?? null : null;
+  } catch {
+    return null;
+  }
+}
+
+const two = (n: number) => String(n).padStart(2, '0');
+const dayOf = (ms: number) => {
+  const d = new Date(ms);
+  return `${two(d.getDate())}.${two(d.getMonth() + 1)}.${d.getFullYear()}`;
+};
+
+async function exportOnce(): Promise<void> {
+  if (exporting || !isDesktopShell()) return;
+  exporting = true;
+  try {
+    const databases = await getDocs(ownedQuery('customDatabases'));
+    const found = databases.docs.find((d) => String((d.data() as { name?: string }).name ?? '').trim().toLowerCase() === BASE_NAME);
+    if (!found) return;
+    const database = { id: found.id, ...(found.data() as Omit<CustomDatabase, 'id'>) } as CustomDatabase;
+    const fields = database.fields ?? [];
+    const by = (name: string) => fields.find((f) => f.name.trim().toLowerCase() === name.toLowerCase());
+    const [titleField, typeF, statusF, platformF, descF] = [fields[0], by('Тип'), by('Статус'), by('Платформа'), by('Опис')];
+    const shotsF = fields.find((f) => f.type === 'relation' && (!f.relationTarget || f.relationTarget.kind === 'photos') && /скрін/i.test(f.name));
+    const label = (f: FieldDef | undefined, v: unknown) => (f?.options?.find((o) => o.id === v)?.label ?? '').trim();
+
+    const snapshot = await getDocs(ownedQuery('customDatabaseRows', where('databaseId', '==', database.id)));
+    const rows = snapshot.docs
+      .map((d) => ({ id: d.id, ...(d.data() as Omit<CustomDatabaseRow, 'id'>) }) as CustomDatabaseRow & { createdAt?: number; updatedAt?: number })
+      .filter((r) => OPEN_STATUSES.includes(label(statusF, r.values[statusF?.id ?? ''])))
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    const shotIds = (r: CustomDatabaseRow): string[] => {
+      const v = shotsF ? r.values[shotsF.id] : undefined;
+      return Array.isArray(v) ? (v as string[]) : typeof v === 'string' && v ? [v] : [];
+    };
+    const signature = JSON.stringify(rows.map((r) => [r.id, r.updatedAt, shotIds(r)]));
+    if (signature === window.localStorage.getItem(EXPORT_SIG_KEY)) return;
+
+    await fetch(`/__desktop/export/${encodeURIComponent(EXPORT_FOLDER)}`, { method: 'DELETE', headers: { 'X-Mindeva': '1' } });
+
+    let unreadable = 0;
+    const lines: string[] = [];
+    const today = dayOf(Date.now());
+    let lastDay = '';
+    for (const r of rows) {
+      const day = dayOf(r.createdAt ?? 0);
+      if (day !== lastDay) {
+        lastDay = day;
+        lines.push('', `## ${day}${day === today ? ' (сьогодні)' : ''}`, '');
+      }
+      const title = String(r.values[titleField.id] ?? '').trim() || 'Без назви';
+      const meta = [label(typeF, r.values[typeF?.id ?? '']), label(platformF, r.values[platformF?.id ?? '']), label(statusF, r.values[statusF?.id ?? ''])].filter(Boolean).join(' · ');
+      lines.push(`- [${meta}] ${title}  (запис ${r.id.slice(-6)})`);
+      const description = String(r.values[descF?.id ?? ''] ?? '').trim();
+      if (description) lines.push(`    Опис: ${description.replace(/\n/g, '\n    ')}`);
+      let n = 0;
+      for (const photoId of shotIds(r)) {
+        n += 1;
+        try {
+          const data = (await getDoc(doc(db, 'photos', photoId))).data() as { imageUri?: string; driveFileId?: string } | undefined;
+          const blob = data?.imageUri ? await bytesOf(data.imageUri, data.driveFileId) : null;
+          const path = blob ? await putFile(`${r.id.slice(-6)}-${n}.jpg`, blob) : null;
+          if (path) lines.push(`    Скріншот ${n}: ${path}`);
+          else {
+            unreadable += 1;
+            lines.push(`    Скріншот ${n}: недоступний (на цьому Mac немає його файлу; натисніть «Підключити Диск»)`);
+          }
+        } catch {
+          unreadable += 1;
+        }
+      }
+    }
+    const head = [`# Вхідне розробки`, `Оновлено ${today} ${two(new Date().getHours())}:${two(new Date().getMinutes())}. Незакритих записів: ${rows.length}.`];
+    const ok = await putFile('вхідне.md', new Blob([[...head, ...lines].join('\n')], { type: 'text/markdown;charset=utf-8' }));
+    // A picture that could not be read is tried again later (the signature is not kept), the rest is already there.
+    if (ok && unreadable === 0) window.localStorage.setItem(EXPORT_SIG_KEY, signature);
+  } catch (e) {
+    console.warn('[devBoardBridge] inbox', e);
+  } finally {
+    exporting = false;
+  }
+}
+
 export function useDevBoardBridge(signedIn: boolean): void {
   useEffect(() => {
     if (!signedIn) return;
     applyOnce();
     const timer = setInterval(applyOnce, POLL_MS);
-    return () => clearInterval(timer);
+    // The inbox a little after start (the first reads settle), then once a minute.
+    const first = setTimeout(exportOnce, 8000);
+    const slow = setInterval(exportOnce, EXPORT_MS);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(first);
+      clearInterval(slow);
+    };
   }, [signedIn]);
 }
