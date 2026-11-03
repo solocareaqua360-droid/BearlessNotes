@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollView } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import TextInput from './AppTextInput';
@@ -48,6 +49,11 @@ export default function DbAddWindow({
   const [pictures, setPictures] = useState<Record<string, AddPicture[]>>({});
   const [busy, setBusy] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // The sheet is lifted by the keyboard (the window is edge to edge), so its own height must be what is LEFT above the
+  // keyboard - else the top, where the typing starts, rides off the screen (the user, 2026-11-04, on the phone).
+  const { height: winH } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const room = Math.max(240, winH - keyboardHeight - insets.top - 12);
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
     const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
@@ -114,7 +120,7 @@ export default function DbAddWindow({
   return (
     <GlassLayer visible={visible} onClose={onClose} intensity={60} rise={b.on}>
       <View style={[SHEET_FRAME, b.frame]} pointerEvents="box-none">
-        <Animated.View style={[st.sheet, { backgroundColor: S.card }, b.window, { marginBottom: keyboardHeight - (b.on ? BELOW : 0) }, b.padBottom(16)]}>
+        <Animated.View style={[st.sheet, { backgroundColor: S.card }, b.window, { marginBottom: keyboardHeight - (b.on ? BELOW : 0), maxHeight: room }, b.padBottom(16)]}>
           {b.fill}
           {b.grab}
           {b.on && <View style={{ height: 8 }} />}
@@ -126,7 +132,7 @@ export default function DbAddWindow({
               <Ionicons name="close" size={22} color={S.ink2} />
             </Pressable>
           </View>
-          <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <TextInput
               autoFocus
               multiline
@@ -134,7 +140,7 @@ export default function DbAddWindow({
               onChangeText={setTyped}
               placeholder={title?.name ?? 'Назва'}
               placeholderTextColor={S.ink3}
-              style={[st.input, { backgroundColor: S.fill, color: S.ink, minHeight: 84 }]}
+              style={[st.input, { backgroundColor: S.fill, color: S.ink, minHeight: keyboardHeight > 0 ? 56 : 84 }]}
             />
             {asked.map((f) => (
               <View key={f.id} style={{ marginTop: 14 }}>
@@ -209,7 +215,7 @@ export default function DbAddWindow({
           <Pressable
             onPress={submit}
             disabled={!ready}
-            style={[st.submit, { backgroundColor: S.ink, opacity: ready ? 1 : 0.35 }]}
+            style={[st.submit, { backgroundColor: S.ink, opacity: ready ? 1 : 0.35 }, keyboardHeight > 0 && { height: 46, marginTop: 8 }]}
             accessibilityLabel="Додати"
           >
             {busy ? <ActivityIndicator color={S.card} /> : <Text style={[st.submitText, { color: S.card }]}>Додати</Text>}
