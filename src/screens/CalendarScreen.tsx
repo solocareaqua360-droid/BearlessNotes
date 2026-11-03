@@ -63,7 +63,7 @@ import { composerBus } from '../navigation/composerBus';
 import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft, type SoftTokens } from '../theme/soft';
-import { DockMark, useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockFace, useNavDockPublisher, useStableTopExtras, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { DockMark, useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockSetFace, useNavDockPublisher, useStableTopExtras, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
 import InlineDock from '../components/InlineDock';
 import {
   MONTH_FULL,
@@ -920,7 +920,7 @@ export default function CalendarScreen() {
               setDockFace('context');
               return;
             }
-            setDockFace(dockFace === 'context' ? 'desks' : 'context');
+            setDockFace((face) => (face === 'context' ? 'desks' : 'context'));
           },
         }
       : null;
@@ -1031,7 +1031,9 @@ export default function CalendarScreen() {
         ].filter((c) => !(feedMode && c.key === 'today'))
       : [];
   const showContext = useDockShowContext();
-  const [dockFace, setDockFace] = useNavDockFace();
+  // The setter alone: the calendar flips the dock's face on a tap and never needs to HEAR it - hearing it redrew this
+  // whole (hidden) desk on every note opened and closed anywhere (optimisation day, 2026-11-03: ~15 ms each way).
+  const setDockFace = useNavDockSetFace();
   const publishToDock = useNavDockPublisher();
   const pickDay = useCallback((key: string) => selectDay(parseDateKey(key)), []);
   // NOT on a wide window. The strip is a scrubber for moving day to day

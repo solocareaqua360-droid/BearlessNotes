@@ -268,7 +268,8 @@ export type DockBead = {
 
 type Value = {
   face: DockFace;
-  setFace: (face: DockFace) => void;
+  // A value, or a turn worked out from the face it finds (no need to hear the face to flip it).
+  setFace: (face: DockFace | ((prev: DockFace) => DockFace)) => void;
   // A face change that should be SEEN happening - see ContextDock's own
   // `flip`. `at` is what makes each request its own: asking for the same
   // card twice in a row is two flips, not one.
@@ -1223,7 +1224,7 @@ export function useNavDockFlip(): (face: DockFace) => void {
 }
 
 // The setter alone - see useNavDockSetHidden.
-export function useNavDockSetFace(): (face: DockFace) => void {
+export function useNavDockSetFace(): (face: DockFace | ((prev: DockFace) => DockFace)) => void {
   return useContext(NavDockPublishContext)?.setFace ?? noopSetFace;
 }
 const noopSetFace = () => {};

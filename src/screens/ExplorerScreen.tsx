@@ -3675,6 +3675,23 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     }
     return fn;
   };
+  // The same for a card's hold (the shelves pass one): a new arrow each render made every memo'd card on a shelf draw itself
+  // again whenever the explorer did - ~80 ms on closing a note over «Тест» (optimisation day, 2026-11-03).
+  const holdItemRef = useRef(holdItem);
+  holdItemRef.current = holdItem;
+  const holdFns = useRef(new Map<string, () => void>());
+  const holdFor = (item: FolderItem) => {
+    pressItems.current.set(item.id, item);
+    let fn = holdFns.current.get(item.id);
+    if (!fn) {
+      fn = () => {
+        const latest = pressItems.current.get(item.id);
+        if (latest) holdItemRef.current(latest);
+      };
+      holdFns.current.set(item.id, fn);
+    }
+    return fn;
+  };
   // THE SHELVES (shelvesMode): the level's own things first, then a shelf per folder - its folders as cards, then its things.
   const shelfTileW = Math.round(Math.min(230, contentW * 0.44));
   const shelfRows: ShelfRowData[] | null = !shelvesMode
@@ -3716,7 +3733,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     }
     return (
       <View style={[styles.shelfBox, { width, height: shelfTileH(width) }]}>
-        <FolderItemCard item={tile.item} tags={tags} mode="grid" tileWidth={width} columns={2} onPress={pressFor(tile.item)} onLongPress={() => holdItem(tile.item)} />
+        <FolderItemCard item={tile.item} tags={tags} mode="grid" tileWidth={width} columns={2} onPress={pressFor(tile.item)} onLongPress={holdFor(tile.item)} />
       </View>
     );
   };
