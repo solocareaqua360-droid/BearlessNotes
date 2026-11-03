@@ -1350,4 +1350,21 @@ export interface DbTableSettings {
   // the groups folded to their heading (by value key; '' = «Без значення»).
   groupField?: string;
   foldedGroups?: string[];
+  // THE ADD BUTTON (2026-11-03, the user's: Notion's «New» beside a base - a property of the table, not of one base): see
+  // utils/dbAddButton. Absent = no button.
+  addButton?: DbAddButtonSettings;
+}
+
+export interface DbAddButtonSettings {
+  on?: boolean;
+  // Absent: worked out from what the button puts in (a single chosen value «баг» -> «Баг»), else «Новий запис».
+  label?: string;
+  // Field id -> what a new record gets there (a select's option id, text...). Added on top of what the table's own filter implies.
+  defaults?: Record<string, string>;
+  // Field ids whose value the FILTER implies but the user took off the list.
+  noAuto?: string[];
+  // The fields the window asks, besides the one the typed line goes to.
+  ask?: string[];
+  // The field the typed line goes to (absent: the base's first field, its name).
+  titleField?: string;
 }

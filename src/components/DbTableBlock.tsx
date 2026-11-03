@@ -17,7 +17,11 @@ import { doc } from '../firestore';
 import { db } from '../firebase';
 import { setDoc } from '../utils/owned';
 import { navigationRef } from '../navigationRef';
-import type { Block, DbTableSettings, FieldDef } from '../types';
+import type { Block, CustomDatabaseRow, DbAddButtonSettings, DbTableSettings, FieldDef } from '../types';
+import DbAddWindow, { type AddPicked, type AddPicture } from './DbAddWindow';
+import DbAddSettings from './DbAddSettings';
+import { addLabel, newRowValues, recordsWord, shownByCondition, titleFieldOf } from '../utils/dbAddButton';
+import { writePhotoRecord } from '../utils/photoLibrary';
 import { useDbTableData } from '../hooks/useDbTableData';
 import { displayFieldValue, rowTitleOf, visibleFieldsOf } from '../utils/customRowDisplay';
 import {
@@ -72,6 +76,11 @@ export default function DbTableBlock({
   const [expanded, setExpanded] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [naming, setNaming] = useState(false);
+  // THE ADD BUTTON (utils/dbAddButton): its window, its settings, and the prompt for its caption.
+  const [addOpen, setAddOpen] = useState(false);
+  const [addSettingsOpen, setAddSettingsOpen] = useState(false);
+  const [labelOpen, setLabelOpen] = useState(false);
+  const S = useSoft();
   const [widthsOpen, setWidthsOpen] = useState(false);
   // The record a row turned over into, over the note (DbRecordCard).
   const [card, setCard] = useState<{ id: string; flip: FlipFrom | null } | null>(null);
@@ -139,6 +148,7 @@ export default function DbTableBlock({
         { id: 'rows', label: 'Видно рядків', hint: limit === 0 ? 'Усі' : String(limit), icon: 'reorder-four-outline' },
         { id: 'look', label: 'Вигляд', hint: [s.totals && 'підсумки', s.headerColor && 'шапка', s.rowNumbers && 'нумерація', s.wrap && 'перенос'].filter(Boolean).join(', ') || 'Підсумки, шапка, нумерація, перенос', icon: 'color-palette-outline' },
         { id: 'widths', label: 'Ширина стовпців', icon: 'resize-outline' },
+        { id: 'addbtn', label: 'Кнопка додавання', hint: s.addButton?.on ? addLabel(s, database) : 'Вимкнена', icon: 'add-circle-outline' },
         { id: 'add', label: 'Додати запис з бази', icon: 'add-outline' },
         { id: 'new', label: 'Новий запис', icon: 'add-circle-outline' },
         ...(counts.removed > 0 ? [{ id: 'back', label: `Повернути прибрані (${counts.removed})`, icon: 'eye-outline' as const }] : []),
@@ -159,6 +169,7 @@ export default function DbTableBlock({
     }
     else if (choice === 'look') pickLook();
     else if (choice === 'widths') setWidthsOpen(true);
+    else if (choice === 'addbtn') setAddSettingsOpen(true);
     else if (choice === 'add') pickRecord();
     else if (choice === 'new') setNaming(true);
     else if (choice === 'back') save({ removed: [] });
@@ -334,6 +345,64 @@ export default function DbTableBlock({
     else if (choice !== 'cancel' && choice !== s.groupField) save({ groupField: choice, foldedGroups: undefined });
   }
 
+  // The button's own settings, saved into the block (nothing undefined or empty is kept: Firestore refuses undefined).
+  function saveAdd(patch: Partial<DbAddButtonSettings>) {
+    const next: Record<string, unknown> = { ...(s.addButton ?? {}), ...patch };
+    Object.keys(next).forEach((k) => {
+      const v = next[k];
+      if (v === undefined || (Array.isArray(v) && v.length === 0) || (!!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v as object).length === 0)) delete next[k];
+    });
+    save({ addButton: Object.keys(next).length ? (next as DbAddButtonSettings) : undefined });
+  }
+
+  // «+ Значення»: which field, then which of its values a new record gets.
+  async function addDefaultValue() {
+    if (!database) return;
+    const fields = database.fields.filter((f) => f.type === 'select' && (f.options ?? []).length > 0);
+    if (fields.length === 0) {
+      notify('Нема з чого вибрати', 'У базі немає поля з вибором («Тип», «Статус»...).');
+      return;
+    }
+    const fieldId = await ask({ title: 'Для якого поля?', actions: fields.map((f) => ({ id: f.id, label: f.name })) });
+    const field = fields.find((f) => f.id === fieldId);
+    if (!field) return;
+    const optionId = await ask({ title: field.name, actions: (field.options ?? []).map((o) => ({ id: o.id, label: o.label })) });
+    const option = field.options?.find((o) => o.id === optionId);
+    if (!option) return;
+    saveAdd({ defaults: { ...(s.addButton?.defaults ?? {}), [field.id]: option.id }, noAuto: (s.addButton?.noAuto ?? []).filter((x) => x !== field.id) });
+  }
+
+  // The field the typed line goes to: a text one.
+  async function pickTitleField() {
+    if (!database) return;
+    const fields = database.fields.filter((f) => f.type === 'text');
+    const current = titleFieldOf(s.addButton, database)?.id;
+    const choice = await ask({
+      title: 'Рядок тексту йде в поле',
+      actions: fields.map((f) => ({ id: f.id, label: f.name, icon: f.id === current ? ('checkmark' as const) : undefined })),
+    });
+    if (fields.some((f) => f.id === choice)) saveAdd({ titleField: choice });
+  }
+
+  // «Додати» in the window: the pictures become Photos records only now, then the record; it joins the table's «added by hand»
+  // list only when the table's own condition would not show it (else a record later marked done would stay in the table for good).
+  async function addFromWindow(typed: string, picked: AddPicked, pictures: Record<string, AddPicture[]>) {
+    if (!database || !databaseId) return;
+    const values = newRowValues(s, database, typed, picked);
+    if (Object.keys(values).length === 0) return;
+    const id = generateId();
+    const now = Date.now();
+    try {
+      for (const list of Object.values(pictures)) for (const p of list) await writePhotoRecord(p.imageUri, { id: p.id });
+      await setDoc(doc(db, 'customDatabaseRows', id), { databaseId, values, tagIds: [], createdAt: now, updatedAt: now });
+      const row = { id, databaseId, values, tagIds: [], createdAt: now, updatedAt: now } as CustomDatabaseRow;
+      if (!shownByCondition(s, database, row)) save({ added: [...new Set([...(s.added ?? []), id])] });
+      setAddOpen(false);
+    } catch (e) {
+      notify('Не збереглося', (e as Error).message);
+    }
+  }
+
   async function pickSort() {
     if (!database) return;
     const current = s.sortField ?? 'title';
@@ -454,6 +523,18 @@ export default function DbTableBlock({
   return (
     <View pointerEvents={disabled ? 'none' : 'auto'}>
       <View style={styles.tableFrame}>
+        {/* THE ADD BUTTON, in the table's own top strip (2026-11-03): its caption, and how many records the table holds. */}
+        {!!s.addButton?.on && !!database && (
+          <View style={[local.addStrip, { borderBottomColor: theme.paper.edge }]}>
+            <Pressable hitSlop={4} onPress={() => setAddOpen(true)} style={local.addBtn} accessibilityLabel={addLabel(s, database)}>
+              <Ionicons name="add" size={22} color={S.accent} />
+              <Text style={[local.addText, { color: ink }]} numberOfLines={1}>
+                {addLabel(s, database)}
+              </Text>
+            </Pressable>
+            <Text style={[local.footText, { color: quiet }]}>{`${rows.length} ${recordsWord(rows.length)}`}</Text>
+          </View>
+        )}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
           <View>
             <View style={[styles.tableGridRow, headFill]}>
@@ -557,6 +638,33 @@ export default function DbTableBlock({
         onReset={() => save({ widths: undefined })}
         onClose={() => setWidthsOpen(false)}
       />
+      {database && (
+        <>
+          <DbAddWindow visible={addOpen} database={database} settings={s} onClose={() => setAddOpen(false)} onSubmit={addFromWindow} />
+          <DbAddSettings
+            visible={addSettingsOpen}
+            database={database}
+            settings={s}
+            onChange={saveAdd}
+            onClose={() => setAddSettingsOpen(false)}
+            onLabel={() => setLabelOpen(true)}
+            onAddDefault={addDefaultValue}
+            onTitleField={pickTitleField}
+          />
+          <RenamePrompt
+            visible={labelOpen}
+            title="Підпис кнопки"
+            initialValue={s.addButton?.label ?? ''}
+            placeholder={addLabel({ ...s, addButton: { ...(s.addButton ?? {}), label: undefined } }, database)}
+            allowEmpty
+            onCancel={() => setLabelOpen(false)}
+            onSave={(v) => {
+              setLabelOpen(false);
+              saveAdd({ label: v.trim() || undefined });
+            }}
+          />
+        </>
+      )}
       <RenamePrompt visible={naming} title={`Новий запис · ${database?.name ?? ''}`} initialValue="" placeholder="Назва" onCancel={() => setNaming(false)} onSave={createRecord} />
     </View>
   );
@@ -707,6 +815,9 @@ const local = StyleSheet.create({
   fitRow: { flexDirection: 'row', gap: 8, marginVertical: 10 },
   fitBtn: { flex: 1, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   fitText: { fontSize: 14.5, fontFamily: SOFT_MEDIUM },
+  addStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48, paddingLeft: 6, paddingRight: 14, borderBottomWidth: StyleSheet.hairlineWidth },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: 8, maxWidth: '70%' },
+  addText: { fontSize: 15, fontFamily: SOFT_SEMIBOLD },
   widthText: { width: 40, textAlign: 'center', fontSize: 14, fontFamily: SOFT_REGULAR },
   headText: { fontSize: 13.5, fontFamily: SOFT_MEDIUM },
   cellText: { fontSize: 14.5, fontFamily: SOFT_REGULAR },
