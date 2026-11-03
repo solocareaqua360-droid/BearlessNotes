@@ -3694,11 +3694,16 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   };
   // THE SHELVES (shelvesMode): the level's own things first, then a shelf per folder - its folders as cards, then its things.
   const shelfTileW = Math.round(Math.min(230, contentW * 0.44));
+  // A COLLECTION (photos, geo points, a playlist) is ONE card on the shelf of the level it is in, as in the grid - never a
+  // shelf of its own spelling out its points one by one (the user, 2026-11-03: «геоточки взагалі не повинні бути по точці
+  // окремо а бути цілою підбіркою»; it also spared the open two live maps).
+  const shelfCollections = shelvesMode ? folders.filter((f) => !!collKindOf(f)) : [];
+  const hereTiles: ShelfTile[] = [...shelfCollections.map((folder) => ({ folder })), ...here.map((item) => ({ item }))];
   const shelfRows: ShelfRowData[] | null = !shelvesMode
     ? null
     : [
-        ...(here.length ? [{ key: '__here', shelf: { label: 'У цій папці', entry: null, tiles: here.map((item) => ({ item })) } }] : []),
-        ...folders.map((f) => {
+        ...(hereTiles.length ? [{ key: '__here', shelf: { label: 'У цій папці', entry: null, tiles: hereTiles } }] : []),
+        ...folders.filter((f) => !collKindOf(f)).map((f) => {
           const things = sortItems(
             directItemsOf(f.path),
             sortPref,
@@ -3709,7 +3714,7 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
             },
             (i) => stamp(i)
           );
-          const subs = f.path === UNFILED || f.collection || f.playlist ? [] : entriesFor(f.path);
+          const subs = f.path === UNFILED ? [] : entriesFor(f.path);
           return { key: `shelf:${f.path}`, shelf: { label: f.name, entry: f, tiles: [...subs.map((folder) => ({ folder })), ...things.map((item) => ({ item }))] } };
         }),
       ];
@@ -3719,6 +3724,14 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
   const shelfTile = (tile: ShelfTile, width: number) => {
     if ('folder' in tile) {
       const f = tile.folder;
+      const collKind = collKindOf(f);
+      if (collKind) {
+        return (
+          <Pressable onPress={() => openFolderEntry(f)} onLongPress={() => holdFolder(f)} delayLongPress={350} style={{ width, height: shelfTileH(width) }}>
+            <CollectionCard kind={collKind} name={f.name} count={f.count} items={collItemsOf(f, collKind)} face={collectionFaceFor(cardTagOf(f.path)?.card, 'grid').face} />
+          </Pressable>
+        );
+      }
       return (
         <Pressable onPress={() => openFolderEntry(f)} onLongPress={() => holdFolder(f)} delayLongPress={350} style={[styles.shelfFolder, { width, height: shelfTileH(width), backgroundColor: S.card, boxShadow: S.shadow } as never]}>
           <View style={[styles.seat, { backgroundColor: S.bg }]}>
