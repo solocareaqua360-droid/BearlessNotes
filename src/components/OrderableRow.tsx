@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 
@@ -42,10 +42,18 @@ export default function OrderableRow({
   const lift = useSharedValue(0);
   const ty = useSharedValue(0);
   const inHand = useSharedValue(0);
+  // The laptop: the mouse lifting after a drag is also a click on the row, and the row's own press opened the task's note
+  // (2026-11-03). The click that ends a drag is swallowed before it reaches the row (swallowClick below).
+  const draggedAt = useRef(0);
+  const markDragged = () => {
+    draggedAt.current = Date.now();
+  };
   // The latest list, read when the drag starts (the gesture is built once per render, the ids change with the data).
   const live = useRef({ ids, ctl });
   live.current = { ids, ctl };
   const begin = () => {
+    // Marked from the start of the drag, not only its end: the click may land before the end's own call does.
+    draggedAt.current = Number.MAX_SAFE_INTEGER;
     setCarried(true);
     live.current.ctl.begin(id, live.current.ids);
   };
@@ -54,15 +62,31 @@ export default function OrderableRow({
     setCarried(false);
     live.current.ctl.end();
   };
+  const swallowClick = (node: unknown) => {
+    const el = node as HTMLElement | null;
+    if (Platform.OS !== 'web' || !el?.addEventListener || (el as { __orderClick?: boolean }).__orderClick) return;
+    (el as { __orderClick?: boolean }).__orderClick = true;
+    el.addEventListener(
+      'click',
+      (e) => {
+        if (draggedAt.current === Number.MAX_SAFE_INTEGER || Date.now() - draggedAt.current < 400) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      },
+      true
+    );
+  };
   const cancel = () => {
+    draggedAt.current = Date.now();
     setCarried(false);
     live.current.ctl.cancel();
   };
-  const pan = Gesture.Pan()
-    .enabled(enabled)
-    .activateAfterLongPress(320)
-    // A sideways move is a row's own swipe (SwipeRow inside), never a drag: let go of it at once.
-    .failOffsetX([-10, 10])
+  const base = Gesture.Pan().enabled(enabled);
+  // THE LAPTOP (2026-11-03, the user: «перетягування не працює» in Справи): a mouse does not hold-then-drag, it presses and
+  // moves - a press that moves a few points is the drag (as the explorer's cards, useExplorerCarry). A click stays a click.
+  // The phone: hold, then drag; a sideways move is a row's own swipe (SwipeRow inside), never a drag.
+  const pan = (Platform.OS === 'web' ? base.minDistance(6) : base.activateAfterLongPress(320).failOffsetX([-10, 10]))
     .onStart(() => {
       inHand.value = 1;
       lift.value = withTiming(1, { duration: 120 });
@@ -73,6 +97,7 @@ export default function OrderableRow({
       runOnJS(move)(e.absoluteY);
     })
     .onEnd(() => {
+      runOnJS(markDragged)();
       runOnJS(end)();
     })
     .onFinalize((_e, success) => {
@@ -95,7 +120,14 @@ export default function OrderableRow({
         />
       )}
       <GestureDetector gesture={pan}>
-        <Animated.View style={style} ref={(node: unknown) => ctl.register(id, node as View | null)} collapsable={false}>
+        <Animated.View
+          style={style}
+          ref={(node: unknown) => {
+            ctl.register(id, node as View | null);
+            swallowClick(node);
+          }}
+          collapsable={false}
+        >
           {children}
         </Animated.View>
       </GestureDetector>
