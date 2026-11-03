@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { Ionicons } from './icons/Ionicons';
@@ -7,6 +7,12 @@ import { useTheme } from '../theme/ThemeProvider';
 import { FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD } from '../utils/fonts';
 import { hapticSnapTick } from '../utils/haptics';
 import type { DragScroll } from '../hooks/useDragScroll';
+import { rightClick } from '../utils/rightClick';
+
+// THE LAPTOP'S WAY (2026-11-03, agreed with the user): a click PICKS a block - a frame and two handles, the top one moves
+// its start (the end stays), the bottom one its end; the block itself is dragged at once, no hold; a double click opens
+// the task; the menu that a tap opens on the phone is the right click's. A click on the empty scale lets go of the pick.
+const DESK = Platform.OS === 'web';
 
 // THE DAY AS A SCALE OF HOURS - «Сьогодні» in «Справи» v2 (the user's sketch,
 // 2026-10-09): a task with a time stands on its hour, as tall as it is long,
@@ -83,6 +89,8 @@ export default function DayTimeline({
   onToggleSub,
   onSubTime,
   onMove,
+  onMoveStart,
+  onOpenItem,
   scaleRef,
   onFirstHour,
   dropAt = null,
@@ -100,6 +108,10 @@ export default function DayTimeline({
   onSubTime?: (id: string, subId: string) => void;
   // A block held and carried to another time (HH:mm, on a quarter hour).
   onMove?: (id: string, time: string) => void;
+  // The laptop's top handle: the start moved, the end kept - the new start and the new length together.
+  onMoveStart?: (id: string, time: string, minutes: number) => void;
+  // The laptop's double click: the task itself (its note).
+  onOpenItem?: (id: string) => void;
   // The scale's own view and its first hour - for a task carried in from the list above (TasksScreen works out the time
   // under the finger) - and where such a task would land now, in minutes (a line across the scale).
   scaleRef?: (node: View | null) => void;
@@ -123,6 +135,23 @@ export default function DayTimeline({
   const [moving, setMoving] = useState<{ id: string; start: number } | null>(null);
   // The background task whose steps are open as a list.
   const [subsFor, setSubsFor] = useState<string | null>(null);
+  // The laptop: the block clicked - framed, with its handles.
+  const [picked, setPicked] = useState<string | null>(null);
+  const lastClick = useRef({ id: '', at: 0 });
+  const clickItem = (id: string) => {
+    if (!DESK) {
+      onPressItem(id);
+      return;
+    }
+    const at = Date.now();
+    if (lastClick.current.id === id && at - lastClick.current.at < 350 && onOpenItem) {
+      lastClick.current = { id: '', at: 0 };
+      onOpenItem(id);
+      return;
+    }
+    lastClick.current = { id, at };
+    setPicked(id);
+  };
 
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const lengthOf = (i: TimelineItem) => (live?.id === i.id ? live.minutes : i.minutes);
@@ -205,6 +234,7 @@ export default function DayTimeline({
   const carryBase = useRef(0);
   const carryStep = useRef(0);
   const carryBegin = (id: string, start: number) => {
+    if (DESK) setPicked(id);
     hapticSnapTick();
     carryBase.current = start;
     carryStep.current = start;
@@ -233,19 +263,77 @@ export default function DayTimeline({
     if (unShift.current) unfollow();
     setMoving(null);
   };
-  const carried = (item: TimelineItem, node: React.ReactElement) => {
-    if (!onMove || item.done) return node;
+  // The carry's gesture, made first: a handle inside the block is given the way over it (blocksExternalGesture) - with a
+  // mouse both can start on the same move, and the handle is what was aimed at.
+  const carryGesture = (item: TimelineItem) => {
+    if (!onMove || item.done) return null;
     // Worked out here, on the JS side: a worklet must not call a plain function (it crashed the app, 2026-10-27).
     const startMin = toMinutes(item.time);
-    const g = Gesture.Pan()
-      .activateAfterLongPress(300)
+    return (DESK ? Gesture.Pan().minDistance(6) : Gesture.Pan().activateAfterLongPress(300))
       .onStart(() => runOnJS(carryBegin)(item.id, startMin))
       .onUpdate((e) => runOnJS(carry)(item.id, e.translationY, e.absoluteY))
       .onEnd(() => runOnJS(carryEnd)(item.id))
       .onFinalize(() => runOnJS(carryGone)());
+  };
+  const carried = (item: TimelineItem, node: React.ReactElement, g: ReturnType<typeof carryGesture>) => {
+    if (!g) return node;
     return (
       <GestureDetector key={item.id} gesture={g}>
         {node}
+      </GestureDetector>
+    );
+  };
+
+  // THE TOP HANDLE (laptop): the start follows the mouse in quarter hours, the end stays where it was.
+  const topBase = useRef({ start: 0, end: 0 });
+  const topStep = useRef(0);
+  const topBegin = (id: string, start: number, minutes: number) => {
+    topBase.current = { start, end: start + minutes };
+    topStep.current = start;
+    lastDy.current = 0;
+    setMoving({ id, start });
+    setLive({ id, minutes });
+    follow(() => topPull(id, lastDy.current));
+  };
+  const topPull = (id: string, dy: number, absY?: number) => {
+    lastDy.current = dy;
+    if (absY !== undefined) dragScroll?.move(absY);
+    const { start, end } = topBase.current;
+    const m = Math.min(end - STEP, Math.max(0, Math.round((start + (travel(dy) / HOUR_H) * 60) / STEP) * STEP));
+    if (m !== topStep.current) {
+      topStep.current = m;
+      setMoving({ id, start: m });
+      setLive({ id, minutes: end - m });
+    }
+  };
+  const topEnd = (id: string) => {
+    unfollow();
+    const m = topStep.current;
+    setMoving(null);
+    setLive(null);
+    if (m !== topBase.current.start) onMoveStart?.(id, hhmm(m), topBase.current.end - m);
+  };
+  const topGone = () => {
+    if (unShift.current) unfollow();
+    setMoving(null);
+    setLive(null);
+  };
+  const topGrip = (item: TimelineItem, over: ReturnType<typeof carryGesture>) => {
+    if (!DESK || !onMoveStart || item.done || picked !== item.id || !item.minutes) return null;
+    const startMin = toMinutes(item.time);
+    const minutes = item.minutes;
+    const g0 = Gesture.Pan()
+      .minDistance(1)
+      .onStart(() => runOnJS(topBegin)(item.id, startMin, minutes))
+      .onUpdate((e) => runOnJS(topPull)(item.id, e.translationY, e.absoluteY))
+      .onEnd(() => runOnJS(topEnd)(item.id))
+      .onFinalize(() => runOnJS(topGone)());
+    const g = over ? g0.blocksExternalGesture(over) : g0;
+    return (
+      <GestureDetector gesture={g}>
+        <View style={[styles.handle, styles.handleTop]} accessibilityLabel="Потягнути, щоб змінити початок">
+          <View style={styles.handleDot} />
+        </View>
       </GestureDetector>
     );
   };
@@ -254,9 +342,27 @@ export default function DayTimeline({
     if (unShift.current) unfollow();
     setLive(null);
   };
-  const grip = (item: TimelineItem, strip = false) => {
+  const grip = (item: TimelineItem, strip = false, over: ReturnType<typeof carryGesture> = null) => {
     if (!onResize || item.done) return null;
     const minutes = item.minutes ?? 0;
+    // The laptop: a handle across the bottom edge of the picked block (a strip with no length grows one from 15 minutes).
+    if (DESK) {
+      if (picked !== item.id) return null;
+      const g0 = Gesture.Pan()
+        .minDistance(1)
+        .onStart(() => runOnJS(begin)(item.id, minutes || STEP))
+        .onUpdate((e) => runOnJS(pull)(item.id, e.translationY, e.absoluteY))
+        .onEnd(() => runOnJS(end)(item.id))
+        .onFinalize(() => runOnJS(pullGone)());
+      const g = over ? g0.blocksExternalGesture(over) : g0;
+      return (
+        <GestureDetector gesture={g}>
+          <View style={[styles.handle, styles.handleBottom]} accessibilityLabel="Потягнути, щоб змінити тривалість">
+            <View style={styles.handleDot} />
+          </View>
+        </GestureDetector>
+      );
+    }
     const g = Gesture.Pan()
       .activeOffsetY([-3, 3])
       .onStart(() => runOnJS(begin)(item.id, minutes))
@@ -281,7 +387,14 @@ export default function DayTimeline({
   return (
     <View ref={scaleRef} collapsable={false} style={[styles.wrap, { height: hours.length * HOUR_H + 8 }]} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {hours.map((hr) => (
-        <Pressable key={hr} onPress={() => onPressHour(hr)} style={[styles.hour, { top: (hr - first) * HOUR_H }]}>
+        <Pressable
+          key={hr}
+          onPress={() => {
+            if (DESK && picked) setPicked(null);
+            else onPressHour(hr);
+          }}
+          style={[styles.hour, { top: (hr - first) * HOUR_H }]}
+        >
           <Text style={[styles.label, { color: theme.ink.faint }]}>{String(hr).padStart(2, '0')}</Text>
           <View style={[styles.line, { backgroundColor: theme.edge.hairline }]} />
         </Pressable>
@@ -293,9 +406,11 @@ export default function DayTimeline({
         const subs = item.subs ?? [];
         const done = subs.filter((s) => s.checked).length;
         const timedSubs = subs.filter((s) => s.time);
+        const moveG = carryGesture(item);
         return (
-          carried(item, <View key={item.id} style={[styles.band, moving?.id === item.id && styles.lifted, { top: top(start) + 2, height: Math.max(48, px(minutes) - 4), opacity: item.done ? 0.5 : 1 }]}>
-            <Pressable onPress={() => onPressItem(item.id)} style={styles.bandHead}>
+          carried(item, <View key={item.id} style={[styles.band, moving?.id === item.id && styles.lifted, DESK && styles.grab, { top: top(start) + 2, height: Math.max(48, px(minutes) - 4), opacity: item.done ? 0.5 : 1 }, picked === item.id && styles.picked]}>
+            {topGrip(item, moveG)}
+            <Pressable onPress={() => clickItem(item.id)} {...rightClick(DESK ? () => onPressItem(item.id) : undefined)} style={styles.bandHead}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[styles.blockText, { color: '#5A3B12' }, item.done && styles.done]} numberOfLines={1}>
                   {item.text}
@@ -320,8 +435,8 @@ export default function DayTimeline({
                 </View>
               );
             })}
-            {grip(item)}
-          </View>)
+            {grip(item, false, moveG)}
+          </View>, moveG)
         );
       })}
 
@@ -333,14 +448,17 @@ export default function DayTimeline({
         const left0 = LABEL_W + 4 + (inBand(item) ? BAND_INSET : 0);
         const avail = Math.max(0, width - left0);
         const w = width ? avail / c.cols : undefined;
+        const moveG = carryGesture(item);
         return carried(
           item,
           <Pressable
             key={item.id}
-            onPress={() => onPressItem(item.id)}
+            onPress={() => clickItem(item.id)}
+            {...rightClick(DESK ? () => onPressItem(item.id) : undefined)}
             style={[
               styles.block,
               moving?.id === item.id && styles.lifted,
+              DESK && styles.grab,
               {
                 top: top(start) + 2,
                 height,
@@ -352,6 +470,8 @@ export default function DayTimeline({
                 opacity: item.done ? 0.5 : 1,
                 paddingVertical: strip ? 0 : 5,
               },
+              // Last, so its frame wins over the block's own colour; the handles stand on the edges, half outside.
+              picked === item.id && styles.picked,
             ]}
           >
             {strip ? (
@@ -370,9 +490,11 @@ export default function DayTimeline({
                 </Text>
               </>
             )}
-            {grip(item, strip)}
+            {topGrip(item, moveG)}
+            {grip(item, strip, moveG)}
             {moving?.id === item.id && <Text style={styles.movingTime}>{hhmm(moving.start)}</Text>}
-          </Pressable>
+          </Pressable>,
+          moveG
         );
       })}
 
@@ -493,6 +615,14 @@ const styles = StyleSheet.create({
   dropText: { position: 'absolute', right: 6, top: 38, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#4A7BD0', color: '#FFFFFF', overflow: 'hidden', fontSize: 12, fontFamily: FONT_SEMIBOLD },
   grip: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 14, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 3 },
   gripBar: { width: 26, height: 3, borderRadius: 2 },
+  // The laptop's pick: a firmer frame, the handles a band across each edge with a dot in its middle, the cursor saying what
+  // a drag does.
+  picked: { borderWidth: 2, borderColor: 'rgba(31,35,38,0.55)', zIndex: 30, overflow: 'visible' } as never,
+  grab: { cursor: 'grab' } as never,
+  handle: { position: 'absolute', left: 0, right: 0, height: 12, alignItems: 'center', justifyContent: 'center', zIndex: 2, cursor: 'ns-resize' } as never,
+  handleTop: { top: -7 },
+  handleBottom: { bottom: -7 },
+  handleDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: 'rgba(31,35,38,0.7)' },
   // A strip is one line: its handle stands at the right end, clear of the words and the time.
   gripStrip: { left: undefined, width: 44, right: 0, top: 0, height: undefined, justifyContent: 'center', paddingBottom: 0 },
   now: {

@@ -1705,7 +1705,7 @@ export default function TasksScreen() {
   }
 
   // The day scale's own fields - length, «фонова» - on both sides; a field given as null goes.
-  async function setPlanFields(task: Task, fields: { planMinutes?: number | null; planBackground?: boolean | null }) {
+  async function setPlanFields(task: Task, fields: { planTime?: string; planMinutes?: number | null; planBackground?: boolean | null }) {
     const mirror: Record<string, unknown> = {};
     Object.entries(fields).forEach(([k, v]) => (mirror[k] = v === null ? deleteField() : v));
     await updateTaskBothSides(task, mirror, (b) => {
@@ -2602,6 +2602,14 @@ export default function TasksScreen() {
             onMove={(id, time) => {
               const task = tasks.find((t) => t.id === id);
               if (task) setPlan(task, time);
+            }}
+            onMoveStart={(id, time, minutes) => {
+              const task = tasks.find((t) => t.id === id);
+              if (task) setPlanFields(task, { planTime: time, planMinutes: minutes });
+            }}
+            onOpenItem={(id) => {
+              const task = tasks.find((t) => t.id === id);
+              if (task?.documentId) navigation.navigate('Editor', { documentId: task.documentId });
             }}
             scaleRef={(node) => (scaleNode.current = node)}
             onFirstHour={onScaleFirstHour}
