@@ -101,6 +101,7 @@ import { noteOpened } from '../navigation/recentPlaces';
 import { addDroppedInPlace } from '../utils/createItem';
 import { clearDropOver, markDropOver } from '../hooks/useCardCarry';
 import DropTint from '../components/DropTint';
+import { useRenderTimer } from '../utils/perfWatch';
 import PlaylistWindow, { videoOf, type PlaylistVideo } from '../components/PlaylistWindow';
 import TagEditSheet from '../components/TagEditSheet';
 import { FolderCardSheet, FolderProjectsSheet } from '../components/FolderStyleSheets';
@@ -348,6 +349,7 @@ async function readPhotoText(uri: string, driveFileId: string | undefined, start
 }
 
 export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; desk?: boolean } = {}) {
+  useRenderTimer(desk ? 'Провідник (стіл)' : 'Провідник'); // TEMP optimisation day 2026-11-03
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();

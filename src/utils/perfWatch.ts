@@ -47,6 +47,7 @@ export function useRenderTimer(label: string): void {
     noteRender(label, now);
     const ms = now - start;
     if (ms < 8) return;
+    console.log(`PFR ${label} ${ms}`); // TEMP optimisation day 2026-11-03
     renders.push({ at: now, label, ms });
     trim(renders);
   });

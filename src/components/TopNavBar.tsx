@@ -1,3 +1,4 @@
+import { useRenderTimer } from '../utils/perfWatch';
 import { Ionicons } from './icons/Ionicons';
 import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
 import { Fragment, ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState, memo } from 'react';
@@ -177,6 +178,7 @@ function TopNavBar({
   // кнопки". Screens that never pass it simply never animate.
   saving?: boolean;
 }) {
+  useRenderTimer('Верхня смуга'); // TEMP optimisation day 2026-11-03
   useRenderTimer('Верхня смужка');
   // THE DESKS ARE IN THE DOCK NOW (features.deskDock, 2026-10-12, the user's: «буде тільки назва нашого поточного
   // столу»): while the dock carries the three, the bar keeps only the one in front - its name, its cross where it
