@@ -189,6 +189,32 @@ export default function DayTimeline({
     });
   };
 
+  // LET GO, THE BLOCK STAYS WHERE IT WAS LEFT (2026-11-03, the user: «блимають долю секунди при відпусканні»): what the
+  // hand made is held on screen until the task itself comes back saying so - dropping it at once showed the old time for
+  // the moment the write took, then the new one.
+  const settling = useRef<{ id: string; start?: number; minutes?: number } | null>(null);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settleDone = () => {
+    settling.current = null;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = null;
+    setLive(null);
+    setMoving(null);
+  };
+  const settleOn = (what: { id: string; start?: number; minutes?: number }) => {
+    settling.current = what;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(settleDone, 3000);
+  };
+  useEffect(() => {
+    const w = settling.current;
+    if (!w) return;
+    const item = items.find((i) => i.id === w.id);
+    if (!item) return settleDone();
+    if ((w.minutes === undefined || item.minutes === w.minutes) && (w.start === undefined || toMinutes(item.time) === w.start)) settleDone();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
   // THE PULL: the finger's travel turned into minutes, in quarter-hour steps; written once it lets go.
   const base = useRef(0);
   const lastStep = useRef(0);
@@ -227,8 +253,12 @@ export default function DayTimeline({
   const end = (id: string) => {
     unfollow();
     const m = lastStep.current;
-    setLive(null);
-    if (m !== base.current) onResize?.(id, m);
+    if (m === base.current) {
+      setLive(null);
+      return;
+    }
+    settleOn({ id, minutes: m });
+    onResize?.(id, m);
   };
   // THE CARRY: held a moment, the block follows the finger up and down in quarter-hour steps; let go, it takes that time.
   const carryBase = useRef(0);
@@ -255,13 +285,17 @@ export default function DayTimeline({
   const carryEnd = (id: string) => {
     unfollow();
     const m = carryStep.current;
-    setMoving(null);
-    if (m !== carryBase.current) onMove?.(id, hhmm(m));
+    if (m === carryBase.current) {
+      setMoving(null);
+      return;
+    }
+    settleOn({ id, start: m });
+    onMove?.(id, hhmm(m));
   };
   // A carry that ended without a release (cancelled): nothing written, the list let go.
   const carryGone = () => {
     if (unShift.current) unfollow();
-    setMoving(null);
+    if (!settling.current) setMoving(null);
   };
   // The carry's gesture, made first: a handle inside the block is given the way over it (blocksExternalGesture) - with a
   // mouse both can start on the same move, and the handle is what was aimed at.
@@ -275,7 +309,14 @@ export default function DayTimeline({
       .onEnd(() => runOnJS(carryEnd)(item.id))
       .onFinalize(() => runOnJS(carryGone)());
   };
-  const carried = (item: TimelineItem, node: React.ReactElement, g: ReturnType<typeof carryGesture>) => {
+  // THE LAPTOP'S CLICK, anywhere on the block (2026-11-03: a click took only on the words - the drag's own detector over
+  // the block swallowed the press elsewhere). A tap beside the drag, whichever the mouse turns out to mean.
+  const withClick = (item: TimelineItem, g: ReturnType<typeof carryGesture>) => {
+    if (!DESK || !g) return g;
+    return Gesture.Race(g, Gesture.Tap().maxDistance(5).onEnd(() => runOnJS(clickItem)(item.id)));
+  };
+  const carried = (item: TimelineItem, node: React.ReactElement, pan: ReturnType<typeof carryGesture>) => {
+    const g = withClick(item, pan);
     if (!g) return node;
     return (
       <GestureDetector key={item.id} gesture={g}>
@@ -309,12 +350,17 @@ export default function DayTimeline({
   const topEnd = (id: string) => {
     unfollow();
     const m = topStep.current;
-    setMoving(null);
-    setLive(null);
-    if (m !== topBase.current.start) onMoveStart?.(id, hhmm(m), topBase.current.end - m);
+    if (m === topBase.current.start) {
+      setMoving(null);
+      setLive(null);
+      return;
+    }
+    settleOn({ id, start: m, minutes: topBase.current.end - m });
+    onMoveStart?.(id, hhmm(m), topBase.current.end - m);
   };
   const topGone = () => {
     if (unShift.current) unfollow();
+    if (settling.current) return;
     setMoving(null);
     setLive(null);
   };
@@ -340,7 +386,7 @@ export default function DayTimeline({
 
   const pullGone = () => {
     if (unShift.current) unfollow();
-    setLive(null);
+    if (!settling.current) setLive(null);
   };
   const grip = (item: TimelineItem, strip = false, over: ReturnType<typeof carryGesture> = null) => {
     if (!onResize || item.done) return null;
@@ -408,9 +454,9 @@ export default function DayTimeline({
         const timedSubs = subs.filter((s) => s.time);
         const moveG = carryGesture(item);
         return (
-          carried(item, <View key={item.id} style={[styles.band, moving?.id === item.id && styles.lifted, DESK && styles.grab, { top: top(start) + 2, height: Math.max(48, px(minutes) - 4), opacity: item.done ? 0.5 : 1 }, picked === item.id && styles.picked]}>
+          carried(item, <View key={item.id} {...rightClick(DESK ? () => onPressItem(item.id) : undefined)} style={[styles.band, DESK && styles.grab, { top: top(start) + 2, height: Math.max(48, px(minutes) - 4), opacity: item.done ? 0.5 : 1 }, picked === item.id && styles.pickedBand]}>
             {topGrip(item, moveG)}
-            <Pressable onPress={() => clickItem(item.id)} {...rightClick(DESK ? () => onPressItem(item.id) : undefined)} style={styles.bandHead}>
+            <Pressable onPress={DESK && moveG ? undefined : () => clickItem(item.id)} {...rightClick(DESK ? () => onPressItem(item.id) : undefined)} style={styles.bandHead}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[styles.blockText, { color: '#5A3B12' }, item.done && styles.done]} numberOfLines={1}>
                   {item.text}
@@ -453,7 +499,8 @@ export default function DayTimeline({
           item,
           <Pressable
             key={item.id}
-            onPress={() => clickItem(item.id)}
+            // The laptop's click comes through the block's own tap (withClick) when the block can be carried.
+            onPress={DESK && moveG ? undefined : () => clickItem(item.id)}
             {...rightClick(DESK ? () => onPressItem(item.id) : undefined)}
             style={[
               styles.block,
@@ -618,6 +665,9 @@ const styles = StyleSheet.create({
   // The laptop's pick: a firmer frame, the handles a band across each edge with a dot in its middle, the cursor saying what
   // a drag does.
   picked: { borderWidth: 2, borderColor: 'rgba(31,35,38,0.55)', zIndex: 30, overflow: 'visible' } as never,
+  // A background task stays UNDER the tasks of its window even picked, pulled or carried (the user, 2026-11-03: the band
+  // pulled over a task covered it) - only its frame says it is the one picked.
+  pickedBand: { borderWidth: 2, borderColor: 'rgba(138,106,62,0.7)', overflow: 'visible' } as never,
   grab: { cursor: 'grab' } as never,
   handle: { position: 'absolute', left: 0, right: 0, height: 12, alignItems: 'center', justifyContent: 'center', zIndex: 2, cursor: 'ns-resize' } as never,
   handleTop: { top: -7 },
