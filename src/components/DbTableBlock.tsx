@@ -13,7 +13,7 @@ import { makeStyles as makeEditorStyles } from './documentEditorStyles';
 import { useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { SHEET_FRAME } from '../constants/glass';
-import { doc } from '../firestore';
+import { doc, updateDoc } from '../firestore';
 import { db } from '../firebase';
 import { setDoc } from '../utils/owned';
 import { navigationRef } from '../navigationRef';
@@ -625,10 +625,11 @@ export default function DbTableBlock({
         context={context}
         flipFrom={card?.flip ?? null}
         onClose={closeCard}
-        onEdit={(rowId) => {
+        onOpenInBase={(rowId) => {
           closeCard();
           if (databaseId) onOpenRow(databaseId, rowId);
         }}
+        onWrite={(rowId, fieldId, value) => updateDoc(doc(db, 'customDatabaseRows', rowId), { [`values.${fieldId}`]: value, updatedAt: Date.now() })}
       />
       <WidthsSheet
         visible={widthsOpen}

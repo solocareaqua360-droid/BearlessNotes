@@ -6151,7 +6151,7 @@ function dayWord(n: number): string {
 // the only thing that ever calls back - "Ок" (onPick), "Скасувати"
 // (onClose, discards whatever was pending), and "Очистити" (onClear,
 // shown only when the field already had a value, wipes it to empty).
-function MiniDatePicker({
+export function MiniDatePicker({
   value,
   onPick,
   onClear,
