@@ -59,6 +59,25 @@ export default function DbRecordCard({
     ? (require('../screens/CustomDatabaseScreen') as { MiniDatePicker: React.ComponentType<Record<string, unknown>> }).MiniDatePicker
     : null;
 
+  // LOOKING: the value as text - and pictures as pictures, not as a count.
+  const looking = (field: FieldDef, text: string) => {
+    if (row && field.type === 'relation' && (!field.relationTarget || field.relationTarget.kind === 'photos')) {
+      const shown = resolveRelationList(field, row.values[field.id], context).filter((r) => !!r.thumbUri);
+      if (shown.length > 0) {
+        return (
+          <View style={styles.tiles}>
+            {shown.map((r, i) => (
+              <View key={i} style={styles.tile}>
+                <RelationThumb uri={r.thumbUri!} driveFileId={r.driveFileId} size={64} radius={10} />
+              </View>
+            ))}
+          </View>
+        );
+      }
+    }
+    return <Text style={[styles.value, { color: text ? S.ink : S.ink3 }]}>{text || '—'}</Text>;
+  };
+
   const input = (field: FieldDef) => {
     if (!row) return null;
     const value = row.values[field.id];
@@ -170,7 +189,7 @@ export default function DbRecordCard({
                 return (
                   <View key={f.id} style={[styles.field, { borderBottomColor: S.line }]}>
                     <Text style={[styles.label, { color: S.ink3 }]}>{f.name}</Text>
-                    {editing ? input(f) : <Text style={[styles.value, { color: value ? S.ink : S.ink3 }]}>{value || '—'}</Text>}
+                    {editing ? input(f) : looking(f, value)}
                   </View>
                 );
               })}
