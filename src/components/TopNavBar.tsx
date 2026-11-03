@@ -1,4 +1,3 @@
-import { useRenderTimer } from '../utils/perfWatch';
 import { Ionicons } from './icons/Ionicons';
 import { chromeCover, chromeNodeRef } from '../utils/chromeMorph';
 import { Fragment, ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState, memo } from 'react';
