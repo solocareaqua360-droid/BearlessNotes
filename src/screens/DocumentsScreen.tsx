@@ -119,6 +119,7 @@ import { GlassPortal } from '../components/GlassPortal';
 import { CHROME_TOP, RAIL_RIGHT } from '../constants/rail';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useBlurTarget } from '../components/GlassTarget';
+import { notesCensus } from '../utils/notesCensus';
 import { ask, confirm, notify } from '../components/surfaces/Ask';
 import { openTabWithSequence } from '../navigation/desktopTabs';
 import { go } from '../components/DesktopTabs';
@@ -287,13 +288,30 @@ export async function showDiagnostics(copied = false): Promise<void> {
   const answer = await ask({
     title: copied ? 'Діагностика · скопійовано' : 'Діагностика',
     message: text,
-    actions: [{ id: 'copy', label: 'Скопіювати все', tone: 'primary' }],
+    actions: [
+      { id: 'notes', label: 'Розклад нотаток', icon: 'documents-outline' },
+      { id: 'copy', label: 'Скопіювати все', tone: 'primary' },
+    ],
     cancelLabel: 'Закрити',
   });
   if (answer === 'copy') {
     await Clipboard.setStringAsync(text);
     void showDiagnostics(true);
+  } else if (answer === 'notes') {
+    void showNotesCensus();
   }
+}
+
+// Where every document of the account is shown, and which are shown nowhere (utils/notesCensus). Read-only.
+async function showNotesCensus(): Promise<void> {
+  let text: string;
+  try {
+    text = await notesCensus();
+  } catch (e) {
+    text = `Не вдалося порахувати: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  const answer = await ask({ title: 'Розклад нотаток', message: text, actions: [{ id: 'copy', label: 'Скопіювати', tone: 'primary' }], cancelLabel: 'Закрити' });
+  if (answer === 'copy') await Clipboard.setStringAsync(text);
 }
 
 export default function DocumentsScreen({
