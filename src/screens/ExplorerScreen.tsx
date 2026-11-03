@@ -3766,6 +3766,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
               padding={20}
               keyOf={(t) => ('folder' in t ? `f:${t.folder.path}` : t.item.id)}
               renderTile={shelfTile}
+              // A gathered deck stands a tile every ~0.76 of a tile (ShelfRows' TUCK): only those inside the width are built
+              // until the shelf is moved (optimisation day, 2026-11-03: «Тест» as shelves opened ~200 ms slower than as a list).
+              deckVisible={Math.floor((contentW + 20) / (shelfTileW * 0.76)) + 1}
             />
           </View>
         ) : (

@@ -114,6 +114,7 @@ export function ShelfRow<T>({
   padding,
   keyOf,
   renderTile,
+  deckVisible = DECK_VISIBLE,
 }: {
   items: T[];
   order: number;
@@ -121,6 +122,9 @@ export function ShelfRow<T>({
   padding: number;
   keyOf: (item: T) => string;
   renderTile: (item: T, width: number) => ReactNode;
+  // How many tiles a gathered deck builds before the shelf is first moved: the ones that can be seen. Heavy tiles (the
+  // explorer's: a note's whole page, a live map) pass just what the screen's width shows.
+  deckVisible?: number;
 }) {
   const scrollX = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((event) => {
@@ -128,8 +132,8 @@ export function ShelfRow<T>({
   });
   // The deck is gathered until the shelf is scrolled: tiles past the first few are tucked out of sight under the ones
   // before them, so they are built only when a finger starts the shelf moving (they are in place before the deck spreads).
-  const [all, setAll] = useState(items.length <= DECK_VISIBLE);
-  const shown = all ? items : items.slice(0, DECK_VISIBLE);
+  const [all, setAll] = useState(items.length <= deckVisible);
+  const shown = all ? items : items.slice(0, deckVisible);
   return (
     <Animated.ScrollView
       horizontal
