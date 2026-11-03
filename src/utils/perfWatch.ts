@@ -47,7 +47,6 @@ export function useRenderTimer(label: string): void {
     noteRender(label, now);
     const ms = now - start;
     if (ms < 8) return;
-    console.log(`PFR ${label} ${ms}`); // TEMP optimisation day 2026-11-03
     renders.push({ at: now, label, ms });
     trim(renders);
   });
@@ -238,18 +237,4 @@ export function perfSummary(since: number): string {
     `знімків ${recent.length} = ${Math.round(spent)} мс${heavy ? ` (${heavy})` : ''}`,
     `зависань ${late.length}${late.length ? `, найдовше ${Math.round(worst)} мс` : ''}`,
   ].join('\n');
-}
-
-// TEMP (optimisation day 2026-11-03) - REMOVE at the day's end: every JS-thread gap over 34 ms goes to logcat as
-// «PFW <ms>», which the phone-side script counts around a scripted action.
-if (typeof requestAnimationFrame === 'function') {
-  let last = Date.now();
-  const tick = () => {
-    const now = Date.now();
-    const gap = now - last;
-    if (gap > 34) console.log(`PFW ${gap}`);
-    last = now;
-    requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
 }
