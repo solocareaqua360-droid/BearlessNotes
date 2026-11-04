@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import { StackActions } from '@react-navigation/native';
@@ -17,7 +17,7 @@ import { doc, updateDoc } from '../firestore';
 import { db } from '../firebase';
 import { setDoc } from '../utils/owned';
 import { navigationRef } from '../navigationRef';
-import type { Block, CustomDatabaseRow, DbAddButtonSettings, DbTableSettings, FieldDef } from '../types';
+import type { Block, CustomDatabase, CustomDatabaseRow, DbAddButtonSettings, DbTableSettings, FieldDef } from '../types';
 import DbAddWindow, { type AddPicked, type AddPicture } from './DbAddWindow';
 import DbAddSettings from './DbAddSettings';
 import { addLabel, newRowValues, recordsWord, shownByCondition, titleFieldOf } from '../utils/dbAddButton';
@@ -75,6 +75,7 @@ export default function DbTableBlock({
   const { database, loaded, rows: raw, context, views } = useDbTableData(databaseId);
   const [expanded, setExpanded] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [recordsOpen, setRecordsOpen] = useState(false);
   const [naming, setNaming] = useState(false);
   // THE ADD BUTTON (utils/dbAddButton): its window, its settings, and the prompt for its caption.
   const [addOpen, setAddOpen] = useState(false);
@@ -149,7 +150,7 @@ export default function DbTableBlock({
         { id: 'look', label: 'Вигляд', hint: [s.totals && 'підсумки', s.headerColor && 'шапка', s.rowNumbers && 'нумерація', s.wrap && 'перенос'].filter(Boolean).join(', ') || 'Підсумки, шапка, нумерація, перенос', icon: 'color-palette-outline' },
         { id: 'widths', label: 'Ширина стовпців', icon: 'resize-outline' },
         { id: 'addbtn', label: 'Кнопка додавання', hint: s.addButton?.on ? addLabel(s, database) : 'Вимкнена', icon: 'add-circle-outline' },
-        { id: 'add', label: 'Додати запис з бази', icon: 'add-outline' },
+        { id: 'add', label: 'Вибрати записи', hint: `${rows.length} із ${raw.length} · галочками`, icon: 'checkbox-outline' },
         { id: 'new', label: 'Новий запис', icon: 'add-circle-outline' },
         ...(counts.removed > 0 ? [{ id: 'back', label: `Повернути прибрані (${counts.removed})`, icon: 'eye-outline' as const }] : []),
         { id: 'base', label: 'Відкрити в базі', hint: database.name, icon: 'open-outline' },
@@ -170,7 +171,7 @@ export default function DbTableBlock({
     else if (choice === 'look') pickLook();
     else if (choice === 'widths') setWidthsOpen(true);
     else if (choice === 'addbtn') setAddSettingsOpen(true);
-    else if (choice === 'add') pickRecord();
+    else if (choice === 'add') setRecordsOpen(true);
     else if (choice === 'new') setNaming(true);
     else if (choice === 'back') save({ removed: [] });
     else if (choice === 'base' && navigationRef.isReady())
@@ -264,7 +265,10 @@ export default function DbTableBlock({
     });
     if (choice === 'filter') await editFilters();
     else if (choice === 'all') save({ source: 'filter', filters: [] });
-    else if (choice === 'manual') save({ source: 'manual', filters: [] });
+    else if (choice === 'manual') {
+      save({ source: 'manual', filters: [] });
+      setRecordsOpen(true);
+    }
     else if (choice.startsWith('v:')) {
       const v = views.find((x) => x.id === choice.slice(2));
       if (v) save({ source: 'filter', filters: v.filters, ...(v.sortField ? { sortField: v.sortField, sortDir: v.sortDir ?? 'asc' } : {}) });
@@ -422,20 +426,22 @@ export default function DbTableBlock({
     else save({ sortField: choice, sortDir: 'asc' });
   }
 
-  async function pickRecord() {
-    if (!database) return;
-    const here = new Set(rows.map((r) => r.id));
-    const candidates = raw.filter((r) => !here.has(r.id)).sort((a, b) => rowTitleOf(database, a).localeCompare(rowTitleOf(database, b)));
-    if (candidates.length === 0) {
-      notify('Усі записи вже в таблиці');
-      return;
+  // One tick of «Вибрати записи»: on = the record shows in the table, off = it does not, whatever brought it there (the
+  // condition or a hand-add) - so a ticked row that the condition shows is only «taken out», never lost from the base.
+  function setShown(rowId: string, on: boolean) {
+    const row = raw.find((r) => r.id === rowId);
+    if (!row || !database) return;
+    const byCondition = shownByCondition(s, database, row);
+    const added = new Set(s.added ?? []);
+    const removed = new Set(s.removed ?? []);
+    if (on) {
+      removed.delete(rowId);
+      if (!byCondition) added.add(rowId);
+    } else {
+      added.delete(rowId);
+      if (byCondition) removed.add(rowId);
     }
-    const choice = await ask({
-      title: 'Додати запис',
-      actions: candidates.map((r) => ({ id: r.id, label: rowTitleOf(database, r) })),
-    });
-    if (choice === 'cancel') return;
-    save({ added: [...new Set([...(s.added ?? []), choice])], removed: (s.removed ?? []).filter((id) => id !== choice) });
+    save({ added: [...added], removed: [...removed] });
   }
 
   async function createRecord(name: string) {
@@ -619,6 +625,19 @@ export default function DbTableBlock({
           onClose={() => setColumnsOpen(false)}
         />
       )}
+      {database && (
+        <RecordsSheet
+          visible={recordsOpen}
+          database={database}
+          rows={raw}
+          shown={new Set(rows.map((r) => r.id))}
+          manual={s.source === 'manual'}
+          onToggle={setShown}
+          onShowAll={() => save({ source: 'filter', filters: [], added: [], removed: [] })}
+          onNone={() => save({ source: 'manual', filters: [], added: [], removed: [] })}
+          onClose={() => setRecordsOpen(false)}
+        />
+      )}
       <DbRecordCard
         database={database}
         row={card ? raw.find((r) => r.id === card.id) ?? null : null}
@@ -755,6 +774,85 @@ function ColumnsSheet({
   );
 }
 
+// «ВИБРАТИ ЗАПИСИ»: every record of the base with a tick - ticked ones are in the table. Opens again at any time; each tick is
+// saved at once, so the table behind already shows it.
+function RecordsSheet({
+  visible,
+  database,
+  rows,
+  shown,
+  manual,
+  onToggle,
+  onShowAll,
+  onNone,
+  onClose,
+}: {
+  visible: boolean;
+  database: CustomDatabase;
+  rows: CustomDatabaseRow[];
+  shown: Set<string>;
+  manual: boolean;
+  onToggle: (rowId: string, on: boolean) => void;
+  onShowAll: () => void;
+  onNone: () => void;
+  onClose: () => void;
+}) {
+  const S = useSoft();
+  const b = useBottomSheet(visible, onClose);
+  const [query, setQuery] = useState('');
+  const ordered = [...rows].sort((a, c) => rowTitleOf(database, a).localeCompare(rowTitleOf(database, c)));
+  const q = query.trim().toLowerCase();
+  const list = q ? ordered.filter((r) => rowTitleOf(database, r).toLowerCase().includes(q)) : ordered;
+  return (
+    <GlassLayer visible={visible} onClose={onClose} intensity={60} rise={b.on}>
+      <View style={[SHEET_FRAME, b.frame]} pointerEvents="box-none">
+        <Animated.View style={[local.sheet, { backgroundColor: S.card }, b.window, b.padBottom(14)]}>
+          {b.fill}
+          {b.grab}
+          {b.on && <View style={{ height: 12 }} />}
+          <Text style={[local.sheetTitle, { color: S.ink }]}>Записи таблиці</Text>
+          <Text style={[local.sheetHint, { color: S.ink3 }]}>
+            {`Позначено ${shown.size} із ${rows.length}. Поставте або зніміть галочку - таблиця змінюється одразу, і так можна в будь-який момент.`}
+          </Text>
+          {rows.length > 8 && (
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Пошук"
+              placeholderTextColor={S.ink3}
+              style={[local.search, { color: S.ink, backgroundColor: S.fill }]}
+            />
+          )}
+          <View style={local.bulk}>
+            <Pressable hitSlop={6} onPress={onShowAll}>
+              <Text style={[local.bulkText, { color: S.accent }]}>Усі записи</Text>
+            </Pressable>
+            <Pressable hitSlop={6} onPress={onNone}>
+              <Text style={[local.bulkText, { color: S.accent }]}>Зняти всі</Text>
+            </Pressable>
+          </View>
+          <ScrollView style={{ flexGrow: 0 }}>
+            {list.length === 0 && <Text style={[local.sheetHint, { color: S.ink3 }]}>{rows.length === 0 ? 'У базі ще немає записів.' : 'Нічого не знайдено.'}</Text>}
+            {list.map((r) => {
+              const on = shown.has(r.id);
+              return (
+                <Pressable key={r.id} onPress={() => onToggle(r.id, !on)} style={local.fieldRow}>
+                  <View style={[local.check, { borderColor: S.ink3, backgroundColor: on ? S.ink : 'transparent' }]}>
+                    {on && <Ionicons name="checkmark" size={15} color={S.card} />}
+                  </View>
+                  <Text style={[local.fieldName, { color: on ? S.ink : S.ink2 }]} numberOfLines={1}>
+                    {rowTitleOf(database, r) || 'Без назви'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </GlassLayer>
+  );
+}
+
 // «ШИРИНА СТОВПЦІВ»: each column narrower or wider by a step, or all fitted to their text at once.
 function WidthsSheet({
   visible,
@@ -838,5 +936,8 @@ const local = StyleSheet.create({
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 50, paddingHorizontal: 4 },
   check: { width: 24, height: 24, borderRadius: 7, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   fieldName: { flex: 1, fontSize: 15.5, fontFamily: SOFT_MEDIUM },
+  search: { height: 40, borderRadius: 12, paddingHorizontal: 12, fontSize: 15, fontFamily: SOFT_REGULAR, marginBottom: 6 },
+  bulk: { flexDirection: 'row', gap: 18, paddingHorizontal: 4, paddingBottom: 6 },
+  bulkText: { fontSize: 14, fontFamily: SOFT_SEMIBOLD },
   arrow: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
 });
