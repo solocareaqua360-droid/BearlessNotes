@@ -1,12 +1,14 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import TextInput from './AppTextInput';
 import { ScrollView } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import { StackActions } from '@react-navigation/native';
 import { Ionicons } from './icons/Ionicons';
 import GlassLayer from './GlassLayer';
 import RenamePrompt from './RenamePrompt';
-import { useBottomSheet } from './surfaces/bottomSheet';
+import { BELOW, useBottomSheet } from './surfaces/bottomSheet';
 import { ask, notify } from './surfaces/Ask';
 import { useStyles, useTheme } from '../theme/ThemeProvider';
 import { makeStyles as makeEditorStyles } from './documentEditorStyles';
@@ -800,13 +802,26 @@ function RecordsSheet({
   const S = useSoft();
   const b = useBottomSheet(visible, onClose);
   const [query, setQuery] = useState('');
+  // Typing lifts the sheet over the keyboard, so its height must be what is LEFT above it - else the list rides under the keys.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const { height: winH } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const room = Math.max(240, winH - keyboardHeight - insets.top - 12);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   const ordered = [...rows].sort((a, c) => rowTitleOf(database, a).localeCompare(rowTitleOf(database, c)));
   const q = query.trim().toLowerCase();
   const list = q ? ordered.filter((r) => rowTitleOf(database, r).toLowerCase().includes(q)) : ordered;
   return (
     <GlassLayer visible={visible} onClose={onClose} intensity={60} rise={b.on}>
       <View style={[SHEET_FRAME, b.frame]} pointerEvents="box-none">
-        <Animated.View style={[local.sheet, { backgroundColor: S.card }, b.window, b.padBottom(14)]}>
+        <Animated.View style={[local.sheet, { backgroundColor: S.card }, b.window, { marginBottom: keyboardHeight - (b.on ? BELOW : 0), maxHeight: room }, b.padBottom(14)]}>
           {b.fill}
           {b.grab}
           {b.on && <View style={{ height: 12 }} />}
