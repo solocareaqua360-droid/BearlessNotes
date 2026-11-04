@@ -15,6 +15,10 @@ export type OrderControl = {
   cancel: () => void;
 };
 
+// The laptop's drag starts after the pointer has travelled this far; a click that ends a drag longer than REAL_DRAG is not a click.
+const WEB_DRAG_AT = 12;
+const REAL_DRAG = 16;
+
 export default function OrderableRow({
   id,
   ids,
@@ -45,8 +49,10 @@ export default function OrderableRow({
   // The laptop: the mouse lifting after a drag is also a click on the row, and the row's own press opened the task's note
   // (2026-11-03). The click that ends a drag is swallowed before it reaches the row (swallowClick below).
   const draggedAt = useRef(0);
-  const markDragged = () => {
-    draggedAt.current = Date.now();
+  // `moved`: how far the pointer went. A press that shifted a few points (a trackpad «tap» does) is still a CLICK - only a
+  // real drag eats the click that ends it (2026-11-04, the user: «не можу відмітити справи, не натискається»).
+  const markDragged = (moved: number) => {
+    draggedAt.current = moved >= REAL_DRAG ? Date.now() : 0;
   };
   // The latest list, read when the drag starts (the gesture is built once per render, the ids change with the data).
   const live = useRef({ ids, ctl });
@@ -78,7 +84,7 @@ export default function OrderableRow({
     );
   };
   const cancel = () => {
-    draggedAt.current = Date.now();
+    draggedAt.current = 0;
     setCarried(false);
     live.current.ctl.cancel();
   };
@@ -86,7 +92,7 @@ export default function OrderableRow({
   // THE LAPTOP (2026-11-03, the user: «перетягування не працює» in Справи): a mouse does not hold-then-drag, it presses and
   // moves - a press that moves a few points is the drag (as the explorer's cards, useExplorerCarry). A click stays a click.
   // The phone: hold, then drag; a sideways move is a row's own swipe (SwipeRow inside), never a drag.
-  const pan = (Platform.OS === 'web' ? base.minDistance(6) : base.activateAfterLongPress(320).failOffsetX([-10, 10]))
+  const pan = (Platform.OS === 'web' ? base.minDistance(WEB_DRAG_AT) : base.activateAfterLongPress(320).failOffsetX([-10, 10]))
     .onStart(() => {
       inHand.value = 1;
       lift.value = withTiming(1, { duration: 120 });
@@ -96,8 +102,8 @@ export default function OrderableRow({
       ty.value = e.translationY;
       runOnJS(move)(e.absoluteY);
     })
-    .onEnd(() => {
-      runOnJS(markDragged)();
+    .onEnd((e) => {
+      runOnJS(markDragged)(Math.hypot(e.translationX, e.translationY));
       runOnJS(end)();
     })
     .onFinalize((_e, success) => {
