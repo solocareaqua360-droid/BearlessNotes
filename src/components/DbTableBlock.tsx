@@ -846,7 +846,7 @@ function RecordsSheet({
               <Text style={[local.bulkText, { color: S.accent }]}>Зняти всі</Text>
             </Pressable>
           </View>
-          <ScrollView style={{ flexGrow: 0 }}>
+          <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled">
             {list.length === 0 && <Text style={[local.sheetHint, { color: S.ink3 }]}>{rows.length === 0 ? 'У базі ще немає записів.' : 'Нічого не знайдено.'}</Text>}
             {list.map((r) => {
               const on = shown.has(r.id);
