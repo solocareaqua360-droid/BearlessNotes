@@ -10,6 +10,7 @@ import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTopBack, useTopExtras } from '../navigation/navDock';
+import { useTopAccount } from '../navigation/topAccount';
 import { onSnapshot } from '../firestore';
 import { ownedQuery } from '../utils/owned';
 import { applyLiveRecord, useLiveRecords } from '../hooks/useLiveRecords';
@@ -126,6 +127,8 @@ export default function DiaryScreen({ inPane }: { inPane?: boolean } = {}) {
   // AN OPEN DAY: its own bar - the date, the way back to the list, and
   // "⋯ → У календарі" for the day in its place among the others.
   useTopBack(() => setOpenDate(null), !!openDate && topNavOn);
+  // The list of days is a root (the account circle); an open day is not (its own way back).
+  useTopAccount(topNavOn && !openDate && !inPane);
   // The laptop's one way back: the open day back to the list of days.
   useInnerBack(openDate ? () => setOpenDate(null) : null);
   useTopExtras(

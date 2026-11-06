@@ -64,6 +64,7 @@ import { useFrameDimensions, useResponsiveLayout } from '../hooks/useResponsiveL
 import { FONT_BOLD, FONT_MEDIUM, FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useSoft, type SoftTokens } from '../theme/soft';
 import { DockMark, useChromeStyle, useDockActions, useDockBeads, useDockShowContext, useNavDockSetFace, useNavDockPublisher, useStableTopExtras, useTopBack, useTopExtras, useTopSearch } from '../navigation/navDock';
+import { useTopAccount } from '../navigation/topAccount';
 import InlineDock from '../components/InlineDock';
 import {
   MONTH_FULL,
@@ -896,6 +897,7 @@ export default function CalendarScreen() {
   // it (see the end of the render) - nothing is published for the
   // window's bar or dock, which fade out while the drawer is out.
   useTopBack(toPreviousDesk, !calendarDrawer);
+  useTopAccount(topNavOn && !calendarDrawer);
   // Search is the calendar's own (2026-11-02, the user's: the diary exists only for its pages - search them here): the days that match
   // stand over the calendar, newest first; a tap opens that day. It went to the separate «Щоденник» screen before.
   const searchBead = calendarFocused

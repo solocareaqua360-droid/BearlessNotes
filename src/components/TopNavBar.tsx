@@ -17,6 +17,7 @@ import Menu from './surfaces/Menu';
 import SaveRing from './SaveRing';
 import { DockContext, TopBack, TopExtras, TopSearch, useNavChromeStyle, useNavDockOwnContext, useNavDockTargets, useNavDrawerCover, useNavTopBack, useNavTopExtras, useNavTopSearch, useTopNavClaim } from '../navigation/navDock';
 import { navigationRef } from '../navigationRef';
+import { accountMenuEntries, useTopAccountOn } from '../navigation/topAccount';
 import { chromeCompact, useChromeCompactFlag } from '../navigation/chromeScroll';
 import { useDeskBeads, useDockCarriesBack } from '../navigation/deskBeadsBus';
 import { FEATURES } from '../features';
@@ -57,6 +58,10 @@ const PILL_W = PIECE_H;
 const GAP = 6;
 // features.openTopBar: the room before the name at the bar's left edge (the back button is in the dock).
 const OPEN_LEFT = 4;
+// The account circle (topAccount.ts): its size, and how far it pushes the name aside. 38 is a hair smaller than the
+// dock's round buttons (48): the bar is a quieter row than the dock.
+const ACCOUNT_SIZE = 38;
+const ACCOUNT_SHIFT = 20;
 // OPEN, THE NAME SITS ON ITS OWN SMALL GLASS (the user, 2026-10-28: «підкладку під текст заголовку з розмиттям, щоб не
 // втрачати корисну площину... те, що і в доці»): a capsule of the dock's material only as wide as what the plate shows. The
 // row in front tells its width here (`a`: the desks, a title or a note's trail; `b`: a folder path); null where the bar
@@ -281,14 +286,28 @@ function TopNavBar({
   // The way back is the dock's circle now (DeskDock): the bar draws none of its own, and keeps the same room on the
   // left as the buttons take on the right, so the name sits on the middle of the SCREEN, not of what is left.
   const dockCarriesBack = useDockCarriesBack();
-  const backHidden = FEATURES.deskDock && dockCarriesBack && !inline && soft;
   // features.openTopBar: no capsule across the top, the name on the left (only the button cluster keeps a capsule).
   const open = FEATURES.openTopBar && soft && !inline;
+  // THE ACCOUNT CIRCLE (navigation/topAccount.ts): a root screen asks for it; it stands in the bar's left corner
+  // where the bar's own back button used to be, so the name steps aside by ACCOUNT_SHIFT. Only in the open bar.
+  const accountAsked = useTopAccountOn();
+  const accountOn = accountAsked && open;
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountEntries = useMemo(accountMenuEntries, []);
+  const backHidden = (FEATURES.deskDock && dockCarriesBack && !inline && soft) || accountOn;
 
   const rightW = clusterCount > 0 ? clusterWidth + gap : 0;
   // Soft bar: the left side keeps as much room as the right one even with the back button there (empty room after
   // it), so every name stands on the middle of the SCREEN.
-  const leftWBase = open ? (backHidden ? OPEN_LEFT : SIDE_W + gap) : soft && !inline ? Math.max(SIDE_W + gap, rightW) : backHidden ? rightW : SIDE_W + gap;
+  const leftWBase = open
+    ? backHidden
+      ? OPEN_LEFT + (accountOn ? ACCOUNT_SHIFT : 0)
+      : SIDE_W + gap
+    : soft && !inline
+      ? Math.max(SIDE_W + gap, rightW)
+      : backHidden
+        ? rightW
+        : SIDE_W + gap;
   // THE PLAYER'S CAPSULE on the bar's left edge while something is read aloud (thoughts/VoicePlayer.tsx, the
   // user's sketch 2026-10-15): the left keeps room for it, and the right as much again, so the name still stands
   // on the middle of the SCREEN («головне правильно центрувати»). Where the way back is still at the top, the
@@ -558,6 +577,33 @@ function TopNavBar({
         </Animated.View>
         )}
 
+        {accountOn && (
+          // The account circle, in the corner the name stepped aside from (ACCOUNT_SHIFT). Absolute, so it is not one
+          // more flex child of the row: the row's spacing is the spacer's business.
+          <Animated.View
+            key="account"
+            pointerEvents={compactOn ? 'none' : 'box-none'}
+            style={[{ position: 'absolute', left: 0, top: (TOP_NAV_H - ACCOUNT_SIZE) / 2 }, !inline && FEATURES.chromeCompact ? compactCluster : undefined]}
+          >
+            <Pressable
+              onPress={() => setAccountMenuOpen((v) => !v)}
+              accessibilityLabel="Акаунт і налаштування"
+              hitSlop={6}
+              style={{
+                width: ACCOUNT_SIZE,
+                height: ACCOUNT_SIZE,
+                borderRadius: ACCOUNT_SIZE / 2,
+                backgroundColor: S.chrome,
+                boxShadow: S.shadow,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Glyph name="person-outline" size={22} color={ink} soft={soft} />
+            </Pressable>
+          </Animated.View>
+        )}
+
         {/* The plate, and on it whichever of the two rows is in front -
             or, with neither a title nor desks to show, no plate at all:
             just the room it would have taken, between the two ends. */}
@@ -754,6 +800,14 @@ function TopNavBar({
       onClose={() => setMenuOpen(false)}
       entries={extras?.menu ?? []}
       style={{ position: 'absolute', right: windowWidth - frame.left - frame.width, top: barTop + TOP_NAV_H + (soft ? 8 : 6) }}
+      soft={soft ? S : null}
+    />
+    {/* The account circle's window: hangs from the bar's LEFT end, as the «⋯» list hangs from the right. */}
+    <Menu
+      visible={accountMenuOpen && accountOn}
+      onClose={() => setAccountMenuOpen(false)}
+      entries={accountEntries}
+      style={{ position: 'absolute', left: frame.left, top: barTop + TOP_NAV_H + (soft ? 8 : 6) }}
       soft={soft ? S : null}
     />
     </>

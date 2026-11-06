@@ -20,6 +20,7 @@ import { SoftSurfaceContext, useSoft } from '../theme/soft';
 import { SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { useDockClearance } from '../navigation/dockGeometry';
 import { useChromeStyle, useDockBeads, useTopBack, useWhileFocused } from '../navigation/navDock';
+import { useTopAccount } from '../navigation/topAccount';
 import { useSideDrawerActions } from '../navigation/sideDrawers';
 import { BOARDS_DESK, DesksControlContext, PERMANENT_DESK, deskFace, deskKeyForCustom } from '../navigation/desks';
 import { GRID_TILES, WIDE_TILES, openDatabaseTile } from '../constants/databaseTiles';
@@ -141,6 +142,8 @@ export default function StartScreen() {
   // The first desk: nowhere before it to go back to, so its way back
   // stands dimmed in its place.
   useTopBack(null, topNavOn);
+  // The account circle stands at the top left of the root screens (navigation/topAccount.ts).
+  useTopAccount(topNavOn);
 
   const create = (item: Create) => {
     // The boards' desk may have been closed: then the boards' own copy.

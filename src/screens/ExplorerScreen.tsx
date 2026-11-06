@@ -34,6 +34,7 @@ import { usePaneBar } from '../navigation/paneBar';
 import { selectionDock } from '../navigation/selectionDock';
 import { orderSection, viewSection } from '../navigation/topMenu';
 import { useChromeStyle, useDockActions, useDockBeads, useTopBack, useTopExtras, useTopSearch, useWhileFocused, useNavDockPublisher } from '../navigation/navDock';
+import { useTopAccount } from '../navigation/topAccount';
 import { useSideDrawerActions } from '../navigation/sideDrawers';
 import { GlassPortal } from '../components/GlassPortal';
 import { FolderCardKept, FolderCover, FolderGrow, FolderShrink, coverPatternJob, folderCoverHeight, type Rect4 } from '../components/ProjectFolders';
@@ -2887,6 +2888,9 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startLevel]);
   useTopBack(desk && atRoot ? null : goBack, isFocused && !inPane);
+  // The start desk is THIS screen (features.startIsExplorer): at its root the account circle stands in the corner;
+  // one level down (a folder, a start level, selecting...) the circle will become the way back (step 2 of the plan).
+  useTopAccount(topNavOn && !!desk && atRoot && !inPane && isFocused);
   // Inside a folder the three desks stay in the dock, the circle is back (deskBeadsBus's useDockDesksHere).
   useDockDesksHere(isFocused && !inPane);
   // The phone's own back (gesture or key): inside a folder it goes UP one level,
