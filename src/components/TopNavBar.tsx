@@ -61,7 +61,8 @@ const OPEN_LEFT = 4;
 // The account circle (topAccount.ts): its size, and how far it pushes the name aside. 38 is a hair smaller than the
 // dock's round buttons (48): the bar is a quieter row than the dock.
 const ACCOUNT_SIZE = 38;
-const ACCOUNT_SHIFT = 20;
+// 30: at 20 the folder / note icon stood 5 dp from the circle (the user, 2026-11-07: «впритул»).
+const ACCOUNT_SHIFT = 30;
 // OPEN, THE NAME SITS ON ITS OWN SMALL GLASS (the user, 2026-10-28: «підкладку під текст заголовку з розмиттям, щоб не
 // втрачати корисну площину... те, що і в доці»): a capsule of the dock's material only as wide as what the plate shows. The
 // row in front tells its width here (`a`: the desks, a title or a note's trail; `b`: a folder path); null where the bar
