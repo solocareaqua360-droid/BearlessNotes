@@ -294,14 +294,19 @@ function TopNavBar({
   const accountOn = accountAsked && open;
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountEntries = useMemo(accountMenuEntries, []);
-  const backHidden = (FEATURES.deskDock && dockCarriesBack && !inline && soft) || accountOn;
+  // ... and everywhere else the same corner holds the way back, the same round button with «‹» in it (step 2 of the
+  // plan, the user's: «при вході в будь яку папку або елемент бази або саму базу замість акаунта буде кнопка назад»).
+  // Only while there IS a way back (a dimmed one - the first desk's - draws nothing: that is the account's place).
+  const backCircleOn = open && !accountOn && !!back && !back.dimmed;
+  const cornerOn = accountOn || backCircleOn;
+  const backHidden = (FEATURES.deskDock && dockCarriesBack && !inline && soft) || cornerOn;
 
   const rightW = clusterCount > 0 ? clusterWidth + gap : 0;
   // Soft bar: the left side keeps as much room as the right one even with the back button there (empty room after
   // it), so every name stands on the middle of the SCREEN.
   const leftWBase = open
     ? backHidden
-      ? OPEN_LEFT + (accountOn ? ACCOUNT_SHIFT : 0)
+      ? OPEN_LEFT + (cornerOn ? ACCOUNT_SHIFT : 0)
       : SIDE_W + gap
     : soft && !inline
       ? Math.max(SIDE_W + gap, rightW)
@@ -577,17 +582,17 @@ function TopNavBar({
         </Animated.View>
         )}
 
-        {accountOn && (
-          // The account circle, in the corner the name stepped aside from (ACCOUNT_SHIFT). Absolute, so it is not one
-          // more flex child of the row: the row's spacing is the spacer's business.
+        {cornerOn && (
+          // The corner button: the account circle on a root screen, the way back (same circle, «‹») everywhere else.
+          // Absolute, so it is not one more flex child of the row: the row's spacing is the spacer's business.
           <Animated.View
-            key="account"
-            pointerEvents={compactOn ? 'none' : 'box-none'}
-            style={[{ position: 'absolute', left: 0, top: (TOP_NAV_H - ACCOUNT_SIZE) / 2 }, !inline && FEATURES.chromeCompact ? compactCluster : undefined]}
+            key="corner"
+            pointerEvents={compactOn || searchShown ? 'none' : 'box-none'}
+            style={[{ position: 'absolute', left: 0, top: (TOP_NAV_H - ACCOUNT_SIZE) / 2 }, !inline && FEATURES.chromeCompact ? compactCluster : undefined, backAway]}
           >
             <Pressable
-              onPress={() => setAccountMenuOpen((v) => !v)}
-              accessibilityLabel="Акаунт і налаштування"
+              onPress={accountOn ? () => setAccountMenuOpen((v) => !v) : () => back?.onPress()}
+              accessibilityLabel={accountOn ? 'Акаунт і налаштування' : 'Назад'}
               hitSlop={6}
               style={{
                 width: ACCOUNT_SIZE,
@@ -599,7 +604,7 @@ function TopNavBar({
                 justifyContent: 'center',
               }}
             >
-              <Glyph name="person-outline" size={22} color={ink} soft={soft} />
+              <Glyph name={accountOn ? 'person-outline' : back?.icon ?? 'arrow-back'} size={accountOn ? 22 : 24} color={ink} soft={soft} />
             </Pressable>
           </Animated.View>
         )}
