@@ -13,4 +13,4 @@ web-build/
 .env.local
 build-*.apk
 *.apk
-android/
+/android/
