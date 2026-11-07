@@ -71,7 +71,10 @@ export function PlayerHost() {
   // The video's box in each state.
   let frame: object;
   if (pip) {
-    frame = { left: 0, top: 0, width, height };
+    // Edges, not numbers: the small window's real size reaches JS late (and
+    // sometimes only once the user resizes the window), so the box is "all
+    // of whatever window there is", never `width`/`height` from before.
+    frame = { left: 0, top: 0, right: 0, bottom: 0 };
   } else if (mode === "full") {
     const boxW = Math.min(width, (height - insets.top - 160) * (ratioW / ratioH));
     const boxH = boxW / (ratioW / ratioH);
@@ -92,7 +95,7 @@ export function PlayerHost() {
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      {full && <View style={[StyleSheet.absoluteFill, styles.black]} />}
+      {(full || pip) && <View style={[StyleSheet.absoluteFill, styles.black]} />}
       {mini && <View style={[styles.capsule, { top: capsuleTop(insets.top), width: capsuleW }]} />}
 
       <View style={[styles.video, frame]} pointerEvents={mini ? "none" : "auto"}>
