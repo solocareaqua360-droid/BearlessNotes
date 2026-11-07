@@ -2,7 +2,8 @@ import * as Haptics from "expo-haptics";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { BackHandler, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Ionicons } from "@/components/icons/Ionicons";
@@ -34,6 +35,8 @@ export default function WatchScreen() {
   const [query, setQuery] = useState("");
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
+  // While the comment is being typed the keyboard needs the room: no dock.
+  const [commentFocused, setCommentFocused] = useState(false);
 
   // The player shows THIS video: continue it if it is already playing (coming
   // back from the strip), else start it.
@@ -111,7 +114,8 @@ export default function WatchScreen() {
       {/* Under the player (and the status bar): black, like the picture. */}
       <View style={[styles.block, { height: box.blockH }]} />
 
-      <ScrollView
+      <KeyboardAwareScrollView
+        bottomOffset={24}
         style={{ marginTop: box.blockH }}
         contentContainerStyle={{ paddingTop: 14, paddingBottom: DOCK_CLEARANCE + insets.bottom, gap: 10 }}
         keyboardShouldPersistTaps="handled"
@@ -161,7 +165,11 @@ export default function WatchScreen() {
             <TextInput
               value={comment}
               onChangeText={setComment}
-              onBlur={saveComment}
+              onFocus={() => setCommentFocused(true)}
+              onBlur={() => {
+                setCommentFocused(false);
+                saveComment();
+              }}
               placeholder="Додати коментар…"
               placeholderTextColor={S.ink3}
               multiline
@@ -184,14 +192,16 @@ export default function WatchScreen() {
             />
           ))}
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
+      {!commentFocused && (
       <Dock
         query={query}
         onChangeQuery={setQuery}
         onAdd={() => router.push("/add-video")}
         bead={{ icon: "chevron-back", label: "Назад", onPress: goBack }}
       />
+      )}
     </View>
   );
 }
