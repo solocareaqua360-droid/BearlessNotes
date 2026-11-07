@@ -258,15 +258,7 @@ export function PlayerHost() {
           <View style={{ flex: 1 }} />
           <RoundButton icon="expand" label="На весь екран" small onPress={() => setMode("full")} />
           {supportsPip && <RoundButton icon="contract" label="Вікно поверх усього" small onPress={() => enterPip(ratioW, ratioH)} />}
-          <RoundButton
-            icon="close"
-            label="Закрити"
-            small
-            onPress={() => {
-              close();
-              router.back();
-            }}
-          />
+          <RoundButton icon="close" label="Закрити" small onPress={close} />
         </View>
       )}
 

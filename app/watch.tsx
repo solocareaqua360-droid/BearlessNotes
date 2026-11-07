@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BackHandler, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -38,6 +38,14 @@ export default function WatchScreen() {
   // While the comment is being typed the keyboard needs the room: no dock.
   const [commentFocused, setCommentFocused] = useState(false);
 
+  // The video was CLOSED (the cross, from the watch box or from full screen):
+  // an empty watch screen is no place to stay.
+  const opened = useRef(false);
+  const playerUrl = usePlayerStore((st) => st.url);
+  useEffect(() => {
+    if (opened.current && !playerUrl) router.back();
+  }, [playerUrl]);
+
   // The player shows THIS video: continue it if it is already playing (coming
   // back from the strip), else start it.
   useEffect(() => {
@@ -45,6 +53,7 @@ export default function WatchScreen() {
     const p = usePlayerStore.getState();
     if (p.videoId === video.id && p.url) p.setMode("watch");
     else p.open(video.url, video.title, { videoId: video.id, folderId: folder || null, mode: "watch" });
+    opened.current = true;
     setComment(video.comment);
     setCommentOpen(false);
     // Only when a different video is shown.
