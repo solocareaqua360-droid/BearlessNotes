@@ -1,7 +1,7 @@
-import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
-import { colors, radius, spacing } from "@/constants/theme";
+import { Ionicons } from "@/components/icons/Ionicons";
+import { FONT, softCursor, useScheme, useSoft } from "@/theme/soft";
 
 interface SearchBarProps {
   value: string;
@@ -11,27 +11,25 @@ interface SearchBarProps {
   onClear?: () => void;
 }
 
-export function SearchBar({
-  value,
-  onChangeText,
-  placeholder = "Пошук відео",
-  autoFocus = false,
-  onClear,
-}: SearchBarProps) {
+// A soft field: a 48-high capsule on the faint fill, caret in the accent.
+export function SearchBar({ value, onChangeText, placeholder = "Пошук", autoFocus = false, onClear }: SearchBarProps) {
+  const S = useSoft();
+  const scheme = useScheme();
   return (
-    <View style={styles.wrap}>
-      <Ionicons name="search" size={18} color={colors.searchIcon} />
+    <View style={[styles.wrap, { backgroundColor: S.fill }]}>
+      <Ionicons name="search" size={18} color={S.ink3} />
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
-        style={styles.input}
+        placeholderTextColor={S.ink3}
+        style={[styles.input, { color: S.ink }]}
         autoFocus={autoFocus}
+        {...softCursor(scheme)}
       />
-      {value.length > 0 && onClear && (
-        <Pressable onPress={onClear} hitSlop={8} style={styles.clearButton}>
-          <Ionicons name="close" size={12} color="#fff" />
+      {value.length > 0 && (
+        <Pressable onPress={onClear ?? (() => onChangeText(""))} hitSlop={10}>
+          <Ionicons name="close-circle" size={18} color={S.ink3} />
         </Pressable>
       )}
     </View>
@@ -39,26 +37,6 @@ export function SearchBar({
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.pillInactive,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    height: 52,
-  },
-  input: {
-    flex: 1,
-    color: colors.textPrimary,
-    fontSize: 15,
-  },
-  clearButton: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.textMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  wrap: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 24, paddingHorizontal: 16, height: 48 },
+  input: { flex: 1, fontFamily: FONT.regular, fontWeight: "normal", fontSize: 15.5, padding: 0 },
 });

@@ -1,14 +1,17 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@/components/icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
-import { colors, radius, spacing, tagIconOptions, tagPalette } from "@/constants/theme";
+import { tagIconOptions, tagPalette } from "@/constants/theme";
+import { Field, SheetScreen } from "@/components/ui/SheetScreen";
+import { FONT, RADIUS, softCursor, TYPE, useScheme, useSoft } from "@/theme/soft";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
 export default function TagEditorScreen() {
-  const { tagId } = useLocalSearchParams<{ tagId?: string }>();
+  const S = useSoft();
+  const scheme = useScheme();
+  const { tagId, parentId } = useLocalSearchParams<{ tagId?: string; parentId?: string }>();
   const tags = useLibraryStore((s) => s.tags);
   const addTagPath = useLibraryStore((s) => s.addTagPath);
   const updateTag = useLibraryStore((s) => s.updateTag);
@@ -40,234 +43,108 @@ export default function TagEditorScreen() {
     if (existing) {
       updateTag(existing.id, { name: name.trim(), icon, color });
     } else {
-      addTagPath(name.split("/"), icon, color);
+      // A "new folder" made from inside a folder lands under it.
+      const chain: string[] = [];
+      let cursor = parentId ? tags.find((t) => t.id === parentId) : undefined;
+      while (cursor) {
+        chain.unshift(cursor.name);
+        cursor = cursor.parentId ? tags.find((t) => t.id === cursor!.parentId) : undefined;
+      }
+      addTagPath([...chain, ...name.split("/")], icon, color);
     }
     router.back();
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()}>
-          <Text style={styles.headerAction}>Скасувати</Text>
-        </Pressable>
-        <Text style={styles.headerTitle}>{existing ? "Редагувати тег" : "Новий тег"}</Text>
-        <Pressable onPress={handleSave} disabled={!name.trim()}>
-          <Text style={[styles.headerAction, styles.headerDone, !name.trim() && styles.disabled]}>
-            Готово
-          </Text>
-        </Pressable>
+    <SheetScreen
+      title={existing ? "Редагувати смарт-папку" : "Нова смарт-папка"}
+      doneLabel="Готово"
+      onDone={handleSave}
+      doneDisabled={!name.trim()}
+    >
+      <View style={styles.previewRow}>
+        <View style={[styles.previewIcon, { backgroundColor: color }]}>
+          <Ionicons name={icon as any} size={30} color="#FFFFFF" />
+        </View>
+        <View style={{ flex: 1, gap: 6 }}>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="Назва смарт-папки"
+            placeholderTextColor={S.ink3}
+            style={[styles.nameInput, { backgroundColor: S.fill, color: S.ink }]}
+            {...softCursor(scheme)}
+          />
+          {!existing && suggestions.length === 0 && (
+            <Text style={[TYPE.small, { color: S.ink3, paddingHorizontal: 6 }]}>
+              Для вкладеної смарт-папки використайте «/», напр. «Розробка/React Native»
+            </Text>
+          )}
+        </View>
       </View>
 
-      <View style={styles.content}>
-        <View style={styles.previewRow}>
-          <View style={[styles.previewIcon, { backgroundColor: color }]}>
-            <Ionicons name={icon as any} size={28} color="#fff" />
-          </View>
-          <View style={{ flex: 1, gap: spacing.xs, position: "relative" }}>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="Назва тега"
-              placeholderTextColor={colors.textMuted}
-              style={styles.nameInput}
-            />
-            {!existing && suggestions.length === 0 && (
-              <Text style={styles.hint}>
-                Для вкладеного тега використайте "/", напр. "Розробка/React Native"
-              </Text>
-            )}
-            {suggestions.length > 0 && (
-              <View style={styles.suggestions}>
-                {suggestions.map((tag) => (
-                  <Pressable
-                    key={tag.id}
-                    style={styles.suggestionRow}
-                    onPress={() => applySuggestion(tag.name)}
-                  >
-                    <View style={[styles.suggestionIcon, { backgroundColor: tag.color }]}>
-                      <Ionicons name={tag.icon as any} size={12} color="#fff" />
-                    </View>
-                    <Text style={styles.suggestionLabel}>{tag.name}</Text>
-                  </Pressable>
-                ))}
+      {suggestions.length > 0 && (
+        <View style={[styles.suggestions, { backgroundColor: S.fill }]}>
+          {suggestions.map((tag) => (
+            <Pressable key={tag.id} style={styles.suggestionRow} onPress={() => applySuggestion(tag.name)}>
+              <View style={[styles.suggestionIcon, { backgroundColor: tag.color }]}>
+                <Ionicons name={tag.icon as any} size={13} color="#FFFFFF" />
               </View>
-            )}
-          </View>
+              <Text style={[TYPE.row, { color: S.ink }]}>{tag.name}</Text>
+            </Pressable>
+          ))}
         </View>
+      )}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Іконка</Text>
-          <View style={styles.iconGrid}>
-            {tagIconOptions.map((option) => {
-              const selected = option === icon;
-              return (
+      <Field label="Іконка">
+        <View style={styles.iconGrid}>
+          {tagIconOptions.map((option) => {
+            const selected = option === icon;
+            return (
+              <View key={option} style={styles.iconCellWrap}>
                 <Pressable
-                  key={option}
-                  style={[styles.iconCell, selected && styles.iconCellSelected]}
+                  style={[styles.iconCell, { backgroundColor: selected ? `${color}26` : S.fill }]}
                   onPress={() => setIcon(option)}
                 >
-                  <Ionicons
-                    name={option as any}
-                    size={20}
-                    color={selected ? color : colors.textSecondary}
-                  />
+                  <Ionicons name={option as any} size={21} color={selected ? color : S.ink2} />
                 </Pressable>
-              );
-            })}
-          </View>
+              </View>
+            );
+          })}
         </View>
+      </Field>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Колір</Text>
-          <View style={styles.colorRow}>
-            {tagPalette.map((option) => {
-              const selected = option === color;
-              return (
-                <Pressable
-                  key={option}
-                  style={[
-                    styles.colorDot,
-                    { backgroundColor: option },
-                    selected && styles.colorDotSelected,
-                  ]}
-                  onPress={() => setColor(option)}
-                />
-              );
-            })}
-          </View>
+      <Field label="Колір">
+        <View style={styles.colorRow}>
+          {tagPalette.map((option) => {
+            const selected = option === color;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => setColor(option)}
+                style={[styles.colorRing, selected && { borderColor: S.ink }]}
+              >
+                <View style={[styles.colorDot, { backgroundColor: option }]} />
+              </Pressable>
+            );
+          })}
         </View>
-      </View>
-    </SafeAreaView>
+      </Field>
+    </SheetScreen>
   );
 }
 
-const ICON_CELL_SIZE = "16.66%";
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  headerTitle: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  headerAction: {
-    color: colors.textSecondary,
-    fontSize: 14,
-  },
-  headerDone: {
-    color: colors.iconDark,
-    fontWeight: "700",
-  },
-  disabled: {
-    opacity: 0.4,
-  },
-  content: {
-    padding: spacing.lg,
-    gap: spacing.xl,
-  },
-  previewRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  previewIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  nameInput: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
-    color: colors.textPrimary,
-    fontSize: 15,
-  },
-  hint: {
-    color: colors.textMuted,
-    fontSize: 11,
-  },
-  suggestions: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: "100%",
-    marginTop: 6,
-    backgroundColor: colors.surface,
-    borderRadius: radius.sm,
-    overflow: "hidden",
-    zIndex: 10,
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  suggestionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-  },
-  suggestionIcon: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  suggestionLabel: {
-    color: colors.textPrimary,
-    fontSize: 13,
-  },
-  section: {
-    gap: spacing.md,
-  },
-  sectionTitle: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  iconGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  iconCell: {
-    width: ICON_CELL_SIZE as any,
-    aspectRatio: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconCellSelected: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.sm,
-  },
-  colorRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.md,
-  },
-  colorDot: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
-  colorDotSelected: {
-    borderWidth: 3,
-    borderColor: colors.textPrimary,
-  },
+  previewRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  previewIcon: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center" },
+  nameInput: { height: 52, borderRadius: 26, paddingHorizontal: 20, fontFamily: FONT.regular, fontWeight: "normal", fontSize: 16 },
+  suggestions: { borderRadius: 20, padding: 6 },
+  suggestionRow: { flexDirection: "row", alignItems: "center", gap: 12, height: 46, paddingHorizontal: 10 },
+  suggestionIcon: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  iconGrid: { flexDirection: "row", flexWrap: "wrap" },
+  iconCellWrap: { width: "16.66%", padding: 4, aspectRatio: 1 },
+  iconCell: { flex: 1, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  colorRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, paddingHorizontal: 2 },
+  colorRing: { width: 42, height: 42, borderRadius: 21, borderWidth: 2, borderColor: "transparent", alignItems: "center", justifyContent: "center" },
+  colorDot: { width: 30, height: 30, borderRadius: 15 },
 });

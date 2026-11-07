@@ -1,15 +1,20 @@
-import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useState, type ReactNode } from "react";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import EdgeFade from "@/components/EdgeFade";
+import { Ionicons } from "@/components/icons/Ionicons";
 import { TagsDrawer } from "@/components/TagsDrawer";
-import { colors, radius, spacing } from "@/constants/theme";
+import { UpdateSection } from "@/components/UpdateSection";
+import { notify } from "@/components/ui/Ask";
+import { Pill } from "@/components/ui/Pill";
+import { TopBar, topBarSpace } from "@/components/ui/TopBar";
 import { signInWithGoogle, signOutOfSupabase } from "@/services/auth";
 import { errorMessage } from "@/services/errorMessage";
 import { initialSyncAfterSignIn, startAutoSync, stopAutoSync } from "@/services/sync";
 import { useLibraryStore } from "@/store/useLibraryStore";
+import { RADIUS, SIDE, TYPE, useSoft } from "@/theme/soft";
 import { OpenVideoMode, ThemePreference } from "@/types";
 
 const THEME_OPTIONS: { key: ThemePreference; label: string }[] = [
@@ -24,6 +29,8 @@ const OPEN_MODE_OPTIONS: { key: OpenVideoMode; label: string }[] = [
 ];
 
 export default function SettingsScreen() {
+  const S = useSoft();
+  const insets = useSafeAreaInsets();
   const settings = useLibraryStore((s) => s.settings);
   const updateSettings = useLibraryStore((s) => s.updateSettings);
   const videos = useLibraryStore((s) => s.videos);
@@ -51,7 +58,7 @@ export default function SettingsScreen() {
       await initialSyncAfterSignIn(session.user.id);
       startAutoSync(session.user.id);
     } catch (e) {
-      Alert.alert("Не вдалося увійти", errorMessage(e));
+      notify("Не вдалося увійти", errorMessage(e));
     } finally {
       setSigningIn(false);
     }
@@ -68,82 +75,64 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Налаштування</Text>
-        <View style={{ width: 22 }} />
-      </View>
-
-      <View style={styles.content}>
-        <View style={styles.accountCard}>
+    <View style={[styles.container, { backgroundColor: S.bg }]}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: topBarSpace(insets.top), paddingBottom: insets.bottom + 40, gap: 12 }}
+      >
+        <View style={[styles.card, { backgroundColor: S.card, boxShadow: S.shadow }]}>
           {settings.account ? (
-            <>
-              <View style={styles.accountIcon}>
+            <View style={styles.accountRow}>
+              <View style={[styles.avatar, { backgroundColor: S.fillSolid }]}>
                 {settings.account.avatarUrl ? (
-                  <Image source={{ uri: settings.account.avatarUrl }} style={styles.accountAvatar} />
+                  <Image source={{ uri: settings.account.avatarUrl }} style={{ width: 44, height: 44 }} />
                 ) : (
-                  <Ionicons name="person" size={20} color={colors.textPrimary} />
+                  <Ionicons name="person" size={20} color={S.ink2} />
                 )}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.accountEmail}>{settings.account.email}</Text>
-                <Text style={styles.accountSync}>
-                  {settings.lastSyncedAt
-                    ? `Синхронізовано: ${new Date(settings.lastSyncedAt).toLocaleString()}`
-                    : "Ще не синхронізовано"}
+                <Text style={[TYPE.row, { color: S.ink }]} numberOfLines={1}>
+                  {settings.account.email}
+                </Text>
+                <Text style={[TYPE.small, { color: S.ink3, marginTop: 2 }]}>
+                  {settings.lastSyncedAt ? `Синхронізовано: ${new Date(settings.lastSyncedAt).toLocaleString()}` : "Ще не синхронізовано"}
                 </Text>
               </View>
-              <Pressable onPress={handleSignOut}>
-                <Text style={styles.signOut}>Вийти</Text>
+              <Pressable onPress={handleSignOut} style={[styles.signOut, { backgroundColor: S.fill }]}>
+                <Text style={[TYPE.row, { fontSize: 14, color: S.ink }]}>Вийти</Text>
               </Pressable>
-            </>
+            </View>
           ) : (
-            <Pressable style={styles.signInRow} onPress={handleSignIn} disabled={signingIn}>
-              {signingIn ? (
-                <ActivityIndicator size="small" color={colors.textPrimary} />
-              ) : (
-                <Ionicons name="logo-google" size={20} color={colors.textPrimary} />
-              )}
-              <Text style={styles.signInLabel}>
-                {signingIn ? "Вхід…" : "Увійти через Google"}
-              </Text>
+            <Pressable style={styles.signIn} onPress={handleSignIn} disabled={signingIn}>
+              {signingIn ? <ActivityIndicator size="small" color={S.ink} /> : <Ionicons name="logo-google" size={20} color={S.ink} />}
+              <Text style={[TYPE.row, { color: S.ink }]}>{signingIn ? "Вхід…" : "Увійти через Google"}</Text>
             </Pressable>
           )}
         </View>
 
+        <UpdateSection />
+
         <Section title="Тема">
-          <SegmentedControl
-            options={THEME_OPTIONS}
-            value={settings.theme}
-            onChange={(theme) => updateSettings({ theme })}
-          />
+          <Segmented options={THEME_OPTIONS} value={settings.theme} onChange={(theme) => updateSettings({ theme })} />
         </Section>
 
         <Section title="Відкриття відео">
-          <SegmentedControl
-            options={OPEN_MODE_OPTIONS}
-            value={settings.openVideoMode}
-            onChange={(openVideoMode) => updateSettings({ openVideoMode })}
-          />
+          <Segmented options={OPEN_MODE_OPTIONS} value={settings.openVideoMode} onChange={(openVideoMode) => updateSettings({ openVideoMode })} />
         </Section>
 
-        <View style={styles.listSection}>
-          <Pressable style={styles.listRow} onPress={() => setTagsDrawerVisible(true)}>
-            <Text style={styles.listRowLabel}>Редагувати теги</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </Pressable>
-          <Pressable
-            style={[styles.listRow, styles.listRowLast]}
+        <View style={[styles.card, { backgroundColor: S.card, boxShadow: S.shadow, padding: 6 }]}>
+          <ListRow icon="pricetag-outline" label="Редагувати смарт-папки" onPress={() => setTagsDrawerVisible(true)} />
+          <ListRow
+            icon="arrow-down"
+            label="Невідсортоване"
+            count={unsortedCount}
             onPress={() => router.push({ pathname: "/", params: { unsorted: "1" } })}
-          >
-            <Text style={styles.listRowLabel}>Невідсортоване</Text>
-            <Text style={styles.listRowCount}>{unsortedCount}</Text>
-          </Pressable>
+          />
         </View>
-      </View>
+      </ScrollView>
+
+      <EdgeFade edge="top" color={S.bg} height={topBarSpace(insets.top) + 14} />
+      <TopBar title="Налаштування" onBack={() => router.back()} />
 
       <TagsDrawer
         visible={tagsDrawerVisible}
@@ -172,174 +161,48 @@ export default function SettingsScreen() {
         initialMode="edit"
         confirmLabel="Готово"
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  const S = useSoft();
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+    <View style={[styles.card, { backgroundColor: S.card, boxShadow: S.shadow }]}>
+      <Text style={[TYPE.meta, { color: S.ink2, marginBottom: 10 }]}>{title}</Text>
       {children}
     </View>
   );
 }
 
-function SegmentedControl<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: { key: T; label: string }[];
-  value: T;
-  onChange: (value: T) => void;
-}) {
+function Segmented<T extends string>({ options, value, onChange }: { options: { key: T; label: string }[]; value: T; onChange: (value: T) => void }) {
   return (
     <View style={styles.segmented}>
-      {options.map((option) => {
-        const active = option.key === value;
-        return (
-          <Pressable
-            key={option.key}
-            style={[styles.segment, active && styles.segmentActive]}
-            onPress={() => onChange(option.key)}
-          >
-            <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
-              {option.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {options.map((o) => (
+        <Pill key={o.key} flex label={o.label} selected={o.key === value} onPress={() => onChange(o.key)} style={{ paddingHorizontal: 6 }} />
+      ))}
     </View>
   );
 }
 
+function ListRow({ icon, label, count, onPress }: { icon: string; label: string; count?: number; onPress: () => void }) {
+  const S = useSoft();
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.listRow, { backgroundColor: pressed ? S.fill : "transparent" }]}>
+      <Ionicons name={icon as any} size={20} color={S.ink2} />
+      <Text style={[TYPE.row, { flex: 1, color: S.ink }]}>{label}</Text>
+      {count !== undefined ? <Text style={[TYPE.meta, { color: S.ink3 }]}>{count}</Text> : <Ionicons name="chevron-forward" size={17} color={S.ink3} />}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  headerTitle: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  content: {
-    padding: spacing.lg,
-    gap: spacing.xl,
-  },
-  accountCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  accountIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceElevated,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  accountAvatar: {
-    width: 40,
-    height: 40,
-  },
-  accountEmail: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  accountSync: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  signOut: {
-    color: colors.iconDark,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  signInRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  signInLabel: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  section: {
-    gap: spacing.sm,
-  },
-  sectionTitle: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  segmented: {
-    flexDirection: "row",
-    backgroundColor: colors.pillInactive,
-    borderRadius: radius.pill,
-    padding: 4,
-  },
-  segment: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 8,
-    borderRadius: radius.pill,
-  },
-  segmentActive: {
-    backgroundColor: colors.surface,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  segmentLabel: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  segmentLabelActive: {
-    color: colors.textPrimary,
-  },
-  listSection: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    overflow: "hidden",
-  },
-  listRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  listRowLast: {
-    borderBottomWidth: 0,
-  },
-  listRowLabel: {
-    color: colors.textPrimary,
-    fontSize: 14,
-  },
-  listRowCount: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
+  container: { flex: 1 },
+  card: { marginHorizontal: SIDE, borderRadius: RADIUS.card, padding: 16 },
+  accountRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  avatar: { width: 44, height: 44, borderRadius: 22, overflow: "hidden", alignItems: "center", justifyContent: "center" },
+  signOut: { height: 36, borderRadius: 18, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
+  signIn: { flexDirection: "row", alignItems: "center", gap: 12, height: 44 },
+  segmented: { flexDirection: "row", gap: 8 },
+  listRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52, borderRadius: 18, paddingHorizontal: 12 },
 });

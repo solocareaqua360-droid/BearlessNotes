@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
-import { colors } from "@/constants/theme";
+import { useSoft } from "@/theme/soft";
 
 /**
  * Expo Router treats any incoming link matching the app's scheme as a route
@@ -16,13 +16,14 @@ import { colors } from "@/constants/theme";
  * leave this screen hung forever waiting on a URL that never arrived here.
  */
 export default function AuthCallbackScreen() {
+  const S = useSoft();
   useEffect(() => {
     router.replace("/settings");
   }, []);
 
   return (
-    <View style={styles.container}>
-      <ActivityIndicator color={colors.iconDark} />
+    <View style={[styles.container, { backgroundColor: S.bg }]}>
+      <ActivityIndicator color={S.ink} />
     </View>
   );
 }
@@ -32,6 +33,5 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.background,
   },
 });

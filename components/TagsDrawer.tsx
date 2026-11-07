@@ -1,15 +1,17 @@
-import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
 import { JSX, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Ionicons } from "@/components/icons/Ionicons";
 import { SearchBar } from "@/components/SearchBar";
-import { colors, radius, spacing } from "@/constants/theme";
+import { SoftCheck } from "@/components/SoftIcon";
+import { ask } from "@/components/ui/Ask";
+import { GlassBlur, GlassPortal } from "@/components/ui/Glass";
+import { Pill } from "@/components/ui/Pill";
+import { FONT, RADIUS, TYPE, useSoft } from "@/theme/soft";
 import { Tag, Video } from "@/types";
 
 type PanelMode = "filter" | "edit";
-
-const PANEL_TRANSLATE = 360;
 
 interface TreeNode {
   tag: Tag;
@@ -30,8 +32,7 @@ interface TagsDrawerProps {
   onEditTag: (tagId: string) => void;
   onReparentTag: (tagId: string) => void;
   onDeleteTag: (tagId: string, mode: "delete_videos" | "unsort_videos") => void;
-  /** In "Редагування" mode, selecting several tags' checkboxes opens a bulk
-   * move action instead of the single-tag "Материнська папка" menu item. */
+  /** In "Редагування" mode, several ticked tags offer a bulk move. */
   onBulkReparentTags?: (tagIds: string[]) => void;
   /** Overrides the default "Показати N відео" label, e.g. for bulk-tagging. */
   confirmLabel?: string;
@@ -51,6 +52,8 @@ function buildTree(tags: Tag[]): TreeNode[] {
   return build(null);
 }
 
+const EASE = Easing.bezier(0.22, 1, 0.36, 1);
+
 export function TagsDrawer({
   visible,
   onClose,
@@ -68,6 +71,8 @@ export function TagsDrawer({
   confirmLabel,
   initialMode = "filter",
 }: TagsDrawerProps) {
+  const S = useSoft();
+  const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<PanelMode>(initialMode);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -83,9 +88,9 @@ export function TagsDrawer({
       setMenuTagId(null);
       setBulkEditTagIds(new Set());
       setMounted(true);
-      Animated.timing(progress, { toValue: 1, duration: 260, useNativeDriver: true }).start();
+      Animated.timing(progress, { toValue: 1, duration: 300, easing: EASE, useNativeDriver: true }).start();
     } else {
-      Animated.timing(progress, { toValue: 0, duration: 220, useNativeDriver: true }).start(
+      Animated.timing(progress, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(
         ({ finished }) => {
           if (finished) setMounted(false);
         }
@@ -98,57 +103,53 @@ export function TagsDrawer({
 
   const normalizedQuery = query.trim().toLowerCase();
   const isSearching = normalizedQuery.length > 0;
-
   const tree = useMemo(() => buildTree(tags), [tags]);
-
   const searchMatches = useMemo(
     () => (isSearching ? tags.filter((t) => t.name.toLowerCase().includes(normalizedQuery)) : []),
     [tags, isSearching, normalizedQuery]
   );
 
   const toggleSelected = (id: string) => {
-    const next = selectedTagIds.includes(id)
-      ? selectedTagIds.filter((tagId) => tagId !== id)
-      : [...selectedTagIds, id];
+    const next = selectedTagIds.includes(id) ? selectedTagIds.filter((t) => t !== id) : [...selectedTagIds, id];
     onChangeSelectedTagIds(next);
   };
-
-  const toggleBulkEditSelected = (id: string) => {
+  const toggleBulk = (id: string) =>
     setBulkEditTagIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
-
-  const toggleExpand = (id: string) => {
+  const toggleExpand = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
 
   const openMenuFor = (tagId: string) => {
     setMode("edit");
     setMenuTagId(tagId);
   };
-
   const closeMenu = () => setMenuTagId(null);
 
-  const handleDelete = (tag: Tag) => {
+  const askDelete = async (title: string) => {
+    const key = await ask({
+      title,
+      message: "Вкладені смарт-папки теж буде видалено. Що зробити з пов'язаними відео?",
+      answers: [
+        { key: "unsort", label: "Перенести в невідсортоване", primary: true },
+        { key: "delete", label: "Видалити відео", destructive: true },
+      ],
+    });
+    return key === "unsort" ? "unsort_videos" : key === "delete" ? "delete_videos" : null;
+  };
+
+  const handleDelete = async (tag: Tag) => {
     closeMenu();
-    Alert.alert(
-      `Видалити тег "${tag.name}"?`,
-      "Підтеги видаляться разом з ним. Що зробити з пов'язаними відео?",
-      [
-        { text: "Скасувати", style: "cancel" },
-        { text: "Перенести в невідсортоване", onPress: () => onDeleteTag(tag.id, "unsort_videos") },
-        { text: "Видалити відео", style: "destructive", onPress: () => onDeleteTag(tag.id, "delete_videos") },
-      ]
-    );
+    const mode2 = await askDelete(`Видалити смарт-папку «${tag.name}»?`);
+    if (mode2) onDeleteTag(tag.id, mode2);
   };
 
   const handleBulkMove = () => {
@@ -157,118 +158,68 @@ export function TagsDrawer({
     onBulkReparentTags?.(ids);
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     const ids = Array.from(bulkEditTagIds);
-    Alert.alert(
-      `Видалити ${ids.length} тегів?`,
-      "Підтеги видаляться разом з ними. Що зробити з пов'язаними відео?",
-      [
-        { text: "Скасувати", style: "cancel" },
-        {
-          text: "Перенести в невідсортоване",
-          onPress: () => {
-            ids.forEach((id) => onDeleteTag(id, "unsort_videos"));
-            setBulkEditTagIds(new Set());
-          },
-        },
-        {
-          text: "Видалити відео",
-          style: "destructive",
-          onPress: () => {
-            ids.forEach((id) => onDeleteTag(id, "delete_videos"));
-            setBulkEditTagIds(new Set());
-          },
-        },
-      ]
-    );
+    const mode2 = await askDelete(`Видалити смарт-папок: ${ids.length}?`);
+    if (!mode2) return;
+    ids.forEach((id) => onDeleteTag(id, mode2));
+    setBulkEditTagIds(new Set());
   };
 
   const renderRow = (tag: Tag, depth: number, hasChildren: boolean) => {
-    const isFilterSelected = selectedTagIds.includes(tag.id);
-    const isBulkSelected = bulkEditTagIds.has(tag.id);
-    const isChecked = mode === "edit" ? isBulkSelected : isFilterSelected;
+    const isChecked = mode === "edit" ? bulkEditTagIds.has(tag.id) : selectedTagIds.includes(tag.id);
     const isExpanded = expanded.has(tag.id);
     const isMenuOpen = menuTagId === tag.id;
 
     return (
       <View key={tag.id}>
         <Pressable
-          style={[styles.row, { paddingLeft: spacing.md + depth * spacing.xl }]}
-          onPress={() => (mode === "edit" ? toggleBulkEditSelected(tag.id) : toggleSelected(tag.id))}
+          style={({ pressed }) => [styles.row, { paddingLeft: 14 + depth * 22, backgroundColor: pressed ? S.fill : "transparent" }]}
+          onPress={() => (mode === "edit" ? toggleBulk(tag.id) : toggleSelected(tag.id))}
           onLongPress={() => openMenuFor(tag.id)}
         >
-          {hasChildren ? (
-            <Pressable onPress={() => toggleExpand(tag.id)} hitSlop={8}>
-              <Ionicons
-                name={isExpanded ? "chevron-down" : "chevron-forward"}
-                size={14}
-                color={colors.textMuted}
-              />
-            </Pressable>
-          ) : depth > 0 ? null : (
-            <View style={{ width: 14 }} />
-          )}
-
-          <View style={[styles.iconBadge, { backgroundColor: tag.color }]}>
-            <Ionicons name={tag.icon as any} size={13} color="#fff" />
+          <View style={styles.chevronSlot}>
+            {hasChildren ? (
+              <Pressable onPress={() => toggleExpand(tag.id)} hitSlop={10}>
+                <Ionicons name={isExpanded ? "chevron-down" : "chevron-forward"} size={16} color={S.ink3} />
+              </Pressable>
+            ) : null}
           </View>
-
-          <Text style={styles.rowLabel} numberOfLines={1}>
+          <View style={[styles.badge, { backgroundColor: tag.color }]}>
+            <Ionicons name={tag.icon as any} size={15} color="#FFFFFF" />
+          </View>
+          <Text style={[TYPE.row, { flex: 1, color: S.ink }]} numberOfLines={1}>
             {tag.name}
           </Text>
-
-          <Ionicons
-            name={isChecked ? "checkbox" : "square-outline"}
-            size={20}
-            color={isChecked ? colors.iconDark : colors.border}
-          />
-          <Text style={styles.rowCount}>{countFor(tag.id)}</Text>
+          <SoftCheck checked={isChecked} size={22} accent={S.accent} outline={S.ink3} tickColor={S.chrome} />
+          <Text style={[styles.count, { color: S.ink3 }]}>{countFor(tag.id)}</Text>
         </Pressable>
 
         {isMenuOpen && (
-          <View style={styles.menu}>
-            <Pressable
-              style={styles.menuItem}
-              onPress={() => {
-                closeMenu();
-                onEditTag(tag.id);
-              }}
-            >
-              <Ionicons name="create-outline" size={16} color={colors.textPrimary} />
-              <Text style={styles.menuLabel}>Перейменувати</Text>
-            </Pressable>
-            <Pressable
-              style={styles.menuItem}
-              onPress={() => {
-                closeMenu();
-                onReparentTag(tag.id);
-              }}
-            >
-              <Ionicons name="folder-outline" size={16} color={colors.textPrimary} />
-              <Text style={[styles.menuLabel, { flex: 1 }]}>Материнська папка</Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-            </Pressable>
-            <Pressable style={styles.menuItem} onPress={() => handleDelete(tag)}>
-              <Ionicons name="trash-outline" size={16} color={colors.danger} />
-              <Text style={[styles.menuLabel, { color: colors.danger }]}>Видалити</Text>
-            </Pressable>
-            <Pressable style={[styles.menuItem, styles.menuItemLast]} onPress={closeMenu}>
-              <Ionicons name="close-outline" size={16} color={colors.textMuted} />
-              <Text style={[styles.menuLabel, { color: colors.textMuted }]}>Скасувати</Text>
-            </Pressable>
+          <View style={[styles.menu, { backgroundColor: S.fill }]}>
+            <MenuRow icon="create-outline" label="Перейменувати" onPress={() => { closeMenu(); onEditTag(tag.id); }} />
+            <MenuRow icon="folder-outline" label="Батьківська смарт-папка" chevron onPress={() => { closeMenu(); onReparentTag(tag.id); }} />
+            <MenuRow icon="trash-outline" label="Видалити" destructive onPress={() => handleDelete(tag)} />
+            <MenuRow icon="close-outline" label="Скасувати" muted onPress={closeMenu} />
           </View>
         )}
       </View>
     );
   };
 
+  const MenuRow = ({ icon, label, onPress, destructive, muted, chevron }: { icon: string; label: string; onPress: () => void; destructive?: boolean; muted?: boolean; chevron?: boolean }) => (
+    <Pressable style={styles.menuRow} onPress={onPress}>
+      <Ionicons name={icon as any} size={18} color={destructive ? S.danger : muted ? S.ink3 : S.ink2} />
+      <Text style={[TYPE.row, { flex: 1, fontSize: 15, color: destructive ? S.danger : muted ? S.ink3 : S.ink }]}>{label}</Text>
+      {chevron ? <Ionicons name="chevron-forward" size={15} color={S.ink3} /> : null}
+    </Pressable>
+  );
+
   const renderNode = (node: TreeNode, depth: number): JSX.Element[] => {
     const hasChildren = node.children.length > 0;
     const rows = [renderRow(node.tag, depth, hasChildren)];
     if (hasChildren && expanded.has(node.tag.id)) {
-      for (const child of node.children) {
-        rows.push(...renderNode(child, depth + 1));
-      }
+      for (const child of node.children) rows.push(...renderNode(child, depth + 1));
     }
     return rows;
   };
@@ -278,325 +229,147 @@ export function TagsDrawer({
   const bulkEditCount = bulkEditTagIds.size;
   const showBulkEditBar = mode === "edit" && bulkEditCount > 0;
 
-  const translateX = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-PANEL_TRANSLATE, 0],
-  });
+  if (!mounted) return null;
+  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-380, 0] });
 
   return (
-    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <Animated.View
-          style={[styles.backdrop, { opacity: progress }]}
-          pointerEvents={visible ? "auto" : "none"}
-        >
-          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        </Animated.View>
+    <GlassPortal>
+    <View style={[StyleSheet.absoluteFill, styles.overlay]} pointerEvents="box-none">
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: progress }]}>
+        <GlassBlur intensity={45} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(17,24,39,0.40)" }]} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      </Animated.View>
 
-        <Animated.View style={[styles.panel, { transform: [{ translateX }] }]}>
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Теги</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Ionicons name="close" size={22} color={colors.textMuted} />
-            </Pressable>
-          </View>
+      <Animated.View
+        style={[
+          styles.panel,
+          {
+            backgroundColor: S.bg,
+            boxShadow: S.popShadow,
+            paddingTop: insets.top + 14,
+            paddingBottom: insets.bottom + 14,
+            transform: [{ translateX }],
+          },
+        ]}
+      >
+        <View style={styles.header}>
+          <Text style={[TYPE.title, { color: S.ink }]}>Смарт-папки</Text>
+          <Pressable onPress={onClose} hitSlop={10} style={[styles.closeBtn, { backgroundColor: S.fill }]}>
+            <Ionicons name="close" size={18} color={S.ink2} />
+          </Pressable>
+        </View>
 
-          <View style={styles.segmented}>
-            <Pressable
-              style={[styles.segment, mode === "filter" && styles.segmentActive]}
-              onPress={() => {
-                setMode("filter");
-                closeMenu();
-                setBulkEditTagIds(new Set());
-              }}
-            >
-              <Text style={[styles.segmentLabel, mode === "filter" && styles.segmentLabelActive]}>
-                Фільтр
-              </Text>
-            </Pressable>
-            <Pressable
-              style={[styles.segment, mode === "edit" && styles.segmentActive]}
-              onPress={() => setMode("edit")}
-            >
-              <Text style={[styles.segmentLabel, mode === "edit" && styles.segmentLabelActive]}>
-                Редагування
-              </Text>
-            </Pressable>
-          </View>
+        <View style={styles.segmented}>
+          <Pill flex label="Фільтр" selected={mode === "filter"} onPress={() => { setMode("filter"); closeMenu(); setBulkEditTagIds(new Set()); }} />
+          <Pill flex label="Редагування" selected={mode === "edit"} onPress={() => setMode("edit")} />
+        </View>
 
-          <SearchBar value={query} onChangeText={setQuery} placeholder="Пошук тегів" />
+        <SearchBar value={query} onChangeText={setQuery} placeholder="Пошук смарт-папок" />
 
-          <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-            {!isSearching && (
-              <View style={styles.card}>
-                <Pressable
-                  style={[styles.row, { paddingLeft: spacing.md }]}
-                  onPress={onSelectUnsorted}
-                  disabled={!onSelectUnsorted}
-                >
-                  <View style={{ width: 14 }} />
-                  <View style={[styles.iconBadge, { backgroundColor: colors.neutralActive }]}>
-                    <Ionicons name="arrow-down" size={13} color={colors.iconDark} />
-                  </View>
-                  <Text style={styles.rowLabel} numberOfLines={1}>
-                    Невідсортоване
-                  </Text>
-                  <Ionicons
-                    name={unsortedSelected ? "checkbox" : "square-outline"}
-                    size={20}
-                    color={unsortedSelected ? colors.iconDark : colors.border}
-                  />
-                  <Text style={styles.rowCount}>{unsortedCount}</Text>
-                </Pressable>
-              </View>
-            )}
-
-            {isSearching
-              ? searchMatches.map((tag) => (
-                  <View key={tag.id} style={styles.card}>
-                    {renderRow(tag, 0, false)}
-                  </View>
-                ))
-              : tree.map((node) => (
-                  <View key={node.tag.id} style={styles.card}>
-                    {renderNode(node, 0)}
-                  </View>
-                ))}
-          </ScrollView>
-
-          {selectedTags.length > 0 && mode === "filter" && (
-            <View style={styles.chipsRow}>
-              {selectedTags.map((tag) => (
-                <View key={tag.id} style={[styles.selectedChip, { backgroundColor: `${tag.color}26` }]}>
-                  <Text style={[styles.selectedChipLabel, { color: tag.color }]}>{tag.name}</Text>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {!isSearching && (
+            <View style={[styles.card, { backgroundColor: S.card, boxShadow: S.shadow }]}>
+              <Pressable
+                style={({ pressed }) => [styles.row, { paddingLeft: 14, backgroundColor: pressed ? S.fill : "transparent" }]}
+                onPress={onSelectUnsorted}
+                disabled={!onSelectUnsorted}
+              >
+                <View style={styles.chevronSlot} />
+                <View style={[styles.badge, { backgroundColor: S.fillSolid }]}>
+                  <Ionicons name="arrow-down" size={15} color={S.ink2} />
                 </View>
-              ))}
+                <Text style={[TYPE.row, { flex: 1, color: S.ink }]} numberOfLines={1}>
+                  Невідсортоване
+                </Text>
+                <SoftCheck checked={!!unsortedSelected} size={22} accent={S.accent} outline={S.ink3} tickColor={S.chrome} />
+                <Text style={[styles.count, { color: S.ink3 }]}>{unsortedCount}</Text>
+              </Pressable>
             </View>
           )}
 
-          {!showBulkEditBar && (
-            <Pressable style={styles.createRow} onPress={onCreateTag}>
-              <Ionicons name="add" size={16} color={colors.iconDark} />
-              <Text style={styles.createLabel}>Новий тег</Text>
-            </Pressable>
-          )}
+          {isSearching
+            ? searchMatches.map((tag) => (
+                <View key={tag.id} style={[styles.card, { backgroundColor: S.card, boxShadow: S.shadow }]}>
+                  {renderRow(tag, 0, false)}
+                </View>
+              ))
+            : tree.map((node) => (
+                <View key={node.tag.id} style={[styles.card, { backgroundColor: S.card, boxShadow: S.shadow }]}>
+                  {renderNode(node, 0)}
+                </View>
+              ))}
+        </ScrollView>
 
-          {showBulkEditBar ? (
-            <>
-              <Text style={styles.bulkHint}>
-                Чекбокс вибирає теги для масової дії ({bulkEditCount})
-              </Text>
-              <View style={styles.bulkActionsRow}>
-                <Pressable style={styles.bulkActionButton} onPress={handleBulkMove}>
-                  <Text style={styles.bulkActionLabel}>Перенести ({bulkEditCount})</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.bulkActionButton, styles.bulkActionDanger]}
-                  onPress={handleBulkDelete}
-                >
-                  <Text style={[styles.bulkActionLabel, styles.bulkActionDangerLabel]}>
-                    Видалити ({bulkEditCount})
-                  </Text>
-                </Pressable>
+        {selectedTags.length > 0 && mode === "filter" && (
+          <View style={styles.chipsRow}>
+            {selectedTags.map((tag) => (
+              <View key={tag.id} style={[styles.selChip, { backgroundColor: `${tag.color}24` }]}>
+                <Text style={[styles.selChipLabel, { color: tag.color }]}>{tag.name}</Text>
               </View>
-            </>
-          ) : (
-            <Pressable style={styles.primaryButton} onPress={onClose}>
-              <Text style={styles.primaryButtonLabel}>
-                {confirmLabel ?? `Показати ${matchingVideoCount} відео`}
-              </Text>
+            ))}
+          </View>
+        )}
+
+        {!showBulkEditBar && (
+          <Pressable style={styles.createRow} onPress={onCreateTag}>
+            <Ionicons name="add" size={18} color={S.ink2} />
+            <Text style={[TYPE.row, { fontSize: 15, color: S.ink2 }]}>Нова смарт-папка</Text>
+          </Pressable>
+        )}
+
+        {showBulkEditBar ? (
+          <View style={styles.bulkRow}>
+            <Pressable style={[styles.bigBtn, styles.half, { backgroundColor: S.ink }]} onPress={handleBulkMove}>
+              <Ionicons name="folder-outline" size={19} color={S.chrome} />
+              <Text style={[TYPE.row, { color: S.chrome }]}>Перенести ({bulkEditCount})</Text>
             </Pressable>
-          )}
-        </Animated.View>
-      </View>
-    </Modal>
+            <Pressable style={[styles.bigBtn, styles.half, { backgroundColor: S.fill }]} onPress={handleBulkDelete}>
+              <Ionicons name="trash-outline" size={19} color={S.danger} />
+              <Text style={[TYPE.row, { color: S.danger }]}>Видалити ({bulkEditCount})</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable style={[styles.bigBtn, { backgroundColor: S.ink }]} onPress={onClose}>
+            <Text style={[TYPE.row, { color: S.chrome }]}>{confirmLabel ?? `Показати ${matchingVideoCount} відео`}</Text>
+          </Pressable>
+        )}
+      </Animated.View>
+    </View>
+    </GlassPortal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  overlay: { zIndex: 500 },
   panel: {
     position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
-    width: "84%",
-    maxWidth: 340,
-    backgroundColor: colors.background,
-    paddingTop: 60,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.md,
+    width: "88%",
+    maxWidth: 380,
+    borderTopRightRadius: RADIUS.sheet,
+    borderBottomRightRadius: RADIUS.sheet,
+    paddingHorizontal: 16,
+    gap: 12,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerTitle: {
-    color: colors.textPrimary,
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  segmented: {
-    flexDirection: "row",
-    backgroundColor: colors.pillInactive,
-    borderRadius: radius.pill,
-    padding: 4,
-  },
-  segment: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 9,
-    borderRadius: radius.pill,
-  },
-  segmentActive: {
-    backgroundColor: colors.surface,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  segmentLabel: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  segmentLabelActive: {
-    color: colors.textPrimary,
-  },
-  list: {
-    flex: 1,
-  },
-  listContent: {
-    gap: spacing.sm,
-    paddingBottom: spacing.md,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    overflow: "hidden",
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 11,
-    paddingRight: spacing.md,
-  },
-  iconBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rowLabel: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    flex: 1,
-  },
-  rowCount: {
-    color: colors.textMuted,
-    fontSize: 12,
-    minWidth: 14,
-    textAlign: "right",
-  },
-  menu: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    backgroundColor: colors.background,
-    borderRadius: radius.sm,
-    overflow: "hidden",
-  },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 12,
-    paddingHorizontal: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  menuItemLast: {
-    borderBottomWidth: 0,
-  },
-  menuLabel: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  chipsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  selectedChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-  },
-  selectedChipLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  createRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 4,
-  },
-  createLabel: {
-    color: colors.iconDark,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  bulkHint: {
-    color: colors.textMuted,
-    fontSize: 11,
-    textAlign: "center",
-  },
-  bulkActionsRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  bulkActionButton: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.neutralActive,
-    borderRadius: radius.pill,
-    paddingVertical: 14,
-  },
-  bulkActionDanger: {
-    backgroundColor: "#FBEAE9",
-  },
-  bulkActionLabel: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  bulkActionDangerLabel: {
-    color: colors.danger,
-  },
-  primaryButton: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.neutralActive,
-    borderRadius: radius.pill,
-    paddingVertical: 14,
-    marginBottom: spacing.lg,
-  },
-  primaryButtonLabel: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: "700",
-  },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4 },
+  closeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  segmented: { flexDirection: "row", gap: 8 },
+  listContent: { gap: 10, paddingBottom: 8 },
+  card: { borderRadius: RADIUS.card, overflow: "hidden", paddingVertical: 4 },
+  row: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 52, paddingRight: 14 },
+  chevronSlot: { width: 18, alignItems: "center" },
+  badge: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  count: { fontFamily: FONT.medium, fontWeight: "normal", fontSize: 12.5, minWidth: 16, textAlign: "right" },
+  menu: { marginHorizontal: 12, marginBottom: 8, borderRadius: 18, overflow: "hidden" },
+  menuRow: { flexDirection: "row", alignItems: "center", gap: 12, height: 46, paddingHorizontal: 14 },
+  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  selChip: { paddingHorizontal: 10, height: 26, borderRadius: 13, justifyContent: "center" },
+  selChipLabel: { fontFamily: FONT.medium, fontWeight: "normal", fontSize: 12.5 },
+  createRow: { flexDirection: "row", alignItems: "center", gap: 8, height: 36, paddingHorizontal: 6 },
+  bulkRow: { flexDirection: "row", gap: 8 },
+  half: { flex: 1 },
+  bigBtn: { height: 52, borderRadius: 26, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
 });

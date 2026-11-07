@@ -5,11 +5,18 @@ export interface VideoMeta {
   thumbnailUrl: string;
   durationSec: number;
   source: VideoSource;
+  /** "author · TikTok" (or just the platform when oEmbed gave no author). */
+  siteName: string;
 }
 
 interface OEmbedResponse {
   title?: string;
   thumbnail_url?: string;
+  author_name?: string;
+}
+
+function siteLabel(platform: string, author?: string): string {
+  return author ? `${author} · ${platform}` : platform;
 }
 
 function detectSource(url: string): VideoSource {
@@ -60,6 +67,7 @@ export async function fetchVideoMeta(url: string): Promise<VideoMeta> {
       thumbnailUrl: data?.thumbnail_url ?? fallbackThumbnail,
       durationSec: 0,
       source,
+      siteName: siteLabel("YouTube", data?.author_name),
     };
   }
 
@@ -71,6 +79,7 @@ export async function fetchVideoMeta(url: string): Promise<VideoMeta> {
       thumbnailUrl: data?.thumbnail_url ?? "",
       durationSec: 0,
       source,
+      siteName: siteLabel("TikTok", data?.author_name),
     };
   }
 
@@ -79,5 +88,6 @@ export async function fetchVideoMeta(url: string): Promise<VideoMeta> {
     thumbnailUrl: "",
     durationSec: 0,
     source,
+    siteName: "",
   };
 }
