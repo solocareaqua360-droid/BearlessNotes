@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -31,6 +31,18 @@ export function PlayerHost() {
 
   // The system window opening / closing.
   useEffect(() => onPipChanged(setPip), [setPip]);
+
+  // Each time the system window opens or closes, the player is told to
+  // redraw (see InlineVideoPlayer's `nudge`).
+  const [nudge, setNudge] = useState(0);
+  const firstPip = useRef(true);
+  useEffect(() => {
+    if (firstPip.current) {
+      firstPip.current = false;
+      return;
+    }
+    setNudge((n) => n + 1);
+  }, [pip]);
 
   // While something plays, going Home turns it into the small window.
   const playing = !!info;
@@ -84,7 +96,7 @@ export function PlayerHost() {
       {mini && <View style={[styles.capsule, { top: capsuleTop(insets.top), width: capsuleW }]} />}
 
       <View style={[styles.video, frame]} pointerEvents={mini ? "none" : "auto"}>
-        <InlineVideoPlayer url={url} />
+        <InlineVideoPlayer url={url} nudge={nudge} />
       </View>
 
       {full && (

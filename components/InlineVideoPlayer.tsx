@@ -49,12 +49,18 @@ export default function InlineVideoPlayer({
   start,
   seek,
   onTime,
+  nudge,
 }: {
   url: string;
   start?: number;
   seek?: VideoSeek;
   // Where the video is now, in seconds (YouTube only) - as it plays.
   onTime?: (seconds: number) => void;
+  // A counter: each change makes the page redraw itself and carry on
+  // playing. Used when the system's small window opens or closes - the
+  // video's own layer can stop being drawn there (black picture, sound
+  // still going).
+  nudge?: number;
 }) {
   const info = getVideoEmbedInfo(url);
   const webRef = useRef<WebView>(null);
@@ -66,6 +72,12 @@ export default function InlineVideoPlayer({
     const post = (cmd: string) => `document.querySelector('iframe').contentWindow.postMessage(${JSON.stringify(cmd)}, '*');`;
     webRef.current?.injectJavaScript(`${post(youtubeCommand('seekTo', [seek.t, true]))}${post(youtubeCommand('playVideo'))}true;`);
   }, [seek]);
+  useEffect(() => {
+    if (!nudge) return;
+    const redraw = `(function(){var f=document.querySelector('iframe');if(!f)return;f.style.transform='translateZ(0)';f.style.willChange='transform';var w=f.style.width;f.style.width='99.9%';window.dispatchEvent(new Event('resize'));setTimeout(function(){f.style.width=w||'100%';window.dispatchEvent(new Event('resize'));},60);f.contentWindow.postMessage(${JSON.stringify(youtubeCommand('playVideo'))},'*');})();true;`;
+    const timers = [150, 600, 1500].map((ms) => setTimeout(() => webRef.current?.injectJavaScript(redraw), ms));
+    return () => timers.forEach(clearTimeout);
+  }, [nudge]);
   // Kept as it was mounted: a new `start` must not reload the player.
   const startRef = useRef(start);
   if (!info) return null;
@@ -104,6 +116,9 @@ export default function InlineVideoPlayer({
           // Not ours.
         }
       }}
+      // The video drawn through a hardware layer - the usual fix for a
+      // WebView video that goes black when its window changes shape.
+      androidLayerType="hardware"
       allowsFullscreenVideo
       mediaPlaybackRequiresUserAction={false}
       renderLoading={() => (
