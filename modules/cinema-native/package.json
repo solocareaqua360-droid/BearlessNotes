@@ -1,0 +1,6 @@
+{
+  "name": "cinema-native",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cinema's own small native pieces: system picture-in-picture for the player."
+}

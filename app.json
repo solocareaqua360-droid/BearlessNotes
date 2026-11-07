@@ -37,7 +37,8 @@
         }
       ],
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/withPictureInPicture.js"
     ],
     "extra": {
       "eas": {

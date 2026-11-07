@@ -128,6 +128,7 @@ export default function SettingsScreen() {
             count={unsortedCount}
             onPress={() => router.push({ pathname: "/", params: { unsorted: "1" } })}
           />
+          <ListRow icon="play-outline" label="Тест плеєра" onPress={() => router.push("/player-test")} />
         </View>
       </ScrollView>
 

@@ -8,6 +8,7 @@ import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AskHost, notify } from "@/components/ui/Ask";
+import { PlayerHost } from "@/components/PlayerHost";
 import { HoldMenuHost } from "@/components/ui/HoldMenu";
 import { GlassPortalHost, GlassProvider, GlassTarget } from "@/components/ui/Glass";
 import { useSoft } from "@/theme/soft";
@@ -100,11 +101,13 @@ function Shell() {
           <Stack.Screen name="auth-callback" />
           <Stack.Screen name="add-video" options={{ presentation: "transparentModal", contentStyle: { backgroundColor: "transparent" } }} />
           <Stack.Screen name="settings" />
+          <Stack.Screen name="player-test" />
           <Stack.Screen name="tag-editor" options={{ presentation: "transparentModal", contentStyle: { backgroundColor: "transparent" } }} />
           <Stack.Screen name="tag-reparent" options={{ presentation: "transparentModal", contentStyle: { backgroundColor: "transparent" } }} />
         </Stack>
       </GlassTarget>
       <GlassPortalHost />
+      <PlayerHost />
       <HoldMenuHost />
       <AskHost />
     </GlassProvider>
