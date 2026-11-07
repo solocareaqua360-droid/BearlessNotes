@@ -1,5 +1,6 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import * as ScreenOrientation from "expo-screen-orientation";
+import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { AppState, BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,6 +21,7 @@ import {
   supportsPip,
 } from "@/utils/cinemaNative";
 import { getVideoEmbedInfo } from "@/utils/videoEmbed";
+import { watchBox } from "@/utils/watchLayout";
 
 const MINI_VIDEO_W = 72;
 const MINI_VIDEO_H = 40;
@@ -33,7 +35,7 @@ const capsuleTop = (insetTop: number) => topBarTop(insetTop) + TOP_NAV_H + 8;
 // never restarts when the player is minimised to the capsule, expanded,
 // or shrunk into the system's picture-in-picture window.
 export function PlayerHost() {
-  const { url, title, mode, pip, minimize, expand, close, setPip } = usePlayerStore();
+  const { url, title, videoId, folderId, mode, pip, minimize, expand, close, setPip, setMode } = usePlayerStore();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const info = url ? getVideoEmbedInfo(url) : null;
@@ -142,7 +144,7 @@ export function PlayerHost() {
   }, [url]);
 
   // The screen stays on while a video plays in front of the user.
-  const watching = isPlaying && (mode === "full" || pip);
+  const watching = isPlaying && (mode === "full" || mode === "watch" || pip);
   useEffect(() => {
     if (!watching) return;
     activateKeepAwakeAsync("cinema-player").catch(() => {});
@@ -157,19 +159,31 @@ export function PlayerHost() {
     ScreenOrientation.lockAsync(allowSideways ? ScreenOrientation.OrientationLock.DEFAULT : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, [allowSideways]);
 
-  // Back minimises the big player instead of leaving the screen under it.
+  // From the big player: back to the watch screen when it is a library video
+  // (the screen it came from), else down to the strip.
+  const showWatch = () => {
+    if (!videoId) return minimize();
+    setMode("watch");
+    router.navigate({ pathname: "/watch", params: { id: videoId, folder: folderId ?? "" } });
+  };
+  // Back from the big player does the same, instead of leaving the screen under it.
   useEffect(() => {
     if (!info || mode !== "full" || pip) return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      minimize();
+      showWatch();
       return true;
     });
     return () => sub.remove();
-  }, [info, mode, pip, minimize]);
+  });
 
   if (!url || !info) return null;
 
   const capsuleW = Math.min(width - 40, 560);
+  // The strip's expand: the watch screen for a library video, else the big player.
+  const openFromStrip = () => {
+    expand();
+    if (videoId) router.navigate({ pathname: "/watch", params: { id: videoId, folder: folderId ?? "" } });
+  };
 
   // The video's box in each state.
   let frame: object;
@@ -178,6 +192,9 @@ export function PlayerHost() {
     // sometimes only once the user resizes the window), so the box is "all
     // of whatever window there is", never `width`/`height` from before.
     frame = { left: 0, top: 0, right: 0, bottom: 0 };
+  } else if (mode === "watch") {
+    const b = watchBox(width, height, insets.top, wide);
+    frame = { left: b.left, top: b.top, width: b.w, height: b.h };
   } else if (mode === "full" && wide && width > height) {
     // Turned sideways: the video takes the whole screen.
     frame = { left: 0, top: 0, right: 0, bottom: 0 };
@@ -198,6 +215,8 @@ export function PlayerHost() {
 
   const full = mode === "full" && !pip;
   const mini = mode === "mini" && !pip;
+  const watch = mode === "watch" && !pip;
+  const wb = watchBox(width, height, insets.top, wide);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -218,21 +237,47 @@ export function PlayerHost() {
 
       {full && (
         <View style={[styles.fullBar, { top: insets.top + 8 }]}>
-          <RoundButton icon="chevron-down" label="Згорнути" onPress={minimize} />
+          <RoundButton icon="chevron-down" label="Згорнути" onPress={showWatch} />
           <View style={{ flex: 1 }} />
           {supportsPip && <RoundButton icon="contract" label="Вікно поверх усього" onPress={() => enterPip(ratioW, ratioH)} />}
           <RoundButton icon="close" label="Закрити" onPress={close} />
         </View>
       )}
 
+      {watch && (
+        <View style={[styles.watchBar, { top: wb.top + 8, left: wb.left + 8, right: wb.left + 8 }]} pointerEvents="box-none">
+          <RoundButton
+            icon="chevron-down"
+            label="Згорнути"
+            small
+            onPress={() => {
+              minimize();
+              router.back();
+            }}
+          />
+          <View style={{ flex: 1 }} />
+          <RoundButton icon="expand" label="На весь екран" small onPress={() => setMode("full")} />
+          {supportsPip && <RoundButton icon="contract" label="Вікно поверх усього" small onPress={() => enterPip(ratioW, ratioH)} />}
+          <RoundButton
+            icon="close"
+            label="Закрити"
+            small
+            onPress={() => {
+              close();
+              router.back();
+            }}
+          />
+        </View>
+      )}
+
       {mini && (
         <View style={[styles.capsuleRow, { top: capsuleTop(insets.top), width: capsuleW }]} pointerEvents="box-none">
-          <Pressable style={styles.capsuleTitle} onPress={expand} accessibilityLabel="Розгорнути">
+          <Pressable style={styles.capsuleTitle} onPress={openFromStrip} accessibilityLabel="Розгорнути">
             <Text style={styles.capsuleText} numberOfLines={1}>
               {title || "Відео"}
             </Text>
           </Pressable>
-          <Pressable onPress={expand} hitSlop={8} style={styles.capsuleBtn} accessibilityLabel="Розгорнути">
+          <Pressable onPress={openFromStrip} hitSlop={8} style={styles.capsuleBtn} accessibilityLabel="Розгорнути">
             <Ionicons name="expand" size={20} color="#fff" />
           </Pressable>
           <Pressable onPress={close} hitSlop={8} style={styles.capsuleBtn} accessibilityLabel="Закрити">
@@ -244,10 +289,10 @@ export function PlayerHost() {
   );
 }
 
-function RoundButton({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+function RoundButton({ icon, label, onPress, small }: { icon: string; label: string; onPress: () => void; small?: boolean }) {
   return (
-    <Pressable onPress={onPress} accessibilityLabel={label} hitSlop={6} style={styles.round}>
-      <Ionicons name={icon as any} size={22} color="#fff" />
+    <Pressable onPress={onPress} accessibilityLabel={label} hitSlop={6} style={[styles.round, small && styles.roundSmall]}>
+      <Ionicons name={icon as any} size={small ? 18 : 22} color="#fff" />
     </Pressable>
   );
 }
@@ -256,6 +301,8 @@ const styles = StyleSheet.create({
   black: { backgroundColor: "#000" },
   video: { position: "absolute", backgroundColor: "#000" },
   fullBar: { position: "absolute", left: 16, right: 16, flexDirection: "row", gap: 10, alignItems: "center" },
+  watchBar: { position: "absolute", flexDirection: "row", gap: 8, alignItems: "center" },
+  roundSmall: { width: 34, height: 34, borderRadius: 17, backgroundColor: "rgba(0,0,0,0.45)" },
   round: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.16)", alignItems: "center", justifyContent: "center" },
   capsule: {
     position: "absolute",

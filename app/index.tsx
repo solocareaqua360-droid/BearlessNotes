@@ -16,6 +16,7 @@ import { FlipLayer } from "@/components/ui/FlipLayer";
 import { FolderTile, FolderTiles } from "@/components/ui/FolderTiles";
 import { holdMenu } from "@/components/ui/HoldMenu";
 import { Menu, MenuEntry } from "@/components/ui/Menu";
+import NamePrompt from "@/components/ui/NamePrompt";
 import { BarButton, topBarSpace, TOP_NAV_H, topBarTop, TopBar } from "@/components/ui/TopBar";
 import { sortVideos, useLibraryStore } from "@/store/useLibraryStore";
 import { SIDE, TYPE, useSoft } from "@/theme/soft";
@@ -81,6 +82,7 @@ export default function HomeScreen() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkTagsVisible, setBulkTagsVisible] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [renameVideo, setRenameVideo] = useState<Video | null>(null);
   const [flipFrom, setFlipFrom] = useState<FlipFrom | null>(null);
   const [sheetTagsVisible, setSheetTagsVisible] = useState(false);
   const lastShown = useRef<Video | null>(null);
@@ -218,8 +220,7 @@ export default function HomeScreen() {
     else if (key === "delete") sendToBin([v.id]);
   };
   const openFromCanvas = (photo: { id: string }) => {
-    setFlipFrom(null);
-    setDetailId(photo.id);
+    openWatch(photo.id);
   };
 
   // ----- navigation inside the explorer
@@ -256,9 +257,13 @@ export default function HomeScreen() {
     if (selectMode) return toggleSelected(v.id);
     if (inBin) return binMenu(v);
     if (settings.openVideoMode === "external") return void Linking.openURL(v.url);
-    const flip = await prepareFlip(v.id, refFor(v.id).current);
-    setFlipFrom(flip);
-    setDetailId(v.id);
+    openWatch(v.id);
+  };
+
+  // A tap opens the WATCH SCREEN (video on top, the folder's other videos under
+  // it); the old flip-open card stays in the code but is no longer opened by a tap.
+  const openWatch = (videoId: string) => {
+    router.push({ pathname: "/watch", params: { id: videoId, folder: path && path !== BIN ? path : "" } });
   };
 
   const binMenu = async (v: Video) => {
@@ -283,6 +288,7 @@ export default function HomeScreen() {
     const key = await holdMenu(refFor(v.id), [
       { key: "select", label: "Вибрати", icon: "checkbox-outline" },
       { key: "tags", label: "Смарт-папки", icon: "folder-outline" },
+      { key: "rename", label: "Перейменувати", icon: "create-outline" },
       {
         key: "status",
         label: v.status === "planned" ? "Позначити переглянутим" : "Повернути в «Планую»",
@@ -299,7 +305,8 @@ export default function HomeScreen() {
       setSelectMode(true);
       setSelectedIds([v.id]);
       setBulkTagsVisible(true);
-    } else if (key === "status") updateVideo(v.id, { status: v.status === "planned" ? "watched" : "planned" });
+    } else if (key === "rename") setRenameVideo(v);
+    else if (key === "status") updateVideo(v.id, { status: v.status === "planned" ? "watched" : "planned" });
     else if (key === "share") shareVideoLink(v.url, v.title);
     else if (key === "open") Linking.openURL(v.url);
     else if (key === "delete") sendToBin([v.id]);
@@ -563,6 +570,16 @@ export default function HomeScreen() {
         right={Math.max(20, (width - Math.min(width - 40, 560)) / 2)}
       />
 
+      <NamePrompt
+        visible={renameVideo !== null}
+        title="Назва відео"
+        initialValue={renameVideo?.title ?? ""}
+        onCancel={() => setRenameVideo(null)}
+        onSave={(name) => {
+          if (renameVideo) updateVideo(renameVideo.id, { title: name.trim() });
+          setRenameVideo(null);
+        }}
+      />
       <FlipLayer visible={detailVideo !== null} onClose={() => setDetailId(null)} flipFrom={flipFrom}>
         {lastShown.current ? (
           <VideoSheet video={detailVideo ?? lastShown.current} onClose={() => setDetailId(null)} onAddTag={() => setSheetTagsVisible(true)} />
