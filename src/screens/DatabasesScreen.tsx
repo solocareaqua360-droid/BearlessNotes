@@ -916,10 +916,9 @@ export default function DatabasesScreen() {
         onClose={() => setIconPickerFor(null)}
       />
 
-      {/* Pushed from the Start: the bar says where it is, the first crumb the way back. */}
-      {nested && databasesFocused && !databasesLayer && (
-        <TopNavBar trail={{ icon: 'apps-outline', crumbs: [{ label: 'Старт', onPress: () => navigation.goBack() }, { label: 'Бази' }] }} />
-      )}
+      {/* Pushed from the Start: just its name with its icon, as a folder or a project shows only its own (the user, 2026-11-07:
+          «в папках і проєктах тільки назва, а в базах чомусь Старт › Бази»). */}
+      {nested && databasesFocused && !databasesLayer && <TopNavBar title={{ icon: 'apps-outline', label: 'Бази' }} />}
       {/* In the layer: its own bar and dock, inside it and moving with it. */}
       {databasesLayer && !(inDrawer && openInPane) && (
         <>
