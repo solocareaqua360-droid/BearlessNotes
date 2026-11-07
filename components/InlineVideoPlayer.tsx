@@ -155,6 +155,8 @@ export default function InlineVideoPlayer({
       // The video drawn through a hardware layer - the usual fix for a
       // WebView video that goes black when its window changes shape.
       androidLayerType="hardware"
+      // Lets the developer look inside the page from the Mac (adb + devtools).
+      webviewDebuggingEnabled
       allowsFullscreenVideo
       mediaPlaybackRequiresUserAction={false}
       renderLoading={() => (
