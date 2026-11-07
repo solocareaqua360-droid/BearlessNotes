@@ -1,7 +1,7 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { useEffect, useRef, useState } from "react";
-import { BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { AppState, BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Ionicons } from "@/components/icons/Ionicons";
@@ -59,6 +59,9 @@ export function PlayerHost() {
   // Whether the video is playing right now, as the player reports it, and
   // where it is (for the window's ±10 s buttons).
   const [isPlaying, setIsPlaying] = useState(false);
+  // What the USER wants (play or pause) - told apart from the system pausing
+  // the page on its own (screen lock), which is undone below.
+  const wantPlay = useRef(false);
   const time = useRef(0);
   const control = useRef<VideoControl | null>(null);
   useEffect(() => {
@@ -79,21 +82,42 @@ export function PlayerHost() {
     []
   );
 
-  // The window's buttons.
+  // The window's and the notification's buttons.
   const playingRef = useRef(false);
   playingRef.current = isPlaying;
   useEffect(
     () =>
       onPipAction((action) => {
         const c = control.current;
+        console.log("[cinema] button", action, "control:", !!c, "playing:", playingRef.current, "t:", time.current);
         if (!c) return;
-        if (action === "play") c.play();
-        else if (action === "pause") c.pause();
-        else if (action === "toggle") (playingRef.current ? c.pause : c.play)();
-        else c.seekTo(time.current + (action === "fwd" ? 10 : -10));
+        if (action === "play") {
+          wantPlay.current = true;
+          c.play();
+        } else if (action === "pause") {
+          wantPlay.current = false;
+          c.pause();
+        } else if (action === "toggle") {
+          wantPlay.current = !playingRef.current;
+          (playingRef.current ? c.pause : c.play)();
+        } else c.seekTo(time.current + (action === "fwd" ? 10 : -10));
       }),
     []
   );
+
+  // The page paused by itself (the system hides it when the screen locks)
+  // while the user did not ask for that: play again.
+  const onPlayerState = (playing: boolean) => {
+    console.log("[cinema] state", playing ? "playing" : "paused", "app:", AppState.currentState, "want:", wantPlay.current);
+    setIsPlaying(playing);
+    if (playing) wantPlay.current = true;
+    else if (AppState.currentState === "active") wantPlay.current = false;
+    else if (wantPlay.current) control.current?.play();
+  };
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (st) => console.log("[cinema] app", st));
+    return () => sub.remove();
+  }, []);
 
   // THE BACKGROUND PLAYER: once a video has played, a notification with the
   // buttons (lock screen too) and a service that keeps the sound with the
@@ -185,7 +209,7 @@ export function PlayerHost() {
           url={url}
           nudge={nudge}
           controlRef={control}
-          onState={setIsPlaying}
+          onState={onPlayerState}
           onTime={(t) => {
             time.current = t;
           }}
