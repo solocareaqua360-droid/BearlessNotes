@@ -1,0 +1,876 @@
+import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { Block, BlockType, TableRow } from '../types';
+import { formatShortDate, parseDateKey } from './dateLocale';
+import { photoWithSketchHtml, sketchToSvg } from './sketchSvg';
+import { downloadToFolder } from './downloadToFolder';
+import { imageBase64 } from './imageBase64';
+
+// Pulled out of DocumentEditorScreen.tsx (2026-09-19), which had grown to
+// 6883 lines - everything here is a pure function or a small constant, none
+// of it closes over the screen's own state, so the move changes nothing at
+// runtime. Shared by the screen itself and by the block-rendering
+// components (BlockRow, TableBlockContent, ...) that also used to live in
+// that one file.
+
+export function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// Firestore rejects `undefined` anywhere in a document, so every block is
+// built through this one place instead of ad-hoc object literals scattered
+// around - it never sets a field it doesn't need (checked only exists on
+// checkbox blocks) rather than setting that field to undefined.
+export function buildBlock(id: string, type: BlockType, text: string): Block {
+  const block: Block = { id, text, type, createdAt: Date.now() };
+  if (type === 'checkbox') block.checked = false;
+  if (type === 'heading') block.headingLevel = 2;
+  if (type === 'table') block.tableRows = [{ cells: ['', ''] }, { cells: ['', ''] }];
+  return block;
+}
+
+// The same block as another kind - a list item made a heading, a heading
+// made plain text. Built fresh through buildBlock (so nothing the new kind
+// does not use is carried), but what belongs to the BLOCK rather than to its
+// kind stays: when it was written, where it stands on the canvas, and the
+// end of a toggle's section it marks. Rebuilt from scratch, a block lost
+// all three on every change of kind - its place on «Полотно» among them.
+// What belongs to the old kind (a checkbox's tick and its task fields, a
+// toggle's fold) goes with it on purpose: a reminder left on a block that
+// is no longer a task would ring for nothing.
+export function retype(block: Block, type: BlockType): Block {
+  const next = buildBlock(block.id, type, block.text);
+  if (block.createdAt) next.createdAt = block.createdAt;
+  if (block.canvas) next.canvas = block.canvas;
+  if (block.canvasGroup) next.canvasGroup = block.canvasGroup;
+  if (block.exitsToggle) next.exitsToggle = true;
+  if (block.indent) next.indent = block.indent;
+  if (block.align) next.align = block.align;
+  if (block.font) next.font = block.font;
+  return next;
+}
+
+// THE INDENT (Block.indent): one step's width on the page, and how deep it goes.
+export const INDENT_STEP = 24;
+export const MAX_INDENT = 4;
+export const indentOf = (block: Block): number => Math.max(0, Math.min(MAX_INDENT, Math.round(block.indent ?? 0)));
+// The block one step in or out; 0 drops the field (Firestore takes no undefined, and none is shorter than a 0).
+export function withIndent(block: Block, delta: number): Block {
+  const next = Math.max(0, Math.min(MAX_INDENT, indentOf(block) + delta));
+  if (next === indentOf(block)) return block;
+  if (next === 0) {
+    const { indent: _gone, ...rest } = block;
+    return rest as Block;
+  }
+  return { ...block, indent: next };
+}
+// THE ALIGNMENT (Block.align): 'left' drops the field - left is what a block with none already is.
+export type BlockAlign = 'left' | 'center' | 'right' | 'justify';
+export const alignOf = (block: Block): BlockAlign => block.align ?? 'left';
+export function withAlign(block: Block, align: BlockAlign): Block {
+  if (alignOf(block) === align) return block;
+  if (align === 'left') {
+    const { align: _gone, ...rest } = block;
+    return rest as Block;
+  }
+  return { ...block, align };
+}
+// The text style it means, or null for left.
+// Justified, the page's slight negative letterSpacing goes: Android stretches a line by its measure WITHOUT the spacing,
+// and the last letter of every stretched line fell past the edge, cut (seen on the phone, 2026-10-25).
+export const alignStyleOf = (block: Block) =>
+  block.align === 'justify' ? { textAlign: 'justify' as const, letterSpacing: 0 } : block.align ? { textAlign: block.align } : null;
+// A list item's mark by its step: a dot, a ring, a square, then round again - so a sub-list reads as one at a glance.
+export function bulletFor(level: number): string {
+  return ['•', '◦', '▪'][level % 3];
+}
+// THE NUMBERS of a page's numbered items, step-aware: each step counts on its own, a deeper item (of any list kind, or an
+// indented line) does not break the run above it, and anything at a shallower step - or any unindented non-numbered
+// block - ends the runs below it. Index-aligned with `blocks`; 0 for a block that is not numbered.
+export function listNumbers(blocks: Block[]): number[] {
+  const counts: number[] = [];
+  return blocks.map((block) => {
+    const level = indentOf(block);
+    if ((block.type ?? 'paragraph') === 'numbered') {
+      counts.length = Math.min(counts.length, level + 1);
+      counts[level] = (counts[level] ?? 0) + 1;
+      return counts[level];
+    }
+    counts.length = Math.min(counts.length, level);
+    return 0;
+  });
+}
+
+export function newBlock(): Block {
+  return buildBlock(generateId(), 'paragraph', '');
+}
+
+export const LIST_TYPES: BlockType[] = ['bulleted', 'numbered', 'checkbox'];
+
+// Read-only mirror of TasksScreen's own formatReminderBadge - a checkbox
+// block only ever displays its reminder here (editing happens from the
+// Tasks screen, where the picker and the star/date rules live).
+export function formatReminderBadge(item: Block): string | null {
+  if (!item.reminderDate) return null;
+  const label = formatShortDate(parseDateKey(item.reminderDate));
+  return item.reminderTime ? `${label} ${item.reminderTime}` : label;
+}
+
+// A generic document icon, tinted per extension so a PDF/Word/Excel
+// attachment is recognizable at a glance without needing per-brand icons.
+// The ink on a sticker: the sticker is yellow in every theme, so this
+// cannot follow the paper's ink.
+export const STICKER_INK = '#111827';
+
+export function fileIconFor(name?: string): 'document-text-outline' | 'document-outline' {
+  return (name ?? '').toLowerCase().endsWith('.pdf') ? 'document-text-outline' : 'document-outline';
+}
+
+export function fileIconColorFor(name?: string): string {
+  const ext = (name ?? '').toLowerCase().split('.').pop();
+  if (ext === 'pdf') return '#DC2626';
+  if (ext === 'doc' || ext === 'docx') return '#2563EB';
+  if (ext === 'xls' || ext === 'xlsx') return '#16A34A';
+  return '#6B7280';
+}
+
+// Saving a copy where the user can find it is the same job here as on
+// the Photos and Files screens, and it is done in one place now - see
+// utils/downloadToFolder, which also has a browser answer. This kept its
+// own copy of that logic for a while, with one branch the shared one
+// lacked and a folder key that happened to match; the two are one.
+export async function downloadToDevice(sourceUri: string, fileName: string, mimeType: string, driveFileId?: string): Promise<string | null> {
+  return (await downloadToFolder(sourceUri, fileName, mimeType, driveFileId))?.destUri ?? null;
+}
+
+// Inline formatting is stored as plain markers inside the block's own text
+// (**bold**, *italic*, __underline__, ~~strikethrough~~, {c:#hex}color{/c},
+// {h:#hex}highlight{/h}) rather than a separate rich-text model.
+//
+// The user's own words: "Я не хочу бачити зірочки та всякі риски коли
+// друкую, це мене збиває." The active field no longer shows the raw
+// markers - it shows plainTextOf(text), the same marker-free string the
+// locked block already displayed, and applyDisplayEdit turns whatever
+// the OS reports back into the correct edit on the RAW text underneath.
+// One real trade-off, taken deliberately over the alternative: a plain
+// TextInput can only render ONE uniform style for its own value, so
+// there is no LIVE bold-while-typing in the exact block you are editing
+// - only the markers vanish, not the styling gap. Nested styled <Text>
+// children inside an editable Android TextInput is the technique that
+// would close that gap too, and it is known to be unreliable there
+// (Expensify's own react-native-live-markdown exists because plain RN
+// children were not enough for them either) - not attempted here. The
+// moment a block is no longer the active one it renders through
+// FormattedText exactly as it always did, bold and all.
+export const COLOR_OPEN = /^\{c:(#[0-9A-Fa-f]{6})\}/;
+export const HIGHLIGHT_OPEN = /^\{h:(#[0-9A-Fa-f]{6})\}/;
+export const COLOR_CLOSE = '{/c}';
+export const HIGHLIGHT_CLOSE = '{/h}';
+
+// A WORD THAT LINKS TO ANOTHER NOTE (2026-10-05): `{n:<documentId>}label{/n}`
+// in the block's text. Unlike the markers above it is an ATOM - the user's
+// own idea, "блок всередині блока, який можна тільки стерти": in the field
+// being typed it shows as LINK_GLYPH + the label (a TextInput draws one
+// style only, so the glyph is what says "an object, not words"), the caret
+// never stands inside it, and an edit that touches it removes the whole
+// link (applyDisplayEdit). In a block at rest it is a chip (FormattedText).
+//
+// The target can also be one BLOCK of that note: `{n:<documentId>#<blockId>}`
+// - a "ref" (noteRef / parseNoteRef). The links carry the ref whole, so a
+// rename or an unlink keeps the place it leads to without knowing of it.
+// A word can also lead to a BOARD or a FILE (2026-10-26, the user: «@ посилається тільки на нотатку, дошку і файл»): the ref
+// then carries a kind prefix - `{n:b:<boardId>}`, `{n:f:<fileId>}` (see linkTarget).
+export const NOTE_LINK_OPEN = /^\{n:((?:[bf]:)?[A-Za-z0-9_-]+(?:#[A-Za-z0-9_-]+)?)\}/;
+
+export type LinkTargetKind = 'note' | 'board' | 'file';
+export function linkTarget(ref: string): { kind: LinkTargetKind; id: string } {
+  if (ref.startsWith('b:')) return { kind: 'board', id: ref.slice(2) };
+  if (ref.startsWith('f:')) return { kind: 'file', id: ref.slice(2) };
+  return { kind: 'note', id: ref };
+}
+export function boardRef(id: string): string {
+  return `b:${id}`;
+}
+export function fileRef(id: string): string {
+  return `f:${id}`;
+}
+export const NOTE_LINK_CLOSE = '{/n}';
+export const LINK_GLYPH = '↗\u2009';
+// The same place for a note NESTED in this one (the user's: the arrow down
+// for nested, the diagonal one for a link). Exactly as long as LINK_GLYPH,
+// so it can be swapped in on the way to the screen without moving a single
+// display index - and swapped back (displayWithLinkGlyphs) before an edit
+// is read, which only ever knows LINK_GLYPH.
+export const NESTED_GLYPH = '↓\u2009';
+
+export function displayWithNestedGlyphs(raw: string, display: string, isNested: (ref: string) => boolean): string {
+  let out = display;
+  for (const span of noteLinkSpans(raw)) {
+    if (!isNested(span.documentId)) continue;
+    out = out.slice(0, span.displayStart) + NESTED_GLYPH + out.slice(span.displayStart + NESTED_GLYPH.length);
+  }
+  return out;
+}
+
+export function displayWithLinkGlyphs(display: string): string {
+  return display.split(NESTED_GLYPH).join(LINK_GLYPH);
+}
+
+// A note's address on the clipboard («Копіювати посилання»): pasted into a
+// block it becomes a word linking to the note (DocumentEditorScreen's
+// handleBlockChange); pasted anywhere else it is plain text.
+export const NOTE_ADDRESS = /mindeva:\/\/note\/([A-Za-z0-9_-]+(?:#[A-Za-z0-9_-]+)?)/g;
+export function noteAddress(documentId: string, blockId?: string): string {
+  return `mindeva://note/${noteRef(documentId, blockId)}`;
+}
+
+export function noteRef(documentId: string, blockId?: string): string {
+  return blockId ? `${documentId}#${blockId}` : documentId;
+}
+
+export function parseNoteRef(ref: string): { documentId: string; blockId?: string } {
+  const hash = ref.indexOf('#');
+  return hash < 0 ? { documentId: ref } : { documentId: ref.slice(0, hash), blockId: ref.slice(hash + 1) || undefined };
+}
+
+export function noteLinkMarkup(documentId: string, label: string): string {
+  // The label can hold no markers of its own: braces and the closing
+  // marker would end it early.
+  const clean = label.replace(/[{}]/g, '').trim() || 'Нотатка';
+  return `{n:${documentId}}${clean}${NOTE_LINK_CLOSE}`;
+}
+
+export type TextStyle = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  color?: string;
+  highlight?: string;
+};
+
+// rawStart: where this segment's text begins in the raw (marker-bearing)
+// block text - what lets a position in the DISPLAYED text be mapped back
+// to a cursor position in the TextInput, see rawIndexForDisplayIndex.
+export type TextSegment = TextStyle & {
+  text: string;
+  rawStart: number;
+  // A note link (see NOTE_LINK_OPEN): the note it opens, and where its
+  // markup ends in the raw text - the segment is one atom from rawStart
+  // to rawEnd.
+  noteLink?: string;
+  rawEnd?: number;
+};
+
+export function parseFormattedText(text: string): TextSegment[] {
+  const segments: TextSegment[] = [];
+  parseFormattedInto(text, {}, segments, 0);
+  return segments;
+}
+
+// `base` is the raw-text index that `text[0]` sits at (this is called
+// recursively on the inside of each marker pair).
+function parseFormattedInto(text: string, style: TextStyle, out: TextSegment[], base: number) {
+  let i = 0;
+  let plainStart = 0;
+  const flushPlain = (end: number) => {
+    if (end > plainStart) out.push({ text: text.slice(plainStart, end), rawStart: base + plainStart, ...style });
+  };
+  while (i < text.length) {
+    const rest = text.slice(i);
+    let consumed = 0;
+    // Bold AND italic on the same words: italic put round bold (or bold round italic) gives three stars each side.
+    // Read as two pairs it came apart into stray stars on the screen (2026-10-19, «tst ***day***»).
+    const triple = rest.startsWith('***') ? rest.indexOf('***', 3) : -1;
+    if (triple !== -1) {
+      flushPlain(i);
+      parseFormattedInto(rest.slice(3, triple), { ...style, bold: true, italic: true }, out, base + i + 3);
+      consumed = triple + 3;
+    } else if (rest.startsWith('**')) {
+      const close = rest.indexOf('**', 2);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(2, close), { ...style, bold: true }, out, base + i + 2);
+        consumed = close + 2;
+      }
+    } else if (rest.startsWith('__')) {
+      const close = rest.indexOf('__', 2);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(2, close), { ...style, underline: true }, out, base + i + 2);
+        consumed = close + 2;
+      }
+    } else if (rest.startsWith('~~')) {
+      const close = rest.indexOf('~~', 2);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(2, close), { ...style, strikethrough: true }, out, base + i + 2);
+        consumed = close + 2;
+      }
+    } else if (rest.startsWith('*')) {
+      const close = rest.indexOf('*', 1);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(1, close), { ...style, italic: true }, out, base + i + 1);
+        consumed = close + 1;
+      }
+    } else if (NOTE_LINK_OPEN.test(rest)) {
+      const m = rest.match(NOTE_LINK_OPEN)!;
+      const close = rest.indexOf(NOTE_LINK_CLOSE, m[0].length);
+      if (close !== -1) {
+        flushPlain(i);
+        consumed = close + NOTE_LINK_CLOSE.length;
+        out.push({
+          ...style,
+          text: LINK_GLYPH + rest.slice(m[0].length, close),
+          rawStart: base + i,
+          noteLink: m[1],
+          rawEnd: base + i + consumed,
+        });
+      }
+    } else if (COLOR_OPEN.test(rest)) {
+      const m = rest.match(COLOR_OPEN)!;
+      const close = rest.indexOf(COLOR_CLOSE, m[0].length);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(m[0].length, close), { ...style, color: m[1] }, out, base + i + m[0].length);
+        consumed = close + COLOR_CLOSE.length;
+      }
+    } else if (HIGHLIGHT_OPEN.test(rest)) {
+      const m = rest.match(HIGHLIGHT_OPEN)!;
+      const close = rest.indexOf(HIGHLIGHT_CLOSE, m[0].length);
+      if (close !== -1) {
+        flushPlain(i);
+        parseFormattedInto(rest.slice(m[0].length, close), { ...style, highlight: m[1] }, out, base + i + m[0].length);
+        consumed = close + HIGHLIGHT_CLOSE.length;
+      }
+    }
+    if (consumed > 0) {
+      i += consumed;
+      plainStart = i;
+    } else {
+      i++;
+    }
+  }
+  flushPlain(text.length);
+}
+
+// Same segments FormattedText renders on-screen, reused so an exported
+// PDF keeps bold/italic/underline/strikethrough/color instead of showing
+// the raw **markers**.
+export function plainTextOf(text: string): string {
+  return parseFormattedText(text)
+    .map((s) => s.text)
+    .join('');
+}
+
+export function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Cursor position in the raw text for a position in the displayed
+// (marker-free) text. Past the end -> end of the raw text.
+export function rawIndexForDisplayIndex(segments: TextSegment[], rawText: string, displayIndex: number): number {
+  let displayStart = 0;
+  for (const seg of segments) {
+    if (displayIndex <= displayStart + seg.text.length) {
+      // A link is one atom: its inside maps to its start, its end to the
+      // end of its markup.
+      if (seg.noteLink) return displayIndex - displayStart === seg.text.length ? (seg.rawEnd as number) : seg.rawStart;
+      return seg.rawStart + (displayIndex - displayStart);
+    }
+    displayStart += seg.text.length;
+  }
+  return rawText.length;
+}
+
+// One raw index per display character, PLUS one more for the position
+// right after the last one - a "boundary" for every gap a caret or a
+// selection edge can sit in, not just every character. parseFormattedText
+// is exhaustive (every raw character ends up inside some segment's own
+// text, markers included when unmatched), so this never has a gap: index
+// `displayLength` always lands exactly on `rawText.length`.
+export function displayBoundaries(rawText: string): number[] {
+  const segments = parseFormattedText(rawText);
+  const bounds: number[] = [];
+  for (const seg of segments) {
+    // Every gap inside a link is its start - nothing lands within its markup.
+    for (let k = 0; k < seg.text.length; k++) bounds.push(seg.noteLink ? seg.rawStart : seg.rawStart + k);
+  }
+  bounds.push(rawText.length);
+  return bounds;
+}
+
+// The other direction from rawIndexForDisplayIndex: where a raw position
+// (the edge of a marker this screen just inserted or removed) lands in
+// the display text that goes with it. Used to put the selection back in
+// DISPLAY terms after applyMarkerToSelection/applyColorToSelection edit
+// the raw text - the active field's own selection is always in display
+// coordinates now, never raw.
+export function displayIndexForRawIndex(rawText: string, rawIndex: number): number {
+  const bounds = displayBoundaries(rawText);
+  for (let i = 0; i < bounds.length; i++) {
+    if (bounds[i] >= rawIndex) return i;
+  }
+  return bounds.length - 1;
+}
+
+// What the active field's own onChangeText turns into: not "the block's
+// new text" directly, but the edit that produced it, replayed on the RAW
+// text. The active field's value is plainTextOf(text) - marker-free - so
+// what the OS hands back on every keystroke is a new DISPLAY string, and
+// this is what turns that into the correct new RAW string underneath,
+// using the same prefix/suffix diff insertedPiece uses for a paste, but
+// with no length floor: a single typed or deleted character goes through
+// here exactly the same as a whole pasted paragraph.
+export function applyDisplayEdit(oldRawText: string, newDisplayText: string): string {
+  const oldDisplayText = plainTextOf(oldRawText);
+  if (oldDisplayText === newDisplayText) return oldRawText;
+  const maxCommon = Math.min(oldDisplayText.length, newDisplayText.length);
+  let prefix = 0;
+  while (prefix < maxCommon && oldDisplayText[prefix] === newDisplayText[prefix]) prefix++;
+  let suffix = 0;
+  const maxSuffix = maxCommon - prefix;
+  while (
+    suffix < maxSuffix &&
+    oldDisplayText[oldDisplayText.length - 1 - suffix] === newDisplayText[newDisplayText.length - 1 - suffix]
+  ) {
+    suffix++;
+  }
+  const removedEnd = oldDisplayText.length - suffix;
+  const insertedText = newDisplayText.slice(prefix, newDisplayText.length - suffix);
+  const bounds = displayBoundaries(oldRawText);
+  let rawStart = bounds[prefix];
+  let rawEnd = bounds[removedEnd];
+  // A note link is never cut: an edit that removes any of it removes all of
+  // it, and text typed inside it goes after it.
+  for (const span of noteLinkSpans(oldRawText)) {
+    if (removedEnd > prefix && prefix < span.displayEnd && removedEnd > span.displayStart) {
+      rawStart = Math.min(rawStart, span.rawStart);
+      rawEnd = Math.max(rawEnd, span.rawEnd);
+    } else if (removedEnd === prefix && prefix > span.displayStart && prefix < span.displayEnd) {
+      rawStart = span.rawEnd;
+      rawEnd = span.rawEnd;
+    }
+  }
+  return oldRawText.slice(0, rawStart) + insertedText + oldRawText.slice(rawEnd);
+}
+
+// Where each note link stands, in the displayed text and in the raw one.
+export type NoteLinkSpan = {
+  // The whole ref - a note, or a block of it (see NOTE_LINK_OPEN).
+  documentId: string;
+  label: string;
+  displayStart: number;
+  displayEnd: number;
+  rawStart: number;
+  rawEnd: number;
+};
+
+export function noteLinkSpans(rawText: string): NoteLinkSpan[] {
+  const spans: NoteLinkSpan[] = [];
+  let at = 0;
+  for (const seg of parseFormattedText(rawText)) {
+    if (seg.noteLink) {
+      spans.push({
+        documentId: seg.noteLink,
+        label: seg.text.slice(LINK_GLYPH.length),
+        displayStart: at,
+        displayEnd: at + seg.text.length,
+        rawStart: seg.rawStart,
+        rawEnd: seg.rawEnd as number,
+      });
+    }
+    at += seg.text.length;
+  }
+  return spans;
+}
+
+// Tap-to-cursor for a locked block. Android gives no way to ask "which
+// character is under this point" of a plain Text, so this estimates it from
+// the line layout Text reports (onTextLayout): the LINE is exact (by y);
+// the position within it is proportional to width, with a rough per-glyph
+// weight so narrow letters/punctuation don't push the estimate right. Off
+// by a character or so in practice - close enough that a second tap in the
+// now-live input (which Android places exactly) is rarely needed.
+export type TextLayoutLine = { text: string; x: number; y: number; width: number; height: number };
+
+function segmentToHtml(seg: TextSegment): string {
+  let html = escapeHtml(seg.text);
+  if (seg.bold) html = `<b>${html}</b>`;
+  if (seg.italic) html = `<i>${html}</i>`;
+  if (seg.underline) html = `<u>${html}</u>`;
+  if (seg.strikethrough) html = `<s>${html}</s>`;
+  if (seg.highlight) html = `<span style="background:${seg.highlight}">${html}</span>`;
+  if (seg.color) html = `<span style="color:${seg.color}">${html}</span>`;
+  return html;
+}
+
+function textToHtml(text: string): string {
+  return parseFormattedText(text).map(segmentToHtml).join('') || '&nbsp;';
+}
+
+function formatSum(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+// --- Table formulas -------------------------------------------------
+// A cell's raw text is either a plain value or a formula starting with
+// "=" that references other cells by A1-style address (e.g. "B3") or a
+// rectangular range ("B1:B3"). Support is deliberately small: either a
+// whole-cell SUM/AVERAGE/MIN/MAX/COUNT(range) call, or a plain
+// arithmetic expression (+ - * / and parens) with cell refs substituted
+// in - enough for "simple arithmetic, sum a column" without pulling in
+// a real formula-language parser. No eval/new Function (Hermes doesn't
+// reliably support dynamic code eval), so arithmetic is evaluated with
+// a small hand-written recursive-descent parser.
+
+export function columnLetter(index: number): string {
+  let n = index + 1;
+  let s = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    s = String.fromCharCode(65 + rem) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+function columnIndexFromLetters(letters: string): number {
+  let n = 0;
+  for (const ch of letters.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+
+function parseCellRef(ref: string): { row: number; col: number } | null {
+  const m = /^([A-Za-z]+)([0-9]+)$/.exec(ref.trim());
+  if (!m) return null;
+  const row = parseInt(m[2], 10) - 1;
+  if (row < 0) return null;
+  return { row, col: columnIndexFromLetters(m[1]) };
+}
+
+function evaluateArithmetic(expr: string): number {
+  let i = 0;
+  const peek = () => expr[i];
+  function parseNumber(): number {
+    const start = i;
+    while (i < expr.length && /[0-9.]/.test(expr[i])) i++;
+    const n = parseFloat(expr.slice(start, i));
+    return Number.isNaN(n) ? 0 : n;
+  }
+  function parseFactor(): number {
+    while (peek() === ' ') i++;
+    if (peek() === '(') {
+      i++;
+      const v = parseExpr();
+      while (peek() === ' ') i++;
+      if (peek() === ')') i++;
+      return v;
+    }
+    if (peek() === '-') {
+      i++;
+      return -parseFactor();
+    }
+    if (peek() === '+') {
+      i++;
+      return parseFactor();
+    }
+    return parseNumber();
+  }
+  function parseTerm(): number {
+    let v = parseFactor();
+    for (;;) {
+      while (peek() === ' ') i++;
+      if (peek() === '*') {
+        i++;
+        v *= parseFactor();
+      } else if (peek() === '/') {
+        i++;
+        const d = parseFactor();
+        v = d !== 0 ? v / d : 0;
+      } else break;
+    }
+    return v;
+  }
+  function parseExpr(): number {
+    let v = parseTerm();
+    for (;;) {
+      while (peek() === ' ') i++;
+      if (peek() === '+') {
+        i++;
+        v += parseTerm();
+      } else if (peek() === '-') {
+        i++;
+        v -= parseTerm();
+      } else break;
+    }
+    return v;
+  }
+  const result = parseExpr();
+  return Number.isFinite(result) ? result : 0;
+}
+
+function evaluateRange(rangeExpr: string, rows: TableRow[], stack: Set<string>): number[] {
+  const [fromRaw, toRaw] = rangeExpr.split(':');
+  const from = parseCellRef(fromRaw ?? '');
+  const to = parseCellRef((toRaw ?? fromRaw) ?? '');
+  if (!from || !to) return [];
+  const values: number[] = [];
+  const rMin = Math.min(from.row, to.row);
+  const rMax = Math.max(from.row, to.row);
+  const cMin = Math.min(from.col, to.col);
+  const cMax = Math.max(from.col, to.col);
+  for (let r = rMin; r <= rMax; r++) {
+    for (let c = cMin; c <= cMax; c++) values.push(evaluateCell(rows, r, c, stack));
+  }
+  return values;
+}
+
+function evaluateFormula(expr: string, rows: TableRow[], stack: Set<string>): number {
+  const trimmed = expr.trim();
+  const fnMatch = /^([A-Za-z]+)\(([^()]*)\)$/.exec(trimmed);
+  if (fnMatch) {
+    const fn = fnMatch[1].toUpperCase();
+    const values = evaluateRange(fnMatch[2], rows, stack);
+    if (fn === 'SUM') return values.reduce((a, b) => a + b, 0);
+    if (fn === 'AVERAGE' || fn === 'AVG')
+      return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+    if (fn === 'MIN') return values.length ? Math.min(...values) : 0;
+    if (fn === 'MAX') return values.length ? Math.max(...values) : 0;
+    if (fn === 'COUNT') return values.length;
+  }
+  const substituted = trimmed.replace(/[A-Za-z]+[0-9]+/g, (ref) => {
+    const parsed = parseCellRef(ref);
+    if (!parsed) return '0';
+    return String(evaluateCell(rows, parsed.row, parsed.col, stack));
+  });
+  return evaluateArithmetic(substituted);
+}
+
+// `stack` guards against a formula that (directly or transitively)
+// references its own cell - without it a cycle would recurse forever.
+function evaluateCell(rows: TableRow[], row: number, col: number, stack: Set<string>): number {
+  const key = `${row}:${col}`;
+  if (stack.has(key)) return 0;
+  const raw = (rows[row]?.cells[col] ?? '').trim();
+  if (!raw) return 0;
+  if (raw.startsWith('=')) {
+    stack.add(key);
+    const result = evaluateFormula(raw.slice(1), rows, stack);
+    stack.delete(key);
+    return result;
+  }
+  const n = parseFloat(raw.replace(',', '.'));
+  return Number.isNaN(n) ? 0 : n;
+}
+
+export function displayValueOf(rows: TableRow[], row: number, col: number): string {
+  const raw = rows[row]?.cells[col] ?? '';
+  if (raw.trim().startsWith('=')) return formatSum(evaluateCell(rows, row, col, new Set()));
+  return raw;
+}
+
+// Builds one self-contained HTML document from the title + blocks, for
+// expo-print's HTML -> PDF (same approach as the scanner's own PDF
+// assembly - no native module needed). Images are inlined as base64 data
+// URIs since expo-print's WebView renderer can't reliably resolve local
+// file:// paths; files/links/sketches fall back to a plain placeholder
+// line rather than trying to render them.
+export async function buildDocumentHtml(title: string, blocks: Block[]): Promise<string> {
+  const parts: string[] = [];
+  for (const block of blocks) {
+    const type = block.type ?? 'paragraph';
+    if (type === 'divider') {
+      parts.push('<hr/>');
+    } else if (type === 'checkbox') {
+      const style = block.checked ? 'text-decoration:line-through;opacity:0.6;' : '';
+      parts.push(`<p style="margin:4px 0;${style}">${block.checked ? '☑' : '☐'} ${textToHtml(block.text)}</p>`);
+    } else if (type === 'bulleted') {
+      parts.push(`<ul style="margin:2px 0;"><li>${textToHtml(block.text)}</li></ul>`);
+    } else if (type === 'numbered') {
+      parts.push(`<ol style="margin:2px 0;"><li>${textToHtml(block.text)}</li></ol>`);
+    } else if (type === 'image' && block.imageUri) {
+      try {
+        const base64 = await imageBase64(block.imageUri, block.driveFileId);
+        const img = `<img src="data:image/jpeg;base64,${base64}" style="max-width:100%;display:block;" />`;
+        // A photograph the user has drawn over carries its drawing as a
+        // layer of its own (never burnt into the file), so the export is
+        // where the two are finally put together - the picture, and the
+        // vectors over it in the same box.
+        parts.push(
+          photoWithSketchHtml(img, block.sketchElements, block.sketchWidth, block.sketchHeight)
+        );
+      } catch {
+        parts.push('<p>[Зображення]</p>');
+      }
+    } else if (type === 'file') {
+      parts.push(`<p>[Файл: ${escapeHtml(block.fileTitle || block.fileName || '')}]</p>`);
+    } else if (type === 'link') {
+      parts.push(
+        `<p><a href="${escapeHtml(block.linkUrl ?? '')}">${escapeHtml(block.linkTitle || block.linkUrl || '')}</a></p>`
+      );
+    } else if (type === 'code') {
+      parts.push(
+        `<pre style="background:#F3F4F6;border-radius:8px;padding:10px;overflow-x:auto;">` +
+          `<code style="font-family:monospace;font-size:12px;white-space:pre;">${escapeHtml(block.text)}</code></pre>`
+      );
+    } else if (type === 'heading') {
+      const level = block.headingLevel === 1 ? 1 : block.headingLevel === 3 ? 3 : 2;
+      parts.push(`<h${level} style="margin:14px 0 6px;">${textToHtml(block.text)}</h${level}>`);
+    } else if (type === 'sketch') {
+      // Vectors, not a picture of them - see sketchToSvg. This used to be
+      // the words "[Малюнок]", which is what a note full of drawings came
+      // out of an export looking like.
+      const svg = sketchToSvg(block.sketchElements, {
+        width: block.sketchWidth,
+        height: block.sketchHeight,
+      });
+      parts.push(svg || '<p>[Малюнок]</p>');
+    } else if (type === 'dbRow') {
+      // Only the snapshot title - an export is a flat file, so there's
+      // nothing live to render here.
+      parts.push(`<p>[Запис: ${escapeHtml(block.dbRowTitle || 'Без назви')}]</p>`);
+    } else if (type === 'dbView') {
+      parts.push(`<p>[Вигляд: ${escapeHtml(block.dbViewTitle || 'Вигляд')}]</p>`);
+    } else if (type === 'table') {
+      const rows = block.tableRows ?? [];
+      const rowsHtml = rows
+        .map(
+          (row, r) =>
+            `<tr>${row.cells
+              .map(
+                (_, c) =>
+                  `<td style="border:1px solid #ccc;padding:4px 8px;">${escapeHtml(displayValueOf(rows, r, c))}</td>`
+              )
+              .join('')}</tr>`
+        )
+        .join('');
+      parts.push(`<table style="border-collapse:collapse;margin:8px 0;">${rowsHtml}</table>`);
+    } else if (block.text.trim()) {
+      parts.push(`<p style="margin:4px 0;">${textToHtml(block.text)}</p>`);
+    }
+  }
+  return `<html><body style="font-family:-apple-system,sans-serif;padding:24px;">
+    <h1>${escapeHtml(title || 'Без назви')}</h1>
+    ${parts.join('\n')}
+  </body></html>`;
+}
+
+// Plain-text equivalent for the .txt export - a table's columns become
+// tab-separated so pasting into a spreadsheet still lines up.
+export function buildDocumentText(title: string, blocks: Block[]): string {
+  const lines: string[] = [title || 'Без назви', ''];
+  for (const block of blocks) {
+    const type = block.type ?? 'paragraph';
+    const plain = plainTextOf(block.text);
+    if (type === 'divider') {
+      lines.push('---');
+    } else if (type === 'checkbox') {
+      lines.push(`${block.checked ? '[x]' : '[ ]'} ${plain}`);
+    } else if (type === 'bulleted') {
+      lines.push(`- ${plain}`);
+    } else if (type === 'numbered') {
+      lines.push(`1. ${plain}`);
+    } else if (type === 'file') {
+      lines.push(`[Файл: ${block.fileTitle || block.fileName || ''}]`);
+    } else if (type === 'link') {
+      lines.push(`${block.linkTitle || ''} ${block.linkUrl || ''}`.trim());
+    } else if (type === 'sketch') {
+      lines.push('[Малюнок]');
+    } else if (type === 'dbRow') {
+      lines.push(`[Запис: ${block.dbRowTitle || 'Без назви'}]`);
+    } else if (type === 'dbView') {
+      lines.push(`[Вигляд: ${block.dbViewTitle || 'Вигляд'}]`);
+    } else if (type === 'table') {
+      const rows = block.tableRows ?? [];
+      rows.forEach((row, r) => lines.push(row.cells.map((_, c) => displayValueOf(rows, r, c)).join('\t')));
+    } else {
+      lines.push(plain);
+    }
+  }
+  return lines.join('\n');
+}
+
+export function sanitizeFileName(name: string): string {
+  return name.replace(/[/\\]/g, '-').trim() || 'Без назви';
+}
+
+// ONE STYLE AT A TIME (2026-10-19, the user's: bold, italic, underline, strikethrough exclude each other, and changing
+// one must clear the markers of the other that cannot be seen). The block's text is rebuilt from its runs rather than
+// having markers put round the selection: the chosen words get ONLY the chosen style (pressed again, none), their
+// colour and highlight and note links stay. The displayed text never changes, so a selection in display terms is
+// still the same words afterwards. An empty selection changes nothing.
+export type InlineStyleKey = 'bold' | 'italic' | 'underline' | 'strikethrough';
+type StyledPiece = { text: string; atom?: string; style: TextStyle };
+const sameStyle = (a: TextStyle, b: TextStyle) =>
+  !!a.bold === !!b.bold &&
+  !!a.italic === !!b.italic &&
+  !!a.underline === !!b.underline &&
+  !!a.strikethrough === !!b.strikethrough &&
+  a.color === b.color &&
+  a.highlight === b.highlight;
+function serializePiece(p: StyledPiece): string {
+  let core = p.atom ?? p.text;
+  if (!core) return '';
+  const s = p.style;
+  if (s.bold && s.italic) core = `***${core}***`;
+  else if (s.bold) core = `**${core}**`;
+  else if (s.italic) core = `*${core}*`;
+  if (s.underline) core = `__${core}__`;
+  if (s.strikethrough) core = `~~${core}~~`;
+  if (s.highlight) core = `{h:${s.highlight}}${core}${HIGHLIGHT_CLOSE}`;
+  if (s.color) core = `{c:${s.color}}${core}${COLOR_CLOSE}`;
+  return core;
+}
+export function applyExclusiveStyle(raw: string, start: number, end: number, key: InlineStyleKey): string {
+  if (end <= start) return raw;
+  const pieces: StyledPiece[] = [];
+  let at = 0;
+  for (const seg of parseFormattedText(raw)) {
+    const style: TextStyle = {
+      bold: seg.bold,
+      italic: seg.italic,
+      underline: seg.underline,
+      strikethrough: seg.strikethrough,
+      color: seg.color,
+      highlight: seg.highlight,
+    };
+    const from = at;
+    at += seg.text.length;
+    if (seg.noteLink) {
+      // A note link is one atom: kept whole, with its own markup.
+      pieces.push({ text: seg.text, atom: raw.slice(seg.rawStart, seg.rawEnd), style });
+      continue;
+    }
+    // Cut at the selection's two ends.
+    const cuts = [0, Math.max(0, Math.min(seg.text.length, start - from)), Math.max(0, Math.min(seg.text.length, end - from)), seg.text.length];
+    for (let i = 0; i < 3; i++) {
+      if (cuts[i + 1] > cuts[i]) pieces.push({ text: seg.text.slice(cuts[i], cuts[i + 1]), style: { ...style } });
+    }
+  }
+  // Which pieces lie inside the selection (atoms included: a link takes the style too).
+  let pos = 0;
+  const inside: StyledPiece[] = [];
+  for (const p of pieces) {
+    const from = pos;
+    pos += p.text.length;
+    if (from >= start && pos <= end) inside.push(p);
+  }
+  if (inside.length === 0) return raw;
+  const off = inside.every((p) => p.style[key]);
+  for (const p of inside) {
+    p.style.bold = false;
+    p.style.italic = false;
+    p.style.underline = false;
+    p.style.strikethrough = false;
+    if (!off) p.style[key] = true;
+  }
+  // Neighbours alike become one run again, so a word does not end up in a chain of markers.
+  const merged: StyledPiece[] = [];
+  for (const p of pieces) {
+    const last = merged[merged.length - 1];
+    if (last && !last.atom && !p.atom && sameStyle(last.style, p.style)) last.text += p.text;
+    else merged.push({ ...p, style: { ...p.style } });
+  }
+  return merged.map(serializePiece).join('');
+}
