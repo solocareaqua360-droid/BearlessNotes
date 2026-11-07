@@ -10,6 +10,7 @@ type CinemaNative = {
   setAutoPip?(enabled: boolean, w: number, h: number): boolean;
   pipControls?: boolean;
   mediaService?: boolean;
+  webEval?(script: string): boolean;
   mediaStart?(title: string, playing: boolean): boolean;
   mediaStop?(): boolean;
   configurePip?(armed: boolean, playing: boolean, w: number, h: number): boolean;
@@ -22,6 +23,17 @@ const native = requireOptionalNativeModule<CinemaNative>("CinemaNative");
 
 export const supportsPip = !!native?.pip;
 export const supportsMedia = !!native?.mediaService;
+
+// A script into the player's page right away, even with the app in the small
+// window or the screen locked (React Native's own injectJavaScript waits for
+// a frame that never comes then). false = this APK cannot, use the bridge.
+export function webEval(script: string): boolean {
+  try {
+    return !!native?.webEval?.(script);
+  } catch {
+    return false;
+  }
+}
 
 // The background player: a notification with the buttons (also on the lock
 // screen) and a service that keeps the sound going with the screen off.

@@ -95,6 +95,7 @@ class CinemaNativeModule : Module() {
     OnCreate {
       PipState.listener = { isActive -> sendEvent("onPipChanged", mapOf("active" to isActive)) }
       CinemaMedia.sendAction = { name -> sendEvent("onPipAction", mapOf("action" to name)) }
+      WebHost.attach(appContext.reactContext?.applicationContext as? android.app.Application, appContext.currentActivity)
       val ctx = appContext.reactContext
       if (ctx != null) {
         val r = object : BroadcastReceiver() {
@@ -123,6 +124,7 @@ class CinemaNativeModule : Module() {
     OnDestroy {
       PipState.listener = null
       CinemaMedia.sendAction = null
+      WebHost.detach(appContext.reactContext?.applicationContext as? android.app.Application)
       val ctx = appContext.reactContext
       val r = receiver
       if (ctx != null && r != null) {
@@ -135,6 +137,10 @@ class CinemaNativeModule : Module() {
     }
 
     Function("isPipActive") { PipState.active }
+
+    // A script into the player's page, at once (see WebHost).
+    Constant("webEval") { true }
+    Function("webEval") { script: String -> WebHost.eval(script, appContext.currentActivity) }
 
     // THE PLAYER IN THE BACKGROUND (see MediaPlaybackService). Start while the
     // app is on screen (Android refuses to start it from the background); later

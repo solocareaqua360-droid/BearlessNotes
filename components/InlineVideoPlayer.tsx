@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { webEval } from '@/utils/cinemaNative';
 import { getVideoEmbedInfo, youtubeCommand, youtubeEmbedAt } from '@/utils/videoEmbed';
 
 // Where a timecode in a note sends the player: `t` seconds, and `n` a
@@ -90,8 +91,12 @@ export default function InlineVideoPlayer({
   }, [seek]);
   useEffect(() => {
     if (!controlRef) return;
-    const post = (cmd: string) =>
-      webRef.current?.injectJavaScript(`document.querySelector('iframe').contentWindow.postMessage(${JSON.stringify(cmd)}, '*');true;`);
+    const post = (cmd: string) => {
+      const script = `document.querySelector('iframe').contentWindow.postMessage(${JSON.stringify(cmd)}, '*');true;`;
+      // Straight into the WebView where the APK can (works with the app in the
+      // small window / the screen locked), otherwise through the bridge.
+      if (!webEval(script)) webRef.current?.injectJavaScript(script);
+    };
     controlRef.current = {
       play: () => post(youtubeCommand('playVideo')),
       pause: () => post(youtubeCommand('pauseVideo')),
