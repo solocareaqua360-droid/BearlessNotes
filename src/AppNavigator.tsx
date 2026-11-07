@@ -23,6 +23,7 @@ import ExplorerScreen from './screens/ExplorerScreen';
 import ThoughtsScreen from './screens/ThoughtsScreen';
 import TagItemsScreen from './screens/TagItemsScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import DatabasesScreen from './screens/DatabasesScreen';
 import SearchScreen from './screens/SearchScreen';
 import DiaryScreen from './screens/DiaryScreen';
 import DocumentEditorScreen from './screens/DocumentEditorScreen';
@@ -132,6 +133,7 @@ export default function RootNavigator() {
       <Stack.Screen name="Assistant" component={AssistantScreen} options={{ animation: 'none' }} />
       <Stack.Screen name="TagItems" component={TagItemsScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="Bases" component={DatabasesScreen} />
       <Stack.Screen name="Search" component={SearchScreen} />
       <Stack.Screen name="Diary" component={DiaryScreen} />
       <Stack.Screen name="Placeholder">

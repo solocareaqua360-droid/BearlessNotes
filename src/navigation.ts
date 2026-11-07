@@ -95,6 +95,9 @@ export type RootStackParamList = {
   // param, rather than being a separate route - one component, one big
   // shared block of state/logic (Drive, theme, keys...) that would
   // otherwise have to be threaded across five files for no real gain.
+  // The bases list opened FROM THE START (step 4 of the account-circle plan): the same screen as the «Більше» desk, but pushed,
+  // with its own bar «Старт › Бази» and the way back. See DatabasesScreen's `nested`.
+  Bases: undefined;
   Settings: { section?: 'account' | 'backup' | 'appearance' | 'integrations' | 'about' } | undefined;
   // Pushed from the search icon on DocumentsScreen - no longer a bottom
   // tab (see FloatingIslandTabBar).

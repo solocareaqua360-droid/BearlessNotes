@@ -72,7 +72,7 @@ import { folderToZip } from '../utils/folderZip';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { downloadToDevice, sanitizeFileName } from '../utils/documentBlocks';
 
-import { BASES_DESK, DesksControlContext, deskFace } from '../navigation/desks';
+import { DesksControlContext, deskFace } from '../navigation/desks';
 import { navigationRef } from '../navigationRef';
 import { useDatabaseTiles } from '../hooks/useDatabaseTiles';
 import { openStartBase, useStartBases } from '../navigation/startBases';
@@ -4593,7 +4593,8 @@ function StartBases({ folded, onToggle }: { folded: boolean; onToggle: () => voi
         folded={folded}
         count={keys.length}
         onOpen={() => {
-          if (navigationRef.isReady()) (navigationRef.navigate as (n: string, p: object) => void)('Tabs', { screen: BASES_DESK, params: { screen: 'BasesList' } });
+          // Inside the Start, like «Папки ›» (step 4 of the account-circle plan): a pushed copy of the list with the way back.
+          if (navigationRef.isReady()) (navigationRef.navigate as (n: string, p?: object) => void)('Bases');
         }}
         onToggle={onToggle}
       />

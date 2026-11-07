@@ -1,5 +1,4 @@
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { showDiagnostics } from './DocumentsScreen';
 import { useChromeScrollHandler } from '../navigation/chromeScroll';
 import ScreenGround from '../components/ScreenGround';
 import { APPS_TEMPLATE_NAME, APPS_TEMPLATE_RATES, appsTemplateFields } from '../utils/appsTemplate';
@@ -9,7 +8,7 @@ import { useRecordColour } from '../theme/ThemeProvider';
 import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import { Ionicons } from '../components/icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { collection, doc, onSnapshot } from '../firestore';
 import { addDoc, setDoc } from '../utils/owned';
@@ -73,6 +72,7 @@ import {
   useStableTopExtras,
   useTopExtras,
 } from '../navigation/navDock';
+import { useDockDesksHere } from '../navigation/deskBeadsBus';
 import { PaneBarContext } from '../navigation/paneBar';
 import { useGoToPreviousDesk } from '../navigation/deskOrder';
 import { TOP_NAV_SPACE, useTopNavOn } from '../components/TopNavBar';
@@ -184,7 +184,12 @@ export default function DatabasesScreen() {
   // it and stands at the top-left of the desks bar (TopNavBar); search
   // across everything is on the left bead again, settings on the right.
   const toPreviousDesk = useGoToPreviousDesk('Більше');
-  useTopBack(toPreviousDesk, !databasesLayer);
+  // OPENED FROM THE START (route 'Bases', step 4 of the account-circle plan): the same list, pushed over the Start, so its way
+  // back is plain «back», it brings its own bar «Старт › Бази», and the dock keeps the desks with the round back circle (as in
+  // a folder). The «Більше» desk stays as it was until the user says to take it away.
+  const nested = useRoute().name === 'Bases';
+  useTopBack(nested ? () => navigation.goBack() : toPreviousDesk, !databasesLayer);
+  useDockDesksHere(databasesFocused && nested && !databasesLayer);
   const navSpace = useTopNavOn() ? TOP_NAV_SPACE : 0;
   const searchBead = { icon: 'search-outline', onPress: () => navigation.navigate('Search') };
   // The right bead makes something, as on every screen: here, a new
@@ -273,10 +278,8 @@ export default function DatabasesScreen() {
       : [{ label: 'Упорядкувати', icon: 'move-outline', checked: editing, onPress: () => setEditing((v) => !v) } as MenuEntry]),
     { label: 'Імпорт таблиці', icon: 'download-outline', onPress: () => setImporting(true) },
     { label: 'Закріпити', icon: 'bookmark-outline', onPress: () => setPinSheetVisible(true) },
-    { kind: 'rule' },
-    { label: 'Налаштування', icon: 'settings-outline', onPress: () => navigation.navigate('Settings') },
-    // The measurements window - it lived in the documents list's «⋯», which left the bases (2026-11-02).
-    { label: 'Діагностика', icon: 'pulse-outline', onPress: () => showDiagnostics() },
+    // «Налаштування» and «Діагностика» left this menu for the account circle at the top left of Старт / Календар / Щоденник
+    // (2026-11-07, the user's plan).
   ];
   useTopExtras(databasesMenu, null, databasesFocused && !databasesLayer);
   // For the bar drawn inside the layer: one object while it says the same
@@ -913,6 +916,10 @@ export default function DatabasesScreen() {
         onClose={() => setIconPickerFor(null)}
       />
 
+      {/* Pushed from the Start: the bar says where it is, the first crumb the way back. */}
+      {nested && databasesFocused && !databasesLayer && (
+        <TopNavBar trail={{ icon: 'apps-outline', crumbs: [{ label: 'Старт', onPress: () => navigation.goBack() }, { label: 'Бази' }] }} />
+      )}
       {/* In the layer: its own bar and dock, inside it and moving with it. */}
       {databasesLayer && !(inDrawer && openInPane) && (
         <>
