@@ -1,3 +1,5 @@
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
+import * as ScreenOrientation from "expo-screen-orientation";
 import { useEffect, useRef, useState } from "react";
 import { BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -6,7 +8,17 @@ import { Ionicons } from "@/components/icons/Ionicons";
 import InlineVideoPlayer, { type VideoControl } from "@/components/InlineVideoPlayer";
 import { TOP_NAV_H, topBarTop } from "@/components/ui/TopBar";
 import { usePlayerStore } from "@/store/usePlayerStore";
-import { configurePip, enterPip, onPipAction, onPipChanged, supportsPip } from "@/utils/cinemaNative";
+import {
+  configurePip,
+  enterPip,
+  mediaStart,
+  mediaStop,
+  onPipAction,
+  onPipChanged,
+  requestNotificationPermission,
+  supportsMedia,
+  supportsPip,
+} from "@/utils/cinemaNative";
 import { getVideoEmbedInfo } from "@/utils/videoEmbed";
 
 const MINI_VIDEO_W = 72;
@@ -75,11 +87,51 @@ export function PlayerHost() {
       onPipAction((action) => {
         const c = control.current;
         if (!c) return;
-        if (action === "toggle") (playingRef.current ? c.pause : c.play)();
+        if (action === "play") c.play();
+        else if (action === "pause") c.pause();
+        else if (action === "toggle") (playingRef.current ? c.pause : c.play)();
         else c.seekTo(time.current + (action === "fwd" ? 10 : -10));
       }),
     []
   );
+
+  // THE BACKGROUND PLAYER: once a video has played, a notification with the
+  // buttons (lock screen too) and a service that keeps the sound with the
+  // screen off; it ends when the player is closed.
+  const mediaStarted = useRef(false);
+  const heading = title || "Відео";
+  useEffect(() => {
+    if (!supportsMedia || !info) return;
+    if (!isPlaying && !mediaStarted.current) return;
+    if (mediaStarted.current) {
+      mediaStart(heading, isPlaying);
+      return;
+    }
+    mediaStarted.current = true;
+    requestNotificationPermission().finally(() => mediaStart(heading, isPlaying));
+  }, [info, isPlaying, heading]);
+  useEffect(() => {
+    if (!url && mediaStarted.current) {
+      mediaStarted.current = false;
+      mediaStop();
+    }
+  }, [url]);
+
+  // The screen stays on while a video plays in front of the user.
+  const watching = isPlaying && (mode === "full" || pip);
+  useEffect(() => {
+    if (!watching) return;
+    activateKeepAwakeAsync("cinema-player").catch(() => {});
+    return () => {
+      deactivateKeepAwake("cinema-player").catch(() => {});
+    };
+  }, [watching]);
+
+  // The big wide video may turn sideways; everything else stays upright.
+  const allowSideways = !!info && wide && mode === "full" && !pip;
+  useEffect(() => {
+    ScreenOrientation.lockAsync(allowSideways ? ScreenOrientation.OrientationLock.DEFAULT : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+  }, [allowSideways]);
 
   // Back minimises the big player instead of leaving the screen under it.
   useEffect(() => {
@@ -101,6 +153,9 @@ export function PlayerHost() {
     // Edges, not numbers: the small window's real size reaches JS late (and
     // sometimes only once the user resizes the window), so the box is "all
     // of whatever window there is", never `width`/`height` from before.
+    frame = { left: 0, top: 0, right: 0, bottom: 0 };
+  } else if (mode === "full" && wide && width > height) {
+    // Turned sideways: the video takes the whole screen.
     frame = { left: 0, top: 0, right: 0, bottom: 0 };
   } else if (mode === "full") {
     const boxW = Math.min(width, (height - insets.top - 160) * (ratioW / ratioH));

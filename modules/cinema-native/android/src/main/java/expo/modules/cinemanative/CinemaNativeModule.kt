@@ -94,6 +94,7 @@ class CinemaNativeModule : Module() {
 
     OnCreate {
       PipState.listener = { isActive -> sendEvent("onPipChanged", mapOf("active" to isActive)) }
+      CinemaMedia.sendAction = { name -> sendEvent("onPipAction", mapOf("action" to name)) }
       val ctx = appContext.reactContext
       if (ctx != null) {
         val r = object : BroadcastReceiver() {
@@ -121,6 +122,7 @@ class CinemaNativeModule : Module() {
     }
     OnDestroy {
       PipState.listener = null
+      CinemaMedia.sendAction = null
       val ctx = appContext.reactContext
       val r = receiver
       if (ctx != null && r != null) {
@@ -133,6 +135,37 @@ class CinemaNativeModule : Module() {
     }
 
     Function("isPipActive") { PipState.active }
+
+    // THE PLAYER IN THE BACKGROUND (see MediaPlaybackService). Start while the
+    // app is on screen (Android refuses to start it from the background); later
+    // calls only refresh the notification. `mediaStop` ends it.
+    Constant("mediaService") { true }
+
+    Function("mediaStart") { title: String, playing: Boolean ->
+      val ctx = appContext.reactContext ?: return@Function false
+      try {
+        if (CinemaMedia.running) {
+          val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
+          nm.notify(CinemaMedia.NOTIFICATION_ID, CinemaMedia.build(ctx, title, playing))
+        } else {
+          val i = Intent(ctx, MediaPlaybackService::class.java).putExtra("title", title).putExtra("playing", playing)
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(i) else ctx.startService(i)
+        }
+        true
+      } catch (e: Exception) {
+        false
+      }
+    }
+
+    Function("mediaStop") {
+      val ctx = appContext.reactContext ?: return@Function false
+      try {
+        ctx.stopService(Intent(ctx, MediaPlaybackService::class.java))
+        true
+      } catch (e: Exception) {
+        false
+      }
+    }
 
     // What the window should be right now: `armed` = a video is playing
     // (leaving the app turns it into the window), `playing` picks the

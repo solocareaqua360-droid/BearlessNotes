@@ -4,7 +4,7 @@
     "slug": "bearlessnotes",
     "scheme": "bearlessnotes",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#F6F5F2",
     "icon": "./assets/icon.png",
@@ -38,7 +38,8 @@
       ],
       "expo-status-bar",
       "expo-web-browser",
-      "./plugins/withPictureInPicture.js"
+      "./plugins/withPictureInPicture.js",
+      "expo-sqlite"
     ],
     "extra": {
       "eas": {

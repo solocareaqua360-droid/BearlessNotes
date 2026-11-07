@@ -1,4 +1,5 @@
 import { requireOptionalNativeModule } from "expo";
+import { PermissionsAndroid, Platform } from "react-native";
 
 // Cinema's own native module (modules/cinema-native). Optional on purpose:
 // an APK built before it existed has no such module, and an over-the-air
@@ -8,6 +9,9 @@ type CinemaNative = {
   isPipActive?(): boolean;
   setAutoPip?(enabled: boolean, w: number, h: number): boolean;
   pipControls?: boolean;
+  mediaService?: boolean;
+  mediaStart?(title: string, playing: boolean): boolean;
+  mediaStop?(): boolean;
   configurePip?(armed: boolean, playing: boolean, w: number, h: number): boolean;
   enterPip?(w: number, h: number): boolean;
   addListener?(event: "onPipChanged", cb: (e: { active: boolean }) => void): { remove(): void };
@@ -17,6 +21,36 @@ type CinemaNative = {
 const native = requireOptionalNativeModule<CinemaNative>("CinemaNative");
 
 export const supportsPip = !!native?.pip;
+export const supportsMedia = !!native?.mediaService;
+
+// The background player: a notification with the buttons (also on the lock
+// screen) and a service that keeps the sound going with the screen off.
+export function mediaStart(title: string, playing: boolean): boolean {
+  try {
+    return !!native?.mediaStart?.(title, playing);
+  } catch {
+    return false;
+  }
+}
+
+export function mediaStop(): boolean {
+  try {
+    return !!native?.mediaStop?.();
+  } catch {
+    return false;
+  }
+}
+
+// Android 13+ asks before showing any notification, the player's included.
+export async function requestNotificationPermission(): Promise<void> {
+  try {
+    if (Platform.OS === "android" && Number(Platform.Version) >= 33) {
+      await PermissionsAndroid.request("android.permission.POST_NOTIFICATIONS" as any);
+    }
+  } catch {
+    // The player still plays; only its notification stays hidden.
+  }
+}
 
 export function enterPip(w: number, h: number): boolean {
   try {
@@ -38,7 +72,7 @@ export function configurePip(armed: boolean, playing: boolean, w: number, h: num
   }
 }
 
-export function onPipAction(cb: (action: "back" | "toggle" | "fwd") => void): () => void {
+export function onPipAction(cb: (action: "back" | "toggle" | "fwd" | "play" | "pause") => void): () => void {
   try {
     const sub = (native as any)?.addListener?.("onPipAction", (e: { action: string }) => cb(e.action as any));
     return () => sub?.remove();
