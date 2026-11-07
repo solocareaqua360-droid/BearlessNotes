@@ -139,7 +139,6 @@ class CinemaNativeModule : Module() {
     Function("isPipActive") { PipState.active }
 
     // A script into the player's page, at once (see WebHost).
-    Constant("webEval") { true }
     Function("webEval") { script: String -> WebHost.eval(script, appContext.currentActivity) }
 
     // THE PLAYER IN THE BACKGROUND (see MediaPlaybackService). Start while the
