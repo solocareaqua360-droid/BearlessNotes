@@ -51,6 +51,11 @@ export default function WatchScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [video?.id]);
 
+  // The comment closed (its field is gone, so no blur ever arrives): the dock is back.
+  useEffect(() => {
+    if (!commentOpen) setCommentFocused(false);
+  }, [commentOpen]);
+
   // However this screen goes away, the video does not stay stuck "in the
   // watch box" with nothing under it: it drops to the strip.
   useEffect(
