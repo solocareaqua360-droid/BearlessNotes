@@ -3,10 +3,10 @@ import { BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } f
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Ionicons } from "@/components/icons/Ionicons";
-import InlineVideoPlayer from "@/components/InlineVideoPlayer";
+import InlineVideoPlayer, { type VideoControl } from "@/components/InlineVideoPlayer";
 import { TOP_NAV_H, topBarTop } from "@/components/ui/TopBar";
 import { usePlayerStore } from "@/store/usePlayerStore";
-import { enterPip, onPipChanged, setAutoPip, supportsPip } from "@/utils/cinemaNative";
+import { configurePip, enterPip, onPipAction, onPipChanged, supportsPip } from "@/utils/cinemaNative";
 import { getVideoEmbedInfo } from "@/utils/videoEmbed";
 
 const MINI_VIDEO_W = 72;
@@ -44,15 +44,42 @@ export function PlayerHost() {
     setNudge((n) => n + 1);
   }, [pip]);
 
-  // While something plays, going Home turns it into the small window.
-  const playing = !!info;
+  // Whether the video is playing right now, as the player reports it, and
+  // where it is (for the window's ±10 s buttons).
+  const [isPlaying, setIsPlaying] = useState(false);
+  const time = useRef(0);
+  const control = useRef<VideoControl | null>(null);
+  useEffect(() => {
+    if (!url) setIsPlaying(false);
+  }, [url]);
+
+  // While a video PLAYS, leaving the app (Home, the swipe up) turns it into
+  // the small window, whose buttons follow the play state.
+  const armed = !!info && isPlaying;
   useEffect(() => {
     if (!supportsPip) return;
-    setAutoPip(playing, ratioW, ratioH);
-    return () => {
-      setAutoPip(false, 16, 9);
-    };
-  }, [playing, ratioW, ratioH]);
+    configurePip(armed, isPlaying, ratioW, ratioH);
+  }, [armed, isPlaying, ratioW, ratioH]);
+  useEffect(
+    () => () => {
+      configurePip(false, false, 16, 9);
+    },
+    []
+  );
+
+  // The window's buttons.
+  const playingRef = useRef(false);
+  playingRef.current = isPlaying;
+  useEffect(
+    () =>
+      onPipAction((action) => {
+        const c = control.current;
+        if (!c) return;
+        if (action === "toggle") (playingRef.current ? c.pause : c.play)();
+        else c.seekTo(time.current + (action === "fwd" ? 10 : -10));
+      }),
+    []
+  );
 
   // Back minimises the big player instead of leaving the screen under it.
   useEffect(() => {
@@ -99,7 +126,15 @@ export function PlayerHost() {
       {mini && <View style={[styles.capsule, { top: capsuleTop(insets.top), width: capsuleW }]} />}
 
       <View style={[styles.video, frame]} pointerEvents={mini ? "none" : "auto"}>
-        <InlineVideoPlayer url={url} nudge={nudge} />
+        <InlineVideoPlayer
+          url={url}
+          nudge={nudge}
+          controlRef={control}
+          onState={setIsPlaying}
+          onTime={(t) => {
+            time.current = t;
+          }}
+        />
       </View>
 
       {full && (

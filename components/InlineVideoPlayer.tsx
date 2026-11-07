@@ -7,6 +7,10 @@ import { getVideoEmbedInfo, youtubeCommand, youtubeEmbedAt } from '@/utils/video
 // counter, so tapping the same "04:32" twice seeks twice.
 export type VideoSeek = { t: number; n: number };
 
+// What a screen can ask of the playing video from outside (the buttons of
+// the system's small window, which cannot touch the page itself).
+export type VideoControl = { play(): void; pause(): void; seekTo(seconds: number): void };
+
 // Navigating a WebView straight to youtube.com/embed/<id> reliably fails
 // on-device with YouTube's own "Помилка 153" (player configuration error) -
 // the IFrame player checks the page's origin/referrer, and a bare top-level
@@ -25,8 +29,15 @@ const TIME_BRIDGE = `<script>
   f.addEventListener('load',function(){listen();setTimeout(listen,800);setTimeout(listen,2000);});
   window.addEventListener('message',function(e){
     try{var d=typeof e.data==='string'?JSON.parse(e.data):e.data;
-      if(d&&d.info&&typeof d.info.currentTime==='number'&&window.ReactNativeWebView){
-        window.ReactNativeWebView.postMessage(JSON.stringify({t:d.info.currentTime}));}}catch(err){}
+      if(!d||!window.ReactNativeWebView)return;
+      var o={};
+      if(d.info&&typeof d.info==='object'){
+        if(typeof d.info.currentTime==='number')o.t=d.info.currentTime;
+        if(typeof d.info.playerState==='number')o.s=d.info.playerState;
+      }
+      if(d.event==='onStateChange'&&typeof d.info==='number')o.s=d.info;
+      if('t' in o||'s' in o)window.ReactNativeWebView.postMessage(JSON.stringify(o));
+    }catch(err){}
   });
 })();
 </script>`;
@@ -50,6 +61,8 @@ export default function InlineVideoPlayer({
   seek,
   onTime,
   nudge,
+  controlRef,
+  onState,
 }: {
   url: string;
   start?: number;
@@ -61,6 +74,9 @@ export default function InlineVideoPlayer({
   // video's own layer can stop being drawn there (black picture, sound
   // still going).
   nudge?: number;
+  controlRef?: { current: VideoControl | null };
+  // true = playing, false = paused / ended / not started (YouTube only).
+  onState?: (playing: boolean) => void;
 }) {
   const info = getVideoEmbedInfo(url);
   const webRef = useRef<WebView>(null);
@@ -72,6 +88,20 @@ export default function InlineVideoPlayer({
     const post = (cmd: string) => `document.querySelector('iframe').contentWindow.postMessage(${JSON.stringify(cmd)}, '*');`;
     webRef.current?.injectJavaScript(`${post(youtubeCommand('seekTo', [seek.t, true]))}${post(youtubeCommand('playVideo'))}true;`);
   }, [seek]);
+  useEffect(() => {
+    if (!controlRef) return;
+    const post = (cmd: string) =>
+      webRef.current?.injectJavaScript(`document.querySelector('iframe').contentWindow.postMessage(${JSON.stringify(cmd)}, '*');true;`);
+    controlRef.current = {
+      play: () => post(youtubeCommand('playVideo')),
+      pause: () => post(youtubeCommand('pauseVideo')),
+      seekTo: (t) => post(youtubeCommand('seekTo', [Math.max(0, t), true])),
+    };
+    return () => {
+      controlRef.current = null;
+    };
+  }, [controlRef]);
+
   useEffect(() => {
     if (!nudge) return;
     const redraw = `(function(){var f=document.querySelector('iframe');if(!f)return;f.style.transform='translateZ(0)';f.style.willChange='transform';var w=f.style.width;f.style.width='99.9%';window.dispatchEvent(new Event('resize'));setTimeout(function(){f.style.width=w||'100%';window.dispatchEvent(new Event('resize'));},60);f.contentWindow.postMessage(${JSON.stringify(youtubeCommand('playVideo'))},'*');})();true;`;
@@ -108,10 +138,11 @@ export default function InlineVideoPlayer({
       // app - exactly what "play it in this app" is supposed to mean.
       onShouldStartLoadWithRequest={(request) => /^https?:\/\//i.test(request.url)}
       onMessage={(event) => {
-        if (!onTime) return;
         try {
-          const data = JSON.parse(event.nativeEvent.data) as { t?: number };
-          if (typeof data.t === 'number') onTime(data.t);
+          const data = JSON.parse(event.nativeEvent.data) as { t?: number; s?: number };
+          if (typeof data.t === 'number') onTime?.(data.t);
+          // YouTube's states: 1 playing, 3 buffering (counts as playing); 0 ended, 2 paused, -1/5 not started.
+          if (typeof data.s === 'number') onState?.(data.s === 1 || data.s === 3);
         } catch {
           // Not ours.
         }

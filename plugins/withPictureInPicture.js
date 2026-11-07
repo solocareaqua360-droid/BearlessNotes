@@ -35,6 +35,13 @@ function withPictureInPicture(config) {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
     PipState.changed(isInPictureInPictureMode)
   }
+
+  // Home / the swipe up while a video plays: into the small window (also
+  // where the system's own auto-enter does not do it).
+  override fun onUserLeaveHint() {
+    super.onUserLeaveHint()
+    PipState.enterIfArmed(this)
+  }
 `;
     const last = src.lastIndexOf('}');
     src = src.slice(0, last) + method + src.slice(last);

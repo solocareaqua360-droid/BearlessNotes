@@ -7,8 +7,11 @@ type CinemaNative = {
   pip?: boolean;
   isPipActive?(): boolean;
   setAutoPip?(enabled: boolean, w: number, h: number): boolean;
+  pipControls?: boolean;
+  configurePip?(armed: boolean, playing: boolean, w: number, h: number): boolean;
   enterPip?(w: number, h: number): boolean;
   addListener?(event: "onPipChanged", cb: (e: { active: boolean }) => void): { remove(): void };
+  addListener?(event: "onPipAction", cb: (e: { action: string }) => void): { remove(): void };
 };
 
 const native = requireOptionalNativeModule<CinemaNative>("CinemaNative");
@@ -20,6 +23,27 @@ export function enterPip(w: number, h: number): boolean {
     return !!native?.enterPip?.(w, h);
   } catch {
     return false;
+  }
+}
+
+// `armed` = a video is playing, so leaving the app makes the small window;
+// `playing` picks the play/pause button's icon. An APK without the window's
+// buttons still gets the older "leave = window" call.
+export function configurePip(armed: boolean, playing: boolean, w: number, h: number): boolean {
+  try {
+    if (native?.configurePip) return !!native.configurePip(armed, playing, w, h);
+    return !!native?.setAutoPip?.(armed, w, h);
+  } catch {
+    return false;
+  }
+}
+
+export function onPipAction(cb: (action: "back" | "toggle" | "fwd") => void): () => void {
+  try {
+    const sub = (native as any)?.addListener?.("onPipAction", (e: { action: string }) => cb(e.action as any));
+    return () => sub?.remove();
+  } catch {
+    return () => {};
   }
 }
 

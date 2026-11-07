@@ -60,7 +60,7 @@ export function youtubeEmbedAt(embedUrl: string, start?: number): string {
   return embedUrl.includes('?') ? `${embedUrl}&${extra}` : `${embedUrl}?${extra}`;
 }
 
-export function youtubeCommand(func: 'seekTo' | 'playVideo', args: unknown[] = []): string {
+export function youtubeCommand(func: 'seekTo' | 'playVideo' | 'pauseVideo', args: unknown[] = []): string {
   return JSON.stringify({ event: 'command', func, args });
 }
 
