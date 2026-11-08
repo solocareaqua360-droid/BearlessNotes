@@ -509,7 +509,7 @@ export default function HomeScreen() {
     describe: (kind, id) => {
       if (kind === "video") {
         const v = videoById.get(id);
-        return v ? { label: v.title, thumb: v.thumbnailUrl, origin: path === BIN ? null : path } : null;
+        return v ? { label: v.title || v.siteName || "Відео", thumb: v.thumbnailUrl, origin: path === BIN ? null : path } : null;
       }
       const t = byId.get(id);
       return t ? { label: t.name, origin: t.parentId } : null;
