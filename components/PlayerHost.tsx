@@ -47,11 +47,18 @@ export function PlayerHost() {
   const ratioW = wide ? 16 : 9;
   const ratioH = wide ? 9 : 16;
 
+  // When the system window last went away (timers do not run while the app is
+  // in the background, so this is compared at the moment the page reacts).
+  const pipRef = useRef(false);
+  const pipGoneAt = useRef(0);
+  pipRef.current = pip;
+
   // The system window opening / closing.
   useEffect(
     () =>
       onPipChanged((active) => {
         console.log("[cinema] pip", active);
+        if (!active) pipGoneAt.current = Date.now();
         setPip(active);
       }),
     [setPip]
@@ -68,24 +75,6 @@ export function PlayerHost() {
     }
     setNudge((n) => n + 1);
   }, [pip]);
-
-  // The system window was CLOSED (its cross, or swiped away by the system) - not
-  // opened back into the app: the app is still in the background a moment after
-  // the window is gone. Then the video stops too (and its notification with it).
-  const pipRef = useRef(false);
-  pipRef.current = pip;
-  const wasPip = useRef(false);
-  useEffect(() => {
-    const left = wasPip.current && !pip;
-    wasPip.current = pip;
-    if (!left) return;
-    console.log("[cinema] window gone, waiting");
-    const t = setTimeout(() => {
-      console.log("[cinema] window gone, app is", AppState.currentState);
-      if (AppState.currentState !== "active") close();
-    }, 700);
-    return () => clearTimeout(t);
-  }, [pip, close]);
 
   // Whether the video is playing right now, as the player reports it, and
   // where it is (for the window's ±10 s buttons).
@@ -148,7 +137,7 @@ export function PlayerHost() {
       // showing, that is the window being CLOSED (Android sends the app no
       // event for it, only hides the page): the video stops for good. Otherwise
       // (screen lock) it is put back on.
-      if (pipRef.current) close();
+      if (pipRef.current || Date.now() - pipGoneAt.current < 2000) close();
       else control.current?.play();
     }
   };
