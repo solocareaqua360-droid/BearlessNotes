@@ -142,7 +142,20 @@ export default function ChannelsScreen() {
         { key: "remove", label: "Прибрати канал", destructive: true },
       ],
     });
-    if (key === "topic") setTopicFor(c);
+    if (key === "topic") {
+      // Pick one of the topics that already exist, or make a new one.
+      const existing = Array.from(new Set(useChannelsStore.getState().channels.map((x) => x.topic).filter((t): t is string => !!t)));
+      if (existing.length === 0) return setTopicFor(c);
+      const picked = await ask({
+        title: "Тема каналу",
+        answers: [
+          ...existing.map((t, i) => ({ key: `t${i}`, label: t === c.topic ? `✓ ${t}` : t })),
+          { key: "new", label: "Нова тема…", primary: true },
+        ],
+      });
+      if (picked === "new") setTopicFor(c);
+      else if (picked) updateChannel(c.id, { topic: existing[Number(picked.slice(1))] });
+    }
     else if (key === "untopic") updateChannel(c.id, { topic: null });
     else if (key === "auto") updateChannel(c.id, { autoWant: !c.autoWant });
     else if (key === "remove") removeChannel(c.id);
