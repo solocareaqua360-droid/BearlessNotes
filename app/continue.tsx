@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import EdgeFade from "@/components/EdgeFade";
 import { Ionicons } from "@/components/icons/Ionicons";
 import { DeskDock } from "@/components/ui/DeskDock";
+import { goDesk } from "@/utils/desks";
 import { DOCK_CLEARANCE } from "@/components/ui/Dock";
 import { Pill } from "@/components/ui/Pill";
 import { TopBar, topBarSpace } from "@/components/ui/TopBar";
@@ -103,7 +104,7 @@ export default function ContinueScreen() {
 
       <DeskDock
         desk="continue"
-        onDesk={(k) => k === "home" && router.back()}
+        onDesk={(k) => goDesk("continue", k)}
         query={query}
         onChangeQuery={setQuery}
         onAdd={() => router.push("/add-video")}

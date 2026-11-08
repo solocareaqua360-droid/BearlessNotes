@@ -14,11 +14,12 @@ import { FONT, softCursor, useScheme, useSoft } from "@/theme/soft";
 // right "+" (filled with ink) and one more round bead. The lens opens the pill
 // into a search field. Only the desks that exist are drawn; Канали and Навчання
 // join the pill when their screens do.
-export type DeskKey = "home" | "continue";
+export type DeskKey = "home" | "continue" | "channels";
 
 const DESKS: { key: DeskKey; icon: string; label: string }[] = [
   { key: "home", icon: "home-outline", label: "Головна" },
   { key: "continue", icon: "play-outline", label: "Продовжити" },
+  { key: "channels", icon: "tv-outline", label: "Канали" },
 ];
 
 const PAD = 4;

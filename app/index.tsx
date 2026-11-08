@@ -13,6 +13,7 @@ import { ask, confirm } from "@/components/ui/Ask";
 import { VideoCanvasTile } from "@/components/ui/CanvasTile";
 import { Dock, DOCK_CLEARANCE, SelectionDock } from "@/components/ui/Dock";
 import { DeskDock } from "@/components/ui/DeskDock";
+import { goDesk } from "@/utils/desks";
 import { FlipLayer } from "@/components/ui/FlipLayer";
 import { FolderTile, FolderTiles } from "@/components/ui/FolderTiles";
 import { holdMenu } from "@/components/ui/HoldMenu";
@@ -564,7 +565,7 @@ export default function HomeScreen() {
         path === null ? (
           <DeskDock
             desk="home"
-            onDesk={(k) => k === "continue" && router.push("/continue")}
+            onDesk={(k) => goDesk("home", k)}
             query={query}
             onChangeQuery={setQuery}
             onAdd={() => router.push("/add-video")}
