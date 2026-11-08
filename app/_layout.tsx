@@ -105,6 +105,7 @@ function Shell() {
           <Stack.Screen name="watch" />
           <Stack.Screen name="continue" />
           <Stack.Screen name="channels" />
+          <Stack.Screen name="watch-channel" />
           <Stack.Screen name="player-test" />
           <Stack.Screen name="tag-editor" options={{ presentation: "transparentModal", contentStyle: { backgroundColor: "transparent" } }} />
           <Stack.Screen name="tag-reparent" options={{ presentation: "transparentModal", contentStyle: { backgroundColor: "transparent" } }} />

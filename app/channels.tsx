@@ -15,9 +15,9 @@ import { TopBar, topBarSpace } from "@/components/ui/TopBar";
 import { addChannelFrom, refreshAll, wantVideo } from "@/services/channels";
 import { errorMessage } from "@/services/errorMessage";
 import { useChannelsStore, type Channel, type FeedItem } from "@/store/useChannelsStore";
-import { usePlayerStore } from "@/store/usePlayerStore";
 import { FONT, RADIUS, SIDE, TYPE, useSoft } from "@/theme/soft";
 import { goDesk } from "@/utils/desks";
+import { timeAgo as ago } from "@/utils/timeAgo";
 
 // «КАНАЛИ»: the channels the user follows, what is NEW in them, grouped by
 // channel. Each new video can be taken («♡ Хочу» - it goes into the library as
@@ -25,16 +25,6 @@ import { goDesk } from "@/utils/desks";
 // capsules at the top are the topics the channels are filed under.
 const ALL = "__all__";
 const MAX_PER_CHANNEL = 12;
-
-function ago(ms: number): string {
-  const d = Math.floor((Date.now() - ms) / 86400000);
-  if (d <= 0) return "сьогодні";
-  if (d === 1) return "вчора";
-  if (d < 7) return `${d} дн. тому`;
-  if (d < 30) return `${Math.floor(d / 7)} тиж. тому`;
-  if (d < 365) return `${Math.floor(d / 30)} міс. тому`;
-  return `${Math.floor(d / 365)} р. тому`;
-}
 
 export default function ChannelsScreen() {
   const S = useSoft();
@@ -118,8 +108,8 @@ export default function ChannelsScreen() {
     else if (key === "remove") removeChannel(c.id);
   };
 
-  const watchNow = (item: FeedItem) =>
-    usePlayerStore.getState().open(`https://www.youtube.com/watch?v=${item.id}`, item.title, { mode: "full" });
+  // A tap opens the watch screen: the video on top, this channel's other videos under it.
+  const watchNow = (item: FeedItem) => router.push({ pathname: "/watch-channel", params: { yt: item.id, ch: item.channelId } });
 
   return (
     <View style={[styles.root, { backgroundColor: S.bg }]}>

@@ -12,6 +12,9 @@ interface OpenOptions {
   videoId?: string | null;
   /** The folder it was opened from ("" / null = the root). */
   folderId?: string | null;
+  /** A video found in a CHANNEL (not in the library): its YouTube id and the channel's id. */
+  ytId?: string | null;
+  channelId?: string | null;
   mode?: PlayerMode;
   /** Seconds to begin from (resuming). */
   start?: number;
@@ -22,6 +25,8 @@ interface PlayerState {
   title: string;
   videoId: string | null;
   folderId: string | null;
+  ytId: string | null;
+  channelId: string | null;
   mode: PlayerMode;
   start: number;
   pip: boolean;
@@ -39,6 +44,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   title: "",
   videoId: null,
   folderId: null,
+  ytId: null,
+  channelId: null,
   mode: "full",
   start: 0,
   pip: false,
@@ -48,12 +55,14 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       title,
       videoId: opts?.videoId ?? null,
       folderId: opts?.folderId ?? null,
+      ytId: opts?.ytId ?? null,
+      channelId: opts?.channelId ?? null,
       mode: opts?.mode ?? "full",
       start: opts?.start ?? 0,
     }),
   setMode: (mode) => set({ mode }),
   minimize: () => set({ mode: "mini" }),
-  expand: () => set((s) => ({ mode: s.videoId ? "watch" : "full" })),
-  close: () => set({ url: null, title: "", videoId: null, folderId: null, mode: "full", start: 0 }),
+  expand: () => set((s) => ({ mode: s.videoId || s.ytId ? "watch" : "full" })),
+  close: () => set({ url: null, title: "", videoId: null, folderId: null, ytId: null, channelId: null, mode: "full", start: 0 }),
   setPip: (pip) => set({ pip }),
 }));

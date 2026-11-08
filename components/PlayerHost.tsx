@@ -40,7 +40,7 @@ function miniBox(width: number, height: number, insetBottom: number, wide: boole
 // never restarts when the player is minimised to the capsule, expanded,
 // or shrunk into the system's picture-in-picture window.
 export function PlayerHost() {
-  const { url, title, videoId, folderId, mode, start, pip, minimize, expand, close, setPip, setMode } = usePlayerStore();
+  const { url, title, videoId, folderId, ytId, channelId, mode, start, pip, minimize, expand, close, setPip, setMode } = usePlayerStore();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const info = url ? getVideoEmbedInfo(url) : null;
@@ -214,10 +214,16 @@ export function PlayerHost() {
 
   // From the big player: back to the watch screen when it is a library video
   // (the screen it came from), else down to the strip.
+  // The watch screen this video belongs to: a library video's, or a channel video's.
+  const watchTarget = () =>
+    videoId
+      ? { pathname: "/watch", params: { id: videoId, folder: folderId ?? "" } }
+      : { pathname: "/watch-channel", params: { yt: ytId ?? "", ch: channelId ?? "" } };
+  const hasWatchScreen = !!videoId || !!ytId;
   const showWatch = () => {
-    if (!videoId) return minimize();
+    if (!hasWatchScreen) return minimize();
     setMode("watch");
-    router.navigate({ pathname: "/watch", params: { id: videoId, folder: folderId ?? "" } });
+    router.navigate(watchTarget() as any);
   };
   // Back from the big player does the same, instead of leaving the screen under it.
   useEffect(() => {
@@ -241,7 +247,7 @@ export function PlayerHost() {
   // The small window's tap: back to the watch screen for a library video, else the big player.
   const openFromMini = () => {
     expand();
-    if (videoId) router.navigate({ pathname: "/watch", params: { id: videoId, folder: folderId ?? "" } });
+    if (hasWatchScreen) router.navigate(watchTarget() as any);
   };
   // Folding the video away from the watch screen: it goes to the small window, the screen goes back.
   const foldToMini = () => {
