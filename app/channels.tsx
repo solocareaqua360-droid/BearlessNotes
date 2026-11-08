@@ -81,7 +81,7 @@ export default function ChannelsScreen() {
       if (list) list.push(f);
       else byChannel.set(f.channelId, [f]);
     }
-    const out: { channel: Channel; items: FeedItem[] }[] = [];
+    const out: { channel: Channel; items: FeedItem[]; total: number }[] = [];
     for (const c of channels) {
       if (topic !== ALL && c.topic !== topic) continue;
       const found = byChannel.get(c.id);
@@ -92,7 +92,7 @@ export default function ChannelsScreen() {
       const same = prev && prev.length === shown.length && prev.every((x, i) => x === shown[i]);
       const items = same ? prev : shown;
       keptItems.current.set(c.id, items);
-      out.push({ channel: c, items });
+      out.push({ channel: c, items, total: found.length });
     }
     return out;
   }, [channels, feed, topic, query]);
@@ -160,6 +160,7 @@ export default function ChannelsScreen() {
           <ChannelShelf
             channel={g.channel}
             items={g.items}
+            total={g.total}
             tileWidth={tileWidth}
             onMenu={channelMenu}
             onOpen={watchNow}
@@ -249,6 +250,7 @@ export default function ChannelsScreen() {
 const ChannelShelf = memo(function ChannelShelf({
   channel,
   items,
+  total,
   tileWidth,
   onMenu,
   onOpen,
@@ -256,6 +258,7 @@ const ChannelShelf = memo(function ChannelShelf({
 }: {
   channel: Channel;
   items: FeedItem[];
+  total: number;
   tileWidth: number;
   onMenu: (c: Channel) => void;
   onOpen: (item: FeedItem) => void;
@@ -281,7 +284,7 @@ const ChannelShelf = memo(function ChannelShelf({
         <Text style={[TYPE.cardTitle, { color: S.ink, flex: 1 }]} numberOfLines={1}>
           {channel.name}
         </Text>
-        <Text style={[TYPE.meta, { color: S.ink3 }]}>{items.length}</Text>
+        <Text style={[TYPE.meta, { color: S.ink3 }]}>{total}</Text>
         {channel.autoWant ? <Ionicons name="heart" size={14} color={S.accent} /> : null}
         <Ionicons name="ellipsis-horizontal" size={18} color={S.ink3} />
       </Pressable>
