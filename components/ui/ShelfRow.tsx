@@ -1,5 +1,5 @@
-import { memo, type ReactNode, useCallback } from "react";
-import { StyleSheet, View, type ViewProps } from "react-native";
+import { memo, type ReactNode, useState } from "react";
+import { StyleSheet } from "react-native";
 import Animated, {
   Extrapolation,
   interpolate,
@@ -16,20 +16,17 @@ import Animated, {
 // finger-width of scrolling spreads it into a plain row with gaps, and bringing
 // it back to the start gathers it again.
 //
-// The row is a FlatList: only the first few tiles are built when the shelf
-// appears, the rest in small batches as it is scrolled - so a screen with many
-// shelves opens and scrolls without building hundreds of tiles at once.
+// Only the first few tiles are built when the shelf appears (a gathered deck
+// shows three), the rest once a finger touches the shelf - so a screen with
+// many shelves opens and scrolls without building hundreds of tiles at once.
+// (A plain scroller, not a FlatList: the deck needs each tile to carry its own
+// zIndex among its siblings, which a list's cells would swallow.)
 const GAP = 12;
 const TUCK = 0.24; // how much of a tile the next one hides at rest
 const SPREAD_AT = 56; // how far along the shelf's own scroll the deck is fully spread
 const SHRINK = 0.03; // how small the tiles behind get, per place back
 const SMALLEST = 0.88;
 const FIRST_BATCH = 5; // a gathered deck shows three tiles; five is a safe margin
-
-// The first tile on top, the rest each a step further under (a cell's zIndex, since the tile's own cannot cross cells).
-function Cell({ index, style, ...rest }: ViewProps & { index: number }) {
-  return <View {...rest} style={[style, { zIndex: 1000 - index }]} />;
-}
 
 function ShelfRowImpl<T>({
   items,
@@ -48,25 +45,13 @@ function ShelfRowImpl<T>({
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollX.value = e.contentOffset.x;
   });
+  const [all, setAll] = useState(items.length <= FIRST_BATCH);
+  const shown = all ? items : items.slice(0, FIRST_BATCH);
   const count = items.length;
-  const renderItem = useCallback(
-    ({ item, index }: { item: T; index: number }) => (
-      <Tile index={index} count={count} width={tileWidth} scrollX={scrollX}>
-        {renderTile(item)}
-      </Tile>
-    ),
-    [count, tileWidth, scrollX, renderTile]
-  );
   return (
-    <Animated.FlatList
+    <Animated.ScrollView
       horizontal
-      data={items}
-      keyExtractor={keyOf}
-      renderItem={renderItem}
-      CellRendererComponent={Cell as any}
-      initialNumToRender={FIRST_BATCH}
-      maxToRenderPerBatch={3}
-      windowSize={3}
+      onScrollBeginDrag={() => setAll(true)}
       onScroll={onScroll}
       scrollEventThrottle={16}
       showsHorizontalScrollIndicator={false}
@@ -75,7 +60,13 @@ function ShelfRowImpl<T>({
       // A sideways scroller inside the page's own scroller is squeezed to nothing without these.
       style={styles.row}
       contentContainerStyle={{ paddingHorizontal: padding }}
-    />
+    >
+      {shown.map((item, i) => (
+        <Tile key={keyOf(item)} index={i} count={count} width={tileWidth} scrollX={scrollX}>
+          {renderTile(item)}
+        </Tile>
+      ))}
+    </Animated.ScrollView>
   );
 }
 
@@ -101,7 +92,8 @@ function Tile({
     const scale = Math.max(SMALLEST, 1 - SHRINK * index * gathered);
     return { transform: [{ translateX: tuck }, { scale }] };
   });
-  return <Animated.View style={[{ width, marginRight: index === count - 1 ? 0 : GAP }, style]}>{children}</Animated.View>;
+  // The first tile on top, the rest each a step further under.
+  return <Animated.View style={[{ width, marginRight: index === count - 1 ? 0 : GAP, zIndex: count - index }, style]}>{children}</Animated.View>;
 }
 
 const styles = StyleSheet.create({
