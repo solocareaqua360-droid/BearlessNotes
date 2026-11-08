@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import EdgeFade from "@/components/EdgeFade";
@@ -9,6 +9,7 @@ import { ask, notify } from "@/components/ui/Ask";
 import { DeskDock } from "@/components/ui/DeskDock";
 import { DOCK_CLEARANCE } from "@/components/ui/Dock";
 import NamePrompt from "@/components/ui/NamePrompt";
+import { ShelfRow } from "@/components/ui/ShelfRow";
 import { Pill } from "@/components/ui/Pill";
 import { TopBar, topBarSpace } from "@/components/ui/TopBar";
 import { addChannelFrom, refreshAll, wantVideo } from "@/services/channels";
@@ -23,7 +24,7 @@ import { goDesk } from "@/utils/desks";
 // «Планую») or waved away («✕ Не цікаво» - it is never offered again). The
 // capsules at the top are the topics the channels are filed under.
 const ALL = "__all__";
-const MAX_PER_CHANNEL = 8;
+const MAX_PER_CHANNEL = 12;
 
 function ago(ms: number): string {
   const d = Math.floor((Date.now() - ms) / 86400000);
@@ -38,6 +39,9 @@ function ago(ms: number): string {
 export default function ChannelsScreen() {
   const S = useSoft();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  // A tile shows about two thirds of the screen: the next one peeks in from behind.
+  const tileWidth = Math.min(300, Math.round(width * 0.66));
   const channels = useChannelsStore((s) => s.channels);
   const feed = useChannelsStore((s) => s.feed);
   const checkedAt = useChannelsStore((s) => s.checkedAt);
@@ -167,18 +171,24 @@ export default function ChannelsScreen() {
                 <Text style={[TYPE.cardTitle, { color: S.ink, flex: 1 }]} numberOfLines={1}>
                   {channel.name}
                 </Text>
+                <Text style={[TYPE.meta, { color: S.ink3 }]}>{items.length}</Text>
                 {channel.autoWant ? <Ionicons name="heart" size={14} color={S.accent} /> : null}
                 <Ionicons name="ellipsis-horizontal" size={18} color={S.ink3} />
               </Pressable>
-              {items.slice(0, MAX_PER_CHANNEL).map((item) => (
-                <Row
-                  key={item.id}
-                  item={item}
-                  onOpen={() => watchNow(item)}
-                  onWant={() => wantVideo(item, channel.name)}
-                  onNo={() => setItemState(item.id, "dismissed")}
-                />
-              ))}
+              <ShelfRow
+                items={items.slice(0, MAX_PER_CHANNEL)}
+                tileWidth={tileWidth}
+                padding={SIDE}
+                keyOf={(item) => item.id}
+                renderTile={(item) => (
+                  <Tile
+                    item={item}
+                    onOpen={() => watchNow(item)}
+                    onWant={() => wantVideo(item, channel.name)}
+                    onNo={() => setItemState(item.id, "dismissed")}
+                  />
+                )}
+              />
             </View>
           ))
         )}
@@ -218,20 +228,19 @@ export default function ChannelsScreen() {
   );
 }
 
-function Row({ item, onOpen, onWant, onNo }: { item: FeedItem; onOpen: () => void; onWant: () => void; onNo: () => void }) {
+// One video on a shelf: the picture, the title, how long ago, and the two answers.
+function Tile({ item, onOpen, onWant, onNo }: { item: FeedItem; onOpen: () => void; onWant: () => void; onNo: () => void }) {
   const S = useSoft();
   return (
-    <View style={[styles.row, { backgroundColor: S.card, boxShadow: S.shadow }]}>
-      <Pressable onPress={onOpen} style={styles.rowTop}>
+    <View style={[styles.tile, { backgroundColor: S.card, boxShadow: S.shadow }]}>
+      <Pressable onPress={onOpen} style={{ gap: 8 }}>
         <View style={[styles.thumb, { backgroundColor: S.fillSolid }]}>
           <Image source={{ uri: item.thumbnailUrl }} style={StyleSheet.absoluteFill} />
         </View>
-        <View style={styles.body}>
-          <Text style={[styles.title, { color: S.ink }]} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={[TYPE.small, { color: S.ink3 }]}>{ago(item.publishedAt)}</Text>
-        </View>
+        <Text style={[styles.title, { color: S.ink }]} numberOfLines={2}>
+          {item.title}
+        </Text>
+        <Text style={[TYPE.small, { color: S.ink3 }]}>{ago(item.publishedAt)}</Text>
       </Pressable>
       <View style={styles.acts}>
         <Pressable onPress={onWant} style={[styles.act, { backgroundColor: S.ink }]} accessibilityLabel="Хочу">
@@ -255,11 +264,9 @@ const styles = StyleSheet.create({
   chHead: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: SIDE, marginTop: 6 },
   avatar: { width: 28, height: 28, borderRadius: 14 },
   avatarFallback: { alignItems: "center", justifyContent: "center" },
-  row: { marginHorizontal: SIDE, padding: 10, borderRadius: RADIUS.row, gap: 10 },
-  rowTop: { flexDirection: "row", gap: 12 },
-  thumb: { width: 112, aspectRatio: 16 / 9, borderRadius: 12, overflow: "hidden", flexShrink: 0 },
-  body: { flex: 1, minWidth: 0, gap: 4 },
+  tile: { padding: 10, borderRadius: RADIUS.row, gap: 10 },
+  thumb: { width: "100%", aspectRatio: 16 / 9, borderRadius: 12, overflow: "hidden" },
   title: { fontFamily: FONT.semibold, fontWeight: "normal", fontSize: 14, lineHeight: 18, letterSpacing: -0.15 },
   acts: { flexDirection: "row", gap: 8 },
-  act: { height: 34, borderRadius: 17, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 6 },
+  act: { height: 34, borderRadius: 17, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 5 },
 });
