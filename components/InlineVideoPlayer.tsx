@@ -35,9 +35,10 @@ const TIME_BRIDGE = `<script>
       if(d.info&&typeof d.info==='object'){
         if(typeof d.info.currentTime==='number')o.t=d.info.currentTime;
         if(typeof d.info.playerState==='number')o.s=d.info.playerState;
+        if(typeof d.info.duration==='number'&&d.info.duration>0)o.d=d.info.duration;
       }
       if(d.event==='onStateChange'&&typeof d.info==='number')o.s=d.info;
-      if('t' in o||'s' in o)window.ReactNativeWebView.postMessage(JSON.stringify(o));
+      if('t' in o||'s' in o||'d' in o)window.ReactNativeWebView.postMessage(JSON.stringify(o));
     }catch(err){}
   });
 })();
@@ -64,6 +65,7 @@ export default function InlineVideoPlayer({
   nudge,
   controlRef,
   onState,
+  onDuration,
 }: {
   url: string;
   start?: number;
@@ -78,6 +80,8 @@ export default function InlineVideoPlayer({
   controlRef?: { current: VideoControl | null };
   // true = playing, false = paused / ended / not started (YouTube only).
   onState?: (playing: boolean) => void;
+  // The video's length in seconds, once the page knows it (YouTube only).
+  onDuration?: (seconds: number) => void;
 }) {
   const info = getVideoEmbedInfo(url);
   const webRef = useRef<WebView>(null);
@@ -144,8 +148,9 @@ export default function InlineVideoPlayer({
       onShouldStartLoadWithRequest={(request) => /^https?:\/\//i.test(request.url)}
       onMessage={(event) => {
         try {
-          const data = JSON.parse(event.nativeEvent.data) as { t?: number; s?: number };
+          const data = JSON.parse(event.nativeEvent.data) as { t?: number; s?: number; d?: number };
           if (typeof data.t === 'number') onTime?.(data.t);
+          if (typeof data.d === 'number') onDuration?.(data.d);
           // YouTube's states: 1 playing, 3 buffering (counts as playing); 0 ended, 2 paused, -1/5 not started.
           if (typeof data.s === 'number') onState?.(data.s === 1 || data.s === 3);
         } catch {

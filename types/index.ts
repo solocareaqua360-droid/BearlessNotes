@@ -33,6 +33,10 @@ export interface Video {
   updatedAt?: number;
   /** Set when the video sits in the bin («Кошик»); bin items live only on this device. */
   deletedAt?: number;
+  /** How far into the video the user got, in seconds (local, not synced). */
+  progressSec?: number;
+  /** When it was last watched, ms: orders «Продовжити» (local, not synced). */
+  lastWatchedAt?: number;
 }
 
 export type SortField = "title" | "createdAt" | "updatedAt";

@@ -35,12 +35,15 @@ export function Dock({
   onChangeQuery,
   onAdd,
   bead,
+  leading,
 }: {
   query: string;
   onChangeQuery: (q: string) => void;
   onAdd: () => void;
   /** The round bead at the right: settings at the root, "back" once inside something. */
   bead: { icon: string; label: string; onPress: () => void };
+  /** An extra round bead at the LEFT of the search (the desks: «Продовжити»...). */
+  leading?: { icon: string; label: string; onPress: () => void };
 }) {
   const S = useSoft();
   const scheme = useScheme();
@@ -48,6 +51,7 @@ export function Dock({
   return (
     <KeyboardStickyView style={styles.sticky} offset={{ closed: -(insets.bottom + DOCK_BOTTOM), opened: -8 }}>
       <View style={styles.row} pointerEvents="box-none">
+        {leading ? <Bead icon={leading.icon} label={leading.label} onPress={leading.onPress} /> : null}
         <View style={[styles.search, { backgroundColor: S.chrome, boxShadow: S.shadow }]}>
           <Ionicons name="search" size={20} color={S.ink3} />
           <TextInput

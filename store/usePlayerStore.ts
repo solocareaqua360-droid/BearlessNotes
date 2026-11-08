@@ -13,6 +13,8 @@ interface OpenOptions {
   /** The folder it was opened from ("" / null = the root). */
   folderId?: string | null;
   mode?: PlayerMode;
+  /** Seconds to begin from (resuming). */
+  start?: number;
 }
 
 interface PlayerState {
@@ -21,6 +23,7 @@ interface PlayerState {
   videoId: string | null;
   folderId: string | null;
   mode: PlayerMode;
+  start: number;
   pip: boolean;
   open: (url: string, title: string, opts?: OpenOptions) => void;
   setMode: (mode: PlayerMode) => void;
@@ -37,6 +40,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   videoId: null,
   folderId: null,
   mode: "full",
+  start: 0,
   pip: false,
   open: (url, title, opts) =>
     set({
@@ -45,10 +49,11 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       videoId: opts?.videoId ?? null,
       folderId: opts?.folderId ?? null,
       mode: opts?.mode ?? "full",
+      start: opts?.start ?? 0,
     }),
   setMode: (mode) => set({ mode }),
   minimize: () => set({ mode: "mini" }),
   expand: () => set((s) => ({ mode: s.videoId ? "watch" : "full" })),
-  close: () => set({ url: null, title: "", videoId: null, folderId: null, mode: "full" }),
+  close: () => set({ url: null, title: "", videoId: null, folderId: null, mode: "full", start: 0 }),
   setPip: (pip) => set({ pip }),
 }));

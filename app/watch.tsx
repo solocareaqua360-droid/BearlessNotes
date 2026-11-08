@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/icons/Ionicons";
 import { VideoCard } from "@/components/VideoCard";
 import { DOCK_CLEARANCE, Dock } from "@/components/ui/Dock";
-import { formatStamp, sortVideos, useLibraryStore } from "@/store/useLibraryStore";
+import { formatStamp, resumePoint, sortVideos, useLibraryStore } from "@/store/useLibraryStore";
 import { usePlayerStore } from "@/store/usePlayerStore";
 import { FONT, RADIUS, SIDE, softCursor, TYPE, useScheme, useSoft } from "@/theme/soft";
 import { shareVideoLink } from "@/utils/shareLink";
@@ -52,7 +52,7 @@ export default function WatchScreen() {
     if (!video) return;
     const p = usePlayerStore.getState();
     if (p.videoId === video.id && p.url) p.setMode("watch");
-    else p.open(video.url, video.title, { videoId: video.id, folderId: folder || null, mode: "watch" });
+    else p.open(video.url, video.title, { videoId: video.id, folderId: folder || null, mode: "watch", start: resumePoint(video) });
     opened.current = true;
     setComment(video.comment);
     setCommentOpen(false);

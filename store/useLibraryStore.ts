@@ -77,6 +77,8 @@ interface LibraryState {
 
   addVideo: (video: Video) => void;
   updateVideo: (id: string, patch: Partial<Video>) => void;
+  /** Where the user got to in a video. Does NOT touch `updatedAt` (cards must not reorder while watching). */
+  setProgress: (id: string, progressSec: number, durationSec?: number) => void;
   removeVideo: (id: string) => void;
   removeVideos: (ids: string[]) => void;
   /** Moves videos to the bin (recoverable); they leave the synced list. */
@@ -133,6 +135,19 @@ export const useLibraryStore = create<LibraryState>()(
         account: null,
       },
 
+      setProgress: (id, progressSec, durationSec) =>
+        set((state) => ({
+          videos: state.videos.map((v) =>
+            v.id === id
+              ? {
+                  ...v,
+                  progressSec,
+                  lastWatchedAt: Date.now(),
+                  ...(durationSec && durationSec > 0 && durationSec !== v.durationSec ? { durationSec } : {}),
+                }
+              : v
+          ),
+        })),
       addVideo: (video) => set((state) => ({ videos: [video, ...state.videos] })),
 
       updateVideo: (id, patch) =>
@@ -323,6 +338,17 @@ export function sortVideos(videos: Video[], field: SortField, dir: SortDir): Vid
 }
 
 /** "5 жовт., 14:30" - the date line on a card. */
+/**
+ * Where a video resumes from: its saved progress, if it is really in the middle
+ * (not just opened, not finished); else 0. A video with a resume point is
+ * "unfinished" - what «Продовжити» lists.
+ */
+export function resumePoint(v: Video): number {
+  const p = v.progressSec ?? 0;
+  const d = v.durationSec ?? 0;
+  return p >= 10 && (d <= 0 || p < d - 20) ? Math.floor(p) : 0;
+}
+
 export function formatStamp(ms: number): string {
   return new Date(ms).toLocaleString("uk-UA", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }

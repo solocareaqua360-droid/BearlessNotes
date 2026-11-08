@@ -12,6 +12,7 @@ import { VideoSheet } from "@/components/VideoSheet";
 import { ask, confirm } from "@/components/ui/Ask";
 import { VideoCanvasTile } from "@/components/ui/CanvasTile";
 import { Dock, DOCK_CLEARANCE, SelectionDock } from "@/components/ui/Dock";
+import { DeskDock } from "@/components/ui/DeskDock";
 import { FlipLayer } from "@/components/ui/FlipLayer";
 import { FolderTile, FolderTiles } from "@/components/ui/FolderTiles";
 import { holdMenu } from "@/components/ui/HoldMenu";
@@ -559,7 +560,19 @@ export default function HomeScreen() {
           }
         />
       ) : (
-        <Dock query={query} onChangeQuery={setQuery} onAdd={() => router.push("/add-video")} bead={bead} />
+        // On the start desk (the root, not inside a folder or the bin) the dock shows the DESKS; inside, the plain one.
+        path === null ? (
+          <DeskDock
+            desk="home"
+            onDesk={(k) => k === "continue" && router.push("/continue")}
+            query={query}
+            onChangeQuery={setQuery}
+            onAdd={() => router.push("/add-video")}
+            bead={bead}
+          />
+        ) : (
+          <Dock query={query} onChangeQuery={setQuery} onAdd={() => router.push("/add-video")} bead={bead} />
+        )
       )}
 
       <Menu

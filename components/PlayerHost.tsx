@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/icons/Ionicons";
 import InlineVideoPlayer, { type VideoControl } from "@/components/InlineVideoPlayer";
 import { DOCK_BEAD, DOCK_BOTTOM } from "@/components/ui/Dock";
+import { useLibraryStore } from "@/store/useLibraryStore";
 import { usePlayerStore } from "@/store/usePlayerStore";
 import {
   configurePip,
@@ -39,7 +40,7 @@ function miniBox(width: number, height: number, insetBottom: number, wide: boole
 // never restarts when the player is minimised to the capsule, expanded,
 // or shrunk into the system's picture-in-picture window.
 export function PlayerHost() {
-  const { url, title, videoId, folderId, mode, pip, minimize, expand, close, setPip, setMode } = usePlayerStore();
+  const { url, title, videoId, folderId, mode, start, pip, minimize, expand, close, setPip, setMode } = usePlayerStore();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const info = url ? getVideoEmbedInfo(url) : null;
@@ -83,6 +84,32 @@ export function PlayerHost() {
   // the page on its own (screen lock), which is undone below.
   const wantPlay = useRef(false);
   const time = useRef(0);
+  const duration = useRef(0);
+  const lastSave = useRef(0);
+
+  // WHERE THE USER GOT TO, kept for «Продовжити»: every few seconds while it
+  // plays, when it pauses, and when this video is replaced or closed.
+  const saveProgress = (id: string | null, force = false) => {
+    if (!id) return;
+    const t = time.current;
+    if (t < 3) return;
+    const now = Date.now();
+    if (!force && now - lastSave.current < 5000) return;
+    lastSave.current = now;
+    const d = duration.current;
+    // The last 20 seconds count as finished.
+    useLibraryStore.getState().setProgress(id, d > 0 && t >= d - 20 ? d : t, d);
+  };
+  useEffect(() => {
+    const id = videoId;
+    return () => {
+      saveProgress(id, true);
+      time.current = 0;
+      duration.current = 0;
+      lastSave.current = 0;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoId]);
   const control = useRef<VideoControl | null>(null);
   useEffect(() => {
     if (!url) setIsPlaying(false);
@@ -130,6 +157,7 @@ export function PlayerHost() {
   const onPlayerState = (playing: boolean) => {
     console.log("[cinema] state", playing ? "playing" : "paused", "app:", AppState.currentState, "want:", wantPlay.current, "pip:", pipRef.current);
     setIsPlaying(playing);
+    if (!playing) saveProgress(videoId, true);
     if (playing) wantPlay.current = true;
     else if (AppState.currentState === "active") wantPlay.current = false;
     else if (wantPlay.current) {
@@ -282,12 +310,18 @@ export function PlayerHost() {
       <GestureDetector gesture={foldPan}>
         <Animated.View style={[styles.video, frame, mini && dragStyle]} pointerEvents={mini ? "none" : "auto"}>
           <InlineVideoPlayer
+            key={url}
             url={url}
+            start={start}
             nudge={nudge}
             controlRef={control}
             onState={onPlayerState}
             onTime={(t) => {
               time.current = t;
+              saveProgress(videoId);
+            }}
+            onDuration={(d) => {
+              duration.current = d;
             }}
           />
         </Animated.View>
