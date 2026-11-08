@@ -65,6 +65,8 @@ export function PlayerHost() {
   // The system window was CLOSED (its cross, or swiped away by the system) - not
   // opened back into the app: the app is still in the background a moment after
   // the window is gone. Then the video stops too (and its notification with it).
+  const pipRef = useRef(false);
+  pipRef.current = pip;
   const wasPip = useRef(false);
   useEffect(() => {
     const left = wasPip.current && !pip;
@@ -132,7 +134,14 @@ export function PlayerHost() {
     setIsPlaying(playing);
     if (playing) wantPlay.current = true;
     else if (AppState.currentState === "active") wantPlay.current = false;
-    else if (wantPlay.current) control.current?.play();
+    else if (wantPlay.current) {
+      // Paused by itself while the app is out of sight. With the system window
+      // showing, that is the window being CLOSED (Android sends the app no
+      // event for it, only hides the page): the video stops for good. Otherwise
+      // (screen lock) it is put back on.
+      if (pipRef.current) close();
+      else control.current?.play();
+    }
   };
   useEffect(() => {
     const sub = AppState.addEventListener("change", (st) => console.log("[cinema] app", st));
