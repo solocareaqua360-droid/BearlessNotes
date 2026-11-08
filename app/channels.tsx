@@ -26,6 +26,7 @@ import { timeAgo as ago } from "@/utils/timeAgo";
 // «Планую») or waved away («✕ Не цікаво» - it is never offered again). The
 // capsules at the top are the topics the channels are filed under.
 const ALL = "__all__";
+const NONE = "__none__"; // the capsule «Без теми»
 const MAX_PER_CHANNEL = 12;
 
 export default function ChannelsScreen() {
@@ -65,9 +66,11 @@ export default function ChannelsScreen() {
   }, []);
 
   const topics = useMemo(() => Array.from(new Set(channels.map((c) => c.topic).filter((t): t is string => !!t))), [channels]);
+  // «Без теми» exists only while at least one channel has no topic.
+  const hasUntopiced = useMemo(() => channels.some((c) => !c.topic), [channels]);
   useEffect(() => {
-    if (topic !== ALL && !topics.includes(topic)) setTopic(ALL);
-  }, [topic, topics]);
+    if (topic === NONE ? !hasUntopiced : topic !== ALL && !topics.includes(topic)) setTopic(ALL);
+  }, [topic, topics, hasUntopiced]);
 
   // One entry per channel with something new. A channel whose videos did not change keeps the SAME
   // array, so its shelf is not redrawn when another channel is refreshed.
@@ -83,7 +86,7 @@ export default function ChannelsScreen() {
     }
     const out: { channel: Channel; items: FeedItem[]; total: number }[] = [];
     for (const c of channels) {
-      if (topic !== ALL && c.topic !== topic) continue;
+      if (topic === NONE ? !!c.topic : topic !== ALL && c.topic !== topic) continue;
       const found = byChannel.get(c.id);
       if (!found) continue;
       found.sort((a, b) => b.publishedAt - a.publishedAt);
@@ -193,10 +196,11 @@ export default function ChannelsScreen() {
           <View style={{ gap: 10, marginBottom: 10 }}>
             {topics.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.caps}>
-                <Pill label="Усі" selected={topic === ALL} onPress={() => setTopic(ALL)} />
+                {hasUntopiced && <Pill label="Без теми" selected={topic === NONE} onPress={() => setTopic(NONE)} />}
                 {topics.map((t) => (
                   <Pill key={t} label={t} selected={topic === t} onPress={() => setTopic(t)} />
                 ))}
+                <Pill label="Усі" selected={topic === ALL} onPress={() => setTopic(ALL)} />
               </ScrollView>
             )}
             {busy && (
