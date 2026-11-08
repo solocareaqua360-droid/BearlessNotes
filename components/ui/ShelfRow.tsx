@@ -26,7 +26,7 @@ const TUCK = 0.24; // how much of a tile the next one hides at rest
 const SPREAD_AT = 56; // how far along the shelf's own scroll the deck is fully spread
 const SHRINK = 0.03; // how small the tiles behind get, per place back
 const SMALLEST = 0.88;
-const FIRST_BATCH = 5; // a gathered deck shows three tiles; five is a safe margin
+const FIRST_BATCH = 3; // a gathered deck shows three tiles (the fourth starts off the screen): only those are built at first
 
 function ShelfRowImpl<T>({
   items,
