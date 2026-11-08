@@ -1,13 +1,15 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { router } from "expo-router";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useEffect, useRef, useState } from "react";
-import { AppState, BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { AppState, BackHandler, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Ionicons } from "@/components/icons/Ionicons";
 import InlineVideoPlayer, { type VideoControl } from "@/components/InlineVideoPlayer";
-import { TOP_NAV_H, topBarTop } from "@/components/ui/TopBar";
+import { DOCK_BEAD, DOCK_BOTTOM } from "@/components/ui/Dock";
 import { usePlayerStore } from "@/store/usePlayerStore";
 import {
   configurePip,
@@ -23,12 +25,14 @@ import {
 import { getVideoEmbedInfo } from "@/utils/videoEmbed";
 import { watchBox } from "@/utils/watchLayout";
 
-const MINI_VIDEO_W = 72;
-const MINI_VIDEO_H = 40;
-// For now the capsule sits just UNDER the screen's own top bar, so the bar's
-// back button stays reachable while the video plays; where it finally lives
-// (the top strip, like the thought player) is decided with the screens.
-const capsuleTop = (insetTop: number) => topBarTop(insetTop) + TOP_NAV_H + 8;
+// The SMALL WINDOW (YouTube's mini player): where the video sits when it is
+// folded away inside the app - bottom right, just above the dock.
+function miniBox(width: number, height: number, insetBottom: number, wide: boolean) {
+  const w = wide ? Math.min(240, width * 0.58) : 96;
+  const h = wide ? (w * 9) / 16 : (w * 16) / 9;
+  const bottom = insetBottom + DOCK_BOTTOM + DOCK_BEAD + 12;
+  return { left: width - 16 - w, top: height - bottom - h, w, h };
+}
 
 // THE PLAYER, mounted once above every screen (see app/_layout.tsx). The
 // WebView is ONE instance whose box changes with the state, so the video
@@ -176,13 +180,24 @@ export function PlayerHost() {
     return () => sub.remove();
   });
 
+  // Swiping the small window down closes the video: it follows the finger.
+  const dragY = useSharedValue(0);
+  useEffect(() => {
+    dragY.value = 0;
+  }, [mode, url, dragY]);
+  const dragStyle = useAnimatedStyle(() => ({ transform: [{ translateY: dragY.value }], opacity: 1 - Math.min(0.6, dragY.value / 260) }));
+
   if (!url || !info) return null;
 
-  const capsuleW = Math.min(width - 40, 560);
-  // The strip's expand: the watch screen for a library video, else the big player.
-  const openFromStrip = () => {
+  // The small window's tap: back to the watch screen for a library video, else the big player.
+  const openFromMini = () => {
     expand();
     if (videoId) router.navigate({ pathname: "/watch", params: { id: videoId, folder: folderId ?? "" } });
+  };
+  // Folding the video away from the watch screen: it goes to the small window, the screen goes back.
+  const foldToMini = () => {
+    minimize();
+    router.back();
   };
 
   // The video's box in each state.
@@ -203,14 +218,8 @@ export function PlayerHost() {
     const boxH = boxW / (ratioW / ratioH);
     frame = { left: (width - boxW) / 2, top: insets.top + 64, width: boxW, height: boxH };
   } else {
-    frame = {
-      left: (width - capsuleW) / 2 + 8,
-      top: capsuleTop(insets.top) + (TOP_NAV_H - MINI_VIDEO_H) / 2,
-      width: MINI_VIDEO_W,
-      height: MINI_VIDEO_H,
-      borderRadius: 10,
-      overflow: "hidden",
-    };
+    const m = miniBox(width, height, insets.bottom, wide);
+    frame = { left: m.left, top: m.top, width: m.w, height: m.h, borderRadius: 14, overflow: "hidden" };
   }
 
   const full = mode === "full" && !pip;
@@ -218,22 +227,50 @@ export function PlayerHost() {
   const watch = mode === "watch" && !pip;
   const wb = watchBox(width, height, insets.top, wide);
 
+  // Dragging the playing video DOWN folds it into the small window.
+  const foldPan = Gesture.Pan()
+    .enabled(watch)
+    .activeOffsetY(18)
+    .failOffsetX([-40, 40])
+    .onEnd((e) => {
+      if (e.translationY > 70 || e.velocityY > 700) runOnJS(foldToMini)();
+    });
+  // The small window: swipe down = close, tap = open the watch screen again.
+  const miniGesture = Gesture.Race(
+    Gesture.Pan()
+      .activeOffsetY(8)
+      .failOffsetX([-30, 30])
+      .onUpdate((e) => {
+        dragY.value = Math.max(0, e.translationY);
+      })
+      .onEnd((e) => {
+        if (e.translationY > 40 || e.velocityY > 500) {
+          dragY.value = withTiming(320, { duration: 170 }, (done) => {
+            if (done) runOnJS(close)();
+          });
+        } else {
+          dragY.value = withTiming(0, { duration: 140 });
+        }
+      }),
+    Gesture.Tap().onEnd(() => runOnJS(openFromMini)())
+  );
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {(full || pip) && <View style={[StyleSheet.absoluteFill, styles.black]} />}
-      {mini && <View style={[styles.capsule, { top: capsuleTop(insets.top), width: capsuleW }]} />}
-
-      <View style={[styles.video, frame]} pointerEvents={mini ? "none" : "auto"}>
-        <InlineVideoPlayer
-          url={url}
-          nudge={nudge}
-          controlRef={control}
-          onState={onPlayerState}
-          onTime={(t) => {
-            time.current = t;
-          }}
-        />
-      </View>
+      <GestureDetector gesture={foldPan}>
+        <Animated.View style={[styles.video, frame, mini && dragStyle]} pointerEvents={mini ? "none" : "auto"}>
+          <InlineVideoPlayer
+            url={url}
+            nudge={nudge}
+            controlRef={control}
+            onState={onPlayerState}
+            onTime={(t) => {
+              time.current = t;
+            }}
+          />
+        </Animated.View>
+      </GestureDetector>
 
       {full && (
         <View style={[styles.fullBar, { top: insets.top + 8 }]}>
@@ -246,15 +283,7 @@ export function PlayerHost() {
 
       {watch && (
         <View style={[styles.watchBar, { top: wb.top + 8, left: wb.left + 8, right: wb.left + 8 }]} pointerEvents="box-none">
-          <RoundButton
-            icon="chevron-down"
-            label="Згорнути"
-            small
-            onPress={() => {
-              minimize();
-              router.back();
-            }}
-          />
+          <RoundButton icon="chevron-down" label="Згорнути" small onPress={foldToMini} />
           <View style={{ flex: 1 }} />
           <RoundButton icon="expand" label="На весь екран" small onPress={() => setMode("full")} />
           {supportsPip && <RoundButton icon="contract" label="Вікно поверх усього" small onPress={() => enterPip(ratioW, ratioH)} />}
@@ -263,19 +292,16 @@ export function PlayerHost() {
       )}
 
       {mini && (
-        <View style={[styles.capsuleRow, { top: capsuleTop(insets.top), width: capsuleW }]} pointerEvents="box-none">
-          <Pressable style={styles.capsuleTitle} onPress={openFromStrip} accessibilityLabel="Розгорнути">
-            <Text style={styles.capsuleText} numberOfLines={1}>
-              {title || "Відео"}
-            </Text>
-          </Pressable>
-          <Pressable onPress={openFromStrip} hitSlop={8} style={styles.capsuleBtn} accessibilityLabel="Розгорнути">
-            <Ionicons name="expand" size={20} color="#fff" />
-          </Pressable>
-          <Pressable onPress={close} hitSlop={8} style={styles.capsuleBtn} accessibilityLabel="Закрити">
-            <Ionicons name="close" size={22} color="#fff" />
-          </Pressable>
-        </View>
+        <>
+          <GestureDetector gesture={miniGesture}>
+            <Animated.View style={[styles.miniTouch, frame, dragStyle]} accessibilityLabel="Відкрити відео" />
+          </GestureDetector>
+          <Animated.View style={[styles.miniClose, { left: (frame as any).left + (frame as any).width - 30, top: (frame as any).top + 6 }, dragStyle]}>
+            <Pressable onPress={close} hitSlop={8} accessibilityLabel="Закрити" style={styles.miniCloseBtn}>
+              <Ionicons name="close" size={14} color="#fff" />
+            </Pressable>
+          </Animated.View>
+        </>
       )}
     </View>
   );
@@ -296,16 +322,7 @@ const styles = StyleSheet.create({
   watchBar: { position: "absolute", flexDirection: "row", gap: 8, alignItems: "center" },
   roundSmall: { width: 34, height: 34, borderRadius: 17, backgroundColor: "rgba(0,0,0,0.45)" },
   round: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.16)", alignItems: "center", justifyContent: "center" },
-  capsule: {
-    position: "absolute",
-    alignSelf: "center",
-    height: TOP_NAV_H,
-    borderRadius: TOP_NAV_H / 2,
-    backgroundColor: "#1E1E1C",
-    boxShadow: "0px 6px 18px -6px rgba(0,0,0,0.45)",
-  },
-  capsuleRow: { position: "absolute", alignSelf: "center", height: TOP_NAV_H, flexDirection: "row", alignItems: "center", paddingRight: 8 },
-  capsuleTitle: { flex: 1, height: TOP_NAV_H, justifyContent: "center", paddingLeft: 8 + MINI_VIDEO_W + 10 },
-  capsuleText: { color: "#fff", fontSize: 14 },
-  capsuleBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  miniTouch: { position: "absolute", backgroundColor: "transparent" },
+  miniClose: { position: "absolute", width: 24, height: 24 },
+  miniCloseBtn: { width: 24, height: 24, borderRadius: 12, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" },
 });
