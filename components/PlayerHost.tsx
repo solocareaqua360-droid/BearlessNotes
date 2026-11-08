@@ -79,7 +79,9 @@ export function PlayerHost() {
     const left = wasPip.current && !pip;
     wasPip.current = pip;
     if (!left) return;
+    console.log("[cinema] window gone, waiting");
     const t = setTimeout(() => {
+      console.log("[cinema] window gone, app is", AppState.currentState);
       if (AppState.currentState !== "active") close();
     }, 700);
     return () => clearTimeout(t);
