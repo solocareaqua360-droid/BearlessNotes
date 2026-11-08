@@ -76,8 +76,12 @@ export function AskHost() {
     const r = current.current;
     if (!r) return;
     current.current = null;
+    // Only a closing that RAN TO THE END removes the window: if the answer opened another question at once
+    // (a menu that leads to a second menu), that new one has restarted the animation and must stay.
     Animated.timing(progress, { toValue: 0, duration: 140, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(
-      () => setReq(null)
+      ({ finished }) => {
+        if (finished && !current.current) setReq(null);
+      }
     );
     r.resolve(key);
   };
