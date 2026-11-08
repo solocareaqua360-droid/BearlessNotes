@@ -17,7 +17,17 @@ export type FolderTile = {
 
 // Folder tiles, two across (ported from mindEva's ExplorerHead soft look):
 // 64 high, radius 20, a 38 round-rect badge, name + a meta line, a chevron.
-export function FolderTiles({ tiles }: { tiles: FolderTile[] }) {
+export function FolderTiles({
+  tiles,
+  registerNode,
+  hoverKey,
+}: {
+  tiles: FolderTile[];
+  /** Lets the carry find each tile on the screen. */
+  registerNode?: (key: string) => (node: any) => void;
+  /** The tile a carried card is hovering over: it lights up. */
+  hoverKey?: string | null;
+}) {
   const S = useSoft();
   const rows: FolderTile[][] = [];
   for (let i = 0; i < tiles.length; i += 2) rows.push(tiles.slice(i, i + 2));
@@ -28,10 +38,16 @@ export function FolderTiles({ tiles }: { tiles: FolderTile[] }) {
           {row.map((t) => (
             <Pressable
               key={t.key}
+              ref={registerNode?.(t.key)}
+              collapsable={false}
               onPress={t.onPress}
               style={({ pressed }) => [
                 styles.tile,
-                { backgroundColor: S.card, boxShadow: S.shadow, transform: [{ scale: pressed ? 0.97 : 1 }] },
+                {
+                  backgroundColor: hoverKey === t.key ? S.fillSolid : S.card,
+                  boxShadow: S.shadow,
+                  transform: [{ scale: hoverKey === t.key ? 1.04 : pressed ? 0.97 : 1 }],
+                },
               ]}
             >
               <View style={[styles.badge, { backgroundColor: t.color ? `${t.color}24` : S.fill }]}>

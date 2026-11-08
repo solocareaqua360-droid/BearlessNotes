@@ -20,6 +20,8 @@ interface VideoCardProps {
   /** Tapped: the card is the flip source. */
   onPress: () => void;
   onLongPress?: () => void;
+  /** The «⋯» button (falls back to onLongPress): the hold itself may belong to the carry. */
+  onMenu?: () => void;
   onToggleStatus?: () => void;
   /** In the bin: no status toggle, no open icon. */
   inBin?: boolean;
@@ -31,7 +33,7 @@ const platformOf = (v: Video) => (v.source === "youtube" ? "YouTube" : v.source 
 // TURNS edge-on to open (useTurningCard + FlipLayer). The root is the
 // animated view so the rotation takes the shadow with it.
 export const VideoCard = forwardRef<View, VideoCardProps>(function VideoCard(
-  { video, tags, layout = "grid", selectable = false, selected = false, onPress, onLongPress, onToggleStatus, inBin = false },
+  { video, tags, layout = "grid", selectable = false, selected = false, onPress, onLongPress, onMenu, onToggleStatus, inBin = false },
   ref
 ) {
   const S = useSoft();
@@ -66,7 +68,7 @@ export const VideoCard = forwardRef<View, VideoCardProps>(function VideoCard(
         </View>
       ) : !isList ? (
         <View style={styles.overlay} pointerEvents="box-none">
-          <Pressable hitSlop={6} onPress={onLongPress} style={styles.overBtn} accessibilityLabel="Дії">
+          <Pressable hitSlop={6} onPress={onMenu ?? onLongPress} style={styles.overBtn} accessibilityLabel="Дії">
             <Ionicons name="ellipsis-horizontal" size={15} color="#FFFFFF" />
           </Pressable>
           {!inBin && (

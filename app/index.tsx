@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { createRef, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { BackHandler, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import EdgeFade from "@/components/EdgeFade";
@@ -9,6 +10,7 @@ import { Ionicons } from "@/components/icons/Ionicons";
 import { TagsDrawer } from "@/components/TagsDrawer";
 import { VideoCard } from "@/components/VideoCard";
 import { VideoSheet } from "@/components/VideoSheet";
+import { CarryLayer, UP, useCarry, type CarryItem } from "@/components/ui/Carry";
 import { ask, confirm } from "@/components/ui/Ask";
 import { VideoCanvasTile } from "@/components/ui/CanvasTile";
 import { Dock, DOCK_CLEARANCE, SelectionDock } from "@/components/ui/Dock";
@@ -88,6 +90,12 @@ export default function HomeScreen() {
   const [flipFrom, setFlipFrom] = useState<FlipFrom | null>(null);
   const [sheetTagsVisible, setSheetTagsVisible] = useState(false);
   const lastShown = useRef<Video | null>(null);
+  // The list, for the second finger of a carry to scroll it.
+  const scrollRef = useRef<ScrollView>(null);
+  const offsetY = useRef(0);
+  const scrollTarget = useRef(0);
+  const contentH = useRef(0);
+  const viewH = useRef(0);
 
   useEffect(() => {
     if (unsorted === "1") {
@@ -123,6 +131,8 @@ export default function HomeScreen() {
   const searching = query.trim().length > 0;
   const canvasMode = cardLayout === "canvas" && !inBin;
   const explorer = listMode === "folders" && !tagFilterActive && !searching && !inBin && !canvasMode;
+  // Cards and folders can be lifted and carried only in the explorer (not while selecting, searching or in the bin).
+  const carryOn = explorer && !selectMode;
 
   const shown = useMemo(() => {
     let list: Video[];
@@ -290,6 +300,7 @@ export default function HomeScreen() {
     const key = await holdMenu(refFor(v.id), [
       { key: "select", label: "Вибрати", icon: "checkbox-outline" },
       { key: "tags", label: "Смарт-папки", icon: "folder-outline" },
+      { key: "move", label: "Перемістити в…", icon: "arrow-forward-outline" },
       { key: "rename", label: "Перейменувати", icon: "create-outline" },
       {
         key: "status",
@@ -307,11 +318,72 @@ export default function HomeScreen() {
       setSelectMode(true);
       setSelectedIds([v.id]);
       setBulkTagsVisible(true);
+    } else if (key === "move") {
+      const dest = await pickDest("Перемістити в…", new Set());
+      if (dest) moveVideoTo(v, path === BIN ? null : path, dest.id);
     } else if (key === "rename") setRenameVideo(v);
     else if (key === "status") updateVideo(v.id, { status: v.status === "planned" ? "watched" : "planned" });
     else if (key === "share") shareVideoLink(v.url, v.title);
     else if (key === "open") Linking.openURL(v.url);
     else if (key === "delete") sendToBin([v.id]);
+  };
+
+  // ----- moving: by the carry, by the menu
+  /** A folder to move something into: the root or any folder (not the ones in `exclude`). */
+  const pickDest = async (title: string, exclude: Set<string>): Promise<{ id: string | null } | null> => {
+    const options = tags
+      .filter((t) => !exclude.has(t.id))
+      .map((t) => ({ key: t.id, label: tagPath(t, byId) }))
+      .sort((a, b) => a.label.localeCompare(b.label, "uk"));
+    const key = await ask({ title, answers: [{ key: "__root__", label: "Мої відео (без папки)", primary: true }, ...options] });
+    if (!key) return null;
+    return { id: key === "__root__" ? null : key };
+  };
+  /** Takes the video out of the folder it was in (`origin`) and puts it into `dest` (null = the root). */
+  const moveVideoTo = (v: Video, origin: string | null, dest: string | null) => {
+    const ids = v.tagIds.filter((id) => id !== origin);
+    if (dest && !ids.includes(dest)) ids.push(dest);
+    const same = ids.length === v.tagIds.length && ids.every((id) => v.tagIds.includes(id));
+    if (!same) updateVideo(v.id, { tagIds: ids });
+  };
+  /** Is `id` the folder `ofId` itself or somewhere inside it? */
+  const isInsideFolder = (id: string | null, ofId: string) => {
+    let cur: Tag | undefined = id ? byId.get(id) : undefined;
+    for (let i = 0; cur && i < 24; i++) {
+      if (cur.id === ofId) return true;
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    }
+    return false;
+  };
+  const moveFolderTo = (tag: Tag, dest: string | null) => {
+    if (isInsideFolder(dest, tag.id) || (tag.parentId ?? null) === dest) return;
+    updateTag(tag.id, { parentId: dest });
+  };
+
+  const folderMenu = async (tag: Tag, node: unknown) => {
+    const key = await holdMenu({ current: node as View | null }, [
+      { key: "open", label: "Відкрити", icon: "folder-open-outline" },
+      { key: "edit", label: "Назва, іконка й колір", icon: "create-outline" },
+      { key: "sub", label: "Нова папка всередині", icon: "folder-outline" },
+      { key: "move", label: "Перемістити в…", icon: "arrow-forward-outline" },
+      { key: "delete", label: "Видалити папку", icon: "trash-outline", destructive: true },
+    ]);
+    if (key === "open") setPath(tag.id);
+    else if (key === "edit") router.push(`/tag-editor?tagId=${tag.id}`);
+    else if (key === "sub") router.push(`/tag-editor?parentId=${tag.id}`);
+    else if (key === "move") {
+      const exclude = new Set(tags.filter((t) => isInsideFolder(t.id, tag.id)).map((t) => t.id));
+      const dest = await pickDest(`«${tag.name}» перемістити в…`, exclude);
+      if (dest) moveFolderTo(tag, dest.id);
+    } else if (key === "delete") {
+      const ok = await confirm({
+        title: `Видалити папку «${tag.name}»?`,
+        message: "Разом із вкладеними папками. Відео з них залишаться, просто без папки.",
+        confirm: "Видалити",
+        destructive: true,
+      });
+      if (ok) removeTag(tag.id, "unsort_videos");
+    }
   };
 
   // ----- bulk tags
@@ -425,10 +497,61 @@ export default function HomeScreen() {
       selected={selectedIds.includes(v.id)}
       inBin={inBin}
       onPress={() => openCard(v)}
-      onLongPress={() => holdCard(v)}
+      onLongPress={carryOn ? undefined : () => holdCard(v)}
+      onMenu={() => holdCard(v)}
       onToggleStatus={() => updateVideo(v.id, { status: v.status === "planned" ? "watched" : "planned" })}
     />
   ));
+
+  const carry = useCarry({
+    enabled: carryOn,
+    cardNodes: () => Array.from(cardRefs.entries()).map(([id, r]) => [id, r.current] as [string, View | null]),
+    describe: (kind, id) => {
+      if (kind === "video") {
+        const v = videoById.get(id);
+        return v ? { label: v.title, thumb: v.thumbnailUrl, origin: path === BIN ? null : path } : null;
+      }
+      const t = byId.get(id);
+      return t ? { label: t.name, origin: t.parentId } : null;
+    },
+    onMenu: (item) => {
+      if (item.kind === "video") {
+        const v = videoById.get(item.id);
+        if (v) holdCard(v);
+      } else {
+        const t = byId.get(item.id);
+        if (t) folderMenu(t, carry.folderNodeOf(item.id));
+      }
+    },
+    onDrop: (item: CarryItem, target) => {
+      // Over «Нагору» -> the parent; over a tile -> that folder; over nothing -> the folder being looked at now.
+      const here = path === BIN ? null : path;
+      const parent = here ? byId.get(here)?.parentId ?? null : null;
+      const dest = target === UP ? parent : target ?? here;
+      if (item.kind === "video") {
+        const v = videoById.get(item.id);
+        if (!v) return;
+        if (dest === BIN) sendToBin([v.id]);
+        else moveVideoTo(v, item.origin, dest);
+      } else {
+        const t = byId.get(item.id);
+        if (t && dest !== BIN) moveFolderTo(t, dest);
+      }
+    },
+    onEnter: (key) => {
+      if (key !== BIN) setPath(key);
+    },
+    onUp: goUp,
+    onStart: () => {
+      scrollTarget.current = offsetY.current;
+    },
+    onScrollBy: (dy) => {
+      const max = Math.max(0, contentH.current - viewH.current);
+      scrollTarget.current = Math.min(max, Math.max(0, scrollTarget.current + dy));
+      scrollRef.current?.scrollTo({ y: scrollTarget.current, animated: false });
+    },
+  });
+  const upLabel = path === null || path === BIN ? null : (byId.get(path)?.parentId ? byId.get(byId.get(path)!.parentId!)?.name : null) ?? "Мої відео";
 
   return (
     <View style={[styles.container, { backgroundColor: S.bg }]}>
@@ -483,7 +606,20 @@ export default function HomeScreen() {
           />
         </View>
       ) : (
+      <GestureDetector gesture={carry.listGesture}>
+      <View style={styles.listWrap}>
       <ScrollView
+        ref={scrollRef}
+        scrollEventThrottle={16}
+        onScroll={(e) => {
+          offsetY.current = e.nativeEvent.contentOffset.y;
+        }}
+        onContentSizeChange={(_, h) => {
+          contentH.current = h;
+        }}
+        onLayout={(e) => {
+          viewH.current = e.nativeEvent.layout.height;
+        }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
@@ -492,7 +628,7 @@ export default function HomeScreen() {
           paddingBottom: DOCK_CLEARANCE + insets.bottom + 24,
         }}
       >
-        {folderTiles.length > 0 && <FolderTiles tiles={folderTiles} />}
+        {folderTiles.length > 0 && <FolderTiles tiles={folderTiles} registerNode={carry.registerFolder} hoverKey={carry.hover} />}
 
         {shown.length === 0 && folderTiles.length === 0 ? (
           <View style={styles.empty}>
@@ -514,6 +650,8 @@ export default function HomeScreen() {
           <View style={styles.list}>{cards}</View>
         )}
       </ScrollView>
+      </View>
+      </GestureDetector>
       )}
 
       <EdgeFade edge="top" color={S.bg} height={headerSpace + chipSpace + 14} />
@@ -653,6 +791,8 @@ export default function HomeScreen() {
         confirmLabel="Готово"
       />
 
+      <CarryLayer carry={carry} upLabel={upLabel} upTop={headerSpace + chipSpace + 8} />
+
       <TagsDrawer
         visible={sheetTagsVisible}
         onClose={() => setSheetTagsVisible(false)}
@@ -672,6 +812,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  listWrap: { flex: 1 },
   chipWrap: { position: "absolute", left: SIDE, right: SIDE, zIndex: 4, flexDirection: "row" },
   filterChip: { flexDirection: "row", alignItems: "center", gap: 8, height: 30, borderRadius: 15, paddingHorizontal: 12, maxWidth: "100%" },
   grid: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: 12 },
