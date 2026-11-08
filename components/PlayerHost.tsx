@@ -62,6 +62,20 @@ export function PlayerHost() {
     setNudge((n) => n + 1);
   }, [pip]);
 
+  // The system window was CLOSED (its cross, or swiped away by the system) - not
+  // opened back into the app: the app is still in the background a moment after
+  // the window is gone. Then the video stops too (and its notification with it).
+  const wasPip = useRef(false);
+  useEffect(() => {
+    const left = wasPip.current && !pip;
+    wasPip.current = pip;
+    if (!left) return;
+    const t = setTimeout(() => {
+      if (AppState.currentState !== "active") close();
+    }, 700);
+    return () => clearTimeout(t);
+  }, [pip, close]);
+
   // Whether the video is playing right now, as the player reports it, and
   // where it is (for the window's ±10 s buttons).
   const [isPlaying, setIsPlaying] = useState(false);
