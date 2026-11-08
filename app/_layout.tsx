@@ -106,6 +106,7 @@ function Shell() {
           <Stack.Screen name="continue" />
           <Stack.Screen name="channels" />
           <Stack.Screen name="import-subscriptions" />
+          <Stack.Screen name="oauth2redirect" options={{ animation: "none" }} />
           <Stack.Screen name="watch-channel" />
           <Stack.Screen name="player-test" />
           <Stack.Screen name="tag-editor" options={{ presentation: "transparentModal", contentStyle: { backgroundColor: "transparent" } }} />
