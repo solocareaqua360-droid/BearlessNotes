@@ -99,7 +99,7 @@ export default function ContinueScreen() {
                   video={v}
                   onPress={() => open(v)}
                   onHold={async (ref) => {
-                    const key = await holdMenu(ref, [{ key: "drop", label: "Прибрати з «Продовжити»", icon: "close-circle-outline" }]);
+                    const key = await holdMenu(ref, [{ key: "drop", label: "Прибрати зі списку", icon: "close-circle-outline" }]);
                     // The video stays in the library; only the saved place is forgotten.
                     if (key === "drop") updateVideo(v.id, { progressSec: 0 });
                   }}
