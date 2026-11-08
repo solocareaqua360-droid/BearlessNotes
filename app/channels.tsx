@@ -13,6 +13,8 @@ import { ShelfRow } from "@/components/ui/ShelfRow";
 import { Pill } from "@/components/ui/Pill";
 import { TopBar, topBarSpace } from "@/components/ui/TopBar";
 import { addChannelFrom, refreshAll, wantVideo } from "@/services/channels";
+import { isSignedIn, signInWithGoogle, signOutOfGoogle } from "@/services/googleAuth";
+import { useGoogleStore } from "@/store/useGoogleStore";
 import { errorMessage } from "@/services/errorMessage";
 import { useChannelsStore, type Channel, type FeedItem } from "@/store/useChannelsStore";
 import { FONT, RADIUS, SIDE, TYPE, useSoft } from "@/theme/soft";
@@ -32,6 +34,7 @@ export default function ChannelsScreen() {
   const { width } = useWindowDimensions();
   // A tile is about half the screen wide: several shelves fit one screen, and the next tile peeks in from behind.
   const tileWidth = Math.min(250, Math.round(width * 0.52));
+  const signedIn = useGoogleStore((g) => !!g.refreshToken);
   const channels = useChannelsStore((s) => s.channels);
   const feed = useChannelsStore((s) => s.feed);
   const checkedAt = useChannelsStore((s) => s.checkedAt);
@@ -89,6 +92,28 @@ export default function ChannelsScreen() {
       notify("Не вдалося додати канал", errorMessage(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  // «+»: by a link, or picked from the user's own YouTube subscriptions (signing in to Google first if needed).
+  const addMenu = async () => {
+    const key = await ask({
+      title: "Додати канал",
+      answers: [
+        { key: "link", label: "За посиланням", primary: !signedIn },
+        { key: "subs", label: signedIn ? "З моїх підписок YouTube" : "Увійти через Google і вибрати з підписок", primary: signedIn },
+        ...(signedIn ? [{ key: "out", label: "Вийти з Google" }] : []),
+      ],
+    });
+    if (key === "link") setAdding(true);
+    else if (key === "out") signOutOfGoogle();
+    else if (key === "subs") {
+      try {
+        if (!isSignedIn() && !(await signInWithGoogle())) return;
+        router.push("/import-subscriptions");
+      } catch (e) {
+        notify("Не вдалося увійти через Google", errorMessage(e));
+      }
     }
   };
 
@@ -192,7 +217,7 @@ export default function ChannelsScreen() {
         onDesk={(k) => goDesk("channels", k)}
         query={query}
         onChangeQuery={setQuery}
-        onAdd={() => setAdding(true)}
+        onAdd={addMenu}
         bead={{ icon: "settings-outline", label: "Налаштування", onPress: () => router.push("/settings") }}
       />
 

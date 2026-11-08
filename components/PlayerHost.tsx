@@ -22,6 +22,7 @@ import {
   requestNotificationPermission,
   supportsMedia,
   supportsPip,
+  webEval,
 } from "@/utils/cinemaNative";
 import { getVideoEmbedInfo } from "@/utils/videoEmbed";
 import { watchBox } from "@/utils/watchLayout";
@@ -75,6 +76,12 @@ export function PlayerHost() {
       return;
     }
     setNudge((n) => n + 1);
+  }, [pip]);
+
+  // The system window has its own buttons: YouTube's own (its big play button) are hidden there,
+  // and shown again when the window closes (the frame script is in the APK from 2026-11-08 on).
+  useEffect(() => {
+    webEval(`(function(){var f=document.querySelector('iframe');if(f)f.contentWindow.postMessage(JSON.stringify({cinema:'hideControls',on:${pip}}),'*');})();true;`);
   }, [pip]);
 
   // Whether the video is playing right now, as the player reports it, and

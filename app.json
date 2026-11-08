@@ -2,7 +2,10 @@
   "expo": {
     "name": "viBo",
     "slug": "bearlessnotes",
-    "scheme": "bearlessnotes",
+    "scheme": [
+      "bearlessnotes",
+      "com.bearlessnotes.app"
+    ],
     "version": "1.0.0",
     "orientation": "default",
     "userInterfaceStyle": "automatic",

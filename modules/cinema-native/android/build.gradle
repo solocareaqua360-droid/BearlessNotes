@@ -13,3 +13,8 @@ android {
     versionName '1.0.0'
   }
 }
+
+dependencies {
+  // addDocumentStartJavaScript: a script into the player's YouTube iframe.
+  implementation "androidx.webkit:webkit:1.12.1"
+}
