@@ -48,7 +48,14 @@ export function PlayerHost() {
   const ratioH = wide ? 9 : 16;
 
   // The system window opening / closing.
-  useEffect(() => onPipChanged(setPip), [setPip]);
+  useEffect(
+    () =>
+      onPipChanged((active) => {
+        console.log("[cinema] pip", active);
+        setPip(active);
+      }),
+    [setPip]
+  );
 
   // Each time the system window opens or closes, the player is told to
   // redraw (see InlineVideoPlayer's `nudge`).
@@ -130,7 +137,7 @@ export function PlayerHost() {
   // The page paused by itself (the system hides it when the screen locks)
   // while the user did not ask for that: play again.
   const onPlayerState = (playing: boolean) => {
-    console.log("[cinema] state", playing ? "playing" : "paused", "app:", AppState.currentState, "want:", wantPlay.current);
+    console.log("[cinema] state", playing ? "playing" : "paused", "app:", AppState.currentState, "want:", wantPlay.current, "pip:", pipRef.current);
     setIsPlaying(playing);
     if (playing) wantPlay.current = true;
     else if (AppState.currentState === "active") wantPlay.current = false;
