@@ -50,6 +50,28 @@ export interface UploadedVideo {
   title: string;
   thumbnailUrl: string;
   publishedAt: number;
+  durationSec?: number;
+}
+
+/** "PT1H2M10S" -> seconds. */
+function isoSeconds(iso: string): number {
+  const m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso);
+  if (!m) return 0;
+  return Number(m[1] ?? 0) * 86400 + Number(m[2] ?? 0) * 3600 + Number(m[3] ?? 0) * 60 + Number(m[4] ?? 0);
+}
+
+/** Lengths of videos in seconds (50 to a call, 1 unit each call). A video the API does not return is left out. */
+export async function videoDurations(ids: string[]): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (let i = 0; i < ids.length; i += 50) {
+    const data = await get<{ items: { id: string; contentDetails: { duration: string } }[] }>("videos", {
+      part: "contentDetails",
+      id: ids.slice(i, i + 50).join(","),
+      maxResults: "50",
+    });
+    for (const it of data.items ?? []) out[it.id] = isoSeconds(it.contentDetails.duration);
+  }
+  return out;
 }
 
 /** A channel's latest uploads: its «uploads» playlist is its id with UC changed to UU. */
@@ -57,9 +79,11 @@ export async function latestUploads(channelId: string, max = 15): Promise<Upload
   const data = await get<{
     items: { contentDetails: { videoId: string; videoPublishedAt?: string }; snippet: { title: string; publishedAt: string } }[];
   }>("playlistItems", { part: "snippet,contentDetails", playlistId: `UU${channelId.slice(2)}`, maxResults: String(max) });
-  return (data.items ?? [])
-    .filter((it) => it.snippet.title !== "Private video" && it.snippet.title !== "Deleted video")
-    .map((it) => ({
+  const rows = (data.items ?? []).filter((it) => it.snippet.title !== "Private video" && it.snippet.title !== "Deleted video");
+  // One more call for the lengths: it is how Shorts are told apart. If it fails, the videos still come, without lengths.
+  const lengths = await videoDurations(rows.map((it) => it.contentDetails.videoId)).catch(() => ({}) as Record<string, number>);
+  return rows.map((it) => ({
+      durationSec: lengths[it.contentDetails.videoId],
       id: it.contentDetails.videoId,
       title: it.snippet.title,
       thumbnailUrl: `https://i.ytimg.com/vi/${it.contentDetails.videoId}/hqdefault.jpg`,

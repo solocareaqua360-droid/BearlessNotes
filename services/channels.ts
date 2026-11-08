@@ -2,7 +2,7 @@ import { useChannelsStore, type Channel, type FeedItem } from "@/store/useChanne
 import { useLibraryStore } from "@/store/useLibraryStore";
 
 import { isSignedIn } from "./googleAuth";
-import { latestUploads, type Subscription } from "./youtubeApi";
+import { latestUploads, videoDurations, type Subscription } from "./youtubeApi";
 import { loadChannel } from "./youtubeChannels";
 
 // Puts a found video into the library as «Планую» (the «Хочу» of the channels screen).
@@ -103,4 +103,22 @@ export async function addChannelFrom(input: string): Promise<Channel> {
     loaded.videos.slice(0, 8).map((i) => ({ ...i, channelId: channel.id }))
   );
   return channel;
+}
+
+/**
+ * Videos stored before lengths were known: asks for them once (signed in only) so that Shorts already on
+ * the shelves disappear. Cheap: one call per 50 videos.
+ */
+export async function backfillDurations(): Promise<void> {
+  if (!isSignedIn()) return;
+  const unknown = useChannelsStore
+    .getState()
+    .feed.filter((f) => f.state === "new" && f.durationSec === undefined)
+    .map((f) => f.id);
+  if (unknown.length === 0) return;
+  try {
+    useChannelsStore.getState().applyDurations(await videoDurations(unknown));
+  } catch {
+    // Not now (offline, quota): the next visit tries again.
+  }
 }

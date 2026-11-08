@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { GlassBlur } from "@/components/ui/Glass";
@@ -56,6 +56,7 @@ const EASE = Easing.bezier(0.22, 1, 0.36, 1);
 export function AskHost() {
   const S = useSoft();
   const insets = useSafeAreaInsets();
+  const { height: winH } = useWindowDimensions();
   const [req, setReq] = useState<AskRequest | null>(null);
   const progress = useRef(new Animated.Value(0)).current;
   const current = useRef<AskRequest | null>(null);
@@ -102,6 +103,8 @@ export function AskHost() {
         <Text style={[TYPE.title, { color: S.ink }]}>{req.title}</Text>
         {req.message ? <Text style={[TYPE.body, styles.message, { color: S.ink2 }]}>{req.message}</Text> : null}
         <View style={styles.answers}>
+          {/* Many answers (a growing list of topics) must scroll inside the card, not run off the screen. */}
+          <ScrollView style={{ maxHeight: Math.round(winH * 0.55) }} contentContainerStyle={{ gap: 8 }} showsVerticalScrollIndicator={false}>
           {req.answers.map((a) => (
             <Pressable
               key={a.key}
@@ -117,6 +120,7 @@ export function AskHost() {
               <Text style={[TYPE.row, { color: a.primary ? S.card : a.destructive ? S.danger : S.ink }]}>{a.label}</Text>
             </Pressable>
           ))}
+          </ScrollView>
           {req.cancelLabel !== null && (
             <Pressable onPress={() => close(null)} style={({ pressed }) => [styles.answer, { backgroundColor: S.fill, opacity: pressed ? 0.8 : 1 }]}>
               <Text style={[TYPE.row, { color: S.ink2 }]}>{req.cancelLabel ?? "Скасувати"}</Text>

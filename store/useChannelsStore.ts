@@ -23,16 +23,27 @@ export interface FeedItem {
   thumbnailUrl: string;
   /** When it came out, as well as the page told (it only says «4 дн. тому»). */
   publishedAt: number;
+  /** Length in seconds, when known (the official API tells it): used to keep Shorts out. */
+  durationSec?: number;
   state: "new" | "want" | "dismissed";
 }
 
 const PER_CHANNEL = 40;
+/** A video this short (or shorter) is a YouTube Short: never offered. */
+export const SHORTS_MAX_SEC = 60;
+
+const isShort = (i: { durationSec?: number }) => i.durationSec !== undefined && i.durationSec <= SHORTS_MAX_SEC;
 
 interface ChannelsState {
   channels: Channel[];
   feed: FeedItem[];
   /** When the feeds were last refreshed, ms. */
   checkedAt: number;
+  /** The icon picked for a topic (by the topic's name). */
+  topicIcons: Record<string, string>;
+  setTopicIcon: (topic: string, icon: string | null) => void;
+  /** Lengths learned later for videos stored without one: Shorts among the new ones are dropped, the rest remember theirs. */
+  applyDurations: (durations: Record<string, number>) => void;
   addChannel: (c: Channel) => void;
   updateChannel: (id: string, patch: Partial<Channel>) => void;
   removeChannel: (id: string) => void;
@@ -50,12 +61,26 @@ export const useChannelsStore = create<ChannelsState>()(
       channels: [],
       feed: [],
       checkedAt: 0,
+      topicIcons: {},
+      setTopicIcon: (topic, icon) =>
+        set((s) => {
+          const next = { ...s.topicIcons };
+          if (icon) next[topic] = icon;
+          else delete next[topic];
+          return { topicIcons: next };
+        }),
+      applyDurations: (durations) =>
+        set((s) => ({
+          feed: s.feed
+            .filter((f) => !(f.state === "new" && f.id in durations && durations[f.id] <= SHORTS_MAX_SEC))
+            .map((f) => (f.id in durations ? { ...f, durationSec: durations[f.id] } : f)),
+        })),
       addChannel: (c) => set((s) => (s.channels.some((x) => x.id === c.id) ? s : { channels: [...s.channels, c] })),
       updateChannel: (id, patch) => set((s) => ({ channels: s.channels.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
       removeChannel: (id) => set((s) => ({ channels: s.channels.filter((c) => c.id !== id), feed: s.feed.filter((f) => f.channelId !== id) })),
       mergeFeed: (channelId, items, state = "new") => {
         const known = new Set(get().feed.map((f) => f.id));
-        const fresh: FeedItem[] = items.filter((i) => !known.has(i.id)).map((i) => ({ ...i, state }));
+        const fresh: FeedItem[] = items.filter((i) => !known.has(i.id) && !isShort(i)).map((i) => ({ ...i, state }));
         if (fresh.length) {
           set((s) => {
             const others = s.feed.filter((f) => f.channelId !== channelId);
@@ -71,7 +96,7 @@ export const useChannelsStore = create<ChannelsState>()(
         const known = new Set(get().feed.map((f) => f.id));
         const freshBy = new Map<string, FeedItem[]>();
         for (const b of batches) {
-          const fresh: FeedItem[] = b.items.filter((i) => !known.has(i.id)).map((i) => ({ ...i, state: "new" as const }));
+          const fresh: FeedItem[] = b.items.filter((i) => !known.has(i.id) && !isShort(i)).map((i) => ({ ...i, state: "new" as const }));
           fresh.forEach((f) => known.add(f.id));
           if (fresh.length) freshBy.set(b.channelId, fresh);
         }

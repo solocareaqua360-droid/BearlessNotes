@@ -1,10 +1,11 @@
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import EdgeFade from "@/components/EdgeFade";
 import { Ionicons } from "@/components/icons/Ionicons";
+import { holdMenu } from "@/components/ui/HoldMenu";
 import { DeskDock } from "@/components/ui/DeskDock";
 import { goDesk } from "@/utils/desks";
 import { DOCK_CLEARANCE } from "@/components/ui/Dock";
@@ -42,6 +43,7 @@ export default function ContinueScreen() {
   const videos = useLibraryStore((s) => s.videos);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
+  const updateVideo = useLibraryStore((s) => s.updateVideo);
 
   const groups = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -92,7 +94,16 @@ export default function ContinueScreen() {
             <View key={g.title} style={{ gap: 10 }}>
               <Text style={[TYPE.meta, styles.groupTitle, { color: S.ink2 }]}>{g.title}</Text>
               {g.items.map((v) => (
-                <Row key={v.id} video={v} onPress={() => open(v)} />
+                <Row
+                  key={v.id}
+                  video={v}
+                  onPress={() => open(v)}
+                  onHold={async (ref) => {
+                    const key = await holdMenu(ref, [{ key: "drop", label: "Прибрати з «Продовжити»", icon: "close-circle-outline" }]);
+                    // The video stays in the library; only the saved place is forgotten.
+                    if (key === "drop") updateVideo(v.id, { progressSec: 0 });
+                  }}
+                />
               ))}
             </View>
           ))
@@ -114,15 +125,19 @@ export default function ContinueScreen() {
   );
 }
 
-function Row({ video, onPress }: { video: Video; onPress: () => void }) {
+function Row({ video, onPress, onHold }: { video: Video; onPress: () => void; onHold: (ref: React.RefObject<View | null>) => void }) {
   const S = useSoft();
+  const ref = useRef<View>(null);
   const d = video.durationSec ?? 0;
   const p = video.progressSec ?? 0;
   const left = remaining(video);
   const site = video.siteName || (video.source === "youtube" ? "YouTube" : video.source === "tiktok" ? "TikTok" : "");
   return (
     <Pressable
+      ref={ref}
       onPress={onPress}
+      onLongPress={() => onHold(ref)}
+      delayLongPress={350}
       style={({ pressed }) => [styles.row, { backgroundColor: S.card, boxShadow: S.shadow, opacity: pressed ? 0.9 : 1 }]}
     >
       <View style={[styles.thumb, { backgroundColor: S.fillSolid }]}>

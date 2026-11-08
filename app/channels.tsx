@@ -8,11 +8,12 @@ import { Ionicons } from "@/components/icons/Ionicons";
 import { ask, notify } from "@/components/ui/Ask";
 import { DeskDock } from "@/components/ui/DeskDock";
 import { DOCK_CLEARANCE } from "@/components/ui/Dock";
+import IconPicker from "@/components/ui/IconPicker";
 import NamePrompt from "@/components/ui/NamePrompt";
 import { ShelfRow } from "@/components/ui/ShelfRow";
 import { Pill } from "@/components/ui/Pill";
 import { TopBar, topBarSpace } from "@/components/ui/TopBar";
-import { addChannelFrom, refreshAll, wantVideo } from "@/services/channels";
+import { addChannelFrom, backfillDurations, refreshAll, wantVideo } from "@/services/channels";
 import { isSignedIn, signInWithGoogle, signOutOfGoogle } from "@/services/googleAuth";
 import { useGoogleStore } from "@/store/useGoogleStore";
 import { errorMessage } from "@/services/errorMessage";
@@ -42,8 +43,12 @@ export default function ChannelsScreen() {
   const updateChannel = useChannelsStore((s) => s.updateChannel);
   const removeChannel = useChannelsStore((s) => s.removeChannel);
   const setItemState = useChannelsStore((s) => s.setItemState);
+  const topicIcons = useChannelsStore((s) => s.topicIcons);
+  const setTopicIcon = useChannelsStore((s) => s.setTopicIcon);
 
-  const [topic, setTopic] = useState<string>(ALL);
+  // The first capsule is «Без теми»: the screen opens on it (it falls back to «Усі» if there are no such channels).
+  const [topic, setTopic] = useState<string>(NONE);
+  const [iconFor, setIconFor] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const [topicFor, setTopicFor] = useState<Channel | null>(null);
@@ -60,6 +65,7 @@ export default function ChannelsScreen() {
   }, []);
   // Coming in after a while: look for news.
   useEffect(() => {
+    backfillDurations();
     if (channels.length && Date.now() - checkedAt > 15 * 60000) doRefresh();
     // Only on entering the screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,8 +75,9 @@ export default function ChannelsScreen() {
   // «Без теми» exists only while at least one channel has no topic.
   const hasUntopiced = useMemo(() => channels.some((c) => !c.topic), [channels]);
   useEffect(() => {
+    if (channels.length === 0) return; // not loaded yet (or none): leave the choice alone
     if (topic === NONE ? !hasUntopiced : topic !== ALL && !topics.includes(topic)) setTopic(ALL);
-  }, [topic, topics, hasUntopiced]);
+  }, [topic, topics, hasUntopiced, channels.length]);
 
   // One entry per channel with something new. A channel whose videos did not change keeps the SAME
   // array, so its shelf is not redrawn when another channel is refreshed.
@@ -198,7 +205,7 @@ export default function ChannelsScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.caps}>
                 {hasUntopiced && <Pill label="Без теми" selected={topic === NONE} onPress={() => setTopic(NONE)} />}
                 {topics.map((t) => (
-                  <Pill key={t} label={t} selected={topic === t} onPress={() => setTopic(t)} />
+                  <Pill key={t} label={t} icon={topicIcons[t]} selected={topic === t} onPress={() => setTopic(t)} onLongPress={() => setIconFor(t)} />
                 ))}
                 <Pill label="Усі" selected={topic === ALL} onPress={() => setTopic(ALL)} />
               </ScrollView>
@@ -248,6 +255,16 @@ export default function ChannelsScreen() {
         onCancel={() => setAdding(false)}
         onSave={add}
       />
+      <IconPicker
+        visible={iconFor !== null}
+        title={iconFor ? `Іконка теми «${iconFor}»` : ""}
+        current={iconFor ? topicIcons[iconFor] : null}
+        onPick={(icon) => {
+          if (iconFor) setTopicIcon(iconFor, icon);
+          setIconFor(null);
+        }}
+        onCancel={() => setIconFor(null)}
+      />
       <NamePrompt
         visible={topicFor !== null}
         title="Тема каналу"
@@ -255,7 +272,12 @@ export default function ChannelsScreen() {
         initialValue={topicFor?.topic ?? ""}
         onCancel={() => setTopicFor(null)}
         onSave={(t) => {
-          if (topicFor) updateChannel(topicFor.id, { topic: t.trim() });
+          const name = t.trim();
+          if (topicFor && name) {
+            updateChannel(topicFor.id, { topic: name });
+            // A topic without an icon gets the chance to pick one right away.
+            if (!topicIcons[name]) setIconFor(name);
+          }
           setTopicFor(null);
         }}
       />
