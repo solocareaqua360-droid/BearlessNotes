@@ -40,8 +40,8 @@ export default function ChannelsScreen() {
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  // A tile shows about two thirds of the screen: the next one peeks in from behind.
-  const tileWidth = Math.min(300, Math.round(width * 0.66));
+  // A tile is about half the screen wide: several shelves fit one screen, and the next tile peeks in from behind.
+  const tileWidth = Math.min(250, Math.round(width * 0.52));
   const channels = useChannelsStore((s) => s.channels);
   const feed = useChannelsStore((s) => s.feed);
   const checkedAt = useChannelsStore((s) => s.checkedAt);
