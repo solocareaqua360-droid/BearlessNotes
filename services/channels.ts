@@ -1,4 +1,4 @@
-import { useChannelsStore, type Channel } from "@/store/useChannelsStore";
+import { useChannelsStore, type Channel, type FeedItem } from "@/store/useChannelsStore";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
 import { isSignedIn } from "./googleAuth";
@@ -62,10 +62,33 @@ export async function addFromSubscription(sub: Subscription): Promise<void> {
   await refreshChannel(channel).catch(() => 0);
 }
 
-/** All channels, in parallel; a failing one is skipped. */
+/** How many channels are read at the same time: more would hog the phone (and its single JS thread) while the user scrolls. */
+const REFRESH_PARALLEL = 3;
+
+/** All channels: a few at a time, quietly, and the screen is told ONCE at the end; a failing one is skipped. */
 export async function refreshAll(): Promise<void> {
   const { channels } = useChannelsStore.getState();
-  await Promise.all(channels.map((c) => refreshChannel(c).catch(() => 0)));
+  const store = useChannelsStore.getState();
+  const batches: { channelId: string; items: Omit<FeedItem, "state">[] }[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < channels.length) {
+      const channel = channels[next++];
+      try {
+        const videos = await latestFor(channel.id);
+        const first = !store.feed.some((f) => f.channelId === channel.id);
+        const items = first ? videos.slice(0, 8) : videos;
+        batches.push({ channelId: channel.id, items: items.map((i) => ({ ...i, channelId: channel.id })) });
+      } catch {
+        // skipped
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(REFRESH_PARALLEL, channels.length) }, worker));
+  const fresh = useChannelsStore.getState().mergeMany(batches);
+  channels.forEach((c) => {
+    if (c.autoWant) (fresh.get(c.id) ?? []).forEach((f) => wantVideo(f, c.name));
+  });
   useChannelsStore.getState().setCheckedAt(Date.now());
 }
 

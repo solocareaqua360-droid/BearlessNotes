@@ -1,6 +1,6 @@
 import { router } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import EdgeFade from "@/components/EdgeFade";
@@ -69,17 +69,32 @@ export default function ChannelsScreen() {
     if (topic !== ALL && !topics.includes(topic)) setTopic(ALL);
   }, [topic, topics]);
 
+  // One entry per channel with something new. A channel whose videos did not change keeps the SAME
+  // array, so its shelf is not redrawn when another channel is refreshed.
+  const keptItems = useRef(new Map<string, FeedItem[]>());
   const groups = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return channels
-      .filter((c) => topic === ALL || c.topic === topic)
-      .map((c) => ({
-        channel: c,
-        items: feed
-          .filter((f) => f.channelId === c.id && f.state === "new" && (!needle || f.title.toLowerCase().includes(needle)))
-          .sort((a, b) => b.publishedAt - a.publishedAt),
-      }))
-      .filter((g) => g.items.length > 0);
+    const byChannel = new Map<string, FeedItem[]>();
+    for (const f of feed) {
+      if (f.state !== "new" || (needle && !f.title.toLowerCase().includes(needle))) continue;
+      const list = byChannel.get(f.channelId);
+      if (list) list.push(f);
+      else byChannel.set(f.channelId, [f]);
+    }
+    const out: { channel: Channel; items: FeedItem[] }[] = [];
+    for (const c of channels) {
+      if (topic !== ALL && c.topic !== topic) continue;
+      const found = byChannel.get(c.id);
+      if (!found) continue;
+      found.sort((a, b) => b.publishedAt - a.publishedAt);
+      const shown = found.slice(0, MAX_PER_CHANNEL);
+      const prev = keptItems.current.get(c.id);
+      const same = prev && prev.length === shown.length && prev.every((x, i) => x === shown[i]);
+      const items = same ? prev : shown;
+      keptItems.current.set(c.id, items);
+      out.push({ channel: c, items });
+    }
+    return out;
   }, [channels, feed, topic, query]);
 
   const add = async (value: string) => {
@@ -117,7 +132,7 @@ export default function ChannelsScreen() {
     }
   };
 
-  const channelMenu = async (c: Channel) => {
+  const channelMenu = useCallback(async (c: Channel) => {
     const key = await ask({
       title: c.name,
       answers: [
@@ -131,83 +146,70 @@ export default function ChannelsScreen() {
     else if (key === "untopic") updateChannel(c.id, { topic: null });
     else if (key === "auto") updateChannel(c.id, { autoWant: !c.autoWant });
     else if (key === "remove") removeChannel(c.id);
-  };
+  }, [updateChannel, removeChannel]);
 
   // A tap opens the watch screen: the video on top, this channel's other videos under it.
-  const watchNow = (item: FeedItem) => router.push({ pathname: "/watch-channel", params: { yt: item.id, ch: item.channelId } });
+  const watchNow = useCallback((item: FeedItem) => router.push({ pathname: "/watch-channel", params: { yt: item.id, ch: item.channelId } }), []);
 
   return (
     <View style={[styles.root, { backgroundColor: S.bg }]}>
-      <ScrollView
+      <FlatList
+        data={groups}
+        keyExtractor={(g) => g.channel.id}
+        renderItem={({ item: g }) => (
+          <ChannelShelf
+            channel={g.channel}
+            items={g.items}
+            tileWidth={tileWidth}
+            onMenu={channelMenu}
+            onOpen={watchNow}
+            onNo={setItemState}
+          />
+        )}
+        // Only the shelves on (and near) the screen are built; the rest as they scroll in.
+        initialNumToRender={2}
+        maxToRenderPerBatch={2}
+        updateCellsBatchingPeriod={60}
+        windowSize={5}
+        removeClippedSubviews
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={doRefresh} progressViewOffset={topBarSpace(insets.top)} />}
-        contentContainerStyle={{ paddingTop: topBarSpace(insets.top), paddingBottom: DOCK_CLEARANCE + insets.bottom + 24, gap: 10 }}
-      >
-        {topics.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.caps}>
-            <Pill label="Усі" selected={topic === ALL} onPress={() => setTopic(ALL)} />
-            {topics.map((t) => (
-              <Pill key={t} label={t} selected={topic === t} onPress={() => setTopic(t)} />
-            ))}
-          </ScrollView>
-        )}
-
-        {busy && (
-          <View style={styles.busy}>
-            <ActivityIndicator color={S.ink2} />
-            <Text style={[TYPE.meta, { color: S.ink2 }]}>Шукаю канал…</Text>
+        contentContainerStyle={{ paddingTop: topBarSpace(insets.top), paddingBottom: DOCK_CLEARANCE + insets.bottom + 24 }}
+        ListHeaderComponent={
+          <View style={{ gap: 10, marginBottom: 10 }}>
+            {topics.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.caps}>
+                <Pill label="Усі" selected={topic === ALL} onPress={() => setTopic(ALL)} />
+                {topics.map((t) => (
+                  <Pill key={t} label={t} selected={topic === t} onPress={() => setTopic(t)} />
+                ))}
+              </ScrollView>
+            )}
+            {busy && (
+              <View style={styles.busy}>
+                <ActivityIndicator color={S.ink2} />
+                <Text style={[TYPE.meta, { color: S.ink2 }]}>Шукаю канал…</Text>
+              </View>
+            )}
           </View>
-        )}
-
-        {channels.length === 0 && !busy ? (
-          <View style={styles.empty}>
-            <Ionicons name="tv-outline" size={30} color={S.ink3} />
-            <Text style={[TYPE.row, { color: S.ink3, textAlign: "center" }]}>
-              Натисніть «+» і вставте посилання на канал, його @назву або будь-яке його відео. Нові відео каналу з'являться тут.
-            </Text>
-          </View>
-        ) : groups.length === 0 && !busy ? (
-          <View style={styles.empty}>
-            <Text style={[TYPE.row, { color: S.ink3, textAlign: "center" }]}>
-              {refreshing ? "Шукаю нові відео…" : "Нових відео немає. Потягніть вниз, щоб оновити."}
-            </Text>
-          </View>
-        ) : (
-          groups.map(({ channel, items }) => (
-            <View key={channel.id} style={{ gap: 10 }}>
-              <Pressable onLongPress={() => channelMenu(channel)} delayLongPress={350} onPress={() => channelMenu(channel)} style={styles.chHead}>
-                {channel.avatarUrl ? (
-                  <Image source={{ uri: channel.avatarUrl }} style={styles.avatar} />
-                ) : (
-                  <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: S.fillSolid }]}>
-                    <Text style={[TYPE.meta, { color: S.ink2 }]}>{channel.name.slice(0, 1).toUpperCase()}</Text>
-                  </View>
-                )}
-                <Text style={[TYPE.cardTitle, { color: S.ink, flex: 1 }]} numberOfLines={1}>
-                  {channel.name}
-                </Text>
-                <Text style={[TYPE.meta, { color: S.ink3 }]}>{items.length}</Text>
-                {channel.autoWant ? <Ionicons name="heart" size={14} color={S.accent} /> : null}
-                <Ionicons name="ellipsis-horizontal" size={18} color={S.ink3} />
-              </Pressable>
-              <ShelfRow
-                items={items.slice(0, MAX_PER_CHANNEL)}
-                tileWidth={tileWidth}
-                padding={SIDE}
-                keyOf={(item) => item.id}
-                renderTile={(item) => (
-                  <Tile
-                    item={item}
-                    onOpen={() => watchNow(item)}
-                    onWant={() => wantVideo(item, channel.name)}
-                    onNo={() => setItemState(item.id, "dismissed")}
-                  />
-                )}
-              />
+        }
+        ListEmptyComponent={
+          busy ? null : channels.length === 0 ? (
+            <View style={styles.empty}>
+              <Ionicons name="tv-outline" size={30} color={S.ink3} />
+              <Text style={[TYPE.row, { color: S.ink3, textAlign: "center" }]}>
+                Натисніть «+» і вставте посилання на канал, його @назву або будь-яке його відео. Нові відео каналу з'являться тут.
+              </Text>
             </View>
-          ))
-        )}
-      </ScrollView>
+          ) : (
+            <View style={styles.empty}>
+              <Text style={[TYPE.row, { color: S.ink3, textAlign: "center" }]}>
+                {refreshing ? "Шукаю нові відео…" : "Нових відео немає. Потягніть вниз, щоб оновити."}
+              </Text>
+            </View>
+          )
+        }
+      />
 
       <EdgeFade edge="top" color={S.bg} height={topBarSpace(insets.top) + 14} />
       <TopBar title="Канали" icon="tv-outline" />
@@ -242,6 +244,53 @@ export default function ChannelsScreen() {
     </View>
   );
 }
+
+// One channel: its header and its shelf. Memoized - it is redrawn only when ITS videos change.
+const ChannelShelf = memo(function ChannelShelf({
+  channel,
+  items,
+  tileWidth,
+  onMenu,
+  onOpen,
+  onNo,
+}: {
+  channel: Channel;
+  items: FeedItem[];
+  tileWidth: number;
+  onMenu: (c: Channel) => void;
+  onOpen: (item: FeedItem) => void;
+  onNo: (id: string, state: FeedItem["state"]) => void;
+}) {
+  const S = useSoft();
+  const renderTile = useCallback(
+    (item: FeedItem) => (
+      <Tile item={item} onOpen={() => onOpen(item)} onWant={() => wantVideo(item, channel.name)} onNo={() => onNo(item.id, "dismissed")} />
+    ),
+    [channel.name, onOpen, onNo]
+  );
+  return (
+    <View style={{ gap: 10, marginBottom: 10 }}>
+      <Pressable onLongPress={() => onMenu(channel)} delayLongPress={350} onPress={() => onMenu(channel)} style={styles.chHead}>
+        {channel.avatarUrl ? (
+          <Image source={{ uri: channel.avatarUrl }} style={styles.avatar} />
+        ) : (
+          <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: S.fillSolid }]}>
+            <Text style={[TYPE.meta, { color: S.ink2 }]}>{channel.name.slice(0, 1).toUpperCase()}</Text>
+          </View>
+        )}
+        <Text style={[TYPE.cardTitle, { color: S.ink, flex: 1 }]} numberOfLines={1}>
+          {channel.name}
+        </Text>
+        <Text style={[TYPE.meta, { color: S.ink3 }]}>{items.length}</Text>
+        {channel.autoWant ? <Ionicons name="heart" size={14} color={S.accent} /> : null}
+        <Ionicons name="ellipsis-horizontal" size={18} color={S.ink3} />
+      </Pressable>
+      <ShelfRow items={items} tileWidth={tileWidth} padding={SIDE} keyOf={keyOfItem} renderTile={renderTile} />
+    </View>
+  );
+});
+
+const keyOfItem = (item: FeedItem) => item.id;
 
 // One video on a shelf: the picture, the title, how long ago, and the two answers.
 function Tile({ item, onOpen, onWant, onNo }: { item: FeedItem; onOpen: () => void; onWant: () => void; onNo: () => void }) {

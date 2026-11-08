@@ -38,6 +38,8 @@ interface ChannelsState {
   removeChannel: (id: string) => void;
   /** Adds videos not seen before as «new» (or as given); returns the ones that were really new. */
   mergeFeed: (channelId: string, items: Omit<FeedItem, "state">[], state?: FeedItem["state"]) => FeedItem[];
+  /** Several channels at once, in ONE state change (a refresh must not redraw the screen per channel). Returns the new ones per channel. */
+  mergeMany: (batches: { channelId: string; items: Omit<FeedItem, "state">[] }[]) => Map<string, FeedItem[]>;
   setItemState: (videoId: string, state: FeedItem["state"]) => void;
   setCheckedAt: (ms: number) => void;
 }
@@ -64,6 +66,31 @@ export const useChannelsStore = create<ChannelsState>()(
           });
         }
         return fresh;
+      },
+      mergeMany: (batches) => {
+        const known = new Set(get().feed.map((f) => f.id));
+        const freshBy = new Map<string, FeedItem[]>();
+        for (const b of batches) {
+          const fresh: FeedItem[] = b.items.filter((i) => !known.has(i.id)).map((i) => ({ ...i, state: "new" as const }));
+          fresh.forEach((f) => known.add(f.id));
+          if (fresh.length) freshBy.set(b.channelId, fresh);
+        }
+        if (freshBy.size) {
+          set((s) => {
+            const keep = s.feed.filter((f) => !freshBy.has(f.channelId));
+            const touched = s.feed.filter((f) => freshBy.has(f.channelId));
+            const merged: FeedItem[] = [];
+            freshBy.forEach((fresh, channelId) => {
+              merged.push(
+                ...[...fresh, ...touched.filter((f) => f.channelId === channelId)]
+                  .sort((a, b) => b.publishedAt - a.publishedAt)
+                  .slice(0, PER_CHANNEL)
+              );
+            });
+            return { feed: [...keep, ...merged] };
+          });
+        }
+        return freshBy;
       },
       setItemState: (videoId, state) => set((s) => ({ feed: s.feed.map((f) => (f.id === videoId ? { ...f, state } : f)) })),
       setCheckedAt: (ms) => set({ checkedAt: ms }),
