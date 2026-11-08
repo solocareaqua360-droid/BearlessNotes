@@ -10,9 +10,9 @@ import { UpdateSection } from "@/components/UpdateSection";
 import { notify } from "@/components/ui/Ask";
 import { Pill } from "@/components/ui/Pill";
 import { TopBar, topBarSpace } from "@/components/ui/TopBar";
-import { signInWithGoogle, signOutOfSupabase } from "@/services/auth";
+import { signInWithGoogle, signOutOfGoogle } from "@/services/googleAuth";
+import { useGoogleStore } from "@/store/useGoogleStore";
 import { errorMessage } from "@/services/errorMessage";
-import { initialSyncAfterSignIn, startAutoSync, stopAutoSync } from "@/services/sync";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { RADIUS, SIDE, TYPE, useSoft } from "@/theme/soft";
 import { OpenVideoMode, ThemePreference } from "@/types";
@@ -43,34 +43,17 @@ export default function SettingsScreen() {
 
   const unsortedCount = videos.filter((v) => v.tagIds.length === 0).length;
 
+  // THE GOOGLE SIGN-IN is the new one (reads the YouTube subscriptions); the old viBo sign-in
+  // went through a server that no longer exists.
+  const googleSignedIn = useGoogleStore((g) => !!g.refreshToken);
   const handleSignIn = async () => {
     setSigningIn(true);
     try {
-      const session = await signInWithGoogle();
-      if (!session) return;
-
-      updateSettings({
-        account: {
-          email: session.user.email ?? "",
-          avatarUrl: session.user.user_metadata?.avatar_url ?? null,
-        },
-      });
-      await initialSyncAfterSignIn(session.user.id);
-      startAutoSync(session.user.id);
+      if (await signInWithGoogle()) router.push("/import-subscriptions");
     } catch (e) {
-      notify("Не вдалося увійти", errorMessage(e));
+      notify("Не вдалося увійти через Google", errorMessage(e));
     } finally {
       setSigningIn(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    stopAutoSync();
-    updateSettings({ account: null, lastSyncedAt: null });
-    try {
-      await signOutOfSupabase();
-    } catch {
-      // Local sign-out already happened; the Supabase session will just expire.
     }
   };
 
@@ -81,24 +64,16 @@ export default function SettingsScreen() {
         contentContainerStyle={{ paddingTop: topBarSpace(insets.top), paddingBottom: insets.bottom + 40, gap: 12 }}
       >
         <View style={[styles.card, { backgroundColor: S.card, boxShadow: S.shadow }]}>
-          {settings.account ? (
+          {googleSignedIn ? (
             <View style={styles.accountRow}>
               <View style={[styles.avatar, { backgroundColor: S.fillSolid }]}>
-                {settings.account.avatarUrl ? (
-                  <Image source={{ uri: settings.account.avatarUrl }} style={{ width: 44, height: 44 }} />
-                ) : (
-                  <Ionicons name="person" size={20} color={S.ink2} />
-                )}
+                <Ionicons name="logo-google" size={20} color={S.ink2} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[TYPE.row, { color: S.ink }]} numberOfLines={1}>
-                  {settings.account.email}
-                </Text>
-                <Text style={[TYPE.small, { color: S.ink3, marginTop: 2 }]}>
-                  {settings.lastSyncedAt ? `Синхронізовано: ${new Date(settings.lastSyncedAt).toLocaleString()}` : "Ще не синхронізовано"}
-                </Text>
+                <Text style={[TYPE.row, { color: S.ink }]}>Google підключено</Text>
+                <Text style={[TYPE.small, { color: S.ink3, marginTop: 2 }]}>Підписки YouTube доступні в «Каналах»</Text>
               </View>
-              <Pressable onPress={handleSignOut} style={[styles.signOut, { backgroundColor: S.fill }]}>
+              <Pressable onPress={() => signOutOfGoogle()} style={[styles.signOut, { backgroundColor: S.fill }]}>
                 <Text style={[TYPE.row, { fontSize: 14, color: S.ink }]}>Вийти</Text>
               </Pressable>
             </View>
