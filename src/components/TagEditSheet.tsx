@@ -2,7 +2,7 @@ import { useStyles, useTheme } from '../theme/ThemeProvider';
 import IconCatalogGrid from './IconCatalogGrid';
 import type { Theme } from '../theme/tokens';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import TextInput from './AppTextInput';
 // gesture-handler's ScrollView, not the core RN one: on Android a drag that
 // starts on a TextInput never reaches an RN ScrollView's scroll recognition,
@@ -56,6 +56,9 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
     ...TAG_KIND_CHOICES,
     ...customDatabases.map((d) => ({ kind: `customRow:${d.id}`, label: d.name || 'База' })),
   ];
+  // «Де показувати» lives one step in (2026-11-09): thirteen chips left the icon grid no room, and for an ordinary folder
+  // the ticks fill themselves (filing a thing adds its kind). 'main' = name/look, 'where' = the ticks.
+  const [page, setPage] = useState<'main' | 'where'>('main');
   const holding = (kind: string) => !!tag && Object.keys(tag.usedIn).some((key) => key.startsWith(`${kind}:`));
 
   useEffect(() => {
@@ -65,8 +68,38 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
       setSelectedIcon(tag.icon);
       setSelectedColor(tag.color);
       setTypes(tag.types);
+      setPage('main');
     }
   }, [visible, tag]);
+
+  // A PLAYLIST is a folder whose only kind is «YouTube / TikTok» (the explorer draws it as a card and opens its own
+  // window). It used to be reached by unticking twelve other chips; now it is one switch. A collection of photos / geo
+  // points is NOT a tick: it is born in its base (Tag.baseOnly), so for those the sheet only names what it is.
+  const isPlaylist = types.length === 1 && types[0] === 'link-video';
+  const collectionLabel = tag?.baseOnly
+    ? tag.types.length === 1 && tag.types[0] === 'link-video'
+      ? 'Плейліст відео'
+      : tag.types.length === 1 && tag.types[0] === 'photo'
+      ? 'Підбірка фото'
+      : tag.types.length === 1 && tag.types[0] === 'link-geo'
+      ? 'Підбірка геоточок'
+      : null
+    : null;
+  const [typesBeforePlaylist, setTypesBeforePlaylist] = useState<string[]>([]);
+  function setPlaylist(on: boolean) {
+    if (on) {
+      setTypesBeforePlaylist(types);
+      setTypes(['link-video']);
+    } else {
+      setTypes(typesBeforePlaylist.filter((k) => k !== 'link-video'));
+    }
+  }
+  const whereSummary = (() => {
+    if (types.length === 0) return 'з’явиться, коли щось покласти';
+    const names = kindChoices.filter((c) => types.includes(c.kind)).map((c) => c.label);
+    if (names.length >= TAG_KIND_CHOICES.length) return 'усюди';
+    return names.join(', ');
+  })();
 
   function toggleType(kind: string) {
     // Unticking a kind that already holds things is allowed (2026-10-11): it only takes the folder out of
@@ -107,20 +140,16 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
             </Pressable>
           </View>
 
-          <View style={styles.previewRow}>
-            <View style={[styles.previewIcon, { backgroundColor: `${selectedColor}1F` }]}>
-              <Ionicons name={selectedIcon as keyof typeof Ionicons.glyphMap} size={22} color={selectedColor} />
-            </View>
-            <TextInput
-              value={path}
-              onChangeText={setPath}
-              placeholder='робота/оренда'
-              placeholderTextColor={theme.ink.faint}
-              style={styles.pathInput}
-            />
-          </View>
-
-          <Text style={styles.sectionLabel}>ДЕ ПОКАЗУВАТИ</Text>
+          {page === 'where' ? (
+            <>
+          <Pressable style={styles.optRow} onPress={() => setPage('main')}>
+            <Ionicons name="chevron-back" size={18} color={theme.ink.muted} />
+            <Text style={styles.optLabel}>Де показувати</Text>
+          </Pressable>
+          <Text style={styles.whereHint}>
+            Папка з'являється в списку цього виду речей. Коли щось кладеш у папку, його вид додається сам; тут можна додати
+            вид наперед. «Старт» показує всі папки незалежно від цього.
+          </Text>
           <View style={styles.kindRow}>
             {kindChoices.map((choice) => {
               const on = types.includes(choice.kind);
@@ -138,6 +167,48 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
               );
             })}
           </View>
+
+            </>
+          ) : (
+            <>
+          <View style={styles.previewRow}>
+            <View style={[styles.previewIcon, { backgroundColor: `${selectedColor}1F` }]}>
+              <Ionicons name={selectedIcon as keyof typeof Ionicons.glyphMap} size={22} color={selectedColor} />
+            </View>
+            <TextInput
+              value={path}
+              onChangeText={setPath}
+              placeholder='робота/оренда'
+              placeholderTextColor={theme.ink.faint}
+              style={styles.pathInput}
+            />
+          </View>
+
+          {collectionLabel ? (
+            <View style={styles.kindNote}>
+              <Ionicons name="albums-outline" size={16} color={theme.ink.muted} />
+              <Text style={styles.kindNoteText}>{collectionLabel} · живе у своїй базі</Text>
+            </View>
+          ) : (
+            <>
+              <View style={styles.optRow}>
+                <Text style={styles.optLabel}>Плейліст відео</Text>
+                <Switch
+                  value={isPlaylist}
+                  onValueChange={setPlaylist}
+                  trackColor={{ true: selectedColor, false: theme.edge.hairline }}
+                  thumbColor="#fff"
+                />
+              </View>
+              {!isPlaylist && (
+                <Pressable style={styles.optRow} onPress={() => setPage('where')}>
+                  <Text style={styles.optLabel}>Де показувати</Text>
+                  <Text style={styles.optValue} numberOfLines={1}>{whereSummary}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={theme.ink.faint} />
+                </Pressable>
+              )}
+            </>
+          )}
 
           <Text style={styles.sectionLabel}>КОЛІР</Text>
           <View style={styles.colorRow}>
@@ -180,6 +251,8 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
               )}
             />
           </ScrollView>
+            </>
+          )}
         </Animated.View>
       </View>
     </GlassLayer>
@@ -187,6 +260,46 @@ export default function TagEditSheet({ visible, tag, onCancel, onSave }: Props) 
 }
 
 const makeStyles = (t: Theme) => StyleSheet.create({
+  optRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 44,
+    marginBottom: 6,
+  },
+  optLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FONT_SEMIBOLD,
+    color: t.ink.primary,
+  },
+  optValue: {
+    flexShrink: 1,
+    maxWidth: '55%',
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.muted,
+    textAlign: 'right',
+  },
+  kindNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 40,
+    marginBottom: 10,
+  },
+  kindNoteText: {
+    fontSize: 13,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.muted,
+  },
+  whereHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: FONT_REGULAR,
+    color: t.ink.muted,
+    marginBottom: 12,
+  },
   kindRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
