@@ -134,6 +134,7 @@ import UndoToast from '../components/UndoToast';
 import TagChips from '../components/TagChips';
 import TagPicker from '../components/TagPicker';
 import GroupPickerSheet from '../components/GroupPickerSheet';
+import ContinueSheetsSheet, { ContinueItem } from '../components/ContinueSheetsSheet';
 import DocumentPickerModal, { PickableDocument } from '../components/DocumentPickerModal';
 import ProjectTabsRow, { UNASSIGNED_ID } from '../components/ProjectTabsRow';
 import { useDockDesksHere } from '../navigation/deskBeadsBus';
@@ -686,6 +687,8 @@ export default function CustomDatabaseScreen({
     null
   );
   const [bulkGroupPickerVisible, setBulkGroupPickerVisible] = useState(false);
+  // «Продовжити листи» in the schedule: the schedule's config while its list is open (above the early return - a hook below it crashes).
+  const [continueCfg, setContinueCfg] = useState<NonNullable<CustomDatabaseView['scheduleConfig']> | null>(null);
   const [bulkTagPickerVisible, setBulkTagPickerVisible] = useState(false);
   // Date/select/multiSelect/relation cells can't be typed into - they open
   // their own picker against that row+field rather than against the row
@@ -1544,22 +1547,85 @@ export default function CustomDatabaseScreen({
     const dated = (database?.fields ?? []).filter((f) => f.type === 'date' && dateRangeOf(row.values[f.id]));
     return dated.find((f) => dateRangeOf(row.values[f.id])?.end) ?? dated[0] ?? null;
   }
-  async function continueRow(row: CustomDatabaseRow) {
-    setRowMenuId(null);
+  // The copy that continues a record (null when it has no period to go on from). Shared by the single «Продовжити» and the bulk one.
+  function continuationOf(row: CustomDatabaseRow): Record<string, unknown> | null {
     const dateField = continueDateFieldOf(row);
     const range = dateField ? dateRangeOf(row.values[dateField.id]) : null;
-    if (!dateField || !range) return;
+    if (!dateField || !range) return null;
     const titleFieldId = database?.fields[0]?.id;
     const values = { ...row.values, [dateField.id]: continuedRange(range) };
     if (titleFieldId && titleFieldId !== dateField.id) values[titleFieldId] = 'Задати номер';
-    const id = generateId();
     const now = Date.now();
     const copy: Record<string, unknown> = { databaseId, values, tagIds: row.tagIds ?? [], createdAt: now, updatedAt: now };
     if (row.groupId) copy.groupId = row.groupId;
+    return copy;
+  }
+  async function continueRow(row: CustomDatabaseRow) {
+    setRowMenuId(null);
+    const copy = continuationOf(row);
+    if (!copy) return;
+    const id = generateId();
     await setDoc(doc(db, 'customDatabaseRows', id), copy);
     hapticSuccess();
     // The new sheet's page, as soon as it arrives - to give it its number.
     setRowPageId(id);
+  }
+
+  // «ПРОДОВЖИТИ ЛИСТИ» in the schedule (the user, 2026-11-09): the LATEST record of every row of the schedule (a vehicle), in one
+  // vertical list the user ticks by hand; the ticked ones are continued together, no page opened (the numbers follow paper blanks
+  // and are typed in afterwards, so each copy keeps «Задати номер»).
+  const continueItems: ContinueItem[] = (() => {
+    if (!continueCfg || !database) return [];
+    const rowDb = relatedDatabases[continueCfg.rowDatabaseId] ?? null;
+    const latest = new Map<string, { row: CustomDatabaseRow; end: string }>();
+    for (const row of rows) {
+      const range = dateRangeOf(row.values[continueCfg.dateFieldId]);
+      if (!range || !continueDateFieldOf(row)) continue;
+      const rel = row.values[continueCfg.rowRelationFieldId];
+      const ids = Array.isArray(rel) ? (rel as string[]) : typeof rel === 'string' && rel ? [rel] : [];
+      const end = range.end ?? range.start;
+      for (const id of ids) {
+        const prev = latest.get(id);
+        if (!prev || end > prev.end) latest.set(id, { row, end });
+      }
+    }
+    return (relatedRows[continueCfg.rowDatabaseId] ?? [])
+      .filter((r) => latest.has(r.id))
+      .map((r) => {
+        const { row } = latest.get(r.id)!;
+        const range = dateRangeOf(row.values[continueCfg.dateFieldId])!;
+        const extra = (continueCfg.cardFieldIds ?? [])
+          .map((fid) => database.fields.find((f) => f.id === fid))
+          .filter((f): f is FieldDef => !!f)
+          .map((f) => displayFieldValue(f, row.values[f.id], displayContext))
+          .filter(Boolean);
+        return {
+          id: row.id,
+          title: rowTitleOf(rowDb, r),
+          line: [rowTitleOf(database, row), ...extra].join(' · '),
+          period: formatDateRange(range),
+        };
+      });
+  })();
+  async function continueMany(ids: string[]) {
+    setContinueCfg(null);
+    const batch = writeBatch(db);
+    let made = 0;
+    for (const id of ids) {
+      const row = rows.find((r) => r.id === id);
+      const copy = row ? continuationOf(row) : null;
+      if (!copy) continue;
+      batch.set(doc(db, 'customDatabaseRows', generateId()), copy);
+      made += 1;
+    }
+    if (made === 0) return;
+    try {
+      await batch.commit();
+      hapticSuccess();
+      notify('Готово', `Створено продовжень: ${made}. У кожному назва «Задати номер».`);
+    } catch (e) {
+      notify('Не вдалося створити', (e as Error).message);
+    }
   }
 
   function rowMenuRows(row: (typeof rows)[number]): CardMenuRow[] {
@@ -3851,6 +3917,10 @@ export default function CustomDatabaseScreen({
           >
             <Ionicons name="chevron-forward" size={18} color={sInk(GLASS_TEXT)} />
           </Pressable>
+          <Pressable hitSlop={8} style={[styles.scheduleWindowToday, { flexDirection: 'row', alignItems: 'center', gap: 4 }]} onPress={() => setContinueCfg(config)}>
+            <Ionicons name="play-skip-forward-outline" size={12} color={sInk(GLASS_TEXT)} />
+            <Text style={styles.scheduleWindowTodayLabel}>Продовжити</Text>
+          </Pressable>
           {(scheduleWindowStart !== defaultStart || cursorKey !== todayKey) && (
             <Pressable
               hitSlop={8}
@@ -4968,6 +5038,13 @@ export default function CustomDatabaseScreen({
           </BottomWindow>
         </View>
       </GlassLayer>
+
+      <ContinueSheetsSheet
+        visible={continueCfg !== null}
+        items={continueItems}
+        onClose={() => setContinueCfg(null)}
+        onConfirm={continueMany}
+      />
 
       <GroupPickerSheet
         visible={viewGroupPickerFor !== null}
