@@ -90,7 +90,14 @@ export function BottomWindow({
 }) {
   const b = useBottomSheet(visible, onClose, glass);
   return (
-    <Animated.View style={[style, b.window, b.padBottom(pad)]} onStartShouldSetResponder={catchTaps ? () => true : undefined}>
+    <Animated.View
+      style={[style, b.window, b.padBottom(pad)]}
+      onStartShouldSetResponder={catchTaps ? () => true : undefined}
+      // In the browser the dim's Pressable closes on a CLICK that bubbles up to it, and a click on a TextInput (or on the
+      // title) has no handler of its own to stop it - so touching the search field closed the whole window (2026-11-09,
+      // the driver picker on the Mac). The responder above only covers touches.
+      {...(catchTaps && Platform.OS === 'web' ? ({ onClick: (event: { stopPropagation: () => void }) => event.stopPropagation() } as object) : null)}
+    >
       {b.fill}
       {grab && b.grab}
       {/* Room for the bar, which lies over the edge rather than in the flow. */}
