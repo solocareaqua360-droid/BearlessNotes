@@ -87,7 +87,7 @@ import RecordPanel from '../components/desktop/RecordPanel';
 import CustomBasePanel from '../components/desktop/CustomBasePanel';
 import { usePublishRailPanel } from '../navigation/navRail';
 import { usePins } from '../navigation/pinned';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { deleteCustomDatabase } from '../utils/deleteCustomDatabase';
 import {
   CustomDatabase,
