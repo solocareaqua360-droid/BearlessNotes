@@ -1417,6 +1417,7 @@ export default function CustomDatabaseScreen({
         context={{ photos: photosList, files: filesList, links: linksList, relatedDatabases, relatedRows }}
         onEdit={() => openEditRow(panelRow)}
         onOpenPage={() => setPageForced(true)}
+        onContinue={continueDateFieldOf(panelRow) ? () => continueRow(panelRow) : undefined}
         onClose={() => setRowPageId(null)}
       />
     ) : paramsPanelOn && database ? (
@@ -4139,7 +4140,7 @@ export default function CustomDatabaseScreen({
                         const right = (endIdx + 1) * SCHEDULE_DAY_WIDTH - (1 - endFrac) * SCHEDULE_DAY_WIDTH;
                         // A minimum width so a short same-day hop (a quick
                         // errand, say) never shrinks to an untappable sliver.
-                        const width = Math.max(right - left - 4, 16);
+                        const width = Math.max(right - left - 4, recordPanelOn ? 28 : 16);
                         return (
                           <Pressable
                             key={eventRow.id}

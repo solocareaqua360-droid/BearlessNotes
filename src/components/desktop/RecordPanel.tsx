@@ -16,6 +16,7 @@ export default function RecordPanel({
   context,
   onEdit,
   onOpenPage,
+  onContinue,
   onClose,
 }: {
   database: CustomDatabase;
@@ -23,6 +24,8 @@ export default function RecordPanel({
   context: RowDisplayContext;
   onEdit: () => void;
   onOpenPage: () => void;
+  // Only for a record that has a period to go on from (a road sheet): the phone's page has the same «Продовжити».
+  onContinue?: () => void;
   onClose: () => void;
 }) {
   const styles = useStyles(makeStyles);
@@ -86,6 +89,7 @@ export default function RecordPanel({
         {action('Редагувати', 'create-outline', onEdit, true)}
         {action('Сторінка', 'reader-outline', onOpenPage)}
       </View>
+      {onContinue && <View style={styles.actions}>{action('Продовжити', 'play-skip-forward-outline', onContinue)}</View>}
     </ScrollView>
   );
 }
