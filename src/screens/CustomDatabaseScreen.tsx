@@ -4080,7 +4080,17 @@ export default function CustomDatabaseScreen({
                       <Pressable
                         style={StyleSheet.absoluteFill}
                         onPress={(e) => {
-                          const i = Math.floor(e.nativeEvent.locationX / SCHEDULE_DAY_WIDTH);
+                          // In the browser a press arrives as a DOM click: there is no locationX (NaN slipped through both
+                          // range checks below and the tap did nothing), so the x comes from the click and the layer's box.
+                          let x = e.nativeEvent.locationX;
+                          if (typeof x !== 'number' || Number.isNaN(x)) {
+                            const dom = e as unknown as { clientX?: number; nativeEvent?: { clientX?: number }; currentTarget?: { getBoundingClientRect?: () => { left: number } } };
+                            const clientX = dom.nativeEvent?.clientX ?? dom.clientX;
+                            const left = dom.currentTarget?.getBoundingClientRect?.().left;
+                            if (typeof clientX !== 'number' || typeof left !== 'number') return;
+                            x = clientX - left;
+                          }
+                          const i = Math.floor(x / SCHEDULE_DAY_WIDTH);
                           if (i < 0 || i >= days.length || coveredDays.has(i) || statusDays.has(i)) return;
                           openScheduleStatusPicker(viewId, config, row, dateKey(days[i]), undefined);
                         }}
