@@ -1615,7 +1615,8 @@ export default function CustomDatabaseScreen({
       const row = rows.find((r) => r.id === id);
       const copy = row ? continuationOf(row) : null;
       if (!copy) continue;
-      batch.set(doc(db, 'customDatabaseRows', generateId()), copy);
+      // A raw batch does not stamp the owner the way utils/owned's setDoc does; the owner-only rules refuse a create without it.
+      batch.set(doc(db, 'customDatabaseRows', generateId()), { ...copy, ownerId: auth.currentUser?.uid ?? null });
       made += 1;
     }
     if (made === 0) return;
