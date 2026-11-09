@@ -903,7 +903,7 @@ export default function TableBlockContent({
         // block (the user, 2026-10-22). Typing, or a table wider than the screen, scrolls as before.
         scrollEnabled={pointer || editing || !fitsView}
         onLayout={(e) => setViewW(e.nativeEvent.layout.width)}
-        contentContainerStyle={{ paddingRight: SCROLL_PAST, paddingBottom: pointer ? 14 : 0 }}
+        contentContainerStyle={{ paddingRight: SCROLL_PAST, paddingBottom: pointer || selected ? 14 : 0 }}
       >
         <View
           style={{ position: 'relative' }}
@@ -1135,16 +1135,20 @@ export default function TableBlockContent({
         {/* CRAFT'S EDGES (the user, 2026-10-22): nothing is there until the pointer is over the table; then a thin bar sits ON the border
             line - on the right edge beside the last row (a new column) and, with a cell selected, on the bottom edge under that cell (a new
             row). Under the pointer the bar becomes a round «+». */}
-        {pointer && tableHover && !formulaMode && (
+        {/* THE PHONE (the user, 2026-11-09: «треба і на телефон додати плюс»): no hover there, so the same two «+» stand on the edges as soon
+            as a cell is selected - a new column at the right end, a new row under the table - and are gone when nothing is picked. */}
+        {(pointer ? tableHover : !!selected) && !formulaMode && (
           <EdgeBar
+            solid={!pointer}
             vertical
             style={{ right: -13, bottom: (rowHeights.current[rows.length - 1] ?? 34) / 2 - 13 }}
             onPress={() => insertColumn(columnCount)}
             label="Додати колонку"
           />
         )}
-        {pointer && tableHover && !!selected && !formulaMode && (
+        {(pointer ? tableHover : true) && !!selected && !formulaMode && (
           <EdgeBar
+            solid={!pointer}
             style={{ bottom: -13, left: Array.from({ length: selected.c }).reduce<number>((x, _, i) => x + widthOf(i), 0) + widthOf(selected.c) / 2 - 13 }}
             onPress={() => addRow()}
             label="Додати рядок"
@@ -1315,7 +1319,7 @@ function CellText({
 
 // A thin bar on a border of the table that becomes a round «+» under the pointer (Craft's own). Positioned by the caller, which gives the spot
 // the bar is centred on; the circle grows from the same centre.
-function EdgeBar({ vertical, style, onPress, label }: { vertical?: boolean; style: object; onPress: () => void; label: string }) {
+function EdgeBar({ vertical, style, onPress, label, solid }: { vertical?: boolean; style: object; onPress: () => void; label: string; solid?: boolean }) {
   // Craft's own: at rest a small faint dot sitting ON the border line; under the pointer it grows into a round «+».
   // The thing the pointer is over is a FIXED 26pt square; only the picture inside it changes. Letting the pressable itself grow made it
   // slide from under a pointer that had entered its small dot, and the dot flickered (the user, 2026-10-22: «інколи блимає»).
@@ -1327,7 +1331,7 @@ function EdgeBar({ vertical, style, onPress, label }: { vertical?: boolean; styl
       style={[{ position: 'absolute', zIndex: 6, width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }, style]}
     >
       {(state) =>
-        (state as { hovered?: boolean }).hovered ? (
+        solid || (state as { hovered?: boolean }).hovered ? (
           <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#2F8CF3', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: '#fff', fontSize: 15, lineHeight: 17, fontWeight: '600' }}>+</Text>
           </View>
