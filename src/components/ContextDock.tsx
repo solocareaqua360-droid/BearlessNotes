@@ -2263,7 +2263,7 @@ export default function ContextDock() {
       }
       return (
         <DockPortal>
-          {FEATURES.deskDock && beads.right?.icon === 'chevron-back' && <CarriesBackMarker />}
+          {FEATURES.dockBack && FEATURES.deskDock && beads.right?.icon === 'chevron-back' && <CarriesBackMarker />}
           <View
             pointerEvents="box-none"
             style={[
@@ -2301,7 +2301,8 @@ export default function ContextDock() {
                 ))}
               </View>
             </View>
-            {softSlot(beads.right)}
+            {/* The way back is not drawn here any more (features.dockBack off, 2026-11-12): the bar's own back at the top-left is the one. */}
+            {softSlot(!FEATURES.dockBack && beads.right?.icon === 'chevron-back' ? null : beads.right)}
           </View>
         </DockPortal>
       );
