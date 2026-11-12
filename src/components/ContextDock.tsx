@@ -11,7 +11,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Ionicons } from './icons/Ionicons';
 import { openCapture } from './CaptureWindow';
 import { openDeskSwitcher, useDeskSwitcherAvailable, useDeskSwitcherRight } from '../navigation/deskSwitcherBus';
-import { useDeskBeads, useDeskReach, useDockDesksWanted } from '../navigation/deskBeadsBus';
+import { useDeskBeads, useDeskReach, useDockDesksWanted, useAssistantOnScreen } from '../navigation/deskBeadsBus';
 import DeskDock, { DESK_ASSIST_GAP, DESK_PILL_W, DESK_PLUS } from './DeskDock';
 import CarriesBackMarker from './CarriesBackMarker';
 import { FEATURES } from '../features';
@@ -876,6 +876,7 @@ export default function ContextDock() {
   const switcherAvailable = useDeskSwitcherAvailable();
   const switcherRight = useDeskSwitcherRight();
   const deskBeads = useHeldThroughHandover(useDeskBeads(), (d) => !!d?.length);
+  const assistOnScreen = useAssistantOnScreen();
   // The desks a base pushed over the tabs keeps in its dock (deskBeadsBus's useDockDesksHere).
   const reachDesks = useDeskReach();
   const desksWanted = useDockDesksWanted();
@@ -2235,8 +2236,9 @@ export default function ContextDock() {
                     <Ionicons name={primary.icon as keyof typeof Ionicons.glyphMap} size={21} color={quiet ? iconInk : soft.chrome} />
                   </Pressable>
                 }
+                circleMode={FEATURES.dockBack ? undefined : 'none'}
                 assist={
-                  FEATURES.assistant
+                  FEATURES.assistant && FEATURES.dockBack
                     ? {
                         onOpen: () =>
                           openAssistant(
@@ -2255,7 +2257,7 @@ export default function ContextDock() {
               {false}
               {false}
             </Animated.View>
-            {back.icon === 'chevron-back' && <CarriesBackMarker />}
+            {FEATURES.dockBack && back.icon === 'chevron-back' && <CarriesBackMarker />}
           </DockPortal>
         );
       }
@@ -2547,8 +2549,14 @@ export default function ContextDock() {
               }
               // THE AI AS A ROUND BUTTON beside «+» (2026-11-12, like Craft's): opens its screen at the tap, from a desk - not from the AI
               // screen itself (there `backWithDesks` is the state, not `multitask`).
+              // The far-right circle (features.dockBack off): the AI button on every desk, folder and base; nothing on the AI screen itself.
+              circleMode={FEATURES.dockBack ? undefined : FEATURES.assistant && !assistOnScreen ? 'assist' : 'none'}
+              circleAssist={{
+                icon: <BalloonMark size={24} color={iconInk} />,
+                onPress: () => navigationRef.isReady() && (navigationRef.navigate as (name: string) => void)('Assistant'),
+              }}
               rootExtraEl={
-                FEATURES.assistant && !FEATURES.assistBead && multitask ? (
+                FEATURES.dockBack && FEATURES.assistant && !FEATURES.assistBead && multitask ? (
                   <Pressable
                     onPress={() => navigationRef.isReady() && (navigationRef.navigate as (name: string) => void)('Assistant')}
                     accessibilityLabel="Розмова з ШІ"

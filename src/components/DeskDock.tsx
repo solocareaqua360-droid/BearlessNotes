@@ -304,6 +304,8 @@ export default function DeskDock({
   plusEl,
   extraEl,
   rootExtraEl,
+  circleMode,
+  circleAssist,
   multiIcon,
   onMulti,
   backIcon,
@@ -332,6 +334,10 @@ export default function DeskDock({
   // ON A ROOT DESK, left of «+»: the AI conversation's round button (screens/AssistantScreen, 2026-10-22). Drawn only where
   // the room between the desks' pill and «+» holds it.
   rootExtraEl?: ReactElement | null;
+  // THE FAR-RIGHT CIRCLE (features.dockBack off, 2026-11-12): undefined = as it was (the multitasking sign on a desk, the way back inside);
+  // 'assist' = always the AI button; 'none' = nothing stands there.
+  circleMode?: 'assist' | 'none';
+  circleAssist?: { icon: ReactElement; onPress: () => void };
   multiIcon: ReactElement;
   onMulti: () => void;
   backIcon: ReactElement;
@@ -370,9 +376,10 @@ export default function DeskDock({
   const rightZone = (extraEl ? PLUS + INSET : 0) + INSET + PLUS + INSET;
   // The bar at the top drops its own back button while this dock is up (it is the circle at the right end).
   useEffect(() => {
+    if (circleMode) return;
     setDockCarriesBack(true);
     return () => setDockCarriesBack(false);
-  }, []);
+  }, [circleMode]);
   const extraDesks = Math.min(useExtraDeskCount(), 5);
   // The current desk's capsule: its two edges, each on its own spring.
   const deskIndex = desks.findIndex((d) => d.active);
@@ -823,6 +830,23 @@ export default function DeskDock({
       )}
       {/* The circle at the far end: multitasking on a desk, the way back inside. Without the switcher (FEATURES.deskSwitcher
           off, 2026-10-23) a root desk has no circle - an empty place - and it comes in only as the way back. */}
+      {circleMode === 'none' ? null : circleMode === 'assist' && circleAssist ? (
+        <Animated.View style={[styles.circleWrap, { left: width - BACK, top: (H - BACK) / 2, width: BACK, height: BACK }, circleGrow.style]}>
+          <Pressable
+            onPress={circleAssist.onPress}
+            onPressIn={circleGrow.on}
+            onPressOut={circleGrow.off}
+            accessibilityLabel="Розмова з ШІ"
+            hitSlop={6}
+            style={[styles.circle, surface, { left: 0, top: 0, width: BACK, height: BACK, borderRadius: BACK / 2 }]}
+          >
+            {glass}
+            <View style={styles.icon} pointerEvents="none">
+              {circleAssist.icon}
+            </View>
+          </Pressable>
+        </Animated.View>
+      ) : (
       <Animated.View
         pointerEvents={!FEATURES.deskSwitcher && !backOnCircle ? 'none' : 'auto'}
         style={[styles.circleWrap, { left: width - BACK, top: (H - BACK) / 2, width: BACK, height: BACK }, circleGrow.style, !FEATURES.deskSwitcher && circleShown]}
@@ -854,6 +878,7 @@ export default function DeskDock({
         )}
       </Pressable>
       </Animated.View>
+      )}
       </Animated.View>
       {/* The lens itself, above everything: it rolls as it travels. */}
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, leftCompact]}>

@@ -89,6 +89,7 @@ import { holdAsk } from '../components/surfaces/HoldAsk';
 import { useChromeStyle, useDockBeads, useTopBack, useTopExtras } from '../navigation/navDock';
 import { useDockDesksHere } from '../navigation/deskBeadsBus';
 import { applySort, mergeInto, createTheme, deleteTheme, likelyThemes, listenThemes, pairsOf, renameThemeTo, similarChat, sortPlan, type ChatSection, type ChatTheme } from '../utils/assistant';
+import { setAssistantOnScreen } from '../navigation/deskBeadsBus';
 import { ASSIST_KEY, assistDockCover, assistFlown, assistReturned, assistWash, closeAssistant } from '../utils/assistMorph';
 import { morphLanded } from '../utils/morph';
 import { speakThoughts, stopVoice, subscribeVoice } from '../utils/thoughtVoice';
@@ -162,6 +163,10 @@ let lastChats: ChatSummary[] = [];
 let lastThemes: ChatTheme[] = [];
 
 export default function AssistantScreen() {
+  useEffect(() => {
+    setAssistantOnScreen(true);
+    return () => setAssistantOnScreen(false);
+  }, []);
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<{ goBack: () => void; navigate: (name: string, params?: object) => void }>();

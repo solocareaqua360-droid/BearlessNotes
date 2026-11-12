@@ -13,6 +13,11 @@ export const FEATURES = {
   // wait for, no special state of the dock, one place less in the capsule (it was 56 dp the narrow phone did not have). On brings the
   // balloon back as it was.
   assistBead: false,
+  // THE DOCK'S OWN BACK CIRCLE at the far right (the way back, duplicated by the bar's back at the top-left on every screen but the
+  // roots - the user, 2026-11-12: «кнопки назад дублюються... я це виважено робив»). Off: the dock has none; on the desks, folders and
+  // bases that place holds the AI instead (one place for the AI everywhere), in a note it stays empty, and on the AI screen itself
+  // nothing stands there. On brings the back circle back as it was.
+  dockBack: false,
   // «В нотатку» as a TREE: a nested note per branch + a board that shows them (2026-10-23 night). Put away the next day
   // (the user: «їй на даний момент треба вернути форму звичайного документа, без всяких дошок... я тільки розбираюсь»):
   // off = ONE ordinary note, each branch a heading in it (utils/assistantTree writeMemoryNote). Notes and boards made as a

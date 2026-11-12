@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 
 // THE THREE DESKS, FOR THE BOTTOM DOCK (2026-10-12, the desk dock): the tab bar (FloatingIslandTabBar) owns the
@@ -143,4 +143,23 @@ export function useDockCarriesBack(): boolean {
     };
   }, []);
   return on;
+}
+
+// THE AI SCREEN IS IN FRONT (2026-11-12): the dock's far-right place holds the AI button everywhere but on the AI screen itself.
+let assistantOnScreen = false;
+const assistantListeners = new Set<() => void>();
+export function setAssistantOnScreen(on: boolean) {
+  if (assistantOnScreen === on) return;
+  assistantOnScreen = on;
+  assistantListeners.forEach((l) => l());
+}
+export function useAssistantOnScreen(): boolean {
+  return useSyncExternalStore(
+    (l) => {
+      assistantListeners.add(l);
+      return () => assistantListeners.delete(l);
+    },
+    () => assistantOnScreen,
+    () => assistantOnScreen
+  );
 }
