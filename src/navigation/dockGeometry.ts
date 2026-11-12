@@ -10,7 +10,10 @@ import { useNavDockPathOnDock } from './navDock';
 // few points into a menu, or a menu a few points into the dock, on some
 // screen widths: "в доці знову хаос". A number typed twice is a number
 // that drifts once one of the two copies is edited and the other is not.
-export const DOCK_BOTTOM = 22; // the dock's own distance from insets.bottom
+// The dock's own distance from insets.bottom. 22 until 2026-11-12: the system's own inset already holds the gesture handle
+// (24 dp on a phone with gesture navigation), so 22 + the wrap's 6 on top of it put the dock ~52 dp off the edge and it
+// looked lifted (the user, the second phone and the tablet). 6 + 6 leaves ~12 above the inset; every screen reads this number.
+export const DOCK_BOTTOM = 6;
 const CARD_F = 0.148;
 const BEHIND_EDGE = 3;
 const WRAP_PADDING = 6; // vertical, top and bottom, see ContextDock's `wrap`

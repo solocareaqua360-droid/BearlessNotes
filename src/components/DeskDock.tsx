@@ -65,6 +65,22 @@ export const DESK_PILL_W = PILL_FULL;
 export const DESK_ASSIST_GAP = 4;
 const LENS_ZONE = PILL_FULL - PILL_CORE;
 const LENS_ROOT = PILL_CORE + LENS_ZONE / 2 - 2;
+// THE DOCK FITS THE SCREEN (2026-11-12, the user's second phone, 411 dp wide: «+» stood on the search lens). Every size above was
+// drawn for the first phone (475 dp), and the right end - «+», the circle, the gaps - never shrinks, so the pill is what gives:
+// the places, the pad before them and the lens zone shrink TOGETHER by one factor, no further than FIT_MIN, and not at all on a
+// screen that has the room. `beads` counts the balloon too. The pill's width is read from here by whoever has to match it.
+const FIT_MIN = 0.8;
+export function deskFit(width: number, beads: number, assist: boolean) {
+  const room = width - BACK - GAP - INSET - PLUS - 4;
+  const nominalCore = PILL_CORE + (assist ? BEAD_W : 0);
+  const nominalFull = nominalCore + LENS_ZONE;
+  const k = nominalFull <= room ? 1 : Math.max(FIT_MIN, room / nominalFull);
+  const bw = Math.floor(BEAD_W * k);
+  const pad = Math.floor(PILL_PAD * k);
+  const lens = Math.floor(LENS_ZONE * k);
+  const core = nominalCore + beads * (bw - BEAD_W) + (pad - PILL_PAD);
+  return { bw, pad, lens, core, full: core + lens };
+}
 const LENS_IN = 28;
 // What the body holds when it first forms: the lens zone, then the "+" zone.
 const BODY_START = 52 + INSET + PLUS + INSET;
@@ -112,16 +128,16 @@ const CAP_END = CAP_LAG + CAP_TRAIL_MS;
 // Where the capsule is, `e` ms into a journey from one desk to another - ONE pure function of time, read on the UI
 // thread by every dock, so a dock born mid-way draws exactly what the one before it would have (the user saw the
 // hand-over as a «ривок» while the two docks eased by different curves).
-function capAt(from: number, to: number, e: number) {
+function capAt(from: number, to: number, e: number, bw: number, pad: number) {
   'worklet';
   const ease = (k: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, k)), 3);
-  const aL = PILL_PAD + from * BEAD_W;
-  const bL = PILL_PAD + to * BEAD_W;
+  const aL = pad + from * bw;
+  const bL = pad + to * bw;
   const right = to > from;
   const lead = ease(e / CAP_LEAD_MS);
   const trail = ease((e - CAP_LAG) / CAP_TRAIL_MS);
   const L = aL + (bL - aL) * (right ? trail : lead);
-  const R = aL + BEAD_W + (bL - aL) * (right ? lead : trail);
+  const R = aL + bw + (bL - aL) * (right ? lead : trail);
   const H =
     e < 110
       ? REST_H + (PILL_H - REST_H) * (e / 110)
@@ -207,7 +223,7 @@ function useHereScale(active: boolean) {
   return useAnimatedStyle(() => ({ transform: [{ scale: k.value }] }));
 }
 
-function DeskBeadButton({ d, i, soft, onPick, active, onLens }: { d: DeskBead; i: number; soft: SoftTokens; onPick: (i: number) => void; active?: boolean; onLens: (i: number | null) => void }) {
+function DeskBeadButton({ d, i, bw, pad, soft, onPick, active, onLens }: { d: DeskBead; i: number; bw: number; pad: number; soft: SoftTokens; onPick: (i: number) => void; active?: boolean; onLens: (i: number | null) => void }) {
   const glassOn = useDockGlass();
   const g = useGrow();
   const here = useHereScale(!!active);
@@ -226,7 +242,7 @@ function DeskBeadButton({ d, i, soft, onPick, active, onLens }: { d: DeskBead; i
         onLens(null);
       }}
       accessibilityLabel={d.label}
-      style={[styles.bead, { left: PILL_PAD + i * BEAD_W, top: (PILL_H - BEAD_H) / 2, width: BEAD_W, height: BEAD_H }]}
+      style={[styles.bead, { left: pad + i * bw, top: (PILL_H - BEAD_H) / 2, width: bw, height: BEAD_H }]}
     >
       <Animated.View style={g.style}>
         <Animated.View style={here}>
@@ -239,7 +255,7 @@ function DeskBeadButton({ d, i, soft, onPick, active, onLens }: { d: DeskBead; i
 }
 
 // The balloon among the places: drawn like a desk, the window it opens grows out of it (utils/assistMorph).
-function AssistBead({ i, soft, active, onPress, onLens }: { i: number; soft: SoftTokens; active: boolean; onPress: () => void; onLens: (i: number | null) => void }) {
+function AssistBead({ i, bw, pad, soft, active, onPress, onLens }: { i: number; bw: number; pad: number; soft: SoftTokens; active: boolean; onPress: () => void; onLens: (i: number | null) => void }) {
   const glassOn = useDockGlass();
   const g = useGrow();
   const here = useHereScale(active);
@@ -259,7 +275,7 @@ function AssistBead({ i, soft, active, onPress, onLens }: { i: number; soft: Sof
         onLens(null);
       }}
       accessibilityLabel="Розмова з ШІ"
-      style={[styles.bead, { left: PILL_PAD + i * BEAD_W, top: (PILL_H - BEAD_H) / 2, width: BEAD_W, height: BEAD_H }]}
+      style={[styles.bead, { left: pad + i * bw, top: (PILL_H - BEAD_H) / 2, width: bw, height: BEAD_H }]}
     >
       <Animated.View style={[g.style, away]}>
         <Animated.View style={here}>
@@ -339,9 +355,10 @@ export default function DeskDock({
   const glassDrop = glassOn ? <DockGlassFill soft={soft} airy paused={!shaping} /> : null;
   // With the balloon the places are one bead more, and the pill as much wider; the search lens stays at its end.
   const assistIndex = assist ? desks.length : -1;
-  const pillCore = PILL_CORE + (assist ? BEAD_W : 0);
-  const pillFull = PILL_FULL + (assist ? BEAD_W : 0);
-  const lensRoot = pillCore + LENS_ZONE / 2 - 2;
+  const fit = deskFit(width, desks.length + (assist ? 1 : 0), !!assist);
+  const pillCore = fit.core;
+  const pillFull = fit.full;
+  const lensRoot = pillCore + fit.lens / 2 - 2;
   const xr = width - BACK - GAP;
   const plusLeft = xr - INSET - PLUS;
   const extraLeft = plusLeft - INSET - PLUS;
@@ -487,28 +504,28 @@ export default function DeskDock({
     const e = capT.value;
     let k = 0;
     let cx = 0;
-    let span = BEAD_W;
+    let span = fit.bw;
     if (capFrom.value !== capTo.value && e < CAP_END) {
-      const c = capAt(capFrom.value, capTo.value, e);
+      const c = capAt(capFrom.value, capTo.value, e, fit.bw, fit.pad);
       k = Math.sin(Math.PI * Math.min(1, Math.max(0, e / CAP_END)));
       cx = (c.L + c.R) / 2;
-      span = Math.max(BEAD_W, c.R - c.L);
+      span = Math.max(fit.bw, c.R - c.L);
     }
     // Held on the place you are at: swells there.
     if (press.value > k) {
       k = press.value;
-      cx = PILL_PAD + pressAt.value * BEAD_W + BEAD_W / 2;
-      span = BEAD_W;
+      cx = fit.pad + pressAt.value * fit.bw + fit.bw / 2;
+      span = fit.bw;
     }
     return {
       opacity: Math.min(1, k * 2),
       left: cx - LENS_W / 2,
       top: H / 2 - LENS_H / 2,
-      transform: [{ scaleX: (span + (LENS_W - BEAD_W) * k) / LENS_W }, { scaleY: (BEAD_H + (LENS_H - BEAD_H) * k) / LENS_H }],
+      transform: [{ scaleX: (span + (LENS_W - fit.bw) * k) / LENS_W }, { scaleY: (BEAD_H + (LENS_H - BEAD_H) * k) / LENS_H }],
     };
   });
   const capStyle = useAnimatedStyle(() => {
-    const c = capAt(capFrom.value, capTo.value, capT.value);
+    const c = capAt(capFrom.value, capTo.value, capT.value, fit.bw, fit.pad);
     // On the balloon while it has flown out, the circle has gone with it.
     const onBalloon = assistIndex >= 0 && capTo.value === assistIndex;
     const base = onBalloon ? 1 - assistFlown.value : 1;
@@ -526,8 +543,8 @@ export default function DeskDock({
       };
       const shown = p < 0.5 ? 1 - smooth(p / 0.4) : smooth((p - 0.5) / 0.5);
       const cx = (c.L + c.R) / 2;
-      const span = Math.max(BEAD_W, c.R - c.L);
-      const w = span + HERE_GROW * 2 + (LENS_W - 8 - BEAD_W - HERE_GROW * 2) * k;
+      const span = Math.max(fit.bw, c.R - c.L);
+      const w = span + HERE_GROW * 2 + (LENS_W - 8 - fit.bw - HERE_GROW * 2) * k;
       const h = REST_H + (LENS_H - 8 - REST_H) * k;
       return {
         left: cx - w / 2,
@@ -676,11 +693,13 @@ export default function DeskDock({
             </Animated.View>
           )}
           {desks.map((d, i) => (
-            <DeskBeadButton key={d.key} d={d} i={i} soft={soft} onPick={pick} active={tools ? d.active : !!assist && i === shownIndex} onLens={onLens} />
+            <DeskBeadButton key={d.key} d={d} i={i} bw={fit.bw} pad={fit.pad} soft={soft} onPick={pick} active={tools ? d.active : !!assist && i === shownIndex} onLens={onLens} />
           ))}
           {assist && (
             <AssistBead
               i={assistIndex}
+              bw={fit.bw}
+              pad={fit.pad}
               soft={soft}
               active={shownIndex === assistIndex}
               onLens={onLens}
@@ -695,7 +714,7 @@ export default function DeskDock({
               }}
             />
           )}
-          <View style={[styles.hairline, { left: PILL_PAD + (desks.length + (assist ? 1 : 0)) * BEAD_W + 4, backgroundColor: soft.line }]} />
+          <View style={[styles.hairline, { left: fit.pad + (desks.length + (assist ? 1 : 0)) * fit.bw + 4, backgroundColor: soft.line }]} />
         </Animated.View>
       </Animated.View>
       {/* The lens (see onLens): outside the pill, which clips, so it can stand out past the dock's edge. */}
@@ -751,7 +770,7 @@ export default function DeskDock({
           }}
           disabled={searchDisabled}
           accessibilityLabel={searchLabel}
-          style={{ position: 'absolute', left: pillCore, top: (H - PILL_H) / 2, width: LENS_ZONE, height: PILL_H }}
+          style={{ position: 'absolute', left: pillCore, top: (H - PILL_H) / 2, width: fit.lens, height: PILL_H }}
         />
       )}
       {extraEl && !root && <Animated.View style={[styles.slot, { left: extraLeft, top: (H - PLUS) / 2 }, wordStyle]}>{extraEl}</Animated.View>}
