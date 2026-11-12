@@ -380,7 +380,12 @@ export default function DeskDock({
   const heldNow = !!assist && assistHeld();
   const activeIndex = heldNow ? desks.length : deskIndex;
   // Which bead wears the accent: the desk in front, or the balloon while its window opens and stands.
-  const [shownIndex, setShownIndex] = useState(activeIndex);
+  // A dock born while a journey to a tapped desk is under way (the one that stands over the AI window folding away) starts with that
+  // desk shown as «here», not with the stale desk still in front.
+  const [shownIndex, setShownIndex] = useState(() => {
+    const fresh = capFresh();
+    return !tools && fresh && fresh.to < desks.length && fresh.to !== activeIndex ? fresh.to : activeIndex;
+  });
   const prevForShown = useRef(activeIndex);
   useEffect(() => {
     // Off the balloon toward a tapped desk: the one in front is stale for a few frames - the tapped desk is what is shown as «here».
