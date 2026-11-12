@@ -2552,6 +2552,7 @@ export default function ContextDock() {
               // screen itself (there `backWithDesks` is the state, not `multitask`).
               // The far-right circle (features.dockBack off): the AI button on every desk, folder and base; nothing on the AI screen itself.
               circleMode={FEATURES.dockBack ? undefined : FEATURES.assistant && !assistOnScreen ? 'assist' : 'none'}
+              noneActive={assistOnScreen}
               circleAssist={{
                 icon: <BalloonMark size={24} color={iconInk} />,
                 onPress: () => navigationRef.isReady() && (navigationRef.navigate as (name: string) => void)('Assistant'),

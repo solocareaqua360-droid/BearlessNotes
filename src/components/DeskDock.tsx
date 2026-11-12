@@ -306,6 +306,7 @@ export default function DeskDock({
   rootExtraEl,
   circleMode,
   circleAssist,
+  noneActive,
   multiIcon,
   onMulti,
   backIcon,
@@ -338,6 +339,8 @@ export default function DeskDock({
   // 'assist' = always the AI button; 'none' = nothing stands there.
   circleMode?: 'assist' | 'none';
   circleAssist?: { icon: ReactElement; onPress: () => void };
+  // No place is «here» (the AI screen stands over the desks: the desk under it is not where you are) - the capsule is not drawn.
+  noneActive?: boolean;
   multiIcon: ReactElement;
   onMulti: () => void;
   backIcon: ReactElement;
@@ -382,7 +385,7 @@ export default function DeskDock({
   }, [circleMode]);
   const extraDesks = Math.min(useExtraDeskCount(), 5);
   // The current desk's capsule: its two edges, each on its own spring.
-  const deskIndex = desks.findIndex((d) => d.active);
+  const deskIndex = noneActive ? -1 : desks.findIndex((d) => d.active);
   // While the balloon's window opens, stands and folds back, the place in front is the balloon (utils/assistMorph).
   const heldNow = !!assist && assistHeld();
   const activeIndex = heldNow ? desks.length : deskIndex;
