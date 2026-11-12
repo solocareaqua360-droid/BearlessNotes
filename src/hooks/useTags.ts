@@ -1,5 +1,5 @@
 import { ALL_FOLDER_KINDS } from '../constants/folderKinds';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { noteFolderUsed } from '../utils/recentFolders';
 import {
   arrayRemove,
@@ -86,15 +86,21 @@ export function isTagAllowedForKind(tag: Tag, kind: TaggableKind): boolean {
 // is the only way a tag gets created (see createAndAttachTag), and
 // detaching the last item deletes it outright rather than leaving an
 // orphaned, unattached tag doc around.
-export function useTags() {
+// `passive` (2026-11-12): the tags are kept as they arrive but the screen is NOT rendered for them - for a screen that needs them only
+// when a picker opens (the AI screen: their arrival, 0 -> 31 some 0.5 s after it opened, re-rendered its 2000 lines for 120-200 ms in the
+// middle of the opening). The list is read at the next render, which every picker opening is; `isLoading` stays true.
+export function useTags(options?: { passive?: boolean }) {
+  const passive = !!options?.passive;
   // Out of sight, the newest data waits (navigation/deskVisibility).
   const gated = useDeskGate();
-  const [tags, setTags] = useState<Tag[]>([]);
+  const [tagsState, setTags] = useState<Tag[]>([]);
+  const tagsRef = useRef<Tag[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const tags = passive ? tagsRef.current : tagsState;
 
   useEffect(() => {
     return onSnapshot(ownedQuery('tags'), (snapshot) => gated('tags', () => {
-      setTags(
+      const next: Tag[] = (
         [...snapshot.docs]
           .sort((a, b) => String(a.data().path ?? '').localeCompare(String(b.data().path ?? '')))
           .map((docSnapshot) => {
@@ -119,7 +125,11 @@ export function useTags() {
           };
         })
       );
-      setIsLoading(false);
+      tagsRef.current = next;
+      if (!passive) {
+        setTags(next);
+        setIsLoading(false);
+      }
     }), listenError('useTags:tags'));
   }, []);
 

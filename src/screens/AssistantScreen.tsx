@@ -159,6 +159,16 @@ function pairsWord(n: number): string {
 }
 // The conversations being read by topic, for as long as the app runs (features.aiChatOutline).
 const byTopicChats = new Set<string>();
+// Equal by content, for two lists that come out of the same mapper (so the key order is the same).
+function sameByJson<T>(a: T[], b: T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
 let lastChats: ChatSummary[] = [];
 let lastThemes: ChatTheme[] = [];
 
@@ -209,7 +219,7 @@ export default function AssistantScreen() {
   const [warning, setWarning] = useState<{ cost: number; rows: CostRow[]; go: () => void } | null>(null);
   const [thresholdOpen, setThresholdOpen] = useState(false);
   const [threshold, setThreshold] = useCostThreshold();
-  const { tags, attachTag, createAndAttachTag } = useTags();
+  const { tags, attachTag, createAndAttachTag } = useTags({ passive: true });
   const docIndex = useDocumentIndex();
   const folders = useMemo(() => folderOptions(tags), [tags]);
   const [chatsOpen, setChatsOpen] = useState(false);
@@ -289,7 +299,9 @@ export default function AssistantScreen() {
       FEATURES.aiHome
         ? listenThemes((t) => {
             lastThemes = t;
-            setThemes(t);
+            // Each opening hands over a NEW array with the same themes in it, and the whole 2000-line screen was rendered for it
+            // (120-216 ms, 0.5 s after the opening - measured 2026-11-12). Only a real change renders.
+            setThemes((prev) => (sameByJson(prev, t) ? prev : t));
           })
         : undefined,
     []
@@ -711,7 +723,7 @@ export default function AssistantScreen() {
     try {
       const list = await listChats();
       lastChats = list;
-      setChatList(list);
+      setChatList((prev) => (sameByJson(prev, list) ? prev : list));
     } catch {
       // The list stays as it was.
     }
