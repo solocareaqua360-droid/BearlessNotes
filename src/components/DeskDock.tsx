@@ -433,6 +433,7 @@ export default function DeskDock({
     runCapsule(from, i, 0);
   };
   const capShown = useRef(lastDeskIndex >= 0);
+  const prevActive = useRef(activeIndex);
   useEffect(() => {
     if (activeIndex < 0) return;
     if (tools) {
@@ -440,6 +441,16 @@ export default function DeskDock({
       capTo.value = activeIndex;
       capT.value = CAP_END;
       return;
+    }
+    // COMING OFF THE BALLOON (the user, 2026-11-12: from the AI window to a desk the capsule first set off for the START desk, fell
+    // short, then turned for the one he had tapped). The window folds, `heldNow` goes false and the desk IN FRONT is still the old one
+    // for a few frames - `activeIndex` drops from the balloon to it, and the capsule was sent there. A journey to the tapped desk is
+    // already running (pick): the old desk in front is stale, not a destination.
+    const was = prevActive.current;
+    prevActive.current = activeIndex;
+    if (!tools && was === desks.length && activeIndex !== desks.length) {
+      const fresh = capFresh();
+      if (fresh && fresh.to !== activeIndex && fresh.to < desks.length) return;
     }
     const m = capFresh();
     if (m && m.to === activeIndex) {
