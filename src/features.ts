@@ -8,6 +8,11 @@ export const FEATURES = {
   // screens/AssistantScreen - live Gemini, answers as blocks, a block held is remembered / told in more detail / copied.
   // Off: the button is gone; the conversation kept on the phone stays.
   assistant: true,
+  // The AI conversation as a BALLOON among the desks' places (the capsule's fourth bead, 2026-10-23). Off since 2026-11-12 (the user,
+  // after measuring: «як у Craft»): the AI is a plain round button left of «+» that opens its screen at the tap - no capsule journey to
+  // wait for, no special state of the dock, one place less in the capsule (it was 56 dp the narrow phone did not have). On brings the
+  // balloon back as it was.
+  assistBead: false,
   // «В нотатку» as a TREE: a nested note per branch + a board that shows them (2026-10-23 night). Put away the next day
   // (the user: «їй на даний момент треба вернути форму звичайного документа, без всяких дошок... я тільки розбираюсь»):
   // off = ONE ordinary note, each branch a heading in it (utils/assistantTree writeMemoryNote). Notes and boards made as a

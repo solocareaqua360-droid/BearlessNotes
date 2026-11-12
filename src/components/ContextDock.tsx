@@ -2504,7 +2504,7 @@ export default function ContextDock() {
               // The AI conversation: the balloon among the places, opening a window out of itself (utils/assistMorph);
               // the round button left of «+» it replaced is gone (2026-10-23, the user's sketch «Кулька серед місць»).
               assist={
-                FEATURES.assistant
+                FEATURES.assistant && FEATURES.assistBead
                   ? {
                       // The sheet starts as the orange of the capsule it grows out of, and the window comes up through it.
                       onOpen: () =>
@@ -2542,6 +2542,20 @@ export default function ContextDock() {
                         <Text style={styles.fieldCountText}>{right.extra.count > 99 ? '99+' : right.extra.count}</Text>
                       </View>
                     )}
+                  </Pressable>
+                ) : null
+              }
+              // THE AI AS A ROUND BUTTON beside «+» (2026-11-12, like Craft's): opens its screen at the tap, from a desk - not from the AI
+              // screen itself (there `backWithDesks` is the state, not `multitask`).
+              rootExtraEl={
+                FEATURES.assistant && !FEATURES.assistBead && multitask ? (
+                  <Pressable
+                    onPress={() => navigationRef.isReady() && (navigationRef.navigate as (name: string) => void)('Assistant')}
+                    accessibilityLabel="Розмова з ШІ"
+                    style={[styles.softFieldCreate, surface, { width: DESK_PLUS, height: DESK_PLUS, borderRadius: DESK_PLUS / 2, overflow: 'hidden' }]}
+                  >
+                    {glassOn && <DockGlassFill soft={soft} />}
+                    <BalloonMark size={24} color={iconInk} />
                   </Pressable>
                 ) : null
               }
