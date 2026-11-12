@@ -381,7 +381,19 @@ export default function DeskDock({
   const activeIndex = heldNow ? desks.length : deskIndex;
   // Which bead wears the accent: the desk in front, or the balloon while its window opens and stands.
   const [shownIndex, setShownIndex] = useState(activeIndex);
-  useEffect(() => setShownIndex(activeIndex), [activeIndex]);
+  const prevForShown = useRef(activeIndex);
+  useEffect(() => {
+    // Off the balloon toward a tapped desk: the one in front is stale for a few frames - the tapped desk is what is shown as «here».
+    const fresh = capFresh();
+    const was = prevForShown.current;
+    prevForShown.current = activeIndex;
+    if (!tools && was === desks.length && activeIndex !== desks.length && fresh && fresh.to < desks.length && fresh.to !== activeIndex) {
+      setShownIndex(fresh.to);
+      return;
+    }
+    setShownIndex(activeIndex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex]);
   const desksRef = useRef(desks);
   desksRef.current = desks;
   // The capsule is a journey (from, to) and a clock (ms into it); at rest from === to and the clock stands at its end.
