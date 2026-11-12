@@ -70,11 +70,15 @@ const LENS_ROOT = PILL_CORE + LENS_ZONE / 2 - 2;
 // the places, the pad before them and the lens zone shrink TOGETHER by one factor, no further than FIT_MIN, and not at all on a
 // screen that has the room. `beads` counts the balloon too. The pill's width is read from here by whoever has to match it.
 const FIT_MIN = 0.8;
+// THE USER'S EXPERIMENT (2026-11-12): the fit is OFF until he says «звужуй» - he wants to feel with his own fingers whether the wide
+// dock moved the capsule more smoothly than the narrowed one (he felt the narrowed one as stuttering; the frame stats say the stall is
+// the desk's page mounting, not the spacing). Flip to true to bring the fit back; nothing else depends on it.
+const FIT_ON = false;
 export function deskFit(width: number, beads: number, assist: boolean) {
   const room = width - BACK - GAP - INSET - PLUS - 4;
   const nominalCore = PILL_CORE + (assist ? BEAD_W : 0);
   const nominalFull = nominalCore + LENS_ZONE;
-  const k = nominalFull <= room ? 1 : Math.max(FIT_MIN, room / nominalFull);
+  const k = !FIT_ON || nominalFull <= room ? 1 : Math.max(FIT_MIN, room / nominalFull);
   const bw = Math.floor(BEAD_W * k);
   const pad = Math.floor(PILL_PAD * k);
   const lens = Math.floor(LENS_ZONE * k);
