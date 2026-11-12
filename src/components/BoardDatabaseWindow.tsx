@@ -40,6 +40,12 @@ const WIDTH = 300;
 const DOCKED_WIDTH = 340;
 const CIRCLE = 56;
 
+export type BoardLayOutPlan = {
+  fieldName: string;
+  // In the order of the field's options, the records without a value last.
+  groups: { key: string; title: string; blocks: Block[] }[];
+};
+
 export type BoardWindowProps = {
   // THE MAC'S PANEL TAB (frame B, 2026-10-20): the window is not a floating card but fills a tab of the board's right panel -
   // no frame to drag, no fold, no pin; the tab's × is its close. The records, the drag out onto the board and «знайти» stay.
@@ -54,6 +60,9 @@ export type BoardWindowProps = {
   onPlace: (block: Block, at: { x: number; y: number } | null, respond?: (accepted: boolean) => void) => void;
   // "Show me where this record stands on the board."
   onFind: (recordId: string) => void;
+  // «РОЗКЛАСТИ ЗА ПОЛЕМ» (2026-11-12): the records listed here, all at once, as a ROW OF COLUMNS - one column per value of a
+  // single-choice field, a card of each record in its column. The board makes the columns and the cards.
+  onLayOut?: (plan: BoardLayOutPlan) => void;
   // Called every move of a carried row (so the board can light the column
   // it would fall into) and when it ends.
   onCarryMove?: (screenX: number, screenY: number) => void;
@@ -64,7 +73,7 @@ export type BoardWindowProps = {
   bounds?: { width: number; height: number };
 };
 
-export default function BoardDatabaseWindow({ win, placed, onChange, onClose, onPlace, onFind, onCarryMove, onCarryEnd, bounds, inPanel }: BoardWindowProps) {
+export default function BoardDatabaseWindow({ win, placed, onChange, onClose, onPlace, onFind, onLayOut, onCarryMove, onCarryEnd, bounds, inPanel }: BoardWindowProps) {
   const S = useSoft();
   const insets = useSafeAreaInsets();
   const dims = useWindowDimensions();
@@ -73,6 +82,8 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
   const [database, setDatabase] = useState<CustomDatabase | null>(null);
   const [rows, setRows] = useState<CustomDatabaseRow[]>([]);
   const [settings, setSettings] = useState(false);
+  // The page of «Розкласти за полем»: which field the columns follow.
+  const [layoutOpen, setLayoutOpen] = useState(false);
   // The settings have two pages: which records are listed, and which fields
   // the cards show - here and on the board.
   const [settingsTab, setSettingsTab] = useState<'records' | 'fields'>('records');
@@ -179,6 +190,33 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
     (f, index) => index > 0 && (f.type === 'select' || f.type === 'multiSelect') && (f.options?.length ?? 0) > 0
   );
   const activeField = filterFields.find((f) => f.id === fieldId) ?? null;
+  // ONLY a single-choice field can be a row of columns: its few fixed values are the columns. A free text, a number or a
+  // multiple choice would make a column for every value, or put a record in several - never offered.
+  const layoutFields: FieldDef[] = (database?.fields ?? []).filter(
+    (f, index) => index > 0 && f.type === 'select' && (f.options?.length ?? 0) > 0
+  );
+  // What is listed here and not on the board yet - a record that already has a card is left as it is.
+  const toLay = shown.filter(({ row }) => (placed.get(row.id) ?? 0) === 0);
+  const layOutBy = (field: FieldDef) => {
+    if (!onLayOut) return;
+    const options = field.options ?? [];
+    const known = new Set(options.map((o) => o.id));
+    const blockOf = ({ row, title }: (typeof shown)[number]) =>
+      blockFromCustomRow({ id: row.id, databaseId: win.databaseId, title, createdAt: row.createdAt });
+    const groups = options.map((option) => ({
+      key: option.id,
+      title: option.label,
+      blocks: toLay.filter(({ row }) => row.values?.[field.id] === option.id).map(blockOf),
+    }));
+    // A value the field no longer has counts as no value.
+    const without = toLay.filter(({ row }) => {
+      const value = row.values?.[field.id];
+      return typeof value !== 'string' || !known.has(value);
+    });
+    const all = [...groups, { key: '__none__', title: 'Без значення', blocks: without.map(blockOf) }].filter((g) => g.blocks.length > 0);
+    setLayoutOpen(false);
+    onLayOut({ fieldName: field.name, groups: all });
+  };
   const matchesValue = (row: CustomDatabaseRow) => {
     if (!activeField || !valueId) return true;
     const value = row.values?.[activeField.id];
@@ -275,7 +313,20 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
                     color={win.hideLinks ? S.accent : S.ink2}
                   />
                 </Pressable>
-                <Pressable hitSlop={8} onPress={() => setSettings((v) => !v)} style={styles.headerButton} accessibilityLabel="Параметри вікна">
+                {onLayOut && (
+                  <Pressable
+                    hitSlop={8}
+                    onPress={() => {
+                      setSettings(false);
+                      setLayoutOpen((v) => !v);
+                    }}
+                    style={styles.headerButton}
+                    accessibilityLabel="Розкласти за полем"
+                  >
+                    <Ionicons name="browsers-outline" size={20} color={layoutOpen ? S.accent : S.ink2} />
+                  </Pressable>
+                )}
+                <Pressable hitSlop={8} onPress={() => { setLayoutOpen(false); setSettings((v) => !v); }} style={styles.headerButton} accessibilityLabel="Параметри вікна">
                   <Ionicons name={settings ? 'checkmark' : 'options-outline'} size={20} color={settings ? S.accent : S.ink2} />
                 </Pressable>
                 {!inPanel && (
@@ -291,7 +342,29 @@ export default function BoardDatabaseWindow({ win, placed, onChange, onClose, on
               </View>
             </GestureDetector>
 
-            {settings ? (
+            {layoutOpen ? (
+              <View style={styles.body}>
+                <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+                  <Text style={[styles.hint, { color: S.ink3 }]}>
+                    {layoutFields.length === 0
+                      ? 'У цій базі немає поля-списку з одним вибором, за яким можна розкласти.'
+                      : toLay.length === 0
+                        ? 'Усі записи з цього вікна вже стоять на дошці.'
+                        : `Розкласти ${toLay.length} ${toLay.length === shown.length ? 'записів' : `з ${shown.length} записів (решта вже на дошці)`} рядом стовпчиків за полем:`}
+                  </Text>
+                  {toLay.length > 0 &&
+                    layoutFields.map((f) => (
+                      <Pressable key={f.id} style={styles.tickRow} onPress={() => layOutBy(f)} accessibilityLabel={`Розкласти за полем ${f.name}`}>
+                        <Ionicons name="browsers-outline" size={18} color={S.ink2} />
+                        <Text style={[styles.tickLabel, { color: S.ink }]} numberOfLines={1}>
+                          {f.name}
+                        </Text>
+                        <Text style={[styles.count, { color: S.ink3 }]}>{f.options?.length ?? 0}</Text>
+                      </Pressable>
+                    ))}
+                </ScrollView>
+              </View>
+            ) : settings ? (
               <View style={styles.body}>
                 <View style={styles.tabs}>
                   {chip('Записи', settingsTab === 'records', () => setSettingsTab('records'), 'tab-records')}

@@ -7,7 +7,7 @@ import { BoardFieldsContext } from '../components/boardFieldsContext';
 import { BoardEmbedContext } from '../components/boardEmbedContext';
 import { rowTitleOf } from '../utils/customRowDisplay';
 import type { BoardDbWindow, CustomDatabase, CustomDatabaseRow } from '../types';
-import BoardDatabaseWindow from '../components/BoardDatabaseWindow';
+import BoardDatabaseWindow, { type BoardLayOutPlan } from '../components/BoardDatabaseWindow';
 import { MONTH_SHORT, WEEKDAY_SHORT, addDays, dateKey, formatShortDate, mondayIndex, parseDateKey } from '../utils/dateLocale';
 import { mutedForTheme, type Theme } from '../theme/tokens';
 import { type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -6042,6 +6042,48 @@ export default function BoardScreen() {
     });
   }
 
+  // «РОЗКЛАСТИ ЗА ПОЛЕМ» (2026-11-12): what a database window lists, laid out in one go as a ROW OF COLUMNS - a column for each
+  // value of a single-choice field, a card of every record under it ("розкласти на дошці всі картки автомобілів щоб побачити
+  // загальну картину"). The window leaves out records that already have a card; the board is only a picture here, a card moved
+  // to another column changes nothing in the database. The columns are one strip: they move as one and take a «+».
+  async function layOutRecords(plan: BoardLayOutPlan) {
+    const total = plan.groups.reduce((sum, g) => sum + g.blocks.length, 0);
+    if (total === 0) return;
+    if (total > 80 && !(await confirm({ title: `${total} карток`, message: 'Це багато карток. Розкласти все?', confirmLabel: 'Розкласти' }))) return;
+    const stripId = generateId();
+    const centre = viewCenter();
+    const rowWidth = plan.groups.length * COLUMN_WIDTH + (plan.groups.length - 1) * WEEK_COLUMN_GAP;
+    const x0 = columns.length === 0 ? centre.x - rowWidth / 2 : Math.max(...columns.map((c) => c.x)) + COLUMN_WIDTH + COLUMN_SPACING;
+    const y0 = columns.length === 0 ? centre.y - COLUMN_MIN_HEIGHT / 2 : columns[0].y;
+    const now = Date.now();
+    const newColumns: BoardColumn[] = plan.groups.map((group, index) => ({
+      id: generateId(),
+      title: group.title,
+      x: x0 + index * (COLUMN_WIDTH + WEEK_COLUMN_GAP),
+      y: y0,
+      strip: { id: stripId },
+    }));
+    const newCards: BoardCard[] = [];
+    plan.groups.forEach((group, index) => {
+      group.blocks.forEach((block, row) => {
+        newCards.push({
+          ...(block as unknown as BoardCard),
+          id: generateId(),
+          recordId: block.id,
+          createdAt: now,
+          width: DEFAULT_CARD_WIDTH,
+          columnId: newColumns[index].id,
+          order: row,
+          x: newColumns[index].x + COLUMN_PADDING,
+          y: y0 + COLUMN_HEADER_HEIGHT + row * (APPROX_CARD_HEIGHT + COLUMN_CARD_GAP),
+        });
+      });
+    });
+    setColumns((prev) => [...prev, ...newColumns]);
+    setCards((prev) => reflowColumns([...prev, ...newCards], [...columns, ...newColumns], cardHeights));
+    notify('Розкладено', `${total} карток у ${newColumns.length} стовпчиках за полем «${plan.fieldName}».`);
+  }
+
   // While a row is carried, the column it would fall into lights up.
   const carryOrigin = useRef<{ x: number; y: number } | null>(null);
   function carryMove(screenX: number, screenY: number) {
@@ -8358,6 +8400,7 @@ export default function BoardScreen() {
               onChange={(patch) => patchWindow(w.id, patch)}
               onClose={() => closeDbWindow(w.id)}
               onPlace={placeRecord}
+              onLayOut={layOutRecords}
               onFind={findRecord}
               onCarryMove={carryMove}
               onCarryEnd={carryEnd}
@@ -9988,6 +10031,7 @@ export default function BoardScreen() {
             if (yes) setDbWindows((prev) => prev.filter((x) => x.id !== w.id));
           }}
           onPlace={placeRecord}
+          onLayOut={layOutRecords}
           onFind={findRecord}
           onCarryMove={carryMove}
           onCarryEnd={carryEnd}
