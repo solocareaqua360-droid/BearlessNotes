@@ -601,10 +601,26 @@ export default function SettingsScreen() {
       // become the owner of three of them, «Дошка 1» included. See
       // claimExistingData for why that happens and why it must not stand.
       setClaimStatus('Позначаю дані...');
-      const claimed = await claimExistingData(result.uid, (p) =>
-        setClaimStatus(`${p.collection}: ${p.claimed}/${p.total}`)
-      );
-      setClaimStatus(claimed > 0 ? `Позначено записів: ${claimed}` : 'Усі дані вже позначені');
+      try {
+        const claimed = await claimExistingData(result.uid, (p) =>
+          setClaimStatus(`${p.collection}: ${p.claimed}/${p.total}`)
+        );
+        setClaimStatus(claimed > 0 ? `Позначено записів: ${claimed}` : 'Усі дані вже позначені');
+      } catch (claimError) {
+        // The claim reads every collection unscoped, which only the OPEN rules
+        // allowed. Under the deployed owner-only rules (2026-09-15) that read is
+        // refused outright - and it used to be reported as «Вхід не вдався»
+        // although the sign-in itself had succeeded (new phone, 2026-11-12).
+        // A refusal here means the data is already behind the owner rules, so
+        // there is nothing left to claim; anything else is still a real error.
+        const code = (claimError as { code?: string }).code ?? '';
+        const text = (claimError as { message?: string }).message ?? '';
+        if (code.includes('permission-denied') || text.includes('permission-denied')) {
+          setClaimStatus('Усі дані вже під захистом правил');
+        } else {
+          throw claimError;
+        }
+      }
     } catch (error) {
       const message = (error as { message?: string }).message ?? 'Не вдалося увійти';
       notify('Вхід не вдався', message);

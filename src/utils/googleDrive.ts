@@ -526,6 +526,15 @@ export async function downloadFileFromDrive(driveFileId: string, destUri: string
   if (!GoogleSignin.hasPreviousSignIn()) return false;
   const url = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`;
   try {
+    // A photo's local path lives in a cache subfolder another library made
+    // (cache/ImageManipulator/, ...). On a fresh install that folder does not
+    // exist, and downloadAsync refuses to write into a missing directory -
+    // every restore failed that way on the new phone (2026-11-12), which
+    // looked exactly like "the picture was never uploaded".
+    const slash = destUri.lastIndexOf('/');
+    if (slash > 0) {
+      await LegacyFileSystem.makeDirectoryAsync(destUri.slice(0, slash), { intermediates: true }).catch(() => {});
+    }
     const token = await getDriveAccessToken();
     const result = await LegacyFileSystem.downloadAsync(url, destUri, {
       headers: { Authorization: `Bearer ${token}` },
