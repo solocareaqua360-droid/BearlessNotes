@@ -147,6 +147,29 @@ fun EvaScreenshotsCard(modifier: Modifier = Modifier) {
     }
 }
 
+/** evaBoard: the full keyboard switch (ime/eva/EvaTopRow.kt). */
+@Composable
+fun EvaFullKeyboardCard(modifier: Modifier = Modifier) {
+    val prefs by FlorisPreferenceStore
+    val scope = rememberCoroutineScope()
+    val wanted by prefs.keyboard.evaFullKeyboard.observeAsState()
+    Card(modifier = modifier) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Повна клавіатура", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Відмінити, повторити, підказки й цифри - одночасно, без перемикача; заокруглений верх",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Switch(checked = wanted, onCheckedChange = { scope.launch { prefs.keyboard.evaFullKeyboard.set(it) } })
+        }
+    }
+}
+
 /** evaBoard: the see-through ground switch, saying whether Android will also blur behind it. */
 @Composable
 fun EvaBlurCard(modifier: Modifier = Modifier) {

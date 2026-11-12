@@ -141,7 +141,9 @@ fun BoxScope.EvaNavStripLayer(stripHeight: Dp) {
             keyboardManager.activeState.isActionsOverflowVisible = false
             scope.launch { prefs.keyboard.evaTopRowState.set(next) }
         }
-        StripButton(
+        // The full keyboard shows every row at once: nothing to step through.
+        val full by prefs.keyboard.evaFullKeyboard.observeAsState()
+        if (!full) StripButton(
             modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp + 44.dp + 8.dp),
             icon = EvaIcons.lucide(
                 when (topRowState) {

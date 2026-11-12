@@ -149,6 +149,11 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                     keyboardCache.clear(KeyboardMode.CHARACTERS)
                 }
             }
+            prefs.keyboard.evaFullKeyboard.asFlow().collectLatestIn(scope) {
+                updateActiveEvaluators {
+                    keyboardCache.clear(KeyboardMode.CHARACTERS)
+                }
+            }
             prefs.keyboard.utilityKeyEnabled.asFlow().collectLatestIn(scope) {
                 updateActiveEvaluators()
             }

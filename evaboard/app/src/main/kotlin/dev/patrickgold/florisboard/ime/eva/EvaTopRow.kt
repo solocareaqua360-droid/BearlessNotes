@@ -13,6 +13,9 @@
  * own letter column. The ten digits share the whole width instead, so no
  * empty place is left after 0 (the user's call, 2026-10-29); the row's
  * height still comes from the 11-slot width.
+ *
+ * The full keyboard (a switch in the app, for tall phones) has no switching at all: undo / redo /
+ * suggestions and the digits both show, one above the other, under rounded top corners.
  */
 
 package dev.patrickgold.florisboard.ime.eva
@@ -26,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -72,7 +76,8 @@ object EvaTopRow {
     const val SLOTS = 11
 
     /**
-     * The row's height as last laid out (null before the first layout). Digit keys are square -
+     * The row's height as last laid out (null before the first layout); for the full keyboard,
+     * both rows and the room above them. Digit keys are square -
      * as tall as a letter key is wide - so the height follows the keyboard width; the clipboard
      * and emoji panels read it through FlorisImeSizing.smartbarUiHeight() to keep the same height.
      */
@@ -86,11 +91,12 @@ fun EvaTopRowUi() {
     val state by keyboardManager.activeState.collectAsState()
     val prefs by FlorisPreferenceStore
     val chosen by prefs.keyboard.evaTopRowState.observeAsState()
+    val full by prefs.keyboard.evaFullKeyboard.observeAsState()
     // The symbols have digits of their own, so there the digit row gives way to undo / redo / suggestions.
     val shown = if (chosen == EvaTopRowState.NUMBERS &&
         (state.keyboardMode == KeyboardMode.SYMBOLS || state.keyboardMode == KeyboardMode.SYMBOLS2)
     ) EvaTopRowState.EDIT else chosen
-    if (shown == EvaTopRowState.HIDDEN) return
+    if (!full && shown == EvaTopRowState.HIDDEN) return
     val (keyMarginH, keyMarginV) = evaKeySpacing()
 
     val splitMetrics = evaSplitMetrics()
@@ -103,43 +109,72 @@ fun EvaTopRowUi() {
         // A digit key is as tall as a letter key is wide: the slot width minus the side margins,
         // plus the top and bottom margins around it.
         val rowHeight = slotWidth - (keyMarginH * 2).dp + (keyMarginV * 2).dp
-        SideEffect { EvaTopRow.rowHeight.value = rowHeight }
         val rowModifier = Modifier.fillMaxWidth().height(rowHeight)
+        val rowWidth = maxWidth
+        val digitWidth = (rowWidth - gap - margin * 2) / 10
 
-        if (shown == EvaTopRowState.EDIT) {
-            // undo, redo, then the suggestions across the rest of the row (no gap: it is one row)
-            val evaluator by keyboardManager.activeSmartbarEvaluator.collectAsState()
-            Row(modifier = rowModifier, verticalAlignment = Alignment.CenterVertically) {
-                if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
-                for (action in listOf(TextKeyData.UNDO, TextKeyData.REDO)) {
-                    Box(Modifier.width(slotWidth).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        ActionKey(QuickAction.InsertKey(action), evaluator)
-                    }
-                }
-                Box(Modifier.weight(1f).fillMaxHeight()) { CandidatesRow(Modifier.fillMaxSize()) }
-                if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
+        if (full) {
+            // The full keyboard (the user's sketch "Б", 2026-11-13): a little room under the rounded
+            // top, then undo / redo / suggestions, then the digits - always, the symbols included.
+            // Undo and redo are exactly as wide as 1 and 2 below them, edge to edge.
+            SideEffect { EvaTopRow.rowHeight.value = FullTopSpace + rowHeight * 2 }
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Spacer(modifier = Modifier.height(FullTopSpace))
+                EditRow(rowModifier, margin, digitWidth)
+                SlotRow(digitSlots(), rowModifier, margin, gap, rowWidth)
             }
         } else {
-            val slots: List<@Composable () -> Unit> = if (shown == EvaTopRowState.TOOLS) {
-                iconKeySlots()
+            SideEffect { EvaTopRow.rowHeight.value = rowHeight }
+            if (shown == EvaTopRowState.EDIT) {
+                EditRow(rowModifier, margin, slotWidth)
             } else {
-                // the ten digits share the whole row (the user asked for no empty place after 0), so each
-                // is a little wider than a letter key; the row keeps its height
-                buildList<@Composable () -> Unit> {
-                    for (digit in "1234567890") add { DigitKey(digit) }
-                }
+                val slots = if (shown == EvaTopRowState.TOOLS) iconKeySlots() else digitSlots()
+                SlotRow(slots, rowModifier, margin, gap, maxWidth)
             }
-            val count = slots.size
-            val width = (maxWidth - gap - margin * 2) / count
-            // slots whose centre lies left of the middle stay left of the gap
-            val leftCount = (0 until count).count { (it + 0.5f) < count / 2f }
-            Row(modifier = rowModifier, verticalAlignment = Alignment.CenterVertically) {
-                if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
-                slots.forEachIndexed { index, slot ->
-                    if (gap > 0.dp && index == leftCount) Spacer(modifier = Modifier.width(gap))
-                    Box(Modifier.width(width).fillMaxHeight(), contentAlignment = Alignment.Center) { slot() }
-                }
+        }
+    }
+}
+
+/** Room between the full keyboard's rounded top edge and its first row. */
+private val FullTopSpace = 10.dp
+
+/** Undo and redo on keys [keyWidth] wide, then the suggestions across the rest of the row (no gap: it is one row). */
+@Composable
+private fun EditRow(modifier: Modifier, margin: Dp, keyWidth: Dp) {
+    val context = LocalContext.current
+    val keyboardManager by context.keyboardManager()
+    val evaluator by keyboardManager.activeSmartbarEvaluator.collectAsState()
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
+        for (action in listOf(TextKeyData.UNDO, TextKeyData.REDO)) {
+            Box(Modifier.width(keyWidth).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                ActionKey(QuickAction.InsertKey(action), evaluator)
             }
+        }
+        Box(Modifier.weight(1f).fillMaxHeight()) { CandidatesRow(Modifier.fillMaxSize()) }
+        if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
+    }
+}
+
+/**
+ * The ten digits share the whole row (the user asked for no empty place after 0), so each is a
+ * little wider than a letter key; the row keeps its height.
+ */
+private fun digitSlots(): List<@Composable () -> Unit> =
+    buildList { for (digit in "1234567890") add { DigitKey(digit) } }
+
+/** Keys side by side across the whole width, split around the gap on a wide screen. */
+@Composable
+private fun SlotRow(slots: List<@Composable () -> Unit>, modifier: Modifier, margin: Dp, gap: Dp, maxWidth: Dp) {
+    val count = slots.size
+    val width = (maxWidth - gap - margin * 2) / count
+    // slots whose centre lies left of the middle stay left of the gap
+    val leftCount = (0 until count).count { (it + 0.5f) < count / 2f }
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (margin > 0.dp) Spacer(modifier = Modifier.width(margin))
+        slots.forEachIndexed { index, slot ->
+            if (gap > 0.dp && index == leftCount) Spacer(modifier = Modifier.width(gap))
+            Box(Modifier.width(width).fillMaxHeight(), contentAlignment = Alignment.Center) { slot() }
         }
     }
 }
@@ -162,10 +197,6 @@ private fun DigitKey(digit: Char) {
 /** Toolbar icons in the top row: drawn larger than in FlorisBoard's toolbar, one per key. */
 private val ActionIconSize = 26.dp
 
-/**
- * The toolbar icons, each on a key of its own above its own letter column. There is one icon
- * fewer than places, so the last key stays empty.
- */
 /**
  * The toolbar icons, each on a key of its own above its own letter column. There is one icon
  * fewer than places, so the last key stays empty.
