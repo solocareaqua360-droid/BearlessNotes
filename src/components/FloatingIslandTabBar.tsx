@@ -302,9 +302,10 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.routes, liveIndex, customDatabases, iconFor]
   );
+  const openBeyondFixed = state.routes.filter((r) => !FIXED_DESKS.includes(r.name)).length;
   useEffect(() => {
-    registerDeskBeads(switcherReachable ? dockDesks : null, state.routes.filter((r) => !FIXED_DESKS.includes(r.name)).length);
-  }, [switcherReachable, dockDesks, state.routes]);
+    registerDeskBeads(switcherReachable ? dockDesks : null, openBeyondFixed);
+  }, [switcherReachable, dockDesks, openBeyondFixed]);
   useEffect(() => () => registerDeskBeads(null), []);
   // The same three, to be reached from a base pushed over the tabs (deskBeadsBus's registerDeskReach): the root
   // navigator goes back to the tabs, onto that desk - the base in front is left, as with its own back.

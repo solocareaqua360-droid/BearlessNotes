@@ -691,6 +691,9 @@ function useHeldThroughHandover<T>(value: T, full: (v: T) => boolean): T {
 }
 
 export default function ContextDock() {
+  // Re-render once a held desk dock has run out (see deskDockHold): nothing else would draw it again.
+  const [, setDockTick] = useState(0);
+  dockForceRender = () => setDockTick((t) => t + 1);
   useRenderTimer('Док');
   const theme = useTheme();
   // The soft chrome (see useChromeStyle) - asked for by the screen in
@@ -2406,7 +2409,19 @@ export default function ContextDock() {
     const backHere = (!switcherRight || inFolder) && !!topBack && !topBack.dimmed && !dockSearch && !!left && !left.round;
     const merged = multitask || backHere;
     // The desk dock (features.deskDock): the same dock drawn by DeskDock, on a desk and inside.
-    const deskDockOn = FEATURES.deskDock && !!left && !!right && ((multitask && !!deskBeads?.length) || backHere);
+    const deskDockLive = FEATURES.deskDock && !!left && !!right && ((multitask && !!deskBeads?.length) || backHere);
+    const liveBackWithDesks = backHere && !multitask && desksWanted && !!reachDesks?.length;
+    const liveDesks = (liveBackWithDesks ? reachDesks : deskBeads) ?? [];
+    if (deskDockLive) {
+      deskDockHold = { lostAt: 0, root: multitask || liveBackWithDesks, circleBack: liveBackWithDesks, desks: liveDesks };
+    } else if (deskDockHold && !deskDockHold.lostAt) {
+      // The count starts when the condition is LOST, not when it was last seen: the desk may have stood for minutes.
+      deskDockHold.lostAt = Date.now();
+    }
+    const holdLeft = deskDockHold && deskDockHold.lostAt && !deskDockLive && !!left && !!right && FEATURES.deskDock ? DESK_DOCK_HOLD_MS - (Date.now() - deskDockHold.lostAt) : 0;
+    const deskDockHeld = holdLeft > 0;
+    if (deskDockHeld) setTimeout(() => dockForceRender?.(), holdLeft + 20);
+    const deskDockOn = deskDockLive || deskDockHeld;
     // Inside a base that asked for them: the desk pill as on a desk, the circle the way back.
     const backWithDesks = backHere && !multitask && desksWanted && !!reachDesks?.length;
     return (
@@ -2442,11 +2457,11 @@ export default function ContextDock() {
           )}
           {deskDockOn && left && right ? (
             <DeskDock
-              state={multitask || backWithDesks ? 'root' : 'inside'}
-              circleBack={backWithDesks}
+              state={(deskDockHeld ? deskDockHold!.root : multitask || backWithDesks) ? 'root' : 'inside'}
+              circleBack={deskDockHeld ? deskDockHold!.circleBack : backWithDesks}
               width={frame.width}
               soft={soft}
-              desks={(backWithDesks ? reachDesks : deskBeads) ?? []}
+              desks={deskDockHeld ? deskDockHold!.desks : (backWithDesks ? reachDesks : deskBeads) ?? []}
               onSearch={left.onPress}
               onSearchLong={left.onLongPress}
               searchDisabled={left.dimmed}
@@ -3244,6 +3259,12 @@ function ActionGroups({
 // - the drawer carries buttons of its own, and two docks at once is the
 // "ні до чого не прив'язані" the user caught. Only while the desks are
 // the screen in front: a note pushed from the calendar keeps its dock.
+// THE DESKS' DOCK HOLDS ITS LOOK ACROSS A GAP (2026-11-12, the user: a flash at the dock when going Start <-> the AI window). A screen
+// change drops the switcher and the next screen publishes its «back» a render later; for that render NEITHER condition of the desks'
+// dock held and it was drawn as the plain search field with «+». The look it had is kept for this long, then the real state wins.
+const DESK_DOCK_HOLD_MS = 260;
+let deskDockHold: { lostAt: number; root: boolean; circleBack: boolean; desks: DeskBead[] } | null = null;
+let dockForceRender: (() => void) | null = null;
 function DockPortal({ children }: { children: ReactNode }) {
   const cover = useNavDrawerCover();
   const away = useDockAway();
