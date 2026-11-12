@@ -72,6 +72,14 @@ function DeskHost({
   active: boolean;
 }) {
   const value = useMemo(() => ({ back, key: deskKey }), [back, deskKey]);
+  // THE SCREEN IS NOT RENDERED AGAIN FOR THE HOST'S SAKE (2026-11-12, measured: every desk switch drew Старт and Календар twice -
+  // the second time ~0.4 s later, when `active` flipped, 30-55 ms of the JS thread right at the end of the capsule's run). The host
+  // re-renders to flip the visibility box below; the screen element it hands down used to be built anew each time, and so the
+  // whole screen rendered with it. Kept by identity while the props are equal by value: the screen then renders only for its own
+  // reasons (its data, its focus), and a desk that was away still catches up through the gate when it is shown.
+  const keptProps = useRef(props);
+  if (!sameProps(keptProps.current, props)) keptProps.current = props;
+  const screen = useMemo(() => <Component {...keptProps.current} />, [Component, keptProps.current]);
   // Flipped directly, during this host's own render - the desk below is
   // frozen and will not render to hear a context change (deskVisibility).
   const box = useRef<VisibilityBox | null>(null);
@@ -87,9 +95,7 @@ function DeskHost({
         // Any touch on the desk ending: its picture is retaken once it rests.
         onTouchEnd={() => noteDeskTouched(deskKey)}
       >
-        <Freeze freeze={frozen}>
-          <Component {...props} />
-        </Freeze>
+        <Freeze freeze={frozen}>{screen}</Freeze>
       </View>
     </DeskContext.Provider>
     </DeskVisibilityContext.Provider>
