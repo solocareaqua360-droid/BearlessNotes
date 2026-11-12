@@ -74,15 +74,16 @@ const FIT_MIN = 0.8;
 // dock moved the capsule more smoothly than the narrowed one (he felt the narrowed one as stuttering; the frame stats say the stall is
 // the desk's page mounting, not the spacing). Flip to true to bring the fit back; nothing else depends on it.
 const FIT_ON = false;
-export function deskFit(width: number, beads: number, assist: boolean) {
+// What the pill holds after its places and before the lens zone (the room the hairline stands in): PILL_CORE was drawn for three places.
+const PILL_TAIL = PILL_CORE - PILL_PAD - 3 * BEAD_W;
+export function deskFit(width: number, beads: number) {
   const room = width - BACK - GAP - INSET - PLUS - 4;
-  const nominalCore = PILL_CORE + (assist ? BEAD_W : 0);
-  const nominalFull = nominalCore + LENS_ZONE;
+  const nominalFull = PILL_PAD + beads * BEAD_W + PILL_TAIL + LENS_ZONE;
   const k = !FIT_ON || nominalFull <= room ? 1 : Math.max(FIT_MIN, room / nominalFull);
   const bw = Math.floor(BEAD_W * k);
   const pad = Math.floor(PILL_PAD * k);
   const lens = Math.floor(LENS_ZONE * k);
-  const core = nominalCore + beads * (bw - BEAD_W) + (pad - PILL_PAD);
+  const core = pad + beads * bw + PILL_TAIL;
   return { bw, pad, lens, core, full: core + lens };
 }
 const LENS_IN = 28;
@@ -359,7 +360,7 @@ export default function DeskDock({
   const glassDrop = glassOn ? <DockGlassFill soft={soft} airy paused={!shaping} /> : null;
   // With the balloon the places are one bead more, and the pill as much wider; the search lens stays at its end.
   const assistIndex = assist ? desks.length : -1;
-  const fit = deskFit(width, desks.length + (assist ? 1 : 0), !!assist);
+  const fit = deskFit(width, desks.length + (assist ? 1 : 0));
   const pillCore = fit.core;
   const pillFull = fit.full;
   const lensRoot = pillCore + fit.lens / 2 - 2;
@@ -469,6 +470,13 @@ export default function DeskDock({
     if (!assist) return;
     return onAssistHeld((h) => {
       if (h) return;
+      // A desk was picked from the open window (pick): the capsule is already travelling from the balloon to THAT desk. Sending it
+      // «home» to the desk still in front (the user, 2026-11-12: it set off for the start desk, fell short and then turned for the
+      // one he had tapped) restarts the journey in the wrong direction.
+      if (lastDeskIndex >= 0 && lastDeskIndex !== desks.length) {
+        setShownIndex(lastDeskIndex);
+        return;
+      }
       const home = desksRef.current.findIndex((d) => d.active);
       if (home < 0) return;
       capMotion = { from: desks.length, to: home, at: Date.now() };

@@ -5,7 +5,7 @@ import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { StackActions, TabActions, getFocusedRouteNameFromRoute, useIsFocused } from '@react-navigation/native';
 import TopNavBar, { useTopNavOn } from './TopNavBar';
 import { openCapture } from './CaptureWindow';
-import { BASES_DESK, DesksControlContext, FIXED_DESKS, deskFace } from '../navigation/desks';
+import { BASES_DESK, DesksControlContext, FIXED_DESKS, deskFace, dockShowsDesk } from '../navigation/desks';
 import { captureAllDesks, captureDesk, forgetDesk, setCurrentDesk, setDeskCapturePaused, useDeskShots } from '../navigation/deskShots';
 import DeskSwitcher from './DeskSwitcher';
 import { registerDeskSwitcher } from '../navigation/deskSwitcherBus';
@@ -289,7 +289,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
     () =>
       state.routes
         .map((route, index) => ({ route, index }))
-        .filter(({ route }) => FIXED_DESKS.includes(route.name))
+        .filter(({ route }) => dockShowsDesk(route.name))
         .map(({ route, index }) => ({
           key: route.key,
           label: faceOf(route.name).label as string,
@@ -303,8 +303,8 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
     [state.routes, liveIndex, customDatabases, iconFor]
   );
   useEffect(() => {
-    registerDeskBeads(switcherReachable ? dockDesks : null, Math.max(0, state.routes.length - dockDesks.length));
-  }, [switcherReachable, dockDesks, state.routes.length]);
+    registerDeskBeads(switcherReachable ? dockDesks : null, state.routes.filter((r) => !FIXED_DESKS.includes(r.name)).length);
+  }, [switcherReachable, dockDesks, state.routes]);
   useEffect(() => () => registerDeskBeads(null), []);
   // The same three, to be reached from a base pushed over the tabs (deskBeadsBus's registerDeskReach): the root
   // navigator goes back to the tabs, onto that desk - the base in front is left, as with its own back.
@@ -321,7 +321,7 @@ export default function FloatingIslandTabBar({ state, navigation, position }: Ma
   const reachDesks = useMemo(
     () =>
       dockDesks.map((d, i) => {
-        const route = state.routes.filter((r) => FIXED_DESKS.includes(r.name))[i];
+        const route = state.routes.filter((r) => dockShowsDesk(r.name))[i];
         return {
           ...d,
           // The desk under whatever stands over the tabs (a note, a board, a base opened from outside the «Бази» desk).

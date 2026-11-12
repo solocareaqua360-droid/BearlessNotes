@@ -41,6 +41,10 @@ export const FIXED_DESKS = [
   ...(FEATURES.basesDesk ? [BASES_DESK] : []),
 ];
 export const DEFAULT_DESKS = [...FIXED_DESKS, PERMANENT_DESK, BOARDS_DESK];
+// WHICH FIXED DESKS THE BOTTOM DOCK DRAWS AS A BEAD (2026-11-12, the user: the shortest step first - «просто прибирання з доку
+// кнопки бази»). The bases desk stays a desk - it is where a base tapped on the start desk opens, with its own stack and bar -
+// but it has no bead of its own: the dock is one place shorter and nothing else about the desk changes.
+export const dockShowsDesk = (name: string) => FIXED_DESKS.includes(name) && name !== BASES_DESK;
 // There used to be four ("до чотирьох"); the user lifted it (2026-10-03,
 // «зняти обмеження»): the bar scrolls, and the tab switcher shows them all.
 export const MAX_DESKS = Infinity;
