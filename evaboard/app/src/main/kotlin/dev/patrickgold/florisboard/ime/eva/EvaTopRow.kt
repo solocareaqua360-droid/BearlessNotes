@@ -47,7 +47,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import android.content.res.Configuration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.FlorisImeService
@@ -74,6 +76,14 @@ import org.florisboard.lib.snygg.ui.SnyggText
 object EvaTopRow {
     /** Slots in the row, as wide as the Ukrainian letter keys: eleven. */
     const val SLOTS = 11
+
+    /**
+     * The full keyboard's key shapes, upright (the user's pick from the sketch, 2026-11-13, on a phone
+     * 411dp wide): a letter key 42dp tall for 30.5dp wide, a digit key 40dp tall for 34.6dp wide. The
+     * height follows the key's width, so a tall screen no longer stretches the keys.
+     */
+    const val FULL_LETTER_ASPECT = 42f / 30.5f
+    const val FULL_DIGIT_ASPECT = 40f / 34.6f
 
     /**
      * The row's height as last laid out (null before the first layout); for the full keyboard,
@@ -112,15 +122,22 @@ fun EvaTopRowUi() {
         val rowModifier = Modifier.fillMaxWidth().height(rowHeight)
         val rowWidth = maxWidth
         val digitWidth = (rowWidth - gap - margin * 2) / 10
+        val portrait = LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE
+        val digitRowHeight = if (portrait) {
+            (digitWidth - (keyMarginH * 2).dp) * EvaTopRow.FULL_DIGIT_ASPECT + (keyMarginV * 2).dp
+        } else {
+            rowHeight
+        }
 
         if (full) {
             // The full keyboard (the user's sketch "Б", 2026-11-13): a little room at the top, then undo / redo / suggestions, then the digits - always, the symbols included.
-            // Undo and redo are exactly as wide as 1 and 2 below them, edge to edge.
-            SideEffect { EvaTopRow.rowHeight.value = FullTopSpace + rowHeight * 2 }
+            // Undo and redo are exactly as wide as 1 and 2 below them, edge to edge; upright, the
+            // digits are a little taller than wide (FULL_DIGIT_ASPECT).
+            SideEffect { EvaTopRow.rowHeight.value = FullTopSpace + rowHeight + digitRowHeight }
             Column(modifier = Modifier.fillMaxWidth()) {
                 Spacer(modifier = Modifier.height(FullTopSpace))
                 EditRow(rowModifier, margin, digitWidth)
-                SlotRow(digitSlots(), rowModifier, margin, gap, rowWidth)
+                SlotRow(digitSlots(), Modifier.fillMaxWidth().height(digitRowHeight), margin, gap, rowWidth)
             }
         } else {
             SideEffect { EvaTopRow.rowHeight.value = rowHeight }

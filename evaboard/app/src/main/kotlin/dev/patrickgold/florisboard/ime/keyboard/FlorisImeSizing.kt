@@ -122,14 +122,26 @@ fun ProvideKeyboardRowBaseHeight(content: @Composable () -> Unit) {
     }
     // evaBoard: split on the Fold's inner screen - the row height follows the (narrower) key width
     val evaSplit = dev.patrickgold.florisboard.ime.eva.evaSplitMetrics()
+    // evaBoard: the full keyboard, upright - the row height follows the key width too, so a tall
+    // phone does not stretch the letter keys (EvaTopRow.FULL_LETTER_ASPECT)
+    val evaFull by prefs.keyboard.evaFullKeyboard.observeAsState()
+    val keySpacingH by prefs.keyboard.keySpacingHorizontal.observeAsState()
+    val keySpacingV by prefs.keyboard.keySpacingVertical.observeAsState()
     val baseRowHeight = remember(
         configuration, resources, heightFactorPortrait, heightFactorLandscape,
         oneHandedMode, oneHandedModeScaleFactor, systemBarHeights, evaSplit,
+        evaFull, keySpacingH, keySpacingV,
     ) {
         if (evaSplit != null) {
             return@remember dev.patrickgold.florisboard.ime.eva.EvaSplit.rowHeightPx(
                 resources.displayMetrics.widthPixels.toFloat(), resources.displayMetrics.density, evaSplit,
             )
+        }
+        if (evaFull && !configuration.isOrientationLandscape()) {
+            val density = resources.displayMetrics.density
+            val keyWidth = resources.displayMetrics.widthPixels / 11f - 2 * keySpacingH * density
+            return@remember keyWidth * dev.patrickgold.florisboard.ime.eva.EvaTopRow.FULL_LETTER_ASPECT +
+                2 * keySpacingV * density
         }
         calcInputViewHeight(resources, systemBarHeights) * when {
             configuration.isOrientationLandscape() -> heightFactorLandscape
