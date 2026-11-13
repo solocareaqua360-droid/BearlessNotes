@@ -161,7 +161,7 @@ fun EvaFullKeyboardCard(modifier: Modifier = Modifier) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = "Повна клавіатура", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = "Відмінити, повторити, підказки й цифри - одночасно, без перемикача; заокруглений верх",
+                    text = "Відмінити, повторити, підказки й цифри - одночасно, без перемикача",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }

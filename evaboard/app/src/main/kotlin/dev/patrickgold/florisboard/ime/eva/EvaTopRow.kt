@@ -15,7 +15,7 @@
  * height still comes from the 11-slot width.
  *
  * The full keyboard (a switch in the app, for tall phones) has no switching at all: undo / redo /
- * suggestions and the digits both show, one above the other, under rounded top corners.
+ * suggestions and the digits both show, one above the other.
  */
 
 package dev.patrickgold.florisboard.ime.eva
@@ -114,8 +114,7 @@ fun EvaTopRowUi() {
         val digitWidth = (rowWidth - gap - margin * 2) / 10
 
         if (full) {
-            // The full keyboard (the user's sketch "Б", 2026-11-13): a little room under the rounded
-            // top, then undo / redo / suggestions, then the digits - always, the symbols included.
+            // The full keyboard (the user's sketch "Б", 2026-11-13): a little room at the top, then undo / redo / suggestions, then the digits - always, the symbols included.
             // Undo and redo are exactly as wide as 1 and 2 below them, edge to edge.
             SideEffect { EvaTopRow.rowHeight.value = FullTopSpace + rowHeight * 2 }
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -135,7 +134,7 @@ fun EvaTopRowUi() {
     }
 }
 
-/** Room between the full keyboard's rounded top edge and its first row. */
+/** Room between the full keyboard's top edge and its first row. */
 private val FullTopSpace = 10.dp
 
 /** Undo and redo on keys [keyWidth] wide, then the suggestions across the rest of the row (no gap: it is one row). */

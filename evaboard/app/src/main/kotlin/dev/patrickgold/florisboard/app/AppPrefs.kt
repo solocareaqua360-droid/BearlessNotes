@@ -501,7 +501,7 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             default = dev.patrickgold.florisboard.ime.eva.EvaTopRowState.NUMBERS,
         )
         // evaBoard: the full keyboard (ime/eva/EvaTopRow.kt) - undo / redo / suggestions AND the digits
-        // above the letters at once, rounded top corners, no up / down button in the strip
+        // above the letters at once, no up / down button in the strip
         val evaFullKeyboard = boolean(
             key = "keyboard__eva_full_keyboard",
             default = false,

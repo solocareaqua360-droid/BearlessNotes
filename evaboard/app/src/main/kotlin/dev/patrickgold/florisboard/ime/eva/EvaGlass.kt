@@ -2,7 +2,6 @@
  * evaBoard: the keyboard's "glass" edge - the user's iOS-glass recipe. The ground itself is
  * the theme's translucent window colour (#EBEBF5 / #1C1C1E at 80%); this adds the rounded top
  * corners and a hairline rim that fades from a faint highlight at the top to almost nothing.
- * The full keyboard rounds its top corners the same way.
  */
 
 package dev.patrickgold.florisboard.ime.eva
@@ -15,8 +14,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-/** The glass's corner; the full keyboard's top corners use it too. */
-val EvaGlassCorner = 16.dp
+private val EvaGlassCorner = 16.dp
 
 /** Rounded top corners plus the rim; [dark] picks a white rim on dark glass, a black one on light. */
 fun Modifier.evaGlass(dark: Boolean): Modifier {

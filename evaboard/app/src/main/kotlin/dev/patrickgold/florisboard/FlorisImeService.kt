@@ -83,9 +83,6 @@ import androidx.compose.ui.unit.max
 import dev.patrickgold.florisboard.ime.eva.EvaBlur
 import dev.patrickgold.florisboard.ime.eva.EvaStrip
 import dev.patrickgold.florisboard.ime.eva.evaGlass
-import dev.patrickgold.florisboard.ime.eva.EvaGlassCorner
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.luminance
 import dev.patrickgold.florisboard.ime.eva.EvaNavStripLayer
 import androidx.compose.foundation.background
@@ -738,9 +735,6 @@ class FlorisImeService : LifecycleInputMethodService() {
         LaunchedEffect(inputViewSize, blurOn) { updateEvaBlur() }
         val windowStyle = rememberSnyggThemeQuery(FlorisImeUi.Window.elementName, attributes)
         val solidGround = windowStyle.background().takeIf { it.isSpecified }?.copy(alpha = 1f)
-        // evaBoard: the full keyboard rounds its top corners like the glass (the screen's own radius,
-        // 38dp on the user's phone, looked bad and clipped the undo key - 2026-11-13)
-        val full by prefs.keyboard.evaFullKeyboard.observeAsState()
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             val dark = (solidGround?.luminance() ?: 1f) < 0.5f
             Box(
@@ -748,13 +742,9 @@ class FlorisImeService : LifecycleInputMethodService() {
                     .fillMaxWidth()
                     .wrapContentHeight()
                     // evaBoard: the see-through ground is glass - rounded top corners and a faint rim
-                    .then(
-                        when {
-                            seeThrough -> Modifier.evaGlass(dark)
-                            full -> Modifier.clip(RoundedCornerShape(topStart = EvaGlassCorner, topEnd = EvaGlassCorner))
-                            else -> Modifier
-                        }
-                    ),
+                    // (the full keyboard keeps a straight top edge: rounded corners, the screen's 38dp and
+                    // then 16dp, looked bad on the live screen - the user, 2026-11-13)
+                    .then(if (seeThrough) Modifier.evaGlass(dark) else Modifier),
             ) {
             if (!seeThrough && solidGround != null) {
                 Box(modifier = Modifier.matchParentSize().background(solidGround))
