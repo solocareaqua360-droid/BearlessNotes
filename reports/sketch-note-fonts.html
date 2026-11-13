@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Шрифти для нотатки</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Caveat:wght@400;600&family=Neucha&family=Pangolin&family=Shantell+Sans:wght@400;600&family=Bad+Script&family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&family=Roboto+Mono:wght@400;600&family=PT+Mono&family=Lora:wght@400;600&family=Literata:wght@400;600&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#1E1E1C; --ink2:#5E5D58; --ink3:#9A988F; --paper:#FFFDF9; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#E9E7E2; font-family: Inter, system-ui, sans-serif; color:var(--ink); padding:24px 16px; }
+  h1 { font-size:18px; margin:0 0 6px; }
+  h2 { font-size:15px; margin:26px 0 10px; color:var(--ink2); text-transform:uppercase; letter-spacing:.4px; }
+  .lead { font-size:14px; color:var(--ink2); margin:0 0 8px; max-width:1000px; line-height:1.5; }
+  .grid { display:flex; flex-wrap:wrap; gap:16px; }
+  .card { width:475px; max-width:100%; background:var(--paper); border-radius:22px; padding:18px 22px; box-shadow:0 8px 24px rgba(0,0,0,.07); }
+  .tag { font-family:Inter; font-size:12px; font-weight:600; letter-spacing:.3px; color:var(--ink3); text-transform:uppercase; margin-bottom:8px; }
+  .db { font-size:44px; line-height:1.1; margin:0 0 6px; letter-spacing:2px; }
+  .db b { color:#C2622D; font-weight:inherit; }
+  .t { font-size:26px; margin:6px 0 6px; }
+  .p { font-size:17px; line-height:1.55; margin:0; }
+  .why { font-family:Inter; font-size:13px; color:var(--ink2); margin:10px 0 0; line-height:1.45; }
+</style>
+</head>
+<body>
+<h1>Шрифти, які можна вибрати для окремої нотатки</h1>
+<p class="lead">У рукописних великим рядком - «<b>д</b> б <b>д</b> б» поруч, щоб одразу було видно, чи плутаються. Текст однаковий скрізь.</p>
+<div id="root"></div>
+<script>
+const groups = [
+  ['Рукописні', [
+    ['Caveat', 'той, що сподобався; д - петлею, як б'],
+    ['Neucha', 'друкований від руки, д - з «ніжками», як на письмі в школі'],
+    ['Pangolin', 'круглий, друкований від руки, д - з «ніжками»'],
+    ['Shantell Sans', 'легкий, як маркером; д - з «ніжками»'],
+    ['Bad Script', 'прописний, як у зошиті'],
+  ]],
+  ['Машинка (mono)', [
+    ['JetBrains Mono', 'як на твоєму скріншоті - чіткий, сучасний'],
+    ['IBM Plex Mono', 'м\'якший, з характером'],
+    ['Roboto Mono', 'найнейтральніший'],
+    ['PT Mono', 'класична друкарська машинка'],
+  ]],
+  ['Книжкові (для довгого читання)', [
+    ['Lora', 'теплий, з засічками - той, що ти дивився'],
+    ['Literata', 'створений саме для читання з екрана'],
+    ['PT Serif', 'строгий, газетний'],
+  ]],
+];
+const root = document.getElementById('root');
+for (const [title, list] of groups) {
+  const h = document.createElement('h2'); h.textContent = title; root.appendChild(h);
+  const g = document.createElement('div'); g.className = 'grid'; root.appendChild(g);
+  for (const [f, why] of list) {
+    const ff = `'${f}', monospace`;
+    const c = document.createElement('div'); c.className = 'card';
+    c.innerHTML = `<div class="tag">${f}</div>
+      <div style="font-family:${ff}">
+        ${title === 'Рукописні' ? '<div class="db"><b>д</b> б <b>д</b> б</div>' : ''}
+        <div class="t">Добрий день, Ґанно</div>
+        <p class="p">Будинок біля дороги, двері дубові. Зробити до середи: дзвінок, довідка, бензин.</p>
+        <p class="p" style="margin-top:6px">hello · 0123456789 · привіт</p>
+      </div>
+      <p class="why">${why}</p>`;
+    g.appendChild(c);
+  }
+}
+</script>
+</body>
+</html>

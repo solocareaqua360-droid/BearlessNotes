@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Шрифт нотаток</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Nunito:wght@400;600;800&family=Rubik:wght@400;500;700&family=M+PLUS+Rounded+1c:wght@400;500;700&family=Onest:wght@400;600;700&family=Manrope:wght@400;600;800&family=Caveat:wght@400;600&family=Marck+Script&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#1E1E1C; --ink2:#5E5D58; --ink3:#9A988F; --paper:#FFFDF9; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#E9E7E2; font-family: Inter, system-ui, sans-serif; color:var(--ink); padding:24px 16px; }
+  h1 { font-size:18px; margin:0 0 6px; }
+  .lead { font-size:14px; color:var(--ink2); margin:0 0 20px; max-width:1000px; line-height:1.5; }
+  .grid { display:flex; flex-wrap:wrap; gap:20px; }
+  .card { width:475px; max-width:100%; background:var(--paper); border-radius:24px; padding:22px 24px 20px; box-shadow:0 8px 24px rgba(0,0,0,.08); }
+  .tag { display:inline-block; font-family:Inter; font-size:12px; font-weight:600; letter-spacing:.3px; color:var(--ink3); text-transform:uppercase; margin-bottom:10px; }
+  .why { font-family:Inter; font-size:13px; color:var(--ink2); margin:12px 0 0; line-height:1.45; }
+  .t { font-size:30px; line-height:1.15; margin:0 0 10px; }
+  .h { font-size:21px; margin:14px 0 6px; }
+  .p { font-size:16.5px; line-height:1.55; margin:0 0 8px; }
+  .li { font-size:16.5px; line-height:1.55; margin:0; padding-left:18px; position:relative; }
+  .li::before { content:'•'; position:absolute; left:2px; }
+  .mini { margin-top:14px; display:flex; gap:12px; align-items:flex-start; }
+  .mini .m { width:150px; height:118px; border-radius:14px; background:#fff; box-shadow:inset 0 0 0 1px #ECE9E2; padding:9px 10px; overflow:hidden; }
+  .mini .m .mt { font-size:12.5px; margin-bottom:4px; }
+  .mini .m .mp { font-size:7.5px; line-height:1.45; color:#3A3935; }
+  .mini .cap { font-family:Inter; font-size:12px; color:var(--ink3); padding-top:4px; }
+</style>
+</head>
+<body>
+<h1>Шрифт нотаток: скільки м'якості</h1>
+<p class="lead">Одна й та сама нотатка (заголовок, підзаголовок, абзац, список) і її мініатюра на картці. Усі шрифти мають українські літери разом з ґ. Зверху вниз - від кутастого до круглого.</p>
+<div class="grid" id="g"></div>
+<script>
+const fonts = [
+  ['Inter', 'Зараз у нотатках', 'Чіткий, рівний, кінчики літер зрізані під прямим кутом - звідси «кутасто».', 400, 700],
+  ['Manrope', 'Трохи тепліший', 'Схожий на Inter, але ширший і м\'якший у вигинах; кути все ще прямі.', 400, 800],
+  ['Onest', 'Сучасний, м\'який', 'Округлі форми, але не дитячі; кінчики ледь закруглені.', 400, 700],
+  ['Rubik', 'Ледь скруглені кути', 'Кожен кут літери трохи заокруглений - м\'якість видно, а на Android не схожий.', 400, 700],
+  ['Nunito', 'Повністю круглі кінчики', 'Найм\'якший; був у нас раніше. Мінус - нагадує системний шрифт Android.', 400, 800],
+  ['M PLUS Rounded 1c', 'Круглий, японської школи', 'Круглі кінці штрихів, але геометрія строгіша за Nunito.', 400, 700],
+  ['Caveat', 'Рукописний (вибір для нотатки)', 'Не за замовчуванням - як опція «рукописний» у «⋯» нотатки.', 400, 600],
+  ['Marck Script', 'Рукописний 2 (вибір для нотатки)', 'Каліграфічніший; гарний для коротких нотаток, важчий для довгих.', 400, 400],
+];
+const g = document.getElementById('g');
+for (const [f, tag, why, w, wb] of fonts) {
+  const c = document.createElement('div'); c.className = 'card';
+  const ff = `'${f}', sans-serif`;
+  c.innerHTML = `<div class="tag">${f} · ${tag}</div>
+  <div style="font-family:${ff}">
+    <div class="t" style="font-weight:${wb}">Поїздка на тиждень</div>
+    <div class="h" style="font-weight:${wb}">Що взяти з собою</div>
+    <p class="p" style="font-weight:${w}">Ґудзики на куртці пришити, документи скласти в одну теку. Ранок почати з кави, а не з пошти.</p>
+    <p class="li" style="font-weight:${w}">ліхтарик і запасні батарейки</p>
+    <p class="li" style="font-weight:${w}">зарядка, павербанк, кабель</p>
+  </div>
+  <div class="mini"><div class="m" style="font-family:${ff}"><div class="mt" style="font-weight:${wb}">Поїздка на тиждень</div><div class="mp" style="font-weight:${w}">Ґудзики на куртці пришити, документи скласти в одну теку. Ранок почати з кави, а не з пошти. • ліхтарик і батарейки • зарядка, павербанк</div></div><div class="cap">так виглядатиме<br>мініатюра на картці</div></div>
+  <p class="why">${why}</p>`;
+  g.appendChild(c);
+}
+</script>
+</body>
+</html>
