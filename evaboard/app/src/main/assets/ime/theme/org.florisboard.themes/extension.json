@@ -29,6 +29,22 @@
       "isNight": true
     },
     {
+      "id": "eva_day_my",
+      "label": "evaBoard Material You Light",
+      "authors": [
+        "evaBoard"
+      ],
+      "isNight": false
+    },
+    {
+      "id": "eva_night_my",
+      "label": "evaBoard Material You Dark",
+      "authors": [
+        "evaBoard"
+      ],
+      "isNight": true
+    },
+    {
       "id": "floris_day",
       "label": "Floris Day",
       "authors": [

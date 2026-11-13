@@ -44,6 +44,7 @@ import dev.patrickgold.florisboard.BuildConfig
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.eva.EvaBlur
 import dev.patrickgold.florisboard.ime.eva.EvaScreenshots
+import dev.patrickgold.florisboard.ime.theme.extCoreTheme
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import dev.patrickgold.jetpref.datastore.model.observeAsState
@@ -140,6 +141,44 @@ fun EvaScreenshotsCard(modifier: Modifier = Modifier) {
                         askPermission.launch(EvaScreenshots.permission)
                     } else {
                         scope.launch { prefs.keyboard.evaScreenshotsToClipboard.set(on) }
+                    }
+                },
+            )
+        }
+    }
+}
+
+/** evaBoard: the Material You switch - the keyboard's colours follow the system wallpaper scheme. */
+@Composable
+fun EvaDynamicThemeCard(modifier: Modifier = Modifier) {
+    val prefs by FlorisPreferenceStore
+    val scope = rememberCoroutineScope()
+    val wanted by prefs.keyboard.evaDynamicTheme.observeAsState()
+    val available = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+    Card(modifier = modifier) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Кольори системи (Material You)", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = if (available) {
+                        "Клавіатура бере кольори з ваших шпалер; змінюються разом зі шпалерами"
+                    } else {
+                        "Потрібен Android 12 або новіший"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Switch(
+                checked = wanted && available,
+                enabled = available,
+                onCheckedChange = { on ->
+                    scope.launch {
+                        prefs.keyboard.evaDynamicTheme.set(on)
+                        prefs.theme.dayThemeId.set(extCoreTheme(if (on) "eva_day_my" else "eva_day"))
+                        prefs.theme.nightThemeId.set(extCoreTheme(if (on) "eva_night_my" else "eva_night"))
                     }
                 },
             )

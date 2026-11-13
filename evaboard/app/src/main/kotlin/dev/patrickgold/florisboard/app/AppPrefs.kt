@@ -500,6 +500,12 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__eva_top_row_state",
             default = dev.patrickgold.florisboard.ime.eva.EvaTopRowState.NUMBERS,
         )
+        // evaBoard: the keyboard's colours follow the system Material You scheme (from the wallpaper,
+        // Android 12+); the switch (EvaDynamicTheme) sets day/nightThemeId to the eva_*_my themes
+        val evaDynamicTheme = boolean(
+            key = "keyboard__eva_dynamic_theme",
+            default = false,
+        )
         // evaBoard: the full keyboard (ime/eva/EvaTopRow.kt) - undo / redo / suggestions AND the digits
         // above the letters at once, no up / down button in the strip
         val evaFullKeyboard = boolean(
