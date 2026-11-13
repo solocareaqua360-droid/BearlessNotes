@@ -21,3 +21,18 @@
   - Audience → «Publish app» (перейти з Testing на In production): інакше вхід злітає кожні 7 днів. Google покаже
     «застосунок не перевірений» — це нормально для особистого використання (до 100 користувачів).
 - **Ліміти:** безкоштовно; 10 000 балів на добу (читання списку = 1 бал); без оплати.
+
+## Firebase для синхронізації (2026-11-13)
+
+- **Що:** до існуючого Google Cloud-проєкту `video-bookmark-app` додано Firebase (`projects:addfirebase`);
+  створено веб-застосунок «Cinema» (appId `1:517842042497:web:2b844a28143254c460d780`), базу Firestore
+  `(default)` у регіоні `eur3`, увімкнено вхід через Google (Authentication → Sign-in method → Google).
+- **Де:** console.firebase.google.com → `video-bookmark-app`. Вхід у консоль/CLI: `firebase login` під
+  `solocareaqua360@gmail.com` (Firebase CLI через `npx -y firebase-tools@latest`).
+- **Навіщо:** синхронізація між телефонами; дані лежать у `users/{uid}/...`, правила (`firestore.rules`) пускають
+  лише власника. Правила розгорнуто: `npx -y firebase-tools@latest deploy --only firestore:rules`.
+- **Safelist client IDs:** у провайдері Google додано Android OAuth-клієнт застосунку
+  (`517842042497-q9prjb6h…apps.googleusercontent.com`), щоб Firebase приймав id-токени від нашого входу.
+- **Чому не новий проєкт:** ліміт проєктів акаунта вичерпано (6 штук); користувач вибрав `video-bookmark-app`.
+  mindEva (`bearless-notes`) не чіпали.
+- Увімкнені API: Firestore, Identity Toolkit, Firebase Rules.
