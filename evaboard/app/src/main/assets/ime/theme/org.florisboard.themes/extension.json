@@ -34,7 +34,10 @@
       "authors": [
         "evaBoard"
       ],
-      "isNight": false
+      "isNight": false,
+      "materialYouFlags": {
+        "paletteStyle": "TonalSpot"
+      }
     },
     {
       "id": "eva_night_my",
@@ -42,7 +45,10 @@
       "authors": [
         "evaBoard"
       ],
-      "isNight": true
+      "isNight": true,
+      "materialYouFlags": {
+        "paletteStyle": "TonalSpot"
+      }
     },
     {
       "id": "floris_day",
