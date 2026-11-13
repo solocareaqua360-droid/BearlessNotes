@@ -10,7 +10,9 @@ import { UpdateSection } from "@/components/UpdateSection";
 import { notify } from "@/components/ui/Ask";
 import { Pill } from "@/components/ui/Pill";
 import { TopBar, topBarSpace } from "@/components/ui/TopBar";
+import { forgetCloud, syncNow } from "@/services/cloudSync";
 import { signInWithGoogle, signOutOfGoogle } from "@/services/googleAuth";
+import { useSyncStore } from "@/store/useSyncStore";
 import { useGoogleStore } from "@/store/useGoogleStore";
 import { errorMessage } from "@/services/errorMessage";
 import { useLibraryStore } from "@/store/useLibraryStore";
@@ -46,10 +48,22 @@ export default function SettingsScreen() {
   // THE GOOGLE SIGN-IN is the new one (reads the YouTube subscriptions); the old viBo sign-in
   // went through a server that no longer exists.
   const googleSignedIn = useGoogleStore((g) => !!g.refreshToken);
+  const hasIdentity = useGoogleStore((g) => !!g.idToken);
+  const sync = useSyncStore((x) => ({ status: x.status, error: x.error, lastSyncAt: x.lastSyncAt, email: x.email }));
+  const [syncing, setSyncing] = useState(false);
+  const runSync = async () => {
+    setSyncing(true);
+    const r = await syncNow();
+    setSyncing(false);
+    notify(r.ok ? "Синхронізовано" : "Синхронізація не вдалася", r.ok ? `Відправлено: ${r.sent}, отримано: ${r.got}` : r.error ?? "");
+  };
   const handleSignIn = async () => {
     setSigningIn(true);
     try {
-      if (await signInWithGoogle()) router.push("/import-subscriptions");
+      if (await signInWithGoogle()) {
+        void syncNow();
+        router.push("/import-subscriptions");
+      }
     } catch (e) {
       notify("Не вдалося увійти через Google", errorMessage(e));
     } finally {
@@ -73,7 +87,7 @@ export default function SettingsScreen() {
                 <Text style={[TYPE.row, { color: S.ink }]}>Google підключено</Text>
                 <Text style={[TYPE.small, { color: S.ink3, marginTop: 2 }]}>Підписки YouTube доступні в «Каналах»</Text>
               </View>
-              <Pressable onPress={() => signOutOfGoogle()} style={[styles.signOut, { backgroundColor: S.fill }]}>
+              <Pressable onPress={() => { signOutOfGoogle(); forgetCloud(); }} style={[styles.signOut, { backgroundColor: S.fill }]}>
                 <Text style={[TYPE.row, { fontSize: 14, color: S.ink }]}>Вийти</Text>
               </Pressable>
             </View>
@@ -84,6 +98,33 @@ export default function SettingsScreen() {
             </Pressable>
           )}
         </View>
+
+        {googleSignedIn && (
+          <View style={[styles.card, { backgroundColor: S.card, boxShadow: S.shadow }]}>
+            <View style={styles.accountRow}>
+              <View style={[styles.avatar, { backgroundColor: S.fillSolid }]}>
+                <Ionicons name={"cloud" as any} size={20} color={S.ink2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[TYPE.row, { color: S.ink }]}>Синхронізація між телефонами</Text>
+                <Text style={[TYPE.small, { color: S.ink3, marginTop: 2 }]} numberOfLines={3}>
+                  {!hasIdentity
+                    ? "Увійди ще раз, щоб увімкнути (потрібен дозвіл на email)"
+                    : syncing || sync.status === "working"
+                      ? "Синхронізую…"
+                      : sync.status === "error"
+                        ? sync.error ?? "Помилка"
+                        : sync.lastSyncAt
+                          ? `Востаннє: ${new Date(sync.lastSyncAt).toLocaleString("uk-UA", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                          : "Ще не синхронізовано"}
+                </Text>
+              </View>
+              <Pressable onPress={hasIdentity ? runSync : handleSignIn} disabled={syncing || signingIn} style={[styles.signOut, { backgroundColor: S.fill }]}>
+                <Text style={[TYPE.row, { fontSize: 14, color: S.ink }]}>{hasIdentity ? "Зараз" : "Увійти"}</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         <UpdateSection />
 

@@ -7,9 +7,11 @@ import { createJSONStorage, persist } from "zustand/middleware";
 interface GoogleState {
   refreshToken: string | null;
   accessToken: string | null;
+  /** Who the account is (needs the «openid» scope); the cloud sync signs in with it. */
+  idToken: string | null;
   /** When the access token stops working, ms. */
   expiresAt: number;
-  set: (patch: Partial<Pick<GoogleState, "refreshToken" | "accessToken" | "expiresAt">>) => void;
+  set: (patch: Partial<Pick<GoogleState, "refreshToken" | "accessToken" | "idToken" | "expiresAt">>) => void;
   signOut: () => void;
 }
 
@@ -18,9 +20,10 @@ export const useGoogleStore = create<GoogleState>()(
     (set) => ({
       refreshToken: null,
       accessToken: null,
+      idToken: null,
       expiresAt: 0,
       set: (patch) => set(patch),
-      signOut: () => set({ refreshToken: null, accessToken: null, expiresAt: 0 }),
+      signOut: () => set({ refreshToken: null, accessToken: null, idToken: null, expiresAt: 0 }),
     }),
     { name: "cinema-google", storage: createJSONStorage(() => AsyncStorage) }
   )

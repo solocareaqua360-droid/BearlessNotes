@@ -16,6 +16,7 @@ import { useSoft } from "@/theme/soft";
 import { extractUrl } from "@/utils/shareLink";
 import { errorMessage } from "@/services/errorMessage";
 import { supabase } from "@/services/supabaseClient";
+import { startCloudSync } from "@/services/cloudSync";
 import { pullRemoteIntoLocal, startAutoSync, stopAutoSync } from "@/services/sync";
 import { useLibraryStore } from "@/store/useLibraryStore";
 
@@ -122,6 +123,9 @@ function Shell() {
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    startCloudSync();
+  }, []);
   // The app is upright; only the player's big video may turn (PlayerHost).
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});

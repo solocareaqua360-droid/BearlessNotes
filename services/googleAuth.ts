@@ -46,6 +46,7 @@ export async function signInWithGoogle(): Promise<boolean> {
     DISCOVERY
   );
   useGoogleStore.getState().set({
+    idToken: tokens.idToken ?? null,
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken ?? useGoogleStore.getState().refreshToken,
     expiresAt: Date.now() + (tokens.expiresIn ?? 3600) * 1000 - 60000,
@@ -77,7 +78,28 @@ export async function getAccessToken(): Promise<string | null> {
     if (res.status === 400 || res.status === 401) s.signOut();
     return null;
   }
-  const data = (await res.json()) as { access_token: string; expires_in?: number };
-  s.set({ accessToken: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 - 60000 });
+  const data = (await res.json()) as { access_token: string; expires_in?: number; id_token?: string };
+  s.set({ accessToken: data.access_token, idToken: data.id_token ?? s.idToken, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 - 60000 });
   return data.access_token;
+}
+
+/**
+ * Who this Google account is, for the cloud: a fresh id token (null when the sign-in was made
+ * before «openid» was asked - then the user has to sign in once more).
+ */
+export async function getGoogleIdentity(): Promise<{ idToken: string | null; accessToken: string | null }> {
+  const s0 = useGoogleStore.getState();
+  if (!s0.refreshToken) return { idToken: null, accessToken: null };
+  const res = await fetch(DISCOVERY.tokenEndpoint!, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `client_id=${encodeURIComponent(GOOGLE_ANDROID_CLIENT_ID)}&grant_type=refresh_token&refresh_token=${encodeURIComponent(s0.refreshToken)}`,
+  });
+  if (!res.ok) {
+    if (res.status === 400 || res.status === 401) s0.signOut();
+    return { idToken: null, accessToken: null };
+  }
+  const data = (await res.json()) as { access_token: string; expires_in?: number; id_token?: string };
+  s0.set({ accessToken: data.access_token, idToken: data.id_token ?? s0.idToken, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 - 60000 });
+  return { idToken: data.id_token ?? null, accessToken: data.access_token };
 }
