@@ -1,3 +1,4 @@
+import { hasTextSelection } from '../utils/textSelection';
 import { type ComponentProps, type ReactElement, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { applyFolderMerge, planFolderMerge } from '../utils/folderMerge';
 import { blockFromFlashcard, copyObjectsToNote } from '../utils/copyToNote';
@@ -1859,6 +1860,8 @@ export default function ExplorerScreen({ inPane, desk }: { inPane?: boolean; des
     if (t && (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable)) return;
     const mod = e.metaKey || e.ctrlKey;
     const key = e.key.toLowerCase();
+    // Selected TEXT (a thought, a card's words) is copied by the browser itself, not taken as «copy the cards».
+    if (mod && (key === 'c' || key === 'x') && hasTextSelection()) return;
     if (mod && key === 'a') {
       e.preventDefault();
       setSelecting(true);

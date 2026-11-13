@@ -1,3 +1,4 @@
+import { hasTextSelection } from '../utils/textSelection';
 import { useEffect, useRef } from 'react';
 import type { BoardKeyHandlers } from './useBoardKeys';
 
@@ -40,6 +41,8 @@ export function useBoardKeys(handlers: BoardKeyHandlers): void {
       } else if (!mod && event.key === 'Escape') {
         h.onEscape();
       } else if (mod && !event.shiftKey && !event.altKey && key === 'c') {
+        // Selected text is the browser's to copy, not the board's cards.
+        if (hasTextSelection()) return;
         event.preventDefault();
         h.onCopy();
       } else if (mod && !event.shiftKey && !event.altKey && key === 'v') {
