@@ -4,7 +4,6 @@ import { Ionicons } from '../icons/Ionicons';
 import AttachmentImage from '../AttachmentImage';
 import { useSoft } from '../../theme/soft';
 import { SOFT_BOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
-import { formatAddedOn } from '../../utils/documentPreview';
 import { hueOf, type Thought, type ThoughtTheme } from '../../hooks/useThoughts';
 import { readable } from './ThoughtCapture';
 import { KIND_LABEL, captionOf, cardTitle, kindOf, type ThoughtKind } from './thoughtText';
@@ -21,6 +20,13 @@ type Lens = 'themes' | 'types';
 // Kept for the session, as the sky's own lens was.
 let lastLens: Lens = 'themes';
 let lastPick: string = ALL;
+
+// «28 жовт.», with the year only when it is not this one - the theme's name needs the room more.
+function shortDate(at: number) {
+  const d = new Date(at);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString('uk-UA', sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 const TYPES: ThoughtKind[] = ['doc', 'photo', 'video', 'link'];
 const TYPE_PLURAL: Record<ThoughtKind, string> = { doc: 'Документи', photo: 'Фото', video: 'Відео', link: 'Посилання' };
@@ -272,7 +278,7 @@ const Row = memo(function Row({
               </Text>
             </>
           )}
-          <Text style={[styles.metaText, { color: S.ink3, flexShrink: 0 }]}>{formatAddedOn(t.createdAt)}</Text>
+          <Text style={[styles.metaText, { color: S.ink3, flexShrink: 0 }]}>{shortDate(t.createdAt)}</Text>
         </View>
       </View>
     </Pressable>
