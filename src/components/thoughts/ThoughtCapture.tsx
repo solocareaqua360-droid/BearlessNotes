@@ -14,10 +14,12 @@ import { useKeyboardRide } from '../../hooks/useKeyboardRide';
 import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
 import { hapticDrop, hapticPickUp, hapticSnapTick, hapticSuccess } from '../../utils/haptics';
 import { SOFT_BOLD, SOFT_MEDIUM, SOFT_REGULAR, SOFT_SEMIBOLD } from '../../utils/fonts';
-import { createTheme, hueOf, saveThought, THEME_HUES, type ThoughtSource, type ThoughtTheme } from '../../hooks/useThoughts';
+import { createTheme, hueOf, saveThought, THEME_HUES, type Thought, type ThoughtSource, type ThoughtTheme } from '../../hooks/useThoughts';
+import { KIND_LABEL, kindOf } from './thoughtText';
 import { backupThoughtImages, clipboardHasImage, keepThoughtImage, pasteClipboardImage, pickThoughtImages } from '../../utils/thoughtImages';
 import { Cloud, cloudDiameter, layoutClouds, type CloudPlace } from './ThemeClouds';
 import FeelRow from './FeelRow';
+import { backupThoughtVideo, keepThoughtVideo, pickThoughtVideo, videoThumb } from '../../utils/thoughtVideo';
 import type { Feeling } from './feelings';
 
 // CATCHING A THOUGHT (2026-10-15, the user's sketch corrections: «забагато кнопок і мало візуалу ... одна кнопка
@@ -44,6 +46,7 @@ export default function ThoughtCapture({
   visible,
   source: given,
   images: givenImages,
+  video: givenVideo,
   themes,
   countOf,
   onElsewhere,
@@ -54,6 +57,7 @@ export default function ThoughtCapture({
   source?: ThoughtSource;
   // Pictures it arrives with (a share of photos, a photo alone).
   images?: string[];
+  video?: { uri: string; name?: string; mimeType?: string };
   themes: ThoughtTheme[];
   countOf: (id: string | null) => number;
   onElsewhere?: () => void;
@@ -82,6 +86,22 @@ export default function ThoughtCapture({
   // THE PICTURES: any number, from the share sheet, the gallery or the clipboard; kept into the app's folder when saved.
   const [images, setImages] = useState<string[]>([]);
   const [canPasteImage, setCanPasteImage] = useState(false);
+  // THE VIDEO (2026-11-16): one, from the share sheet or the gallery; its first frame shown while it waits.
+  const [video, setVideo] = useState<{ uri: string; name?: string; mimeType?: string; durationMs?: number } | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    setVideoPreview(undefined);
+    if (!video) return;
+    let alive = true;
+    videoThumb(video.uri).then((u) => alive && setVideoPreview(u));
+    return () => {
+      alive = false;
+    };
+  }, [video]);
+  // WHERE IT GOES (2026-11-16, the inbox sketch): the theme capsules right in this window instead of the clouds - «Без
+  // теми» chosen until another is tapped; «+ Нова» names a theme in place.
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [naming, setNaming] = useState(false);
 
   const shown = useSharedValue(0);
   const pick = useSharedValue(0);
@@ -97,6 +117,8 @@ export default function ThoughtCapture({
     setFeel(null);
     setStage('write');
     setNewName('');
+    setChosen(themeId ?? null);
+    setNaming(false);
     setPulseId(null);
     committed.current = '';
     saving.current = false;
@@ -108,6 +130,7 @@ export default function ThoughtCapture({
     setPasted(undefined);
     setCanPaste(false);
     setImages(givenImages ?? []);
+    setVideo(givenVideo ?? null);
     setCanPasteImage(false);
     if (!given) Clipboard.hasStringAsync().then(setCanPaste).catch(() => {});
     clipboardHasImage().then(setCanPasteImage);
@@ -115,7 +138,7 @@ export default function ThoughtCapture({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  const hasSomething = !!source || images.length > 0 || felt.trim().length > 0;
+  const hasSomething = !!source || images.length > 0 || !!video || felt.trim().length > 0;
   const preset = themeId ? themes.find((t) => t.id === themeId) : undefined;
 
   // THE CLOUDS TO PICK FROM: the most recently touched themes, and the dashed «new» one. Laid out in the space above
@@ -123,6 +146,8 @@ export default function ThoughtCapture({
   const cardH = 92;
   const areaTop = insets.top + 64;
   const areaH = Math.max(260, H - areaTop - insets.bottom - cardH - 56);
+  // The capsules' order: the chosen-on-opening theme first (it was asked for), then by when last touched.
+  const pickOrder = useMemo(() => [...themes].sort((a, b) => (b.id === themeId ? 1 : 0) - (a.id === themeId ? 1 : 0) || b.touchedAt - a.touchedAt), [themes, themeId]);
   const shownThemes = useMemo(() => [...themes].sort((a, b) => b.touchedAt - a.touchedAt).slice(0, MAX_CLOUDS), [themes]);
   const places = useMemo<CloudPlace[]>(
     () =>
@@ -168,12 +193,14 @@ export default function ThoughtCapture({
       saving.current = true;
       if (listening) stopListening();
       try {
-        if (source || images.length || felt.trim()) {
+        if (source || images.length || video || felt.trim()) {
           // The pictures first into the app's own folder (a picker's address does not live long), then the thought.
           const kept = await Promise.all(images.map((u) => keepThoughtImage(u).catch(() => u)));
           const mine = kept.map((uri) => ({ uri }));
-          const id = await saveThought({ felt, feel, source, images: mine, themeId });
+          const keptVideo = video ? await keepThoughtVideo(video).catch(() => ({ uri: video.uri, ...(video.name ? { name: video.name } : {}) })) : undefined;
+          const id = await saveThought({ felt, feel, source, images: mine, video: keptVideo, themeId });
           if (mine.length) backupThoughtImages(id, mine).catch(() => {});
+          if (keptVideo) backupThoughtVideo(id, keptVideo).catch(() => {});
         }
       } catch {
         // Kept offline by Firestore's own queue; a failure here is the rare case of no account at all.
@@ -181,7 +208,7 @@ export default function ThoughtCapture({
       shown.value = withTiming(0, { duration: 200 });
       setTimeout(onClose, 210);
     },
-    [felt, feel, source, images, listening, stopListening, onClose, shown]
+    [felt, feel, source, images, video, listening, stopListening, onClose, shown]
   );
 
   // Closing: anything caught is kept, not laid out yet.
@@ -307,9 +334,13 @@ export default function ThoughtCapture({
     try {
       const id = await createTheme(name, themes.length % THEME_HUES.length);
       hapticSuccess();
-      await finish(id);
+      if (stage === 'write') {
+        setChosen(id);
+        setNaming(false);
+        setNewName('');
+      } else await finish(id);
     } catch {
-      finish(null);
+      if (stage !== 'write') finish(null);
     }
   };
 
@@ -383,6 +414,17 @@ export default function ThoughtCapture({
               what the clipboard holds as a picture can be taken in with one tap. */}
           <View style={styles.imagesRow}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 14, alignItems: 'center' }}>
+              {!!video && (
+                <View style={[styles.imageTile, { backgroundColor: '#2A2A2C' }]}>
+                  {!!videoPreview && <Image source={{ uri: videoPreview }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
+                  <View style={styles.videoPlay}>
+                    <Ionicons name={'play' as never} size={14} color="#fff" />
+                  </View>
+                  <Pressable onPress={() => setVideo(null)} hitSlop={6} accessibilityLabel="Прибрати відео" style={styles.imageX}>
+                    <Ionicons name={'close' as never} size={12} color="#fff" />
+                  </Pressable>
+                </View>
+              )}
               {images.map((uri) => (
                 <View key={uri} style={styles.imageTile}>
                   <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
@@ -402,6 +444,19 @@ export default function ThoughtCapture({
                 <Ionicons name={'image-outline' as never} size={20} color={S.ink2} />
                 <Text style={[styles.imageAddText, { color: S.ink2 }]}>{images.length ? 'Ще' : 'Картинки'}</Text>
               </Pressable>
+              {!video && (
+                <Pressable
+                  onPress={async () => {
+                    const picked = await pickThoughtVideo().catch(() => null);
+                    if (picked) setVideo(picked);
+                  }}
+                  accessibilityLabel="Додати відео"
+                  style={[styles.imageAdd, { backgroundColor: S.fill }]}
+                >
+                  <Ionicons name={'videocam-outline' as never} size={20} color={S.ink2} />
+                  <Text style={[styles.imageAddText, { color: S.ink2 }]}>Відео</Text>
+                </Pressable>
+              )}
               {canPasteImage && (
                 <Pressable
                   onPress={async () => {
@@ -442,25 +497,62 @@ export default function ThoughtCapture({
               </Pressable>
             </View>
             <FeelRow value={feel} onChange={setFeel} />
+            {/* THE THEME: capsules, the most recently touched first; «Без теми» stands first and is chosen to begin with. */}
+            <View style={{ gap: 8 }}>
+              <Text style={[styles.feltLabel, { color: S.ink3 }]}>{`Тема · стане: ${KIND_LABEL[kindOf({ felt, source, images: images.map((uri) => ({ uri })), video: video ? { uri: video.uri } : undefined } as Thought)].toLowerCase()}`}</Text>
+              {naming ? (
+                <View style={[styles.nameInline, { backgroundColor: S.fill }]}>
+                  <TextInput
+                    value={newName}
+                    onChangeText={setNewName}
+                    placeholder="Назва нової теми"
+                    placeholderTextColor={S.ink3}
+                    autoFocus
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    onSubmitEditing={makeTheme}
+                    style={[styles.nameInput, { color: S.ink, paddingVertical: 6 }]}
+                  />
+                  <Pressable onPress={() => setNaming(false)} hitSlop={6} accessibilityLabel="Скасувати" style={styles.nameSmall}>
+                    <Ionicons name={'close' as never} size={18} color={S.ink3} />
+                  </Pressable>
+                  <Pressable onPress={makeTheme} disabled={!newName.trim()} accessibilityLabel="Створити тему" style={[styles.nameSmall, { backgroundColor: newName.trim() ? S.ink : 'transparent' }]}>
+                    <Ionicons name={'checkmark' as never} size={18} color={newName.trim() ? S.card : S.ink3} />
+                  </Pressable>
+                </View>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
+                  {[null, ...pickOrder].map((t) => {
+                    const id = t ? t.id : null;
+                    const on = chosen === id;
+                    return (
+                      <Pressable key={id ?? 'none'} onPress={() => setChosen(id)} style={[styles.themePill, { backgroundColor: on ? S.ink : S.fill }]}>
+                        <View style={[styles.dot, { width: 9, height: 9, backgroundColor: t ? hueOf(t, S.dark).sub : '#D9793F' }]} />
+                        <Text style={[styles.themePillText, { color: on ? S.card : S.ink }]} numberOfLines={1}>
+                          {t ? t.name : 'Без теми'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                  <Pressable onPress={() => setNaming(true)} style={[styles.themePill, { backgroundColor: 'transparent', borderWidth: 1, borderColor: S.line, borderStyle: 'dashed' }]}>
+                    <Ionicons name={'add' as never} size={16} color={S.ink2} />
+                    <Text style={[styles.themePillText, { color: S.ink2 }]}>Нова</Text>
+                  </Pressable>
+                </ScrollView>
+              )}
+            </View>
             <Pressable
               onPress={() => {
                 if (!hasSomething) return;
-                if (preset) {
-                  hapticSuccess();
-                  finish(preset.id);
-                } else toPick();
+                hapticSuccess();
+                finish(chosen);
               }}
               disabled={!hasSomething}
               style={[styles.where, { backgroundColor: hasSomething ? S.ink : S.fill }]}
             >
               <Text style={[styles.whereText, { color: hasSomething ? S.card : S.ink3 }]} numberOfLines={1}>
-                {preset ? `У «${preset.name}»` : 'Куди?'}
+                Зберегти у вхідні
               </Text>
-              <View style={styles.whereDots}>
-                <View style={[styles.dot, { backgroundColor: THEME_HUES[0].to, width: 10, height: 10 }]} />
-                <View style={[styles.dot, { backgroundColor: THEME_HUES[1].to, width: 13, height: 13, marginTop: -4 }]} />
-                <View style={[styles.dot, { backgroundColor: THEME_HUES[3].to, width: 8, height: 8 }]} />
-              </View>
             </Pressable>
             {!!onElsewhere && (
               <Pressable
@@ -584,6 +676,7 @@ const styles = StyleSheet.create({
   previewSite: { fontSize: 13, fontFamily: SOFT_MEDIUM, marginTop: 2 },
   imagesRow: { paddingTop: 12 },
   imageTile: { width: 64, height: 64, borderRadius: 14, overflow: 'hidden', backgroundColor: '#E4E1DA' },
+  videoPlay: { position: 'absolute', left: 19, top: 19, width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', paddingLeft: 2 },
   imageX: { position: 'absolute', right: 4, top: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
   imageAdd: { height: 64, minWidth: 64, paddingHorizontal: 12, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 2 },
   imageAddText: { fontSize: 11.5, fontFamily: SOFT_SEMIBOLD },
@@ -609,5 +702,9 @@ const styles = StyleSheet.create({
   heldFelt: { fontSize: 13.5, lineHeight: 19, fontFamily: SOFT_REGULAR, marginTop: 2 },
   nameCard: { position: 'absolute', left: 16, right: 16, borderRadius: 24, padding: 8, paddingLeft: 18, flexDirection: 'row', alignItems: 'center', gap: 8 },
   nameInput: { flex: 1, fontSize: 18, fontFamily: SOFT_SEMIBOLD, paddingVertical: 10 },
+  nameInline: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 18, paddingLeft: 14, paddingRight: 5, height: 44 },
+  nameSmall: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  themePill: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, borderRadius: 18, paddingHorizontal: 13, maxWidth: 220 },
+  themePillText: { fontSize: 14, fontFamily: SOFT_MEDIUM, flexShrink: 1 },
   nameGo: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
 });

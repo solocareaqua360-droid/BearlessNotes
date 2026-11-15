@@ -6,6 +6,8 @@ export type CaptureRequest = {
   source?: ThoughtSource;
   // Pictures it arrives with (local addresses): a thought can come through an image alone.
   images?: string[];
+  // A video file it arrives with (2026-11-16, the inbox): a shared video is a thought too.
+  video?: { uri: string; name?: string; mimeType?: string };
   // From the share sheet: the old «куди зберегти?» stays one tap away (the user's rule of gradual migration).
   onElsewhere?: () => void;
   // Caught from a theme's canvas: «Куди?» is already answered - it lands there.

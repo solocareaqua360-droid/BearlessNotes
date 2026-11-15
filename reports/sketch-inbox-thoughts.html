@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="uk"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#d9d7d2;font-family:Inter,sans-serif;padding:28px;width:2140px;color:#1d1d1f}
+h1{font-size:30px;font-weight:700;margin:0 0 6px 6px}
+.sub{font-size:16px;color:#55534e;margin:0 0 22px 6px}
+.row{display:flex;gap:26px;align-items:flex-start}
+.col{display:flex;flex-direction:column;gap:10px;width:392px}
+.cap{font-size:17px;font-weight:700;padding-left:4px}
+.cap small{display:block;font-weight:400;font-size:14px;color:#55534e;margin-top:3px;line-height:1.35}
+.ph{position:relative;width:392px;height:820px;border-radius:44px;background:#F3F2EF;overflow:hidden;border:8px solid #1b1b1d}
+.status{height:34px;display:flex;justify-content:space-between;align-items:center;padding:0 22px;font-size:14px;font-weight:600}
+.isl{width:120px;height:26px;border-radius:14px;background:#111}
+.hdr{display:flex;align-items:center;gap:10px;padding:8px 16px 6px}
+.circ{width:40px;height:40px;border-radius:20px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:18px}
+.ttl{font-size:20px;font-weight:700;flex:1;display:flex;align-items:center;gap:8px}
+.dots{font-size:20px;letter-spacing:1px;color:#333}
+.seg{display:flex;margin:6px 16px 0;background:#E6E4DF;border-radius:12px;padding:3px;width:170px}
+.seg div{flex:1;text-align:center;font-size:13px;font-weight:600;padding:6px 0;border-radius:9px;color:#6b6963}
+.seg .on{background:#fff;color:#1d1d1f;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.caps{display:flex;gap:8px;padding:10px 16px 6px;overflow:hidden;white-space:nowrap}
+.pill{flex:none;display:flex;align-items:center;gap:6px;height:34px;padding:0 13px;border-radius:17px;background:#fff;font-size:14px;font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.pill .n{color:#8d8b85;font-weight:500}
+.pill.on{background:#1d1d1f;color:#fff}
+.pill.on .n{color:#bdbbb5}
+.dot{width:9px;height:9px;border-radius:5px;flex:none}
+.bar{display:flex;justify-content:space-between;align-items:center;padding:6px 18px 4px;font-size:13px;color:#7a7871}
+.tog{display:flex;background:#E6E4DF;border-radius:10px;padding:3px}
+.tog div{padding:4px 10px;border-radius:8px;font-size:12px;font-weight:600;color:#6b6963}
+.tog .on{background:#fff;color:#1d1d1f}
+.list{padding:6px 14px;display:flex;flex-direction:column;gap:10px}
+.card{background:#fff;border-radius:22px;padding:12px;display:flex;gap:12px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.th{width:84px;height:84px;border-radius:14px;flex:none;position:relative;overflow:hidden}
+.th.doc{background:#FBFAF7;border:1px solid #eee;padding:8px}
+.th.doc i{display:block;height:5px;border-radius:3px;background:#d9d7d1;margin:5px 0}
+.th.doc b{display:block;font-size:9px;font-weight:700;margin-bottom:4px}
+.ph1{background:linear-gradient(140deg,#f6c38c,#d96b4a 60%,#6a3c5e)}
+.ph2{background:linear-gradient(160deg,#9fd0e8,#4c88b0 55%,#264463)}
+.ph3{background:linear-gradient(160deg,#c9e3b5,#6fa36a 60%,#2f5a3a)}
+.play{position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:15px;background:rgba(0,0,0,.45);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
+.mix{position:absolute;left:0;right:0;bottom:0;height:34px;background:#FBFAF7;padding:5px 7px}
+.mix i{display:block;height:4px;border-radius:2px;background:#d9d7d1;margin:3px 0}
+.tx{flex:1;min-width:0}
+.tx .t{font-size:16px;font-weight:700;line-height:1.25;margin-bottom:3px}
+.tx .d{font-size:13px;color:#8d8b85;line-height:1.35;max-height:36px;overflow:hidden}
+.tx .m{font-size:12px;color:#8d8b85;margin-top:5px;display:flex;align-items:center;gap:6px}
+.kind{font-size:11px;font-weight:600;padding:2px 7px;border-radius:7px;background:#F0EEE9;color:#6b6963}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:6px 14px}
+.grid div{aspect-ratio:1;border-radius:14px}
+.dock{position:absolute;bottom:22px;left:16px;right:16px;display:flex;align-items:center;gap:12px}
+.dk{height:56px;border-radius:28px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1);display:flex;align-items:center;gap:20px;padding:0 20px;font-size:20px}
+.plus{width:52px;height:52px;border-radius:26px;background:#1d1d1f;color:#fff;font-size:28px;display:flex;align-items:center;justify-content:center;margin-left:auto}
+.bal{width:48px;height:48px;border-radius:24px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;font-size:18px}
+.board{position:absolute;left:0;right:0;top:186px;bottom:0;background-color:#F3F2EF;background-image:radial-gradient(#cfccc5 1.2px,transparent 1.2px);background-size:22px 22px}
+.bc{position:absolute;background:#fff;border-radius:16px;padding:10px;box-shadow:0 2px 6px rgba(0,0,0,.08);font-size:12px;line-height:1.35}
+.bc b{display:block;font-size:13px;margin-bottom:3px}
+.frame{position:absolute;border:1.5px dashed #b9b6ae;border-radius:20px}
+.frame span{position:absolute;top:-10px;left:14px;background:#F3F2EF;padding:0 6px;font-size:12px;font-weight:600;color:#6b6963}
+svg.ar{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.35)}
+.app{position:absolute;inset:34px 0 0;background:#fff;padding:20px}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#F3F2EF;border-radius:28px 28px 0 0;padding:14px 16px 26px}
+.grab{width:40px;height:5px;border-radius:3px;background:#cfccc5;margin:0 auto 12px}
+.prev{display:flex;gap:12px;background:#fff;border-radius:18px;padding:10px}
+.lbl{font-size:12px;font-weight:600;color:#8d8b85;margin:14px 2px 6px;text-transform:uppercase;letter-spacing:.4px}
+.wrap{display:flex;flex-wrap:wrap;gap:8px}
+.btn{margin-top:16px;height:50px;border-radius:25px;background:#1d1d1f;color:#fff;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.rules{background:#fff;border-radius:22px;padding:16px 16px 6px;width:392px}
+.rules h3{font-size:17px;margin-bottom:10px}
+.rl{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #efede8;font-size:14px}
+.rl:first-of-type{border-top:0}
+.rl .a{flex:1}
+.rl .z{flex:1.2;font-weight:600}
+.q{background:#FFF5E6;border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.4;margin-top:12px;color:#5a4320}
+</style></head><body>
+<h1>Вхідні «Думки» — без зоряного неба</h1>
+<div class="sub">Звичайна папка. Згори перемикач «Теми / Типи» і капсули. Дошка є лише всередині теми.</div>
+<div class="row">
+
+<!-- 1 -->
+<div class="col">
+<div class="cap">1 · По темах, «Усі»<small>Капсули = наші готові теми. «Без теми» — друга, з лічильником.</small></div>
+<div class="ph">
+ <div class="status"><span>21:30</span><span class="isl"></span><span>100</span></div>
+ <div class="hdr"><div class="circ">‹</div><div class="ttl">Думки</div><div class="dots">···</div><div class="circ">✓</div></div>
+ <div class="seg"><div class="on">Теми</div><div>Типи</div></div>
+ <div class="caps">
+  <div class="pill on">Усі <span class="n">24</span></div>
+  <div class="pill"><span class="dot" style="background:#E07A3A"></span>Без теми <span class="n">2</span></div>
+  <div class="pill"><span class="dot" style="background:#C9893A"></span>mindEva <span class="n">6</span></div>
+  <div class="pill"><span class="dot" style="background:#7D5EA6"></span>Схожа музика</div>
+ </div>
+ <div class="list">
+  <div class="card"><div class="th doc"><b>Ідея</b><i></i><i style="width:70%"></i><i></i><i style="width:50%"></i></div>
+   <div class="tx"><div class="t">Застосунок для прийому ліків</div><div class="d">Нагадування з фото таблетки і лічильник, скільки лишилось…</div><div class="m"><span class="kind">Документ</span><span class="dot" style="background:#3C8A5F"></span>Ліки · сьогодні</div></div></div>
+  <div class="card"><div class="th ph1"></div>
+   <div class="tx"><div class="t">Захід над Дніпром</div><div class="d"></div><div class="m"><span class="kind">Фото</span><span class="dot" style="background:#E07A3A"></span>Без теми · сьогодні</div></div></div>
+  <div class="card"><div class="th ph2"><div class="mix"><i></i><i style="width:60%"></i></div></div>
+   <div class="tx"><div class="t">Такий інтерфейс хочу</div><div class="d">Знімок + мій коментар: м’які тіні, кругла кнопка…</div><div class="m"><span class="kind">Документ · фото</span><span class="dot" style="background:#C9893A"></span>mindEva</div></div></div>
+  <div class="card"><div class="th ph3"><div class="play">▶</div></div>
+   <div class="tx"><div class="t">Lo-fi з дощем</div><div class="d"></div><div class="m"><span class="kind">Відео</span><span class="dot" style="background:#7D5EA6"></span>Схожа музика</div></div></div>
+ </div>
+ <div class="dock"><div class="dk">⌂ <span>▦</span> <span>⌕</span></div><div class="plus">+</div><div class="bal">◌</div></div>
+</div></div>
+
+<!-- 2 -->
+<div class="col">
+<div class="cap">2 · По типах<small>Той самий перемикач → капсули стають типами. Фото — сіткою.</small></div>
+<div class="ph">
+ <div class="status"><span>21:30</span><span class="isl"></span><span>100</span></div>
+ <div class="hdr"><div class="circ">‹</div><div class="ttl">Думки</div><div class="dots">···</div><div class="circ">✓</div></div>
+ <div class="seg"><div>Теми</div><div class="on">Типи</div></div>
+ <div class="caps">
+  <div class="pill">Усі <span class="n">24</span></div>
+  <div class="pill">Документи <span class="n">14</span></div>
+  <div class="pill on">Фото <span class="n">7</span></div>
+  <div class="pill">Відео <span class="n">3</span></div>
+ </div>
+ <div class="grid">
+  <div class="ph1"></div><div class="ph2"></div><div class="ph3"></div>
+  <div class="ph2"></div><div class="ph3"></div><div class="ph1"></div>
+  <div class="ph3"></div>
+ </div>
+ <div class="dock"><div class="dk">⌂ <span>▦</span> <span>⌕</span></div><div class="plus">+</div><div class="bal">◌</div></div>
+</div></div>
+
+<!-- 3 -->
+<div class="col">
+<div class="cap">3 · Обрана тема — список<small>Коли обрана тема, праворуч з’являється «Список / Дошка».</small></div>
+<div class="ph">
+ <div class="status"><span>21:30</span><span class="isl"></span><span>100</span></div>
+ <div class="hdr"><div class="circ">‹</div><div class="ttl">Думки</div><div class="dots">···</div><div class="circ">✓</div></div>
+ <div class="seg"><div class="on">Теми</div><div>Типи</div></div>
+ <div class="caps">
+  <div class="pill">Усі <span class="n">24</span></div>
+  <div class="pill"><span class="dot" style="background:#E07A3A"></span>Без теми <span class="n">2</span></div>
+  <div class="pill on"><span class="dot" style="background:#C9893A"></span>mindEva <span class="n">6</span></div>
+  <div class="pill"><span class="dot" style="background:#7D5EA6"></span>Схожа музика</div>
+ </div>
+ <div class="bar"><span>6 думок</span><div class="tog"><div class="on">☰ Список</div><div>⊞ Дошка</div></div></div>
+ <div class="list">
+  <div class="card"><div class="th ph2"><div class="mix"><i></i><i style="width:60%"></i></div></div>
+   <div class="tx"><div class="t">Такий інтерфейс хочу</div><div class="d">Знімок + мій коментар: м’які тіні, кругла кнопка…</div><div class="m"><span class="kind">Документ · фото</span>15 лист.</div></div></div>
+  <div class="card"><div class="th doc"><b>Вхідні</b><i></i><i style="width:70%"></i><i></i></div>
+   <div class="tx"><div class="t">Вхідні замість неба</div><div class="d">Капсули тем, без теми окремо, дошка лише в темі…</div><div class="m"><span class="kind">Документ</span>15 лист.</div></div></div>
+  <div class="card"><div class="th ph3"><div class="play">▶</div><div class="mix"><i></i><i style="width:50%"></i></div></div>
+   <div class="tx"><div class="t">Анімація як в iOS</div><div class="d">Відео + коментар: глянути, як відкривається папка</div><div class="m"><span class="kind">Документ · відео</span>14 лист.</div></div></div>
+ </div>
+ <div class="dock"><div class="dk">⌂ <span>▦</span> <span>⌕</span></div><div class="plus">+</div><div class="bal">◌</div></div>
+</div></div>
+
+<!-- 4 -->
+<div class="col">
+<div class="cap">4 · Та сама тема — дошка<small>Наша готова дошка теми: картки, стрілки, рамки. Ніде більше не показується.</small></div>
+<div class="ph">
+ <div class="status"><span>21:30</span><span class="isl"></span><span>100</span></div>
+ <div class="hdr"><div class="circ">‹</div><div class="ttl">Думки</div><div class="dots">···</div><div class="circ">✓</div></div>
+ <div class="seg"><div class="on">Теми</div><div>Типи</div></div>
+ <div class="caps">
+  <div class="pill">Усі <span class="n">24</span></div>
+  <div class="pill"><span class="dot" style="background:#E07A3A"></span>Без теми <span class="n">2</span></div>
+  <div class="pill on"><span class="dot" style="background:#C9893A"></span>mindEva <span class="n">6</span></div>
+ </div>
+ <div class="bar" style="position:relative;z-index:2"><span>6 думок</span><div class="tog"><div>☰ Список</div><div class="on">⊞ Дошка</div></div></div>
+ <div class="board" style="top:222px">
+  <div class="frame" style="left:14px;top:20px;width:236px;height:250px"><span>Вигляд</span></div>
+  <div class="bc" style="left:28px;top:40px;width:120px"><div class="th ph2" style="width:100%;height:58px;border-radius:10px;margin-bottom:6px"></div><b>Такий інтерфейс</b>м’які тіні</div>
+  <div class="bc" style="left:150px;top:150px;width:92px"><b>Вхідні</b>капсули тем</div>
+  <div class="bc" style="left:258px;top:60px;width:110px"><div class="th ph3" style="width:100%;height:50px;border-radius:10px;margin-bottom:6px"><div class="play">▶</div></div><b>Анімація iOS</b></div>
+  <div class="bc" style="left:60px;top:330px;width:150px"><b>Висновок?</b>спершу простий список, потім дошка</div>
+  <svg class="ar" viewBox="0 0 376 560"><defs><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8d8b85"/></marker></defs>
+   <path d="M150 95 C180 110,190 130,195 148" stroke="#8d8b85" stroke-width="1.6" fill="none" marker-end="url(#m)"/>
+   <path d="M258 115 C230 130,225 140,232 150" stroke="#8d8b85" stroke-width="1.6" fill="none" marker-end="url(#m)"/>
+   <path d="M190 215 C180 270,160 300,140 326" stroke="#8d8b85" stroke-width="1.6" fill="none" marker-end="url(#m)"/></svg>
+ </div>
+ <div class="dock"><div class="dk">⌂ <span>▦</span> <span>⌕</span></div><div class="plus">+</div><div class="bal">◌</div></div>
+</div></div>
+
+<!-- 5 -->
+<div class="col">
+<div class="cap">5 · Поширити → куди<small>З будь-якого застосунку. Одразу видно, чим стане. «Без теми» обрана наперед.</small></div>
+<div class="ph">
+ <div class="status"><span>21:30</span><span class="isl"></span><span>100</span></div>
+ <div class="app"><div style="height:220px;border-radius:16px" class="ph2"></div><div style="margin-top:14px;font-size:15px;color:#999">інший застосунок…</div></div>
+ <div class="dim"></div>
+ <div class="sheet">
+  <div class="grab"></div>
+  <div class="prev"><div class="th ph2" style="width:70px;height:70px"></div>
+   <div class="tx"><div class="t" style="font-size:15px">Фото + текст</div><div class="d">«такий інтерфейс хочу»</div><div class="m"><span class="kind">→ Документ з фото й текстом</span></div></div></div>
+  <div class="lbl">Тема</div>
+  <div class="wrap">
+   <div class="pill on"><span class="dot" style="background:#E07A3A"></span>Без теми</div>
+   <div class="pill"><span class="dot" style="background:#C9893A"></span>mindEva</div>
+   <div class="pill"><span class="dot" style="background:#3C8A5F"></span>Ліки</div>
+   <div class="pill"><span class="dot" style="background:#7D5EA6"></span>Схожа музика</div>
+   <div class="pill">＋ Нова</div>
+  </div>
+  <div class="btn">Зберегти у вхідні</div>
+ </div>
+</div></div>
+</div>
+
+<div class="row" style="margin-top:26px">
+<div class="rules">
+ <h3>Чим стає те, що прийшло</h3>
+ <div class="rl"><span class="a">Текст</span><span class="z">→ Документ</span></div>
+ <div class="rl"><span class="a">Фото</span><span class="z">→ Фото</span></div>
+ <div class="rl"><span class="a">Фото + текст</span><span class="z">→ Документ: фото і текст</span></div>
+ <div class="rl"><span class="a">Відео</span><span class="z">→ Відео</span></div>
+ <div class="rl"><span class="a">Відео + коментар</span><span class="z">→ Документ: відео і текст</span></div>
+ <div class="rl"><span class="a">Посилання</span><span class="z" style="color:#B26A1E">→ ? (питання)</span></div>
+ <div class="q">Усі ці документи живуть поки лише у вхідних. Тема — це капсула; «Без теми» — теж капсула.</div>
+</div>
+</div>
+</body></html>

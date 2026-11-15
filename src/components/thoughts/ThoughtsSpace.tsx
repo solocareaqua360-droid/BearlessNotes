@@ -25,6 +25,8 @@ import { TOP_NAV_H } from '../TopNavBar';
 import { CHROME_TOP } from '../../constants/rail';
 import { navigationRef } from '../../navigationRef';
 import { ensureThemeBoard, thoughtCardId } from '../../utils/themeBoard';
+import ThoughtsInbox from './ThoughtsInbox';
+import { thoughtToNote } from '../../utils/thoughtToNote';
 
 // THE SPACE OF THEMES (2026-10-15, sketch 3, liked: «воно плаває, десь щось об'єднане»). Every theme a cloud - bigger
 // for more thoughts, faded when it has not been touched for three weeks; the thoughts not laid out yet are a grey
@@ -34,8 +36,10 @@ const LOOSE = '__loose__';
 
 // Two lenses over the same themes (2026-10-27): the clouds, and the network of neurons (ThoughtsNetwork - Skia, so
 // the phone only for now). The last one chosen is kept for the session; the clouds stay until the user says otherwise.
-type Lens = 'clouds' | 'network';
-let lastLens: Lens = Platform.OS === 'web' ? 'clouds' : 'network';
+// 2026-11-16: a third, and now the first - the inbox as a plain folder (ThoughtsInbox); the sky and the clouds stay one
+// tap away in its «···» until the user says they can go (the rule of gradual migration).
+type Lens = 'list' | 'clouds' | 'network';
+let lastLens: Lens = 'list';
 
 // The space over the phone's desk lives in the glass layer; on the Mac (frame B, 2026-10-19) it is a screen of the
 // stack in the main column, so it draws where it is put, with no layer and no phone chrome.
@@ -143,6 +147,7 @@ export default function ThoughtsSpace({
     setLensState(l);
   };
   const sky = lens === 'network' && !inline;
+  const list = lens === 'list';
   const shown = useSharedValue(0);
 
   useEffect(() => {
@@ -207,6 +212,59 @@ export default function ThoughtsSpace({
   const openTheme = openId === LOOSE ? null : themes.find((t) => t.id === openId) ?? null;
   const inOpen = openId === null ? [] : thoughts.filter((t) => (openId === LOOSE ? t.themeId === null : t.themeId === openId));
   const word = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? 'думка' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'думки' : 'думок');
+  // A HELD THEME: rename it, or delete it - its thoughts are kept, not laid out yet.
+  const holdTheme = async (theme: ThoughtTheme) => {
+    const choice = await ask({
+      title: theme.name,
+      actions: [
+        { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
+        // The theme's old canvas, kept until the board has proved itself (the rule of gradual migration).
+        { id: 'canvas', label: 'Старе полотно', icon: 'albums-outline' },
+        { id: 'delete', label: 'Видалити тему', icon: 'trash-outline', tone: 'danger' },
+      ],
+    });
+    if (choice === 'rename') setRenaming(theme);
+    else if (choice === 'canvas') setCanvasId(theme.id);
+    else if (choice === 'delete') {
+      const mine = thoughts.filter((t) => t.themeId === theme.id).map((t) => t.id);
+      const yes = await confirm({
+        title: `Видалити тему «${theme.name}»?`,
+        message: mine.length ? `${mine.length} ${word(mine.length)} ${mine.length === 1 ? 'лишиться' : 'лишаться'} в «Не розкладено».` : 'Тема порожня.',
+        confirmLabel: 'Видалити',
+      });
+      if (yes) await deleteTheme(theme.id, mine).catch(() => {});
+    }
+  };
+  // A HELD THOUGHT: to another theme, out of its theme, into a real note, or away.
+  const holdThought = async (t: Thought) => {
+    const src = t.source;
+    const title = src?.kind === 'link' ? src.title || src.siteName || src.url : src?.kind === 'text' ? readable(src.text) : '';
+    const choice = await ask({
+      title: (title || t.felt || 'Думка').slice(0, 60),
+      actions: [
+        ...themes.filter((x) => x.id !== t.themeId).map((x) => ({ id: `to:${x.id}`, label: `У «${x.name}»`, icon: 'arrow-forward-outline' as const })),
+        ...(t.themeId ? [{ id: `to:${LOOSE}`, label: 'Без теми', icon: 'arrow-forward-outline' as const }] : []),
+        // Words that outgrew a caption (2026-11-16): the thought becomes a real note, and opens.
+        { id: 'note', label: 'Зробити документом', icon: 'document-text-outline' as const },
+        { id: 'delete', label: 'Видалити думку', icon: 'trash-outline' as const, tone: 'danger' as const },
+      ],
+    });
+    if (choice === 'note') {
+      const documentId = await thoughtToNote(t).catch(() => null);
+      if (!documentId || !navigationRef.isReady()) return;
+      if (!inline) close();
+      (navigationRef.navigate as (name: string, p?: unknown) => void)('Editor', { documentId });
+      return;
+    }
+    if (choice === 'delete') {
+      const yes = await confirm({ title: 'Видалити думку?', message: 'Її не можна буде повернути.', confirmLabel: 'Видалити' });
+      if (yes) await deleteThought(t.id).catch(() => {});
+      return;
+    }
+    if (!choice.startsWith('to:')) return;
+    const to = choice.slice(3);
+    await moveThought(t.id, to === LOOSE ? null : to).catch(() => {});
+  };
 
   return (
     <Shell inline={inline}>
@@ -227,7 +285,50 @@ export default function ThoughtsSpace({
             away={canvasId !== null || openId !== null || parked !== null}
           />
         )}
-        {inline ? (
+        {list && (
+          <>
+            <ThoughtsInbox
+              themes={themes}
+              thoughts={thoughts}
+              width={W}
+              padTop={inline ? 84 : insets.top + CHROME_TOP + TOP_NAV_H + 8}
+              padBottom={inline ? 100 : insets.bottom + DOCK_BOTTOM + 90}
+              onRead={setReading}
+              onBoard={openBoard}
+              onHoldThought={holdThought}
+              onHoldTheme={holdTheme}
+            />
+            {/* A folder's own head: the way back, the name, and «···» - where the sky and the clouds wait. */}
+            <View style={[styles.folderHead, { top: inline ? 24 : insets.top + CHROME_TOP }, inline && { left: 24, right: 24 }]}>
+              {!inline && (
+                <Pressable onPress={close} accessibilityLabel="Назад" style={[styles.headRound, { backgroundColor: S.card, boxShadow: S.popShadow } as never]}>
+                  <Ionicons name={'chevron-back' as never} size={22} color={S.ink} />
+                </Pressable>
+              )}
+              {capsuleOn && !inline && <VoiceCapsule />}
+              <Text style={[styles.folderTitle, { color: S.ink }]} numberOfLines={1}>
+                Думки
+              </Text>
+              <Pressable
+                onPress={async () => {
+                  const choice = await ask({
+                    title: 'Думки',
+                    actions: [
+                      ...(Platform.OS !== 'web' && !inline ? [{ id: 'network', label: 'Зоряне небо', icon: 'sparkles-outline' as const }] : []),
+                      { id: 'clouds', label: 'Хмари тем', icon: 'cloud-outline' as const },
+                    ],
+                  });
+                  if (choice === 'network' || choice === 'clouds') setLens(choice);
+                }}
+                accessibilityLabel="Ще"
+                style={[styles.headRound, { backgroundColor: S.card, boxShadow: S.popShadow } as never]}
+              >
+                <Ionicons name={'ellipsis-horizontal' as never} size={20} color={S.ink} />
+              </Pressable>
+            </View>
+          </>
+        )}
+        {!list && (inline ? (
           <View style={styles.inlineHead}>
             <Text style={[styles.inlineTitle, { color: S.ink }]}>Думки</Text>
             <Text style={[styles.inlineHint, { color: S.ink3 }]}>
@@ -253,9 +354,9 @@ export default function ThoughtsSpace({
         </Text>
         )}
           </>
-        )}
+        ))}
 
-        {!sky && (
+        {!sky && !list && (
         <View style={[styles.area, { top, height: areaH }]}>
           {/* Moved by a finger, zoomed by two - never off where the themes are (LiveSurface). */}
           <LiveSurface width={W} height={areaH}>
@@ -287,26 +388,7 @@ export default function ThoughtsSpace({
               const hit = pressAt(e);
               const theme = hit ? themes.find((t) => t.id === hit.id) : undefined;
               if (!theme) return;
-              const choice = await ask({
-                title: theme.name,
-                actions: [
-                  { id: 'rename', label: 'Перейменувати', icon: 'pencil-outline' },
-                  // The theme's old canvas, kept until the board has proved itself (the rule of gradual migration).
-                  { id: 'canvas', label: 'Старе полотно', icon: 'albums-outline' },
-                  { id: 'delete', label: 'Видалити тему', icon: 'trash-outline', tone: 'danger' },
-                ],
-              });
-              if (choice === 'rename') setRenaming(theme);
-              else if (choice === 'canvas') setCanvasId(theme.id);
-              else if (choice === 'delete') {
-                const mine = thoughts.filter((t) => t.themeId === theme.id).map((t) => t.id);
-                const yes = await confirm({
-                  title: `Видалити тему «${theme.name}»?`,
-                  message: mine.length ? `${mine.length} ${word(mine.length)} ${mine.length === 1 ? 'лишиться' : 'лишаться'} в «Не розкладено».` : 'Тема порожня.',
-                  confirmLabel: 'Видалити',
-                });
-                if (yes) await deleteTheme(theme.id, mine).catch(() => {});
-              }
+              holdTheme(theme);
             }}
             delayLongPress={400}
           />
@@ -315,25 +397,26 @@ export default function ThoughtsSpace({
         )}
 
         {/* The lens switch: left of the dock's pair, where the desk dock keeps its own left bead. */}
-        {Platform.OS !== 'web' && !inline && (
+        {/* Out of the sky or the clouds, back to the list (2026-11-16). */}
+        {!list && (
           <Pressable
-            onPress={() => setLens(sky ? 'clouds' : 'network')}
-            accessibilityLabel={sky ? 'Хмари' : 'Мережа думок'}
-            style={[styles.dockRound, { left: 20, bottom: insets.bottom + DOCK_BOTTOM + 4, backgroundColor: S.card, boxShadow: S.popShadow }]}
+            onPress={() => setLens('list')}
+            accessibilityLabel="Список"
+            style={[styles.dockRound, inline ? { left: 20, bottom: 20 } : { left: 20, bottom: insets.bottom + DOCK_BOTTOM + 4 }, { backgroundColor: S.card, boxShadow: S.popShadow }]}
           >
-            <Ionicons name={(sky ? 'lc:cloud' : 'lc:share-2') as never} size={21} color={S.ink} />
+            <Ionicons name={'lc:list' as never} size={21} color={S.ink} />
           </Pressable>
         )}
 
         <Pressable
           onPress={() => onCatch()}
           accessibilityLabel="Нова думка"
-          style={[styles.dockRound, inline ? { right: 20, bottom: 20 } : { right: 20 + 48 + 12, bottom: insets.bottom + DOCK_BOTTOM + 4 }, { backgroundColor: S.ink }]}
+          style={[styles.dockRound, inline || list ? { right: 20, bottom: inline ? 20 : insets.bottom + DOCK_BOTTOM + 4 } : { right: 20 + 48 + 12, bottom: insets.bottom + DOCK_BOTTOM + 4 }, { backgroundColor: S.ink }]}
         >
           <Ionicons name={'add' as never} size={26} color={S.card} />
         </Pressable>
         {/* The round back is the phone's; a screen in the Mac's stack is a section, and a section has no «Назад». */}
-        {!inline && (
+        {!inline && !list && (
         <Pressable
           onPress={close}
           accessibilityLabel="Назад"
@@ -361,24 +444,7 @@ export default function ThoughtsSpace({
               <Pressable
                 key={t.id}
                 onPress={() => setReading(t.id)}
-                onLongPress={async () => {
-                  const choice = await ask({
-                    title: (title || t.felt || 'Думка').slice(0, 60),
-                    actions: [
-                      ...themes.filter((x) => x.id !== t.themeId).map((x) => ({ id: `to:${x.id}`, label: `У «${x.name}»`, icon: 'arrow-forward-outline' as const })),
-                      ...(t.themeId ? [{ id: `to:${LOOSE}`, label: 'У «Не розкладено»', icon: 'arrow-forward-outline' as const }] : []),
-                      { id: 'delete', label: 'Видалити думку', icon: 'trash-outline' as const, tone: 'danger' as const },
-                    ],
-                  });
-                  if (choice === 'delete') {
-                    const yes = await confirm({ title: 'Видалити думку?', message: 'Її не можна буде повернути.', confirmLabel: 'Видалити' });
-                    if (yes) await deleteThought(t.id).catch(() => {});
-                    return;
-                  }
-                  if (!choice.startsWith('to:')) return;
-                  const to = choice.slice(3);
-                  await moveThought(t.id, to === LOOSE ? null : to).catch(() => {});
-                }}
+                onLongPress={() => holdThought(t)}
                 delayLongPress={350}
                 style={[styles.row, { backgroundColor: S.card, boxShadow: S.shadow }]}
               >
@@ -440,6 +506,9 @@ export default function ThoughtsSpace({
 const INLINE_TOP = 96;
 
 const styles = StyleSheet.create({
+  folderHead: { position: 'absolute', left: 20, right: 20, height: TOP_NAV_H, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headRound: { width: TOP_NAV_H, height: TOP_NAV_H, borderRadius: TOP_NAV_H / 2, alignItems: 'center', justifyContent: 'center' },
+  folderTitle: { flex: 1, fontSize: 21, fontFamily: SOFT_BOLD, letterSpacing: -0.3 },
   inlineHead: { position: 'absolute', left: 40, right: 40, top: 28, gap: 4 },
   inlineTitle: { fontSize: 26, fontFamily: SOFT_BOLD },
   inlineHint: { fontSize: 13, fontFamily: SOFT_MEDIUM },

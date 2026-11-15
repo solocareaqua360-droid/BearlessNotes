@@ -32,7 +32,8 @@ export default function ThoughtBoardCard({ thoughtId, width }: { thoughtId?: str
   }
   const src = t.source;
   const picture = src?.kind === 'link' && src.imageUrl ? src.imageUrl : null;
-  const photo = !picture && t.images?.length ? t.images[0] : null;
+  // A video file shows its first frame where a photo would be (2026-11-16).
+  const photo = !picture && t.images?.length ? t.images[0] : !picture && t.video?.thumbUri ? { uri: t.video.thumbUri, driveFileId: t.video.thumbDriveFileId } : null;
   const title = t.ai ? (t.ai === 'answer' ? t.question ?? '' : '') : cardTitle(t);
   const words = t.ai ? t.felt : src ? t.felt : readable(t.felt);
   const glow = t.feel ? FEELINGS[t.feel].c : null;

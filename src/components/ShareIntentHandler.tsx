@@ -174,11 +174,16 @@ export default function ShareIntentHandler() {
     // PICTURES SHARED IN ARE A THOUGHT FIRST (2026-10-15, the user's: «думка може прийти і через зображення»): one or
     // several photos open the thought window with the pictures in it; «Інше місце…» brings back the old way (each
     // photo to the Photos base, with its name prompt). Anything but photos in the share goes the old way at once.
+    // A VIDEO TOO (2026-11-16, the inbox): one video, alone or with photos, is a thought with that video.
+    const isVideo = (q: PendingImport) => q.kind === 'file' && q.mimeType.startsWith('video/');
+    const videos = queued.filter(isVideo);
     if (
       FEATURES.thoughts &&
-      queued.every((q) => q.kind === 'photo') &&
+      queued.every((q) => q.kind === 'photo' || isVideo(q)) &&
+      videos.length <= 1 &&
       openThoughtCapture({
-        images: queued.map((q) => q.destUri),
+        images: queued.filter((q) => q.kind === 'photo').map((q) => q.destUri),
+        ...(videos.length ? { video: { uri: videos[0].destUri, name: videos[0].originalName, mimeType: videos[0].mimeType } } : {}),
         onElsewhere: () => {
           addedCountRef.current = { photos: 0, files: 0 };
           setRenameQueue(queued);

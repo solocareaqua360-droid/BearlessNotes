@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import ThoughtVideoPlayer from './ThoughtVideoPlayer';
 import AttachmentImage from '../AttachmentImage';
 import ZoomableImageViewer from '../ZoomableImageViewer';
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -103,6 +104,7 @@ export default function ThoughtView({
               </View>
             </View>
           )}
+          {!!thought.video && <ThoughtVideoPlayer video={thought.video} />}
           {!!thought.images?.length && (
             // THE PICTURES, whole: one - the full width, its own proportions; several - a row to swipe sideways. A tap
             // opens one big, with zoom.
@@ -138,8 +140,8 @@ export default function ThoughtView({
           {src?.kind === 'text' && <Spoken text={readable(src.text)} sentence={sentence} mark={mark} style={[styles.text, { color: S.ink }]} />}
           {!!thought.felt && (
             <View style={{ gap: 4 }}>
-              {!thought.ai && <Text style={[styles.label, { color: S.ink3 }]}>{src ? 'Що зачепило' : 'Думка'}</Text>}
-              {src ? (
+              {!thought.ai && <Text style={[styles.label, { color: S.ink3 }]}>{src || thought.video || thought.images?.length ? 'Підпис' : 'Думка'}</Text>}
+              {src || thought.video ? (
                 <Text style={[styles.felt, { color: accent ?? S.ink2 }]} selectable>{`«${thought.felt}»`}</Text>
               ) : (
                 <Spoken text={readable(thought.felt)} sentence={sentence} mark={mark} style={[styles.text, { color: S.ink }]} />

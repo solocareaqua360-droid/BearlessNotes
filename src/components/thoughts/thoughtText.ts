@@ -26,3 +26,21 @@ export function voiceTextOf(t: Thought): string {
   if (t.felt) parts.push(src ? `Що зачепило: ${t.felt}` : readable(t.felt));
   return parts.filter(Boolean).join('\n\n');
 }
+
+// WHAT A THOUGHT IS, for the inbox's type capsules (2026-11-16, the user's rule): what came in decides the type, and the
+// words written with it never change it - «Фото з коментарем» stays a photo, the comment is its caption. Only words alone
+// are a document.
+export type ThoughtKind = 'doc' | 'photo' | 'video' | 'link';
+export const VIDEO_LINK = /(?:youtube\.com\/(?:watch|shorts\/|live\/)|youtu\.be\/|tiktok\.com\/|instagram\.com\/(?:reel|reels)\/|vimeo\.com\/\d)/i;
+export function kindOf(t: Thought): ThoughtKind {
+  if (t.video) return 'video';
+  if (t.source?.kind === 'link') return VIDEO_LINK.test(t.source.url) ? 'video' : 'link';
+  if (t.images?.length) return 'photo';
+  return 'doc';
+}
+export const KIND_LABEL: Record<ThoughtKind, string> = { doc: 'Документ', photo: 'Фото', video: 'Відео', link: 'Посилання' };
+// The words written with what came in - its caption; a document's words are its body, not a caption.
+export function captionOf(t: Thought): string {
+  if (t.ai) return '';
+  return kindOf(t) === 'doc' ? '' : t.felt.trim();
+}

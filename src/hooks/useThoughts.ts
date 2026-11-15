@@ -19,6 +19,9 @@ export type ThoughtSource =
 
 // A picture of a thought: kept in the app's own folder, and - once backed up - known to Drive by its id.
 export type ThoughtImage = { uri: string; driveFileId?: string };
+// A video file that came with it (2026-11-16, the inbox: «якщо просто відео, то це відео»): the file in the app's own
+// folder, its first frame as a picture for the card, and - once backed up - both known to Drive.
+export type ThoughtVideo = { uri: string; driveFileId?: string; thumbUri?: string; thumbDriveFileId?: string; durationMs?: number; name?: string };
 
 export type Thought = {
   id: string;
@@ -29,6 +32,7 @@ export type Thought = {
   source?: ThoughtSource;
   // Pictures that came with it (or ARE it - a thought can arrive as a photo alone).
   images?: ThoughtImage[];
+  video?: ThoughtVideo;
   state: 'raw' | 'ripening' | 'settled';
   createdAt: number;
   // On its theme's canvas: where it lies (fractions of the canvas, so the same layout fits the cover and the inner
@@ -100,6 +104,20 @@ function imagesOf(raw: unknown): ThoughtImage[] | undefined {
   return list.length ? list : undefined;
 }
 
+function videoOf(raw: unknown): ThoughtVideo | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.uri !== 'string') return undefined;
+  return {
+    uri: r.uri,
+    driveFileId: str(r.driveFileId) || undefined,
+    thumbUri: str(r.thumbUri) || undefined,
+    thumbDriveFileId: str(r.thumbDriveFileId) || undefined,
+    durationMs: typeof r.durationMs === 'number' ? r.durationMs : undefined,
+    name: str(r.name) || undefined,
+  };
+}
+
 function sourceOf(raw: unknown): ThoughtSource | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const r = raw as Record<string, unknown>;
@@ -150,6 +168,7 @@ export function useThoughts(enabled = true) {
                 feel: isFeeling(x.feel) ? x.feel : undefined,
                 source: sourceOf(x.source),
                 images: imagesOf(x.images),
+                video: videoOf(x.video),
                 state: x.state === 'ripening' || x.state === 'settled' ? x.state : 'raw',
                 createdAt: num(x.createdAt),
                 x: typeof x.x === 'number' ? x.x : undefined,
@@ -193,7 +212,7 @@ function cleanSource(source: ThoughtSource | undefined) {
   return Object.fromEntries(Object.entries(source).filter(([, v]) => v !== undefined && v !== ''));
 }
 
-export async function saveThought(input: { felt: string; feel?: Feeling | null; source?: ThoughtSource; images?: ThoughtImage[]; themeId: string | null }): Promise<string> {
+export async function saveThought(input: { felt: string; feel?: Feeling | null; source?: ThoughtSource; images?: ThoughtImage[]; video?: ThoughtVideo; themeId: string | null }): Promise<string> {
   const now = Date.now();
   const ref = await addDoc(collection(db, 'thoughts'), {
     themeId: input.themeId,
@@ -201,6 +220,7 @@ export async function saveThought(input: { felt: string; feel?: Feeling | null; 
     ...(input.feel ? { feel: input.feel } : {}),
     source: cleanSource(input.source),
     ...(input.images?.length ? { images: input.images.map((i) => (i.driveFileId ? { uri: i.uri, driveFileId: i.driveFileId } : { uri: i.uri })) } : {}),
+    ...(input.video ? { video: Object.fromEntries(Object.entries(input.video).filter(([, v]) => v !== undefined && v !== '')) } : {}),
     state: 'raw',
     createdAt: now,
     updatedAt: now,
@@ -331,4 +351,8 @@ export async function editThoughtText(id: string, text: string) {
 
 export async function markAiPending(id: string) {
   await updateDoc(doc(db, 'thoughts', id), { aiState: 'pending', aiError: deleteField(), updatedAt: Date.now() });
+}
+
+export async function setThoughtVideo(id: string, video: ThoughtVideo) {
+  await updateDoc(doc(db, 'thoughts', id), { video: Object.fromEntries(Object.entries(video).filter(([, v]) => v !== undefined && v !== '')), updatedAt: Date.now() });
 }

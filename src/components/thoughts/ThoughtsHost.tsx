@@ -39,6 +39,7 @@ export default function ThoughtsHost() {
         visible={capture !== null}
         source={capture?.source}
         images={capture?.images}
+        video={capture?.video}
         themes={themes}
         countOf={countOf}
         onElsewhere={capture?.onElsewhere}

@@ -104,7 +104,8 @@
             "com.google.android.googlequicksearchbox"
           ]
         }
-      ]
+      ],
+      "expo-video"
     ],
     "extra": {
       "eas": {
