@@ -1,7 +1,7 @@
 import { memo, useRef } from 'react';
 import CornerGlow, { glowColorFor, TypeBadge } from './CornerGlow';
 import { FEATURES } from '../features';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import HoldPressable from './HoldPressable';
 import TurningPressable from './TurningPressable';
 import { plainPreview } from '../utils/richText';
@@ -158,7 +158,8 @@ function FolderTile({
 // A ROW (the explorer's «Рядки», 2026-10-28, the user after Craft: «третій вид»): a small picture of the thing, its name
 // and one line under it - a note's first words, a board's cards, a file's type. No date: sorted by date, the list says
 // when in its own section titles.
-function FolderRowItem({ item, onPress, onLongPress }: { item: FolderItem; onPress: () => void; onLongPress?: () => void }) {
+// Also the links bases' «Рядки» (2026-11-16, «спершись на референс нашого провідника»): the same row, word for word.
+export function FolderRowItem({ item, onPress, onLongPress }: { item: FolderItem; onPress: (e?: GestureResponderEvent) => void; onLongPress?: () => void }) {
   const S = useSoft();
   const raw = (item.raw ?? {}) as Record<string, unknown>;
   const { picture, sub } = thingFace(item, S, ROW_PIC_W, ROW_PIC_H, 20);

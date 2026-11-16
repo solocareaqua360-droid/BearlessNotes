@@ -31,6 +31,11 @@ import {
   Text,
   View, type GestureResponderEvent } from 'react-native';
 import { Ionicons } from '../components/icons/Ionicons';
+import { FolderRowItem } from '../components/FolderItemCard';
+import type { FolderItem } from '../hooks/useAllFolderItems';
+import { viewSection } from '../navigation/topMenu';
+import type { MenuEntry } from '../components/surfaces/Menu';
+import { useSoft } from '../theme/soft';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
@@ -203,6 +208,7 @@ export default function LinksScreen({
   // The laptop's folders stand two across, not one under another.
   const pointerFolders = useDensity() === 'pointer' ? 2 : undefined;
   const theme = useTheme();
+  const S = useSoft();
   const accent = theme.sections.links;
   const accentGlass = withAlpha(accent, 0.55);
   const styles = useStyles(makeStyles);
@@ -1166,6 +1172,50 @@ export default function LinksScreen({
     return row;
   }
 
+  // «РЯДКИ» (2026-11-16, the user: «відсутні інші режими вигляду… спершись на референс нашого провідника»): the
+  // explorer's own row (FolderRowItem) - a small picture, the title, the date and the site - with its hairline from
+  // where the text starts and its tick while choosing. A tap opens the link's card, a hold its menu, as in the list.
+  function folderItemOf(item: LinkItem): FolderItem {
+    return {
+      id: `links:${item.id}`,
+      docId: item.id,
+      kind: 'link',
+      tagKind,
+      collection: 'links',
+      tagIds: item.tagIds,
+      title: item.title || item.url,
+      ...(item.imageUrl ? { imageUrl: item.imageUrl } : {}),
+      linkCategory: category,
+      raw: item as unknown as Record<string, unknown>,
+    };
+  }
+  function renderLinkLine(item: LinkItem) {
+    const carried = explorer.active;
+    const carry = carried ? carrying.cardProps(item, () => setCardMenuLinkId(item.id)) : null;
+    const picked = isSelectMode && selectedIds.has(item.id);
+    return (
+      <View key={item.id} ref={carry?.cardRef as never} collapsable={false} style={carry?.dimmed ? { opacity: 0.35 } : undefined}>
+        <SwipeSelectItem id={item.id}>
+          <View pointerEvents={isSelectMode ? 'none' : 'auto'}>
+            <FolderRowItem
+              item={folderItemOf(item)}
+              onPress={(e) => openLinkCard(item, e)}
+              onLongPress={carried ? undefined : () => setCardMenuLinkId(item.id)}
+            />
+          </View>
+          <View pointerEvents="none" style={[styles.linesRule, { backgroundColor: S.line }]} />
+          {isSelectMode && (
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => toggleSelected(item.id)}>
+              <View style={[styles.linesCheck, { borderColor: S.ink3, backgroundColor: picked ? S.ink : S.card }]}>
+                {picked && <Ionicons name="checkmark" size={16} color={S.card} />}
+              </View>
+            </Pressable>
+          )}
+        </SwipeSelectItem>
+      </View>
+    );
+  }
+
   // Three across where the column is actually wide enough to hold them -
   // the fold open, a tablet, the browser - and two on a phone. Measured
   // off the column the chrome hands down, not the window: in a pane the
@@ -1381,14 +1431,15 @@ export default function LinksScreen({
           ? 'map-outline'
           : viewMode === 'grid'
             ? 'grid-outline'
+            : viewMode === 'rows'
+            ? 'list-outline'
             : viewMode === 'canvas'
               ? 'easel-outline'
               : 'reorder-four-outline',
-        // List → grid → (the map, for «Геоточки») → canvas («Полотно»,
-        // FolderCanvas) → list.
+        // List → grid → rows → (the map, for «Геоточки») → canvas («Полотно», FolderCanvas) → list.
         onToggle: () => {
           if (category !== 'geo') {
-            changeViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'canvas' : 'list');
+            changeViewMode(viewMode === 'list' ? 'grid' : viewMode === 'grid' ? 'rows' : viewMode === 'rows' ? 'canvas' : 'list');
             return;
           }
           if (mapVisible) {
@@ -1397,12 +1448,22 @@ export default function LinksScreen({
           } else if (viewMode === 'list') {
             changeViewMode('grid');
           } else if (viewMode === 'grid') {
+            changeViewMode('rows');
+          } else if (viewMode === 'rows') {
             setMapVisible(true);
           } else {
             changeViewMode('list');
           }
         },
       }}
+      // The bar's «⋯» names every view, as the explorer's does - «Змінити вигляд» went round them blind.
+      viewMenu={[
+        ...viewSection(mapVisible ? 'map' : viewMode, (m) => {
+          setMapVisible(false);
+          changeViewMode(m as 'list' | 'grid' | 'rows' | 'canvas');
+        }, ['list', 'grid', 'rows', 'canvas']),
+        ...(category === 'geo' ? [{ label: 'Карта', icon: 'map-outline', checked: mapVisible, onPress: () => setMapVisible(true) } as MenuEntry] : []),
+      ]}
       // No folders of its own here under mediaWithoutFolders: no folder switch, no «Нова папка».
       explorer={noFolders ? undefined : {
         mode: list.listMode,
@@ -1804,6 +1865,23 @@ export default function LinksScreen({
             />
           )}
           </View>
+        ) : viewMode === 'rows' && !trashOpen ? (
+          <GestureDetector gesture={carrying.listGesture}>
+          <ScrollView
+            ref={carrying.scrollRef as React.RefObject<ScrollView>}
+            {...listProps}
+            contentContainerStyle={[
+              styles.list,
+              styles.lines,
+              railClear(inPane ? 'left' : 'right', 20),
+              { paddingTop: listTopPad, paddingBottom: dockClear + insets.bottom },
+              ]}
+          >
+            {explorerOrTrashHead()}
+            {linksHere.map((item) => renderLinkLine(item))}
+            <GroupSections groupId={list.selectedGroupId} currentKind={tagKind} tags={tags} />
+          </ScrollView>
+          </GestureDetector>
         ) : viewMode === 'grid' ? (
           <GestureDetector gesture={carrying.listGesture}>
           <ScrollView
@@ -1939,6 +2017,10 @@ const makeStyles = (t: Theme) =>
     color: 'rgba(255,255,255,0.55)',
     textAlign: 'center',
   },
+  // «Рядки»: no gap - the hairline is what parts them, as in the explorer.
+  lines: { gap: 0 },
+  linesRule: { position: 'absolute', left: 54, right: 0, bottom: 0, height: StyleSheet.hairlineWidth },
+  linesCheck: { position: 'absolute', top: 21, right: 4, width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   list: {
     paddingVertical: 8,
     paddingLeft: 20,

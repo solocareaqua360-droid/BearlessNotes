@@ -19,7 +19,7 @@ import { BlurView } from 'expo-blur';
 import Animated, { SharedValue } from 'react-native-reanimated';
 import { DatabaseList } from '../hooks/useDatabaseList';
 import { GlassPortal } from './GlassPortal';
-import Menu from './surfaces/Menu';
+import Menu, { type MenuEntry } from './surfaces/Menu';
 import { ask } from './surfaces/Ask';
 import { useBlurTarget } from './GlassTarget';
 import ContentColumn from './ContentColumn';
@@ -120,6 +120,9 @@ export type DatabaseChromeProps<T extends { id: string }> = {
   // rail reads; the caller names it, because "the other one" is a grid on
   // three of these screens and a tile on another.
   shape?: { icon: keyof typeof Ionicons.glyphMap; onToggle: () => void };
+  // The explorer's own «Вигляд» section in the bar's «⋯» (viewSection), in place of the one cycling «Змінити вигляд» row
+  // - every view named and the one in force ticked (the links bases, 2026-11-16).
+  viewMenu?: MenuEntry[] | null;
   // A database with folders: the three-way switch in the drawer, a second
   // button on the create capsule for a new folder, and back/forward
   // through the folders you have been in - in a capsule of their own,
@@ -231,6 +234,7 @@ export default function DatabaseChrome<T extends { id: string }>({
   dockTools,
   topMenuExtras,
   shape,
+  viewMenu,
   explorer,
   hideDrawer,
   bulk,
@@ -429,7 +433,7 @@ export default function DatabaseChrome<T extends { id: string }>({
     !deskMenu
       ? null
       : [
-      ...(shape ? [{ label: 'Змінити вигляд', icon: shape.icon, onPress: shape.onToggle }] : []),
+      ...(viewMenu ? viewMenu : shape ? [{ label: 'Змінити вигляд', icon: shape.icon, onPress: shape.onToggle }] : []),
       ...orderSection(list.sortPref, list.selectSortField),
       { kind: 'rule' as const },
       ...(!hideDrawer
