@@ -9,6 +9,7 @@ import { ExplorerFolder } from '../hooks/useExplorer';
 import { FONT_REGULAR, FONT_SEMIBOLD, SOFT_MEDIUM, SOFT_SEMIBOLD } from '../utils/fonts';
 import { softCardFrame, softenStyles, useSoft, useSoftSurface, type SoftTokens } from '../theme/soft';
 import { gridBasis, gridFillerCount } from './ItemCards';
+import DropTint from './DropTint';
 
 // What stands above a database's records while it is in explorer mode:
 // where you are, and the folders at this level.
@@ -125,6 +126,7 @@ export default function ExplorerHead({
                 onLongPress={() => onFolderMenu(folder, rowNodes.current.get(folder.fullPath))}
               >
                 {face}
+                <DropTint path={folder.fullPath} radius={20} />
               </Pressable>
             </View>
           ))}
@@ -138,6 +140,7 @@ export default function ExplorerHead({
           entries={[
             ...plain.map((folder) => ({
               key: folder.fullPath,
+              dropPath: folder.fullPath,
               name: folder.name,
               icon: (folder.tag?.icon as keyof typeof Ionicons.glyphMap) || 'folder-outline',
               color: folder.tag?.color,
@@ -152,7 +155,7 @@ export default function ExplorerHead({
               },
             })),
             ...(!!trash && trash.count > 0 && path === ''
-              ? [{ key: '__bin__', name: 'Кошик', icon: 'trash-outline' as const, color: undefined, docs: trash.count, subs: undefined, ref: undefined, onPress: trash.onOpen, onLongPress: undefined, nodeRef: undefined }]
+              ? [{ key: '__bin__', name: 'Кошик', icon: 'trash-outline' as const, color: undefined, docs: trash.count, subs: undefined, ref: undefined, dropPath: undefined, onPress: trash.onOpen, onLongPress: undefined, nodeRef: undefined }]
               : []),
           ]}
           itemIcon={itemIcon}
@@ -190,6 +193,7 @@ export default function ExplorerHead({
               </View>
             </View>
             <Ionicons name="chevron-forward" size={soft ? 16 : 18} color={soft ? soft.ink3 : theme.ink.faint} />
+            <DropTint path={folder.fullPath} radius={soft ? cardRadius(20) : 14} />
           </Pressable>
         </View>
       ))}
@@ -221,6 +225,8 @@ export default function ExplorerHead({
 
 type ShapedEntry = {
   key: string;
+  // The folder a carried card is over gets its tint (DropTint) - the explorer's own «куди ляже».
+  dropPath?: string;
   name: string;
   icon: keyof typeof Ionicons.glyphMap;
   color?: string;
@@ -260,6 +266,7 @@ function ShapedFolders({ look, gridColumns, entries, itemIcon, S }: { look: 'lis
                 {e.name}
               </Text>
               {meta(e, 12)}
+              {!!e.dropPath && <DropTint path={e.dropPath} radius={cardRadius(16)} />}
             </Pressable>
           </View>
         ))}
@@ -283,6 +290,7 @@ function ShapedFolders({ look, gridColumns, entries, itemIcon, S }: { look: 'lis
                 {meta(e, 13)}
               </View>
               <Ionicons name="chevron-forward" size={16} color={S.ink3} style={{ alignSelf: 'center' }} />
+              {!!e.dropPath && <DropTint path={e.dropPath} radius={cardRadius(20)} />}
             </Pressable>
           </View>
         ))}
@@ -302,6 +310,7 @@ function ShapedFolders({ look, gridColumns, entries, itemIcon, S }: { look: 'lis
               {meta(e, 13)}
             </View>
             <Ionicons name="chevron-forward" size={16} color={S.ink3} />
+            {!!e.dropPath && <DropTint path={e.dropPath} radius={12} inset={-6} />}
           </Pressable>
           <View pointerEvents="none" style={[shaped.rule, { backgroundColor: S.line }]} />
         </View>
