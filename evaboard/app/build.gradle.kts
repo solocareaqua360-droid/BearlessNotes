@@ -244,6 +244,10 @@ dependencies {
     implementation(projects.lib.kotlin)
     implementation(projects.lib.snygg)
 
+    // evaBoard: Google's on-device document scanner (camera, edge detection, straighten, crop, filter);
+    // the module is pulled on demand by Play Services, so the APK barely grows.
+    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
+
     testImplementation(libs.kotlin.test.junit5)
     androidTestImplementation(libs.androidx.test.ext)
     androidTestImplementation(libs.androidx.test.espresso.core)

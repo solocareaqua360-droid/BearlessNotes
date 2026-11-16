@@ -175,6 +175,14 @@
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
 
+        <!-- evaBoard: scans a page with Google's document scanner onto the clipboard (ime/eva/EvaScan.kt) -->
+        <activity
+            android:name="dev.patrickgold.florisboard.ime.eva.EvaScanActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
+
         <!-- Clipboard Media File Provider -->
         <provider
             android:name="dev.patrickgold.florisboard.ime.clipboard.provider.ClipboardMediaProvider"

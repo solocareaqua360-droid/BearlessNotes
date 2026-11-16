@@ -84,6 +84,7 @@ fun HomeScreen() = FlorisScreen {
         // evaBoard dev updater (TEMPORARY) - remove with ime/eva/devupdate
         EvaDevUpdateCard(modifier = Modifier.padding(8.dp))
         EvaFullKeyboardCard(modifier = Modifier.padding(8.dp))
+        dev.patrickgold.florisboard.ime.eva.devupdate.EvaFloatingCard(modifier = Modifier.padding(8.dp))
         EvaDynamicThemeCard(modifier = Modifier.padding(8.dp))
         EvaOpacityCard(modifier = Modifier.padding(8.dp))
         EvaScreenshotsCard(modifier = Modifier.padding(8.dp))

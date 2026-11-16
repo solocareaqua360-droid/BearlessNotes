@@ -7,6 +7,10 @@
     <cache-path
         name="eva_update"
         path="eva-update/"/>
+    <!-- evaBoard: scanned pages on their way to the clipboard history (ime/eva/EvaScan.kt); private cache, never the gallery -->
+    <cache-path
+        name="eva_scans"
+        path="eva-scans/"/>
     <!-- evaBoard: files sent to the Mac (copies kept until their card goes) and, before Android 10, files from it -->
     <files-path
         name="eva_files"

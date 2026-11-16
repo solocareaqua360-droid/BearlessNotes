@@ -532,6 +532,12 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
             key = "keyboard__eva_full_keyboard",
             default = false,
         )
+        // evaBoard: the floating card - the keyboard drawn as a rounded card inset from the sides and the
+        // bottom, over the app instead of under it (FlorisImeService ImeUi / onComputeInsets)
+        val evaFloating = boolean(
+            key = "keyboard__eva_floating",
+            default = false,
+        )
         // evaBoard: every new screenshot (and its edited save) is put on the clipboard
         val evaScreenshotsToClipboard = boolean(
             key = "keyboard__eva_screenshots_to_clipboard",

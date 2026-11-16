@@ -224,6 +224,14 @@ fun ClipboardInputLayout(
             ) {
                 SnyggIcon(imageVector = EvaIcons.lucide("keyboard"))
             }
+            // evaBoard: scan a page with the camera straight onto the clipboard (ime/eva/EvaScan.kt)
+            SnyggIconButton(
+                elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
+                onClick = { dev.patrickgold.florisboard.ime.eva.EvaScanActivity.start(context) },
+                modifier = sizeModifier,
+            ) {
+                SnyggIcon(imageVector = EvaIcons.lucide("scan-line"))
+            }
             SnyggText(
                 elementName = FlorisImeUi.ClipboardHeaderText.elementName,
                 modifier = Modifier.weight(1f),

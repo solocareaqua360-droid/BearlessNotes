@@ -170,6 +170,13 @@ internal val LUCIDE_PATHS: Map<String, List<String>> = mapOf(
         "M7 9a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z",
         "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21",
     ),
+    "scan-line" to listOf(
+        "M3 7V5a2 2 0 0 1 2 -2h2",
+        "M17 3h2a2 2 0 0 1 2 2v2",
+        "M21 17v2a2 2 0 0 1 -2 2h-2",
+        "M7 21H5a2 2 0 0 1 -2 -2v-2",
+        "M7 12h10",
+    ),
     "keyboard" to listOf(
         "M10 8h.01",
         "M12 12h.01",

@@ -78,6 +78,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import dev.patrickgold.florisboard.ime.eva.EvaBlur
@@ -646,6 +647,20 @@ class FlorisImeService : LifecycleInputMethodService() {
             return
         }
 
+        if (prefs.keyboard.evaFloating.get()) {
+            // Floating card = inputViewSize, 8dp from the sides and 24dp above the screen bottom. The app is
+            // not resized (contentTopInsets = the whole window); visibleTopInsets is the card's top, so apps
+            // lift their field above it (measured 2026-11-17: the app shows in the strips around the card).
+            val d = resources.displayMetrics.density
+            val bandPx = (24 * d).toInt()
+            val sidePx = (8 * d).toInt()
+            val cardTop = (inputWindowView.height - bandPx - inputViewSize.height).coerceAtLeast(0)
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+            outInsets.touchableRegion.set(sidePx, cardTop, inputViewSize.width + sidePx, inputWindowView.height - bandPx)
+            outInsets.contentTopInsets = inputWindowView.height
+            outInsets.visibleTopInsets = cardTop
+            return
+        }
         val visibleTopY = inputWindowView.height - inputViewSize.height
         val needAdditionalOverlay =
             prefs.smartbar.enabled.get() &&
@@ -750,6 +765,8 @@ class FlorisImeService : LifecycleInputMethodService() {
         // toward the theme's extreme (white in a light theme, black in a dark one). Replaced the old
         // on/off "Прозора підкладка" switch, 2026-11-16.
         val opacity by prefs.keyboard.evaOpacity.observeAsState()
+        // evaBoard: the floating card (EvaFloatingCard setting) - rounded, inset from the sides and the bottom
+        val floating by prefs.keyboard.evaFloating.observeAsState()
         val veil by prefs.keyboard.evaVeil.observeAsState()
         val seeThrough = opacity < 1f
         // The window must go translucent whenever the ground is see-through, blur or not; re-run as
@@ -764,6 +781,13 @@ class FlorisImeService : LifecycleInputMethodService() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .wrapContentHeight()
+                    .then(
+                        if (floating) {
+                            Modifier
+                                .padding(start = 8.dp, end = 8.dp, bottom = 24.dp)
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(26.dp))
+                        } else Modifier,
+                    )
                     // evaBoard: a see-through ground is glass - rounded top corners and a faint rim; a
                     // solid ground (opacity 1) keeps a straight top edge (rounded corners looked bad on
                     // the live screen - the user, 2026-11-13)

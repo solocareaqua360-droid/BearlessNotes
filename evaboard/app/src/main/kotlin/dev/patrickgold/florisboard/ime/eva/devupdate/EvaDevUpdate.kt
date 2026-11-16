@@ -221,6 +221,29 @@ fun EvaFullKeyboardCard(modifier: Modifier = Modifier) {
     }
 }
 
+/** evaBoard: the floating card switch (FlorisImeService draws and insets it). */
+@Composable
+fun EvaFloatingCard(modifier: Modifier = Modifier) {
+    val prefs by FlorisPreferenceStore
+    val scope = rememberCoroutineScope()
+    val wanted by prefs.keyboard.evaFloating.observeAsState()
+    Card(modifier = modifier) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Плаваюча клавіатура", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Картка з відступами від країв: застосунок видно навколо неї",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Switch(checked = wanted, onCheckedChange = { scope.launch { prefs.keyboard.evaFloating.set(it) } })
+        }
+    }
+}
+
 /**
  * evaBoard: the keyboard's opacity and veil. Two sliders over a live mini-keyboard so you see the
  * effect as you drag: opacity is how much of the app shows through the ground, the veil tints the
