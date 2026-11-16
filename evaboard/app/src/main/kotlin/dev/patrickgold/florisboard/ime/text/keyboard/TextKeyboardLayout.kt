@@ -877,46 +877,43 @@ private class TextKeyboardLayoutController(
         val pointer = pointerMap.findById(event.pointerId) ?: return false
 
         return when (event.type) {
-            SwipeGesture.Type.TOUCH_MOVE -> when (event.direction) {
-                SwipeGesture.Direction.LEFT -> {
-                    val action = prefs.gestures.spaceBarSwipeLeft.get()
-                    if (action == SwipeAction.MOVE_CURSOR_LEFT) {
-                        abs(event.relUnitCountX).let {
-                            val count = if (!pointer.hasTriggeredGestureMove) it - 1 else it
-                            if (count > 0) {
-                                inputFeedbackController?.gestureMovingSwipe(TextKeyData.SPACE)
-                                if (!pointer.hasTriggeredMassSelection) {
-                                    pointer.hasTriggeredMassSelection = true
-                                    editorInstance.massSelection.begin()
-                                }
-                                keyboardManager.handleArrow(KeyCode.ARROW_LEFT, count)
+            SwipeGesture.Type.TOUCH_MOVE -> {
+                val leftAction = prefs.gestures.spaceBarSwipeLeft.get()
+                val rightAction = prefs.gestures.spaceBarSwipeRight.get()
+                // evaBoard (2026-11-16): the held space bar is a two-way cursor touchpad whenever
+                // left/right are set to move the cursor (the default). The finger steers the caret on
+                // both axes at once - left/right by characters, up/down by visual lines. Up/down go
+                // through handleArrow -> DPAD_UP/DOWN, so the app itself drops the caret onto the line
+                // above/below (keeping its column) instead of the caret having to walk the whole row.
+                val cursorTouchpad = leftAction == SwipeAction.MOVE_CURSOR_LEFT ||
+                    rightAction == SwipeAction.MOVE_CURSOR_RIGHT
+                if (cursorTouchpad) {
+                    val firstMove = !pointer.hasTriggeredGestureMove
+                    val dx = event.relUnitCountX
+                    val dy = event.relUnitCountY
+                    // The very first move also carries the unit that armed the gesture; swallow it once,
+                    // on whichever axis actually moved first, so the caret does not jump on activation.
+                    fun step(code: Int, raw: Int, swallowActivation: Boolean) {
+                        val count = abs(raw) - if (firstMove && swallowActivation) 1 else 0
+                        if (count > 0) {
+                            inputFeedbackController?.gestureMovingSwipe(TextKeyData.SPACE)
+                            if (!pointer.hasTriggeredMassSelection) {
+                                pointer.hasTriggeredMassSelection = true
+                                editorInstance.massSelection.begin()
                             }
+                            keyboardManager.handleArrow(code, count)
                         }
-                        true
-                    } else {
-                        action != SwipeAction.NO_ACTION
+                    }
+                    if (dx != 0) step(if (dx < 0) KeyCode.ARROW_LEFT else KeyCode.ARROW_RIGHT, dx, swallowActivation = true)
+                    if (dy != 0) step(if (dy < 0) KeyCode.ARROW_UP else KeyCode.ARROW_DOWN, dy, swallowActivation = dx == 0)
+                    true
+                } else {
+                    when (event.direction) {
+                        SwipeGesture.Direction.LEFT -> leftAction != SwipeAction.NO_ACTION
+                        SwipeGesture.Direction.RIGHT -> rightAction != SwipeAction.NO_ACTION
+                        else -> false
                     }
                 }
-                SwipeGesture.Direction.RIGHT -> {
-                    val action = prefs.gestures.spaceBarSwipeRight.get()
-                    if (action == SwipeAction.MOVE_CURSOR_RIGHT) {
-                        abs(event.relUnitCountX).let {
-                            val count = if (!pointer.hasTriggeredGestureMove) it - 1 else it
-                            if (count > 0) {
-                                inputFeedbackController?.gestureMovingSwipe(TextKeyData.SPACE)
-                                if (!pointer.hasTriggeredMassSelection) {
-                                    pointer.hasTriggeredMassSelection = true
-                                    editorInstance.massSelection.begin()
-                                }
-                                keyboardManager.handleArrow(KeyCode.ARROW_RIGHT, count)
-                            }
-                        }
-                        true
-                    } else {
-                        action != SwipeAction.NO_ACTION
-                    }
-                }
-                else -> false
             }
             SwipeGesture.Type.TOUCH_UP -> when (event.direction) {
                 SwipeGesture.Direction.LEFT -> {
@@ -952,7 +949,9 @@ private class TextKeyboardLayoutController(
                     }
                 }
                 else -> {
-                    if (event.absUnitCountY < -6) {
+                    // A touchpad drag that moved the caret has already done its job; only a quick flick
+                    // up (which never began a mass selection) triggers the discrete swipe-up action.
+                    if (event.absUnitCountY < -6 && !pointer.hasTriggeredMassSelection) {
                         keyboardManager.executeSwipeAction(prefs.gestures.spaceBarSwipeUp.get())
                         true
                     } else {
