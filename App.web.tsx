@@ -550,6 +550,9 @@ export default function App() {
     readAppFont().then(setAppFont);
   }, []);
   const [baseLoaded] = useFonts({
+    // The icons (components/icons/Ionicons): every line icon is a letter of this font - the browser's own root loads it
+    // too, or every icon here would be an empty box.
+    lucide: require('./assets/fonts/lucide.ttf'),
     Nunito_400Regular,
     Nunito_500Medium,
     Nunito_600SemiBold,
